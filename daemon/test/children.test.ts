@@ -43,7 +43,10 @@ async function setup(opts: Parameters<typeof daemon>[1] = {}, rt?: Awaited<Retur
   const list = async () => (await ada.get<ThreadSummary[]>(`${u}/threads`)).body;
   const childPath = (id: string) => `${u}/threads/general/${enc(id)}`;
   const messages = async (p: string) => (await ada.get<MessagePage>(`${p}/messages`)).body.messages;
-  return { rt, ...dm, ada, model, parent, child, thread, u, path, stream, say, list, childPath, messages };
+  const idleParent = async () => {
+    await expect.poll(() => dm.d.services!.host.busy(rt!.ada.id, "general", thread.id)).toBe(false);
+  };
+  return { rt, ...dm, ada, model, parent, child, thread, u, path, stream, say, list, childPath, messages, idleParent };
 }
 
 const start = (title: string, task: string, more: object = {}): Reply => ({ tools: [{ name: "threads", args: { action: "start", title, task, ...more } }] });
@@ -414,12 +417,13 @@ describe("a child's end, reading and stopping", () => {
   const call = (args: object): Reply => ({ tools: [{ name: "threads", args }] });
 
   it("the parent hears of a child that finished without a report, and not of one that reported", async () => {
-    const { parent, child, say, path, messages } = await setup();
+    const { parent, child, say, path, messages, idleParent } = await setup();
     parent.push(start("Silent", "Plan the beds."), { text: "Started." });
     child.push({ text: "Planned." });
     const silent = toolEnd(await say("start the silent one"))!.threads![0]!.id;
     await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes(`[t:${silent}] finished without a report, and is idle`)));
 
+    await idleParent();
     parent.push(start("Loud", "Plan the paths."), { text: "Started." });
     child.push(toParent("Paths planned."), { text: "Done." });
     const loud = toolEnd(await say("start the loud one"))!.threads![0]!.id;
@@ -458,12 +462,13 @@ describe("a child's end, reading and stopping", () => {
   });
 
   it("the parent reads a child's latest messages, but not another thread's", async () => {
-    const { ada, u, parent, child, say, path, messages } = await setup();
+    const { ada, u, parent, child, say, path, messages, idleParent } = await setup();
     parent.push(start("Garden", "Plan the beds."), { text: "Started." });
     child.push({ text: "Tulips go by the wall." });
     const id = toolEnd(await say("plan the garden in its own thread"))!.threads![0]!.id;
     await until(() => notices(() => messages(path)), (n) => n.length > 0);
 
+    await idleParent();
     parent.push(call({ action: "read", id, last: 1 }), { text: "Read it." });
     const one = toolEnd(await say("read its last message"));
     expect(one).toMatchObject({ isError: false });
@@ -518,4 +523,104 @@ describe("a child's end, reading and stopping", () => {
     await new Promise((r) => setTimeout(r, 300));
     expect((await messages(path)).length).toBe(before);
   });
+});
+
+
+describe("child notices waking a parent", () => {
+  it("progress waits; a question wakes once and its parent's reply cannot wake the child", async () => {
+    const { ada, model, parent, child, say, childPath, messages, path } = await setup();
+    const turn = held(toParent("Still planning."));
+    const finish = held({ text: "Done." });
+    parent.push(start("Garden", "Plan the beds."), { text: "Started." });
+    child.push(turn.first, finish.first);
+    const id = toolEnd(await say("start it"))!.threads![0]!.id;
+    await turn.busy;
+    turn.release();
+    await finish.busy;
+    await until(() => messages(path), m => m.some(x => x.role === "notice"));
+    const before = model.requests.filter(c => !isChild(c)).length;
+    await new Promise(r => setTimeout(r, 150));
+    expect(model.requests.filter(c => !isChild(c))).toHaveLength(before);
+    // The user can ask the child to send a question after its current turn.
+    finish.release();
+    await until(() => messages(path), m => m.some(x => x.role === "assistant" && x.parts.some(p => p.type === "text" && p.text === "parent idle")));
+    const answer = held({ text: "Acknowledged." });
+    parent.push({ tools: [{ name: "threads", args: { action: "message", id, text: "Use tulips." } }] }, answer.first);
+    child.push({ tools: [{ name: "threads", args: { action: "message", to: "parent", text: "Which flowers?", question: true } }] }, { text: "Waiting." });
+    await ada.post(`${childPath(id)}/messages`, { text: "Ask which flowers." });
+    await answer.busy;
+    await until(() => messages(childPath(id)), m => m.some(x => x.role === "user" && x.from?.kind === "parent" && x.parts.some(p => p.type === "text" && p.text === "Use tulips.")));
+    const childCalls = model.requests.filter(isChild).length;
+    await new Promise(r => setTimeout(r, 150));
+    expect(model.requests.filter(isChild)).toHaveLength(childCalls);
+    answer.release();
+  });
+
+  it("coalesces three questions and the final report into one running parent turn", async () => {
+    const { ada, parent, child, say, childPath, path, messages, stream, idleParent } = await setup();
+    const turn = held({ text: "Ready." });
+    parent.push(start("Garden", "Plan."), { text: "Started." });
+    child.push(turn.first);
+    const id = toolEnd(await say("start"))!.threads![0]!.id;
+    await turn.busy;
+    // Let the initial task finish, including its daemon notice.
+    turn.release();
+    await until(() => messages(path), m => m.some(x => x.role === "assistant" && x.parts.some(p => p.type === "text" && p.text === "parent idle")));
+    const wake = held({ text: "Heard them." });
+    parent.push(wake.first);
+    await idleParent();
+    const count = stream.events.filter(e => e.event.type === "turn_start").length;
+    child.push(...[1, 2, 3].map(n => ({ tools: [{ name: "threads", args: { action: "message", to: "parent", text: `Question ${n}`, question: true } }] })), { text: "Reported." });
+    await ada.post(`${childPath(id)}/messages`, { text: "Ask three questions." });
+    await wake.busy;
+    await until(() => messages(childPath(id)), m => m.some(x => x.role === "assistant" && x.parts.some(p => p.type === "text" && p.text === "Reported.")));
+    wake.release();
+    await until(() => messages(path), m => m.some(x => x.role === "assistant" && x.parts.some(p => p.type === "text" && p.text === "Heard them.")));
+    await new Promise(r => setTimeout(r, 200));
+    expect(stream.events.filter(e => e.event.type === "turn_start")).toHaveLength(count + 1);
+  });
+});
+
+
+it("a final child report wakes a parent whose live session was disposed", async () => {
+  const { d, rt, thread, parent, child, say, path, messages, idleParent, stream } = await setup();
+  const turn = held(toParent("Beds planned."));
+  parent.push(start("Garden", "Plan the beds."), { text: "Started." });
+  child.push(turn.first, { text: "Done." });
+  await say("start it");
+  await turn.busy;
+  await idleParent();
+  d.services!.host.reload(rt.ada.id, "general", thread.id);
+  const before = stream.events.filter(e => e.event.type === "turn_start").length;
+  turn.release();
+  await until(() => messages(path), m => m.some(x => x.role === "assistant" && x.parts.some(p => p.type === "text" && p.text === "parent idle")));
+  await idleParent();
+  expect(stream.events.filter(e => e.event.type === "turn_start")).toHaveLength(before + 1);
+  expect((await messages(path)).filter(m => m.role === "notice")).toHaveLength(1);
+});
+
+
+it("a woken parent's reply reaches a busy child's next user turn without starting one", async () => {
+  const { ada, parent, child, say, childPath, path, messages, idleParent } = await setup();
+  const question = held({ tools: [{ name: "threads", args: { action: "message", to: "parent", text: "Which flowers?", question: true } }] });
+  const childEnd = held({ text: "Waiting." });
+  const parentEnd = held({ text: "Answered." });
+  parent.push(start("Garden", "Plan."), { text: "Started." });
+  child.push(question.first, childEnd.first);
+  const id = toolEnd(await say("start it"))!.threads![0]!.id;
+  await question.busy;
+  await idleParent();
+  parent.push({ tools: [{ name: "threads", args: { action: "message", id, text: "Use tulips." } }] }, parentEnd.first);
+  question.release();
+  await childEnd.busy;
+  await parentEnd.busy;
+  child.push(c => {
+    expect(said(c)).toContain("Use tulips.");
+    return { text: "Tulips it is." };
+  });
+  expect((await ada.post(`${childPath(id)}/messages`, { text: "Carry on." })).status).toBe(200);
+  childEnd.release();
+  await until(() => messages(childPath(id)), m => m.some(x => x.role === "assistant" && x.parts.some(p => p.type === "text" && p.text === "Tulips it is.")));
+  parentEnd.release();
+  await until(() => messages(path), m => m.some(x => x.role === "assistant" && x.parts.some(p => p.type === "text" && p.text === "Answered.")));
 });

@@ -732,13 +732,32 @@ One model-facing tool: `delegate({ action?, ... })`.
   (`inheritSettings`), which can only narrow. `ThreadsLimits`
   (`DEFAULT_THREADS_LIMITS`): 3 starts per request, 2 children working at
   once per user, checked on start and when a parent's message wakes an idle
-  child. A parent's message is the child's next turn, marked with
+  child; child-triggered parent turns share this budget with routines. A
+  parent's message is the child's next turn, marked with
   `fromParent(id)` (`FROM_PARENT`), which only `lyricad` writes; a child's
   update reaches the parent through `Delegation.deliver` as a notice with
   status `update`, and every delivery's details carry an `id`. A child on
   a task from its parent whose turn ends idle with an error, or without an
   update since the task, gets the parent the same kind of notice
-  (`ChildThreads.ended`, fed by `lyricad`'s turn events).
+  (`ChildThreads.ended`, fed by `lyricad`'s turn events). A child's
+  `message({ to: "parent", text, question: true })`, a project's `needsYou`,
+  its report when its turn ends idle, and the daemon's failure or
+  didn't-start notes wake an idle parent for one turn. Plain progress and
+  subagent results don't wake an idle parent. Child deliveries carry
+  `childDelivery: true` so `deliverVia` appends them with `triggerTurn: false`;
+  during a child-triggered parent turn `joinRunning: true` steers them into
+  that turn. `ChildThreads` coalesces pending/running wakes per parent,
+  reserves an at-once slot, waits through project pause/hidden, and invokes
+  `HostedThread.wakeChild`: a hidden custom message with `triggerTurn: true`,
+  through the ordinary model preparation, turn events and storage. Pending
+  wake metadata is in memory only; stored notices survive a restart.
+  `noticed` prevents repeated bad-end wakes until a child reports or the
+  user writes there. A reply from a child-triggered parent to its source
+  child goes through `HostedThread.appendParent`, saved after the child's
+  current turn without a turn or steer; the next turn reads it.
+  `HostedThread.childWakeTurn` limits reply suppression to the child-started
+  turn; a subsequent user turn can message and start the child normally.
+  Pending child wakes also wait while `ThreadHost.draining` is true.
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
   in Plan mode itself.
@@ -747,7 +766,7 @@ One model-facing tool: `delegate({ action?, ... })`.
   message at or after it) and returns `queued` past the at-once limit
   instead of refusing; a queued task is held in memory only, and a restart
   tells the project chat it didn't start. `message({ to: "parent", text,
-  needsYou? })`; `message({ id, text })` from a project's thread to another
+  needsYou?, question? })`; `message({ id, text })` from a project's thread to another
   thread of the same project, marked with the same `[From t:<sender>]` line
   (`HostedThread.send(text, { fromThread })`; only `lyricad` writes it, and
   `Message.from.kind` is `thread`), at most `ThreadsLimits.siblingMessages`

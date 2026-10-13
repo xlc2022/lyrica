@@ -50,7 +50,11 @@ structural.
      working at once per user (default 2), like Delegation's.
 3. **Updates and messages.**
    - The child posts short updates with `message({ to: "parent" })` at
-     milestones and when done; the prompt says when (not after every step).
+     milestones and when done; the prompt says always to end with a report.
+     Progress updates append; a question (`question: true`), `needsYou`, a
+     final report at turn end, or a daemon failure/didn't-start note wakes
+     an idle parent once. Wakes coalesce and obey pause and concurrency;
+     replies to the children that woke it append without waking them.
    - In the sidebar the child gets a badge when it posts; in the parent an
      update shows as a card linking to the child.
    - The user talks in a child thread like any thread; the parent is not told

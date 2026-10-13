@@ -474,6 +474,8 @@ describe("projects", () => {
     const looks = async () => (await messages(path)).filter((m) => m.from?.kind === "watching");
     const asked = () => requests.filter((c) => who(c) === "watching");
     const chatTurns = () => requests.filter((c) => who(c) === "chat" && !!c.tools?.length).length;
+    // A child's report or bad end now wakes an idle parent for a turn of its own (brief child-wakes); those aren't looks' turns.
+    const wakeTurns = () => requests.filter((c) => who(c) === "chat" && JSON.stringify(c.messages.at(-1)).includes("Read the child thread notices")).length;
     script("chat").push(start(["DNS", "dns: move DNS to the router"], ["Backups", "backups: copy the backups"]), { text: "Started." });
     script("dns").push({ text: "DNS moved." });
     script("backups").push({ text: "Copying." });
@@ -484,7 +486,7 @@ describe("projects", () => {
     await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant"));
     await until(() => messages(threadPath(backups)), (m) => m.some((x) => x.role === "assistant"));
     await ada.patch(`${threadPath(backups)}/settings`, { mode: "acceptEdits" });
-    const turnsBefore = chatTurns();
+    const turnsBefore = chatTurns() - wakeTurns();
     // The two threads keep each other going: each look tells the other one, which posts an update.
     const tell = (to: string, text = "anything new?") => ({ text: JSON.stringify({ tell: [{ thread: to, text }] }) });
     script("watching").push(tell(backups), tell(dns), tell(backups));
@@ -517,9 +519,10 @@ describe("projects", () => {
       `In [t:${backups}]: it stopped with an error.\n\nTold no thread.\nRaised: "Backups stopped with an error after you said no."`,
     ]);
     // The raise is one turn of the project chat; neither line past the run was sent.
+    // A child's report now wakes an idle parent for a turn of its own (brief child-wakes), so those turns don't count here.
     await until(() => messages(path), (m) => m.some((x) => x.role === "assistant" && JSON.stringify(x).includes("Backups stopped.")));
     await new Promise((r) => setTimeout(r, 600));
-    expect(chatTurns()).toBe(turnsBefore + 1);
+    expect(chatTurns() - wakeTurns()).toBe(turnsBefore + 1);
     expect(asked()).toHaveLength(5);
     expect(JSON.stringify(await messages(threadPath(dns)))).not.toContain("Backups failed");
     expect(JSON.stringify(await messages(threadPath(backups)))).not.toContain("approve it");
