@@ -4,7 +4,7 @@
 wrote this brief reviews each diff, opens the PRs and takes them through
 PR review and UI review. **Branches:** `feature/project-welcome-api`, then
 `feature/project-welcome`.
-**Status:** approved by the owner 2026-10-13; queued for Codex on lunasa.
+**Status:** back end implemented; web run remains after its review and merge.
 
 **Read first:** AGENTS.md, docs/ux.md §6 (the Project rows and the
 vocabulary list), DESIGN.md "Projects", docs/contracts.md (daemon,
@@ -191,3 +191,13 @@ the screenshot paths. Do not open a PR.
 2026-10-13: brief approved and reviewed (PR review and UI review findings
 folded in), nothing built. Next: Codex run 1, then this brief's thread
 opens PR 1 and sends it to PR review.
+
+
+Run 1 (2026-10-13, Codex on lunasa): built the recent-work, fold, fold
+apply and Continue as project routes, the `fold` and `draft` tool actions,
+and the expand-only user.db step 9 (draft columns, after main's steps 6 to
+8). The ticked threads' text is held in memory for that one turn only,
+bounded by `WELCOME_LIMITS`; unlogged threads, and local-only threads for a
+cloud project chat, are refused. Drafts apply only on Save or discard.
+Typecheck and the full suite passed on lunasa apart from the known updater
+environment failure. Next: PR review of PR 1, then Codex run 2 (web).

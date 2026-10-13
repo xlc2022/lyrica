@@ -424,6 +424,14 @@ child's messages sees its updates.
   `needs_you` and `queued` (no text).
 - `suggest({ threads })` proposes threads on a card and makes none; the
   user starts them from the card, each once.
+- `fold({ ids })` proposes bringing existing same-pool work into the
+  project; the user applies one or all from the call, once each. Local-only
+  work needs a local-only project chat. Existing child threads become
+  siblings, keeping their state, checklists and wake-ups.
+- `draft({ goal?, instructions? })` keeps editable unsaved project settings
+  in encrypted user.db. Only the user saves or discards them; neither
+  field is silently applied. Selected recent work is a bounded read for
+  one turn, and never widens `threads read` beyond project membership.
 - **Paused** (or hidden): working threads stop, nothing new starts, and
   messages to its threads are refused.
 - A rewind of the project chat that removes a thread's anchor leaves the

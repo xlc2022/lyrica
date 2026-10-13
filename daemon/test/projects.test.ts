@@ -1,7 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { HostedThread } from "../src/hosted.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
 import type { CallInfo, EndpointInfo, MessagePage, Presets, ProjectOverview, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
+
+const welcomeFolders: string[] = [];
+afterEach(() => { vi.restoreAllMocks(); for (const folder of welcomeFolders.splice(0)) rmSync(folder, { recursive: true, force: true }); });
 
 // Projects: a project chat whose child threads are the project's threads.
 
@@ -65,6 +72,153 @@ async function until<T>(fn: () => Promise<T>, ok: (t: T) => boolean, ms = 8000):
 }
 
 describe("projects", () => {
+  it("folds work and its children without losing checklists, wake-ups or child state", async () => {
+    const { ada, d, rt, u, project, path, threadPath, overview } = await setup();
+    const view = d.services!.memory.openThreadView(rt.ada.id, "general");
+    const source = view.own.createThread({ interface: "web", title: "Seed trays" });
+    const child = view.own.createThread({ interface: "web", parent: source.id, child: true, title: "Watering" });
+    const steps = [{ text: "Sow seeds", state: "doing" as const }];
+    view.own.setSteps(source.id, steps);
+    const due = new Date(Date.now() + 3600_000).toISOString();
+    view.own.addWakeup(child.id, due, "Check soil");
+    view.close();
+    d.services!.wakeups.load(rt.ada.id);
+    d.services!.children.adopt(rt.ada.id, "general", child.id, source.id, undefined);
+    const db = d.services!.users.openUserDb(rt.ada.id);
+    db.prepare("UPDATE child_threads SET needs_you = 1, resolved_at = ? WHERE thread = ?").run("2026-10-12T00:00:00Z", child.id);
+    db.close();
+    const ws = d.services!.workspace.settings(rt.ada.id);
+    ws.setThread(project.id, "general", { internet: false, services: false, hosts: [] });
+    ws.setThread(source.id, "general", { internet: true, services: true, hosts: ["127.0.0.1"] });
+    const folded = await ada.post<ThreadSummary>(`${path}/fold`, { threadId: source.id });
+    expect(folded.status).toBe(200);
+    expect(ws.network(source.id, "general")).toEqual({ internet: false, services: false, hosts: [] });
+    expect(folded.body).toMatchObject({ id: source.id, parent: project.id, child: true, steps });
+    const moved = (await ada.get<ThreadSummary>(threadPath(child.id))).body;
+    expect(moved).toMatchObject({ parent: project.id, child: true, needsYou: true, state: "resolved", wakeAt: due });
+    expect((await overview()).threads.map(t => t.id)).toEqual(expect.arrayContaining([source.id, child.id]));
+    expect((await ada.post(`${path}/fold`, { threadId: child.id })).status).toBe(400);
+    expect((await ada.post(`${path}/fold`, { threadId: project.id })).status).toBe(400);
+    const privateThread = (await ada.post<ThreadSummary>(`${u}/threads`, { pool: "private", title: "Private work" })).body;
+    expect((await ada.post(`${path}/fold`, { threadId: privateThread.id })).status).toBe(404);
+  });
+
+  it("lists only readable recent work and never reads unlogged or local-only text into a cloud project", async () => {
+    const { ada, d, rt, u, path, threadPath, requests, say, logs } = await setup();
+    const view = d.services!.memory.openThreadView(rt.ada.id, "general");
+    const rows = ["selected", "unticked", "local", "unlogged"].map(title => view.own.createThread({ interface: "web", title, unlogged: title === "unlogged" }));
+    for (const row of rows) view.own.appendEntry(row.id, { piId: row.id, role: "user", text: `WELCOME-${row.title}`, data: { type: "message", message: { role: "user", content: `WELCOME-${row.title}` } } });
+    view.close();
+    await ada.patch(`${threadPath(rows[2]!.id)}/settings`, { localOnly: true });
+    const recent = `${u}/threads/general/recent?project=${enc((await ada.get<ThreadSummary>(path)).body.id)}`;
+    expect((await ada.get<ThreadSummary[]>(recent)).body.map(t => t.id)).toEqual(expect.arrayContaining(rows.slice(0, 2).map(t => t.id)));
+    expect((await ada.get<ThreadSummary[]>(recent)).body.map(t => t.id)).not.toEqual(expect.arrayContaining([rows[2]!.id]));
+    expect((await ada.get<ThreadSummary[]>(recent)).body.map(t => t.id)).not.toContain(rows[3]!.id);
+    expect((await ada.post(`${path}/fold`, { threadId: rows[2]!.id })).status).toBe(400);
+    for (const row of rows.slice(2)) expect((await ada.post(`${path}/messages`, { text: "Set up", recentThreadIds: [row.id] })).status).toBe(400);
+    const stream = ada.events(`${path}/events`); await stream.ready;
+    await ada.post(`${path}/messages`, { text: "Set up", recentThreadIds: [rows[0]!.id] });
+    await stream.until(e => e.type === "turn_end"); stream.close();
+    expect(stream.events.filter(e => e.event.type === "error")).toEqual([]);
+    expect(requests.length).toBeGreaterThan(0);
+    expect(said(requests.at(-1)!)).toContain("WELCOME-selected");
+    expect(said(requests.at(-1)!)).not.toMatch(/WELCOME-(unticked|local|unlogged)/);
+    await say("Now a fresh turn");
+    expect(said(requests.at(-1)!)).not.toContain("WELCOME-selected");
+    expect(logs.join("\n")).not.toContain("WELCOME-");
+    await ada.patch(`${path}/settings`, { localOnly: true });
+    expect((await ada.get<ThreadSummary[]>(recent)).body.map(t => t.id)).toContain(rows[2]!.id);
+    expect((await ada.post(`${path}/fold`, { threadId: rows[2]!.id })).status).toBe(200);
+  });
+
+  it("reads selected private work through its own pool only and leaves unlogged work out", async () => {
+    const { ada, d, rt, u, requests } = await setup();
+    const view = d.services!.memory.openThreadView(rt.ada.id, "private");
+    const source = view.own.createThread({ interface: "web", title: "Private garden" });
+    const unlogged = view.own.createThread({ interface: "web", title: "Unlogged", unlogged: true });
+    view.own.appendEntry(source.id, { piId: "private", role: "user", text: "PRIVATE-WELCOME", data: { type: "message", message: { role: "user", content: "PRIVATE-WELCOME" } } });
+    view.close();
+    const project = (await ada.post<ThreadSummary>(`${u}/threads`, { pool: "private", title: "Garden", project: true })).body;
+    const at = `${u}/threads/private/${enc(project.id)}`;
+    const recent = (await ada.get<ThreadSummary[]>(`${u}/threads/private/recent?project=${enc(project.id)}`)).body;
+    expect(recent.map(t => t.id)).toContain(source.id);
+    expect(recent.map(t => t.id)).not.toContain(unlogged.id);
+    expect((await ada.post(`${at}/messages`, { text: "Set up", recentThreadIds: [unlogged.id] })).status).toBe(400);
+    const general = (await ada.post<ThreadSummary>(`${u}/threads`, { pool: "general", title: "General garden" })).body;
+    expect((await ada.post(`${at}/messages`, { text: "Set up", recentThreadIds: [general.id] })).status).toBe(400);
+    const stream = ada.events(`${at}/events`); await stream.ready;
+    expect((await ada.post(`${at}/messages`, { text: "Set up", recentThreadIds: [source.id] })).status).toBe(200);
+    await stream.until(e => e.type === "turn_end"); stream.close();
+    expect(said(requests.at(-1)!)).toContain("PRIVATE-WELCOME");
+    expect((await ada.get<ThreadSummary[]>(`${u}/threads/general/recent`)).body.map(t => t.id)).not.toContain(source.id);
+    expect((await ada.post(`${u}/threads/private/${enc(unlogged.id)}/continue-as-project`, {})).status).toBe(400);
+  });
+
+  it("stores drafts without applying them, preserves them through other settings, and clears on Save or discard", async () => {
+    const { ada, script, say, path } = await setup();
+    const commandRules = [{ prefix: "npm test", decision: "ask" }];
+    await ada.patch(path, { commandRules });
+    script("chat").push(tool({ action: "draft", goal: "Grow herbs", instructions: "Keep a diary" }), { text: "Edit in Project settings." });
+    await say("Draft project settings");
+    const get = async () => (await ada.get<ThreadSummary>(path)).body;
+    expect(await get()).toMatchObject({ goal: "Move the homelab to the new rack", projectSettings: { draftGoal: "Grow herbs", draftInstructions: "Keep a diary" } });
+    expect((await get()).instructions).toBeUndefined();
+    await ada.patch(path, { watchThreads: false });
+    expect((await get()).projectSettings?.draftGoal).toBe("Grow herbs");
+    await ada.patch(path, { goal: "Grow herbs", instructions: "Keep a diary" });
+    expect(await get()).toMatchObject({ goal: "Grow herbs", instructions: "Keep a diary" });
+    expect((await get()).projectSettings?.draftGoal).toBeUndefined();
+    script("chat").push(tool({ action: "draft", goal: "Grow roses" }), { text: "Drafted." });
+    await say("Another draft");
+    await ada.patch(path, { discardDraft: true });
+    expect((await get()).projectSettings?.draftGoal).toBeUndefined();
+    expect((await get()).goal).toBe("Grow herbs");
+    expect((await get()).projectSettings?.commandRules).toEqual(commandRules);
+  });
+
+  it("applies fold suggestions once, by row or all", async () => {
+    const { ada, u, path, script, say, overview } = await setup();
+    const ids = [];
+    for (const title of ["Seeds", "Beds"]) ids.push((await ada.post<ThreadSummary>(`${u}/threads`, { pool: "general", title })).body.id);
+    script("chat").push(tool({ action: "fold", ids }), { text: "Fold these in?" });
+    const end = ends((await say("Suggest recent work")).events)[0]!;
+    expect(end.isError).toBe(false);
+    expect((await ada.post<ThreadSummary[]>(`${path}/folds/${end.toolCallId}/apply`, { index: 1 })).body.map(t => t.id)).toEqual([ids[1]]);
+    expect((await ada.post<ThreadSummary[]>(`${path}/folds/${end.toolCallId}/apply`, {})).body.map(t => t.id)).toEqual([ids[0]]);
+    expect((await ada.post<ThreadSummary[]>(`${path}/folds/${end.toolCallId}/apply`, {})).body).toEqual([]);
+    expect((await overview()).threads).toHaveLength(2);
+  });
+
+  it("continues as a pinned project on the source model, copying grants and local-only while leaving the source", async () => {
+    const { ada, d, rt, threadPath } = await setup();
+    const view = d.services!.memory.openThreadView(rt.ada.id, "general");
+    const source = view.own.createThread({ interface: "web", title: "Garden" });
+    const child = view.own.createThread({ interface: "web", parent: source.id, child: true, title: "Beds" });
+    view.own.appendEntry(source.id, { piId: "source", role: "user", text: "WELCOME-GARDEN", data: { type: "message", message: { role: "user", content: "WELCOME-GARDEN" } } });
+    view.close();
+    const ws = d.services!.workspace.settings(rt.ada.id);
+    ws.addMachine({ name: "garden-host", host: "127.0.0.1", port: 22, username: "tester", root: "/srv", pool: "general", limit: "ask", privateKey: "fake", offNetwork: false }, `SHA256:${"A".repeat(43)}`);
+    ws.addGitAccount({ name: "forge", kind: "other", host: "127.0.0.1:9876", account: "tester", token: "fake", pool: "general", offNetwork: false });
+    ws.addMcpServer({ name: "garden", url: "http://127.0.0.1:9876/mcp", token: "", pool: "general", offNetwork: false, tools: 0, description: "" });
+    const folder = mkdtempSync(join(tmpdir(), "lyrica-welcome-grant-"));
+    welcomeFolders.push(folder);
+    d.services!.workspace.allowedPaths.allow(rt.ada, rt.ada.id, "general", folder);
+    ws.setThread(source.id, "general", { grants: [{ path: folder, writable: true }], machines: ["garden-host"], repositories: [{ name: "tester/garden", account: "forge" }], mcpServers: ["garden"] });
+    await ada.patch(`${threadPath(source.id)}/settings`, { localOnly: true, preset: "builtin.local" });
+    const send = vi.spyOn(HostedThread.prototype, "send").mockResolvedValue({ queued: false });
+    const continued = await ada.post<ThreadSummary>(`${threadPath(source.id)}/continue-as-project`, {});
+    expect(continued.status).toBe(200);
+    expect(continued.body).toMatchObject({ title: "Garden", project: true, pinned: true });
+    expect(d.services!.models.callContext(rt.ada.id, "general", continued.body.id)).toMatchObject({ localOnly: true, preset: "builtin.local" });
+    expect(ws.effective(continued.body.id)).toEqual(ws.effective(source.id));
+    expect((await ada.get<ThreadSummary>(threadPath(child.id))).body.parent).toBe(continued.body.id);
+    expect((await ada.get<ThreadSummary>(threadPath(source.id))).body).toMatchObject({ child: false, title: "Garden" });
+    expect(send).toHaveBeenCalledWith(expect.stringContaining(`[t:${source.id}]`), { recentThreadIds: [source.id] });
+    expect(d.services!.models.callContext(rt.ada.id, "general", continued.body.id).overrides).toEqual(d.services!.models.callContext(rt.ada.id, "general", source.id).overrides);
+    const reread = d.services!.memory.openThreadView(rt.ada.id, "general");
+    expect(reread.own.latestEntries(source.id, 10)).toHaveLength(1); reread.close();
+  });
+
   it("start pinned, filter in the thread list, and can't be undone", async () => {
     const { ada, u, project, path } = await setup();
     expect(project).toMatchObject({ project: true, goal: "Move the homelab to the new rack", pinned: true, projectSettings: { paused: false } });
@@ -383,7 +537,7 @@ describe("projects", () => {
     // A general project's look goes to the cloud model it was given.
     await watchIn("general");
     await until(async () => cloud.requests.length, (n) => n === 1);
-    // A private project's look resolves through its own context: the local profile, local models only.
+    // A private project's look resolves through its own context: the private column, local models only.
     script("watching").push({ text: '{"tell":[]}' });
     await watchIn("private");
     await until(async () => asked().length, (n) => n === 1);

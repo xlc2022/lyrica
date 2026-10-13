@@ -300,7 +300,7 @@ describe("user step 8 (model presets)", () => {
 
   it("without a custom profile, the General column follows Cloud and no Mixed preset is made", () => {
     const db = scratchDb();
-    migrate(db, "user", {}, STEPS.user.filter((s) => s.version < SCHEMA.user));
+    migrate(db, "user", {}, STEPS.user.filter((s) => s.version < 8));
     db.prepare("INSERT INTO model_profiles (profile, task, entry) VALUES ('local', 'chat', ?)").run(JSON.stringify([{ offeringId: "off-local" }]));
     migrate(db, "user");
     expect(db.prepare("SELECT preset FROM model_columns WHERE column = 'general'").get()).toEqual({ preset: "builtin.cloud" });
@@ -310,9 +310,34 @@ describe("user step 8 (model presets)", () => {
   });
 });
 
-describe("user step 9 (spend share)", () => {
+
+describe("user step 9 (project welcome drafts)", () => {
+  it("expands every released user schema, retaining project settings and previous readers", () => {
+    for (let v = 0; v < 9; v++) {
+      const db = scratchDb();
+      if (v) {
+        migrate(db, "user", {}, STEPS.user.filter(s => s.version <= v));
+        db.prepare("INSERT INTO project_settings (pool, thread, paused, model, thinking) VALUES ('private', 'web/project', 1, NULL, 'off')").run();
+      }
+      if (v >= 6) db.prepare("UPDATE project_settings SET command_rules = ?").run(JSON.stringify([{ prefix: "npm test", decision: "ask" }]));
+      if (v >= 8) db.prepare("INSERT INTO thread_choices (thread, preset) VALUES ('web/project', 'builtin.local')").run();
+      migrate(db, "user");
+      if (v >= 6) expect(db.prepare("SELECT command_rules FROM project_settings").get()).toEqual({ command_rules: JSON.stringify([{ prefix: "npm test", decision: "ask" }]) });
+      if (v >= 8) expect(db.prepare("SELECT preset FROM thread_choices WHERE thread = 'web/project'").get()).toEqual({ preset: "builtin.local" });
+      if (!v) db.prepare("INSERT INTO project_settings (pool, thread, paused) VALUES ('private', 'web/project', 1)").run();
+      expect(db.prepare("SELECT paused, draft_goal, draft_instructions FROM project_settings").get()).toEqual({ paused: 1, draft_goal: null, draft_instructions: null });
+      db.prepare("UPDATE project_settings SET draft_goal = ?, draft_instructions = ?").run("Grow herbs", "Keep a planting diary");
+      migrate(db, "user");
+      expect(db.prepare("SELECT draft_goal, draft_instructions FROM project_settings").get()).toEqual({ draft_goal: "Grow herbs", draft_instructions: "Keep a planting diary" });
+      expect(() => checkReadable(db, "user", STEPS.user.filter(s => s.version <= 8))).not.toThrow();
+      db.close();
+    }
+  });
+});
+
+describe("user step 10 (spend share)", () => {
   it("preserves every released user schema and adds nullable read counts and empty totals", () => {
-    for (let version = 1; version < 9; version++) {
+    for (let version = 1; version < 10; version++) {
       const db = scratchDb();
       const previous = STEPS.user.filter(s => s.version <= version);
       migrate(db, "user", {}, previous);

@@ -241,8 +241,12 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
       migrateProfilesToPresets(db);
     },
   }, {
-    // Principles 1 and 2: durable token totals within each pool. Expand only.
+    // Principle 1: editable project welcome drafts; expand only.
     version: 9,
+    run(db) { addColumns(db, [["project_settings", "draft_goal", "TEXT"], ["project_settings", "draft_instructions", "TEXT"]]); },
+  }, {
+    // Principles 1 and 2: durable token totals within each pool. Expand only.
+    version: 10,
     run(db) {
       addColumns(db, [["model_calls", "read_tokens", "INTEGER"]]);
       db.exec(`CREATE TABLE IF NOT EXISTS call_totals (

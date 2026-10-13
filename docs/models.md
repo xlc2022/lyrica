@@ -296,7 +296,7 @@ the fallback taken and why, and a note such as a model that couldn't think.
 Never prompt text. The latest 500 per user are kept. Before pruning, a
 transaction folds counted turns into `call_totals` (pool, thread, label,
 kind, tokens, gpu_ms, calls); forgetting a thread removes its totals too.
-User schema step 9 adds this table and nullable `model_calls.read_tokens`.
+User schema step 10 adds this table and nullable `model_calls.read_tokens`.
 
 `usage(userId, pool, threadIds)` returns shares by thread, model label and
 kind, summing retained calls and folded totals. Tokens are `read_tokens +

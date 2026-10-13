@@ -102,8 +102,8 @@ selection are built. The Project select does not depend on the sidebar's
 project filter. Main's presets/columns, Backend and Images UI, thread-list
 panel, notifications, tombstones and command rules are preserved; all eight
 conflicted files have their markers resolved. The migration is **user step
-9**, after main's steps 6–8; no pool migration was added. Tests migrate
-schemas 1–8, preserve old counts and keep old readers working. Component
+10**, after main's steps 6–9; no pool migration was added. Tests migrate
+schemas 1–9, preserve old counts and keep old readers working. Component
 docs, contracts, DESIGN, UX and the design/projects-web briefs are updated;
 obsolete profile routes in the touched web documentation now name presets
 and columns.
@@ -124,7 +124,7 @@ suite, and runs the targeted Playwright scenario on a host with loopback
 listeners and Chromium available (1280 and 390 px), then obtains PR/UI
 review and pushes. No commit or push was made in this resumed run; git's
 merge index still needs the operator's staging. If main takes another user
-schema step before this lands, merge it and renumber step 9 and its
+schema step before this lands, merge it and renumber step 10 and its
 migration test after the new highest version.
 
 Open questions: none about scope or design; host-run verification remains.

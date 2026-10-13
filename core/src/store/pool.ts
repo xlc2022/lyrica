@@ -801,6 +801,21 @@ export class PoolStore extends PoolReader {
     this.db.prepare("UPDATE threads SET project = 1 WHERE id = ?").run(id);
   }
 
+  /** Moves existing work under a project, keeping entries, checklists and wake-ups.
+   * Its child threads become siblings, so project depth stays one; subagents stay put.
+   */
+  foldThread(projectId: string, threadId: string, childrenOnly = false): string[] {
+    const project = this.mustThread(projectId), thread = this.mustThread(threadId);
+    if (!project.project || projectId === threadId) throw new Error("fold needs a different project chat");
+    if (thread.project || thread.child || thread.subagent) throw new Error("only a top-level non-project thread can be folded");
+    const ids = [...(childrenOnly ? [] : [threadId]), ...this.listThreads({ includeHidden: true, parent: threadId, children: true }).map(t => t.id)];
+    this.tx(() => {
+      for (const id of ids) this.db.prepare("UPDATE threads SET parent = ?, child = 1 WHERE id = ?").run(projectId, id);
+      if (project.unlogged) for (const id of ids) this.setUnlogged(id, true);
+    });
+    return ids;
+  }
+
   /** A project's goal, in the user's words; empty clears it. */
   setGoal(id: string, goal: string): void {
     if (!this.mustThread(id).project) throw new Error("only a project has a goal");

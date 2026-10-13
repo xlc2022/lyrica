@@ -86,3 +86,9 @@ desktop and at 390 px (principle 1). Every control has its row in ux.md §6.
   breakdown are built by spend-share. The
   split-view panel and the Watching threads switch and marker came as the
   next PRs (docs/web.md "The panel" and "Chat").
+
+
+The welcome interface is specified in [project-welcome.md](project-welcome.md).
+Its back-end routes and tool actions are implemented in the first build;
+the welcome card, Fold in card, Continue as project menu item and editable
+project drafts remain for the separate web build.
