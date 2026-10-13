@@ -111,7 +111,7 @@ const hitHeight = (button: Locator) => button.evaluate((el) => parseFloat(getCom
 async function noHorizontalScroll(page: Page) {
   // A drawer slides in from 30 px past the edge for 180 ms; measure once every animation has finished.
   await page.evaluate(() => Promise.all(document.getAnimations()
-    .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity) // a pulsing dot or blinking caret never finishes
+    .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity) // a pulsing dot or the writing dots never finish
     .map((a) => a.finished.catch(() => undefined))));
   const found = await page.evaluate(() => {
     const wide = [...document.querySelectorAll<HTMLElement>(".scroll, .head, .drawer-body, .mem-pane, .mem-read, .side")]
@@ -843,8 +843,11 @@ test("each message shows when it was sent in mono after its name, her reply once
   // "slowly" keeps her reply streaming for about 6 s, long enough to look at it.
   await send(page, "What time is it, slowly, and take your time over the answer, because there is no hurry today and the roast still needs an hour in the oven before anyone sits down");
   await expect(page.getByText("You said: What time")).toBeVisible();
-  // While her reply streams (its caret blinking), its header line has no time; read in one go, so the turn can't end in between.
-  expect(await page.evaluate(() => document.querySelector(".turn .caret-blink")?.closest(".turn")?.querySelectorAll(".who time").length)).toBe(0);
+  // While her reply streams it is the only turn and has no time yet (the writing dots show only after a non-text part); read in one go, so the turn can't end in between.
+  expect(await page.evaluate(() => {
+    const turns = [...document.querySelectorAll(".turn")];
+    return turns.length > 0 && turns.every((t) => !t.querySelector(".who time"));
+  })).toBe(true);
 
   const mine = page.locator(".msg.user .who");
   const hers = page.locator(".turn .who");
@@ -1228,7 +1231,8 @@ test("with Read aloud while agent writes on, a reply can be read aloud as it str
   await message.fill("Say this slowly");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("You said: Say this slowly")).toBeVisible();
-  await expect(page.locator(".turn").filter({ has: page.locator(".caret-blink") }).getByRole("button", { name: "Read aloud" })).toHaveCount(0);
+  // The reply being written is the one turn with no stored time yet.
+  await expect(page.locator(".turn").filter({ hasNot: page.locator(".who time") }).getByRole("button", { name: "Read aloud" })).toHaveCount(0);
   await expect(page.getByText("in a few pieces.")).toBeVisible({ timeout: 15_000 });
 
   // The setting is under Speech in Settings, Appearance.
@@ -1247,7 +1251,7 @@ test("with Read aloud while agent writes on, a reply can be read aloud as it str
   await expect(message).toBeVisible();
   await message.fill("Say this slowly too");
   await page.getByRole("button", { name: "Send" }).click();
-  const writing = page.locator(".turn").filter({ has: page.locator(".caret-blink") });
+  const writing = page.locator(".turn").filter({ hasNot: page.locator(".who time") });
   await expect(writing.getByRole("button", { name: "Read aloud" })).toBeEnabled();
   await writing.getByRole("button", { name: "Read aloud" }).click();
   await expect(writing.getByRole("button", { name: "Stop reading" })).toBeVisible();
@@ -1325,8 +1329,8 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
   // Read aloud on her reply is Stop reading while it plays, then comes back.
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("in a few pieces.")).toBeVisible();
-  // Her stored copy, once she has finished: the one Read aloud on the page.
-  await expect(page.locator(".caret-blink")).toHaveCount(0, { timeout: 15_000 });
+  // Her stored copy, once she has finished (its time appears when it is stored): the one Read aloud on the page.
+  await expect(page.locator(".turn .who time")).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Read aloud" }).click();
   const stop = page.getByRole("button", { name: "Stop reading" });
   await expect(stop).toBeVisible();
