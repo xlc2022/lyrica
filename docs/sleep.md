@@ -109,10 +109,10 @@ Sleep never mixes general and private memory:
 - **Private sleep** reads general memory as background and writes only to its
   own private database. It runs only on a custom endpoint.
 
-The control panel sets a model list for each phase (for example, a cheaper
-model for consolidation and a stronger one for dreaming) in each model
-profile. Private sleep always uses the local profile, so its pickers list only
-local models.
+The Tasks table sets a model list for each phase (for example, a cheaper
+model for consolidation and a stronger one for dreaming) in each preset or
+Custom column. Private sleep always uses the Private column, so its pickers
+list only local models.
 
 **Citations across pools.** A private page may cite general notes, but a general
 page can never cite private ones. If a general note is deleted, the private

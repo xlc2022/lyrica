@@ -229,6 +229,10 @@ describe("suspect commands", () => {
 });
 
 describe("output cleaning", () => {
+  it("keeps machine key masking byte-preserving around the shared detector", () => {
+    const content = Buffer.from("ÿ\n-----BEGIN OPENSSH PRIVATE KEY-----\nfiction\n-----END OPENSSH PRIVATE KEY-----\nGH_TOKEN", "latin1");
+    expect(maskKeys(content).toString("latin1")).toBe("ÿ\n[private key removed]\nGH_TOKEN");
+  });
   it("masks a key block split across chunks and keeps the rest streaming", () => {
     const got: string[] = [];
     const clean = cleanOutput((d) => got.push(d.toString()));

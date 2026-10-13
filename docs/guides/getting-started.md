@@ -573,28 +573,37 @@ the Private column too, unless a thread picks its own model, so its
 
 ### Image models
 
-Her `image` tool creates and edits pictures through OpenAI or through
-confirmed recipes on a paired model host, and upscales through host recipes
-only. It uses the `image.create`, `image.edit` and `image.upscale` task
-lists; private and local-only threads always use the Private column's. Each
-list is an ordered fallback. In **Models → Image models**, open a recipe
-and set **Use for** to **Fast**, **Quality** or **Both** (default) per host.
-Create takes the first matching recipe and falls back down the same list. Hosts
-keep their recipe defaults for both fast and quality; OpenAI uses low or
-high quality. Results are saved in the encrypted thread folder, with no
-prompt metadata.
+Her `image` tool creates and edits pictures through a ChatGPT plan, an
+OpenAI API key or confirmed recipes on a paired model host, and upscales
+through host recipes only. It uses the `image.create`, `image.edit` and
+`image.upscale` task lists; private and local-only threads always use the
+Private column's. Each list is an ordered fallback: create takes the first
+entry that fits and falls back down the list. Results are saved in the
+encrypted thread folder, with no prompt metadata.
 
-For OpenAI, add an endpoint under Models, Hosts and endpoints: Name
-`openai-images`, Kind cloud, Base URL `https://api.openai.com/v1`, and the
-API key. A ChatGPT subscription endpoint doesn't supply this API. If
-discovery doesn't mark the model as able to make and edit images, record it
-through the HTTP API (signed in, with an `Origin` matching her address);
-there is no CLI flag for it yet:
+**Use for** sets each image model to **Fast**, **Quality** or **Both** (the
+default), and a request skips models set only for the other one. It is
+saved at once. Hosts keep their recipe defaults for both; OpenAI uses low
+or high quality. Set it for a host recipe in **Models → Image models**, and
+for a cloud model in its endpoint's model list or its block on Image models.
 
-```text
-POST /api/u/<user-id>/endpoints/<endpoint-id>/models
-{ "modelId": "gpt-image-1", "image": true, "edit": true }
-```
+To make images in the cloud, add an endpoint under Models, Hosts and
+endpoints:
+
+- **ChatGPT plan:** Add endpoint, Kind ChatGPT plan, and sign in. Images count
+  against the plan's own limits. Edits with a mask skip the plan; edits
+  without one work.
+- **OpenAI API key:** Add endpoint, Kind Custom, Base URL
+  `https://api.openai.com/v1`, select Cloud, and the key. The name
+  defaults to **OpenAI**; you can rename it, and the examples below call
+  it `openai-images`.
+
+Then open the endpoint's model list and turn on **Image generation** and
+**Image editing** for each model that supports them (the same switches are
+in its block on Image models). Only the endpoint's owner, or an
+administrator for a shared endpoint, can change them. To use the plan
+first and the key as a paid fallback, put the plan's model first in the
+General threads column's image lists and the key's model after it.
 
 Then put models in the lists, under Models, Tasks, or from a terminal
 (`private` for the Private column, `general` for the General column):
@@ -604,6 +613,13 @@ lyrica admin models preset set general image.create openai-images/gpt-image-1 --
 lyrica admin models preset set general image.edit openai-images/gpt-image-1 --user ada
 lyrica admin models preset set private image.upscale '<host>/<recipe>' --user ada
 ```
+
+When a model refuses, the image says it declined, and nothing falls back.
+**Edit message** puts the request back in the composer while it is still
+the last message, **Resend** asks the same model again, and **Try**
+followed by a model name appears when an eligible model on another
+endpoint follows it in the list. A retry checks portrait consent again and doesn't change your
+task lists.
 
 Add reference photos and choose their cloud setting in **Settings → Portrait
 photos**. Ask once a day is the default; **Send today** allows them through

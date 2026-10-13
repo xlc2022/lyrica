@@ -1,6 +1,7 @@
+import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
 import {
-  recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
+  CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled,
@@ -1064,6 +1065,35 @@ export function apiRoutes(d: Lyricad): Route[] {
           (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, { ...(thread.child && thread.parent ? { parent: thread.parent } : {}), userId: user.id }), hasMore: page.hasMore };
       });
     }),
+    route("GET", `${t}/image-calls/:toolCallId`, async (r): Promise<Api.ImageRetryOptions> => {
+      const user = d.userFor(r), pool = poolOf(r);
+      owner(d, user, o => threadOf(o, r));
+      const view = s().memory.openThreadView(user.id, pool);
+      try { return (await imageRetryOptions(s().models, s().workspace, view, user.id, pool, r.params.threadId!, r.params.toolCallId!)).options; }
+      finally { view.close(); }
+    }),
+    route("POST", `${t}/image-calls/:toolCallId`, async (r): Promise<Api.Ok> => {
+      const user = d.userFor(r), pool = poolOf(r);
+      d.refuseWhileDraining();
+      const thread = owner(d, user, o => threadOf(o, r));
+      if (thread.subagent) throw new HttpError(409, "a subagent's image can't be retried here");
+      const project = owner(d, user, o => o[pool].projectOf(thread.id));
+      if (project && project !== thread.id && s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden");
+      const body = await r.json<{ next?: boolean }>();
+      if (body.next !== undefined && typeof body.next !== "boolean") throw new HttpError(400, "next is true or false");
+      const view = s().memory.openThreadView(user.id, pool);
+      let retry;
+      try { retry = await imageRetryOptions(s().models, s().workspace, view, user.id, pool, thread.id, r.params.toolCallId!); }
+      finally { view.close(); }
+      const offeringId = body.next ? retry.options.next?.offeringId : retry.refusal.offeringId;
+      if (!offeringId) throw new HttpError(409, "no next image model is available");
+      // Check the selected model against today's privacy, capability and tier rules before starting.
+      const selected = s().models.resolve(`image.${retry.args.action}`, { ...retry.routing, fallback: false,
+        overrides: { ...retry.routing.overrides, [`image.${retry.args.action}`]: [{ offeringId }] } }, retry.need);
+      if (retry.noCloud && selected.endpoint.kind === "cloud") throw new HttpError(400, "Photos of you aren't allowed to go to cloud models.");
+      await s().host.get(user.id, pool, thread.id).retryImage(retry.args, offeringId, retry.options.userMessage?.n);
+      return { ok: true };
+    }),
     route("POST", `${t}/messages`, async (r) => {
       const user = d.userFor(r);
       d.refuseWhileDraining();
@@ -1166,6 +1196,21 @@ export function apiRoutes(d: Lyricad): Route[] {
       const name = (typeof title === "string" && title.trim()) || task.trim().split("\n")[0]!.slice(0, 80);
       let id: string;
       try { id = await s().children.startFrom(user.id, pool, project, n, { title: name, task }); } catch (err) { throw new HttpError(409, (err as Error).message); }
+      return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, []));
+    }),
+    route("POST", `${t}/plan`, async (r): Promise<Api.StartPlanResult> => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      const { project, goal } = owner(d, user, (o) => {
+        const thread = threadOf(o, r);
+        if (!thread.project) throw new HttpError(400, "a plan is started from a project chat");
+        return { project: thread.id, goal: thread.goal?.trim() };
+      });
+      if (s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden; resume it to start threads");
+      d.refuseWhileDraining();
+      const task = `Make a plan for ${goal || "this project's goal"}. Propose it with propose_plan, and suggest the threads it needs for the project chat's Suggested threads card.`;
+      let id: string;
+      try { id = await s().children.startFrom(user.id, pool, project, undefined, { title: "Plan", task }); } catch (err) { throw new HttpError(409, (err as Error).message); }
       return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, []));
     }),
     route("POST", `${t}/resolve`, (r) => resolveThread(d, d.userFor(r), r, true)),
@@ -1925,11 +1970,25 @@ function dropOpenRouter(id: string): void {
 function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo {
   const ep = d.services!.models.endpoint(userId, id);
   if (!ep) throw new HttpError(404, `no endpoint ${id}`);
+  const models = d.services!.models.offerings(userId, ep.id);
+  const available = models.filter(m => m.status !== "gone");
+  const provider = CLOUD_IMAGE_PROVIDERS[ep.api];
+  const image = !!provider && (ep.api !== "openai-compatible" || !!ep.apiKey)
+    && available.some(m => (m.image && provider.create) || (m.edit && provider.edit));
+  const cloudCapabilities: Api.EndpointInfo["cloudCapabilities"] = [
+    ...(available.some(m => !m.embedding && !m.transcribe && !m.speak && ((!m.image && !m.edit && !m.upscale) || m.tools || m.vision)) ? ["Text" as const] : []),
+    ...(available.some(m => m.vision) ? ["Vision" as const] : []),
+    ...(image ? ["Image" as const] : []),
+  ];
+  const account = isPlan(ep.api) ? d.services!.models.planAccount(userId, id) : undefined;
   return {
+    ...(ep.apiKey && ep.apiKey.length > 4 ? { keyLast4: ep.apiKey.slice(-4) } : {}),
+    ...(account ? { planAccount: account } : {}),
+    ...(ep.kind === "cloud" ? { cloudCapabilities } : {}),
     id: ep.id, name: ep.name, kind: ep.kind, api: ep.api, baseUrl: redactUrl(ep.baseUrl), hasApiKey: !!ep.apiKey, shared: ep.shared,
     ...(ep.addresses ? { addresses: ep.addresses } : {}), ...(ep.fingerprint ? { fingerprint: ep.fingerprint } : {}),
     unencrypted: ep.unencrypted, stale: ep.stale, ...(ep.downSince ? { downSince: ep.downSince } : {}), ...(ep.signedOut ? { signedOut: true } : {}),
-    models: d.services!.models.offerings(userId, ep.id).map((o) => toOfferingInfo(ep, o)),
+    models: models.map((o) => toOfferingInfo(ep, o)),
   };
 }
 
@@ -1945,19 +2004,20 @@ function offeringInfo(d: Lyricad, userId: string, id: string): Api.OfferingInfo 
 }
 
 /** Only known capabilities, of the right types. With `clearing`, null clears one. */
-function capabilities(input: object, clearing = false): Record<string, number | boolean | string[] | { voices: Api.Voice[] } | null> {
-  const out: Record<string, number | boolean | string[] | { voices: Api.Voice[] } | null> = {};
+function capabilities(input: object, clearing = false): Record<string, number | boolean | string | string[] | { voices: Api.Voice[] } | null> {
+  const out: Record<string, number | boolean | string | string[] | { voices: Api.Voice[] } | null> = {};
   const levels = ["low", "medium", "high"];
   for (const k of CAPABILITIES) {
     const v = (input as Record<string, unknown>)[k];
     if (v === undefined) continue;
     if (v === null && clearing) out[k] = null;
+    else if (k === "useFor" && typeof v === "string" && ["fast", "quality", "both"].includes(v)) out[k] = v;
     else if (k === "contextWindow" && typeof v === "number" && v > 0) out[k] = Math.floor(v);
     else if (k === "reasoning" && Array.isArray(v) && v.every((l) => levels.includes(l))) out[k] = levels.filter((l) => v.includes(l));
     // Each voice is checked in core.
     else if (k === "speak" && v && typeof v === "object" && Array.isArray((v as { voices?: unknown }).voices)) out[k] = { voices: (v as { voices: Api.Voice[] }).voices };
-    else if (k !== "contextWindow" && k !== "reasoning" && k !== "speak" && typeof v === "boolean") out[k] = v;
-    else throw new HttpError(400, `${k} must be ${k === "contextWindow" ? "a number of tokens" : k === "reasoning" ? "a list of low, medium and high" : k === "speak" ? "{ voices: [{ id, language }] }" : "true or false"}`);
+    else if (k !== "contextWindow" && k !== "reasoning" && k !== "speak" && k !== "useFor" && typeof v === "boolean") out[k] = v;
+    else throw new HttpError(400, `${k} must be ${k === "useFor" ? "fast, quality or both" : k === "contextWindow" ? "a number of tokens" : k === "reasoning" ? "a list of low, medium and high" : k === "speak" ? "{ voices: [{ id, language }] }" : "true or false"}`);
   }
   return out;
 }

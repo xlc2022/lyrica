@@ -16,6 +16,19 @@ general thread is outside this.
 An endpoint is a name, a kind (`cloud` or `local`, declared by whoever adds
 it, never inferred), an OpenAI-compatible base URL and an optional API key.
 
+The Hosts and endpoints page distinguishes a plan from a keyed service:
+ChatGPT plan or Grok plan versus API key pills. A cloud row also shows Text,
+Vision and Image when offered; Image requires an adapter that can call a
+marked image model and a key where required. A plan shows its kind and "only
+you", plus an explicit account label from sign-in if supplied, instead of
+its placeholder URL. A keyed endpoint shows its URL and a masked key suffix
+(the last four characters, omitted for keys of four or fewer). No token is
+returned. Capability pills wrap under the name on a phone. Model choices
+name the endpoint after the model, muted, with the endpoint truncating first.
+Add endpoint suggests **ChatGPT** for that plan and **OpenAI** for
+api.openai.com; names remain editable. Endpoint names accept letters, digits
+and `-`, at most 40 characters.
+
 - **Permanent IDs.** Every endpoint has a UUID, and its name is a label that
   can change. Every model it offers is an **offering** with its own UUID, so
   the same model on two endpoints is two offerings. Presets, columns and thread
@@ -362,11 +375,16 @@ a refusal stops the call. The image tool uses it for portrait-photo permission
 against the model that would actually receive the bytes.
 The tasks `image.create`, `image.edit` and `image.upscale` have their own
 ordered lists and require `image`, `edit` and `upscale` capabilities respectively.
+Local endpoints resolve by these capabilities; the cloud provider table does
+not restrict them.
 Private and local-only threads use local lists only; unavailable endpoints
 fall back in order, including from a workstation to a smaller GPU host.
-For create, resolution takes the first recipe whose `useFor` matches the
-requested tier, skipping recipes tagged only for the other tier on every
-attempt. Cloud models serve both; edit and upscale keep their existing lists.
+For create, resolution takes the first recipe or cloud offering whose
+`useFor` matches the requested tier, skipping models tagged only for the
+other tier on every attempt. Absent means both. Cloud offerings store
+`useFor`, `image` and `edit` in the existing `offerings.hand` JSON, set
+through `addModel` or `setCapabilities`; shared offerings live in self.db,
+personal ones in user.db. No schema step. Edit and upscale keep their lists.
 
 A create request has `prompt`, `tier` (`fast` or `quality`), optional
 `size: { width, height }`, `count` and `references`. Edit takes `prompt`,
@@ -379,20 +397,43 @@ all other recipe defaults remain the host's, including for both create tiers.
 Calls never name parts, LoRAs or workflows. Discovery includes recipes'
 upscale capability. A recipe that isn't confirmed and ready cannot run.
 
-`CLOUD_IMAGE_PROVIDERS` is the small cloud adapter table, currently OpenAI's
-GPT image API only. Add a cloud OpenAI-compatible endpoint with an API key,
-then a GPT image offering with `image` and `edit` capabilities. Creation uses
-`/images/generations` (or `/images/edits` when references are supplied), and
-editing uses multipart `/images/edits`; fast requests low quality and quality
-requests high. GPT Image 1 models use the nearest supported canvas shape
-(square, portrait or landscape) when a size or aspect ratio is requested;
-other GPT image models receive the requested dimensions. Upscale is host-only. Returned PNGs lose text, EXIF and other
-metadata before reaching the caller. Provider errors report status and host
-error codes, never a provider's potentially prompt-bearing error text.
+`CLOUD_IMAGE_PROVIDERS` selects an adapter by endpoint API. Each entry
+declares create, edit, mask, references, sizes, count and tier mappings.
+
+- **OpenAI-compatible with a key:** any offering marked `image` or `edit`,
+  without a model-ID restriction. Creation uses `/images/generations`
+  (or multipart `/images/edits` with references); editing uses multipart
+  `/images/edits`. Fast asks for low quality, quality for high. GPT Image 1
+  models use the nearest supported canvas shape; other models receive the
+  requested dimensions.
+- **ChatGPT plan:** its own `/responses` endpoint, plan token and built-in
+  `image_generation` tool, with storage off. The selected offering is the
+  Responses model; the underlying image model is unreported. Fast asks for
+  low quality, quality for high. Inputs are in-memory data URLs. Count uses
+  one request per image (up to four); sizes and references are supported.
+  Maskless edits are supported; masked edits skip the plan before sending
+  and continue down the list. The daemon installs `setPlanImageToken`
+  with extension's `planImageToken`, sharing Pi's serialized refresh and
+  encrypted credential persistence with chat. Refresh outages use the retryable
+  `unavailable` code; a refused refresh signs the plan out.
+
+Grok images are unsupported; upscale remains host-only. Returned PNGs lose
+text, EXIF and other metadata. Provider errors use fixed messages and codes,
+never provider prose. `image_refusal` identifies a content refusal and stops
+fallback; outages and limits still try the next eligible model. The tool
+keeps fixed `imageRefusal` details (code, offering ID and endpoint ID) for
+the message marker. `nextImageModel` reads the current task list without
+probing: after the refused endpoint, it skips that endpoint's other models,
+unfit or unavailable models, cloud models in restricted threads, and
+cloud models when portrait policy is Never. Resend and Try run the same
+image executor with a one-call model override, checking consent again;
+saved task lists stay unchanged.
 
 The `image` tool reads workspace paths and `/photos-of-me/<file>`, enforces
 the user's portrait policy before each resolved attempt, and stores results in
-the encrypted thread folder. The daemon's owner-checked file and portrait
+the encrypted thread folder. Its text result says “Made with <model> on
+<host or endpoint name>” for every provider, alongside the saved paths.
+The daemon's owner-checked file and portrait
 management API is documented in [daemon.md](daemon.md#images-and-portrait-photos);
 endpoint setup is in [the operator guide](guides/getting-started.md#image-models).
 
@@ -482,6 +523,10 @@ recipe action `{ do: "change", change: { op: "useFor", useFor } }` forwards
 it to the host's PATCH, then refreshes discovery. Offerings cache it in their
 existing `found` JSON; there is no database migration. Image models exposes
 it as **Use for**, saved at once per host, and a fact in the recipe row.
+Cloud model blocks in Image models and the endpoint's model list expose
+Image generation, Image editing and Use for (Fast | Quality | Both). They
+save through `PATCH …/offerings/:id` to hand JSON, and only the endpoint's
+owner or a shared endpoint's administrator can change them.
 
 ## Downloads, hub tokens and deleting
 
@@ -627,8 +672,8 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   (`https://api.openai.com/v1`, `https://api.x.ai/v1`). Its sign-in (Pi's
   credential: `access`, `refresh`, `expires`, and for ChatGPT `clientId`
   and `scopes`) is kept as JSON in the endpoint's `api_key` column in their
-  `user.db`, read only through `planCredential`; `Endpoint.apiKey` is never
-  set for a plan, and it has no URL or key to edit. It merges only with a
+  `user.db`, read through `planCredential` for calls and `planAccount` for
+  an explicit account label; `Endpoint.apiKey` is never set for a plan, and it has no URL or key to edit. It merges only with a
   plan of the same kind. No schema change: after a rollback, an older release
   sends the stored JSON (refresh token included) as its bearer key to the
   provider that issued it, whose refusal marks the endpoint down.
@@ -641,7 +686,7 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
     state and exchanges the code.
   - **Grok:** xAI's device code: the person opens xAI's page, enters the
     code shown if asked, and approves; Finish waits for xAI to confirm.
-  A new plan's name is checked (lowercase letters, digits and `-`) before the
+  A new plan's name is checked (letters, digits and `-`) before the
   sign-in starts, so a bad name never costs a sign-in.
   A sign-in under way is held in `lyricad`'s memory for 10 minutes, one per
   user, and belongs to the user who started it. When it ends (finished,

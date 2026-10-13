@@ -5,7 +5,7 @@ import { Icon } from "./icons.tsx";
 import { hasConsequences, jumpTo, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { JUMP_EVENT, JUMP_KEY, SHOW_EVENT, SHOW_KEY, take, type JumpRequest, type ShowRequest } from "./links.ts";
 import { go, href } from "./route.ts";
-import { ThreadsFact, useOverview, type ProjectEnv } from "./Project.tsx";
+import { ProjectWelcome, ThreadsFact, useOverview, type ProjectEnv } from "./Project.tsx";
 import { useThread } from "./stream.ts";
 import { Conversation, MessageBox } from "./Messages.tsx";
 import { Composer } from "./Composer.tsx";
@@ -307,6 +307,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         <ErrorText error={summary.error || t.loadError} />
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
         <ErrorText error={overview.error} />
+        {s?.project && settings.data && t.loaded && !t.messages.length && !t.live.items.length && <ProjectWelcome userId={userId} pool={pool} project={s} settings={settings.data} onChange={() => { summary.reload(); settings.reload(); overview.reload(); refreshThreads(); }} />}
         <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title : undefined}
           speech={settings.data?.speech} onError={setSendError} project={projectEnv} />
         <ErrorText error={sendError} />

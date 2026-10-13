@@ -11,7 +11,7 @@ import {
   SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
-import { Delegation, planCatalog, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
+import { Delegation, planCatalog, planImageToken, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
 import { ChildThreads } from "./children.ts";
 import { Routines } from "./routines.ts";
 import { Wakeups } from "./wakeups.ts";
@@ -416,6 +416,7 @@ export class Lyricad implements Drainable {
     const memory = new Memory(keyring, users);
     const models = new Models(keyring, users);
     models.setPlanCatalog(planCatalog);
+    models.setPlanImageToken((userId, endpointId, signal) => planImageToken(models, userId, endpointId, signal));
     const persona = new PersonaStore(keyring.self());
     const cwd = join(this.opts.home, "run");
     mkdirSync(cwd, { recursive: true, mode: 0o700 });

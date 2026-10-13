@@ -643,3 +643,40 @@ describe("watches", () => {
     expect(own.watches()).toEqual([]);
   });
 });
+
+
+describe("credentials stay out of memory", () => {
+  it("redacts every memory layer and edit, keeps revisions clean, and leaves conversation intact", async () => {
+    const { memory, ada } = await setup();
+    const view = memory.openThreadView(ada.id, "general");
+    const token = "ghp_" + "a".repeat(40);
+    const text = `Ada uses GH_TOKEN: ${token}`;
+    const clean = "Ada uses GH_TOKEN: [secret removed]";
+    const source = said(view.own, text);
+    const [note] = view.own.addNotes([{ text, about: [token], source: source.entry }], { author: "lyrica" });
+    const page = view.own.putPage({ slug: "fiction", title: token, summary: token, text }, "sleep");
+    const journal = view.own.addJournal(text, "sleep");
+    view.own.putWake(text, "sleep");
+    const run = view.own.startSleepRun("manual", new Date().toISOString());
+    const item = view.own.addItem(run, { kind: "question", text });
+    const project = view.own.createThread({ interface: "cli", project: true });
+    view.close();
+    const owner = memory.openOwnerView(ada.id);
+    try {
+      expect(owner.general.get(note!)?.text).toBe(`${clean} [${source.entry}]`);
+      expect(owner.general.get(page)).toMatchObject({ text: clean, title: "[secret removed]", summary: "[secret removed]" });
+      expect(owner.general.getItem(item)?.text).toBe(clean);
+      owner.general.setProjectInstructions(project.id, text, `user:${ada.id}`);
+      expect(owner.general.get(`p:${projectSlug(project.id)}`)?.instructions).toBe(clean);
+      expect(owner.general.get(journal)?.text).toBe(clean);
+      expect(owner.general.get("wake")?.text).toBe(clean);
+      expect(owner.general.entryWindow(source.entry, 0)[0]?.text).toBe(text);
+      for (const id of [note!, page, journal, "wake"]) {
+        owner.general.edit(id, { text: `password="fictional value" ${text}` }, `user:${ada.id}`);
+        expect(owner.general.get(id)?.text).toBe(`password=[secret removed] ${clean}`);
+        expect(JSON.stringify(owner.general.revisions(id))).not.toContain(token);
+      }
+      expect(owner.general.get(note!)?.about).toEqual(["[secret removed]"]);
+    } finally { owner.close(); }
+  });
+});

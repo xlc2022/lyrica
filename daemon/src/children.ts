@@ -149,13 +149,14 @@ export class ChildThreads implements ThreadsHost {
 
   /**
    * Start a thread: the user starts a project's thread from a message of the
-   * project chat (`anchor`), with that message's text as its task. Queued past
-   * the limit, like a start of hers.
+   * project chat (`anchor`), with that message's text as its task, or with no
+   * anchor, hanging under the chat's last message. Queued past the limit, like
+   * a start of hers.
    */
-  async startFrom(userId: string, pool: Pool, project: string, anchor: number, req: { title: string; task: string }): Promise<string> {
+  async startFrom(userId: string, pool: Pool, project: string, anchor: number | undefined, req: { title: string; task: string }): Promise<string> {
     return this.asProjectChat(userId, pool, project, async (ctx) => {
       const made = await this.start(ctx, req);
-      this.db(userId, (db) => db.prepare("UPDATE child_threads SET anchor = ? WHERE pool = ? AND thread = ?").run(anchor, pool, made.id));
+      this.db(userId, (db) => db.prepare("UPDATE child_threads SET anchor = ? WHERE pool = ? AND thread = ?").run(anchor ?? null, pool, made.id));
       return made.id;
     });
   }

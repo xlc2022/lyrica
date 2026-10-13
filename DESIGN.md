@@ -815,19 +815,29 @@ it's off.
   - The presets' `image.create` and `image.edit` tasks decide what those
     mean, so the router's rules apply as for text. Private and local-only
     threads use local image models only.
-  - Each recipe is tagged **fast**, **quality** or both (2026-10-12). A
-    tier takes the first model in the task's ordered list whose tag
-    matches, and falls back down the same list; a cloud model serves both,
-    asking its service for low or high quality. **Use for** in each host's
-    recipe block on Image models saves the tag at once. It is an optional
-    `useFor` field in the host's `recipes.json`; absent means both.
+  - Each recipe or cloud image offering is tagged **fast**, **quality** or
+    both (2026-10-12). A tier takes the first model in the task's ordered list whose tag
+    matches, and falls back down the same list; cloud adapters map the tiers
+    to low and high quality. **Use for** in each host's
+    recipe block on Image models saves the tag at once; cloud model blocks
+    there and in Hosts and endpoints save Use for and the Image generation
+    and Image editing switches at once. It is an optional
+    `useFor` field in the host's `recipes.json`; cloud tags and image/edit
+    flags live in the offering's existing hand JSON. Absent means both.
   - Results go to `images/` in the thread's encrypted folder, with prompt
-    metadata removed, and return to her as image content. Messages and
+    metadata removed, and return to her as image content with text naming
+    the model and host or endpoint that made them. Messages and
     `tool_end` carry image paths, model and create tier; the prompts stay in
     encrypted tool calls. The authenticated file API serves the thread's
     folder only. The web shows inline thumbnails, model and tier facts,
     a lightbox and image actions; Settings → Portrait photos manages references
     and their cloud setting, with Send today and Not today on the permission card.
+  - A content refusal stops fallback and shows `image_refusal`, with small
+    text links Edit message, Resend and Try <model>. Edit message copies the
+    source into the composer only while it is the last user message; Try
+    offers the next eligible model on another endpoint in the current task
+    list. Each retry checks privacy and portrait consent again, saves its
+    result in the thread, and leaves the saved task lists in place.
   - Exact layouts and diagrams are HTML or SVG rendered to PNG by the
     sandbox's headless Chromium with internet off, not image-model calls.
 - **Local images** run on **ComfyUI**, inside the model host on a GPU machine.
@@ -901,10 +911,22 @@ it's off.
   3B on the 3090), and the `image` tool offers `upscale`. Portrait photos
   follow the same rule as for edits. Video is out of scope.
 - **Cloud image services** are cloud endpoints like any other. The provider
-  table currently supports OpenAI's GPT image generation and editing API,
-  with an API key. They're used only where cloud is allowed. Host recipes
-  retain their defaults for both fast and quality; OpenAI maps the tiers to
-  low and high quality.
+  table selects by endpoint kind: OpenAI-compatible image generation and
+  editing with a key (any marked image model), and the ChatGPT plan's own
+  Responses endpoint and built-in image tool with the plan token. The plan
+  supports create and maskless edits; masked edits skip it. Grok images are
+  unsupported. They're used only where cloud is allowed. Host recipes retain
+  their defaults; cloud adapters map fast and quality to low and high.
+  Hosts and endpoints distinguishes plans from keyed services with their
+  plan or API key pill; cloud rows also show Text, Vision and callable Image
+  capabilities. A plan's facts show its kind, "only you" and an explicit
+  signed-in account when supplied, rather than a placeholder URL; keyed
+  services show a masked key suffix beside their URL. Every model choice
+  names its endpoint, so copies of the same model remain distinguishable.
+  Add endpoint suggests ChatGPT for the plan and OpenAI for api.openai.com;
+  names remain editable and accept capital letters.
+  Outages and limits fall down the list; content refusal stops with the fixed
+  `image_refusal` code, without provider text.
 - **Portrait photos.** Each user can keep reference photos of themselves in
   `photos-of-me/` in their encrypted home, outside sandbox grants, for edits
   and for putting them in new scenes. The authenticated API lists, uploads
@@ -1027,8 +1049,12 @@ the Project settings page. Recent calls can be filtered by project. The briefs a
   editable Goal and Instructions drafts, using the source's own model.
   Its child threads move under the project with their state intact. The
   source conversation stays in its original thread. These back-end
-  operations are in `daemon/src/routes.ts`; the welcome interface is in
-  `docs/briefs/project-welcome.md`.
+  operations are in `daemon/src/routes.ts`. Empty project chats show three
+  secondary starters: Set up from recent work (the existing dialog with
+  recent threads checked initially), Add repository (the existing popover),
+  and Make a plan (a separate Plan thread). Fold in cards show access losses;
+  Keep access confirms before widening project grants. Project settings
+  opens drafts unsaved, with Save and Discard draft.
 - **Lyrica coordinates in the project chat.** She is the same person
   there; only her guidance and context differ. She answers a quick question
   in place, starts a thread for each piece of work (several tasks in one

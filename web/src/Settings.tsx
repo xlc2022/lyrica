@@ -1,4 +1,5 @@
 // The model badge and its picker, and the thread settings drawer.
+import { ModelLabel } from "./ModelLabel.tsx";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   del, get, patch, u, THREAD_TASKS,
@@ -50,7 +51,7 @@ export function ModelBadge({ base, settings, onChange, readOnly }: {
   const label = (
     <>
       <span className={`k ${chat.kind ?? ""}`}>{chat.kind ?? "no model"}</span>
-      <span className="name">{chat.model ? (chat.modelId ? `${chat.modelId} · ${chat.endpointName}` : named(chat)) : "Choose a model"}</span>
+      <span className="name">{chat.model ? (chat.modelId ? <ModelLabel model={chat.modelId} endpoint={chat.endpointName ?? ""} /> : named(chat)) : "Choose a model"}</span>
       {chat.problem && <span className="warn" title={chat.problem}> ⚠</span>}
     </>
   );
@@ -82,7 +83,7 @@ function ModelPicker({ base, settings, task, onChange }: {
             const on = current.source === "thread" && refKey(current.model) === refKey(ref_);
             return (
               <button key={m.id} type="button" className="picker-item" aria-pressed={on} disabled={busy} onClick={() => choose(ref_)}>
-                {m.modelId}{on && <Icon name="check" />}
+                <ModelLabel model={m.modelId} endpoint={ep.name} />{on && <Icon name="check" />}
               </button>
             );
           })}

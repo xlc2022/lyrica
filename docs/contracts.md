@@ -215,7 +215,7 @@ nothing else. No code path gives a general view a private handle.
 | Reactions | `react(threadId, n, emoji, by, on)` → `Reaction[]` (`{ emoji, by: string[] }`, `by` user IDs or `LYRICA_REACTS`); `entryPage` entries carry `reactions`. Pool schema step 2 (`entries.reactions`, JSON) |
 | Drafts | `draft(threadId)` → `{ text, updatedAt }` or undefined, `setDraft(threadId, text)` (empty deletes it); one per thread, gone with the thread. Pool schema step 3 (`drafts`) |
 | Projects | `pageForProject(threadId)`, `projectNotes(threadId, since?)` |
-| Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
+| Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal`. Every write (notes, pages and edits, WAKE, journal, sleep items, project instructions) passes text, title, summary and tags through `removeSecrets` (core/src/secrets.ts) first; matches become `[secret removed]` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `userIntroduced` |
 | Search | `search(query, { kinds, limit })`, returning `{ id, kind, snippet, score }`; `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
@@ -333,12 +333,12 @@ interface Endpoint {
   downSince?: string; stale: boolean;       // stale: unreachable for STALE_DAYS (14)
 }
 interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; upscale?; reasoning?: ("low" | "medium" | "high")[];
-                         transcribe?: boolean; speak?: { voices: Voice[] } }
+                         transcribe?: boolean; speak?: { voices: Voice[] }; useFor?: "fast" | "quality" | "both" }
 interface Voice { id; language }                             // language: a primary tag, "en" or "zh"
 interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
   id; endpointId; modelId; manual: boolean;
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
-  digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; useFor?: "fast" | "quality" | "both"; separate?;   // reported by a host
+  digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host; useFor inherited from Capabilities
   opensThinking?;                                            // a host's chat template writes <think> itself
 }
 type ModelRef = { offeringId: string } | { groupId: string };
@@ -357,7 +357,7 @@ interface CallContext {
   thinking?: ThinkingLevel;
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
 }
-interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality" }        // what the call needs from a model
+interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean }        // what the call needs from a model
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: string;   // the preset's name, or "Custom"
                        source: "thread" | "preset" | "column"; skipped: { label; reason }[]; remaining: number }
 interface Pace { promptTokens; readTokens?; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
@@ -414,6 +414,7 @@ class Models {                                              // new Models(keyrin
   callWithFallback(task, ctx, need, call: (r) => Promise<T>, { probeMs? }?): Promise<T>   // the next model on isUnreachable; Offline when none answers
   resolveModel(task, ctx, need?): { offeringId }             // resolve(…).ref
   allowed(ctx): { endpoint; offerings }[]                   // local endpoints only when restricted
+  nextImageModel(ctx, action, need, afterEndpoint, noCloud?): Resolution | undefined // current task list; no probes; next eligible endpoint
   // Images (memory only; caller stores and records results)
   image(ctx, request: ImageRequest, { signal?, beforeSend?: (resolution) => Promise<void> }?): Promise<{ images: GeneratedImage[]; resolution }>
   // ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
@@ -421,7 +422,12 @@ class Models {                                              // new Models(keyrin
   //   | edit { prompt, image: ImageInput, mask?: ImageInput, count?, references?: ImageInput[] }
   //   | upscale { image: ImageInput, scale?, maxSize? }; each has action: "create" | "edit" | "upscale"
   // GeneratedImage { bytes: Uint8Array; type: "image/png"; width; height; seed? }; no prompt metadata
-  // Create passes imageTier to resolution: local recipes skip a useFor tag of only the other tier; cloud models serve both.
+  // Create passes imageTier to resolution: recipes and cloud offerings skip a useFor tag of only the other tier.
+  // Edit passes imageMask: the ChatGPT plan is skipped for masks before any input is sent.
+  // CLOUD_IMAGE_PROVIDERS selects by endpoint.api: openai-compatible (key, any marked model) or chatgpt (plan Responses image_generation).
+  // Each adapter declares create/edit/mask/references/sizes/count and low/high tier mappings; upscale is host-only.
+  // Content refusal throws HostRefused("image_refusal", fixed message) and stops fallback. Limits/outages fall back.
+  // Cloud useFor/image/edit are offerings.hand JSON in self.db (shared) or user.db (personal); no schema step.
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
@@ -501,13 +507,26 @@ class Models {                                              // new Models(keyrin
   and `replace` and `merge` refuse to cross kinds. `probe` only warns when a
   local endpoint resolves outside loopback, private or tailnet ranges.
 - **Subscription plans** (ChatGPT, Grok). `addPlan(actor, { name, plan, credential })` (personal only),
-  `planCredential(userId, id)`, `setPlanCredential(userId, id, credential |
+  `planCredential(userId, id)`, `planAccount(userId, id)` (explicit email or
+  account ID only; never tokens), `setPlanCredential(userId, id, credential |
   null)` (null signs it out), `setPlanCatalog(list)` (discovery, from Pi's
-  catalogue; set by `lyricad`), `reportPlanLimit(id)` (skipped for an
+  catalogue; set by `lyricad`), `setPlanImageToken(resolve)` (async token
+  resolver, installed by lyricad using extension's `planImageToken` and the
+  same serialized Pi refresh as chat), `reportPlanLimit(id)` (skipped for an
   hour) and `installationId()` (self.db). The
-  sign-in is kept in the plan's `api_key` column as JSON and never leaves
-  core except into Pi's credential store (`PlanCredentials`, extension).
-- **What never crosses.** API keys stay in core (`EndpointInfo.hasApiKey`).
+  sign-in is kept in the plan's `api_key` column as JSON; its tokens never leave
+  core except into Pi's credential store (`PlanCredentials`, extension);
+  image calls consume the resolved access token inside core/models.
+- **Endpoint display.** `EndpointInfo` adds optional `keyLast4` (only a
+  key longer than four characters, never a plan), `planAccount` (an explicit
+  email or account ID supplied by sign-in, not decoded from a token) and
+  `cloudCapabilities: ("Text" | "Vision" | "Image")[]` for cloud rows.
+  Gone offerings do not count; Image needs a marked image/edit offering,
+  its provider adapter and a key for an OpenAI-compatible endpoint. Grok
+  has no image adapter. A plan's facts hide `PLAN_URLS`. Endpoint names
+  accept letters, digits and `-`, up to 40 characters, preserving case.
+- **What never crosses.** Full API keys stay in core (`EndpointInfo.hasApiKey`
+  and its optional masked-display suffix `keyLast4`).
   Hub tokens leave core only as `X-Hub-Token` to a host, never in a response,
   log or call record. Call records hold model metadata, never prompt text.
 - **Lists.** The entry that decides a task is the thread's list, else the
@@ -899,8 +918,21 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Always and local models allow. Ask's approval is per user through the end
     of that server-local day; a policy change clears it. No viewer means denial.
     Outputs save in the encrypted thread folder and return Pi image content
-    (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text.
-    Tool details are `{ image: ImagePart }`, where `ImagePart` is
+    (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>”.
+    A content refusal returns `isError: true` with fixed text and details
+    `{ imageRefusal: { code: "image_refusal", offeringId, endpointId } }`;
+    stored tool markers and live `tool_end` carry `imageRefusal`.
+    `GET …/threads/:pool/:threadId/image-calls/:toolCallId` returns
+    `{ canEdit, userMessage?: { n, text }, next?: { offeringId, label } }`
+    for a stored refusal, under the current routing and portrait policy.
+    `POST` there with `{ next?: boolean }` repeats that stored call on its
+    original model (false) or current next eligible endpoint (true), through
+    `executeImage`; no caller-supplied prompt or model is accepted. Busy
+    threads refuse it; Stop cancels it. Its encrypted `lyrica-image-retry`
+    custom entry keeps the source user message number, args and result;
+    messages project it as a tool marker and optional image part, without
+    PNG bytes. Saved task lists are unchanged.
+    Successful tool details are `{ image: ImagePart }`, where `ImagePart` is
     `{ type: "image", paths: string[], model: string, tier?: "fast" | "quality" }`.
     `model` is the answering model's label. Saved messages carry this part
     beside the originating tool call; `tool_end` carries `image?: ImagePart`.
@@ -1177,7 +1209,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     shows it as `{ kind: "watching", told?: Told[] }` (`Told`: `threadId`,
     `text`; absent on looks from before looks were one call), and its live
     `notice` event has `status: "watching"` and `told`; `POST …/messages/:n/thread` (Start a
-    thread) → `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`;
+    thread) → `ThreadSummary`; `POST …/threads/:pool/:projectId/plan` (Make a plan: no body, a
+    thread titled Plan with a server-written task, no anchor; 409 while paused or hidden, creating
+    nothing) → `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`;
     `POST …/suggestions/:callId/start` (`index`, or all with none; `user.db`
     `started_suggestions`); `GET threads/:id/overview` (`ProjectOverview`:
     its threads, the waiting count, total tokens, started suggestions);
@@ -1273,7 +1307,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     - **Endpoints:** `GET`/`POST endpoints`; `PATCH`/`DELETE endpoints/:id`;
       `POST endpoints/:id/discover`, `…/reset-ids`, `…/merge` (→ `EndpointInfo`),
       `…/models` (→ `OfferingInfo`); `GET …/probe`. Types: `EndpointInfo` (`api`,
-      `addresses`, `fingerprint`, `hasApiKey`, `unencrypted`, `stale`,
+      `addresses`, `fingerprint`, `hasApiKey`, `keyLast4?`, `planAccount?`,
+      `cloudCapabilities?`, `unencrypted`, `stale`,
       `downSince`, `signedOut`, `models: OfferingInfo[]`), `OfferingInfo` (with `label`),
       `EndpointInput`, `EndpointChange`, `ModelInput`, `Probe`, `MergeInput`.
     - **Plans:** `POST plans/sign-in` (`PlanSignInStart`: `plan` and `name`,
@@ -1522,7 +1557,7 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   / setHostKey / setOffNetwork / confirmOffNetwork / machineState(name, kind) / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
 // A thread's `machines: string[]` (the sandbox is always there); setThread refuses a machine of the other pool;
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
-// SUSPECT_COMMANDS, suspectCommand(command), onFloor(path), cleanOutput(onData), maskKeys(buf),
+// SUSPECT_COMMANDS, suspectCommand(command), onFloor(path), cleanOutput(onData), maskKeys(buf) (shares removePrivateKeys from core/src/secrets.ts),
 //   authorizedKeysLine(publicKey), machineSetup(account, keyLine): core/src/workspace/machines.ts
 // proxmox.ts: PROXMOX_ACTIONS (status, list, start, stop, shutdown, reboot, snapshots), PROXMOX_READS, PROXMOX_SUSPECT (stop, reboot),
 //   suspectKey(tool, input) (what Allow in this thread stores), proxmoxAction(call, action, vm?), ownNode(call, addresses, self), ownAddress(addresses, self),
