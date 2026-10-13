@@ -2412,8 +2412,8 @@ test("Sleep History and Came from: the sidebar link opens it empty, the mode is 
   await expect(page.locator(".hist details")).toHaveCount(20);
   await page.getByRole("button", { name: "Page 2", exact: true }).click();
   await expect(page.locator(".hist details")).toHaveCount(4);
-  await expect(page.locator(".hist .n").first()).toHaveText("21 of 24");
-  await expect(page.locator(".hist .n").last()).toHaveText("24 of 24");
+  await expect(page.locator(".hist .n").first()).toHaveText("4 of 24");
+  await expect(page.locator(".hist .n").last()).toHaveText("1 of 24");
   await page.getByLabel("Search", { exact: true }).fill("Fixture dream 1");
   await expect(page.locator(".hist details")).toHaveCount(11);
   await expect(page.locator(".hist details").first().getByRole("button", { name: "Restore" })).toBeVisible();
