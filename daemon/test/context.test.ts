@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
+import { CONTINUATION_GUIDELINES } from "@lyrica/extension";
 import type { CallInfo, EndpointInfo, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
@@ -23,6 +24,11 @@ async function setup(pool: "general" | "private" = "general", window = 16_384) {
   };
   return { rt, ...dm, ada, model, thread, path, stream, turn };
 }
+
+// Keep these boundary scenarios at the same headroom as before the new
+// operational guidance. The fake endpoint estimates one token per four chars;
+// allow for JSON/bullet formatting and Pi's 8% reserve at the window's edge.
+const guidanceTokens = Math.ceil((JSON.stringify(CONTINUATION_GUIDELINES).length + 96) / (4 * 0.92));
 
 /** A long message with a word to find it by. */
 const long = (mark: string) => `${mark} ${"the quick brown fox jumps over the lazy dog ".repeat(200)}`;
@@ -58,7 +64,7 @@ describe("her context", () => {
 
   it("is compacted by Pi at the window's edge when she doesn't, with a marker", async () => {
     // Principle 8: the window follows the seed persona and tool definitions; a turn must land between Pi's reserve and the window.
-    const { ada, path, stream, turn } = await setup("general", 12_500);
+    const { ada, path, stream, turn } = await setup("general", 12_500 + guidanceTokens);
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
@@ -69,7 +75,7 @@ describe("her context", () => {
   });
 
   it("compacts with her summary when the turn ends: the old messages go, the recent ones stay, and a marker holds the summary", async () => {
-    const { ada, model, path, stream, turn } = await setup();
+    const { ada, model, path, stream, turn } = await setup("general", 16_384 + guidanceTokens);
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
@@ -94,7 +100,7 @@ describe("her context", () => {
   });
 
   it("in a private thread, compacts with its local model when her summary is too short to stand on its own", async () => {
-    const { ada, model, path, stream, turn } = await setup("private");
+    const { ada, model, path, stream, turn } = await setup("private", 16_384 + guidanceTokens);
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
@@ -113,7 +119,7 @@ describe("her context", () => {
   });
 
   it("doesn't compact when the turn that asked for it was stopped", async () => {
-    const { ada, model, path, stream, turn } = await setup();
+    const { ada, model, path, stream, turn } = await setup("general", 16_384 + guidanceTokens);
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
