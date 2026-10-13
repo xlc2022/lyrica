@@ -24,10 +24,17 @@ one place) and the existing Projects design.
    greeting card (a marker, not a stored message) with three starters, as
    buttons: **Set up from recent work**, **Connect repo** and **Make a
    plan**. The card goes once the first message exists.
-   - **Set up from recent work** sends a first message that asks Lyrica to
-     propose a goal, instructions and suggested threads from the user's
-     recent threads (general pool only; never private memory, which stays
-     behind `openThreadView`).
+   - **Set up from recent work** opens a dialog listing the ten most recent
+     top-level threads (general pool only; private threads and memory stay
+     behind `openThreadView`), each with a checkbox, all ticked to start,
+     and one **Continue**. Lyrica reads the ticked threads and answers in
+     the project chat with a draft Goal and Instructions (applied only from
+     Project settings) and a **Fold in** card, shaped like the Suggested
+     threads card, naming the threads she suggests bringing in: secondary
+     **Fold in** per row, one primary **Fold in all**. Folding a thread in
+     moves it, with its child threads, under the project, as Continue as
+     Project does. The dialog picks and confirms; it edits nothing (ux.md:
+     dialogs only confirm).
    - **Connect repo** (Claude's "Connect tools") opens the Repositories
      picker already in the Project settings page under This chat (ux.md
      §6, "A thread's repositories"); no new picker. Once a repository is
@@ -50,7 +57,6 @@ one place) and the existing Projects design.
 ## Out of scope
 
 - Moving or copying the source thread's own messages into the project.
-- Seeding from several threads at once.
 - Any change to Make project.
 
 ## Docs to update in the build PR
