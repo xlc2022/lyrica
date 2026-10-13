@@ -96,9 +96,8 @@ const unpaired = (h?: Host) => !!h && "error" in h && !!h.unpaired;
 export function ModelsArea({ ctx: shell, tab = "overview", add, project, pool }: { ctx: ShellContext; tab?: ModelsTab; add?: ModelsPageUnder; project?: string; pool?: "general" | "private" }) {
   const ctx: MCtx = shell;
   const { reload } = ctx.models;
-  // Fresh status on each tab after the first.
-  const first = useRef(true);
-  useEffect(() => { if (first.current) first.current = false; else reload(); }, [tab, reload]);
+  // Fresh status on opening Models and on each tab: the shared page may be up to 30 s old.
+  useEffect(() => { reload(); }, [tab, reload]);
   if (tab === "hosts" && add === "host") return <AddHost ctx={ctx} />;
   if (tab === "tasks") return <Tasks ctx={ctx} />;
   if (tab === "text") return <TextModels ctx={ctx} />;
