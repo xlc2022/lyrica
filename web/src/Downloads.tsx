@@ -8,7 +8,7 @@ import { del, get, patch, post, put, u, type DownloadHistory, type GroupInfo, ty
 import { HistoryHead, HistoryList } from "./History.tsx";
 import { downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, type HostDownload, type HubFiles } from "./downloads.ts";
 import { canEdit, Frame, hostOf, type MCtx } from "./ModelsFrame.tsx";
-import { cameFrom, go, href } from "./route.ts";
+import { cameFrom, go, href, type Route } from "./route.ts";
 import { ErrorText, useAction, useLoad } from "./ui.tsx";
 
 type Endpoint = ModelsPage["endpoints"][number];
@@ -31,7 +31,7 @@ export function wayBack(fallback: string): string {
 /** One host's downloads, or why they couldn't be read. */
 type HostList = { ep: Endpoint; downloads: HostDownload[]; finishedTotal?: number; error?: string };
 
-export function Downloads({ ctx, history = false }: { ctx: MCtx; history?: boolean }) {
+export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?: boolean; route?: Extract<Route, { page: "models" }> }) {
   const userId = ctx.user.id;
   const hosts = useMemo(() => managedHosts(ctx).map((h) => h.ep), [ctx]);
   const key = hosts.map((ep) => `${ep.id}:${ep.name}`).join(" ");
@@ -95,7 +95,9 @@ export function Downloads({ ctx, history = false }: { ctx: MCtx; history?: boole
     </Item>;
   };
 
-  const facts = lists.data && <>{active.length ? <><span className="num">{active.length}</span> running</> : "Nothing running"} · <span className="num">{(lists.data ?? []).reduce((n, l) => n + (l.finishedTotal ?? l.downloads.filter((d) => !isRunning(d)).length), 0)}</span> finished</>;
+  // Every finished download across the hosts, from each host's true total when it gave one (its list may be truncated).
+  const finishedCount = lists.data?.reduce((n, l) => n + (l.finishedTotal ?? l.downloads.filter((d) => !isRunning(d)).length), 0);
+  const facts = lists.data && <>{active.length ? <><span className="num">{active.length}</span> running</> : "Nothing running"} · <span className="num">{finishedCount}</span> finished</>;
   const actions = <>
     <button type="button" onClick={() => go({ page: "models", userId, tab: "downloads", add: "text" })}>Download text model</button>
     <button type="button" onClick={() => go({ page: "models", userId, tab: "images", add: "image" })}>Download image model</button>
@@ -121,8 +123,8 @@ export function Downloads({ ctx, history = false }: { ctx: MCtx; history?: boole
         </div>
       </section>}
       <section className="section" aria-label="History" aria-live={history ? undefined : "polite"}>
-        {!history && <HistoryHead to={{ page: "models", userId, tab: "downloads", add: "history" }} />}
-        {history ? <HistoryList<DownloadHistory["entries"][number], DownloadHistory> path={u(userId, "models", "downloads", "history")} render={(page) => <ul className="list downloads">{page.entries.map(({ endpointId, download }) => {
+        {!history && <HistoryHead to={{ page: "models", userId, tab: "downloads", add: "history" }} count={finishedCount} />}
+        {history ? <HistoryList<DownloadHistory["entries"][number], DownloadHistory> route={route} path={u(userId, "models", "downloads", "history")} render={(page) => <ul className="list downloads">{page.entries.map(({ endpointId, download }) => {
           const ep = hosts.find((h) => h.id === endpointId);
           return ep ? finishedRow(ep, download) : null;
         })}</ul>} /> : <ul className="list downloads">{finished.slice(0, 1).map(({ ep, d }) => finishedRow(ep, d))}</ul>}

@@ -18,7 +18,7 @@ import {
   canEdit, Frame, GB, gb, hostOf, Kind, plural, TASK_WORD, useWords, VoiceDrawer,
   type Host, type MCtx, type ModelsState,
 } from "./ModelsFrame.tsx";
-import { go, href, type ModelsPageUnder, type ModelsTab } from "./route.ts";
+import { go, href, type ModelsPageUnder, type ModelsTab, type Route } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { TextModels } from "./TextModels.tsx";
 import { ConfirmDialog, ErrorText, hidden, shortTime, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
@@ -98,8 +98,8 @@ const paused = (h?: Host) => !!h && "status" in h && (h.status.state === "paused
 /** The host has revoked this server: pairing again is the fix. */
 const unpaired = (h?: Host) => !!h && "error" in h && !!h.unpaired;
 
-/** The Models area, at one of its tabs. */
-export function ModelsArea({ ctx: shell, tab = "overview", add }: { ctx: ShellContext; tab?: ModelsTab; add?: ModelsPageUnder }) {
+/** The Models area, at one of its tabs. `route` carries the page number and search text for Download history and Call history. */
+export function ModelsArea({ ctx: shell, tab = "overview", add, route }: { ctx: ShellContext; tab?: ModelsTab; add?: ModelsPageUnder; route?: Extract<Route, { page: "models" }> }) {
   const models = useModelsPage(shell);
   const ctx: MCtx = { ...shell, models };
   const { reload } = models;
@@ -114,9 +114,9 @@ export function ModelsArea({ ctx: shell, tab = "overview", add }: { ctx: ShellCo
   if (tab === "images") return <ImageModels ctx={ctx} />;
   if (tab === "hosts") return <Hosts ctx={ctx} />;
   if (tab === "downloads" && add === "text") return <DownloadText ctx={ctx} />;
-  if (tab === "downloads") return <Downloads ctx={ctx} history={add === "history"} />;
+  if (tab === "downloads") return <Downloads ctx={ctx} history={add === "history"} route={route} />;
   if (tab === "cleanup") return <Cleanup ctx={ctx} />;
-  if (tab === "calls") return <Calls ctx={ctx} />;
+  if (tab === "calls") return <Calls ctx={ctx} route={route} />;
   return <Overview ctx={ctx} />;
 }
 
@@ -1416,10 +1416,10 @@ function Cleanup({ ctx }: { ctx: MCtx }) {
 
 /* ---- Recent calls ---- */
 
-function Calls({ ctx }: { ctx: MCtx }) {
+function Calls({ ctx, route }: { ctx: MCtx; route?: Extract<Route, { page: "models" }> }) {
   return (
     <Frame ctx={ctx} tab="calls" title="Call history">
-      <HistoryList<CallInfo> key={`${ctx.user.id}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} path={u(ctx.user.id, "models", "calls", "history")} render={(page) => <CallsTable ctx={ctx} calls={page.entries} />} />
+      <HistoryList<CallInfo> key={`${ctx.user.id}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} route={route} path={u(ctx.user.id, "models", "calls", "history")} render={(page) => <CallsTable ctx={ctx} calls={page.entries} />} />
     </Frame>
   );
 }

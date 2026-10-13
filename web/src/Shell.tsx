@@ -108,15 +108,15 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
     ) : r.page === "memory" ? (
       <Memory ctx={ctx} pool={r.pool} id={r.id} />
     ) : r.page === "history" && r.kind === "sleep" ? (
-      <SleepHistoryPage ctx={ctx} />
+      <SleepHistoryPage ctx={ctx} route={r} />
     ) : r.page === "history" && r.kind === "journal" ? (
-      <JournalHistoryPage ctx={ctx} pool={r.pool} />
+      <JournalHistoryPage ctx={ctx} pool={r.pool} route={r} />
     ) : r.page === "history" && r.pool && r.id ? (
-      <MemoryHistoryPage key={`${r.pool}/${r.id}`} ctx={ctx} pool={r.pool} id={r.id} />
+      <MemoryHistoryPage key={`${r.pool}/${r.id}`} ctx={ctx} pool={r.pool} id={r.id} route={r} />
     ) : r.page === "sleep" ? (
       <SleepPage ctx={ctx} />
     ) : r.page === "models" ? (
-      <ModelsArea ctx={ctx} tab={r.tab} add={r.add} />
+      <ModelsArea ctx={ctx} tab={r.tab} add={r.add} route={r} />
     ) : r.page === "notifications" ? (
       <NotificationsPage ctx={ctx} />
     ) : r.page === "settings" ? (

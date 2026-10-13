@@ -94,3 +94,24 @@ config was removed. Tests use fakes only.
 Next: run the full suite on the shared host, then stage, commit and push.
 This run leaves edits in the tree.
 No open design questions.
+
+## Handoff: UI review round (2026-10-13)
+
+Done, from UI review on PR #288: only the digits of "Page 3 of 12" are mono;
+the current page button keeps `aria-current="page"`, is styled as pressed and
+stays focusable, and reaches `--tap` on touch screens; a muted "…" sits in each
+gap of skipped page numbers. **Show all** hides when its list holds one entry
+or fewer — sleep counts through a `limit=1` history fetch, downloads reuse the
+finished total, journal asks for two rows and shows one, and the memory preview
+needs no count because it renders nothing at all with no earlier version. That
+preview now shows the newest *earlier* version (the current text is already
+above) with its diff and Restore; the fixture gained a second lineage-fixture
+write so the collapse-restores-History check still has one. The search text and
+page number ride in the address (`?q=&page=`, replaced not pushed), so Back
+returns to the same page; route parse/href, web unit tests (new
+`web/test/history.test.ts`) and the history e2e cover these. "Show less" moved
+next to Show all in docs/ux.md's names list rather than duplicating there;
+Overview's hand-rolled Show-all head is untouched, outside this round.
+
+Checks: run `npm run typecheck` and the web unit suite before committing.
+This run leaves edits in the tree. No open design questions.

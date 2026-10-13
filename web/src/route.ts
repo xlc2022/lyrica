@@ -19,15 +19,17 @@ export type Route =
   | { page: "threads"; userId: string; pool: Pool; threadId: string }
   | { page: "memory"; userId: string; pool?: Pool; id?: string }
   | { page: "sleep"; userId: string }
-  | { page: "history"; userId: string; kind: "sleep" | "memory" | "journal"; pool?: Pool; id?: string }
+  /** A history page. `q` and `at` (the page number) ride in the address as `?q=&page=` so Back returns to the same search and page. */
+  | { page: "history"; userId: string; kind: "sleep" | "memory" | "journal"; pool?: Pool; id?: string; q?: string; at?: number }
   | { page: "notifications"; userId: string }
   /**
    * The Models area, at one of its tabs (Overview when none). `add` is a page under its tab: "host" is Add model host
    * under Hosts and endpoints (`…/hosts/add-host`), "text" is Download text model under Downloads (`…/downloads/text`),
    * "image" Download image model (`…/images/download`) and "review" To review (`…/images/review`) under Image models;
    * "history" is Download history (`…/downloads/history`).
+   * `q` and `at` (the page number) ride in the address as `?q=&page=` on Call history and Download history, so Back returns to the same search and page.
    */
-  | { page: "models"; userId: string; tab?: ModelsTab; add?: ModelsPageUnder }
+  | { page: "models"; userId: string; tab?: ModelsTab; add?: ModelsPageUnder; q?: string; at?: number }
   | { page: "settings"; userId: string; section?: string }
   | { page: "admin"; userId: string; section?: string };
 
@@ -55,7 +57,12 @@ export type Panel =
 export const panelRoute = (userId: string, p: Panel): Route => ({ ...p, userId });
 
 export function parse(hash: string): Route {
-  const [, ...parts] = hash.replace(/^#/, "").split("/").map(decodeURIComponent);
+  const [rawPath = "", rawQuery] = hash.replace(/^#/, "").split("?");
+  // A history list's search text and page number ride in the address; only meaningful values are kept (page 1 is the default).
+  const params = new URLSearchParams(rawQuery ?? "");
+  const q = params.get("q") || undefined;
+  const pageNum = Number(params.get("page")) > 1 ? Number(params.get("page")) : undefined;
+  const [, ...parts] = rawPath.split("/").map(decodeURIComponent);
   const [first, userId, section, a, b, ...more] = parts;
   const c = more[0];
   if (first === "login") return { page: "login" };
@@ -76,16 +83,16 @@ export function parse(hash: string): Route {
     return { page: "thread", userId, pool, threadId: b, ...(drawer ? { drawer: true as const } : {}), ...(panel ? { panel } : {}) };
   }
   if (section === "p" && pool && b) return { page: "project", userId, pool, threadId: b, ...(c ? { section: c } : {}) };
-  if (section === "history" && a === "sleep") return { page: "history", userId, kind: "sleep" };
-  if (section === "history" && a === "journal") return { page: "history", userId, kind: "journal", ...(b === "general" || b === "private" ? { pool: b } : {}) };
-  if (section === "history" && a === "memory" && (b === "general" || b === "private") && c) return { page: "history", userId, kind: "memory", pool: b, id: c };
+  if (section === "history" && a === "sleep") return { page: "history", userId, kind: "sleep", ...(q ? { q } : {}), ...(pageNum ? { at: pageNum } : {}) };
+  if (section === "history" && a === "journal") return { page: "history", userId, kind: "journal", ...(b === "general" || b === "private" ? { pool: b } : {}), ...(q ? { q } : {}), ...(pageNum ? { at: pageNum } : {}) };
+  if (section === "history" && a === "memory" && (b === "general" || b === "private") && c) return { page: "history", userId, kind: "memory", pool: b, id: c, ...(q ? { q } : {}), ...(pageNum ? { at: pageNum } : {}) };
   if (section === "memory") return { page: "memory", userId, pool, id: pool ? b : undefined };
   if (section === "sleep") return { page: "sleep", userId };
   if (section === "notifications") return { page: "notifications", userId };
   if (section === "models") {
     const tab = MODELS_TABS.find((t) => t === a);
     const add = UNDER.find((x) => x.tab === tab && x.part === b)?.add;
-    return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(add ? { add } : {}) };
+    return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(add ? { add } : {}), ...(q ? { q } : {}), ...(pageNum ? { at: pageNum } : {}) };
   }
   // Settings → Endpoints moved to Models → Hosts and endpoints, and Settings → Model presets to Models → Tasks.
   if (section === "settings" && a === "endpoints") return { page: "models", userId, tab: "hosts" };
@@ -97,6 +104,15 @@ export function parse(hash: string): Route {
   // The control panel became Settings and Administration.
   if (section === "panel") return { page: "settings", userId };
   return { page: "home", userId };
+}
+
+/** The address query carrying a history list's search text and page number; empty at the defaults. */
+function pageQuery(r: { q?: string; at?: number }): string {
+  const qs = new URLSearchParams();
+  if (r.q) qs.set("q", r.q);
+  if (r.at && r.at > 1) qs.set("page", String(r.at));
+  const s = qs.toString();
+  return s ? `?${s}` : "";
 }
 
 export function href(r: Route): string {
@@ -112,12 +128,12 @@ export function href(r: Route): string {
     case "project": return `#/u/${e(r.userId)}/p/${r.pool}/${e(r.threadId)}` + (r.section ? `/${e(r.section)}` : "");
     case "threads": return `#/u/${e(r.userId)}/t/${r.pool}/${e(r.threadId)}/threads`;
     case "memory": return `#/u/${e(r.userId)}/memory` + (r.pool && r.id ? `/${r.pool}/${e(r.id)}` : "");
-    case "history": return `#/u/${e(r.userId)}/history/${r.kind}` + (r.kind === "memory" && r.pool && r.id ? `/${r.pool}/${e(r.id)}` : r.kind === "journal" && r.pool ? `/${r.pool}` : "");
+    case "history": return `#/u/${e(r.userId)}/history/${r.kind}` + (r.kind === "memory" && r.pool && r.id ? `/${r.pool}/${e(r.id)}` : r.kind === "journal" && r.pool ? `/${r.pool}` : "") + pageQuery(r);
     case "sleep": return `#/u/${e(r.userId)}/sleep`;
     case "notifications": return `#/u/${e(r.userId)}/notifications`;
     case "models": {
       const under = UNDER.find((x) => x.tab === r.tab && x.add === r.add);
-      return `#/u/${e(r.userId)}/models` + (r.tab && r.tab !== "overview" ? `/${r.tab}` : "") + (under ? `/${under.part}` : "");
+      return `#/u/${e(r.userId)}/models` + (r.tab && r.tab !== "overview" ? `/${r.tab}` : "") + (under ? `/${under.part}` : "") + pageQuery(r);
     }
     case "settings": return `#/u/${e(r.userId)}/settings` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");
     case "admin": return `#/u/${e(r.userId)}/admin` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");

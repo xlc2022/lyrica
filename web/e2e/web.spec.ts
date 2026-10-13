@@ -2333,10 +2333,24 @@ test("Sleep: the sidebar link opens it empty, the mode is set in Settings, Sleep
   await expect(page.locator(".sleep-run")).toHaveCount(5);
   const secondIds = await page.locator(".sleep-run").evaluateAll((rows) => rows.map((r) => r.getAttribute("data-run")));
   expect(secondIds.some((id) => firstIds.includes(id))).toBe(false);
+  // The page number rides in the address; the current button stays focusable, marked as such.
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/history/sleep\\?page=2$`));
+  const pager = page.getByRole("navigation", { name: "Pages", exact: true });
+  const currentPage = pager.getByRole("button", { name: "Page 2", exact: true });
+  await expect(currentPage).toHaveAttribute("aria-current", "page");
+  await expect(currentPage).toBeEnabled();
+  // Only the digits are mono, never the whole phrase.
+  await expect(pager.locator("> span.num")).toHaveCount(0);
   await page.getByLabel("Search", { exact: true }).fill("endpoint-down");
   await expect(page.locator(".sleep-run")).toHaveCount(1);
   await expect(page.locator(".sleep-run")).toContainText("Skipped: the endpoint was down");
   await expect(page.locator("main").getByRole("navigation", { name: "Pages", exact: true })).toContainText("Page 1 of 1");
+  // The search text rides in the address too, so Back leaves this page for good and returns to it with the same search.
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/history/sleep\\?q=endpoint-down$`));
+  await page.goto(`/#/u/${userId}/sleep`);
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/history/sleep\\?q=endpoint-down$`));
+  await expect(page.locator(".sleep-run")).toHaveCount(1);
   await noHorizontalScroll(page);
   await page.getByLabel("Search", { exact: true }).fill("absent-night");
   await expect(page.getByText("Nothing matches.")).toBeVisible();
@@ -2383,12 +2397,14 @@ test("Sleep: the sidebar link opens it empty, the mode is set in Settings, Sleep
   await page.goto(`/#/u/${userId}/memory/general/p:lineage-use-1`);
   await expect(cameFrom.locator(".lk")).toHaveCount(1);
   await expect(cameFrom.getByRole("link", { name: "Show all", exact: true })).toHaveCount(0);
-  await expect(page.locator(".history")).toBeVisible();
+  // A memory written once has no earlier version, so it shows no History section at all.
+  await expect(page.locator(".history")).toHaveCount(0);
 
-  // WAKE's sleep versions use the same preview and page, retaining Restore.
+  // WAKE's sleep versions use the same preview and page, retaining Restore; the preview holds the newest earlier version.
   await page.goto(`/#/u/${userId}/memory/general/wake`);
   await expect(page.locator(".hist details")).toHaveCount(1);
-  await expect(page.locator(".hist")).toContainText("Fixture dream 24");
+  await expect(page.locator(".hist")).toContainText("Fixture dream 23");
+  await expect(page.locator(".history").getByRole("button", { name: "Restore" })).toBeVisible();
   await page.locator(".history").getByRole("link", { name: "Show all" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Memory history" })).toBeVisible();
   await expect(page.locator(".hist details")).toHaveCount(20);

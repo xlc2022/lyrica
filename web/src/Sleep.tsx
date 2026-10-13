@@ -5,13 +5,13 @@
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   del, get, HttpError, post, put, u,
-  type Display, type Pool, type SleepEvent, type SleepItemInfo, type SleepMode, type SleepOverview, type SleepRunDetail, type SleepRunInfo, type SleepStarted, type SleepTime, type ThreadSummary, type UserMap,
+  type Display, type HistoryPage, type Pool, type SleepEvent, type SleepItemInfo, type SleepMode, type SleepOverview, type SleepRunDetail, type SleepRunInfo, type SleepStarted, type SleepTime, type ThreadSummary, type UserMap,
 } from "./api.ts";
 import { HistoryHead, HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
 import { plainCitations, poolWord, wordDiff } from "./memory.ts";
 import { readable } from "./mentions.ts";
-import { go, href, idHref } from "./route.ts";
+import { go, href, idHref, type Route } from "./route.ts";
 import { PageHead, PoolLock, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
 
@@ -141,6 +141,8 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
   }, [userId, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const last = (o?.runs ?? []).slice(0, 1);
+  // The history page's total decides whether the preview's Show all is worth showing; one row answers that cheaply.
+  const runTotal = useLoad(() => get<HistoryPage<SleepRunInfo>>(`${u(userId, "sleep", "history")}?limit=1`), [userId]);
 
   // Last night's runs are read at once, for their lines; an earlier one when it opens. Reread when a run ends.
   const load = useCallback((r: SleepRunInfo) => get<SleepRunDetail>(u(userId, "sleep", r.pool, "runs", r.id)).then((d) => setDetails((m) => ({ ...m, [`${r.pool}/${r.id}`]: d }))), [userId]);
@@ -192,7 +194,7 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
             ))}
           </section>
           <section aria-label="History" className="sleep-block">
-            <HistoryHead to={{ page: "history", userId, kind: "sleep" }} />
+            <HistoryHead to={{ page: "history", userId, kind: "sleep" }} count={runTotal.data?.total} />
             <div className="list sleep-runs">{last.map(row)}</div>
           </section>
           {o && !o.runs.length && <p className="empty">No sleep yet.</p>}
@@ -203,14 +205,14 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
   );
 }
 
-export function SleepHistoryPage({ ctx }: { ctx: ShellContext }) {
+export function SleepHistoryPage({ ctx, route }: { ctx: ShellContext; route?: Extract<Route, { page: "history" }> }) {
   const userId = ctx.user.id;
   const [details, setDetails] = useState<Record<string, SleepRunDetail>>({});
   const load = (r: SleepRunInfo) => get<SleepRunDetail>(u(userId, "sleep", r.pool, "runs", r.id)).then((d) => setDetails((all) => ({ ...all, [`${r.pool}/${r.id}`]: d })));
   return <main className="main">
     <PageHead ctx={ctx} title="Sleep history"><a href={href({ page: "sleep", userId })}>Sleep</a></PageHead>
     <div className="scroll"><div className="sleep">
-      <HistoryList<SleepRunInfo> key={`${userId}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} path={u(userId, "sleep", "history")} render={(page) => {
+      <HistoryList<SleepRunInfo> key={`${userId}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} route={route} path={u(userId, "sleep", "history")} render={(page) => {
         const days = new Map<string, SleepRunInfo[]>();
         for (const r of page.entries) { const day = new Date(r.startedAt).toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" }); days.set(day, [...(days.get(day) ?? []), r]); }
         return <div className="stack">{[...days].map(([day, runs]) => <div className="sleep-day" key={day}>

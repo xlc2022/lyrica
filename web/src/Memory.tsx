@@ -15,7 +15,7 @@ import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { CITATION_GROUP, dateWord, firstWords, KIND_WORD, linkCitations, longDate, parseRef, plainCitations, plainWords, poolWord, wordDiff, wordFor, type Word } from "./memory.ts";
 import { fromEditable, readable, toEditable } from "./mentions.ts";
-import { go, href, idHref, parse } from "./route.ts";
+import { go, href, idHref, parse, type Route } from "./route.ts";
 import { Main, PageHead, usePanel, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
 
@@ -130,13 +130,15 @@ function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContex
   if (userOnly) params.set("origin", "user");
   if (!query && layer === "note" && tag) params.set("about", tag);
   const journalPreview = !query && layer === "journal";
-  params.set("limit", String(journalPreview ? 1 : PAGE_SIZE));
+  // The preview shows one entry; it asks for two so a second proves there is more to open.
+  params.set("limit", String(journalPreview ? 2 : PAGE_SIZE));
   const search = params.toString();
   const hits = useLoad(() => get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}`), [userId, search, display.showGeneral, display.showPrivate]);
   const tags = useLoad(() => (layer === "note" && !query ? get<MemoryTag[]>(`${u(userId, "memory", "about")}${pool ? `?pool=${pool}` : ""}`) : Promise.resolve([] as MemoryTag[])), [userId, layer, query, pool, display.showGeneral, display.showPrivate]);
   useEffect(() => { setMore([]); setNoMore(false); setSel([]); }, [search]);
 
   const rows = [...(hits.data ?? []), ...more];
+  const shownRows = journalPreview ? rows.slice(0, 1) : rows;
   const canPage = !query && !journalPreview && hits.data && hits.data.length >= PAGE_SIZE && !noMore;
   const page = () => run(async () => {
     const last = rows.at(-1)?.updatedAt;
@@ -190,9 +192,9 @@ function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContex
         </div>
       )}
       <ErrorText error={hits.error || tags.error || error} />
-      {journalPreview && <HistoryHead to={{ page: "history", userId, kind: "journal", ...(pool ? { pool } : {}) }} />}
+      {journalPreview && <HistoryHead to={{ page: "history", userId, kind: "journal", ...(pool ? { pool } : {}) }} count={hits.data?.length} />}
       <div className="mem-list" aria-label={query ? "Search results" : LAYERS.find((l) => l.layer === layer)!.label} data-selecting={sel.length > 0 || undefined}>
-        {rows.map((h) => (
+        {shownRows.map((h) => (
           <a key={key(h)} href={href({ page: "memory", userId, pool: h.pool, id: h.id })} aria-current={current === h.id ? "true" : undefined} className={sel.includes(key(h)) ? "sel" : undefined}
             onClick={(e) => { if (e.ctrlKey || e.metaKey || e.shiftKey) { e.preventDefault(); e.stopPropagation(); select(e, h); } }}>
             <span className="t"><span>{nameOf(h.kind, h.title, h.snippet, h.updatedAt ?? "")}</span>{h.updatedAt && <span className="when num">{shortTime(h.updatedAt)}</span>}</span>
@@ -384,12 +386,12 @@ function Sentence({ text, pool, links, users, display, userId, mark }: { text: s
   return <span className="q">{parts.map((p, i) => (i % 2 ? (p.trim() ? <mark key={i}>{p.trim()}</mark> : null) : p))}</span>;
 }
 
-export function JournalHistoryPage({ ctx, pool }: { ctx: ShellContext; pool?: Pool }) {
+export function JournalHistoryPage({ ctx, pool, route }: { ctx: ShellContext; pool?: Pool; route?: Extract<Route, { page: "history" }> }) {
   const userId = ctx.user.id;
   return <main className="main">
     <PageHead ctx={ctx} title="Journal history"><a href={href({ page: "memory", userId })}>Memory</a></PageHead>
     <div className="scroll"><div className="sleep">
-      <HistoryList<MemoryHit> key={`${userId}/${pool}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} path={`${u(userId, "memory", "journal", "history")}${pool ? `?pool=${pool}` : ""}`} render={(page) => <ul className="list">
+      <HistoryList<MemoryHit> key={`${userId}/${pool}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} route={route} path={`${u(userId, "memory", "journal", "history")}${pool ? `?pool=${pool}` : ""}`} render={(page) => <ul className="list">
         {page.entries.map((entry) => <li key={`${entry.pool}/${entry.id}`}>
           <div className="row between"><a href={href({ page: "memory", userId, pool: entry.pool, id: entry.id })}>{new Date(entry.updatedAt!).toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" })}</a><span className={`kind ${entry.pool}`}>{poolWord(entry.pool)}</span></div>
           <p>{entry.snippet}</p>
@@ -399,7 +401,7 @@ export function JournalHistoryPage({ ctx, pool }: { ctx: ShellContext; pool?: Po
   </main>;
 }
 
-export function MemoryHistoryPage({ ctx, pool, id }: { ctx: ShellContext; pool: Pool; id: string }) {
+export function MemoryHistoryPage({ ctx, pool, id, route }: { ctx: ShellContext; pool: Pool; id: string; route?: Extract<Route, { page: "history" }> }) {
   const userId = ctx.user.id;
   const path = u(userId, "memory", pool, id);
   const [run, busy, error] = useAction();
@@ -408,17 +410,18 @@ export function MemoryHistoryPage({ ctx, pool, id }: { ctx: ShellContext; pool: 
     <div className="scroll"><div className="sleep">
       <ErrorText error={error} />
       {hidden(ctx.me.display, pool) ? <p className="empty">{poolWord(pool)} is hidden.</p> :
-        <HistoryList<MemoryRevision, MemoryHistory> path={`${path}/history`} render={(page, reload) => <History detail={page.detail} entries={page.entries} userId={userId} display={ctx.me.display} busy={busy}
+        <HistoryList<MemoryRevision, MemoryHistory> route={route} path={`${path}/history`} render={(page, reload) => <History detail={page.detail} entries={page.entries} userId={userId} display={ctx.me.display} busy={busy}
           onRestore={(revision) => void run(async () => { await post(`${path}/restore`, { revision }); reload(); })} />} />}
     </div></div>
   </main>;
 }
 
-/** One latest version in the preview; paged versions keep their differences and Restore. */
+/** The newest earlier version in the preview (the current text is already shown above); paged versions keep their differences and Restore. */
 function History({ detail, entries, userId, display, busy, onRestore }: { detail: MemoryDetail; entries?: MemoryRevision[]; userId: string; display: Display; busy: boolean; onRestore: (revision: number) => void }) {
   const { item, revisions, users, links } = detail;
-  if (!revisions.length) return null;
-  const newestFirst = entries ?? revisions.slice(0, 1);
+  // With no earlier version there is nothing to show here at all.
+  const shown = entries ?? revisions.slice(1, 2);
+  if (!shown.length) return null;
   const plain = (text: string) => plainWords(readable(text, users), item.pool, links, display, userId);
   const current = plain(item.text);
   const by = (r: MemoryRevision) => {
@@ -429,7 +432,7 @@ function History({ detail, entries, userId, display, busy, onRestore }: { detail
     <section className="history">
       {!entries && <HistoryHead to={{ page: "history", userId, kind: "memory", pool: item.pool, id: item.id }} />}
       <div className="hist">
-        {newestFirst.map((r, i) => {
+        {shown.map((r, i) => {
           const isCurrent = r.id === revisions[0]?.id;
           const diff = isCurrent ? undefined : wordDiff(current, plain(r.body.text));
           return (
