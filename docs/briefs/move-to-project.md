@@ -3,7 +3,7 @@
 **Built by:** Codex on lunasa, one run (below). The Claude thread that wrote
 the project-welcome brief reviews the diff, opens the PR and takes it
 through PR review and UI review. **Branch:** `feature/move-to-project`.
-**Status:** implementation prepared and targeted checks passed; awaiting full suite and review.
+**Status:** built; in review as PR #297.
 
 **Read first:** AGENTS.md, docs/ux.md §6 (the thread menu row, the Fold in
 row and the confirm-before-add rule), docs/briefs/project-welcome.md,
@@ -79,28 +79,12 @@ head commit, a summary and the screenshot paths. Do not open a PR.
 
 ## Handoff note
 
-2026-10-13: written after #290 merged; nothing built.
-
-
-Run handoff (2026-10-13): principle 1 implementation is in the working tree on
-feature/move-to-project. ThreadMenu uses the existing flyout/phone submenu,
-filtered to visible same-pool projects, pinned then recent, and local-only
-projects for local-only sources. FoldConfirm is shared with FoldCard; it
-lists child threads and losses, grants ticked access through settings before
-folding, and warns when cloud models are lost. Continue as project omits
-fold-suggesting directions for its single source. Presets remain in use;
-no schema step or new API route was needed. Updated ux.md, web.md, the
-project-welcome pointer, contracts and DESIGN (including stale Keep access
-wording). UX homes: section 6 thread menu and Fold in; existing widgets
-follow sections 2–3, phone behavior section 8.
-
-Validation: typecheck and build passed; under the shared test lock, 25 daemon
-project tests and 21 selected web tests (fold, flyout, cards, images) passed.
-Existing project welcome/fold and the new move flow passed at 1280 and 390 px
-with fake endpoints only. Screenshots checked with no horizontal overflow:
-shots/move-flyout-1280.png, shots/move-flyout-390.png,
-shots/move-confirm-1280.png, shots/move-confirm-390.png. The phone screenshot
-shows the in-place submenu. shots/ and web/playwright.local.config.ts stay
-untracked; never include them in a commit. No commit, push or PR was made,
-per the latest run instructions. Next: the user runs the full suite, commits
-and pushes, then the brief's owning thread takes the work through review.
+2026-10-13: Codex on lunasa built In scope (40e802a): Move to project in
+ThreadMenu with the existing flyout and phone submenu, FoldConfirm lifted out
+of FoldCard and shared, and Continue as project skipping the fold directions
+for its own source. The review thread opened PR #297. Review fixes since then:
+Continue as project's user message is just "Continue from <thread>."; the
+item has the J shortcut; its confirm says "Move <thread> to <project>?" with
+**Move**; the local-only loss reads "Cloud models"; the menu lists pinned
+projects plus the ten most recent, and reads project settings only for a
+local-only thread. Next: PR review and UI review verify, then merge.

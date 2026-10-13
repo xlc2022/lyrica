@@ -80,7 +80,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   top" or "Unpinned", the shell's one, gone after 4 s), **Make project…** (K, a
   top-level thread; confirms in a dialog, since there is no way back),
   **Continue as project** (C, keeps the source), and **Move to project**
-  (top-level, non-project, non-subagent threads only): pinned then recent
+  (top-level, non-project, non-subagent threads only): pinned then up to ten recent
   visible projects of the same pool, local-only destinations only for
   local-only work; omitted when none qualify. It reuses the hover flyout
   and phone submenu. Picking a project opens the shared `FoldConfirm.tsx`

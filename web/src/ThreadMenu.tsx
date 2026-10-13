@@ -75,7 +75,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   const [error, setError] = useState("");
   const [people, setPeople] = useState<Person[]>();
   const [recipient, setRecipient] = useState<Person>();
-  const [projects, setProjects] = useState<{ thread: ThreadSummary; settings: ThreadSettings }[]>([]);
+  const [projects, setProjects] = useState<ThreadSummary[]>([]);
   const [moving, setMoving] = useState<{ project: ThreadSummary; settings: ThreadSettings; chosen: FoldRow[] }>();
   const eligible = !t.child && !t.parent && !t.project && !t.subagent;
   useEffect(() => {
@@ -86,19 +86,22 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
       const all = await get<ThreadSummary[]>(`${u(userId, "threads")}?all=1`);
       const candidates = all.filter(p => p.project && !p.hidden && p.pool === t.pool)
         .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
-      const loaded = await Promise.allSettled(candidates.map(async thread => ({ thread, settings: await get<ThreadSettings>(threadPath(userId, thread.pool, thread.id, "settings")) })));
-      if (active) setProjects(loaded.flatMap(r => r.status === "fulfilled" && (!source.localOnly || r.value.settings.localOnly) ? [r.value] : []));
+      // Pinned projects, then the ten most recent; settings are read only to keep a local-only thread to local-only projects.
+      const shown = [...candidates.filter(p => p.pinned), ...candidates.filter(p => !p.pinned).slice(0, 10)];
+      if (!source.localOnly) { if (active) setProjects(shown); return; }
+      const loaded = await Promise.allSettled(shown.map(async thread => ({ thread, localOnly: (await get<ThreadSettings>(threadPath(userId, thread.pool, thread.id, "settings"))).localOnly })));
+      if (active) setProjects(loaded.flatMap(r => r.status === "fulfilled" && r.value.localOnly ? [r.value.thread] : []));
     })().catch((e: Error) => { if (active) setError(e.message); });
     return () => { active = false; };
   }, [base, eligible, userId, t.pool]);
-  const chooseProject = async (p: typeof projects[number]) => {
+  const chooseProject = async (p: ThreadSummary) => {
     try {
       const [settings, projectSettings, all] = await Promise.all([
         get<ThreadSettings>(`${base}/settings`),
-        get<ThreadSettings>(threadPath(userId, t.pool, p.thread.id, "settings")),
+        get<ThreadSettings>(threadPath(userId, t.pool, p.id, "settings")),
         get<ThreadSummary[]>(`${u(userId, "threads")}?all=1`),
       ]);
-      setMoving({ project: p.thread, settings: projectSettings, chosen: [{ thread: all.find(row => row.id === t.id && row.pool === t.pool) ?? t, settings, index: 0 }] });
+      setMoving({ project: p, settings: projectSettings, chosen: [{ thread: all.find(row => row.id === t.id && row.pool === t.pool) ?? t, settings, index: 0 }] });
     } catch (e) { setError((e as Error).message); }
   };
   const canHover = useCanHover();
@@ -213,7 +216,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
       <Item label="New group…" kbd="N" onClick={() => { setDraft(""); setSub("newgroup"); }} />
     </>
   );
-  const projectItems = <>{projects.map(p => <Item key={p.thread.id} label={p.thread.title || "New project"} onClick={() => void chooseProject(p)} />)}</>;
+  const projectItems = <>{projects.map(p => <Item key={p.id} label={p.title || "New project"} onClick={() => void chooseProject(p)} />)}</>;
   let body: ReactNode;
   if (!fly && sub === "share") {
     body = (<><button type="button" className="back" onClick={() => setSub("")}>‹ Share with</button>{shareItems}</>);
