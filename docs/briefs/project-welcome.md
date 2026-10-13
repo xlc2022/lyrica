@@ -67,7 +67,8 @@ ever reads its text.
    thread stays." (Make project… gains the tooltip "Turns this thread into
    a project."). It creates a new pinned project in the thread's pool and
    opens its Project settings. The project chat copies the thread's
-   folders, machines, repositories, MCP servers and local-only switch. Its
+   folders, machines, repositories, MCP servers, local-only switch and model
+   `preset` (#283). Its
    first message links back to the thread and asks Lyrica, on the thread's
    own model (so local-only holds), to draft Goal and Instructions, shown
    on Project settings for editing, never applied silently. The thread's
@@ -127,7 +128,7 @@ welcome card, the open list and the Fold in card go to UI review.
   across pools is refused; a local-only thread is never listed for, or
   folded into, a cloud project chat; a draft is never applied without
   Save; an unlogged thread is never listed or read; the user.db step
-  migrates from every released schema; Continue as project copies the grants and the local-only switch.
+  migrates from every released schema; Continue as project copies the grants, the local-only switch and the preset.
 - `npm run typecheck` and `npm test` pass; PR review verifies both PRs and
   UI review verifies PR 2.
 
