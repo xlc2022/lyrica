@@ -45,6 +45,8 @@ export interface RelaySpec {
   internet: boolean;
   /** Where a host's requests go instead of https://host: for tests. */
   upstreams?: Record<string, string>;
+  /** Called when the relay forwards a successful pull request create: only the repository and its number, never the body (docs/briefs/ci-wakes.md). */
+  onPullCreate?: (pr: { repo: string; number: number }) => void;
 }
 
 export interface Relay {
@@ -104,6 +106,26 @@ function allowed(c: ForgeCredential, to: string, path: string): boolean {
 const hostsOf = (c: ForgeCredential) => target(c.host) === "github.com" && c.kind === "github"
   ? ["github.com", "api.github.com", "uploads.github.com"] : [target(c.host)];
 
+/** A forge's "pull created" answer fits easily in this; anything larger is piped on without a record. */
+const CAPTURE_LIMIT = 64 * 1024;
+
+/** Whether a request, with this credential, is that repository's pull request create (docs/briefs/ci-wakes.md step 1). */
+function pullCreatePath(c: ForgeCredential, method: string | undefined, path: string): boolean {
+  if (method !== "POST") return false;
+  const p = path.toLowerCase().split("?")[0]!;
+  if (c.kind === "github") return p === `/repos/${c.repo.toLowerCase()}/pulls`;
+  return (c.kind === "forgejo" || c.kind === "gitea") && p === `/api/v1/repos/${c.repo.toLowerCase()}/pulls`;
+}
+
+/** The only fact from a create's answer: its number, with the repository already known. Nothing else is kept. */
+function notePullCreate(c: ForgeCredential, body: Buffer, onPullCreate: NonNullable<RelaySpec["onPullCreate"]>): void {
+  let parsed: unknown;
+  try { parsed = JSON.parse(body.toString("utf8")); } catch { return; }
+  const number = (parsed as { number?: unknown } | null)?.number;
+  if (typeof number !== "number" || !Number.isInteger(number)) return;
+  onPullCreate({ repo: c.repo, number });
+}
+
 /** Opens a relay for one run. */
 export async function openRelay(spec: RelaySpec): Promise<Relay> {
   const capability = randomBytes(32).toString("base64url");
@@ -123,13 +145,19 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
   const sockets = new Set<Socket>();
   const track = (s: Socket) => { sockets.add(s); s.on("close", () => sockets.delete(s)); s.on("error", () => s.destroy()); return s; };
 
-  const forward = (to: string, path: string, req: IncomingMessage, res: ServerResponse, headers: IncomingHttpHeaders) => {
+  const forward = (to: string, path: string, req: IncomingMessage, res: ServerResponse, headers: IncomingHttpHeaders, capture?: (body: Buffer) => void) => {
     const base = new URL(spec.upstreams?.[to] ?? `https://${to}`);
     const request = base.protocol === "https:" ? httpsRequest : httpRequest;
     const out = request({ protocol: base.protocol, hostname: hostname(base.host), port: base.port || undefined, method: req.method, path, headers,
       ...base.protocol === "https:" ? { ca: upstreamCAs() } : {} }, (up) => {
       res.writeHead(up.statusCode ?? 502, up.headers);
-      up.pipe(res);
+      if (!capture) { up.pipe(res); return; }
+      // A create's answer is small and worth a look; anything larger is piped on without a record.
+      const chunks: Buffer[] = [];
+      let size = 0;
+      up.on("data", (c: Buffer) => { res.write(c); if (size < CAPTURE_LIMIT) { chunks.push(c); size += c.length; } });
+      up.on("end", () => { res.end(); if (size <= CAPTURE_LIMIT) capture(Buffer.concat(chunks)); });
+      up.on("error", () => res.destroy());
     });
     out.on("error", () => { if (!res.headersSent) res.writeHead(502).end(); else res.destroy(); });
     req.pipe(out);
@@ -160,17 +188,19 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
     const path = req.url ?? "/";
     const headers = passed(req);
     const auth = String(req.headers.authorization ?? "");
+    let c: ForgeCredential | undefined;
     if (auth) {
       const [scheme = "", value = ""] = auth.trim().split(/\s+/, 2);
       const basic = /^basic$/i.test(scheme) ? Buffer.from(value, "base64").toString() : undefined;
       const secret = basic === undefined ? value : basic.slice(basic.indexOf(":") + 1);
-      const c = forge.find((x) => same(secret, x.placeholder));
+      c = forge.find((x) => same(secret, x.placeholder));
       if (c ? !allowed(c, to, path) : forge.some((x) => auth.includes(x.placeholder) || basic?.includes(x.placeholder))) {
         return refuse(req, res, 403, `This run's Git credential isn't for ${to}${path.split("?")[0]}.\n`);
       }
       if (c) headers.authorization = basic === undefined ? `${scheme} ${c.token}` : `Basic ${Buffer.from(`${basic.slice(0, basic.indexOf(":"))}:${c.token}`).toString("base64")}`;
     }
-    forward(to, path, req, res, headers);
+    if (c && spec.onPullCreate && pullCreatePath(c, req.method, path)) forward(to, path, req, res, headers, (body) => notePullCreate(c!, body, spec.onPullCreate!));
+    else forward(to, path, req, res, headers);
   });
 
   server.on("connect", (req: IncomingMessage, socket: Socket, head: Buffer) => {

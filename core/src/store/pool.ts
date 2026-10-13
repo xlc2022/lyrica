@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { nextRun, parseSchedule, type Schedule } from "../routines.ts";
+import type { ForgeKind, ForgeWatchState } from "../forge/types.ts";
 import type { Db } from "../db.ts";
 import { render, toStored, type UserId } from "../mentions.ts";
 import type { Profile } from "../profile.ts";
@@ -83,6 +84,24 @@ export interface StoredEntry {
 export interface Wakeup { id: number; thread: string; dueAt: string; note: string; setAt: string }
 
 export interface Routine { id: number; thread: string; schedule: Schedule; note: string; newThread: boolean; paused: boolean; nextAt: string; lastAt?: string; createdAt: string }
+
+/** A pull request a thread opened through its relay, polled until CI and reviews land (docs/briefs/ci-wakes.md). */
+export interface Watch {
+  id: number;
+  thread: string;
+  repo: string;
+  kind: ForgeKind;
+  host: string;
+  account: string;
+  number: number;
+  head: string | null;
+  headSince: string;
+  notifiedHeads: string[];
+  seenReviews: string[];
+  /** When the repository last got a signed webhook; the poller then eases to ten minutes. */
+  webhookAt?: string;
+  createdAt: string;
+}
 
 /** One emoji on a message and who put it there: user IDs, or "lyrica". */
 export interface Reaction { emoji: string; by: string[] }
@@ -404,6 +423,13 @@ export class PoolReader {
   /** When a thread's wake-ups or routines fired since `since`, oldest first. */
   wakeupsFired(threadId: string, since: string): string[] {
     return (this.db.prepare("SELECT fired_at FROM wakeups WHERE thread = ? AND fired_at >= ? ORDER BY fired_at").all(threadId, since) as { fired_at: string }[]).map((r) => r.fired_at);
+  }
+
+  /** A thread's watched pull requests, oldest first; or every thread's. */
+  watches(threadId?: string): Watch[] {
+    const rows = this.db.prepare(`SELECT * FROM watches ${threadId ? "WHERE thread = ?" : ""} ORDER BY created_at, id`)
+      .all(...(threadId ? [threadId] : [])) as WatchRow[];
+    return rows.map(toWatch);
   }
 
   /** A thread's latest `limit` messages as another thread reads them: logged ones with text, no tool results; oldest first. */
@@ -1069,6 +1095,38 @@ export class PoolStore extends PoolReader {
       .run(threadId, ...(id !== undefined ? [id] : [])).changes;
   }
 
+  /** A pull request this thread opened through its relay, to watch (docs/briefs/ci-wakes.md). Returns its ID. */
+  addWatch(threadId: string, input: { repo: string; kind: ForgeKind; host: string; account: string; number: number }, at = now()): number {
+    this.mustThread(threadId);
+    return Number(this.db.prepare(`INSERT INTO watches (thread, repo, kind, host, account, number, head_since, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(threadId, input.repo, input.kind, input.host, input.account, input.number, at, at).lastInsertRowid);
+  }
+
+  /** Saves a watch's decision state after one poll; false when the watch is already gone. */
+  updateWatch(id: number, state: ForgeWatchState): boolean {
+    return this.db.prepare("UPDATE watches SET head = ?, head_since = ?, notified_heads = ?, seen_reviews = ? WHERE id = ?")
+      .run(state.head, state.headSince, JSON.stringify(state.notifiedHeads), JSON.stringify(state.seenReviews), id).changes > 0;
+  }
+
+  /** The watch's repository just got a signed webhook, so the poller eases to ten minutes. */
+  markWatchWebhook(id: number, at = now()): void {
+    this.db.prepare("UPDATE watches SET webhook_at = ? WHERE id = ?").run(at, id);
+  }
+
+  removeWatch(id: number): boolean {
+    return this.db.prepare("DELETE FROM watches WHERE id = ?").run(id).changes > 0;
+  }
+
+  /** One poll's outcome in one transaction: end or save the watch, and record the note's wake-up if there is one. Returns the wake-up's ID. */
+  settleWatch(id: number, next: ForgeWatchState, stop: boolean, note: { thread: string; dueAt: string; text: string } | null): number | undefined {
+    return this.tx(() => {
+      if (!this.db.prepare("SELECT 1 FROM watches WHERE id = ?").get(id)) return undefined; // gone since the poll began
+      if (stop) this.removeWatch(id);
+      else this.updateWatch(id, next);
+      return note ? this.addWakeup(note.thread, note.dueAt, note.text, note.dueAt) : undefined;
+    });
+  }
+
   /**
    * Deletes the thread and its entries, and the notes whose only sources were
    * in it (each leaves a tombstone, and pages citing them are flagged). Its
@@ -1448,6 +1506,7 @@ interface PageRow { slug: string; title: string; summary: string; text: string; 
 interface SleepRunRow { id: string; reason: string; status: string; skip_reason: string | null; until: string; phases: string; started_at: string; finished_at: string | null }
 interface ItemRow { id: string; run: string; kind: string; text: string; source: string | null; thread: string | null; dismissed: number; created_at: string }
 interface RevisionRow { id: number; item: string; body: string; author: string; created_at: string }
+interface WatchRow { id: number; thread: string; repo: string; kind: ForgeKind; host: string; account: string; number: number; head: string | null; head_since: string; notified_heads: string; seen_reviews: string; webhook_at: string | null; created_at: string }
 
 function toThread(r: ThreadRow): Thread {
   return {
@@ -1479,4 +1538,12 @@ function parseReactions(raw: string | null): Reaction[] {
 
 function toEntry(r: EntryRow): StoredEntry {
   return { id: r.orig ?? entryId(r.thread, r.n), role: r.role, text: r.text, unlogged: r.unlogged === 1, createdAt: r.created_at };
+}
+
+function toWatch(r: WatchRow): Watch {
+  return {
+    id: r.id, thread: r.thread, repo: r.repo, kind: r.kind, host: r.host, account: r.account, number: r.number,
+    head: r.head, headSince: r.head_since, notifiedHeads: json<string[]>(r.notified_heads), seenReviews: json<string[]>(r.seen_reviews),
+    ...(r.webhook_at ? { webhookAt: r.webhook_at } : {}), createdAt: r.created_at,
+  };
 }

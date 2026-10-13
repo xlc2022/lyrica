@@ -6,7 +6,7 @@ import type { AddressInfo, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { connect as tlsConnect } from "node:tls";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { gitEnv, openRelay, type ForgeCredential, type Relay } from "../src/index.ts";
 
 // A run's relay keeps Git tokens in lyricad (docs/workspace.md, "Credentials"):
@@ -73,6 +73,25 @@ async function through(relay: Relay, to: string, path: string, authorization?: s
   });
 }
 
+/** A POST to `to` through the relay, with a JSON body. */
+async function postThrough(relay: Relay, to: string, path: string, authorization: string, body: string): Promise<{ status: number; body: string }> {
+  const { socket } = await tunnel(relay, to);
+  return new Promise((resolve, reject) => {
+    const servername = to.replace(/:\d+$/, "");
+    const req = httpsRequest({
+      host: servername, path, method: "POST",
+      headers: { authorization, "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      createConnection: () => tlsConnect({ socket: socket!, servername, ca: relay.ca }),
+    }, (res) => {
+      let out = "";
+      res.on("data", (d) => { out += d; });
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body: out }));
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+}
+
 describe("a run's relay for Git", () => {
   it("lets git reach its repository with the placeholder and swaps in the token there", async () => {
     const relay = await open();
@@ -134,6 +153,66 @@ describe("a run's relay for Git", () => {
       // And nothing once the run is over.
       relay.close();
       await expect(tunnel(relay, "github.com:443")).rejects.toThrow();
+    } finally {
+      relay.close();
+    }
+  });
+});
+
+describe("a relayed pull request create", () => {
+  // Its own upstream: the relay's record reads only the create's number, so a
+  // body full of other fields must never reach the callback (docs/briefs/ci-wakes.md).
+  let upstream: Server;
+  let base: string;
+  let githubBody: string;
+  const created: { repo: string; number: number }[] = [];
+
+  beforeAll(async () => {
+    upstream = createServer((req, res) => {
+      req.resume();
+      const isForge = req.url?.includes("/api/v1/repos/ada/notes/pulls");
+      const body = isForge ? '{"number": 7, "title": "a secret title", "user": {"login": "ada"}}'
+        : req.url?.includes("/ada/lyrica/pulls") ? githubBody : '{"number": 404}';
+      res.writeHead(200, { "content-type": "application/json" }).end(body);
+    });
+    await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
+    base = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`;
+  });
+  afterAll(() => { upstream.close(); });
+
+  beforeEach(() => { created.length = 0; githubBody = '{"number": 42, "title": "a secret title", "body": "never kept"}'; });
+
+  const openRecord = () => openRelay({
+    forge: [credential({}), credential({ repo: "ada/notes", kind: "forgejo", host: "forge.lan:3000", token: FORGE_TOKEN, placeholder: "lyrica_placeholder_forge" })],
+    reaches: () => true, internet: true,
+    upstreams: { "github.com": base, "api.github.com": base, "forge.lan:3000": base },
+    onPullCreate: (pr) => { created.push(pr); },
+  });
+
+  it("records one watch for a GitHub create and one for a Forgejo create, and nothing else is kept", async () => {
+    const relay = await openRecord();
+    try {
+      expect((await postThrough(relay, "api.github.com:443", "/repos/ada/lyrica/pulls", "token lyrica_placeholder_github", "{}")).status).toBe(200);
+      expect((await postThrough(relay, "forge.lan:3000", "/api/v1/repos/ada/notes/pulls", "token lyrica_placeholder_forge", "{}")).status).toBe(200);
+      expect(created).toEqual([{ repo: "ada/lyrica", number: 42 }, { repo: "ada/notes", number: 7 }]);
+    } finally {
+      relay.close();
+    }
+  });
+
+  it("records none for a GET, a non-create path, a foreign repository, or a non-integer number", async () => {
+    const relay = await openRecord();
+    try {
+      // A GET on the create path is not a create.
+      expect((await through(relay, "api.github.com:443", "/repos/ada/lyrica/pulls", "token lyrica_placeholder_github")).status).toBe(200);
+      // A POST somewhere else is not this repository's create.
+      expect((await postThrough(relay, "api.github.com:443", "/repos/ada/lyrica/issues", "token lyrica_placeholder_github", "{}")).status).toBe(200);
+      // Another repository's create is forwarded (the API host is the token's own), but not recorded.
+      expect((await postThrough(relay, "api.github.com:443", "/repos/ada/other/pulls", "token lyrica_placeholder_github", "{}")).status).toBe(200);
+      // A create whose answer has no integer number is not recorded.
+      githubBody = '{"number": "42"}';
+      expect((await postThrough(relay, "api.github.com:443", "/repos/ada/lyrica/pulls", "token lyrica_placeholder_github", "{}")).status).toBe(200);
+      expect(created).toEqual([]);
     } finally {
       relay.close();
     }

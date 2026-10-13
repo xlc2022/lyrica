@@ -66,9 +66,11 @@ written here.
    stops with an error, or finishes a task without an update, is reported
    to the project chat whatever the setting; she reads its latest
    messages with `threads read` and stops a thread that went wrong with
-   `threads stop` (docs/delegation.md, "Child threads"). To wait on CI or
-   a review without blocking a turn she sets a wake-up, `threads later`
-   with minutes and a note, and checks then.
+   `threads stop` (docs/delegation.md, "Child threads"). CI and reviews
+   wake her without a turn being blocked: a pull request she opens through
+   the run's relay is watched, and `lyricad` gives the thread one turn when
+   its checks finish or someone reviews it (DESIGN.md, "CI wakes").
+   `threads later` stays for anything else.
 
 ## Project instructions (paste as is)
 

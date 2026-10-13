@@ -44,6 +44,22 @@ function facts(a: GitAccountInfo) {
 /** The dialog's sentence for a private account whose host is outside her network. */
 const offNetworkSentence = (name: string) => `${name}'s host is outside your network, so a private thread's code would leave it.`;
 
+/** A Copy button for a webhook's URL or secret: Copied for a moment, Copy failed where the clipboard is refused. */
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const copy = async () => {
+    let result: "copied" | "failed" = "copied";
+    try { await navigator.clipboard.writeText(text); } catch { result = "failed"; }
+    clearTimeout(timer.current);
+    setState(result);
+    timer.current = setTimeout(() => setState("idle"), 2000);
+  };
+  const word = state === "idle" ? `Copy ${label}` : state === "copied" ? "Copied" : "Copy failed";
+  return <button type="button" className="sm" onClick={() => void copy()}>{word}</button>;
+}
+
 export function GitAccountsSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const accounts = useLoad(() => get<GitAccountInfo[]>(u(userId, "git-accounts")), [userId]);
@@ -183,6 +199,22 @@ function GitDrawer({ userId, account, onSaved, onRemoved, onChanged, onClose }: 
             </label>
           )}
         </fieldset>
+        {account?.webhook && (
+          <fieldset className="group">
+            <legend>Webhook</legend>
+            <label className="field"><span>URL</span>
+              <input className="mono" readOnly value={account.webhook.url} onFocus={(e) => e.currentTarget.select()} />
+            </label>
+            <label className="field"><span>Secret</span>
+              <input className="mono" readOnly value={account.webhook.secret} onFocus={(e) => e.currentTarget.select()} />
+            </label>
+            <div className="row">
+              <CopyButton text={account.webhook.url} label="URL" />
+              <CopyButton text={account.webhook.secret} label="secret" />
+            </div>
+            <p className="muted">When a pull request changes, {KINDS[account.kind]} posts here and {her()} checks it at once instead of waiting for the next poll.</p>
+          </fieldset>
+        )}
         <ErrorText error={error} />
         <div className="row drawer-foot">
           <button type="submit" className="primary" disabled={busy || !ready}

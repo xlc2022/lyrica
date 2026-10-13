@@ -47,6 +47,8 @@ export interface SandboxSpec {
   credentials?: Credentials;
   /** Host path of the thread's own Claude Code folder (Workspace.claudeDir), mounted read-write at /run/lyrica/claude. */
   claudeDir?: string;
+  /** The relay's pull-request-create record, passed straight through (relay.ts). */
+  onPullCreate?: (pr: { repo: string; number: number }) => void;
   bwrap?: string;
   pasta?: string;
 }
@@ -319,6 +321,7 @@ export class Sandbox implements ExecutionTarget {
       reaches: (host) => reachesHost(this.spec.network, host),
       internet: this.spec.network.internet,
       upstreams: c.upstreams,
+      onPullCreate: this.spec.onPullCreate,
     }) : undefined;
     try {
       return await this.launch(argv, cwd, forward, relay);

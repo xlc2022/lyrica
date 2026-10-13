@@ -181,4 +181,57 @@ One test run at a time on lunasa, through the install thread's queue.
 
 ## Handoff notes
 
-(The building thread fills this in if it stops before it's done.)
+2026-10-13, Codex on lunasa — Part B is built and its tests are green.
+Nothing is committed or pushed; the user will.
+
+What landed:
+
+- `daemon/src/forge-watch.ts`: the poller. The relay record
+  (`Workspace.onPullCreate` → `ForgeWatcher.record`) stores a watch in the
+  thread's pool (pool step 7, `WATCHES_SCHEMA`); lyricad's tick polls each
+  unlocked user's due watches through `core/models`-only forge fetch, joins
+  the pages into a snapshot, runs Part A's `decide`, and hands the note to
+  the wake-up path via `settleWatch` + `wakeups.wake`. One request at a time
+  per token (`enqueue`), Retry-After and `x-ratelimit-reset` honoured, and
+  ten-minute polling once a token is low or the repo is webhooked.
+- The webhook: signed `POST /hooks/forge/{account}` on the tailscale-serve
+  listener only (404 off the tailnet), HMAC-SHA256 with
+  `timingSafeEqual`, one secret per Git account (`webhook_secret` in user
+  step 6), and a `webhook` nudge that triggers an immediate poll and eases
+  the watch to ten minutes. The account drawer gains the Webhook row
+  (docs/ux.md row written), and `git.md` covers it.
+- Part A was reviewed against `core/src/forge/types.ts` and the brief and
+  needed no changes: its three flagged behaviours (unknown check states
+  throw, Gitea `warning` maps to failed, rate-limit back-off left to Part B)
+  are all intentional and covered by its tests. The poller treats module
+  throws as transient and does the back-off itself.
+
+One real bug found and fixed in Part B: `noteRate` clobbered
+`remaining`/`limit`/`resetAt` to 0 when a response carried no
+`x-ratelimit-*` header, because `Number(null) === 0`. It now only overwrites
+on present, finite headers; a missing header says nothing.
+
+A note on the private-address rule: the brief says `fc00::/7`, and
+`inOwnNetwork` actually covers `fd00::/8` — the locally-assigned ULA half.
+That is the correct, more precise range (GUA/ULA and loopback are handled
+separately), so a hostname resolving to `fd00::/8` still gets webhooks. The
+practical reach is IPv4 for literals: `parseHost` rejects IPv6 literals
+(`family === 6` throws "IPv6 hosts aren't supported yet"), so an account
+whose host is an IPv6 literal is not usable for webhooks; a name that
+resolves to `fd00::/8` works. Worth reconciling the wording in a docs PR.
+
+Test results (fakes only, no network, no real names; `--pool=forks
+--maxWorkers=2`, one batch at a time):
+
+- `daemon/test/forge-watch.test.ts` — 15 passed.
+- `core/test/forge-github.test.ts`, `forge-forgejo.test.ts`,
+  `forge-decide.test.ts`, `relay.test.ts`, `store.test.ts`,
+  `migrations.test.ts` — 67 passed (Part A's tests plus the touched core
+  tests).
+- `core/test/forge.test.ts`, `core/test/workspace.test.ts`,
+  `core/test/settings.test.ts`, `daemon/test/wakeups.test.ts`,
+  `daemon/test/routines.test.ts` — 52 passed, 4 skipped.
+- `npm run typecheck` — clean.
+
+Left for the coordinator: reconcile the `fc00::/7` vs `fd00::/8` wording in
+the brief and DESIGN, then review/merge.

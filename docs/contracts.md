@@ -645,6 +645,43 @@ One model-facing tool: `delegate({ action?, ... })`.
   event to refresh open thread views. Stored routine messages have
   `from: { kind: "routine", schedule }` and their note as the text part,
   with the daemon's mark removed; live messages carry the mark until stored.
+- **CI wakes** (`core/src/forge/{types,github,forgejo,decide}.ts`,
+  `daemon/src/forge-watch.ts`, `core/src/workspace/relay.ts`): a pull
+  request a run opens through its relay is watched and wakes its thread.
+  `SandboxSpec` and `RelaySpec` gain `onPullCreate(pr: { repo, number })`,
+  called once after a relayed `POST /repos/{owner}/{repo}/pulls` (GitHub)
+  or `POST /api/v1/repos/{owner}/{repo}/pulls` (Forgejo/Gitea) succeeds,
+  passing only those two facts — never the request or response body.
+  `Workspace.onPullCreate` routes it to `ForgeWatcher.record`, which stores
+  a watch in pool step 7's `watches` table (thread, repo, kind, host,
+  account, number, head, head_since, notified_heads, seen_reviews,
+  webhook_at, created_at) through `PoolStore.addWatch`, at most 10 per
+  thread (an eleventh is not watched; the thread is told once).
+  `ForgeWatcher.load` / `drop` enable / disable polling at unlock / Lock;
+  the daemon tick calls it unless an update drains. Each poll turns the
+  forge's API pages into one snapshot with `githubPullRequest` or
+  `forgejoPullRequest`, then `decide({ number, account, now, last, poll })`
+  returns `{ next, stop, note }`; `PoolStore.settleWatch` saves the next
+  state (or removes the watch) and records the note's wake-up in one
+  transaction, and the note fires as `HostedThread.send(note, { wakeup:
+  wakeupMark(setAt) })` through the existing wake-up guards — never a body,
+  never comment or log text. A merged or closed pull stops the watch
+  without a turn. One request at a time per token; `Retry-After` and
+  GitHub's `x-ratelimit-reset` are honoured; polling slows to 10 minutes
+  while fewer than a fifth of the token's hourly requests remain, or after
+  a webhook for that repository in the last 24 hours.
+- **Forge webhook** (`daemon/src/lyricad.ts`): a Forgejo or Gitea account
+  whose host resolves into her own network (10/8, 172.16/12, 192.168/16,
+  100.64/10, fc00::/7 — re-checked at each use) gets a Webhook row in its
+  Settings drawer: `POST https://<tailnet-name>/hooks/forge/<account>` and a
+  per-account random secret, stored like its token
+  (`git_accounts.webhook_secret`). The route answers only on the
+  `tailscale serve` listener (`Request.via === "tailnet"`), verifies
+  `X-Forgejo-Signature` / `X-Gitea-Signature` (HMAC-SHA256, constant time)
+  against that account's secret, reads the repository name from the body
+  and drops it, then nudges `ForgeWatcher.webhook` to poll that
+  repository's watches at once. Anything unsigned gets 401 and does
+  nothing; a forged or replayed hook can at worst cause one extra poll.
 - **Child threads** (`createThreadsExtension(thread, host?: ThreadsHost, meter?)`,
   never in a subagent's thread): one model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,

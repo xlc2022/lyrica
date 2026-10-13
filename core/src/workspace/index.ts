@@ -89,6 +89,8 @@ export interface WorkspaceOptions {
   restricted?: (userId: string, pool: Pool, threadId: string) => boolean;
   /** Where a run's relay sends a host's requests instead of https://host: tests. */
   upstreams?: Record<string, string>;
+  /** A pull request the run's relay opened, for that run's thread: watched for CI and reviews (docs/briefs/ci-wakes.md). */
+  onPullCreate?: (t: WorkspaceThread, pr: { repo: string; number: number }) => void;
 }
 
 /** Where Claude Code sends what it reads: a run gets Claude Code only if its network reaches this. */
@@ -472,6 +474,7 @@ export class Workspace {
       reposReadOnly: t.reposReadOnly,
       credentials,
       ...credentials.anthropic ? { claudeDir: this.claudeDir(t) } : {},
+      onPullCreate: this.opts.onPullCreate && ((pr) => this.opts.onPullCreate!(t, pr)),
       ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,
@@ -585,15 +588,44 @@ export class Workspace {
     if (outside !== a.offNetwork) s.setGitOffNetwork(a.name, outside);
   }
 
-  private forge(): typeof fetch { return this.opts.forgeFetch ?? fetch; }
+  /** The HTTPS client for Git hosts: `forgeApi` and the CI-watch poller both use it. Tests pass their own. */
+  forgeFetch(): typeof fetch { return this.opts.forgeFetch ?? fetch; }
+
+  /** One account's forge API base URL and Authorization header, shared by `forgeApi` and the poller. */
+  forgeBase(a: Pick<GitAccountConfig, "kind" | "host" | "token">): { base: string; authorization: string } {
+    const base = a.kind === "github" ? (a.host === "github.com" ? "https://api.github.com" : `https://${a.host}/api/v3`) : `https://${a.host}/api/v1`;
+    return { base, authorization: a.kind === "github" ? `Bearer ${a.token}` : `token ${a.token}` };
+  }
+
+  /** Whether a Git account's host resolves entirely into the operator's own network now; webhooks are offered only then (docs/briefs/ci-wakes.md step 4). */
+  async forgeHostPrivate(a: Pick<GitAccountConfig, "host">): Promise<boolean> {
+    try {
+      const { outside } = await resolveHost(parseHost(a.host).host);
+      return !outside;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Whether the CI-watch poller may use an account's token now: the same gate a run's relay goes through. */
+  async forgeAccountUsable(userId: string, name: string): Promise<boolean> {
+    const a = this.settings(userId).gitAccount(name);
+    if (!a || this.gitRefused.has(`${userId}/${name}`)) return false;
+    try {
+      await this.checkGitHost(userId, a);
+    } catch {
+      return false;
+    }
+    return !this.gitRefused.has(`${userId}/${name}`);
+  }
 
   /** One call to a Git host's API with an account's token: GitHub's REST API, or Gitea's (which Forgejo shares). */
   private async forgeApi(a: Pick<GitAccountConfig, "kind" | "host" | "token">, path: string): Promise<unknown> {
-    const base = a.kind === "github" ? (a.host === "github.com" ? "https://api.github.com" : `https://${a.host}/api/v3`) : `https://${a.host}/api/v1`;
+    const { base, authorization } = this.forgeBase(a);
     let res: Response;
     try {
-      res = await this.forge()(`${base}${path}`, {
-        headers: { Accept: "application/json", "User-Agent": "lyrica", Authorization: a.kind === "github" ? `Bearer ${a.token}` : `token ${a.token}` },
+      res = await this.forgeFetch()(`${base}${path}`, {
+        headers: { Accept: "application/json", "User-Agent": "lyrica", Authorization: authorization },
         signal: AbortSignal.timeout(15_000), redirect: "error",
       });
     } catch {
@@ -613,7 +645,7 @@ export class Workspace {
     const host = gitHost(a.host);
     if (a.kind === "other") {
       try {
-        await this.forge()(`https://${host}/`, { method: "HEAD", signal: AbortSignal.timeout(15_000), redirect: "manual" });
+        await this.forgeFetch()(`https://${host}/`, { method: "HEAD", signal: AbortSignal.timeout(15_000), redirect: "manual" });
       } catch {
         throw new GitAccountProblem("unreachable", `${host} didn't answer`);
       }
@@ -630,7 +662,7 @@ export class Workspace {
    * resolve on her own network, or `offNetworkConfirmed` (the Add anyway
    * dialog); a GitHub account is general only.
    */
-  async addGitAccount(userId: string, input: Omit<GitAccountConfig, "offNetwork" | "state"> & { offNetworkConfirmed?: boolean }): Promise<GitAccountConfig> {
+  async addGitAccount(userId: string, input: Omit<GitAccountConfig, "offNetwork" | "state" | "webhookSecret"> & { offNetworkConfirmed?: boolean }): Promise<GitAccountConfig> {
     const s = this.settings(userId);
     if (s.gitAccount(input.name)) throw new Error(`Git account ${input.name} already exists`);
     if (input.kind === "github" && input.pool === "private") throw new Error("a GitHub account is general. Private threads use only self-hosted accounts on your own network.");
