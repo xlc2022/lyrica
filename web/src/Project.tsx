@@ -165,7 +165,7 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
   const line = update?.split("\n").find((l) => l.trim())?.trim();
   const open_ = href({ page: "thread", userId, pool: t.pool, threadId: t.id });
   return (
-    <div className="tcard" data-state={state} onDoubleClick={(e) => { /* View thread by double-click (docs/briefs/thread-panel.md item 3): not when it lands on a link or button, or leaves text selected to copy. */ if ((e.target as HTMLElement).closest("a,button") || getSelection()?.toString()) return; viewRef.current?.click(); }} {...(t.needsYou ? { "data-pending": "Thread" } : {})}>
+    <div className="tcard" data-state={state} onDoubleClick={(e) => { /* View thread by double-click (docs/briefs/thread-panel.md item 3): not when it lands on a link or button, or on its text with a word selected to copy. */ const target = e.target as HTMLElement; if (target.closest("a,button") || (target !== e.currentTarget && getSelection()?.toString().trim())) return; viewRef.current?.click(); }} {...(t.needsYou ? { "data-pending": "Thread" } : {})}>
       <div className="tcard-head" data-dot={state !== "idle" && state !== "queued" ? "" : undefined}>
         {state !== "idle" && state !== "queued" && <span className="status" data-state={state} aria-hidden="true" />}
         <a className="tcard-title" href={open_}>{t.title || "New thread"}</a>

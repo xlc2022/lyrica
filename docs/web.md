@@ -829,7 +829,7 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   beneath, the step under way (or the first to do) with its mark, on one
   line with an ellipsis, left off once all are done or the thread is
   resolved; then the first line of its last update; **View thread** at its foot
-  (`a.sm`) opens the thread — the panel from 1180 px up, the page below — as does a double-click on the card that lands on none of its links or buttons and leaves nothing selected. Open, Stop,
+  (`a.sm`) opens the thread — the panel from 1180 px up, the page below — as does a double-click on the card that lands on none of its links or buttons and, on its text, leaves nothing selected. Open, Stop,
   Pin or Unpin (`…/pin`, as the thread menu's, with its toast; a pinned
   thread sits first among the project's threads in the sidebar, never in
   the Pinned group), Resolve or Reopen behind ⋯. The sidebar rows show no
