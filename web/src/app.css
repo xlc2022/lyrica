@@ -204,6 +204,10 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .ctx-menu kbd { font-size: 12px; color: var(--muted); }
 .ctx-menu .has-sub > span::after { content: " ›"; color: var(--muted); }
 .ctx-menu .back { color: var(--muted); font-size: 13px; justify-content: flex-start; }
+/* A submenu flies out beside its item on devices that can hover (docs/ux.md §3); it is the same menu, placed by JS. The item keeps its highlight while its flyout is open. */
+@media (hover: hover) {
+  .ctx-menu button[aria-expanded="true"] { background: var(--tool); }
+}
 .ctx-menu .sep { height: 1px; background: var(--line); margin: 4px 0; }
 .ctx-menu form { display: flex; gap: 6px; padding: 4px; }
 .ctx-menu form input { flex: 1; min-height: 32px; }
@@ -355,8 +359,12 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .prose table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13px; }
 .prose th, .prose td { border: 1px solid var(--line); padding: 4px 8px; }
 .prose img { max-width: 100%; }
-.caret-blink.alone { margin-left: 0; }
-.caret-blink { display: inline-block; width: 0.5em; height: 1em; background: var(--accent); vertical-align: -0.15em; margin-left: 2px; animation: pulse 1s steps(2) infinite; }
+/* The one indicator while a reply is being written (docs/ux.md §6): three muted dots fading in turn, after her last marker and never after text. */
+.writing-dots { display: inline-flex; gap: 4px; align-items: center; margin-left: 2px; }
+.writing-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); animation: dot-fade 1.2s ease-in-out infinite; }
+.writing-dots i:nth-child(2) { animation-delay: 0.15s; }
+.writing-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes dot-fade { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
 .thinking-dots { color: var(--muted); margin: 0; font-size: 13px; }
 .marker { font-size: 13px; color: var(--muted); min-width: 0; }
 .marker > button { display: inline-flex; gap: 6px; align-items: center; max-width: 100%; min-height: 28px; border: 1px dashed var(--line); background: transparent; border-radius: 999px; padding: 2px 10px; color: var(--muted); overflow: hidden; white-space: nowrap; font-weight: 400; }
@@ -592,6 +600,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .uploads progress { width: 80px; }
 }
 @media (prefers-reduced-motion: reduce) {
+  /* Everything rests; the writing dots among it, shown static rather than faded in turn. */
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 

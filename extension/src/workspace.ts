@@ -4,7 +4,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import {
-  holdsSecret, mcpNamespace, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  holdsSecret, mcpNamespace, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -363,6 +363,7 @@ export function describe(tools: ThreadTools): string {
     `A ${WORKDIR} path you write is a link the person can open, and an image under it that you write as markdown (![what it shows](${WORKDIR}/plot.png)) shows in your message.`,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
     network(tools.network()),
+    ...[toolsLine()].filter(Boolean),
     ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
     ...(pves.length ? [`Proxmox machines you can manage with the proxmox tool: ${pves.join(", ")}.`] : []),
     ...(tools.claudeCode?.() ? [CLAUDE_CODE_LINE] : []),
@@ -372,6 +373,16 @@ export function describe(tools: ThreadTools): string {
 
 /** The one prompt line for a thread with Claude Code (docs/workspace.md, "Claude Code"). */
 export const CLAUDE_CODE_LINE = "Claude Code is in your sandbox: `claude -p \"<task>\"` with bash, in this folder or a clone, hands a coding or repository job to Anthropic's coding agent, which works here and reports back; `claude -c -p \"<more>\"` continues its last job. It spends the person's own Claude plan, so use it for jobs big or hard enough to need it, never for conversation.";
+
+/** The sandbox's programs on this host (sandboxTools in core), and how to use its Chromium when it has one. */
+export function toolsLine(t: { programs: string[]; browser?: string } = sandboxTools()): string {
+  const parts = t.programs.length ? [`The sandbox has bash, ${t.programs.join(", ")}${t.browser ? " and headless Chromium" : ""}.`] : [];
+  if (t.browser) parts.push("To render or check a page: `\"$CHROME_PATH\" --headless --no-sandbox --disable-gpu --user-data-dir=/tmp/chromium` plus `--screenshot=<png>` or `--dump-dom`, on a `file://` path; local files need no network. Playwright and Puppeteer use the same browser, never their own download: `executablePath: process.env.CHROME_PATH` and `args: [\"--no-sandbox\"]`. A static page is checked once it parses and one screenshot looks right.");
+  return parts.join(" ");
+}
+
+/** With internet off, what can't be fetched stays unchecked rather than worked around. */
+export const OFFLINE_LINE = "Public CDNs and package registries are out of reach, so don't mirror or proxy them: say what you couldn't check, or ask the person to turn Internet on or allow the host.";
 
 /** The Git guide (git.md): the defaults the project's instructions can override. */
 export const GIT_GUIDE = readFileSync(new URL("./git.md", import.meta.url), "utf8").trim();
@@ -395,5 +406,6 @@ function fileNotes(n?: { added: string[]; removed: string[] }): string[] {
 function network(n: Network): string {
   const parts = [`Internet for commands: ${n.internet ? "on" : "off"}.`, `Local services (programs on this server): ${n.services ? "on" : "off"}.`];
   if (n.hosts.length) parts.push(`Hosts you may reach: ${n.hosts.join(", ")}.`);
+  if (!n.internet) parts.push(OFFLINE_LINE);
   return parts.join(" ");
 }

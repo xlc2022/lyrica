@@ -6,7 +6,7 @@ import { createAgentSession, DefaultResourceLoader, SessionManager, type AgentSe
 import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServer, ThreadRepository, ThreadWorkspace, ToolOps } from "@lyrica/core";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import { createMcpServersExtension, createModelsExtension, createWorkspaceExtension, setToolsOff, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
+import { createMcpServersExtension, createModelsExtension, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { Users, Workspace } from "@lyrica/core";
@@ -145,6 +145,14 @@ describe("workspace tools in a Pi session", () => {
     expect(system).toContain("/srv/music (read-only)");
     expect(system).toContain("Internet for commands: off.");
     expect(system).toContain("Hosts you may reach: nas.lan:8080.");
+    expect(system).toContain("don't mirror or proxy them");
+  });
+
+  it("names only the programs and browser this host's sandbox has", () => {
+    expect(toolsLine({ programs: ["git", "Node"], browser: "/usr/bin/chromium" })).toContain("bash, git, Node and headless Chromium.");
+    expect(toolsLine({ programs: ["git", "Node"], browser: "/usr/bin/chromium" })).toContain("executablePath: process.env.CHROME_PATH");
+    expect(toolsLine({ programs: ["git"] })).toBe("The sandbox has bash, git.");
+    expect(toolsLine({ programs: [] })).toBe("");
   });
 
   it("refuses a search or a page whose input holds one of the sandbox's credentials", async () => {

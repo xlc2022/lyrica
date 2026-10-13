@@ -35,6 +35,13 @@ minutes on a private repository are billed past the plan's allowance.
   those 10 were built from, so the next run still finds them cached.
 - The host-stack job removes what it installed (the stack and its volumes,
   the egress unit and rules, Docker's daemon.json) when it ends.
+- Runner speed: the runners sit on three machines of different speed. The
+  `check` job (unit tests and e2e) needs the extra label `lyrica-fast` and
+  so runs only on the faster machines; it timed out and flaked on the slowest
+  (4 cores), where it took twice as long. The other jobs run on any runner.
+  Give a runner the label with `--labels lyrica-ci,lyrica-fast` when
+  registering it, or add it in Settings, Actions, Runners. With no runner
+  carrying `lyrica-fast`, `check` waits in the queue.
 - One runner runs one job at a time. A new push to a pull request
   cancels its older runs. Main runs its newest merge only: a main run
   still waiting for a runner gives way to the next merge, and one already

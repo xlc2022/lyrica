@@ -26,7 +26,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   notice says so without naming them. Logging out says when the user stays
   unlocked because another browser still holds them.
 - **Sidebar:** the app's name links home, marks it as current
-  there, and closes the phone drawer when pressed. New thread (General or Private), Search (`src/Search.tsx`,
+  there, and closes the phone drawer when pressed. New thread and New project (General or Private), Search (`src/Search.tsx`,
   "Search titles and messages": the list filters by title as it is typed;
   from 2 characters, 300 ms after the last key, `GET …/search` turns it
   into a group per thread in the order of their newest hit, the thread's
@@ -815,8 +815,10 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   count and current step as a project's card does. A child's update shows
   in the parent as a card headed "Child thread", linking to it. **In a project chat** there is no
   card per start or update: each of the project's threads gets one card
-  under the message that started it (its anchor; threads whose anchor is
-  gone sit under the last message), updated in place from the overview:
+  under the first displayed message at or after its anchor entry (some
+  entries aren't displayed); threads whose anchor was removed sit under
+  the last message. Cards stay there as later messages arrive, updated in
+  place from the overview:
   title, state as a dot and word (Working blue, Waiting amber, Resolved
   green, Idle plain), its checklist's count while it has one
   (`ThreadSummary.steps`: "2 of 5" with its numbers in mono, a link named
@@ -973,7 +975,7 @@ turns animations off.
   hidden sleep pools and backend profiles (`cards.test.ts`), routine facts and paused
   schedules (`routines.test.ts`), the recorder's context
   fallback and clip limit (`voice.test.ts`), and a text model group's warn
-  lines (`library.test.ts`).
+  lines (`library.test.ts`), and flyout placement and hover intent (`flyout.test.ts`).
 - `npm run e2e -w @lyrica/web` runs Playwright (after a build). The upload
   test needs `gocryptfs`, as `lyricad` does. Each project in
   `playwright.config.ts` (phone 390×844 with touch, desktop 1280×800, and a

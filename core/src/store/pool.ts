@@ -1078,11 +1078,12 @@ export class PoolStore extends PoolReader {
    * have (a kept child thread is no longer a child). A project forgotten with
    * `children` also takes its page and the notes that came only from it.
    */
-  forgetThread(threadId: string, author: Author, opts: { children?: boolean } = {}): void {
+  forgetThread(threadId: string, author: Author, opts: { children?: boolean; keepMemories?: boolean } = {}): void {
     this.checkAuthor(author);
     const thread = this.mustThread(threadId);
-    if (thread.project && opts.children) this.forgetProjectMemory(threadId, author);
-    for (const sub of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(sub.id, author);
+    const keep = !!opts.keepMemories;
+    if (thread.project && opts.children && !keep) this.forgetProjectMemory(threadId, author);
+    for (const sub of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(sub.id, author, { keepMemories: keep });
     if (opts.children) for (const child of this.listThreads({ includeHidden: true, parent: threadId, children: true })) this.forgetThread(child.id, author, opts);
     this.tx(() => {
       // A kept daughter is a thread of its own: a kept child thread is no longer a child, so it may start its own.
@@ -1090,8 +1091,13 @@ export class PoolStore extends PoolReader {
       const inThread = (dst: string) => dst === `t:${threadId}` || dst.startsWith(`e:${threadId}#`);
       const candidates = this.db.prepare("SELECT DISTINCT src FROM citations WHERE src LIKE 'n:%' AND (dst = ? OR dst LIKE ?)")
         .all(`t:${threadId}`, `e:${threadId}#%`) as { src: string }[];
-      for (const { src } of candidates) {
+      if (!keep) for (const { src } of candidates) {
         if (this.cameFrom(src).every(inThread)) this.remove(src, author, true);
+      }
+      // A thread deleted with its memories kept leaves a text-free tombstone: its ID and deletion time, so a citation of it still leads somewhere.
+      if (keep) {
+        this.db.prepare("INSERT OR REPLACE INTO tombstones (id, kind, sources, deleted_by, deleted_at) VALUES (?, 'thread', '[]', ?, ?)")
+          .run(`t:${threadId}`, author, now());
       }
       this.db.prepare("DELETE FROM search WHERE kind = 'entry' AND id LIKE ?").run(`e:${threadId}#%`);
       this.db.prepare("DELETE FROM entries WHERE thread = ?").run(threadId);
@@ -1099,6 +1105,17 @@ export class PoolStore extends PoolReader {
       this.db.prepare("DELETE FROM threads WHERE id = ?").run(threadId);
       this.optimize();
     });
+  }
+
+  /** What a thread deleted with its memories kept leaves behind: when it went. No text. */
+  getThreadTombstone(threadId: string): { deletedAt: string } | undefined {
+    const row = this.db.prepare("SELECT deleted_at FROM tombstones WHERE id = ? AND kind = 'thread'").get(`t:${threadId}`) as { deleted_at: string } | undefined;
+    return row ? { deletedAt: row.deleted_at } : undefined;
+  }
+
+  /** Notes and pages citing a thread or one of its entries, including after it was deleted. */
+  citingThread(threadId: string): string[] {
+    return (this.db.prepare("SELECT DISTINCT src FROM citations WHERE dst = ? OR dst LIKE ? ORDER BY src").all(`t:${threadId}`, `e:${threadId}#%`) as { src: string }[]).map((r) => r.src);
   }
 
   /** A project's page, and the notes whose every source is in the project chat or its threads. */
