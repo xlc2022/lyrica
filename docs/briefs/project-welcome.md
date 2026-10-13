@@ -66,12 +66,48 @@ one place) and the existing Projects design.
 - Moving or copying the source thread's own messages into the project.
 - Any change to Make project.
 
+## Build plan
+
+Two PRs, back end first, each on its own branch off `main`.
+
+**PR 1, back end** (`feature/project-welcome-api`):
+- `POST …/threads/:pool/:projectId/fold` `{ threadId }` → ThreadSummary.
+  Moves a top-level, non-project thread (with its children) under the
+  project: it becomes a project thread (state, anchor none, card in the
+  chat). Refused for a private thread into a general project, a project,
+  a subagent or another project's thread. Keeps checklists and wake-ups.
+- `POST /api/u/:userId/threads/:pool/:threadId/continue-as-project` →
+  ThreadSummary of the new project. Creates a pinned project in the same
+  pool, copies the thread's folders, machines, repositories, MCP servers
+  and local-only switch to the project chat, folds the thread's children
+  in, and posts a first message linking the source thread that asks
+  Lyrica to draft Goal and Instructions with `threads draft` (below).
+- `GET …/threads/:pool/recent?top=10` (or reuse the list): the ten most
+  recent top-level, non-project threads the user can read in that pool.
+- A `threads` tool action `fold` (her suggestion, like `suggest`): a list
+  of thread ids; the UI draws the Fold in card from the call, as it draws
+  Suggested threads from `suggest`. `POST …/:projectId/folds/:callId/apply`
+  `{ index? }` applies one or all.
+- A `threads` tool action `draft` `{ goal?, instructions? }`: stores a
+  draft on the project, shown on Project settings for the user to edit
+  and Save; never applied by itself.
+- Tests: fold round trip (children, checklist, wake-ups), private → general
+  refused, local-only carried, draft never applied without Save.
+
+**PR 2, web** (`feature/project-welcome`): the welcome card, the Set up
+from recent work dialog, Connect repo's popover in place, Make a plan's
+thread, the Fold in card, Continue as Project in ThreadMenu with a
+letter key, and the draft shown on Project settings. Run the design
+skills (design-critique, accessibility-review, ux-copy). Both reviewers.
+
 ## Docs to update in the build PR
 
 docs/ux.md §6 (the A project row and the vocabulary list: Connect repo,
 Set up from recent work, Make a plan, Continue as Project), DESIGN.md
 "Projects", docs/web.md, docs/contracts.md if the seed needs a daemon
-route, and docs/briefs/projects-web.md.
+routes and tool actions, docs/briefs/projects-web.md, and
+docs/briefs/lyrica-project.md only if her tools change how she works on
+her own code.
 
 ## Open questions
 
