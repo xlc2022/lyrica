@@ -35,12 +35,19 @@ one place) and the existing Projects design.
      moves it, with its child threads, under the project, as Continue as
      Project does. The dialog picks and confirms; it edits nothing (ux.md:
      dialogs only confirm).
-   - **Connect repo** (Claude's "Connect tools") opens the Repositories
-     picker already in the Project settings page under This chat (ux.md
-     §6, "A thread's repositories"); no new picker. Once a repository is
-     granted, Lyrica is told and clones nothing herself.
-   - **Make a plan** sends a first message asking for a plan, which gets the
-     existing plan card.
+   - **Connect repo** (Claude's "Connect tools") opens the Add repository
+     popover in place under the button: the one already on Project
+     settings under This chat (ux.md §6, "A thread's repositories"), which
+     lists the repositories each of the user's Git accounts can see,
+     grouped by account, with a search box and a **Git accounts** link at
+     its foot. A pick grants the repository to the project chat at once,
+     so every thread of the project inherits it. No new picker; Lyrica is
+     told and clones nothing herself.
+   - **Make a plan** starts a project thread titled **Plan**, separate from
+     the project chat, with a first message asking for a plan for the
+     project's goal; it gets its card in the project chat and opens. The
+     plan comes back as the existing plan card in that thread, and its
+     suggested threads in the project chat's Suggested threads card.
 2. **Continue as Project** in a top-level thread's right-click menu, beside
    Make project. It creates a new pinned project whose **Goal** and
    **Instructions** are drafted from the thread (a summary Lyrica writes,
