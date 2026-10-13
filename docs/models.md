@@ -102,7 +102,9 @@ administrator pairs or manages them; a personal host lives in its user's
   pauses, resumes or restarts it.
 - `pageStatus` is an endpoint's state for the Models page: one seen down in
   the last 30 seconds isn't asked again, and nothing waits more than 3
-  seconds, so a host that's off doesn't hold the page. A host that answered
+  seconds, so a host that's off doesn't hold the page — which matters because
+  the shell polls `GET …/models/page`, which asks it for every endpoint,
+  app-wide on every open tab: on load, every 30 seconds and on focus. A host that answered
   `unpaired` (it revoked this server) says `unpaired: true` until it answers
   again or is paired again, so the page can offer Pair again….
 - Unpairing is removing the endpoint; the host keeps listing this server
@@ -297,6 +299,9 @@ Never prompt text. The latest 500 per user are kept. Before pruning, a
 transaction folds counted turns into `call_totals` (pool, thread, label,
 kind, tokens, gpu_ms, calls); forgetting a thread removes its totals too.
 User schema step 10 adds this table and nullable `model_calls.read_tokens`.
+`endpointUses(userId, pools)` counts each endpoint's calls over these rows in
+the given pools; the Models page sends them so the sidebar can rank endpoints
+without leaning on the recent-calls preview.
 
 `usage(userId, pool, threadIds)` returns shares by thread, model label and
 kind, summing retained calls and folded totals. Tokens are `read_tokens +

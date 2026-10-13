@@ -436,6 +436,8 @@ export interface ModelsPage {
   hosts: ({ endpointId: string; status: HostStatus } | { endpointId: string; error: string; unpaired?: true })[];
   presets: Presets;
   calls: CallInfo[];
+  /** Each endpoint's call count over `model_calls` in the pools this page shows, not over `calls`; what ranks the sidebar's status panel. Endpoints with no calls aren't listed. */
+  endpointUses: { endpointId: string; calls: number }[];
   notice: string[];
   /** How many items Clean up lists. */
   cleanup: number;

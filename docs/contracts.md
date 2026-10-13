@@ -1317,6 +1317,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     - **Models page, library, tokens:** `GET models/page` (→ `ModelsPage`:
       endpoints with `pageStatus`, hosts' status or error (`unpaired` when the
       host revoked this server), the presets and columns, the last 20 calls,
+      per-endpoint call counts over the shown pools (`endpointUses`, what ranks
+      the sidebar's status panel),
       the notice, the Clean up count); `GET models/cleanup`; `GET`/`DELETE
       models/notice`; `GET models/calls` (`?project=&pool=` filters both pool and project tree); `GET library/text`; `GET hub-tokens`,
       `PUT`/`DELETE hub-tokens/:hub` (`?shared=1`). Types: `ModelsPage`,

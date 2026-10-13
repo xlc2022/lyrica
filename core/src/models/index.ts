@@ -2203,6 +2203,20 @@ export class Models {
     return rows.map(toCall);
   }
 
+  /** How many times each endpoint answered, counted over `model_calls` in these pools rather than over any preview list.
+   * Endpoints with no calls aren't listed; a call to an endpoint since removed counts nowhere. */
+  endpointUses(userId: string, pools: Pool[]): { endpointId: string; calls: number }[] {
+    if (!pools.length) return [];
+    const rows = this.withUser(userId, (db) => db.prepare(
+      "SELECT endpoint, kind, count(*) AS calls FROM model_calls WHERE pool IN (SELECT value FROM json_each(@pools)) GROUP BY endpoint, kind"
+    ).all({ pools: JSON.stringify(pools) })) as { endpoint: string; kind: "local" | "cloud"; calls: number }[];
+    const byName = new Map(rows.map((r) => [`${r.kind}/${r.endpoint}`, r.calls]));
+    return this.endpoints(userId).flatMap((e) => {
+      const calls = byName.get(`${e.kind}/${e.name}`);
+      return calls ? [{ endpointId: e.id, calls }] : [];
+    });
+  }
+
   /** Turns and recursively nested subagents, filtered by both pool and thread. */
   usage(userId: string, pool: Pool, threadIds: string[]): { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[] {
     const rows = this.withUser(userId, (db) => db.prepare(`

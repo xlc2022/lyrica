@@ -1,5 +1,5 @@
 // The sidebar's status panel picks its endpoints from GET …/models/page: the two most-used local ones and the two
-// most-used cloud ones, counted over the page's recent calls (web/src/SideStatus.tsx).
+// most-used cloud ones, ranked by the page's endpointUses counts (web/src/SideStatus.tsx).
 import { describe, expect, it } from "vitest";
 import type { ModelsPage } from "../src/api.ts";
 import { checkedAgo, selectStatus } from "../src/SideStatus.tsx";
@@ -7,16 +7,16 @@ import { checkedAgo, selectStatus } from "../src/SideStatus.tsx";
 const ep = (name: string, kind: "local" | "cloud", over: Record<string, unknown> = {}) => ({
   id: name, name, kind, api: "openai-compatible", baseUrl: "http://x/v1", hasApiKey: false, shared: false, unencrypted: false, stale: false, models: [], state: "up", ...over,
 });
+const use = (endpointId: string, calls: number) => ({ endpointId, calls });
 const call = (kind: "local" | "cloud", endpointName: string) => ({ at: "2026-10-13T10:00:00Z", pool: "general", threadId: "t1", task: "chat", offeringId: "o1", label: `m/${endpointName}`, endpointName, kind });
-const page = (endpoints: unknown[], hosts: unknown[] = [], calls: unknown[] = []) => ({ endpoints, hosts, calls }) as unknown as ModelsPage;
+const page = (endpoints: unknown[], hosts: unknown[] = [], uses: unknown[] = []) => ({ endpoints, hosts, calls: [], endpointUses: uses }) as unknown as ModelsPage;
 
 describe("the sidebar's status panel picks its endpoints", () => {
   it("takes the two most-used of each kind, most used first", () => {
     const p = page(
       [ep("gpu", "local"), ep("box", "local"), ep("nas", "local"), ep("router", "cloud"), ep("openai", "cloud"), ep("grok", "cloud")],
       [],
-      [...Array(3).fill(call("local", "gpu")), call("local", "box"), ...Array(2).fill(call("local", "nas")),
-        call("cloud", "router"), ...Array(5).fill(call("cloud", "openai")), ...Array(2).fill(call("cloud", "grok"))],
+      [use("gpu", 3), use("box", 1), use("nas", 2), use("router", 1), use("openai", 5), use("grok", 2)],
     );
     const { local, cloud } = selectStatus(p);
     expect(local.map((i) => i.name)).toEqual(["gpu", "nas"]);
@@ -47,8 +47,8 @@ describe("the sidebar's status panel picks its endpoints", () => {
     expect(cloud[0]).toMatchObject({ name: "router", dot: "down", word: "Unreachable" });
   });
 
-  it("counts only the page's recent calls, and ignores ones for endpoints that are gone", () => {
-    const p = page([ep("gpu", "local"), ep("box", "local")], [], [...Array(9).fill(call("local", "deleted-box")), call("local", "box")]);
+  it("ranks by endpointUses, not the recent-calls preview, and ignores counts for endpoints that are gone", () => {
+    const p = { endpoints: [ep("gpu", "local"), ep("box", "local")], hosts: [], calls: [...Array(9).fill(call("local", "gpu"))], endpointUses: [use("box", 4), use("deleted-box", 9)] } as unknown as ModelsPage;
     expect(selectStatus(p).local.map((i) => i.name)).toEqual(["box", "gpu"]);
   });
 });

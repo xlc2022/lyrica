@@ -1,6 +1,7 @@
 // The sidebar's status panel (docs/ux.md §6): the two most-used local endpoints side by side, and up to two cloud
 // ones with when they were last checked. It reads the shell's GET …/models/page, which the shell polls so the panel
-// shows on every page; with no endpoints there is nothing to say, so it isn't drawn at all.
+// shows on every page, and ranks by its endpointUses counts — not by the recent-calls preview, which is only a
+// preview; with no endpoints there is nothing to say, so it isn't drawn at all.
 import type { ModelsPage } from "./api.ts";
 import { stateOf } from "./Models.tsx";
 import { hostOf } from "./ModelsFrame.tsx";
@@ -12,18 +13,14 @@ export interface StatusItem { id: string; name: string; dot: string; word?: stri
 const LIMIT = 2;
 
 /** The panel's endpoints from the page: up to the two most-used local ones and the two most-used cloud ones,
- * most used first, counted over its recent calls. Endpoints none of them names keep their order among themselves. */
+ * most used first, counted over its `endpointUses`. Endpoints it doesn't name count as unused and keep their order among themselves. */
 export function selectStatus(page?: ModelsPage): { local: StatusItem[]; cloud: StatusItem[] } {
   if (!page) return { local: [], cloud: [] };
-  const uses = new Map<string, number>();
-  for (const c of page.calls) {
-    const key = `${c.kind}/${c.endpointName}`;
-    uses.set(key, (uses.get(key) ?? 0) + 1);
-  }
+  const uses = new Map(page.endpointUses.map((u) => [u.endpointId, u.calls]));
   const pick = (kind: "local" | "cloud") => page.endpoints
     .map((e, at) => ({ e, at }))
     .filter(({ e }) => e.kind === kind)
-    .sort((a, b) => (uses.get(`${kind}/${b.e.name}`) ?? 0) - (uses.get(`${kind}/${a.e.name}`) ?? 0) || a.at - b.at)
+    .sort((a, b) => (uses.get(b.e.id) ?? 0) - (uses.get(a.e.id) ?? 0) || a.at - b.at)
     .slice(0, LIMIT)
     .map(({ e }) => {
       const s = stateOf(e, hostOf(page, e.id));
