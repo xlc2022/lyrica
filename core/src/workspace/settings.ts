@@ -498,6 +498,13 @@ export class WorkspaceSettings {
     });
   }
 
+  /** Existing work moved into a project keeps its grants, narrowed by its new parent. */
+  reparent(threadId: string, projectId: string): void {
+    this.write(threadId, { ...this.effective(threadId), parent: projectId });
+    this.write(threadId, this.effective(threadId));
+    this.narrowChildren(threadId);
+  }
+
   /** A daughter kept when its parent is forgotten: its settings stay as they are, now its own. */
   detach(threadId: string): void {
     this.db.prepare("UPDATE thread_workspaces SET parent = NULL WHERE thread_id = ?").run(threadId);

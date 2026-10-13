@@ -136,7 +136,7 @@ describe("user step 5 (portrait-photo cloud choice)", () => {
       expect(settings.photoCloudPolicy()).toBe(policy ?? "ask");
       expect(settings.photoCloudApproved("2026-10-12")).toBe(false);
       expect(db.prepare("SELECT value FROM settings WHERE key = 'k'").get()).toEqual({ value: "v" });
-      expect(schemaOf(db)).toEqual({ version: 5, minReader: 1 });
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: 1 });
       expect(() => checkReadable(db, "user", STEPS.user.filter(s => s.version <= v))).not.toThrow();
       db.close();
     }
@@ -207,6 +207,27 @@ describe("pool step 6 (routines)", () => {
       expect(db.prepare("SELECT new_thread, paused, last_at FROM routines").get()).toEqual({ new_thread: 0, paused: 0, last_at: null });
       db.prepare("DELETE FROM threads WHERE id = 'web/a'").run();
       expect(db.prepare("SELECT * FROM routines").all()).toEqual([]);
+      db.close();
+    }
+  });
+});
+
+
+describe("user step 6 (project welcome drafts)", () => {
+  it("expands every released user schema, retaining project settings and previous readers", () => {
+    for (let v = 0; v < 6; v++) {
+      const db = scratchDb();
+      if (v) {
+        migrate(db, "user", {}, STEPS.user.filter(s => s.version <= v));
+        db.prepare("INSERT INTO project_settings (pool, thread, paused, model, thinking) VALUES ('private', 'web/project', 1, NULL, 'off')").run();
+      }
+      migrate(db, "user");
+      if (!v) db.prepare("INSERT INTO project_settings (pool, thread, paused) VALUES ('private', 'web/project', 1)").run();
+      expect(db.prepare("SELECT paused, draft_goal, draft_instructions FROM project_settings").get()).toEqual({ paused: 1, draft_goal: null, draft_instructions: null });
+      db.prepare("UPDATE project_settings SET draft_goal = ?, draft_instructions = ?").run("Grow herbs", "Keep a planting diary");
+      migrate(db, "user");
+      expect(db.prepare("SELECT draft_goal, draft_instructions FROM project_settings").get()).toEqual({ draft_goal: "Grow herbs", draft_instructions: "Keep a planting diary" });
+      expect(() => checkReadable(db, "user", STEPS.user.filter(s => s.version <= 5))).not.toThrow();
       db.close();
     }
   });

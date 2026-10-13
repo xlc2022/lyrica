@@ -16,6 +16,15 @@ rediscovering them (principle 6: trust her judgment, make review easy).
 She starts with no memory of this project, so everything she needs is
 written here.
 
+## Bringing existing work into this project
+
+The back end supports `threads fold { ids }` to suggest bringing existing
+work into the project, with moves applied by the user. `threads draft`
+proposes Goal and Instructions for editing; it never changes the saved
+project instructions. Continue as project leaves the source conversation
+and carries its children into a new project. The interface is built under
+[project-welcome.md](project-welcome.md).
+
 ## Setup, by the owner, once
 
 1. **New project** from the thread list's own menu (right-click or long

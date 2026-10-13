@@ -222,6 +222,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principle 2: the user's portrait-photo cloud choice, default Ask once a day. Expand only.
     version: 5,
     run(db) { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('images.photos.cloud', 'ask')").run(); },
+  }, {
+    // Principle 1: editable project welcome drafts; expand only.
+    version: 6,
+    run(db) { addColumns(db, [["project_settings", "draft_goal", "TEXT"], ["project_settings", "draft_instructions", "TEXT"]]); },
   }],
   pool: [{
     version: 1, contract: true,
