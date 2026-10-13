@@ -326,7 +326,7 @@ material.
 |---|---|
 | **Archive** | She stops using the memory. It is kept, and archiving can be undone. |
 | **Delete a memory** | The text and its revisions are removed. A tombstone is left. Pages that cited it are flagged, and the next sleep rewrites them. |
-| **Forget a thread** | The thread and its entries are deleted, along with notes whose only sources were in it, and its subagents' threads the same way. Each deleted note leaves a tombstone, and pages that cited them are flagged. Its child threads (Lyrica's, branches, copies) go too with `forgetThread(id, author, { children: true })`; otherwise they are kept, with no parent. |
+| **Forget a thread** | The thread and its entries are deleted, along with notes whose only sources were in it, and its subagents' threads the same way. Each deleted note leaves a tombstone, and pages that cited them are flagged. Its child threads (Lyrica's, branches, copies) go too with `forgetThread(id, author, { children: true })`; otherwise they are kept, with no parent. Its files go too: its folder in the home workspace, and the snapshots kept to undo its changes. |
 | **Forget a topic** | Search, review the matches, then delete them in bulk. |
 | **Remove turns** | A rewind (Delete from here, Regenerate, Edit) removes entries from one onwards as forgetting does (`truncateThread`, which also counts the pins it takes); what the turns did outside memory is in daemon.md, "What removed turns did": notes whose only sources were in them go with tombstones, pages citing those notes or the entries are flagged, and subagent threads started in them are forgotten. An entry a branch still holds a copy of keeps its notes and search row, and its citations resolve through the copy. |
 

@@ -1002,6 +1002,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   and haven't changed in 30 days. `forgetWorktree(path, allowed)` removes a
   worktree's git record only when it is in a folder the user may grant,
   reached with no symlinks, and names that worktree back. Logs counts only.
+  `forgetThreadFiles(services, userId, pool, threads)` does the same for
+  threads just forgotten, at once and with no age limit, and drops their
+  change records and snapshots too; `DELETE …/threads/:pool/:threadId` calls it.
 - **Web access** (`LyricadOptions.web`): built-in Caddy, configured through
   its admin socket `/run/lyrica-caddy/admin.sock`, or an external proxy, with
   an extra listener whose settings and TLS key are in

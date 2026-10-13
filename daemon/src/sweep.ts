@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { isMounted } from "@lyrica/core";
+import { isMounted, type FileChanges, type Pool } from "@lyrica/core";
 import type { Services } from "./lyricad.ts";
 
 // The nightly sweep: what removing turns and forgetting threads leave behind
@@ -34,12 +34,8 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
   } finally {
     o.close();
   }
-  const paths = s.workspace.allowedPaths.list(userId);
-  const allowed = [...paths.general, ...paths.private];
-  // Each worktree in a run's folder, so git forgets it before the folder goes.
-  const forgetRun = (runDir: string) => {
-    try { for (const repo of readdirSync(runDir)) forgetWorktree(join(runDir, repo), allowed); } catch { /* not a folder */ }
-  };
+  const allowed = allowedOf(s, userId);
+  const forgetRun = (runDir: string) => forgetRunWorktrees(runDir, allowed);
   const live = new Set((["general", "private"] as const).flatMap((pool) => s.delegation.store.liveRuns(userId, pool)));
   // Claude Code's folders (Workspace.claudeDir) go with their thread too.
   const claudeDir = join(home, "claude");
@@ -56,9 +52,7 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
     try { id = decodeURIComponent(name); } catch { continue; }
     // A thread made since the list was read may have a new folder already.
     if (!exists(id) && statSync(dir).mtimeMs < now.getTime() - 60_000) {
-      const runs = join(dir, "worktrees");
-      if (existsSync(runs)) for (const w of readdirSync(runs)) forgetRun(join(runs, w));
-      rmSync(dir, { recursive: true, force: true });
+      removeThreadFolder(dir, allowed);
       counts.folders++;
       continue;
     }
@@ -74,6 +68,50 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
     }
   }
   return counts;
+}
+
+/**
+ * Removes the files of threads just forgotten, at once rather than at the next
+ * sweep: the records of what her calls changed and their snapshots, each
+ * thread's folder under `threads/` (its run worktrees forgotten by git first)
+ * and its Claude Code folder. Only while the home is mounted; otherwise the
+ * sweep takes the folders later. Returns how many folders went.
+ */
+export function forgetThreadFiles(s: Services, userId: string, pool: Pool, threads: string[]): number {
+  const home = s.workspace.homeDir(userId);
+  if (!threads.length || !isMounted(home)) return 0;
+  return forgetFiles(home, s.workspace.changes(userId), pool, threads, allowedOf(s, userId));
+}
+
+/** forgetThreadFiles in a mounted home. */
+export function forgetFiles(home: string, changes: FileChanges, pool: Pool, threads: string[], allowed: string[]): number {
+  changes.forget(changes.forThreads(pool, threads).map((c) => c.id));
+  let n = 0;
+  for (const id of threads) {
+    const name = encodeURIComponent(id);
+    if (!name || name === "." || name === "..") continue;
+    const dir = join(home, "threads", name);
+    if (existsSync(dir)) { removeThreadFolder(dir, allowed); n++; }
+    const claude = join(home, "claude", name);
+    if (existsSync(claude)) { rmSync(claude, { recursive: true, force: true }); n++; }
+  }
+  return n;
+}
+
+function allowedOf(s: Services, userId: string): string[] {
+  const paths = s.workspace.allowedPaths.list(userId);
+  return [...paths.general, ...paths.private];
+}
+
+/** Each worktree in a run's folder, so git forgets it before the folder goes. */
+function forgetRunWorktrees(runDir: string, allowed: string[]): void {
+  try { for (const repo of readdirSync(runDir)) forgetWorktree(join(runDir, repo), allowed); } catch { /* not a folder */ }
+}
+
+function removeThreadFolder(dir: string, allowed: string[]): void {
+  const runs = join(dir, "worktrees");
+  if (existsSync(runs)) for (const w of readdirSync(runs)) forgetRunWorktrees(join(runs, w), allowed);
+  rmSync(dir, { recursive: true, force: true });
 }
 
 /**
