@@ -74,8 +74,8 @@ becomes understanding (principle 5), and where she wakes up continuous
      `sleep.wake` through the router with that pool's context, so private
      sleep is local-only.
    - Retries stay within the allowed models and never cross between local and
-     cloud. Use the profile's ordered fallbacks once Models supports them;
-     until then, one model per phase.
+     cloud. A phase starts on the first model in its list that answers, and
+     **Sleep fallback** off uses the first model only.
 7. **The watermark.**
    - Only entries written before the run started are processed.
    - It moves only after consolidate finishes. A partial run resumes where it
@@ -117,8 +117,6 @@ becomes understanding (principle 5), and where she wakes up continuous
 ## Out of scope
 
 - The Sleep section's UI (Web UI thread).
-- Ordered fallbacks in profiles (Models follow-up). Use them if they land
-  first.
 - Embedding-based recall.
 - Importing v1 memories.
 

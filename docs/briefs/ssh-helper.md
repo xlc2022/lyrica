@@ -13,8 +13,8 @@ docs/workspace.md (the sandbox and its network rules),
 
 ## Goal
 
-A hostile SSH server can't reach `lyricad`'s memory. Today the `ssh2`
-client runs inside `lyricad`, the one process that holds every user's
+A hostile SSH server can't reach `lyricad`'s memory. Before this was built, the `ssh2`
+client ran inside `lyricad`, the one process that holds every user's
 unlocked keys; a bug in the library's parsing of a server's packets is the
 one path from a remote machine into it. Moving the client into a sandboxed
 helper per connection means such a bug yields one key the server could

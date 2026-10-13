@@ -361,8 +361,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   project filter does not remove choices. Recent calls: Time (mono), Thread (a link; private
   kind mark; "a forgotten thread" when gone), Task, Answered by ("model ·
   endpoint"), Note (the fallback or note, warn text); hidden pools left
-  out; the table stacks on a phone. Tasks (`GET …/presets`, the former
-  Settings → Model profiles) has two columns, **Private threads** and
+  out; the table stacks on a phone. Tasks (`GET …/presets`) has two columns, **Private threads** and
   **General threads**, with a **Preset** menu in each head. Local is private;
   Cloud is general; named presets follow their scope. The menu holds Search
   presets, the available presets with Edit beside user presets, Save to and
@@ -544,7 +543,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Password, Your personas (linking a separate persona needs both passwords),
   Persona suggestions (edit, send on to the administrators, or drop),
   Sleep (the **Sleep** mode select and the **Sleep fallback** switch;
-  model profiles moved to Models → Tasks and endpoints to Hosts and
+  model presets moved to Models → Tasks and endpoints to Hosts and
   endpoints, so `…/settings/profiles` and `…/settings/endpoints` go there), Network (New threads: the default
   mode and Fallback; then network defaults per pool), and **Machines**
   (`src/Machines.tsx`, docs/ux.md section 6): a row per machine with its

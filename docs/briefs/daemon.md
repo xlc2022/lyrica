@@ -176,5 +176,5 @@ only on the developer bench.
   `systemd-creds decrypt --user`, systemd 256 or later), and `PrivateTmp`,
   `ProtectControlGroups` and `ProtectHostname` don't break bubblewrap, pasta
   or gocryptfs. Drop any that do.
-- **Open:** Delegation's events reach the stream through
-  `HostedThread.publish` once Delegation lands.
+- Delegation's events reach the stream through `HostedThread.publish`
+  (`daemon/src/hosted.ts`).

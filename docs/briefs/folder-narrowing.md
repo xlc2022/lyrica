@@ -14,9 +14,9 @@ workspace ([project-workspace.md](project-workspace.md)).
 ## Goal
 
 Taking a folder off a parent thread takes it off its children at once, the
-way a machine already does (decided 2026-10-11). Today `effective()`
-narrows a child's mode, switches and machines by its ancestors', but not its
-grants: a child that still holds a removed folder fails on its next call
+way a machine already does (decided 2026-10-11). Before this was built, `effective()`
+narrowed a child's mode, switches and machines by its ancestors', but not its
+grants: a child that still held a removed folder failed on its next call
 with "isn't in the parent thread's folders" until its own folders are
 narrowed by hand. Principle 2: a boundary enforced by structure, in one
 place.

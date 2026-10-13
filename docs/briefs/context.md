@@ -95,10 +95,9 @@ owns compaction; we steer it).
 compaction marker shown as one line in the web UI.
 
 **Left:**
-- **Pinned messages** don't exist yet. The breakdown has a `pinned` part that
-  reads 0, and compaction keeps nothing special. When pins land: count them in
-  that part, re-inject them after a compaction, and add the brief's "keeps the
-  pinned messages" test.
+- **Pinned messages** are built: they are read from the store word for word
+  into a `pinned` section, so compaction can't summarise them away, and the
+  breakdown's `pinned` part counts them (`extension/src/assemble.ts`).
 - **A compaction marker that expands**: Web UI 2. (The context meter, the
   facts line's Context and its popover, is built.)
 - **Speed in the web UI**, which the API already sends: the tok/s and prompt
