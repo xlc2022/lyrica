@@ -13,7 +13,9 @@ Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/p/<pool>/<proje
 for a project's settings, `…/memory`, `…/settings/<section>`, `…/admin/<section>`,
 `#/login`), so `lyricad` serves a single file. The old `…/panel` opens Settings.
 A thread's address may carry what the panel beside it shows:
-`…/t/<pool>/<thread>/panel/t/<pool>/<other>` or `…/panel/p/<pool>/<project>/<section>`.
+`…/t/<pool>/<thread>/panel/t/<pool>/<other>`, `…/panel/p/<pool>/<project>/<section>`
+or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
+`…/t/<pool>/<project-thread>/threads`: what the panel shows beside its chat from 1180 px up.
 
 - **Unlock** while `lyricad` is locked, then **login**. A browser holds one
   person's users: the user menu at the foot of the sidebar opens Settings and
@@ -61,7 +63,10 @@ A thread's address may carry what the panel beside it shows:
   **New project** (General or Private: an empty, pinned project chat) and
   **New group…**.
 - **Thread menu** (`src/ThreadMenu.tsx`): right-click a thread, or hold it
-  for half a second on a touch screen. Mark as unread or read (U), Rename…
+  for half a second on a touch screen. **Open beside** (B) first, on a child
+  row where the sidebar passes it (from 1180 px up with a thread open): it opens
+  the child in the panel beside the open thread; Shift+click or Shift+Enter on
+  the row does the same, and below 1180 px Shift+click navigates itself. Mark as unread or read (U), Rename…
   (R, inline), **Share with** (S: the other users on this server, from
   `GET …/people`, linked personas marked; picking one confirms in a dialog
   that says the copy is as it is now, that later messages and memories
@@ -118,9 +123,13 @@ A thread's address may carry what the panel beside it shows:
   `settings` event to the source thread; finished turns and focus refresh
   routines too.
 - **Project chat** (`src/Project.tsx`): the facts line adds **Threads** with
-  the count, opening a popover of the project's threads grouped Waiting on
+  the count. From 1180 px up it is a toggle (`aria-pressed`, pressed look while
+  shown) for the panel beside the chat showing the project's threads list
+  (`{page:"threads"}`: `ThreadsPage`, the same groups as the popover below, each row
+  its state word and its time in mono); below it a popover of the project's
+  threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
-  count), and the project's tokens ("65 tokens", "312k tokens"; on a phone the tokens
+  count). The facts line also carries the project's tokens ("65 tokens", "312k tokens"; on a phone the tokens
   are the popover's first line instead). The header has a **Project**
   link to the project settings page before the Settings button, which
   opens the thread's drawer as in any thread. The
@@ -128,10 +137,13 @@ A thread's address may carry what the panel beside it shows:
   thread list, so cards and state words follow. A resolved project thread
   has a **Reopen** link where its message box was.
 - **The panel** (`Shell.tsx`, docs/ux.md §6): from 1180 px up, a link in a
-  conversation to a thread or a project's settings (a thread card, a mention,
-  the Threads popover, the header's Project link) opens it in a third column
-  instead of navigating, and the address gains `/panel/<its path>`; the
-  sidebar's rows navigate as before, and so does a modified click. The column
+  conversation to a thread or a project's settings (a thread card or its
+  **View thread**, a mention, the Threads fact, the header's Project link) opens it in a third column
+  instead of navigating, and the address gains `/panel/<its path>`; so do
+  **Open beside** (B) in a child row's sidebar menu and Shift+click or
+  Shift+Enter on such a row (`showInPanel`, with the breadcrumb starting
+  there). The sidebar's other rows navigate as before, and so does any other
+  modified click. The column
   is 360 to 520 px (420 to start), dragged on its divider (a `separator`
   that the arrow keys move too), the width kept in `localStorage`
   (`lyrica.panel-width`). A link inside the panel replaces what it shows and
@@ -793,7 +805,12 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   for a second. When the pins are over their budget the badge adds "shortened", with
   a tooltip saying the oldest reach her as their first line only.
 - A `threads` call is a card: the child thread started (title and task) or
-  messaged, linking to it. While the child has a checklist (its
+  messaged, linking to it — one **Open** link in its head, or when the run made
+  more than one thread a **Threads <n>** button with the count in mono and a
+  chevron (`aria-expanded`, turning down while open; `src/Messages.tsx`) that
+  opens a dialog of them: each row the title cut to one line and its state as a
+  dot and a word, a 44 px tap on coarse pointers, full width in flow at 390 px.
+  Each opens the panel from 1180 px up and the page below. While the child has a checklist (its
   `ThreadSummary.steps` in the thread list), the start card shows its
   count and current step as a project's card does. A child's update shows
   in the parent as a card headed "Child thread", linking to it. **In a project chat** there is no
@@ -809,7 +826,8 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   wake-up's time in mono while one waits (`ThreadSummary.wakeAt`);
   beneath, the step under way (or the first to do) with its mark, on one
   line with an ellipsis, left off once all are done or the thread is
-  resolved; then the first line of its last update, and Open, Stop,
+  resolved; then the first line of its last update; **View thread** at its foot
+  (`a.sm`) opens the thread — the panel from 1180 px up, the page below — as does a double-click on the card that lands on none of its links or buttons and leaves nothing selected. Open, Stop,
   Pin or Unpin (`…/pin`, as the thread menu's, with its toast; a pinned
   thread sits first among the project's threads in the sidebar, never in
   the Pinned group), Resolve or Reopen behind ⋯. The sidebar rows show no
