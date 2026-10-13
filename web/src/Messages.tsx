@@ -62,10 +62,17 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
     permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
     lastHers: messages.findLast((m) => m.role === "assistant")?.n, large: openLarge, threads: ctx.threads,
   };
-  // A project's threads whose anchor message is gone sit under the last message instead.
-  const anchored = project ? project.overview.threads.filter((t) => t.anchor !== undefined && shownMessagesHave(messages, hideFrom, t.anchor)) : [];
-  const loose = project ? project.overview.threads.filter((t) => !anchored.includes(t)) : [];
   const shownMessages = hideFrom === undefined ? messages : messages.filter((m) => m.n < hideFrom);
+  // Anchors are entry numbers, including entries the API doesn't display. Use the first
+  // message at or after the anchor (contracts.md), so a card stays put as later messages arrive.
+  // Threads with no remaining anchor sit under the last message instead.
+  const cards = new Map<number, ThreadSummary[]>();
+  for (const t of project?.overview.threads ?? []) {
+    const anchor = t.anchor;
+    const message = anchor === undefined ? undefined : shownMessages.find((m) => m.n >= anchor);
+    const n = (message ?? shownMessages.at(-1))?.n;
+    if (n !== undefined) cards.set(n, [...cards.get(n) ?? [], t]);
+  }
   const looks = useMemo(() => foldLooks(shownMessages, pool), [shownMessages, pool]);
   const storedUsers = storedUserItems(live.items, messages);
   return (
@@ -73,9 +80,9 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
       {hasMore && <button type="button" className="older" disabled={loading} onClick={() => run(loadOlder)}>Show earlier messages</button>}
       <ErrorText error={error} />
       {loaded && !messages.length && !live.items.length && <p className="muted empty">Say hello.</p>}
-      {shownMessages.map((m, i) => (
+      {shownMessages.map((m) => (
         <StoredMessage key={m.id} m={m} env={env} you={ctx.user.displayName} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)}
-          cards={project && [...anchored.filter((t) => t.anchor === m.n), ...(i === shownMessages.length - 1 ? loose : [])]} />
+          cards={cards.get(m.n)} />
       ))}
       {hideFrom === undefined && live.items.map((item, i) => !storedUsers.has(i) && (
         <LiveMessage key={`live-${i}`} item={item} env={env} you={ctx.user.displayName} streaming={live.busy && i === live.items.length - 1} />
@@ -185,10 +192,6 @@ function LookMarker({ text, told, env, n }: { text: string; told: Told[]; env: E
       )}
     </div>
   );
-}
-
-function shownMessagesHave(messages: Message[], hideFrom: number | undefined, n: number): boolean {
-  return (hideFrom === undefined || n < hideFrom) && messages.some((m) => m.n === n);
 }
 
 function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; you: string; streaming: boolean }) {
