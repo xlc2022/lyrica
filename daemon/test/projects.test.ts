@@ -122,6 +122,7 @@ describe("projects", () => {
     expect(stream.events.filter(e => e.event.type === "error")).toEqual([]);
     expect(requests.length).toBeGreaterThan(0);
     expect(said(requests.at(-1)!)).toContain("WELCOME-selected");
+    expect(said(requests.at(-1)!)).toContain("threads fold");
     expect(said(requests.at(-1)!)).not.toMatch(/WELCOME-(unticked|local|unlogged)/);
     await say("Now a fresh turn");
     expect(said(requests.at(-1)!)).not.toContain("WELCOME-selected");
@@ -228,10 +229,22 @@ describe("projects", () => {
     expect(ws.effective(continued.body.id)).toEqual(ws.effective(source.id));
     expect((await ada.get<ThreadSummary>(threadPath(child.id))).body.parent).toBe(continued.body.id);
     expect((await ada.get<ThreadSummary>(threadPath(source.id))).body).toMatchObject({ child: false, title: "Garden" });
-    expect(send).toHaveBeenCalledWith(expect.stringContaining(`[t:${source.id}]`), { recentThreadIds: [source.id] });
+    expect(send).toHaveBeenCalledWith(expect.stringContaining(`[t:${source.id}]`), { recentThreadIds: [source.id], recentWorkSource: source.id });
     expect(d.services!.models.callContext(rt.ada.id, "general", continued.body.id).overrides).toEqual(d.services!.models.callContext(rt.ada.id, "general", source.id).overrides);
     const reread = d.services!.memory.openThreadView(rt.ada.id, "general");
     expect(reread.own.latestEntries(source.id, 10)).toHaveLength(1); reread.close();
+  });
+
+  it("continues from one source without asking to fold the source that stays in place", async () => {
+    const { ada, u, requests, threadPath, messages } = await setup();
+    const source = (await ada.post<ThreadSummary>(`${u}/threads`, { pool: "general", title: "Seed notes" })).body;
+    const continued = (await ada.post<ThreadSummary>(`${threadPath(source.id)}/continue-as-project`, {})).body;
+    await until(() => messages(threadPath(continued.id)), rows => rows.some(row => row.role === "assistant"));
+    const context = said(requests.at(-1)!);
+    expect(context).toContain("which stays in place");
+    expect(context).toContain("threads draft");
+    expect(context).not.toContain("Suggest which of these threads to bring into the project");
+    expect((await ada.get<ThreadSummary>(threadPath(source.id))).body.parent).toBeUndefined();
   });
 
   it("start pinned, filter in the thread list, and can't be undone", async () => {

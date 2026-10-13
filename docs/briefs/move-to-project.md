@@ -3,7 +3,7 @@
 **Built by:** Codex on lunasa, one run (below). The Claude thread that wrote
 the project-welcome brief reviews the diff, opens the PR and takes it
 through PR review and UI review. **Branch:** `feature/move-to-project`.
-**Status:** not started.
+**Status:** built; in review as PR #297.
 
 **Read first:** AGENTS.md, docs/ux.md §6 (the thread menu row, the Fold in
 row and the confirm-before-add rule), docs/briefs/project-welcome.md,
@@ -79,4 +79,12 @@ head commit, a summary and the screenshot paths. Do not open a PR.
 
 ## Handoff note
 
-2026-10-13: written after #290 merged; nothing built.
+2026-10-13: Codex on lunasa built In scope (40e802a): Move to project in
+ThreadMenu with the existing flyout and phone submenu, FoldConfirm lifted out
+of FoldCard and shared, and Continue as project skipping the fold directions
+for its own source. The review thread opened PR #297. Review fixes since then:
+Continue as project's user message is just "Continue from <thread>."; the
+item has the J shortcut; its confirm says "Move <thread> to <project>?" with
+**Move**; the local-only loss reads "Cloud models"; the menu lists pinned
+projects plus the ten most recent, and reads project settings only for a
+local-only thread. Next: PR review and UI review verify, then merge.

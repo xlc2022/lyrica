@@ -875,7 +875,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         s().projects.pin(user.id, pool, project.id, true);
         moveWork(d, user, pool, view.own, project.id, source.id, 1, true);
       } finally { view.close(); }
-      await s().host.get(user.id, pool, project.id).send(`Continue from [t:${r.params.threadId!}]. Draft Goal and Instructions for this project with threads draft, for the person to edit in Project settings.`, { recentThreadIds: [r.params.threadId!] });
+      await s().host.get(user.id, pool, project.id).send(`Continue from [t:${r.params.threadId!}].`, { recentThreadIds: [r.params.threadId!], recentWorkSource: r.params.threadId! });
       const result = s().memory.openThreadView(user.id, pool);
       try { return summary(d, user, pool, result.own, result.own.getThread(project.id)!, []); } finally { result.close(); }
     }),

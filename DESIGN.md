@@ -1048,13 +1048,18 @@ the Project settings page. Recent calls can be filtered by project. The briefs a
   and local-only switch. The first message links to the source and asks for
   editable Goal and Instructions drafts, using the source's own model.
   Its child threads move under the project with their state intact. The
-  source conversation stays in its original thread. These back-end
+  source conversation stays in its original thread; that turn asks for drafts
+  without directions to suggest folding the source. These back-end
   operations are in `daemon/src/routes.ts`. Empty project chats show three
   secondary starters: Set up from recent work (the existing dialog with
   recent threads checked initially), Add repository (the existing popover),
-  and Make a plan (a separate Plan thread). Fold in cards show access losses;
-  Keep access confirms before widening project grants. Project settings
-  opens drafts unsaved, with Save and Discard draft.
+  and Make a plan (a separate Plan thread). Move to project in a top-level
+  thread menu lists pinned and recent projects of its own pool, keeping
+  local-only work in local-only projects. It shares the Fold in card confirmation,
+  listing children and losses before anything moves. The unticked access
+  checkbox widens project grants before folding; losing cloud models when
+  the project is local-only is listed and cannot be restored by that checkbox.
+  Project settings opens drafts unsaved, with Save and Discard draft.
 - **Lyrica coordinates in the project chat.** She is the same person
   there; only her guidance and context differ. She answers a quick question
   in place, starts a thread for each piece of work (several tasks in one
