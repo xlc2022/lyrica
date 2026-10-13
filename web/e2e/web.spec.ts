@@ -1456,7 +1456,7 @@ test("the thread drawer's Read aloud has a Settings link opening the voice drawe
 test("the header names the version and build, and the home box starts a thread", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}`);
-  await expect(page.getByRole("heading", { level: 1, name: /^Lyrica \S+ · \S+$/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /^Version \S+ · \S+$/ })).toBeVisible();
   await page.getByLabel("Message", { exact: true }).fill("From the home box");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.locator(".msg.user").getByText("From the home box")).toBeVisible();
@@ -2582,6 +2582,66 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   await expect(page.getByRole("navigation", { name: "Settings sections" })).toHaveCount(0);
 });
 
+test("the sidebar's status panel shows the endpoints on any page, and a very long endpoint name is truncated without overflow", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  // The endpoints are seeded through the API after the app first loads; reload once so the shell's fetch sees them.
+  await page.reload();
+  // The shell polls the endpoints' status, so the panel shows on home too, not only in Models.
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const line = page.locator(".side .status-line");
+  await expect(line).toBeVisible();
+  // The two local endpoints share the top row; each cloud one has its own line, with when it was last checked in mono.
+  for (const name of ["gpu", "speech"]) await expect(line.locator(".status-row .status-item").filter({ hasText: name })).toBeVisible();
+  for (const name of ["router", "openai"]) {
+    const item = line.locator(".status-item").filter({ hasText: name });
+    await expect(item).toBeVisible();
+    await expect(item.locator(".num")).toHaveText(/^\d+$/);
+  }
+  await noHorizontalScroll(page);
+
+  // A very long name ellipsizes in place, with the whole of it in the tooltip, and never pushes the sidebar wide.
+  const eps = await page.evaluate(async (path) => (await fetch(path)).json(), `/api/u/${userId}/endpoints`) as { id: string; name: string }[];
+  const gpuId = eps.find((e) => e.name === "gpu")!.id;
+  const routerId = eps.find((e) => e.name === "router")!.id;
+  const LONG = "gpu-with-a-name-long-enough-to-ellipsize"; // the longest a name may be (40 chars), and too wide for half the panel's top row
+  const rename = (id: string, name: string) => page.evaluate(async ([path, name]) => {
+    const r = await fetch(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+    if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  }, [`/api/u/${userId}/endpoints/${id}`, name] as const);
+  await rename(gpuId, LONG);
+  await page.reload();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const renamed = line.locator(".status-item").filter({ hasText: LONG });
+  await expect(renamed).toBeVisible();
+  await expect(renamed).toHaveAttribute("title", LONG);
+  const nameBox = renamed.locator(".status-name");
+  await expect(nameBox).toBeVisible();
+  expect(await nameBox.evaluate((el) => el.scrollWidth > el.clientWidth), `the long name should ellipsize at ${page.viewportSize()!.width} px`).toBe(true);
+  await noHorizontalScroll(page);
+
+  // A cloud row with a very long name: the name ellipsizes first and "checked N s ago" stays visible; the tooltip holds the whole line.
+  const LONG_CLOUD = "router-with-a-name-long-enough-to-trim"; // within the 40-char name limit, and too wide for a cloud line beside its checked time
+  await rename(routerId, LONG_CLOUD);
+  await page.reload();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const cloudItem = line.locator(".status-item").filter({ hasText: LONG_CLOUD });
+  await expect(cloudItem).toBeVisible();
+  await noHorizontalScroll(page); // settle the drawer before measuring or shooting
+  expect(await cloudItem.locator(".status-name").evaluate((el) => el.scrollWidth > el.clientWidth), `the long cloud name should ellipsize at ${page.viewportSize()!.width} px`).toBe(true);
+  const checked = cloudItem.locator(".status-state", { hasText: "checked" });
+  await expect(checked).toHaveText(/· checked \d+ (s|min) ago/);
+  await expect(checked).toBeInViewport();
+  // Nothing of it is clipped away: the checked time ends inside the item's own box.
+  const [itemBox, checkedBox] = [await cloudItem.boundingBox(), await checked.boundingBox()];
+  expect(checkedBox!.x + checkedBox!.width).toBeLessThanOrEqual(itemBox!.x + itemBox!.width + 1);
+  await expect(cloudItem).toHaveAttribute("title", new RegExp(`^${LONG_CLOUD} · checked \\d+ (s|min) ago$`));
+  if (page.viewportSize()?.width === 390) await page.screenshot({ path: "shots/status-390.png" });
+
+  // Back as they were, for the tests that follow.
+  await rename(gpuId, "gpu");
+  await rename(routerId, "router");
+});
+
 test("Tasks: the table shows each column's models; a cell's drawer adds, reorders and removes, and Same as points a task at another; the Preset menu switches, saves and edits a preset; Settings → Model profiles lands here", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/tasks-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
@@ -2744,6 +2804,8 @@ test("New preset summary: +N fallbacks and a red gone model", async ({ page, bas
     real.presets.columns.general.entries.chat = [{ offeringId: "off-gone" }, { offeringId: live.id }, { offeringId: live.id }];
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(real) });
   });
+  // The shell fetches …/models/page when the app first loads, before this mock existed; reload once so its answer comes through it.
+  await page.reload();
   await page.goto(`/#/u/${userId}/models/tasks`);
   await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
   await page.locator(".ttable thead th").nth(2).locator("button.preset-button").click();

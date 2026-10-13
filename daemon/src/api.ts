@@ -434,7 +434,7 @@ export interface ServingSettings {
  * the host doesn't know the repository, so name it (owner/name, modelscope:owner/name or a link). Administrator (shared host) or owner.
  */
 /** POST /api/u/:userId/offerings/:offeringId/reload → the host's answer: applies saved settings now. A shared host needs an administrator. */
-/** GET /api/u/:userId/models/page → ModelsPage: what the Models page shows, endpoints with live status. An endpoint seen down in the last 30 s isn't asked again, and each gets 3 s. */
+/** GET /api/u/:userId/models/page → ModelsPage: what the Models page shows, endpoints with live status. An endpoint seen down in the last 30 s isn't asked again; a cloud endpoint whose provider takes a real probe is asked at most every 90 s (local ones stay at 30 s); each gets 3 s. */
 export interface ModelsPage {
   endpoints: (EndpointInfo & Probe)[];
   /** A host that is down says why; `unpaired` when it has revoked this server, so pairing again is the fix. */
@@ -442,6 +442,8 @@ export interface ModelsPage {
   presets: Presets;
   /** The newest call in the displayed pools; older ones come from /models/calls/history. */
   calls: CallInfo[];
+  /** Each endpoint's call count over `model_calls` in the pools this page shows, not over `calls`; what ranks the sidebar's status panel. Endpoints with no calls aren't listed. */
+  endpointUses: { endpointId: string; calls: number }[];
   notice: string[];
   /** How many items Clean up lists. */
   cleanup: number;
@@ -967,7 +969,7 @@ export interface NotificationPage { items: Notification[]; total: number; waitin
 
 /** Where a thread's model for one task comes from. */
 export interface TaskModel {
-  /** The model that answers now. */
+  /** The model set for the task, named even while its endpoint is down (what answers now is `speech` and the Models page's status). */
   model?: { offeringId: string };
   /** The thread's own list, when it has one. */
   list?: ModelRef[];
@@ -978,7 +980,7 @@ export interface TaskModel {
   endpointName?: string;
   /** "thread" when overridden here, "preset" or "column" when following one of those, "none" when nothing is set. */
   source: "thread" | "preset" | "column" | "none";
-  /** Why it can't be used, in plain words, if it can't. */
+  /** Why nothing usable is set here (unset, or a cloud model in a private thread), in plain words. */
   problem?: string;
 }
 

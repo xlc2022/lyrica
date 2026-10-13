@@ -84,6 +84,8 @@ export const SHARED_GONE_DAYS = 7;
 const DAY = 86_400_000;
 /** How long a probe or a failed call counts for in the health cache. */
 export const HEALTH_MS = 30_000;
+/** How long a cloud endpoint's last answer stands on the Models page, so the shell's 30 s poll probes its provider at most every 90 s. Local endpoints keep `HEALTH_MS`. */
+const CLOUD_PAGE_PROBE_MS = 90_000;
 /** How long the router waits for a probe before trying the next model. */
 const PROBE_MS = 2_000;
 /** Recent calls kept per user. */
@@ -1161,7 +1163,12 @@ export class Models {
   /**
    * An endpoint's state for the Models page, within a budget: one the router
    * saw down in the last HEALTH_MS isn't asked again, and nothing waits more
-   * than `budgetMs`, so a host that's off doesn't hold the page.
+   * than `budgetMs`, so a host that's off doesn't hold the page. A cloud
+   * endpoint whose provider would be probed is asked at most every
+   * CLOUD_PAGE_PROBE_MS — its last answer stands in between — so the shell's
+   * 30 s poll of this page doesn't spend a real request on it more often;
+   * local endpoints and plans (which answer from their sign-in, no request)
+   * keep HEALTH_MS.
    */
   async pageStatus(userId: string, endpointId: string, budgetMs = 3000): Promise<{ state: "up" | "down"; warning?: string; status?: unknown; error?: string; unpaired?: true }> {
     const ep = this.endpoint(userId, endpointId);
@@ -1169,6 +1176,10 @@ export class Models {
     const unpaired = () => (this.unpaired.has(ep.id) ? { unpaired: true as const } : {});
     const h = this.health.get(ep.id);
     if (h && !h.up && Date.now() - h.at < HEALTH_MS) return { state: "down", error: `${ep.name} is down`, ...unpaired() };
+    // A cloud endpoint that would be probed over the network keeps its last answer, up or down, for CLOUD_PAGE_PROBE_MS.
+    if (h && ep.kind === "cloud" && !isPlan(ep.api) && Date.now() - h.at < CLOUD_PAGE_PROBE_MS) {
+      return h.up ? { state: "up", ...unpaired() } : { state: "down", error: `${ep.name} is down`, ...unpaired() };
+    }
     const warning = ep.kind === "local" ? Promise.race([localWarning(ep), new Promise<undefined>((r) => setTimeout(() => r(undefined), budgetMs).unref())]) : undefined;
     if (ep.api !== "host") {
       const state = await this.answers(ep, budgetMs);
@@ -2243,6 +2254,20 @@ export class Models {
     const rows = this.withUser(userId, (db) => db.prepare(`SELECT * FROM model_calls ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id DESC LIMIT @limit`)
       .all({ ...(opts.pool ? { pool: opts.pool } : {}), ...(opts.threadId ? { thread: opts.threadId } : {}), ...(opts.threadIds ? { threads: JSON.stringify(opts.threadIds) } : {}), limit: opts.limit ?? 50 })) as CallRow[];
     return rows.map(toCall);
+  }
+
+  /** How many times each endpoint answered, counted over `model_calls` in these pools rather than over any preview list.
+   * Endpoints with no calls aren't listed; a call to an endpoint since removed counts nowhere. */
+  endpointUses(userId: string, pools: Pool[]): { endpointId: string; calls: number }[] {
+    if (!pools.length) return [];
+    const rows = this.withUser(userId, (db) => db.prepare(
+      "SELECT endpoint, kind, count(*) AS calls FROM model_calls WHERE pool IN (SELECT value FROM json_each(@pools)) GROUP BY endpoint, kind"
+    ).all({ pools: JSON.stringify(pools) })) as { endpoint: string; kind: "local" | "cloud"; calls: number }[];
+    const byName = new Map(rows.map((r) => [`${r.kind}/${r.endpoint}`, r.calls]));
+    return this.endpoints(userId).flatMap((e) => {
+      const calls = byName.get(`${e.kind}/${e.name}`);
+      return calls ? [{ endpointId: e.id, calls }] : [];
+    });
   }
 
   /** Paged call metadata, restricted to the displayed pools before counting. */

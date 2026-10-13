@@ -2,7 +2,7 @@
 // Image models (ImageModels.tsx), Hosts and endpoints (with the Add model host page), Downloads (Downloads.tsx), Clean
 // up and Recent calls, with its sections listed at the left (the frame and what the tabs share are in ModelsFrame.tsx).
 // The shell polls GET …/models/cleanup for the sidebar's count; GET …/models/page, which probes every
-// endpoint, is read while the area or the welcome page is open, and the Hosts tab's changes reload it.
+// endpoint, is shared by Shell and polled every 30 s; opening Models and Hosts tab changes reload it.
 import { ModelLabel } from "./ModelLabel.tsx";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -32,20 +32,13 @@ export function useCleanupCount(userId: string): { count: number; reload: () => 
 }
 
 /**
- * GET …/models/page, while Models or the welcome page is open: it probes every endpoint, so it is read on arriving,
- * on each tab, and every 30 s and on focus while the area stays open. A reload also refreshes the sidebar's count.
+ * GET …/models/page for the shell (Shell): it probes every endpoint, so the shell reads it once and polls it with
+ * everything else in its tick, which keeps the sidebar's status panel live on every page. A reload also refreshes
+ * the Clean up count; the Models area reloads on opening and on each tab.
  */
-function useModelsPage(ctx: ShellContext): ModelsState {
-  const p = useLoad(() => get<ModelsPage>(u(ctx.user.id, "models", "page")), [ctx.user.id, ctx.me.display.showGeneral, ctx.me.display.showPrivate]);
-  const { reload: reloadPage } = p;
-  const { reload: reloadCount } = ctx.cleanup;
-  const reload = useCallback(() => { reloadPage(); reloadCount(); }, [reloadPage, reloadCount]);
-  useEffect(() => {
-    const tick = () => { if (document.visibilityState === "visible") reloadPage(); };
-    const t = setInterval(tick, 30_000);
-    addEventListener("focus", tick);
-    return () => { clearInterval(t); removeEventListener("focus", tick); };
-  }, [reloadPage]);
+export function useModelsPage(userId: string, reloadCleanup: () => void, showGeneral: boolean, showPrivate: boolean): ModelsState {
+  const p = useLoad(() => get<ModelsPage>(u(userId, "models", "page")), [userId, showGeneral, showPrivate]);
+  const reload = useCallback(() => { p.reload(); reloadCleanup(); }, [p.reload, reloadCleanup]);
   return { page: p.data, error: p.error, reload, set: p.set };
 }
 
@@ -71,8 +64,8 @@ function textModels(eps: EndpointInfo[]): number {
   return ids.size;
 }
 
-/** An endpoint's one state: a dot's class and its word, with a duration in mono where there is one. */
-function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string; since?: string } {
+/** An endpoint's one state: a dot's class and its word, with a duration in mono where there is one. The sidebar's status panel shares these words (SideStatus.tsx). */
+export function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string; since?: string } {
   const since = ep.downSince ? duration(Date.now() - Date.parse(ep.downSince)) : undefined;
   if (ep.api === "host" && host && "status" in host) {
     const s = host.status.state;
@@ -100,14 +93,12 @@ const paused = (h?: Host) => !!h && "status" in h && (h.status.state === "paused
 /** The host has revoked this server: pairing again is the fix. */
 const unpaired = (h?: Host) => !!h && "error" in h && !!h.unpaired;
 
-/** The Models area, at one of its tabs. `route` carries the page number and search text for Download history and Call history. */
-export function ModelsArea({ ctx: shell, tab = "overview", add, route }: { ctx: ShellContext; tab?: ModelsTab; add?: ModelsPageUnder; route?: Extract<Route, { page: "models" }> }) {
-  const models = useModelsPage(shell);
-  const ctx: MCtx = { ...shell, models };
-  const { reload } = models;
-  // Fresh status on each tab after the first.
-  const first = useRef(true);
-  useEffect(() => { if (first.current) first.current = false; else reload(); }, [tab, reload]);
+/** The Models area, at one of its tabs. `route` carries history page, search and project filters. */
+export function ModelsArea({ ctx: shell, tab = "overview", add, project, pool, route }: { ctx: ShellContext; tab?: ModelsTab; add?: ModelsPageUnder; project?: string; pool?: "general" | "private"; route?: Extract<Route, { page: "models" }> }) {
+  const ctx: MCtx = shell;
+  const { reload } = ctx.models;
+  // Fresh status on opening Models and on each tab: the shared page may be up to 30 s old.
+  useEffect(() => { reload(); }, [tab, reload]);
   if (tab === "hosts" && add === "host") return <AddHost ctx={ctx} />;
   if (tab === "tasks") return <Tasks ctx={ctx} />;
   if (tab === "text") return <TextModels ctx={ctx} />;
@@ -118,7 +109,7 @@ export function ModelsArea({ ctx: shell, tab = "overview", add, route }: { ctx: 
   if (tab === "downloads" && add === "text") return <DownloadText ctx={ctx} />;
   if (tab === "downloads") return <Downloads ctx={ctx} history={add === "history"} route={route} />;
   if (tab === "cleanup") return <Cleanup ctx={ctx} />;
-  if (tab === "calls") return <Calls ctx={ctx} route={route} />;
+  if (tab === "calls") return <Calls ctx={ctx} route={route ?? { page: "models", userId: shell.user.id, tab: "calls", project, pool }} />;
   return <Overview ctx={ctx} />;
 }
 
@@ -215,7 +206,7 @@ function firstChat(p: ModelsPage, col: ColumnState): FirstChat {
 }
 
 export function BackendCard({ ctx }: { ctx: ShellContext }) {
-  const models = useModelsPage(ctx);
+  const models = ctx.models;
   const p = models.page;
   const userId = ctx.user.id;
   const general = p && firstChat(p, p.presets.columns.general);

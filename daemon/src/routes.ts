@@ -442,6 +442,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${u}/models/page`, async (r): Promise<Api.ModelsPage> => {
       const user = d.userFor(r);
       const m = s().models;
+      const pools = shownPools(display(d, user.id));
       const eps = m.endpoints(user.id);
       // One look per endpoint, within 3 s, so a host that's off doesn't hold the page.
       const looks = await Promise.all(eps.map(async (e) => ({ e, look: await m.pageStatus(user.id, e.id).catch((err: Error) => ({ state: "down" as const, error: err.message, status: undefined, warning: undefined, unpaired: undefined })) })));
@@ -449,7 +450,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const hosts = looks.filter(({ e }) => e.api === "host").map(({ e, look }) => look.status
         ? { endpointId: e.id, status: look.status as Api.HostStatus }
         : { endpointId: e.id, error: look.error ?? `${e.name} is down`, ...(look.unpaired ? { unpaired: true as const } : {}) });
-      return { endpoints: live, hosts, presets: presets(d, user.id), calls: m.callHistory(user.id, { limit: 1, offset: 0, q: "", pools: shownPools(display(d, user.id)) }).entries, notice: m.notice(user.id), cleanup: m.cleanup(user.id).length };
+      return { endpoints: live, hosts, presets: presets(d, user.id), calls: m.callHistory(user.id, { limit: 1, offset: 0, q: "", pools }).entries, endpointUses: m.endpointUses(user.id, pools), notice: m.notice(user.id), cleanup: m.cleanup(user.id).length };
     }),
     route("POST", `${u}/hosts/:endpointId/:action`, async (r) => {
       const action = r.params.action;
@@ -2436,7 +2437,8 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     const override = ctx.overrides?.[task];
     const list = override?.length ? { list: override } : {};
     try {
-      const r = models.resolve(task, task === "speech.transcribe" ? voiceContext(ctx) : ctx);
+      // evenIfDown: the drawer names what is set here; whether its machine answers now is speechState's and the status panel's to say.
+      const r = models.resolve(task, task === "speech.transcribe" ? voiceContext(ctx) : ctx, {}, { evenIfDown: true });
       if (task === "chat") thinkingLevels = ["off", ...(r.offering.reasoning ?? [])];
       return {
         model: r.ref, ...list, kind: r.endpoint.kind, endpointName: r.endpoint.name, label: r.label, modelId: r.offering.modelId,

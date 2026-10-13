@@ -386,7 +386,7 @@ class Models {                                              // new Models(keyrin
   // Discovery and health
   discover(actor, endpointId): Promise<Offering[]>          // GET /v1/models; a host's /host/v1/models and confirmed recipes
   probe(userId, endpointId, timeoutMs?): Promise<{ state: "up" | "down"; warning? }>
-  pageStatus(userId, endpointId, budgetMs = 3000): Promise<{ state; warning?; status?; error?; unpaired? }>
+  pageStatus(userId, endpointId, budgetMs = 3000): Promise<{ state; warning?; status?; error?; unpaired? }>   // a probed cloud endpoint is asked at most every 90 s
   reportUp(userId, endpointId) / reportDown(endpointId)     // the health cache: HEALTH_MS = 30 s
   sameModel(userId, offeringId): { offeringId }[]           // same base name and kind, other endpoints
   // Redirects and clean-up
@@ -1354,6 +1354,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     - **Models page, library, tokens:** `GET models/page` (→ `ModelsPage`:
       endpoints with `pageStatus`, hosts' status or error (`unpaired` when the
       host revoked this server), the presets and columns, the newest visible call,
+      per-endpoint call counts over the shown pools (`endpointUses`, what ranks
+      the sidebar's status panel),
       the notice, the Clean up count); `GET models/cleanup`; `GET`/`DELETE
       models/notice`; `GET models/calls` (`?project=&pool=` filters both pool and project tree); `GET library/text`; `GET hub-tokens`,
       `PUT`/`DELETE hub-tokens/:hub` (`?shared=1`). Types: `ModelsPage`,
