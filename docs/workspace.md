@@ -890,10 +890,11 @@ with the call's target (the sandbox, or the machine its `machine` argument
 names) looked up on every call, so changing a thread's settings applies at
 once. Commands typed with `!` in the terminal run in the sandbox. A short
 `workspace` prompt section tells her where she works, what she was given,
-whether she has internet, and her machines. It also lists the sandbox's
-main tools, gives the headless Chromium command and how Playwright or
-Puppeteer use that browser, and says a static page is checked once it parses
-and one screenshot looks right. Subagents and child threads get the same
+whether she has internet, and her machines. It also lists the programs the
+sandbox has on this host (`sandboxTools` in `sandbox.ts`) and, only when it
+finds Chromium, gives its command, how Playwright or Puppeteer use that
+browser, and that a static page is checked once it parses and one screenshot
+looks right. Subagents and child threads get the same
 section. Every run's environment has `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`
 and `REQUESTS_CA_BUNDLE` set to `/etc/ssl/certs/ca-certificates.crt` when the
 host has it, and `CHROME_PATH` and `PUPPETEER_EXECUTABLE_PATH` set to the
