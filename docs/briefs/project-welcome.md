@@ -36,9 +36,10 @@ ever reads its text.
    composer stays the page's main action; at 390 px they stack full
    width): **Set up from recent work**, **Add repository** and **Make a
    plan**.
-   - **Set up from recent work** opens a list in place inside the card
-     (no dialog: picking is editing, and ux.md lets dialogs only confirm),
-     the way Change passphrase… opens its fields: the ten most recent
+   - **Set up from recent work** opens a dialog, the one exception to
+     ux.md's "dialogs only confirm", which the owner chose (2026-10-13) and
+     ux.md records in the same PR; it uses the app's existing dialog, full
+     screen on a phone: the ten most recent
      top-level, non-project threads of the project's pool, each with a
      checkbox, all ticked to start, then **Continue** (primary) and
      **Cancel**. Lyrica reads the ticked threads and answers in the project
@@ -128,11 +129,11 @@ ever reads its text.
   are left out of the recent list and of that context.
 
 **PR 2, web** (`feature/project-welcome`): the welcome card and its three
-starters, the in-place recent-work list, the Fold in card, Continue as
+starters, the recent-work dialog, the Fold in card, Continue as
 project in ThreadMenu with a free letter key, both tooltips, and the drafts
 on Project settings. Run the design skills (design-critique,
 accessibility-review, ux-copy). Screenshots at 1280 and 390 px of the
-welcome card, the open list and the Fold in card go to UI review.
+welcome card, the open dialog and the Fold in card go to UI review.
 
 ## Done when
 
@@ -189,11 +190,11 @@ Shell.tsx; since #260, New project lives in NewButtons/NewRow and
 submenus open as flyouts from web/src/flyout.tsx, so Continue as project
 is a plain ThreadMenu item beside Make project…, with no submenu),
 reusing the Repositories popover, the Suggested threads card
-and the in-place pattern of Change passphrase…; no new widgets, dialogs or
-button looks. Labels are nouns or the names given in the brief, no
+and the app's existing dialog for the recent-work picker (the one dialog
+the brief allows); no other new widgets, dialogs or button looks. Labels are nouns or the names given in the brief, no
 captions. Update docs/ux.md section 6 and its vocabulary list, and
 docs/web.md. Run npm run typecheck, then the web tests one at a time. Take
-screenshots at 1280 and 390 px of the welcome card, the open list and the
+screenshots at 1280 and 390 px of the welcome card, the open dialog and the
 Fold in card. Commit, push, and stop: print the head commit, a summary and
 the screenshot paths. Do not open a PR.
 ```
