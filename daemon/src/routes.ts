@@ -9,11 +9,11 @@ import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
-import { DEFAULT_BUDGETS, OPENING, pinnedBlock, pinnedOf, reserveFor, startPlanSignIn, type PlanSignIn } from "@lyrica/extension";
+import { DEFAULT_BUDGETS, OPENING, OPENROUTER_URL, pinnedBlock, pinnedOf, reserveFor, startOpenRouterSignIn, startPlanSignIn, type OpenRouterSignIn, type PlanSignIn } from "@lyrica/extension";
 import type { ProjectThreadInfo } from "./children.ts";
 import { Busy } from "./hosted.ts";
 import { BUILD, card, type Lyricad, type Services } from "./lyricad.ts";
-import { readUpdates, writeRequest } from "./updates.ts";
+import { readUnitsStale, readUpdates, writeRequest } from "./updates.ts";
 import { toMessages, toReactions } from "./messages.ts";
 import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, titlesIn, type SpeechSource } from "./speech.ts";
 import { notifications } from "./notifications.ts";
@@ -231,6 +231,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (!isPlan(plan)) throw new HttpError(endpointId ? 404 : 400, endpointId ? "no such plan" : "a plan is ChatGPT or Grok");
       if (!endpointId) {
         if (!name) throw new HttpError(400, "a plan needs a name");
+        s().models.checkEndpointName(name);
         if (s().models.findEndpoint(user.id, name)) throw new HttpError(400, `endpoint ${name} already exists`);
       }
       for (const [id, p] of signIns) if (p.userId === user.id) dropSignIn(id);
@@ -261,6 +262,42 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("DELETE", `${u}/plans/sign-in/:signInId`, (r) => {
       const p = signIns.get(r.params.signInId!);
       if (p && p.userId === d.userFor(r).id) dropSignIn(r.params.signInId!);
+      return { ok: true };
+    }),
+    // --- OpenRouter: approve on its page, paste the code it shows; the key it returns is a plain cloud endpoint's ---
+    route("POST", `${u}/openrouter/sign-in`, async (r) => {
+      const user = d.userFor(r);
+      const input = await r.json<Api.OpenRouterSignInStart>();
+      const name = String(input.name ?? "").trim();
+      if (!name) throw new HttpError(400, "an endpoint needs a name");
+      s().models.checkEndpointName(name);
+      if (s().models.findEndpoint(user.id, name)) throw new HttpError(400, `endpoint ${name} already exists`);
+      for (const [id, p] of openRouterSignIns) if (p.userId === user.id) dropOpenRouter(id);
+      const signIn = startOpenRouterSignIn();
+      const id = randomUUID();
+      openRouterSignIns.set(id, { userId: user.id, signIn, name, shared: !!input.shared, timer: setTimeout(() => dropOpenRouter(id), SIGN_IN_MS).unref() });
+      return { id, url: signIn.url } satisfies Api.PlanSignInStarted;
+    }),
+    route("POST", `${u}/openrouter/sign-in/:signInId`, async (r) => {
+      const user = d.userFor(r);
+      const p = openRouterSignIns.get(r.params.signInId!);
+      if (!p || p.userId !== user.id) throw new HttpError(404, "this sign-in has ended; start again");
+      const { code } = await r.json<Api.OpenRouterSignInFinish>();
+      let apiKey;
+      try {
+        apiKey = await p.signIn.finish(String(code ?? ""));
+      } catch (e) {
+        throw new HttpError(400, e instanceof Error ? e.message : "the sign-in failed");
+      } finally {
+        dropOpenRouter(r.params.signInId!);
+      }
+      const ep = s().models.addEndpoint(user, { name: p.name, kind: "cloud", baseUrl: OPENROUTER_URL, apiKey }, { shared: p.shared });
+      await s().models.discover(user, ep.id).catch(() => {});
+      return endpointInfo(d, user.id, ep.id);
+    }),
+    route("DELETE", `${u}/openrouter/sign-in/:signInId`, (r) => {
+      const p = openRouterSignIns.get(r.params.signInId!);
+      if (p && p.userId === d.userFor(r).id) dropOpenRouter(r.params.signInId!);
       return { ok: true };
     }),
     route("DELETE", `${u}/endpoints/:endpointId`, (r) => {
@@ -391,7 +428,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       return s().models.lookupRecommended(d.userFor(r), r.params.offeringId!, b?.repo as string | undefined);
     }),
     route("POST", `${u}/offerings/:offeringId/reload`, async (r) => s().models.reloadModel(d.userFor(r), r.params.offeringId!)),
-    route("GET", `${u}/hosts/:endpointId/dashboard`, (r) => ({ url: s().models.hostDashboard(d.userFor(r).id, r.params.endpointId!) })),
+    route("GET", `${u}/hosts/:endpointId/dashboard`, (r) => ({ url: s().models.hostDashboard(d.userFor(r), r.params.endpointId!) })),
     route("GET", `${u}/models/page`, async (r): Promise<Api.ModelsPage> => {
       const user = d.userFor(r);
       const m = s().models;
@@ -1270,14 +1307,22 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, (o) => {
         const item = o[pool].getItem(r.params.itemId!);
         if (!item || item.dismissed) throw new HttpError(404, "no such item");
-        if (item.thread) throw new HttpError(409, "a chat was already started from this item");
+        if (item.thread) {
+          const existing = o[pool].getThread(item.thread);
+          if (!existing) throw new HttpError(409, "the chat started from this item is gone");
+          return existing;
+        }
         const th = o[pool].createThread({ interface: "web" });
         s().workspace.settings(user.id).startThread(th.id, pool);
         o[pool].startItem(item.id, th.id);
         return th;
       });
       // She speaks first, with the item in her context (and in no other thread's).
-      await s().host.get(user.id, pool, thread.id).send(OPENING);
+      // She has answered when an assistant entry with text is stored (an aborted, empty one doesn't count).
+      const replied = owner(d, user, (o) => !!o[pool].lastEntry(thread.id, ["assistant"])?.text?.trim());
+      if (!replied && !s().host.busy(user.id, pool, thread.id)) {
+        await s().host.get(user.id, pool, thread.id).send(OPENING);
+      }
       return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(thread.id)!, []));
     }),
     route("DELETE", `${u}/sleep/:pool/items/:itemId`, (r) => {
@@ -1704,6 +1749,14 @@ function dropSignIn(id: string): void {
   signIns.delete(id);
 }
 
+const openRouterSignIns = new Map<string, { userId: string; signIn: OpenRouterSignIn; name: string; shared: boolean; timer: NodeJS.Timeout }>();
+function dropOpenRouter(id: string): void {
+  const p = openRouterSignIns.get(id);
+  if (!p) return;
+  clearTimeout(p.timer);
+  openRouterSignIns.delete(id);
+}
+
 function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo {
   const ep = d.services!.models.endpoint(userId, id);
   if (!ep) throw new HttpError(404, `no endpoint ${id}`);
@@ -1837,9 +1890,11 @@ function updates(d: Lyricad): Api.Updates {
 }
 
 function adminStatus(d: Lyricad): Api.AdminStatus {
+  const unitsStale = readUnitsStale(d.updatePaths);
   const refused = d.services!.workspace.networkRefused;
   const why = d.keyring.credentials?.unavailable();
   return {
+    ...(unitsStale?.length ? { unitsStale } : {}),
     ...(refused ? { networkRefused: refused } : {}),
     savedPassphrase: d.keyring.hasSavedPassphrase(),
     credentials: why ? { available: false, reason: why } : { available: true },

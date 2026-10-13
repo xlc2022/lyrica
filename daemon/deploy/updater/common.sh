@@ -170,3 +170,6 @@ own_state_file() { # path
   if [ "$(id -u)" = 0 ]; then chown "$SERVICE_USER:$SERVICE_USER" "$1"; fi
   chmod 0600 "$1"
 }
+
+# install.sh just installed the current units: an update's stale-units report no longer holds.
+clear_units_stale() { [ -f "$UPDATE/state.json" ] && write_json "$UPDATE/state.json" 'del(.unitsStale)' || true; }

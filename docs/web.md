@@ -283,7 +283,7 @@ A thread's address may carry what the panel beside it shows:
   Unpaired when the host has revoked this server), Pause or Resume
   (administrators on a shared host; disabled with "Nothing is loaded"),
   or **Pair again…** in their place while Unpaired, opening Pairing code
-  and **Pair** in the card (otherwise Pair again… is in the ⋯), Dashboard (`GET …/dashboard`, a new tab), "N models"
+  and **Pair** in the card (otherwise Pair again… is in the ⋯), Dashboard (`GET …/dashboard`, a new tab; administrators on a shared host), "N models"
   opening its model list (a speaking model's **Settings** there), the facts
   line (shared or only you, paired unless Unpaired, ID and addresses in mono, **Edit** for
   the addresses, `PUT …/addresses`), per GPU its card, used/total in mono,
@@ -547,7 +547,8 @@ A thread's address may carry what the panel beside it shows:
   `GET|PUT …/photo-cloud`. This follows the Images brief and principles 1
   and 2; controls reuse §3's secondary button and menu, §4's short labels
   and tooltips, and §6's confirmation dialog. No drawer or extra captions.
-- **Administration**, for administrators: Status (the server's network
+- **Administration**, for administrators: Status (stale Debian systemd units
+  with the action to run `install.sh`, the server's network
   self-test, sleep time, start unlocked), **Her name** (Name, 1–40 characters
   on one line, one Save disabled when invalid or unchanged; `PUT …/admin/name`,
   then her displayed name updates and the page re-reads `/api/state`), Users with the administrator flag,
@@ -724,7 +725,11 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   goes back into the composer. A message from another thread or a look
   never waits there: it shows where it reached the turn (`received`).
 - `src/live.ts` turns stream events into the in-progress turn. When a turn
-  ends, the stored messages are reloaded and the live copy is dropped.
+  ends, the stored messages are reloaded and the live copy is dropped. A sent
+  user message already in the stored page is shown only there, even before
+  turn end or if the send response arrives after the reload. Copies match by
+  text in send order, using the last stored message number before sending
+  so an earlier identical message does not hide a new one.
   `src/stream.ts` listens for every `ThreadEvent` type by name, from a
   record keyed by the type, so a new type fails the typecheck until it's
   listed.
@@ -958,6 +963,8 @@ turns animations off.
   `web/e2e/serve.ts`, on a temporary runtime with a fake model server, which
   also serves a fake speech endpoint (whisper and kokoro, under `/speech/v1`,
   and `/speech/down` to make it fail). Chromium runs with a fake microphone.
+  The desktop project listens on 7342, `lyricad`'s own loopback port for
+  `tailscale serve`, so e2e can't run on a machine where `lyricad` runs.
 - For development, `npx tsx web/e2e/serve.ts 7340 7350` starts the same
   throwaway `lyricad` (passphrase `correct horse`, login `ada` / `pw`), and
   `npm run dev -w @lyrica/web` serves the UI with `/api` passed to it.

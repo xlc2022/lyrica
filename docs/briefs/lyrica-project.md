@@ -124,6 +124,11 @@ and issues labelled `claude`, sends her PRs to its PR review thread and
 the issues to the project chat. The project chat sets that routine up when
 her account exists.
 
+Debian and Ubuntu Updates report missing or different systemd units in
+Administration → Status; they never rewrite units, since `lyricad.service`
+defines her confinement. The operator runs `install.sh` from a current
+checkout to update them; NixOS units belong to its module.
+
 ## After merging
 
 Nothing for the Operator docs thread: this is set up in the web UI.

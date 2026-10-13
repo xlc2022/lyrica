@@ -960,7 +960,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     target ([workspace.md](workspace.md)). Never use `noTools: "all"`, which
     also removes extension tools.
   - Sessions run in-process, with no `pi` subprocesses.
-  - Entries are recorded with `appendEntry` as each turn ends (`recordEntries`).
+  - `recordEntries` syncs user entries with `appendEntry` into the encrypted
+    thread store in a microtask after Pi’s user `message_end` append, before
+    the model runs. Turn, agent and compaction ends sync remaining entries;
+    stored Pi IDs prevent duplicates.
   - Before each turn `lyricad` awaits `prepare()`; on an
     `auto_retry_start` whose error looks like a connection failure it calls
     `reportDown` and `prepare({ retry: true })`, and a `message_end` error of that
@@ -1159,6 +1162,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       code? }`); `POST plans/sign-in/:id` (`PlanSignInFinish` `{ redirectUrl? }`:
       ChatGPT's sends the address it was sent back to, Grok's no body →
       `EndpointInfo`); `DELETE plans/sign-in/:id`.
+    - **OpenRouter:** `POST openrouter/sign-in` (`OpenRouterSignInStart`:
+      `name`, `shared?` → `PlanSignInStarted` `{ id, url }`); `POST
+      openrouter/sign-in/:id` (`OpenRouterSignInFinish` `{ code }` →
+      `EndpointInfo`, a cloud endpoint holding the returned key); `DELETE
+      openrouter/sign-in/:id`.
     - **Hosts:** `POST hosts` (pair, then discover); `POST hosts/:id/pair`
       (again, same addresses); `PUT …/addresses`; `GET …/status`; `POST
       …/pause|resume|restart`; `GET …/dashboard` (→ `{ url }`); `POST …/manage`;
@@ -1264,7 +1272,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   …/updates` with `{ tag }`, `POST …/updates/rollback` with `{ commit }`
   and `POST …/updates/check` write `<runtime>/updates/request.json` for the
   updater's path unit (`409` while an update runs, except a rollback on
-  probation).
+  probation). `GET …/admin/status` (`AdminStatus`) carries optional
+  `unitsStale: string[]` from the updater's `state.json`: Debian units that
+  were missing or differed at the last update switch, shown in Status with
+  the action to run `install.sh`. The updater never rewrites these units;
+  NixOS does no comparison.
 - **Schema versions** (`core/migrations`): each encrypted database records
   its schema version (`PRAGMA user_version`) and the oldest schema that can
   read it (`meta.min_reader`: an expand step leaves it, a contract step
@@ -1306,6 +1318,11 @@ sleep.events                       // started, phase, finished: IDs only, never 
 - The pool's `sleep_runs` and `sleep_items` tables hold runs and items. A
   `no-key` skip is recorded once the key is back, since the pool can't be
   written without it.
+- `POST …/sleep/:pool/items/:itemId/chat` returns the item's existing thread
+  on retry. If it has no assistant message with text and is idle, it retries
+  her opening, answering an existing last hidden opening user entry without
+  appending another; after her reply it sends nothing. `409` means the linked
+  thread is gone. Opening a thread never re-sends the opening.
 - Full details: [sleep.md](sleep.md).
 - Consolidate keeps each project's page (`p:${projectSlug(id)}`) for every
   project with new conversation, from its notes and threads; the user's

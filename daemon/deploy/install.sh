@@ -228,6 +228,7 @@ chmod 0644 /etc/lyrica/caddy.json
 for u in lyrica-caddy.service lyricad.service lyrica-tailscaled.service lyrica-update.service lyrica-update.path lyrica-rollback.service lyrica-probation.service; do
   install -m 0644 "$SRC/daemon/deploy/$u" "/etc/systemd/system/$u"
 done
+clear_units_stale
 if [ -d /run/systemd/system ]; then
   systemctl daemon-reload
   systemctl enable --quiet lyrica-caddy lyrica-tailscaled lyricad lyrica-update.path lyrica-probation

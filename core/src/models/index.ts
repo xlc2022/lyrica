@@ -501,6 +501,9 @@ export class Models {
 
   // --- Subscription plans ---
 
+  /** Throws when a name can't name an endpoint, so a sign-in isn't started for one that would be refused after it. */
+  checkEndpointName(name: string): void { checkName(name); }
+
   /**
    * Adds a ChatGPT or Grok plan from a finished sign-in: always cloud,
    * always the user's own (a plan belongs to one person), calling its
@@ -962,9 +965,9 @@ export class Models {
     return o;
   }
 
-  /** A host's dashboard, opened directly (it has its own password away from the machine), at the address it last answered on. */
-  hostDashboard(userId: string, hostId: string): string {
-    const origins = (this.needHost(userId, hostId).addresses ?? []).map(hostOrigin);
+  /** A host's dashboard (a shared host's only for an administrator), opened directly (it has its own password away from the machine), at the address it last answered on. */
+  hostDashboard(actor: User, hostId: string): string {
+    const origins = (this.manageable(actor, hostId).addresses ?? []).map(hostOrigin);
     const last = this.reached.get(hostId);
     return `${last && origins.includes(last) ? last : origins[0]}/`;
   }

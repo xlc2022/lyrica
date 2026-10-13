@@ -179,6 +179,18 @@ read it for anything not covered here.
    }
    ```
 
+   While the repository is private, `nix flake lock` and `nixos-rebuild`
+   need a GitHub token to fetch it. Make a fine-grained, read-only token
+   for this one repository, put `access-tokens = github.com=<token>` in
+   `/etc/nix/access-tokens.conf` (owned by root, mode 0600), and add
+   `nix.extraOptions = "!include /etc/nix/access-tokens.conf";` to
+   `configuration.nix`. Not on the command line, which keeps it in shell
+   history, and not in `nix.settings`, which copies it into the
+   world-readable Nix store. Until the first rebuild applies that, pass
+   the file in for those two commands, for example `sudo env
+   NIX_CONFIG="$(sudo cat /etc/nix/access-tokens.conf)" nixos-rebuild
+   switch --flake /etc/nixos#lyrica`; history keeps the command, not the
+   token.
    Leaving `nixpkgs` unfollowed also builds, but then the system's
    nixpkgs can differ from the one the module's Caddy hash and CI use
    (inferred; only the followed form was evaluated).
@@ -197,7 +209,9 @@ read it for anything not covered here.
 7. `sudo nixos-rebuild switch --flake /etc/nixos#lyrica`. The package
    builds lyricad, the CLI and the web UI, and `lyricad` starts setting
    up, as on Debian. Nothing prints the setup code at the rebuild: `lyrica admin setup-code`, as root, prints
-   it with the addresses and the fingerprint.
+   it with the addresses and the fingerprint. The first build fetches many
+   sources at once; if the Caddy plugin fetch fails on a DNS timeout
+   (`sum.golang.org`), run the same command again.
 8. The first run below is the same. `lyrica` is on the system path and
    runs as her user with her state folder, as on Debian.
 9. Instead of "Check the deploy", run `nix/check-host.sh` from a checkout
@@ -402,7 +416,8 @@ fingerprint matches the one printed. The page is **Set up Lyrica**:
 
 The other way is a terminal: `lyrica admin init` asks for the passphrase,
 her name and the first administrator (no code needed; passwords and
-passphrases are read at hidden prompts, never passed as arguments), then
+passphrases are read at hidden prompts, never passed as arguments, so it
+needs a real terminal: over SSH, `ssh -t`), then
 `systemctl restart lyricad`, and she starts locked. It does not set up the
 tailnet or models: do those under Administration and Settings.
 
@@ -410,7 +425,9 @@ tailnet or models: do those under Administration and Settings.
 
 After every restart without a saved passphrase she starts **locked**: the
 API answers only the state and unlock calls, and the web UI serves its
-unlock page. Enter the passphrase there, then log in.
+unlock page. Enter the passphrase there, then log in. A script that
+calls `POST /api/unlock` instead must send an `Origin` header matching her
+address, or it gets `403`.
 
 ### Check the deploy
 
@@ -454,9 +471,10 @@ hand. The button is disabled, with the reason, on a system where
 by hand. On Debian or Ubuntu, an install from before lyricad unsealed it
 itself gets the new `lyricad.service` only from an `install.sh` run:
 Updates never replace units, so an install that only takes Updates keeps
-the old one. Run `install.sh` once before saving the passphrase: the
-old unit has systemd unseal the file itself, which can fail and stop
-lyricad from starting.
+the old one, and Administration → Status says the unit is older than
+the release. Run `install.sh` once before saving the passphrase: the old
+unit has systemd unseal the file itself, which can fail and stop lyricad
+from starting.
 
 To change the passphrase later, use **Change passphrase…** under
 Administration, Start unlocked: the current passphrase, then the new one
@@ -464,9 +482,9 @@ twice. She keeps running, and from then on only the new one unlocks her.
 A saved Start unlocked passphrase is re-saved with the new one; if that
 fails, the saved copy is removed and the page says so: save it again.
 With lyricad stopped (`sudo systemctl stop lyricad`), `sudo lyrica admin
-passphrase` does the same at hidden prompts and refuses while lyricad
-runs; then start lyricad, unlock with the new one, and check Start
-unlocked: save the passphrase again if it isn't saved. Old update snapshots of `self.db` keep opening with the old
+passphrase` does the same at hidden prompts, and says so if the saved
+copy was removed; it refuses while lyricad runs. Then start lyricad
+again. Old update snapshots of `self.db` keep opening with the old
 passphrase.
 
 Each user can likewise save their own data key under Settings, Unlock and
@@ -536,7 +554,7 @@ thread picks its own model, so its `speech.transcribe` list goes there.
 See [docs/models.md](../models.md).
 
 - **A cloud or OpenAI-compatible endpoint:** Models, Hosts and endpoints,
-  **Add endpoint** (Name, Kind local or cloud, Base URL, API key). Shared
+  **Add endpoint** (Name, Kind Custom, Base URL, API key, then the Local or Cloud checkbox). Shared
   endpoints, which every user can use, need an administrator. The same from
   a terminal:
 
@@ -857,10 +875,15 @@ the SSH ones, and `ssh remove <name>` takes one away.
   rebuild; an Update doesn't add it. The Updates page shows each step;
   the updater's state is in `/var/lib/lyrica-update`. An update installs
   no packages: when a release needs a new one, install it by hand or run
-  `install.sh` from a checkout.
+  `install.sh` from a checkout. On Debian and Ubuntu, Administration → Status
+  reports any installed units that differ from the new release or are missing;
+  run `install.sh` from a current checkout to update them. Updates never
+  rewrite units, since `lyricad.service` defines her confinement. NixOS units
+  are managed by its module instead.
 - **Rollback:** under Updates, **Roll back** in a kept release's ⋯ goes
   back to it. As root, `lyrica-rollback` goes back to the previous
-  release, or `lyrica-rollback <commit>` to another kept one. When that
+  release, or `lyrica-rollback <commit>` to another kept one, older or
+  newer. When that
   release can't read her databases, it restores the newest snapshot it can
   read, asking first (`--yes` skips the question), or refuses and names the
   oldest release it could go back to.

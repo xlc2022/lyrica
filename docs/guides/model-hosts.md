@@ -38,8 +38,11 @@ back each other up.
 ## The machine
 
 - Linux: Debian or Ubuntu, or NixOS with the flake's `model-host` module
-  first ([host/README.md](../../host/README.md), "On NixOS"). Nobody has run
-  it on NixOS yet.
+  first ([host/README.md](../../host/README.md), "On NixOS"). It has run on
+  one NixOS machine with an NVIDIA card. With `gpu = "nvidia"` on a machine
+  still running nouveau, the first `nixos-rebuild switch` exits with code 4
+  because the CDI generator finds no driver loaded; reboot once and it
+  passes. Lyrica's own units start either way.
 - The GPU driver: NVIDIA's, or `amdgpu` (with ROCm kernel support,
   `/dev/kfd`, for the ROCm backend).
 - Docker with the compose plugin, using its **iptables** firewall backend
@@ -291,7 +294,9 @@ the fix; llama.cpp is the safer choice for it. Details are in
 On a host with one large GPU, voice and a big chat model compete for
 memory. On 24 GB, the 27B below at 128k leaves no room for pinned voice:
 either leave voice unpinned and accept the 30-second first use after a
-swap, or pin it and serve the chat model at a shorter context. Whisper on
+swap, or pin it and serve the chat model at a shorter context. An image
+recipe such as Z-Image takes 19–22 GB on its own, so on 24 GB chat, voice
+and images take turns: pin only what must answer at once. Whisper on
 vLLM wants a memory share of about 0.1 of a 24 GB card.
 
 Measured on an RTX 3090 (24 GB) with Qwen3.8-27B Q4_K_M on llama.cpp:
@@ -370,7 +375,9 @@ second pairing. Then:
   Pause survives a restart. Lyrica falls back to the next model meanwhile.
 - **Logs:** `docker compose logs host-api` in `host/`. They hold event
   names, ids and counts; never a pairing code or a prompt. The model
-  servers log nothing at all.
+  servers log nothing at all, so `docker logs` on them fails. To see what
+  holds the GPU, `nvidia-smi --query-compute-apps=pid,process_name,used_memory
+  --format=csv`.
 - **Upgrade:** `git pull && host/install.sh` in the checkout. It rebuilds
   the images and restarts the stack; `.env` keeps the settings, and the
   `data` volume keeps the host's key, so pairing survives. A host

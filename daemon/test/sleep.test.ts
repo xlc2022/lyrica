@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { OPENING } from "@lyrica/extension";
+import { describe, expect, it, vi } from "vitest";
+import { PoolStore } from "@lyrica/core";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
 import type { EndpointInfo, MessagePage, OfferingInfo, SendResponse, SleepEvent, SleepOverview, SleepRunDetail, SleepStarted, ThreadEvent, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime, sse } from "./helpers.ts";
@@ -138,11 +140,64 @@ describe("sleep in lyricad", () => {
     }
     expect(page.messages.map((m) => m.role)).toEqual(["assistant"]);
     expect(page.messages[0]!.parts).toContainEqual({ type: "text", text: "Did the pelicans come back?" });
-    expect((await s.ada.post(`${s.u}/sleep/general/items/${enc(item.id)}/chat`)).status).toBe(409);
+    // Her turn and its title call are done before counting.
+    await s.d.services!.host.get(s.rt.ada.id, "general", thread.id).settled();
+    await new Promise((r) => setTimeout(r, 200));
+    const calls = s.model.requests.length;
+    const again = await s.ada.post<ThreadSummary>(`${s.u}/sleep/general/items/${enc(item.id)}/chat`);
+    expect(again.status).toBe(200);
+    expect(again.body.id).toBe(thread.id);
+    expect(s.model.requests).toHaveLength(calls);
 
     await s.ada.del(`${s.u}/sleep/general/items/${enc(other.id)}`);
     const after = (await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.items;
     expect(after.map((i) => [i.text, i.new, i.thread])).toEqual([["Ask whether the pelicans came back", false, thread.id]]);
+    await s.ada.del(path);
+    expect((await s.ada.post(`${s.u}/sleep/general/items/${enc(item.id)}/chat`)).status).toBe(409);
+  });
+
+  it("retries an interrupted item opening after restart", async () => {
+    const s = await setup();
+    const owner = s.d.services!.memory.openOwnerView(s.rt.ada.id);
+    let item: string;
+    try {
+      const run = owner.general.startSleepRun("manual", new Date().toISOString());
+      item = owner.general.addItem(run, { kind: "thought", text: "Ask about the harbour" });
+    } finally { owner.close(); }
+    let reached!: () => void;
+    const requested = new Promise<void>((resolve) => { reached = resolve; });
+    s.model.respond(() => { reached(); return new Promise<Reply>(() => {}); });
+    const route = `${s.u}/sleep/general/items/${enc(item!)}/chat`;
+    await s.ada.post(route);
+    await requested;
+    const linked = s.d.services!.memory.openOwnerView(s.rt.ada.id);
+    let thread: string;
+    try { thread = linked.general.getItem(item!)!.thread!; } finally { linked.close(); }
+    const busy = await s.ada.post<ThreadSummary>(route);
+    expect(busy.body.id).toBe(thread!);
+    expect(s.model.requests).toHaveLength(1);
+    // A crash cannot flush Pi's pending opening or an abort reply at shutdown.
+    const append = vi.spyOn(PoolStore.prototype, "appendEntry").mockImplementation(() => "");
+    try { await s.stop(); } finally { append.mockRestore(); }
+    s.model.respond(() => ({ text: "How was the harbour?" }));
+    const restarted = await daemon(s.rt, { sleep: { retries: 0 } });
+    await browser(restarted.base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(restarted.base, "ada", "pw");
+    const again = await ada.post<ThreadSummary>(route);
+    expect(again.status).toBe(200);
+    expect(again.body.id).toBe(thread!);
+    await restarted.d.services!.host.get(s.rt.ada.id, "general", thread!).settled();
+    const view = restarted.d.services!.memory.openOwnerView(s.rt.ada.id);
+    try {
+      const entries = view.general.loadEntries(thread!) as { type: string; message?: { role: string; content: unknown } }[];
+      expect(entries.filter((e) => e.message?.role === "assistant")).toHaveLength(1);
+      expect(entries.filter((e) => e.message?.role === "user")).toHaveLength(1);
+    } finally { view.close(); }
+    // Her turns carry tools; a title call that may land after her reply doesn't count.
+    const turns = s.model.requests.filter((r) => r.tools?.length);
+    expect(turns).toHaveLength(2);
+    // Pi also projects her per-turn context as a user message. Count the opening itself.
+    expect(turns[1]!.messages.filter((m) => m.role === "user" && JSON.stringify(m.content).includes(OPENING))).toHaveLength(1);
   });
 
   it("stops at Lock with the run partial, and logs no text", async () => {

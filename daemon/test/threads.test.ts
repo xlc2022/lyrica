@@ -52,9 +52,61 @@ describe("a conversation", () => {
     await stop();
     const again = await daemon(rt);
     await browser(again.base).post("/api/unlock", { passphrase: "passphrase" });
-    const li2 = await login(again.base, "ada", "pw");
-    const after = (await li2.get<MessagePage>(`${path}/messages`)).body;
+    const ada2 = await login(again.base, "ada", "pw");
+    const after = (await ada2.get<MessagePage>(`${path}/messages`)).body;
     expect(after.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+  });
+
+  it("stores the user's message while the model hangs, and only once after it finishes", async () => {
+    const { ada, model, path } = await setup();
+    let finish!: (reply: { text: string }) => void;
+    let started!: () => void;
+    const called = new Promise<void>((resolve) => { started = resolve; });
+    model.reply(() => new Promise<{ text: string }>((resolve) => {
+      finish = resolve;
+      started();
+    }));
+    const stream = ada.events(`${path}/events`);
+    await stream.ready;
+    try {
+      expect((await ada.post(`${path}/messages`, { text: "keep this message" })).body).toEqual({ queued: false });
+      await called;
+      expect(stream.events.some((e) => e.event.type === "turn_end")).toBe(false);
+      const before = (await ada.get<MessagePage>(`${path}/messages`)).body;
+      expect(before.messages.map((m) => [m.role, m.parts])).toEqual([
+        ["user", [{ type: "text", text: "keep this message" }]],
+      ]);
+      finish({ text: "Done." });
+      await stream.until(is("turn_end"));
+      const after = (await ada.get<MessagePage>(`${path}/messages`)).body;
+      expect(after.messages.filter((m) => m.role === "user")).toEqual(before.messages);
+      expect(after.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+    } finally {
+      finish?.({ text: "Done." });
+      stream.close();
+    }
+  });
+
+  it("keeps the user's message through a crash mid-turn, once, and never re-sends it by itself", async () => {
+    const { rt, ada, model, path, stop } = await setup();
+    let started!: () => void;
+    const called = new Promise<void>((resolve) => { started = resolve; });
+    // The model never answers: lyricad stops in the middle of her turn.
+    model.reply(() => { started(); return new Promise<{ text: string }>(() => {}); });
+    expect((await ada.post(`${path}/messages`, { text: "keep this through a crash" })).body).toEqual({ queued: false });
+    await called;
+    const asked = model.requests.length;
+    await stop();
+    const again = await daemon(rt);
+    await browser(again.base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada2 = await login(again.base, "ada", "pw");
+    const after = (await ada2.get<MessagePage>(`${path}/messages`)).body;
+    // Stopping mid-turn may leave her aborted, empty reply; the person's message is there exactly once.
+    expect(after.messages.filter((m) => m.role === "user").map((m) => m.parts)).toEqual([[{ type: "text", text: "keep this through a crash" }]]);
+    // No automatic re-send: the person retries it.
+    await new Promise((r) => setTimeout(r, 300));
+    expect(model.requests.length).toBe(asked);
+    await again.stop();
   });
 
   it("titles a thread after the first exchange, with the title model", async () => {

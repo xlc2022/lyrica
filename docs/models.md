@@ -518,7 +518,7 @@ if it is idle. lyricad registers it only when `hostCopies` lists a model:
 host chat models the user can manage, and none in a private or local-only
 thread, since a lookup is an outside call. Never in a subagent.
 
-`hostDashboard` gives a link to the host's dashboard, at the address
+`hostDashboard` (a shared host's only for an administrator) gives a link to the host's dashboard, at the address
 it last answered on, and the dashboard keeps its own password away from the
 machine.
 
@@ -610,8 +610,12 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
     state and exchanges the code.
   - **Grok:** xAI's device code: the person opens xAI's page, enters the
     code shown if asked, and approves; Finish waits for xAI to confirm.
+  A new plan's name is checked (lowercase letters, digits and `-`) before the
+  sign-in starts, so a bad name never costs a sign-in.
   A sign-in under way is held in `lyricad`'s memory for 10 minutes, one per
-  user, and belongs to the user who started it. Neither the address nor
+  user, and belongs to the user who started it. When it ends (finished,
+  cancelled, started again or timed out) the listener on port 1455 is
+  closed, since ChatGPT allows one sign-in at a time on a server. Neither the address nor
   any token is logged. A provider's HTTP refusal reaches the interface as
   one fixed line naming the provider and its status (`planError`), never
   the provider's own text, which may echo what it was sent.
@@ -633,6 +637,24 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   turn falls back to the next model in the list.
 - Removing a plan deletes its sign-in; Lyrica stays connected in the
   provider's account settings until it is disconnected there.
+
+## OpenRouter sign-in
+
+Add endpoint's Kind **OpenRouter** gets the user an OpenRouter API key
+without copying one by hand. Code: `extension/src/openrouter.ts`. It is
+OpenRouter's PKCE flow in its headless mode, so it needs no callback address
+and no registration: `startOpenRouterSignIn` makes a verifier and sends its
+S256 challenge to `openrouter.ai/auth`; the person approves there and pastes
+the one-time code the page shows; `finish` posts the code and verifier to
+`https://openrouter.ai/api/v1/auth/keys`, which returns an ordinary key that
+belongs to them. The route (`POST …/openrouter/sign-in`, then
+`…/:signInId`) stores that key on a plain cloud endpoint at
+`https://openrouter.ai/api/v1` (`api: "openai-compatible"`), exactly as if it had been
+typed, so nothing else differs from the plain-endpoint flow: no refresh, no
+signed-out state, no schema change. A sign-in under way is held in
+`lyricad`'s memory for 10 minutes, one per user. OpenRouter's refusal reaches
+the interface as one fixed line with its status, never its text. The user caps
+what the key can spend on OpenRouter's own site; Lyrica sets no limit.
 
 ## Local servers
 

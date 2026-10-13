@@ -12,21 +12,25 @@ import { openEncrypted } from "@lyrica/core";
 // test, a fake systemctl, and a fake lyricad answering on update.sock.
 
 const UPDATER = fileURLToPath(new URL("../deploy/updater", import.meta.url));
+const UNITS = ["lyricad.service", "lyrica-caddy.service", "lyrica-tailscaled.service", "lyrica-update.service", "lyrica-update.path", "lyrica-rollback.service", "lyrica-probation.service"];
 const cleanup: (() => void | Promise<void>)[] = [];
 afterEach(async () => { for (const c of cleanup.splice(0).reverse()) await c(); });
 
 type Schema = { self: number; user: number; pool: number };
 const S = (self: number, user: number, pool: number): Schema => ({ self, user, pool });
 
-async function world() {
+async function world(nix = false) {
   const root = mkdtempSync(join(tmpdir(), "lyrica-updater-"));
   // Releases are read-only: writable again first, for a non-root run.
   cleanup.push(() => { execFileSync("chmod", ["-R", "u+w", root]); rmSync(root, { recursive: true, force: true }); });
   const d = (p: string) => { mkdirSync(join(root, p), { recursive: true }); return join(root, p); };
   const prefix = d("opt"), state = d("state"), update = d("update"), snapshots = d("snapshots"), fake = d("fake"), origin = join(root, "origin.git");
 
+  const systemd = d("systemd");
+  for (const unit of UNITS) writeFileSync(join(systemd, unit), "installed unit\n");
+
   // systemctl: lyricad's state in a file, every call logged.
-  writeFileSync(join(fake, "systemctl"), `#!/bin/bash
+  writeFileSync(join(fake, "systemctl"), `#!/usr/bin/env bash
 echo "$*" >>"${fake}/calls"
 case "$1" in
   is-active) cat "${fake}/lyricad" 2>/dev/null || echo inactive ;;
@@ -36,8 +40,8 @@ case "$1" in
 esac
 `);
   // The build: RELEASE.json's version comes from \`node bin/lyrica version --json\`; here, schema.json in the commit.
-  writeFileSync(join(fake, "node"), `#!/bin/bash\njq -c '{version: "0.1.0", build: "x", schema: .schema, minReader: .minReader}' schema.json\n`);
-  writeFileSync(join(fake, "build"), "#!/bin/bash\ntouch \"$1/built\"\n");
+  writeFileSync(join(fake, "node"), `#!/usr/bin/env bash\njq -c '{version: "0.1.0", build: "x", schema: .schema, minReader: .minReader}' schema.json\n`);
+  writeFileSync(join(fake, "build"), "#!/usr/bin/env bash\ntouch \"$1/built\"\n");
   for (const f of ["systemctl", "node", "build"]) chmodSync(join(fake, f), 0o755);
   writeFileSync(join(fake, "lyricad"), "active\n");
 
@@ -68,6 +72,8 @@ esac
   git("remote", "add", "origin", origin);
   execFileSync("git", ["init", "-q", "--bare", join(prefix, "repo.git")]);
   execFileSync("git", ["--git-dir", join(prefix, "repo.git"), "remote", "add", "origin", origin]);
+  mkdirSync(join(root, "work", "daemon", "deploy"), { recursive: true });
+  for (const unit of UNITS) writeFileSync(join(root, "work", "daemon", "deploy", unit), "installed unit\n");
   const release = (name: string, schema: Schema, minReader: Schema, o: { broken?: boolean; branch?: string; lightweight?: boolean } = {}) => {
     if (o.branch) git("checkout", "-q", "-B", o.branch);
     writeFileSync(join(root, "work", "schema.json"), JSON.stringify({ schema, minReader }));
@@ -82,20 +88,67 @@ esac
   const env = {
     ...process.env, PATH: `${fake}:${process.env.PATH}`, LYRICA_TEST: "1", LYRICA_USER: userInfo().username,
     LYRICA_UPDATER_LIB: UPDATER, LYRICA_UPDATER_BIN: UPDATER, LYRICA_PREFIX: prefix, LYRICA_STATE: state, LYRICA_UPDATE_DIR: update,
-    LYRICA_SNAPSHOTS: snapshots, LYRICA_SYSTEMCTL: join(fake, "systemctl"), LYRICA_NIX: "", LYRICA_NODE: join(fake, "node"),
+    LYRICA_SNAPSHOTS: snapshots, LYRICA_SYSTEMCTL: join(fake, "systemctl"), LYRICA_NIX: nix ? "1" : "", LYRICA_SYSTEMD_DIR: systemd, LYRICA_PROFILE: join(root, "profile"), LYRICA_NODE: join(fake, "node"),
     LYRICA_UPDATE_BUILD: join(fake, "build"), LYRICA_UPDATE_SMOKE: "true", LYRICA_DRAIN_POLL: "1", LYRICA_DRAIN_SECONDS: "2",
     LYRICA_PROBATION_SECONDS: "1", LYRICA_PROBATION_POLL: "1",
   };
+  if (nix) {
+    const pkg = d("package");
+    mkdirSync(join(pkg, "bin"));
+    writeFileSync(join(pkg, "bin", "lyrica"), `#!/bin/bash\necho '${JSON.stringify({ version: "0.1.0", schema: S(1, 1, 1), minReader: S(1, 1, 1) })}'\n`);
+    chmodSync(join(pkg, "bin", "lyrica"), 0o755);
+    writeFileSync(join(fake, "nix"), `#!/bin/bash\necho '${pkg}'\n`);
+    writeFileSync(join(fake, "nix-store"), "#!/bin/bash\nexit 0\n");
+    writeFileSync(join(fake, "nix-env"), "#!/bin/bash\nln -sfn \"$4\" \"$2\"\n");
+    for (const f of ["nix", "nix-store", "nix-env"]) chmodSync(join(fake, f), 0o755);
+  }
   const run = (script: string, ...args: string[]) => new Promise<{ code: number; out: string; err: string }>((resolve) => {
     execFile(join(UPDATER, script), args, { env, timeout: 60_000 }, (err, out, errOut) => resolve({ code: err ? (err as { code?: number }).code ?? 1 : 0, out, err: errOut }));
   });
   const json = (f: string) => JSON.parse(readFileSync(join(update, f), "utf8"));
   const current = () => readlinkSync(join(prefix, "current")).replace("releases/", "");
   const calls = () => (existsSync(join(fake, "calls")) ? readFileSync(join(fake, "calls"), "utf8").trim().split("\n") : []);
-  return { root, prefix, state, update, snapshots, fake, lyricad, release, run, json, current, calls, git };
+  return { root, prefix, state, update, snapshots, fake, systemd, lyricad, release, run, json, current, calls, git };
 }
 
 describe("lyrica-update", () => {
+  it("reports changed and missing installed units without rewriting them, and clears the report when they match", async () => {
+    const w = await world();
+    writeFileSync(join(w.root, "work", "daemon", "deploy", "lyricad.service"), "new confinement\n");
+    rmSync(join(w.systemd, "lyrica-update.path"));
+    w.release("changed", S(1, 1, 1), S(1, 1, 1));
+    expect((await w.run("lyrica-update", "--tag", "update/changed")).code).toBe(0);
+    expect(w.json("state.json").unitsStale).toEqual(["lyricad.service", "lyrica-update.path"]);
+    expect(readFileSync(join(w.systemd, "lyricad.service"), "utf8")).toBe("installed unit\n");
+    expect(existsSync(join(w.systemd, "lyrica-update.path"))).toBe(false);
+
+    writeFileSync(join(w.systemd, "lyricad.service"), "new confinement\n");
+    writeFileSync(join(w.systemd, "lyrica-update.path"), "installed unit\n");
+    w.release("matching", S(1, 1, 1), S(1, 1, 1));
+    expect((await w.run("lyrica-update", "--tag", "update/matching")).code).toBe(0);
+    expect(w.json("state.json")).not.toHaveProperty("unitsStale");
+  });
+
+  it("clears the stale-unit report when install.sh installs the units", async () => {
+    const w = await world();
+    writeFileSync(join(w.root, "work", "daemon", "deploy", "lyricad.service"), "new confinement\n");
+    w.release("changed", S(1, 1, 1), S(1, 1, 1));
+    expect((await w.run("lyrica-update", "--tag", "update/changed")).code).toBe(0);
+    expect(w.json("state.json").unitsStale).toEqual(["lyricad.service"]);
+    // install.sh calls this right after installing the units.
+    execFileSync("bash", ["-c", `. "${UPDATER}/common.sh"; clear_units_stale`], { env: { ...process.env, LYRICA_UPDATE_DIR: w.update, LYRICA_STATE: w.state, LYRICA_PREFIX: w.prefix } });
+    expect(w.json("state.json")).not.toHaveProperty("unitsStale");
+    expect(w.json("state.json").state).toBeDefined();
+  });
+
+  it("records no stale-unit report when updating in Nix mode", async () => {
+    const w = await world(true);
+    rmSync(w.systemd, { recursive: true });
+    w.release("nix", S(1, 1, 1), S(1, 1, 1));
+    expect((await w.run("lyrica-update", "--tag", "update/nix")).code).toBe(0);
+    expect(w.json("state.json")).not.toHaveProperty("unitsStale");
+  });
+
   it("installs a tagged release on main through drain, snapshot, switch and probation, and a release that fails its checks rolls back to the old one", async () => {
     const w = await world();
     const a = w.release("a", S(1, 1, 1), S(1, 1, 1));
@@ -332,14 +385,14 @@ async function nixosWorld() {
   writeFileSync(join(w.fake, "lyricad"), "inactive\n");
   const profile = join(w.root, "profile");
   // nix-env -p <profile> --set <path>: the profile is a symlink to the package.
-  writeFileSync(join(w.fake, "nix-env"), `#!/bin/bash\n[ "$3" = --set ] && ln -sfn "$4" "$2"\nexit 0\n`);
+  writeFileSync(join(w.fake, "nix-env"), `#!/usr/bin/env bash\n[ "$3" = --set ] && ln -sfn "$4" "$2"\nexit 0\n`);
   // ssh-keygen ... -f <key>: a stand-in key pair.
-  writeFileSync(join(w.fake, "ssh-keygen"), `#!/bin/bash\nf="\${@: -1}"; echo key >"$f"; echo pub >"$f.pub"\n`);
+  writeFileSync(join(w.fake, "ssh-keygen"), `#!/usr/bin/env bash\nf="\${@: -1}"; echo key >"$f"; echo pub >"$f.pub"\n`);
   for (const f of ["nix-env", "ssh-keygen"]) chmodSync(join(w.fake, f), 0o755);
   const pkg = (name: string, schema: Schema, minReader: Schema) => {
     const dir = join(w.root, "store", name);
     mkdirSync(join(dir, "bin"), { recursive: true });
-    writeFileSync(join(dir, "bin", "lyrica"), `#!/bin/bash\necho '${JSON.stringify({ version: "0.1.0", build: "dev", schema, minReader })}'\n`);
+    writeFileSync(join(dir, "bin", "lyrica"), `#!/usr/bin/env bash\necho '${JSON.stringify({ version: "0.1.0", build: "dev", schema, minReader })}'\n`);
     chmodSync(join(dir, "bin", "lyrica"), 0o755);
     return dir;
   };

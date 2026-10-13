@@ -330,6 +330,23 @@ export class PoolReader {
     return { entries: rows.slice(0, opts.limit).reverse().map((r) => ({ n: r.n, data: json(r.data), createdAt: r.created_at, pinned: r.pinned === 1, reactions: parseReactions(r.reactions) })), hasMore };
   }
 
+  /**
+   * Where the turn now running began: the entry after the last one an earlier turn ended with (her reply or a
+   * tool result) before the newest stored user message. A sent message is stored before the model runs, so the
+   * turn's first entries may already be here; with none stored yet, it is the next entry.
+   */
+  turnStartN(threadId: string): number {
+    const row = this.db.prepare(`SELECT
+        (SELECT max(n) FROM entries WHERE thread = @id AND role = 'user') AS user,
+        (SELECT max(n) FROM entries WHERE thread = @id AND role IN ('assistant', 'toolResult')) AS reply`)
+      .get({ id: threadId }) as { user: number | null; reply: number | null };
+    if (row.user === null || (row.reply !== null && row.reply > row.user)) return this.nextEntryN(threadId);
+    const before = this.db.prepare("SELECT max(n) AS n FROM entries WHERE thread = ? AND role IN ('assistant', 'toolResult') AND n < ?")
+      .get(threadId, row.user) as { n: number | null };
+    const cut = (this.db.prepare("SELECT cut FROM threads WHERE id = ?").get(threadId) as { cut: number | null } | undefined)?.cut ?? 0;
+    return Math.max(before.n ?? 0, cut) + 1;
+  }
+
   /** The number the thread's next entry will get: past every entry, and past what a rewind removed. */
   nextEntryN(threadId: string): number {
     const row = this.db.prepare("SELECT max(coalesce((SELECT max(n) FROM entries WHERE thread = @id), 0), cut) + 1 AS n FROM threads WHERE id = @id")

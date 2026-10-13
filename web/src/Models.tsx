@@ -338,7 +338,7 @@ function HostRow({ ctx, ep, host }: { ctx: MCtx; ep: Endpoint; host?: Host }) {
       </div>
       <div className="actions">
         {canEdit(ctx, ep) && <PauseButton ctx={ctx} ep={ep} host={host} />}
-        <DashboardButton ctx={ctx} ep={ep} />
+        {canEdit(ctx, ep) && <DashboardButton ctx={ctx} ep={ep} />}
       </div>
     </li>
   );
@@ -835,7 +835,7 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
           {editable && (revoked
             ? <button type="button" className="sm" aria-expanded={code !== undefined} aria-controls={`${id}-pair`} onClick={() => setCode(code === undefined ? "" : undefined)}>Pair again…</button>
             : <PauseButton ctx={ctx} ep={ep} host={host} />)}
-          <DashboardButton ctx={ctx} ep={ep} />
+          {editable && <DashboardButton ctx={ctx} ep={ep} />}
           <button type="button" className="link sm" aria-expanded={open} onClick={() => setOpen(!open)}>{plural(ep.models.length, "model", "models")}</button>
           {editable && <RowMenu label={`Actions for ${ep.name}`} items={revoked ? actions.items : [actions.items[0]!, { label: "Pair again…", onPick: () => setCode("") }, ...actions.items.slice(1)]} />}
         </div>
@@ -923,7 +923,9 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
   const userId = ctx.user.id;
   const [name, setName] = useState(ep?.name ?? "");
   // A plan is a kind of its own here: always cloud, signed in rather than given a URL and key.
-  const [kind, setKind] = useState<"local" | "cloud" | PlanKind>(ep ? planOf(ep.api) ?? ep.kind : "local");
+  const [kind, setKind] = useState<"custom" | "openrouter" | PlanKind>(ep ? planOf(ep.api) ?? "custom" : "custom");
+  // Local and Cloud are exclusive checkboxes of a custom endpoint: ticking one clears the other.
+  const [place, setPlace] = useState<"local" | "cloud" | undefined>(ep?.kind);
   const [baseUrl, setBaseUrl] = useState(ep?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
   const [removeKey, setRemoveKey] = useState(false);
@@ -941,12 +943,13 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
     ...(baseUrl.trim() !== ep.baseUrl ? { baseUrl: baseUrl.trim() } : {}),
     ...(removeKey ? { apiKey: null } : apiKey ? { apiKey } : {}),
   } : {};
-  const plan = kind === "local" || kind === "cloud" ? undefined : kind;
+  const openrouter = !ep && kind === "openrouter";
+  const plan = kind === "custom" || kind === "openrouter" ? undefined : kind;
   const ready = plan ? !!ep && !!name.trim() && name.trim() !== ep.name
-    : ep ? Object.keys(change).length > 0 && !!name.trim() && !!baseUrl.trim() : !!name.trim() && !!baseUrl.trim();
+    : ep ? Object.keys(change).length > 0 && !!name.trim() && !!baseUrl.trim() : !!name.trim() && !!baseUrl.trim() && !!place;
   const save = () => run(async () => {
     if (ep) await patch(u(userId, "endpoints", ep.id), change);
-    else if (!plan) await post(u(userId, "endpoints"), { name: name.trim(), kind, baseUrl: baseUrl.trim(), ...(apiKey ? { apiKey } : {}), ...(shared ? { shared } : {}) });
+    else if (!plan) await post(u(userId, "endpoints"), { name: name.trim(), kind: place, baseUrl: baseUrl.trim(), ...(apiKey ? { apiKey } : {}), ...(shared ? { shared } : {}) });
     ctx.models.reload();
     onClose();
   });
@@ -962,24 +965,29 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
           <label className="field"><span>Name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
           {!ep && (
             <label className="field"><span>Kind</span>
-              <select value={kind} title="Local means on your own network: this machine, the LAN or the tailnet." onChange={(e) => setKind(e.target.value as "local" | "cloud" | PlanKind)}>
-                <option value="local">Local</option><option value="cloud">Cloud</option><option value="chatgpt">ChatGPT plan</option><option value="grok">Grok plan</option>
+              <select value={kind} onChange={(e) => setKind(e.target.value as "custom" | "openrouter" | PlanKind)}>
+                <option value="custom">Custom</option><option value="chatgpt">ChatGPT plan</option><option value="grok">Grok plan</option><option value="openrouter">OpenRouter</option>
               </select>
             </label>
           )}
           {plan && (!ep || signIn) && <PlanSignIn key={plan} ctx={ctx} plan={plan} name={name.trim()} ep={ep} onDone={onClose} />}
-          {!plan && <>
+          {openrouter && <OpenRouterSignIn ctx={ctx} name={name.trim()} shared={shared} onShared={setShared} onDone={onClose} />}
+          {!plan && !openrouter && <>
           <label className="field"><span>Base URL</span><input className="mono" inputMode="url" autoCapitalize="none" placeholder="http://192.168.1.50:1234/v1" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} /></label>
-          {(ep?.kind ?? kind) === "local" && plainHttp(baseUrl) && <p className="warn-text" role="note">Plain HTTP: the API key and every message cross the network unencrypted.</p>}
+          {place === "local" && plainHttp(baseUrl) && <p className="warn-text" role="note">Plain HTTP: the API key and every message cross the network unencrypted.</p>}
           <label className="field"><span>API key</span>
             <input type="password" autoComplete="off" disabled={removeKey} placeholder={ep?.hasApiKey ? "leave blank to keep" : undefined} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
           </label>
           {ep?.hasApiKey && <label className="check"><input type="checkbox" checked={removeKey} onChange={(e) => setRemoveKey(e.target.checked)} /> Remove key</label>}
+          {!ep && <>
+            <label className="check" title="On your own network: this machine, the LAN or the tailnet."><input type="checkbox" checked={place === "local"} onChange={(e) => setPlace(e.target.checked ? "local" : undefined)} /> Local</label>
+            <label className="check"><input type="checkbox" checked={place === "cloud"} onChange={(e) => setPlace(e.target.checked ? "cloud" : undefined)} /> Cloud</label>
+          </>}
           {!ep && ctx.user.admin && <Switch label="Shared" hint="Every user on this server can use it" checked={shared} onChange={setShared} />}
           </>}
         </fieldset>
         <ErrorText error={error} />
-        {!(plan && !ep) && <div className="row drawer-foot"><button type="submit" className="primary" disabled={busy || !ready}>Save</button></div>}
+        {!(plan && !ep) && !openrouter && <div className="row drawer-foot"><button type="submit" className="primary" disabled={busy || !ready}>Save</button></div>}
       </form>
     </aside>
   );
@@ -1000,7 +1008,8 @@ function PlanSignIn({ ctx, plan, name, ep, onDone }: { ctx: MCtx; plan: PlanKind
   useEffect(() => () => { if (live.current) void del(u(userId, "plans", "sign-in", live.current)).catch(() => {}); }, [userId]);
   const start = () => run(async () => {
     const tab = open("about:blank", "_blank");
-    const s = await post<PlanSignInStarted>(u(userId, "plans", "sign-in"), ep ? { endpointId: ep.id } : { plan, name });
+    let s: PlanSignInStarted;
+    try { s = await post<PlanSignInStarted>(u(userId, "plans", "sign-in"), ep ? { endpointId: ep.id } : { plan, name }); } catch (e) { tab?.close(); throw e; }
     live.current = s.id;
     setStarted(s);
     if (tab) { tab.opener = null; tab.location.href = s.url; } else open(s.url, "_blank", "noopener");
@@ -1027,6 +1036,50 @@ function PlanSignIn({ ctx, plan, name, ep, onDone }: { ctx: MCtx; plan: PlanKind
         <input className="mono" inputMode="url" autoCapitalize="none" autoComplete="off" title="The address your browser was sent to after you approved, starting http://127.0.0.1:1455/auth/callback" placeholder="http://127.0.0.1:1455/auth/callback?…" value={redirect} onChange={(e) => setRedirect(e.target.value)} />
       </label>
       <div className="row drawer-foot"><button type="button" className="primary" disabled={busy || !redirect.trim()} onClick={() => void finish()}>Finish</button></div>
+    </>}
+    <ErrorText error={error} />
+  </>;
+}
+
+/** OpenRouter's sign-in for a new endpoint: its page opens in a new tab and shows a Code to paste here; Finish saves the endpoint. */
+function OpenRouterSignIn({ ctx, name, shared, onShared, onDone }: { ctx: MCtx; name: string; shared: boolean; onShared: (v: boolean) => void; onDone: () => void }) {
+  const userId = ctx.user.id;
+  const [started, setStarted] = useState<PlanSignInStarted>();
+  const [code, setCode] = useState("");
+  const [run, busy, error] = useAction();
+  const live = useRef<string | undefined>(undefined);
+  useEffect(() => () => { if (live.current) void del(u(userId, "openrouter", "sign-in", live.current)).catch(() => {}); }, [userId]);
+  const start = () => run(async () => {
+    const tab = open("about:blank", "_blank");
+    try {
+      const s = await post<PlanSignInStarted>(u(userId, "openrouter", "sign-in"), { name, ...(shared ? { shared } : {}) });
+      live.current = s.id;
+      setStarted(s);
+      if (tab) { tab.opener = null; tab.location.href = s.url; } else open(s.url, "_blank", "noopener");
+    } catch (e) {
+      tab?.close();
+      throw e;
+    }
+  });
+  const finish = () => run(async () => {
+    const id = started!.id;
+    live.current = undefined;
+    try {
+      await post(u(userId, "openrouter", "sign-in", id), { code: code.trim() });
+    } catch (e) {
+      setStarted(undefined);
+      setCode("");
+      throw e;
+    }
+    ctx.models.reload();
+    onDone();
+  });
+  return <>
+    {ctx.user.admin && <Switch label="Shared" hint="Every user on this server can use it" checked={shared} disabled={!!started} onChange={onShared} />}
+    <button type="button" className={started ? undefined : "primary"} disabled={busy || !name} onClick={() => void start()}>Sign in with OpenRouter</button>
+    {started && <>
+      <label className="field"><span>Code</span><input className="mono" autoCapitalize="none" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} /></label>
+      <div className="row drawer-foot"><button type="button" className="primary" disabled={busy || !code.trim()} onClick={() => void finish()}>Finish</button></div>
     </>}
     <ErrorText error={error} />
   </>;

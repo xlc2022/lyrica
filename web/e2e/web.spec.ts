@@ -2334,8 +2334,21 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   // Add endpoint: the plain-HTTP warning for a local endpoint off this machine.
   await page.getByRole("button", { name: "Add endpoint" }).click();
   const add = page.getByRole("complementary", { name: "Add endpoint" });
+  const local = add.getByRole("checkbox", { name: "Local" });
+  const cloud = add.getByRole("checkbox", { name: "Cloud" });
+  await expect(local).not.toBeChecked();
+  await expect(cloud).not.toBeChecked();
+  await add.getByLabel("Name").fill("lan-box");
   await add.getByLabel("Base URL").fill("http://192.168.1.50:1234/v1");
+  await expect(add.getByRole("button", { name: "Save" })).toBeDisabled();
+  await local.check();
   await expect(add.getByRole("note")).toContainText("Plain HTTP");
+  await expect(add.getByRole("button", { name: "Save" })).toBeEnabled();
+  await cloud.check();
+  await expect(local).not.toBeChecked();
+  await expect(add.getByRole("note")).toHaveCount(0);
+  await local.check();
+  await expect(cloud).not.toBeChecked();
   await shot("add-endpoint");
   await add.getByLabel("Base URL").fill("http://127.0.0.1:1234/v1");
   await expect(add.getByRole("note")).toHaveCount(0);

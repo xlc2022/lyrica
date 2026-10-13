@@ -283,6 +283,14 @@ export interface PlanSignInStarted { id: string; url: string; code?: string }
  * (http://127.0.0.1:1455/auth/callback?…); Grok needs none. DELETE cancels it → Ok.
  */
 export interface PlanSignInFinish { redirectUrl?: string }
+/**
+ * POST /api/u/:userId/openrouter/sign-in → PlanSignInStarted (`id`, `url`). Starts OpenRouter's sign-in for a
+ * new cloud endpoint (`name`, and `shared` for an administrator). One at a time per user, for 10 minutes.
+ * POST …/:signInId (`OpenRouterSignInFinish`, the `code` its page showed) → EndpointInfo; the key it
+ * returns is stored like any API key. DELETE cancels it → Ok.
+ */
+export interface OpenRouterSignInStart { name: string; shared?: boolean }
+export interface OpenRouterSignInFinish { code: string }
 export interface Probe { state: "up" | "down"; warning?: string }
 /** POST /api/u/:userId/endpoints/:endpointId/reset-ids → EndpointInfo. Fresh IDs, with redirects from the old ones. */
 /** POST /api/u/:userId/endpoints/:endpointId/merge → EndpointInfo (the one merged into). */
@@ -1574,6 +1582,8 @@ export interface NewPage { slug: string; title: string; summary: string; text: s
 
 /** GET /api/u/:userId/admin/status → AdminStatus */
 export interface AdminStatus {
+  /** Installed Debian units that differ from the last update release. */
+  unitsStale?: string[];
   /** Why tools have no network on this host, if the self-test refused it. */
   networkRefused?: string;
   /** Whether the self.db passphrase is saved, so lyricad starts unlocked. */

@@ -132,11 +132,13 @@ async function admin(args: string[], home: string): Promise<void> {
   if (sub === "setup-code") return setupCode(home);
   if (sub === "passphrase") {
     // A running lyricad holds self.db open with the old key: rekeying the file under it would break it.
-    if (existsSync(join(home, "lyricad.sock"))) throw new Error("lyricad is running: change the passphrase under Administration, or stop lyricad first");
+    if (existsSync(join(home, "lyricad.sock"))) throw new Error("lyricad is running: stop it first (sudo systemctl stop lyricad).");
     const current = await ask("Current self.db passphrase: ", true);
     await keyring.unlockSelf(current);
-    await keyring.changeSelfPassphrase(current, await askNew("New self.db passphrase: "));
-    console.log("Passphrase changed.");
+    const done = await keyring.changeSelfPassphrase(current, await askNew("New self.db passphrase: "));
+    console.log(done.savedCopyRemoved
+      ? "Passphrase changed. The saved copy couldn't be updated and was removed; save it again under Administration, Start unlocked."
+      : "Passphrase changed.");
     return;
   }
   if (sub !== "user" && sub !== "grants" && sub !== "ssh" && sub !== "proxmox" && sub !== "net" && sub !== "models") throw new Error(USAGE);
