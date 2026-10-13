@@ -116,7 +116,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
 
   return (
     <div className="app" data-side-open={sideOpen} data-panel={!!panel || undefined} onClick={wide && route.page === "thread" ? (e) => openInPanel(e, route, trail) : undefined}>
-      <Sidebar ctx={ctx} users={users} route={shown} threads={threads.data ?? []} error={threads.error} onAuthChange={onAuthChange} onClose={() => setSideOpen(false)} />
+      <Sidebar ctx={ctx} users={users} route={shown} trail={trail} threads={threads.data ?? []} error={threads.error} onAuthChange={onAuthChange} onClose={() => setSideOpen(false)} />
       <div className="scrim" aria-hidden="true" onClick={() => setSideOpen(false)} />
       {page(shown, () => dropDrawer(shown === route ? "page" : "panel"))}
       {panel && route.page === "thread" && (
@@ -171,8 +171,8 @@ function usePanelTrail(route: Route): Trail {
 
 /**
  * Links in a conversation to a thread or a project's settings open in the panel, and links inside the
- * panel replace what it shows; the sidebar's rows navigate. A link to the conversation's own thread
- * closes the panel (its Thread settings link opens the drawer).
+ * panel replace what it shows; the sidebar's rows navigate (a child row's Shift+click opens beside).
+ * A link to the conversation's own thread closes the panel (its Thread settings link opens the drawer).
  */
 function openInPanel(e: React.MouseEvent, route: Route & { page: "thread" }, trail: Trail) {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -193,9 +193,17 @@ function openInPanel(e: React.MouseEvent, route: Route & { page: "thread" }, tra
     : { page: "project", pool: to.pool, threadId: to.threadId, ...(to.section ? { section: to.section } : {}) };
   // The Files button toggles its panel; a file's link shows that file in it.
   if (panel.page === "files" && !panel.path && route.panel?.page === "files" && route.panel.threadId === panel.threadId) { go({ ...route, drawer: undefined, panel: undefined }); return; }
-  // A breadcrumb goes back to that page; a link in the panel goes one deeper; one in the conversation starts afresh.
+  // A breadcrumb goes back to that page; a link in the panel goes one deeper.
   const crumb = (a as HTMLElement).dataset.crumb;
-  trail.set(crumb !== undefined ? trail.crumbs.slice(0, Number(crumb) + 1) : a.closest(".panel") ? [...trail.crumbs, panel] : [panel]);
+  if (crumb !== undefined || a.closest(".panel")) {
+    trail.set(crumb !== undefined ? trail.crumbs.slice(0, Number(crumb) + 1) : [...trail.crumbs, panel]);
+    go({ ...route, drawer: undefined, panel });
+  } else showInPanel(route, trail, panel); // one in the conversation starts afresh.
+}
+
+/** Opens `panel` beside the thread in `route`, its trail starting there: a panel reached any other way than a link inside it begins a new one. */
+function showInPanel(route: Route & { page: "thread" }, trail: Trail, panel: Panel) {
+  trail.set([panel]);
   go({ ...route, drawer: undefined, panel });
 }
 
@@ -369,14 +377,18 @@ function sections(threads: ThreadSummary[], sort: ThreadSort, groups: ThreadGrou
   return out.filter((s) => s.threads.length);
 }
 
-function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
-  ctx: ShellContext; users: UserCard[]; route: Route; threads: ThreadSummary[]; error: string; onAuthChange: (notice?: string) => void; onClose: () => void;
+function Sidebar({ ctx, users, route, trail, threads, error, onAuthChange, onClose }: {
+  ctx: ShellContext; users: UserCard[]; route: Route; trail: Trail; threads: ThreadSummary[]; error: string; onAuthChange: (notice?: string) => void; onClose: () => void;
 }) {
   const { user, me } = ctx;
   const [run, , actionError] = useAction();
   const [query, setQuery] = useState("");
   const now = useNow();
   const menu = useThreadMenu();
+  // Open beside (docs/ux.md §6): from 1180 px up, with a thread open, a child row opens in the panel beside it.
+  const wide = useWide();
+  const root = wide && route.page === "thread" ? route : undefined;
+  const openBeside = root ? (t: ThreadSummary) => showInPanel(root, trail, { page: "thread", pool: t.pool, threadId: t.id }) : undefined;
   const setDisplay = (change: DisplayChange) => run(async () => {
     ctx.setMe(await patch<Me>(u(user.id, "me", "display"), change));
     ctx.refreshThreads();
@@ -477,7 +489,7 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
           <li key={s.label} className="group-rows">
             {(shown.length > 1 || sort === "groups" || s.label === "Pinned") && <span className="eyebrow">{s.label}{s.count !== undefined && <span className="num">{s.count}</span>}</span>}
             <ul className="threads-in">
-              {s.threads.map((t) => <ThreadRow key={`${t.pool}/${t.id}`} t={t} userId={user.id} current={current} menu={menu.handlers} />)}
+              {s.threads.map((t) => <ThreadRow key={`${t.pool}/${t.id}`} t={t} userId={user.id} current={current} menu={menu.handlers} openBeside={openBeside} />)}
             </ul>
           </li>
         ))}
@@ -485,7 +497,7 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
         {nothing && <li className="muted empty">Nothing matches.</li>}
       </ul>
       {menu.at && (
-        <ThreadMenu at={menu.at} userId={user.id} route={route} groups={ctx.groups} onGroups={ctx.refreshGroups} onChange={ctx.refreshThreads} onToast={ctx.toast} onClose={menu.close} />
+        <ThreadMenu at={menu.at} userId={user.id} route={route} groups={ctx.groups} onGroups={ctx.refreshGroups} onChange={ctx.refreshThreads} onToast={ctx.toast} onOpenBeside={openBeside} onClose={menu.close} />
       )}
       {listMenu.at && <ListMenu at={listMenu.at} ctx={ctx} onClose={listMenu.close} />}
       <div className="side-foot">
@@ -603,7 +615,11 @@ function NewThread({ onCreate }: { onCreate: (pool: Pool) => void }) {
 
 export type MenuHandlers = ReturnType<ReturnType<typeof useThreadMenu>["handlers"]>;
 
-function ThreadRow({ t, userId, current, menu }: { t: ThreadSummary; userId: string; current: string; menu: (t: ThreadSummary) => MenuHandlers }) {
+function ThreadRow({ t, userId, current, menu, openBeside }: {
+  t: ThreadSummary; userId: string; current: string; menu: (t: ThreadSummary) => MenuHandlers;
+  /** Open a child row in the panel beside the open thread; absent below 1180 px or with no thread open. */
+  openBeside?: (t: ThreadSummary) => void;
+}) {
   const key = `${t.pool}/${t.id}`;
   // A project's threads show by default, pinned ones first (pinned from their cards); resolved ones fold under one Resolved row.
   const [open, setOpen] = useState(() => !!t.project || t.children.some((c) => `${c.pool}/${c.id}` === current));
@@ -621,13 +637,13 @@ function ThreadRow({ t, userId, current, menu }: { t: ThreadSummary; userId: str
       </div>
       {open && (
         <ul className="children">
-          {active.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} menu={menu} child /></li>)}
+          {active.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} menu={menu} child openBeside={openBeside} /></li>)}
           {resolved.length > 0 && (
             <li>
               <button type="button" className="resolved-row" aria-expanded={resolvedOpen} onClick={() => setResolvedOpen(!resolvedOpen)}>
                 <Icon name="right" className="chev-ic" />Resolved <span className="num">{resolved.length}</span>
               </button>
-              {resolvedOpen && <ul className="children">{resolved.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} menu={menu} child /></li>)}</ul>}
+              {resolvedOpen && <ul className="children">{resolved.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} menu={menu} child openBeside={openBeside} /></li>)}</ul>}
             </li>
           )}
         </ul>
@@ -636,7 +652,11 @@ function ThreadRow({ t, userId, current, menu }: { t: ThreadSummary; userId: str
   );
 }
 
-export function ThreadLink({ t, userId, on, menu, child }: { t: ThreadSummary; userId: string; on: boolean; menu: (t: ThreadSummary) => MenuHandlers; child?: boolean }) {
+export function ThreadLink({ t, userId, on, menu, child, openBeside }: {
+  t: ThreadSummary; userId: string; on: boolean; menu: (t: ThreadSummary) => MenuHandlers; child?: boolean;
+  /** Open this row in the panel beside the open thread (Open beside); absent below 1180 px or with no thread open. */
+  openBeside?: (t: ThreadSummary) => void;
+}) {
   // A project's thread: its state as a word, then its unseen updates. Otherwise at most two badges,
   // most pressing first (ux.md §5): waiting on her, then new updates, then hidden.
   const inProject = t.state !== undefined;
@@ -647,8 +667,17 @@ export function ThreadLink({ t, userId, on, menu, child }: { t: ThreadSummary; u
   ].filter(Boolean).slice(0, 2);
   // A project row: the project icon in the pool dot's place, amber when one of its threads waits on her.
   const waiting = t.project && t.children.some((c) => c.state === "waiting");
+  const handlers = menu(t);
+  // Shift+click and Shift+Enter on a child row open it beside the conversation (Open beside). Below 1180 px, or with no thread open, they navigate itself: without preventDefault the browser would open a new window.
+  const shiftTo = (e: React.MouseEvent | React.KeyboardEvent): boolean => {
+    if (!child || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return false;
+    e.preventDefault();
+    if (openBeside) openBeside(t); else go({ page: "thread", userId, pool: t.pool, threadId: t.id });
+    return true;
+  };
   return (
-    <a className={`thread${t.unread ? " unread" : ""}${t.project ? " project" : ""}${child && inProject ? " dotted" : ""}`} href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined} {...menu(t)}>
+    <a className={`thread${t.unread ? " unread" : ""}${t.project ? " project" : ""}${child && inProject ? " dotted" : ""}`} href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined} {...handlers}
+      onClick={(e) => { if (!shiftTo(e)) handlers.onClick(e); }} onKeyDown={(e) => { if (e.key === "Enter") shiftTo(e); }}>
       {t.project ? <span className={`project-mark ${t.pool}`} data-waiting={waiting || undefined}><Icon name="project" />{waiting && <span className="sr-only">a thread waits on you</span>}</span>
         : (!child || inProject) && (t.pool === "private"
           ? <PoolLock />

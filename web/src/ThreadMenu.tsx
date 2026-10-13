@@ -1,8 +1,8 @@
 // A thread's menu in the sidebar (docs/ux.md §6): right-click, or a long press
 // on a phone, with a letter shortcut for each item; the thread header's ⋯ opens
-// the same menu. Mark as unread, Rename, Share with, Move to group, Hide and
-// Delete; Pin; Make project for a top-level thread, Resolve and Reopen for a
-// project's thread.
+// the same menu. Open beside for a child row, where the sidebar passes it; Mark
+// as unread, Rename, Share with, Move to group, Hide and Delete; Pin; Make
+// project for a top-level thread, Resolve and Reopen for a project's thread.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { del, get, patch, post, put, threadPath, u, type Person, type ThreadGroup, type ThreadSummary } from "./api.ts";
 import { go, type Route } from "./route.ts";
@@ -47,7 +47,7 @@ function Item({ label, kbd, danger, sub, onClick }: { label: ReactNode; kbd?: st
   );
 }
 
-export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onToast, onGone, onClose }: {
+export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onToast, onOpenBeside, onGone, onClose }: {
   at: MenuAt; userId: string; route?: Route; groups: ThreadGroup[];
   /** The groups changed (one was made). */
   onGroups: () => void;
@@ -55,6 +55,8 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   onChange: () => void;
   /** What Pin and Unpin did, for the shell's toast. */
   onToast: (text: string) => void;
+  /** Open a child thread in the panel beside the open one; only the sidebar passes it, from 1180 px up with a thread open. */
+  onOpenBeside?: (t: ThreadSummary) => void;
   /** The thread was deleted. Without it, deleting the open thread (per `route`) goes home. */
   onGone?: () => void;
   onClose: () => void;
@@ -170,6 +172,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
     body = (
       <>
         <span className="eyebrow">{t.title || (t.project ? "New project" : "New thread")}</span>
+        {t.child && onOpenBeside && <Item label="Open beside" kbd="B" onClick={() => { onOpenBeside(t); onClose(); }} />}
         <Item label={t.unread ? "Mark as read" : "Mark as unread"} kbd="U" onClick={() => change({ unread: !t.unread })} />
         <Item label="Rename…" kbd="R" onClick={() => { setDraft(t.title ?? ""); setSub("rename"); }} />
         {!t.project && !t.subagent && <Item label="Share with" kbd="S" sub onClick={() => setSub("share")} />}
