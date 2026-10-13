@@ -159,6 +159,9 @@ third column with one control per column).
   has verified it.
 - A cloud model can't reach a private preset or the Private column through
   any route, CLI or core call (tests at core and route level).
+- A thread that chose a general preset and is later made local-only or
+  moved to the private pool ignores that choice at resolve time and uses
+  the Private column, without throwing (core test).
 - Migration from every released schema keeps each user's lists and default
   (tested), and the previous release still opens a migrated database.
 - A gone model in a preset shows red, the next model answers, and the
