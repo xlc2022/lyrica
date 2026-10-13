@@ -145,6 +145,8 @@ describe("workspace tools in a Pi session", () => {
     expect(system).toContain("/srv/music (read-only)");
     expect(system).toContain("Internet for commands: off.");
     expect(system).toContain("Hosts you may reach: nas.lan:8080.");
+    expect(system).toContain("Headless Chromium is in the sandbox");
+    expect(system).toContain("don't mirror or proxy them");
   });
 
   it("refuses a search or a page whose input holds one of the sandbox's credentials", async () => {
