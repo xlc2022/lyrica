@@ -891,7 +891,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       return owner(d, user, (o): Api.ThreadTombstone => {
         const gone = o[pool].getThreadTombstone(threadId);
         if (!gone || o[pool].getThread(threadId)) throw new HttpError(404, "no such tombstone");
-        const show = DISPLAY_DEFAULTS_ALL;
+        const show = display(d, user.id);
         const memories: Api.MemoryUse[] = o[pool].citingThread(threadId).map((id) => ({ id }));
         const links: Record<string, Api.MemoryLink> = {};
         for (const m of memories) { const link = linkFor(o, pool, m.id, show); if (link) links[m.id] = link; }
