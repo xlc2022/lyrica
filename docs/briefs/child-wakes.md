@@ -82,11 +82,32 @@ wake-up and routine tests passed; targeted project-pause coverage passed.
 All Vitest commands used the shared `flock` and fork pool with two workers;
 no full suite, paid API or real plan endpoint was called.
 
-**Next:** the user runs the full suite, pushes and sends the head for review.
-This sandbox makes the checkout's `.git` read-only. Commits were created
-in a writable copy of its metadata; `/tmp/lyrica-child-wakes.bundle` carries
-the completed merge and implementation commits. Import those commits to
-advance this checkout before pushing; the source changes are already here.
+**Next:** the user runs the full suite, commits, pushes and sends the head
+for review. Changes stay in the tree; the checkout's Git metadata is
+read-only in this sandbox.
 
 **Open questions:** none. Pending wake metadata is in memory only; encrypted
 notices remain after restart, as documented.
+
+
+### 2026-10-13 — resumed after main's presets merge
+
+**Done:** resolved `docs/ux.md` by retaining main's project panels/cards and
+this feature's child-wake behavior. Checked the welcome Backend card and
+Images controls against named presets; the merged code already uses them.
+Updated delegation's inherited context to say preset, and repaired stale
+profile routes/Backend wording in docs/web.md. Reply suppression applies
+only to the child-started turn, so a queued user turn can still start a child normally; pending wakes wait during an
+update drain too. This feature adds no migration:
+main's user steps through 8 and pool steps through 7 remain unchanged.
+
+**Validation:** typecheck passed after the merge. All 17 socket-free guard,
+thread-tool and card tests passed under the shared lock. Localhost fake-server tests
+cannot run in the resumed sandbox (`listen EPERM`); the earlier successful
+runs predate this merge. No full suite or paid endpoint was called.
+
+**Next:** rerun the focused integration tests on a host that permits localhost,
+then the user's full suite and review. Changes remain in the tree; no commit
+or push was made in the resumed run.
+
+**Open questions:** none; the integration rerun is the remaining check.

@@ -10,10 +10,12 @@ render mention tokens.
 ## Pages
 
 Routes are in the URL hash (`#/u/<user>/t/<pool>/<thread>`, `…/p/<pool>/<project>/<section>`
-for a project's settings, `…/memory`, `…/settings/<section>`, `…/admin/<section>`,
+for a project's settings, `…/memory`, `…/notifications`, `…/settings/<section>`, `…/admin/<section>`,
 `#/login`), so `lyricad` serves a single file. The old `…/panel` opens Settings.
 A thread's address may carry what the panel beside it shows:
-`…/t/<pool>/<thread>/panel/t/<pool>/<other>` or `…/panel/p/<pool>/<project>/<section>`.
+`…/t/<pool>/<thread>/panel/t/<pool>/<other>`, `…/panel/p/<pool>/<project>/<section>`
+or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
+`…/t/<pool>/<project-thread>/threads`: what the panel shows beside its chat from 1180 px up.
 
 - **Unlock** while `lyricad` is locked, then **login**. A browser holds one
   person's users: the user menu at the foot of the sidebar opens Settings and
@@ -24,7 +26,10 @@ A thread's address may carry what the panel beside it shows:
   notice says so without naming them. Logging out says when the user stays
   unlocked because another browser still holds them.
 - **Sidebar:** the app's name links home, marks it as current
-  there, and closes the phone drawer when pressed. New thread and New project (General or Private), Search (`src/Search.tsx`,
+  there, and closes the phone drawer when pressed. New thread and New project:
+  each row stays put and opens its General / Private choice in a row directly
+  below it, as Search does with its field; clicking the row again or pressing
+  Escape closes the choice, and opening one closes the other. Search (`src/Search.tsx`,
   "Search titles and messages": the list filters by title as it is typed;
   from 2 characters, 300 ms after the last key, `GET …/search` turns it
   into a group per thread in the order of their newest hit, the thread's
@@ -61,7 +66,10 @@ A thread's address may carry what the panel beside it shows:
   **New project** (General or Private: an empty, pinned project chat) and
   **New group…**.
 - **Thread menu** (`src/ThreadMenu.tsx`): right-click a thread, or hold it
-  for half a second on a touch screen. Mark as unread or read (U), Rename…
+  for half a second on a touch screen. **Open beside** (B) first, on a child
+  row where the sidebar passes it (from 1180 px up with a thread open): it opens
+  the child in the panel beside the open thread; Shift+click or Shift+Enter on
+  the row does the same, and below 1180 px Shift+click navigates itself. Mark as unread or read (U), Rename…
   (R, inline), **Share with** (S: the other users on this server, from
   `GET …/people`, linked personas marked; picking one confirms in a dialog
   that says the copy is as it is now, that later messages and memories
@@ -118,9 +126,13 @@ A thread's address may carry what the panel beside it shows:
   `settings` event to the source thread; finished turns and focus refresh
   routines too.
 - **Project chat** (`src/Project.tsx`): the facts line adds **Threads** with
-  the count, opening a popover of the project's threads grouped Waiting on
+  the count. From 1180 px up it is a toggle (`aria-pressed`, pressed look while
+  shown) for the panel beside the chat showing the project's threads list
+  (`{page:"threads"}`: `ThreadsPage`, the same groups as the popover below, each row
+  its state word and its time in mono); below it a popover of the project's
+  threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
-  count), and the project's tokens ("65 tokens", "312k tokens"; on a phone the tokens
+  count). The facts line also carries the project's tokens ("65 tokens", "312k tokens"; on a phone the tokens
   are the popover's first line instead). The header has a **Project**
   link to the project settings page before the Settings button, which
   opens the thread's drawer as in any thread. The
@@ -128,10 +140,13 @@ A thread's address may carry what the panel beside it shows:
   thread list, so cards and state words follow. A resolved project thread
   has a **Reopen** link where its message box was.
 - **The panel** (`Shell.tsx`, docs/ux.md §6): from 1180 px up, a link in a
-  conversation to a thread or a project's settings (a thread card, a mention,
-  the Threads popover, the header's Project link) opens it in a third column
-  instead of navigating, and the address gains `/panel/<its path>`; the
-  sidebar's rows navigate as before, and so does a modified click. The column
+  conversation to a thread or a project's settings (a thread card or its
+  **View thread**, a mention, the Threads fact, the header's Project link) opens it in a third column
+  instead of navigating, and the address gains `/panel/<its path>`; so do
+  **Open beside** (B) in a child row's sidebar menu and Shift+click or
+  Shift+Enter on such a row (`showInPanel`, with the breadcrumb starting
+  there). The sidebar's other rows navigate as before, and so does any other
+  modified click. The column
   is 360 to 520 px (420 to start), dragged on its divider (a `separator`
   that the arrow keys move too), the width kept in `localStorage`
   (`lyrica.panel-width`). A link inside the panel replaces what it shows and
@@ -176,8 +191,10 @@ A thread's address may carry what the panel beside it shows:
   servers**, the drawer's own controls,
   then a **Thread settings** link that opens the project chat with its
   drawer showing, `…/t/<pool>/<thread>/settings`, for network, local-only
-  and the other task models), and one Save, which patches the thread
-  (`goal`, `paused`, `watchThreads` when it changed, `threadsModel`,
+  and the other task models), then **Commands**: a mono prefix field per
+  rule, an Allow | Ask | Forbid segment, Remove, and **Add rule**. Empty
+  reads "No rules: commands ask as the mode says." Empty rows are ignored and dropped on Save, and duplicate prefixes (spaces collapsed) fail validation. The page has one Save, which patches the thread
+  (`goal`, `paused`, `commandRules`, `watchThreads` when it changed, `threadsModel`,
   `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
   settings (`grants`, `machines`, `repositories`, `mcpServers` among them); `lyricad`'s
   reason shows when it refuses. Every thread the project starts gets these
@@ -265,8 +282,8 @@ A thread's address may carry what the panel beside it shows:
   30 s not asked again). Overview: a banner for a paused host or a stale
   endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
   the first one down, "+N" for more), Backend (the first `chat` model of
-  the general profile and of Local, following Same as, each with its pool
-  and profile beneath; links to Tasks) and Clean up (the count, the tile's
+  the General and Private columns, following Same as, each with its pool
+  and preset name (or Custom) beneath; links to Tasks) and Clean up (the count, the tile's
   tooltip "To decide" or "Nothing to clean up"); then the hosts and
   endpoints summary (a host with its combined VRAM bar, Pause or Resume,
   Dashboard; a plain endpoint with its model count) and the first five
@@ -304,26 +321,27 @@ A thread's address may carry what the panel beside it shows:
   sentence as its tooltip. Recent calls: Time (mono), Thread (a link; private
   kind mark; "a forgotten thread" when gone), Task, Answered by ("model ·
   endpoint"), Note (the fallback or note, warn text); hidden pools left
-  out; the table stacks on a phone. Tasks (`GET …/profiles`, the former
-  Settings → Model profiles): a table of every task (grouped Conversation,
+  out; the table stacks on a phone. Tasks (`GET …/presets`): a table of every
+  task (grouped Conversation,
   Memory, Sleep, Images, Speech; each name's tooltip says what the task
-  does) by profile, **Private threads** (Local) and **General threads** (the
-  default profile; **Use Custom instead** in its head sends `PATCH
-  …/profiles`; **Show Custom too** adds the third column); each head's name
-  has a tooltip about its profile ("Local profile · local models only"). A
-  cell shows the first model with its state dot (up; away when only a later
-  entry can answer; down when none can), or "No model" with a down dot when
-  the list is empty, then "+N fallbacks", "no fallback" (warn) or "= Chat"
-  for a task following another; Dictation has a cell under Private threads
-  only. A cell opens the task's drawer, its title's tooltip naming the
-  profile and the threads it serves: **Its own list** or **Same as** a task
-  of the same kind (**Task to share with**; a task with followers can't
-  follow, and a line under the choice names them, which describes the
-  disabled Same as), the ordered list with Move up,
-  Move down and Remove (in Custom, "Falls back to cloud from here" where the
-  kind changes), and **Add…**, a picker with a search box, group chips and
-  only models the task can use; each change is a `PUT
-  …/profiles/<profile>/<task>` at once, a refusal shown as an error line.
+  does) by column, **Private threads** and **General threads**. Each
+  column's **Preset** button opens a searchable dialog of its usable
+  presets; choosing one sends `PUT …/columns/<column>`. A private column
+  offers private presets only. Custom columns offer **Save to <name>**
+  and **Save as preset…**; **New preset…** and a user preset's Edit open
+  the Name drawer. A cell shows the first model with its state dot (up;
+  away when only a later entry can answer; down when none can), or
+  "No model" with a down dot, then "+N fallbacks", "no fallback" (warn)
+  or "= Chat" for a task following another. Dictation has a cell under
+  Private threads only. A cell opens the task drawer naming its column
+  and preset: **Its own list** or **Same as** a task of the same kind,
+  the ordered list with Move up, Move down and Remove, and **Add…**, a
+  picker with search and group chips offering only suitable models (local
+  only for Private). A change sends `PUT …/columns/<column>/<task>` and
+  makes that column Custom, leaving the preset unchanged; refusals show
+  as an error line. Saving uses `POST …/columns/<column>/save`; creating,
+  renaming and deleting presets use `POST …/presets` and
+  `PATCH`/`DELETE …/presets/<id>`.
   Settings → Sleep holds the Sleep mode select and Sleep fallback;
   `…/settings/profiles` goes to the Tasks tab.
   Text models (`src/TextModels.tsx`, its pure parts in `src/library.ts`)
@@ -438,7 +456,7 @@ A thread's address may carry what the panel beside it shows:
   last four characters; Remove is there only where the user may remove it
   (a shared token needs an administrator).
 - **Notifications** (`src/Notifications.tsx`; docs/ux.md §6 "Anything
-  waiting for the user"): the first section of Settings, one list from
+  waiting for the user"): a page of its own (`#/u/<user>/notifications`), one list from
   `GET …/notifications`. Chips filter by type (All with the count, Needs a
   decision, then the types that exist now); Sort offers Newest first,
   Oldest first, By type and By pool (the last two group the rows under eyebrows); Where
@@ -460,7 +478,7 @@ A thread's address may carry what the panel beside it shows:
   administrator: Tailnet (the state, an Auth key with Hostname and Advanced →
   Control server, **Connect**, then a **Web access over the tailnet** switch
   applied on Continue; or Skip), Models (one endpoint, shared, its first
-  chat model set for the profile; or Skip), Done (the addresses to open her
+  chat model set for the column; or Skip), Done (the addresses to open her
   at with the fingerprint, the administrator's login, the tailnet, and a
   sentence when she starts locked), **Start a chat**. The current step's
   button is the one primary; a done step's turns secondary; the fields of a
@@ -468,7 +486,7 @@ A thread's address may carry what the panel beside it shows:
   counts on the unlock limiter; too many say to wait, longer after each
   wrong code, up to 15 minutes.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
-  left (a scrolling row on a phone): Notifications, Profile (name, pronouns, accent colour,
+  left (a scrolling row on a phone): Profile (name, pronouns, accent colour,
   monogram), Appearance (theme; the **Checklists** switch, which saves
   `Display.checklists` at once and reloads the thread list: off, the API
   sends no steps, so no card or header shows one; then Read aloud while
@@ -626,7 +644,7 @@ stack when they don't fit. Each card has a plain h2 with its link on the right:
 and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
 time in mono. **Notifications** has All <n> and "Nothing waiting." when
 empty. **Backend** has Models and lists each pool's first chat model, host,
-local/cloud chip and profile, then each model host's state as a dot and word.
+local/cloud chip and preset name (or Custom), then each model host's state as a dot and word.
 
 ## Chat
 
@@ -793,13 +811,20 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   for a second. When the pins are over their budget the badge adds "shortened", with
   a tooltip saying the oldest reach her as their first line only.
 - A `threads` call is a card: the child thread started (title and task) or
-  messaged, linking to it. While the child has a checklist (its
+  messaged, linking to it — one **Open** link in its head, or when the run made
+  more than one thread a **Threads <n>** button with the count in mono and a
+  chevron (`aria-expanded`, turning down while open; `src/Messages.tsx`) that
+  opens a dialog of them: each row the title cut to one line and its state as a
+  dot and a word, a 44 px tap on coarse pointers, full width in flow at 390 px.
+  Each opens the panel from 1180 px up and the page below. While the child has a checklist (its
   `ThreadSummary.steps` in the thread list), the start card shows its
   count and current step as a project's card does. A child's update shows
   in the parent as a card headed "Child thread", linking to it. **In a project chat** there is no
   card per start or update: each of the project's threads gets one card
-  under the message that started it (its anchor; threads whose anchor is
-  gone sit under the last message), updated in place from the overview:
+  under the first displayed message at or after its anchor entry (some
+  entries aren't displayed); threads whose anchor was removed sit under
+  the last message. Cards stay there as later messages arrive, updated in
+  place from the overview:
   title, state as a dot and word (Working blue, Waiting amber, Resolved
   green, Idle plain), its checklist's count while it has one
   (`ThreadSummary.steps`: "2 of 5" with its numbers in mono, a link named
@@ -809,7 +834,8 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   wake-up's time in mono while one waits (`ThreadSummary.wakeAt`);
   beneath, the step under way (or the first to do) with its mark, on one
   line with an ellipsis, left off once all are done or the thread is
-  resolved; then the first line of its last update, and Open, Stop,
+  resolved; then the first line of its last update; **View thread** at its foot
+  (`a.sm`) opens the thread — the panel from 1180 px up, the page below — as does a double-click on the card that lands on none of its links or buttons and, on its text, leaves nothing selected. Open, Stop,
   Pin or Unpin (`…/pin`, as the thread menu's, with its toast; a pinned
   thread sits first among the project's threads in the sidebar, never in
   the Pinned group), Resolve or Reopen behind ⋯. The sidebar rows show no
@@ -898,13 +924,13 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   answers; if it can't, the message waits for it."
 - **Dictation** and **Read aloud** are selects in the thread settings
   drawer's Models section, under Titles, offering only models that
-  transcribe or speak; "Profile (…)" names what applies without a pick
-  (for Dictation, always the local profile's). A cloud pick for Dictation
+  transcribe or speak; "Preset (…)" names what applies without a pick
+  (for Dictation, always the Private column's). A cloud pick for Dictation
   first asks in a dialog naming the model (Use cloud dictation or Cancel);
   confirmed, it is what sends that thread's voice to the cloud.
-  **Read aloud while agent writes** (`Profiles.readAloudLive`) is a switch
+  **Read aloud while agent writes** (`Presets.readAloudLive`) is a switch
   under Speech in Settings, Appearance. Models → Tasks has a Read aloud
-  row in every profile and a Dictation row under Private threads only, and
+  row in both columns and a Dictation row under Private threads only, and
   a speaking model
   in an endpoint's model list (Models → Hosts and endpoints, "N models") has
   a Settings link opening its drawer: a voice per
@@ -912,7 +938,7 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   the field is left), each with its source word (shared or yours) and a
   Reset link. The thread drawer's Read aloud select has the same
   **Settings** link after it, opening that drawer over the thread drawer
-  for the model the select shows (the thread's pick, else the profile's),
+  for the model the select shows (the thread's pick, else the column's),
   when it speaks and the thread may use it; Escape closes the voice
   drawer first, and focus goes back to the link.
 - **The plan card:** a `propose_plan` request shows "Plan", its step count
@@ -971,3 +997,9 @@ turns animations off.
 - `npx tsx web/e2e/shot.ts [page]...` (after a build) saves screenshots of
   ada's pages from that same throwaway `lyricad`, at both widths, light and
   dark (docs/workspace.md, "Her own code").
+
+A project sandbox command card offers secondary **Always allow `<prefix>`**
+between Allow and Deny, only when lyricad supplied `alwaysAllow`. It answers
+with `alwaysAllow: true`; the prefix is never sent back. Commands uses the
+existing segment and Remove icon (UX rules 2–3), its home in rule 6 and one
+Save with validation in rule 7; rows wrap at phone width (rule 8).

@@ -69,7 +69,7 @@ export function wordFor(ref: Ref, link: MemoryLink | undefined, display: Display
     case "journal": return { text: `the journal, ${longDate(link.updatedAt)}`, href: to, ref, link };
     case "wake": return { text: "WAKE", href: to, ref, link };
     case "page": return { text: link.title || "an untitled page", href: to, ref, link };
-    default: return { text: link.title || "an untitled thread", href: to, ref, link };
+    default: return { text: link.deleted ? "a deleted thread" : link.title || "an untitled thread", href: to, ref, link };
   }
 }
 

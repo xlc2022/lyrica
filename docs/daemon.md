@@ -330,6 +330,15 @@ Each active thread is one Pi session from `openThreadSession`, with
   stopping their runs and dropping their records (`Delegation.forget`). With
   `{ children: true }` (`ForgetThread`) its child threads go too; otherwise
   they are kept as threads of their own and detached from its workspace.
+  With `{ keepMemories: true }` no note or project page is removed, each
+  forgotten thread leaves a text-free tombstone, and `GET …/threads/:pool/:threadId/tombstone`
+  (`ThreadTombstone`: ID, deletion time, the memories citing it; `404` when
+  none) answers where the thread was. `linkFor` gives a citation of it
+  `deleted: true`.
+  Its files go at once while the home is mounted (`forgetThreadFiles`,
+  daemon/src/sweep.ts): the change records of what its calls did and their
+  snapshots, its folder under `threads/` and its Claude Code folder. The
+  nightly sweep takes any folder left behind.
 - **Child threads** (`ChildThreads`, [delegation.md](delegation.md#child-threads)):
   every hosted thread gets the `threads` tool. A child is hosted like any
   thread; `ThreadHost.status` says working, waiting or idle, and
@@ -535,6 +544,16 @@ and waits for `POST …/permissions/:requestId` with `allow`. Nobody answering
 in 5 minutes, or Stop, denies. A view that opens later sees waiting requests
 in `hello`.
 
+A project's command rules are read for every `bash` call: Forbid refuses
+without a card; Ask prompts in every mode; Allow skips sandbox mode prompts.
+`PATCH …/threads/:pool/:threadId` accepts `commandRules` on a project chat
+only, and its `projectSettings.commandRules` returns the saved list.
+A plain sandbox command request in a project may carry `alwaysAllow`, the
+prefix lyricad computes. An answer with `alwaysAllow: true` adds that stored
+prefix as an Allow rule to the owning project and approves the call, also
+when it runs in a subagent. No browser-supplied prefix is read; requests
+without the stored prefix refuse this answer.
+
 A plan from Plan mode is a request with `tool: "propose_plan"` and `args: {
 plan }`. Approving it takes `mode` too (`ask`, `acceptEdits` or `auto`;
 without it the answer is refused); `lyricad` switches the thread to it and
@@ -645,18 +664,18 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   the mic's and Read aloud's state. Dictation and Read aloud are thread
   tasks (`THREAD_TASKS`), chosen with `ThreadSettingsChange.models` like the
   others; a thread's own Dictation pick may be a cloud model, and without
-  one Dictation uses the local profile's. A thread Lyrica starts from
+  one Dictation uses the Private column's. A thread Lyrica starts from
   another doesn't inherit its Dictation pick.
-  `Profiles.readAloudLive` (changed with `ProfilesChange.readAloudLive`, off
+  `Presets.readAloudLive` (changed with `PresetsChange.readAloudLive`, off
   by default) is Read aloud while agent writes; `Speech.readAloudLive`
   carries it so the web knows whether to offer `messages/live/speech`.
 - **Fallback.** `ThreadSettings.fallback` is the thread's switch (null
-  follows `Profiles.fallback`, on by default) and `fallbackOn` what applies;
+  follows `Presets.fallback`, on by default) and `fallbackOn` what applies;
   `ThreadSettingsChange.fallback` changes it. Off, only the first model in
   each of the thread's lists answers ([models.md](models.md#choosing-a-model)):
   a message to a thread whose model is away waits, as under **No model
   reachable**. A branch or subagent starts with its parent's.
-  `Profiles.sleepFallback` (`PATCH profiles`, `sleep.fallback` in `user.db`)
+  `Presets.sleepFallback` (`PATCH presets`, `sleep.fallback` in `user.db`)
   does the same for sleep's phases.
 - `ThreadSettings.answered` skips speech calls, so the context meter reads
   the chat call.
@@ -674,8 +693,8 @@ downloads, the image library), the text library, hub tokens (last four
 characters only), the Models page overview (`GET …/models/page`, endpoints
 with live status, at most 3 seconds each, and none asked again while it was
 seen down in the last 30 seconds), offerings, model
-groups, Clean up and the models notice, the three profiles with the default
-profile and thinking level, recent calls, network
+groups, Clean up and the models notice, the presets and columns with the default
+preset and thinking level, recent calls, network
 defaults, machines, Git accounts (`…/git-accounts`, with what each can see
 at `…/git-accounts/:name/repositories?q=`; docs/workspace.md), and for
 administrators users, allowed paths, shared
@@ -777,6 +796,15 @@ routes, exit nodes or `--reset`. Administrators only; one change at a time.
   off; over the LAN or on the machine they work.
 - Her outbound traffic to tailnet peers still goes through the host's
   network; the host's own Tailscale, if any, is never touched.
+- `POST /hooks/forge/:account` answers on the serve port only (anywhere else
+  it is 404), so it arrives through her tailnet address. It is a nudge, not a
+  trusted read: `lyricad` checks the forge's HMAC signature
+  (`X-Forgejo-Signature` or `X-Gitea-Signature`) against that Git account's
+  one `webhook_secret`, reads only the repository's full name from the body,
+  and at once polls that account's watched pull requests (DESIGN.md, "CI
+  wakes"). A missing or wrong signature is 401; no body text is kept. Each
+  Git account has its own secret, and the webhook is offered only for a
+  Forgejo or Gitea account whose host resolves to a private address.
 
 ## Web access
 

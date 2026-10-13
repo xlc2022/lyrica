@@ -90,6 +90,9 @@ function deliverVia(pi: ExtensionAPI, ctx: ExtensionContext, thread: ThreadConte
  * limit. A subagent's tool shares its run's `budget`, so nesting can't start
  * more subagents than one request may.
  */
+/** For the parent: what its subagents and child threads can already do, so briefs don't send them after tools they have or can't get. */
+export const SHARED_SANDBOX = "Subagents and child threads work in a sandbox like yours, with the same tools and your network or less, and see the same workspace notes. Brief them on the result you need, not on how to verify it; ask for a check the sandbox can't run and they'll waste the run building one.";
+
 export function createDelegateExtension(thread: ThreadContext, delegation: Delegation, budget?: { left: number }): ExtensionFactory {
   delegation.recover(thread.user.id);
   if (delegation.depth(thread) >= delegation.limits.depth) throw new Error("this thread is at the depth limit and can't delegate");
@@ -104,7 +107,7 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
       const roles = delegation.roles(userId).map((r) => `- ${r.name} (${r.tier}${r.readOnly ? ", read-only" : ""}): ${r.description}`);
       const flows = delegation.workflows(userId).map((w) => `- ${w.name}: ${w.description}`);
       const o = event.systemPromptOptions;
-      o.sections = { ...o.sections, delegation: [`Subagent roles:\n${roles.join("\n")}`, flows.length ? `Saved workflows:\n${flows.join("\n")}` : ""].filter(Boolean).join("\n\n") };
+      o.sections = { ...o.sections, delegation: [SHARED_SANDBOX, `Subagent roles:\n${roles.join("\n")}`, flows.length ? `Saved workflows:\n${flows.join("\n")}` : ""].filter(Boolean).join("\n\n") };
     });
 
     const report = (run: Run) => {

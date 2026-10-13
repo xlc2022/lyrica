@@ -209,7 +209,7 @@ export class ChildThreads implements ThreadsHost {
     if (this.o.paused?.(userId, from.pool, target.parent)) throw new Error("this project is paused; its threads take no messages until the person resumes it");
     if (target.queued) throw new Error(`[t:${to}] is queued and hasn't started; it starts when another thread finishes`);
     const wake = this.parentWakes.get(`${userId}/${from.pool}/${from.threadId}`);
-    if (wake?.running && wake.children.has(to)) {
+    if (wake?.running && wake.children.has(to) && this.o.host().get(userId, from.pool, from.threadId).childWakeTurn) {
       this.o.host().get(userId, from.pool, to).appendParent(text, from.threadId);
       return;
     }
@@ -654,7 +654,7 @@ export class ChildThreads implements ThreadsHost {
     for (const [key, wake] of this.parentWakes) {
       if (wake.running || this.locking.has(wake.userId) || (userId && wake.userId !== userId)) continue;
       try {
-        if (this.o.paused?.(wake.userId, wake.pool, wake.parent)) continue;
+        if (this.o.host().draining || this.o.paused?.(wake.userId, wake.pool, wake.parent)) continue;
         if (this.o.host().busy(wake.userId, wake.pool, wake.parent)) continue;
         if (this.workingCount(wake.userId) >= this.limits.concurrency) continue;
         const reservation = this.reserveRoutine(wake.userId, wake.pool, wake.parent);

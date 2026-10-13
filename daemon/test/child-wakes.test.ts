@@ -24,10 +24,18 @@ async function setup() {
   const busy = new Set<string>();
   const wakes: string[] = [];
   const notices: string[] = [];
+  const replies: string[] = [];
+  const sends: string[] = [];
+  let childWakeTurn = false;
   const host = {
     busy: (_u: string, _p: Pool, t: string) => busy.has(t),
     changed: () => {}, delivered: () => {},
-    get: (_u: string, _p: Pool, t: string) => ({ send: async () => { busy.add(t); return { queued: false }; }, wakeChild: async () => { busy.add(t); wakes.push(t); } }),
+    get: (_u: string, _p: Pool, t: string) => ({
+      get childWakeTurn() { return childWakeTurn; },
+      appendParent: (text: string) => { replies.push(text); },
+      send: async (text: string) => { busy.add(t); sends.push(text); return { queued: false }; },
+      wakeChild: async () => { childWakeTurn = true; busy.add(t); wakes.push(t); },
+    }),
   } as unknown as ThreadHost;
   let paused = false;
   const children = new ChildThreads({ users, memory, models, workspace, host: () => host,
@@ -38,7 +46,7 @@ async function setup() {
   const flush = async () => { await new Promise<void>(r => setImmediate(r)); };
   const end = () => { busy.delete(parent.id); children.turn(user.id, "general", parent.id, false); children.ended(user.id, "general", parent.id, "done"); };
   const parentFrom = { ...from, threadId: parent.id } as ThreadContext;
-  return { children, parentFrom, users, user, parent, child, from, busy, wakes, notices, flush, end, pause: (p: boolean) => { paused = p; } };
+  return { children, parentFrom, users, user, parent, child, from, busy, wakes, notices, replies, sends, host, flush, end, userTurn: () => { childWakeTurn = false; }, pause: (p: boolean) => { paused = p; } };
 }
 
 describe("child wake guards", () => {
@@ -107,6 +115,30 @@ describe("child wake guards", () => {
     expect(s.wakes).toEqual([s.parent.id]);
     s.children.recover(s.user.id);
     expect(s.notices).toHaveLength(1);
+  });
+
+  it("suppresses a woken parent's reply, but a subsequent user turn can start the child", async () => {
+    const s = await setup();
+    s.children.limits.concurrency = 2;
+    await s.children.message(s.from, "parent", "Which flowers?", { question: true });
+    await s.flush();
+    await s.children.message(s.parentFrom, s.child.id, "Use tulips.");
+    expect(s.replies).toEqual(["Use tulips."]);
+    expect(s.sends).toEqual([]);
+    s.userTurn();
+    await s.children.message(s.parentFrom, s.child.id, "Continue the work.");
+    expect(s.sends).toEqual(["Continue the work."]);
+  });
+
+  it("waits while the daemon drains, then starts one pending wake", async () => {
+    const s = await setup();
+    s.host.draining = true;
+    await s.children.message(s.from, "parent", "Which flowers?", { question: true });
+    expect(s.wakes).toEqual([]);
+    s.host.draining = false;
+    s.children.drainWakes();
+    await s.flush();
+    expect(s.wakes).toEqual([s.parent.id]);
   });
 
 });

@@ -144,6 +144,11 @@ the subagent being stopped refuses that one call, and the subagent is told
 such call is refused. So writers run in threads that ask first, and parallel
 writers each ask for their own calls.
 
+A subagent carries the owning project through every delegation depth. Its
+`bash` hook reads that project's command rules on every call: Forbid refuses,
+Ask always asks, and Allow skips sandbox mode prompts. Always allow on its
+command card saves lyricad's computed prefix for the whole project.
+
 An MCP call that its server doesn't mark read-only asks the same way in
 every mode, shown in both threads; **Allow in this thread** holds for that
 tool in the subagent's thread only.
@@ -160,7 +165,9 @@ tool in the subagent's thread only.
 
 Prompts are adapted from `pi-subagents` 0.76.1 (MIT, credited in
 `roles.ts`). A task with no role gets the worker. The parent's prompt lists
-the roles and saved workflows.
+the roles and saved workflows, after a line (`SHARED_SANDBOX`) saying that
+subagents and child threads have her sandbox's tools and her network or
+less, so a brief asks for the result rather than a way to verify it.
 
 **Custom roles and workflows** are stored in the user's `user.db` through
 `DelegationStore` (`setRole`, `removeRole`, `setWorkflow`,
@@ -260,7 +267,7 @@ checks it reaches her, and with a real model which she picks. Code:
 - `start({ title, task, folders?, readOnly?, internet? })` creates the child
   (`createThread({ parent, child: true })`) and sends it the task, then
   returns its ID at once, as `[t:<id>]`, which she mentions it by. It gets the parent's model context
-  (`models.inheritContext`: pool, local-only, profile, thinking, models) and
+  (`models.inheritContext`: pool, local-only, preset, thinking, models) and
   workspace (`inheritSettings`, narrowed by `folders`, `readOnly` and
   `internet: false`; any of those also leaves it no machines); the workspace refuses anything wider, and a folder the
   parent doesn't have is refused. It inherits "Do not log" from the store.

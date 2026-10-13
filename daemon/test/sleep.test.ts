@@ -109,7 +109,7 @@ describe("sleep in lyricad", () => {
     await s.talk();
     const dead = (await s.ada.post<EndpointInfo>(`${s.u}/endpoints`, { name: "dead", kind: "local", baseUrl: "http://127.0.0.1:9/v1" })).body;
     const m = (await s.ada.post<OfferingInfo>(`${s.u}/endpoints/${dead.id}/models`, { modelId: "m" })).body;
-    await s.ada.put(`${s.u}/profiles/custom/sleep.wake`, { model: { offeringId: m.id } });
+    await s.ada.put(`${s.u}/columns/general/sleep.wake`, { model: { offeringId: m.id } });
     const down = await s.ada.post(`${s.u}/sleep/general`, {});
     expect(down).toMatchObject({ status: 409, body: { error: "Sleep can't run now: no model for Sleep: wake can be reached now (dead/m: dead is down)." } });
     expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => r.skipReason)).toEqual(["endpoint-down", "no-activity"]);

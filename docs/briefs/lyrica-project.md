@@ -42,6 +42,10 @@ written here.
    on the project chat's **Claude Code** switch in Thread settings, so the
    project's threads inherit it (docs/workspace.md, "Claude Code"); with
    the internet off, also allow `api.anthropic.com`.
+   Project settings → General → **Commands** can save trusted checks as
+   Allow rules, pushes as Ask, and commands she must leave to the user as
+   Forbid. These apply to the project chat, its threads and subagents;
+   Always allow on a sandbox command card saves its prefix for this project.
 2. Paste the **Project instructions** below into Project settings →
    Memory → Instructions (the count shows it is under 2,000; only the owner can
    change them).
@@ -72,9 +76,11 @@ written here.
    wake-up. Every thread must end with a message to its parent: the result,
    or what blocked it; she reads its latest
    messages with `threads read` and stops a thread that went wrong with
-   `threads stop` (docs/delegation.md, "Child threads"). To wait on CI or
-   a review without blocking a turn she sets a wake-up, `threads later`
-   with minutes and a note, and checks then.
+   `threads stop` (docs/delegation.md, "Child threads"). CI and reviews
+   wake her without a turn being blocked: a pull request she opens through
+   the run's relay is watched, and `lyricad` gives the thread one turn when
+   its checks finish or someone reviews it (DESIGN.md, "CI wakes").
+   `threads later` stays for anything else.
 
 ## Project instructions (paste as is)
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { CallInfo, EndpointInfo, MessagePage, Profiles, ProjectOverview, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { CallInfo, EndpointInfo, MessagePage, Presets, ProjectOverview, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 // Projects: a project chat whose child threads are the project's threads.
@@ -112,7 +112,7 @@ describe("projects", () => {
     // Cleared, new threads follow the project chat's again.
     expect((await ada.patch<ThreadSummary>(path, { threadsFallback: null })).body.projectSettings?.threadsFallback).toBeUndefined();
     // The defaults: new threads, and sleep's phases.
-    expect((await ada.patch<Profiles>(`${u}/profiles`, { fallback: false, sleepFallback: false })).body).toMatchObject({ fallback: false, sleepFallback: false });
+    expect((await ada.patch<Presets>(`${u}/presets`, { fallback: false, sleepFallback: false })).body).toMatchObject({ fallback: false, sleepFallback: false });
     expect((await ada.get<ThreadSettings>(`${path}/settings`)).body).toMatchObject({ fallback: null, fallbackOn: false });
   });
 
@@ -359,10 +359,10 @@ describe("projects", () => {
 
   it("keep a private project's looks on local models", async () => {
     const { ada, u, script, requests } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
-    // Watching on a cloud model in the custom profile, which general projects use.
+    // Watching on a cloud model in the General column, which general projects use.
     const cloud = await fakeOpenAI({ label: "cloud", models: [{ id: "deepseek" }] });
     const deepseek = { offeringId: (await ada.post<EndpointInfo>(`${u}/endpoints`, { name: "openrouter", kind: "cloud", baseUrl: cloud.baseUrl })).body.models[0]!.id };
-    expect((await ada.put(`${u}/profiles/custom/watching`, { model: deepseek })).status).toBe(200);
+    expect((await ada.put(`${u}/columns/general/watching`, { model: deepseek })).status).toBe(200);
     const asked = () => requests.filter((c) => who(c) === "watching");
     const watchIn = async (pool: "general" | "private") => {
       const project = (await ada.post<ThreadSummary>(`${u}/threads`, { pool, title: "Garden", project: true, goal: "Plant the beds" })).body;
