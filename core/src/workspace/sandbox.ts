@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, constants, existsSync, lstatSync, mkdtempSync, openSync, readFileSync, readlinkSync, rmSync } from "node:fs";
+import { closeSync, constants, existsSync, lstatSync, mkdtempSync, openSync, readFileSync, readlinkSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
@@ -80,6 +80,18 @@ const tools = () => process.env.LYRICA_SANDBOX_TOOLS || undefined;
 const env = () => ({ PATH: tools() ? `${tools()}/bin:${PATH}` : PATH, HOME: WORKDIR, LANG: "C.UTF-8", TERM: "dumb", ...toolEnv() });
 // The system's CA bundle (mounted with /etc/ssl), which Node and Python don't read by themselves.
 const CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt";
+/**
+ * The bundle's real path, as the sandbox can open it. On NixOS the /etc path
+ * is a link through /etc/static, which isn't mounted, so it is resolved here
+ * to its store path (in the closure as security.pki.caBundle); a path outside
+ * the store isn't mounted there, so it is left out and tools use their defaults.
+ */
+function caBundle(): string | undefined {
+  try {
+    const real = realpathSync(CA_BUNDLE);
+    return tools() && !real.startsWith("/nix/store/") ? undefined : real;
+  } catch { return undefined; }
+}
 const BROWSERS = ["chromium", "chromium-headless-shell", "chromium-browser"];
 // Programs her prompt names when present, by the name it uses.
 const LISTED: [string[], string][] = [[["git"], "git"], [["curl"], "curl"], [["jq"], "jq"], [["rg"], "ripgrep"], [["node"], "Node"], [["npm"], "npm"], [["python3"], "Python 3"], [["magick", "convert"], "ImageMagick"]];
@@ -92,7 +104,8 @@ export function sandboxTools(): { programs: string[]; browser?: string } {
 /** Where the sandbox's CA bundle and Chromium are, so npm, pip, Playwright and Puppeteer use them instead of failing or downloading their own. */
 export function toolEnv(): Record<string, string> {
   const env: Record<string, string> = {};
-  if (existsSync(CA_BUNDLE)) Object.assign(env, { SSL_CERT_FILE: CA_BUNDLE, NODE_EXTRA_CA_CERTS: CA_BUNDLE, REQUESTS_CA_BUNDLE: CA_BUNDLE });
+  const ca = caBundle();
+  if (ca) Object.assign(env, { SSL_CERT_FILE: ca, NODE_EXTRA_CA_CERTS: ca, REQUESTS_CA_BUNDLE: ca });
   const browser = find(BROWSERS);
   if (browser) Object.assign(env, { CHROME_PATH: browser, PUPPETEER_EXECUTABLE_PATH: browser, PUPPETEER_SKIP_DOWNLOAD: "1", PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1" });
   return env;
