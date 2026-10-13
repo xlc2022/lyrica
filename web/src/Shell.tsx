@@ -1,5 +1,5 @@
 // The signed-in layout: the sidebar, and the page the route points at.
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { get, patch, post, upload, threadPath, u, type Display, type DisplayChange, type LogoutResponse, type Me, type Pool, type SearchHit, type State, type ThreadGroup, type ThreadSort, type ThreadSummary, type ThreadSettings, type ThreadSettingsChange, type UserCard } from "./api.ts";
 import { href, go, panelRoute, parse, type Panel, type Route } from "./route.ts";
 import { Icon } from "./icons.tsx";
@@ -220,6 +220,13 @@ function PanelColumn({ route, panel, trail, threads, children }: { route: Route 
   // The width kept per browser; where storage is off, the panel starts at the default each time.
   const [width, setWidth] = useState(() => { try { const n = Number(localStorage.getItem(PANEL_WIDTH_KEY)); return n >= PANEL_MIN && n <= PANEL_MAX ? n : PANEL_DEFAULT; } catch { return PANEL_DEFAULT; } });
   const resize = (w: number) => { const x = Math.round(Math.min(PANEL_MAX, Math.max(PANEL_MIN, w))); setWidth(x); try { localStorage.setItem(PANEL_WIDTH_KEY, String(x)); } catch { /* kept for this visit only */ } };
+  // The grid that reads --panel-w is .app, the aside's parent (app.css), so it goes there; on the aside it never reached that rule.
+  useLayoutEffect(() => {
+    const app = ref.current?.parentElement;
+    if (!app) return;
+    app.style.setProperty("--panel-w", `${width}px`);
+    return () => { app.style.removeProperty("--panel-w"); };
+  }, [width]);
   const close = useCallback(() => go({ ...route, drawer: undefined, panel: undefined }), [route]);
   // The first memory in the trail is the panel's name, Memory; a memory followed from it carries its title, so the crumbs grow.
   const label = (p: Panel, i: number) => p.page === "project" ? "Project settings" : p.page === "files" ? "Files"
@@ -252,7 +259,7 @@ function PanelColumn({ route, panel, trail, threads, children }: { route: Route 
     else if (e.key === "End") { resize(PANEL_MIN); e.preventDefault(); }
   };
   return (
-    <aside ref={ref} className="panel" role="complementary" aria-label={crumbs.map((c) => c.label).join(" › ")} style={{ "--panel-w": `${width}px` } as React.CSSProperties} onKeyDown={onKeyDown}>
+    <aside ref={ref} className="panel" role="complementary" aria-label={crumbs.map((c) => c.label).join(" › ")} onKeyDown={onKeyDown}>
       <div className="divider" role="separator" aria-orientation="vertical" aria-label="Panel width" aria-valuemin={PANEL_MIN} aria-valuemax={PANEL_MAX} aria-valuenow={width} tabIndex={0} onPointerDown={drag} onKeyDown={keys} />
       <PanelCtx.Provider value={ctx}>{children}</PanelCtx.Provider>
     </aside>

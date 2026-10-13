@@ -1806,6 +1806,15 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await expect(divider).toHaveAttribute("aria-valuenow", "460");
   await page.reload();
   await expect(page.getByRole("separator", { name: "Panel width" })).toHaveAttribute("aria-valuenow", "460");
+  // Dragging it changes the column itself, not just its number: --panel-w has to reach .app's grid.
+  const dbox = (await divider.boundingBox())!;
+  await page.mouse.move(dbox.x + dbox.width / 2, dbox.y + dbox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(dbox.x + dbox.width / 2 - 70, dbox.y + dbox.height / 2);
+  await page.mouse.up();
+  await expect(divider).toHaveAttribute("aria-valuenow", "520");
+  const dragged = (await settings.boundingBox())!;
+  expect(Math.round(dragged.width)).toBe(520);
   await page.getByRole("complementary", { name: "Project settings" }).getByRole("link", { name: "Open as a page" }).click();
   await expect(page.getByRole("complementary", { name: "Project settings" })).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
