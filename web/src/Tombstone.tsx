@@ -20,7 +20,7 @@ export function Tombstone({ userId, pool, data }: { userId: string; pool: Pool; 
         </div>
       </header>
       <div className="scroll">
-        <p>Deleted {longDate(data.deletedAt)}.</p>
+        <p>Deleted <span className="num">{longDate(data.deletedAt)}</span>.</p>
         <h2>Memories from it</h2>
         {data.memories.length === 0 ? <p>No memories from it.</p> : (
           <ul>

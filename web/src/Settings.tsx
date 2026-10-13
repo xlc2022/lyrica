@@ -394,8 +394,8 @@ function Forget({ children, onForget }: { children: number; onForget: (withChild
   return (
     <Confirm label="Forget this thread" danger confirm="Forget it" onConfirm={([keep, kids]) => onForget(!!kids, !!keep)}
       question={([keep]) => keep
-        ? "Forget this thread? Its messages are deleted. What was learned from it stays in memory. This can't be undone."
-        : "Forget this thread? Its messages are deleted, along with what was learned only from it. This can't be undone."}
+        ? `Forget this thread? Its messages are deleted. What ${her()} learned from it stays in memory. This can't be undone.`
+        : `Forget this thread? Its messages are deleted, and so is what ${her()} learned only from it. This can't be undone.`}
       options={[{ label: "Keep memories", ticked: false }, ...(children > 0 ? [{ label: `Also forget its ${children === 1 ? "child thread" : `${children} child threads`}`, ticked: true }] : [])]} />
   );
 }
