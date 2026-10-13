@@ -2,7 +2,7 @@
 
 **Thread:** Web UI (UI) with Projects back end (seeding). **Branch:**
 `feature/project-welcome`. **Model:** Fable for the UI, Opus for the seed.
-**Status:** proposed; needs the owner's go before anyone builds it.
+**Status:** approved by the owner 2026-10-13; queued for Codex on lunasa.
 
 **Read first:** AGENTS.md, docs/ux.md §6 (the Project rows), DESIGN.md
 "Projects", docs/briefs/projects-web.md, `web/src/Project.tsx`,
@@ -81,5 +81,5 @@ route, and docs/briefs/projects-web.md.
 
 ## Handoff note
 
-2026-10-12: brief written, nothing built. Next: the owner's go, then a
+2026-10-13: brief approved, nothing built. Next: Codex on lunasa builds it, then a
 Web UI thread and UI review's pass on the welcome card against ux.md.
