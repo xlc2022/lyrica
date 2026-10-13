@@ -47,7 +47,7 @@ third column with one control per column).
   dialogs confirm): **Name**, then a read-only summary of the column's
   table it will copy (task, first model, "+N fallbacks"), then Save. The
   scope is the column's. A preset's own Edit opens the same drawer to
-  rename it, with **Delete preset** at its foot, confirmed by a dialog.
+  rename it, with **Delete preset…** at its foot, confirmed by a dialog.
 - **Names** are 1 to 40 characters, unique per user ignoring case, and
   never "Custom". The drawer shows "A preset called <name> already
   exists." under Name and keeps Save from saving; core and the daemon
@@ -160,7 +160,7 @@ third column with one control per column).
   stored preset is unchanged (tested).
 - DESIGN.md (Profiles, Fallbacks, the Models page), docs/models.md,
   docs/contracts.md, docs/ux.md (the Models row, and the word list gaining Preset, Search
-  presets, Save to, Save as preset…, New preset… and Delete preset; Nothing
+  presets, Save to, Save as preset…, New preset… and Delete preset…; Nothing
   matches is there already) and the
   operator guides that name the `profile` CLI are updated in the same PR.
 
@@ -174,6 +174,6 @@ profile` commands became `… preset`.
 - 2026-10-13: brief written; PR review's three findings (rollback for
   Mixed, preset names, the menu's role) and UI review's (no Edit on built-ins, E and Tab
   reach Edit, a pencil icon, no headings in the Private menu, truncated
-  names, the word list) folded in. The build PR carries
+  names, the word list, "Delete preset…") folded in. The build PR carries
   the DESIGN, contracts, models and ux doc changes (PR review's call). Next: mockup to UI review and PR review, then
   the build on lunasa.
