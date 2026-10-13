@@ -91,6 +91,13 @@ and carries its children into a new project. The interface is built under
    its checks finish or someone reviews it (DESIGN.md, "CI wakes").
    `threads later` stays for anything else.
 
+## Reading a checkout with a scout
+
+For `delegate`, `folders` means granted host folders, not sandbox checkout
+paths. Omit it to let a scout read this project's checkout through its
+parent's read-only clone mount; the scout receives no forge credentials.
+This is separate from child-thread repository inheritance.
+
 ## Project instructions (paste as is)
 
 Kept current by every PR that changes how she works on her own code
