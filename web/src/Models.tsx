@@ -923,7 +923,9 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
   const userId = ctx.user.id;
   const [name, setName] = useState(ep?.name ?? "");
   // A plan is a kind of its own here: always cloud, signed in rather than given a URL and key.
-  const [kind, setKind] = useState<"local" | "cloud" | "openrouter" | PlanKind>(ep ? planOf(ep.api) ?? ep.kind : "local");
+  const [kind, setKind] = useState<"custom" | "openrouter" | PlanKind>(ep ? planOf(ep.api) ?? "custom" : "custom");
+  // Local and Cloud are exclusive checkboxes of a custom endpoint: ticking one clears the other.
+  const [place, setPlace] = useState<"local" | "cloud" | undefined>(ep ? ep.kind : "local");
   const [baseUrl, setBaseUrl] = useState(ep?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
   const [removeKey, setRemoveKey] = useState(false);
@@ -942,12 +944,12 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
     ...(removeKey ? { apiKey: null } : apiKey ? { apiKey } : {}),
   } : {};
   const openrouter = !ep && kind === "openrouter";
-  const plan = kind === "local" || kind === "cloud" || kind === "openrouter" ? undefined : kind;
+  const plan = kind === "custom" || kind === "openrouter" ? undefined : kind;
   const ready = plan ? !!ep && !!name.trim() && name.trim() !== ep.name
-    : ep ? Object.keys(change).length > 0 && !!name.trim() && !!baseUrl.trim() : !!name.trim() && !!baseUrl.trim();
+    : ep ? Object.keys(change).length > 0 && !!name.trim() && !!baseUrl.trim() : !!name.trim() && !!baseUrl.trim() && !!place;
   const save = () => run(async () => {
     if (ep) await patch(u(userId, "endpoints", ep.id), change);
-    else if (!plan) await post(u(userId, "endpoints"), { name: name.trim(), kind, baseUrl: baseUrl.trim(), ...(apiKey ? { apiKey } : {}), ...(shared ? { shared } : {}) });
+    else if (!plan) await post(u(userId, "endpoints"), { name: name.trim(), kind: place, baseUrl: baseUrl.trim(), ...(apiKey ? { apiKey } : {}), ...(shared ? { shared } : {}) });
     ctx.models.reload();
     onClose();
   });
@@ -963,8 +965,8 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
           <label className="field"><span>Name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
           {!ep && (
             <label className="field"><span>Kind</span>
-              <select value={kind} title="Local means on your own network: this machine, the LAN or the tailnet." onChange={(e) => setKind(e.target.value as "local" | "cloud" | "openrouter" | PlanKind)}>
-                <option value="local">Local</option><option value="cloud">Cloud</option><option value="chatgpt">ChatGPT plan</option><option value="grok">Grok plan</option><option value="openrouter">OpenRouter</option>
+              <select value={kind} onChange={(e) => setKind(e.target.value as "custom" | "openrouter" | PlanKind)}>
+                <option value="custom">Custom</option><option value="chatgpt">ChatGPT plan</option><option value="grok">Grok plan</option><option value="openrouter">OpenRouter</option>
               </select>
             </label>
           )}
@@ -972,11 +974,15 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
           {openrouter && <OpenRouterSignIn ctx={ctx} name={name.trim()} shared={shared} onShared={setShared} onDone={onClose} />}
           {!plan && !openrouter && <>
           <label className="field"><span>Base URL</span><input className="mono" inputMode="url" autoCapitalize="none" placeholder="http://192.168.1.50:1234/v1" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} /></label>
-          {(ep?.kind ?? kind) === "local" && plainHttp(baseUrl) && <p className="warn-text" role="note">Plain HTTP: the API key and every message cross the network unencrypted.</p>}
+          {place === "local" && plainHttp(baseUrl) && <p className="warn-text" role="note">Plain HTTP: the API key and every message cross the network unencrypted.</p>}
           <label className="field"><span>API key</span>
             <input type="password" autoComplete="off" disabled={removeKey} placeholder={ep?.hasApiKey ? "leave blank to keep" : undefined} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
           </label>
           {ep?.hasApiKey && <label className="check"><input type="checkbox" checked={removeKey} onChange={(e) => setRemoveKey(e.target.checked)} /> Remove key</label>}
+          {!ep && <>
+            <label className="check" title="On your own network: this machine, the LAN or the tailnet."><input type="checkbox" checked={place === "local"} onChange={(e) => setPlace(e.target.checked ? "local" : undefined)} /> Local</label>
+            <label className="check"><input type="checkbox" checked={place === "cloud"} onChange={(e) => setPlace(e.target.checked ? "cloud" : undefined)} /> Cloud</label>
+          </>}
           {!ep && ctx.user.admin && <Switch label="Shared" hint="Every user on this server can use it" checked={shared} onChange={setShared} />}
           </>}
         </fieldset>
