@@ -124,6 +124,7 @@ function showDebug(ctx: ExtensionContext, topics: RoutedTopic[], sections: Secti
 }
 export * from "./models.ts";
 export * from "./plans.ts";
+export * from "./openrouter.ts";
 export * from "./session.ts";
 export * from "./delegate/index.ts";
 

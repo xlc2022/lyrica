@@ -15,6 +15,7 @@ import { NotificationsCard, useWaiting } from "./Notifications.tsx";
 import { SleepCard, SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
 import { BackendCard, ModelsArea, useCleanupCount } from "./Models.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
+import { Flyout, useCanHover, useFlyout } from "./flyout.tsx";
 import { ProjectPage, stateWord } from "./Project.tsx";
 import { SearchGroups, searchable, useMessageSearch } from "./Search.tsx";
 import { ask, JUMP_EVENT, JUMP_KEY, keep, type JumpRequest } from "./links.ts";
@@ -379,6 +380,12 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
     ctx.refreshThreads();
     go({ page: "thread", userId: user.id, pool, threadId: t.id });
   });
+  // A new project is an empty project chat, pinned, opened at once — what the list menu's item does.
+  const createProject = (pool: Pool) => run(async () => {
+    const t = await post<ThreadSummary>(u(user.id, "threads"), { pool, project: true });
+    ctx.refreshThreads();
+    go({ page: "thread", userId: user.id, pool, threadId: t.id });
+  });
   const current = route.page === "thread" ? `${route.pool}/${route.threadId}` : "";
   const sort = me.display.sort;
   // Search filters titles, child threads included, as they are typed; from 2 characters lyricad's
@@ -418,7 +425,7 @@ function Sidebar({ ctx, users, route, threads, error, onAuthChange, onClose }: {
         <button type="button" className="icon sm side-close" aria-label="Hide threads" onClick={onClose}><Icon name="close" /></button>
       </div>
       <nav className="side-nav" aria-label="Pages">
-        <NewThread onCreate={create} />
+        <NewButtons onCreate={create} onCreateProject={createProject} />
         <details>
           <summary><Icon name="search" />Search</summary>
           <div>
@@ -530,19 +537,37 @@ function ListMenu({ at, ctx, onClose }: { at: { x: number; y: number }; ctx: She
   const [name, setName] = useState("");
   const [run, , error] = useAction();
   const userId = ctx.user.id;
+  const canHover = useCanHover();
+  // On a device that can hover New project opens beside its item instead of replacing the menu (docs/ux.md §3).
+  const fly = canHover && sub === "project";
+  const hover = useFlyout(sub, setSub, canHover && (sub === "" || !!fly));
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
     el.style.left = `${Math.max(8, Math.min(at.x, innerWidth - r.width - 8))}px`;
     el.style.top = `${Math.max(8, Math.min(at.y, innerHeight - r.height - 8))}px`;
-    el.querySelector("button")?.focus();
+    // With the flyout open focus stays put: a pointer opened it, or → moved into it.
+    if (!fly) el.querySelector("button")?.focus();
   }, [at, sub]);
   useEffect(() => {
+    // Closing a flyout from the keyboard puts focus back on its item.
+    const back = () => { const open = fly; setSub(""); if (open) requestAnimationFrame(() => ref.current?.querySelector<HTMLElement>(`[data-submenu="${sub}"]`)?.focus()); };
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); if (sub) setSub(""); else onClose(); return; }
-      if (e.target instanceof HTMLInputElement || menuArrows(e, ref.current)) return;
-      const btn = ref.current?.querySelector<HTMLButtonElement>(`button[data-key="${e.key.toUpperCase()}"]`);
+      if (e.key === "Escape") { e.preventDefault(); if (sub) back(); else onClose(); return; }
+      // → opens the item's flyout, ← closes one level.
+      const focus = document.activeElement as HTMLElement | null;
+      if (e.key === "ArrowRight" && focus?.dataset.submenu) {
+        e.preventDefault(); setSub(focus.dataset.submenu as typeof sub);
+        requestAnimationFrame(() => ref.current?.querySelector<HTMLElement>(".flyout button")?.focus());
+        return;
+      }
+      if (e.key === "ArrowLeft" && sub) { e.preventDefault(); back(); return; }
+      if (e.target instanceof HTMLInputElement) return;
+      // Letters and arrows act inside the open flyout when focus is there, else in the menu itself.
+      const scope = (focus?.closest(".flyout") as HTMLElement | null) ?? ref.current;
+      if (menuArrows(e, scope)) return;
+      const btn = scope?.querySelector<HTMLButtonElement>(`button[data-key="${e.key.toUpperCase()}"]`);
       if (btn) { e.preventDefault(); btn.click(); }
     };
     const down = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
@@ -558,39 +583,58 @@ function ListMenu({ at, ctx, onClose }: { at: { x: number; y: number }; ctx: She
     onClose();
     go({ page: "thread", userId, pool, threadId: t.id });
   });
+  // The submenu contents, shared by the in-place replacement and the flyout.
+  const projectItems = (
+    <>
+      <button type="button" role="menuitem" data-key="G" onClick={() => create("general")}><span>General</span><kbd>G</kbd></button>
+      <button type="button" role="menuitem" data-key="P" onClick={() => create("private")}><span>Private</span><kbd>P</kbd></button>
+    </>
+  );
   return (
-    <div ref={ref} className="ctx-menu" role="menu" aria-label="Thread list menu" style={{ left: at.x, top: at.y }}>
-      {sub === "project" ? (
-        <>
-          <button type="button" className="back" onClick={() => setSub("")}>‹ New project in</button>
-          <button type="button" role="menuitem" data-key="G" onClick={() => create("general")}><span>General</span><kbd>G</kbd></button>
-          <button type="button" role="menuitem" data-key="P" onClick={() => create("private")}><span>Private</span><kbd>P</kbd></button>
-        </>
-      ) : sub === "group" ? (
+    <div ref={ref} className="ctx-menu" role="menu" aria-label="Thread list menu" style={{ left: at.x, top: at.y }} {...hover}>
+      {sub === "group" ? (
         <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) void addGroup(); }}>
           <input autoFocus aria-label="Group name" value={name} onChange={(e) => setName(e.target.value)} />
           <button type="submit" className="primary sm" disabled={!name.trim()}>Add</button>
         </form>
+      ) : sub === "project" && !fly ? (
+        <><button type="button" className="back" onClick={() => setSub("")}>‹ New project in</button>{projectItems}</>
       ) : (
         <>
-          <button type="button" role="menuitem" className="has-sub" data-key="P" onClick={() => setSub("project")}><span>New project</span><kbd>P</kbd></button>
+          <button type="button" role="menuitem" className="has-sub" data-key="P" data-submenu="project" aria-expanded={!!fly} onClick={() => setSub("project")}><span>New project</span><kbd>P</kbd></button>
           <button type="button" role="menuitem" data-key="G" onClick={() => setSub("group")}><span>New group…</span><kbd>G</kbd></button>
         </>
       )}
       <ErrorText error={error} />
+      {fly && <Flyout parentRef={ref} anchor="project">{projectItems}</Flyout>}
     </div>
   );
 }
 
-function NewThread({ onCreate }: { onCreate: (pool: Pool) => void }) {
-  const [open, setOpen] = useState(false);
-  if (!open) return <button type="button" aria-expanded="false" onClick={() => setOpen(true)}><Icon name="plus" />New thread</button>;
+/** New thread and New project at the top of the sidebar: one row style each, and only one General / Private choice open at a time (docs/ux.md §3). */
+function NewButtons({ onCreate, onCreateProject }: { onCreate: (pool: Pool) => void; onCreateProject: (pool: Pool) => void }) {
+  const [open, setOpen] = useState<"" | "thread" | "project">("");
   return (
-    <div className="new-choice" role="group" aria-label="New thread in">
-      <button type="button" className="primary sm" autoFocus onClick={() => { setOpen(false); onCreate("general"); }}>General</button>
-      <button type="button" className="private sm" onClick={() => { setOpen(false); onCreate("private"); }}>Private</button>
-      <button type="button" className="icon sm" aria-label="Cancel" onClick={() => setOpen(false)}><Icon name="close" /></button>
-    </div>
+    <>
+      <NewRow shown={open === "thread"} onShow={(on) => setOpen(on ? "thread" : "")} icon="plus" label="New thread" onCreate={onCreate} />
+      <NewRow shown={open === "project"} onShow={(on) => setOpen(on ? "project" : "")} icon="project" label="New project" onCreate={onCreateProject} />
+    </>
+  );
+}
+
+/** A row that stays put, with its General / Private / ✕ choice under it while open, so the choice reads as this row's. */
+function NewRow({ shown, onShow, icon, label, onCreate }: { shown: boolean; onShow: (on: boolean) => void; icon: "plus" | "project"; label: string; onCreate: (pool: Pool) => void }) {
+  return (
+    <>
+      <button type="button" aria-expanded={shown} onClick={() => onShow(!shown)}><Icon name={icon} />{label}</button>
+      {shown && (
+        <div className="new-choice" role="group" aria-label={`${label} in`}>
+          <button type="button" className="primary sm" autoFocus onClick={() => { onShow(false); onCreate("general"); }}>General</button>
+          <button type="button" className="private sm" onClick={() => { onShow(false); onCreate("private"); }}>Private</button>
+          <button type="button" className="icon sm" aria-label="Cancel" onClick={() => onShow(false)}><Icon name="close" /></button>
+        </div>
+      )}
+    </>
   );
 }
 

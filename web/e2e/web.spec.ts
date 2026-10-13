@@ -111,7 +111,7 @@ const hitHeight = (button: Locator) => button.evaluate((el) => parseFloat(getCom
 async function noHorizontalScroll(page: Page) {
   // A drawer slides in from 30 px past the edge for 180 ms; measure once every animation has finished.
   await page.evaluate(() => Promise.all(document.getAnimations()
-    .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity) // a pulsing dot or blinking caret never finishes
+    .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity) // a pulsing dot or the writing dots never finish
     .map((a) => a.finished.catch(() => undefined))));
   const found = await page.evaluate(() => {
     const wide = [...document.querySelectorAll<HTMLElement>(".scroll, .head, .drawer-body, .mem-pane, .mem-read, .side")]
@@ -843,8 +843,11 @@ test("each message shows when it was sent in mono after its name, her reply once
   // "slowly" keeps her reply streaming for about 6 s, long enough to look at it.
   await send(page, "What time is it, slowly, and take your time over the answer, because there is no hurry today and the roast still needs an hour in the oven before anyone sits down");
   await expect(page.getByText("You said: What time")).toBeVisible();
-  // While her reply streams (its caret blinking), its header line has no time; read in one go, so the turn can't end in between.
-  expect(await page.evaluate(() => document.querySelector(".turn .caret-blink")?.closest(".turn")?.querySelectorAll(".who time").length)).toBe(0);
+  // While her reply streams it is the only turn and has no time yet (the writing dots show only after a non-text part); read in one go, so the turn can't end in between.
+  expect(await page.evaluate(() => {
+    const turns = [...document.querySelectorAll(".turn")];
+    return turns.length > 0 && turns.every((t) => !t.querySelector(".who time"));
+  })).toBe(true);
 
   const mine = page.locator(".msg.user .who");
   const hers = page.locator(".turn .who");
@@ -1228,7 +1231,8 @@ test("with Read aloud while agent writes on, a reply can be read aloud as it str
   await message.fill("Say this slowly");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("You said: Say this slowly")).toBeVisible();
-  await expect(page.locator(".turn").filter({ has: page.locator(".caret-blink") }).getByRole("button", { name: "Read aloud" })).toHaveCount(0);
+  // The reply being written is the one turn with no stored time yet.
+  await expect(page.locator(".turn").filter({ hasNot: page.locator(".who time") }).getByRole("button", { name: "Read aloud" })).toHaveCount(0);
   await expect(page.getByText("in a few pieces.")).toBeVisible({ timeout: 15_000 });
 
   // The setting is under Speech in Settings, Appearance.
@@ -1247,7 +1251,7 @@ test("with Read aloud while agent writes on, a reply can be read aloud as it str
   await expect(message).toBeVisible();
   await message.fill("Say this slowly too");
   await page.getByRole("button", { name: "Send" }).click();
-  const writing = page.locator(".turn").filter({ has: page.locator(".caret-blink") });
+  const writing = page.locator(".turn").filter({ hasNot: page.locator(".who time") });
   await expect(writing.getByRole("button", { name: "Read aloud" })).toBeEnabled();
   await writing.getByRole("button", { name: "Read aloud" }).click();
   await expect(writing.getByRole("button", { name: "Stop reading" })).toBeVisible();
@@ -1325,8 +1329,8 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
   // Read aloud on her reply is Stop reading while it plays, then comes back.
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText("in a few pieces.")).toBeVisible();
-  // Her stored copy, once she has finished: the one Read aloud on the page.
-  await expect(page.locator(".caret-blink")).toHaveCount(0, { timeout: 15_000 });
+  // Her stored copy, once she has finished (its time appears when it is stored): the one Read aloud on the page.
+  await expect(page.locator(".turn .who time")).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Read aloud" }).click();
   const stop = page.getByRole("button", { name: "Stop reading" });
   await expect(stop).toBeVisible();
@@ -1754,6 +1758,97 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await expect(chatDrawer).toBeVisible();
   await chatDrawer.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
   await noHorizontalScroll(page);
+});
+
+test("hovering New project opens its flyout beside the item, and it flips at the right edge", async ({ page, baseURL }) => {
+  test.skip(phone(page), "flyouts are for devices that can hover");
+  await enter(page, baseURL!);
+  const list = page.locator(".threads");
+  // Earlier tests may fill the list: scroll to its end so the strip under the last row is in view.
+  await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  const box = (await list.boundingBox())!;
+  await list.click({ button: "right", position: { x: 40, y: box.height - 6 } });
+  const menu = page.getByRole("menu", { name: "Thread list menu" });
+  const item = menu.getByRole("menuitem", { name: "New project" });
+  await expect(item).toBeVisible();
+  await item.hover();
+  const fly = page.locator(".ctx-menu.flyout");
+  await expect(fly.getByRole("menuitem", { name: "General" })).toBeVisible();
+  // The menu itself stays as it was, and the item keeps its highlight while its flyout is open.
+  await expect(menu.getByRole("menuitem", { name: "New group…" })).toBeVisible();
+  await expect(item).toHaveAttribute("aria-expanded", "true");
+  const f = (await fly.boundingBox())!, i = (await item.boundingBox())!;
+  const first = (await fly.getByRole("menuitem", { name: "General" }).boundingBox())!;
+  expect(Math.abs(first.y - i.y)).toBeLessThan(2); // its first row lines up with the item
+  expect(f.x).toBeGreaterThanOrEqual(i.x + i.width - 2); // and it opens to the right
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/flyout-${page.viewportSize()!.width}.png` });
+
+  // From the keyboard: → moves into the flyout, ← closes it and puts focus back on its item.
+  await item.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(fly.getByRole("menuitem", { name: "General" })).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(fly).toHaveCount(0);
+  await expect(item).toBeFocused();
+
+  // Resting on a sibling item closes it (the pointer is still on the item, so a click reopens the flyout first).
+  await item.click();
+  await expect(fly).toBeVisible();
+  await menu.getByRole("menuitem", { name: "New group…" }).hover();
+  await expect(fly).toHaveCount(0);
+
+  // Near the right edge there is no room on the right, so it opens to the left instead.
+  // The thread header's ⋯ puts its menu's right edge under the button, at the viewport's edge.
+  await newThread(page, "General");
+  const more = page.getByRole("button", { name: "Thread actions" });
+  await more.click();
+  const shareItem = page.getByRole("menuitem", { name: "Share with" });
+  await expect(shareItem).toBeVisible();
+  await shareItem.hover();
+  await expect(fly).toBeVisible();
+  const f2 = (await fly.boundingBox())!, i2 = (await shareItem.boundingBox())!;
+  expect(f2.x + f2.width).toBeLessThanOrEqual(i2.x + 1); // it opens to the left of its item
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/flyout-flip-${page.viewportSize()!.width}.png` });
+});
+
+test("tapping New project on a phone replaces the menu in place with its choices", async ({ page, baseURL }) => {
+  test.skip(!phone(page), "devices that can hover get the flyout instead");
+  await enter(page, baseURL!);
+  await page.getByRole("button", { name: "Show threads" }).click();
+  const list = page.locator(".threads");
+  // Earlier tests may fill the list: scroll to its end so the strip under the last row is in view.
+  await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  const box = (await list.boundingBox())!;
+  await list.click({ button: "right", position: { x: box.width / 2, y: box.height - 6 } });
+  await page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New project" }).click();
+  // Without hover the menu is replaced in place by a ‹ Back row, as today.
+  await expect(page.locator(".ctx-menu .back")).toBeVisible();
+  await expect(page.locator(".flyout")).toHaveCount(0);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/submenu-in-place-390.png` });
+});
+
+test("New project in the sidebar creates a pinned project and opens it", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const side = page.locator(".side");
+  // One row style each, and opening one choice closes the other.
+  await side.getByRole("button", { name: "New thread" }).click();
+  await expect(side.getByRole("group", { name: "New thread in" })).toBeVisible();
+  await side.getByRole("button", { name: "New project" }).click();
+  await expect(side.getByRole("group", { name: "New thread in" })).toHaveCount(0);
+  const choice = side.getByRole("group", { name: "New project in" });
+  await expect(choice).toBeVisible();
+  // The row stays in place above its choice, so the choice reads as its own.
+  await expect(side.getByRole("button", { name: "New project" })).toHaveAttribute("aria-expanded", "true");
+  await expect(side.getByRole("button", { name: "New thread" })).toHaveAttribute("aria-expanded", "false");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sidebar-new-${page.viewportSize()!.width}.png` });
+  await choice.getByRole("button", { name: "General" }).click();
+  // A new project is created pinned and opened at once, same as the list menu's item does.
+  await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  // Earlier tests share this user, so look for the project just opened: it is the current row, under Pinned.
+  await expect(side.locator('.thread.project[aria-current="page"]')).toHaveCount(1);
+  await expect(side.locator(".eyebrow").first()).toContainText("Pinned");
 });
 
 test("the split view: a thread from its card opens in the panel, links inside it grow the breadcrumb, Open as a page and Close panel, and below 1180 px the address is the page", async ({ page, baseURL }) => {
@@ -2243,8 +2338,21 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   // Add endpoint: the plain-HTTP warning for a local endpoint off this machine.
   await page.getByRole("button", { name: "Add endpoint" }).click();
   const add = page.getByRole("complementary", { name: "Add endpoint" });
+  const local = add.getByRole("checkbox", { name: "Local" });
+  const cloud = add.getByRole("checkbox", { name: "Cloud" });
+  await expect(local).not.toBeChecked();
+  await expect(cloud).not.toBeChecked();
+  await add.getByLabel("Name").fill("lan-box");
   await add.getByLabel("Base URL").fill("http://192.168.1.50:1234/v1");
+  await expect(add.getByRole("button", { name: "Save" })).toBeDisabled();
+  await local.check();
   await expect(add.getByRole("note")).toContainText("Plain HTTP");
+  await expect(add.getByRole("button", { name: "Save" })).toBeEnabled();
+  await cloud.check();
+  await expect(local).not.toBeChecked();
+  await expect(add.getByRole("note")).toHaveCount(0);
+  await local.check();
+  await expect(cloud).not.toBeChecked();
   await shot("add-endpoint");
   await add.getByLabel("Base URL").fill("http://127.0.0.1:1234/v1");
   await expect(add.getByRole("note")).toHaveCount(0);
