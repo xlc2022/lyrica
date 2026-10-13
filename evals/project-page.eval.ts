@@ -56,7 +56,7 @@ async function converse(thread: ThreadContext, prompt: string, steps: ((context:
 describe("a project's decision carries over to its page", () => {
   it("after a night's sleep, the project's page states a decision noted in one of its threads", async () => {
     const m = await withModels();
-    m.models.setProfile(m.ada.id, "cloud", "chat", m.cloudRef);
+    m.models.setColumnTask(m.ada.id, "general", "chat", m.cloudRef);
     const memory = new Memory(m.keyring, m.users);
     const view = memory.openThreadView(m.ada.id, "general");
     const chat = view.own.createThread({ interface: "web", project: true, title: "Garden app", goal: "Ship the garden app" });

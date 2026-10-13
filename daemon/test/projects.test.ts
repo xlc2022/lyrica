@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { CallInfo, EndpointInfo, MessagePage, Profiles, ProjectOverview, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { CallInfo, EndpointInfo, MessagePage, Presets, ProjectOverview, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 // Projects: a project chat whose child threads are the project's threads.
@@ -112,7 +112,7 @@ describe("projects", () => {
     // Cleared, new threads follow the project chat's again.
     expect((await ada.patch<ThreadSummary>(path, { threadsFallback: null })).body.projectSettings?.threadsFallback).toBeUndefined();
     // The defaults: new threads, and sleep's phases.
-    expect((await ada.patch<Profiles>(`${u}/profiles`, { fallback: false, sleepFallback: false })).body).toMatchObject({ fallback: false, sleepFallback: false });
+    expect((await ada.patch<Presets>(`${u}/presets`, { fallback: false, sleepFallback: false })).body).toMatchObject({ fallback: false, sleepFallback: false });
     expect((await ada.get<ThreadSettings>(`${path}/settings`)).body).toMatchObject({ fallback: null, fallbackOn: false });
   });
 
@@ -359,10 +359,10 @@ describe("projects", () => {
 
   it("keep a private project's looks on local models", async () => {
     const { ada, u, script, requests } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
-    // Watching on a cloud model in the custom profile, which general projects use.
+    // Watching on a cloud model in the General column, which general projects use.
     const cloud = await fakeOpenAI({ label: "cloud", models: [{ id: "deepseek" }] });
     const deepseek = { offeringId: (await ada.post<EndpointInfo>(`${u}/endpoints`, { name: "openrouter", kind: "cloud", baseUrl: cloud.baseUrl })).body.models[0]!.id };
-    expect((await ada.put(`${u}/profiles/custom/watching`, { model: deepseek })).status).toBe(200);
+    expect((await ada.put(`${u}/columns/general/watching`, { model: deepseek })).status).toBe(200);
     const asked = () => requests.filter((c) => who(c) === "watching");
     const watchIn = async (pool: "general" | "private") => {
       const project = (await ada.post<ThreadSummary>(`${u}/threads`, { pool, title: "Garden", project: true, goal: "Plant the beds" })).body;
@@ -526,36 +526,5 @@ describe("projects", () => {
     expect([after.own.get(note), after.own.getThread(dns), after.own.getThread(backups)]).toEqual([undefined, undefined, undefined]);
     after.close();
     expect(logs.join("\n")).not.toMatch(/MARKER-7|move DNS|copy backups/);
-  });
-});
-
-describe("project spend share", () => {
-  it("uses the same durable total in usage and overview, sorts thread shares, and filters calls by project and pool", async () => {
-    const { d, rt, ada, u, path, project, stream } = await setup();
-    // Use the same project tree creation as child threads, without asking a model.
-    const owner = d.services!.memory.openOwnerView(rt.ada.id);
-    const work = owner.general.createThread({ interface: "web", title: "Counted work", parent: project.id, child: true });
-    owner.close();
-    const db = d.services!.users.openUserDb(rt.ada.id);
-    const call = db.prepare(`INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, prompt_tokens, read_tokens, output_tokens, ttft_ms, gen_ms)
-      VALUES ('2026-01-01', ?, ?, 'chat', 'test', 'Test', 'fake', ?, 5, ?, 2, 10, 20)`);
-    call.run("general", project.id, "local", 10);
-    call.run("general", work.id, "cloud", 30);
-    call.run("private", work.id, "local", 900);
-    call.run("general", "unrelated", "local", 900);
-    db.prepare("INSERT INTO call_totals (pool, thread, label, kind, tokens, gpu_ms, calls) VALUES ('general', ?, 'Old', 'local', 50, 100, 1)").run(work.id);
-    db.prepare(`INSERT INTO subagent_runs (pool, thread, run, parent, role, model, background, status, input_tokens, output_tokens, started_at)
-      VALUES ('general', 'sub', 'run', ?, 'worker', 'Gone', 0, 'done', 7, 3, '2026-01-01')`).run(work.id);
-    db.close();
-    const usage = (await ada.get<import("../src/api.ts").ThreadUsage>(`${path}/usage`)).body;
-    expect(usage.tokens).toBe(104);
-    expect(usage.gpuMs).toBe(130);
-    expect(usage.threads?.slice(0, 2)).toEqual([{ threadId: project.id, tokens: 12, gpuMs: 30 }, { threadId: work.id, tokens: 92, gpuMs: 100 }]);
-    expect((await ada.get<ProjectOverview>(`${path}/overview`)).body.tokens).toBe(usage.tokens);
-    const calls = (await ada.get<CallInfo[]>(`${u}/models/calls?project=${enc(project.id)}&pool=general`)).body;
-    expect(calls.map(c => [c.pool, c.threadId])).toEqual([["general", work.id], ["general", project.id]]);
-    expect((await ada.get<import("../src/api.ts").ThreadUsage>(`${u}/threads/general/${enc(work.id)}/usage`)).body.tokens).toBe(92);
-    expect((await ada.get(`${u}/threads/general/missing/usage`)).status).toBe(404);
-    stream.close();
   });
 });

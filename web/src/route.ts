@@ -15,8 +15,11 @@ export type Route =
   | { page: "files"; userId: string; pool: Pool; threadId: string; path?: string }
   /** A project's settings page, with its section. */
   | { page: "project"; userId: string; pool: Pool; threadId: string; section?: string }
+  /** A project's threads list (`…/t/<pool>/<thread>/threads`): what the panel shows beside its chat, and this page on its own below the split width. */
+  | { page: "threads"; userId: string; pool: Pool; threadId: string }
   | { page: "memory"; userId: string; pool?: Pool; id?: string }
   | { page: "sleep"; userId: string }
+  | { page: "notifications"; userId: string }
   /**
    * The Models area, at one of its tabs (Overview when none). `add` is a page under its tab: "host" is Add model host
    * under Hosts and endpoints (`…/hosts/add-host`), "text" is Download text model under Downloads (`…/downloads/text`),
@@ -37,11 +40,12 @@ const UNDER: { tab: ModelsTab; part: string; add: ModelsPageUnder }[] = [
   { tab: "images", part: "review", add: "review" },
 ];
 
-/** What the panel can show: a thread (with its drawer), a thread's files, a project's settings, or a memory. */
+/** What the panel can show: a thread (with its drawer), a thread's files, a project's settings or threads list, or a memory. */
 export type Panel =
   | { page: "thread"; pool: Pool; threadId: string; drawer?: true }
   | { page: "files"; pool: Pool; threadId: string; path?: string }
   | { page: "project"; pool: Pool; threadId: string; section?: string }
+  | { page: "threads"; pool: Pool; threadId: string }
   | { page: "memory"; pool: Pool; id: string };
 
 /** The panel's own page, as a route of its own. */
@@ -61,9 +65,11 @@ export function parse(hash: string): Route {
     const at = more.indexOf("panel");
     const inner = at >= 0 ? parse(`#/u/${encodeURIComponent(userId)}/${more.slice(at + 1).map(encodeURIComponent).join("/")}`) : undefined;
     if (c === "files") return { page: "files", userId, pool, threadId: b, ...(more[1] ? { path: more[1] } : {}) };
+    if (c === "threads") return { page: "threads", userId, pool, threadId: b };
     const panel: Panel | undefined = inner?.page === "thread" ? { page: "thread", pool: inner.pool, threadId: inner.threadId, ...(inner.drawer ? { drawer: true as const } : {}) }
       : inner?.page === "files" ? { page: "files", pool: inner.pool, threadId: inner.threadId, ...(inner.path ? { path: inner.path } : {}) }
       : inner?.page === "project" ? { page: "project", pool: inner.pool, threadId: inner.threadId, ...(inner.section ? { section: inner.section } : {}) }
+      : inner?.page === "threads" ? { page: "threads", pool: inner.pool, threadId: inner.threadId }
       : inner?.page === "memory" && inner.pool && inner.id ? { page: "memory", pool: inner.pool, id: inner.id }
       : undefined;
     return { page: "thread", userId, pool, threadId: b, ...(drawer ? { drawer: true as const } : {}), ...(panel ? { panel } : {}) };
@@ -71,12 +77,13 @@ export function parse(hash: string): Route {
   if (section === "p" && pool && b) return { page: "project", userId, pool, threadId: b, ...(c ? { section: c } : {}) };
   if (section === "memory") return { page: "memory", userId, pool, id: pool ? b : undefined };
   if (section === "sleep") return { page: "sleep", userId };
+  if (section === "notifications") return { page: "notifications", userId };
   if (section === "models") {
     const tab = MODELS_TABS.find((t) => t === a);
     const add = UNDER.find((x) => x.tab === tab && x.part === b)?.add;
     return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(add ? { add } : {}), ...(tab === "calls" && params.get("project") ? { project: params.get("project")!, pool: params.get("pool") === "private" ? "private" as const : "general" as const } : {}) };
   }
-  // Settings → Endpoints moved to Models → Hosts and endpoints, and Settings → Model profiles to Models → Tasks.
+  // Settings → Endpoints moved to Models → Hosts and endpoints, and Settings → Model presets to Models → Tasks.
   if (section === "settings" && a === "endpoints") return { page: "models", userId, tab: "hosts" };
   if (section === "settings" && a === "profiles") return { page: "models", userId, tab: "tasks" };
   // A section may have pages of its own under it (settings/machines/new): the rest of the path rides along.
@@ -99,8 +106,10 @@ export function href(r: Route): string {
     }
     case "files": return `#/u/${e(r.userId)}/t/${r.pool}/${e(r.threadId)}/files` + (r.path ? `/${e(r.path)}` : "");
     case "project": return `#/u/${e(r.userId)}/p/${r.pool}/${e(r.threadId)}` + (r.section ? `/${e(r.section)}` : "");
+    case "threads": return `#/u/${e(r.userId)}/t/${r.pool}/${e(r.threadId)}/threads`;
     case "memory": return `#/u/${e(r.userId)}/memory` + (r.pool && r.id ? `/${r.pool}/${e(r.id)}` : "");
     case "sleep": return `#/u/${e(r.userId)}/sleep`;
+    case "notifications": return `#/u/${e(r.userId)}/notifications`;
     case "models": {
       const under = UNDER.find((x) => x.tab === r.tab && x.add === r.add);
       return `#/u/${e(r.userId)}/models` + (r.tab && r.tab !== "overview" ? `/${r.tab}` : "") + (under ? `/${under.part}` : "") + (r.tab === "calls" && r.project ? `?project=${e(r.project)}&pool=${r.pool ?? "general"}` : "");

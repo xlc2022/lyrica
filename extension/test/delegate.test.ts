@@ -39,8 +39,8 @@ function gate() {
 /** Ada with cloud subagent models, a Memory, and a Delegation over them. */
 async function setup(o: { limits?: Partial<Limits>; workspace?: (m: Awaited<ReturnType<typeof withModels>>) => Workspace; approve?: DelegationOptions["approve"]; searxng?: () => string } = {}) {
   const m = await withModels();
-  for (const task of ["chat", "subagent.cheap", "subagent.strong"] as const) m.models.setProfile(m.ada.id, "cloud", task, m.cloudRef);
-  m.models.setProfile(m.ada.id, "local", "chat", m.localRef);
+  for (const task of ["chat", "subagent.cheap", "subagent.strong"] as const) m.models.setColumnTask(m.ada.id, "general", task, m.cloudRef);
+  m.models.setColumnTask(m.ada.id, "private", "chat", m.localRef);
   const memory = new Memory(m.keyring, m.users);
   const cwd = tempDir();
   const workspace = o.workspace?.(m);

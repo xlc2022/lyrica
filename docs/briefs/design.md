@@ -59,6 +59,7 @@ deployment.
 | MCP servers | built | docs/briefs/mcp.md |
 | Subscription logins | ChatGPT and Grok plans built in #169 | docs/briefs/subscription-logins.md |
 | Claude Code | built | docs/briefs/claude-code.md |
+| Command rules | built on feature/command-rules | PR and UI review; CI (docs/briefs/command-rules.md) |
 | Routines | built in #231 | Nothing (docs/briefs/routines.md) |
 | Model host fixes and reasoning | built in #225 (fit checks, reloads, crashed loads, vLLM tool calls) and #228 (reasoning) | Real-host checks |
 

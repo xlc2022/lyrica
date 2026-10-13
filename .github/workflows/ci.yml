@@ -67,7 +67,8 @@ jobs:
   check:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: lyrica-ci
+    # The tests and e2e time out on the slowest runners (docs/ci.md "Runner speed").
+    runs-on: [lyrica-ci, lyrica-fast]
     steps:
       - uses: actions/checkout@v4
         with:

@@ -1,10 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { withModels } from "./helpers.ts";
+import { Models, Users } from "../src/index.ts";
+import { freshKeyring, profile } from "./helpers.ts";
+
+/** Count-only fixtures: encrypted stores and manual offerings, with no listening sockets or requests. */
+async function withUsageModels() {
+  const keyring = await freshKeyring();
+  const users = new Users(keyring);
+  const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+  await users.authenticate("ada", "pw");
+  const models = new Models(keyring, users);
+  const endpoint = models.addEndpoint(ada, { name: "fake", kind: "local", baseUrl: "https://model.invalid/v1" });
+  const offering = models.addModel(ada, endpoint.id, { modelId: "fake-model" });
+  return { users, ada, models, localRef: { offeringId: offering.id } };
+}
 
 // Principles 1 and 2: durable usage, every descendant, and pool isolation.
 describe("spend share", () => {
   it("sums every request, old records and nested runs, keeps totals through pruning, and forgets them", async () => {
-    const { users, ada, models, localRef } = await withModels();
+    const { users, ada, models, localRef } = await withUsageModels();
     const db = users.openUserDb(ada.id);
     const call = db.prepare(`INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, prompt_tokens, read_tokens, output_tokens, ttft_ms, gen_ms)
       VALUES ('2026-01-01', ?, ?, 'chat', ?, ?, 'test', ?, ?, ?, ?, 100, 200)`);
@@ -30,7 +43,12 @@ describe("spend share", () => {
     models.prune();
     expect(models.usage(ada.id, "general", ["chat", "work"])).toEqual(project);
     expect(db.prepare("SELECT sum(calls) AS n FROM call_totals WHERE pool = 'general'").get()).toEqual({ n: 3 });
+    // Holes left by forgetting calls must not trim below the latest 500.
+    db.prepare(`INSERT INTO model_calls (id, at, pool, thread, task, offering, label, endpoint, kind)
+      SELECT max(id) + 1000, '2026-01-01', 'general', 'unrelated', 'title', 'gone', 'Title', 'test', 'local' FROM model_calls`).run();
+    db.prepare("DELETE FROM model_calls WHERE id = (SELECT min(id) FROM model_calls)").run();
     models.prune();
+    expect(db.prepare("SELECT count(*) AS n FROM model_calls").get()).toEqual({ n: 500 });
     expect(models.usage(ada.id, "general", ["chat", "work"])).toEqual(project);
     models.forgetThread(ada.id, "general", "chat");
     expect(models.usage(ada.id, "general", ["chat"])).toEqual([]);
@@ -39,13 +57,18 @@ describe("spend share", () => {
   });
 
   it("records read tokens independently of context size and filters recent calls by pool", async () => {
-    const { users, ada, models } = await withModels();
+    const { users, ada, models, localRef } = await withUsageModels();
     const db = users.openUserDb(ada.id);
     for (const pool of ["general", "private"]) db.prepare(`INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind) VALUES ('2026-01-01', ?, 'same', 'chat', 'gone', 'Local', 'test', 'local')`).run(pool);
-    models.recordPace(ada.id, "same", { promptTokens: 20, readTokens: 70, outputTokens: 5, window: 100, ttftMs: 100, genMs: 200, processed: 10 });
-    expect(models.recentCalls(ada.id, { pool: "private", threadIds: ["same"] })[0]?.pace?.readTokens).toBe(70);
+    models.recordPace(ada.id, "same", { promptTokens: 20, readTokens: 70, outputTokens: 5, window: 100, ttftMs: 100, genMs: 200, processed: 10 }, "chat", "general");
+    expect(models.recentCalls(ada.id, { pool: "general", threadIds: ["same"] })[0]?.pace?.readTokens).toBe(70);
     expect(models.recentCalls(ada.id, { pool: "general", threadIds: ["same"] })).toHaveLength(1);
-    expect(models.usage(ada.id, "private", ["same"])[0]?.tokens).toBe(75);
+    expect(models.usage(ada.id, "general", ["same"])[0]?.tokens).toBe(75);
+    expect(models.usage(ada.id, "private", ["same"])).toEqual([]);
+    const resolution = models.resolve("chat", { userId: ada.id, pool: "general", localOnly: true, overrides: { chat: [localRef] } });
+    models.recordCall(ada.id, { pool: "general", threadId: "same", task: "chat", resolution }, { retry: true });
+    expect(models.recentCalls(ada.id, { pool: "general", threadId: "same" })[0]?.label).toBe(resolution.label);
+    expect(models.recentCalls(ada.id, { pool: "private", threadId: "same" })[0]?.label).toBe("Local");
     db.close();
   });
 });

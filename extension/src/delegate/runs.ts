@@ -888,7 +888,9 @@ export class Delegation {
       const extensions: ExtensionFactory[] = [];
       let mcp = false;
       if (workspace) {
-        const p = { userId: parent.user.id, pool: parent.pool, threadId: parent.threadId };
+        let owner = parent.threadId;
+        while (view.own.getThread(owner)?.subagent && view.own.getThread(owner)?.parent) owner = view.own.getThread(owner)!.parent!;
+        const p = { userId: parent.user.id, pool: parent.pool, threadId: parent.threadId, project: view.own.projectOf(owner) };
         let grants = this.grants(run, narrowing);
         if (role.readOnly || narrowing.readOnly) grants = grants.map((g) => ({ ...g, writable: false }));
         if (worktrees.length) grants = worktreeGrants(grants, worktrees);

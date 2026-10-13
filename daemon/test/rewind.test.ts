@@ -19,7 +19,7 @@ async function setup() {
   const sub = await fakeOpenAI({ label: "sub", models: [{ id: "sub-model" }] });
   await localModel(ada, rt.ada.id, model.baseUrl);
   await ada.post(`/api/u/${rt.ada.id}/endpoints`, { name: "subs", kind: "local", baseUrl: sub.baseUrl });
-  for (const task of ["subagent.cheap", "subagent.strong"]) await ada.put(`/api/u/${rt.ada.id}/profiles/cloud/${task}`, { model: { endpointId: "subs", modelId: "sub-model" } });
+  for (const task of ["subagent.cheap", "subagent.strong"]) await ada.put(`/api/u/${rt.ada.id}/columns/general/${task}`, { model: { endpointId: "subs", modelId: "sub-model" } });
   const thread = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "general", title: "Garden" })).body;
   const path = `/api/u/${rt.ada.id}/threads/general/${enc(thread.id)}`;
   const stream = ada.events(`${path}/events`);

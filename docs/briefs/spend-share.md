@@ -89,4 +89,42 @@ calls route filters to one project; the migration.
 
 ## Handoff notes
 
-Not started.
+2026-10-13 — Build complete in the working tree (principles 1, 2 and 8).
+
+Done: every request's cached and uncached reads are recorded separately
+from context size; tokens and local GPU time survive pruning in
+`call_totals`; usage includes nested subagents and filters both pool and
+thread. Pace recording and retry records also respect the hosted pool.
+Pruning retains the latest 500 rows even when forgetting leaves gaps.
+Thread/project usage routes, matching overview totals, Tokens popovers,
+phone inline rows, By thread and route-retained Recent calls project
+selection are built. The Project select does not depend on the sidebar's
+project filter. Main's presets/columns, Backend and Images UI, thread-list
+panel, notifications, tombstones and command rules are preserved; all eight
+conflicted files have their markers resolved. The migration is **user step
+9**, after main's steps 6–8; no pool migration was added. Tests migrate
+schemas 1–8, preserve old counts and keep old readers working. Component
+docs, contracts, DESIGN, UX and the design/projects-web briefs are updated;
+obsolete profile routes in the touched web documentation now name presets
+and columns.
+
+Validation: typecheck and the web build pass. The targeted socket-free run
+passes 35 tests in seven files: core spend-share and migrations, extension
+context, daemon spend-share routes, web spend-share, cards and paths. Tests
+use encrypted synthetic stores, manual offerings and in-process route
+handlers, with no paid calls. Earlier pre-resume targeted integration tests
+passed; after resuming, this sandbox refuses loopback listeners with
+`listen EPERM`, so socket-based regressions and Playwright cannot run here.
+A targeted Playwright scenario covers desktop/phone popovers, the project
+filter surviving reload and No projects, screenshots and horizontal scroll.
+Every test command used `/tmp/lyrica-tests.lock`; the full suite was not run.
+
+Next: the operator stages the resolved merge and changes, runs the full
+suite, and runs the targeted Playwright scenario on a host with loopback
+listeners and Chromium available (1280 and 390 px), then obtains PR/UI
+review and pushes. No commit or push was made in this resumed run; git's
+merge index still needs the operator's staging. If main takes another user
+schema step before this lands, merge it and renumber step 9 and its
+migration test after the new highest version.
+
+Open questions: none about scope or design; host-run verification remains.

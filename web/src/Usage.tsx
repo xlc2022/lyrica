@@ -1,5 +1,5 @@
 // Principles 1 and 8: usage lives in the existing facts and popovers (docs/ux.md §6).
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { Pool, ThreadSummary, ThreadUsage } from "./api.ts";
 import { tokenCount } from "./Project.tsx";
 import { href } from "./route.ts";
@@ -30,6 +30,19 @@ export function UsageRows({ usage, userId, pool, threadId, threads }: UsageProps
 export function TokensFact({ inline, ...props }: UsageProps & { inline?: boolean }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
+  const [left, setLeft] = useState(0);
+  useLayoutEffect(() => {
+    if (!open || inline) return;
+    const fit = () => {
+      if (!anchor.current) return;
+      const x = anchor.current.getBoundingClientRect().left;
+      const width = Math.min(460, innerWidth - 32);
+      setLeft(Math.max(16, Math.min(x, innerWidth - width - 16)) - x);
+    };
+    fit();
+    addEventListener("resize", fit);
+    return () => removeEventListener("resize", fit);
+  }, [open, inline]);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, !inline && open, close);
   if (!props.usage.models.length) return null;
@@ -37,6 +50,6 @@ export function TokensFact({ inline, ...props }: UsageProps & { inline?: boolean
     <button type="button" className="link" aria-label="Tokens" aria-expanded={open} aria-haspopup={inline ? undefined : "dialog"} onClick={() => setOpen(!open)}>
       <span className="num">{tokenCount(props.usage.tokens)} tokens</span> <span className="caret" aria-hidden="true">▾</span>
     </button>
-    {open && (inline ? <UsageRows {...props} /> : <div className="picker usage-pop" role="dialog" aria-label="Tokens"><UsageRows {...props} /></div>)}
+    {open && (inline ? <UsageRows {...props} /> : <div className="picker usage-pop" style={{ left }} role="dialog" aria-label="Tokens"><UsageRows {...props} /></div>)}
   </span>;
 }

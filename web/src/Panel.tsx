@@ -5,7 +5,7 @@ import { useState } from "react";
 import {
   del, get, HttpError, patch, post, put, saveName, u,
   type AdminStatus, type AllowedPaths, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
-  type Pool, type Profiles, type ProposalDraft, type Pronouns, type SleepTime, type Theme, type UserCard,
+  type Pool, type Presets, type ProposalDraft, type Pronouns, type SleepTime, type Theme, type UserCard,
   type NameSetting,
 } from "./api.ts";
 import { RoutinesSection } from "./Routines.tsx";
@@ -18,7 +18,6 @@ import { checkName, her, setHer } from "./name.ts";
 import { SleepModeField, SleepTimeSection } from "./Sleep.tsx";
 import { TailnetSection } from "./Tailnet.tsx";
 import { UpdatesSection } from "./Updates.tsx";
-import { NotificationsSection } from "./Notifications.tsx";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
@@ -35,7 +34,6 @@ export const PRESETS: Record<string, Pronouns> = {
 type SectionDef = { key: string; label: string; body: (ctx: ShellContext, rest: string) => React.ReactNode };
 
 const SETTINGS: SectionDef[] = [
-  { key: "notifications", label: "Notifications", body: (ctx) => <NotificationsSection ctx={ctx} /> },
   { key: "profile", label: "Profile", body: (ctx) => <ProfileSection ctx={ctx} /> },
   { key: "appearance", label: "Appearance", body: (ctx) => <AppearanceSection ctx={ctx} /> },
   { key: "unlock", label: "Unlock and lock", body: (ctx) => <UnlockSection ctx={ctx} /> },
@@ -161,7 +159,7 @@ function ProfileSection({ ctx }: { ctx: ShellContext }) {
 
 function AppearanceSection({ ctx }: { ctx: ShellContext }) {
   const { me } = ctx;
-  const profiles = useLoad(() => get<Profiles>(u(me.user.id, "profiles")), [me.user.id]);
+  const presets = useLoad(() => get<Presets>(u(me.user.id, "presets")), [me.user.id]);
   const [run, , error] = useAction();
   return (
     <Section title="Appearance">
@@ -175,14 +173,14 @@ function AppearanceSection({ ctx }: { ctx: ShellContext }) {
       {/* Off, the API sends no steps, so every card and header shows none; the thread list reloads to drop them. */}
       <Switch label="Checklists" hint="When off, no thread shows a checklist and the agent isn't offered one."
         checked={me.display.checklists} onChange={(checklists) => run(async () => { ctx.setMe(await patch<Me>(u(me.user.id, "me", "display"), { checklists })); ctx.refreshThreads(); })} />
-      {profiles.data && (
+      {presets.data && (
         <>
           <div className="eyebrow">Speech</div>
           <Switch label="Read aloud while agent writes" hint="Offers Read aloud on her reply while she is still writing it."
-            checked={profiles.data.readAloudLive} onChange={(readAloudLive) => run(async () => profiles.set(await patch<Profiles>(u(me.user.id, "profiles"), { readAloudLive })))} />
+            checked={presets.data.readAloudLive} onChange={(readAloudLive) => run(async () => presets.set(await patch<Presets>(u(me.user.id, "presets"), { readAloudLive })))} />
         </>
       )}
-      <ErrorText error={profiles.error || error} />
+      <ErrorText error={presets.error || error} />
     </Section>
   );
 }
@@ -234,15 +232,15 @@ function PasswordSection({ ctx }: { ctx: ShellContext }) {
 /** Settings → Sleep: when sleep happens for this user, and Sleep fallback. Each saved at once. */
 function SleepSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
-  const profiles = useLoad(() => get<Profiles>(u(userId, "profiles")), [userId]);
+  const presets = useLoad(() => get<Presets>(u(userId, "presets")), [userId]);
   const [run, , error] = useAction();
   return (
     <Section title="Sleep">
-      <ErrorText error={profiles.error || error} />
+      <ErrorText error={presets.error || error} />
       <SleepModeField ctx={ctx} />
-      {profiles.data && (
+      {presets.data && (
         <Switch label="Sleep fallback" hint="When off, each sleep phase uses its first model only; if that one is away, sleep waits for the next night."
-          checked={profiles.data.sleepFallback} onChange={(sleepFallback) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { sleepFallback })))} />
+          checked={presets.data.sleepFallback} onChange={(sleepFallback) => run(async () => presets.set(await patch<Presets>(u(userId, "presets"), { sleepFallback })))} />
       )}
     </Section>
   );
@@ -252,7 +250,7 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const net = useLoad(() => get<NetworkDefaults>(u(userId, "network")), [userId]);
   const mode = useLoad(() => get<ModeDefault>(u(userId, "mode")), [userId]);
-  const profiles = useLoad(() => get<Profiles>(u(userId, "profiles")), [userId]);
+  const presets = useLoad(() => get<Presets>(u(userId, "presets")), [userId]);
   const [run, , error] = useAction();
   const [host, setHost] = useState<Record<Pool, string>>({ general: "", private: "" });
   if (!net.data) return <Section title="Network"><ErrorText error={net.error} /></Section>;
@@ -269,9 +267,9 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
             </select>
           </label>
         )}
-        {profiles.data && (
+        {presets.data && (
           <Switch label="Fallback" hint="When off, only the first model in each list answers; if it can't, the message waits for it."
-            checked={profiles.data.fallback} onChange={(fallback) => run(async () => profiles.set(await patch<Profiles>(u(userId, "profiles"), { fallback })))} />
+            checked={presets.data.fallback} onChange={(fallback) => run(async () => presets.set(await patch<Presets>(u(userId, "presets"), { fallback })))} />
         )}
       </div>
       <div className="profiles">

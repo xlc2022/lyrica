@@ -4,18 +4,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, threadPath, u,
-  type AllowedPaths, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type PermissionMode, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
+  type CommandRule, type AllowedPaths, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type PermissionMode, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
 } from "./api.ts";
 import { ChecklistButton, StepLine } from "./Checklist.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
-import { href } from "./route.ts";
+import { go, href, parse } from "./route.ts";
 import { Repositories } from "./Git.tsx";
 import { McpServers } from "./Mcp.tsx";
 import { Folders, Machines, TaskSelect } from "./Settings.tsx";
-import { Main, PageHead, type ShellContext } from "./Shell.tsx";
-import { ErrorText, Prose, Switch, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
+import { Main, PageHead, useWide, type ShellContext } from "./Shell.tsx";
+import { ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
 
 /** A project thread's state, in the sidebar's words. */
 export function stateWord(t: Pick<ThreadSummary, "state" | "needsYou">): string {
@@ -57,37 +57,43 @@ const GROUPS: { label: string; of: (t: ThreadSummary) => boolean }[] = [
   { label: "Resolved", of: (t) => t.state === "resolved" },
 ];
 
-/** "Threads 4 ▾" in the project chat's facts line: a popover of its threads grouped by state. */
-export function ThreadsFact({ userId, overview, footer }: { userId: string; overview: ProjectOverview; footer?: React.ReactNode }) {
+/** The project's threads in the popover's groups, empty ones left out. */
+function threadGroups(threads: ThreadSummary[]): { label: string; threads: ThreadSummary[] }[] {
+  return GROUPS.map((g) => ({ label: g.label, threads: threads.filter(g.of) })).filter((g) => g.threads.length);
+}
+
+/** "Threads 4" in the project chat's facts line: from the split width it toggles the panel's threads list; below it, a popover of its threads grouped by state. */
+export function ThreadsFact({ userId, pool, threadId, overview, footer }: { userId: string; pool: Pool; threadId: string; overview: ProjectOverview; footer?: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);
+  const wide = useWide();
+  // The panel showing this project's list: the fact is pressed, and its click closes it again.
+  const here = parse(location.hash);
+  const onList = wide && here.page === "thread" && here.panel?.page === "threads" && here.panel.pool === pool && here.panel.threadId === threadId;
   const threads = overview.threads;
   return (
     <span className="picker-anchor" ref={anchor}>
-      <button type="button" className="link" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}>
-        Threads <span className="num">{threads.length}</span> <span className="caret" aria-hidden="true">▾</span>
+      <button type="button" className="link" aria-haspopup={wide ? undefined : "dialog"} aria-expanded={wide ? undefined : open} aria-pressed={wide ? onList : undefined}
+        onClick={() => { if (!wide) return setOpen(!open); go(onList ? { page: "thread", userId, pool, threadId } : { page: "thread", userId, pool, threadId, panel: { page: "threads", pool, threadId } }); }}>
+        Threads <span className="num">{threads.length}</span>{!wide && <span className="caret" aria-hidden="true">▾</span>}
       </button>
-      {open && (
+      {!wide && open && (
         <div className="picker threads-pop" role="dialog" aria-label="The project's threads">
           {!threads.length && <p className="muted small">No threads yet. Ask {her()} for some, or pick Start a thread in a message's menu.</p>}
-          {GROUPS.map((g) => {
-            const mine = threads.filter(g.of);
-            if (!mine.length) return null;
-            return (
-              <div key={g.label} className="picker-group">
-                <div className="picker-ep">{g.label} <span className="num">{mine.length}</span></div>
-                {mine.map((t) => (
-                  <a key={t.id} className="picker-item thread-item" href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} onClick={close}>
-                    {t.state === "idle" || t.state === "queued" || !t.state ? <span /> : <span className="status" data-state={t.needsYou ? "needsYou" : t.state} aria-hidden="true" />}
-                    <span className="title">{t.title || "New thread"}</span>
-                    {!!t.unseen && <span className="count">{t.unseen}</span>}
-                  </a>
-                ))}
-              </div>
-            );
-          })}
+          {threadGroups(threads).map((g) => (
+            <div key={g.label} className="picker-group">
+              <div className="picker-ep">{g.label} <span className="num">{g.threads.length}</span></div>
+              {g.threads.map((t) => (
+                <a key={t.id} className="picker-item thread-item" href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} onClick={close}>
+                  {t.state === "idle" || t.state === "queued" || !t.state ? <span /> : <span className="status" data-state={t.needsYou ? "needsYou" : t.state} aria-hidden="true" />}
+                  <span className="title">{t.title || "New thread"}</span>
+                  {!!t.unseen && <span className="count">{t.unseen}</span>}
+                </a>
+              ))}
+            </div>
+          ))}
           {footer}
         </div>
       )}
@@ -96,14 +102,53 @@ export function ThreadsFact({ userId, overview, footer }: { userId: string; over
 }
 
 /**
+ * A project's threads as a page of their own (`…/t/<pool>/<thread>/threads`): what the panel shows beside its chat from the split width,
+ * and that address on its own below it. The popover's groups; rows per docs/ux.md §5 — state as a dot and a word, time in mono.
+ */
+export function ThreadsPage({ ctx, pool, threadId }: { ctx: ShellContext; pool: Pool; threadId: string }) {
+  const userId = ctx.user.id;
+  const overview = useOverview(userId, pool, threadId, true, 0);
+  const threads = overview.data?.threads ?? [];
+  return (
+    <Main className="main">
+      <PageHead ctx={ctx} title="Threads" />
+      <div className="page-body">
+        <div className="content threads-list">
+          <ErrorText error={overview.error} />
+          {overview.data && !threads.length && <p className="muted small">No threads yet. Ask {her()} for some, or pick Start a thread in a message's menu.</p>}
+          {threadGroups(threads).map((g) => (
+            <div key={g.label} className="picker-group">
+              <div className="picker-ep">{g.label} <span className="num">{g.threads.length}</span></div>
+              {g.threads.map((t) => {
+                const state = t.needsYou ? "needsYou" : t.state ?? "idle";
+                return (
+                  <a key={t.id} className="picker-item thread-item" href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })}>
+                    {state === "idle" || state === "queued" ? <span /> : <span className="status" data-state={state} aria-hidden="true" />}
+                    <span className="title">{t.title || "New thread"}</span>
+                    <span className="tstate" data-state={state}>{stateWord(t)}</span>
+                    <span className="when">{shortTime(t.updatedAt)}</span>
+                  </a>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    </Main>
+  );
+}
+
+/**
  * One of the project's threads, under the message that started it: its title as written,
  * its state as a dot and a word (then its checklist's count, and when it next wakes), its current step, what it
- * waits on, the last update's first line, and Open, Stop, Pin or Unpin, Resolve or Reopen behind ⋯. A pinned one sits
+ * waits on, the last update's first line, View thread at its foot (a double-click on the card does the same), and Open,
+ * Stop, Pin or Unpin, Resolve or Reopen behind ⋯. A pinned one sits
  * first among the project's threads in the sidebar. A thread waiting on the user counts as waiting for an answer.
  */
 export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: string; env: ProjectEnv }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
+  const viewRef = useRef<HTMLAnchorElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(ref, open, close);
   const [run, busy, error] = useAction();
@@ -120,7 +165,7 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
   const line = update?.split("\n").find((l) => l.trim())?.trim();
   const open_ = href({ page: "thread", userId, pool: t.pool, threadId: t.id });
   return (
-    <div className="tcard" data-state={state} {...(t.needsYou ? { "data-pending": "Thread" } : {})}>
+    <div className="tcard" data-state={state} onDoubleClick={(e) => { /* View thread by double-click (docs/briefs/thread-panel.md item 3): not when it lands on a link or button, or on its text with a word selected to copy. */ const target = e.target as HTMLElement; if (target.closest("a,button") || (target !== e.currentTarget && getSelection()?.toString().trim())) return; viewRef.current?.click(); }} {...(t.needsYou ? { "data-pending": "Thread" } : {})}>
       <div className="tcard-head" data-dot={state !== "idle" && state !== "queued" ? "" : undefined}>
         {state !== "idle" && state !== "queued" && <span className="status" data-state={state} aria-hidden="true" />}
         <a className="tcard-title" href={open_}>{t.title || "New thread"}</a>
@@ -144,6 +189,7 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
       {t.steps && t.state !== "resolved" && <StepLine steps={t.steps} />}
       {line && <p className="tcard-line">{t.needsYou ? <><span className="muted">Waits on you: </span>{line}</> : line}</p>}
       {!line && t.state === "waiting" && !t.needsYou && <p className="tcard-line muted">Waiting for an approval in the thread.</p>}
+      <div className="row"><a className="sm" href={open_} ref={viewRef}>View thread</a></div>
       <ErrorText error={error} />
     </div>
   );
@@ -223,11 +269,12 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   );
 }
 
-/** Goal, Paused and Watching threads; New threads (Model, Thinking, Fallback); This chat (Model, Mode, Group, Folders, Machines, Repositories, MCP servers); one Save. */
-function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
+/** Goal, Paused and Watching threads; New threads (Model, Thinking, Fallback); This chat (Model, Mode, Group, Folders, Machines, Repositories, MCP servers); Commands; one Save. */
+export function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
 }) {
   const ps = summary.projectSettings;
+  const [rules, setRules] = useState<CommandRule[]>(ps?.commandRules ?? []);
   const [goal, setGoal] = useState(summary.goal ?? "");
   const [paused, setPaused] = useState(!!ps?.paused);
   const [watch, setWatch] = useState(ps?.watchThreads !== false);
@@ -249,14 +296,16 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
   const save = () => run(async () => {
     setSaved(false);
     const change: ThreadChange = {
-      goal, paused,
+      goal, paused, commandRules: rules.filter(r => r.prefix.trim()),
       ...(watch !== (ps?.watchThreads !== false) ? { watchThreads: watch } : {}),
       threadsModel: model ? { offeringId: model } : null,
       threadsThinking: thinking || null,
       threadsFallback: fallback ? fallback === "on" : null,
       ...(group !== (summary.group ?? "") ? { group: group || null } : {}),
     };
-    onSummary(await patch<ThreadSummary>(base, change));
+    const updated = await patch<ThreadSummary>(base, change);
+    setRules(updated.projectSettings?.commandRules ?? rules);
+    onSummary(updated);
     if (chat !== undefined || mode !== settings.mode || grants || granted || repositories || mcpServers) {
       onSettings(await patch<ThreadSettings>(`${base}/settings`, {
         ...(chat !== undefined ? { models: { chat } } : {}), ...(mode !== settings.mode ? { mode } : {}),
@@ -266,6 +315,11 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
     }
     setSaved(true);
   });
+  const filled = rules.filter(r => r.prefix.trim());
+  const normal = (prefix: string) => prefix.trim().split(/\s+/).join(" ");
+  const ruleError = filled.some(r => /[\x00-\x1f\x7f-\x9f]/.test(r.prefix) || r.prefix.trim().split(/\s+/).length > 8 || r.prefix.trim().split(/\s+/).some(w => w.length > 64))
+    || new Set(filled.map(r => normal(r.prefix))).size < filled.length
+    ? "A command prefix has 1 to 8 words, each at most 64 characters, with no control characters. Each prefix can have one rule." : "";
   const newThreadsHint = `Threads ${her()} starts from this chat. Each one can be changed after it starts.`;
   return (
     <form className="card project-form" aria-labelledby="h-general" onSubmit={(e) => { e.preventDefault(); void save(); }}>
@@ -312,7 +366,7 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
 
       <h3>This chat</h3>
       <div className="row top defaults">
-        <TaskSelect task="chat" label="Model" value={chat === undefined ? settings.models.chat : { ...settings.models.chat, source: chat ? "thread" : "profile", model: chat ?? undefined }} allowed={settings.allowed} onChange={(m) => setChat(m && "offeringId" in m ? m : null)} />
+        <TaskSelect task="chat" label="Model" value={chat === undefined ? settings.models.chat : { ...settings.models.chat, source: chat ? "thread" : "preset", model: chat ?? undefined }} allowed={settings.allowed} onChange={(m) => setChat(m && "offeringId" in m ? m : null)} />
         <label className="field">
           <span>Mode</span>
           <select value={mode} onChange={(e) => setMode(e.target.value as PermissionMode)}>
@@ -352,8 +406,20 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
       {/* Network, local-only, the other task models and speech stay in the chat's own drawer. */}
       <p className="small"><a href={href({ page: "thread", userId: ctx.user.id, pool: summary.pool, threadId: summary.id, drawer: true })} title="Network, local-only and the other task models, in the chat's drawer.">Thread settings</a></p>
 
+      <h3>Commands</h3>
+      {!rules.length && <p className="muted">No rules: commands ask as the mode says.</p>}
+      {rules.map((rule, i) => <div className="command-rule" key={i}>
+        <input className="mono" aria-label="Command prefix" placeholder="npm test" autoFocus={!rule.prefix} value={rule.prefix} onChange={e => setRules(rules.map((r, n) => n === i ? { ...r, prefix: e.target.value } : r))} />
+        <div className="seg" role="group" aria-label={`Decision for ${rule.prefix || "new rule"}`}>
+          {(["allow", "ask", "forbid"] as const).map(decision => <button type="button" key={decision} aria-pressed={rule.decision === decision} onClick={() => setRules(rules.map((r, n) => n === i ? { ...r, decision } : r))}>{decision[0]!.toUpperCase() + decision.slice(1)}</button>)}
+        </div>
+        <button type="button" className="icon sm" aria-label={`Remove ${rule.prefix || "rule"}`} onClick={() => setRules(rules.filter((_, n) => n !== i))}><Icon name="close" /></button>
+      </div>)}
+      <ErrorText error={ruleError} />
+      <button type="button" disabled={rules.length >= 100} onClick={() => setRules([...rules, { prefix: "", decision: "ask" }])}>Add rule</button>
+
       <div className="row">
-        <button type="submit" className="primary" disabled={busy}>Save</button>
+        <button type="submit" className="primary" disabled={busy || !!ruleError}>Save</button>
         {saved && <span className="muted" role="status">Saved.</span>}
       </div>
       <ErrorText error={error} />

@@ -9,8 +9,8 @@ const VOICES = [{ id: "af_heart", language: "en" }, { id: "zf_xiaobei", language
 
 /**
  * Ada with a cloud speech endpoint ("openai") and a local one ("speech"),
- * each with a Dictation and a Read aloud model set by hand, in the cloud
- * and local profiles.
+ * each with a Dictation and a Read aloud model set by hand, in the general
+ * and private columns.
  */
 async function setup() {
   const m = await withModels();
@@ -25,10 +25,10 @@ async function setup() {
   };
   const openai = await add("openai", "cloud");
   const speech = await add("speech", "local");
-  models.setProfile(ada.id, "cloud", "speech.transcribe", [openai.stt]);
-  models.setProfile(ada.id, "cloud", "speech.speak", [openai.tts]);
-  models.setProfile(ada.id, "local", "speech.transcribe", [speech.stt]);
-  models.setProfile(ada.id, "local", "speech.speak", [speech.tts]);
+  models.setColumnTask(ada.id, "general", "speech.transcribe", [openai.stt]);
+  models.setColumnTask(ada.id, "general", "speech.speak", [openai.tts]);
+  models.setColumnTask(ada.id, "private", "speech.transcribe", [speech.stt]);
+  models.setColumnTask(ada.id, "private", "speech.speak", [speech.tts]);
   return { ...m, openai, speech };
 }
 
@@ -37,24 +37,24 @@ const read = async (s: ReadableStream<Uint8Array>) => { let n = 0; for await (co
 describe("speech and the cloud boundary", () => {
   it("never sends a private or local-only thread's audio or text to a cloud speech model", async () => {
     const s = await setup();
-    // A local profile can't hold one, and a thread list naming one is refused.
-    expect(() => s.models.setProfile(s.ada.id, "local", "speech.transcribe", [s.openai.stt])).toThrow(CloudModelForbidden);
+    // A private column can't hold one, and a thread list naming one is refused.
+    expect(() => s.models.setColumnTask(s.ada.id, "private", "speech.transcribe", [s.openai.stt])).toThrow(CloudModelForbidden);
     expect(() => s.models.setThreadModel(s.ada.id, "private", "web/p", "speech.speak", [s.openai.tts])).toThrow(CloudModelForbidden);
     // Even a context that names one directly.
     for (const ctx of [s.ctx({ pool: "private", localOnly: true }), s.ctx({ localOnly: true })]) {
       const named: CallContext = { ...ctx, overrides: { "speech.transcribe": [s.openai.stt], "speech.speak": [s.openai.tts] } };
       await expect(s.models.transcribe(named, wav(1))).rejects.toThrow(CloudModelForbidden);
       await expect(s.models.speak(named, "Hello there.")).rejects.toThrow(CloudModelForbidden);
-      // With the profile's lists, the local models answer.
+      // With the column's lists, the local models answer.
       expect((await s.models.transcribe(ctx, wav(1))).resolution.label).toBe("speech/whisper-large-v3-turbo");
       expect(await read((await s.models.speak(ctx, "Hello there.")).audio)).toBe(9600);
     }
     expect(s.openai.server.heard).toEqual([]);
   });
 
-  it("sends a general thread's voice to a cloud model only when the thread picked it; otherwise the local profile's", async () => {
+  it("sends a general thread's voice to a cloud model only when the thread picked it; otherwise the private column's", async () => {
     const s = await setup();
-    // The cloud profile names a cloud Dictation model, but without a pick in the thread the local one hears it.
+    // The General column names a cloud Dictation model, but without a pick in the thread the local one hears it.
     const general = s.models.callContext(s.ada.id, "general", "web/g");
     expect((await s.models.transcribe(general, wav(2))).resolution.label).toBe("speech/whisper-large-v3-turbo");
     expect(s.models.speechModel("speech.transcribe", general)).toEqual({ label: "speech/whisper-large-v3-turbo", kind: "local" });
@@ -82,7 +82,7 @@ describe("speech fallbacks", () => {
     const s = await setup();
     const off = s.models.addEndpoint(s.ada, { name: "off", kind: "local", baseUrl: await deadUrl() });
     const dead = { offeringId: s.models.addModel(s.ada, off.id, { modelId: "whisper", transcribe: true }).id };
-    s.models.setProfile(s.ada.id, "local", "speech.transcribe", [dead, s.speech.stt]);
+    s.models.setColumnTask(s.ada.id, "private", "speech.transcribe", [dead, s.speech.stt]);
     const ctx = s.ctx({ pool: "private", localOnly: true });
     const out = await s.models.transcribe(ctx, wav(1));
     expect(out.resolution.label).toBe("speech/whisper-large-v3-turbo");
@@ -100,7 +100,7 @@ describe("speech fallbacks", () => {
     const ep = s.models.addEndpoint(s.ada, { name: "spare", kind: "cloud", baseUrl: spare.baseUrl });
     const found = await s.models.discover(s.ada, ep.id);
     const tts = { offeringId: s.models.setCapabilities(s.ada, found.find((o) => o.modelId === "kokoro")!.id, { speak: { voices: VOICES } }).id };
-    s.models.setProfile(s.ada.id, "cloud", "speech.speak", [s.openai.tts, tts]);
+    s.models.setColumnTask(s.ada.id, "general", "speech.speak", [s.openai.tts, tts]);
     s.openai.server.fail(503);
     const general = s.ctx();
     const spoken = await s.models.speak(general, "Hello there.");
@@ -109,7 +109,7 @@ describe("speech fallbacks", () => {
 
     // Every cloud model down: a plain refusal, not the local model and not a crash.
     spare.fail(502);
-    s.models.setProfile(s.ada.id, "cloud", "speech.speak", [tts]);
+    s.models.setColumnTask(s.ada.id, "general", "speech.speak", [tts]);
     await expect(s.models.speak(general, "Hello again.")).rejects.toThrow(Offline);
     await expect(s.models.speak(general, "Hello again.")).rejects.toThrow(/^no model for Read aloud can be reached now/);
     expect(s.speech.server.heard).toEqual([]);
@@ -129,13 +129,13 @@ describe("speech fallbacks", () => {
     const s = await setup();
     const bob = await s.users.createUser("bob", "pw", profile("Bob"), { admin: false });
     await s.users.authenticate("bob", "pw");
-    s.models.setProfile(bob.id, "local", "chat", [s.localRef].filter(() => false));
+    s.models.setColumnTask(bob.id, "private", "chat", [s.localRef].filter(() => false));
     const ctx: CallContext = { userId: bob.id, pool: "private", localOnly: true };
     await expect(s.models.transcribe(ctx, wav(1))).rejects.toThrow(NoModel);
-    expect(s.models.speechModel("speech.speak", ctx)).toEqual({ reason: "none", problem: "No Read aloud model is set in the local profile" });
+    expect(s.models.speechModel("speech.speak", ctx)).toEqual({ reason: "none", problem: "No Read aloud model is set in the Private column" });
     // A chat model can't be made a speech model.
-    expect(() => s.models.setProfile(s.ada.id, "local", "speech.transcribe", [s.localRef])).toThrow(/can't do speech.transcribe/);
-    expect(() => s.models.setProfile(s.ada.id, "local", "speech.speak", { same: "chat" })).toThrow(/same kind of model/);
+    expect(() => s.models.setColumnTask(s.ada.id, "private", "speech.transcribe", [s.localRef])).toThrow(/can't do speech.transcribe/);
+    expect(() => s.models.setColumnTask(s.ada.id, "private", "speech.speak", { same: "chat" })).toThrow(/same kind of model/);
   });
 });
 
@@ -146,7 +146,7 @@ describe("speaking", () => {
     const ep = s.models.addEndpoint(s.ada, { name: "slow", kind: "local", baseUrl: slow.baseUrl });
     const found = await s.models.discover(s.ada, ep.id);
     const tts = { offeringId: s.models.setCapabilities(s.ada, found.find((o) => o.modelId === "kokoro")!.id, { speak: { voices: VOICES } }).id };
-    s.models.setProfile(s.ada.id, "local", "speech.speak", [tts]);
+    s.models.setColumnTask(s.ada.id, "private", "speech.speak", [tts]);
     const ctx = s.ctx({ pool: "private", localOnly: true });
 
     // No setting: the model's first voice for the language.
@@ -181,9 +181,9 @@ describe("speaking", () => {
     expect(stt!.speak).toBeUndefined();
     expect(tts).toMatchObject({ speak: { voices: VOICES } }); // a malformed voice is left out
     expect(chat!.transcribe).toBeUndefined();
-    s.models.setProfile(s.ada.id, "local", "chat", [{ offeringId: chat!.id }]);
-    s.models.setProfile(s.ada.id, "local", "speech.transcribe", [{ offeringId: stt!.id }]);
-    s.models.setProfile(s.ada.id, "local", "speech.speak", [{ offeringId: tts!.id }, s.speech.tts]);
+    s.models.setColumnTask(s.ada.id, "private", "chat", [{ offeringId: chat!.id }]);
+    s.models.setColumnTask(s.ada.id, "private", "speech.transcribe", [{ offeringId: stt!.id }]);
+    s.models.setColumnTask(s.ada.id, "private", "speech.speak", [{ offeringId: tts!.id }, s.speech.tts]);
     const ctx = s.ctx({ pool: "private", localOnly: true });
 
     expect((await s.models.transcribe(ctx, wav(1))).text).toBe("heard on the host");

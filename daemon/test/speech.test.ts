@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { fakeSpeech, wav } from "../../core/test/fake-speech.ts";
-import type { CallInfo, EndpointInfo, MessagePage, Profiles, Speech, ThreadSettings, ThreadSummary, Transcription } from "../src/api.ts";
+import type { CallInfo, EndpointInfo, MessagePage, Presets, Speech, ThreadSettings, ThreadSummary, Transcription } from "../src/api.ts";
 import { Memory, Users } from "@lyrica/core";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { languageOf, messageText, sentences, speakable, titlesIn } from "../src/speech.ts";
@@ -27,9 +27,9 @@ async function setup(pool: "general" | "private" = "private", speechOpts: { gapM
   const ok = async (r: Promise<{ status: number; body: unknown }>) => { const x = await r; if (x.status !== 200) throw new Error(JSON.stringify(x.body)); };
   await ok(ada.patch(`${u}/offerings/${id("whisper-large-v3-turbo")}`, { transcribe: true }));
   await ok(ada.patch(`${u}/offerings/${id("kokoro")}`, { speak: { voices: VOICES } }));
-  for (const p of ["local", "custom"]) {
-    await ok(ada.put(`${u}/profiles/${p}/speech.transcribe`, { model: { offeringId: id("whisper-large-v3-turbo") } }));
-    await ok(ada.put(`${u}/profiles/${p}/speech.speak`, { model: { offeringId: id("kokoro") } }));
+  for (const p of ["private", "general"]) {
+    await ok(ada.put(`${u}/columns/${p}/speech.transcribe`, { model: { offeringId: id("whisper-large-v3-turbo") } }));
+    await ok(ada.put(`${u}/columns/${p}/speech.speak`, { model: { offeringId: id("kokoro") } }));
   }
   const thread = (await ada.post<ThreadSummary>(`${u}/threads`, { pool, title: "speech" })).body;
   const path = `${u}/threads/${pool}/${enc(thread.id)}`;
@@ -134,12 +134,11 @@ describe("dictation", () => {
     const ep = (await s.ada.post<EndpointInfo>(`${s.u}/endpoints`, { name: "openai", kind: "cloud", baseUrl: cloud.baseUrl, apiKey: "sk" })).body;
     const stt = ep.models.find((m) => m.modelId === "whisper-large-v3-turbo")!.id;
     await s.ada.patch(`${s.u}/offerings/${stt}`, { transcribe: true });
-    await s.ada.put(`${s.u}/profiles/cloud/speech.transcribe`, { model: { offeringId: stt } });
-    await s.ada.patch(`${s.u}/profiles`, { default: "cloud" });
+    await s.ada.put(`${s.u}/columns/general/speech.transcribe`, { model: { offeringId: stt } });
 
-    // The cloud profile names it, but without the thread's pick the local profile's model hears the clip.
+    // The General column names it, but without the thread's pick the Private column's model hears the clip.
     let settings = (await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body;
-    expect(settings.models["speech.transcribe"]).toMatchObject({ source: "profile", kind: "local" });
+    expect(settings.models["speech.transcribe"]).toMatchObject({ source: "column", kind: "local" });
     expect(settings.speech.transcribe).toMatchObject({ available: true, kind: "local" });
     expect((await s.ada.post(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" })).status).toBe(200);
     expect(cloud.heard).toEqual([]);
@@ -147,9 +146,9 @@ describe("dictation", () => {
 
     // Read aloud while agent writes is a user setting, off by default, that ThreadSettings.speech carries.
     expect(settings.speech.readAloudLive).toBe(false);
-    expect((await s.ada.patch<Profiles>(`${s.u}/profiles`, { readAloudLive: true })).body.readAloudLive).toBe(true);
+    expect((await s.ada.patch<Presets>(`${s.u}/presets`, { readAloudLive: true })).body.readAloudLive).toBe(true);
     expect((await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body.speech.readAloudLive).toBe(true);
-    expect((await s.ada.patch(`${s.u}/profiles`, { readAloudLive: "yes" })).status).toBe(400);
+    expect((await s.ada.patch(`${s.u}/presets`, { readAloudLive: "yes" })).status).toBe(400);
     // Picked in the thread's Dictation select: the cloud model hears it.
     settings = (await s.ada.patch<ThreadSettings>(`${s.path}/settings`, { models: { "speech.transcribe": { offeringId: stt } } })).body;
     expect(settings.speech.transcribe).toMatchObject({ available: true, kind: "cloud" });

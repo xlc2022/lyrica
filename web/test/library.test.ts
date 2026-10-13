@@ -12,7 +12,7 @@ describe("a group's warn lines", () => {
 
   it("says when local and cloud copies mix", () => {
     expect(groupWarnings([copy("local", 32768), copy("cloud", 32768)])).toEqual([
-      "Mixes local and cloud: Local and Cloud profiles use only the matching copies, Custom uses all of them.",
+      "Mixes local and cloud: a private preset or the Private column uses only the local copies, a general preset or a Custom column uses all of them.",
     ]);
   });
 
@@ -27,7 +27,7 @@ describe("a group's warn lines", () => {
 
   it("gives every line that applies, in order", () => {
     expect(groupWarnings([copy("local", 32768, true), copy("cloud", 131072)])).toEqual([
-      "Mixes local and cloud: Local and Cloud profiles use only the matching copies, Custom uses all of them.",
+      "Mixes local and cloud: a private preset or the Private column uses only the local copies, a general preset or a Custom column uses all of them.",
       "Context windows differ: long conversations skip the smaller copies.",
       "Only some copies can see images: calls with images skip the others.",
     ]);
