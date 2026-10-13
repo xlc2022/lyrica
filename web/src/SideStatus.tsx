@@ -56,7 +56,7 @@ function StatusItemView({ item, checked }: { item: StatusItem; checked?: number 
       <span className={`dot ${item.dot}`} aria-hidden="true" />
       <span className="status-name">{item.name}</span>
       {item.word ? <span className="status-state">· {item.word}</span> : item.dot === "up" && <span className="sr-only"> · up</span>}
-      {checked !== undefined && <span className="status-state">· checked <span className="num">{checkedAgo(checked)}</span> ago</span>}
+      {checked !== undefined && <span className="status-state">· checked {(() => { const [n, unit] = checkedAgo(checked).split(" "); return <><span className="num">{n}</span> {unit} ago</>; })()}</span>}
     </span>
   );
 }
