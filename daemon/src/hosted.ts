@@ -192,6 +192,14 @@ export class ThreadHost {
   }
 }
 
+/** What to do with the threads the user ticked in Set up from recent work; the user's own message stays short. */
+const RECENT_WORK_DIRECTIONS = [
+  "The person ticked these threads to set this project up from their recent work. To answer:",
+  "1. Store a draft Goal and Instructions for the project with `threads draft`; they show on Project settings for the person to edit and save.",
+  "2. Suggest which of these threads to bring into the project with `threads fold` and their thread ids.",
+  "3. Reply with what you drafted and why, ending with a link to Project settings.",
+].join("\n");
+
 /**
  * One thread: its Pi session while active, its event stream, and its
  * permission prompts. One turn runs at a time; the person's messages sent
@@ -319,11 +327,12 @@ export class HostedThread {
   private recentWork(view: PoolView): string | undefined {
     if (!this.recentWorkIds) return undefined;
     const local = this.o.models.callContext(this.userId, this.pool, this.threadId).localOnly;
-    return this.recentWorkIds.map(id => {
+    const work = this.recentWorkIds.map(id => {
       const row = view.own.getThread(id);
       if (!row || !recentWorkAllowed(row, this.o.models.callContext(this.userId, this.pool, id).localOnly, local)) throw new Error("selected work is no longer readable by this project");
       return `[t:${id}]\n${view.own.latestEntries(id, WELCOME_LIMITS.entries).map(formatEntry).join("\n\n")}`;
     }).join("\n\n").slice(0, WELCOME_LIMITS.chars);
+    return `${RECENT_WORK_DIRECTIONS}\n\n${work}`;
   }
 
   /**

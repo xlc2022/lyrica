@@ -849,6 +849,12 @@ export interface ThreadChange {
  * a thread of the project anchored at message n, with that message as its task. Queued past the limit.
  */
 export interface StartThread { title?: string }
+/**
+ * POST …/threads/:pool/:projectId/plan (no body) → ThreadSummary. Starts the project's thread titled
+ * "Plan", with a task the server writes: a plan for the project's goal. It has no anchor, so its card
+ * sits under the chat's last message. A paused or hidden project is refused (409), creating nothing.
+ */
+export type StartPlanResult = ThreadSummary;
 /** POST …/threads/:pool/:threadId/resolve and …/reopen → ThreadSummary. A project's thread only. */
 /**
  * POST …/threads/:pool/:projectId/suggestions/:callId/start → ThreadSummary[]: starts one of a

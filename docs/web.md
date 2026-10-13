@@ -1010,3 +1010,15 @@ between Allow and Deny, only when lyricad supplied `alwaysAllow`. It answers
 with `alwaysAllow: true`; the prefix is never sent back. Commands uses the
 existing segment and Remove icon (UX rules 2–3), its home in rule 6 and one
 Save with validation in rule 7; rows wrap at phone width (rule 8).
+
+Empty project chats show the welcome card (principle 1): Set up from recent
+work, Add repository using the existing popover, and Make a plan (`POST …/plan`, one call) opening a
+Plan thread, under a plain "Let's get to work!" line. Recent work uses the existing dialog, full screen on a phone,
+with ten eligible same-pool threads ticked initially. Only the selection is
+sent with the short setup message; lyricad adds the directions to that turn's context. Closing the dialog refocuses its button, and with no recent work it offers only Close. Fold in calls render suggestion rows, each loaded on its own (an unreadable thread drops its row); applied
+rows disappear, and access losses appear under their titles. Fold in and Fold in all open a
+confirm dialog (threads and their child threads, the losses with a "Give <project> access to these" checkbox that widens the project through its settings route before folding); the card's Cancel dismisses it in the browser.
+Continue as project (C), beside Make project… with their distinct tooltips,
+asks in a dialog, then opens the new project's settings. Draft Goal and Instructions populate their
+fields without applying them; Save applies edits and Discard draft clears
+the drafts. Model settings use the current preset API.
