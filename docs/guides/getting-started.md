@@ -554,7 +554,7 @@ thread picks its own model, so its `speech.transcribe` list goes there.
 See [docs/models.md](../models.md).
 
 - **A cloud or OpenAI-compatible endpoint:** Models, Hosts and endpoints,
-  **Add endpoint** (Name, Kind local or cloud, Base URL, API key). Shared
+  **Add endpoint** (Name, Kind Custom, Base URL, API key, then the Local or Cloud checkbox). Shared
   endpoints, which every user can use, need an administrator. The same from
   a terminal:
 
