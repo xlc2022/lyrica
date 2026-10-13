@@ -1,5 +1,5 @@
 // The Models area's frame and what its tabs share (src/Models.tsx, src/TextModels.tsx, src/ImageModels.tsx,
-// src/Downloads.tsx): the page with its tabs at the left, the area's context, the words for tasks, profiles and uses,
+// src/Downloads.tsx): the page with its tabs at the left, the area's context, the words for tasks, presets and uses,
 // and a speaking model's Settings drawer.
 import { useEffect, useRef, useState } from "react";
 import { get, put, u, type CallInfo, type HostStatus, type ModelsPage, type ModelUse, type OfferingInfo, type OfferingSettings, type Task } from "./api.ts";
@@ -36,7 +36,6 @@ export const TASK_WORD: Record<Task, string> = {
   title: "Titles", watching: "Watching threads", embedding: "Embeddings", "sleep.consolidate": "Sleep: consolidate", "sleep.dream": "Sleep: dream", "sleep.wake": "Sleep: wake",
   "image.create": "Images", "image.edit": "Image edits", "image.upscale": "Image upscaling", "speech.transcribe": "Dictation", "speech.speak": "Read aloud",
 };
-export const PROFILE_WORD = { cloud: "Cloud", local: "Local", custom: "Custom" } as const;
 
 export const GB = 2 ** 30;
 export const gb = (bytes: number) => (bytes / GB).toFixed(1);
@@ -78,11 +77,12 @@ export function Frame({ ctx, tab, title, facts, actions, running, children }: {
   );
 }
 
-/** Where a model is used, in words: "Local profile (Chat)", a thread's title, a workflow or a group. */
+/** Where a model is used, in words: a preset, a column, a thread's title, a workflow or a group. */
 export function useWords(ctx: MCtx) {
   const thread = (pool: CallInfo["pool"], id: string) => findThread(ctx.threads, pool, id);
   const use = (w: ModelUse): string => {
-    if (w.where === "profile") return `${PROFILE_WORD[w.profile]} profile (${TASK_WORD[w.task]})`;
+    if (w.where === "preset") return `the ${w.name} preset (${TASK_WORD[w.task]})`;
+    if (w.where === "column") return `the ${w.column === "private" ? "Private" : "General"} column (${TASK_WORD[w.task]})`;
     if (w.where === "thread") return `${thread(w.pool, w.threadId)?.title || "a thread"} (${TASK_WORD[w.task]})`;
     if (w.where === "workflow") return `the workflow ${w.name}`;
     return `the group ${w.name}`;
@@ -93,7 +93,7 @@ export function useWords(ctx: MCtx) {
 /** Where a model is used, as the dialog that deletes it says: "Used in …. Those lists skip it from now on." */
 export function UsedIn({ ctx, usedIn, more = "" }: { ctx: MCtx; usedIn: ModelUse[]; more?: string }) {
   const words = useWords(ctx);
-  return usedIn.length ? <p>Used in {usedIn.map(words.use).join(", ")}. Those lists skip it from now on{more}.</p> : <p className="muted">None of your profiles use it.</p>;
+  return usedIn.length ? <p>Used in {usedIn.map(words.use).join(", ")}. Those lists skip it from now on{more}.</p> : <p className="muted">Nothing of yours uses it.</p>;
 }
 
 /* ---- A speaking model's Settings drawer (from an endpoint's models in Hosts and endpoints, and from Text models) ---- */

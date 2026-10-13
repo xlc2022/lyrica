@@ -104,7 +104,7 @@ describe("calling a host", () => {
     const s = await setup();
     const ep = await s.models.pairHost(s.ada, { name: "blackwell", addresses: [s.host.address], code: s.host.newCode() });
     const [o] = await s.models.discover(s.ada, ep.id);
-    s.models.setProfile(s.ada.id, "local", "chat", [{ offeringId: o!.id }, s.localRef]);
+    s.models.setColumnTask(s.ada.id, "private", "chat", [{ offeringId: o!.id }, s.localRef]);
     const priv = { userId: s.ada.id, pool: "private" as const, localOnly: true };
     expect((await s.models.resolveLive("chat", priv)).ref).toEqual({ offeringId: o!.id });
     await s.models.hostControl(s.ada, ep.id, "pause");

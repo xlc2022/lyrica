@@ -656,18 +656,18 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   the mic's and Read aloud's state. Dictation and Read aloud are thread
   tasks (`THREAD_TASKS`), chosen with `ThreadSettingsChange.models` like the
   others; a thread's own Dictation pick may be a cloud model, and without
-  one Dictation uses the local profile's. A thread Lyrica starts from
+  one Dictation uses the Private column's. A thread Lyrica starts from
   another doesn't inherit its Dictation pick.
-  `Profiles.readAloudLive` (changed with `ProfilesChange.readAloudLive`, off
+  `Presets.readAloudLive` (changed with `PresetsChange.readAloudLive`, off
   by default) is Read aloud while agent writes; `Speech.readAloudLive`
   carries it so the web knows whether to offer `messages/live/speech`.
 - **Fallback.** `ThreadSettings.fallback` is the thread's switch (null
-  follows `Profiles.fallback`, on by default) and `fallbackOn` what applies;
+  follows `Presets.fallback`, on by default) and `fallbackOn` what applies;
   `ThreadSettingsChange.fallback` changes it. Off, only the first model in
   each of the thread's lists answers ([models.md](models.md#choosing-a-model)):
   a message to a thread whose model is away waits, as under **No model
   reachable**. A branch or subagent starts with its parent's.
-  `Profiles.sleepFallback` (`PATCH profiles`, `sleep.fallback` in `user.db`)
+  `Presets.sleepFallback` (`PATCH presets`, `sleep.fallback` in `user.db`)
   does the same for sleep's phases.
 - `ThreadSettings.answered` skips speech calls, so the context meter reads
   the chat call.
@@ -685,8 +685,8 @@ downloads, the image library), the text library, hub tokens (last four
 characters only), the Models page overview (`GET …/models/page`, endpoints
 with live status, at most 3 seconds each, and none asked again while it was
 seen down in the last 30 seconds), offerings, model
-groups, Clean up and the models notice, the three profiles with the default
-profile and thinking level, recent calls, network
+groups, Clean up and the models notice, the presets and columns with the default
+preset and thinking level, recent calls, network
 defaults, machines, Git accounts (`…/git-accounts`, with what each can see
 at `…/git-accounts/:name/repositories?q=`; docs/workspace.md), and for
 administrators users, allowed paths, shared

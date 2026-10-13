@@ -27,12 +27,12 @@ something up; the checklist at the end is for that.
 - Either **shared** (in `self.db`, every user can use it, only an
   administrator pairs or manages it) or **personal** (in one user's
   `user.db`, seen by nobody else).
-- Every model file on it is an **offering** Lyrica can put in a profile's
+- Every model file on it is an **offering** Lyrica can put in a preset's
   list, like a model on any other endpoint. Its context length, tool and
   vision support, and voices are read from the host.
 
 A host that is off, paused or busy is skipped for the next model in the
-list, so several hosts (or a host and a cloud model, in the custom profile)
+list, so several hosts (or a host and a cloud model, in a general preset)
 back each other up.
 
 ## The machine
@@ -257,8 +257,8 @@ or without CUDA the voice runs on the CPU, where Kokoro is quick enough.
 Warm, on an RTX 3090, a 24-second reply is spoken in 0.7 s and transcribed
 in 0.25 s; on the CPU alone Kokoro takes about 1.3 s for a 5-second
 sentence. Unpinned, the host swaps models in and out, and the first use
-after a swap takes about 30 s. Dictation uses the local profile unless a
-thread picks its own model, so put Whisper in that profile's
+after a swap takes about 30 s. Dictation uses the Private column unless a
+thread picks its own model, so put Whisper in its
 `speech.transcribe` list.
 
 ### Placements and settings
@@ -315,20 +315,20 @@ A night's sleep ran cleanly on this model at 128k in 7.5 minutes.
 ## Use it from Lyrica
 
 Once paired, the host's models are offerings named `<host>/<model id>`
-(with `shared.` in front for a shared host). Put them in a profile's lists,
+(with `shared.` in front for a shared host). Put them in a preset's lists,
 from Models, Tasks, or from a terminal on the
 Lyrica machine (`lyrica` runs as her user by itself):
 
 ```sh
-lyrica admin models profile set local chat 'shared.blackwell/lyrica/huggingface/Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf' --user ada
-lyrica admin models profile set local speech.speak 'shared.blackwell/lyrica/huggingface/onnx-community/Kokoro-82M-v1.1-zh-ONNX' --user ada
-lyrica admin models profile set local speech.transcribe 'shared.blackwell/lyrica/huggingface/openai/whisper-large-v3-turbo' --user ada
-lyrica admin models profile show --user ada
+lyrica admin models preset set private chat 'shared.blackwell/lyrica/huggingface/Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf' --user ada
+lyrica admin models preset set private speech.speak 'shared.blackwell/lyrica/huggingface/onnx-community/Kokoro-82M-v1.1-zh-ONNX' --user ada
+lyrica admin models preset set private speech.transcribe 'shared.blackwell/lyrica/huggingface/openai/whisper-large-v3-turbo' --user ada
+lyrica admin models preset list --user ada
 ```
 
 A model id is its path under the models folder, as the dashboard and
-`GET /host/v1/models` show it. Private and local-only threads use the local
-profile, so a host is how private threads get a model at all. Each user
+`GET /host/v1/models` show it. Private and local-only threads use the
+Private column, so a host is how private threads get a model at all. Each user
 picks their own voice and speed per language with the speech model's
 **Settings**, in its host's "N models" list under Models, Hosts and
 endpoints; without one, the model's first voice for the language is used.

@@ -923,13 +923,13 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   answers; if it can't, the message waits for it."
 - **Dictation** and **Read aloud** are selects in the thread settings
   drawer's Models section, under Titles, offering only models that
-  transcribe or speak; "Profile (…)" names what applies without a pick
-  (for Dictation, always the local profile's). A cloud pick for Dictation
+  transcribe or speak; "Preset (…)" names what applies without a pick
+  (for Dictation, always the Private column's). A cloud pick for Dictation
   first asks in a dialog naming the model (Use cloud dictation or Cancel);
   confirmed, it is what sends that thread's voice to the cloud.
-  **Read aloud while agent writes** (`Profiles.readAloudLive`) is a switch
+  **Read aloud while agent writes** (`Presets.readAloudLive`) is a switch
   under Speech in Settings, Appearance. Models → Tasks has a Read aloud
-  row in every profile and a Dictation row under Private threads only, and
+  row in both columns and a Dictation row under Private threads only, and
   a speaking model
   in an endpoint's model list (Models → Hosts and endpoints, "N models") has
   a Settings link opening its drawer: a voice per
@@ -937,7 +937,7 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   the field is left), each with its source word (shared or yours) and a
   Reset link. The thread drawer's Read aloud select has the same
   **Settings** link after it, opening that drawer over the thread drawer
-  for the model the select shows (the thread's pick, else the profile's),
+  for the model the select shows (the thread's pick, else the column's),
   when it speaks and the thread may use it; Escape closes the voice
   drawer first, and focus goes back to the link.
 - **The plan card:** a `propose_plan` request shows "Plan", its step count

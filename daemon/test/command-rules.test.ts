@@ -19,7 +19,7 @@ async function setup() {
   const sub = await fakeOpenAI({ models: [{ id: "worker" }] });
   await localModel(ada, rt.ada.id, model.baseUrl, "chat");
   const endpoint = (await ada.post<EndpointInfo>(`/api/u/${rt.ada.id}/endpoints`, { name: "workers", kind: "local", baseUrl: sub.baseUrl })).body;
-  for (const tier of ["strong", "cheap"]) await ada.put(`/api/u/${rt.ada.id}/profiles/custom/subagent.${tier}`, { model: { offeringId: endpoint.models[0]!.id } });
+  for (const tier of ["strong", "cheap"]) await ada.put(`/api/u/${rt.ada.id}/columns/general/subagent.${tier}`, { model: { offeringId: endpoint.models[0]!.id } });
   const u = `/api/u/${rt.ada.id}/threads/general`;
   const project = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "general", project: true })).body;
   const path = `${u}/${enc(project.id)}`;

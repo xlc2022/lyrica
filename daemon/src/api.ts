@@ -19,6 +19,10 @@
 
 export type Pool = "general" | "private";
 export type Interface = "web" | "cli" | "matrix" | "forum" | "sleep";
+/** What a model preset may hold: private is local models only; general mixes freely. */
+export type PresetScope = "private" | "general";
+/** The Models page's two columns. */
+export type Column = "private" | "general";
 export type Task =
   | "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
   | "title" | "watching" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
@@ -30,8 +34,8 @@ export type ThreadTask = (typeof THREAD_TASKS)[number];
 /** One model on one endpoint, by its permanent offering ID, or a model group, which expands into its members in order. */
 export type ModelRef = { offeringId: string } | { groupId: string };
 export type ThinkingLevel = "off" | "low" | "medium" | "high";
-/** A profile's entry for a task: an ordered list, or another task's list (Same as). */
-export type ProfileEntry = ModelRef[] | { same: Task };
+/** A preset's entry for a task: an ordered list, or another task's list (Same as). */
+export type Entry = ModelRef[] | { same: Task };
 export interface Pronouns { subj: string; obj: string; poss: string; possPro: string; refl: string }
 export type Theme = "device" | "light" | "dark";
 /** "auto" works freely inside the grants; "acceptEdits" asks before bash; "ask" before bash, write and edit; "plan" only reads. */
@@ -186,7 +190,7 @@ export interface PasswordChange { oldPassword: string; newPassword: string }
 /** PUT /api/u/:userId/me/credentials → Me. Saves or forgets this user's key in systemd credentials. */
 export interface CredentialsChange { save: boolean }
 
-// --- Endpoints and model profiles ---
+// --- Endpoints and model presets ---
 
 /** What a model can do: discovered where the endpoint says, else set by hand. */
 export interface Capabilities {
@@ -430,7 +434,7 @@ export interface ModelsPage {
   endpoints: (EndpointInfo & Probe)[];
   /** A host that is down says why; `unpaired` when it has revoked this server, so pairing again is the fix. */
   hosts: ({ endpointId: string; status: HostStatus } | { endpointId: string; error: string; unpaired?: true })[];
-  profiles: Profiles;
+  presets: Presets;
   calls: CallInfo[];
   notice: string[];
   /** How many items Clean up lists. */
@@ -446,7 +450,8 @@ export interface ReplaceInput { with: string }
 
 /** Where one of the user's lists names a model. */
 export type ModelUse =
-  | { where: "profile"; profile: "cloud" | "local" | "custom"; task: Task }
+  | { where: "preset"; presetId: string; name: string; task: Task }
+  | { where: "column"; column: Column; task: Task }
   | { where: "thread"; pool: Pool; threadId: string; task: Task }
   | { where: "workflow"; name: string }
   | { where: "group"; groupId: string; name: string };
@@ -485,13 +490,29 @@ export interface GroupDetail {
 /** GET /api/u/:userId/groups/suggestions → GroupSuggestion[]. Never made automatically. */
 export interface GroupSuggestion { name: string; members: string[]; strength: "strong" | "weak" }
 
-/** GET /api/u/:userId/profiles → Profiles */
-export interface Profiles {
-  local: Partial<Record<Task, ProfileEntry>>;
-  cloud: Partial<Record<Task, ProfileEntry>>;
-  custom: Partial<Record<Task, ProfileEntry>>;
-  /** Which profile general threads use unless they choose. */
-  default: "cloud" | "custom";
+/** A named model preset, as the Models page lists it. */
+export interface PresetInfo {
+  id: string;
+  name: string;
+  scope: PresetScope;
+  /** local or cloud for the built-ins; null for a user preset. */
+  builtin: "local" | "cloud" | null;
+  entries: Partial<Record<Task, Entry>>;
+  updatedAt: string;
+}
+
+/** One column's state on the Models page: the preset it follows, or Custom with its own entries and the preset they came from. */
+export interface ColumnState {
+  column: Column;
+  preset: PresetInfo | null;
+  fromPreset: PresetInfo | null;
+  entries: Partial<Record<Task, Entry>>;
+}
+
+/** GET /api/u/:userId/presets → Presets */
+export interface Presets {
+  presets: PresetInfo[];
+  columns: { private: ColumnState; general: ColumnState };
   /** The thinking level threads use unless they choose. */
   thinking: ThinkingLevel;
   /** Fallback, unless a thread chooses: whether a later model in a list may answer when the first can't. On by default. */
@@ -502,14 +523,14 @@ export interface Profiles {
   readAloudLive: boolean;
 }
 /**
- * PUT /api/u/:userId/profiles/:profile/:task → Profiles. Local takes local
- * models only, cloud cloud models only, custom both. `same` names a task
- * of the same kind that doesn't itself follow another. `model` sets a
- * one-model list; null or an empty list clears the entry.
+ * PUT /api/u/:userId/columns/:column/:task → Presets. A private column takes
+ * local models only, a general one both. `same` names a task of the same
+ * kind that doesn't itself follow another. `model` sets a one-model list;
+ * null or an empty list clears the entry.
  */
-export type ProfileEntryChange = { models: ModelRef[] | null } | { same: Task } | { model: ModelRef | null };
-/** PATCH /api/u/:userId/profiles → Profiles */
-export interface ProfilesChange { default?: "cloud" | "custom"; thinking?: ThinkingLevel; fallback?: boolean; sleepFallback?: boolean; readAloudLive?: boolean }
+export type ColumnTaskChange = { models: ModelRef[] | null } | { same: Task } | { model: ModelRef | null };
+/** PATCH /api/u/:userId/presets → Presets */
+export interface PresetsChange { thinking?: ThinkingLevel; fallback?: boolean; sleepFallback?: boolean; readAloudLive?: boolean }
 
 /**
  * One turn's counts and times. `promptTokens` is the whole prompt of its last
@@ -930,8 +951,8 @@ export interface TaskModel {
   modelId?: string;
   kind?: "cloud" | "local";
   endpointName?: string;
-  /** "thread" when overridden here, "profile" when following the profile, "none" when nothing is set. */
-  source: "thread" | "profile" | "none";
+  /** "thread" when overridden here, "preset" or "column" when following one of those, "none" when nothing is set. */
+  source: "thread" | "preset" | "column" | "none";
   /** Why it can't be used, in plain words, if it can't. */
   problem?: string;
 }
@@ -942,10 +963,10 @@ export interface ThreadSettings {
   wakeups: WakeupInfo[];
   /** Recurring schedules, including paused ones; never notes. */
   routines: RoutineInfo[];
-  /** Local in a private or local-only thread; otherwise the thread's choice or the user's default. */
-  profile: "local" | "cloud" | "custom";
-  /** Set when the thread chose its profile rather than following the default. */
-  profileChoice: "cloud" | "custom" | null;
+  /** The preset that applies now, by name (or "Custom" for a column's own table). */
+  profile: string;
+  /** The preset the thread chose by id, or null when it follows its column. */
+  preset: string | null;
   thinking: ThinkingLevel;
   /** The levels the current chat model offers (always including off). */
   thinkingLevels: ThinkingLevel[];
@@ -1005,10 +1026,10 @@ export interface ThreadSettings {
  * outside the allowed paths, a subagent wider than its parent.
  */
 export interface ThreadSettingsChange {
-  /** A model or an ordered list; null clears the thread's choice, so the profile's applies. */
+  /** A model or an ordered list; null clears the thread's choice, so the column's applies. */
   models?: Partial<Record<ThreadTask, ModelRef | ModelRef[] | null>>;
-  /** General threads only; null follows the user's default. */
-  profile?: "cloud" | "custom" | null;
+  /** The preset the thread uses by id; null follows its column. Private and local-only threads may choose only a private preset. */
+  preset?: string | null;
   /** null follows the user's default. */
   thinking?: ThinkingLevel | null;
   localOnly?: boolean;
@@ -1036,13 +1057,13 @@ export interface ThreadSettingsChange {
 /**
  * Whether a speech task can be used now: the model the router would pick,
  * or the plain reason there is none (no model set, a private thread with no
- * local one, every model down). Dictation uses the thread's own pick, else the local profile. The mic
+ * local one, every model down). Dictation uses the thread's own pick, else the Private column. The mic
  * or Read aloud is disabled with `problem` as its tooltip.
  */
 export type SpeechState = { available: true; label: string; kind: "cloud" | "local" }
   /** reason: "none" nothing usable is set here; "down" every model set can't be reached now. */
   | { available: false; reason: "none" | "down"; problem: string };
-/** `readAloudLive` is the user's Read aloud while agent writes setting (`Profiles.readAloudLive`). */
+/** `readAloudLive` is the user's Read aloud while agent writes setting (`Presets.readAloudLive`). */
 export interface Speech { transcribe: SpeechState; speak: SpeechState; readAloudLive: boolean }
 /** GET /api/u/:userId/speech?pool= → Speech: for the welcome page, before a thread exists (the user's defaults). */
 

@@ -399,16 +399,16 @@ describe("the thread's model", () => {
     await stream.until(is("turn_end"));
     stream.close();
     const settings = (await ada.get<ThreadSettings>(`${path}/settings`)).body;
-    expect(settings).toMatchObject({ profile: "custom", profileChoice: null, thinking: "off", thinkingLevels: ["off"], answered: { label: "gpu/qwen3.8-27b", kind: "local", task: "chat" } });
+    expect(settings).toMatchObject({ profile: "Custom", preset: null, thinking: "off", thinkingLevels: ["off"], answered: { label: "gpu/qwen3.8-27b", kind: "local", task: "chat" } });
     const calls = (await ada.get<CallInfo[]>(`/api/u/${rt.ada.id}/models/calls`)).body;
     expect(calls[0]).toMatchObject({ threadId: thread.id, label: "gpu/qwen3.8-27b" });
     expect(JSON.stringify(calls)).not.toMatch(/Miso/);
 
-    expect((await ada.patch<ThreadSettings>(`${path}/settings`, { thinking: "high", profile: "cloud" })).body).toMatchObject({ thinking: "high", profile: "cloud", profileChoice: "cloud" });
+    expect((await ada.patch<ThreadSettings>(`${path}/settings`, { thinking: "high", preset: "builtin.cloud" })).body).toMatchObject({ thinking: "high", profile: "Cloud", preset: "builtin.cloud" });
     const priv = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "private" })).body;
     const privPath = `/api/u/${rt.ada.id}/threads/private/${enc(priv.id)}/settings`;
-    expect((await ada.patch(privPath, { profile: "custom" })).status).toBe(400);
-    expect((await ada.get<ThreadSettings>(privPath)).body.profile).toBe("local");
+    expect((await ada.patch(privPath, { preset: "builtin.cloud" })).status).toBe(400);
+    expect((await ada.get<ThreadSettings>(privPath)).body.profile).toBe("Custom");
     // Forgetting the thread takes its call records with it.
     await ada.del(path);
     expect((await ada.get<CallInfo[]>(`/api/u/${rt.ada.id}/models/calls`)).body.filter((c) => c.threadId === thread.id)).toEqual([]);
@@ -445,7 +445,7 @@ describe("a machine that goes away", () => {
     const away = await fakeOpenAI({ label: "away", models: [{ id: "big" }] });
     const ep = (await ada.post<EndpointInfo>(`${u}/endpoints`, { name: "blackwell", kind: "local", baseUrl: away.baseUrl })).body;
     const gpu = (await ada.get<EndpointInfo[]>(`${u}/endpoints`)).body.find((e) => e.name === "gpu")!;
-    await ada.put(`${u}/profiles/custom/chat`, { models: [{ offeringId: ep.models[0]!.id }, { offeringId: gpu.models[0]!.id }] });
+    await ada.put(`${u}/columns/general/chat`, { models: [{ offeringId: ep.models[0]!.id }, { offeringId: gpu.models[0]!.id }] });
     const stream = ada.events(`${path}/events`);
     await stream.ready;
     const turn = async (text: string) => {
@@ -486,7 +486,7 @@ describe("a machine that dies mid-reply", () => {
     await new Promise<void>((r) => dying.listen(0, "127.0.0.1", r));
     const ep = (await ada.post<EndpointInfo>(`${u}/endpoints`, { name: "blackwell", kind: "local", baseUrl: `http://127.0.0.1:${(dying.address() as { port: number }).port}/v1` })).body;
     const gpu = (await ada.get<EndpointInfo[]>(`${u}/endpoints`)).body.find((e) => e.name === "gpu")!;
-    await ada.put(`${u}/profiles/custom/chat`, { models: [{ offeringId: ep.models[0]!.id }, { offeringId: gpu.models[0]!.id }] });
+    await ada.put(`${u}/columns/general/chat`, { models: [{ offeringId: ep.models[0]!.id }, { offeringId: gpu.models[0]!.id }] });
     const stream = ada.events(`${path}/events`);
     await stream.ready;
     const turn = async (text: string) => {
@@ -513,7 +513,7 @@ describe("a machine that dies mid-reply", () => {
 describe("errors and logs", () => {
   it("reports a refused model in plain words, on the stream and in the response", async () => {
     const { ada, path, rt } = await setup();
-    await ada.put(`/api/u/${rt.ada.id}/profiles/custom/chat`, { model: null });
+    await ada.put(`/api/u/${rt.ada.id}/columns/general/chat`, { model: null });
     const stream = ada.events(`${path}/events`);
     await stream.ready;
     const sent = await ada.post<{ error: string }>(`${path}/messages`, { text: "hello?" });

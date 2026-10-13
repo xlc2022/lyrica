@@ -57,9 +57,20 @@ describe("welcome cards", () => {
     expect(renderToStaticMarkup(createElement(SleepCard, { ctx: hiddenCtx }))).not.toContain("A garden question");
   });
 
-  it("shows pool models, kinds, profiles and host states from Models data", () => {
+  it("shows pool models, kinds, presets and host states from Models data", () => {
+    const local = { id: "builtin.local", name: "Local", scope: "private", builtin: "local", entries: { chat: [{ offeringId: "local" }] }, updatedAt: "2026-10-12T00:00:00Z" };
     const page = {
-      profiles: { default: "custom", custom: { chat: { same: "compaction" }, compaction: [{ groupId: "group" }] }, local: { chat: [{ offeringId: "local" }] } },
+      presets: {
+        presets: [
+          local,
+          { id: "builtin.cloud", name: "Cloud", scope: "general", builtin: "cloud", entries: {}, updatedAt: "2026-10-12T00:00:00Z" },
+        ],
+        columns: {
+          private: { column: "private", preset: local, fromPreset: null, entries: {} },
+          general: { column: "general", preset: null, fromPreset: null, entries: { chat: { same: "compaction" }, compaction: [{ groupId: "group" }] } },
+        },
+        thinking: "off", fallback: true, sleepFallback: true, readAloudLive: false,
+      },
       endpoints: [
         { id: "cloud-ep", name: "Cloud host", kind: "cloud", models: [{ id: "cloud", modelId: "cloud-model" }], state: "up" },
         { id: "local-ep", name: "Local host", kind: "local", api: "host", models: [{ id: "local", modelId: "local-model" }], state: "up" },

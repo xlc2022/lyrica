@@ -677,7 +677,7 @@ export class Lyricad implements Drainable {
     check("models", () => {
       for (const u of keyed) {
         s.models.callContext(u.id, "general", "update-health");
-        s.models.profile(u.id, "cloud");
+        s.models.presets(u.id);
       }
     });
     check("web", () => { readFileSync(join(this.opts.webDir ?? DEFAULT_WEB, "index.html")); });

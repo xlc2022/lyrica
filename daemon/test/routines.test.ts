@@ -179,7 +179,7 @@ describe("routine storage and firing", () => {
     const endpoint = await s.ada.post<EndpointInfo>(`${s.u}/endpoints`, { name: "cloud", kind: "cloud", baseUrl: cloud.baseUrl });
     expect(endpoint.status).toBe(200);
     const ep = endpoint.body;
-    expect((await s.ada.put(`${s.u}/profiles/custom/chat`, { model: { offeringId: ep.models[0]!.id } })).status).toBe(200);
+    expect((await s.ada.put(`${s.u}/columns/general/chat`, { model: { offeringId: ep.models[0]!.id } })).status).toBe(200);
     s.add(newThread);
     s.tick(1);
     await expect.poll(() => s.requests.length).toBe(1);

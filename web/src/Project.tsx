@@ -366,7 +366,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
 
       <h3>This chat</h3>
       <div className="row top defaults">
-        <TaskSelect task="chat" label="Model" value={chat === undefined ? settings.models.chat : { ...settings.models.chat, source: chat ? "thread" : "profile", model: chat ?? undefined }} allowed={settings.allowed} onChange={(m) => setChat(m && "offeringId" in m ? m : null)} />
+        <TaskSelect task="chat" label="Model" value={chat === undefined ? settings.models.chat : { ...settings.models.chat, source: chat ? "thread" : "preset", model: chat ?? undefined }} allowed={settings.allowed} onChange={(m) => setChat(m && "offeringId" in m ? m : null)} />
         <label className="field">
           <span>Mode</span>
           <select value={mode} onChange={(e) => setMode(e.target.value as PermissionMode)}>
