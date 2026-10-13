@@ -77,8 +77,8 @@ describe("welcome cards", () => {
       ],
       hosts: [{ endpointId: "local-ep", status: { state: "paused" } }],
     } as unknown as ModelsPage;
-    vi.mocked(useLoad).mockReturnValueOnce(loaded(page)).mockReturnValueOnce(loaded([{ id: "group", members: ["cloud"] }]));
-    const html = renderToStaticMarkup(createElement(BackendCard, { ctx }));
+    vi.mocked(useLoad).mockReturnValueOnce(loaded([{ id: "group", members: ["cloud"] }]));
+    const html = renderToStaticMarkup(createElement(BackendCard, { ctx: { ...ctx, models: { page, error: "", reload: vi.fn(), set: vi.fn() } } }));
     expect(html).toContain('href="#/u/user/models">Models</a>');
     expect(html).toContain('class="facts"');
     expect(html).toContain('class="badge kind cloud">cloud</span> cloud-model · Cloud host · Custom');

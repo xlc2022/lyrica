@@ -177,6 +177,13 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .busy { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.3; } }
 .side-foot { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 6px; }
+/* The brief status panel above the user row (docs/ux.md §6): its own divider below, so the order stays thread list, divider, panel, divider, user row. Long names ellipsize instead of clipping. */
+.status-line { min-width: 0; padding: 2px 8px 8px; font-size: 12px; color: var(--muted); display: grid; gap: 4px; border-bottom: 1px solid var(--line); }
+.status-row { display: flex; gap: 10px; min-width: 0; }
+.status-row > * { flex: 1 1 0; }
+.status-item { min-width: 0; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; }
+.status-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.status-state { flex: none; }
 /* The user's button at the sidebar's foot, and its menu. */
 .user-wrap { position: relative; }
 .user-switch { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; padding: 6px 8px; min-height: 48px; border-radius: 10px; border-color: transparent; background: transparent; justify-content: flex-start; }

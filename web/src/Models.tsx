@@ -29,20 +29,13 @@ export function useCleanupCount(userId: string): { count: number; reload: () => 
 }
 
 /**
- * GET …/models/page, while Models or the welcome page is open: it probes every endpoint, so it is read on arriving,
- * on each tab, and every 30 s and on focus while the area stays open. A reload also refreshes the sidebar's count.
+ * GET …/models/page for the shell (Shell): it probes every endpoint, so the shell reads it once and polls it with
+ * everything else in its tick, which keeps the sidebar's status panel live on every page. A reload also refreshes
+ * the Clean up count; the Models area reloads on each tab after the first.
  */
-function useModelsPage(ctx: ShellContext): ModelsState {
-  const p = useLoad(() => get<ModelsPage>(u(ctx.user.id, "models", "page")), [ctx.user.id]);
-  const { reload: reloadPage } = p;
-  const { reload: reloadCount } = ctx.cleanup;
-  const reload = useCallback(() => { reloadPage(); reloadCount(); }, [reloadPage, reloadCount]);
-  useEffect(() => {
-    const tick = () => { if (document.visibilityState === "visible") reloadPage(); };
-    const t = setInterval(tick, 30_000);
-    addEventListener("focus", tick);
-    return () => { clearInterval(t); removeEventListener("focus", tick); };
-  }, [reloadPage]);
+export function useModelsPage(userId: string, reloadCleanup: () => void): ModelsState {
+  const p = useLoad(() => get<ModelsPage>(u(userId, "models", "page")), [userId]);
+  const reload = useCallback(() => { p.reload(); reloadCleanup(); }, [p.reload, reloadCleanup]);
   return { page: p.data, error: p.error, reload, set: p.set };
 }
 
@@ -68,8 +61,8 @@ function textModels(eps: EndpointInfo[]): number {
   return ids.size;
 }
 
-/** An endpoint's one state: a dot's class and its word, with a duration in mono where there is one. */
-function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string; since?: string } {
+/** An endpoint's one state: a dot's class and its word, with a duration in mono where there is one. The sidebar's status panel shares these words (SideStatus.tsx). */
+export function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string; since?: string } {
   const since = ep.downSince ? duration(Date.now() - Date.parse(ep.downSince)) : undefined;
   if (ep.api === "host" && host && "status" in host) {
     const s = host.status.state;
@@ -99,9 +92,8 @@ const unpaired = (h?: Host) => !!h && "error" in h && !!h.unpaired;
 
 /** The Models area, at one of its tabs. */
 export function ModelsArea({ ctx: shell, tab = "overview", add }: { ctx: ShellContext; tab?: ModelsTab; add?: ModelsPageUnder }) {
-  const models = useModelsPage(shell);
-  const ctx: MCtx = { ...shell, models };
-  const { reload } = models;
+  const ctx: MCtx = shell;
+  const { reload } = ctx.models;
   // Fresh status on each tab after the first.
   const first = useRef(true);
   useEffect(() => { if (first.current) first.current = false; else reload(); }, [tab, reload]);
@@ -212,7 +204,7 @@ function firstChat(p: ModelsPage, col: ColumnState): FirstChat {
 }
 
 export function BackendCard({ ctx }: { ctx: ShellContext }) {
-  const models = useModelsPage(ctx);
+  const models = ctx.models;
   const p = models.page;
   const userId = ctx.user.id;
   const general = p && firstChat(p, p.presets.columns.general);

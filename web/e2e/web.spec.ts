@@ -1454,7 +1454,7 @@ test("the thread drawer's Read aloud has a Settings link opening the voice drawe
 test("the header names the version and build, and the home box starts a thread", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}`);
-  await expect(page.getByRole("heading", { level: 1, name: /^Lyrica \S+ · \S+$/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /^Version \S+ · \S+$/ })).toBeVisible();
   await page.getByLabel("Message", { exact: true }).fill("From the home box");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.locator(".msg.user").getByText("From the home box")).toBeVisible();
@@ -2454,6 +2454,46 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/hosts$`));
   await expect(page.getByRole("heading", { level: 1, name: "Hosts and endpoints" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Settings sections" })).toHaveCount(0);
+});
+
+test("the sidebar's status panel shows the endpoints on any page, and a very long endpoint name is truncated without overflow", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  // The endpoints are seeded through the API after the app first loads; reload once so the shell's fetch sees them.
+  await page.reload();
+  // The shell polls the endpoints' status, so the panel shows on home too, not only in Models.
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const line = page.locator(".side .status-line");
+  await expect(line).toBeVisible();
+  // The two local endpoints share the top row; each cloud one has its own line, with when it was last checked in mono.
+  for (const name of ["gpu", "speech"]) await expect(line.locator(".status-row .status-item").filter({ hasText: name })).toBeVisible();
+  for (const name of ["router", "openai"]) {
+    const item = line.locator(".status-item").filter({ hasText: name });
+    await expect(item).toBeVisible();
+    await expect(item.locator(".num")).toHaveText(/^\d+ (s|min)$/);
+  }
+  await noHorizontalScroll(page);
+
+  // A very long name ellipsizes in place, with the whole of it in the tooltip, and never pushes the sidebar wide.
+  const eps = await page.evaluate(async (path) => (await fetch(path)).json(), `/api/u/${userId}/endpoints`) as { id: string; name: string }[];
+  const gpuId = eps.find((e) => e.name === "gpu")!.id;
+  const LONG = "gpu-with-a-name-long-enough-to-ellipsize"; // the longest a name may be (40 chars), and too wide for half the panel's top row
+  const rename = (name: string) => page.evaluate(async ([path, name]) => {
+    const r = await fetch(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+    if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  }, [`/api/u/${userId}/endpoints/${gpuId}`, name] as const);
+  await rename(LONG);
+  await page.reload();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const renamed = line.locator(".status-item").filter({ hasText: LONG });
+  await expect(renamed).toBeVisible();
+  await expect(renamed).toHaveAttribute("title", LONG);
+  const nameBox = renamed.locator(".status-name");
+  await expect(nameBox).toBeVisible();
+  expect(await nameBox.evaluate((el) => el.scrollWidth > el.clientWidth), `the long name should ellipsize at ${page.viewportSize()!.width} px`).toBe(true);
+  await noHorizontalScroll(page);
+
+  // Back as it was, for the tests that follow.
+  await rename("gpu");
 });
 
 test("Tasks: the table shows each column's models; a cell's drawer adds, reorders and removes, and Same as points a task at another; the Preset menu switches, saves and edits a preset; Settings → Model profiles lands here", async ({ page, baseURL }) => {

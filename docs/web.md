@@ -43,7 +43,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   loading older messages as needed, and marks it a moment, as the Pinned
   popover does; only the thread and the message number wait in session
   storage for a thread not yet open), **Notifications** with the count of decisions waiting (read with
-  the thread list, every 30 seconds and on focus), Memory, the Sort menu, the thread list, and the user. The **Sort
+  the thread list, every 30 seconds and on focus), Memory, the Sort menu, the thread list, the **status panel** (`src/SideStatus.tsx`: above the user row, its own divider line; up to two most-used local endpoints side by side and up to two cloud ones on their own lines — each a dot and name (docs/ux.md §5), a short state word when it isn't simply online ("Blackwell · paused"), plus "· checked 20 s ago" in mono for the cloud ones, ticking as time passes; picked from `GET …/models/page`'s recent calls; nothing is drawn with no endpoints), and the user. The **Sort
   menu** ("Sort: By date ▾") has the sorts By date (sections Today, Yesterday,
   Previous 7 days, Previous 30 days, Older), Last activity, Start date, Title and My groups (one
   section per group with its count, then Not in a group, and a New group
@@ -273,13 +273,14 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `src/ModelsFrame.tsx`; [models.md](models.md); docs/ux.md §6
   "Models, hosts, downloads, clean-up"): `#/u/<user>/models[/<tab>]`, from
   the sidebar's Models link, whose badge counts Clean up's items
-  (`GET …/models/cleanup`, reread every 30 s and on focus; endpoints are probed
-  while Models or Home is open). Tabs down the left (a scrolling row
+  (`GET …/models/cleanup`, reread with `…/models/page` in the shell's tick,
+  every 30 s and on focus). Tabs down the left (a scrolling row
   on a phone): **Overview**, **Tasks**, **Text models**, **Image models**,
   **Hosts and endpoints**, **Downloads**, **Clean up** and **Recent calls**.
-  Models and Home read `GET …/models/page` while open (30 s,
-  focus), which probes each endpoint (3 s each, one seen down in the last
-  30 s not asked again). Overview: a banner for a paused host or a stale
+  The shell reads `GET …/models/page` app-wide (on load, every
+  30 s and on focus) so the sidebar's status panel shows everywhere; Models
+  and Home read it from the shell rather than fetching their own. It probes
+  each endpoint (3 s each, one seen down in the last 30 s not asked again). Overview: a banner for a paused host or a stale
   endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
   the first one down, "+N" for more), Backend (the first `chat` model of
   the general profile and of Local, following Same as, each with its pool
@@ -625,7 +626,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
 
 ## Home
 
-The header shows her name, version and build, with the date and time beneath.
+The header shows the word **Version**, then the version and build in mono, with
+the date and time beneath; her name is not repeated here — the sidebar's link
+carries it.
 A greeting by the hour precedes the message box. Its shared composer row has
 the **+** menu (Attach a file, Web search, Internet for commands and Images),
 the mic, and **General / Private**; no Mode or Thinking controls. On home the

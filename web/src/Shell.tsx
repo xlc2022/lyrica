@@ -5,7 +5,6 @@ import { href, go, panelRoute, parse, type Panel, type Route } from "./route.ts"
 import { Icon } from "./icons.tsx";
 import { ComposerRow } from "./Composer.tsx";
 import { useDictation, stopReading } from "./Voice.tsx";
-import { her } from "./name.ts";
 import { Brand } from "./Brand.tsx";
 import { Thread, findThread } from "./Thread.tsx";
 import { Memory, memoryTitle } from "./Memory.tsx";
@@ -13,7 +12,9 @@ import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { FilesPage } from "./Files.tsx";
 import { NotificationsCard, NotificationsPage, useWaiting } from "./Notifications.tsx";
 import { SleepCard, SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
-import { BackendCard, ModelsArea, useCleanupCount } from "./Models.tsx";
+import { BackendCard, ModelsArea, useCleanupCount, useModelsPage } from "./Models.tsx";
+import type { ModelsState } from "./ModelsFrame.tsx";
+import { SideStatus } from "./SideStatus.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
 import { Flyout, useCanHover, useFlyout } from "./flyout.tsx";
 import { ProjectPage, ThreadsPage, stateWord } from "./Project.tsx";
@@ -39,6 +40,8 @@ export interface ShellContext {
   sleep: SleepState;
   /** How many items Clean up lists (the sidebar's Models count), and a reload after one is acted on. */
   cleanup: { count: number; reload: () => void };
+  /** GET …/models/page, polled by the shell so the sidebar's status panel shows everywhere; the Models area reads it from here too. */
+  models: ModelsState;
   /** The thread list, for naming threads elsewhere (Recent calls, Clean up). */
   threads: ThreadSummary[];
   openSide: () => void;
@@ -71,19 +74,23 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   const notes = useWaiting(user.id);
   const sleep = useSleepOverview(user.id, me.data?.display);
   const cleanup = useCleanupCount(user.id);
-  // Refresh the list and the count now and then, so other threads' titles and activity show, and what waits.
+  // The endpoints' live status, for the sidebar's panel and the Models area; when it last arrived is what the panel's "checked" times count from.
+  const models = useModelsPage(user.id, cleanup.reload);
+  const [checkedAt, setCheckedAt] = useState(0);
+  useEffect(() => { if (models.page) setCheckedAt(Date.now()); }, [models.page]);
+  // Refresh the list and the counts now and then, so other threads' titles and activity show, and what waits; reloading the page refreshes Clean up with it.
   useEffect(() => {
-    const tick = () => { if (document.visibilityState === "visible") { threads.reload(); notes.reload(); sleep.reload(); cleanup.reload(); } };
+    const tick = () => { if (document.visibilityState === "visible") { threads.reload(); notes.reload(); sleep.reload(); models.reload(); } };
     const t = setInterval(tick, 30_000);
     addEventListener("focus", tick);
     return () => { clearInterval(t); removeEventListener("focus", tick); };
-  }, [threads.reload, notes.reload, sleep.reload, cleanup.reload]);
+  }, [threads.reload, notes.reload, sleep.reload, models.reload]);
   useLook(me.data);
 
   if (!me.data) return <div className="loading">{me.error ? <ErrorText error={me.error} /> : "Loading…"}</div>;
   const ctx: ShellContext = {
     user: me.data.user, me: me.data, setMe: me.set, build, refreshThreads: threads.reload,
-    groups: groups.data ?? [], refreshGroups: groups.reload, waiting: notes.waiting, refreshNotifications: notes.reload, sleep, cleanup, threads: threads.data ?? [], openSide: () => setSideOpen(true),
+    groups: groups.data ?? [], refreshGroups: groups.reload, waiting: notes.waiting, refreshNotifications: notes.reload, sleep, cleanup, models, threads: threads.data ?? [], openSide: () => setSideOpen(true),
     refreshState, toast: (text) => setToast((t) => ({ text, n: (t?.n ?? 0) + 1 })),
   };
 
@@ -123,7 +130,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
 
   return (
     <div className="app" data-side-open={sideOpen} data-panel={!!panel || undefined} onClick={wide && route.page === "thread" ? (e) => openInPanel(e, route, trail) : undefined}>
-      <Sidebar ctx={ctx} users={users} route={shown} trail={trail} threads={threads.data ?? []} error={threads.error} onAuthChange={onAuthChange} onClose={() => setSideOpen(false)} />
+      <Sidebar ctx={ctx} users={users} route={shown} trail={trail} threads={threads.data ?? []} error={threads.error} checkedAt={checkedAt} onAuthChange={onAuthChange} onClose={() => setSideOpen(false)} />
       <div className="scrim" aria-hidden="true" onClick={() => setSideOpen(false)} />
       {page(shown, () => dropDrawer(shown === route ? "page" : "panel"))}
       {panel && route.page === "thread" && (
@@ -385,8 +392,8 @@ function sections(threads: ThreadSummary[], sort: ThreadSort, groups: ThreadGrou
   return out.filter((s) => s.threads.length);
 }
 
-function Sidebar({ ctx, users, route, trail, threads, error, onAuthChange, onClose }: {
-  ctx: ShellContext; users: UserCard[]; route: Route; trail: Trail; threads: ThreadSummary[]; error: string; onAuthChange: (notice?: string) => void; onClose: () => void;
+function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthChange, onClose }: {
+  ctx: ShellContext; users: UserCard[]; route: Route; trail: Trail; threads: ThreadSummary[]; error: string; checkedAt: number; onAuthChange: (notice?: string) => void; onClose: () => void;
 }) {
   const { user, me } = ctx;
   const [run, , actionError] = useAction();
@@ -515,6 +522,7 @@ function Sidebar({ ctx, users, route, trail, threads, error, onAuthChange, onClo
       )}
       {listMenu.at && <ListMenu at={listMenu.at} ctx={ctx} onClose={listMenu.close} />}
       <div className="side-foot">
+        <SideStatus page={ctx.models.page} checkedAt={checkedAt} />
         <UserMenu ctx={ctx} users={users} onAuthChange={onAuthChange} />
       </div>
     </aside>
@@ -817,7 +825,7 @@ function Welcome({ ctx }: { ctx: ShellContext }) {
   const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return (
     <main className="main">
-      <PageHead ctx={ctx} title={<>{her()} <span className="ver">{ctx.build.version} · {ctx.build.build}</span></>} facts={<>{date} · <span className="num">{time}</span></>} />
+      <PageHead ctx={ctx} title={<>Version <span className="ver">{ctx.build.version} · {ctx.build.build}</span></>} facts={<>{date} · <span className="num">{time}</span></>} />
       <div className="scroll">
         <div className="welcome">
           <h1>{greeting(now.getHours())}, {ctx.user.displayName}.</h1>
