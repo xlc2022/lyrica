@@ -27,6 +27,11 @@ describe("history addresses", () => {
   });
 });
 
+it("retains project, pool, search and page together in Call history", () => {
+  const route = { page: "models" as const, userId: "u1", tab: "calls" as const, project: "project-1", pool: "private" as const, q: "fallback", at: 3 };
+  expect(parse(href(route))).toEqual(route);
+});
+
 describe("paging controls", () => {
   const page = (total: number) => ({ entries: total ? [{ id: "x" }] : [], total }) as unknown as HistoryPage<unknown>;
   const list = (data: ReturnType<typeof page>, at?: number) => renderToStaticMarkup(createElement(HistoryList, {

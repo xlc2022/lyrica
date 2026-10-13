@@ -1,6 +1,7 @@
 import { InMemoryCredentialStore, type Api, type ProviderAuthInteraction, type AuthOperationOptions, type Credential, type CredentialInfo, type CredentialStore, type Model, type Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
+import { HostRefused } from "@lyrica/core";
 import type { DiscoveredModel, Endpoint, Models, PlanCredential, PlanKind } from "@lyrica/core";
 
 // Subscription plans (docs/models.md, "Subscription plans"): Pi's sign-in and
@@ -101,6 +102,24 @@ export class PlanCredentials implements CredentialStore {
     if (!this.plans.has(id)) return this.memory.delete(id, options);
     await serially(`${this.userId}\u0000${id}`, async () => this.models.setPlanCredential(this.userId, id, null));
   }
+}
+
+/** Image requests use the same serialized refresh and encrypted store as chat. */
+export async function planImageToken(models: Models, userId: string, endpointId: string, signal?: AbortSignal): Promise<string> {
+  const store = new PlanCredentials(models, userId, new Set([endpointId]));
+  let credential: Credential | undefined;
+  try { credential = await store.modify(endpointId, async current => {
+    if (!current || current.type !== "oauth") throw new Error("The ChatGPT plan is signed out.");
+    if (current.expires > Date.now()) return current;
+    return { ...await PROVIDERS.chatgpt().auth.oauth!.refresh(current, signal ?? new AbortController().signal), type: "oauth" };
+  }); } catch {
+    signal?.throwIfAborted();
+    const signedOut = models.endpoint(userId, endpointId)?.signedOut;
+    throw new HostRefused(signedOut ? "invalid" : "unavailable", signedOut
+      ? "The ChatGPT plan is signed out." : "The ChatGPT plan could not refresh its sign-in.");
+  }
+  if (!credential || credential.type !== "oauth") throw new HostRefused("invalid", "The ChatGPT plan is signed out.");
+  return credential.access;
 }
 
 /**

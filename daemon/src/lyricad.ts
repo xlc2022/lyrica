@@ -11,7 +11,7 @@ import {
   SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
-import { Delegation, planCatalog, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
+import { Delegation, planCatalog, planImageToken, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
 import { ChildThreads } from "./children.ts";
 import { Routines } from "./routines.ts";
 import { Wakeups } from "./wakeups.ts";
@@ -416,6 +416,7 @@ export class Lyricad implements Drainable {
     const memory = new Memory(keyring, users);
     const models = new Models(keyring, users);
     models.setPlanCatalog(planCatalog);
+    models.setPlanImageToken((userId, endpointId, signal) => planImageToken(models, userId, endpointId, signal));
     const persona = new PersonaStore(keyring.self());
     const cwd = join(this.opts.home, "run");
     mkdirSync(cwd, { recursive: true, mode: 0o700 });
@@ -447,6 +448,7 @@ export class Lyricad implements Drainable {
       users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads,
       paused: stopped,
       project: (u, p, project) => projects.settings(u, p, project),
+      draft: (u, p, project, change) => { projects.set(u, p, project, { draftGoal: change.goal, draftInstructions: change.instructions }); },
       updated: (u, p, project, thread) => watcher.updated(u, p, project, thread),
       wakeups: (): Wakeups => wakeups,
     });
@@ -455,12 +457,13 @@ export class Lyricad implements Drainable {
     host = new ThreadHost({
       users, memory, models, workspace, persona, delegation, cwd, log: this.log, searxng: () => searxngAddress(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
-      threads: children, onTurn: (u, p, t, working) => {
+      threads: children, onTurn: (u, p, t, working, byPerson) => {
         children.turn(u, p, t, working);
         if (!working) routines.ended(u, p, t);
         const k = `${u}/${p}/${t}`;
         if (working) { erred.delete(k); aborted.delete(k); return watcher.turnStarted(u, p, t); }
-        watcher.turnEnded(u, p, t);
+        // Only a turn the person wrote in resets the run of looks; a child's wake or a marked message isn't one.
+        if (byPerson ?? true) watcher.turnEnded(u, p, t);
         const failed = erred.delete(k);
         children.ended(u, p, t, failed ? "error" : aborted.delete(k) ? "stopped" : "done");
         if (!failed) return;
@@ -564,6 +567,7 @@ export class Lyricad implements Drainable {
     if (!this.services) return;
     const now = new Date();
     if (!this.draining) {
+      this.services.children.drainWakes();
       this.services.wakeups.tick(now);
       this.services.routines.tick(now);
       this.services.forge.tick(now);

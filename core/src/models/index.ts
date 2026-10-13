@@ -1,4 +1,4 @@
-import { imageAt, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
+import { CLOUD_IMAGE_PROVIDERS, imageAt, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
 export { CLOUD_IMAGE_PROVIDERS, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
@@ -135,6 +135,8 @@ export interface Capabilities {
   image?: boolean;
   edit?: boolean;
   upscale?: boolean;
+  /** Image create tiers; absent means both. Stored in hand JSON for cloud models. */
+  useFor?: "fast" | "quality" | "both";
   /** The thinking levels it offers, besides off. */
   reasoning?: Exclude<ThinkingLevel, "off">[];
   /** Speech to text (Dictation). */
@@ -144,7 +146,7 @@ export interface Capabilities {
 }
 /** One of a speech model's voices. `language` is a primary language tag, such as "en" or "zh". */
 export interface Voice { id: string; language: string }
-export const CAPABILITIES = ["contextWindow", "tools", "vision", "embedding", "image", "edit", "upscale", "reasoning", "transcribe", "speak"] as const satisfies readonly (keyof Capabilities)[];
+export const CAPABILITIES = ["contextWindow", "tools", "vision", "embedding", "image", "edit", "upscale", "reasoning", "transcribe", "speak", "useFor"] as const satisfies readonly (keyof Capabilities)[];
 
 /** One model on one endpoint, with a permanent ID. */
 export interface Offering extends Capabilities {
@@ -166,8 +168,6 @@ export interface Offering extends Capabilities {
   size?: number;
   /** An image model on a host: a confirmed recipe's name. */
   recipe?: string;
-  /** A host recipe's create tiers; absent means both. */
-  useFor?: "fast" | "quality" | "both";
   /** "Not this model": kept out of the entry its name would put it in. */
   separate?: boolean;
   /** A host's chat template writes `<think>` itself, so a reply can start mid-thought. */
@@ -275,7 +275,7 @@ export interface CleanupItem {
 }
 
 /** What a call needs from a model: tools, room for the conversation, or an image create tier. */
-export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality" }
+export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean }
 /** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
 export interface ResolveOptions { evenIfDown?: boolean; except?: ReadonlySet<string> }
 
@@ -323,6 +323,8 @@ export interface CallRecord {
  */
 export interface Pace {
   promptTokens: number;
+  /** Every request read, including cached reads; absent on older records. */
+  readTokens?: number;
   outputTokens: number;
   window: number;
   ttftMs: number;
@@ -364,7 +366,7 @@ const NEW_PROFILE: Partial<Record<Task, { same: Task }>> = {
 /** Tasks added after presets were first stored: a preset with no entry for one gets its NEW_PROFILE default when read. */
 const LATER_TASKS: readonly Task[] = ["watching"];
 
-const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
+const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/i;
 /** A primary language tag: "en", "zh", "yue". */
 export const LANGUAGE = /^[a-zA-Z]{2,3}$/;
 const SHARED = "shared.";
@@ -473,6 +475,8 @@ export class Models {
   private readonly discovered = new Set<string>();
   /** Plans that reached their usage limit, until when they're skipped. */
   private readonly limited = new Map<string, number>();
+  private planImageToken?: (userId: string, endpointId: string, signal?: AbortSignal) => Promise<string>;
+
   /** The models each plan offers (setPlanCatalog). */
   private planCatalog: (kind: PlanKind) => DiscoveredModel[] = () => [];
 
@@ -522,6 +526,11 @@ export class Models {
 
   // --- Subscription plans ---
 
+  /** Pi owns refresh; the daemon installs its resolver for image calls. */
+  setPlanImageToken(resolve: (userId: string, endpointId: string, signal?: AbortSignal) => Promise<string>): void {
+    this.planImageToken = resolve;
+  }
+
   /** Throws when a name can't name an endpoint, so a sign-in isn't started for one that would be refused after it. */
   checkEndpointName(name: string): void { checkName(name); }
 
@@ -548,6 +557,13 @@ export class Models {
       const r = db.prepare("SELECT api_key FROM endpoints WHERE id = ? AND api IN ('chatgpt', 'grok')").get(endpointId) as { api_key: string | null } | undefined;
       return r?.api_key ? JSON.parse(r.api_key) as PlanCredential : undefined;
     });
+  }
+
+  /** Only an explicit account label from sign-in; never decode or return tokens. */
+  planAccount(userId: string, endpointId: string): string | undefined {
+    const c = this.planCredential(userId, endpointId);
+    const account = c?.email ?? c?.accountId;
+    return typeof account === "string" && account.trim() ? account : undefined;
   }
 
   /**
@@ -633,6 +649,7 @@ export class Models {
   addModel(actor: User, endpointId: string, m: { modelId: string } & Capabilities): Offering {
     if (!m.modelId) throw new Error("a model needs its ID");
     const { modelId, ...caps } = m;
+    if (m.useFor !== undefined && !["fast", "quality", "both"].includes(m.useFor)) throw new Error("useFor is fast, quality or both");
     let id = "";
     this.write(actor, endpointId, (db) => {
       const row = db.prepare("SELECT id, hand FROM offerings WHERE endpoint = ? AND model = ?").get(endpointId, modelId) as { id: string; hand: string } | undefined;
@@ -648,6 +665,7 @@ export class Models {
   setCapabilities(actor: User, offeringId: string, caps: { [K in keyof Capabilities]?: Capabilities[K] | null }): Offering {
     const o = this.offering(actor.id, offeringId);
     if (!o) throw new NoModel(`no model ${offeringId}`);
+    if (caps.useFor != null && !["fast", "quality", "both"].includes(caps.useFor)) throw new Error("useFor is fast, quality or both");
     if (caps.reasoning?.some((l) => !THINKING_LEVELS.includes(l) || (l as string) === "off")) throw new Error("reasoning levels are low, medium and high");
     if (caps.transcribe !== undefined && caps.transcribe !== null && typeof caps.transcribe !== "boolean") throw new Error("transcribe is true or false");
     if (caps.speak) caps = { ...caps, speak: { voices: checkVoices(caps.speak.voices) } };
@@ -1516,7 +1534,19 @@ export class Models {
         }
         const used = collectRefs(db);
         for (const r of gone(db)) if (!used.has(r.id)) db.prepare("DELETE FROM offerings WHERE id = ?").run(r.id);
-        db.prepare("DELETE FROM model_calls WHERE id <= (SELECT max(id) FROM model_calls) - ?").run(CALLS_KEPT);
+        db.transaction(() => {
+          const cutoff = (db.prepare("SELECT id FROM model_calls ORDER BY id DESC LIMIT 1 OFFSET ?").get(CALLS_KEPT) as { id: number } | undefined)?.id;
+          if (cutoff === undefined) return;
+          db.prepare(`INSERT INTO call_totals (pool, thread, label, kind, tokens, gpu_ms, calls)
+            SELECT pool, thread, label, kind,
+              sum(coalesce(read_tokens, prompt_tokens, 0) + coalesce(output_tokens, 0)),
+              sum(CASE WHEN kind = 'local' THEN coalesce(ttft_ms, 0) + coalesce(gen_ms, 0) ELSE 0 END), count(*)
+            FROM model_calls WHERE id <= ? AND task = 'chat' AND (prompt_tokens IS NOT NULL OR read_tokens IS NOT NULL OR output_tokens IS NOT NULL)
+            GROUP BY pool, thread, label, kind
+            ON CONFLICT (pool, thread, label, kind) DO UPDATE SET
+              tokens = tokens + excluded.tokens, gpu_ms = gpu_ms + excluded.gpu_ms, calls = calls + excluded.calls`).run(cutoff);
+          db.prepare("DELETE FROM model_calls WHERE id <= ?").run(cutoff);
+        })();
       });
     }
   }
@@ -1839,6 +1869,7 @@ export class Models {
     this.withUser(userId, (db) => db.transaction(() => {
       db.prepare("DELETE FROM thread_models WHERE pool = ? AND thread = ?").run(pool, threadId);
       db.prepare("DELETE FROM model_calls WHERE pool = ? AND thread = ?").run(pool, threadId);
+      db.prepare("DELETE FROM call_totals WHERE pool = ? AND thread = ?").run(pool, threadId);
       db.prepare("DELETE FROM thread_choices WHERE thread = ?").run(threadId);
       db.prepare("DELETE FROM local_only_threads WHERE thread = ?").run(threadId);
       this.index(userId, db);
@@ -2052,16 +2083,42 @@ export class Models {
     }
   }
 
+  /** The next eligible image model on a different endpoint, without probing or sending. */
+  nextImageModel(ctx: CallContext, action: "create" | "edit" | "upscale", need: Need, afterEndpoint: string, noCloud = false): Resolution | undefined {
+    const task = `image.${action}` as Task;
+    const catalog = this.catalog(ctx.userId), found = this.listFor(task, ctx, catalog);
+    if (!found) return undefined;
+    const list = ctx.fallback === false ? found.list.slice(0, 1) : found.list;
+    const ids = list.flatMap(ref => "offeringId" in ref ? [ref.offeringId] : catalog.groups.get(ref.groupId)?.members ?? []);
+    let passed = false;
+    for (const raw of ids) {
+      const id = this.follow(raw), offering = id ? catalog.offerings.get(id) : undefined;
+      if (!offering) continue;
+      const endpoint = catalog.endpoints.get(offering.endpointId);
+      if (!endpoint) continue;
+      if (endpoint.id === afterEndpoint) { passed = true; continue; }
+      if (!passed || (isRestricted(ctx) || noCloud) && endpoint.kind !== "local") continue;
+      if (this.unfit(task, offering, endpoint, need) || this.away(endpoint, {}, offering)) continue;
+      return { ref: { offeringId: offering.id }, endpoint, offering, label: labelOf(endpoint, offering),
+        profile: found.profile, source: found.source, skipped: [], remaining: 0 };
+    }
+    return undefined;
+  }
+
   /** Images stay in memory; the caller stores results and records the call. */
   async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void> } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution }> {
     validateImageRequest(request);
-    return this.callWithFallback(`image.${request.action}`, ctx, request.action === "create" ? { imageTier: request.tier } : {}, async (r) => {
+    return this.callWithFallback(`image.${request.action}`, ctx, request.action === "create" ? { imageTier: request.tier } : request.action === "edit" ? { imageMask: !!request.mask } : {}, async (r) => {
       opts.signal?.throwIfAborted();
       await opts.beforeSend?.(r);
       opts.signal?.throwIfAborted();
       const ep = r.endpoint;
+      const apiKey = ep.api === "chatgpt"
+        ? this.planImageToken ? await this.planImageToken(ctx.userId, ep.id, opts.signal) : this.planCredential(ctx.userId, ep.id)?.access
+        : ep.apiKey;
+      opts.signal?.throwIfAborted();
       const images = await imageAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: ep.api === "host" ? hostOrigin(ep.addresses![0]!) : ep.baseUrl,
-        host: ep.api === "host", modelId: r.offering.modelId, apiKey: ep.apiKey }, request, opts.signal);
+        host: ep.api === "host", api: ep.api, modelId: r.offering.modelId, apiKey }, request, opts.signal);
       return { images, resolution: r };
     });
   }
@@ -2156,7 +2213,7 @@ export class Models {
     const first = r.skipped[0];
     const fallback = first && `${first.label} was skipped (${first.reason.replace(/^it /, "")}), so ${r.label} answered${r.endpoint.kind === "cloud" && r.profile === "Custom" ? ", a cloud model" : ""}`;
     this.withUser(userId, (db) => {
-      const last = opts.retry ? (db.prepare("SELECT max(id) AS id FROM model_calls WHERE thread = ? AND task = ?").get(call.threadId, call.task) as { id: number | null }).id : null;
+      const last = opts.retry ? (db.prepare("SELECT max(id) AS id FROM model_calls WHERE pool = ? AND thread = ? AND task = ?").get(call.pool, call.threadId, call.task) as { id: number | null }).id : null;
       if (last !== null) {
         db.prepare("UPDATE model_calls SET offering = ?, label = ?, endpoint = ?, kind = ?, fallback = ?, note = ? WHERE id = ?")
           .run(r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, last);
@@ -2172,19 +2229,19 @@ export class Models {
    * Adds a finished turn's counts and times to its call record (the thread's
    * latest for the task). Never text, so a "Do not log" thread records it too.
    */
-  recordPace(userId: string, threadId: string, pace: Omit<Pace, "tokPerSec" | "promptTokPerSec">, task: Task = "chat"): void {
+  recordPace(userId: string, threadId: string, pace: Omit<Pace, "tokPerSec" | "promptTokPerSec">, task: Task = "chat", pool?: Pool): void {
     const n = (v: number) => Math.max(0, Math.round(Number.isFinite(v) ? v : 0));
-    this.withUser(userId, (db) => db.prepare(`UPDATE model_calls SET prompt_tokens = ?, output_tokens = ?, window = ?, ttft_ms = ?, gen_ms = ?, processed = ?
-      WHERE id = (SELECT max(id) FROM model_calls WHERE thread = ? AND task = ?)`)
-      .run(n(pace.promptTokens), n(pace.outputTokens), n(pace.window), n(pace.ttftMs), n(pace.genMs), n(pace.processed), threadId, task));
+    this.withUser(userId, (db) => db.prepare(`UPDATE model_calls SET read_tokens = ?, prompt_tokens = ?, output_tokens = ?, window = ?, ttft_ms = ?, gen_ms = ?, processed = ?
+      WHERE id = (SELECT max(id) FROM model_calls WHERE thread = ? AND task = ? AND (? IS NULL OR pool = ?))`)
+      .run(pace.readTokens === undefined ? null : n(pace.readTokens), n(pace.promptTokens), n(pace.outputTokens), n(pace.window), n(pace.ttftMs), n(pace.genMs), n(pace.processed), threadId, task, pool ?? null, pool ?? null));
   }
 
   /** The user's recent calls, newest first. With a thread, that thread's only; with `speech: false`, no Dictation or Read aloud. */
-  recentCalls(userId: string, opts: { limit?: number; threadId?: string; threadIds?: string[]; speech?: false } = {}): CallRecord[] {
-    const where = [...(opts.threadId ? ["thread = @thread"] : []), ...(opts.threadIds ? ["thread IN (SELECT value FROM json_each(@threads))"] : []),
+  recentCalls(userId: string, opts: { limit?: number; threadId?: string; threadIds?: string[]; pool?: Pool; speech?: false } = {}): CallRecord[] {
+    const where = [...(opts.pool ? ["pool = @pool"] : []), ...(opts.threadId ? ["thread = @thread"] : []), ...(opts.threadIds ? ["thread IN (SELECT value FROM json_each(@threads))"] : []),
       ...(opts.speech === false ? ["task NOT LIKE 'speech.%'"] : [])];
     const rows = this.withUser(userId, (db) => db.prepare(`SELECT * FROM model_calls ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id DESC LIMIT @limit`)
-      .all({ ...(opts.threadId ? { thread: opts.threadId } : {}), ...(opts.threadIds ? { threads: JSON.stringify(opts.threadIds) } : {}), limit: opts.limit ?? 50 })) as CallRow[];
+      .all({ ...(opts.pool ? { pool: opts.pool } : {}), ...(opts.threadId ? { thread: opts.threadId } : {}), ...(opts.threadIds ? { threads: JSON.stringify(opts.threadIds) } : {}), limit: opts.limit ?? 50 })) as CallRow[];
     return rows.map(toCall);
   }
 
@@ -2200,11 +2257,31 @@ export class Models {
     });
   }
 
-  /** Every token the threads' recorded calls read and wrote: a project's usage. */
-  tokensFor(userId: string, threadIds: string[]): number {
-    const row = this.withUser(userId, (db) => db.prepare("SELECT coalesce(sum(coalesce(prompt_tokens, 0) + coalesce(output_tokens, 0)), 0) AS n FROM model_calls WHERE thread IN (SELECT value FROM json_each(?))")
-      .get(JSON.stringify(threadIds))) as { n: number };
-    return row.n;
+  /** Turns and recursively nested subagents, filtered by both pool and thread. */
+  usage(userId: string, pool: Pool, threadIds: string[]): { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[] {
+    const rows = this.withUser(userId, (db) => db.prepare(`
+      SELECT thread AS threadId, label, kind, sum(tokens) AS tokens, sum(gpu_ms) AS gpuMs FROM (
+        SELECT thread, label, kind, coalesce(read_tokens, prompt_tokens, 0) + coalesce(output_tokens, 0) AS tokens,
+          CASE WHEN kind = 'local' THEN coalesce(ttft_ms, 0) + coalesce(gen_ms, 0) ELSE 0 END AS gpu_ms
+        FROM model_calls WHERE pool = @pool AND thread IN (SELECT value FROM json_each(@threads)) AND task = 'chat'
+          AND (prompt_tokens IS NOT NULL OR read_tokens IS NOT NULL OR output_tokens IS NOT NULL)
+        UNION ALL SELECT thread, label, kind, tokens, gpu_ms FROM call_totals
+          WHERE pool = @pool AND thread IN (SELECT value FROM json_each(@threads))
+      ) GROUP BY thread, label, kind`).all({ pool, threads: JSON.stringify(threadIds) })) as { threadId: string; label: string; kind: "local" | "cloud"; tokens: number; gpuMs: number }[];
+    const result: { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[] = rows.map(r => ({ threadId: r.threadId, label: r.label, kind: r.kind, tokens: r.tokens, ...(r.kind === "local" ? { gpuMs: r.gpuMs } : {}) }));
+    const runs = this.withUser(userId, db => db.prepare(`WITH RECURSIVE descendants(root, thread) AS (
+      SELECT value, value FROM json_each(@threads)
+      UNION SELECT d.root, r.thread FROM descendants d JOIN subagent_runs r ON r.parent = d.thread AND r.pool = @pool
+    ) SELECT d.root AS threadId, r.model AS label, r.offering, r.input_tokens + r.output_tokens AS tokens
+      FROM descendants d JOIN subagent_runs r ON r.thread = d.thread AND r.pool = @pool
+      WHERE d.thread != d.root`).all({ pool, threads: JSON.stringify(threadIds) })) as { threadId: string; label: string; offering: string | null; tokens: number }[];
+    for (const r of runs) {
+      const kind = r.offering ? this.offering(userId, r.offering)?.endpoint.kind : undefined;
+      const existing = result.find(x => x.threadId === r.threadId && x.label === r.label && x.kind === kind);
+      if (existing) existing.tokens += r.tokens;
+      else result.push({ threadId: r.threadId, label: r.label, ...(kind ? { kind } : {}), tokens: r.tokens });
+    }
+    return result;
   }
 
   /** Each copy's median speeds over its last twenty measured calls, for this user. */
@@ -2284,7 +2361,13 @@ export class Models {
   private unfit(task: Task, o: Offering, ep: Endpoint, need: Need): string | undefined {
     if (o.status === "gone") return `it has been missing from ${ep.name} for ${GONE_DAYS} days`;
     if (task === "image.create" && !o.image) return "it doesn't make images";
-    if (task === "image.create" && need.imageTier && ep.kind === "local" && o.recipe
+    // Cloud adapters constrain their tasks; local endpoints keep capability-based routing.
+    if (task.startsWith("image.") && ep.kind === "cloud") {
+      const provider = CLOUD_IMAGE_PROVIDERS[ep.api];
+      if (!provider || task === "image.upscale" || (task === "image.create" && !provider.create) || (task === "image.edit" && !provider.edit)) return "this endpoint has no image provider for the task";
+      if (task === "image.edit" && need.imageMask && !provider.mask) return "this image provider does not accept masks";
+    }
+    if (task === "image.create" && need.imageTier
       && o.useFor && o.useFor !== "both" && o.useFor !== need.imageTier) return `it is for ${o.useFor} images`;
     if (task === "image.upscale" && !o.upscale) return "it doesn't upscale images";
     if (task === "image.edit" && !o.edit) return "it doesn't edit images";
@@ -2578,7 +2661,7 @@ function checkCredential(c: PlanCredential): PlanCredential {
 const labelOf = (ep: Endpoint, o: Offering) => `${ep.shared ? SHARED : ""}${ep.name}/${o.modelId}`;
 
 function checkName(name: string): void {
-  if (!NAME.test(name)) throw new Error("endpoint names use lowercase letters, digits and '-'");
+  if (!NAME.test(name)) throw new Error("endpoint names use letters, digits and '-'");
 }
 
 function checkAddresses(addresses: string[]): string[] {
@@ -2660,7 +2743,7 @@ function copyFile(modelId: string, path: string): boolean {
 
 type CallRow = {
   at: string; pool: Pool; thread: string; task: Task; offering: string; label: string; endpoint: string; kind: "cloud" | "local"; fallback: string | null; note: string | null;
-  prompt_tokens: number | null; output_tokens: number | null; window: number | null; ttft_ms: number | null; gen_ms: number | null; processed: number | null;
+  read_tokens: number | null; prompt_tokens: number | null; output_tokens: number | null; window: number | null; ttft_ms: number | null; gen_ms: number | null; processed: number | null;
   audio_seconds?: number | null;
 };
 
@@ -2668,5 +2751,5 @@ const toCall = (r: CallRow): CallRecord => ({
   at: r.at, pool: r.pool, threadId: r.thread, task: r.task, offeringId: r.offering, label: r.label, endpointName: r.endpoint, kind: r.kind,
   ...(r.fallback ? { fallback: r.fallback } : {}), ...(r.note ? { note: r.note } : {}),
   ...(typeof r.audio_seconds === "number" ? { audioSeconds: r.audio_seconds } : {}),
-  ...(r.gen_ms !== null ? { pace: speeds({ promptTokens: r.prompt_tokens ?? 0, outputTokens: r.output_tokens ?? 0, window: r.window ?? 0, ttftMs: r.ttft_ms ?? 0, genMs: r.gen_ms, processed: r.processed ?? 0 }) } : {}),
+  ...(r.gen_ms !== null ? { pace: speeds({ ...(r.read_tokens != null ? { readTokens: r.read_tokens } : {}), promptTokens: r.prompt_tokens ?? 0, outputTokens: r.output_tokens ?? 0, window: r.window ?? 0, ttftMs: r.ttft_ms ?? 0, genMs: r.gen_ms, processed: r.processed ?? 0 }) } : {}),
 });

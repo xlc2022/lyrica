@@ -43,6 +43,7 @@ export async function fakeImages() {
   const workstation = await host("workstation"), spare = await host("3090");
   const cloud = models.addEndpoint(ada, { name: "openai", kind: "cloud", baseUrl: "https://images.example/v1", apiKey: "fake-key" });
   const ref = { offeringId: models.addModel(ada, cloud.id, { modelId: "gpt-image-1", image: true, edit: true }).id };
+  models.reportUp(ada.id, cloud.id);
   const heard: { path: string; body: unknown }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, opts: RequestInit) => {
     expect(opts.headers).toMatchObject({ authorization: "Bearer fake-key" });

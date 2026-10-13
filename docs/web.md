@@ -79,6 +79,16 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Pin** or **Unpin** (P, top-level threads; a toast says "Pinned to the
   top" or "Unpinned", the shell's one, gone after 4 s), **Make project…** (K, a
   top-level thread; confirms in a dialog, since there is no way back),
+  **Continue as project** (C, keeps the source), and **Move to project**
+  (top-level, non-project, non-subagent threads only): pinned then up to ten recent
+  visible projects of the same pool, local-only destinations only for
+  local-only work; omitted when none qualify. It reuses the hover flyout
+  and phone submenu. Picking a project opens the shared `FoldConfirm.tsx`
+  dialog used by FoldCard, listing children, losses and the one-way warning;
+  Cancel leaves the work in place, Fold in calls the existing fold route
+  and opens the project chat. Its unticked access box grants permissions
+  through settings before folding. Losing cloud models is listed as
+  "Cloud models" and cannot be restored by that box.
   **Resolve** or **Reopen** (E, a project's thread), Hide or Unhide (H), and
   Delete… (D), which confirms in a dialog and offers
   to delete child threads too. From the keyboard, Shift+F10 or the Menu key
@@ -112,6 +122,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   came, else `ThreadSummary.steps`, so a new list redraws the fact and
   the open popover in place; with Checklists off it shows none, a list
   already streamed included. Her call itself is a tool marker.
+  **Tokens** follows Checklist once a counted turn exists (`src/Usage.tsx`,
+  `GET …/usage`, reloaded after turns and child updates). Its mono count and
+  caret open model rows with muted local/cloud kind, mono tokens and local
+  **GPU time**, then Total, whose tooltip says “Counts every request, cached reads included.”
+  On a phone it opens rows in place at the foot of Context.
   Then, while she has wake-ups waiting (`ThreadSettings.wakeups`, soonest
   first), **Wake-up** and the soonest time in mono (`wakeTime`: HH:MM today,
   the date before it otherwise) open a popover with each one's time and an
@@ -132,8 +147,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   its state word and its time in mono); below it a popover of the project's
   threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
-  count). The facts line also carries the project's tokens ("65 tokens", "312k tokens"; on a phone the tokens
-  are the popover's first line instead). The header has a **Project**
+  count). The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
+  This chat first, then thread links by descending tokens, and **Recent
+  calls** linking to the project's filter. On a phone Tokens opens in place
+  at the foot of the Threads popover. The header has a **Project**
   link to the project settings page before the Settings button, which
   opens the thread's drawer as in any thread. The
   `child` stream event reloads the overview (`GET …/overview`) and the
@@ -240,7 +257,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Either expansion hides History; Came from expansion also hides Used in.
   The memory and earlier sections stay visible; collapsing restores the
   hidden sections. History shows
-  the most recent version open, with **Show all** at the right of its eyebrow.
+  the newest earlier version open, with **Show all** at the right of its eyebrow.
   `…/history/memory/<pool>/<id>` lists versions newest first, with
   word differences (`wordDiff`, computed in the browser) and Restore, and
   Edit in place with a `[[` popover of pages and people (a page shows as
@@ -291,8 +308,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   30 s not asked again). Overview: a banner for a paused host or a stale
   endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
   the first one down, "+N" for more), Backend (the first `chat` model of
-  the General and Private columns, following Same as, each with its pool
-  and preset beneath; links to Tasks) and Clean up (the count, the tile's
+  the General and Private columns, following their presets and Same as,
+  each with its pool and preset beneath; links to Tasks) and Clean up (the count, the tile's
   tooltip "To decide" or "Nothing to clean up"); then the hosts and
   endpoints summary (a host with its combined VRAM bar, Pause or Resume,
   Dashboard; a plain endpoint with its model count) and the newest visible
@@ -315,9 +332,17 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the addresses, `PUT …/addresses`), per GPU its card, used/total in mono,
   a bar of pinned, loaded-on-demand and vLLM-share segments, the loaded
   models and the queue when nonzero. A plain endpoint row: name, kind,
-  ChatGPT plan or Grok plan, unencrypted and stale pills, URL, shared or only you, ID, state, "N
-  models", **Edit** (the same drawer; API key "leave blank to keep",
-  Remove key; a plan's drawer has Name only). A plan whose sign-in lapsed
+  ChatGPT plan or Grok plan versus API key, and cloud Text, Vision and Image
+  pills (only when a marked image model has a callable provider and the
+  required key). Capability pills wrap under the name on a phone. Facts:
+  a plan's kind, only you and explicit account label in mono if supplied,
+  hiding its placeholder URL; a keyed endpoint's URL, masked key suffix in
+  mono, shared or only you and ID. Short keys show the mask alone. Local rows
+  keep unencrypted and stale pills. State, "N models", **Edit** (the same
+  drawer; API key "leave blank to keep",
+  Remove key; a plan's drawer has Name only). Add endpoint suggests ChatGPT
+  for that plan and OpenAI for api.openai.com without replacing a name the
+  user typed. Names preserve capitals. A plan whose sign-in lapsed
   reads **Signed out**. Each row's ⋯: Sign in again (plans), Read its models, Add a model by hand, Pair
   again… (hosts), Reset IDs…, Merge into… (same kind and sharing), Remove,
   the last three confirmed by a dialog. Clean up: a row per item with a
@@ -327,22 +352,35 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Remove**; the notice lines as a dashed note with Dismiss. The
   thresholds are the pills' tooltips (stale: unreachable 14 days or more;
   gone: missing 30 days or more), and Replace with… carries the redirect
-  sentence as its tooltip. Recent calls opens **Call history**, using the shared paging and search. Time (mono), Thread (a link; private
+  sentence as its tooltip. Recent calls opens **Call history**, using shared search and numbered paging, and has a **Project** select in its
+  header: **All projects**, then title-sorted projects grouped General and
+  Private, hidden pools omitted. Its hash address retains `?project=&pool=&q=&page=`
+  and `GET …/models/calls/history` applies both filters. The project list comes from
+  `threads?all=1`, with display visibility applied here, so the sidebar
+  project filter does not remove choices. Recent calls: Time (mono), Thread (a link; private
   kind mark; "a forgotten thread" when gone), Task, Answered by ("model ·
   endpoint"), Note (the fallback or note, warn text); hidden pools left
-  out; the table stacks on a phone. Tasks (`GET …/presets`): a table of
-  every task (grouped Conversation, Memory, Sleep, Images, Speech) by
-  **Private threads** and **General threads**. Each column's **Preset**
-  menu has search, the allowed named presets, Save to and Save as while
-  Custom, and New preset. Preset Edit opens its drawer with Name, Save and
-  Delete preset; built-ins cannot be renamed or deleted. Each cell shows
-  its first model, state and fallbacks, and opens the task drawer with
-  **Its own list**, **Same as**, ordered models and **Add…**. Changes go
-  to `PUT …/columns/<column>/<task>` and make the column Custom; selecting
-  a preset goes to `PUT …/columns/<column>`. Private uses local models
-  only; General may use private or general presets. Dictation belongs to
-  the Private column. Settings → Sleep holds mode and Sleep fallback;
-  the old `…/settings/profiles` address goes to Tasks.
+  out; the table stacks on a phone. Tasks (`GET …/presets`, the former
+  Settings → Model profiles) has two columns, **Private threads** and
+  **General threads**, with a **Preset** menu in each head. Local is private;
+  Cloud is general; named presets follow their scope. The menu holds Search
+  presets, the available presets with Edit beside user presets, Save to and
+  Save as preset… while Custom, then New preset…. Picking a preset sends
+  `PUT …/columns/:column`; editing a task copies its lists to Custom without
+  changing the preset. Preset creation and renaming use the drawer, and
+  Delete preset… confirms in a dialog.
+  Rows group Conversation, Memory, Sleep, Images and Speech. A cell shows
+  the first model's state, +N fallbacks or no fallback, or = Chat for a
+  shared task. Dictation has a Private cell only. The drawer names the
+  column and preset, with **Its own list** or **Same as**, **Task to share
+  with**, ordered models with Move up, Move down and Remove, and **Add…**.
+  General lists mark where fallback crosses local/cloud; Private offers
+  local models only. Changes send `PUT …/columns/:column/:task` at once.
+  The model picker, Tasks entries, Text models copies and Image models show
+  a muted endpoint name after each model, truncating the endpoint first.
+  `ModelLabel.tsx` shares that display.
+  Settings → Sleep holds Sleep mode and Sleep fallback;
+  `…/settings/profiles` remains a redirect to Tasks.
   Text models (`src/TextModels.tsx`, its pure parts in `src/library.ts`)
   reads the whole library (`GET …/library/text`, 200 a request) and filters
   in the page, so the facts line ("<n> models · <c> copies on <e> endpoints
@@ -356,9 +394,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   <endpoints>", opening in place to a table of its copies, the group's
   members first in order (Move up, Move down, Remove from the group: `PATCH
   …/groups/:id`), then the others (**Add to group** when the row's group is
-  the user's to change). A Copy cell: endpoint and kind, status and "same
-  file" pills (the Models page's checksum), the raw name, "downloaded by
-  Lyrica" or "shared folder", tok/s and **Settings**; Context and Vision
+  the user's to change). A Copy cell: raw model name with its endpoint muted
+  after it, kind, status and "same file" pills (the Models page's checksum),
+  "downloaded by Lyrica" or "shared folder", tok/s and **Settings**; Context and Vision
   cells tinted where the copies differ; a ⋯ with **Not this model** (`PUT
   …/separate`; the new row reads "Separated from <name> · Undo", the name
   known for the visit, else "Separated") and **Delete from host…** (a dialog
@@ -391,6 +429,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Image models (`src/ImageModels.tsx`, its pure parts in `src/images.ts`)
   reads each model host's library (`GET …/hosts/:id/images`: recipes, and
   parts by role) and the plain endpoints' image models from the Models page.
+  Cloud model blocks and Hosts and endpoints' cloud model lists share
+  `CloudImageControls.tsx`: Image generation and Image editing switches
+  with tooltips, and Use for (Fast | Quality | Both) while generation is on.
+  Each change PATCHes the offering's capabilities and reloads the Models
+  page; controls are disabled for a shared endpoint's non-administrator.
+  These use ux §3's controls, §4's names and §6's model blocks.
   The facts line counts models, parts, hosts and the groups holding them,
   then links "<n> to review" when a host the user manages proposed
   anything. **Models** | **Parts**, a search (name or file) and the
@@ -399,7 +443,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   is left out. A row opens to a block per host (template and defaults, a
   segmented **Use for** (**Fast** | **Quality** | **Both**, default Both),
   row per part with precision, "downloaded by Lyrica" or "shared folder",
-  the other recipes using it and its size); every change is a recipe action
+  the other recipes using it and its size). Part filenames and facts wrap
+  within their column on a phone. Every change is a recipe action
   (`POST …/hosts/:id/recipes/:recipeId`, models.md "Image models"):
   **Use for** saves at once (`change { op: "useFor", useFor }`), disabled
   while saving or when the user cannot manage the host. The row's facts say
@@ -440,7 +485,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   bar and **Cancel** (`DELETE …/downloads/:id`); a finished one its ending
   and, once it is a model, its group or **Add to the group “<g>”** (a group
   holding a copy the strong suggestions pair it with); **Clear finished**
-  pages through and clears all finished entries. **History** shows only
+  collects finished IDs in one walk over the pages, then deletes each once. **History** shows only
   the newest finished download, with **Show all** beside its eyebrow opening
   `…/models/downloads/history`: server-side search and numbered pages,
   retaining the existing ending and group actions. The header has **Download text model** and
@@ -481,7 +526,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   administrator: Tailnet (the state, an Auth key with Hostname and Advanced →
   Control server, **Connect**, then a **Web access over the tailnet** switch
   applied on Continue; or Skip), Models (one endpoint, shared, its first
-  chat model set for the column; or Skip), Done (the addresses to open her
+  chat model set for the preset; or Skip), Done (the addresses to open her
   at with the fingerprint, the administrator's login, the tailnet, and a
   sentence when she starts locked), **Start a chat**. The current step's
   button is the one primary; a done step's turns secondary; the fields of a
@@ -953,6 +998,15 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   top of the conversation says "Plan waiting for your answer" (or
   "Approval…") and scrolls to it.
 
+A content refusal's image marker says "The model declined this image." (never
+the code) and the small text
+links Edit message, Resend and Try <model> (ux §5's agreed action exception
+and §6's image row). The server computes choices from the current task list
+and portrait policy. Edit message appears only for the last user message
+and copies it into the composer through an in-memory event; Resend repeats
+the image call, Try selects the next eligible endpoint. Resend shows at once;
+the other two join it when the options arrive. Busy calls hide the links. Both retries save results in the conversation and recheck consent.
+
 ## History
 
 `src/History.tsx` supplies the heading link and shared history list for sleep
@@ -963,7 +1017,9 @@ in the History eyebrow's row, at its right edge. The page has a **Search**
 field and numbered secondary **Page** buttons with “Page n of m” in mono;
 large page counts show the ends and nearby numbers. Search resets to page 1
 and requests after 300 ms; the APIs filter, page and return totals. Rows keep
-their existing appearance and actions. No new widgets, icons or captions.
+their existing appearance and actions. Older memory versions show their
+position as N of M (page offset plus row index, of the filtered total),
+while the current version says current. No new widgets, icons or captions.
 `…/history/journal[/<pool>]` lists journal entries and links each to its
 memory page. Kept releases are bounded, and current routines and runs in a
 thread describe active work.
@@ -1021,3 +1077,15 @@ between Allow and Deny, only when lyricad supplied `alwaysAllow`. It answers
 with `alwaysAllow: true`; the prefix is never sent back. Commands uses the
 existing segment and Remove icon (UX rules 2–3), its home in rule 6 and one
 Save with validation in rule 7; rows wrap at phone width (rule 8).
+
+Empty project chats show the welcome card (principle 1): Set up from recent
+work, Add repository using the existing popover, and Make a plan (`POST …/plan`, one call) opening a
+Plan thread, under a plain "Let's get to work!" line. Recent work uses the existing dialog, full screen on a phone,
+with ten eligible same-pool threads ticked initially. Only the selection is
+sent with the short setup message; lyricad adds the directions to that turn's context. Closing the dialog refocuses its button, and with no recent work it offers only Close. Fold in calls render suggestion rows, each loaded on its own (an unreadable thread drops its row); applied
+rows disappear, and access losses appear under their titles. Fold in and Fold in all open a
+confirm dialog (threads and their child threads, the losses with a "Give <project> access to these" checkbox that widens the project through its settings route before folding); the card's Cancel dismisses it in the browser.
+Continue as project (C), beside Make project… with their distinct tooltips,
+asks in a dialog, then opens the new project's settings. Draft Goal and Instructions populate their
+fields without applying them; Save applies edits and Discard draft clears
+the drafts. Model settings use the current preset API.

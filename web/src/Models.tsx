@@ -3,11 +3,12 @@
 // up and Recent calls, with its sections listed at the left (the frame and what the tabs share are in ModelsFrame.tsx).
 // The shell polls GET …/models/cleanup for the sidebar's count; GET …/models/page, which probes every
 // endpoint, is read while the area or the welcome page is open, and the Hosts tab's changes reload it.
+import { ModelLabel } from "./ModelLabel.tsx";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, u,
   type CallInfo, type CleanupItem, type Column, type ColumnState, type ColumnTaskChange, type EndpointChange, type EndpointInfo, type Entry, type GroupInfo, type HostStatus, type ModelsNotice, type ModelsPage,
-  type ModelRef, type OfferingInfo, type PlanSignInStarted, type PresetInfo, type Presets, type PresetScope, type Task,
+  type ModelRef, type OfferingInfo, type PlanSignInStarted, type PresetInfo, type Presets, type PresetScope, type Task, type ThreadSummary,
 } from "./api.ts";
 import { HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
@@ -20,6 +21,7 @@ import {
 } from "./ModelsFrame.tsx";
 import { go, href, type ModelsPageUnder, type ModelsTab, type Route } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
+import { CloudImageControls } from "./CloudImageControls.tsx";
 import { TextModels } from "./TextModels.tsx";
 import { ConfirmDialog, ErrorText, hidden, shortTime, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
 
@@ -229,7 +231,7 @@ export function BackendCard({ ctx }: { ctx: ShellContext }) {
         return m ? [{ model: m.modelId, endpoint: ep.name, kind: ep.kind }] : [];
       }))[0];
     }
-    return <>{c && "model" in c ? <><span className={`badge kind ${c.kind}`}>{c.kind}</span> {c.model} · {c.endpoint}</> : "No model"} · {col.preset?.name ?? "Custom"}</>;
+    return <>{c && "model" in c ? <><span className={`badge kind ${c.kind}`}>{c.kind}</span> <ModelLabel model={c.model} endpoint={c.endpoint} /></> : "No model"} · {col.preset?.name ?? "Custom"}</>;
   };
   return (
     <section className="card" aria-labelledby="h-home-backend">
@@ -262,7 +264,7 @@ function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
   const groups = useLoad(() => (needGroups ? get<GroupInfo[]>(u(userId, "groups")) : Promise.resolve([])), [userId, needGroups]);
   const line = (c: FirstChat) => !c ? "No model"
     : "groupId" in c ? groups.data?.find((g) => g.id === c.groupId)?.name ?? "A group"
-    : <>{c.model} <span className="muted">· {c.endpoint}</span></>;
+    : <ModelLabel model={c.model} endpoint={c.endpoint} />;
   const cleanup = p.cleanup;
   return (
     <div className="tiles">
@@ -425,7 +427,7 @@ const refKey = (r: ModelRef) => ("offeringId" in r ? r.offeringId : `g:${r.group
 function RefLabel({ refx, all, groups }: { refx: ModelRef; all: Map<string, Copy>; groups: GroupInfo[] }) {
   if ("groupId" in refx) return <>{groups.find((g) => g.id === refx.groupId)?.name ?? "A group"}</>;
   const c = all.get(refx.offeringId);
-  return c ? <>{c.m.modelId} <span className="muted">· {c.ep.name}</span>{c.m.status === "gone" && <span className="pill bad">gone</span>}</> : <>A model that no longer exists</>;
+  return c ? <><ModelLabel model={c.m.modelId} endpoint={c.ep.name} />{c.m.status === "gone" && <span className="pill bad">gone</span>}</> : <>A model that no longer exists</>;
 }
 
 /** "A", "A and B", "A, B and C". */
@@ -736,7 +738,7 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
                             <div className="members">
                               {ms.map((c) => (
                                 <span key={c.m.id}>
-                                  <span className={`dot${answers(p, c) ? " up" : " away"}`} aria-hidden="true" /> {c.m.modelId} · {c.ep.name}
+                                  <span className={`dot${answers(p, c) ? " up" : " away"}`} aria-hidden="true" /> <ModelLabel model={c.m.modelId} endpoint={c.ep.name} />
                                 </span>
                               ))}
                             </div>
@@ -794,7 +796,7 @@ function Picker({ p, groups, column, task, list, q, setQ, busy, onAdd, onCancel 
             {models.map((m) => (
               <div key={m.id} className="pick-row" data-offering={m.id}>
                 <div className="main-col">
-                  <span className="name">{m.modelId}</span>
+                  <span className="name"><ModelLabel model={m.modelId} endpoint={ep.name} /></span>
                   <span className="meta muted">
                     {[
                       m.contextWindow ? <><span className="num">{contextWord(m.contextWindow)}</span> context</> : null,
@@ -949,14 +951,15 @@ function Hosts({ ctx }: { ctx: MCtx }) {
 }
 
 /** An endpoint's models, each by its ID; a speaking model has its Settings. */
-function ModelList({ ep, onVoice }: { ep: EndpointInfo; onVoice: (m: OfferingInfo) => void }) {
+function ModelList({ ctx, ep, onVoice }: { ctx: MCtx; ep: EndpointInfo; onVoice: (m: OfferingInfo) => void }) {
   if (!ep.models.length) return <p className="muted small wide">No models yet.</p>;
   return (
     <ul className="model-list wide" aria-label={`${ep.name} models`}>
       {ep.models.map((m) => (
         <li key={m.id} data-offering={m.id}>
-          <code>{m.modelId}</code>
+          <ModelLabel model={m.modelId} endpoint={ep.name} raw />
           {m.status !== "listed" && <span className="pill warn">{m.status}</span>}
+          {ep.kind === "cloud" && <CloudImageControls ctx={ctx} ep={ep} m={m} />}
           {m.speak?.voices.length ? <button type="button" className="link sm" aria-label={`${m.modelId} settings`} onClick={() => onVoice(m)}>Settings</button> : null}
         </li>
       ))}
@@ -1082,7 +1085,7 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
       <ErrorText error={error} />
       {actions.forms}
       {status?.gpus.map((g) => <GpuBlock key={g.index} g={g} />)}
-      {open && <ModelList ep={ep} onVoice={onVoice} />}
+      {open && <ModelList ctx={ctx} ep={ep} onVoice={onVoice} />}
     </article>
   );
 }
@@ -1108,11 +1111,16 @@ function EndpointRow({ ctx, ep, others, onEdit, onVoice }: { ctx: MCtx; ep: Endp
   const [open, setOpen] = useState(false);
   const actions = useEndpointActions(ctx, ep, others, () => onEdit(true));
   const editable = canEdit(ctx, ep);
+  const plan = planOf(ep.api);
   return (
     <li className="ep-row" data-endpoint={ep.id}>
       <div className="main-col">
-        <span className="name">{ep.name} <Kind kind={ep.kind} />{planOf(ep.api) && <span className="pill">{PLAN_NAMES[planOf(ep.api)!]} plan</span>}{ep.unencrypted && <span className="pill warn">unencrypted</span>}{ep.stale && <span className="pill bad">stale</span>}</span>
-        <span className="meta muted"><code className="url">{ep.baseUrl}</code> · {ep.shared ? "shared" : "only you"} · ID <span className="mono">{ep.id}</span></span>
+        <span className={ep.kind === "cloud" ? "name endpoint-name" : "name"}>
+          {ep.name} <Kind kind={ep.kind} />
+          {plan ? <span className="pill">{PLAN_NAMES[plan]} plan</span> : ep.kind === "cloud" && ep.hasApiKey ? <span className="pill">API key</span> : null}
+          {!!ep.cloudCapabilities?.length && <span className="endpoint-capabilities">{ep.cloudCapabilities.map(cap => <span className="pill" key={cap}>{cap}</span>)}</span>}
+          {ep.unencrypted && <span className="pill warn">unencrypted</span>}{ep.stale && <span className="pill bad">stale</span>}</span>
+        <span className="meta muted">{plan ? <>{PLAN_NAMES[plan]} plan · only you{ep.planAccount && <> · <span className="mono">{ep.planAccount}</span></>}</> : <><code className="url">{ep.baseUrl}</code> · {ep.shared ? "shared" : "only you"}{ep.hasApiKey && <> · <span className="mono">key ••••{ep.keyLast4}</span></>}</>} · ID <span className="mono">{ep.id}</span></span>
         {ep.warning && <span className="warn-text">{ep.warning}</span>}
       </div>
       <div className="actions">
@@ -1122,7 +1130,7 @@ function EndpointRow({ ctx, ep, others, onEdit, onVoice }: { ctx: MCtx; ep: Endp
         {editable && <RowMenu label={`Actions for ${ep.name}`} items={actions.items} />}
       </div>
       {actions.forms}
-      {open && <ModelList ep={ep} onVoice={onVoice} />}
+      {open && <ModelList ctx={ctx} ep={ep} onVoice={onVoice} />}
     </li>
   );
 }
@@ -1142,6 +1150,10 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
   const userId = ctx.user.id;
   const [name, setName] = useState(ep?.name ?? "");
   // A plan is a kind of its own here: always cloud, signed in rather than given a URL and key.
+  const defaultName = useRef("");
+  const suggestName = (suggested: string) => {
+    if (!ep && (!name.trim() || name === defaultName.current)) { setName(suggested); defaultName.current = suggested; }
+  };
   const [kind, setKind] = useState<"custom" | "openrouter" | PlanKind>(ep ? planOf(ep.api) ?? "custom" : "custom");
   // Local and Cloud are exclusive checkboxes of a custom endpoint: ticking one clears the other.
   const [place, setPlace] = useState<"local" | "cloud" | undefined>(ep?.kind);
@@ -1184,7 +1196,7 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
           <label className="field"><span>Name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
           {!ep && (
             <label className="field"><span>Kind</span>
-              <select value={kind} onChange={(e) => setKind(e.target.value as "custom" | "openrouter" | PlanKind)}>
+              <select value={kind} onChange={(e) => { setKind(e.target.value as "custom" | "openrouter" | PlanKind); suggestName(e.target.value === "chatgpt" ? "ChatGPT" : ""); }}>
                 <option value="custom">Custom</option><option value="chatgpt">ChatGPT plan</option><option value="grok">Grok plan</option><option value="openrouter">OpenRouter</option>
               </select>
             </label>
@@ -1192,7 +1204,7 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
           {plan && (!ep || signIn) && <PlanSignIn key={plan} ctx={ctx} plan={plan} name={name.trim()} ep={ep} onDone={onClose} />}
           {openrouter && <OpenRouterSignIn ctx={ctx} name={name.trim()} shared={shared} onShared={setShared} onDone={onClose} />}
           {!plan && !openrouter && <>
-          <label className="field"><span>Base URL</span><input className="mono" inputMode="url" autoCapitalize="none" placeholder="http://192.168.1.50:1234/v1" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} /></label>
+          <label className="field"><span>Base URL</span><input className="mono" inputMode="url" autoCapitalize="none" placeholder="http://192.168.1.50:1234/v1" value={baseUrl} onChange={(e) => { setBaseUrl(e.target.value); try { suggestName(new URL(e.target.value).hostname === "api.openai.com" ? "OpenAI" : ""); } catch { /* An incomplete URL has no suggested name. */ } }} /></label>
           {place === "local" && plainHttp(baseUrl) && <p className="warn-text" role="note">Plain HTTP: the API key and every message cross the network unencrypted.</p>}
           <label className="field"><span>API key</span>
             <input type="password" autoComplete="off" disabled={removeKey} placeholder={ep?.hasApiKey ? "leave blank to keep" : undefined} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
@@ -1417,9 +1429,22 @@ function Cleanup({ ctx }: { ctx: MCtx }) {
 /* ---- Recent calls ---- */
 
 function Calls({ ctx, route }: { ctx: MCtx; route?: Extract<Route, { page: "models" }> }) {
+  const { project, pool } = route ?? {};
+  const allThreads = useLoad(() => get<ThreadSummary[]>(u(ctx.user.id, "threads") + "?all=1"), [ctx.user.id, ctx.threads]);
+  const projects = (allThreads.data ?? ctx.threads).filter(t => t.project && !hidden(ctx.me.display, t.pool) && (ctx.me.display.showHidden || !t.hidden)).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+  const selected = projects.find(t => t.id === project && t.pool === pool);
+  const filter = selected ? `?project=${encodeURIComponent(selected.id)}&pool=${selected.pool}` : "";
   return (
-    <Frame ctx={ctx} tab="calls" title="Call history">
-      <HistoryList<CallInfo> key={`${ctx.user.id}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} route={route} path={u(ctx.user.id, "models", "calls", "history")} render={(page) => <CallsTable ctx={ctx} calls={page.entries} />} />
+    <Frame ctx={ctx} tab="calls" title="Call history" actions={
+      <label className="project-filter">Project <select aria-label="Project" value={selected ? `${selected.pool}/${selected.id}` : ""} onChange={e => {
+        const t = projects.find(t => `${t.pool}/${t.id}` === e.target.value);
+        go({ page: "models", userId: ctx.user.id, tab: "calls", ...(t ? { project: t.id, pool: t.pool } : {}) });
+      }}><option value="">All projects</option>{(["general", "private"] as const).map(p => {
+        const list = projects.filter(t => t.pool === p);
+        return list.length ? <optgroup key={p} label={p === "general" ? "General" : "Private"}>{list.map(t => <option key={t.id} value={`${p}/${t.id}`}>{t.title || "New project"}</option>)}</optgroup> : null;
+      })}</select></label>
+    }>
+      <HistoryList<CallInfo> key={`${ctx.user.id}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}/${filter}`} route={route} path={u(ctx.user.id, "models", "calls", "history") + filter} render={(page) => <CallsTable ctx={ctx} calls={page.entries} />} />
     </Frame>
   );
 }

@@ -1,17 +1,17 @@
 import { randomBytes } from "node:crypto";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
-  alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
+  recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  appendUserMessage, ContextMeter, createDelegateExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
+  formatEntry, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
-import { delegateThreads, delegationPart, imagePart, markersFor, plainError, shortResult, toReactions, turnRecall } from "./messages.ts";
+import { delegateThreads, delegationPart, imagePart, imageRefusal, markersFor, plainError, shortResult, toReactions, turnRecall } from "./messages.ts";
 
 export interface HostOptions {
   users: Users;
@@ -37,12 +37,13 @@ export interface HostOptions {
   offlineRetryMs?: number;
   /** A project chat's threads, one line each, for her project section. */
   projectThreads?: (userId: string, pool: Pool, project: string) => string | undefined;
-  /** A turn started or ended in a thread. */
-  onTurn?: (userId: string, pool: Pool, threadId: string, working: boolean) => void;
+  /** A turn started or ended in a thread; at the end, whether the person's own text was part of it (a child's wake isn't). */
+  onTurn?: (userId: string, pool: Pool, threadId: string, working: boolean, byPerson?: boolean) => void;
   /** Every event the thread's stream carries, as it goes out (the watcher hears of errors and approvals from it). */
   onEvent?: (userId: string, pool: Pool, threadId: string, event: ThreadEvent) => void;
 }
 
+const CHILD_WAKE = "lyrica-child-wake";
 /** Events kept for reconnecting streams. Older ones reload from stored entries. */
 const BUFFER = 500;
 /** Each lyricad run gets its own epoch, so an event ID from before a restart is never mistaken for a current one. */
@@ -191,6 +192,14 @@ export class ThreadHost {
   }
 }
 
+/** What to do with the threads the user ticked in Set up from recent work; the user's own message stays short. */
+const RECENT_WORK_DIRECTIONS = [
+  "The person ticked these threads to set this project up from their recent work. To answer:",
+  "1. Store a draft Goal and Instructions for the project with `threads draft`; they show on Project settings for the person to edit and save.",
+  "2. Suggest which of these threads to bring into the project with `threads fold` and their thread ids.",
+  "3. Reply with what you drafted and why, ending with a link to Project settings.",
+].join("\n");
+
 /**
  * One thread: its Pi session while active, its event stream, and its
  * permission prompts. One turn runs at a time; the person's messages sent
@@ -221,6 +230,8 @@ export class HostedThread {
   closed = false;
   private closing = false;
   busy = false;
+  /** Only the current turn was started by a child; a queued user follow-up is its own turn. */
+  childWakeTurn = false;
 
   constructor(private readonly o: HostOptions, readonly userId: string, readonly pool: Pool, readonly threadId: string,
     private readonly release: () => void) {
@@ -310,6 +321,25 @@ export class HostedThread {
 
   // --- Turns ---
 
+  /** Selection is held only in memory, and never enters stored messages. */
+  private recentWorkSource: string | undefined;
+  private recentWorkIds: string[] | undefined;
+
+  private recentWork(view: PoolView): string | undefined {
+    if (!this.recentWorkIds) return undefined;
+    const local = this.o.models.callContext(this.userId, this.pool, this.threadId).localOnly;
+    const work = this.recentWorkIds.map(id => {
+      const row = view.own.getThread(id);
+      if (!row || !recentWorkAllowed(row, this.o.models.callContext(this.userId, this.pool, id).localOnly, local)) throw new Error("selected work is no longer readable by this project");
+      return `[t:${id}]\n${view.own.latestEntries(id, WELCOME_LIMITS.entries).map(formatEntry).join("\n\n")}`;
+    }).join("\n\n").slice(0, WELCOME_LIMITS.chars);
+    const keepsSource = this.recentWorkIds.length === 1 && this.recentWorkIds[0] === this.recentWorkSource;
+    const directions = keepsSource
+      ? "Continue from this thread, which stays in place. Store a draft Goal and Instructions with `threads draft`, then reply ending with a link to Project settings."
+      : RECENT_WORK_DIRECTIONS;
+    return `${directions}\n\n${work}`;
+  }
+
   /**
    * Starts a turn, or, while one runs, queues the person's message as a
    * follow-up; a marked message joins the running turn as a steer, after its
@@ -321,12 +351,18 @@ export class HostedThread {
    * watcher with `watching`, and only a wake-up with `wakeup` (its mark);
    * anyone else's text can't carry the line that marks it.
    */
-  async send(text: string, opts: { fromParent?: string; fromThread?: string; watching?: boolean; wakeup?: string; routine?: string } = {}): Promise<{ queued: boolean }> {
+  async send(text: string, opts: { fromParent?: string; fromThread?: string; watching?: boolean; wakeup?: string; routine?: string; recentThreadIds?: string[]; recentWorkSource?: string } = {}): Promise<{ queued: boolean }> {
     if (!text.trim()) throw new Error("the message is empty");
     if (FROM_PARENT.test(text)) throw new MarkedText("a message can't start with a [From t:…] line");
     if (WATCHING.test(text)) throw new MarkedText("a message can't start with a [Watching threads] line");
     if (WAKEUP.test(text)) throw new MarkedText("a message can't start with a [Wake-up, …] line");
     if (ROUTINE.test(text)) throw new MarkedText("a message can’t start with a [Routine, …] line");
+    if (opts.recentThreadIds) {
+      if (this.working || this.recentWorkIds) throw new Busy("recent work needs an idle project chat");
+      this.recentWorkIds = opts.recentThreadIds;
+      this.recentWorkSource = opts.recentWorkSource;
+      try { return await this.post(text); } catch (err) { this.recentWorkIds = undefined; this.recentWorkSource = undefined; throw err; }
+    }
     if (opts.routine) return this.post(`${opts.routine}${text}`, true);
     if (opts.watching) return this.post(`${WATCHING_MARK}${text}`, true);
     if (opts.wakeup) return this.post(`${opts.wakeup}${text}`, true);
@@ -381,7 +417,8 @@ export class HostedThread {
       this.emit({ type: "error", message });
       throw new Error(message);
     }
-    this.running = this.run(prompt);
+    // Text given here is the person's (held or unmarked); a turn started from steering isn't.
+    this.running = this.run(prompt, { person: text !== undefined });
     return { queued: false };
   }
 
@@ -450,7 +487,7 @@ export class HostedThread {
   private running: Promise<void> = Promise.resolve();
 
   /** Resolves when the running turn, and the messages queued behind it, are done. */
-  settled(): Promise<void> { return this.running; }
+  settled(): Promise<void> { return this.imageRetryDone ?? this.running; }
 
   /** Waiting for an answer to a permission request. */
   get waiting(): boolean { return this.pending.size > 0; }
@@ -459,12 +496,47 @@ export class HostedThread {
   /** A turn runs, or a message waits for a model to answer. */
   get working(): boolean { return this.busy || !!this.held; }
 
-  private async run(text: string): Promise<void> {
+  /** Child notices are already delivered; wake once without inventing a user message. */
+  async wakeChild(): Promise<void> {
+    if (this.busy || this.closed) return;
+    this.busy = true;
+    try { await this.open(); }
+    catch (err) { this.busy = false; throw err; }
+    this.running = this.run(CHILD_WAKE, { childWake: true });
+  }
+
+  private readonly parentReplies: string[] = [];
+
+  /** A reply from a parent woken by this child is saved, never steered or run. */
+  appendParent(text: string, parent: string): void {
+    this.parentReplies.push(`${fromParent(parent)}${text}`);
+    if (!this.busy) this.keepParentReplies();
+  }
+
+  private keepParentReplies(): void {
+    if (!this.parentReplies.length) return;
+    const view = this.o.memory.openThreadView(this.userId, this.pool);
+    try {
+      if (!view.own.getThread(this.threadId)) { this.parentReplies.length = 0; return; }
+      if (this.opened) syncEntries(this.opened.session.sessionManager, view.own, this.threadId);
+      for (const text of this.parentReplies.splice(0)) {
+        appendUserMessage(view.own, this.threadId, text);
+        this.emit({ type: "received", text });
+      }
+      this.dispose();
+    } finally { view.close(); }
+  }
+
+  private async run(text: string, opts: { childWake?: boolean; person?: boolean } = {}): Promise<void> {
     this.stopIdle();
     let aborted = false;
+    // Whether the person's own text is part of this turn: a child's wake or a marked message isn't.
+    let theirs = !!opts.person;
+    let childWake = !!opts.childWake;
     this.o.onTurn?.(this.userId, this.pool, this.threadId, true);
     try {
       for (let next: string | undefined = text; next !== undefined && !this.closed;) {
+        this.childWakeTurn = childWake;
         const opened = await this.open();
         await this.retrying;
         try {
@@ -485,10 +557,13 @@ export class HostedThread {
         opened.meter.pending = undefined;
         this.failed = false;
         const entry = (next === OPENING ? opened.view.own.loadEntries(this.threadId).at(-1) : undefined) as { message?: { role?: string; content?: unknown } } | undefined;
-        if (next === OPENING && entry?.message?.role === "user" && textOf(entry.message.content) === OPENING) {
+        if (childWake) {
+          childWake = false;
+          await opened.session.sendCustomMessage({ customType: CHILD_WAKE, content: "Read the child thread notices and respond to the result or question.", display: false }, { triggerTurn: true });
+        } else if (next === OPENING && entry?.message?.role === "user" && textOf(entry.message.content) === OPENING) {
           await this.answerOpening(opened.session);
         } else {
-          await opened.session.prompt(next);
+          try { await opened.session.prompt(next); } finally { this.recentWorkIds = undefined; this.recentWorkSource = undefined; }
         }
         aborted = this.aborted;
         await this.afterTurn(opened, aborted);
@@ -499,7 +574,10 @@ export class HostedThread {
         this.aborted = false;
         void this.maybeTitle(opened);
         if (this.stale) this.dispose();
-        next = this.next();
+        this.keepParentReplies();
+        const nxt = this.next();
+        if (nxt.person) theirs = true;
+        next = nxt.text;
       }
     } catch (err) {
       this.emit({ type: "error", message: plainError(refusal(err)) });
@@ -508,28 +586,30 @@ export class HostedThread {
       this.queued = [];
     } finally {
       this.busy = false;
+      this.childWakeTurn = false;
+      this.keepParentReplies();
       this.aborted = false;
       // A session that lacks what keep stored: the next turn opens afresh.
       if (this.stale) this.dispose();
       // Shutdown, Lock or forgetting closes it: a child keeps its record of working, so a restart tells its parent.
-      if (!this.closing) this.o.onTurn?.(this.userId, this.pool, this.threadId, false);
+      if (!this.closing) this.o.onTurn?.(this.userId, this.pool, this.threadId, false, theirs);
       this.startIdle();
     }
   }
 
   private aborted = false;
 
-  /** The next turn's message: the person's follow-ups together, else the first marked message waiting. */
-  private next(): string | undefined {
+  /** The next turn's message and whether it is the person's own text: their follow-ups together, else the first marked message waiting. */
+  private next(): { text?: string; person: boolean } {
     if (this.queued.length) {
       const text = this.queued.splice(0).join("\n\n");
       this.emit({ type: "queue", queued: [] });
-      return text;
+      return { text, person: true };
     }
     const s = this.steering[0];
-    if (!s) return undefined;
+    if (!s) return { person: false };
     s.prompt = true;
-    return s.text;
+    return { text: s.text, person: false };
   }
 
   /**
@@ -577,7 +657,7 @@ export class HostedThread {
    */
   private async afterTurn(opened: Opened, aborted: boolean): Promise<void> {
     const pace = opened.meter.takePace();
-    if (pace) this.o.models.recordPace(this.userId, this.threadId, pace);
+    if (pace) this.o.models.recordPace(this.userId, this.threadId, pace, "chat", this.pool);
     const asked = opened.meter.pending;
     opened.meter.pending = undefined;
     // Stop means stop: a stopped turn's compaction is dropped.
@@ -644,17 +724,72 @@ export class HostedThread {
    */
   async stop(): Promise<void> {
     this.unhold();
+    this.imageRetryAbort?.abort();
     for (const p of [...this.pending.values()]) p.done(false, "stopped");
     if (this.queued.length) {
       this.queued = [];
       this.emit({ type: "queue", queued: [] });
     }
+    if (this.imageRetryDone) { await this.imageRetryDone.catch(() => {}); return; }
     if (!this.busy) return this.keep();
     if (!this.opened) return;
     this.aborted = true;
     await this.opened.session.abort();
     // Lock, forgetting or shutdown disposes the session next: kept now, while it can still be synced.
     if (this.closing) this.keep();
+  }
+
+  private imageRetryAbort?: AbortController;
+  private imageRetryDone?: Promise<void>;
+
+  /** Explicit image retry: same executor and consent checks, no changes to saved task lists. */
+  retryImage(args: Parameters<typeof executeImage>[2], offeringId: string, userMessageN?: number): Promise<void> {
+    if (this.closed) throw new Error("this thread was closed");
+    if (this.busy) throw new Busy("a turn is running: stop it or wait for it to end");
+    const done = this.runImageRetry(args, offeringId, userMessageN);
+    this.imageRetryDone = done;
+    return done.finally(() => { if (this.imageRetryDone === done) this.imageRetryDone = undefined; });
+  }
+
+  private async runImageRetry(args: Parameters<typeof executeImage>[2], offeringId: string, userMessageN?: number): Promise<void> {
+    const view = this.o.memory.openThreadView(this.userId, this.pool);
+    this.busy = true;
+    const controller = this.imageRetryAbort = new AbortController();
+    const id = `image-retry-${randomBytes(12).toString("hex")}`;
+    const { workspace, models } = this.o;
+    this.stopIdle();
+    this.o.onTurn?.(this.userId, this.pool, this.threadId, true);
+    try {
+      await this.opening?.catch(() => {});
+      this.dispose();
+      const tools = workspace.forThread({ userId: this.userId, pool: this.pool, threadId: this.threadId, project: view.own.projectOf(this.threadId) });
+      this.emit({ type: "turn_start" });
+      this.emit({ type: "message_start" });
+      this.emit({ type: "tool_start", toolCallId: id, name: "image", args });
+      let result;
+      try {
+        result = await executeImage({ models, threadId: this.threadId,
+          call: () => { const ctx = models.callContext(this.userId, this.pool, this.threadId); return { ...ctx,
+            overrides: { ...ctx.overrides, [`image.${args.action}`]: [{ offeringId }] }, fallback: false }; },
+          files: workspace.imageFiles({ userId: this.userId, pool: this.pool, threadId: this.threadId }),
+          settings: () => workspace.settings(this.userId), enabled: () => tools.settings().images && tools.settings().mode !== "plan",
+          approve: r => this.approve(r),
+        }, id, args, controller.signal);
+      } catch (err) { result = { content: [{ type: "text" as const, text: plainError((err as Error).message) }], isError: true, details: undefined }; }
+      const text = shortResult(result.content);
+      const manager = SessionManager.inMemory(this.o.cwd, undefined, view.own.loadEntries(this.threadId) as never);
+      manager.appendCustomMessageEntry("lyrica-image-retry", result.content, true,
+        { toolCallId: id, args, result: { details: result.details, isError: !!result.isError }, userMessageN });
+      syncEntries(manager, view.own, this.threadId);
+      this.emit({ type: "tool_end", toolCallId: id, name: "image", result: text, isError: !!result.isError,
+        image: imagePart("image", result.details), imageRefusal: imageRefusal("image", result.details) });
+    } finally {
+      view.close(); this.imageRetryAbort = undefined; this.busy = false;
+      this.o.onTurn?.(this.userId, this.pool, this.threadId, false);
+      this.emit({ type: "turn_end", aborted: controller.signal.aborted }); this.startIdle();
+      const waiting = this.queued.splice(0);
+      if (waiting.length) { this.emit({ type: "queue", queued: [] }); await this.start(waiting.join("\n\n")); }
+    }
   }
 
   // --- Permission prompts ---
@@ -780,6 +915,7 @@ export class HostedThread {
         extensions: [
           createLyricaExtension(ctx, {
             persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter,
+            recentWork: () => this.recentWork(view),
             reactions: () => this.unseenReactions.splice(0),
             ...(thread.project ? { projectThreads: () => this.o.projectThreads?.(this.userId, this.pool, this.threadId) } : {}),
           }),
@@ -908,7 +1044,8 @@ export class HostedThread {
         const result = shortResult(content);
         const threads = delegateThreads(e.toolName, (e.result as { details?: unknown } | undefined)?.details, this.pool);
         const image = !e.isError ? imagePart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;
-        this.emit({ type: "tool_end", toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}), ...(image ? { image } : {}) });
+        const refusedImage = imageRefusal(e.toolName, (e.result as { details?: unknown } | undefined)?.details);
+        this.emit({ type: "tool_end", ...(refusedImage ? { imageRefusal: refusedImage } : {}), toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}), ...(image ? { image } : {}) });
         const full = Array.isArray(content) ? content.map((p: { text?: string }) => p.text ?? "").join("\n") : String(content ?? "");
         for (const m of markersFor(e.toolName, (e as { args?: unknown }).args, full)) this.emit(m);
         break;

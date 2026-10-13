@@ -1,5 +1,7 @@
 # History pages
 
+**Status: in review as PR #288.**
+
 ## Goal
 
 Serve principle 6, Trust her judgment; make review easy, and principle 8,
@@ -41,7 +43,6 @@ link alignment, collapse and the section visibility rules at both widths.
 Docs match the implementation. Targeted tests run under the shared lock,
 using fakes only. The local Playwright config is used only for checks and
 removed afterwards.
-Work stays in the tree, without committing or pushing, as requested on resume.
 
 ## Handoff (2026-10-13)
 
@@ -64,8 +65,7 @@ integration and Playwright runs cannot start here: the sandbox rejects
 local listeners with EPERM. The extended browser checks include journal
 and download history and still need a run on a host that permits sockets.
 
-Next: stage the resolved files (the Git index is read-only here), rerun
-browser checks and the full suite, then commit and push. No commit or push
+Remaining validation: browser checks and the operator’s full suite. No commit or push
 was made on this resumed run. The local Playwright config was removed from
 the tree because the WIP snapshot had accidentally tracked it; keep that
 deletion in the final change. A copy for recreating it during checks is at
@@ -91,7 +91,7 @@ browser test passes at 390 px and 1280 px, including lineage scrolling and
 card heights. Screenshots were inspected; the temporary local Playwright
 config was removed. Tests use fakes only.
 
-Next: run the full suite on the shared host, then stage, commit and push.
+Remaining validation: the operator’s full suite.
 This run leaves edits in the tree.
 No open design questions.
 
@@ -115,3 +115,22 @@ Overview's hand-rolled Show-all head is untouched, outside this round.
 
 Checks: run `npm run typecheck` and the web unit suite before committing.
 This run leaves edits in the tree. No open design questions.
+
+## Review fixes after merging main (2026-10-13)
+
+Done: all nine merge-conflicted files have been resolved in the working
+tree, preserving presets, spend shares and the history pages. Call history
+keeps the Project select (UX §6) and search/page in its address; the API
+restricts project calls to their visible pool, with 404 for a hidden pool.
+Clear finished collects IDs before deleting each once. Memory details
+include the newest earlier version for the preview, and paged versions show
+N of M instead of revision IDs. The restore e2e checks the single open
+preview and that restoring brings back the earlier text. No migration added.
+These fixes serve principles 2 and 6.
+
+Checks: typecheck and web build pass. Under the shared lock, 33 targeted
+daemon/web tests and all 10 selected phone/desktop e2e tests pass, including
+lineage, numbering, downloads and the project filter. Fakes only. The local
+Playwright config was removed. Remaining: the operator stages the resolved
+files, runs the full suite, commits and pushes; the Git index is read-only
+here.

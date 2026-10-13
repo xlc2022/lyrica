@@ -265,7 +265,7 @@ export function fromUrl(text: string, accounts: GitAccountInfo[]): GitRepository
  * pool's accounts can see, grouped by account, or takes a pasted URL. Also
  * on the Project settings page.
  */
-export function Repositories({ userId, pool, granted, onChange }: { userId: string; pool: Pool; granted: GitRepository[]; onChange: (list: GitRepository[]) => void }) {
+export function Repositories({ userId, pool, granted, onChange, starter }: { starter?: boolean; userId: string; pool: Pool; granted: GitRepository[]; onChange: (list: GitRepository[]) => void }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const anchor = useRef<HTMLSpanElement>(null);
@@ -294,7 +294,7 @@ export function Repositories({ userId, pool, granted, onChange }: { userId: stri
   const label = (name: string) => accounts.find((a) => a.name === name)?.name ?? name;
   return (
     <>
-      {granted.map((r) => {
+      {!starter && granted.map((r) => {
         const known = (all.data ?? []).some((a) => a.name === r.account && a.pool === pool);
         return (
           <div key={`${r.account}/${r.name}`} className="folder">
@@ -306,8 +306,8 @@ export function Repositories({ userId, pool, granted, onChange }: { userId: stri
         );
       })}
       <span className="picker-anchor machine-add" ref={anchor}>
-        <button ref={plus} type="button" className="icon sm" aria-label="Add repository" title="Add repository" aria-haspopup="dialog" aria-expanded={open}
-          onClick={() => (open ? close() : setOpen(true))}><Icon name="plus" /></button>
+        <button ref={plus} type="button" className={starter ? "" : "icon sm"} aria-label="Add repository" title="Add repository" aria-haspopup="dialog" aria-expanded={open}
+          onClick={() => (open ? close() : setOpen(true))}>{starter ? "Add repository" : <Icon name="plus" />}</button>
         {open && (
           <div className="picker repo-pick" role="dialog" aria-label="Add repository"
             onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); close(); plus.current?.focus(); } }}>

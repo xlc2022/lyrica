@@ -114,6 +114,8 @@ function fakeModel() {
       const child = /^start(?: long)?: (.+)/.exec(said)?.[1];
       // "start long: <title>" gives the child a task of many lines, for the collapsed message's Show more.
       const task = said.startsWith("start long:") ? Array.from({ length: 30 }, (_, i) => `Step ${i + 1} of the plan for ${child}.`).join("\n\n") : `Work on ${child}.`;
+      const draft = /^draft: (.+)\|(.+)/.exec(said);
+      const fold = /^fold: (.+)/.exec(said)?.[1];
       const suggest = /^suggest: (.+)/.exec(said)?.[1];
       const steps = /^steps: (.+)/.exec(said)?.[1]?.split(";").flatMap((x) => {
         const m = /^\s*(done|doing|todo) (.+?)\s*$/.exec(x);
@@ -136,12 +138,12 @@ function fakeModel() {
         const other = [...said.matchAll(/^- \[t:([^\]\s]+)\]/gm)].map((m) => m[1]).find((id) => !about.has(id));
         send({ role: "assistant", content: JSON.stringify({ tell: other ? [{ thread: other, text: "Heads up: the plan changed." }] : [] }) });
         send({}, "stop");
-      } else if ((child || suggest || steps) && last?.role !== "tool") {
-        const args = child ? { action: "start", title: child, task } : steps ? { action: "steps", steps }
+      } else if ((child || suggest || steps || fold || draft) && last?.role !== "tool") {
+        const args = draft ? { action: "draft", goal: draft[1]!.trim(), instructions: draft[2]!.trim() } : fold ? { action: "fold", ids: fold.split(",").map(t => t.trim()) } : child ? { action: "start", title: child, task } : steps ? { action: "steps", steps }
           : { action: "suggest", threads: suggest!.split(",").map((t) => t.trim()).map((title) => ({ title, task: `Work on ${title}.` })) };
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "threads", arguments: JSON.stringify(args) } }] });
         send({}, "tool_calls");
-      } else if (child || suggest || steps) {
+      } else if (child || suggest || steps || fold || draft) {
         send({ role: "assistant", content: child ? "Started it." : steps ? "Checklist set." : "Suggested." });
         send({}, "stop");
       } else if ((command || plan) && last?.role !== "tool") {

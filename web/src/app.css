@@ -809,6 +809,8 @@ form.drawer-body { flex: 1; }
 }
 /* Suggested threads: like the plan card. */
 .suggestions { margin: 0; padding: 0 0 0 20px; display: grid; gap: 8px; }
+.fold-list { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.suggestions.fold-rows { padding: 0; list-style: none; }
 .suggestions li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
 .suggestion-text { display: grid; gap: 2px; min-width: 0; }
 .suggestion-text .prose.small { font-size: 14px; line-height: 1.5; }
@@ -1225,7 +1227,7 @@ button.star[aria-pressed="true"] .ic { fill: currentColor; }
 .ldetail .note .meta { align-self: center; }
 code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .models td.differs { background: color-mix(in oklab, var(--accent) 7%, var(--panel)); }
-.copies td.copy > code.raw, .copies td.copy > .cap { display: block; margin-top: 2px; }
+.copies td.copy > .cap { display: block; margin-top: 2px; }
 .copy-name { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
 .copies td.act { width: 1%; white-space: nowrap; }
 .copies .octl { justify-content: end; align-items: center; gap: 4px; }
@@ -1312,7 +1314,7 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .partrow { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto auto; gap: 4px 12px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); min-height: 44px; }
 .partrow .role { font-weight: 500; font-size: 13px; }
 .partrow .role small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
-.partrow .pfile { display: grid; gap: 2px; min-width: 0; }
+.partrow .pfile { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .partrow .size { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .partrow .actions { justify-content: end; }
 .partrow select { min-height: 30px; font-size: 13px; max-width: 260px; }
@@ -1353,8 +1355,51 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
   .routine-item button.sm { min-height: 44px; }
 }
 
+/* Tokens shares the existing header picker; phone rows open in place. */
+.usage-pop { width: min(460px, calc(100vw - 32px)); }
+.usage-row, .usage-head { display: grid; grid-template-columns: minmax(0, 1fr) 5em 6em; gap: 8px; padding: 6px 0; align-items: baseline; }
+.usage-row > :first-child { overflow-wrap: anywhere; min-width: 0; }
+.usage-row > .num, .usage-head > :not(:first-child) { text-align: right; }
+.usage-inline { display: block; margin-top: 12px; }
+.usage-inline > button.link { min-height: var(--tap); }
+.usage-rows { font-size: 13px; white-space: normal; }
+
 /* Project commands use the existing fixed-choice buttons; rows wrap at phone width. */
 .command-rule { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
 .command-rule input { flex: 1 1 160px; min-width: 0; }
 .permission .always-allow { max-width: 100%; white-space: normal; }
 .permission .always-allow .mono { min-width: 0; overflow-wrap: anywhere; }
+
+.cloud-image-controls { flex-basis: 100%; display: grid; gap: 12px; padding: 12px 0; min-width: 0; }
+.cloud-image-controls .seg { width: fit-content; max-width: 100%; }
+.image-refusal-note { display: block; color: var(--muted); font-size: 12px; }
+.image-refusal-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; }
+.image-refusal-links .link { white-space: normal; text-align: left; overflow-wrap: anywhere; }
+@media (pointer: coarse) {
+  .image-refusal-links .link { min-height: 44px; }
+}
+
+/* Endpoint capability pills are the agreed exception to §5 (principles 1 and 8). */
+.endpoint-name, .endpoint-capabilities { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.model-label { display: inline-flex; align-items: baseline; max-width: 100%; min-width: 0; }
+.model-name { flex: 0 0 auto; max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
+.model-endpoint { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-item > .model-label { flex: 1; }
+.cell .m > span:has(> .model-label) { flex: 1; min-width: 0; }
+.cell .m > span > .model-label { display: flex; }
+.badge.model > .name { min-width: 0; }
+.badge.model .model-label { display: flex; }
+@media (max-width: 760px) {
+  .endpoint-capabilities { flex-basis: 100%; }
+}
+.models-actions .project-filter { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.models-actions .project-filter select { width: min(240px, 55vw); }
+
+/* Project welcome uses the existing card, repository popover and dialog. */
+.fold-loss { overflow-wrap: anywhere; }
+.suggestions > li > button { flex-shrink: 0; }
+@media (max-width: 759px) {
+  .welcome-starters { flex-direction: column; align-items: stretch; }
+  .welcome-starters > button, .welcome-starters .machine-add, .welcome-starters .machine-add > button { width: 100%; }
+  dialog.recent-work { width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; border-radius: 0; }
+}

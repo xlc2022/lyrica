@@ -31,3 +31,19 @@ describe("image message metadata (principle 1)", () => {
     expect(imagePart("image", { image: { ...image, tier: "unknown" } })).toBeUndefined();
   });
 });
+
+it("projects refusal codes in stored and live markers, without provider text or bytes", () => {
+  const imageRefusal = { code: "image_refusal", offeringId: "art", endpointId: "ep" };
+  const result = { content: [{ type: "text", text: "Image generation was refused (image_refusal)." }], details: { imageRefusal }, isError: true };
+  const messages = toMessages("web/a", "general", [
+    { n: 1, createdAt: "2026-10-12", data: { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "i1", name: "image", arguments: { action: "create" } }] } } },
+    { n: 2, createdAt: "2026-10-12", data: { type: "message", message: { role: "toolResult", toolCallId: "i1", toolName: "image", ...result } } },
+    { n: 3, createdAt: "2026-10-12", data: { type: "custom_message", customType: "lyrica-image-retry", content: result.content, details: { toolCallId: "retry", args: { action: "create" }, result } } },
+  ]);
+  expect(messages[0]?.parts[0]).toMatchObject({ isError: true, imageRefusal });
+  expect(messages[1]?.parts[0]).toMatchObject({ toolCallId: "retry", isError: true, imageRefusal });
+  const hosted = Object.create(HostedThread.prototype) as { forward(e: unknown): void; emit(e: ThreadEvent): void; pool: string };
+  const events: ThreadEvent[] = []; hosted.pool = "general"; hosted.emit = e => events.push(e);
+  hosted.forward({ type: "tool_execution_end", toolCallId: "i1", toolName: "image", isError: true, result });
+  expect(events[0]).toMatchObject({ type: "tool_end", imageRefusal });
+});

@@ -112,3 +112,17 @@ export function fileChoices(list: HubFiles): { choices: FileChoice[]; refused: s
   const refused = [...reasons].map(([reason, n]) => `${n === 1 ? "1 file is" : `${n} files are`} left out.${reason ? ` ${reason}` : ""}`);
   return { choices, refused };
 }
+
+/** Principle 6: collect a stable finished list before deletion changes the pages. */
+export async function clearFinished<T extends { endpointId: string; download: { id: string } }>(
+  load: (offset: number) => Promise<{ entries: T[]; total: number }>,
+  remove: (entry: T) => Promise<unknown>,
+): Promise<void> {
+  const finished = new Map<string, T>();
+  for (let offset = 0; ; offset += 100) {
+    const page = await load(offset);
+    for (const entry of page.entries) finished.set(`${entry.endpointId}/${entry.download.id}`, entry);
+    if (!page.entries.length || offset + 100 >= page.total) break;
+  }
+  for (const entry of finished.values()) await remove(entry);
+}

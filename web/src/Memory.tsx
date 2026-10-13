@@ -410,14 +410,14 @@ export function MemoryHistoryPage({ ctx, pool, id, route }: { ctx: ShellContext;
     <div className="scroll"><div className="sleep">
       <ErrorText error={error} />
       {hidden(ctx.me.display, pool) ? <p className="empty">{poolWord(pool)} is hidden.</p> :
-        <HistoryList<MemoryRevision, MemoryHistory> route={route} path={`${path}/history`} render={(page, reload) => <History detail={page.detail} entries={page.entries} userId={userId} display={ctx.me.display} busy={busy}
+        <HistoryList<MemoryRevision, MemoryHistory> route={route} path={`${path}/history`} render={(page, reload, offset) => <History detail={page.detail} entries={page.entries} offset={offset} total={page.total} userId={userId} display={ctx.me.display} busy={busy}
           onRestore={(revision) => void run(async () => { await post(`${path}/restore`, { revision }); reload(); })} />} />}
     </div></div>
   </main>;
 }
 
 /** The newest earlier version in the preview (the current text is already shown above); paged versions keep their differences and Restore. */
-function History({ detail, entries, userId, display, busy, onRestore }: { detail: MemoryDetail; entries?: MemoryRevision[]; userId: string; display: Display; busy: boolean; onRestore: (revision: number) => void }) {
+function History({ detail, entries, offset = 1, total, userId, display, busy, onRestore }: { detail: MemoryDetail; entries?: MemoryRevision[]; offset?: number; total?: number; userId: string; display: Display; busy: boolean; onRestore: (revision: number) => void }) {
   const { item, revisions, users, links } = detail;
   // With no earlier version there is nothing to show here at all.
   const shown = entries ?? revisions.slice(1, 2);
@@ -437,7 +437,7 @@ function History({ detail, entries, userId, display, busy, onRestore }: { detail
           const diff = isCurrent ? undefined : wordDiff(current, plain(r.body.text));
           return (
             <details key={r.id} open={i === 0}>
-              <summary><span className="when num">{shortTime(r.createdAt)}</span><span className="by">{by(r)}</span><span className="n num">{isCurrent ? "current" : r.id}</span></summary>
+              <summary><span className="when num">{shortTime(r.createdAt)}</span><span className="by">{by(r)}</span><span className="n num">{isCurrent ? "current" : entries ? `${offset + i + 1} of ${total}` : "earlier"}</span></summary>
               {diff ? <div className="wdiff">{diff.map((op, k) => (op.kind === "same" ? <span key={k}>{op.text}</span> : op.kind === "del" ? <del key={k}>{op.text}</del> : <ins key={k}>{op.text}</ins>))}</div>
                 : <div className="wdiff">{current}</div>}
               {!isCurrent && <div className="row actions"><button type="button" className="sm" disabled={busy} onClick={() => onRestore(r.id)}>Restore</button></div>}

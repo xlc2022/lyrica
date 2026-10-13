@@ -104,14 +104,14 @@ describe("server-side history", () => {
     expect((await s.ada.get<HistoryPage<MemoryHit>>(`${path}?pool=private`)).body).toMatchObject({ entries: [], total: 0 });
   });
 
-  it("returns one revision in details, searches and pages all versions, and restores an older result", async () => {
+  it("returns the current and earlier revision in details, searches and pages all versions, and restores an older result", async () => {
     const s = await setup();
     const view = s.d.services!.memory.openThreadView(s.rt.ada.id, "private");
     try { view.own.putWake("Initial wake", "sleep"); } finally { view.close(); }
     const path = `${s.u}/memory/private/wake`;
     for (let i = 1; i <= 24; i++) await s.ada.patch(path, { text: `${i % 2 ? "Pelicans" : "Harbour"} version ${i}` });
     const detail = (await s.ada.get<MemoryDetail>(path)).body;
-    expect(detail.revisions).toHaveLength(1);
+    expect(detail.revisions).toHaveLength(2);
     expect(detail.revisions[0]!.body.text).toBe("Harbour version 24");
     const first = (await s.ada.get<MemoryHistory>(`${path}/history?limit=20`)).body;
     const next = (await s.ada.get<MemoryHistory>(`${path}/history?limit=20&offset=20`)).body;
@@ -152,6 +152,27 @@ describe("server-side history", () => {
     const visible = (await s.ada.get<HistoryPage<CallInfo>>(`${path}?limit=1`)).body;
     expect(visible.total).toBe(13);
     expect(visible.entries[0]!.threadId).toBe("fixture-24");
+  });
+
+  it("restricts a project’s call history to its visible pool when thread IDs overlap", async () => {
+    const s = await setup(), models = s.d.services!.models;
+    const user = s.d.services!.users.get(s.rt.ada.id)!;
+    const view = s.d.services!.memory.openThreadView(user.id, "general");
+    let id: string;
+    try { id = view.own.createThread({ interface: "web", project: true }).id; }
+    finally { view.close(); }
+    const endpoint = models.addEndpoint(user, { name: "fixture", kind: "local", baseUrl: "http://127.0.0.1:1/v1" });
+    const offering = models.addModel(user, endpoint.id, { modelId: "fixture-model", tools: true });
+    models.setColumnTask(user.id, "private", "chat", { offeringId: offering.id });
+    const resolution = models.resolve("chat", { userId: user.id, pool: "private", localOnly: true });
+    for (const pool of ["general", "private"] as const) models.recordCall(user.id, { pool, threadId: id!, task: "chat", resolution });
+    const path = `${s.u}/models/calls/history?project=${encodeURIComponent(id!)}&pool=general`;
+    const result = await s.ada.get<HistoryPage<CallInfo>>(path);
+    expect(result.status).toBe(200);
+    expect(result.body.total).toBe(1);
+    expect(result.body.entries.map(c => c.pool)).toEqual(["general"]);
+    await s.ada.patch(`${s.u}/me/display`, { showGeneral: false });
+    expect((await s.ada.get(path)).status).toBe(404);
   });
 
   it("pages finished downloads across manageable hosts and bounds each queue preview", async () => {

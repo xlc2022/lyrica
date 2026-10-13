@@ -212,6 +212,15 @@ There are no embeddings.
 
 ## Writing
 
+Before storing notes, pages, WAKE, journal entries, sleep items or memory edits,
+the store replaces recognized credentials with `[secret removed]`, including
+private-key blocks, known provider tokens, JWTs, authorization values and
+secret-named assignments. This also covers titles, summaries, tags, project
+instructions, revisions and search text. Account names and environment variable
+names alone stay. Conversation entries are unchanged. The shared detector is
+`core/src/secrets.ts`; it recognizes credential shapes, not arbitrary unlabeled
+secrets, and does not rewrite memory already stored. A secret-named label followed by a colon also matches some prose ("Auth: OAuth via GitHub"); in memory that loss is accepted.
+
 - `remember(notes: [{ text, about?, supersedes? }])` writes notes. Their
   source is the current thread entry. Superseded notes stay but drop out of
   automatic recall.
@@ -429,7 +438,7 @@ Files panel.
   the eyebrow, expanding in place with their own scroll (maximum 320 px)
   and Show less to collapse. Expansion hides History, and Came from
   expansion also hides Used in; the memory and earlier sections stay visible.
-  Collapsing restores the hidden sections. **History** shows only the most recent version, open. **Show all** beside
+  Collapsing restores the hidden sections. **History** shows only the newest earlier version, open. **Show all** beside
   the eyebrow opens a history page with server-side search and numbered
   pages. An older version shows its word differences against the current
   text, computed in the browser, with **Restore**.

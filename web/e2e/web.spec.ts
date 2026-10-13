@@ -951,7 +951,9 @@ test("a memory can be added, edited and restored", async ({ page, baseURL }) => 
   await expect(article.locator(".prose").first()).toContainText("runs at noon");
 
   // The older version opens to its word differences and a Restore button.
-  await article.locator(".hist summary").nth(1).click();
+  await expect(article.locator(".hist details")).toHaveCount(1);
+  await expect(article.locator(".hist details")).toHaveAttribute("open", "");
+  await expect(article.locator(".hist .wdiff")).toContainText("night");
   await article.getByRole("button", { name: "Restore" }).first().click();
   await expect(article.locator(".prose").first()).toContainText("runs at night");
   await noHorizontalScroll(page);
@@ -2260,7 +2262,7 @@ test("Share with sends a copy; the recipient sees it in Notifications and adds i
   await noHorizontalScroll(page);
 });
 
-test("Sleep: the sidebar link opens it empty, the mode is set in Settings, Sleep now asks and then runs, and the administrator sets the time", async ({ page, baseURL, request }, testInfo) => {
+test("Sleep History and Came from: the sidebar link opens it empty, the mode is set in Settings, Sleep now asks and then runs, and the administrator sets the time", async ({ page, baseURL, request }, testInfo) => {
   const userId = await enter(page, baseURL!);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   await page.locator('a[data-nav="sleep"]').click();
@@ -2403,13 +2405,15 @@ test("Sleep: the sidebar link opens it empty, the mode is set in Settings, Sleep
   // WAKE's sleep versions use the same preview and page, retaining Restore; the preview holds the newest earlier version.
   await page.goto(`/#/u/${userId}/memory/general/wake`);
   await expect(page.locator(".hist details")).toHaveCount(1);
-  await expect(page.locator(".hist")).toContainText("Fixture dream 23");
+  await expect(page.locator(".hist ins")).toHaveText("23");
   await expect(page.locator(".history").getByRole("button", { name: "Restore" })).toBeVisible();
   await page.locator(".history").getByRole("link", { name: "Show all" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Memory history" })).toBeVisible();
   await expect(page.locator(".hist details")).toHaveCount(20);
   await page.getByRole("button", { name: "Page 2", exact: true }).click();
   await expect(page.locator(".hist details")).toHaveCount(4);
+  await expect(page.locator(".hist .n").first()).toHaveText("21 of 24");
+  await expect(page.locator(".hist .n").last()).toHaveText("24 of 24");
   await page.getByLabel("Search", { exact: true }).fill("Fixture dream 1");
   await expect(page.locator(".hist details")).toHaveCount(11);
   await expect(page.locator(".hist details").first().getByRole("button", { name: "Restore" })).toBeVisible();
@@ -2791,8 +2795,9 @@ test("Text models: a row per model with starred first; a row opens to its copies
   await expect(local.locator(".lrow-main")).toHaveAttribute("aria-expanded", "true");
   const detail = local.locator(".ldetail");
   await expect(detail.locator("tr[data-offering]")).toHaveCount(1);
-  await expect(detail.locator("code.raw")).toHaveText("local-model");
-  await expect(detail.locator(".copy-name")).toContainText("gpu local");
+  await expect(detail.locator(".model-name")).toHaveText("local-model");
+  await expect(detail.locator(".model-endpoint")).toHaveText(" · gpu");
+  await expect(detail.locator(".copy-name")).toContainText("local");
   await noHorizontalScroll(page);
   expect(await inView()).toEqual({ wide: false, past: [] });
   await shot("detail");
@@ -2888,7 +2893,7 @@ async function fakeHost(page: Page, downloads: Record<string, unknown>[], models
   return started;
 }
 
-test("Downloads: the queue shows progress with Cancel and how each ended, Accounts keeps a token showing only its last four, and Download text model starts one", async ({ page, baseURL }) => {
+test("Downloads History: the queue shows progress with Cancel and how each ended, Accounts keeps a token showing only its last four, and Download text model starts one", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const GB = 2 ** 30;
   const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/downloads-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
@@ -3260,4 +3265,344 @@ test("Custom… pronouns opens the five fields, starting from the current words"
   await expect(section.getByLabel("herself")).not.toHaveValue("");
   await section.getByLabel("Pronouns").selectOption("they/them");
   await expect(section.getByLabel("herself")).toHaveCount(0);
+});
+
+test("image providers run 2: cloud switches and refusal links", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const api = async (method: string, path: string, data?: unknown) => page.evaluate(async ([method, path, data]) => {
+    const response = await fetch(path, { method, headers: { "content-type": "application/json" }, body: data === undefined ? undefined : JSON.stringify(data) });
+    if (!response.ok) throw new Error(`${method} ${path}: ${response.status}`);
+    return response.json();
+  }, [method, `/api/u/${userId}${path}`, data] as const);
+  const fake = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;
+  const ep = await api("POST", "/endpoints", { name: "image-switches", kind: "cloud", baseUrl: `${fake}/cloud/v1`, apiKey: "fake-key" }) as { id: string };
+  const model = await api("POST", `/endpoints/${ep.id}/models`, { modelId: "art-model", tools: true }) as { id: string };
+  await page.goto(`/#/u/${userId}/models/hosts`);
+  const row = page.locator(`[data-endpoint="${ep.id}"]`);
+  await row.getByRole("button", { name: /^\d+ models?$/ }).click();
+  const controls = row.locator(`[data-offering="${model.id}"]`);
+  await expect(controls.getByRole("checkbox", { name: "Image generation" })).not.toBeChecked();
+  await controls.getByRole("checkbox", { name: "Image generation" }).click();
+  await expect(controls.getByRole("checkbox", { name: "Image generation" })).toBeChecked();
+  await controls.getByRole("checkbox", { name: "Image editing" }).click();
+  await expect(controls.getByRole("checkbox", { name: "Image editing" })).toBeChecked();
+  await controls.getByRole("button", { name: "Fast", exact: true }).click();
+  await expect(controls.getByRole("button", { name: "Fast", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/image-switches-${page.viewportSize()!.width}.png` });
+  await page.goto(`/#/u/${userId}/models/images`);
+  const imageRow = page.locator(`[data-entry="${model.id}"]`);
+  await imageRow.getByRole("button").first().click();
+  await expect(imageRow.getByRole("button", { name: "Fast", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await imageRow.getByRole("button", { name: "Quality", exact: true }).click();
+  await expect(imageRow.getByRole("button", { name: "Quality", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await noHorizontalScroll(page);
+  await api("DELETE", `/endpoints/${ep.id}`);
+
+  await page.goto(`/#/u/${userId}`);
+  await newThread(page, "General");
+  await send(page, "An imaginary garden");
+  await expect(page.getByText("You said: An imaginary garden")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  let canEdit = true, next = true;
+  const asked: unknown[] = [];
+  await page.route(`**${base}/messages`, route => route.fulfill({ json: { hasMore: false, messages: [
+    { id: `e:${threadId}#1`, n: 1, role: "user", createdAt: "2026-10-12T12:00:00Z", parts: [{ type: "text", text: "An imaginary garden" }] },
+    { id: `e:${threadId}#2`, n: 2, role: "assistant", createdAt: "2026-10-12T12:00:01Z", parts: [
+      { type: "tool", toolCallId: "refused", name: "image", args: { action: "create", tier: "quality", prompt: "A garden" },
+        result: "Image generation was refused (image_refusal).", isError: true,
+        imageRefusal: { code: "image_refusal", offeringId: "art", endpointId: "ep" } },
+    ] },
+  ] } }));
+  await page.route(`**${base}/image-calls/refused`, route => {
+    if (route.request().method() === "POST") { asked.push(route.request().postDataJSON()); return route.fulfill({ json: { ok: true } }); }
+    return route.fulfill({ json: { canEdit, userMessage: { n: 1, text: "An imaginary garden" }, ...(next ? { next: { offeringId: "next-art", label: "spare/art" } } : {}) } });
+  });
+  await page.reload();
+  const marker = page.locator('.marker[data-type="tool"]');
+  await expect(marker.getByRole("button", { name: "Edit message", exact: true })).toBeVisible();
+  await expect(marker).toContainText("The model declined this image.");
+  await expect(marker).not.toContainText("image_refusal");
+  await expect(marker.getByRole("button", { name: "Try spare/art", exact: true })).toBeVisible();
+  await noHorizontalScroll(page);
+  if (phone(page)) expect((await marker.getByRole("button", { name: "Resend", exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/image-refusal-${page.viewportSize()!.width}.png` });
+  await marker.getByRole("button", { name: "Edit message", exact: true }).click();
+  await expect(page.getByLabel("Message", { exact: true })).toHaveValue("An imaginary garden");
+  await marker.getByRole("button", { name: "Resend", exact: true }).click();
+  await expect.poll(() => asked).toEqual([{ next: false }]);
+  await marker.getByRole("button", { name: "Try spare/art", exact: true }).click();
+  await expect.poll(() => asked).toEqual([{ next: false }, { next: true }]);
+  canEdit = false; next = false;
+  await page.reload();
+  await expect(marker.getByRole("button", { name: "Resend", exact: true })).toBeVisible();
+  await expect(marker.getByRole("button", { name: "Edit message", exact: true })).toHaveCount(0);
+  await expect(marker.getByRole("button", { name: /^Try / })).toHaveCount(0);
+});
+
+test("image providers run 3: endpoint facts, five pills and default names", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const base = `/api/u/${userId}`;
+  const fake = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;
+  const ep = await page.evaluate(async ({ base, fake }) => {
+    const add = await fetch(`${base}/endpoints`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "keyed-images", kind: "cloud", baseUrl: `${fake}/cloud/v1`, apiKey: "fake-secret-1234" }) });
+    if (!add.ok) throw new Error(`add endpoint: ${add.status}`);
+    const ep = await add.json();
+    await fetch(`${base}/endpoints/${ep.id}/models`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ modelId: "art-chat", tools: true, vision: true, image: true, edit: true }) });
+    return ep as { id: string };
+  }, { base, fake });
+  // Only a page fixture for the plan: no sign-in, token refresh, probe or plan call.
+  await page.route(`**${base}/models/page`, async route => {
+    const response = await route.fetch();
+    const data = await response.json();
+    data.endpoints.push({ id: "fake-plan", name: "ChatGPT", kind: "cloud", api: "chatgpt", baseUrl: "https://api.openai.com/v1", hasApiKey: false, shared: false, unencrypted: false, stale: false, state: "up", planAccount: "ada@example.test", cloudCapabilities: ["Text", "Vision", "Image"], models: [] });
+    data.endpoints.push({ id: "fake-grok", name: "Grok", kind: "cloud", api: "grok", baseUrl: "https://api.x.ai/v1", hasApiKey: false, shared: false, unencrypted: false, stale: false, state: "up", cloudCapabilities: ["Text"], models: [] });
+    await route.fulfill({ json: data });
+  });
+  await page.goto(`/#/u/${userId}/models/hosts`);
+  const row = page.locator(`[data-endpoint="${ep.id}"]`);
+  for (const pill of ["cloud", "API key", "Text", "Vision", "Image"]) await expect(row.locator(".pill, .kind").filter({ hasText: new RegExp(`^${pill}$`) })).toBeVisible();
+  await expect(row).toContainText("key ••••1234");
+  await expect(row).not.toContainText("fake-secret");
+  const plan = page.locator('[data-endpoint="fake-plan"]');
+  await expect(plan).toContainText("ChatGPT plan · only you · ada@example.test");
+  await expect(plan).not.toContainText("https://");
+  await expect(plan).not.toContainText("API key");
+  await expect(page.locator('[data-endpoint="fake-grok"] .pill').filter({ hasText: /^Image$/ })).toHaveCount(0);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/image-endpoints-${page.viewportSize()!.width}.png`, fullPage: true });
+  await page.getByRole("button", { name: "Add endpoint", exact: true }).click();
+  const drawer = page.getByRole("complementary", { name: "Add endpoint" });
+  await drawer.getByRole("combobox", { name: "Kind", exact: true }).selectOption("chatgpt");
+  await expect(drawer.getByLabel("Name", { exact: true })).toHaveValue("ChatGPT");
+  await drawer.getByRole("combobox", { name: "Kind", exact: true }).selectOption("custom");
+  await drawer.getByLabel("Base URL", { exact: true }).fill("https://api.openai.com/v1");
+  await expect(drawer.getByLabel("Name", { exact: true })).toHaveValue("OpenAI");
+  await drawer.getByLabel("Name", { exact: true }).fill("my-images");
+  await drawer.getByRole("combobox", { name: "Kind", exact: true }).selectOption("chatgpt");
+  await expect(drawer.getByLabel("Name", { exact: true })).toHaveValue("my-images");
+  await drawer.getByRole("button", { name: "Close", exact: true }).click();
+  await page.unroute(`**${base}/models/page`);
+  await page.evaluate(async path => { await fetch(path, { method: "DELETE" }); }, `${base}/endpoints/${ep.id}`);
+});
+
+test("spend share popovers and Call history project filter", async ({ page, baseURL }, testInfo) => {
+  const userId = await enter(page, baseURL!);
+  const project = await page.evaluate(async userId => {
+    const api = async (path: string, data?: unknown) => {
+      const res = await fetch(`/api/u/${userId}${path}`, { method: data ? "POST" : "GET", headers: { "content-type": "application/json" }, body: data ? JSON.stringify(data) : undefined });
+      if (!res.ok) throw new Error(`${path}: ${res.status}`);
+      return res.json();
+    };
+    const t = await api("/threads", { pool: "general", project: true, title: "Usage project" });
+    await fetch(`/api/u/${userId}/threads/general/${encodeURIComponent(t.id)}/settings`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ localOnly: true }) });
+    await api(`/threads/general/${encodeURIComponent(t.id)}/messages`, { text: "steps: done Read; doing Write; todo Check" });
+    return t;
+  }, userId);
+  await expect.poll(() => page.evaluate(async ({ userId, id }) => (await (await fetch(`/api/u/${userId}/threads/general/${encodeURIComponent(id)}/usage`)).json()).tokens, { userId, id: project.id })).toBeGreaterThan(0);
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(project.id)}`);
+  if (phone(page)) await page.getByRole("button", { name: /^Threads/ }).click();
+  await page.getByRole("button", { name: /^[\d.,]+[kM]? tokens$/ }).click();
+  await expect(page.getByTitle("Counts every request, cached reads included.")).toBeVisible();
+  await expect(page.getByText("By thread", { exact: true })).toBeVisible();
+  await expect(page.getByText("This chat", { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: `/tmp/spend-share-${testInfo.project.name}.png` });
+  await page.getByRole("link", { name: "Recent calls", exact: true }).last().click();
+  await expect(page.getByLabel("Project", { exact: true })).toHaveValue(`general/${project.id}`);
+  await page.reload();
+  await expect(page.getByLabel("Project", { exact: true })).toHaveValue(`general/${project.id}`);
+  // Recent calls keeps its own project list when the sidebar hides projects.
+  await page.evaluate(async userId => {
+    await fetch(`/api/u/${userId}/me/display`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ projects: "none" }) });
+  }, userId);
+  await page.reload();
+  await expect(page.getByLabel("Project", { exact: true })).toHaveValue(`general/${project.id}`);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.evaluate(async userId => {
+    await fetch(`/api/u/${userId}/me/display`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ projects: "all" }) });
+  }, userId);
+});
+
+
+test("project welcome and fold in", async ({ page, baseURL }) => {
+  const user = { id: await enter(page, baseURL!) };
+  const origin = baseURL!;
+  const api = async (method: string, path: string, data?: unknown) => {
+    return page.evaluate(async ({ method, path, data }) => {
+      const r = await fetch(path, { method, headers: { "content-type": "application/json" }, body: data === undefined ? undefined : JSON.stringify(data) });
+      if (!r.ok) throw new Error(`${method} ${path}: ${r.status} ${await r.text()}`);
+      return r.json();
+    }, { method, path, data });
+  };
+  const u = `/api/u/${user.id}`;
+  const ep = await api("POST", `${u}/endpoints`, { name: "fake", kind: "local", baseUrl: `http://127.0.0.1:${Number(new URL(origin).port) + 10}/local/v1` });
+  const found = await api("POST", `${u}/endpoints/${ep.id}/discover`);
+  await api("PUT", `${u}/columns/general/chat`, { model: { offeringId: found.models[0].id } });
+  const a = await api("POST", `${u}/threads`, { pool: "general", title: "Garden notes" });
+  const b = await api("POST", `${u}/threads`, { pool: "general", title: "Seed catalogue" });
+  await api("PATCH", `${u}/threads/general/${encodeURIComponent(a.id)}/settings`, { hosts: ["garden.example"], internet: true });
+  const p = await api("POST", `${u}/threads`, { pool: "general", project: true, title: "Garden" });
+  await api("PATCH", `${u}/threads/general/${encodeURIComponent(p.id)}/settings`, { hosts: [], internet: false });
+  await page.goto(`/#/u/${user.id}/t/general/${encodeURIComponent(p.id)}`);
+  const width = page.viewportSize()!.width;
+  await expect(page.getByRole("button", { name: "Set up from recent work" })).toBeVisible();
+  await expect(page.getByText("Let's get to work!", { exact: true })).toBeVisible();
+  if (process.env.LYRICA_PROJECT_SHOTS) await page.screenshot({ path: `../shots/welcome-${width}.png` });
+  await page.getByRole("button", { name: "Set up from recent work" }).click();
+  await expect(page.getByRole("dialog").getByLabel("Garden notes")).toBeChecked();
+  if (process.env.LYRICA_PROJECT_SHOTS) await page.screenshot({ path: `../shots/dialog-${width}.png` });
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Set up from recent work" })).toBeFocused();
+  await page.getByRole("button", { name: "Set up from recent work" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Set up from recent work" })).toBeFocused();
+  await api("POST", `${u}/threads/general/${encodeURIComponent(p.id)}/messages`, { text: `fold: ${a.id}, ${b.id}` });
+  await expect(page.getByRole("group", { name: "Fold in", exact: true })).toBeVisible();
+  await expect(page.getByText("Loses", { exact: false }).first()).toBeVisible();
+  if (process.env.LYRICA_PROJECT_SHOTS) await page.screenshot({ path: `../shots/fold-in-${width}.png` });
+  const card = page.getByRole("group", { name: "Fold in", exact: true });
+  const overview = async () => (await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}/overview`)).threads;
+  const dialog = page.getByRole("dialog");
+  // Nothing folds before the dialog confirms it; Cancel leaves the thread where it was.
+  await card.getByRole("button", { name: "Fold in", exact: true }).first().click();
+  await expect(dialog.getByRole("heading", { name: /^Fold Garden notes into Garden\?$/ })).toBeVisible();
+  await expect(dialog.getByText("A thread can't be taken out of a project once it's in.")).toBeVisible();
+  if (process.env.LYRICA_PROJECT_SHOTS) await page.screenshot({ path: `../shots/fold-dialog-${width}.png` });
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await overview()).toHaveLength(0);
+  expect((await api("GET", `${u}/threads/general/${encodeURIComponent(a.id)}`)).parent).toBeUndefined();
+  // Confirming with the access box ticked grants the losses, then folds.
+  await card.getByRole("button", { name: "Fold in", exact: true }).first().click();
+  await dialog.getByRole("checkbox", { name: /^Give Garden access to these/ }).check();
+  await dialog.getByRole("button", { name: "Fold in", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(async () => (await overview()).length).toBe(1);
+  await expect(page.getByText("Loses", { exact: false })).toHaveCount(0);
+  await card.getByRole("button", { name: /^Fold in all/ }).click();
+  await expect(dialog.getByRole("heading", { name: /^Fold 1 thread/ }).or(dialog.getByRole("heading", { name: /^Fold Seed catalogue into/ }))).toBeVisible();
+  await dialog.getByRole("button", { name: "Fold in", exact: true }).click();
+  await expect(card).toHaveCount(0);
+  expect(await overview()).toHaveLength(2);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  await api("POST", `${u}/threads/general/${encodeURIComponent(p.id)}/messages`, { text: "draft: Grow seedlings | Keep a planting journal" });
+  // The header may carry the same link; the draft's is the last.
+  await expect(page.getByRole("link", { name: "Project settings", exact: true }).last()).toBeVisible();
+  await page.getByRole("link", { name: "Project settings", exact: true }).last().click();
+  const goal = page.getByRole("textbox", { name: "Goal", exact: true });
+  await expect(goal).toHaveValue("Grow seedlings");
+  expect((await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).goal).toBeUndefined();
+  await goal.fill("Grow herbs");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
+  expect((await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).goal).toBe("Grow herbs");
+  await page.getByRole("link", { name: "Memory", exact: true }).last().click();
+  await expect(page.getByRole("textbox", { name: /^Instructions/ })).toHaveValue("Keep a planting journal");
+  await page.getByRole("button", { name: "Discard draft" }).click();
+  await expect(page.getByRole("textbox", { name: /^Instructions/ })).toHaveValue("");
+  const empty = await api("POST", `${u}/threads`, { pool: "general", project: true, title: "Plan garden" });
+  await page.goto(`/#/u/${user.id}/t/general/${encodeURIComponent(empty.id)}`);
+  await page.getByRole("button", { name: "Make a plan", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Plan", exact: true })).toBeVisible();
+  const planned = await api("GET", `${u}/threads/general/${encodeURIComponent(empty.id)}/overview`);
+  expect(planned.threads.map((t: { title: string }) => t.title)).toEqual(["Plan"]);
+  await page.goto(`/#/u/${user.id}/t/general/${encodeURIComponent(empty.id)}`);
+  await expect(page.locator(".tcard").getByRole("link", { name: "Plan", exact: true })).toBeVisible();
+  const source = await api("POST", `${u}/threads`, { pool: "general", title: "Recent planting" });
+  const setup = await api("POST", `${u}/threads`, { pool: "general", project: true, title: "Seedlings" });
+  await page.goto(`/#/u/${user.id}/t/general/${encodeURIComponent(setup.id)}`);
+  await page.getByRole("button", { name: "Set up from recent work" }).click();
+  const options = page.getByRole("dialog").getByRole("checkbox");
+  // The list loads after the dialog opens, and earlier tests leave threads: wait for the rows, then untick them all.
+  await expect(page.getByRole("dialog").getByRole("checkbox", { name: "Recent planting" })).toBeVisible();
+  for (const option of await options.all()) await option.uncheck();
+  await page.getByRole("dialog").getByRole("checkbox", { name: "Recent planting" }).check();
+  const sent = page.waitForRequest(r => r.method() === "POST" && r.url().endsWith("/messages"));
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  expect((await sent).postDataJSON().recentThreadIds).toEqual([source.id]);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.goto(`/#/u/${user.id}/t/general/${encodeURIComponent(source.id)}`);
+  await page.getByRole("button", { name: "Thread actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Make project…" })).toHaveAttribute("title", "Turns this thread into a project.");
+  const continuation = page.getByRole("menuitem", { name: "Continue as project" });
+  await expect(continuation).toHaveAttribute("title", "Starts a new project from this thread; the thread stays.");
+  await page.keyboard.press("c");
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "Start a project from Recent planting?" })).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Continue as project", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Project settings", exact: true })).toBeVisible();
+  expect((await api("GET", `${u}/threads/general/${encodeURIComponent(source.id)}`)).project).toBeFalsy();
+});
+
+test("move to project confirms children and losses, filters pools and local-only destinations", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const api = async (method: string, path: string, data?: unknown) => page.evaluate(async ({ method, path, data }) => {
+    const r = await fetch(path, { method, headers: { "content-type": "application/json" }, body: data === undefined ? undefined : JSON.stringify(data) });
+    if (!r.ok) throw new Error(`${method} ${path}: ${r.status} ${await r.text()}`);
+    return r.json();
+  }, { method, path, data });
+  const u = `/api/u/${userId}`;
+  const create = (pool: string, title: string, project = false) => api("POST", `${u}/threads`, { pool, title, project });
+  const source = await create("general", "Seed notes");
+  await api("POST", `${u}/threads/general/${encodeURIComponent(source.id)}/messages`, { text: "Seed notes for spring." });
+  await expect.poll(async () => (await api("GET", `${u}/threads/general/${encodeURIComponent(source.id)}`)).busy).toBe(false);
+  const child = await api("POST", `${u}/threads/general/${encodeURIComponent(source.id)}/messages/1/branch`, { title: "Watering" });
+  const garden = await create("general", "Orchard", true);
+  const cloud = await create("general", "Cloud orchard", true);
+  const secret = await create("private", "Private orchard", true);
+  const privateSource = await create("private", "Private notes");
+  const path = (pool: string, id: string) => `${u}/threads/${pool}/${encodeURIComponent(id)}`;
+  await api("PATCH", `${path("general", garden.id)}/settings`, { localOnly: true, hosts: [], internet: false });
+  await api("PATCH", `${path("general", source.id)}/settings`, { hosts: ["garden.example"], internet: true });
+  const open = async (pool: string, id: string) => {
+    await page.goto(`/#/u/${userId}/t/${pool}/${encodeURIComponent(id)}`);
+    await page.getByRole("button", { name: "Thread actions", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: /^Move to project/ })).toBeVisible();
+    await page.getByRole("menuitem", { name: /^Move to project/ }).click();
+  };
+  await open("general", source.id);
+  await expect(page.getByRole("menuitem", { name: "Orchard", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Cloud orchard", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Private orchard", exact: true })).toHaveCount(0);
+  const width = page.viewportSize()!.width;
+  if (process.env.LYRICA_PROJECT_SHOTS) await page.screenshot({ path: `../shots/move-flyout-${width}.png` });
+  await page.getByRole("menuitem", { name: "Orchard", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Move Seed notes to Orchard?" })).toBeVisible();
+  await expect(dialog).toContainText("Watering");
+  await expect(dialog).toContainText("Cloud models");
+  await expect(dialog.getByRole("checkbox")).not.toBeChecked();
+  expect((await api("GET", path("general", source.id))).parent).toBeUndefined();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  if (process.env.LYRICA_PROJECT_SHOTS) await page.screenshot({ path: `../shots/move-confirm-${width}.png` });
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect((await api("GET", path("general", source.id))).parent).toBeUndefined();
+  await open("general", source.id);
+  await page.getByRole("menuitem", { name: "Orchard", exact: true }).click();
+  await dialog.getByRole("checkbox").check();
+  await dialog.getByRole("button", { name: "Move", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(encodeURIComponent(garden.id)));
+  expect((await api("GET", path("general", source.id))).parent).toBe(garden.id);
+  expect((await api("GET", path("general", child.id))).parent).toBe(garden.id);
+  expect((await api("GET", `${path("general", source.id)}/settings`)).localOnly).toBe(true);
+  expect((await api("GET", `${path("general", garden.id)}/settings`)).network.hosts).toContain("garden.example");
+  await open("private", privateSource.id);
+  await expect(page.getByRole("menuitem", { name: "Private orchard", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Orchard", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Cloud orchard", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  const local = await create("general", "Local notes");
+  await api("PATCH", `${path("general", local.id)}/settings`, { localOnly: true });
+  await open("general", local.id);
+  await expect(page.getByRole("menuitem", { name: "Orchard", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Cloud orchard", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await api("PATCH", path("general", garden.id), { hidden: true });
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(local.id)}`);
+  await page.getByRole("button", { name: "Thread actions", exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: /^Move to project/ })).toHaveCount(0);
 });

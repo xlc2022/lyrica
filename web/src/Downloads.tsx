@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { del, get, patch, post, put, u, type DownloadHistory, type GroupInfo, type GroupSuggestion, type HostStatus, type Hub, type HubTokenInfo, type ModelsPage } from "./api.ts";
 import { HistoryHead, HistoryList } from "./History.tsx";
-import { downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, type HostDownload, type HubFiles } from "./downloads.ts";
+import { clearFinished, downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, type HostDownload, type HubFiles } from "./downloads.ts";
 import { canEdit, Frame, hostOf, type MCtx } from "./ModelsFrame.tsx";
 import { cameFrom, go, href, type Route } from "./route.ts";
 import { ErrorText, useAction, useLoad } from "./ui.tsx";
@@ -64,11 +64,10 @@ export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?
 
   const cancel = (ep: Endpoint, d: HostDownload) => run(async () => { await del(u(userId, "hosts", ep.id, "downloads", d.id)); reload(); });
   const clear = () => run(async () => {
-    for (;;) {
-      const page = await get<DownloadHistory>(`${u(userId, "models", "downloads", "history")}?limit=100`);
-      if (!page.entries.length) break;
-      for (const { endpointId, download } of page.entries) await del(u(userId, "hosts", endpointId, "downloads", download.id));
-    }
+    await clearFinished(
+      (offset) => get<DownloadHistory>(`${u(userId, "models", "downloads", "history")}?limit=100&offset=${offset}`),
+      ({ endpointId, download }) => del(u(userId, "hosts", endpointId, "downloads", download.id)),
+    );
     reload();
   });
   const addToGroup = (g: GroupInfo, offeringId: string) => run(async () => {

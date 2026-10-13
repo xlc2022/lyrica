@@ -210,12 +210,12 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children?, keepMemories? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared; `keepMemories` removes no notes or project page and leaves a text-free thread tombstone `t:<thread>` in each forgotten thread's place), `getThreadTombstone(id)` → `{ deletedAt } \| undefined`, `citingThread(id)` → the IDs of the notes and pages citing the thread or its entries, `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
+| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `foldThread(projectId, threadId, childrenOnly?)` (existing children become project siblings, preserving entries, steps and wake-ups), `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children?, keepMemories? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared; `keepMemories` removes no notes or project page and leaves a text-free thread tombstone `t:<thread>` in each forgotten thread's place), `getThreadTombstone(id)` → `{ deletedAt } \| undefined`, `citingThread(id)` → the IDs of the notes and pages citing the thread or its entries, `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
 | Reactions | `react(threadId, n, emoji, by, on)` → `Reaction[]` (`{ emoji, by: string[] }`, `by` user IDs or `LYRICA_REACTS`); `entryPage` entries carry `reactions`. Pool schema step 2 (`entries.reactions`, JSON) |
 | Drafts | `draft(threadId)` → `{ text, updatedAt }` or undefined, `setDraft(threadId, text)` (empty deletes it); one per thread, gone with the thread. Pool schema step 3 (`drafts`) |
 | Projects | `pageForProject(threadId)`, `projectNotes(threadId, since?)` |
-| Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal` |
+| Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal`. Every write (notes, pages and edits, WAKE, journal, sleep items, project instructions) passes text, title, summary and tags through `removeSecrets` (core/src/secrets.ts) first; matches become `[secret removed]` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `journalHistory({ limit, offset, q })` → `{ entries, total }`, `userIntroduced` |
 | Search | `search(query, { kinds, limit })`, returning `{ id, kind, snippet, score }`; `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
@@ -333,12 +333,12 @@ interface Endpoint {
   downSince?: string; stale: boolean;       // stale: unreachable for STALE_DAYS (14)
 }
 interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; upscale?; reasoning?: ("low" | "medium" | "high")[];
-                         transcribe?: boolean; speak?: { voices: Voice[] } }
+                         transcribe?: boolean; speak?: { voices: Voice[] }; useFor?: "fast" | "quality" | "both" }
 interface Voice { id; language }                             // language: a primary tag, "en" or "zh"
 interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
   id; endpointId; modelId; manual: boolean;
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
-  digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; useFor?: "fast" | "quality" | "both"; separate?;   // reported by a host
+  digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host; useFor inherited from Capabilities
   opensThinking?;                                            // a host's chat template writes <think> itself
 }
 type ModelRef = { offeringId: string } | { groupId: string };
@@ -357,10 +357,10 @@ interface CallContext {
   thinking?: ThinkingLevel;
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
 }
-interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality" }        // what the call needs from a model
+interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean }        // what the call needs from a model
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: string;   // the preset's name, or "Custom"
                        source: "thread" | "preset" | "column"; skipped: { label; reason }[]; remaining: number }
-interface Pace { promptTokens; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
+interface Pace { promptTokens; readTokens?; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
 interface CallRecord { at; pool; threadId; task; offeringId; label; endpointName; kind; fallback?; note?; pace?: Pace; audioSeconds? }
 interface AnswerSettings { temperature?; topP?; topK?; minP?; repeatPenalty?; presencePenalty?;
                            frequencyPenalty?; maxTokens?; seed?; stop?: string[];
@@ -414,6 +414,7 @@ class Models {                                              // new Models(keyrin
   callWithFallback(task, ctx, need, call: (r) => Promise<T>, { probeMs? }?): Promise<T>   // the next model on isUnreachable; Offline when none answers
   resolveModel(task, ctx, need?): { offeringId }             // resolve(…).ref
   allowed(ctx): { endpoint; offerings }[]                   // local endpoints only when restricted
+  nextImageModel(ctx, action, need, afterEndpoint, noCloud?): Resolution | undefined // current task list; no probes; next eligible endpoint
   // Images (memory only; caller stores and records results)
   image(ctx, request: ImageRequest, { signal?, beforeSend?: (resolution) => Promise<void> }?): Promise<{ images: GeneratedImage[]; resolution }>
   // ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
@@ -421,14 +422,22 @@ class Models {                                              // new Models(keyrin
   //   | edit { prompt, image: ImageInput, mask?: ImageInput, count?, references?: ImageInput[] }
   //   | upscale { image: ImageInput, scale?, maxSize? }; each has action: "create" | "edit" | "upscale"
   // GeneratedImage { bytes: Uint8Array; type: "image/png"; width; height; seed? }; no prompt metadata
-  // Create passes imageTier to resolution: local recipes skip a useFor tag of only the other tier; cloud models serve both.
+  // Create passes imageTier to resolution: recipes and cloud offerings skip a useFor tag of only the other tier.
+  // Edit passes imageMask: the ChatGPT plan is skipped for masks before any input is sent.
+  // CLOUD_IMAGE_PROVIDERS selects by endpoint.api: openai-compatible (key, any marked model) or chatgpt (plan Responses image_generation).
+  // Each adapter declares create/edit/mask/references/sizes/count and low/high tier mappings; upscale is host-only.
+  // Content refusal throws HostRefused("image_refusal", fixed message) and stops fallback. Limits/outages fall back.
+  // Cloud useFor/image/edit are offerings.hand JSON in self.db (shared) or user.db (personal); no schema step.
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked): { level; note? }
-  recordCall(userId, { pool, threadId, task, resolution, note?, audioSeconds? }, { retry? }) / recentCalls(userId, { limit?, threadId?, speech?: false }): CallRecord[]
+  recordCall(userId, { pool, threadId, task, resolution, note?, audioSeconds? }, { retry? }) / recentCalls(userId, { limit?, threadId?, threadIds?, pool?, speech?: false }): CallRecord[]
   callHistory(userId, { limit, offset, q, pools, threadIds? }): { entries: CallRecord[]; total }
-  recordPace(userId, pool, threadId, task, pace) / speedsByOffering(userId): Map<offeringId, { tokPerS?; promptTokPerS? }>   // medians over the last 20 calls
+    // GET models/calls/history?project=&pool= restricts both pool and project threads; hidden project pool is 404.
+  recordPace(userId, threadId, pace, task?, pool?) / speedsByOffering(userId): Map<offeringId, { tokPerS?; promptTokPerS? }>   // medians over the last 20 calls
+  usage(userId, pool, threadIds): { threadId; label; kind?: "local" | "cloud"; tokens; gpuMs? }[]
+    // Calls plus durable folded counts plus subagent runs at every depth; pool AND thread filtered.
   // Hosts and pairing
   pairHost(actor, { name, addresses, code }, { shared?, endpointId? }): Promise<Endpoint>   // endpointId: pair again, IDs kept
   setHostAddresses(actor, id, addresses): Endpoint / fetchFor(endpoint): typeof fetch | undefined   // undefined for a plain endpoint
@@ -500,13 +509,26 @@ class Models {                                              // new Models(keyrin
   and `replace` and `merge` refuse to cross kinds. `probe` only warns when a
   local endpoint resolves outside loopback, private or tailnet ranges.
 - **Subscription plans** (ChatGPT, Grok). `addPlan(actor, { name, plan, credential })` (personal only),
-  `planCredential(userId, id)`, `setPlanCredential(userId, id, credential |
+  `planCredential(userId, id)`, `planAccount(userId, id)` (explicit email or
+  account ID only; never tokens), `setPlanCredential(userId, id, credential |
   null)` (null signs it out), `setPlanCatalog(list)` (discovery, from Pi's
-  catalogue; set by `lyricad`), `reportPlanLimit(id)` (skipped for an
+  catalogue; set by `lyricad`), `setPlanImageToken(resolve)` (async token
+  resolver, installed by lyricad using extension's `planImageToken` and the
+  same serialized Pi refresh as chat), `reportPlanLimit(id)` (skipped for an
   hour) and `installationId()` (self.db). The
-  sign-in is kept in the plan's `api_key` column as JSON and never leaves
-  core except into Pi's credential store (`PlanCredentials`, extension).
-- **What never crosses.** API keys stay in core (`EndpointInfo.hasApiKey`).
+  sign-in is kept in the plan's `api_key` column as JSON; its tokens never leave
+  core except into Pi's credential store (`PlanCredentials`, extension);
+  image calls consume the resolved access token inside core/models.
+- **Endpoint display.** `EndpointInfo` adds optional `keyLast4` (only a
+  key longer than four characters, never a plan), `planAccount` (an explicit
+  email or account ID supplied by sign-in, not decoded from a token) and
+  `cloudCapabilities: ("Text" | "Vision" | "Image")[]` for cloud rows.
+  Gone offerings do not count; Image needs a marked image/edit offering,
+  its provider adapter and a key for an OpenAI-compatible endpoint. Grok
+  has no image adapter. A plan's facts hide `PLAN_URLS`. Endpoint names
+  accept letters, digits and `-`, up to 40 characters, preserving case.
+- **What never crosses.** Full API keys stay in core (`EndpointInfo.hasApiKey`
+  and its optional masked-display suffix `keyLast4`).
   Hub tokens leave core only as `X-Hub-Token` to a host, never in a response,
   log or call record. Call records hold model metadata, never prompt text.
 - **Lists.** The entry that decides a task is the thread's list, else the
@@ -537,7 +559,7 @@ class Models {                                              // new Models(keyrin
   `shared_refs_indexed`, `legacy_refs` and `host_identity`. In each
   `user.db`: the same first five (the user's own), `model_presets`,
   `model_columns`, `thread_models`, `thread_choices`, `local_only_threads`,
-  `starred_offerings` and `model_calls`, with the default thinking level
+  `starred_offerings`, `model_calls` and `call_totals`, with the default thinking level
   and the notice in its `settings`. The legacy `model_profiles` and
   `thread_choices.profile` stay one release, kept in step by `syncLegacy`, so
   a rollback keeps the user's choices. Shared rows change only with an
@@ -731,13 +753,32 @@ One model-facing tool: `delegate({ action?, ... })`.
   (`inheritSettings`), which can only narrow. `ThreadsLimits`
   (`DEFAULT_THREADS_LIMITS`): 3 starts per request, 2 children working at
   once per user, checked on start and when a parent's message wakes an idle
-  child. A parent's message is the child's next turn, marked with
+  child; child-triggered parent turns share this budget with routines. A
+  parent's message is the child's next turn, marked with
   `fromParent(id)` (`FROM_PARENT`), which only `lyricad` writes; a child's
   update reaches the parent through `Delegation.deliver` as a notice with
   status `update`, and every delivery's details carry an `id`. A child on
   a task from its parent whose turn ends idle with an error, or without an
   update since the task, gets the parent the same kind of notice
-  (`ChildThreads.ended`, fed by `lyricad`'s turn events).
+  (`ChildThreads.ended`, fed by `lyricad`'s turn events). A child's
+  `message({ to: "parent", text, question: true })`, a project's `needsYou`,
+  its report when its turn ends idle, and the daemon's failure or
+  didn't-start notes wake an idle parent for one turn. Plain progress and
+  subagent results don't wake an idle parent. Child deliveries carry
+  `childDelivery: true` so `deliverVia` appends them with `triggerTurn: false`;
+  during a child-triggered parent turn `joinRunning: true` steers them into
+  that turn. `ChildThreads` coalesces pending/running wakes per parent,
+  reserves an at-once slot, waits through project pause/hidden, and invokes
+  `HostedThread.wakeChild`: a hidden custom message with `triggerTurn: true`,
+  through the ordinary model preparation, turn events and storage. Pending
+  wake metadata is in memory only; stored notices survive a restart.
+  `noticed` prevents repeated bad-end wakes until a child reports or the
+  user writes there. A reply from a child-triggered parent to its source
+  child goes through `HostedThread.appendParent`, saved after the child's
+  current turn without a turn or steer; the next turn reads it.
+  `HostedThread.childWakeTurn` limits reply suppression to the child-started
+  turn; a subsequent user turn can message and start the child normally.
+  Pending child wakes also wait while `ThreadHost.draining` is true.
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
   in Plan mode itself.
@@ -746,13 +787,15 @@ One model-facing tool: `delegate({ action?, ... })`.
   message at or after it) and returns `queued` past the at-once limit
   instead of refusing; a queued task is held in memory only, and a restart
   tells the project chat it didn't start. `message({ to: "parent", text,
-  needsYou? })`; `message({ id, text })` from a project's thread to another
+  needsYou?, question? })`; `message({ id, text })` from a project's thread to another
   thread of the same project, marked with the same `[From t:<sender>]` line
   (`HostedThread.send(text, { fromThread })`; only `lyricad` writes it, and
   `Message.from.kind` is `thread`), at most `ThreadsLimits.siblingMessages`
   (3) per turn; `list` in a project's thread lists the project's other
   threads with `ChildInfo.state` (`ThreadState`) and `needsYou`; new actions
   `suggest({ threads: { title, task }[] })` (a card, no thread made),
+  `fold({ ids: string[] })` (up to ten existing threads; a card, no move),
+  `draft({ goal?, instructions? })` (`ThreadsHost.draft`, unsaved project settings),
   `resolve({ id? })` and `reopen({ id })` (`ThreadsHost.resolve`; a
   project's thread resolves only itself). Guidance:
   `PROJECT_CHAT_GUIDELINES` and `PROJECT_THREAD_GUIDELINES`. `user.db`
@@ -877,8 +920,21 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Always and local models allow. Ask's approval is per user through the end
     of that server-local day; a policy change clears it. No viewer means denial.
     Outputs save in the encrypted thread folder and return Pi image content
-    (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text.
-    Tool details are `{ image: ImagePart }`, where `ImagePart` is
+    (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>”.
+    A content refusal returns `isError: true` with fixed text and details
+    `{ imageRefusal: { code: "image_refusal", offeringId, endpointId } }`;
+    stored tool markers and live `tool_end` carry `imageRefusal`.
+    `GET …/threads/:pool/:threadId/image-calls/:toolCallId` returns
+    `{ canEdit, userMessage?: { n, text }, next?: { offeringId, label } }`
+    for a stored refusal, under the current routing and portrait policy.
+    `POST` there with `{ next?: boolean }` repeats that stored call on its
+    original model (false) or current next eligible endpoint (true), through
+    `executeImage`; no caller-supplied prompt or model is accepted. Busy
+    threads refuse it; Stop cancels it. Its encrypted `lyrica-image-retry`
+    custom entry keeps the source user message number, args and result;
+    messages project it as a tool marker and optional image part, without
+    PNG bytes. Saved task lists are unchanged.
+    Successful tool details are `{ image: ImagePart }`, where `ImagePart` is
     `{ type: "image", paths: string[], model: string, tier?: "fast" | "quality" }`.
     `model` is the answering model's label. Saved messages carry this part
     beside the originating tool call; `tool_end` carries `image?: ImagePart`.
@@ -1147,7 +1203,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `PATCH` making one) also pins the thread; `Display.projects: "all" |
     "only" | "none"` filters the list; `PATCH threads/:id` with `project`,
     `goal`, `paused`, `threadsModel`, `threadsThinking`, `threadsFallback` and `watchThreads`
-    (`user.db` `project_settings`, IDs and switches only), and
+    (`user.db` `project_settings`, settings and unsaved drafts), and
     `projectSettings.pageId` names the project page's memory ID; a project chat's
     look at its threads is marked `[Watching threads]` (`WATCHING_MARK`,
     core/src/threads.ts), which only `daemon/src/watch.ts` writes: a
@@ -1155,7 +1211,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     shows it as `{ kind: "watching", told?: Told[] }` (`Told`: `threadId`,
     `text`; absent on looks from before looks were one call), and its live
     `notice` event has `status: "watching"` and `told`; `POST …/messages/:n/thread` (Start a
-    thread) → `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`;
+    thread) → `ThreadSummary`; `POST …/threads/:pool/:projectId/plan` (Make a plan: no body, a
+    thread titled Plan with a server-written task, no anchor; 409 while paused or hidden, creating
+    nothing) → `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`;
     `POST …/suggestions/:callId/start` (`index`, or all with none; `user.db`
     `started_suggestions`); `GET threads/:id/overview` (`ProjectOverview`:
     its threads, the waiting count, total tokens, started suggestions);
@@ -1166,6 +1224,38 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     project's threads idle for 7 days (`AUTO_RESOLVE_DAYS`); Paused and Hide
     stop a project's working threads; a user's message in a paused
     project's thread is `409`;
+  - **project welcome** (principle 1): `GET threads/:pool/recent?top=10&project=:id`
+    → `ThreadSummary[]`, most recently active first, at most ten logged
+    top-level non-project threads of that pool; hidden threads stay out.
+    Local-only threads appear only for a local-only asking project chat.
+    `SendRequest.recentThreadIds` supplies up to ten distinct selected IDs
+    to a project chat; only those are read, through `openThreadView`, with
+    `latestEntries` and the `threads read` formatter (ten messages per thread,
+    16,000 characters total), in that turn's system context only. An
+    unlogged or incompatible selection is refused; a busy project chat is
+    `409`, so selection never leaks into a queued turn. `threads read`
+    keeps its existing project-membership boundary.
+    `POST threads/:pool/:projectId/fold { threadId }` → `ThreadSummary`;
+    `threads fold { ids }` suggests moves without applying them;
+    `POST …/:projectId/folds/:callId/apply { index? }` → `ThreadSummary[]`
+    applies one or all, once per index, tracked in `started_suggestions`
+    and the overview's `started`. Every move is same-pool, top-level,
+    non-project work, with its children flattened into project siblings;
+    local-only work needs a local-only project chat. Child state, steps
+    and wake-ups keep their IDs; workspace grants narrow to the project.
+    `POST threads/:pool/:threadId/continue-as-project` → a new pinned
+    project's `ThreadSummary`: copies workspace and model settings,
+    including local-only, moves children, leaves the source conversation,
+    and sends a first linked message asking for drafts with a selected
+    read of the source. That turn asks for drafts without fold-suggesting directions: the source stays in place. An unlogged source is refused.
+    `threads draft { goal?, instructions? }` keeps unsaved text (each at
+    most 2,000 characters) in `project_settings.draft_goal` and
+    `draft_instructions`, nullable columns added by expand-only user step 9.
+    `ThreadSummary.projectSettings.draftGoal` / `draftInstructions` expose
+    them; other settings changes preserve them. A user `PATCH` saving
+    `goal` / `instructions` clears the respective draft; `discardDraft: true`
+    clears both without applying them. `WorkspaceSettings.reparent(threadId, projectId, pool)` narrows
+    existing grants and network access to the new project. No extra model-facing tool.
   - pins: `PUT`/`DELETE …/messages/:n/pin` (the user's messages and her
     replies only, `400` otherwise, `409` in a subagent's thread), `GET
     …/pins` → `Pins { pins: Pin[], shortened }`, `Message.pinned`,
@@ -1219,7 +1309,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     - **Endpoints:** `GET`/`POST endpoints`; `PATCH`/`DELETE endpoints/:id`;
       `POST endpoints/:id/discover`, `…/reset-ids`, `…/merge` (→ `EndpointInfo`),
       `…/models` (→ `OfferingInfo`); `GET …/probe`. Types: `EndpointInfo` (`api`,
-      `addresses`, `fingerprint`, `hasApiKey`, `unencrypted`, `stale`,
+      `addresses`, `fingerprint`, `hasApiKey`, `keyLast4?`, `planAccount?`,
+      `cloudCapabilities?`, `unencrypted`, `stale`,
       `downSince`, `signedOut`, `models: OfferingInfo[]`), `OfferingInfo` (with `label`),
       `EndpointInput`, `EndpointChange`, `ModelInput`, `Probe`, `MergeInput`.
     - **Plans:** `POST plans/sign-in` (`PlanSignInStart`: `plan` and `name`,
@@ -1264,7 +1355,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       endpoints with `pageStatus`, hosts' status or error (`unpaired` when the
       host revoked this server), the presets and columns, the newest visible call,
       the notice, the Clean up count); `GET models/cleanup`; `GET`/`DELETE
-      models/notice`; `GET models/calls`; `GET library/text`; `GET hub-tokens`,
+      models/notice`; `GET models/calls` (`?project=&pool=` filters both pool and project tree); `GET library/text`; `GET hub-tokens`,
       `PUT`/`DELETE hub-tokens/:hub` (`?shared=1`). Types: `ModelsPage`,
       `CleanupItem`, `ModelUse`, `ModelsNotice`, `CallInfo`, `TextLibrary`,
       `LibraryEntry`, `HubTokenInfo` (last four characters), `HubTokenInput`.
@@ -1300,7 +1391,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     general memory's detail never carries a private ref's title, snippet or
     sentence (a private citer is listed by id with no sentence), whatever
     the display. A thread forgotten with `keepMemories` still resolves: its link has `deleted: true`, no title, an empty snippet and `updatedAt` its deletion time. `GET …/threads/:pool/:threadId/tombstone` → `ThreadTombstone` (`{ id: "t:<thread>", deletedAt, memories: MemoryUse[], links, users }`, the notes and pages citing the thread, with their links) is `404` when the thread has no tombstone.
-    `MemoryDetail.revisions` contains only the most recent revision.
+    `MemoryDetail.revisions` contains the current and newest earlier revision.
     `GET …/memory/:pool/:id/history` → `MemoryHistory { entries, total,
     detail }` returns versions newest first by revision ID and the current
     memory with display-safe links, including citations in the returned
@@ -1501,7 +1592,7 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   / setHostKey / setOffNetwork / confirmOffNetwork / machineState(name, kind) / removeMachine / allowInThread(threadId, machine, command) / allowedInThread(threadId)
 // A thread's `machines: string[]` (the sandbox is always there); setThread refuses a machine of the other pool;
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
-// SUSPECT_COMMANDS, suspectCommand(command), onFloor(path), cleanOutput(onData), maskKeys(buf),
+// SUSPECT_COMMANDS, suspectCommand(command), onFloor(path), cleanOutput(onData), maskKeys(buf) (shares removePrivateKeys from core/src/secrets.ts),
 //   authorizedKeysLine(publicKey), machineSetup(account, keyLine): core/src/workspace/machines.ts
 // proxmox.ts: PROXMOX_ACTIONS (status, list, start, stop, shutdown, reboot, snapshots), PROXMOX_READS, PROXMOX_SUSPECT (stop, reboot),
 //   suspectKey(tool, input) (what Allow in this thread stores), proxmoxAction(call, action, vm?), ownNode(call, addresses, self), ownAddress(addresses, self),
@@ -1706,3 +1797,15 @@ for `ThreadSettings` without creating a thread. On Send it creates the thread,
 PATCHes changed settings, uploads attached files, then sends the first message.
 The read-only defaults route uses the same defaults as thread creation and
 requires the addressed user's session; it returns no thread or memory text.
+
+### Thread usage
+
+`GET /api/u/:userId/threads/:pool/:id/usage` → `ThreadUsage { tokens,
+gpuMs?, models: { label, kind?, tokens, gpuMs? }[], threads?: { threadId,
+tokens, gpuMs? }[] }`. Requires the addressed user's session and thread;
+missing thread is 404. Models sort by tokens descending. `threads` appears
+only for a project chat: the chat first, then descending tokens. The total
+is also `ProjectOverview.tokens`. User step 10 adds nullable
+`model_calls.read_tokens` and `call_totals` keyed by pool, thread, label,
+kind, with tokens, gpu_ms and calls. Pruning folds counted chat records
+before deleting them, in one transaction; forgetting removes their totals.

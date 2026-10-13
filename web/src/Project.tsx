@@ -6,6 +6,7 @@ import {
   del, get, patch, post, put, threadPath, u,
   type CommandRule, type AllowedPaths, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type PermissionMode, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
 } from "./api.ts";
+import { FoldConfirm, foldLosses, foldLossNames } from "./FoldConfirm.tsx";
 import { ChecklistButton, StepLine } from "./Checklist.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
@@ -15,7 +16,7 @@ import { Repositories } from "./Git.tsx";
 import { McpServers } from "./Mcp.tsx";
 import { Folders, Machines, TaskSelect } from "./Settings.tsx";
 import { Main, PageHead, useWide, type ShellContext } from "./Shell.tsx";
-import { ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
+import { ConfirmDialog, Dialog, ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
 
 /** A project thread's state, in the sidebar's words. */
 export function stateWord(t: Pick<ThreadSummary, "state" | "needsYou">): string {
@@ -63,7 +64,7 @@ function threadGroups(threads: ThreadSummary[]): { label: string; threads: Threa
 }
 
 /** "Threads 4" in the project chat's facts line: from the split width it toggles the panel's threads list; below it, a popover of its threads grouped by state. */
-export function ThreadsFact({ userId, pool, threadId, overview, phone }: { userId: string; pool: Pool; threadId: string; overview: ProjectOverview; phone?: boolean }) {
+export function ThreadsFact({ userId, pool, threadId, overview, footer }: { userId: string; pool: Pool; threadId: string; overview: ProjectOverview; footer?: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -81,7 +82,6 @@ export function ThreadsFact({ userId, pool, threadId, overview, phone }: { userI
       </button>
       {!wide && open && (
         <div className="picker threads-pop" role="dialog" aria-label="The project's threads">
-          {phone && <p className="small tokens"><span className="num">{tokenCount(overview.tokens)}</span> tokens</p>}
           {!threads.length && <p className="muted small">No threads yet. Ask {her()} for some, or pick Start a thread in a message's menu.</p>}
           {threadGroups(threads).map((g) => (
             <div key={g.label} className="picker-group">
@@ -95,6 +95,7 @@ export function ThreadsFact({ userId, pool, threadId, overview, phone }: { userI
               ))}
             </div>
           ))}
+          {footer}
         </div>
       )}
     </span>
@@ -250,6 +251,11 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   const cur = SECTIONS.find((s) => s.key === section) ?? SECTIONS[0]!;
   const s = summary.data;
   const title = s?.title || "New project";
+  useEffect(() => {
+    if (!s?.busy) return;
+    const timer = setInterval(summary.reload, 1000);
+    return () => clearInterval(timer);
+  }, [s?.busy, summary.reload]);
   return (
     <Main className="main">
       <PageHead ctx={ctx} title="Project settings" facts={s && <a href={href({ page: "thread", userId, pool, threadId })}>{title}</a>} />
@@ -275,7 +281,8 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
 }) {
   const ps = summary.projectSettings;
   const [rules, setRules] = useState<CommandRule[]>(ps?.commandRules ?? []);
-  const [goal, setGoal] = useState(summary.goal ?? "");
+  const [goal, setGoal] = useState(ps?.draftGoal ?? summary.goal ?? "");
+  useEffect(() => { if (ps?.draftGoal !== undefined) setGoal(ps.draftGoal); }, [ps?.draftGoal]);
   const [paused, setPaused] = useState(!!ps?.paused);
   const [watch, setWatch] = useState(ps?.watchThreads !== false);
   const [model, setModel] = useState(refOf(ps?.threadsModel));
@@ -420,6 +427,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
 
       <div className="row">
         <button type="submit" className="primary" disabled={busy || !!ruleError}>Save</button>
+        {ps?.draftGoal !== undefined && <button type="button" disabled={busy} onClick={() => run(async () => { const updated = await patch<ThreadSummary>(base, { discardDraft: true }); onSummary(updated); setGoal(updated.goal ?? ""); })}>Discard draft</button>}
         {saved && <span className="muted" role="status">Saved.</span>}
       </div>
       <ErrorText error={error} />
@@ -429,10 +437,10 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
 
 /** Instructions, kept on the project page apart from what sleep writes; and the page itself in the memory browser. */
 function MemorySection({ base, summary, pool, userId, onSummary }: { base: string; summary: ThreadSummary; pool: Pool; userId: string; onSummary: (s: ThreadSummary) => void }) {
-  const [instructions, setInstructions] = useState(summary.instructions ?? "");
+  const [instructions, setInstructions] = useState(summary.projectSettings?.draftInstructions ?? summary.instructions ?? "");
   const [run, busy, error] = useAction();
   const [saved, setSaved] = useState(false);
-  useEffect(() => setInstructions(summary.instructions ?? ""), [summary.instructions]);
+  useEffect(() => setInstructions(summary.projectSettings?.draftInstructions ?? summary.instructions ?? ""), [summary.instructions, summary.projectSettings?.draftInstructions]);
   const save = () => run(async () => { setSaved(false); onSummary(await patch<ThreadSummary>(base, { instructions })); setSaved(true); });
   return (
     <form className="card project-form" aria-labelledby="h-memory" onSubmit={(e) => { e.preventDefault(); void save(); }}>
@@ -445,9 +453,81 @@ function MemorySection({ base, summary, pool, userId, onSummary }: { base: strin
       <p className="small"><a href={href({ page: "memory", userId, pool, id: summary.projectSettings!.pageId })}>Project page</a> <span className="muted">· what {her()} knows about the project, rewritten while she sleeps</span></p>
       <div className="row">
         <button type="submit" className="primary" disabled={busy}>Save</button>
+        {summary.projectSettings?.draftInstructions !== undefined && <button type="button" disabled={busy} onClick={() => run(async () => { const updated = await patch<ThreadSummary>(base, { discardDraft: true }); onSummary(updated); setInstructions(updated.instructions ?? ""); })}>Discard draft</button>}
         {saved && <span className="muted" role="status">Saved.</span>}
       </div>
       <ErrorText error={error} />
     </form>
   );
+}
+
+/** Empty project state; only explicitly selected work is supplied to the next turn. */
+export function ProjectWelcome({ userId, pool, project, settings, onChange }: { userId: string; pool: Pool; project: ThreadSummary; settings: ThreadSettings; onChange: () => void }) {
+  const base = threadPath(userId, pool, project.id);
+  const [recent, setRecent] = useState<ThreadSummary[]>();
+  const [picked, setPicked] = useState<string[]>([]);
+  const [run, busy, error] = useAction();
+  const setup = () => run(async () => {
+    const rows = await get<ThreadSummary[]>(`${u(userId, "threads", pool, "recent")}?top=10&project=${encodeURIComponent(project.id)}`);
+    setPicked(rows.map(t => t.id)); setRecent(rows);
+  });
+  const opener = useRef<HTMLButtonElement>(null);
+  const close = () => { setRecent(undefined); setTimeout(() => opener.current?.focus()); };
+  const makePlan = () => run(async () => {
+    const plan = await post<ThreadSummary>(`${base}/plan`, {});
+    onChange(); go({ page: "thread", userId, pool, threadId: plan.id });
+  });
+  return <div className="permission plan project-welcome">
+    <h2>Welcome to {project.title || "your project"}</h2>
+    <p>Let's get to work!</p>
+    <div className="row welcome-starters">
+      <button type="button" ref={opener} disabled={busy} onClick={setup}>Set up from recent work</button>
+      <Repositories starter userId={userId} pool={pool} granted={settings.repositories} onChange={repositories => run(async () => { await patch(`${base}/settings`, { repositories }); await post(`${base}/messages`, { text: `I added ${repositories.at(-1)!.name}.` }); onChange(); })} />
+      <button type="button" disabled={busy} onClick={makePlan}>Make a plan</button>
+    </div>
+    <ErrorText error={error} />
+    {recent && <Dialog className="recent-work" labelledBy="recent-work-title" onCancel={close} onSubmit={() => run(async () => { await post(`${base}/messages`, { text: "Set up this project from my recent work.", recentThreadIds: picked }); close(); onChange(); })}>
+      <h2 id="recent-work-title">Set up from recent work</h2>
+      {recent.map(t => <label className="check" key={t.id}><input type="checkbox" checked={picked.includes(t.id)} onChange={e => setPicked(e.target.checked ? [...picked, t.id] : picked.filter(id => id !== t.id))} /> {t.title || "New thread"}</label>)}
+      {!recent.length && <p className="muted">No recent work.</p>}
+      <ErrorText error={error} />
+      <div className="dlg-actions"><button type="button" onClick={close}>{recent.length ? "Cancel" : "Close"}</button>{!!recent.length && <button type="submit" className="primary" disabled={busy || !picked.length}>Continue</button>}</div>
+    </Dialog>}
+  </div>;
+}
+
+/** Existing-work suggestions share the Suggested threads card's rows and actions. Nothing is folded until the dialog confirms it. */
+export function FoldCard({ part, userId, pool, projectId, env }: { part: Extract<MessagePart, { type: "tool" }>; userId: string; pool: Pool; projectId: string; env?: ProjectEnv }) {
+  const ids = (part.args as { ids?: string[] } | null)?.ids ?? [];
+  const base = threadPath(userId, pool, projectId);
+  // Each row loads on its own: a thread that is gone or unreadable drops its row and leaves the rest. `index` is the row's place in the call.
+  const rows = useLoad(async () => (await Promise.allSettled(ids.map(async (id, index) => ({ index, thread: await get<ThreadSummary>(threadPath(userId, pool, id)), settings: await get<ThreadSettings>(threadPath(userId, pool, id, "settings")) }))))
+    .flatMap(r => r.status === "fulfilled" ? [r.value] : []), [base, part.toolCallId]);
+  // The thread list carries each thread's child threads; without it the dialog lists none.
+  const tree = useLoad(() => get<ThreadSummary[]>(`${u(userId, "threads")}?all=1`).catch(() => [] as ThreadSummary[]), [base, part.toolCallId]);
+  const summary = useLoad(() => get<ThreadSummary>(base), [base]);
+  const project = useLoad(() => get<ThreadSettings>(`${base}/settings`), [base]);
+  const [asked, setAsked] = useState<number[]>();
+  // Kept in this browser only: no server action stores a dismissal.
+  const [dismissed, setDismissed] = useState(false);
+  const started = env?.overview.started ?? {};
+  const left = ids.filter((_, i) => !started[`${part.toolCallId}#${i}`]).length;
+  const pending = (rows.data ?? []).filter(r => !started[`${part.toolCallId}#${r.index}`]);
+  const apply = (index: number) => post(`${base}/folds/${encodeURIComponent(part.toolCallId)}/apply`, { index });
+  const projectName = summary.data?.title || "the project";
+  if (!left || dismissed) return null;
+  const chosen = pending.filter(r => asked?.includes(r.index));
+  const close = () => { setAsked(undefined); };
+  return <div className="permission plan suggested" role="group" aria-label="Fold in" data-pending="Suggestions">
+    <div className="plan-head"><b>Fold in</b><span className="num">{left}</span></div>
+    <ol className="suggestions fold-rows">{rows.data?.map(({ thread, settings, index: i }) => {
+      if (started[`${part.toolCallId}#${i}`]) return null;
+      const lost = project.data ? foldLosses(settings, project.data) : [];
+      return <li key={thread.id}><div className="suggestion-text"><b className="as-is">{thread.title || "New thread"}</b>{!!lost.length && <div className="muted small fold-loss" title={lost.join(", ")}>Loses {foldLossNames(lost)}</div>}</div><button type="button" className="sm" disabled={!env || !project.data} onClick={() => setAsked([i])}>Fold in</button></li>;
+    })}</ol>
+    <div className="row"><button type="button" className="primary" disabled={!env || !rows.data || !project.data || !pending.length} onClick={() => setAsked(pending.map(r => r.index))}>Fold in all <span className="num">{pending.length}</span></button><button type="button" onClick={() => setDismissed(true)}>Cancel</button></div>
+    <ErrorText error={rows.error || project.error} />
+    {asked && project.data && chosen.length > 0 && <FoldConfirm chosen={chosen} tree={tree.data ?? []} settings={project.data} base={base} projectName={projectName}
+      onFold={r => apply(r.index)} onCancel={close} onDone={() => { close(); project.reload(); env?.onChange(); }} />}
+  </div>;
 }

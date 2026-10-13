@@ -14,6 +14,7 @@ import { formatEntry } from "./memory.ts";
 
 export interface ThreadsHost {
   readonly limits: ThreadsLimits;
+  draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
   /**
    * Creates a child of `parent`, with its settings or narrower ones, and
    * starts it on the task in the background. In a project, past the at-once
@@ -25,7 +26,7 @@ export interface ThreadsHost {
    * (`to: "parent"`, with `needsYou` when the person must decide), or in a
    * project from one of its threads to another.
    */
-  message(from: ThreadContext, to: string, text: string, opts?: { needsYou?: boolean }): Promise<void>;
+  message(from: ThreadContext, to: string, text: string, opts?: { needsYou?: boolean; question?: boolean }): Promise<void>;
   /** This thread's children; in a project's thread, the project's other threads. */
   list(parent: ThreadContext): ChildInfo[];
   /** Resolves a project's thread (`id`, or the calling thread itself), or reopens one. */
@@ -47,7 +48,10 @@ export const READ_DEFAULT = 10;
 export const READ_MAX = 30;
 
 const Params = Type.Object({
-  action: Type.Union(["start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "resolve", "reopen", "compact"].map((a) => Type.Literal(a))),
+  action: Type.Union(["start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"].map((a) => Type.Literal(a))),
+  goal: Type.Optional(Type.String({ maxLength: 2000 })),
+  instructions: Type.Optional(Type.String({ maxLength: 2000 })),
+  ids: Type.Optional(Type.Array(Type.String(), { maxItems: 10, description: "For fold: existing thread IDs to suggest bringing into this project. The person applies the card." })),
   title: Type.Optional(Type.String({ description: "For start: the child thread's title." })),
   task: Type.Optional(Type.String({ description: "For start: what to work on, with everything it needs. It starts with your persona and memory, but none of this conversation." })),
   folders: Type.Optional(Type.Array(Type.String(), { description: "For start: only these of this thread's folders." })),
@@ -72,6 +76,7 @@ const Params = Type.Object({
   last: Type.Optional(Type.Number({ description: `For read: how many of its latest messages, ${READ_DEFAULT} by default, at most ${READ_MAX}.` })),
   to: Type.Optional(Type.Literal("parent", { description: "For message from a child thread: to its parent." })),
   text: Type.Optional(Type.String({ description: "For message: what to say." })),
+  question: Type.Optional(Type.Boolean({ description: "For message to the parent: a question that needs an answer; wakes an idle parent." })),
   needsYou: Type.Optional(Type.Boolean({ description: "For message to the parent from a project's thread: the person must decide something before you can go on." })),
   threads: Type.Optional(Type.Array(Type.Object({ title: Type.String(), task: Type.String() }), { description: "For suggest: the threads you propose, each with a title and its task." })),
   summary: Type.Optional(Type.String({ description: "For compact: what the next stretch needs: what you're doing, decisions, open questions, paths and names." })),
@@ -115,7 +120,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           ? `This is a thread of the project [t:${self.parent}]${parent?.title ? ` ("${parent.title}")` : ""}: one task of the project, with its own conversation. `
             + "The person may also write here; that conversation is yours and theirs, and the project chat isn't told."
           : `This is a child thread of [t:${self.parent}]${parent?.title ? ` ("${parent.title}")` : ""}: a stream of work of its own. `
-            + "Post a short update to the parent with threads message to: \"parent\" at milestones and when you finish, not after every step. "
+            + "Post a short update to the parent with threads message to: \"parent\" at milestones, not after every step. Always end with a message to the parent: the result, or what blocked you. Use question: true when you need an answer; progress updates do not wake the parent. "
             + "The person you're talking with may also write here; that conversation is yours and theirs, and the parent isn't told.",
       };
     });
@@ -126,7 +131,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         : child
           ? "Send your parent thread a short update: threads({ action: \"message\", to: \"parent\", text })."
           : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message one; list them; read one's latest messages; stop one's running turn."
-            + (inProjectChat() ? " In this project chat, also suggest threads (a card the person starts them from), and resolve or reopen one." : ""),
+            + (inProjectChat() ? " In this project chat, also suggest threads (a card the person starts them from), suggest folding in existing work with fold and ids, draft Goal and Instructions for editing in Project settings, and resolve or reopen one." : ""),
       host?.later ? "Set a wake-up for this thread: threads({ action: \"later\", minutes, note }) starts a turn here then, with your note." : "",
       host ? "Manage only this thread's routines: threads({ action: \"routine\", routineAction: \"add\", schedule, note, newThread? }); list, pause, resume or remove with routineAction and routineId. At most 10, including paused routines." : "",
       steps ? "Keep this thread's checklist, shown on its card: threads({ action: \"steps\", steps })." : "",
@@ -200,7 +205,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           if (!p.text?.trim()) throw new Error("message needs text");
           if (child && p.to === "parent") {
             if (p.needsYou && !inProject) throw new Error("needsYou is for a project's thread");
-            await host.message(thread, "parent", p.text, { needsYou: !!p.needsYou });
+            await host.message(thread, "parent", p.text, { needsYou: !!p.needsYou, question: !!p.question });
             return text(p.needsYou ? "Sent to the project chat; it shows you're waiting on the person." : "Sent to the parent thread.");
           }
           if (child && !inProject) throw new Error("a child thread messages only its parent: to: \"parent\"");
@@ -253,6 +258,17 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           return text(`${resolved ? "Resolved" : "Reopened"} ${id ? `[t:${id}]` : "this thread"}.`, id ? { threads: [id] } : undefined);
         }
         if (child) throw new Error("a child thread can't start child threads; it can delegate, and message its parent");
+        if (p.action === "fold") {
+          if (!inProjectChat()) throw new Error("fold is for a project chat");
+          if (!p.ids?.length) throw new Error("fold needs thread ids");
+          return text(`Suggested folding in ${p.ids.length} threads; the person applies the card.`, { threads: p.ids });
+        }
+        if (p.action === "draft") {
+          if (!inProjectChat() || !host.draft) throw new Error("draft is for a project chat");
+          if (p.goal === undefined && p.instructions === undefined) throw new Error("draft needs Goal or Instructions");
+          host.draft(thread, { goal: p.goal, instructions: p.instructions });
+          return text("Draft saved for editing in Project settings; nothing applied.");
+        }
         if (p.action === "suggest") {
           if (!inProjectChat()) throw new Error("suggest is for a project chat");
           const list = (p.threads ?? []).map((t) => ({ title: t.title.trim(), task: t.task.trim() })).filter((t) => t.title && t.task);

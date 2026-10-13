@@ -46,3 +46,39 @@ describe("hiding a sandbox run's credentials", () => {
     expect(seen).toEqual(["plain"]);
   });
 });
+
+import { removeSecrets, SECRET_REMOVED } from "../src/secrets.ts";
+
+describe("secret removal", () => {
+  const shapes = [
+    ...["", "RSA ", "EC ", "OPENSSH ", "PGP "].map((kind) => {
+      const label = `${kind}PRIVATE KEY${kind === "PGP " ? " BLOCK" : ""}`;
+      return `-----BEGIN ${label}-----\nmade-up-key\n-----END ${label}-----`;
+    }),
+    "-----BEGIN PRIVATE KEY-----\nunfinished-made-up-key",
+    ...["ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_"].map((prefix) => prefix + "a".repeat(40)),
+    "sk-" + "a".repeat(32), "sk-proj-" + "b".repeat(48), "sk-ant-api03-" + "c".repeat(48),
+    ...["xoxa-", "xoxb-", "xoxp-", "xoxr-"].map((prefix) => prefix + "1234567890-madeup"),
+    "AKIA" + "A".repeat(16), "AIza" + "b".repeat(35),
+    "eyJhbGciOiJub25lIn0.eyJzdWIiOiJmaWN0aW9uIn0.bWFkZXVw",
+    "Bearer made-up-credential", "Authorization: Basic bWFkZXVw", "Authorization: Bearer made-up",
+    ...["token", "secret", "password", "api_key", "apikey", "auth", "GH_TOKEN", "client_secret"].map((key) => `${key}=made-up-value`),
+    '"token": "made up value"', "password='made up value'", '"api_key": "made\\\"up"',
+  ];
+  it.each(shapes)("removes %s", (secret) => {
+    const expected = /[:=]/.test(secret) && !secret.startsWith("Authorization:")
+      ? secret.replace(/([:=][ \t]*).*/, "$1" + SECRET_REMOVED) : SECRET_REMOVED;
+    expect(removeSecrets(secret)).toBe(expected);
+    expect(removeSecrets(removeSecrets(secret))).toBe(expected);
+  });
+  it("keeps prose, git hashes, UUIDs, account names and environment variable names", () => {
+    const text = "Sam uses ada-bot in fiction/repo. GH_TOKEN and OPENAI_API_KEY are environment variables. " +
+      "The password is managed elsewhere; token counts matter. commit a0123456789abcdef0123456789abcdef012345678 " +
+      "cbc584a3-015a-5b97-bcf5-635e7de33aee";
+    expect(removeSecrets(text)).toBe(text);
+  });
+  it("removes multiple credentials while keeping surrounding prose", () => {
+    expect(removeSecrets('Before token="made up"; after sk-' + "a".repeat(32) + "."))
+      .toBe("Before token=[secret removed]; after [secret removed].");
+  });
+});

@@ -2,9 +2,10 @@
 // on a phone, with a letter shortcut for each item; the thread header's ⋯ opens
 // the same menu. Open beside for a child row, where the sidebar passes it; Mark
 // as unread, Rename, Share with, Move to group, Hide and Delete; Pin; Make
-// project for a top-level thread, Resolve and Reopen for a project's thread.
+// project and Move to project for a top-level thread, Resolve and Reopen for a project's thread.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { del, get, patch, post, put, threadPath, u, type Person, type ThreadGroup, type ThreadSummary } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, type Person, type ThreadGroup, type ThreadSettings, type ThreadSummary } from "./api.ts";
+import { FoldConfirm, type FoldRow } from "./FoldConfirm.tsx";
 import { go, type Route } from "./route.ts";
 import { her } from "./name.ts";
 import { Flyout, useCanHover, useFlyout } from "./flyout.tsx";
@@ -40,13 +41,13 @@ export function useThreadMenu() {
   return { at, close: () => setAt(undefined), handlers };
 }
 
-function Item({ label, kbd, danger, sub, submenu, expanded, onClick }: {
-  label: ReactNode; kbd?: string; danger?: boolean; sub?: boolean;
+function Item({ label, kbd, danger, sub, submenu, expanded, title, onClick }: {
+  label: ReactNode; title?: string; kbd?: string; danger?: boolean; sub?: boolean;
   /** The flyout this item opens on a device that can hover (docs/ux.md §3). */ submenu?: string; expanded?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button type="button" role="menuitem" className={`${danger ? "danger" : ""}${sub ? " has-sub" : ""}`} data-key={kbd} data-submenu={submenu} aria-expanded={submenu ? !!expanded : undefined} onClick={onClick}>
+    <button type="button" role="menuitem" className={`${danger ? "danger" : ""}${sub ? " has-sub" : ""}`} title={title} data-key={kbd} data-submenu={submenu} aria-expanded={submenu ? !!expanded : undefined} onClick={onClick}>
       <span>{label}</span>{kbd && <kbd>{kbd}</kbd>}
     </button>
   );
@@ -69,14 +70,43 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   const t = at.thread;
   const base = threadPath(userId, t.pool, t.id);
   const ref = useRef<HTMLDivElement>(null);
-  const [sub, setSub] = useState<"" | "group" | "rename" | "newgroup" | "delete" | "project" | "share">("");
+  const [sub, setSub] = useState<"" | "group" | "rename" | "newgroup" | "delete" | "project" | "continue" | "share" | "move">("");
   const [draft, setDraft] = useState(t.title ?? "");
   const [error, setError] = useState("");
   const [people, setPeople] = useState<Person[]>();
   const [recipient, setRecipient] = useState<Person>();
+  const [projects, setProjects] = useState<ThreadSummary[]>([]);
+  const [moving, setMoving] = useState<{ project: ThreadSummary; settings: ThreadSettings; chosen: FoldRow[] }>();
+  const eligible = !t.child && !t.parent && !t.project && !t.subagent;
+  useEffect(() => {
+    if (!eligible) return;
+    let active = true;
+    void (async () => {
+      const source = await get<ThreadSettings>(`${base}/settings`);
+      const all = await get<ThreadSummary[]>(`${u(userId, "threads")}?all=1`);
+      const candidates = all.filter(p => p.project && !p.hidden && p.pool === t.pool)
+        .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
+      // Pinned projects, then the ten most recent; settings are read only to keep a local-only thread to local-only projects.
+      const shown = [...candidates.filter(p => p.pinned), ...candidates.filter(p => !p.pinned).slice(0, 10)];
+      if (!source.localOnly) { if (active) setProjects(shown); return; }
+      const loaded = await Promise.allSettled(shown.map(async thread => ({ thread, localOnly: (await get<ThreadSettings>(threadPath(userId, thread.pool, thread.id, "settings"))).localOnly })));
+      if (active) setProjects(loaded.flatMap(r => r.status === "fulfilled" && r.value.localOnly ? [r.value.thread] : []));
+    })().catch((e: Error) => { if (active) setError(e.message); });
+    return () => { active = false; };
+  }, [base, eligible, userId, t.pool]);
+  const chooseProject = async (p: ThreadSummary) => {
+    try {
+      const [settings, projectSettings, all] = await Promise.all([
+        get<ThreadSettings>(`${base}/settings`),
+        get<ThreadSettings>(threadPath(userId, t.pool, p.id, "settings")),
+        get<ThreadSummary[]>(`${u(userId, "threads")}?all=1`),
+      ]);
+      setMoving({ project: p, settings: projectSettings, chosen: [{ thread: all.find(row => row.id === t.id && row.pool === t.pool) ?? t, settings, index: 0 }] });
+    } catch (e) { setError((e as Error).message); }
+  };
   const canHover = useCanHover();
-  // On a device that can hover these two submenus open beside their item instead of replacing the menu (docs/ux.md §3).
-  const fly = canHover && (sub === "share" || sub === "group") ? sub : "";
+  // On a device that can hover these submenus open beside their item instead of replacing the menu (docs/ux.md §3).
+  const fly = canHover && (sub === "share" || sub === "group" || sub === "move") ? sub : "";
   const hover = useFlyout(sub, setSub, canHover && (sub === "" || !!fly));
   const children = t.children.length;
   // The other users on this server, read when Share with opens.
@@ -94,10 +124,10 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
     const r = el.getBoundingClientRect();
     el.style.left = `${Math.max(8, Math.min(at.end ? at.x - r.width : at.x, innerWidth - r.width - 8))}px`;
     el.style.top = `${Math.max(8, Math.min(at.y, innerHeight - r.height - 8))}px`;
-  }, [at, sub, groups.length, error]);
+  }, [at, sub, groups.length, projects.length, error]);
   // Escape closes the topmost thing; a click elsewhere closes the menu; letters pick items.
   useEffect(() => {
-    if (sub === "delete" || sub === "project" || recipient) return;
+    if (sub === "delete" || sub === "project" || sub === "continue" || recipient || moving) return;
     // Closing a flyout from the keyboard puts focus back on its item.
     const back = () => { const open = fly; setSub(""); if (open) requestAnimationFrame(() => ref.current?.querySelector<HTMLElement>(`[data-submenu="${sub}"]`)?.focus()); };
     const key = (e: KeyboardEvent) => {
@@ -121,7 +151,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
     addEventListener("keydown", key);
     addEventListener("pointerdown", down);
     return () => { removeEventListener("keydown", key); removeEventListener("pointerdown", down); };
-  }, [sub, recipient, onClose]);
+  }, [sub, recipient, moving, onClose]);
   useEffect(() => { if (!sub) ref.current?.querySelector("button")?.focus(); }, [sub]);
 
   const act = (fn: () => Promise<unknown>, said?: string) => fn().then(() => { onChange(); if (said) onToast(said); onClose(); }, (e: Error) => setError(e.message));
@@ -134,6 +164,12 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
     else if (route?.page === "thread" && route.threadId === t.id) go({ page: "home", userId });
   });
 
+  if (moving) {
+    const projectBase = threadPath(userId, t.pool, moving.project.id);
+    return <FoldConfirm move chosen={moving.chosen} tree={moving.chosen.map(r => r.thread)} settings={moving.settings} base={projectBase} projectName={moving.project.title || "the project"}
+      onFold={r => post(`${projectBase}/fold`, { threadId: r.thread.id })} onCancel={onClose}
+      onDone={() => { onChange(); go({ page: "project", userId, pool: t.pool, threadId: moving.project.id }); onClose(); }} />;
+  }
   if (recipient) {
     // DESIGN.md, "Share with": a copy as it is now; the sender's later messages and memory never go; a private thread asks first.
     const name = t.title || "this thread";
@@ -147,6 +183,13 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
     return (
       <ConfirmDialog title="Make this a project?" confirm="Make project" onCancel={onClose} onConfirm={() => change({ project: true })}
         sentence={`This thread becomes the project chat, and threads ${her()} starts from it become the project's threads. There is no way back.`} />
+    );
+  }
+  if (sub === "continue") {
+    return (
+      <ConfirmDialog title={`Start a project from ${t.title || "this thread"}?`} confirm="Continue as project" onCancel={onClose}
+        onConfirm={() => act(async () => { const project = await post<ThreadSummary>(`${base}/continue-as-project`); go({ page: "project", userId, pool: t.pool, threadId: project.id }); })}
+        sentence="Its child threads move into the new project and can't be taken back out." />
     );
   }
   if (sub === "delete") {
@@ -173,11 +216,14 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
       <Item label="New group…" kbd="N" onClick={() => { setDraft(""); setSub("newgroup"); }} />
     </>
   );
+  const projectItems = <>{projects.map(p => <Item key={p.id} label={p.title || "New project"} onClick={() => void chooseProject(p)} />)}</>;
   let body: ReactNode;
   if (!fly && sub === "share") {
     body = (<><button type="button" className="back" onClick={() => setSub("")}>‹ Share with</button>{shareItems}</>);
   } else if (!fly && sub === "group") {
     body = (<><button type="button" className="back" onClick={() => setSub("")}>‹ Move to group</button>{groupItems}</>);
+  } else if (!fly && sub === "move") {
+    body = (<><button type="button" className="back" onClick={() => setSub("")}>‹ Move to project</button>{projectItems}</>);
   } else if (sub === "rename" || sub === "newgroup") {
     const rename = sub === "rename";
     body = (
@@ -202,7 +248,9 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
         {!t.project && !t.subagent && <Item label="Share with" kbd="S" sub submenu="share" expanded={sub === "share"} onClick={() => setSub("share")} />}
         <Item label="Move to group" kbd="M" sub submenu="group" expanded={sub === "group"} onClick={() => setSub("group")} />
         {!t.child && !t.parent && <Item label={t.pinned ? "Unpin" : "Pin"} kbd="P" onClick={() => act(() => (t.pinned ? del(`${base}/pin`) : put(`${base}/pin`, {})), t.pinned ? "Unpinned" : "Pinned to the top")} />}
-        {!t.child && !t.parent && !t.project && <Item label="Make project…" kbd="K" onClick={() => setSub("project")} />}
+        {!t.child && !t.parent && !t.project && <Item label="Make project…" title="Turns this thread into a project." kbd="K" onClick={() => setSub("project")} />}
+        {!t.child && !t.parent && !t.project && !t.subagent && <Item label="Continue as project" kbd="C" title="Starts a new project from this thread; the thread stays." onClick={() => setSub("continue")} />}
+        {eligible && projects.length > 0 && <Item label="Move to project" kbd="J" sub submenu="move" expanded={sub === "move"} title="Moves this thread and its child threads into a project." onClick={() => setSub("move")} />}
         {inProject && <Item label={t.state === "resolved" ? "Reopen" : "Resolve"} kbd="E" onClick={() => act(() => post(`${base}/${t.state === "resolved" ? "reopen" : "resolve"}`))} />}
         <div className="sep" role="separator" />
         <Item label={t.hidden ? "Unhide" : "Hide"} kbd="H" onClick={() => change({ hidden: !t.hidden })} />
@@ -214,7 +262,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
     <div ref={ref} className="ctx-menu" role="menu" aria-label={`${t.title || "New thread"} menu`} style={{ left: at.x, top: at.y }} {...hover}>
       {body}
       <ErrorText error={error} />
-      {fly && <Flyout parentRef={ref} anchor={fly}>{sub === "share" ? shareItems : groupItems}</Flyout>}
+      {fly && <Flyout parentRef={ref} anchor={fly}>{sub === "share" ? shareItems : sub === "move" ? projectItems : groupItems}</Flyout>}
     </div>
   );
 }

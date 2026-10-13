@@ -4,7 +4,7 @@
 wrote this brief reviews each diff, opens the PRs and takes them through
 PR review and UI review. **Branches:** `feature/project-welcome-api`, then
 `feature/project-welcome`.
-**Status:** approved by the owner 2026-10-13; queued for Codex on lunasa.
+**Status:** both PRs merged (#286, #290). Follow-up: [Move to project](move-to-project.md), sharing the Fold in confirmation and omitting fold directions when Continue as project reads only its source.
 
 **Read first:** AGENTS.md, docs/ux.md §6 (the Project rows and the
 vocabulary list), DESIGN.md "Projects", docs/contracts.md (daemon,
@@ -36,9 +36,10 @@ ever reads its text.
    composer stays the page's main action; at 390 px they stack full
    width): **Set up from recent work**, **Add repository** and **Make a
    plan**.
-   - **Set up from recent work** opens a list in place inside the card
-     (no dialog: picking is editing, and ux.md lets dialogs only confirm),
-     the way Change passphrase… opens its fields: the ten most recent
+   - **Set up from recent work** opens a dialog, the one exception to
+     ux.md's "dialogs only confirm", which the owner chose (2026-10-13) and
+     ux.md records in the same PR; it uses the app's existing dialog, full
+     screen on a phone: the ten most recent
      top-level, non-project threads of the project's pool, each with a
      checkbox, all ticked to start, then **Continue** (primary) and
      **Cancel**. Lyrica reads the ticked threads and answers in the project
@@ -47,7 +48,28 @@ ever reads its text.
      in and unsaved, and (b) a **Fold in** card, shaped like the Suggested
      threads card, naming the threads she suggests bringing in: secondary
      **Fold in** per row, one primary **Fold in all** with the count in
-     mono ("Fold in all 3"); a row goes once it is folded. Folding a thread
+     mono ("Fold in all 3"); a row goes once it is folded. Folded work takes the
+     project's limits (a child's settings are its parent's or narrower), so
+     a row whose fold would remove access shows, under its title, a muted
+     line **Loses** and the names in mono (folders, then machines, then
+     repositories, then network hosts, then the Internet or Services
+     switch; comma-separated, at most three, then "+n"; the full list in
+     the line's title tooltip; the switch names plain, the rest in mono:
+     "Loses `~/code/app`, `gpu-box`"). No line when the
+     fold removes nothing; on a phone the line wraps under the title and
+     never squeezes the row's one Fold in button. Owner rule
+     (2026-10-13): nothing is added to a project until a modal dialog
+     confirms it, and every add-to-project dialog or card has Cancel.
+     **Fold in** and **Fold in all** open a dialog, "Fold <title> into
+     <project>?" or "Fold <n> threads into <project>?", listing the
+     threads and their child threads, the Loses line when access would go
+     with one unticked checkbox "Give <project> access to these" (ticked:
+     granted through the existing settings route, as Save on Project
+     settings would, before the fold), "A thread can't be taken out of a
+     project once it's in.", Cancel and **Fold in**. The card has a
+     **Cancel** that dismisses it (kept in the browser; no server action).
+     There is no Keep access link.
+     ux.md's Fold in row says all this. Folding a thread
      in moves it, with its child threads, under the project, as Continue
      as project does.
    - **Add repository** opens the Add repository popover in place under
@@ -57,13 +79,16 @@ ever reads its text.
      search box and **Git accounts** link. A pick grants the repository to
      the project chat at once, so every thread of the project inherits it.
      No new picker; Lyrica is told and clones nothing herself.
-   - **Make a plan** starts a project thread titled **Plan**, separate from
-     the project chat, with a first message asking for a plan for the
-     project's goal; it gets its card in the project chat and opens. The
+   - **Make a plan** is one server call (`POST …/threads/:pool/:projectId/plan`)
+     that starts a project thread titled **Plan**, separate from
+     the project chat, with a server-written first message asking for a plan for the
+     project's goal; it gets its card in the project chat (no message from the user) and opens. The
      plan comes back as the existing plan card in that thread, and its
      suggested threads in the project chat's Suggested threads card.
 2. **Continue as project** in a top-level thread's right-click menu, next
-   to Make project…, tooltip "Starts a new project from this thread; the
+   to Make project…, asks first in a dialog, "Start a project from
+   <thread>? Its child threads move into the new project and can't be
+   taken back out." (Cancel, **Continue as project**), tooltip "Starts a new project from this thread; the
    thread stays." (Make project… gains the tooltip "Turns this thread into
    a project."). It creates a new pinned project in the thread's pool and
    opens its Project settings. The project chat copies the thread's
@@ -116,11 +141,11 @@ ever reads its text.
   are left out of the recent list and of that context.
 
 **PR 2, web** (`feature/project-welcome`): the welcome card and its three
-starters, the in-place recent-work list, the Fold in card, Continue as
+starters (Make a plan calls the server route `POST …/plan`; the starters' texts are short and name no tool, their directions living in lyricad's turn context), the recent-work dialog, the Fold in card, Continue as
 project in ThreadMenu with a free letter key, both tooltips, and the drafts
 on Project settings. Run the design skills (design-critique,
 accessibility-review, ux-copy). Screenshots at 1280 and 390 px of the
-welcome card, the open list and the Fold in card go to UI review.
+welcome card, the open dialog and the Fold in card go to UI review.
 
 ## Done when
 
@@ -177,11 +202,11 @@ Shell.tsx; since #260, New project lives in NewButtons/NewRow and
 submenus open as flyouts from web/src/flyout.tsx, so Continue as project
 is a plain ThreadMenu item beside Make project…, with no submenu),
 reusing the Repositories popover, the Suggested threads card
-and the in-place pattern of Change passphrase…; no new widgets, dialogs or
-button looks. Labels are nouns or the names given in the brief, no
+and the app's existing dialog for the recent-work picker (the one dialog
+the brief allows); no other new widgets, dialogs or button looks. Labels are nouns or the names given in the brief, no
 captions. Update docs/ux.md section 6 and its vocabulary list, and
 docs/web.md. Run npm run typecheck, then the web tests one at a time. Take
-screenshots at 1280 and 390 px of the welcome card, the open list and the
+screenshots at 1280 and 390 px of the welcome card, the open dialog and the
 Fold in card. Commit, push, and stop: print the head commit, a summary and
 the screenshot paths. Do not open a PR.
 ```
@@ -191,3 +216,30 @@ the screenshot paths. Do not open a PR.
 2026-10-13: brief approved and reviewed (PR review and UI review findings
 folded in), nothing built. Next: Codex run 1, then this brief's thread
 opens PR 1 and sends it to PR review.
+
+
+Run 1 (2026-10-13, Codex on lunasa): built the recent-work, fold, fold
+apply and Continue as project routes, the `fold` and `draft` tool actions,
+and the expand-only user.db step 9 (draft columns, after main's steps 6 to
+8). The ticked threads' text is held in memory for that one turn only,
+bounded by `WELCOME_LIMITS`; unlogged threads, and local-only threads for a
+cloud project chat, are refused. Drafts apply only on Save or discard.
+Typecheck and the full suite passed on lunasa apart from the known updater
+environment failure. Next: PR review of PR 1, then Codex run 2 (web).
+
+Run 2: web implementation prepared on feature/project-welcome, based on main
+with model presets. Welcome, recent-work selection, repository starter, Plan
+thread, Fold in with its confirm dialog, Continue as project (C), and
+editable drafts are built. Existing controls supply UX rules 2–3; their homes
+and dialog exception are in rule 6, Save/Discard follow rule 7, and phone
+stacking follows rule 8. Design skills were unavailable in this harness;
+rendered screens were checked against docs/ux.md directly. Next: the owner
+runs the full suite, commits and pushes; then the brief's thread opens the
+PR for PR and UI review. Local Playwright config and shots stay untracked.
+
+Review round 1 (2026-10-13): Make a plan is the server route `POST …/plan`; starter texts shortened with directions moved to lyricad's recent-work context; Loses switch names plain; Fold in rows aligned; focus returns to the opener; FoldCard loads rows singly; Close when no recent work; welcome line "Let's get to work!". Next: re-review.
+
+Owner rule (2026-10-13): adds to a project are confirmed by a modal dialog (Fold in, Fold in all, Continue as project), and add-to-project cards carry Cancel. Built; the Fold in card's Cancel is local to the browser. Make a plan, Add repository and Set up from recent work are unchanged: the first posts no message, the second is picked from the popover's own list, the third is the dialog itself.
+
+2026-10-13: web PR merged as #290. The follow-up Move to project is in
+docs/briefs/move-to-project.md.

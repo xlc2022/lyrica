@@ -45,6 +45,19 @@ The web UI renders image parts and manages portraits in Settings → Portrait ph
 It saves on the host and refreshes discovered offerings; the tag is in the
 host's `recipes.json`, with absent reading as both, not a new database column.
 
+## Project welcome back end
+
+Principle 1: a project can continue from existing work without retyping it.
+The recent-work, fold and Continue as project routes are in `routes.ts`,
+with request shapes in `api.ts` and the full contract in [contracts.md](contracts.md).
+Recent work is logged, same-pool and top-level; local-only text reaches only
+local-only project chats. Selected reads use `openThreadView` and stay in
+one turn's system context, never in stored messages. Fold suggestions need
+user application; Goal and Instructions drafts stay unsaved in encrypted
+user.db until the user saves or discards them. Moving threads keeps their
+IDs, checklists, wake-ups and child state, narrowing workspace grants to
+the project. The welcome web interface is a separate build.
+
 ## Starting and unlocking
 
 `lyrica serve [--runtime <dir>] [--port <port>]` starts it. It listens on
@@ -204,7 +217,8 @@ Each active thread is one Pi session from `openThreadSession`, with
   keeps running, so one thread's failure never takes the others down.
 - **Context and pace.** Each hosted thread has a `ContextMeter`
   (`extension/src/context.ts`), fed by the Lyrica extension from Pi's events:
-  - Per request: time to first token, generation time and usage.
+  - Per request: time to first token, generation time and usage. Total
+    `readTokens` sums input, cache reads and cache writes across all requests.
   - At the turn's end: the measured total from `getContextUsage()` and an
     estimate of each part, using Pi's `estimateTokens` and the prompt sections
     `assemble` made. The parts are persona (with topics, who she's talking
@@ -419,7 +433,11 @@ Each active thread is one Pi session from `openThreadSession`, with
   …/suggestions/:callId/start` starts one (`index`) or all of a Suggested
   threads card's threads, each once. `GET …/overview` lists its threads, how
   many wait on the user, its total tokens and which suggestions were
-  started; `models/calls?project=&pool=` its calls. A project's thread's
+  started; `models/calls?project=&pool=` its calls, filtered by both pool
+  and project thread IDs. `GET …/usage` returns `ThreadUsage`: total tokens,
+  optional local GPU milliseconds, model shares, and for a project chat
+  thread shares (chat first, then descending tokens). The overview uses
+  this same sum of retained calls, folded totals and nested subagent runs. A project's thread's
   summary has `state`, `anchor` and `needsYou`; the project chat's stream
   gets a `child` event when one of them changes. Deleting a project with its
   threads forgets its page and the notes that came only from it first.
@@ -500,6 +518,14 @@ thread's stream and to the subagent's own thread's stream. What a run
 delivers into the thread (a background result or question, a note, a user's
 message to a subagent) goes out as `notice`, with its status and threads,
 and is stored: the message list shows it as a `notice` message.
+
+Child-thread notices use the same encrypted delivery path. Questions,
+`needsYou`, a report at the child's idle turn end, and failure/didn't-start
+notes wake an idle parent once (`ChildThreads`, `HostedThread.wakeChild`).
+Progress updates append. Pending wakes coalesce, wait through project pause
+or hidden, and share the child concurrency budget; replies to the children
+that woke the parent are saved without starting or steering them. Pending
+wake metadata is in memory only; notices remain in the stored thread.
 
 ## Subagents
 
@@ -582,6 +608,15 @@ label and `tier` is present for create. The image tool itself uses the existing
 permission flow for portrait photos, with `Send photos of you to <endpoint>?`
 in its warning and `{ question, provider }` in its arguments. Approval is per
 user through the end of that server-local day, without Allow in this thread.
+
+Content refusals carry fixed `imageRefusal` metadata on stored tool markers
+and live `tool_end`. `GET …/image-calls/:toolCallId` returns current retry
+choices and the source user message; `POST { next?: boolean }` retries the
+stored image call, on its original model or the next eligible endpoint.
+Both require the thread's user session. The shared image executor rechecks
+privacy, tools and portrait consent, and saves a `lyrica-image-retry` custom
+entry in the encrypted thread. Busy threads refuse retries; Stop cancels
+them. Model lists are unchanged.
 
 The Files panel (DESIGN, "Files and images") reaches a thread's folder and its
 grants only through `Workspace.files(t)`, so every listing, read and change

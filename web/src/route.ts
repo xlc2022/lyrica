@@ -29,7 +29,7 @@ export type Route =
    * "history" is Download history (`…/downloads/history`).
    * `q` and `at` (the page number) ride in the address as `?q=&page=` on Call history and Download history, so Back returns to the same search and page.
    */
-  | { page: "models"; userId: string; tab?: ModelsTab; add?: ModelsPageUnder; q?: string; at?: number }
+  | { page: "models"; userId: string; tab?: ModelsTab; add?: ModelsPageUnder; project?: string; pool?: Pool; q?: string; at?: number }
   | { page: "settings"; userId: string; section?: string }
   | { page: "admin"; userId: string; section?: string };
 
@@ -92,7 +92,7 @@ export function parse(hash: string): Route {
   if (section === "models") {
     const tab = MODELS_TABS.find((t) => t === a);
     const add = UNDER.find((x) => x.tab === tab && x.part === b)?.add;
-    return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(add ? { add } : {}), ...(q ? { q } : {}), ...(pageNum ? { at: pageNum } : {}) };
+    return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(add ? { add } : {}), ...(tab === "calls" && params.get("project") ? { project: params.get("project")!, pool: params.get("pool") === "private" ? "private" as const : "general" as const } : {}), ...(q ? { q } : {}), ...(pageNum ? { at: pageNum } : {}) };
   }
   // Settings → Endpoints moved to Models → Hosts and endpoints, and Settings → Model presets to Models → Tasks.
   if (section === "settings" && a === "endpoints") return { page: "models", userId, tab: "hosts" };
@@ -107,8 +107,8 @@ export function parse(hash: string): Route {
 }
 
 /** The address query carrying a history list's search text and page number; empty at the defaults. */
-function pageQuery(r: { q?: string; at?: number }): string {
-  const qs = new URLSearchParams();
+function pageQuery(r: { q?: string; at?: number }, filters: Record<string, string> = {}): string {
+  const qs = new URLSearchParams(filters);
   if (r.q) qs.set("q", r.q);
   if (r.at && r.at > 1) qs.set("page", String(r.at));
   const s = qs.toString();
@@ -133,7 +133,7 @@ export function href(r: Route): string {
     case "notifications": return `#/u/${e(r.userId)}/notifications`;
     case "models": {
       const under = UNDER.find((x) => x.tab === r.tab && x.add === r.add);
-      return `#/u/${e(r.userId)}/models` + (r.tab && r.tab !== "overview" ? `/${r.tab}` : "") + (under ? `/${under.part}` : "") + pageQuery(r);
+      return `#/u/${e(r.userId)}/models` + (r.tab && r.tab !== "overview" ? `/${r.tab}` : "") + (under ? `/${under.part}` : "") + pageQuery(r, r.tab === "calls" && r.project ? { project: r.project, pool: r.pool ?? "general" } : {});
     }
     case "settings": return `#/u/${e(r.userId)}/settings` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");
     case "admin": return `#/u/${e(r.userId)}/admin` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");

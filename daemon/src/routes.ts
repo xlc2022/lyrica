@@ -1,6 +1,7 @@
+import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
 import {
-  describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
+  CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled,
@@ -508,9 +509,15 @@ export function apiRoutes(d: Lyricad): Route[] {
       return { total: entries.length, entries: entries.slice(opts.offset, opts.offset + opts.limit) };
     }),
     route("GET", `${u}/models/calls/history`, (r): Api.HistoryPage<Api.CallInfo> => {
-      const user = d.userFor(r), opts = historyQuery(r.query), pools = shownPools(display(d, user.id));
+      const user = d.userFor(r), opts = historyQuery(r.query);
+      let pools = shownPools(display(d, user.id));
       const project = r.query.get("project");
-      const threadIds = project ? owner(d, user, (o) => o[checkPool(r.query.get("pool") ?? "general")].projectThreads(project)) : undefined;
+      const pool = checkPool(r.query.get("pool") ?? "general");
+      if (project) {
+        if (!pools.includes(pool)) throw new HttpError(404, "no such project");
+        pools = [pool];
+      }
+      const threadIds = project ? owner(d, user, (o) => o[pool].projectThreads(project)) : undefined;
       return s().models.callHistory(user.id, { ...opts, pools, ...(threadIds ? { threadIds } : {}) });
     }),
     route("GET", `${u}/models/calls`, (r): Api.CallInfo[] => {
@@ -520,7 +527,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       // A project's calls: its chat's and its threads', in the pool it is in.
       const pool = checkPool(r.query.get("pool") ?? "general");
       const ids = owner(d, user, (o) => o[pool].projectThreads(project));
-      return s().models.recentCalls(user.id, { threadIds: ids });
+      return s().models.recentCalls(user.id, { pool, threadIds: ids });
     }),
     route("GET", `${u}/presets`, (r) => presets(d, d.userFor(r).id)),
     route("PATCH", `${u}/presets`, async (r) => {
@@ -860,6 +867,76 @@ export function apiRoutes(d: Lyricad): Route[] {
         return summary(d, user, pool, o[pool], thread, []);
       });
     }),
+    route("GET", `${u}/threads/:pool/recent`, (r): Api.ThreadSummary[] => {
+      const user = d.userFor(r), pool = poolOf(r);
+      const view = s().memory.openThreadView(user.id, pool);
+      try {
+        const projectId = r.query.get("project");
+        if (projectId && !view.own.getThread(projectId)?.project) throw new HttpError(404, "no such project");
+        const local = !!projectId && s().models.callContext(user.id, pool, projectId).localOnly;
+        const top = Number(r.query.get("top") ?? 10);
+        if (!Number.isInteger(top) || top < 1 || top > 10) throw new HttpError(400, "top is 1 to 10");
+        return view.own.listThreads().filter(th => recentWorkAllowed(th, s().models.callContext(user.id, pool, th.id).localOnly, local))
+          .map(th => summary(d, user, pool, view.own, th, []))
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, top);
+      } finally { view.close(); }
+    }),
+    route("POST", `${t}/fold`, async (r) => {
+      const user = d.userFor(r), pool = poolOf(r);
+      const { threadId } = await r.json<Api.FoldThread>();
+      d.refuseWhileDraining();
+      if (typeof threadId !== "string") throw new HttpError(400, "fold needs a thread id");
+      return foldWork(d, user, pool, r.params.threadId!, threadId);
+    }),
+    route("POST", `${t}/continue-as-project`, async (r) => {
+      const user = d.userFor(r), pool = poolOf(r);
+      d.refuseWhileDraining();
+      const view = s().memory.openThreadView(user.id, pool);
+      let project: Thread;
+      try {
+        const source = view.own.getThread(r.params.threadId!);
+        if (!source) throw new HttpError(404, "no such thread");
+        if (!recentWorkAllowed(source, false, true)) throw new HttpError(400, "continue needs a logged top-level non-project thread");
+        const local = s().models.callContext(user.id, pool, source.id).localOnly;
+        if (!local && view.own.listThreads({ includeHidden: true, parent: source.id, children: true }).some(th => s().models.callContext(user.id, pool, th.id).localOnly)) throw new HttpError(400, "local-only work needs a local-only project chat");
+        project = view.own.createThread({ interface: source.interface, title: source.title, project: true });
+        s().models.inheritContext(s().models.callContext(user.id, pool, source.id), project.id);
+        const ws = s().workspace.settings(user.id);
+        const { parent: _parent, ...settings } = ws.effective(source.id);
+        ws.setThread(project.id, pool, settings);
+        s().projects.pin(user.id, pool, project.id, true);
+        moveWork(d, user, pool, view.own, project.id, source.id, 1, true);
+      } finally { view.close(); }
+      await s().host.get(user.id, pool, project.id).send(`Continue from [t:${r.params.threadId!}].`, { recentThreadIds: [r.params.threadId!], recentWorkSource: r.params.threadId! });
+      const result = s().memory.openThreadView(user.id, pool);
+      try { return summary(d, user, pool, result.own, result.own.getThread(project.id)!, []); } finally { result.close(); }
+    }),
+    route("POST", `${t}/folds/:callId/apply`, async (r) => {
+      const user = d.userFor(r), pool = poolOf(r), projectId = r.params.threadId!;
+      const { index } = await r.json<Api.ApplyFold>();
+      d.refuseWhileDraining();
+      const view = s().memory.openThreadView(user.id, pool);
+      try {
+        if (!view.own.getThread(projectId)?.project) throw new HttpError(400, "folds are a project chat's");
+        const entries = view.own.entryPage(projectId, { limit: 100_000 }).entries;
+        const call = entries.flatMap(e => {
+          const data = e.data as { message?: { role?: string; content?: unknown } };
+          return data.message?.role === "assistant" && Array.isArray(data.message.content) ? data.message.content : [];
+        }).find(p => p.type === "toolCall" && p.id === r.params.callId && p.name === "threads" && p.arguments?.action === "fold");
+        const ids: unknown = call?.arguments?.ids;
+        if (!Array.isArray(ids) || !ids.length || ids.length > WELCOME_LIMITS.threads || ids.some(id => typeof id !== "string") || new Set(ids).size !== ids.length) throw new HttpError(404, "no such fold suggestion");
+        const wanted = index === undefined ? ids.map((_, i) => i) : [index];
+        if (wanted.some(i => !Number.isInteger(i) || i < 0 || i >= ids.length)) throw new HttpError(400, "no such fold index");
+        const started = s().projects.started(user.id, pool, projectId);
+        const pending = wanted.filter(i => !started.has(`${r.params.callId}#${i}`));
+        for (const i of pending) checkFold(d, user, pool, view.own, projectId, ids[i]);
+        return pending.map(i => {
+          const folded = foldWork(d, user, pool, projectId, ids[i], anchorOfCall(entries, r.params.callId!));
+          s().projects.markStarted(user.id, pool, projectId, r.params.callId!, i, folded.id);
+          return folded;
+        });
+      } finally { view.close(); }
+    }),
     route("GET", t, (r) => {
       const user = d.userFor(r);
       return owner(d, user, (o) => summary(d, user, poolOf(r), o[poolOf(r)], threadOf(o, r), []));
@@ -878,7 +955,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         }
         const project = !!store.getThread(thread.id)!.project;
         const settings = change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.commandRules !== undefined;
-        if ((change.goal !== undefined || change.instructions !== undefined || settings) && !project) {
+        if ((change.goal !== undefined || change.instructions !== undefined || change.discardDraft !== undefined || settings) && !project) {
           throw new HttpError(400, "only a project has a goal, instructions and project settings");
         }
         if (change.title !== undefined) store.setTitle(thread.id, String(change.title));
@@ -889,6 +966,12 @@ export function apiRoutes(d: Lyricad): Route[] {
         if (change.goal !== undefined) store.setGoal(thread.id, String(change.goal));
         if (change.instructions !== undefined) {
           try { store.setProjectInstructions(thread.id, String(change.instructions), `user:${user.id}`); } catch (err) { throw new HttpError(400, (err as Error).message); }
+        }
+        if (change.goal !== undefined || change.instructions !== undefined || change.discardDraft === true) {
+          s().projects.set(user.id, pool, thread.id, {
+            ...(change.goal !== undefined || change.discardDraft === true ? { draftGoal: null } : {}),
+            ...(change.instructions !== undefined || change.discardDraft === true ? { draftInstructions: null } : {}),
+          });
         }
         if (change.commandRules !== undefined) s().workspace.settings(user.id).setCommandRules(pool, thread.id, change.commandRules);
         if (settings) {
@@ -1013,10 +1096,39 @@ export function apiRoutes(d: Lyricad): Route[] {
           (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, { ...(thread.child && thread.parent ? { parent: thread.parent } : {}), userId: user.id }), hasMore: page.hasMore };
       });
     }),
+    route("GET", `${t}/image-calls/:toolCallId`, async (r): Promise<Api.ImageRetryOptions> => {
+      const user = d.userFor(r), pool = poolOf(r);
+      owner(d, user, o => threadOf(o, r));
+      const view = s().memory.openThreadView(user.id, pool);
+      try { return (await imageRetryOptions(s().models, s().workspace, view, user.id, pool, r.params.threadId!, r.params.toolCallId!)).options; }
+      finally { view.close(); }
+    }),
+    route("POST", `${t}/image-calls/:toolCallId`, async (r): Promise<Api.Ok> => {
+      const user = d.userFor(r), pool = poolOf(r);
+      d.refuseWhileDraining();
+      const thread = owner(d, user, o => threadOf(o, r));
+      if (thread.subagent) throw new HttpError(409, "a subagent's image can't be retried here");
+      const project = owner(d, user, o => o[pool].projectOf(thread.id));
+      if (project && project !== thread.id && s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden");
+      const body = await r.json<{ next?: boolean }>();
+      if (body.next !== undefined && typeof body.next !== "boolean") throw new HttpError(400, "next is true or false");
+      const view = s().memory.openThreadView(user.id, pool);
+      let retry;
+      try { retry = await imageRetryOptions(s().models, s().workspace, view, user.id, pool, thread.id, r.params.toolCallId!); }
+      finally { view.close(); }
+      const offeringId = body.next ? retry.options.next?.offeringId : retry.refusal.offeringId;
+      if (!offeringId) throw new HttpError(409, "no next image model is available");
+      // Check the selected model against today's privacy, capability and tier rules before starting.
+      const selected = s().models.resolve(`image.${retry.args.action}`, { ...retry.routing, fallback: false,
+        overrides: { ...retry.routing.overrides, [`image.${retry.args.action}`]: [{ offeringId }] } }, retry.need);
+      if (retry.noCloud && selected.endpoint.kind === "cloud") throw new HttpError(400, "Photos of you aren't allowed to go to cloud models.");
+      await s().host.get(user.id, pool, thread.id).retryImage(retry.args, offeringId, retry.options.userMessage?.n);
+      return { ok: true };
+    }),
     route("POST", `${t}/messages`, async (r) => {
       const user = d.userFor(r);
       d.refuseWhileDraining();
-      const { text, confirm } = await r.json<Api.SendRequest>();
+      const { text, confirm, recentThreadIds } = await r.json<Api.SendRequest>();
       const thread = owner(d, user, (o) => threadOf(o, r));
       // What was sent is no longer a draft; a refused send keeps it.
       const sent = (x: Api.SendResponse) => { owner(d, user, (o) => o[poolOf(r)].setDraft(thread.id, "")); return x; };
@@ -1024,7 +1136,18 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (String(text ?? "").trim() === "/sleep") return sent({ queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) });
       const project = owner(d, user, (o) => o[poolOf(r)].projectOf(thread.id));
       if (project && project !== thread.id && s().children.stopped(user.id, poolOf(r), project)) throw new HttpError(409, "this project is paused or hidden; resume it to write in its threads");
-      const result = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")));
+      if (recentThreadIds !== undefined) {
+        if (!thread.project || !Array.isArray(recentThreadIds) || recentThreadIds.length > WELCOME_LIMITS.threads || recentThreadIds.some(id => typeof id !== "string") || new Set(recentThreadIds).size !== recentThreadIds.length) throw new HttpError(400, "recent work needs a project and at most ten distinct thread ids");
+        const view = s().memory.openThreadView(user.id, poolOf(r));
+        try {
+          const local = s().models.callContext(user.id, poolOf(r), thread.id).localOnly;
+          for (const id of recentThreadIds) {
+            const row = view.own.getThread(id);
+            if (!row || !recentWorkAllowed(row, s().models.callContext(user.id, poolOf(r), id).localOnly, local)) throw new HttpError(400, "this project can't read the selected work");
+          }
+        } finally { view.close(); }
+      }
+      const result = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")), { recentThreadIds });
       // The user wrote: the thread no longer waits on them, and a resolved one reopens.
       if (thread.child) s().children.userWrote(user.id, poolOf(r), thread.id);
       return sent(result);
@@ -1106,6 +1229,21 @@ export function apiRoutes(d: Lyricad): Route[] {
       try { id = await s().children.startFrom(user.id, pool, project, n, { title: name, task }); } catch (err) { throw new HttpError(409, (err as Error).message); }
       return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, []));
     }),
+    route("POST", `${t}/plan`, async (r): Promise<Api.StartPlanResult> => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      const { project, goal } = owner(d, user, (o) => {
+        const thread = threadOf(o, r);
+        if (!thread.project) throw new HttpError(400, "a plan is started from a project chat");
+        return { project: thread.id, goal: thread.goal?.trim() };
+      });
+      if (s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden; resume it to start threads");
+      d.refuseWhileDraining();
+      const task = `Make a plan for ${goal || "this project's goal"}. Propose it with propose_plan, and suggest the threads it needs for the project chat's Suggested threads card.`;
+      let id: string;
+      try { id = await s().children.startFrom(user.id, pool, project, undefined, { title: "Plan", task }); } catch (err) { throw new HttpError(409, (err as Error).message); }
+      return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, []));
+    }),
     route("POST", `${t}/resolve`, (r) => resolveThread(d, d.userFor(r), r, true)),
     route("POST", `${t}/reopen`, (r) => resolveThread(d, d.userFor(r), r, false)),
     route("POST", `${t}/suggestions/:callId/start`, async (r) => {
@@ -1142,6 +1280,30 @@ export function apiRoutes(d: Lyricad): Route[] {
       }
       return owner(d, user, (o) => made.map((id) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, [])));
     }),
+    route("GET", `${t}/usage`, (r): Api.ThreadUsage => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      return owner(d, user, o => {
+        const thread = threadOf(o, r);
+        const ids = thread.project ? o[pool].projectThreads(thread.id) : [thread.id];
+        const rows = s().models.usage(user.id, pool, ids);
+        const sum = (rs: typeof rows) => {
+          const local = rs.filter(x => x.gpuMs !== undefined);
+          return { tokens: rs.reduce((n, x) => n + x.tokens, 0), ...(local.length ? { gpuMs: local.reduce((n, x) => n + x.gpuMs!, 0) } : {}) };
+        };
+        const models: Api.ThreadUsage["models"] = [];
+        for (const row of rows) {
+          let model = models.find(x => x.label === row.label && x.kind === row.kind);
+          if (!model) { model = { label: row.label, ...(row.kind ? { kind: row.kind } : {}), tokens: 0 }; models.push(model); }
+          model.tokens += row.tokens;
+          if (row.gpuMs !== undefined) model.gpuMs = (model.gpuMs ?? 0) + row.gpuMs;
+        }
+        models.sort((a, b) => b.tokens - a.tokens || a.label.localeCompare(b.label));
+        const threads = ids.map(threadId => ({ threadId, ...sum(rows.filter(x => x.threadId === threadId)) }));
+        if (thread.project) threads.sort((a, b) => a.threadId === thread.id ? -1 : b.threadId === thread.id ? 1 : b.tokens - a.tokens || a.threadId.localeCompare(b.threadId));
+        return { ...sum(rows), models, ...(thread.project ? { threads } : {}) };
+      });
+    }),
     route("GET", `${t}/overview`, (r): Api.ProjectOverview => {
       const user = d.userFor(r);
       const pool = poolOf(r);
@@ -1151,7 +1313,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         const ids = o[pool].projectThreads(project.id);
         const threads = ids.slice(1).map((id) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, []));
         return {
-          threads, waiting: threads.filter((x) => x.state === "waiting").length, tokens: s().models.tokensFor(user.id, ids),
+          threads, waiting: threads.filter((x) => x.state === "waiting").length, tokens: s().models.usage(user.id, pool, ids).reduce((n, r) => n + r.tokens, 0),
           started: Object.fromEntries(s().projects.started(user.id, pool, project.id)),
         };
       });
@@ -1880,11 +2042,25 @@ function dropOpenRouter(id: string): void {
 function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo {
   const ep = d.services!.models.endpoint(userId, id);
   if (!ep) throw new HttpError(404, `no endpoint ${id}`);
+  const models = d.services!.models.offerings(userId, ep.id);
+  const available = models.filter(m => m.status !== "gone");
+  const provider = CLOUD_IMAGE_PROVIDERS[ep.api];
+  const image = !!provider && (ep.api !== "openai-compatible" || !!ep.apiKey)
+    && available.some(m => (m.image && provider.create) || (m.edit && provider.edit));
+  const cloudCapabilities: Api.EndpointInfo["cloudCapabilities"] = [
+    ...(available.some(m => !m.embedding && !m.transcribe && !m.speak && ((!m.image && !m.edit && !m.upscale) || m.tools || m.vision)) ? ["Text" as const] : []),
+    ...(available.some(m => m.vision) ? ["Vision" as const] : []),
+    ...(image ? ["Image" as const] : []),
+  ];
+  const account = isPlan(ep.api) ? d.services!.models.planAccount(userId, id) : undefined;
   return {
+    ...(ep.apiKey && ep.apiKey.length > 4 ? { keyLast4: ep.apiKey.slice(-4) } : {}),
+    ...(account ? { planAccount: account } : {}),
+    ...(ep.kind === "cloud" ? { cloudCapabilities } : {}),
     id: ep.id, name: ep.name, kind: ep.kind, api: ep.api, baseUrl: redactUrl(ep.baseUrl), hasApiKey: !!ep.apiKey, shared: ep.shared,
     ...(ep.addresses ? { addresses: ep.addresses } : {}), ...(ep.fingerprint ? { fingerprint: ep.fingerprint } : {}),
     unencrypted: ep.unencrypted, stale: ep.stale, ...(ep.downSince ? { downSince: ep.downSince } : {}), ...(ep.signedOut ? { signedOut: true } : {}),
-    models: d.services!.models.offerings(userId, ep.id).map((o) => toOfferingInfo(ep, o)),
+    models: models.map((o) => toOfferingInfo(ep, o)),
   };
 }
 
@@ -1900,19 +2076,20 @@ function offeringInfo(d: Lyricad, userId: string, id: string): Api.OfferingInfo 
 }
 
 /** Only known capabilities, of the right types. With `clearing`, null clears one. */
-function capabilities(input: object, clearing = false): Record<string, number | boolean | string[] | { voices: Api.Voice[] } | null> {
-  const out: Record<string, number | boolean | string[] | { voices: Api.Voice[] } | null> = {};
+function capabilities(input: object, clearing = false): Record<string, number | boolean | string | string[] | { voices: Api.Voice[] } | null> {
+  const out: Record<string, number | boolean | string | string[] | { voices: Api.Voice[] } | null> = {};
   const levels = ["low", "medium", "high"];
   for (const k of CAPABILITIES) {
     const v = (input as Record<string, unknown>)[k];
     if (v === undefined) continue;
     if (v === null && clearing) out[k] = null;
+    else if (k === "useFor" && typeof v === "string" && ["fast", "quality", "both"].includes(v)) out[k] = v;
     else if (k === "contextWindow" && typeof v === "number" && v > 0) out[k] = Math.floor(v);
     else if (k === "reasoning" && Array.isArray(v) && v.every((l) => levels.includes(l))) out[k] = levels.filter((l) => v.includes(l));
     // Each voice is checked in core.
     else if (k === "speak" && v && typeof v === "object" && Array.isArray((v as { voices?: unknown }).voices)) out[k] = { voices: (v as { voices: Api.Voice[] }).voices };
-    else if (k !== "contextWindow" && k !== "reasoning" && k !== "speak" && typeof v === "boolean") out[k] = v;
-    else throw new HttpError(400, `${k} must be ${k === "contextWindow" ? "a number of tokens" : k === "reasoning" ? "a list of low, medium and high" : k === "speak" ? "{ voices: [{ id, language }] }" : "true or false"}`);
+    else if (k !== "contextWindow" && k !== "reasoning" && k !== "speak" && k !== "useFor" && typeof v === "boolean") out[k] = v;
+    else throw new HttpError(400, `${k} must be ${k === "useFor" ? "fast, quality or both" : k === "contextWindow" ? "a number of tokens" : k === "reasoning" ? "a list of low, medium and high" : k === "speak" ? "{ voices: [{ id, language }] }" : "true or false"}`);
   }
   return out;
 }
@@ -2137,6 +2314,8 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
     ...(pref?.group ? { group: pref.group } : {}), ...(pref?.unread ? { unread: true } : {}),
     ...(th.project ? { project: true as const, ...(th.goal ? { goal: th.goal } : {}), ...instructionsOf(store, th.id) } : {}),
     ...(settings ? { projectSettings: {
+      ...(settings.draftGoal !== undefined ? { draftGoal: settings.draftGoal } : {}),
+      ...(settings.draftInstructions !== undefined ? { draftInstructions: settings.draftInstructions } : {}),
       commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
@@ -2374,6 +2553,35 @@ function entryN(r: Request): number {
   return n;
 }
 
+/** Fold eligibility is checked for every moved thread before changing any parent. */
+function checkFold(d: Lyricad, user: User, pool: Pool, store: PoolStore, projectId: string, threadId: string): void {
+  const s = d.services!, project = store.getThread(projectId), thread = store.getThread(threadId);
+  if (!project?.project || !thread) throw new HttpError(404, "no such project or thread in this pool");
+  if (projectId === threadId || thread.project || thread.child || thread.subagent) throw new HttpError(400, "only top-level non-project work can be folded");
+  const moved = [thread, ...store.listThreads({ includeHidden: true, parent: threadId, children: true })];
+  if (!s.models.callContext(user.id, pool, projectId).localOnly && moved.some(t => s.models.callContext(user.id, pool, t.id).localOnly)) throw new HttpError(400, "local-only work needs a local-only project chat");
+}
+
+function moveWork(d: Lyricad, user: User, pool: Pool, store: PoolStore, projectId: string, threadId: string, anchor: number, childrenOnly = false): void {
+  const s = d.services!;
+  checkFold(d, user, pool, store, projectId, threadId);
+  const ids = store.foldThread(projectId, threadId, childrenOnly);
+  for (const id of ids) {
+    s.workspace.settings(user.id).reparent(id, projectId, pool);
+    if (s.models.callContext(user.id, pool, projectId).localOnly) s.models.setLocalOnly(user.id, pool, id, true);
+    s.children.adopt(user.id, pool, id, projectId, anchor);
+    s.host.reload(user.id, pool, id);
+  }
+}
+
+function foldWork(d: Lyricad, user: User, pool: Pool, projectId: string, threadId: string, at?: number): Api.ThreadSummary {
+  const view = d.services!.memory.openThreadView(user.id, pool);
+  try {
+    moveWork(d, user, pool, view.own, projectId, threadId, at ?? view.own.nextEntryN(projectId));
+    return summary(d, user, pool, view.own, view.own.getThread(threadId)!, []);
+  } finally { view.close(); }
+}
+
 /**
  * A branch gets its parent's settings: models and local-only, and the
  * workspace, which then refuses anything wider than the parent's.
@@ -2566,7 +2774,7 @@ function memoryDetail(d: Lyricad, o: OwnerView, pool: Pool, id: string, show: Ap
     cameFrom,
     usedIn: [...own, ...other],
     links,
-    revisions: store.revisionHistory(id, { limit: 1, offset: 0, q: "" }).entries.map((r) => ({ id: r.id, body: r.body, author: r.author, createdAt: r.createdAt })),
+    revisions: store.revisionHistory(id, { limit: 2, offset: 0, q: "" }).entries.map((r) => ({ id: r.id, body: r.body, author: r.author, createdAt: r.createdAt })),
     users,
   };
 }

@@ -1,3 +1,4 @@
+import { removeSecrets } from "../secrets.ts";
 import { randomBytes } from "node:crypto";
 import { nextRun, parseSchedule, type Schedule } from "../routines.ts";
 import type { ForgeKind, ForgeWatchState } from "../forge/types.ts";
@@ -826,6 +827,21 @@ export class PoolStore extends PoolReader {
     this.db.prepare("UPDATE threads SET project = 1 WHERE id = ?").run(id);
   }
 
+  /** Moves existing work under a project, keeping entries, checklists and wake-ups.
+   * Its child threads become siblings, so project depth stays one; subagents stay put.
+   */
+  foldThread(projectId: string, threadId: string, childrenOnly = false): string[] {
+    const project = this.mustThread(projectId), thread = this.mustThread(threadId);
+    if (!project.project || projectId === threadId) throw new Error("fold needs a different project chat");
+    if (thread.project || thread.child || thread.subagent) throw new Error("only a top-level non-project thread can be folded");
+    const ids = [...(childrenOnly ? [] : [threadId]), ...this.listThreads({ includeHidden: true, parent: threadId, children: true }).map(t => t.id)];
+    this.tx(() => {
+      for (const id of ids) this.db.prepare("UPDATE threads SET parent = ?, child = 1 WHERE id = ?").run(projectId, id);
+      if (project.unlogged) for (const id of ids) this.setUnlogged(id, true);
+    });
+    return ids;
+  }
+
   /** A project's goal, in the user's words; empty clears it. */
   setGoal(id: string, goal: string): void {
     if (!this.mustThread(id).project) throw new Error("only a project has a goal");
@@ -1231,12 +1247,13 @@ export class PoolStore extends PoolReader {
       throw new Error("this thread isn't logged in memory, so notes can't be written from it");
     }
     return this.tx(() => notes.map((note) => {
-      let text = toStored(note.text.trim(), this.c.owner);
+      let text = toStored(removeSecrets(note.text.trim()), this.c.owner);
       if (!text) throw new Error("a note needs text");
       if (note.source && !citationsIn(text, this.pool).includes(note.source)) text = `${text} [${note.source}]`;
+      text = removeSecrets(text);
       const id = this.newId("n", "notes");
       const at = now();
-      const about = (note.about ?? []).map((a) => a.trim()).filter(Boolean);
+      const about = (note.about ?? []).map((a) => removeSecrets(a.trim())).filter(Boolean);
       this.db.prepare("INSERT INTO notes (id, text, about, origin, author, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
         .run(id, text, about.join(", "), originOf(opts.author), opts.author, at, at);
       this.written(id, { text, about }, opts.author, at);
@@ -1272,6 +1289,7 @@ export class PoolStore extends PoolReader {
   }
 
   putWake(text: string, author: Author): void {
+    text = removeSecrets(text);
     this.checkAuthor(author);
     if (this.load("wake")) return this.edit("wake", { text }, author);
     const at = now();
@@ -1282,6 +1300,7 @@ export class PoolStore extends PoolReader {
   }
 
   addJournal(text: string, author: Author): string {
+    text = removeSecrets(text);
     this.checkAuthor(author);
     return this.tx(() => {
       const id = this.newId("j", "journal");
@@ -1316,7 +1335,7 @@ export class PoolStore extends PoolReader {
   }
 
   addItem(run: string, item: { kind: SleepItem["kind"]; text: string; source?: string }): string {
-    const text = item.text.trim();
+    const text = removeSecrets(item.text.trim());
     if (!text) throw new Error("an item needs text");
     const id = this.newSleepId("i", "sleep_items");
     this.db.prepare("INSERT INTO sleep_items (id, run, kind, text, source, created_at) VALUES (?, ?, ?, ?, ?, ?)")
@@ -1475,9 +1494,9 @@ export class PoolStore extends PoolReader {
 
   /** Stored form: `{user}` becomes a token; existing tokens are kept as they are. */
   private stored(body: Body): Body {
-    const s = (t: string | undefined) => (t === undefined ? undefined : toStored(t, this.c.owner));
+    const s = (t: string | undefined) => (t === undefined ? undefined : toStored(removeSecrets(t), this.c.owner));
     citationsIn(body.text, this.pool); // general refuses to cite private
-    return { ...body, text: s(body.text)!, title: s(body.title), summary: s(body.summary), ...(body.instructions ? { instructions: s(body.instructions.trim()) } : { instructions: undefined }) };
+    return { ...body, text: s(body.text)!, title: s(body.title), summary: s(body.summary), about: body.about?.map(removeSecrets), folders: body.folders?.map(removeSecrets), ...(body.instructions ? { instructions: s(body.instructions.trim()) } : { instructions: undefined }) };
   }
 
   /** Merges old segments so deleted text doesn't linger in the index. */
