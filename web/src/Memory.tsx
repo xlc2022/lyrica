@@ -356,7 +356,7 @@ function Lineage({ title, uses, mark, ctx, pool, links, users, ownText }: {
           }
           return (
             <a key={use.id} className="lk" href={w.href}>
-              <span>{ref.kind !== "note" && <span className="eyebrow">{KIND_WORD[ref.kind]}</span>}{w.cite ? firstWords(readable(w.link!.snippet, users)) : w.text}{w.link?.origin === "user" && <span className="cap"> yours</span>}</span>
+              <span>{ref.kind !== "note" && <span className="eyebrow">{KIND_WORD[ref.kind]}</span>}{w.cite ? firstWords(readable(w.link!.snippet, users)) : w.text}{w.link?.origin === "user" && <span className="cap"> yours</span>}{w.link?.deleted && <span className="cap"> deleted</span>}</span>
               <span className="when num">{dateWord(w.link!.updatedAt)}</span>
               {sentence}
             </a>

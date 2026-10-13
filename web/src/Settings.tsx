@@ -217,8 +217,8 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
           <div className="row">
             <button type="button" onClick={() => changeThread({ hidden: !summary.hidden })}>{summary.hidden ? "Unhide" : "Hide"}</button>
             {!sub && (
-              <Forget children={children} onForget={(withChildren) => run(async () => {
-                await del(base, { children: withChildren }); ctx.refreshThreads(); go({ page: "home", userId });
+              <Forget children={children} onForget={(withChildren, keepMemories) => run(async () => {
+                await del(base, { children: withChildren, keepMemories }); ctx.refreshThreads(); go({ page: "home", userId });
               })} />
             )}
           </div>
@@ -390,10 +390,12 @@ export function Machines({ granted, machines, onChange }: { granted: string[]; m
 }
 
 /** Forgetting a thread asks first, and whether its child threads go too (ticked). */
-function Forget({ children, onForget }: { children: number; onForget: (withChildren: boolean) => void }) {
+function Forget({ children, onForget }: { children: number; onForget: (withChildren: boolean, keepMemories: boolean) => void }) {
   return (
-    <Confirm label="Forget this thread" danger confirm="Forget it" onConfirm={onForget}
-      question="Forget this thread? Its messages are deleted, along with what was learned only from it. This can't be undone."
-      {...(children > 0 ? { option: `Also forget its ${children === 1 ? "child thread" : `${children} child threads`}` } : {})} />
+    <Confirm label="Forget this thread" danger confirm="Forget it" onConfirm={([keep, kids]) => onForget(!!kids, !!keep)}
+      question={([keep]) => keep
+        ? `Forget this thread? Its messages are deleted. What ${her()} learned from it stays in memory. This can't be undone.`
+        : `Forget this thread? Its messages are deleted, and so is what ${her()} learned only from it. This can't be undone.`}
+      options={[{ label: "Keep memories", ticked: false }, ...(children > 0 ? [{ label: `Also forget its ${children === 1 ? "child thread" : `${children} child threads`}`, ticked: true }] : [])]} />
   );
 }
