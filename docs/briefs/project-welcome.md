@@ -4,7 +4,7 @@
 wrote this brief reviews each diff, opens the PRs and takes them through
 PR review and UI review. **Branches:** `feature/project-welcome-api`, then
 `feature/project-welcome`.
-**Status:** back end implemented; web implementation prepared for review.
+**Status:** both PRs merged (#286, #290). Follow-up: docs/briefs/move-to-project.md.
 
 **Read first:** AGENTS.md, docs/ux.md §6 (the Project rows and the
 vocabulary list), DESIGN.md "Projects", docs/contracts.md (daemon,
@@ -240,3 +240,6 @@ PR for PR and UI review. Local Playwright config and shots stay untracked.
 Review round 1 (2026-10-13): Make a plan is the server route `POST …/plan`; starter texts shortened with directions moved to lyricad's recent-work context; Loses switch names plain; Fold in rows aligned; focus returns to the opener; FoldCard loads rows singly; Close when no recent work; welcome line "Let's get to work!". Next: re-review.
 
 Owner rule (2026-10-13): adds to a project are confirmed by a modal dialog (Fold in, Fold in all, Continue as project), and add-to-project cards carry Cancel. Built; the Fold in card's Cancel is local to the browser. Make a plan, Add repository and Set up from recent work are unchanged: the first posts no message, the second is picked from the popover's own list, the third is the dialog itself.
+
+2026-10-13: web PR merged as #290. The follow-up Move to project is in
+docs/briefs/move-to-project.md.
