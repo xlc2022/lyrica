@@ -12,11 +12,11 @@ const persona: Persona = { core: [{ path: "SOUL.md", text: "She is Lyrica." }], 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-/** Ada's models (a cloud and a local fake server) plus a Memory, with both profiles' chat set. */
+/** Ada's models (a cloud and a local fake server) plus a Memory, with both columns' chat set. */
 async function setup() {
   const m = await withModels();
-  m.models.setProfile(m.ada.id, "cloud", "chat", m.cloudRef);
-  m.models.setProfile(m.ada.id, "local", "chat", m.localRef);
+  m.models.setColumnTask(m.ada.id, "general", "chat", m.cloudRef);
+  m.models.setColumnTask(m.ada.id, "private", "chat", m.localRef);
   const memory = new Memory(m.keyring, m.users);
   const thread = (pool: Pool, opts: { localOnly?: boolean; unlogged?: boolean } = {}): ThreadContext => {
     const view = memory.openThreadView(m.ada.id, pool);
@@ -111,7 +111,7 @@ describe("the model runtime", () => {
 
   it("runs a subagent's thread under its parent, local-only and unlogged like the parent", async () => {
     const s = await setup();
-    s.models.setProfile(s.ada.id, "cloud", "subagent.strong", s.cloudRef);
+    s.models.setColumnTask(s.ada.id, "general", "subagent.strong", s.cloudRef);
     const parent = s.thread("private", { unlogged: true });
     const { id } = parent.view.own.createThread({ interface: "cli", parent: parent.threadId, subagent: true });
     const call = s.models.childContext(parent.call, id, { tier: "strong" });
@@ -150,7 +150,7 @@ describe("each turn's model", () => {
     const s = await setup();
     const off = s.models.addEndpoint(s.ada, { name: "off", kind: "local", baseUrl: await deadUrl() });
     const first = { offeringId: s.models.addModel(s.ada, off.id, { modelId: "qwen3.8-27b" }).id };
-    s.models.setProfile(s.ada.id, "local", "chat", [first, s.localRef]);
+    s.models.setColumnTask(s.ada.id, "private", "chat", [first, s.localRef]);
     const t = s.thread("private");
     const { session, prepare, dispose } = await s.open(t);
     try {
@@ -217,7 +217,7 @@ describe("a model host", () => {
     const host = await fakeHost({ name: "lyrica-blackwell" });
     const ep = await s.models.pairHost(s.ada, { name: "blackwell", addresses: [host.address], code: host.newCode() });
     const [o] = await s.models.discover(s.ada, ep.id);
-    s.models.setProfile(s.ada.id, "local", "chat", [{ offeringId: o!.id }]);
+    s.models.setColumnTask(s.ada.id, "private", "chat", [{ offeringId: o!.id }]);
     s.models.setDefaultThinking(s.ada.id, "high");
     const t = s.thread("private");
     const { session, prepare, dispose } = await s.open(t);
@@ -242,7 +242,7 @@ describe("how a model answers", () => {
     await s.users.authenticate("bob", "pw");
     const lan = s.models.addEndpoint(s.ada, { name: "lan", kind: "local", baseUrl: s.local.baseUrl }, { shared: true });
     const [qwen] = await s.models.discover(s.ada, lan.id);
-    s.models.setProfile(s.ada.id, "local", "chat", [{ offeringId: qwen!.id }]);
+    s.models.setColumnTask(s.ada.id, "private", "chat", [{ offeringId: qwen!.id }]);
     s.models.setOfferingSettings(s.ada, qwen!.id, { temperature: 0.6, repeatPenalty: 1.1 }, "shared");
     s.models.setOfferingSettings(s.ada, qwen!.id, { seed: 7, stop: ["END"], maxTokens: 300 });
     s.models.setOfferingSettings(bob, qwen!.id, { temperature: 1.9, topP: 0.5 });
@@ -284,7 +284,7 @@ describe("each model's own settings", () => {
     const first = s.models.addModel(s.ada, off.id, { modelId: "qwen3.8-27b" });
     s.models.setOfferingSettings(s.ada, first.id, { temperature: 1.5 });
     s.models.setOfferingSettings(s.ada, s.localRef.offeringId, { temperature: 0.3 });
-    s.models.setProfile(s.ada.id, "local", "chat", [{ offeringId: first.id }, s.localRef]);
+    s.models.setColumnTask(s.ada.id, "private", "chat", [{ offeringId: first.id }, s.localRef]);
     s.models.setOfferingSettings(s.ada, s.cloudRef.offeringId, { temperature: 0.9, topK: 20 });
     for (const t of [s.thread("private"), s.thread("general")]) {
       const { session, prepare, dispose } = await s.open(t);
@@ -311,7 +311,7 @@ describe("thinking on a host", () => {
     const ep = await s.models.pairHost(s.ada, { name: "vllm", addresses: [host.address], code: host.newCode() });
     const [o] = await s.models.discover(s.ada, ep.id);
     expect(o!.reasoning).toEqual(["low", "medium", "high"]);
-    s.models.setProfile(s.ada.id, "local", "chat", [{ offeringId: o!.id }]);
+    s.models.setColumnTask(s.ada.id, "private", "chat", [{ offeringId: o!.id }]);
     s.models.setDefaultThinking(s.ada.id, "high");
     const { session, prepare, dispose } = await s.open(s.thread("private"));
     try {

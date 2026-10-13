@@ -44,8 +44,8 @@ async function enter(page: Page, baseURL: string): Promise<string> {
       const found = await api("POST", `/endpoints/${ep.id}/discover`) as Ep;
       return { offeringId: found.models.find((m) => m.modelId === model)!.id };
     };
-    await api("PUT", "/profiles/local/chat", { model: await add("gpu", "local", "local", "local-model") });
-    await api("PUT", "/profiles/cloud/chat", { model: await add("router", "cloud", "cloud", "cloud-model") });
+    await api("PUT", "/columns/private/chat", { model: await add("gpu", "local", "local", "local-model") });
+    await api("PUT", "/columns/general/chat", { model: await add("router", "cloud", "cloud", "cloud-model") });
     // The same fake speech server as a local and as a cloud endpoint: whisper transcribes, kokoro speaks English and Mandarin.
     for (const [name, kind] of [["speech", "local"], ["openai", "cloud"]] as const) {
       const ep = await api("POST", "/endpoints", { name, kind, baseUrl: `${models}/speech/v1` }) as Ep;
@@ -54,8 +54,9 @@ async function enter(page: Page, baseURL: string): Promise<string> {
       const kokoro = found.models.find((m) => m.modelId === "kokoro")!.id;
       await api("PATCH", `/offerings/${whisper}`, { transcribe: true });
       await api("PATCH", `/offerings/${kokoro}`, { speak: { voices: [{ id: "af_heart", language: "en" }, { id: "zf_xiaobei", language: "zh" }] } });
-      await api("PUT", `/profiles/${kind}/speech.transcribe`, { model: { offeringId: whisper } });
-      await api("PUT", `/profiles/${kind}/speech.speak`, { model: { offeringId: kokoro } });
+      const column = kind === "local" ? "private" : "general";
+      await api("PUT", `/columns/${column}/speech.transcribe`, { model: { offeringId: whisper } });
+      await api("PUT", `/columns/${column}/speech.speak`, { model: { offeringId: kokoro } });
     }
   }
   return userId;
@@ -1273,7 +1274,7 @@ test("with Read aloud while agent writes on, a reply can be read aloud as it str
 test("dictation goes in at the caret, Read aloud plays her reply, and a speech server that is down disables both", async ({ page, baseURL, request }) => {
   const userId = await enter(page, baseURL!);
   // The test before may have left Read aloud while agent writes on for this user.
-  await page.evaluate((u) => fetch(`/api/u/${encodeURIComponent(u)}/profiles`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ readAloudLive: false }) }), userId);
+  await page.evaluate((u) => fetch(`/api/u/${encodeURIComponent(u)}/presets`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ readAloudLive: false }) }), userId);
   await newThread(page, "General");
   const shot = async (name: string) => {
     if (!process.env.SCREENSHOTS) return;
@@ -1290,7 +1291,7 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
   // Dictation and Read aloud selects in the drawer's Models, offering only models that transcribe or speak; a cloud pick is this thread's.
   let drawer = await openSettings(page);
   const dictation = drawer.getByRole("combobox", { name: "Dictation" });
-  await expect(dictation.locator("option")).toHaveText(["Profile (local · whisper · speech)", "cloud · whisper · openai", "local · whisper · speech"]);
+  await expect(dictation.locator("option")).toHaveText(["Preset (local · whisper · speech)", "cloud · whisper · openai", "local · whisper · speech"]);
   await expect(drawer.getByLabel("Voice to cloud")).toHaveCount(0);
   // A cloud pick asks first: Cancel (or Escape) keeps the profile's, and the drawer stays open.
   const ask = page.getByRole("dialog", { name: "Send your voice to the cloud?" });
@@ -1299,7 +1300,7 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
   await shot("dictation-cloud-confirm");
   await page.keyboard.press("Escape");
   await expect(ask).toHaveCount(0);
-  await expect(dictation.locator("option:checked")).toHaveText("Profile (local · whisper · speech)");
+  await expect(dictation.locator("option:checked")).toHaveText("Preset (local · whisper · speech)");
   await dictation.selectOption({ label: "cloud · whisper · openai" });
   await ask.getByRole("button", { name: "Use cloud dictation" }).click();
   await expect(dictation.locator("option:checked")).toHaveText("cloud · whisper · openai");
@@ -1359,23 +1360,23 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
     const picked = drawer.getByRole("combobox", { name: "Dictation" });
     await expect(picked.locator("option:checked")).toHaveText("cloud · whisper · openai");
     await picked.selectOption({ index: 0 });
-    await expect(picked.locator("option:checked")).toHaveText("Profile (local · whisper · speech)");
+    await expect(picked.locator("option:checked")).toHaveText("Preset (local · whisper · speech)");
   } finally {
     await request.post(`${models}/speech/up`);
   }
 });
 
-test("a speaking model's Settings drawer sets its voice and clamps its speed; only the local profile has Dictation", async ({ page, baseURL }) => {
+test("a speaking model's Settings drawer sets its voice and clamps its speed; only the Private column has Dictation", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${encodeURIComponent(userId)}/models/tasks`);
   await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
-  // Dictation is only in the Private threads column (Local); a cloud model hears a voice only when a thread picks it.
-  await expect(page.locator('[data-cell="cloud:speech.transcribe"]')).toHaveCount(0);
-  await expect(page.locator('[data-cell="local:speech.transcribe"]')).toContainText("whisper");
-  await expect(page.locator('[data-cell="local:speech.speak"]')).toContainText("kokoro");
-  await expect(page.locator('[data-cell="cloud:speech.speak"]')).toContainText("kokoro");
+  // Dictation is only in the Private threads column; a cloud model hears a voice only when a thread picks it.
+  await expect(page.locator('tr[data-task="speech.transcribe"] [data-col="General threads"]')).toHaveCount(0);
+  await expect(page.locator('tr[data-task="speech.transcribe"] [data-col="Private threads"]')).toContainText("whisper");
+  await expect(page.locator('tr[data-task="speech.speak"] [data-col="Private threads"]')).toContainText("kokoro");
+  await expect(page.locator('tr[data-task="speech.speak"] [data-col="General threads"]')).toContainText("kokoro");
   // Read aloud's picker offers only models that speak: kokoro on speech is already in the list, so nothing else is left.
-  await page.locator('[data-cell="local:speech.speak"]').click();
+  await page.locator('tr[data-task="speech.speak"] [data-col="Private threads"]').click();
   const tasks = page.getByRole("complementary", { name: "Edit Read aloud" });
   await tasks.getByRole("button", { name: "Add…" }).click();
   await expect(tasks.getByText("No models match.")).toBeVisible();
@@ -1405,7 +1406,7 @@ test("a speaking model's Settings drawer sets its voice and clamps its speed; on
   await expect(drawer).toHaveCount(0);
 });
 
-test("the thread drawer's Read aloud has a Settings link opening the voice drawer of the profile's model, or of the thread's pick; Escape closes that drawer first", async ({ page, baseURL }) => {
+test("the thread drawer's Read aloud has a Settings link opening the voice drawer of the column's model, or of the thread's pick; Escape closes that drawer first", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   // The dictation test leaves the speech server marked down for a while, so nothing answers Read aloud: reading its models again says it is up.
   await page.evaluate(async (base) => {
@@ -1423,7 +1424,7 @@ test("the thread drawer's Read aloud has a Settings link opening the voice drawe
   const voice = page.getByRole("complementary", { name: "kokoro settings" });
   const opened = () => page.waitForRequest((r) => /\/offerings\/[^/]+\/settings$/.test(r.url())).then((r) => decodeURIComponent(r.url().split("/offerings/")[1]!.split("/")[0]!));
 
-  // Nothing picked: the general profile's model, kokoro on the cloud endpoint.
+  // Nothing picked: the General column's model, kokoro on the cloud endpoint.
   await expect(read).toHaveValue("");
   let asked = opened();
   await link.click();
@@ -1663,11 +1664,13 @@ test("a project: New project, suggested threads start into cards, the Threads po
   const fact = page.getByRole("button", { name: /^Threads/ });
   await expect(fact).toContainText("2");
   await fact.click();
-  const pop = page.getByRole("dialog", { name: "The project's threads" });
+  // From 1180 px up the fact toggles the panel's threads list (pressed while it shows); below, the popover.
+  const split = page.viewportSize()!.width >= 1180;
+  const pop = split ? page.locator("aside.panel") : page.getByRole("dialog", { name: "The project's threads" });
   await expect(pop.getByRole("link", { name: /Alpha/ })).toBeVisible();
   await expect(pop.getByRole("link", { name: /Beta/ })).toBeVisible();
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-threads-${page.viewportSize()!.width}.png` });
-  await page.keyboard.press("Escape");
+  if (split) { await expect(fact).toHaveAttribute("aria-pressed", "true"); await fact.click(); await expect(pop).toHaveCount(0); } else await page.keyboard.press("Escape");
 
   // Start a thread from a message's menu; the sidebar nests the project's threads with their state.
   await page.locator(".msg.user").first().getByRole("button", { name: "Message actions" }).click();
@@ -1834,6 +1837,12 @@ test("New project in the sidebar creates a pinned project and opens it", async (
   // One row style each, and opening one choice closes the other.
   await side.getByRole("button", { name: "New thread" }).click();
   await expect(side.getByRole("group", { name: "New thread in" })).toBeVisible();
+  // Clicking the row again closes its choice; the row stays put, collapsed.
+  await side.getByRole("button", { name: "New thread" }).click();
+  await expect(side.getByRole("group", { name: "New thread in" })).toHaveCount(0);
+  await expect(side.getByRole("button", { name: "New thread" })).toHaveAttribute("aria-expanded", "false");
+  await side.getByRole("button", { name: "New thread" }).click();
+  await expect(side.getByRole("group", { name: "New thread in" })).toBeVisible();
   await side.getByRole("button", { name: "New project" }).click();
   await expect(side.getByRole("group", { name: "New thread in" })).toHaveCount(0);
   const choice = side.getByRole("group", { name: "New project in" });
@@ -1842,6 +1851,12 @@ test("New project in the sidebar creates a pinned project and opens it", async (
   await expect(side.getByRole("button", { name: "New project" })).toHaveAttribute("aria-expanded", "true");
   await expect(side.getByRole("button", { name: "New thread" })).toHaveAttribute("aria-expanded", "false");
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sidebar-new-${page.viewportSize()!.width}.png` });
+  // Escape closes the choice too, and focus goes back to its row.
+  await page.keyboard.press("Escape");
+  await expect(choice).toHaveCount(0);
+  await expect(side.getByRole("button", { name: "New project" })).toHaveAttribute("aria-expanded", "false");
+  await expect(side.getByRole("button", { name: "New project" })).toBeFocused();
+  await side.getByRole("button", { name: "New project" }).click();
   await choice.getByRole("button", { name: "General" }).click();
   // A new project is created pinned and opened at once, same as the list menu's item does.
   await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
@@ -1851,7 +1866,7 @@ test("New project in the sidebar creates a pinned project and opens it", async (
   await expect(side.locator(".eyebrow").first()).toContainText("Pinned");
 });
 
-test("the split view: a thread from its card opens in the panel, links inside it grow the breadcrumb, Open as a page and Close panel, and below 1180 px the address is the page", async ({ page, baseURL }) => {
+test("the split view: a thread from its card opens in the panel, links inside it grow the breadcrumb, Open as a page and Close panel; Open beside, View thread and the Threads list open beside at 1180 px up, and below it they navigate", async ({ page, baseURL }) => {
   test.skip(phone(page), "the panel starts at 1180 px");
   await enter(page, baseURL!);
   const list = page.locator(".threads");
@@ -1901,6 +1916,15 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await expect(divider).toHaveAttribute("aria-valuenow", "460");
   await page.reload();
   await expect(page.getByRole("separator", { name: "Panel width" })).toHaveAttribute("aria-valuenow", "460");
+  // Dragging it changes the column itself, not just its number: --panel-w has to reach .app's grid.
+  const dbox = (await divider.boundingBox())!;
+  await page.mouse.move(dbox.x + dbox.width / 2, dbox.y + dbox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(dbox.x + dbox.width / 2 - 70, dbox.y + dbox.height / 2);
+  await page.mouse.up();
+  await expect(divider).toHaveAttribute("aria-valuenow", "520");
+  const dragged = (await settings.boundingBox())!;
+  expect(Math.round(dragged.width)).toBe(520);
   await page.getByRole("complementary", { name: "Project settings" }).getByRole("link", { name: "Open as a page" }).click();
   await expect(page.getByRole("complementary", { name: "Project settings" })).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
@@ -1916,6 +1940,60 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await expect(page.getByRole("complementary", { name: "Project settings" })).toBeVisible();
   await page.getByRole("button", { name: "Close panel" }).click();
   await expect(page.getByRole("complementary", { name: "Project settings" })).toHaveCount(0);
+  // The Threads fact in the chat's facts line toggles the project's threads list in the panel, pressed while it shows.
+  const fact = page.locator(".tfacts").getByRole("button", { name: /^Threads/ });
+  await expect(fact).toHaveAttribute("aria-pressed", "false");
+  await fact.click();
+  const threadList = page.locator("aside.panel");
+  await expect(threadList.getByRole("heading", { level: 1, name: "Threads" })).toBeFocused();
+  await expect(fact).toHaveAttribute("aria-pressed", "true");
+  expect(page.url()).toMatch(/\/panel\/.*\/threads$/);
+  // The popover's groups and rows (§5): state as a word, time in mono. A row swaps that thread into the panel; the breadcrumb grows.
+  await expect(threadList.locator(".picker-ep").first()).toBeVisible();
+  await expect(threadList.getByRole("link", { name: /Alpha/ })).toBeVisible();
+  await expect(threadList.getByRole("link", { name: /Beta/ })).toBeVisible();
+  await threadList.getByRole("link", { name: /^Alpha/ }).click();
+  const alphaTrail = page.getByRole("complementary", { name: "Threads › Alpha" });
+  await expect(alphaTrail.getByRole("heading", { level: 1, name: "Alpha" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(fact).toHaveAttribute("aria-pressed", "false");
+  // Open beside: a child row's menu item, and Shift+click on the row itself, open it in the panel beside the chat in a fresh trail.
+  const betaRow = page.locator('.side li:has(> .trow a[aria-current="page"]) .children a.thread, .side li:has(> .children a[aria-current="page"]) .children a.thread').filter({ has: page.locator(".title", { hasText: /^Beta$/ }) });
+  await betaRow.click({ button: "right" });
+  await page.getByRole("menu", { name: "Beta menu" }).getByRole("menuitem", { name: "Open beside" }).click();
+  const betaBeside = page.getByRole("complementary", { name: "Beta" });
+  await expect(betaBeside.getByRole("heading", { level: 1, name: "Beta" })).toBeFocused();
+  await page.locator(".side li:has(> .trow a[aria-current=\"page\"]) .children a.thread").filter({ has: page.locator(".title", { hasText: /^Alpha$/ }) }).click({ modifiers: ["Shift"] });
+  const alphaBeside = page.getByRole("complementary", { name: "Alpha" });
+  await expect(alphaBeside.getByRole("heading", { level: 1, name: "Alpha" })).toBeFocused();
+  await page.getByRole("button", { name: "Close panel" }).click();
+  // View thread at a card's foot opens the thread beside the chat; so does a double-click on the card's empty space.
+  const alphaCard = page.locator(".tcard").filter({ has: page.getByRole("link", { name: "Alpha", exact: true }) });
+  await alphaCard.getByRole("link", { name: "View thread" }).click();
+  const viewed = page.getByRole("complementary", { name: "Alpha" });
+  await expect(viewed.getByRole("heading", { level: 1, name: "Alpha" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await alphaCard.dblclick({ position: { x: 4, y: 4 } });
+  await expect(viewed).toBeVisible();
+  expect(page.url()).toContain("/panel/");
+  await page.keyboard.press("Escape");
+  // Below 1180 px they navigate: Threads is the popover again, View thread goes to the page, Shift+click on a row opens it as the page, and its menu has no Open beside.
+  await page.setViewportSize({ width: 1000, height: size.height });
+  await fact.click();
+  const pop = page.getByRole("dialog", { name: "The project's threads" });
+  await expect(pop).toBeVisible();
+  expect(page.url()).not.toContain("/panel/");
+  await page.keyboard.press("Escape");
+  await alphaCard.getByRole("link", { name: "View thread" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
+  expect(page.url()).not.toContain("/panel/");
+  await betaRow.click({ button: "right" });
+  await expect(page.getByRole("menu", { name: "Beta menu" }).getByRole("menuitem", { name: "Open beside" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await betaRow.click({ modifiers: ["Shift"] });
+  await expect(page.getByRole("heading", { level: 1, name: "Beta" })).toBeVisible();
+  expect(page.url()).not.toContain("/panel/");
+  await page.setViewportSize(size);
   await noHorizontalScroll(page);
 });
 
@@ -1934,10 +2012,15 @@ test("watching threads: writing in a project's thread leads to a look, shown as 
   await send(page, "start: Beta");
   await expect(page.getByText("Started it.")).toHaveCount(2);
   // Write in Alpha (beside the chat on a wide screen, as the page on a phone); the look comes to the project chat.
+  // Its anchor can be a non-displayed entry before the user message. It must stay there,
+  // rather than moving under each new reply or child update (and putting Beta first).
+  const alphaCard = page.locator(".msg.user").filter({ has: page.getByText("start: Alpha", { exact: true }) }).locator("+ .tcard");
+  await expect(alphaCard.getByRole("link", { name: "Alpha", exact: true })).toBeVisible();
+  await expect(page.locator(".tcard-title")).toHaveText(["Alpha", "Beta"]);
   await page.locator(".tcard").first().getByRole("link", { name: "Alpha" }).click();
   const alpha = phone(page) ? page : page.getByRole("complementary", { name: "Alpha" });
   // On a phone the page is still the project chat for a moment after the click; its composer has the same label.
-  await expect(alpha.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
+  await expect(alpha.getByRole("heading", { level: 1, name: "Alpha", exact: true })).toBeVisible();
   await alpha.getByLabel("Message", { exact: true }).fill("use the raised beds");
   await alpha.getByRole("button", { name: "Send" }).click();
   await expect(alpha.getByText(/You said: use the raised beds/)).toBeVisible();
@@ -2273,6 +2356,21 @@ test("Sleep: the sidebar link opens it empty, the mode is set in Settings, Sleep
   await noHorizontalScroll(page);
   await page.goto(`/#/u/${userId}/sleep`);
 
+  // Journal entries themselves also have a one-entry preview and a shared history page.
+  await page.goto(`/#/u/${userId}/memory`);
+  await page.getByRole("group", { name: "Layer", exact: true }).getByRole("button", { name: "Journal", exact: true }).click();
+  const journal = page.getByRole("region", { name: "Browse memory", exact: true });
+  await expect(journal.locator(".mem-list > a")).toHaveCount(1);
+  await journal.getByRole("link", { name: "Show all", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Journal history" })).toBeVisible();
+  await expect(page.locator("main .list > li")).toHaveCount(20);
+  await page.getByRole("button", { name: "Page 2", exact: true }).click();
+  await expect(page.locator("main .list > li")).toHaveCount(4);
+  await page.getByLabel("Search", { exact: true }).fill("Fixture journal 1");
+  await expect(page.locator("main .list > li")).toHaveCount(11);
+  await noHorizontalScroll(page);
+  await page.goto(`/#/u/${userId}/sleep`);
+
   // Private hidden in the Sort menu: its line shows and Sleep now no longer offers it. Then back on.
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   await togglePrivate(page);
@@ -2420,7 +2518,7 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   await expect(page.getByRole("navigation", { name: "Settings sections" })).toHaveCount(0);
 });
 
-test("Tasks: the table shows each profile's models; a cell's drawer adds, reorders and removes, switches to Same as and back; Use Custom instead flips the header; Settings → Model profiles lands here", async ({ page, baseURL }) => {
+test("Tasks: the table shows each column's models; a cell's drawer adds, reorders and removes, and Same as points a task at another; the Preset menu switches, saves and edits a preset; Settings → Model profiles lands here", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/tasks-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
   // A second cloud chat model, added by hand on router, for a fallback.
@@ -2438,28 +2536,30 @@ test("Tasks: the table shows each profile's models; a cell's drawer adds, reorde
   await page.locator('[data-tile="backend"]').click();
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/tasks$`));
   await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
-  const local = page.locator('[data-cell="local:chat"]'), general = page.locator('[data-cell="cloud:chat"]');
+  const local = page.locator('tr[data-task="chat"] [data-col="Private threads"]'), general = page.locator('tr[data-task="chat"] [data-col="General threads"]');
   await expect(local).toContainText("local-model");
   await expect(general).toContainText("cloud-model");
   await expect(general).toContainText("no fallback");
-  await expect(page.locator('[data-cell="cloud:title"]')).toContainText("= Cheap subagents");
+  // Titles follow cheap subagents: the default the first entry brings.
+  await expect(page.locator('tr[data-task="title"] [data-col="General threads"]')).toContainText("= Cheap subagents");
   await noHorizontalScroll(page);
   await shot("table");
 
-  // Chat for General threads: Add… offers only suitable cloud models, so cloud-mini and not the speech models.
+  // Chat for General threads: Add… offers the column's local and cloud text models, so cloud-mini and local-model, not the speech models.
   await general.click();
   await expect(general).toHaveAttribute("aria-pressed", "true");
   const drawer = page.getByRole("complementary", { name: "Edit Chat" });
-  await expect(drawer.getByRole("heading", { level: 2, name: "Chat", exact: true })).toHaveAttribute("title", "Cloud profile · general threads by default");
+  await expect(drawer.getByRole("heading", { level: 2, name: "Chat", exact: true })).toHaveAttribute("title", "General threads column · Custom");
   await drawer.getByRole("button", { name: "Add…" }).click();
   const picker = drawer.getByRole("region", { name: "Add to Chat" });
-  await expect(picker.locator(".pick-row")).toHaveCount(1);
+  await expect(picker.locator(".pick-row")).toHaveCount(2);
+  await expect(picker).toContainText("local-model");
   await expect(picker).not.toContainText("whisper");
-  await expect(picker).not.toContainText("local-model");
+  await expect(picker).not.toContainText("kokoro");
   await drawer.getByLabel("Search models").fill("mini");
   if (phone(page)) await noHorizontalScroll(page);
   await shot("picker");
-  const put = () => page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith("/profiles/cloud/chat"));
+  const put = () => page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith("/columns/general/chat"));
   let saved = put();
   await picker.locator(".pick-row").filter({ hasText: "cloud-mini" }).getByRole("button", { name: "Add" }).click();
   expect((await saved).ok()).toBe(true);
@@ -2487,44 +2587,72 @@ test("Tasks: the table shows each profile's models; a cell's drawer adds, reorde
   await expect(drawer).toHaveCount(0);
   await expect(general).toHaveAttribute("aria-pressed", "false");
 
-  // Titles: its own list, then Same as Chat, then back to Cheap subagents.
-  const titles = page.locator('[data-cell="cloud:title"]');
+  // Same as points Titles at Cheap subagents, which then can't follow another task itself; Compaction and Watching threads follow it too.
+  const titles = page.locator('tr[data-task="title"] [data-col="General threads"]');
   await titles.click();
   const edit = page.getByRole("complementary", { name: "Edit Titles" });
-  await edit.getByRole("radio", { name: "Its own list" }).click();
-  await expect(titles).toContainText("no fallback");
-  await expect(edit.locator("li.oentry")).toHaveCount(1);
-  await edit.getByRole("radio", { name: "Same as" }).click();
-  await expect(titles).toContainText("= Chat");
+  await expect(edit.getByRole("heading", { level: 2, name: "Titles", exact: true })).toHaveAttribute("title", "General threads column · Custom");
   await edit.getByLabel("Task to share with").selectOption({ label: "Cheap subagents" });
   await expect(titles).toContainText("= Cheap subagents");
-  await expect(edit.getByRole("button", { name: "Add…" })).toHaveCount(0);
   await edit.getByRole("button", { name: "Close" }).click();
-  // Cheap subagents has followers, so it can't follow another task itself.
-  await page.locator('[data-cell="cloud:subagent.cheap"]').click();
+  await page.locator('tr[data-task="subagent.cheap"] [data-col="General threads"]').click();
   const cheap = page.getByRole("complementary", { name: "Edit Cheap subagents" });
   await expect(cheap.getByRole("radio", { name: "Same as" })).toBeDisabled();
   await expect(cheap).toContainText("Compaction, Titles and Watching threads use this list.");
   await expect(cheap.getByRole("radio", { name: "Same as" })).toHaveAccessibleDescription("Compaction, Titles and Watching threads use this list.");
   await cheap.getByRole("button", { name: "Close" }).click();
 
-  // Use Custom instead flips the header and the General column; and back. Each head's sentence is its name's tooltip.
-  const head = (name: string) => page.locator(".ttable thead b").filter({ hasText: name });
-  await page.getByRole("button", { name: "Use Custom instead" }).click();
-  await expect(head("General threads")).toHaveAttribute("title", "Custom profile · local and cloud, falls back across");
-  await expect(page.locator('[data-cell="custom:chat"]')).toBeVisible();
-  await expect(page.getByRole("button", { name: "Show Cloud too" })).toBeVisible();
-  await page.getByRole("button", { name: "Use Cloud instead" }).click();
-  await expect(head("General threads")).toHaveAttribute("title", "Cloud profile · cloud models only");
+  // The Preset menu: the built-ins, switching a column, editing a followed column into Custom, Save to, New preset and its edit and delete.
+  const generalHead = page.locator(".ttable thead th").nth(2);
+  const generalPreset = generalHead.locator("button.preset-button");
+  const menu = () => page.getByRole("dialog", { name: "Preset" });
+  const item = (name: string) => menu().getByRole("button", { name, exact: true });
+  await expect(generalPreset).toContainText("Custom");
+  await generalPreset.click();
+  await expect(item("Cloud")).toBeVisible();
+  await expect(item("Local")).toBeVisible();
+  await expect(item("Save as preset…")).toBeVisible();
+  await expect(item("New preset…")).toBeVisible();
+  await item("Cloud").click();
+  await expect(generalPreset).toContainText("Cloud");
+  await expect(general).toContainText("No model");
+  // Editing a followed column makes it Custom, and the menu offers to save it back to the preset it came from.
+  await general.click();
+  const edit2 = page.getByRole("complementary", { name: "Edit Chat" });
+  await expect(edit2.getByRole("heading", { level: 2, name: "Chat", exact: true })).toHaveAttribute("title", "General threads column · Cloud");
+  await edit2.getByRole("button", { name: "Add…" }).click();
+  const picker2 = edit2.getByRole("region", { name: "Add to Chat" });
+  await picker2.getByLabel("Search models").fill("cloud-model");
+  await picker2.locator(".pick-row").filter({ hasText: "cloud-model" }).getByRole("button", { name: "Add" }).click();
+  await edit2.getByRole("button", { name: "Close" }).click();
+  await expect(generalPreset).toContainText("Custom");
+  await expect(general).toContainText("cloud-model");
+  await generalPreset.click();
+  await expect(item("Save to Cloud")).toBeVisible();
+  await item("Save to Cloud").click();
+  await expect(generalPreset).toContainText("Cloud");
+  await expect(general).toContainText("cloud-model");
 
-  // Show Custom too adds its column; Hide Custom takes it away.
-  await page.getByRole("button", { name: "Show Custom too" }).click();
-  await expect(head("Custom profile")).toHaveAttribute("title", "Not the default. A general thread can switch to it.");
-  await expect(page.locator('[data-cell="custom:chat"]')).toBeVisible();
-  await noHorizontalScroll(page);
-  await shot("custom");
-  await page.getByRole("button", { name: "Hide Custom" }).click();
-  await expect(page.locator('[data-cell="custom:chat"]')).toHaveCount(0);
+  // New preset makes one from the column's table; its edit renames and Delete removes it, leaving the column on Cloud.
+  await generalPreset.click();
+  await item("New preset…").click();
+  const newPreset = page.getByRole("complementary", { name: "New preset" });
+  await newPreset.getByLabel("Name", { exact: true }).fill("Work");
+  await newPreset.getByRole("button", { name: "Save" }).click();
+  await expect(newPreset).toHaveCount(0);
+  await generalPreset.click();
+  await expect(item("Work")).toBeVisible();
+  await item("Edit Work").click();
+  const editPreset = page.getByRole("complementary", { name: "Work" });
+  await editPreset.getByLabel("Name", { exact: true }).fill("Deep work");
+  await editPreset.getByRole("button", { name: "Save" }).click();
+  await expect(editPreset).toHaveCount(0);
+  await generalPreset.click();
+  await item("Edit Deep work").click();
+  const editPreset2 = page.getByRole("complementary", { name: "Deep work" });
+  await editPreset2.getByRole("button", { name: "Delete preset…" }).click();
+  await page.getByRole("dialog", { name: "Delete Deep work?" }).getByRole("button", { name: "Delete" }).click();
+  await expect(editPreset2).toHaveCount(0);
 
   // The old Settings → Model profiles address lands here; Settings has Sleep in its place.
   await page.goto(`/#/u/${userId}/settings/profiles`);
@@ -2534,6 +2662,32 @@ test("Tasks: the table shows each profile's models; a cell's drawer adds, reorde
   await expect(page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Sleep" })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("checkbox", { name: "Sleep fallback" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Model profiles" })).toHaveCount(0);
+});
+
+test("New preset summary: +N fallbacks and a red gone model", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  // General chat follows a gone offering first, with two fallbacks after it, so the New preset summary shows both.
+  await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
+    type M = { id: string; modelId: string; status?: string };
+    const real = await (await route.fetch()).json() as {
+      endpoints: { kind: string; models: M[] }[];
+      presets: { columns: { general: { preset: unknown; entries: Record<string, unknown> } } };
+    };
+    const cloud = real.endpoints.find((e) => e.kind === "cloud" && e.models.some((m) => m.modelId === "cloud-model"))!;
+    const live = cloud.models.find((m) => m.modelId === "cloud-model")!;
+    cloud.models.push({ ...live, id: "off-gone", modelId: "gone-model", status: "gone" });
+    real.presets.columns.general.preset = null;
+    real.presets.columns.general.entries.chat = [{ offeringId: "off-gone" }, { offeringId: live.id }, { offeringId: live.id }];
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(real) });
+  });
+  await page.goto(`/#/u/${userId}/models/tasks`);
+  await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
+  await page.locator(".ttable thead th").nth(2).locator("button.preset-button").click();
+  await page.getByRole("button", { name: "New preset…" }).click();
+  const summary = page.getByRole("complementary", { name: "New preset" }).locator("ul.preset-summary");
+  await expect(summary).toContainText("gone-model");
+  await expect(summary).toContainText("+2 fallbacks");
+  await expect(summary.locator(".pill.bad").first()).toHaveText("gone");
 });
 
 test("Text models: a row per model with starred first; a row opens to its copies, and a copy's Settings saves Temperature as yours", async ({ page, baseURL }) => {
@@ -2701,7 +2855,7 @@ test("Downloads: the queue shows progress with Cancel and how each ended, Accoun
   const done = page.locator("li.dl[data-download=d2]");
   await expect(done).toContainText("from example.org to box");
   await expect(done.locator(".dl-end")).toHaveText("Unverified no checksum given · 0.3 GB · Ready");
-  await expect(page.locator("[aria-live=polite]")).toBeAttached();
+  await expect(page.locator("[aria-live=polite]").first()).toBeAttached();
   await noHorizontalScroll(page);
   if (phone(page)) for (const b of [running.getByRole("button", { name: "Cancel m-Q4_K_M.gguf" }), page.getByRole("button", { name: "Add a Hugging Face token" })]) {
     expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
@@ -2879,7 +3033,7 @@ test("Image models: a recipe opens to its parts with Change, Add a part and Dele
   await block.getByRole("button", { name: "Delete" }).click();
   const del = page.getByRole("dialog", { name: "Delete Z-Image Turbo from box?" });
   await expect(del).toContainText("Deletes z_image_turbo_bf16.safetensors, qwen_3_4b.safetensors, ae.safetensors, which frees 20.6 GB.");
-  await expect(del).toContainText("None of your profiles use it.");
+  await expect(del).toContainText("Nothing of yours uses it.");
   await del.getByRole("button", { name: "Delete" }).click();
   await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "delete" });
 

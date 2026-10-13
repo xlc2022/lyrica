@@ -59,7 +59,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
     await s.models.discover(s.ada, s.workstation.ep.id);
     await s.models.discover(s.ada, s.spare.ep.id);
     const last = await s.host("last", tier);
-    s.models.setProfile(s.ada.id, "local", "image.create", [s.workstation.ref, s.spare.ref, last.ref]);
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [s.workstation.ref, s.spare.ref, last.ref]);
     const ctx = s.ctx({ localOnly: true });
     const request = { action: "create" as const, prompt: "A garden", tier };
     const first = await s.models.image(ctx, request);

@@ -9,7 +9,7 @@ import {
 } from "./api.ts";
 import { HistoryHead, HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
-import { longDate, plainCitations, poolWord, wordDiff } from "./memory.ts";
+import { plainCitations, poolWord, wordDiff } from "./memory.ts";
 import { readable } from "./mentions.ts";
 import { go, href, idHref } from "./route.ts";
 import { PageHead, PoolLock, type ShellContext } from "./Shell.tsx";
@@ -210,10 +210,15 @@ export function SleepHistoryPage({ ctx }: { ctx: ShellContext }) {
   return <main className="main">
     <PageHead ctx={ctx} title="Sleep history"><a href={href({ page: "sleep", userId })}>Sleep</a></PageHead>
     <div className="scroll"><div className="sleep">
-      <HistoryList<SleepRunInfo> key={`${userId}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} path={u(userId, "sleep", "history")} render={(page) => <div className="list sleep-runs">{page.entries.map((r) => <div key={`${r.pool}/${r.id}`}>
-        <div className="eyebrow num">{longDate(r.startedAt)}</div>
-        <RunRow run={r} detail={details[`${r.pool}/${r.id}`]} userId={userId} users={{ [userId]: { displayName: ctx.user.displayName, pronouns: ctx.user.pronouns } }} load={load} />
-      </div>)}</div>} />
+      <HistoryList<SleepRunInfo> key={`${userId}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} path={u(userId, "sleep", "history")} render={(page) => {
+        const days = new Map<string, SleepRunInfo[]>();
+        for (const r of page.entries) { const day = new Date(r.startedAt).toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" }); days.set(day, [...(days.get(day) ?? []), r]); }
+        return <div className="stack">{[...days].map(([day, runs]) => <div className="sleep-day" key={day}>
+          <div className="eyebrow num">{day}</div>
+          <div className="list sleep-runs">{runs.map((r) => <RunRow key={`${r.pool}/${r.id}`} run={r} detail={details[`${r.pool}/${r.id}`]} userId={userId}
+            users={{ [userId]: { displayName: ctx.user.displayName, pronouns: ctx.user.pronouns } }} load={load} />)}</div>
+        </div>)}</div>;
+      }} />
     </div></div>
   </main>;
 }

@@ -11,7 +11,7 @@ export type LibraryCopy = LibraryEntry["copies"][number];
 export function groupWarnings(copies: Pick<LibraryCopy, "kind" | "capabilities">[]): string[] {
   const differ = (f: (c: Pick<LibraryCopy, "kind" | "capabilities">) => unknown) => new Set(copies.map((c) => JSON.stringify(f(c) ?? null))).size > 1;
   const lines: string[] = [];
-  if (differ((c) => c.kind)) lines.push("Mixes local and cloud: Local and Cloud profiles use only the matching copies, Custom uses all of them.");
+  if (differ((c) => c.kind)) lines.push("Mixes local and cloud: a private preset or the Private column uses only the local copies, a general preset or a Custom column uses all of them.");
   if (differ((c) => c.capabilities.contextWindow)) lines.push("Context windows differ: long conversations skip the smaller copies.");
   if (differ((c) => !!c.capabilities.vision)) lines.push("Only some copies can see images: calls with images skip the others.");
   return lines;

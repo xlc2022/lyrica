@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { randomBytes, timingSafeEqual, X509Certificate } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual, X509Certificate } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
@@ -15,6 +15,7 @@ import { Delegation, planCatalog, Sleep, type Limits, type SleepLimits } from "@
 import { ChildThreads } from "./children.ts";
 import { Routines } from "./routines.ts";
 import { Wakeups } from "./wakeups.ts";
+import { ForgeWatcher } from "./forge-watch.ts";
 import { Projects } from "./projects.ts";
 import { Watcher } from "./watch.ts";
 import type { BusyItem, Health, SetupRequest, State, UserCard } from "./api.ts";
@@ -24,7 +25,7 @@ import { ThreadHost } from "./hosted.ts";
 /** Model host refusals the web UI acts on, so their code goes with the message. */
 const HOST_CODES = ["need_repo", "above_recommended"];
 import {
-  checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, sendJson, serveStatic, statusOf, Updating,
+  checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, readBody, sendJson, serveStatic, statusOf, Updating,
   type Request, type Route, type TrustForwarded,
 } from "./http.ts";
 import { TailnetControl } from "./tailnet.ts";
@@ -99,6 +100,8 @@ export interface LyricadOptions {
 export interface Services {
   wakeups: Wakeups;
   routines: Routines;
+  /** CI wakes: polls each thread's open pull requests and hands the notes to the wake-up path. */
+  forge: ForgeWatcher;
   users: Users;
   memory: Memory;
   models: Models;
@@ -403,6 +406,8 @@ export class Lyricad implements Drainable {
       excludePorts: [this.port, this.servePort], frontDoor: () => web.frontDoor(), bwrap: this.opts.bwrap, pasta: this.opts.pasta,
       // A private or local-only thread never gets Claude Code. Asked at each run, once the models below exist.
       restricted: (u, p, thread) => isRestricted(models.callContext(u, p, thread)),
+      // A run's relay opened a pull request: the CI-watch poller records it (docs/briefs/ci-wakes.md).
+      onPullCreate: (t, pr) => forge.record(t.userId, t.pool, t.threadId, pr.repo, pr.number),
     });
     if (this.opts.selfTest !== false) {
       const refused = await workspace.selfTest();
@@ -416,6 +421,7 @@ export class Lyricad implements Drainable {
     mkdirSync(cwd, { recursive: true, mode: 0o700 });
     // A subagent's approvals are asked in its thread and its parent's, through the host built next.
     let host!: ThreadHost;
+    let forge!: ForgeWatcher;
     const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal), name: () => selfName(keyring.self()), searxng: () => searxngAddress(keyring.self()) });
     const projects = new Projects(users);
     // A hidden project stops as a paused one does.
@@ -445,6 +451,7 @@ export class Lyricad implements Drainable {
       wakeups: (): Wakeups => wakeups,
     });
     const wakeups: Wakeups = new Wakeups({ memory, host: () => host, children, log: this.log });
+    forge = new ForgeWatcher({ memory, workspace, wakeups, log: this.log });
     host = new ThreadHost({
       users, memory, models, workspace, persona, delegation, cwd, log: this.log, searxng: () => searxngAddress(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
@@ -478,7 +485,7 @@ export class Lyricad implements Drainable {
     host.draining = this.drainingNow;
     const shares = new ThreadShares(keyring.self());
     const routines = new Routines({ memory, host: () => host, children, log: this.log });
-    this.services = { routines, wakeups, users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, tailnet: this.tailnet, prefs, shares };
+    this.services = { routines, wakeups, forge, users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, tailnet: this.tailnet, prefs, shares };
     this.rememberName(selfName(keyring.self()));
     await web.resume();
     for (const u of users.all()) {
@@ -504,6 +511,7 @@ export class Lyricad implements Drainable {
     try {
       this.services!.wakeups.load(userId);
       this.services!.routines.load(userId);
+      this.services!.forge.load(userId);
     } catch (err) {
       this.log(`loading scheduled turns failed: ${(err as Error).name}`);
     }
@@ -534,6 +542,7 @@ export class Lyricad implements Drainable {
     this.sessions.dropUser(userId);
     s.wakeups.drop(userId);
     s.routines.drop(userId);
+    s.forge.drop(userId);
     // Subagent runs record how they ended in user.db, and a sleep run in the pool, so they stop before the key goes.
     await s.delegation.stopAll(userId);
     await s.children.lock(userId);
@@ -557,6 +566,7 @@ export class Lyricad implements Drainable {
     if (!this.draining) {
       this.services.wakeups.tick(now);
       this.services.routines.tick(now);
+      this.services.forge.tick(now);
     }
     const pad = (n: number) => String(n).padStart(2, "0");
     if (`${pad(now.getHours())}:${pad(now.getMinutes())}` !== this.sleepTime() || this.sleptOn === now.toDateString()) return;
@@ -667,7 +677,7 @@ export class Lyricad implements Drainable {
     check("models", () => {
       for (const u of keyed) {
         s.models.callContext(u.id, "general", "update-health");
-        s.models.profile(u.id, "cloud");
+        s.models.presets(u.id);
       }
     });
     check("web", () => { readFileSync(join(this.opts.webDir ?? DEFAULT_WEB, "index.html")); });
@@ -732,6 +742,13 @@ export class Lyricad implements Drainable {
     try {
       const url = new URL(req.url ?? "/", "http://lyricad");
       const path = url.pathname;
+      // The Forgejo/Gitea webhook answers only on her tailnet listener: a signed nudge to poll at once.
+      if (method === "POST" && path.startsWith("/hooks/forge/")) {
+        routeName = "/hooks/forge/:account";
+        if (via !== "tailnet") throw new HttpError(404, "not found");
+        sendJson(res, 200, await this.forgeHook(req, path));
+        return;
+      }
       if (!path.startsWith("/api/")) {
         if ((method === "GET" || method === "HEAD") && serveStatic(this.opts.webDir ?? DEFAULT_WEB, path, res)) return;
         throw new HttpError(404, "not found");
@@ -761,6 +778,43 @@ export class Lyricad implements Drainable {
       if (!res.headersSent) sendJson(res, status, { error: message, ...refused, ...offline, ...updating }, err instanceof HttpError ? err.headers : {});
       else res.end();
     }
+  }
+
+  /**
+   * The Forgejo/Gitea tailnet webhook (docs/briefs/ci-wakes.md step 4): a
+   * signed nudge that makes the poller ask at once. One secret per Git
+   * account; the signature says which account sent it. Nothing from the body
+   * is kept or logged. During an update's drain it only answers, so no turn
+   * starts.
+   */
+  private async forgeHook(req: IncomingMessage, path: string): Promise<{ ok: boolean }> {
+    const accountName = decodeURIComponent(path.slice("/hooks/forge/".length));
+    if (!accountName || accountName.includes("/")) throw new HttpError(404, "not found");
+    const s = this.services;
+    if (!s) throw new HttpError(503, "lyricad is locked");
+    const body = await readBody(req, 256 * 1024);
+    const got = req.headers["x-forgejo-signature"] ?? req.headers["x-gitea-signature"];
+    if (typeof got !== "string") throw new HttpError(401, "unsigned");
+    const matches: { userId: string; account: string }[] = [];
+    for (const u of s.users.all()) {
+      if (!this.keyring.hasUserKey(u.id)) continue;
+      const a = s.workspace.settings(u.id).gitAccount(accountName);
+      if (!a || (a.kind !== "forgejo" && a.kind !== "gitea") || !a.webhookSecret) continue;
+      const want = createHmac("sha256", a.webhookSecret).update(body).digest("hex");
+      const x = Buffer.from(want);
+      const y = Buffer.from(got);
+      if (x.length === y.length && timingSafeEqual(x, y)) matches.push({ userId: u.id, account: a.name });
+    }
+    if (!matches.length) throw new HttpError(401, "bad signature");
+    let repo: string | undefined;
+    try {
+      const parsed = JSON.parse(body.toString("utf8")) as { repository?: { full_name?: unknown } };
+      if (typeof parsed.repository?.full_name === "string") repo = parsed.repository.full_name;
+    } catch { /* not JSON: no nudge */ }
+    if (!repo) throw new HttpError(400, "no repository");
+    if (this.draining) return { ok: true };
+    for (const m of matches) await s.forge.webhook(m.userId, m.account, repo);
+    return { ok: true };
   }
 
   /** The user named in the path, if this browser session is logged in as them and their key is in memory. */

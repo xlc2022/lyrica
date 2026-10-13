@@ -1,5 +1,5 @@
 // The Models area's Downloads tab (docs/ux.md §6, "Downloads and hub accounts"): the queue of every host's downloads,
-// In progress then Finished, read again every 2 s while anything runs; the Download text model page (and what Download
+// Active work and one finished History preview, read again every 2 s while anything runs; the Download text model page (and what Download
 // image model shares with it); and Accounts, the hub tokens for gated repositories. A host's downloads need its
 // management, so a shared host's need an administrator, and only those hosts are listed. Its pure parts are in
 // src/downloads.ts.
@@ -120,7 +120,7 @@ export function Downloads({ ctx, history = false }: { ctx: MCtx; history?: boole
           )}
         </div>
       </section>}
-      <section className="section" aria-label="History">
+      <section className="section" aria-label="History" aria-live={history ? undefined : "polite"}>
         {!history && <HistoryHead to={{ page: "models", userId, tab: "downloads", add: "history" }} />}
         {history ? <HistoryList<DownloadHistory["entries"][number], DownloadHistory> path={u(userId, "models", "downloads", "history")} render={(page) => <ul className="list downloads">{page.entries.map(({ endpointId, download }) => {
           const ep = hosts.find((h) => h.id === endpointId);

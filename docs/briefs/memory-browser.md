@@ -48,9 +48,10 @@ edits; "Remember this" on a message.
    and only from pools the display filters show: a citer in a hidden pool
    keeps its id, gets no sentence, and shows as "Private is hidden", like
    a link. A private note's words never reach a general memory's detail.
-4. **History** as word differences: each revision against the current
-   text, computed in the browser (a small word-level diff, no dependency),
-   with **Restore**. No diff is stored.
+4. **History** shows the latest version. **Show all** beside its eyebrow
+   opens searchable numbered history pages (briefs/history-page.md). Each
+   older revision shows differences against the current text, computed in
+   the browser, with **Restore**. No diff is stored.
 5. **Tags:** a note's `about` words as chips; the Notes layer lists the
    pool's tags (`GET …/memory/about`) and a tapped tag filters the list
    (`about=`). Pages get no tags.

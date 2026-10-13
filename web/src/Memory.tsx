@@ -128,14 +128,15 @@ function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContex
   if (pool) params.set("pool", pool);
   if (userOnly) params.set("origin", "user");
   if (!query && layer === "note" && tag) params.set("about", tag);
-  params.set("limit", String(PAGE_SIZE));
+  const journalPreview = !query && layer === "journal";
+  params.set("limit", String(journalPreview ? 1 : PAGE_SIZE));
   const search = params.toString();
   const hits = useLoad(() => get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}`), [userId, search, display.showGeneral, display.showPrivate]);
   const tags = useLoad(() => (layer === "note" && !query ? get<MemoryTag[]>(`${u(userId, "memory", "about")}${pool ? `?pool=${pool}` : ""}`) : Promise.resolve([] as MemoryTag[])), [userId, layer, query, pool, display.showGeneral, display.showPrivate]);
   useEffect(() => { setMore([]); setNoMore(false); setSel([]); }, [search]);
 
   const rows = [...(hits.data ?? []), ...more];
-  const canPage = !query && hits.data && hits.data.length >= PAGE_SIZE && !noMore;
+  const canPage = !query && !journalPreview && hits.data && hits.data.length >= PAGE_SIZE && !noMore;
   const page = () => run(async () => {
     const last = rows.at(-1)?.updatedAt;
     if (!last) return;
@@ -188,6 +189,7 @@ function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContex
         </div>
       )}
       <ErrorText error={hits.error || tags.error || error} />
+      {journalPreview && <HistoryHead to={{ page: "history", userId, kind: "journal", ...(pool ? { pool } : {}) }} />}
       <div className="mem-list" aria-label={query ? "Search results" : LAYERS.find((l) => l.layer === layer)!.label} data-selecting={sel.length > 0 || undefined}>
         {rows.map((h) => (
           <a key={key(h)} href={href({ page: "memory", userId, pool: h.pool, id: h.id })} aria-current={current === h.id ? "true" : undefined} className={sel.includes(key(h)) ? "sel" : undefined}
@@ -357,7 +359,7 @@ function Lineage({ title, uses, mark, ctx, pool, links, users, ownText }: {
           }
           return (
             <a key={use.id} className="lk" href={w.href}>
-              <span>{ref.kind !== "note" && <span className="eyebrow">{KIND_WORD[ref.kind]}</span>}{w.cite ? firstWords(readable(w.link!.snippet, users)) : w.text}{w.link?.origin === "user" && <span className="cap"> yours</span>}</span>
+              <span>{ref.kind !== "note" && <span className="eyebrow">{KIND_WORD[ref.kind]}</span>}{w.cite ? firstWords(readable(w.link!.snippet, users)) : w.text}{w.link?.origin === "user" && <span className="cap"> yours</span>}{w.link?.deleted && <span className="cap"> deleted</span>}</span>
               <span className="when num">{dateWord(w.link!.updatedAt)}</span>
               {sentence}
             </a>
@@ -375,6 +377,21 @@ function Sentence({ text, pool, links, users, display, userId, mark }: { text: s
   const plain = plainWords(readable(withMark, users), pool, links, display, userId);
   const parts = plain.split(MARK);
   return <span className="q">{parts.map((p, i) => (i % 2 ? (p.trim() ? <mark key={i}>{p.trim()}</mark> : null) : p))}</span>;
+}
+
+export function JournalHistoryPage({ ctx, pool }: { ctx: ShellContext; pool?: Pool }) {
+  const userId = ctx.user.id;
+  return <main className="main">
+    <PageHead ctx={ctx} title="Journal history"><a href={href({ page: "memory", userId })}>Memory</a></PageHead>
+    <div className="scroll"><div className="sleep">
+      <HistoryList<MemoryHit> key={`${userId}/${pool}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} path={`${u(userId, "memory", "journal", "history")}${pool ? `?pool=${pool}` : ""}`} render={(page) => <ul className="list">
+        {page.entries.map((entry) => <li key={`${entry.pool}/${entry.id}`}>
+          <div className="row between"><a href={href({ page: "memory", userId, pool: entry.pool, id: entry.id })}>{new Date(entry.updatedAt!).toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" })}</a><span className={`kind ${entry.pool}`}>{poolWord(entry.pool)}</span></div>
+          <p>{entry.snippet}</p>
+        </li>)}
+      </ul>} />
+    </div></div>
+  </main>;
 }
 
 export function MemoryHistoryPage({ ctx, pool, id }: { ctx: ShellContext; pool: Pool; id: string }) {

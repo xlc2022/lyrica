@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { nextRun, parseSchedule, type Schedule } from "../routines.ts";
+import type { ForgeKind, ForgeWatchState } from "../forge/types.ts";
 import type { Db } from "../db.ts";
 import { render, toStored, type UserId } from "../mentions.ts";
 import type { Profile } from "../profile.ts";
@@ -83,6 +84,24 @@ export interface StoredEntry {
 export interface Wakeup { id: number; thread: string; dueAt: string; note: string; setAt: string }
 
 export interface Routine { id: number; thread: string; schedule: Schedule; note: string; newThread: boolean; paused: boolean; nextAt: string; lastAt?: string; createdAt: string }
+
+/** A pull request a thread opened through its relay, polled until CI and reviews land (docs/briefs/ci-wakes.md). */
+export interface Watch {
+  id: number;
+  thread: string;
+  repo: string;
+  kind: ForgeKind;
+  host: string;
+  account: string;
+  number: number;
+  head: string | null;
+  headSince: string;
+  notifiedHeads: string[];
+  seenReviews: string[];
+  /** When the repository last got a signed webhook; the poller then eases to ten minutes. */
+  webhookAt?: string;
+  createdAt: string;
+}
 
 /** One emoji on a message and who put it there: user IDs, or "lyrica". */
 export interface Reaction { emoji: string; by: string[] }
@@ -406,6 +425,13 @@ export class PoolReader {
     return (this.db.prepare("SELECT fired_at FROM wakeups WHERE thread = ? AND fired_at >= ? ORDER BY fired_at").all(threadId, since) as { fired_at: string }[]).map((r) => r.fired_at);
   }
 
+  /** A thread's watched pull requests, oldest first; or every thread's. */
+  watches(threadId?: string): Watch[] {
+    const rows = this.db.prepare(`SELECT * FROM watches ${threadId ? "WHERE thread = ?" : ""} ORDER BY created_at, id`)
+      .all(...(threadId ? [threadId] : [])) as WatchRow[];
+    return rows.map(toWatch);
+  }
+
   /** A thread's latest `limit` messages as another thread reads them: logged ones with text, no tool results; oldest first. */
   latestEntries(threadId: string, limit: number): StoredEntry[] {
     const rows = this.db.prepare("SELECT * FROM entries WHERE thread = ? AND unlogged = 0 AND role != 'toolResult' AND trim(text) != '' ORDER BY n DESC LIMIT ?")
@@ -565,7 +591,7 @@ export class PoolReader {
 
   /** Metadata search and paging, without loading a run's memory text. */
   sleepRunHistory({ limit, offset, q }: { limit: number; offset: number; q: string }) {
-    const where = "instr(lower(id || ' ' || started_at || ' ' || status || ' ' || coalesce(skip_reason, '') || ' ' || reason), lower(@q)) > 0";
+    const where = q ? "instr(lower(id || ' ' || started_at || ' ' || status || ' ' || coalesce(skip_reason, '') || ' ' || reason), lower(@q)) > 0" : "@q = ''";
     const total = (this.db.prepare(`SELECT count(*) AS n FROM sleep_runs WHERE ${where}`).get({ q }) as { n: number }).n;
     const rows = this.db.prepare(`SELECT * FROM sleep_runs WHERE ${where} ORDER BY started_at DESC, id DESC LIMIT @limit OFFSET @offset`).all({ q, limit, offset }) as SleepRunRow[];
     return { total, entries: rows.map(toRun) };
@@ -725,6 +751,14 @@ export class PoolReader {
 
   // Lineage
 
+  /** Journal entries as a history, newest update first; versions use revisionHistory. */
+  journalHistory({ limit, offset, q }: { limit: number; offset: number; q: string }) {
+    const where = q ? "instr(lower(text || ' ' || updated_at), lower(@q)) > 0" : "@q = ''";
+    const total = (this.db.prepare(`SELECT count(*) AS n FROM journal WHERE ${where}`).get({ q }) as { n: number }).n;
+    const rows = this.db.prepare(`SELECT id FROM journal WHERE ${where} ORDER BY updated_at DESC, id DESC LIMIT @limit OFFSET @offset`).all({ q, limit, offset }) as { id: string }[];
+    return { total, entries: rows.map((r) => this.get(r.id)!) };
+  }
+
   /** What the item cites (its sources, or what a user memory is connected to). */
   cameFrom(id: string): string[] {
     return (this.db.prepare("SELECT dst FROM citations WHERE src = ? ORDER BY dst").all(id) as { dst: string }[]).map((r) => r.dst);
@@ -742,9 +776,10 @@ export class PoolReader {
 
   /** Versions newest first; search literal text, title, summary, author and date. */
   revisionHistory(id: string, { limit, offset, q }: { limit: number; offset: number; q: string }) {
-    const where = "item = @id AND instr(lower(coalesce(json_extract(body, '$.text'), '') || ' ' || coalesce(json_extract(body, '$.title'), '') || ' ' || coalesce(json_extract(body, '$.summary'), '') || ' ' || author || ' ' || created_at), lower(@q)) > 0";
-    const total = (this.db.prepare(`SELECT count(*) AS n FROM revisions WHERE ${where}`).get({ id, q }) as { n: number }).n;
-    const rows = this.db.prepare(`SELECT * FROM revisions WHERE ${where} ORDER BY id DESC LIMIT @limit OFFSET @offset`).all({ id, q, limit, offset }) as RevisionRow[];
+    const where = "item = @id" + (q ? " AND instr(lower(coalesce(json_extract(body, '$.text'), '') || ' ' || coalesce(json_extract(body, '$.title'), '') || ' ' || coalesce(json_extract(body, '$.summary'), '') || ' ' || author || ' ' || created_at), lower(@q)) > 0" : "");
+    const params = { id, ...(q ? { q } : {}) };
+    const total = (this.db.prepare(`SELECT count(*) AS n FROM revisions WHERE ${where}`).get(params) as { n: number }).n;
+    const rows = this.db.prepare(`SELECT * FROM revisions WHERE ${where} ORDER BY id DESC LIMIT @limit OFFSET @offset`).all({ ...params, limit, offset }) as RevisionRow[];
     return { total, entries: rows.map((r): MemoryRevision => ({ id: r.id, item: r.item, body: json(r.body), author: r.author, createdAt: r.created_at })) };
   }
 
@@ -1085,6 +1120,38 @@ export class PoolStore extends PoolReader {
       .run(threadId, ...(id !== undefined ? [id] : [])).changes;
   }
 
+  /** A pull request this thread opened through its relay, to watch (docs/briefs/ci-wakes.md). Returns its ID. */
+  addWatch(threadId: string, input: { repo: string; kind: ForgeKind; host: string; account: string; number: number }, at = now()): number {
+    this.mustThread(threadId);
+    return Number(this.db.prepare(`INSERT INTO watches (thread, repo, kind, host, account, number, head_since, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(threadId, input.repo, input.kind, input.host, input.account, input.number, at, at).lastInsertRowid);
+  }
+
+  /** Saves a watch's decision state after one poll; false when the watch is already gone. */
+  updateWatch(id: number, state: ForgeWatchState): boolean {
+    return this.db.prepare("UPDATE watches SET head = ?, head_since = ?, notified_heads = ?, seen_reviews = ? WHERE id = ?")
+      .run(state.head, state.headSince, JSON.stringify(state.notifiedHeads), JSON.stringify(state.seenReviews), id).changes > 0;
+  }
+
+  /** The watch's repository just got a signed webhook, so the poller eases to ten minutes. */
+  markWatchWebhook(id: number, at = now()): void {
+    this.db.prepare("UPDATE watches SET webhook_at = ? WHERE id = ?").run(at, id);
+  }
+
+  removeWatch(id: number): boolean {
+    return this.db.prepare("DELETE FROM watches WHERE id = ?").run(id).changes > 0;
+  }
+
+  /** One poll's outcome in one transaction: end or save the watch, and record the note's wake-up if there is one. Returns the wake-up's ID. */
+  settleWatch(id: number, next: ForgeWatchState, stop: boolean, note: { thread: string; dueAt: string; text: string } | null): number | undefined {
+    return this.tx(() => {
+      if (!this.db.prepare("SELECT 1 FROM watches WHERE id = ?").get(id)) return undefined; // gone since the poll began
+      if (stop) this.removeWatch(id);
+      else this.updateWatch(id, next);
+      return note ? this.addWakeup(note.thread, note.dueAt, note.text, note.dueAt) : undefined;
+    });
+  }
+
   /**
    * Deletes the thread and its entries, and the notes whose only sources were
    * in it (each leaves a tombstone, and pages citing them are flagged). Its
@@ -1094,11 +1161,12 @@ export class PoolStore extends PoolReader {
    * have (a kept child thread is no longer a child). A project forgotten with
    * `children` also takes its page and the notes that came only from it.
    */
-  forgetThread(threadId: string, author: Author, opts: { children?: boolean } = {}): void {
+  forgetThread(threadId: string, author: Author, opts: { children?: boolean; keepMemories?: boolean } = {}): void {
     this.checkAuthor(author);
     const thread = this.mustThread(threadId);
-    if (thread.project && opts.children) this.forgetProjectMemory(threadId, author);
-    for (const sub of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(sub.id, author);
+    const keep = !!opts.keepMemories;
+    if (thread.project && opts.children && !keep) this.forgetProjectMemory(threadId, author);
+    for (const sub of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(sub.id, author, { keepMemories: keep });
     if (opts.children) for (const child of this.listThreads({ includeHidden: true, parent: threadId, children: true })) this.forgetThread(child.id, author, opts);
     this.tx(() => {
       // A kept daughter is a thread of its own: a kept child thread is no longer a child, so it may start its own.
@@ -1106,8 +1174,13 @@ export class PoolStore extends PoolReader {
       const inThread = (dst: string) => dst === `t:${threadId}` || dst.startsWith(`e:${threadId}#`);
       const candidates = this.db.prepare("SELECT DISTINCT src FROM citations WHERE src LIKE 'n:%' AND (dst = ? OR dst LIKE ?)")
         .all(`t:${threadId}`, `e:${threadId}#%`) as { src: string }[];
-      for (const { src } of candidates) {
+      if (!keep) for (const { src } of candidates) {
         if (this.cameFrom(src).every(inThread)) this.remove(src, author, true);
+      }
+      // A thread deleted with its memories kept leaves a text-free tombstone: its ID and deletion time, so a citation of it still leads somewhere.
+      if (keep) {
+        this.db.prepare("INSERT OR REPLACE INTO tombstones (id, kind, sources, deleted_by, deleted_at) VALUES (?, 'thread', '[]', ?, ?)")
+          .run(`t:${threadId}`, author, now());
       }
       this.db.prepare("DELETE FROM search WHERE kind = 'entry' AND id LIKE ?").run(`e:${threadId}#%`);
       this.db.prepare("DELETE FROM entries WHERE thread = ?").run(threadId);
@@ -1115,6 +1188,17 @@ export class PoolStore extends PoolReader {
       this.db.prepare("DELETE FROM threads WHERE id = ?").run(threadId);
       this.optimize();
     });
+  }
+
+  /** What a thread deleted with its memories kept leaves behind: when it went. No text. */
+  getThreadTombstone(threadId: string): { deletedAt: string } | undefined {
+    const row = this.db.prepare("SELECT deleted_at FROM tombstones WHERE id = ? AND kind = 'thread'").get(`t:${threadId}`) as { deleted_at: string } | undefined;
+    return row ? { deletedAt: row.deleted_at } : undefined;
+  }
+
+  /** Notes and pages citing a thread or one of its entries, including after it was deleted. */
+  citingThread(threadId: string): string[] {
+    return (this.db.prepare("SELECT DISTINCT src FROM citations WHERE dst = ? OR dst LIKE ? ORDER BY src").all(`t:${threadId}`, `e:${threadId}#%`) as { src: string }[]).map((r) => r.src);
   }
 
   /** A project's page, and the notes whose every source is in the project chat or its threads. */
@@ -1447,6 +1531,7 @@ interface PageRow { slug: string; title: string; summary: string; text: string; 
 interface SleepRunRow { id: string; reason: string; status: string; skip_reason: string | null; until: string; phases: string; started_at: string; finished_at: string | null }
 interface ItemRow { id: string; run: string; kind: string; text: string; source: string | null; thread: string | null; dismissed: number; created_at: string }
 interface RevisionRow { id: number; item: string; body: string; author: string; created_at: string }
+interface WatchRow { id: number; thread: string; repo: string; kind: ForgeKind; host: string; account: string; number: number; head: string | null; head_since: string; notified_heads: string; seen_reviews: string; webhook_at: string | null; created_at: string }
 
 function toThread(r: ThreadRow): Thread {
   return {
@@ -1478,4 +1563,12 @@ function parseReactions(raw: string | null): Reaction[] {
 
 function toEntry(r: EntryRow): StoredEntry {
   return { id: r.orig ?? entryId(r.thread, r.n), role: r.role, text: r.text, unlogged: r.unlogged === 1, createdAt: r.created_at };
+}
+
+function toWatch(r: WatchRow): Watch {
+  return {
+    id: r.id, thread: r.thread, repo: r.repo, kind: r.kind, host: r.host, account: r.account, number: r.number,
+    head: r.head, headSince: r.head_since, notifiedHeads: json<string[]>(r.notified_heads), seenReviews: json<string[]>(r.seen_reviews),
+    ...(r.webhook_at ? { webhookAt: r.webhook_at } : {}), createdAt: r.created_at,
+  };
 }

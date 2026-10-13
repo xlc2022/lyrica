@@ -267,7 +267,7 @@ describe("an older user.db", () => {
     const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
     await users.authenticate("ada", "pw");
     const db: Db = users.openUserDb(ada.id);
-    db.exec(`DROP TABLE thread_workspaces; DROP TABLE machines; PRAGMA user_version = 0;
+    db.exec(`DROP TABLE thread_workspaces; DROP TABLE machines; DROP TABLE model_presets; DROP TABLE model_columns; PRAGMA user_version = 0;
       CREATE TABLE thread_workspaces (thread_id TEXT PRIMARY KEY, grants TEXT NOT NULL, internet INTEGER, services INTEGER, hosts TEXT,
         mode TEXT NOT NULL, target TEXT NOT NULL, parent TEXT, web_search INTEGER NOT NULL DEFAULT 1, images INTEGER NOT NULL DEFAULT 1);
       CREATE TABLE ssh_targets (name TEXT PRIMARY KEY, host TEXT NOT NULL, port INTEGER NOT NULL, username TEXT NOT NULL, private_key TEXT NOT NULL, root TEXT, host_key TEXT);

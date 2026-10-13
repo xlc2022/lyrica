@@ -51,6 +51,7 @@ function fakeModel() {
           for (let i = 1; i <= 24; i++) {
             view.own.recordSleepRun("scheduled", i === 1 ? "endpoint-down" : "no-activity", `2026-09-${String(i).padStart(2, "0")}T04:00:00.000Z`);
             view.own.putWake(`Fixture dream ${i}`, "sleep");
+            view.own.addJournal(`Fixture journal ${i}`, "sleep");
           }
         } finally { view.close(); }
         res.writeHead(204); return res.end();
