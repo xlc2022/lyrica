@@ -798,8 +798,10 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   count and current step as a project's card does. A child's update shows
   in the parent as a card headed "Child thread", linking to it. **In a project chat** there is no
   card per start or update: each of the project's threads gets one card
-  under the message that started it (its anchor; threads whose anchor is
-  gone sit under the last message), updated in place from the overview:
+  under the first displayed message at or after its anchor entry (some
+  entries aren't displayed); threads whose anchor was removed sit under
+  the last message. Cards stay there as later messages arrive, updated in
+  place from the overview:
   title, state as a dot and word (Working blue, Waiting amber, Resolved
   green, Idle plain), its checklist's count while it has one
   (`ThreadSummary.steps`: "2 of 5" with its numbers in mono, a link named
