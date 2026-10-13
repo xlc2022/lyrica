@@ -672,7 +672,7 @@ One model-facing tool: `delegate({ action?, ... })`.
   a webhook for that repository in the last 24 hours.
 - **Forge webhook** (`daemon/src/lyricad.ts`): a Forgejo or Gitea account
   whose host resolves into her own network (10/8, 172.16/12, 192.168/16,
-  100.64/10, fc00::/7 — re-checked at each use) gets a Webhook row in its
+  100.64/10, fd00::/8 (with loopback and RFC 1918, as inOwnNetwork) — re-checked at each use) gets a Webhook row in its
   Settings drawer: `POST https://<tailnet-name>/hooks/forge/<account>` and a
   per-account random secret, stored like its token
   (`git_accounts.webhook_secret`). The route answers only on the

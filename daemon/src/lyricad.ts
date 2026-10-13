@@ -800,7 +800,7 @@ export class Lyricad implements Drainable {
       if (!this.keyring.hasUserKey(u.id)) continue;
       const a = s.workspace.settings(u.id).gitAccount(accountName);
       if (!a || (a.kind !== "forgejo" && a.kind !== "gitea") || !a.webhookSecret) continue;
-      const want = `sha256=${createHmac("sha256", a.webhookSecret).update(body).digest("hex")}`;
+      const want = createHmac("sha256", a.webhookSecret).update(body).digest("hex");
       const x = Buffer.from(want);
       const y = Buffer.from(got);
       if (x.length === y.length && timingSafeEqual(x, y)) matches.push({ userId: u.id, account: a.name });

@@ -356,7 +356,7 @@ describe("the tailnet webhook route", () => {
     settings.addGitAccount({ name: "forge", kind: "forgejo", host: "127.0.0.1", account: "lyrica-bot", token: "made-up-token", pool: "general", offNetwork: false });
     const secret = settings.gitAccount("forge")!.webhookSecret!;
     const body = JSON.stringify({ repository: { full_name: "ada/never-logged-marker" } });
-    const sig = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+    const sig = createHmac("sha256", secret).update(body).digest("hex");
     const post = (port: number, headers: Record<string, string> = {}) =>
       fetch(`http://127.0.0.1:${port}/hooks/forge/forge`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body });
 
@@ -364,8 +364,10 @@ describe("the tailnet webhook route", () => {
     expect((await post(dm.d.port, { "x-forgejo-signature": sig })).status).toBe(404);
     // On the tailnet listener, a missing or wrong signature is refused and polls nothing.
     expect((await post(dm.d.servePort)).status).toBe(401);
-    expect((await post(dm.d.servePort, { "x-forgejo-signature": "sha256=deadbeef" })).status).toBe(401);
-    // A correct signature answers ok (no watches, so nothing else happens).
+    expect((await post(dm.d.servePort, { "x-forgejo-signature": "deadbeef" })).status).toBe(401);
+    // Forgejo sends the bare hex, so the GitHub-style "sha256=" form is refused too.
+    expect((await post(dm.d.servePort, { "x-forgejo-signature": `sha256=${sig}` })).status).toBe(401);
+    // A correct bare-hex signature answers ok (no watches, so nothing else happens).
     const ok = await post(dm.d.servePort, { "x-forgejo-signature": sig });
     expect(ok.status).toBe(200);
     expect(JSON.parse(await ok.text())).toEqual({ ok: true });

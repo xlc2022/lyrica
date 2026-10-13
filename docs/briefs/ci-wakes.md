@@ -64,7 +64,8 @@ notices.
    account's host can be any name (the operator's own domain pointing at
    tailnet addresses is fine). Its webhook is offered when that name
    resolves to a private address: 10/8, 172.16/12, 192.168/16, the
-   tailnet's 100.64/10, or fc00::/7. It's resolved again at each use, and
+   tailnet's 100.64/10, or fd00::/8 (with loopback and RFC 1918, as
+   inOwnNetwork). It's resolved again at each use, and
    a name that now resolves publicly loses the Webhook row and falls back
    to polling. The forge sends webhooks to `POST /hooks/forge/{account}`
    on the listener `tailscale serve` already fronts, so the forge's
@@ -211,15 +212,6 @@ One real bug found and fixed in Part B: `noteRate` clobbered
 `x-ratelimit-*` header, because `Number(null) === 0`. It now only overwrites
 on present, finite headers; a missing header says nothing.
 
-A note on the private-address rule: the brief says `fc00::/7`, and
-`inOwnNetwork` actually covers `fd00::/8` — the locally-assigned ULA half.
-That is the correct, more precise range (GUA/ULA and loopback are handled
-separately), so a hostname resolving to `fd00::/8` still gets webhooks. The
-practical reach is IPv4 for literals: `parseHost` rejects IPv6 literals
-(`family === 6` throws "IPv6 hosts aren't supported yet"), so an account
-whose host is an IPv6 literal is not usable for webhooks; a name that
-resolves to `fd00::/8` works. Worth reconciling the wording in a docs PR.
-
 Test results (fakes only, no network, no real names; `--pool=forks
 --maxWorkers=2`, one batch at a time):
 
@@ -232,6 +224,3 @@ Test results (fakes only, no network, no real names; `--pool=forks
   `core/test/settings.test.ts`, `daemon/test/wakeups.test.ts`,
   `daemon/test/routines.test.ts` — 52 passed, 4 skipped.
 - `npm run typecheck` — clean.
-
-Left for the coordinator: reconcile the `fc00::/7` vs `fd00::/8` wording in
-the brief and DESIGN, then review/merge.
