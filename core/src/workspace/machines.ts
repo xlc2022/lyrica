@@ -6,6 +6,7 @@
 import { networkInterfaces } from "node:os";
 import { StringDecoder } from "node:string_decoder";
 import { posix } from "node:path";
+import { removePrivateKeys, PRIVATE_KEY_BEGIN as BEGIN, PRIVATE_KEY_END as END } from "../secrets.ts";
 import { within } from "./settings.ts";
 
 export interface SuspectCommand {
@@ -120,20 +121,17 @@ export function onFloor(path: string): boolean {
   return path.split("/").includes(".ssh") || within(path, "/etc/ssh") || path.startsWith("/etc/sudoers");
 }
 
-const KEY_BLOCK = /-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY( BLOCK)?-----[\s\S]*?(?:-----END \1PRIVATE KEY\2-----|$)/g;
 export const KEY_REMOVED = "[private key removed]";
 
 /** A file's contents with any private-key block replaced. Bytes are kept as they are otherwise. */
 export function maskKeys(content: Buffer): Buffer {
   const s = content.toString("latin1");
-  return /PRIVATE KEY(?: BLOCK)?-----/.test(s) ? Buffer.from(s.replace(KEY_BLOCK, KEY_REMOVED), "latin1") : content;
+  return /PRIVATE KEY(?: BLOCK)?-----/.test(s) ? Buffer.from(removePrivateKeys(s, KEY_REMOVED), "latin1") : content;
 }
 
 // Terminal control: CSI and OSC sequences, other escapes, and control characters but tab and newline.
 // eslint-disable-next-line no-control-regex
 const CONTROL = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[@-_]|[\x00-\x08\x0b-\x1f\x7f]/g;
-const BEGIN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----/;
-const END = /-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----/;
 /** A line longer than this is passed on without waiting for its end. */
 const LONG_LINE = 8 * 1024;
 
