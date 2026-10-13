@@ -15,7 +15,7 @@ import { NotificationsCard, useWaiting } from "./Notifications.tsx";
 import { SleepCard, SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
 import { BackendCard, ModelsArea, useCleanupCount } from "./Models.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
-import { ProjectPage, stateWord } from "./Project.tsx";
+import { ProjectPage, ThreadsPage, stateWord } from "./Project.tsx";
 import { SearchGroups, searchable, useMessageSearch } from "./Search.tsx";
 import { ask, JUMP_EVENT, JUMP_KEY, keep, type JumpRequest } from "./links.ts";
 import { ErrorText, hidden, menuArrows, shortTime, Toast, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
@@ -100,6 +100,10 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
       <HiddenPool ctx={ctx} pool={r.pool} />
     ) : r.page === "project" ? (
       <ProjectPage key={`${r.pool}/${r.threadId}`} ctx={ctx} pool={r.pool} threadId={r.threadId} section={r.section} />
+    ) : r.page === "threads" && hidden(me.data!.display, r.pool) ? (
+      <HiddenPool ctx={ctx} pool={r.pool} />
+    ) : r.page === "threads" ? (
+      <ThreadsPage key={`${r.pool}/${r.threadId}`} ctx={ctx} pool={r.pool} threadId={r.threadId} />
     ) : r.page === "memory" ? (
       <Memory ctx={ctx} pool={r.pool} id={r.id} />
     ) : r.page === "sleep" ? (
@@ -144,7 +148,8 @@ const SPLIT_WIDTH = 1180;
 const PANEL_MIN = 360, PANEL_MAX = 520, PANEL_DEFAULT = 420;
 const PANEL_WIDTH_KEY = "lyrica.panel-width";
 
-function useWide(): boolean {
+/** At or above the split width: the panel can show beside a conversation. */
+export function useWide(): boolean {
   const q = `(min-width: ${SPLIT_WIDTH}px)`;
   const [wide, setWide] = useState(() => matchMedia(q).matches);
   useEffect(() => {
@@ -237,7 +242,7 @@ function PanelColumn({ route, panel, trail, threads, children }: { route: Route 
   }, [width]);
   const close = useCallback(() => go({ ...route, drawer: undefined, panel: undefined }), [route]);
   // The first memory in the trail is the panel's name, Memory; a memory followed from it carries its title, so the crumbs grow.
-  const label = (p: Panel, i: number) => p.page === "project" ? "Project settings" : p.page === "files" ? "Files"
+  const label = (p: Panel, i: number) => p.page === "project" ? "Project settings" : p.page === "threads" ? "Threads" : p.page === "files" ? "Files"
     : p.page === "memory" ? (trail.crumbs[i - 1]?.page === "memory" && memoryTitle(p.pool, p.id)) || "Memory"
     : findThread(threads, p.pool, p.threadId)?.title || "New thread";
   const crumbs = trail.crumbs.map((p, i) => ({ label: label(p, i), href: href(panelRoute(route.userId, p)) }));
