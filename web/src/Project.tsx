@@ -58,7 +58,7 @@ const GROUPS: { label: string; of: (t: ThreadSummary) => boolean }[] = [
 ];
 
 /** "Threads 4 ▾" in the project chat's facts line: a popover of its threads grouped by state. */
-export function ThreadsFact({ userId, overview, phone }: { userId: string; overview: ProjectOverview; phone?: boolean }) {
+export function ThreadsFact({ userId, overview, footer }: { userId: string; overview: ProjectOverview; footer?: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -71,7 +71,6 @@ export function ThreadsFact({ userId, overview, phone }: { userId: string; overv
       </button>
       {open && (
         <div className="picker threads-pop" role="dialog" aria-label="The project's threads">
-          {phone && <p className="small tokens"><span className="num">{tokenCount(overview.tokens)}</span> tokens</p>}
           {!threads.length && <p className="muted small">No threads yet. Ask {her()} for some, or pick Start a thread in a message's menu.</p>}
           {GROUPS.map((g) => {
             const mine = threads.filter(g.of);
@@ -89,6 +88,7 @@ export function ThreadsFact({ userId, overview, phone }: { userId: string; overv
               </div>
             );
           })}
+          {footer}
         </div>
       )}
     </span>

@@ -1304,3 +1304,11 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
 @media (pointer: coarse) {
   .routine-item button.sm { min-height: 44px; }
 }
+
+/* Tokens shares the existing header picker; phone rows open in place. */
+.usage-pop { width: min(460px, calc(100vw - 32px)); }
+.usage-row, .usage-head { display: grid; grid-template-columns: minmax(0, 1fr) 5em 6em; gap: 8px; padding: 6px 0; align-items: baseline; }
+.usage-row > :first-child { overflow-wrap: anywhere; min-width: 0; }
+.usage-row > .num, .usage-head > :not(:first-child) { text-align: right; }
+.usage-inline { display: block; margin-top: 12px; }
+.usage-rows { font-size: 13px; }

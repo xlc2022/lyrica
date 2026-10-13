@@ -202,7 +202,10 @@ the thread's scratch folder (`/workspace`).
 - `notes`: notes per stretch of work, default 3.
 
 Each subagent's tokens are recorded as it works. `usage(thread)` sums a parent
-thread's. Cost is not tracked: every model is declared free to Pi.
+thread's direct runs. `Models.usage` follows their descendants at every depth
+for thread and project token shares, within the requested pool. Subagent
+call records carry no turn counts, so these shares use `subagent_runs`
+input plus output tokens once, with no GPU time. Cost is not tracked: every model is declared free to Pi.
 
 ## Records and restarts
 

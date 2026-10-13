@@ -136,7 +136,7 @@ describe("user step 5 (portrait-photo cloud choice)", () => {
       expect(settings.photoCloudPolicy()).toBe(policy ?? "ask");
       expect(settings.photoCloudApproved("2026-10-12")).toBe(false);
       expect(db.prepare("SELECT value FROM settings WHERE key = 'k'").get()).toEqual({ value: "v" });
-      expect(schemaOf(db)).toEqual({ version: 5, minReader: 1 });
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: 1 });
       expect(() => checkReadable(db, "user", STEPS.user.filter(s => s.version <= v))).not.toThrow();
       db.close();
     }
@@ -207,6 +207,24 @@ describe("pool step 6 (routines)", () => {
       expect(db.prepare("SELECT new_thread, paused, last_at FROM routines").get()).toEqual({ new_thread: 0, paused: 0, last_at: null });
       db.prepare("DELETE FROM threads WHERE id = 'web/a'").run();
       expect(db.prepare("SELECT * FROM routines").all()).toEqual([]);
+      db.close();
+    }
+  });
+});
+
+
+describe("user step 6 (spend share)", () => {
+  it("preserves every released user schema and adds nullable read counts and empty totals", () => {
+    for (let version = 1; version < 6; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter(s => s.version <= version);
+      migrate(db, "user", {}, previous);
+      db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, prompt_tokens, output_tokens) VALUES ('2026-01-01', 'general', 'web/a', 'chat', 'old', 'Old', 'test', 'local', 12, 3)").run();
+      migrate(db, "user");
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: 1 });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      expect(db.prepare("SELECT read_tokens, prompt_tokens, output_tokens FROM model_calls").get()).toEqual({ read_tokens: null, prompt_tokens: 12, output_tokens: 3 });
+      expect(db.prepare("SELECT * FROM call_totals").all()).toEqual([]);
       db.close();
     }
   });

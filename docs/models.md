@@ -284,10 +284,24 @@ Tools are asked of a model only when the thread has tools.
 **Recent calls** (`recentCalls`, `model_calls` in `user.db`) hold the time,
 thread, task, the answering model's ID with its label, endpoint and kind,
 the fallback taken and why, and a note such as a model that couldn't think.
-Never prompt text. The latest 500 per user are kept.
+Never prompt text. The latest 500 per user are kept. Before pruning, a
+transaction folds counted turns into `call_totals` (pool, thread, label,
+kind, tokens, gpu_ms, calls); forgetting a thread removes its totals too.
+User schema step 6 adds this table and nullable `model_calls.read_tokens`.
+
+`usage(userId, pool, threadIds)` returns shares by thread, model label and
+kind, summing retained calls and folded totals. Tokens are `read_tokens +
+output_tokens`, falling back to `prompt_tokens + output_tokens` on older
+records. Local GPU time is `ttft_ms + gen_ms`, including queueing and loading;
+cloud calls and subagents have none. Subagents contribute their recorded
+input and output tokens down every depth, using the offering's kind when it
+still exists. Every lookup filters both pool and thread.
+
+Totals count her turns and her subagents' work; titles, images, speech and a project chat's looks at its threads carry no counts and aren't included.
 
 Once a turn ends, `recordPace` adds its counts and times to the record
-(`pace`): the last request's prompt tokens (the context used), output tokens,
+(`pace`): the last request's prompt tokens (the context used), total reads across
+every request including cached reads (`readTokens`), output tokens,
 the window, time to first token and generation time, and the prompt tokens
 the server actually read rather than took from its cache. From those come
 tokens per second and prompt tokens per second (`speeds`; left out when a

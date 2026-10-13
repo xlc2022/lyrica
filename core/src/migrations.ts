@@ -222,6 +222,17 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principle 2: the user's portrait-photo cloud choice, default Ask once a day. Expand only.
     version: 5,
     run(db) { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('images.photos.cloud', 'ask')").run(); },
+  }, {
+    // Principles 1 and 2: durable token totals within each pool. Expand only.
+    version: 6,
+    run(db) {
+      addColumns(db, [["model_calls", "read_tokens", "INTEGER"]]);
+      db.exec(`CREATE TABLE IF NOT EXISTS call_totals (
+        pool TEXT NOT NULL, thread TEXT NOT NULL, label TEXT NOT NULL, kind TEXT NOT NULL,
+        tokens INTEGER NOT NULL DEFAULT 0, gpu_ms INTEGER NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (pool, thread, label, kind)
+      )`);
+    },
   }],
   pool: [{
     version: 1, contract: true,

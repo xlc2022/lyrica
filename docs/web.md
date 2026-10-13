@@ -104,6 +104,11 @@ A thread's address may carry what the panel beside it shows:
   came, else `ThreadSummary.steps`, so a new list redraws the fact and
   the open popover in place; with Checklists off it shows none, a list
   already streamed included. Her call itself is a tool marker.
+  **Tokens** follows Checklist once a counted turn exists (`src/Usage.tsx`,
+  `GET …/usage`, reloaded after turns and child updates). Its mono count and
+  caret open model rows with muted local/cloud kind, mono tokens and local
+  **GPU time**, then Total and “Counts every request, cached reads included.”
+  On a phone it opens rows in place at the foot of Context.
   Then, while she has wake-ups waiting (`ThreadSettings.wakeups`, soonest
   first), **Wake-up** and the soonest time in mono (`wakeTime`: HH:MM today,
   the date before it otherwise) open a popover with each one's time and an
@@ -120,8 +125,10 @@ A thread's address may carry what the panel beside it shows:
 - **Project chat** (`src/Project.tsx`): the facts line adds **Threads** with
   the count, opening a popover of the project's threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
-  count), and the project's tokens ("65 tokens", "312k tokens"; on a phone the tokens
-  are the popover's first line instead). The header has a **Project**
+  count), and **Tokens** for the whole project. Its rows add **By thread**,
+  This chat first, then thread links by descending tokens, and **Recent
+  calls** linking to the project's filter. On a phone Tokens opens in place
+  at the foot of the Threads popover. The header has a **Project**
   link to the project settings page before the Settings button, which
   opens the thread's drawer as in any thread. The
   `child` stream event reloads the overview (`GET …/overview`) and the
@@ -301,7 +308,10 @@ A thread's address may carry what the panel beside it shows:
   **Remove**; the notice lines as a dashed note with Dismiss. The
   thresholds are the pills' tooltips (stale: unreachable 14 days or more;
   gone: missing 30 days or more), and Replace with… carries the redirect
-  sentence as its tooltip. Recent calls: Time (mono), Thread (a link; private
+  sentence as its tooltip. Recent calls has a **Project** select in its
+  header: **All projects**, then title-sorted projects grouped General and
+  Private, hidden pools omitted. Its hash address retains `?project=&pool=`
+  and the calls API applies both filters. Recent calls: Time (mono), Thread (a link; private
   kind mark; "a forgotten thread" when gone), Task, Answered by ("model ·
   endpoint"), Note (the fallback or note, warn text); hidden pools left
   out; the table stacks on a phone. Tasks (`GET …/profiles`, the former

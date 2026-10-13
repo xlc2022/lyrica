@@ -98,7 +98,7 @@ const paused = (h?: Host) => !!h && "status" in h && (h.status.state === "paused
 const unpaired = (h?: Host) => !!h && "error" in h && !!h.unpaired;
 
 /** The Models area, at one of its tabs. */
-export function ModelsArea({ ctx: shell, tab = "overview", add }: { ctx: ShellContext; tab?: ModelsTab; add?: ModelsPageUnder }) {
+export function ModelsArea({ ctx: shell, tab = "overview", add, project, pool }: { ctx: ShellContext; tab?: ModelsTab; add?: ModelsPageUnder; project?: string; pool?: "general" | "private" }) {
   const models = useModelsPage(shell);
   const ctx: MCtx = { ...shell, models };
   const { reload } = models;
@@ -115,7 +115,7 @@ export function ModelsArea({ ctx: shell, tab = "overview", add }: { ctx: ShellCo
   if (tab === "downloads" && add === "text") return <DownloadText ctx={ctx} />;
   if (tab === "downloads") return <Downloads ctx={ctx} />;
   if (tab === "cleanup") return <Cleanup ctx={ctx} />;
-  if (tab === "calls") return <Calls ctx={ctx} />;
+  if (tab === "calls") return <Calls ctx={ctx} project={project} pool={pool} />;
   return <Overview ctx={ctx} />;
 }
 
@@ -1197,11 +1197,22 @@ function Cleanup({ ctx }: { ctx: MCtx }) {
 
 /* ---- Recent calls ---- */
 
-function Calls({ ctx }: { ctx: MCtx }) {
-  const calls = useLoad(() => get<CallInfo[]>(u(ctx.user.id, "models", "calls")), [ctx.user.id]);
+function Calls({ ctx, project, pool }: { ctx: MCtx; project?: string; pool?: "general" | "private" }) {
+  const projects = ctx.threads.filter(t => t.project && !hidden(ctx.me.display, t.pool)).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+  const selected = projects.find(t => t.id === project && t.pool === pool);
+  const filter = selected ? `?project=${encodeURIComponent(selected.id)}&pool=${selected.pool}` : "";
+  const calls = useLoad(() => get<CallInfo[]>(u(ctx.user.id, "models", "calls") + filter), [ctx.user.id, filter]);
   const shown = (calls.data ?? []).filter((c) => !hidden(ctx.me.display, c.pool));
   return (
-    <Frame ctx={ctx} tab="calls" title="Recent calls" facts={calls.data && plural(shown.length, "call", "calls")}>
+    <Frame ctx={ctx} tab="calls" title="Recent calls" facts={calls.data && plural(shown.length, "call", "calls")} actions={
+      <label>Project <select value={selected ? `${selected.pool}/${selected.id}` : ""} onChange={e => {
+        const t = projects.find(t => `${t.pool}/${t.id}` === e.target.value);
+        go({ page: "models", userId: ctx.user.id, tab: "calls", ...(t ? { project: t.id, pool: t.pool } : {}) });
+      }}><option value="">All projects</option>{(["general", "private"] as const).map(p => {
+        const list = projects.filter(t => t.pool === p);
+        return list.length ? <optgroup key={p} label={p === "general" ? "General" : "Private"}>{list.map(t => <option key={t.id} value={`${p}/${t.id}`}>{t.title || "New project"}</option>)}</optgroup> : null;
+      })}</select></label>
+    }>
       <ErrorText error={calls.error} />
       {calls.data && <CallsTable ctx={ctx} calls={calls.data} />}
     </Frame>
