@@ -6,21 +6,21 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, u,
-  type CallInfo, type CleanupItem, type EndpointChange, type EndpointInfo, type GroupInfo, type HostStatus, type ModelsNotice, type ModelsPage,
-  type ModelRef, type OfferingInfo, type PlanSignInStarted, type ProfileEntry, type ProfileEntryChange, type Profiles, type Task,
+  type CallInfo, type CleanupItem, type Column, type ColumnState, type ColumnTaskChange, type EndpointChange, type EndpointInfo, type Entry, type GroupInfo, type HostStatus, type ModelsNotice, type ModelsPage,
+  type ModelRef, type OfferingInfo, type PlanSignInStarted, type PresetInfo, type Presets, type PresetScope, type Task,
 } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { Downloads, DownloadText } from "./Downloads.tsx";
 import { DownloadImage, ImageModels, ImageReview } from "./ImageModels.tsx";
 import { duration, RowMenu } from "./Machines.tsx";
 import {
-  canEdit, Frame, GB, gb, hostOf, Kind, plural, PROFILE_WORD, TASK_WORD, useWords, VoiceDrawer,
+  canEdit, Frame, GB, gb, hostOf, Kind, plural, TASK_WORD, useWords, VoiceDrawer,
   type Host, type MCtx, type ModelsState,
 } from "./ModelsFrame.tsx";
 import { go, href, type ModelsPageUnder, type ModelsTab } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { TextModels } from "./TextModels.tsx";
-import { ConfirmDialog, ErrorText, hidden, shortTime, Switch, useAction, useLoad } from "./ui.tsx";
+import { ConfirmDialog, ErrorText, hidden, shortTime, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 /** The sidebar's Clean up count, from GET …/models/cleanup: a plain read, so the shell can poll it without probing any endpoint. */
 export function useCleanupCount(userId: string): { count: number; reload: () => void } {
@@ -190,10 +190,17 @@ async function control(ctx: MCtx, endpointId: string, action: "pause" | "resume"
   if (p) ctx.models.set({ ...p, hosts: p.hosts.map((h) => (h.endpointId === endpointId ? { endpointId, status } : h)) });
 }
 
-/** The first model of a profile's chat list, following Same as. */
-function firstChat(p: ModelsPage, profile: "cloud" | "custom" | "local") {
-  let entry = p.profiles[profile].chat;
-  for (let i = 0; entry && !Array.isArray(entry) && i < 5; i++) entry = p.profiles[profile][entry.same];
+/** A column's effective table: the followed preset's, or its own Custom one. */
+const columnEntries = (col: ColumnState): Partial<Record<Task, Entry>> => col.preset?.entries ?? col.entries;
+/** A column's scope: its preset's, or the column's kind when Custom. */
+const columnScope = (col: ColumnState): PresetScope => col.preset?.scope ?? col.column;
+
+/** A column's chat list's first model, following Same as; a group stays as its ID for the caller to expand. */
+type FirstChat = { groupId: string } | { model: string; endpoint: string; kind: "local" | "cloud" } | undefined;
+function firstChat(p: ModelsPage, col: ColumnState): FirstChat {
+  const entries = columnEntries(col);
+  let entry = entries.chat;
+  for (let i = 0; entry && !Array.isArray(entry) && i < 5; i++) entry = entries[entry.same];
   const ref = Array.isArray(entry) ? entry[0] : undefined;
   if (!ref) return undefined;
   if ("groupId" in ref) return { groupId: ref.groupId };
@@ -208,28 +215,28 @@ export function BackendCard({ ctx }: { ctx: ShellContext }) {
   const models = useModelsPage(ctx);
   const p = models.page;
   const userId = ctx.user.id;
-  const general = p && firstChat(p, p.profiles.default);
-  const local = p && firstChat(p, "local");
+  const general = p && firstChat(p, p.presets.columns.general);
+  const local = p && firstChat(p, p.presets.columns.private);
   const needGroups = !!(general && "groupId" in general) || !!(local && "groupId" in local);
   const groups = useLoad(() => (needGroups ? get<GroupInfo[]>(u(userId, "groups")) : Promise.resolve([])), [userId, needGroups]);
-  const line = (c: ReturnType<typeof firstChat>, profile: "cloud" | "custom" | "local") => {
+  const line = (c: FirstChat, col: ColumnState) => {
     if (c && "groupId" in c) {
       const groupId = c.groupId;
       const group = groups.data?.find((g) => g.id === groupId);
       c = group?.members.flatMap((id) => (p?.endpoints ?? []).flatMap((ep) => {
         const m = ep.models.find((m) => m.id === id);
-        return m && (profile === "custom" || ep.kind === profile) ? [{ model: m.modelId, endpoint: ep.name, kind: ep.kind }] : [];
+        return m ? [{ model: m.modelId, endpoint: ep.name, kind: ep.kind }] : [];
       }))[0];
     }
-    return <>{c && "model" in c ? <><span className={`badge kind ${c.kind}`}>{c.kind}</span> {c.model} · {c.endpoint}</> : "No model"} · {PROFILE_WORD[profile]}</>;
+    return <>{c && "model" in c ? <><span className={`badge kind ${c.kind}`}>{c.kind}</span> {c.model} · {c.endpoint}</> : "No model"} · {col.preset?.name ?? "Custom"}</>;
   };
   return (
     <section className="card" aria-labelledby="h-home-backend">
       <div className="section-head"><h2 id="h-home-backend">Backend</h2><a href={href({ page: "models", userId })}>Models</a></div>
       <ErrorText error={models.error || groups.error} />
       {p && <dl className="facts">
-        <dt>General threads</dt><dd>{line(general, p.profiles.default)}</dd>
-        <dt>Private threads</dt><dd>{line(local, "local")}</dd>
+        <dt>General threads</dt><dd>{line(general, p.presets.columns.general)}</dd>
+        <dt>Private threads</dt><dd>{line(local, p.presets.columns.private)}</dd>
         <dt>Hosts</dt><dd>{p.hosts.length ? p.hosts.map((h) => {
           const ep = p.endpoints.find((e) => e.id === h.endpointId);
           return ep && <div key={h.endpointId} className="backend-host"><span>{ep.name}</span> <StateWord ep={ep} host={h} /></div>;
@@ -247,11 +254,12 @@ function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
   const reach = !first ? { dot: "up", word: "All reachable" }
     : paused(hostOf(p, first.id)) ? { dot: "away", word: `${first.name} paused` }
     : unpaired(hostOf(p, first.id)) ? { dot: "down", word: `${first.name} unpaired` } : { dot: "down", word: `${first.name} unreachable` };
-  const general = firstChat(p, p.profiles.default);
-  const local = firstChat(p, "local");
+  const generalCol = p.presets.columns.general, privateCol = p.presets.columns.private;
+  const general = firstChat(p, generalCol);
+  const local = firstChat(p, privateCol);
   const needGroups = !!(general && "groupId" in general) || !!(local && "groupId" in local);
   const groups = useLoad(() => (needGroups ? get<GroupInfo[]>(u(userId, "groups")) : Promise.resolve([])), [userId, needGroups]);
-  const line = (c: ReturnType<typeof firstChat>) => !c ? "No model"
+  const line = (c: FirstChat) => !c ? "No model"
     : "groupId" in c ? groups.data?.find((g) => g.id === c.groupId)?.name ?? "A group"
     : <>{c.model} <span className="muted">· {c.endpoint}</span></>;
   const cleanup = p.cleanup;
@@ -265,9 +273,9 @@ function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
       <a className="tile" href={href({ page: "models", userId, tab: "tasks" })} data-tile="backend">
         <span className="cap">Backend</span>
         <span className="line" title="General threads">{line(general)}</span>
-        <span className="cap">general threads · {PROFILE_WORD[p.profiles.default]}</span>
+        <span className="cap">general threads · {generalCol.preset?.name ?? "Custom"}</span>
         <span className="line" title="Private threads">{line(local)}</span>
-        <span className="cap">private threads · Local</span>
+        <span className="cap">private threads · {privateCol.preset?.name ?? "Custom"}</span>
       </a>
       <a className="tile" href={href({ page: "models", userId, tab: "cleanup" })} data-tile="cleanup" title={cleanup ? "To decide" : "Nothing to clean up"}>
         <span className="cap">Clean up</span>
@@ -346,8 +354,8 @@ function HostRow({ ctx, ep, host }: { ctx: MCtx; ep: Endpoint; host?: Host }) {
 
 /* ---- Tasks ---- */
 
-type ProfileName = "cloud" | "local" | "custom";
-type ProfileMap = Partial<Record<Task, ProfileEntry>>;
+/** A preset's or column's table: task to entry. */
+type Table = Partial<Record<Task, Entry>>;
 
 /** The table's rows, under their eyebrows, each with a hint that is its name's tooltip (docs/ux.md §4). */
 const TASK_ROWS: { group: string; tasks: { task: Task; hint: string }[] }[] = [
@@ -386,14 +394,14 @@ const suits = (task: Task, m: OfferingInfo) => {
 };
 
 /** A task's entry as lyricad reads it: a text task with none follows Chat. */
-function entryOf(prof: ProfileMap, task: Task): ProfileEntry | undefined {
-  return prof[task] ?? (task !== "chat" && capability(task) === "text" ? { same: "chat" } : undefined);
+function entryOf(table: Table, task: Task): Entry | undefined {
+  return table[task] ?? (task !== "chat" && capability(task) === "text" ? { same: "chat" } : undefined);
 }
 /** The list that decides a task, after Same as. */
-function listOf(prof: ProfileMap, task: Task, depth = 0): ModelRef[] {
-  const e = entryOf(prof, task);
+function listOf(table: Table, task: Task, depth = 0): ModelRef[] {
+  const e = entryOf(table, task);
   if (Array.isArray(e)) return e;
-  return e && depth < 2 ? listOf(prof, e.same, depth + 1) : [];
+  return e && depth < 2 ? listOf(table, e.same, depth + 1) : [];
 }
 
 type Copy = { m: OfferingInfo; ep: Endpoint };
@@ -404,13 +412,13 @@ function copies(p: ModelsPage): Map<string, Copy> {
 }
 const answers = (p: ModelsPage, c: Copy) => c.ep.state === "up" && !c.ep.stale && c.m.status !== "gone" && !paused(hostOf(p, c.ep.id));
 
-/** A list entry's models: an offering, or a group's members, each marked when the profile skips its kind. */
-function membersOf(ref: ModelRef, all: Map<string, Copy>, groups: GroupInfo[], profile: ProfileName): (Copy & { off: boolean })[] {
+/** A list entry's models: an offering, or a group's members. A private table's groups hold only local members, so none are skipped here. */
+function membersOf(ref: ModelRef, all: Map<string, Copy>, groups: GroupInfo[]): Copy[] {
   const ids = "offeringId" in ref ? [ref.offeringId] : groups.find((g) => g.id === ref.groupId)?.members ?? [];
-  return ids.flatMap((id) => { const c = all.get(id); return c ? [{ ...c, off: profile !== "custom" && c.ep.kind !== profile }] : []; });
+  return ids.flatMap((id) => { const c = all.get(id); return c ? [c] : []; });
 }
-const refUp = (p: ModelsPage, ms: (Copy & { off: boolean })[]) => ms.some((c) => !c.off && answers(p, c));
-const refKind = (ms: (Copy & { off: boolean })[]) => (ms.find((c) => !c.off) ?? ms[0])?.ep.kind;
+const refUp = (p: ModelsPage, ms: Copy[]) => ms.some((c) => answers(p, c));
+const refKind = (ms: Copy[]) => ms[0]?.ep.kind;
 const refKey = (r: ModelRef) => ("offeringId" in r ? r.offeringId : `g:${r.groupId}`);
 
 function RefLabel({ refx, all, groups }: { refx: ModelRef; all: Map<string, Copy>; groups: GroupInfo[] }) {
@@ -428,36 +436,30 @@ function Tasks({ ctx }: { ctx: MCtx }) {
   const userId = ctx.user.id;
   const p = ctx.models.page;
   const groups = useLoad(() => get<GroupInfo[]>(u(userId, "groups")), [userId]);
-  const [showOther, setShowOther] = useState(false);
-  const [editing, setEditing] = useState<{ profile: ProfileName; task: Task }>();
-  const [run, busy, error] = useAction();
+  const [editing, setEditing] = useState<{ column: Column; task: Task }>();
+  const [presetDrawer, setPresetDrawer] = useState<{ column: Column; mode: "new" | "saveAs" | "edit"; preset?: PresetInfo }>();
   const close = useCallback(() => setEditing(undefined), []);
-  const general = p?.profiles.default ?? "cloud";
-  const other = general === "custom" ? "cloud" : "custom";
-  const G = PROFILE_WORD[general], O = PROFILE_WORD[other];
-  const actions = p && <button type="button" className="sm" onClick={() => setShowOther(!showOther)}>{showOther ? `Hide ${O}` : `Show ${O} too`}</button>;
-  const useOther = () => run(async () => {
-    const profiles = await patch<Profiles>(u(userId, "profiles"), { default: other });
-    const cur = ctx.models.page;
-    if (cur) ctx.models.set({ ...cur, profiles });
-    setEditing(undefined);
-  });
+  const closePreset = useCallback(() => setPresetDrawer(undefined), []);
   const all = p ? copies(p) : new Map<string, Copy>();
   const gs = groups.data ?? [];
-  const cell = (profile: ProfileName, task: Task, col: string) => {
-    if (task === "speech.transcribe" && profile !== "local") return <td />;
-    const prof = p!.profiles[profile];
-    const entry = entryOf(prof, task);
-    const list = listOf(prof, task);
+  const apply = (next: Presets) => { const cur = ctx.models.page; if (cur) ctx.models.set({ ...cur, presets: next }); };
+  const cell = (column: Column, task: Task) => {
+    // Dictation is always local (core/models voiceContext), so the General column has no cell for it.
+    if (task === "speech.transcribe" && column === "general") return <td />;
+    const col = p!.presets.columns[column];
+    const table = columnEntries(col);
+    const mixed = columnScope(col) === "general";
+    const entry = entryOf(table, task);
+    const list = listOf(table, task);
     const first = list[0];
-    const ups = list.map((r) => refUp(p!, membersOf(r, all, gs, profile)));
+    const ups = list.map((r) => refUp(p!, membersOf(r, all, gs)));
     const dot = !first ? "down" : ups[0] ? "up" : ups.some(Boolean) ? "away" : "down";
-    const kind = first && profile === "custom" ? refKind(membersOf(first, all, gs, profile)) : undefined;
-    const on = editing?.profile === profile && editing.task === task;
+    const kind = first && mixed ? refKind(membersOf(first, all, gs)) : undefined;
+    const on = editing?.column === column && editing.task === task;
     return (
       <td>
-        <button type="button" className={`cell${profile === other ? " other" : ""}`} data-cell={`${profile}:${task}`} data-col={col} aria-pressed={on}
-          onClick={() => setEditing(on ? undefined : { profile, task })}>
+        <button type="button" className="cell" data-col={column === "private" ? "Private threads" : "General threads"} aria-pressed={on}
+          onClick={() => setEditing(on ? undefined : { column, task })}>
           <span className="m"><span className={`dot ${dot}`} aria-hidden="true" /><span>{first ? <RefLabel refx={first} all={all} groups={gs} /> : "No model"}</span>{kind && <Kind kind={kind} />}</span>
           <span className="sub">
             {entry && !Array.isArray(entry) ? `= ${TASK_WORD[entry.same]}`
@@ -468,34 +470,33 @@ function Tasks({ ctx }: { ctx: MCtx }) {
       </td>
     );
   };
-  const cols = showOther ? 4 : 3;
+  const head = (column: Column) => (
+    <ColumnHead ctx={ctx} column={column} col={p!.presets.columns[column]} onApply={apply}
+      onNew={() => setPresetDrawer({ column, mode: "new" })} onSaveAs={() => setPresetDrawer({ column, mode: "saveAs" })}
+      onEdit={(preset) => setPresetDrawer({ column, mode: "edit", preset })} />
+  );
   return (
-    <Frame ctx={ctx} tab="tasks" title="Tasks" actions={actions}>
-      <ErrorText error={ctx.models.error || groups.error || error} />
+    <Frame ctx={ctx} tab="tasks" title="Tasks">
+      <ErrorText error={ctx.models.error || groups.error} />
       {p && (
         <div className="tablewrap tasks">
           <table className="ttable">
             <thead>
               <tr>
                 <th>Task</th>
-                <th><b title="Local profile · local models only">Private threads</b></th>
-                <th>
-                  <b title={`${G} profile · ${general === "custom" ? "local and cloud, falls back across" : "cloud models only"}`}>General threads</b>
-                  <div className="actions"><button type="button" className="sm" disabled={busy} onClick={() => void useOther()}>Use {O} instead</button></div>
-                </th>
-                {showOther && <th><b title="Not the default. A general thread can switch to it.">{O} profile</b></th>}
+                <th>{head("private")}</th>
+                <th>{head("general")}</th>
               </tr>
             </thead>
             <tbody>
               {TASK_ROWS.map((g) => (
                 <Fragment key={g.group}>
-                  <tr className="tgroup"><td colSpan={cols}><span className="eyebrow">{g.group}</span></td></tr>
+                  <tr className="tgroup"><td colSpan={3}><span className="eyebrow">{g.group}</span></td></tr>
                   {g.tasks.map(({ task, hint }) => (
                     <tr key={task} data-task={task}>
                       <td className="task"><b title={hint}>{TASK_WORD[task]}</b></td>
-                      {cell("local", task, "Private threads")}
-                      {cell(general, task, "General threads")}
-                      {showOther && cell(other, task, `${O} profile`)}
+                      {cell("private", task)}
+                      {cell("general", task)}
                     </tr>
                   ))}
                 </Fragment>
@@ -506,17 +507,142 @@ function Tasks({ ctx }: { ctx: MCtx }) {
       )}
       {editing && p && (
         <>
-          <TaskDrawer key={`${editing.profile}:${editing.task}`} ctx={ctx} p={p} all={all} groups={gs} profile={editing.profile} task={editing.task} onClose={close} />
+          <TaskDrawer key={`${editing.column}:${editing.task}`} ctx={ctx} p={p} all={all} groups={gs} column={editing.column} task={editing.task} onClose={close} />
           <div className="scrim drawer-scrim" aria-hidden="true" onClick={close} />
+        </>
+      )}
+      {presetDrawer && p && (
+        <>
+          <PresetDrawer key={`${presetDrawer.mode}:${presetDrawer.column}:${presetDrawer.preset?.id ?? ""}`} ctx={ctx} p={p} all={all} groups={gs}
+            column={presetDrawer.column} mode={presetDrawer.mode} preset={presetDrawer.preset} onClose={closePreset} />
+          <div className="scrim drawer-scrim" aria-hidden="true" onClick={closePreset} />
         </>
       )}
     </Frame>
   );
 }
 
+/** A column head: its name, then the Preset menu that shows and switches its preset. */
+function ColumnHead({ ctx, column, col, onNew, onSaveAs, onEdit, onApply }: {
+  ctx: MCtx; column: Column; col: ColumnState;
+  onNew: () => void; onSaveAs: () => void; onEdit: (p: PresetInfo) => void; onApply: (next: Presets) => void;
+}) {
+  return (
+    <>
+      <b title={column === "private" ? "local models only" : "local and cloud, falls back across"}>{column === "private" ? "Private threads" : "General threads"}</b>
+      <PresetMenu ctx={ctx} column={column} col={col} onNew={onNew} onSaveAs={onSaveAs} onEdit={onEdit} onApply={onApply} />
+    </>
+  );
+}
+
+/** The column's Preset menu: search, the presets it can use, Save to/Save as while Custom, New preset last (docs/ux.md §6). */
+function PresetMenu({ ctx, column, col, onNew, onSaveAs, onEdit, onApply }: {
+  ctx: MCtx; column: Column; col: ColumnState;
+  onNew: () => void; onSaveAs: () => void; onEdit: (p: PresetInfo) => void; onApply: (next: Presets) => void;
+}) {
+  const userId = ctx.user.id;
+  const [open, setOpen] = useState(false);
+  const [at, setAt] = useState<{ x: number; y: number }>();
+  const [q, setQ] = useState("");
+  const [run, busy, error] = useAction();
+  const headRef = useRef<HTMLSpanElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const presets = ctx.models.page?.presets.presets ?? [];
+  const current = col.preset?.id;
+  const custom = !col.preset;
+  const close = useCallback(() => { setOpen(false); setQ(""); buttonRef.current?.focus(); }, []);
+  useDismiss(headRef, open, close);
+  useEffect(() => {
+    if (!open) return;
+    const el = menuRef.current;
+    if (el) {
+      el.style.left = `${Math.max(8, Math.min(at!.x, innerWidth - el.offsetWidth - 8))}px`;
+      el.style.top = `${Math.max(8, Math.min(at!.y, innerHeight - el.offsetHeight - 8))}px`;
+    }
+    searchRef.current?.focus();
+  }, [open, at]);
+  const toggle = () => {
+    if (open) { close(); return; }
+    const r = buttonRef.current!.getBoundingClientRect();
+    setAt({ x: r.left, y: r.bottom + 4 });
+    setOpen(true);
+  };
+  const needle = q.trim().toLowerCase();
+  const matches = (x: PresetInfo) => !needle || x.name.toLowerCase().includes(needle);
+  const generalList = column === "general" ? presets.filter((x) => x.scope === "general" && matches(x)) : [];
+  const privateList = presets.filter((x) => x.scope === "private" && matches(x));
+  const shown = column === "general" ? [...generalList, ...privateList] : privateList;
+  const pick = (id: string) => run(async () => { onApply(await put<Presets>(u(userId, "columns", column), { preset: id })); close(); });
+  const saveTo = () => run(async () => {
+    if (!col.fromPreset) return;
+    onApply(await post<Presets>(u(userId, "columns", column, "save"), { preset: col.fromPreset.id }));
+    close();
+  });
+  const row = (x: PresetInfo) => (
+    <div key={x.id} className="preset-row">
+      <button type="button" className="preset-item" data-item data-preset={x.id} data-user={x.builtin ? undefined : "true"}
+        aria-pressed={current === x.id} onClick={() => void pick(x.id)}>
+        <span className="tick">{current === x.id ? <Icon name="check" /> : null}</span>
+        <span className="preset-name">{x.name}</span>
+      </button>
+      {!x.builtin && (
+        <button type="button" className="icon sm" aria-label={`Edit ${x.name}`} title={`Edit ${x.name} (E)`} onClick={() => { onEdit(x); close(); }}>
+          <Icon name="edit" />
+        </button>
+      )}
+    </div>
+  );
+  const onKey = (e: React.KeyboardEvent) => {
+    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+      const items = [...(menuRef.current?.querySelectorAll<HTMLElement>("[data-item]") ?? [])];
+      if (!items.length) return;
+      const atItem = items.indexOf(document.activeElement as HTMLElement);
+      const next = e.key === "Home" ? 0 : e.key === "End" ? items.length - 1
+        : atItem < 0 ? (e.key === "ArrowDown" ? 0 : items.length - 1)
+        : e.key === "ArrowDown" ? (atItem + 1) % items.length : (atItem - 1 + items.length) % items.length;
+      e.preventDefault();
+      items[next]!.focus();
+      return;
+    }
+    if (e.key === "e" || e.key === "E") {
+      const el = document.activeElement as HTMLElement | null;
+      if (el?.dataset.user === "true") {
+        const x = presets.find((p) => p.id === el.dataset.preset);
+        if (x) { e.preventDefault(); onEdit(x); close(); }
+      }
+    }
+  };
+  return (
+    <span className="preset-head" ref={headRef}>
+      <button type="button" ref={buttonRef} className="preset-button" aria-haspopup="dialog" aria-expanded={open} title={col.preset?.name ?? "Custom"} onClick={toggle}>
+        <span className="preset-name">{col.preset?.name ?? "Custom"}</span>
+        <Icon name="down" className="preset-chev" />
+      </button>
+      {open && at && (
+        <div ref={menuRef} className="preset-menu" role="dialog" aria-label="Preset" onKeyDown={onKey} style={{ left: at.x, top: at.y }}>
+          <input ref={searchRef} type="search" aria-label="Search presets" placeholder="Search presets" value={q} onChange={(e) => setQ(e.target.value)} />
+          <div className="preset-list">
+            {column === "general" && generalList.length > 0 && <div className="cap">General</div>}
+            {generalList.map(row)}
+            {column === "general" && privateList.length > 0 && <div className="cap">Private</div>}
+            {privateList.map(row)}
+            {shown.length === 0 && <p className="muted preset-none">Nothing matches</p>}
+          </div>
+          {custom && col.fromPreset && <button type="button" data-item className="preset-action" disabled={busy} onClick={() => void saveTo()}>Save to {col.fromPreset.name}</button>}
+          {custom && <button type="button" data-item className="preset-action" onClick={() => { close(); onSaveAs(); }}>Save as preset…</button>}
+          <button type="button" data-item className="preset-action" onClick={() => { close(); onNew(); }}>New preset…</button>
+          <ErrorText error={error} />
+        </div>
+      )}
+    </span>
+  );
+}
+
 /** Edit a task: its own list or Same as another task, saved at once; Add… opens the picker inside the drawer. */
-function TaskDrawer({ ctx, p, all, groups, profile, task, onClose }: {
-  ctx: MCtx; p: ModelsPage; all: Map<string, Copy>; groups: GroupInfo[]; profile: ProfileName; task: Task; onClose: () => void;
+function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
+  ctx: MCtx; p: ModelsPage; all: Map<string, Copy>; groups: GroupInfo[]; column: Column; task: Task; onClose: () => void;
 }) {
   const userId = ctx.user.id;
   const [run, busy, error] = useAction();
@@ -533,25 +659,27 @@ function TaskDrawer({ ctx, p, all, groups, profile, task, onClose }: {
     addEventListener("keydown", key);
     return () => removeEventListener("keydown", key);
   }, [onClose]);
-  const prof = p.profiles[profile];
-  const entry = entryOf(prof, task);
+  const col = p.presets.columns[column];
+  const table = columnEntries(col);
+  const mixed = columnScope(col) === "general";
+  const entry = entryOf(table, task);
   const own = !entry || Array.isArray(entry);
   const list = Array.isArray(entry) ? entry : [];
   const name = TASK_WORD[task];
-  const followers = TASK_ORDER.filter((t) => { const e = prof[t]; return !!e && !Array.isArray(e) && e.same === task; });
+  const followers = TASK_ORDER.filter((t) => { const e = table[t]; return !!e && !Array.isArray(e) && e.same === task; });
   // Same as: a task of the same kind that doesn't itself follow another. Chat can't follow a task that follows Chat.
   const options = TASK_ORDER.filter((t) => t !== task && capability(t) === capability(task) && (
-    (!own && entry.same === t) || (prof[t] ? Array.isArray(prof[t]) : task !== "chat" && capability(t) === "text")));
+    (!own && entry.same === t) || (table[t] ? Array.isArray(table[t]) : task !== "chat" && capability(t) === "text")));
   const sel = !own ? entry.same : target && options.includes(target) ? target : options[0];
-  const save = (change: ProfileEntryChange) => run(async () => {
-    const profiles = await put<Profiles>(u(userId, "profiles", profile, task), change);
+  const save = (change: ColumnTaskChange) => run(async () => {
+    const next = await put<Presets>(u(userId, "columns", column, task), change);
     const cur = ctx.models.page;
-    if (cur) ctx.models.set({ ...cur, profiles });
+    if (cur) ctx.models.set({ ...cur, presets: next });
   });
   const saveList = (next: ModelRef[]) => save({ models: next });
   const move = (i: number, by: number) => { const next = [...list]; [next[i], next[i + by]] = [next[i + by]!, next[i]!]; void saveList(next); };
   const add = (r: ModelRef) => { setPicking(false); setQ(""); void saveList([...list, r]); };
-  const about = `${PROFILE_WORD[profile]} profile · ${profile === "local" ? "private and local-only threads" : profile === p.profiles.default ? "general threads by default" : "general threads that choose it"}`;
+  const about = `${column === "private" ? "Private threads" : "General threads"} column · ${col.preset?.name ?? "Custom"}`;
   // Why Same as is off: other tasks follow this one. A fact about the list, so it stays in view (a tooltip doesn't show on a phone).
   const followed = followers.length ? `${andList(followers.map((t) => TASK_WORD[t]))} ${followers.length > 1 ? "use" : "uses"} this list.` : undefined;
   let prevKind: string | undefined;
@@ -565,7 +693,7 @@ function TaskDrawer({ ctx, p, all, groups, profile, task, onClose }: {
         {options.length > 0 && (
           <div className="follow-block">
             <div className="follow" role="radiogroup" aria-label={`Models for ${name}`}>
-              <label><input type="radio" name="follow" checked={own} disabled={busy} onChange={() => void saveList(listOf(prof, task))} /> Its own list</label>
+              <label><input type="radio" name="follow" checked={own} disabled={busy} onChange={() => void saveList(listOf(table, task))} /> Its own list</label>
               <label><input type="radio" name="follow" checked={!own} disabled={busy || !!followed} aria-describedby={followed ? "follow-why" : undefined} onChange={() => sel && void save({ same: sel })} /> Same as</label>
               <select aria-label="Task to share with" value={sel} disabled={own || busy}
                 onChange={(e) => { const t = e.target.value as Task; setTarget(t); if (!own) void save({ same: t }); }}>
@@ -581,9 +709,9 @@ function TaskDrawer({ ctx, p, all, groups, profile, task, onClose }: {
             {list.length > 0 && (
               <ol className="olist" aria-label={`${name} list`}>
                 {list.map((r, i) => {
-                  const ms = membersOf(r, all, groups, profile);
+                  const ms = membersOf(r, all, groups);
                   const kind = refKind(ms);
-                  const cross = profile === "custom" && prevKind && kind && kind !== prevKind;
+                  const cross = mixed && prevKind && kind && kind !== prevKind;
                   prevKind = kind ?? prevKind;
                   const group = "groupId" in r ? groups.find((g) => g.id === r.groupId) : undefined;
                   return (
@@ -594,14 +722,14 @@ function TaskDrawer({ ctx, p, all, groups, profile, task, onClose }: {
                         <div className="obody">
                           <div className="oname">
                             {!group && <span className={`dot ${refUp(p, ms) ? "up" : "away"}`} aria-hidden="true" />}
-                            {profile === "custom" && kind && <Kind kind={kind} />}
+                            {mixed && kind && <Kind kind={kind} />}
                             {group ? <><b>{group.name}</b><span className="cap">group of <span className="num">{ms.length}</span></span></> : <span><RefLabel refx={r} all={all} groups={groups} /></span>}
                           </div>
                           {group && (
                             <div className="members">
                               {ms.map((c) => (
-                                <span key={c.m.id} className={c.off ? "off" : undefined}>
-                                  <span className={`dot${c.off ? "" : answers(p, c) ? " up" : " away"}`} aria-hidden="true" /> {c.m.modelId} · {c.ep.name}
+                                <span key={c.m.id}>
+                                  <span className={`dot${answers(p, c) ? " up" : " away"}`} aria-hidden="true" /> {c.m.modelId} · {c.ep.name}
                                 </span>
                               ))}
                             </div>
@@ -619,7 +747,7 @@ function TaskDrawer({ ctx, p, all, groups, profile, task, onClose }: {
               </ol>
             )}
             {picking
-              ? <Picker p={p} groups={groups} profile={profile} task={task} list={list} q={q} setQ={setQ} busy={busy} onAdd={add} onCancel={() => { setPicking(false); setQ(""); }} />
+              ? <Picker p={p} groups={groups} column={column} task={task} list={list} q={q} setQ={setQ} busy={busy} onAdd={add} onCancel={() => { setPicking(false); setQ(""); }} />
               : <div className="actions"><button type="button" disabled={busy} onClick={() => setPicking(true)}>Add…</button></div>}
           </>
         )}
@@ -628,12 +756,12 @@ function TaskDrawer({ ctx, p, all, groups, profile, task, onClose }: {
   );
 }
 
-/** Add…: suitable models of the profile's kinds, by endpoint, with a search; groups with a suitable member as chips. */
-function Picker({ p, groups, profile, task, list, q, setQ, busy, onAdd, onCancel }: {
-  p: ModelsPage; groups: GroupInfo[]; profile: ProfileName; task: Task; list: ModelRef[]; q: string; setQ: (q: string) => void;
+/** Add…: suitable models of the column's kinds, by endpoint, with a search; groups with a suitable member as chips. */
+function Picker({ p, groups, column, task, list, q, setQ, busy, onAdd, onCancel }: {
+  p: ModelsPage; groups: GroupInfo[]; column: Column; task: Task; list: ModelRef[]; q: string; setQ: (q: string) => void;
   busy: boolean; onAdd: (r: ModelRef) => void; onCancel: () => void;
 }) {
-  const kindOk = (k: "local" | "cloud") => profile === "custom" || k === profile;
+  const kindOk = (k: "local" | "cloud") => column === "general" || k === "local";
   const taken = new Set(list.map(refKey));
   const needle = q.trim().toLowerCase();
   const eps = p.endpoints.filter((ep) => kindOk(ep.kind)).map((ep) => ({
@@ -675,6 +803,85 @@ function Picker({ p, groups, profile, task, list, q, setQ, busy, onAdd, onCancel
         )) : <p className="empty">No models match.</p>}
       </div>
     </section>
+  );
+}
+
+/** New preset, Save as preset, or a preset's Edit: Name, then (creating) the column's table it will copy, then Save; Edit adds Delete preset…. */
+function PresetDrawer({ ctx, p, all, groups, column, mode, preset, onClose }: {
+  ctx: MCtx; p: ModelsPage; all: Map<string, Copy>; groups: GroupInfo[]; column: Column; mode: "new" | "saveAs" | "edit"; preset?: PresetInfo; onClose: () => void;
+}) {
+  const userId = ctx.user.id;
+  const [name, setName] = useState(preset?.name ?? "");
+  const [deleting, setDeleting] = useState(false);
+  const [run, busy, error] = useAction();
+  const ref = useRef<HTMLElement>(null);
+  const col = p.presets.columns[column];
+  const table = columnEntries(col);
+  const trimmed = name.trim();
+  const taken = p.presets.presets.some((x) => x.id !== preset?.id && x.name.toLowerCase() === trimmed.toLowerCase());
+  const reserved = trimmed.toLowerCase() === "custom";
+  const invalid = trimmed.length < 1 || trimmed.length > 40 || taken || reserved;
+  useEffect(() => {
+    ref.current?.querySelector("input")?.focus();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, [onClose]);
+  const apply = (next: Presets) => { const cur = ctx.models.page; if (cur) ctx.models.set({ ...cur, presets: next }); };
+  const save = () => run(async () => {
+    apply(mode === "edit"
+      ? await patch<Presets>(u(userId, "presets", preset!.id), { name: trimmed })
+      : mode === "new"
+        ? await post<Presets>(u(userId, "presets"), { name: trimmed, column })
+        : await post<Presets>(u(userId, "columns", column, "save"), { name: trimmed }));
+    onClose();
+  });
+  const remove = () => run(async () => {
+    apply(await del<Presets>(u(userId, "presets", preset!.id)));
+    onClose();
+  });
+  const title = mode === "edit" ? preset!.name : mode === "new" ? "New preset" : "Save as preset";
+  return (
+    <aside ref={ref} tabIndex={-1} className="drawer" aria-label={title}>
+      <div className="drawer-head">
+        <h2>{title}</h2>
+        <button type="button" className="icon sm" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
+      </div>
+      <form className="drawer-body" onSubmit={(e) => { e.preventDefault(); if (!invalid) void save(); }}>
+        <label className="field"><span>Name</span>
+          <input value={name} maxLength={40} disabled={busy} onChange={(e) => setName(e.target.value)} />
+        </label>
+        {taken && <p className="error" role="alert">A preset called {trimmed} already exists.</p>}
+        {reserved && <p className="error" role="alert">A preset can't be called Custom.</p>}
+        {mode !== "edit" && <PresetSummary entries={table} all={all} groups={groups} />}
+        <ErrorText error={error} />
+        <div className="row drawer-foot">
+          <button type="submit" className="primary" disabled={busy || invalid}>Save</button>
+          {mode === "edit" && <button type="button" className="danger" disabled={busy} onClick={() => setDeleting(true)}>Delete preset…</button>}
+        </div>
+      </form>
+      {deleting && (
+        <ConfirmDialog title={`Delete ${preset!.name}?`}
+          sentence="Each column that followed it becomes Custom with the same lists, and each thread that chose it uses its column again."
+          confirm="Delete" danger onCancel={() => setDeleting(false)} onConfirm={() => { setDeleting(false); void remove(); }} />
+      )}
+    </aside>
+  );
+}
+
+/** A read-only summary of the column's table a new preset will copy: task, first model, "+N fallbacks". */
+function PresetSummary({ entries, all, groups }: { entries: Table; all: Map<string, Copy>; groups: GroupInfo[] }) {
+  const rows = TASK_ORDER.flatMap((task) => {
+    const list = listOf(entries, task);
+    if (!list.length) return [];
+    return [{ task, node: <RefLabel refx={list[0]!} all={all} groups={groups} />, extra: list.length > 1 ? `+${list.length - 1} ${list.length > 2 ? "fallbacks" : "fallback"}` : "" }];
+  });
+  return (
+    <ul className="preset-summary" aria-label="This column's table">
+      {rows.map((r) => (
+        <li key={r.task}><b>{TASK_WORD[r.task]}</b><span className="muted">{r.node}{r.extra && <> · <span className="num">{r.extra}</span></>}</span></li>
+      ))}
+    </ul>
   );
 }
 

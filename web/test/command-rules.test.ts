@@ -9,7 +9,7 @@ import type { ShellContext } from "../src/Shell.tsx";
 const general = (rules: CommandRule[]) => renderToStaticMarkup(createElement(GeneralSection, {
   ctx: { user: { id: "ada" }, groups: [] } as unknown as ShellContext, base: "/project",
   summary: { id: "project", pool: "general", projectSettings: { commandRules: rules } } as ThreadSummary,
-  settings: { mode: "ask", models: { chat: { source: "profile" } }, allowed: [], grants: [], machines: [], repositories: [], mcpServers: [] } as unknown as ThreadSettings,
+  settings: { mode: "ask", models: { chat: { source: "column" } }, allowed: [], grants: [], machines: [], repositories: [], mcpServers: [] } as unknown as ThreadSettings,
   onSummary: () => {}, onSettings: () => {},
 }));
 const permission = (alwaysAllow?: string) => renderToStaticMarkup(createElement(PermissionPrompt, {

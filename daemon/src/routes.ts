@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import {
-  describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, profileFor, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
+  describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
-  type Author, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
+  type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -440,7 +440,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const hosts = looks.filter(({ e }) => e.api === "host").map(({ e, look }) => look.status
         ? { endpointId: e.id, status: look.status as Api.HostStatus }
         : { endpointId: e.id, error: look.error ?? `${e.name} is down`, ...(look.unpaired ? { unpaired: true as const } : {}) });
-      return { endpoints: live, hosts, profiles: profiles(d, user.id), calls: m.recentCalls(user.id, { limit: 20 }), notice: m.notice(user.id), cleanup: m.cleanup(user.id).length };
+      return { endpoints: live, hosts, presets: presets(d, user.id), calls: m.recentCalls(user.id, { limit: 20 }), notice: m.notice(user.id), cleanup: m.cleanup(user.id).length };
     }),
     route("POST", `${u}/hosts/:endpointId/:action`, async (r) => {
       const action = r.params.action;
@@ -496,25 +496,59 @@ export function apiRoutes(d: Lyricad): Route[] {
       const ids = owner(d, user, (o) => o[pool].projectThreads(project));
       return s().models.recentCalls(user.id, { threadIds: ids });
     }),
-    route("GET", `${u}/profiles`, (r) => profiles(d, d.userFor(r).id)),
-    route("PATCH", `${u}/profiles`, async (r) => {
+    route("GET", `${u}/presets`, (r) => presets(d, d.userFor(r).id)),
+    route("PATCH", `${u}/presets`, async (r) => {
       const user = d.userFor(r);
-      const c = await r.json<Api.ProfilesChange>();
-      if (c.default !== undefined) s().models.setDefaultProfile(user.id, c.default);
+      const c = await r.json<Api.PresetsChange>();
       if (c.thinking !== undefined) s().models.setDefaultThinking(user.id, c.thinking);
       if (c.fallback !== undefined) s().models.setDefaultFallback(user.id, c.fallback);
       if (c.sleepFallback !== undefined) s().sleep.setFallback(user.id, c.sleepFallback);
       if (c.readAloudLive !== undefined) s().models.setDefaultReadAloudLive(user.id, c.readAloudLive);
-      return profiles(d, user.id);
+      return presets(d, user.id);
     }),
-    route("PUT", `${u}/profiles/:profile/:task`, async (r) => {
+    route("POST", `${u}/presets`, async (r): Promise<Api.Presets> => {
       const user = d.userFor(r);
-      const name = r.params.profile;
-      if (name !== "cloud" && name !== "local" && name !== "custom") throw new HttpError(404, "the profiles are local, cloud and custom");
-      const c = await r.json<Api.ProfileEntryChange>();
+      const c = await r.json<{ name: string; column: Column }>();
+      const column = checkColumn(c.column);
+      s().models.addPreset(user.id, { name: String(c.name ?? ""), scope: column === "private" ? "private" : "general" }, column);
+      return presets(d, user.id);
+    }),
+    route("PATCH", `${u}/presets/:id`, async (r): Promise<Api.Presets> => {
+      const user = d.userFor(r);
+      const c = await r.json<{ name: string }>();
+      s().models.editPreset(user.id, r.params.id!, { name: String(c.name ?? "") });
+      return presets(d, user.id);
+    }),
+    route("DELETE", `${u}/presets/:id`, (r): Api.Presets => {
+      const user = d.userFor(r);
+      s().models.removePreset(user.id, r.params.id!);
+      return presets(d, user.id);
+    }),
+    route("PUT", `${u}/columns/:column`, async (r): Promise<Api.Presets> => {
+      const user = d.userFor(r);
+      const column = checkColumn(r.params.column!);
+      const c = await r.json<{ preset: string }>();
+      s().models.useColumnPreset(user.id, column, String(c.preset ?? ""));
+      return presets(d, user.id);
+    }),
+    route("PUT", `${u}/columns/:column/:task`, async (r): Promise<Api.Presets> => {
+      const user = d.userFor(r);
+      const column = checkColumn(r.params.column!);
+      const c = await r.json<Api.ColumnTaskChange>();
       const entry = "same" in c ? { same: checkTask(String(c.same)) } : "models" in c ? (c.models ? toRefs(c.models) : undefined) : c.model ? [toRef(c.model)] : undefined;
-      s().models.setProfile(user.id, name, checkTask(r.params.task!), entry);
-      return profiles(d, user.id);
+      s().models.setColumnTask(user.id, column, checkTask(r.params.task!), entry);
+      return presets(d, user.id);
+    }),
+    route("POST", `${u}/columns/:column/save`, async (r): Promise<Api.Presets> => {
+      const user = d.userFor(r);
+      const column = checkColumn(r.params.column!);
+      const c = await r.json<{ preset?: string; name?: string }>();
+      if (c.preset !== undefined) s().models.savePreset(user.id, String(c.preset), column);
+      else {
+        const p = s().models.addPreset(user.id, { name: String(c.name ?? ""), scope: column === "private" ? "private" : "general" }, column);
+        s().models.useColumnPreset(user.id, column, p.id);
+      }
+      return presets(d, user.id);
     }),
 
     // --- Model groups ---
@@ -1820,11 +1854,17 @@ function endpoints(d: Lyricad, userId: string): Api.EndpointInfo[] {
   return d.services!.models.endpoints(userId).map((e) => endpointInfo(d, userId, e.id));
 }
 
-function profiles(d: Lyricad, userId: string): Api.Profiles {
+function checkColumn(column: string | undefined): Column {
+  if (column !== "private" && column !== "general") throw new HttpError(404, "the columns are private and general");
+  return column;
+}
+
+function presets(d: Lyricad, userId: string): Api.Presets {
   const m = d.services!.models;
   return {
-    local: m.profile(userId, "local"), cloud: m.profile(userId, "cloud"), custom: m.profile(userId, "custom"),
-    default: m.defaultProfile(userId), thinking: m.defaultThinking(userId),
+    presets: m.presets(userId),
+    columns: { private: m.column(userId, "private"), general: m.column(userId, "general") },
+    thinking: m.defaultThinking(userId),
     fallback: m.defaultFallback(userId), sleepFallback: d.services!.sleep.fallback(userId),
     readAloudLive: m.defaultReadAloudLive(userId),
   };
@@ -2155,9 +2195,13 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     }
   };
   const answered = threadId ? models.recentCalls(user.id, { threadId, limit: 1, speech: false })[0] : undefined;
+  const restricted = pool === "private" || ctx.localOnly;
+  const chosen = ctx.preset ? models.preset(user.id, ctx.preset) : undefined;
+  const columnPreset = models.column(user.id, restricted ? "private" : "general").preset;
+  const effective = chosen && (!restricted || chosen.scope === "private") ? chosen : columnPreset;
   return {
     models: Object.fromEntries(THREAD_TASKS.map((task) => [task, taskModel(task)])) as Api.ThreadSettings["models"],
-    profile: profileFor(ctx), profileChoice: models.threadProfile(user.id, threadId), thinking: ctx.thinking ?? "off", thinkingLevels,
+    profile: effective?.name ?? "Custom", preset: ctx.preset ?? null, thinking: ctx.thinking ?? "off", thinkingLevels,
     ...(answered ? { answered } : {}),
     ...(threadId ? contextOf(d, user, pool, threadId, answered) ?? {} : {}),
     localOnly: ctx.localOnly,
@@ -2205,8 +2249,11 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   const localOnly = change.localOnly ?? current.localOnly;
   if (pool === "private" && !localOnly) throw new CloudModelForbidden("a private thread is always local-only");
   if (parent && !localOnly && models.callContext(user.id, pool, parent).localOnly) throw new Error("the parent thread is local-only, so this one is too");
-  if (change.profile && pool === "private") throw new CloudModelForbidden("a private thread always uses the local profile");
-  if (change.profile !== undefined && change.profile !== null && change.profile !== "cloud" && change.profile !== "custom") throw new Error("a thread uses the cloud or the custom profile");
+  if (change.preset !== undefined && change.preset !== null) {
+    const p = models.preset(user.id, change.preset);
+    if (!p) throw new Error(`no preset ${change.preset}`);
+    if (localOnly && p.scope !== "private") throw new CloudModelForbidden("a private or local-only thread can use only private presets");
+  }
   if (change.thinking !== undefined && change.thinking !== null && !THINKING_LEVELS.includes(change.thinking)) throw new Error("thinking is off, low, medium or high");
   const overrides = { ...current.overrides };
   for (const [task, ref] of Object.entries(change.models ?? {})) {
@@ -2216,8 +2263,8 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
     if (ref) overrides[task as Api.ThreadTask] = Array.isArray(ref) ? toRefs(ref) : [toRef(ref)];
     else delete overrides[task as Api.ThreadTask];
   }
-  const profile = pool === "general" ? (change.profile === undefined ? current.profile : change.profile ?? models.defaultProfile(user.id)) : undefined;
-  const next = { ...current, localOnly, overrides, ...(profile ? { profile } : {}) };
+  const preset = change.preset === undefined ? current.preset : change.preset;
+  const next = { ...current, localOnly, overrides, ...(preset ? { preset } : {}) };
   for (const [task, list] of Object.entries(overrides)) overrides[task as Api.ThreadTask] = models.checkThreadList(next, task as Api.ThreadTask, list);
   if (change.unlogged === false && thread.parent) {
     owner(d, user, (o) => { if (o[pool].getThread(thread.parent!)?.unlogged) throw new Error("this thread's parent isn't logged, so it can't be logged either"); });
@@ -2232,7 +2279,7 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
   if (Object.keys(wsChange).length) ws.setThread(thread.id, pool, wsChange);
 
   if (change.localOnly !== undefined && pool === "general") models.setLocalOnly(user.id, pool, thread.id, change.localOnly);
-  if (change.profile !== undefined && pool === "general") models.setThreadProfile(user.id, pool, thread.id, change.profile);
+  if (change.preset !== undefined) models.setThreadPreset(user.id, pool, thread.id, change.preset);
   if (change.thinking !== undefined) models.setThinking(user.id, thread.id, change.thinking);
   for (const task of Object.keys(change.models ?? {})) models.setThreadModel(user.id, pool, thread.id, task as Api.ThreadTask, overrides[task as Api.ThreadTask]);
   if (change.unlogged !== undefined) owner(d, user, (o) => o[pool].setUnlogged(thread.id, !!change.unlogged));

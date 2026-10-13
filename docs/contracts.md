@@ -343,20 +343,23 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
 }
 type ModelRef = { offeringId: string } | { groupId: string };
 interface Group { id; name; shared; members: string[] }      // offering IDs, in order, one per endpoint
-type ProfileName = "cloud" | "local" | "custom";
 type Entry = ModelRef[] | { same: Task };                   // an ordered list, or another task's list
-type Profiles = Partial<Record<Task, Entry>>;
+type Profiles = Partial<Record<Task, Entry>>;              // a preset's or column's table
+type Column = "private" | "general";                       // the Tasks table's two columns
+type PresetScope = "private" | "general";                  // what a preset may hold
+interface Preset { id; name; scope: PresetScope; builtin: "local" | "cloud" | null; entries: Profiles; updatedAt }
+interface ColumnState { column; preset: Preset | null; fromPreset: Preset | null; entries: Profiles }
 
 interface CallContext {
   userId; pool; localOnly: boolean;         // always true for private
-  profile?: "cloud" | "custom";             // general threads only; ignored where localOnly
-  overrides?: Partial<Record<Task, ModelRef[]>>;   // the thread's own lists, which beat the profile
+  preset?: string;                          // the thread's own preset; absent is its column. Ignored in private and local-only threads unless the preset is private
+  overrides?: Partial<Record<Task, ModelRef[]>>;   // the thread's own lists, which beat the preset
   thinking?: ThinkingLevel;
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
 }
 interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality" }        // what the call needs from a model
-interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: ProfileName;
-                       source: "thread" | "profile"; skipped: { label; reason }[]; remaining: number }
+interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: string;   // the preset's name, or "Custom"
+                       source: "thread" | "preset" | "column"; skipped: { label; reason }[]; remaining: number }
 interface Pace { promptTokens; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
 interface CallRecord { at; pool; threadId; task; offeringId; label; endpointName; kind; fallback?; note?; pace?: Pace; audioSeconds? }
 interface AnswerSettings { temperature?; topP?; topK?; minP?; repeatPenalty?; presencePenalty?;
@@ -367,8 +370,8 @@ type Hub = "huggingface" | "modelscope";
 interface ModelIdentity { basename?; sizeLabel?; finetune?; baseModels?: { name?; organization?; repoUrl? }[]; card?: { baseModel?: string[]; baseModelRelation? } }
 interface LibraryEntry { key; name; base?: { key; name }; starred; groups: string[]; copies: { offeringId; label; rawName;
                          endpointId; endpointName; kind; shared; status; downloaded; capabilities; groups; flagged?; size? }[] }
-type Use = { where: "profile"; profile; task } | { where: "thread"; pool; threadId; task }
-         | { where: "workflow"; name } | { where: "group"; groupId; name };
+type Use = { where: "preset"; presetId; name; task } | { where: "column"; column; task }
+         | { where: "thread"; pool; threadId; task } | { where: "workflow"; name } | { where: "group"; groupId; name };
 interface CleanupItem { endpoint?; offering?; group?; label; usedIn: Use[]; otherUsers: number; suggestion?: { offeringId; label } }
 
 class Models {                                              // new Models(keyring, users)
@@ -394,15 +397,18 @@ class Models {                                              // new Models(keyrin
   groups(userId) / group(userId, id) / addGroup(actor, { name, members }, { shared? }) / editGroup(actor, id, { name?, members? }) / removeGroup(actor, id)
   groupDetail(userId, id): { group; members: (Offering & { label; kind; stale })[]; warnings: string[] }
   groupSuggestions(userId): { name; members; strength: "strong" | "weak" }[]   // never made automatically
-  // Profiles, thread choices and resolve
-  profile(userId, name): Profiles / setProfile(userId, name, task, value?: Entry | ModelRef)   // a single ref is a one-model list
-  defaultProfile(userId) / setDefaultProfile(userId, "cloud" | "custom")
+  // Presets, columns, thread choices and resolve
+  presets(userId): Preset[] / preset(userId, id): Preset | undefined
+  addPreset(userId, { name, scope }, from: Column): Preset  // a new preset copying a column's table; it does not make the column follow it
+  editPreset(userId, id, { name }): Preset / removePreset(userId, id)   // built-ins can't be renamed or removed
+  savePreset(userId, id, column) / useColumnPreset(userId, column, id)   // Save to, and following a preset
+  column(userId, column): ColumnState / setColumnTask(userId, column, task, value?: Entry | ModelRef)   // editing a followed column makes it Custom
   setThreadModel(userId, pool, threadId, task, list?: ModelRef[] | ModelRef) / checkThreadList(ctx, task, list): ModelRef[]
-  setThreadProfile(userId, pool, threadId, "cloud" | "custom" | null) / threadProfile(userId, threadId)
+  setThreadPreset(userId, pool, threadId, preset: string | null) / threadPreset(userId, threadId)
   setLocalOnly(userId, pool, threadId, on) / forgetThread(userId, pool, threadId)
   callContext(userId, pool, threadId): CallContext
   childContext(parent, childThreadId, { tier } | { model }): CallContext   // a child under its parent's rules
-  inheritContext(parent, childThreadId, { chat? }): CallContext          // a branch: the parent's local-only, profile, thinking and lists
+  inheritContext(parent, childThreadId, { chat? }): CallContext          // a branch: the parent's local-only, preset, thinking and lists
   resolve(task, ctx, need?, { evenIfDown?, except? }?): Resolution   // throws CloudModelForbidden, NoModel or Offline
   resolveLive(task, ctx, need?, { probeMs?, probeLast? }): Promise<Resolution>   // probes first when there is a fallback; asks again before Offline
   callWithFallback(task, ctx, need, call: (r) => Promise<T>, { probeMs? }?): Promise<T>   // the next model on isUnreachable; Offline when none answers
@@ -457,19 +463,23 @@ class Models {                                              // new Models(keyrin
 // Also exported: CloudModelForbidden, NoModel, Offline (a NoModel: code "offline", task, tried), isUnreachable(err),
 // HostRefused (with `code`), PairingFailed, HostIdentityChanged, voiceContext(ctx);
 // SPEECH_FORMAT (s16le, 24 kHz, mono), SPEECH_CONTENT_TYPE, MAX_CLIP_SECONDS (600), MAX_CLIP_BYTES, MAX_SPEAK_CHARS, wavData, wavSeconds, pcmSeconds, LANGUAGE;
-// STALE_DAYS, GONE_DAYS, HEALTH_MS, CAPABILITIES, ANSWER_SETTINGS, TASKS, TASK_NAMES (each task in words, for messages), THINKING_LEVELS; isRestricted, profileFor,
+// STALE_DAYS, GONE_DAYS, HEALTH_MS, CAPABILITIES, ANSWER_SETTINGS, TASKS, TASK_NAMES (each task in words, for messages), THINKING_LEVELS; isRestricted,
 // checkTask, refId, baseName, acceptedSettings(endpoint), payloadFields(…); fingerprint, normaliseCode, pairingProofs,
 // hostOrigin; probeUrl(baseUrl, apiKey, timeoutMs?, fetchImpl?), discoverModels, addressesOutside.
 ```
 
 - **The boundary.** `isRestricted(ctx)` is `pool === "private" || localOnly`,
   and a private thread is always local-only (`setLocalOnly(…, false)` and
-  `setThreadProfile` on one throw). In a restricted context `allowed`
-  returns local endpoints only, `resolve` uses the local profile whatever
-  `ctx.profile` says, a group's cloud members are skipped, and a cloud model
-  named directly throws `CloudModelForbidden`. Nothing falls back across the
-  local/cloud line: outside Custom a list keeps to one kind (local where
-  restricted, cloud in the cloud profile, else its first model's).
+  `setThreadPreset` to a general preset on one throw). In a restricted
+  context `allowed` returns local endpoints only, `resolve` uses the Private
+  column whatever `ctx.preset` says, a group's cloud members are skipped,
+  and a cloud model named directly throws `CloudModelForbidden`. Nothing
+  falls back across the local/cloud line: outside a general column a list
+  keeps to one kind (local where restricted, cloud in the Cloud preset,
+  else its first model's). A private preset, and the Private column's
+  Custom entries, refuse any cloud model or a group with no local member
+  (`CloudModelForbidden`) on every write path, including `savePreset`,
+  `replace` and `merge`.
 - **Offline** is the one shape for "every model in a task's list is away",
   for chat, images and speech alike: `Offline extends NoModel` with
   `code: "offline"`, the `task`, and `tried` (labels and reasons, in list
@@ -499,12 +509,13 @@ class Models {                                              // new Models(keyrin
   Hub tokens leave core only as `X-Hub-Token` to a host, never in a response,
   log or call record. Call records hold model metadata, never prompt text.
 - **Lists.** The entry that decides a task is the thread's list, else the
-  profile's after one level of `same`, else chat's (not for `embedding` or
-  the image tasks). `resolve` expands groups in place, follows redirects,
-  drops tombstoned entries, and skips a model that is gone, on a stale or
-  down endpoint, or unfit for the `need` (tools, context window, image or
-  edit). `checkThreadList` and `setProfile` refuse a list the router would
-  refuse, before anything is written.
+  thread's preset, else its column's, after one level of `same`, else
+  chat's (not for `embedding` or the image tasks). `resolve` expands groups
+  in place, follows redirects, drops tombstoned entries, and skips a model
+  that is gone, on a stale or down endpoint, or unfit for the `need`
+  (tools, context window, image or edit). `checkThreadList` and
+  `setColumnTask` refuse a list the router would refuse, before anything is
+  written.
 - **Hosts** are called only through `fetchFor`: undici, with a connector that
   checks the pinned key before any byte is sent, no session resumption,
   addresses tried in order. A changed key ends the call with
@@ -523,15 +534,17 @@ class Models {                                              // new Models(keyrin
   `model_groups`, `offering_settings`, `hub_tokens` (shared), plus
   `offering_redirects`, `redirect_pending`, `shared_refs`,
   `shared_refs_indexed`, `legacy_refs` and `host_identity`. In each
-  `user.db`: the same first five (the user's own), `model_profiles`,
-  `thread_models`, `thread_choices`, `local_only_threads`,
-  `starred_offerings` and `model_calls`, with the default profile, default
-  thinking level and the notice in its `settings`. Shared rows change only
-  with an administrator actor. A `user.db` is migrated, has pending shared
-  redirects applied, and is indexed into `shared_refs` the first time it is
-  opened in a process.
+  `user.db`: the same first five (the user's own), `model_presets`,
+  `model_columns`, `thread_models`, `thread_choices`, `local_only_threads`,
+  `starred_offerings` and `model_calls`, with the default thinking level
+  and the notice in its `settings`. The legacy `model_profiles` and
+  `thread_choices.profile` stay one release, kept in step by `syncLegacy`, so
+  a rollback keeps the user's choices. Shared rows change only with an
+  administrator actor. A `user.db` is migrated, has pending shared redirects
+  applied, and is indexed into `shared_refs` the first time it is opened in
+  a process.
 - **Watching.** `watching` ("Watching threads") is a text task: a new
-  profile starts it following `subagent.cheap`, and a stored profile with
+  preset starts it following `subagent.cheap`, and a stored preset with
   no entry for it reads as following `subagent.cheap` too (unless that
   itself follows another task). It is a thread task (`THREAD_TASKS` in
   daemon/src/api.ts) for project chats only: the project chat can choose
@@ -1198,24 +1211,29 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       (`sources`, `dropped`, `contextWindow` with its source),
       `OfferingSettingsChange` (`scope: "shared" | "mine"`), `DeleteCopy`
       (`usedIn`, `deleted`, `left`), `ServingSettings`.
-    - **Groups and profiles:** `GET`/`POST groups`; `GET groups/suggestions`;
-      `GET`/`PATCH`/`DELETE groups/:id`; `GET`/`PATCH profiles` (`default`,
-      `thinking`); `PUT profiles/:profile/:task` with `{ models }`, `{ same }` or
-      `{ model }`. Types: `GroupInfo`, `GroupInput`, `GroupChange`,
-      `GroupDetail`, `GroupSuggestion`, `Profiles` (all three plus `default` and
-      `thinking`), `ProfileEntryChange`, `ProfilesChange`.
+    - **Groups and presets:** `GET`/`POST groups`; `GET groups/suggestions`;
+      `GET`/`PATCH`/`DELETE groups/:id`; `GET`/`PATCH presets` (`thinking`,
+      `fallback`, `sleepFallback`, `readAloudLive`); `POST presets`
+      (`{ name, column }`); `PATCH`/`DELETE presets/:id` (`{ name }`);
+      `PUT columns/:column` (`{ preset }`); `PUT columns/:column/:task`
+      (`{ models }`, `{ same }` or `{ model }`); `POST columns/:column/save`
+      (`{ preset }` or `{ name }`). Types: `GroupInfo`, `GroupInput`,
+      `GroupChange`, `GroupDetail`, `GroupSuggestion`, `PresetInfo`,
+      `Presets` (the presets, the two columns, `thinking`, `fallback`,
+      `sleepFallback` and `readAloudLive`), `ColumnTaskChange`,
+      `PresetsChange`.
     - **Models page, library, tokens:** `GET models/page` (→ `ModelsPage`:
       endpoints with `pageStatus`, hosts' status or error (`unpaired` when the
-      host revoked this server), profiles, the last 20 calls,
+      host revoked this server), the presets and columns, the last 20 calls,
       the notice, the Clean up count); `GET models/cleanup`; `GET`/`DELETE
       models/notice`; `GET models/calls`; `GET library/text`; `GET hub-tokens`,
       `PUT`/`DELETE hub-tokens/:hub` (`?shared=1`). Types: `ModelsPage`,
       `CleanupItem`, `ModelUse`, `ModelsNotice`, `CallInfo`, `TextLibrary`,
       `LibraryEntry`, `HubTokenInfo` (last four characters), `HubTokenInput`.
-    - **Threads:** `ThreadSettings` gains `profile`, `profileChoice`, `thinking`,
+    - **Threads:** `ThreadSettings` gains `preset`, `presetChoice`, `thinking`,
       `thinkingLevels` and `answered`; `TaskModel` gains `list`, `label` and
       `modelId`. `ThreadSettingsChange.models` takes a ref, a list or null, and
-      gains `profile` and `thinking`. `DELETE` on a thread calls
+      gains `preset` and `thinking`. `DELETE` on a thread calls
       `Models.forgetThread` for it and each subagent thread under it.
     - **Errors from core** (`statusOf`): `CloudModelForbidden`, `NoModel`,
       `PairingFailed`, `GitAccountProblem` and a plain `Error` (a validation
@@ -1253,11 +1271,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     the message read from the store, never sent by the client;
     `ThreadSettings.speech` (`Speech`, also `GET /api/u/:userId/speech?pool=`)
     and `models["speech.transcribe"]`, `models["speech.speak"]` (thread tasks);
-    `ThreadSettings.fallback` (null follows `Profiles.fallback`) and
-    `fallbackOn`, `ThreadSettingsChange.fallback`, `ProfilesChange.fallback`
+    `ThreadSettings.fallback` (null follows `Presets.fallback`) and
+    `fallbackOn`, `ThreadSettingsChange.fallback`, `PresetsChange.fallback`
     and `sleepFallback`;
-    `Profiles.readAloudLive` and `Speech.readAloudLive` (Read aloud while she
-    writes, off by default), `ProfilesChange.readAloudLive`;
+    `Presets.readAloudLive` and `Speech.readAloudLive` (Read aloud while she
+    writes, off by default), `PresetsChange.readAloudLive`;
     `Capabilities.transcribe` and `speak`, `AnswerSettings.voices` and
     `speed`, `CallInfo.audioSeconds`;
   - sleep: overview, run detail, items (start a chat, dismiss), `sleep.mode`,

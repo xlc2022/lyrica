@@ -64,7 +64,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   // A child thread's update changes its badge in the sidebar.
   const updates = t.live.items.filter((x) => x.role === "notice").length;
   useEffect(() => { if (updates) refreshThreads(); }, [updates, refreshThreads]);
-  // The badge follows the profile, which may change elsewhere: refresh it after each turn and on focus.
+  // The badge follows the preset, which may change elsewhere: refresh it after each turn and on focus.
   // A refresh that a change overtakes is dropped, so it can't undo a Shift+Tab pressed meanwhile.
   const latest = useRef(0);
   const inFlight = useRef(0);

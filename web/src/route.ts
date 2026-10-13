@@ -81,7 +81,7 @@ export function parse(hash: string): Route {
     const add = UNDER.find((x) => x.tab === tab && x.part === b)?.add;
     return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(add ? { add } : {}) };
   }
-  // Settings → Endpoints moved to Models → Hosts and endpoints, and Settings → Model profiles to Models → Tasks.
+  // Settings → Endpoints moved to Models → Hosts and endpoints, and Settings → Model presets to Models → Tasks.
   if (section === "settings" && a === "endpoints") return { page: "models", userId, tab: "hosts" };
   if (section === "settings" && a === "profiles") return { page: "models", userId, tab: "tasks" };
   // A section may have pages of its own under it (settings/machines/new): the rest of the path rides along.

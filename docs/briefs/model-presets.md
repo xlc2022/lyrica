@@ -188,3 +188,27 @@ profile` commands became `… preset`.
   for the thread drawer's Preset select, added to this build. The build PR carries
   the DESIGN, contracts, models and ux doc changes (PR review's call). Next: mockup to UI review and PR review, then
   the build on lunasa.
+- 2026-10-13 (build done): the feature is built and self-tested. Core:
+  `model_presets` / `model_columns` and `thread_choices.preset`, the
+  presets API, the private-scope boundary in core, migration step 11
+  (expand-only; `syncLegacy` keeps the legacy tables for a rollback).
+  Daemon: the presets/columns routes replace the profiles routes, and the
+  thread settings `PATCH` takes `preset`. CLI: `lyrica admin models preset
+  list|show|use|set|save|add|rename|remove`. Web: the two columns' Preset
+  menu (Search presets, Save to / Save as preset…, New preset…, Edit,
+  Delete preset…), the thread drawer's Preset select, the Overview/welcome
+  Backend copy. Docs updated in the same PR: DESIGN, models, contracts,
+  ux (Models row and word list), web, daemon, and the operator guides'
+  `profile` CLI. Two tests caught by the change were fixed: `models.test.ts`
+  resets the preset tables with `beforeVersions`, and `threads.test.ts`
+  asserts `profile: "Custom"` / `preset: …` instead of `profileChoice`.
+  Checks: `npm run typecheck` clean; the targeted vitest suites pass
+  (291 passed, 2 skipped): core models+migrations 38, core
+  fallbacks/hosts/library/images/speech 59, daemon speech/threads +
+  extension models 44 (1 skipped), daemon command-rules/daemon/delegation/
+  image-routes/projects/rewind/routines/sleep 85 (1 skipped), extension
+  delegate/images/plans/sleep + web command-rules 65. Next:
+  PR review and UI review, then merge; the Playwright e2e was rewritten to
+  the new selectors and still needs a run (ports 7340/7342 are taken on
+  this machine, so use the untracked `web/playwright.local.config.ts` on
+  ports 7351–7353). Open questions: none.

@@ -1,7 +1,7 @@
 # Models
 
 Every model call goes through one router, which picks the model for each task
-from the user's profiles and the thread's own choices. Code:
+from the user's presets and columns and the thread's own choices. Code:
 `core/src/models/` (no Pi), `extension/src/models.ts` and `session.ts`.
 
 ## Guarantee
@@ -18,7 +18,7 @@ it, never inferred), an OpenAI-compatible base URL and an optional API key.
 
 - **Permanent IDs.** Every endpoint has a UUID, and its name is a label that
   can change. Every model it offers is an **offering** with its own UUID, so
-  the same model on two endpoints is two offerings. Profiles and thread
+  the same model on two endpoints is two offerings. Presets, columns and thread
   choices name offerings (`ModelRef` is `{ offeringId }`). Renaming an
   endpoint, or changing its URL or key (`editEndpoint`), keeps every ID.
 - **Labels.** People and Lyrica name a model as `<endpoint>/<model>`, with
@@ -124,7 +124,7 @@ administrator pairs or manages them; a personal host lives in its user's
   drop it at their next unlock. An administrator's Remove in Clean up does
   the same sooner.
 - `cleanup(userId)` lists the stale endpoints, gone models and empty groups
-  the user can see, where they are used (the user's profiles, threads, saved
+  the user can see, where they are used (the user's presets, columns, threads, saved
   workflows and groups, and shared groups), how many other users' lists name it, and the same model on
   another endpoint, if there is one.
 - `replace(actor, from, to)` deletes an offering and leaves a **redirect** to
@@ -134,7 +134,7 @@ administrator pairs or manages them; a personal host lives in its user's
   gives an endpoint and its offerings fresh IDs, and `merge` folds one
   endpoint into another of the same kind and place; both leave redirects.
 - **Shared redirects** live in `self.db` (`offering_redirects`), and the
-  router follows them at once. Each user's lists (profiles, thread choices,
+  router follows them at once. Each user's lists (presets, columns, thread choices,
   saved workflows, groups) are rewritten the next time their `user.db` is opened,
   which is at their next unlock if they are locked now, with a one-time
   notice (`notice`, `dismissNotice`) naming the old label. A list left
@@ -157,9 +157,9 @@ A forgotten thread's lists, choices and call records go with it (`forgetThread`)
 
 Tables: `endpoints`, `offerings` and `model_groups` (in both `self.db` and
 `user.db`); `offering_redirects`, `redirect_pending`, `shared_refs`,
-`shared_refs_indexed` and `legacy_refs` (in `self.db`); `model_profiles`,
-`thread_models`, `thread_choices`, `local_only_threads` and `model_calls`
-(in `user.db`). See `core/src/models/schema.ts`.
+`shared_refs_indexed` and `legacy_refs` (in `self.db`); `model_presets`,
+`model_columns`, `thread_models`, `thread_choices`, `local_only_threads`
+and `model_calls` (in `user.db`). See `core/src/models/schema.ts`.
 
 ## Model groups
 
@@ -177,43 +177,52 @@ their own from their own and shared models.
   kind on different endpoints with the same file checksum (strong, once
   hosts report one) or the same base name (weak).
 
-## Profiles and lists
+## Presets and lists
 
-Each user has three profiles, each mapping a task to an ordered list of
-models or groups, or to another task's list (`{ same: task }`):
+The Tasks table has two columns, **Private threads** and **General
+threads**, and each column follows a **preset** — a named map of task to an
+ordered list of models or groups, or to another task's list
+(`{ same: task }`). A preset has a scope:
 
-- **local:** local models only. Private and local-only threads always use it.
-- **cloud:** cloud models only.
-- **custom:** local and cloud mixed. Only general threads that aren't
-  local-only use it.
+- **private:** local models only. Offered in both columns, since a
+  local-only table is valid anywhere.
+- **general:** local and cloud mixed freely; its lists fall back in order
+  across the line, each model marked, as Custom did.
 
-A group in a local or cloud list needs a member of that kind; its other
-members are skipped. General threads use the user's default
-(`setDefaultProfile`: cloud, unless set to custom) or their own choice
-(`setThreadProfile`). A thread's own lists (`setThreadModel`) beat the
-profile, and outside Custom they keep to one kind.
+Two built-ins come with every user: **Local** (private) and **Cloud**
+(general). They can't be renamed or deleted; their lists can be saved over.
+A column follows a preset, or is **Custom** with its own table, remembering
+which preset it came from (for **Save to**). Private and local-only threads
+always resolve from the Private column, which can follow only a private
+preset.
+
+A group in a private or general list needs a member of that kind; its other
+members are skipped. A general thread's own choice is a preset (or none:
+its column) via `setThreadPreset`; a thread's own lists (`setThreadModel`)
+beat the preset.
 
 `same` names a task of the same kind (text, embeddings, images, speech) that doesn't
-itself follow another, so it is one level deep. A profile's first entry
+itself follow another, so it is one level deep. A preset's first entry
 brings the defaults: titles, compaction and watching follow cheap
 subagents, and the sleep phases follow strong subagents. Watching came
-later, so a profile stored without an entry for it reads as following
+later, so a preset stored without an entry for it reads as following
 cheap subagents too, unless cheap subagents themselves follow another task. Only a project chat
 has a `watching` list of its own, since only it makes looks: setting one on
 any other thread is refused. The compaction entry is stored but
 unused, since compaction uses the thread's chat model. A task with no list follows chat,
 except embeddings, the image tasks and the speech tasks.
 
-Profiles used to be cloud and local, with local models allowed in the cloud
-profile. A cloud profile that named a local model was copied to Custom,
-which became that user's default, with a notice.
+Profiles used to be cloud, local and custom. They became the built-in Local
+and Cloud presets, with a non-empty custom profile becoming a general
+preset named Mixed, on migration.
 
 ## Choosing a model
 
 `resolve(task, ctx, need?)` walks the list that decides the task (the
-thread's, else the profile's after `same`, else chat's), expanding groups
-and following redirects, and returns the first model that can answer, with
-the ones it skipped and why. A model is skipped when:
+thread's, else the thread's preset's, else its column's, after `same`, else
+chat's), expanding groups and following redirects, and returns the first
+model that can answer, with the ones it skipped and why. A model is skipped
+when:
 
 - it is gone, or its endpoint is stale;
 - its endpoint is known to be down: the health cache holds each probe's
@@ -221,9 +230,9 @@ the ones it skipped and why. A model is skipped when:
 - it can't handle the call: no tools when tools are needed, a context window
   smaller than the conversation, or, for image and speech tasks, not the
   capability the task needs;
-- outside Custom, it is of the other kind than the list (local in a private
-  or local-only thread, cloud in the cloud profile, else the list's first
-  model's), so nothing falls back across the local/cloud line.
+- outside a general column, it is of the other kind than the list (local in
+  a private or local-only thread, cloud in the Cloud preset, else the
+  list's first model's), so nothing falls back across the local/cloud line.
 
 In a private or local-only context, a group's cloud members are skipped and
 a cloud model named directly throws `CloudModelForbidden`, wherever it came
@@ -263,7 +272,7 @@ with every model tried.
 `resolveModel` returns just the chosen `{ offeringId }`.
 
 `callContext(userId, pool, threadId)` reads a thread's local-only switch,
-profile, thinking level, Fallback switch and lists from `user.db`.
+preset, thinking level, Fallback switch and lists from `user.db`.
 
 ## Each turn
 
@@ -389,7 +398,7 @@ other endpoint they are set by hand (`setCapabilities`).
 - **A cloud model hears a voice only when the thread picked it.**
   `transcribe` and `speechModel` run Dictation in `voiceContext(ctx)`: the
   thread's own Dictation list when it has one (a branch inherits it),
-  otherwise the context made local-only, so the local profile's list
+  otherwise the context made local-only, so the Private column's list
   answers and a cloud model can't. Read aloud sends message text, so it
   follows the router's rules alone. (`thread_choices.voice_cloud`, the old
   switch, is no longer read.)
@@ -571,7 +580,7 @@ xAI provider instead (below).
   rather than `max_completion_tokens`. LM Studio, KoboldCpp and llama-server
   don't all accept the newer fields.
 - Compaction uses the thread's chat model: Pi summarises with the session's
-  own model. A stored profile may still name a `compaction` list; it's
+  own model. A stored preset may still name a `compaction` list; it's
   accepted and unused, and the pickers don't offer it.
 - `openThreadSession` sets Pi's compaction per model: a reserve of 8% of the
   window (1,024 to 16,384 tokens), so Pi compacts on its own once used plus
@@ -669,7 +678,7 @@ llama-server, so enter it with `endpoints model … --context`.
 
 `childContext(parent, childThreadId, { tier } | { model })` gives a child
 thread, such as a subagent's, its `CallContext`:
-- the parent's local-only switch, profile, thinking level and model choices;
+- the parent's local-only switch, preset, thinking level and model choices;
 - as its chat list, the parent's `subagent.cheap` or `subagent.strong`
   list, or a named model or group the parent's context allows.
 
@@ -686,9 +695,14 @@ Delegation thread ([delegation.md](delegation.md)).
 lyrica admin models endpoints add <name> cloud|local <base-url> [--shared | --user <login>]
 lyrica admin models endpoints list|remove|probe [<name>] [--shared | --user <login>]
 lyrica admin models endpoints model <name> <model-id> [--context <tokens>] [--tools] [--shared | --user <login>]
-lyrica admin models profile show --user <login>
-lyrica admin models profile set local|cloud|custom <task> <endpoint>/<model>[,…]|same:<task>|none --user <login>
-lyrica admin models profile default cloud|custom --user <login>
+lyrica admin models preset list --user <login>
+lyrica admin models preset show <name> --user <login>
+lyrica admin models preset use private|general <name> --user <login>
+lyrica admin models preset set private|general <task> <endpoint>/<model>[,<endpoint>/<model>…]|same:<task>|none --user <login>
+lyrica admin models preset save private|general <name> --user <login>
+lyrica admin models preset add private|general <name> --user <login>
+lyrica admin models preset rename <name> <new-name> --user <login>
+lyrica admin models preset remove <name> --user <login>
 ```
 
 Endpoints are named by their label (`<name>`, or `<name>` with `--shared`).

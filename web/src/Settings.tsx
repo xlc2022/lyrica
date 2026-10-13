@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   del, get, patch, u, THREAD_TASKS,
-  type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type MachineInfo, type OfferingInfo,
+  type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type MachineInfo, type OfferingInfo, type Presets,
   type TaskModel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
 } from "./api.ts";
 import { Repositories } from "./Git.tsx";
@@ -31,7 +31,7 @@ const fits = (task: ThreadTask, m: EndpointInfo["models"][number]) => (task === 
 const refKey = (m?: { offeringId: string }) => m?.offeringId ?? "";
 const named = (t: TaskModel) => t.label ?? (t.modelId ? `${t.modelId} · ${t.endpointName}` : "a model that no longer exists");
 
-/** The speaking model a task select shows, the thread's pick or else the profile's, when the thread may use it: for its Settings drawer. */
+/** The speaking model a task select shows, the thread's pick or else its preset's or column's, when the thread may use it: for its Settings drawer. */
 function speaker(value: TaskModel, allowed: EndpointInfo[]): OfferingInfo | undefined {
   const first = value.list?.[0];
   const id = value.model?.offeringId ?? (first && "offeringId" in first ? first.offeringId : undefined);
@@ -90,8 +90,8 @@ function ModelPicker({ base, settings, task, onChange }: {
         </div>
       ))}
       {!settings.allowed.length && <p className="muted small">No endpoints yet. Add one in the control panel.</p>}
-      <button type="button" className="picker-item" aria-pressed={current.source === "profile"} disabled={busy} onClick={() => choose(null)}>
-        Use the profile's choice
+      <button type="button" className="picker-item" aria-pressed={current.source !== "thread"} disabled={busy} onClick={() => choose(null)}>
+        Use the preset's choice
       </button>
       <ErrorText error={error} />
     </div>
@@ -115,6 +115,10 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
   const change = (c: ThreadSettingsChange) => run(async () => onSettings(await patch<ThreadSettings>(`${base}/settings`, c)));
   const changeThread = (c: { title?: string; hidden?: boolean }) => run(async () => onSummary(await patch<ThreadSummary>(base, c)));
   const paths = useLoad(() => get<AllowedPaths>(u(userId, "paths")), [userId]);
+  const presets = useLoad(() => get<Presets>(u(userId, "presets")), [userId]);
+  // A private or local-only thread may choose only a private preset, so a general choice it can no longer use shows as its column.
+  const usablePresets = (presets.data?.presets ?? []).filter((p) => !settings.localOnly || p.scope === "private");
+  const chosenPreset = settings.preset && usablePresets.some((p) => p.id === settings.preset) ? settings.preset : "";
   const [title, setTitle] = useState(summary.title ?? "");
   const ref = useRef<HTMLElement>(null);
   // Read aloud's model's voice drawer (Models' own), over this one; Escape closes it first, and focus goes back to its link.
@@ -146,6 +150,13 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
         <ErrorText error={error} />
         <fieldset className="group" disabled={sub || busy}>
           <legend>Models</legend>
+          <label className="field">
+            <span>Preset</span>
+            <select value={chosenPreset} onChange={(e) => change({ preset: e.target.value || null })}>
+              <option value="">{`${pool === "general" ? "General" : "Private"} threads (${settings.profile})`}</option>
+              {usablePresets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
           {/* Watching threads only in a project chat, the one thread that makes looks; it comes after Titles. */}
           {THREAD_TASKS.filter((task) => task !== "watching" || summary.project).map((task) => {
             const select = <TaskSelect key={task} task={task} value={settings.models[task]} allowed={settings.allowed} onChange={(m) => change({ models: { [task]: m } })} />;
@@ -235,7 +246,7 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
   // While no model can answer, `model` is absent: the thread's pick is still its list's first.
   const first = value.list?.[0];
   const current = value.source === "thread" ? refKey(value.model ?? (first && "offeringId" in first ? first : undefined)) : "";
-  const fromProfile = value.source === "profile" && value.model
+  const fromPreset = (value.source === "preset" || value.source === "column") && value.model
     ? `${value.kind ? `${value.kind} · ` : ""}${value.modelId ? `${value.modelId} · ${value.endpointName}` : named(value)}` : "nothing set";
   // Picking a cloud Dictation model is the consent to send this thread's voice to the cloud, so it asks first.
   const [cloudPick, setCloudPick] = useState<{ id: string; name: string }>();
@@ -249,7 +260,7 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
         if (task === "speech.transcribe" && ep?.kind === "cloud" && m) setCloudPick({ id, name: `${m.modelId} on ${ep.name}` });
         else onChange(id ? { offeringId: id } : null);
       }}>
-        <option value="">Profile ({fromProfile})</option>
+        <option value="">Preset ({fromPreset})</option>
         {allowed.filter((ep) => ep.models.some((m) => fits(task, m))).map((ep) => (
           <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
             {ep.models.filter((m) => fits(task, m)).map((m) => <option key={m.id} value={m.id}>{ep.kind} · {m.modelId} · {ep.name}</option>)}

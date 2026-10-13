@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import type { Db } from "../db.ts";
 import type { Keyring } from "../keyring.ts";
-import { TASK_NAMES, TASKS, THINKING_LEVELS, type CallContext, type ModelRef, type Pool, type Task, type ThinkingLevel } from "../types.ts";
+import { TASK_NAMES, TASKS, THINKING_LEVELS, type CallContext, type Column, type ModelRef, type Pool, type PresetScope, type Task, type ThinkingLevel } from "../types.ts";
 import { selfName } from "../persona.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
 import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
@@ -12,8 +12,8 @@ import { hostError, hostFetch, HostRefused, hostOrigin, listIn, lyricaIdentity, 
 import { baseName } from "./identity.ts";
 import { copyIdentity } from "./library.ts";
 import { acceptedSettings, ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
-import { collectRefs, isList, mapMembers, moveSettings, refId, rewrite, type Entry, type ProfileName, type Use } from "./refs.ts";
-import { addNotice, NOTICE } from "./schema.ts";
+import { collectRefs, isList, mapMembers, moveSettings, refId, rewrite, type Entry, type Use } from "./refs.ts";
+import { addNotice, MIXED_PRESET, NOTICE, syncLegacy } from "./schema.ts";
 import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, speakAt, transcribeAt, wavSeconds, type SpeechTarget } from "./speech.ts";
 
 export type SpeechTask = "speech.transcribe" | "speech.speak";
@@ -22,7 +22,7 @@ export { addressesOutside, discoverModels, inOwnNetwork, probeUrl, type Discover
 export { baseName } from "./identity.ts";
 export { acceptedSettings, ANSWER_SETTINGS, payloadFields, replyCap, DEFAULT_CONTEXT, type AnswerSettings, type SettingSource } from "./settings.ts";
 export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
-export { refId, type Entry, type ProfileName, type Use } from "./refs.ts";
+export { refId, type Entry, type Use } from "./refs.ts";
 export { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, pcmSeconds, SPEECH_CONTENT_TYPE, SPEECH_FORMAT, wavData, wavSeconds } from "./speech.ts";
 
 /** A cloud model was asked for where only local models are allowed. Nothing falls back. */
@@ -57,7 +57,7 @@ const AWAY_CODES = new Set(["unreachable", "paused", "busy", "restarting", "unav
 /**
  * The context Dictation runs in: a thread's own Dictation choice may be a
  * cloud model, since picking it there is the user's consent; without one,
- * the local profile's list, so a user's voice never reaches a cloud model
+ * the Private column's list, so a user's voice never reaches a cloud model
  * they didn't pick in that thread.
  */
 export const voiceContext = (ctx: CallContext): CallContext => (ctx.overrides?.["speech.transcribe"]?.length ? ctx : { ...ctx, localOnly: true });
@@ -186,6 +186,27 @@ export interface Group {
 export type Profiles = Partial<Record<Task, Entry>>;
 export type Hub = "huggingface" | "modelscope";
 
+/** A named task-to-model table. The built-ins Local and Cloud have a non-null `builtin`; a user preset's is null. */
+export interface Preset {
+  id: string;
+  name: string;
+  scope: PresetScope;
+  builtin: "local" | "cloud" | null;
+  entries: Profiles;
+  updatedAt: string;
+}
+
+/** One column's state on the Models page: the preset it follows, or Custom with its own entries and the preset they came from. */
+export interface ColumnState {
+  column: Column;
+  /** The preset this column follows, or null while it is Custom. */
+  preset: Preset | null;
+  /** The preset a Custom column's entries came from (Save to), or null. */
+  fromPreset: Preset | null;
+  /** The column's own entries: its table while it is Custom. */
+  entries: Profiles;
+}
+
 /** One model in the text library, with its copies on every endpoint. */
 export interface LibraryEntry {
   key: string;
@@ -264,8 +285,9 @@ export interface Resolution {
   endpoint: Endpoint;
   offering: Offering;
   label: string;
-  profile: ProfileName;
-  source: "thread" | "profile";
+  /** The preset this call was chosen from, or "Custom" for a column's own table. */
+  profile: string;
+  source: "thread" | "preset" | "column";
   /** Earlier models in the list that were skipped, with the reason. */
   skipped: { label: string; reason: string }[];
   /** Models after this one in the list that could still be tried. */
@@ -322,8 +344,6 @@ export function speeds(p: Omit<Pace, "tokPerSec" | "promptTokPerSec">): Pace {
 
 /** Private and local-only threads may use local endpoints only. */
 export const isRestricted = (ctx: Pick<CallContext, "pool" | "localOnly">): boolean => ctx.pool === "private" || ctx.localOnly;
-/** Local for private and local-only threads, whatever else is set; otherwise the thread's (cloud by default). */
-export const profileFor = (ctx: Pick<CallContext, "pool" | "localOnly" | "profile">): ProfileName => (isRestricted(ctx) ? "local" : ctx.profile ?? "cloud");
 
 export function checkTask(task: string): Task {
   if (!(TASKS as readonly string[]).includes(task)) throw new Error(`unknown task ${task}; tasks are ${TASKS.join(", ")}`);
@@ -335,13 +355,13 @@ const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "image.
   : t === "speech.transcribe" ? "transcribe" : t === "speech.speak" ? "speak" : "text");
 /** Tasks with no list of their own follow chat, except these. */
 const OWN_LIST_ONLY: readonly Task[] = ["embedding", "image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak"];
-/** A new profile starts with these following other tasks. */
+/** A new preset starts with these following other tasks. */
 const NEW_PROFILE: Partial<Record<Task, { same: Task }>> = {
   title: { same: "subagent.cheap" }, compaction: { same: "subagent.cheap" }, watching: { same: "subagent.cheap" },
   "sleep.consolidate": { same: "subagent.strong" }, "sleep.dream": { same: "subagent.strong" }, "sleep.wake": { same: "subagent.strong" },
 };
 
-/** Tasks added after profiles were first stored: a profile with no entry for one gets its NEW_PROFILE default when read. */
+/** Tasks added after presets were first stored: a preset with no entry for one gets its NEW_PROFILE default when read. */
 const LATER_TASKS: readonly Task[] = ["watching"];
 
 const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -379,6 +399,7 @@ async function localWarning(ep: Endpoint): Promise<string | undefined> {
 interface EndpointRow { id: string; name: string; kind: "cloud" | "local"; api: string; base_url: string; api_key: string | null; down_since: string | null; addresses: string | null; pin: string | null }
 interface OfferingRow { id: string; endpoint: string; model: string; found: string; hand: string; manual: number; missing_since: string | null }
 interface GroupRow { id: string; name: string; members: string }
+interface PresetRow { id: string; name: string; scope: PresetScope; builtin: "local" | "cloud" | null; entries: string; updated_at: string }
 
 const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint => {
   const url = new URL(r.base_url);
@@ -428,9 +449,9 @@ interface Catalog {
 }
 
 /**
- * Endpoints, offerings, groups, profiles and the router. Shared endpoints
+ * Endpoints, offerings, groups, presets and the router. Shared endpoints
  * and groups live in self.db and change only with an administrator actor; a
- * user's own endpoints, groups, profiles and thread choices live in their
+ * user's own endpoints, groups, presets and thread choices live in their
  * user.db, so the user must be unlocked. Opening a user's user.db first
  * applies any redirects they haven't applied yet, so their lists follow
  * replacements and removals made while they were locked.
@@ -1314,7 +1335,7 @@ export class Models {
     const differ = (what: string, f: (m: (typeof members)[number]) => unknown) => {
       if (new Set(members.map((m) => JSON.stringify(f(m) ?? null))).size > 1) warnings.push(`Its copies differ in ${what}.`);
     };
-    if (new Set(members.map((m) => m.kind)).size > 1) warnings.push("It mixes local and cloud copies, so as a whole it can only be used in the Custom profile; elsewhere only the copies of the right kind are used.");
+    if (new Set(members.map((m) => m.kind)).size > 1) warnings.push("It mixes local and cloud copies, so as a whole it can only be used in a general preset or a Custom column; elsewhere only the copies of the right kind are used.");
     differ("context window", (m) => m.contextWindow);
     differ("tool support", (m) => m.tools);
     differ("vision", (m) => m.vision);
@@ -1512,39 +1533,156 @@ export class Models {
     this.withUser(userId, (db) => db.prepare("DELETE FROM settings WHERE key = ?").run(NOTICE));
   }
 
-  // --- Profiles and thread choices ---
+  // --- Presets, the two columns, and thread choices ---
 
-  /** A profile's entries: an ordered list per task, or `{ same }` for a task that uses another task's list. */
-  profile(userId: string, name: ProfileName): Profiles {
-    const rows = this.withUser(userId, (db) => db.prepare("SELECT task, entry FROM model_profiles WHERE profile = ?").all(name)) as { task: Task; entry: string }[];
-    const out: Profiles = Object.fromEntries(rows.map((r) => [r.task, JSON.parse(r.entry) as Entry]));
-    // A profile made before a task existed: the task follows its default, as in a new profile, where that stays one level deep.
-    if (rows.length) {
-      for (const task of LATER_TASKS) {
-        const d = NEW_PROFILE[task]!;
-        const target = out[d.same];
-        if (!(task in out) && (!target || isList(target))) out[task] = d;
+  /** Every preset, built-ins first then by name. */
+  presets(userId: string): Preset[] {
+    return this.withUser(userId, (db) => (db.prepare("SELECT id, name, scope, builtin, entries, updated_at FROM model_presets ORDER BY builtin IS NOT NULL, lower(name)")
+      .all() as PresetRow[]).map((r) => this.toPreset(r)));
+  }
+
+  preset(userId: string, id: string): Preset | undefined {
+    return this.withUser(userId, (db) => this.presetRow(db, id));
+  }
+
+  /** One column's state: the preset it follows (or null when Custom), the preset a Custom table came from, and its entries. */
+  column(userId: string, column: Column): ColumnState {
+    return this.withUser(userId, (db) => {
+      const c = this.readColumn(db, column);
+      return { column, preset: c.preset, fromPreset: c.fromPreset, entries: c.entries };
+    });
+  }
+
+  /** Adds a preset from a column's table: private holds local models only. Returns it. */
+  addPreset(userId: string, input: { name: string; scope: PresetScope }, from: Column): Preset {
+    const name = checkPresetName(input.name);
+    if (input.scope !== "private" && input.scope !== "general") throw new Error("a preset is private or general");
+    let id = "";
+    this.withUser(userId, (db) => {
+      db.transaction(() => {
+        if (db.prepare("SELECT 1 FROM model_presets WHERE lower(name) = lower(?)").get(name)) throw new Error(`a preset called ${name} already exists`);
+        const checked = this.checkedTable(userId, this.readColumn(db, from).entries, input.scope === "private" ? "local" : undefined);
+        id = randomUUID();
+        db.prepare("INSERT INTO model_presets (id, name, scope, builtin, entries, updated_at) VALUES (?, ?, ?, NULL, ?, ?)")
+          .run(id, name, input.scope, JSON.stringify(checked), new Date().toISOString());
+        syncLegacy(db);
+      })();
+      this.index(userId, db);
+    });
+    return this.preset(userId, id)!;
+  }
+
+  /** Renames a user preset. The built-ins keep their names. */
+  editPreset(userId: string, id: string, change: { name: string }): Preset {
+    const name = checkPresetName(change.name);
+    this.withUser(userId, (db) => {
+      const r = db.prepare("SELECT id, builtin FROM model_presets WHERE id = ?").get(id) as { id: string; builtin: string | null } | undefined;
+      if (!r) throw new NoModel(`no preset ${id}`);
+      if (r.builtin) throw new Error("the built-in presets keep their names");
+      db.transaction(() => {
+        if (db.prepare("SELECT 1 FROM model_presets WHERE lower(name) = lower(?) AND id != ?").get(name, id)) throw new Error(`a preset called ${name} already exists`);
+        db.prepare("UPDATE model_presets SET name = ?, updated_at = ? WHERE id = ?").run(name, new Date().toISOString(), id);
+        syncLegacy(db);
+      })();
+      this.index(userId, db);
+    });
+    return this.preset(userId, id)!;
+  }
+
+  /** Save to: writes a column's table into a preset and makes the column follow it. The built-ins' lists can be saved over. */
+  savePreset(userId: string, id: string, column: Column): void {
+    this.withUser(userId, (db) => {
+      db.transaction(() => {
+        const r = db.prepare("SELECT id, scope FROM model_presets WHERE id = ?").get(id) as { id: string; scope: PresetScope } | undefined;
+        if (!r) throw new NoModel(`no preset ${id}`);
+        const checked = this.checkedTable(userId, this.readColumn(db, column).entries, r.scope === "private" ? "local" : undefined);
+        db.prepare("UPDATE model_presets SET entries = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(checked), new Date().toISOString(), id);
+        db.prepare("UPDATE model_columns SET preset = ?, from_preset = NULL, entries = '{}' WHERE column = ?").run(id, column);
+        syncLegacy(db);
+      })();
+      this.index(userId, db);
+    });
+  }
+
+  /**
+   * Deletes a user preset. Each column that followed it keeps its lists as
+   * Custom, and each thread that chose it follows its column again.
+   */
+  removePreset(userId: string, id: string): void {
+    this.withUser(userId, (db) => {
+      db.transaction(() => {
+        const r = db.prepare("SELECT id, builtin, entries FROM model_presets WHERE id = ?").get(id) as { id: string; builtin: string | null; entries: string } | undefined;
+        if (!r) throw new NoModel(`no preset ${id}`);
+        if (r.builtin) throw new Error("the built-in presets stay");
+        db.prepare("UPDATE model_columns SET preset = NULL, from_preset = NULL, entries = ? WHERE preset = ?").run(r.entries, id);
+        db.prepare("UPDATE thread_choices SET preset = NULL WHERE preset = ?").run(id);
+        db.prepare("DELETE FROM model_presets WHERE id = ?").run(id);
+        db.prepare("DELETE FROM settings WHERE key = ? AND value = ?").run(MIXED_PRESET, id);
+        syncLegacy(db);
+      })();
+      this.index(userId, db);
+    });
+  }
+
+  /** Makes a column follow a preset. The Private column can follow only a private preset. */
+  useColumnPreset(userId: string, column: Column, id: string): void {
+    this.withUser(userId, (db) => {
+      db.transaction(() => {
+        const r = db.prepare("SELECT id, scope FROM model_presets WHERE id = ?").get(id) as { id: string; scope: PresetScope } | undefined;
+        if (!r) throw new NoModel(`no preset ${id}`);
+        if (column === "private" && r.scope !== "private") throw new CloudModelForbidden("the Private column can use only private presets");
+        db.prepare("UPDATE model_columns SET preset = ?, from_preset = NULL, entries = '{}' WHERE column = ?").run(id, column);
+        syncLegacy(db);
+      })();
+      this.index(userId, db);
+    });
+  }
+
+  /**
+   * Edits one task in a column's table, first copying the followed preset's
+   * table into the column (which becomes Custom, remembering that preset), so
+   * a preset never changes by accident. A single model is a one-model list;
+   * `same` names a task of the same capability that doesn't itself follow
+   * another; with no value the entry is cleared.
+   */
+  setColumnTask(userId: string, column: Column, task: Task, value?: Entry | ModelRef): void {
+    const kind = column === "private" ? "local" : undefined;
+    this.withUser(userId, (db) => {
+      db.transaction(() => {
+        const c = this.readColumn(db, column);
+        const current: Profiles = Object.keys(c.entries).length ? c.entries : { ...NEW_PROFILE };
+        const stored = this.entryFor(userId, current, task, value, kind);
+        const next: Profiles = { ...current };
+        if (!stored) delete next[task]; else next[task] = stored;
+        db.prepare("UPDATE model_columns SET preset = NULL, from_preset = ?, entries = ? WHERE column = ?")
+          .run((c.preset ?? c.fromPreset)?.id ?? null, JSON.stringify(next), column);
+        syncLegacy(db);
+      })();
+      this.index(userId, db);
+    });
+  }
+
+  /** Checks a whole table against a scope: private takes local models only; `{ same }` entries pass as they were checked when written. */
+  private checkedTable(userId: string, table: Profiles, kind: "local" | undefined): Profiles {
+    const out: Profiles = {};
+    for (const [task, e] of Object.entries(table)) {
+      if (isList(e)) {
+        const list = this.checkList(userId, e, { kind, task: task as Task });
+        if (list.length) out[task as Task] = list;
+      } else {
+        out[task as Task] = e;
       }
     }
     return out;
   }
 
   /**
-   * Sets (or with no entry, clears) a profile's entry for a task. The local
-   * profile takes local models only and the cloud profile cloud models only
-   * (a group needs at least one member of the right kind); Custom takes both.
-   * `same` names a task of the same capability that doesn't itself follow
-   * another. A profile's first entry brings the defaults: titles and
-   * compaction follow cheap subagents, and so does watching (in an older
-   * profile too, until it has a list of its own), and sleep follows strong subagents.
-   * A single model is a one-model list.
+   * Checks and normalizes one edit to a table: a list (or one model) for
+   * `task`, `{ same }` one level deep, or undefined to clear. `kind` local
+   * takes local models only.
    */
-  setProfile(userId: string, name: ProfileName, task: Task, value?: Entry | ModelRef): void {
-    if (name !== "cloud" && name !== "local" && name !== "custom") throw new Error("the profiles are local, cloud and custom");
+  private entryFor(userId: string, current: Profiles, task: Task, value: Entry | ModelRef | undefined, kind: "local" | undefined): Entry | undefined {
     const entry: Entry | undefined = value && !Array.isArray(value) && !("same" in value) ? [value] : value as Entry | undefined;
-    const saved = this.profile(userId, name);
-    // A new profile gets its defaults with this entry, so they count for the one-level rule.
-    const current: Profiles = Object.keys(saved).length ? saved : { ...NEW_PROFILE };
     let stored: Entry | undefined = entry;
     if (entry && !isList(entry)) {
       const target = checkTask(entry.same);
@@ -1554,30 +1692,47 @@ export class Models {
       if (t && !isList(t)) throw new Error(`${target} already follows ${t.same}, and Same as goes one level deep`);
       stored = { same: target };
     } else if (entry) {
-      stored = this.checkList(userId, entry, { kind: name === "custom" ? undefined : name, task });
+      stored = this.checkList(userId, entry, { kind, task });
     }
     if (stored && isList(stored) && !stored.length) stored = undefined;
-    const followers = Object.entries(current).filter(([, e]) => e && !isList(e) && e.same === task).map(([t]) => t);
+    const followers = Object.entries(current).filter(([, e]) => e && !isList(e) && e.same === task).map(([t]) => t as Task);
     if (stored && !isList(stored) && followers.length) throw new Error(`${followers.join(" and ")} already follow ${task}, and Same as goes one level deep`);
-    this.withUser(userId, (db) => {
-      if (!db.prepare("SELECT 1 FROM model_profiles WHERE profile = ?").get(name)) {
-        const fresh = db.prepare("INSERT OR IGNORE INTO model_profiles (profile, task, entry) VALUES (?, ?, ?)");
-        for (const [t, e] of Object.entries(NEW_PROFILE)) if (t !== task) fresh.run(name, t, JSON.stringify(e));
+    return stored;
+  }
+
+  /** A preset's or a column's stored entries, with the default a table made before later tasks gets on read. */
+  private readTable(entries: string | undefined): Profiles {
+    const table: Profiles = entries ? JSON.parse(entries) as Profiles : {};
+    if (Object.keys(table).length) {
+      for (const task of LATER_TASKS) {
+        const d = NEW_PROFILE[task]!;
+        const target = table[d.same];
+        if (!(task in table) && (!target || isList(target))) table[task] = d;
       }
-      if (!stored) db.prepare("DELETE FROM model_profiles WHERE profile = ? AND task = ?").run(name, task);
-      else db.prepare("INSERT OR REPLACE INTO model_profiles (profile, task, entry) VALUES (?, ?, ?)").run(name, task, JSON.stringify(stored));
-      this.index(userId, db);
-    });
+    }
+    return table;
   }
 
-  /** Which profile general threads use unless they choose: cloud (the default) or custom. */
-  defaultProfile(userId: string): "cloud" | "custom" {
-    return this.setting(userId, "general_profile") === "custom" ? "custom" : "cloud";
+  private toPreset(r: PresetRow): Preset {
+    return { id: r.id, name: r.name, scope: r.scope, builtin: r.builtin, entries: this.readTable(r.entries), updatedAt: r.updated_at };
   }
 
-  setDefaultProfile(userId: string, profile: "cloud" | "custom"): void {
-    if (profile !== "cloud" && profile !== "custom") throw new Error("general threads use the cloud or the custom profile");
-    this.setSetting(userId, "general_profile", profile);
+  private presetRow(db: Db, id: string): Preset | undefined {
+    const r = db.prepare("SELECT id, name, scope, builtin, entries, updated_at FROM model_presets WHERE id = ?").get(id) as PresetRow | undefined;
+    return r && this.toPreset(r);
+  }
+
+  /** A column's followed preset (or null), the preset a Custom column came from (or null), and its effective table. */
+  private readColumn(db: Db, column: Column): { preset: Preset | null; fromPreset: Preset | null; entries: Profiles } {
+    const r = db.prepare("SELECT preset, from_preset, entries FROM model_columns WHERE column = ?").get(column) as { preset: string | null; from_preset: string | null; entries: string } | undefined;
+    const preset = r?.preset ? this.presetRow(db, r.preset) ?? null : null;
+    const fromPreset = r?.from_preset ? this.presetRow(db, r.from_preset) ?? null : null;
+    return { preset, fromPreset, entries: preset ? preset.entries : this.readTable(r?.entries) };
+  }
+
+  /** What to call the column a context resolves from: its preset's name, or Custom. */
+  private columnName(ctx: CallContext): string {
+    return this.withUser(ctx.userId, (db) => this.readColumn(db, isRestricted(ctx) ? "private" : "general").preset?.name ?? "Custom");
   }
 
   /** The thinking level threads use unless they choose. Off by default. */
@@ -1634,25 +1789,29 @@ export class Models {
 
   /**
    * Checks a thread's list for a task against the thread's context, without
-   * saving it: local models only in a private or local-only thread, and one
-   * kind only unless the thread uses the custom profile.
+   * saving it: local models only in a private or local-only thread.
    */
   checkThreadList(ctx: CallContext, task: Task, list: ModelRef[]): ModelRef[] {
-    const p = profileFor(ctx);
-    return this.checkList(ctx.userId, list, { kind: isRestricted(ctx) ? "local" : p === "custom" ? undefined : "single", task });
+    return this.checkList(ctx.userId, list, { kind: isRestricted(ctx) ? "local" : undefined, task });
   }
 
-  /** Switches a general thread to the cloud or custom profile, or back to the user's default. Private threads always use local. */
-  setThreadProfile(userId: string, pool: Pool, threadId: string, profile: "cloud" | "custom" | null): void {
-    if (pool === "private" && profile) throw new CloudModelForbidden("a private thread always uses the local profile");
-    if (profile !== null && profile !== "cloud" && profile !== "custom") throw new Error("a thread uses the cloud or the custom profile");
-    this.threadChoice(userId, threadId, "profile", profile);
+  /** Switches a thread to a preset, or back to its column. Private and local-only threads may choose only a private preset. */
+  setThreadPreset(userId: string, pool: Pool, threadId: string, preset: string | null): void {
+    this.withUser(userId, (db) => {
+      if (preset !== null) {
+        const r = db.prepare("SELECT scope FROM model_presets WHERE id = ?").get(preset) as { scope: PresetScope } | undefined;
+        if (!r) throw new NoModel(`no preset ${preset}`);
+        const localOnly = pool === "private" || !!db.prepare("SELECT 1 FROM local_only_threads WHERE thread = ?").get(threadId);
+        if (localOnly && r.scope !== "private") throw new CloudModelForbidden("a private or local-only thread can use only private presets");
+      }
+      this.threadChoice(userId, threadId, "preset", preset);
+    });
   }
 
-  /** The profile a thread chose, if it chose one rather than following the user's default. */
-  threadProfile(userId: string, threadId: string): "cloud" | "custom" | null {
-    const v = this.withUser(userId, (db) => (db.prepare("SELECT profile FROM thread_choices WHERE thread = ?").get(threadId) as { profile: string | null } | undefined)?.profile);
-    return v === "cloud" || v === "custom" ? v : null;
+  /** The preset a thread chose, if it chose one rather than following its column. */
+  threadPreset(userId: string, threadId: string): string | null {
+    const v = this.withUser(userId, (db) => (db.prepare("SELECT preset FROM thread_choices WHERE thread = ?").get(threadId) as { preset: string | null } | undefined)?.preset);
+    return v ?? null;
   }
 
   /** Sets (or with null, clears) a thread's thinking level. */
@@ -1681,18 +1840,17 @@ export class Models {
     })());
   }
 
-  /** The thread's CallContext: its local-only switch, profile, thinking level and model overrides. */
+  /** The thread's CallContext: its local-only switch, preset, thinking level and model overrides. */
   callContext(userId: string, pool: Pool, threadId: string): CallContext {
     return this.withUser(userId, (db) => {
       const rows = db.prepare("SELECT task, entry FROM thread_models WHERE pool = ? AND thread = ?").all(pool, threadId) as { task: Task; entry: string }[];
       const localOnly = pool === "private" || !!db.prepare("SELECT 1 FROM local_only_threads WHERE thread = ?").get(threadId);
-      const choice = db.prepare("SELECT profile, thinking, fallback FROM thread_choices WHERE thread = ?").get(threadId) as { profile: string | null; thinking: string | null; fallback: number | null } | undefined;
+      const choice = db.prepare("SELECT preset, thinking, fallback FROM thread_choices WHERE thread = ?").get(threadId) as { preset: string | null; thinking: string | null; fallback: number | null } | undefined;
       const setting = (key: string) => (db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
-      const profile = (choice?.profile ?? setting("general_profile")) === "custom" ? "custom" : "cloud";
       const thinking = (choice?.thinking ?? setting("thinking") ?? "off") as ThinkingLevel;
       const fallback = choice?.fallback !== null && choice?.fallback !== undefined ? choice.fallback === 1 : setting("fallback") !== "off";
       return {
-        userId, pool, localOnly, ...(pool === "general" ? { profile } : {}), thinking: THINKING_LEVELS.includes(thinking) ? thinking : "off", fallback,
+        userId, pool, localOnly, ...(choice?.preset ? { preset: choice.preset } : {}), thinking: THINKING_LEVELS.includes(thinking) ? thinking : "off", fallback,
         overrides: Object.fromEntries(rows.map((r) => [r.task, JSON.parse(r.entry) as ModelRef[]])),
       };
     });
@@ -1700,7 +1858,7 @@ export class Models {
 
   /**
    * The CallContext for a child thread, such as a subagent's. It keeps the
-   * parent's local-only switch, profile and model choices, and its chat list
+   * parent's local-only switch, preset and model choices, and its chat list
    * is the parent's `subagent.<tier>` list, or a named model the parent's
    * context allows. Throws CloudModelForbidden or NoModel before changing anything.
    */
@@ -1720,13 +1878,14 @@ export class Models {
 
   /**
    * Gives a child thread (a branch, a subagent) its parent's local-only
-   * switch, profile, thinking level, Fallback and model lists, the chat list too unless
+   * switch, preset, thinking level, Fallback and model lists, the chat list too unless
    * `chat: false`.
    */
   inheritContext(parent: CallContext, childThreadId: string, opts: { chat?: boolean } = {}): CallContext {
     const { userId, pool } = parent;
     if (parent.localOnly) this.setLocalOnly(userId, pool, childThreadId, true);
-    if (pool === "general" && parent.profile) this.setThreadProfile(userId, pool, childThreadId, parent.profile);
+    // Copied verbatim, not through setThreadPreset, so a local-only parent's (ignored) general preset passes on without throwing.
+    if (parent.preset) this.threadChoice(userId, childThreadId, "preset", parent.preset);
     if (parent.thinking) this.setThinking(userId, childThreadId, parent.thinking);
     // A child starts with its parent's Fallback, whatever the default becomes; a subagent can't change it.
     if (parent.fallback !== undefined) this.setThreadFallback(userId, childThreadId, parent.fallback);
@@ -1745,27 +1904,25 @@ export class Models {
 
   /**
    * The model for a task: the first usable one in the thread's list for it,
-   * else the profile's (local for private and local-only threads; otherwise
-   * the thread's, cloud or custom), following `same` one level. A task with
-   * neither uses the chat list, except embeddings and images.
+   * else its preset's, else its column's (private when restricted, general
+   * otherwise), following `same` one level. A task with neither uses the
+   * chat list, except embeddings and images.
    *
    * Groups expand in place into their members. Redirects are followed, and a
    * removed model counts as not there. A model is skipped when it is gone,
    * its endpoint is stale or known to be down, or it can't handle the call
-   * (tools, context window, images). Outside Custom, the first usable model
-   * fixes the kind, so a fallback never crosses the local/cloud line. In a
-   * private or local-only context, a group's cloud members are skipped and a
-   * cloud model named directly throws CloudModelForbidden. With Fallback off
-   * (`ctx.fallback === false`) only the list's first entry can answer: a
-   * group there keeps its copies, and nothing after it is tried.
+   * (tools, context window, images). A general preset mixes freely, each
+   * model marked; in a private or local-only context, a group's cloud
+   * members are skipped and a cloud model named directly throws
+   * CloudModelForbidden. With Fallback off (`ctx.fallback === false`) only
+   * the list's first entry can answer: a group there keeps its copies, and
+   * nothing after it is tried.
    */
   resolve(task: Task, ctx: CallContext, need: Need = {}, opts: ResolveOptions = {}): Resolution {
     const c = this.catalog(ctx.userId);
-    const profile = profileFor(ctx);
-    const found = this.listFor(task, ctx, c);
-    if (!found) throw new NoModel(`no model is set for ${TASK_NAMES[task]} in the ${profile} profile`);
     const restricted = isRestricted(ctx);
-    const fixKind = profile !== "custom";
+    const found = this.listFor(task, ctx, c);
+    if (!found) throw new NoModel(`no model is set for ${TASK_NAMES[task]} in ${this.columnName(ctx)}`);
     const candidates: { id: string; grouped: boolean }[] = [];
     const cut = ctx.fallback === false && found.list.length > 1;
     for (const ref of cut ? found.list.slice(0, 1) : found.list) {
@@ -1774,9 +1931,6 @@ export class Models {
     }
     const seen = new Set<string>();
     const unique = candidates.filter((x) => !seen.has(x.id) && !!seen.add(x.id));
-    // Outside Custom a list keeps to one kind: local where restricted, cloud in the cloud profile, else its first model's.
-    const firstKind = unique.map((x) => c.endpoints.get(c.offerings.get(x.id)?.endpointId ?? "")?.kind).find(Boolean);
-    const kind = restricted ? "local" : !fixKind ? undefined : found.source === "profile" ? "cloud" : firstKind;
     const skipped: { label: string; reason: string }[] = [];
     let away = false;
     for (let i = 0; i < unique.length; i++) {
@@ -1789,13 +1943,12 @@ export class Models {
         if (!grouped) throw new CloudModelForbidden(`${label} is a cloud model, and only local models are allowed here`);
         continue;
       }
-      if (fixKind && kind && ep.kind !== kind) { skipped.push({ label, reason: `it is ${ep.kind}, and this list won't cross to ${ep.kind}` }); continue; }
       // Unfit first: a model that couldn't take the call even with its machine up doesn't make the task offline.
       const why = this.unfit(task, o, ep, need);
       if (why) { skipped.push({ label, reason: why }); continue; }
       const gone = this.away(ep, opts, o);
       if (gone) { skipped.push({ label, reason: gone }); away = true; continue; }
-      return { ref: { offeringId: o.id }, endpoint: ep, offering: o, label, profile, source: found.source, skipped, remaining: unique.length - i - 1 };
+      return { ref: { offeringId: o.id }, endpoint: ep, offering: o, label, profile: found.profile, source: found.source, skipped, remaining: unique.length - i - 1 };
     }
     // Something would answer once its machine is back: offline, not unset.
     if (away) throw new Offline(task, skipped);
@@ -1913,7 +2066,7 @@ export class Models {
   /**
    * Transcribes a WAV clip with the context's Dictation model: the only way
    * a user's audio reaches a model. A cloud model answers only when the
-   * thread picked it (`voiceContext`); otherwise the local profile's list. An endpoint that can't answer is marked down and the next model
+   * thread picked it (`voiceContext`); otherwise the Private column's list. An endpoint that can't answer is marked down and the next model
    * in the list is tried, within the list's kind (`callWithFallback`); when
    * none can, Offline.
    * The audio is held in memory only. The caller records the call.
@@ -1965,7 +2118,7 @@ export class Models {
       if (e instanceof Offline) return { reason: "down", problem: `${TASK_NAMES[task]} can't be reached now` };
       if (e instanceof CloudModelForbidden) return { reason: "none", problem: e.message };
       if (!(e instanceof NoModel)) throw e;
-      if (!this.listFor(task, ctx)?.list.length) return { reason: "none", problem: `No ${TASK_NAMES[task]} model is set${isRestricted(ctx) ? " in the local profile" : ""}` };
+      if (!this.listFor(task, ctx)?.list.length) return { reason: "none", problem: `No ${TASK_NAMES[task]} model is set${isRestricted(ctx) ? " in the Private column" : ""}` };
       return { reason: "none", problem: e.message };
     }
   }
@@ -1996,7 +2149,7 @@ export class Models {
   recordCall(userId: string, call: { pool: Pool; threadId: string; task: Task; resolution: Resolution; note?: string; audioSeconds?: number }, opts: { retry?: boolean } = {}): void {
     const r = call.resolution;
     const first = r.skipped[0];
-    const fallback = first && `${first.label} was skipped (${first.reason.replace(/^it /, "")}), so ${r.label} answered${r.endpoint.kind === "cloud" && r.profile === "custom" ? ", a cloud model" : ""}`;
+    const fallback = first && `${first.label} was skipped (${first.reason.replace(/^it /, "")}), so ${r.label} answered${r.endpoint.kind === "cloud" && r.profile === "Custom" ? ", a cloud model" : ""}`;
     this.withUser(userId, (db) => {
       const last = opts.retry ? (db.prepare("SELECT max(id) AS id FROM model_calls WHERE thread = ? AND task = ?").get(call.threadId, call.task) as { id: number | null }).id : null;
       if (last !== null) {
@@ -2063,23 +2216,38 @@ export class Models {
       .map((endpoint) => ({ endpoint, offerings: [...c.offerings.values()].filter((o) => o.endpointId === endpoint.id) }));
   }
 
-  /** The list that decides a task, after `same` and the chat fallback, with tombstoned entries dropped. */
-  private listFor(task: Task, ctx: CallContext, c = this.catalog(ctx.userId)): { list: ModelRef[]; source: "thread" | "profile" } | undefined {
-    const profile = this.profile(ctx.userId, profileFor(ctx));
-    const live = (list: ModelRef[] | undefined) => list?.flatMap((r): ModelRef[] => {
-      const id = this.follow(refId(r));
-      if (!id) return [];
-      return "groupId" in r ? (c.groups.has(id) ? [{ groupId: id }] : []) : [{ offeringId: id }];
+  /**
+   * The list that decides a task, after `same` and the chat fallback, with
+   * tombstoned entries dropped: the thread's own list, else its preset's,
+   * else its column's. A restricted context ignores a general preset and
+   * reads the Private column. `profile` names the preset the list came
+   * from, or "Custom" for a column's own table.
+   */
+  private listFor(task: Task, ctx: CallContext, c = this.catalog(ctx.userId)): { list: ModelRef[]; source: "thread" | "preset" | "column"; profile: string } | undefined {
+    const restricted = isRestricted(ctx);
+    const column = restricted ? "private" : "general";
+    return this.withUser(ctx.userId, (db) => {
+      const col = this.readColumn(db, column);
+      const chosen = ctx.preset ? this.presetRow(db, ctx.preset) : undefined;
+      const honored = chosen && (!restricted || chosen.scope === "private") ? chosen : undefined;
+      const columnPreset = col.preset && (!restricted || col.preset.scope === "private") ? col.preset : null;
+      const table = honored?.entries ?? columnPreset?.entries ?? col.entries;
+      const profile = honored?.name ?? columnPreset?.name ?? "Custom";
+      const live = (list: ModelRef[] | undefined) => list?.flatMap((r): ModelRef[] => {
+        const id = this.follow(refId(r));
+        if (!id) return [];
+        return "groupId" in r ? (c.groups.has(id) ? [{ groupId: id }] : []) : [{ offeringId: id }];
+      });
+      const of = (t: Task): { list: ModelRef[]; source: "thread" | "preset" | "column"; profile: string } | undefined => {
+        const own = live(ctx.overrides?.[t]);
+        if (own?.length) return { list: own, source: "thread", profile };
+        let e = table[t];
+        if (e && !isList(e)) e = table[e.same];
+        const listed = live(isList(e) ? e : undefined);
+        return listed?.length ? { list: listed, source: honored ? "preset" : "column", profile } : undefined;
+      };
+      return of(task) ?? (OWN_LIST_ONLY.includes(task) ? undefined : of("chat"));
     });
-    const of = (t: Task): { list: ModelRef[]; source: "thread" | "profile" } | undefined => {
-      const own = live(ctx.overrides?.[t]);
-      if (own?.length) return { list: own, source: "thread" };
-      let e = profile[t];
-      if (e && !isList(e)) e = profile[e.same];
-      const listed = live(isList(e) ? e : undefined);
-      return listed?.length ? { list: listed, source: "profile" } : undefined;
-    };
-    return of(task) ?? (OWN_LIST_ONLY.includes(task) ? undefined : of("chat"));
   }
 
   /** Why a model's machine is away now, if it is: stale, or down in the health cache. */
@@ -2111,14 +2279,13 @@ export class Models {
   }
 
   /**
-   * Checks a list before it is saved: every entry exists; `kind` local or
-   * cloud takes that kind only (a group needs a member of it), `single`
-   * takes one kind, either; image tasks take models that can do the job.
+   * Checks a list before it is saved: every entry exists; `kind` local takes
+   * local models only (a group needs a member of it); image and speech tasks
+   * take models that can do the job.
    */
-  private checkList(userId: string, list: ModelRef[], opts: { kind?: "cloud" | "local" | "single"; task: Task }): ModelRef[] {
+  private checkList(userId: string, list: ModelRef[], opts: { kind?: "local"; task: Task }): ModelRef[] {
     const c = this.catalog(userId);
     const out: ModelRef[] = [];
-    const kinds = new Set<string>();
     const fits = (o: Offering) => (opts.task === "image.create" ? !!o.image : opts.task === "image.edit" ? !!o.edit : opts.task === "image.upscale" ? !!o.upscale
       : opts.task === "speech.transcribe" ? !!o.transcribe : opts.task === "speech.speak" ? !!o.speak?.voices.length : true);
     for (const ref of list) {
@@ -2129,10 +2296,8 @@ export class Models {
         const g = c.groups.get(ref.groupId);
         if (!g) throw new NoModel(`no group ${ref.groupId}`);
         const members = g.members.map((m) => c.offerings.get(m)).filter((o): o is Offering => !!o);
-        const want = opts.kind === "local" || opts.kind === "cloud" ? opts.kind : undefined;
-        if (want && !members.some((o) => c.endpoints.get(o.endpointId)!.kind === want)) {
-          const msg = `the group ${g.name} has no ${want} copy`;
-          throw want === "local" ? new CloudModelForbidden(`${msg}, and only local models are allowed here`) : new Error(msg);
+        if (opts.kind === "local" && !members.some((o) => c.endpoints.get(o.endpointId)!.kind === "local")) {
+          throw new CloudModelForbidden(`the group ${g.name} has no local copy, and only local models are allowed here`);
         }
         if (!members.some(fits)) throw new Error(`no copy in the group ${g.name} can do ${opts.task}`);
         out.push({ groupId: g.id });
@@ -2141,21 +2306,8 @@ export class Models {
         if (!o) throw new NoModel(`no model ${ref.offeringId}`);
         const ep = c.endpoints.get(o.endpointId)!;
         if (opts.kind === "local" && ep.kind !== "local") throw new CloudModelForbidden(`${labelOf(ep, o)} is a cloud model, and only local models are allowed here`);
-        if (opts.kind === "cloud" && ep.kind !== "cloud") throw new Error(`${labelOf(ep, o)} is a local model, and the cloud profile takes cloud models only; use the custom profile to mix them`);
         if (!fits(o)) throw new Error(`${labelOf(ep, o)} can't do ${opts.task}`);
-        kinds.add(ep.kind);
         out.push({ offeringId: o.id });
-      }
-    }
-    if (opts.kind === "single" && kinds.size > 1) throw new Error("a list here can't mix local and cloud models; only the custom profile can");
-    // A one-kind list needs one kind every entry has: each group a copy of it, even a list made only of groups.
-    if (opts.kind === "single") {
-      const groups = out.filter((r): r is { groupId: string } => "groupId" in r).map((r) => c.groups.get(r.groupId)!);
-      const has = (g: Group, k: string) => g.members.some((m) => c.endpoints.get(c.offerings.get(m)?.endpointId ?? "")?.kind === k);
-      const candidates = kinds.size ? [...kinds] : ["local", "cloud"];
-      if (groups.length && !candidates.some((k) => groups.every((g) => has(g, k)))) {
-        const g = groups.find((x) => !has(x, candidates[0]!))!;
-        throw new Error(kinds.size ? `the group ${g.name} has no ${candidates[0]} copy, and a list here can't mix local and cloud models` : "these groups have no kind in common, and a list here can't mix local and cloud models");
       }
     }
     return out;
@@ -2266,7 +2418,7 @@ export class Models {
     this.withUser(userId, (db) => db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value));
   }
 
-  private threadChoice(userId: string, threadId: string, column: "profile" | "thinking" | "fallback", value: string | number | null): void {
+  private threadChoice(userId: string, threadId: string, column: "preset" | "thinking" | "fallback", value: string | number | null): void {
     this.withUser(userId, (db) => {
       db.prepare("INSERT OR IGNORE INTO thread_choices (thread) VALUES (?)").run(threadId);
       db.prepare(`UPDATE thread_choices SET ${column} = ? WHERE thread = ?`).run(value, threadId);
@@ -2280,8 +2432,6 @@ export class Models {
     const db = this.users.openUserDb(userId);
     try {
       this.sync(userId, db, self);
-      // After the redirects, so a replaced shared model's kind is known.
-      if (!this.ready.has(userId)) splitCloudProfile(db, self);
       if (!this.ready.has(userId)) { this.index(userId, db); this.ready.add(userId); }
       return fn(db);
     } finally {
@@ -2410,36 +2560,6 @@ function checkCredential(c: PlanCredential): PlanCredential {
 
 const labelOf = (ep: Endpoint, o: Offering) => `${ep.shared ? SHARED : ""}${ep.name}/${o.modelId}`;
 
-/**
- * The cloud profile used to take local models too; now it takes cloud
- * models only. Once per user: a cloud profile that names a local model is
- * copied to Custom, which becomes their default for general threads, and
- * the local models leave the cloud profile.
- */
-function splitCloudProfile(db: Db, self: Db): void {
-  if (db.prepare("SELECT 1 FROM settings WHERE key = 'profiles_v2'").get()) return;
-  db.transaction(() => {
-    db.prepare("INSERT INTO settings (key, value) VALUES ('profiles_v2', 'done')").run();
-    const sql = "SELECT e.kind FROM offerings o JOIN endpoints e ON e.id = o.endpoint WHERE o.id = ?";
-    const kindOf = (id: string) => ((db.prepare(sql).get(id) ?? self.prepare(sql).get(id)) as { kind: string } | undefined)?.kind;
-    const rows = db.prepare("SELECT task, entry FROM model_profiles WHERE profile = 'cloud'").all() as { task: string; entry: string }[];
-    const isLocal = (ref: ModelRef) => "offeringId" in ref && kindOf(ref.offeringId) === "local";
-    if (!rows.some((r) => { const e = JSON.parse(r.entry) as Entry; return isList(e) && e.some(isLocal); })) return;
-    if (!db.prepare("SELECT 1 FROM model_profiles WHERE profile = 'custom'").get()) {
-      for (const r of rows) db.prepare("INSERT INTO model_profiles (profile, task, entry) VALUES ('custom', ?, ?)").run(r.task, r.entry);
-    }
-    for (const r of rows) {
-      const e = JSON.parse(r.entry) as Entry;
-      if (!isList(e)) continue;
-      const cloud = e.filter((ref) => !isLocal(ref));
-      if (!cloud.length) db.prepare("DELETE FROM model_profiles WHERE profile = 'cloud' AND task = ?").run(r.task);
-      else db.prepare("UPDATE model_profiles SET entry = ? WHERE profile = 'cloud' AND task = ?").run(JSON.stringify(cloud), r.task);
-    }
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('general_profile', 'custom')").run();
-    addNotice(db, ["Your cloud profile named local models. The cloud profile now takes cloud models only, so it was copied to the new custom profile, which general threads now use."]);
-  })();
-}
-
 function checkName(name: string): void {
   if (!NAME.test(name)) throw new Error("endpoint names use lowercase letters, digits and '-'");
 }
@@ -2454,6 +2574,13 @@ function checkAddresses(addresses: string[]): string[] {
 function checkGroupName(name: string): string {
   const n = String(name ?? "").trim();
   if (!n || n.length > 80) throw new Error("a group needs a name of up to 80 characters");
+  return n;
+}
+
+function checkPresetName(name: string): string {
+  const n = String(name ?? "").trim();
+  if (!n || n.length > 40) throw new Error("a preset needs a name of up to 40 characters");
+  if (n.toLowerCase() === "custom") throw new Error("a preset can't be called Custom");
   return n;
 }
 

@@ -155,7 +155,7 @@ function TailnetStep({ userId, current, name, onNext }: { userId: string; curren
   );
 }
 
-/** Models: one endpoint, shared, and its first model first in the administrator's profile for the main conversation. */
+/** Models: one endpoint, shared, and its first model first in the administrator's column for the main conversation. */
 function ModelsStep({ userId, current, onNext }: { userId: string; current: boolean; onNext: () => void }) {
   const [form, setForm] = useState({ kind: "cloud" as "cloud" | "local", baseUrl: "", apiKey: "", name: "" });
   const [added, setAdded] = useState<EndpointInfo>();
@@ -164,7 +164,7 @@ function ModelsStep({ userId, current, onNext }: { userId: string; current: bool
     const ep = await post<EndpointInfo>(u(userId, "endpoints"), { name: form.name.trim(), kind: form.kind, baseUrl: form.baseUrl.trim(), apiKey: form.apiKey || undefined, shared: true });
     const first = ep.models[0];
     if (!first) throw new Error("No models were listed at that address. Check the URL and the key; the Models area lists what she finds.");
-    await put(u(userId, "profiles", form.kind, "chat"), { model: { offeringId: first.id } });
+    await put(u(userId, "columns", form.kind === "cloud" ? "general" : "private", "chat"), { model: { offeringId: first.id } });
     setAdded(ep);
     onNext();
   });

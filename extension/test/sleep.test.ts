@@ -30,7 +30,8 @@ const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).joi
 /** Ada (administrator) with cloud and local models, a Memory, the seed persona, and Sleep over them. */
 async function setup(limits: Partial<SleepLimits> = {}) {
   const m = await withModels();
-  for (const [p, ref] of [["cloud", m.cloudRef], ["local", m.localRef]] as const) m.models.setProfile(m.ada.id, p, "chat", ref);
+  m.models.setColumnTask(m.ada.id, "general", "chat", m.cloudRef);
+  m.models.setColumnTask(m.ada.id, "private", "chat", m.localRef);
   const memory = new Memory(m.keyring, m.users);
   const persona = new PersonaStore(m.keyring.self());
   persona.importSeed(SEED);
@@ -210,7 +211,7 @@ describe("a night's sleep", () => {
     s.script({ consolidate: [(c) => { expect(said(c)).not.toContain("Okafor"); return call("recall", { query: "Okafor" }); }, (c) => { expect(said(c).split("Okafor").length).toBe(2); return { text: "Done." }; }] });
     await s.sleep.run(s.ada.id, "general", "manual");
     expect(openSpy.mock.calls.map((c) => c[1])).toEqual(["general"]);
-    // General sleep ran on the cloud profile's model.
+    // General sleep ran on the general column's model.
     expect(s.cloud.requests.length).toBeGreaterThan(0);
     g.close();
     p.close();
@@ -221,14 +222,14 @@ describe("a night's sleep", () => {
     const v = s.view();
     s.talk(v, "Hello there.", "{user} said hello");
     const dead = s.models.addEndpoint(s.ada, { name: "dead", kind: "cloud", baseUrl: await deadUrl() });
-    s.models.setProfile(s.ada.id, "cloud", "sleep.dream", { offeringId: s.models.addModel(s.ada, dead.id, { modelId: "m" }).id });
+    s.models.setColumnTask(s.ada.id, "general", "sleep.dream", { offeringId: s.models.addModel(s.ada, dead.id, { modelId: "m" }).id });
     const skipped = await s.sleep.run(s.ada.id, "general", "scheduled");
     expect(skipped).toMatchObject({ status: "skipped", skipReason: "endpoint-down", phases: {} });
     expect(v.own.watermark()).toBeUndefined();
     expect(await s.sleep.check(s.ada.id, "general")).toMatchObject({ skip: "endpoint-down" });
 
     // The endpoint is back, but drops during the dream: consolidate stays done.
-    s.models.setProfile(s.ada.id, "cloud", "sleep.dream");
+    s.models.setColumnTask(s.ada.id, "general", "sleep.dream");
     s.script({ dream: [{ status: 500 }] });
     const partial = await s.sleep.run(s.ada.id, "general", "scheduled");
     expect(partial.status).toBe("partial");
@@ -251,7 +252,7 @@ describe("a night's sleep", () => {
     const v = s.view();
     s.talk(v, "Hello there.", "{user} said hello");
     const dead = s.models.addEndpoint(s.ada, { name: "dead", kind: "cloud", baseUrl: await deadUrl() });
-    s.models.setProfile(s.ada.id, "cloud", "sleep.dream", [{ offeringId: s.models.addModel(s.ada, dead.id, { modelId: "m" }).id }, s.cloudRef]);
+    s.models.setColumnTask(s.ada.id, "general", "sleep.dream", [{ offeringId: s.models.addModel(s.ada, dead.id, { modelId: "m" }).id }, s.cloudRef]);
     expect(s.sleep.fallback(s.ada.id)).toBe(true);
     s.sleep.setFallback(s.ada.id, false);
     expect(s.sleep.fallback(s.ada.id)).toBe(false);
@@ -292,9 +293,7 @@ describe("a night's sleep", () => {
     const sam = await s.users.createUser("sam", "pw2", profile("Sam"), { admin: false });
     await s.users.authenticate("sam", "pw2");
     const gpu = s.models.addEndpoint(sam, { name: "gpu", kind: "local", baseUrl: s.local.baseUrl });
-    s.models.setProfile(sam.id, "local", "chat", { offeringId: (await s.models.discover(sam, gpu.id))[0]!.id });
-    s.models.setProfile(sam.id, "custom", "chat", s.models.profile(sam.id, "local").chat!);
-    s.models.setDefaultProfile(sam.id, "custom");
+    s.models.setColumnTask(sam.id, "general", "chat", { offeringId: (await s.models.discover(sam, gpu.id))[0]!.id });
     const v = s.view("general", sam.id);
     s.talk(v, "Tell me about friendship.", "{user} asked about friendship");
     s.script({ dream: [call("propose_persona", { path: "persona_topics/friends.md", text: "Friends are chosen family.", reason: "a dream about Sam" })] });

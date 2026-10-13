@@ -545,13 +545,13 @@ through `tailscale serve`. Details are in
 
 ## Give her models
 
-She has no model until you add one. Each user has three profiles (local,
-cloud, custom), each mapping tasks (main conversation, subagents, titles,
-sleep, dictation, read aloud and so on) to ordered lists of models; the
-first model that answers is used, and private and local-only threads use
-the local profile only. Dictation uses the local profile too, unless a
-thread picks its own model, so its `speech.transcribe` list goes there.
-See [docs/models.md](../models.md).
+She has no model until you add one. Each user has two columns, **Private
+threads** and **General threads**, each following a preset that maps tasks
+(main conversation, subagents, titles, sleep, dictation, read aloud and so
+on) to ordered lists of models; the first model that answers is used, and
+private and local-only threads use the Private column only. Dictation uses
+the Private column too, unless a thread picks its own model, so its
+`speech.transcribe` list goes there. See [docs/models.md](../models.md).
 
 - **A cloud or OpenAI-compatible endpoint:** Models, Hosts and endpoints,
   **Add endpoint** (Name, Kind Custom, Base URL, API key, then the Local or Cloud checkbox). Shared
@@ -560,8 +560,8 @@ See [docs/models.md](../models.md).
 
   ```sh
   lyrica admin models endpoints add openrouter cloud https://openrouter.ai/api/v1 --shared
-  lyrica admin models profile set cloud chat openrouter/<model-id> --user ada
-  lyrica admin models profile show --user ada
+  lyrica admin models preset set general chat openrouter/<model-id> --user ada
+  lyrica admin models preset list --user ada
   ```
 
 - **A model host** (a GPU machine of your own running the host stack):
@@ -576,7 +576,7 @@ See [docs/models.md](../models.md).
 Her `image` tool creates and edits pictures through OpenAI or through
 confirmed recipes on a paired model host, and upscales through host recipes
 only. It uses the `image.create`, `image.edit` and `image.upscale` task
-lists; private and local-only threads always use the local profile's. Each
+lists; private and local-only threads always use the Private column's. Each
 list is an ordered fallback. In **Models → Image models**, open a recipe
 and set **Use for** to **Fast**, **Quality** or **Both** (default) per host.
 Create takes the first matching recipe and falls back down the same list. Hosts
@@ -597,13 +597,12 @@ POST /api/u/<user-id>/endpoints/<endpoint-id>/models
 ```
 
 Then put models in the lists, under Models, Tasks, or from a terminal
-(use `custom` instead of `cloud` for a user whose general threads use the
-Custom profile):
+(`private` for the Private column, `general` for the General column):
 
 ```sh
-lyrica admin models profile set cloud image.create openai-images/gpt-image-1 --user ada
-lyrica admin models profile set cloud image.edit openai-images/gpt-image-1 --user ada
-lyrica admin models profile set local image.upscale '<host>/<recipe>' --user ada
+lyrica admin models preset set general image.create openai-images/gpt-image-1 --user ada
+lyrica admin models preset set general image.edit openai-images/gpt-image-1 --user ada
+lyrica admin models preset set private image.upscale '<host>/<recipe>' --user ada
 ```
 
 Add reference photos and choose their cloud setting in **Settings → Portrait
