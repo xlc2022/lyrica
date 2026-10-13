@@ -1,4 +1,4 @@
-# Brief: Thread panel (Overview, double-click, View thread)
+# Brief: Thread panel (threads list, Open beside, View thread, divider fix)
 
 **Thread:** Web UI. **Branch:** `feature/thread-panel`. **Model:** Qwen on
 lunasa first (small steps below), Codex as the fallback; Fable reviews the UI.
@@ -16,59 +16,70 @@ as the Claude app's Overview button and thread cards do.
 
 ## In scope
 
-1. **Overview** in the project chat's header, beside Project settings (a
-   noun label). It toggles the panel with the project's threads grouped as in
-   the Threads popover (Waiting on you, Working, Queued, Idle, Resolved): each
-   row is title, state, one line of the latest message. A row swaps that
-   thread into the panel; the breadcrumb, **Open as a page** and **Close
-   panel** work as they do. Below 1180 px it is the project's Threads page
-   at the same address (ux.md: no panel on a phone).
-2. **Double-click** on a child thread's sidebar row, with a thread open and
-   at 1180 px or wider, opens it in the panel beside the open thread, in a
-   project or not. A single click still navigates. Below 1180 px a double-click
-   is the page. Keyboard: Shift+Enter on a focused row does the same.
-3. **View thread** on a thread card in the chat (secondary button under the
-   title) opens the panel, as the title link does now. The small "Open" link
-   on subagent runs (`ThreadLinks`, Messages.tsx) opens the panel too at 1180 px
-   and wider.
+0. **Fix the divider (bug).** The panel's divider shows a resize cursor and
+   dragging does nothing: `PanelColumn` sets `--panel-w` on the `<aside>`, but
+   the grid that reads it (`.app[data-panel="true"]` in app.css) is the aside's
+   parent, so the variable never reaches it and the column stays 420 px.
+   Set it on the `.app` element instead (a layout effect on
+   `ref.current.parentElement`, removed on unmount). Keep the 360 to 520 px
+   range and the stored width.
+1. **Threads opens the panel list** from the project chat's facts line, at
+   1180 px and wider, in place of the popover; below 1180 px it keeps the
+   popover. There is no second Overview button, so one list has one entry
+   point (ux.md "A project's threads at a glance"). If Li asks for the button by
+   name, it replaces Threads in the facts line. The list is the popover's
+   groups (Waiting on you, Working, Queued, Idle, Resolved). Rows follow ux.md
+   §5: state as a dot and a word, times in mono, the latest message muted and cut
+   to one line. A row swaps that thread into the panel; breadcrumb, **Open as a
+   page** and **Close panel** work as they do. The Threads fact is a toggle:
+   `aria-pressed`, pressed look while the panel shows the list.
+2. **Open beside** for a child thread's sidebar row, with a thread open and at
+   1180 px and wider: **Open beside** (B) in the row's right-click menu (long
+   press on a phone is the same menu), Shift+click and Shift+Enter on a focused
+   row, each with `preventDefault()`. It opens the child in the panel beside the
+   open thread, in a project or not. A plain click navigates as before. Below
+   1180 px the item is not shown and Shift+click is a plain click. (Double-click
+   cannot work on a row: the first click already navigates.)
+3. **View thread** on a thread card in the chat: a button in the card's action
+   row (`className="sm"`, the default secondary look) that opens the panel, and a
+   double-click on the card does the same. Below 1180 px both open the full page.
+   The small "Open" link on subagent runs (`ThreadLinks`, Messages.tsx) opens the
+   panel at 1180 px and wider.
 
 ## Out of scope
 
-No new API: the Threads popover's data feeds Overview. No changes to the Files
-panel, a phone layout, or panel width.
+No new API: the Threads popover's data feeds the panel list. No changes to the
+Files panel, a phone layout, or the panel's 360 to 520 px range.
 
 ## Docs to update in the same PR
 
-docs/ux.md (a §6 row for Overview and the double-click rule; add the new
-labels to its label list), docs/web.md (panel triggers), this brief's handoff.
+docs/ux.md (a §6 row for the panel list, Open beside and the card gestures; add
+Open beside and View thread to its label list), docs/web.md (panel triggers),
+this brief's handoff. Screenshots to attach: the panel list and Open beside at
+1280, and the 390 fallback.
 
 ## Steps for a small model (one per run, each self-contained)
 
 Run `npm run typecheck` after each step. One test suite at a time.
 
-1. `web/src/Shell.tsx`: in the sidebar's `ThreadLink`, add an `onDoubleClick`
-   that, when `useWide()` is true and the current route is a thread, calls
-   `go({ ...route, drawer: undefined, panel })` with `panel = { page: "thread",
-   pool: t.pool, threadId: t.id }` and starts a new trail
-   (`trail.set([panel])`). Reuse the code at the end of `openInPanel`; extract
-   it into a helper rather than copying. Nothing else.
-2. `web/src/Messages.tsx`: in the thread card component, add a **View thread**
-   button (class `secondary`) under the title that is an `<a>` to the thread's
-   href, so the existing `openInPanel` click handler opens it. Same for the
-   `Open` link in `ThreadLinks`: nothing to add, only confirm it is an `<a
-   href="#/u/...">` and so is covered; add a one-line comment saying so.
-3. `web/src/Project.tsx` and the project chat header: add the **Overview**
-   button. It is an `<a>` to a new panel page `{ page: "threads", pool,
-   threadId }` (add to `Panel` and `parse`/`href` in the router file, and
-   render the Threads popover's list inside the panel). Reuse the popover's
-   grouping function; do not copy it.
-4. docs and e2e: edit the docs listed above; extend the "the split view"
-   test with a double-click on a sidebar child row, a **View thread** click
-   and an **Overview** open, each followed by the panel being visible, and a
-   check that below 1180 px they navigate.
+1. `web/src/Shell.tsx`, `PanelColumn`: move `--panel-w` from the aside's
+   `style` to the `.app` element (item 0). Extend the split-view e2e test with a
+   divider drag that changes the panel's width.
+2. `web/src/Shell.tsx`: extract the end of `openInPanel` (build the panel, set the
+   trail, `go`) into a helper `showInPanel(route, trail, panel)`. In the sidebar's
+   `ThreadLink`, call it from Shift+click, Shift+Enter and a new **Open beside**
+   menu item (B), only when `useWide()` and a thread is open.
+3. `web/src/Messages.tsx`: add **View thread** and the card double-click (item 3),
+   as `<a>` to the thread's href so `openInPanel` handles it.
+4. `web/src/Project.tsx` and the project chat's facts line: make Threads open a
+   new panel page `{ page: "threads", pool, threadId }` at 1180 px and wider (add
+   to `Panel`, `parse` and `href` in the router file), rendering the popover's list
+   (reuse its grouping function, do not copy it).
+5. docs and e2e: edit the docs above; extend the split-view test with Open beside,
+   View thread and the Threads list, and check below 1180 px they navigate.
 
 ## Handoff
 
-Done: nothing built. Next: steps 1 to 4 in order. Open: whether Overview's
-rows need the latest-message line at launch (drop it if the list API doesn't
-give it).
+Done: nothing built. Next: steps 1 to 5 in order. Open: whether the panel
+list rows need the latest-message line at launch (drop it if the list API
+doesn't give it).
