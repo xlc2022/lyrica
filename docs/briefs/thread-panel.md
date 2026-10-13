@@ -68,7 +68,8 @@ Run `npm run typecheck` after each step. One test suite at a time.
 2. `web/src/Shell.tsx`: extract the end of `openInPanel` (build the panel, set the
    trail, `go`) into a helper `showInPanel(route, trail, panel)`. In the sidebar's
    `ThreadLink`, call it from Shift+click, Shift+Enter and a new **Open beside**
-   menu item (B), only when `useWide()` and a thread is open.
+   menu item (B), only when `useWide()` and a thread is open. Below 1180 px Shift+click still calls `preventDefault()` and navigates itself,
+   or the browser opens a new window.
 3. `web/src/Messages.tsx`: add **View thread** and the card double-click (item 3),
    as `<a>` to the thread's href so `openInPanel` handles it.
 4. `web/src/Project.tsx` and the project chat's facts line: make Threads open a
