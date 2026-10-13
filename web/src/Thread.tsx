@@ -1,6 +1,6 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type WakeupInfo } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTombstone, type WakeupInfo } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { hasConsequences, jumpTo, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { JUMP_EVENT, JUMP_KEY, SHOW_EVENT, SHOW_KEY, take, type JumpRequest, type ShowRequest } from "./links.ts";
@@ -17,6 +17,7 @@ import { Crumbs, Main, PanelButtons, usePanel, type ShellContext } from "./Shell
 import { ThreadMenu, type MenuAt } from "./ThreadMenu.tsx";
 import { ErrorText, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
 import { stopReading } from "./Voice.tsx";
+import { Tombstone } from "./Tombstone.tsx";
 
 export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer }: {
   ctx: ShellContext; pool: Pool; threadId: string; threads: ThreadSummary[];
@@ -26,6 +27,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const userId = ctx.user.id;
   const base = threadPath(userId, pool, threadId);
   const summary = useLoad(() => get<ThreadSummary>(base), [base]);
+  // A thread deleted with its memories kept has a tombstone where the thread was.
+  const gone = useLoad(() => (summary.error ? get<ThreadTombstone>(`${base}/tombstone`).catch(() => undefined) : Promise.resolve(undefined)), [base, summary.error]);
   const settings = useLoad(() => get<ThreadSettings>(`${base}/settings`), [base]);
   const pins = useLoad(() => get<Pins>(`${base}/pins`), [base]);
   // The user's machines, for the granted ones' limits in the mode menu and the settings drawer.
@@ -243,6 +246,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const moreBtn = useRef<HTMLButtonElement>(null);
   const closeMenu = useCallback(() => { setMenuAt(undefined); moreBtn.current?.focus(); }, []);
   const listed = findThread(threads, pool, threadId) ?? s;
+  if (!s && summary.error && gone.data) return <Tombstone userId={userId} pool={pool} data={gone.data} />;
 
   return (
     <Main className="main" data-drawer-open={drawer}>

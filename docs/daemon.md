@@ -330,6 +330,15 @@ Each active thread is one Pi session from `openThreadSession`, with
   stopping their runs and dropping their records (`Delegation.forget`). With
   `{ children: true }` (`ForgetThread`) its child threads go too; otherwise
   they are kept as threads of their own and detached from its workspace.
+  With `{ keepMemories: true }` no note or project page is removed, each
+  forgotten thread leaves a text-free tombstone, and `GET …/threads/:pool/:threadId/tombstone`
+  (`ThreadTombstone`: ID, deletion time, the memories citing it; `404` when
+  none) answers where the thread was. `linkFor` gives a citation of it
+  `deleted: true`.
+  Its files go at once while the home is mounted (`forgetThreadFiles`,
+  daemon/src/sweep.ts): the change records of what its calls did and their
+  snapshots, its folder under `threads/` and its Claude Code folder. The
+  nightly sweep takes any folder left behind.
 - **Child threads** (`ChildThreads`, [delegation.md](delegation.md#child-threads)):
   every hosted thread gets the `threads` tool. A child is hosted like any
   thread; `ThreadHost.status` says working, waiting or idle, and

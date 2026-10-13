@@ -7,6 +7,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { del, get, patch, post, put, threadPath, u, type Person, type ThreadGroup, type ThreadSummary } from "./api.ts";
 import { go, type Route } from "./route.ts";
 import { her } from "./name.ts";
+import { Flyout, useCanHover, useFlyout } from "./flyout.tsx";
 import { ConfirmDialog, ErrorText, menuArrows } from "./ui.tsx";
 
 /** Where the menu opens: at a pointer, or under a button with `end` set, `x` being the edge its right side keeps to. */
@@ -39,9 +40,13 @@ export function useThreadMenu() {
   return { at, close: () => setAt(undefined), handlers };
 }
 
-function Item({ label, kbd, danger, sub, onClick }: { label: ReactNode; kbd?: string; danger?: boolean; sub?: boolean; onClick: () => void }) {
+function Item({ label, kbd, danger, sub, submenu, expanded, onClick }: {
+  label: ReactNode; kbd?: string; danger?: boolean; sub?: boolean;
+  /** The flyout this item opens on a device that can hover (docs/ux.md §3). */ submenu?: string; expanded?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <button type="button" role="menuitem" className={`${danger ? "danger" : ""}${sub ? " has-sub" : ""}`} data-key={kbd} onClick={onClick}>
+    <button type="button" role="menuitem" className={`${danger ? "danger" : ""}${sub ? " has-sub" : ""}`} data-key={kbd} data-submenu={submenu} aria-expanded={submenu ? !!expanded : undefined} onClick={onClick}>
       <span>{label}</span>{kbd && <kbd>{kbd}</kbd>}
     </button>
   );
@@ -67,6 +72,10 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   const [error, setError] = useState("");
   const [people, setPeople] = useState<Person[]>();
   const [recipient, setRecipient] = useState<Person>();
+  const canHover = useCanHover();
+  // On a device that can hover these two submenus open beside their item instead of replacing the menu (docs/ux.md §3).
+  const fly = canHover && (sub === "share" || sub === "group") ? sub : "";
+  const hover = useFlyout(sub, setSub, canHover && (sub === "" || !!fly));
   const children = t.children.length;
   // The other users on this server, read when Share with opens.
   useEffect(() => {
@@ -87,11 +96,23 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   // Escape closes the topmost thing; a click elsewhere closes the menu; letters pick items.
   useEffect(() => {
     if (sub === "delete" || sub === "project" || recipient) return;
+    // Closing a flyout from the keyboard puts focus back on its item.
+    const back = () => { const open = fly; setSub(""); if (open) requestAnimationFrame(() => ref.current?.querySelector<HTMLElement>(`[data-submenu="${sub}"]`)?.focus()); };
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); if (sub) setSub(""); else onClose(); return; }
+      if (e.key === "Escape") { e.preventDefault(); if (sub) back(); else onClose(); return; }
       if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (menuArrows(e, ref.current)) return;
-      const btn = ref.current?.querySelector<HTMLButtonElement>(`button[data-key="${e.key.toUpperCase()}"]`);
+      // → opens the item's flyout, ← closes one level.
+      const focus = document.activeElement as HTMLElement | null;
+      if (e.key === "ArrowRight" && focus?.dataset.submenu) {
+        e.preventDefault(); setSub(focus.dataset.submenu as typeof sub);
+        requestAnimationFrame(() => ref.current?.querySelector<HTMLElement>(".flyout button")?.focus());
+        return;
+      }
+      if (e.key === "ArrowLeft" && sub) { e.preventDefault(); back(); return; }
+      // Letters and arrows act inside the open flyout when focus is there, else in the menu itself.
+      const scope = (focus?.closest(".flyout") as HTMLElement | null) ?? ref.current;
+      if (menuArrows(e, scope)) return;
+      const btn = scope?.querySelector<HTMLButtonElement>(`button[data-key="${e.key.toUpperCase()}"]`);
       if (btn) { e.preventDefault(); btn.click(); }
     };
     const down = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
@@ -104,8 +125,8 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   const act = (fn: () => Promise<unknown>, said?: string) => fn().then(() => { onChange(); if (said) onToast(said); onClose(); }, (e: Error) => setError(e.message));
   const change = (c: { title?: string; hidden?: boolean; group?: string | null; unread?: boolean; project?: true }) => act(() => patch(base, c));
   const inProject = t.state !== undefined;
-  const forget = (withChildren: boolean) => act(async () => {
-    await del(base, { children: withChildren });
+  const forget = (withChildren: boolean, keepMemories: boolean) => act(async () => {
+    await del(base, { children: withChildren, keepMemories });
     // The open thread is gone: leave it.
     if (onGone) onGone();
     else if (route?.page === "thread" && route.threadId === t.id) go({ page: "home", userId });
@@ -128,30 +149,33 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   }
   if (sub === "delete") {
     return (
-      <ConfirmDialog title="Delete this thread?" danger confirm="Delete" onCancel={onClose} onConfirm={forget}
-        sentence={`Its messages are deleted, and so is what ${her()} learned only from it. This can't be undone.`}
-        {...(children > 0 ? { option: `Also delete its ${children === 1 ? "child thread" : `${children} child threads`}` } : {})} />
+      <ConfirmDialog title="Delete this thread?" danger confirm="Delete" onCancel={onClose} onConfirm={([keep, kids]) => forget(!!kids, !!keep)}
+        sentence={([keep]) => keep
+          ? `Its messages are deleted. What ${her()} learned from it stays in memory. This can't be undone.`
+          : `Its messages are deleted, and so is what ${her()} learned only from it. This can't be undone.`}
+        options={[{ label: "Keep memories", ticked: false }, ...(children > 0 ? [{ label: `Also delete its ${children === 1 ? "child thread" : `${children} child threads`}`, ticked: true }] : [])]} />
     );
   }
+  // The submenu contents, shared by the in-place replacement and the flyout.
+  const shareItems = (
+    <>
+      {people?.map((p) => <Item key={p.id} label={<>{p.displayName}{p.linked && <span className="cap"> your persona</span>}</>} onClick={() => setRecipient(p)} />)}
+      {people && !people.length && <span className="empty">No one else on this server.</span>}
+    </>
+  );
+  const groupItems = (
+    <>
+      {groups.map((g) => <Item key={g.id} label={<>{t.group === g.id ? "✓ " : ""}{g.name}</>} onClick={() => change({ group: t.group === g.id ? null : g.id })} />)}
+      {t.group && <Item label="Not in a group" onClick={() => change({ group: null })} />}
+      {groups.length > 0 && <div className="sep" role="separator" />}
+      <Item label="New group…" kbd="N" onClick={() => { setDraft(""); setSub("newgroup"); }} />
+    </>
+  );
   let body: ReactNode;
-  if (sub === "share") {
-    body = (
-      <>
-        <button type="button" className="back" onClick={() => setSub("")}>‹ Share with</button>
-        {people?.map((p) => <Item key={p.id} label={<>{p.displayName}{p.linked && <span className="cap"> your persona</span>}</>} onClick={() => setRecipient(p)} />)}
-        {people && !people.length && <span className="empty">No one else on this server.</span>}
-      </>
-    );
-  } else if (sub === "group") {
-    body = (
-      <>
-        <button type="button" className="back" onClick={() => setSub("")}>‹ Move to group</button>
-        {groups.map((g) => <Item key={g.id} label={<>{t.group === g.id ? "✓ " : ""}{g.name}</>} onClick={() => change({ group: t.group === g.id ? null : g.id })} />)}
-        {t.group && <Item label="Not in a group" onClick={() => change({ group: null })} />}
-        {groups.length > 0 && <div className="sep" role="separator" />}
-        <Item label="New group…" kbd="N" onClick={() => { setDraft(""); setSub("newgroup"); }} />
-      </>
-    );
+  if (!fly && sub === "share") {
+    body = (<><button type="button" className="back" onClick={() => setSub("")}>‹ Share with</button>{shareItems}</>);
+  } else if (!fly && sub === "group") {
+    body = (<><button type="button" className="back" onClick={() => setSub("")}>‹ Move to group</button>{groupItems}</>);
   } else if (sub === "rename" || sub === "newgroup") {
     const rename = sub === "rename";
     body = (
@@ -172,8 +196,8 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
         <span className="eyebrow">{t.title || (t.project ? "New project" : "New thread")}</span>
         <Item label={t.unread ? "Mark as read" : "Mark as unread"} kbd="U" onClick={() => change({ unread: !t.unread })} />
         <Item label="Rename…" kbd="R" onClick={() => { setDraft(t.title ?? ""); setSub("rename"); }} />
-        {!t.project && !t.subagent && <Item label="Share with" kbd="S" sub onClick={() => setSub("share")} />}
-        <Item label="Move to group" kbd="M" sub onClick={() => setSub("group")} />
+        {!t.project && !t.subagent && <Item label="Share with" kbd="S" sub submenu="share" expanded={sub === "share"} onClick={() => setSub("share")} />}
+        <Item label="Move to group" kbd="M" sub submenu="group" expanded={sub === "group"} onClick={() => setSub("group")} />
         {!t.child && !t.parent && <Item label={t.pinned ? "Unpin" : "Pin"} kbd="P" onClick={() => act(() => (t.pinned ? del(`${base}/pin`) : put(`${base}/pin`, {})), t.pinned ? "Unpinned" : "Pinned to the top")} />}
         {!t.child && !t.parent && !t.project && <Item label="Make project…" kbd="K" onClick={() => setSub("project")} />}
         {inProject && <Item label={t.state === "resolved" ? "Reopen" : "Resolve"} kbd="E" onClick={() => act(() => post(`${base}/${t.state === "resolved" ? "reopen" : "resolve"}`))} />}
@@ -184,9 +208,10 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
     );
   }
   return (
-    <div ref={ref} className="ctx-menu" role="menu" aria-label={`${t.title || "New thread"} menu`} style={{ left: at.x, top: at.y }}>
+    <div ref={ref} className="ctx-menu" role="menu" aria-label={`${t.title || "New thread"} menu`} style={{ left: at.x, top: at.y }} {...hover}>
       {body}
       <ErrorText error={error} />
+      {fly && <Flyout parentRef={ref} anchor={fly}>{sub === "share" ? shareItems : groupItems}</Flyout>}
     </div>
   );
 }

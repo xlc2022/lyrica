@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { fakeProxmox, TOKEN as PVE_TOKEN } from "../../core/test/fake-proxmox.ts";
-import type { CallInfo, EndpointInfo, MachineInfo, MachineProbe, MessagePage, PermissionRequest, ThreadEvent, ThreadSettings, ThreadSummary, UploadResponse } from "../src/api.ts";
+import type { CallInfo, EndpointInfo, MachineInfo, MachineProbe, MemoryDetail, MessagePage, PermissionRequest, ThreadEvent, ThreadTombstone, ThreadSettings, ThreadSummary, UploadResponse } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /** An unlocked lyricad, Ada logged in, a local model, and one general thread. */
@@ -412,6 +412,29 @@ describe("the thread's model", () => {
     // Forgetting the thread takes its call records with it.
     await ada.del(path);
     expect((await ada.get<CallInfo[]>(`/api/u/${rt.ada.id}/models/calls`)).body.filter((c) => c.threadId === thread.id)).toEqual([]);
+  });
+});
+
+describe("deleting a thread and keeping its memories", () => {
+  it("keeps a note that cites it, links it as deleted, and serves a text-free tombstone", async () => {
+    const { rt, ada, model, path, thread } = await setup();
+    const u = `/api/u/${rt.ada.id}`;
+    model.reply({ text: "Hello." });
+    const stream = ada.events(`${path}/events`);
+    await stream.ready;
+    await ada.post(`${path}/messages`, { text: "hi" });
+    await stream.until(is("turn_end"));
+    stream.close();
+    const note = (await ada.post<MemoryDetail>(`${u}/memory/general/notes`, { text: "{user} likes tea", links: [`t:${thread.id}`] })).body;
+    expect((await ada.get(`${path}/tombstone`)).status).toBe(404);
+    expect((await ada.del(path, { keepMemories: true })).status).toBe(200);
+    expect((await ada.get(path)).status).toBe(404);
+    const detail = (await ada.get<MemoryDetail>(`${u}/memory/general/${enc(note.item.id)}`)).body;
+    expect(detail.links[`t:${thread.id}`]).toMatchObject({ kind: "thread", snippet: "", deleted: true });
+    expect(detail.links[`t:${thread.id}`]!.title).toBeUndefined();
+    const tomb = (await ada.get<ThreadTombstone>(`${path}/tombstone`)).body;
+    expect(tomb).toMatchObject({ id: `t:${thread.id}`, memories: [{ id: note.item.id }] });
+    expect(JSON.stringify(tomb)).not.toContain("test thread");
   });
 });
 

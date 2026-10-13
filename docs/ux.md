@@ -78,6 +78,16 @@ Rules:
   doesn't.
 - Keyboard: a context menu's items have letter shortcuts; Escape closes the
   topmost thing (selection, then menu, then panel).
+- Submenus: an item with a submenu ends in ›.
+- On devices that can hover (`@media (hover: hover)`, not screen width),
+  hovering or clicking the item opens the submenu as a flyout beside it.
+- The flyout's first row sits level with the item, and the flyout shifts up
+  to stay on screen. It opens to the right, or to the left when there's no
+  room on the right.
+- → opens the flyout, and ← or Escape closes one level. Items in it keep their
+  letter shortcuts.
+- Without hover, tapping the item replaces the menu in place with a ‹ Back
+  row.
 
 ## 4. Words
 
@@ -179,6 +189,7 @@ Rules:
 | Editing one thing in context (a task's list, a model's settings, a GPU's settings) | the **drawer** on the right, sections with eyebrows, one Save at its foot when saving has a consequence |
 | Confirming an action with a consequence | a **dialog** with the sentence and two buttons. Dialogs confirm; they never hold forms or flows |
 | A flow with steps (download a model, pair a host) | a **page** with its own address, never a dialog |
+| Deleting a thread (and keeping what she learned) | **Delete…** in the thread menu, and **Forget this thread** in the thread drawer: a **dialog** (an in-place confirm in the drawer) with its one sentence and checkboxes in this order: **Keep memories**, unticked, then (only with child threads) "Also delete its child thread(s)", ticked. The sentence follows the first: unticked, "Its messages are deleted, and so is what <her name> learned only from it. This can't be undone."; ticked, "Its messages are deleted. What <her name> learned from it stays in memory. This can't be undone." A kept memory's citation of the thread reads "a deleted thread" with a **deleted** cap and opens the thread's route, which shows the **tombstone** in the thread pane in place of the thread: h1 "Deleted thread", its ID `t:…` in mono, "Deleted <date>.", "Memories from it" as a list of links (or "No memories from it.") and a link to Home; no message box, no menu |
 | Actions on a thread (pin, rename, share, move, hide, delete) | the thread's **right-click menu** in the sidebar, letter shortcuts, long press on a phone; the same menu from the **⋯** (Thread actions) after the thread header's Files and Settings. **Pin** or **Unpin** is also behind a project's thread card's ⋯, which puts that thread first among the project's threads in the sidebar; either says "Pinned to the top" or "Unpinned" in a toast |
 | Rare actions on a row | the row's **⋯** menu |
 | Sorting and what's shown | the one **Sort** menu above the thread list: the sort choices; below a line, General, Private and Hidden (tooltip "Hidden threads are left out of the list and of search."); below another, All threads, Only projects or No projects |
@@ -206,6 +217,7 @@ Rules:
 | A memory's versions | **History**: a row per version with its time in mono and its author (Lyrica, sleep, or yours), the current one open; a version opens to the word differences against the current text (removed words struck through in the danger colour, added words in the ok colour) and a **Restore** button |
 | A note's tags | its `about` words as **tag** chips under the facts line, in mono; the Notes layer lists the pool's tags above its list, and a tapped tag filters it |
 | When a message was sent | its time in mono after the name in the message's header line, after the model for hers ("Lyrica · cloud-model · 14:32"): HH:MM today, otherwise the date before it in the reader's locale order ("11 Oct 14:32", or "Oct 11 14:32" in en-US), the full date and time as its tooltip; each dot with the same air on both sides; a reply gets its time once it is stored; on a phone the name and model shrink with an ellipsis so the time and the actions stay on the line; markers keep their own lines; no day dividers |
+| The reply as she writes it | **three small dots** in the muted colour at its end while it streams, fading in turn (static under reduced motion); shown only when the last thing in the reply isn't her text, and never after streaming text |
 | Reacting to a message | **React** (an icon button beside the message's ⋯) opens a **quick row** of six favourites, each with the tooltip "React with <name>", ending in **More emoji**, which opens the full **picker** (search, categories). Reactions are **chips** under the message, the emoji and its count in mono; the user's own chip is outlined in the accent and pressing it takes the reaction off; the tooltip says who ("You and Lyrica reacted with 🎉"). Lyrica's reactions look the same |
 | Remembering a message | **Remember this** in the message's ⋯ menu: a field under the message labelled **Remember this as a note** with the pool word in eyebrow style, prefilled with the message's first line, **Remember** primary and Cancel; afterwards one line, Remembered as a note, linking to it |
 | Forgetting several memories | Ctrl- or Cmd-click and Shift-click select list rows; a bar at the foot of the pane names the count, with **Clear** and **Forget…**, confirmed by a dialog |
@@ -234,7 +246,7 @@ Rules:
 | A thread or message Lyrica mentions | a **link** in her text: the thread's current title, opening the thread; no state dot (the sidebar row and the pending bar carry the state) and no pool colour; "a forgotten thread" in plain text when it's gone. Never the raw ID |
 | A serving change she proposes (her `models` tool) | the permission **card** worded as its question: "Serve **Qwen3.8-27B** with `1,010,000` tokens of context? It reloads, and its KV cache grows to `17` GB.", the numbers in mono, and "Qwen documents `4`." after it when the stretch is above the card's. **Allow** primary, **Deny** |
 | A child thread | nested under its parent in the **sidebar**, with its state and unseen count as badges; its updates as a **card** in the parent's conversation that links to it |
-| A project | a thread row in the **sidebar** with the project icon in the pool dot's place, its threads nested under it (each keeps its pool dot) and resolved ones folded under one **Resolved** disclosure row with the count in mono; an amber dot on the row when a thread waits on the user. **New project** in the thread list's own menu (right-click or long press anywhere that is not a row: an eyebrow, a gap, the strip under the last row), **Make project** in a top-level thread's menu; a new project starts pinned, at the top with the other pinned threads |
+| A project | a thread row in the **sidebar** with the project icon in the pool dot's place, its threads nested under it (each keeps its pool dot) and resolved ones folded under one **Resolved** disclosure row with the count in mono; an amber dot on the row when a thread waits on the user. **New project** under New thread at the top of the sidebar; each row keeps its place and opens the same General / Private / ✕ choice under its row, and in the thread list's own menu (right-click or long press anywhere that is not a row: an eyebrow, a gap, the strip under the last row), **Make project** in a top-level thread's menu; a new project starts pinned, at the top with the other pinned threads |
 | A project's threads at a glance | **Threads** with its count in the project chat's facts line, a popover grouped Waiting on you, Working, Queued, Idle, Resolved, in the sidebar's words and order; full width on a phone |
 | A thread of a project, in the project chat | one **card** under the message that started it, updated in place (no card per update): title, state as a dot and word (Working blue; Waiting on you and Waiting for approval amber; Resolved green; Idle the word alone), what it waits on beneath, the last update's first line, up to three file names in mono then "+n" (once the back end lists them); Open, Stop, Pin or Unpin, Resolve or Reopen behind ⋯. Waiting on you counts as waiting for an answer, so the pending bar covers it |
 | Threads she proposes | a **Suggested threads** card, like the plan card: a small secondary **Start** per row, one primary **Start all** at its foot; no Dismiss |
