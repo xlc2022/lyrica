@@ -1945,7 +1945,7 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await page.keyboard.press("Escape");
   await expect(fact).toHaveAttribute("aria-pressed", "false");
   // Open beside: a child row's menu item, and Shift+click on the row itself, open it in the panel beside the chat in a fresh trail.
-  const betaRow = page.locator(".side li:has(> .trow a[aria-current=\"page\"]) .children a.thread").filter({ has: page.locator(".title", { hasText: /^Beta$/ }) });
+  const betaRow = page.locator('.side li:has(> .trow a[aria-current="page"]) .children a.thread, .side li:has(> .children a[aria-current="page"]) .children a.thread').filter({ has: page.locator(".title", { hasText: /^Beta$/ }) });
   await betaRow.click({ button: "right" });
   await page.getByRole("menu", { name: "Beta menu" }).getByRole("menuitem", { name: "Open beside" }).click();
   const betaBeside = page.getByRole("complementary", { name: "Beta" });
