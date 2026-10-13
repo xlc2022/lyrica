@@ -52,15 +52,18 @@ ever reads its text.
      project's limits (a child's settings are its parent's or narrower), so
      a row whose fold would remove access shows, under its title, a muted
      line **Loses** and the names in mono (folders, then machines, then
-     repositories, then network hosts; comma-separated, at most three, then
-     "+n"; the full list in the line's title tooltip), followed by **Add to
-     project** (secondary). No line when the fold removes nothing; on a
-     phone the line wraps under the title and never squeezes the row's Fold
-     in button. Add to project grants those folders, machines,
-     repositories and hosts to the project chat through the existing
-     settings route, as Save on Project settings would, after which the
-     line goes and Fold in keeps the thread's access. Nothing is added
-     without that click. ux.md's Fold in row says all this. Folding a thread
+     repositories, then network hosts, then the Internet or Services
+     switch; comma-separated, at most three, then "+n"; the full list in
+     the line's title tooltip), ending with a **Keep access** link
+     ("Loses `~/code/app`, `gpu-box` · Keep access"). No line when the
+     fold removes nothing; on a phone the line wraps under the title and
+     never squeezes the row's one Fold in button. Keep access confirms
+     with a dialog, "Give <project> access to <names>? Every thread in it
+     can use them.", with Cancel and **Give access**; that grants them to
+     the project chat through the existing settings route, as Save on
+     Project settings would, after which the line goes and Fold in keeps
+     the thread's access. Nothing is granted without that confirm.
+     ux.md's Fold in row says all this. Folding a thread
      in moves it, with its child threads, under the project, as Continue
      as project does.
    - **Add repository** opens the Add repository popover in place under
