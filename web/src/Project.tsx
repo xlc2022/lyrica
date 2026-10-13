@@ -98,12 +98,14 @@ export function ThreadsFact({ userId, overview, phone }: { userId: string; overv
 /**
  * One of the project's threads, under the message that started it: its title as written,
  * its state as a dot and a word (then its checklist's count, and when it next wakes), its current step, what it
- * waits on, the last update's first line, and Open, Stop, Pin or Unpin, Resolve or Reopen behind ⋯. A pinned one sits
+ * waits on, the last update's first line, View thread at its foot (a double-click on the card does the same), and Open,
+ * Stop, Pin or Unpin, Resolve or Reopen behind ⋯. A pinned one sits
  * first among the project's threads in the sidebar. A thread waiting on the user counts as waiting for an answer.
  */
 export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: string; env: ProjectEnv }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
+  const viewRef = useRef<HTMLAnchorElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(ref, open, close);
   const [run, busy, error] = useAction();
@@ -120,7 +122,7 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
   const line = update?.split("\n").find((l) => l.trim())?.trim();
   const open_ = href({ page: "thread", userId, pool: t.pool, threadId: t.id });
   return (
-    <div className="tcard" data-state={state} {...(t.needsYou ? { "data-pending": "Thread" } : {})}>
+    <div className="tcard" data-state={state} onDoubleClick={(e) => { /* View thread by double-click (docs/briefs/thread-panel.md item 3): not when it lands on a link or button, or leaves text selected to copy. */ if ((e.target as HTMLElement).closest("a,button") || getSelection()?.toString()) return; viewRef.current?.click(); }} {...(t.needsYou ? { "data-pending": "Thread" } : {})}>
       <div className="tcard-head" data-dot={state !== "idle" && state !== "queued" ? "" : undefined}>
         {state !== "idle" && state !== "queued" && <span className="status" data-state={state} aria-hidden="true" />}
         <a className="tcard-title" href={open_}>{t.title || "New thread"}</a>
@@ -144,6 +146,7 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
       {t.steps && t.state !== "resolved" && <StepLine steps={t.steps} />}
       {line && <p className="tcard-line">{t.needsYou ? <><span className="muted">Waits on you: </span>{line}</> : line}</p>}
       {!line && t.state === "waiting" && !t.needsYou && <p className="tcard-line muted">Waiting for an approval in the thread.</p>}
+      <div className="row"><a className="sm" href={open_} ref={viewRef}>View thread</a></div>
       <ErrorText error={error} />
     </div>
   );

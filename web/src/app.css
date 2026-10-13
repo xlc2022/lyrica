@@ -596,7 +596,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 /* Touch screens: every control is at least 44 px. Last, so nothing above overrides it. */
 @media (pointer: coarse) {
   button.badge, .chev, .chips button, .check, .marker > button, .from-head, .picker-item, .showing > summary, .showing label { min-height: 44px; }
-  .tfacts .link::after, .tcard-count .link::after { content: ""; position: absolute; inset: -9px -6px; }
+  .tfacts .link::after, .tcard-count .link::after, .threads-pill > .link::after, .tcard .row a.sm::after { content: ""; position: absolute; inset: -9px -6px; }
   .chev { width: 32px; height: 44px; }
   .threads .trow { grid-template-columns: 32px minmax(0, 1fr); }
   button.icon-btn, button.icon.sm { width: 44px; height: 44px; min-height: 44px; }
@@ -758,6 +758,14 @@ form.drawer-body { flex: 1; }
 .tcard-count > .picker { left: auto; right: 0; }
 .sub-head .tcard-count { margin-left: auto; }
 .sub-head .tcard-count + .open { margin-left: 0; }
+/* View thread (docs/briefs/thread-panel.md item 3): the card's one visible action, an <a> so openInPanel opens it in the panel at 1180 px and wider. */
+.tcard .row a.sm { position: relative; min-height: 30px; padding: 0 9px; font-size: 13px; border-radius: 7px; border: 1px solid var(--edge); background: var(--panel); color: var(--fg); display: inline-flex; align-items: center; gap: 6px; }
+.tcard .row a.sm:hover { border-color: color-mix(in oklab, var(--fg) 25%, var(--line)); text-decoration: none; }
+/* A run's threads behind one pill in the card's head (item 3): the chevron turns down while its list is open. */
+.threads-pill > .link { position: relative; white-space: nowrap; }
+.threads-pill .chev-ic { width: 12px; height: 12px; transition: transform 0.15s; }
+.threads-pill > button[aria-expanded="true"] .chev-ic { transform: rotate(90deg); }
+.sub-head .threads-pill > .picker { left: auto; right: 0; }
 .tcard-step { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tcard-step .step-mark { color: var(--muted); margin-right: 6px; }
 .step-mark { font-family: var(--mono); }
@@ -773,6 +781,10 @@ form.drawer-body { flex: 1; }
   .tcard-count { display: contents; }
   .sub-head .tcard-count > .link { margin-left: auto; }
   .tcard-count > .picker { position: static; order: 1; flex-basis: 100%; width: auto; max-height: none; margin-top: 2px; box-shadow: none; }
+  /* A run's Threads list opens in flow under the card's head at the card's full width, like its checklist. */
+  .sub-head .threads-pill { display: contents; }
+  .sub-head .threads-pill > .link { margin-left: auto; }
+  .threads-pill > .picker { position: static; order: 1; flex-basis: 100%; width: auto; max-height: none; margin-top: 2px; box-shadow: none; }
 }
 /* Suggested threads: like the plan card. */
 .suggestions { margin: 0; padding: 0 0 0 20px; display: grid; gap: 8px; }
