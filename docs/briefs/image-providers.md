@@ -1,5 +1,7 @@
 # Brief: Image providers
 
+**Status:** Merged as #294 (75cfe56). Handoff notes below are history.
+
 **Thread:** Images UI build (coordinates). **Branch:** `feature/image-providers`.
 **Built by:** Codex on the test machine, queued through the project chat.
 The coordinating thread reviews each run before PR review and UI review.

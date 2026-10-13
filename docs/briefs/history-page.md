@@ -1,6 +1,6 @@
 # History pages
 
-**Status: in review as PR #288.**
+**Status:** Merged as #288 (703e572).
 
 ## Goal
 

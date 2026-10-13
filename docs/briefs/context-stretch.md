@@ -1,5 +1,7 @@
 # Brief: context stretching (YaRN) and recommended serving settings
 
+**Status:** Merged as #157 (9c3568e). The sections below are the proposal as approved; "What exists" describes main before it. Handoff notes below are history.
+
 **Thread:** Context stretching (proposal, 2026-10-12). **Branch:** the
 build's own `feature/context-stretch`. **Model:** Opus for the host and
 core; the Serving tab's two new rows belong to the Models page, which Web

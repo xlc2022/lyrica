@@ -1,5 +1,7 @@
 # Brief: SSH helper
 
+**Status:** Built; on main (`core/src/workspace/ssh-helper.ts`). Handoff notes below are history.
+
 **Thread:** SSH helper. **Branch:** `feature/ssh-helper`. **Model:** Opus.
 **Runs alongside:** Machines ([machines.md](machines.md)). This brief owns
 the transport in `core/src/workspace/ssh.ts`; Machines owns its settings and

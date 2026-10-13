@@ -40,7 +40,7 @@ The cloud boundary is the main failure to test against.
 4. **Admin CLI.**
    - `lyrica admin models endpoints add|list|remove|probe [--shared]`:
      `--shared` signs in as an administrator; otherwise as the user.
-   - `lyrica admin models profile show|set`, as the user.
+   - `lyrica admin models preset list|show|use|set|save|add|rename|remove`, as the user (profiles became presets in #283).
 5. **Developer bench.**
    - `lyrica dev` uses the router instead of Pi's default model config.
    - A `--private` / `--local-only` flag starts a bench thread with local-only

@@ -1,5 +1,7 @@
 # Brief: Command rules
 
+**Status:** Merged as #277 (2c96a34). Handoff notes below are history.
+
 **Branch:** `feature/command-rules`. **Built by:** Codex on the test machine.
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md "Modes, in the message
 box" and Machines, docs/workspace.md, docs/delegation.md, docs/ux.md.

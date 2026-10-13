@@ -53,7 +53,7 @@ ours (principle 3), and adds no model-facing tool (principle 8).
 - `Workspace.claudeCodeFor` / `claudeFor`: a run gets Claude Code only in
   a general thread that isn't local-only along its chain, with the switch
   on, a token saved and `api.anthropic.com` reachable.
-- The per-run relay (`core/src/workspace/claude-relay.ts`).
+- The per-run relay (now part of `core/src/workspace/relay.ts`).
 - The `claude` wrapper (`core/src/workspace/claude.sh`) and the prompt line.
 - Tests: `core/test/claude-code.test.ts` (who gets Claude Code; the
   relay; the wrapper), `daemon/test/claude-code.test.ts` (routes, local-only),

@@ -1,5 +1,7 @@
 # Brief: Model presets
 
+**Status:** Merged as #283 (a221b4c). Handoff notes below are history.
+
 **Thread:** Model presets. **Branch:** `feature/model-presets`.
 **Model:** Codex or DeepSeek on lunasa builds; Opus reviews.
 **Depends on:** nothing open.

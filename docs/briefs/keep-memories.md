@@ -1,5 +1,7 @@
 # Brief: Keep memories when deleting a thread
 
+**Status:** Merged as #274 (d53208c). Handoff notes below are history.
+
 **Thread:** Keep memories. **Branch:** `feature/preserve-memories`, on top of
 `feature/forget-cleanup` (#273) until that merges. **Model:** Codex builds,
 Opus reviews; the dialog goes to UI review.

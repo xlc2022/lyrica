@@ -1,5 +1,7 @@
 # Brief: Web: voice (dictation and Read aloud)
 
+**Status:** Built; on main. Item 4 was built as a consent dialog on a cloud Dictation pick ("Send your voice to the cloud?"), with no separate switch (docs/ux.md, Dictation and Read aloud models).
+
 **Thread:** Web UI. **Branch:** `feature/web-voice`. **Model:** Fable.
 
 **Depends on:** Speech ([speech.md](speech.md)) merged. Review by the UI
