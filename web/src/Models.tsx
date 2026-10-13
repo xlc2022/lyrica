@@ -925,7 +925,7 @@ function EndpointDrawer({ ctx, ep, signIn, onClose }: { ctx: MCtx; ep?: Endpoint
   // A plan is a kind of its own here: always cloud, signed in rather than given a URL and key.
   const [kind, setKind] = useState<"custom" | "openrouter" | PlanKind>(ep ? planOf(ep.api) ?? "custom" : "custom");
   // Local and Cloud are exclusive checkboxes of a custom endpoint: ticking one clears the other.
-  const [place, setPlace] = useState<"local" | "cloud" | undefined>(ep ? ep.kind : "local");
+  const [place, setPlace] = useState<"local" | "cloud" | undefined>(ep?.kind);
   const [baseUrl, setBaseUrl] = useState(ep?.baseUrl ?? "");
   const [apiKey, setApiKey] = useState("");
   const [removeKey, setRemoveKey] = useState(false);
