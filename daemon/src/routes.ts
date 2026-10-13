@@ -632,7 +632,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
 
     // --- Git accounts (docs/workspace.md, "Git accounts and repositories") ---
-    route("GET", `${u}/git-accounts`, (r) => s().workspace.settings(d.userFor(r).id).gitAccounts().map(gitAccountInfo)),
+    route("GET", `${u}/git-accounts`, async (r) => Promise.all(s().workspace.settings(d.userFor(r).id).gitAccounts().map((a) => gitAccountInfo(d, a)))),
     route("POST", `${u}/git-accounts/probe`, async (r): Promise<Api.Ok> => {
       d.userFor(r);
       const input = await r.json<Api.GitAccountInput>();
@@ -642,7 +642,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${u}/git-accounts`, async (r) => {
       const userId = d.userFor(r).id;
       const input = await r.json<Api.GitAccountInput>();
-      return gitAccountInfo(await s().workspace.addGitAccount(userId, {
+      return gitAccountInfo(d, await s().workspace.addGitAccount(userId, {
         name: String(input.name ?? ""), kind: checkGitKind(input.kind), host: String(input.host ?? ""), account: String(input.account ?? ""),
         token: String(input.token ?? ""), pool: checkPool(input.pool), offNetworkConfirmed: input.offNetworkConfirmed === true,
       }));
@@ -651,11 +651,11 @@ export function apiRoutes(d: Lyricad): Route[] {
       const change = pick(await r.json<Api.GitAccountChange>(), ["name", "host", "account", "pool", "offNetworkConfirmed"]);
       if (change.pool !== undefined) checkPool(change.pool);
       for (const k of ["name", "host", "account"] as const) if (change[k] !== undefined) change[k] = String(change[k]);
-      return gitAccountInfo(await s().workspace.updateGitAccount(d.userFor(r).id, r.params.name!, { ...change, offNetworkConfirmed: change.offNetworkConfirmed === true }));
+      return gitAccountInfo(d, await s().workspace.updateGitAccount(d.userFor(r).id, r.params.name!, { ...change, offNetworkConfirmed: change.offNetworkConfirmed === true }));
     }),
     route("POST", `${u}/git-accounts/:name/token`, async (r) =>
-      gitAccountInfo(await s().workspace.setGitToken(d.userFor(r).id, r.params.name!, String((await r.json<Api.GitToken>()).token ?? "")))),
-    route("POST", `${u}/git-accounts/:name/confirm-off-network`, (r) => gitAccountInfo(s().workspace.confirmGitOffNetwork(d.userFor(r).id, r.params.name!))),
+      gitAccountInfo(d, await s().workspace.setGitToken(d.userFor(r).id, r.params.name!, String((await r.json<Api.GitToken>()).token ?? "")))),
+    route("POST", `${u}/git-accounts/:name/confirm-off-network`, (r) => gitAccountInfo(d, s().workspace.confirmGitOffNetwork(d.userFor(r).id, r.params.name!))),
     route("DELETE", `${u}/git-accounts/:name`, (r) => {
       s().workspace.removeGitAccount(d.userFor(r).id, r.params.name!);
       return { ok: true };
@@ -1858,9 +1858,17 @@ function networkDefaults(d: Lyricad, userId: string): Api.NetworkDefaults {
   return { general: s.defaultNetwork("general"), private: s.defaultNetwork("private") };
 }
 
-/** A Git account as the API shows it: never its token. */
-function gitAccountInfo(a: GitAccountConfig): Api.GitAccountInfo {
-  return { name: a.name, kind: a.kind, host: a.host, account: a.account, pool: a.pool, offNetwork: a.offNetwork, ...(a.state ? { state: a.state } : {}) };
+/** A Git account as the API shows it: never its token. The webhook is offered only where it would work. */
+async function gitAccountInfo(d: Lyricad, a: GitAccountConfig): Promise<Api.GitAccountInfo> {
+  const info: Api.GitAccountInfo = { name: a.name, kind: a.kind, host: a.host, account: a.account, pool: a.pool, offNetwork: a.offNetwork, ...(a.state ? { state: a.state } : {}) };
+  if (a.kind !== "forgejo" && a.kind !== "gitea") return info;
+  if (!a.webhookSecret) return info;
+  try {
+    if (!(await d.services!.workspace.forgeHostPrivate(a))) return info;
+    const { dnsName } = await d.tailnet.serveName();
+    info.webhook = { url: `https://${dnsName}/hooks/forge/${encodeURIComponent(a.name)}`, secret: a.webhookSecret };
+  } catch { /* not on her network, or no tailnet name: no webhook */ }
+  return info;
 }
 
 /** An MCP server as the API shows it: never its token. */

@@ -670,6 +670,16 @@ One whose certificate comes from your own authority can't be added yet:
 `lyricad` checks the account against the host and trusts only Node's own
 list of authorities.
 
+A Forgejo or Gitea account whose host is on her own network shows a
+**Webhook** section in the account's drawer: a URL on her tailnet address
+and a secret, one per account. To have the forge wake her when a pull
+request changes (instead of waiting up to the next poll), add that URL and
+secret as a forge webhook on the repository, with the "Pull request" event.
+Forgejo and Gitea refuse to deliver to a private address unless the forge's
+`app.ini` allows it, so add her tailnet name (or `100.64.0.0/10`) to
+`[webhook] ALLOWED_HOST_LIST` and restart the forge. GitHub stays on
+polling; its account drawer has no Webhook section.
+
 A project's **Repositories** row (Project settings, under This chat) and
 the thread drawer list which repositories a thread has. Each thread clones
 its own copy into `/workspace/repos`, and `gh` and `tea` there use the

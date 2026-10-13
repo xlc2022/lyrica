@@ -166,3 +166,24 @@ CREATE TABLE routines (
   created_at TEXT NOT NULL
 );
 `;
+
+/** Pull requests a thread opened through its relay, polled until they stop (docs/briefs/ci-wakes.md). */
+export const WATCHES_SCHEMA = `
+CREATE TABLE IF NOT EXISTS watches (
+  id             INTEGER PRIMARY KEY,
+  thread         TEXT NOT NULL REFERENCES threads (id) ON DELETE CASCADE,
+  repo           TEXT NOT NULL,
+  kind           TEXT NOT NULL,
+  host           TEXT NOT NULL,
+  account        TEXT NOT NULL,
+  number         INTEGER NOT NULL,
+  head           TEXT,
+  head_since     TEXT NOT NULL,
+  notified_heads TEXT NOT NULL DEFAULT '[]',
+  seen_reviews   TEXT NOT NULL DEFAULT '[]',
+  webhook_at     TEXT,
+  created_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS watches_thread ON watches (thread);
+CREATE INDEX IF NOT EXISTS watches_account ON watches (account, repo);
+`;

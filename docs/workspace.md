@@ -644,8 +644,9 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
 - **The Git guide** (`extension/src/git.md`) is in the prompt of every turn
   of a thread with repositories, with the repository list and their
   folders: a branch per piece of work, never commits on the default
-  branch, merge or rebase the base before pushing, a pull request, wait
-  for CI, read a failing check's log and never merge on red, the merge
+  branch, merge or rebase the base before pushing, a pull request (then
+  `lyricad` wakes the thread when its checks finish or someone reviews
+  it), read a failing check's log and never merge on red, the merge
   queue where there is one, delete merged branches. The project's instructions win where they differ.
 
 ## MCP servers
@@ -788,6 +789,16 @@ her account is general.
   (encrypted homes, rewind, uploads, network switches, the SSH helper)
   skip there, since her sandbox has neither; CI runs them with
   `LYRICA_SANDBOX_TESTS=require`, so they can't skip.
+- **CI wakes.** A pull request she opens through the run's relay is
+  watched (DESIGN.md "CI wakes"): when every check on its head commit
+  finishes, or someone else reviews or comments, the thread gets one turn,
+  marked as a wake-up, with a note `lyricad` writes — the pull request
+  number, the commit's short hash, each check's name and result, and who
+  reviewed, never log or comment text. GitHub is polled; a Forgejo or
+  Gitea account whose host resolves into her own network also gets a
+  signed tailnet webhook (Settings → Git accounts, **Webhook**) that nudges
+  a poll at once, with polling as the fallback. A merged or closed pull
+  request ends the watch without a turn.
 - **Screenshots.** After `npm run build`, `npx tsx web/e2e/shot.ts
   [page]...` starts a throwaway `lyricad` with ada signed in (the e2e one,
   web/e2e/serve.ts), saves each page at 390×844 and 1280×800, light and

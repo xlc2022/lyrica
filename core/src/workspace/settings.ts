@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { commandRules as checkCommandRules, type CommandRule } from "./rules.ts";
 import { isAbsolute, posix } from "node:path";
 import type { Db } from "../db.ts";
@@ -120,11 +121,13 @@ export interface GitAccountConfig {
   offNetwork: boolean;
   /** How the last use went, and since when; null before the first, or after its host, account or token changed. */
   state: GitAccountState | null;
+  /** The random secret the host signs webhooks with, for Forgejo/Gitea; null for GitHub and Other (docs/briefs/ci-wakes.md). */
+  webhookSecret: string | null;
 }
 
 export interface GitAccountState { kind: "signedIn" | "rejected" | "unreachable"; since: string }
 
-export type NewGitAccount = Omit<GitAccountConfig, "state">;
+export type NewGitAccount = Omit<GitAccountConfig, "state" | "webhookSecret">;
 
 /** An MCP server she can use: a URL (streamable HTTP) and an optional token, in one pool. */
 export interface McpServerConfig {
@@ -734,9 +737,11 @@ export class WorkspaceSettings {
     if (!GIT_ACCOUNT.test(a.name)) throw new Error("account names use letters, digits, '.', '_' and '-'");
     if (this.gitAccount(a.name)) throw new Error(`Git account ${a.name} already exists`);
     const next = checkGitAccount(a);
-    this.db.prepare(`INSERT INTO git_accounts (name, kind, host, account, token, pool, off_network, state, state_since)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(next.name, next.kind, next.host, next.account, next.token, next.pool, next.offNetwork ? 1 : 0,
-      state, state && new Date().toISOString());
+    // A Forgejo or Gitea account gets its webhook secret when it is made; it stays with the account like the token.
+    const webhookSecret = next.kind === "forgejo" || next.kind === "gitea" ? randomBytes(32).toString("base64url") : null;
+    this.db.prepare(`INSERT INTO git_accounts (name, kind, host, account, token, pool, off_network, state, state_since, webhook_secret)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(next.name, next.kind, next.host, next.account, next.token, next.pool, next.offNetwork ? 1 : 0,
+      state, state && new Date().toISOString(), webhookSecret);
     return this.needGit(a.name);
   }
 
@@ -975,11 +980,12 @@ const toMcpServer = (r: McpServerRow): McpServerConfig => ({
 
 interface GitAccountRow {
   name: string; kind: GitKind; host: string; account: string; token: string; pool: Pool; off_network: number;
-  state: GitAccountState["kind"] | null; state_since: string | null;
+  state: GitAccountState["kind"] | null; state_since: string | null; webhook_secret: string | null;
 }
 const toGitAccount = (r: GitAccountRow): GitAccountConfig => ({
   name: r.name, kind: r.kind, host: r.host, account: r.account, token: r.token, pool: r.pool, offNetwork: r.off_network === 1,
   state: r.state && r.state_since ? { kind: r.state, since: r.state_since } : null,
+  webhookSecret: r.webhook_secret,
 });
 
 const columnsOf = (db: Db, table: string) => (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as { name: string }[]).map((c) => c.name);

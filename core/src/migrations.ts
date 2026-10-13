@@ -3,7 +3,7 @@ import { DELEGATION_SCHEMA } from "./delegation.ts";
 import { IDENTITY_SCHEMA } from "./models/host.ts";
 import { addNotice, ENDPOINT_SCHEMA, migrate as moveModels, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA, upgradeCalls } from "./models/schema.ts";
 import { PREFS_SCHEMA } from "./prefs.ts";
-import { POOL_SCHEMA, POOL_UPGRADES, ROUTINES_SCHEMA, WAKEUPS_SCHEMA } from "./store/schema.ts";
+import { POOL_SCHEMA, POOL_UPGRADES, ROUTINES_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
 import { CHANGES_SCHEMA } from "./workspace/changes.ts";
 import { MACHINES_SCHEMA, upgradeWorkspace, WORKSPACE_SCHEMA } from "./workspace/settings.ts";
 
@@ -226,6 +226,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principles 6 and 2: project command rules, expand only.
     version: 6,
     run(db) { addColumns(db, [["project_settings", "command_rules", "TEXT NOT NULL DEFAULT '[]'"]]); },
+  }, {
+    // A webhook secret per Forgejo/Gitea account (docs/briefs/ci-wakes.md). Adds a column only.
+    version: 7,
+    run(db) { addColumns(db, [["git_accounts", "webhook_secret", "TEXT"]]); },
   }],
   pool: [{
     version: 1, contract: true,
@@ -264,6 +268,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
   }, {
     version: 6,
     run(db) { db.exec(ROUTINES_SCHEMA); },
+  }, {
+    // Pull requests a thread opened, watched until CI and reviews land (docs/briefs/ci-wakes.md). Adds a table only.
+    version: 7,
+    run(db) { db.exec(WATCHES_SCHEMA); },
   }],
 };
 
