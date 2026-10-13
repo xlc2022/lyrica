@@ -60,10 +60,13 @@ third column with one control per column).
   and the next one answers, as lists do today. Clean up lists the preset
   among its uses, and its **Replace with…** is the one way a preset's model
   changes without the user editing it.
-- **Threads.** A general thread's own choice is a preset (or none: its
-  column), replacing `setThreadProfile`. Private and local-only threads
-  always use the Private column. There is no thread-level preset UI yet;
-  the thread settings API and the CLI carry it.
+- **Threads.** A thread's own choice is a preset (or none: its column),
+  replacing `setThreadProfile`. Private and local-only threads may choose
+  only a private preset; core refuses any other. The thread drawer's
+  Models section starts with a **Preset** select: "Column (<name>)" first,
+  then the presets the thread can use. The per-task selects under it stay
+  as overrides, and their first option reads "Preset (<first model>)"
+  instead of "Profile (…)".
 
 ## In scope
 
@@ -83,8 +86,8 @@ third column with one control per column).
      Custom entries, refuse any cloud model or a group with no local member
      (`CloudModelForbidden`), on every write path including `savePreset`,
      `replace` and `merge`. The Private column can follow only a private
-     preset. A restricted context resolves from the Private column whatever
-     its thread or the General column say. A group's cloud members stay
+     preset. A restricted context resolves from its thread's private preset,
+     else the Private column, whatever the General column says. A group's cloud members stay
      skipped in a private table.
    - `resolve` reads the thread's own lists, else the thread's preset, else
      its column, after one level of `same`; `Resolution.profile` becomes
@@ -139,12 +142,12 @@ third column with one control per column).
      third column.
    - The task drawer's caption names the column and its preset, or
      "Custom". Its picker in the Private column offers local models only.
+   - The thread drawer's **Preset** select, as in Decided.
    - Overview's Backend tile and the welcome page's Backend card show the
      preset name where they show the profile word today.
 
 ## Out of scope
 
-- A thread-level preset picker in the thread drawer.
 - Sharing presets between users, or administrator presets.
 - Presets for answer settings or thinking levels.
 
@@ -174,6 +177,7 @@ profile` commands became `… preset`.
 - 2026-10-13: brief written; PR review's three findings (rollback for
   Mixed, preset names, the menu's role) and UI review's (no Edit on built-ins, E and Tab
   reach Edit, a pencil icon, no headings in the Private menu, truncated
-  names, the word list, "Delete preset…") folded in. The build PR carries
+  names, the word list, "Delete preset…") folded in. Then the user asked
+  for the thread drawer's Preset select, added to this build. The build PR carries
   the DESIGN, contracts, models and ux doc changes (PR review's call). Next: mockup to UI review and PR review, then
   the build on lunasa.
