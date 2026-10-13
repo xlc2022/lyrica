@@ -12,11 +12,11 @@ import { RowMenu } from "./Machines.tsx";
 import { ask, EDIT_IMAGE_EVENT, type EditImageRequest } from "./links.ts";
 import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
-import { SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
+import { stateWord, SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
 import { ChecklistButton, StepLine } from "./Checklist.tsx";
 import { findThread } from "./Thread.tsx";
 import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
-import { ErrorText, fullTime, Prose, useAction, wakeTime } from "./ui.tsx";
+import { ErrorText, fullTime, Prose, useAction, useDismiss, wakeTime } from "./ui.tsx";
 import { basename, InlineImage, Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
 import { foldLooks, raisedIn, toldIn, type Told } from "./looks.ts";
 import { her } from "./name.ts";
@@ -568,16 +568,41 @@ function Transcript({ thread, env }: { thread: ThreadRef; env: Env }) {
   );
 }
 
-/** Opens each subagent thread a run made. */
+/** Opens each subagent thread a run made: one Open link, or more than one behind a Threads pill (docs/briefs/thread-panel.md item 3). */
 function ThreadLinks({ threads, env }: { threads?: ThreadRef[]; env: Env }) {
   if (!threads?.length) return null;
+  if (threads.length === 1) {
+    const t = threads[0]!;
+    return <span className="open"><a href={href({ page: "thread", userId: env.userId, pool: t.pool, threadId: t.id })}>Open</a></span>;
+  }
+  return <ThreadsPill threads={threads} env={env} />;
+}
+
+/** A run's threads behind one "Threads 3 >" button in the card's head (docs/briefs/thread-panel.md item 3): it opens to them, each row its title cut to one line and its state as a dot and a word (docs/ux.md §5); a row opens the panel at 1180 px and wider and the page below. */
+function ThreadsPill({ threads, env }: { threads: ThreadRef[]; env: Env }) {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(anchor, open, close);
   return (
-    <span className="open">
-      {threads.map((t, i) => (
-        <a key={t.id} href={href({ page: "thread", userId: env.userId, pool: t.pool, threadId: t.id })}>
-          {threads.length > 1 ? `Open ${i + 1}` : "Open"}
-        </a>
-      ))}
+    <span className="picker-anchor open threads-pill" ref={anchor}>
+      <button type="button" className="link" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}>
+        Threads <span className="num">{threads.length}</span> <Icon name="right" className="chev-ic" />
+      </button>
+      {open && (
+        <div className="picker threads-pop" role="dialog" aria-label="The threads this run made">
+          {threads.map((t) => {
+            const s = findThread(env.threads, t.pool, t.id);
+            return (
+              <a key={t.id} className="picker-item thread-item" href={href({ page: "thread", userId: env.userId, pool: t.pool, threadId: t.id })} onClick={close}>
+                {!s || s.state === "idle" || s.state === "queued" ? <span /> : <span className="status" data-state={s.needsYou ? "needsYou" : s.state} aria-hidden="true" />}
+                <span className="title">{s?.title || "New thread"}</span>
+                {s && <span className="tstate" data-state={s.needsYou ? "needsYou" : s.state ?? "idle"}>{stateWord(s)}</span>}
+              </a>
+            );
+          })}
+        </div>
+      )}
     </span>
   );
 }
