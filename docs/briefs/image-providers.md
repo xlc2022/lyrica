@@ -182,3 +182,38 @@ Left: the coordinating thread stages and commits this working-tree diff,
 runs the full suite, pushes, and obtains CI plus PR review and UI review of
 the head commit. Operator docs should review the guide's endpoint setup and
 preset instructions. No commit or push was attempted here.
+
+Run 4 resolves the main merge in docs/ux.md, docs/web.md, web/e2e/web.spec.ts
+and web/src/app.css, retaining image-provider and spend-share behavior and
+main's preset Tasks description. Serves principles 1 and 5: the three
+reported failures were test assumptions, not changes to routing or memory.
+The plan-name assertion now accepts capitalized defaults and still rejects
+spaces; the Backend assertion checks the muted endpoint markup and preset
+names; the project-page fixture advances a Date-only fake clock by one
+millisecond before sleep. Holding the clock fixed reproduced a no-activity
+skip: main's exclusive cutoff intentionally leaves same-millisecond material
+for the next run. Sleep's component doc also now says presets and columns
+instead of profiles. No schema step or router/memory code change was needed.
+
+Run 4 validation: typecheck and web build pass; 109 tests in nine focused
+Vitest files pass, including all branch-touched unit-test files and the
+three reported files. Another 29 tests pass in the five merge-touched
+migration, context and spend-share files. All test commands used the shared
+lock; Vitest used forks and two workers. The complete touched Playwright
+spec was attempted on phone and desktop: 30 passed, both upload tests
+failed because this sandbox has neither gocryptfs nor /dev/fuse, and serial
+execution skipped the remaining 94 checks. Separate image-provider,
+welcome and spend-share checks pass at both widths (8 checks). Models,
+Tasks presets and Text model checks also pass at both widths (6 checks).
+A further Image models check exposed existing phone overflow in local part
+filenames: its implicit grid column sized to the long path. The part-file
+column now shrinks and wraps text, following docs/ux.md §8; docs/web.md
+records that behavior. Image models then passes on phone and desktop
+(2 checks), making 16 focused browser checks passed. Tests used
+only fakes; no real provider or plan endpoint was called.
+
+Left for the coordinating thread: stage the four resolved files (the Git
+index remains unmerged because it is read-only here), commit and push,
+run the full suite and complete Playwright on a host with encrypted-home
+mount support, then obtain CI and the required reviews. No commit or push
+was attempted in run 4.

@@ -539,10 +539,11 @@ export interface PresetsChange { thinking?: ThinkingLevel; fallback?: boolean; s
 
 /**
  * One turn's counts and times. `promptTokens` is the whole prompt of its last
- * request; `processed` is the prompt tokens read (not cached); times are in ms.
+ * request; `readTokens` sums every request including cached reads;
+ * `processed` is the prompt tokens read (not cached); times are in ms.
  */
 export interface PaceInfo {
-  promptTokens: number; outputTokens: number; window: number; ttftMs: number; genMs: number; processed: number;
+  promptTokens: number; readTokens?: number; outputTokens: number; window: number; ttftMs: number; genMs: number; processed: number;
   tokPerSec?: number; promptTokPerSec?: number;
 }
 
@@ -863,9 +864,11 @@ export interface StartSuggestion { index?: number }
 export interface FoldThread { threadId: string }
 /** POST …/threads/:pool/:projectId/folds/:callId/apply → ThreadSummary[]. Index or all; idempotent. */
 export interface ApplyFold { index?: number }
-/** POST …/threads/:pool/:threadId/continue-as-project → ThreadSummary. Source stays; children move. */
-/** GET …/threads/:pool/recent?top=10&project=:id → ThreadSummary[]. Logged top-level non-project work only. */
-/** GET …/threads/:pool/:projectId/overview → ProjectOverview */
+/**
+ * POST …/threads/:pool/:threadId/continue-as-project → ThreadSummary. Source stays; children move.
+ * GET …/threads/:pool/recent?top=10&project=:id → ThreadSummary[]. Logged top-level non-project work only.
+ * GET …/threads/:pool/:projectId/overview → ProjectOverview
+ */
 export interface ProjectOverview {
   threads: ThreadSummary[];
   /** How many wait on the user: the project row's amber dot. */
@@ -1988,3 +1991,11 @@ export interface PhotoCloudSetting { policy: "never" | "ask" | "always" }
 
 /** Routine metadata only; notes stay in the thread. */
 export interface RoutineInfo { id: number; pool: Pool; threadId: string; threadTitle: string; schedule: string; nextAt: string; paused: boolean }
+
+/** GET …/threads/:pool/:id/usage: counted turns and subagents. */
+export interface ThreadUsage {
+  tokens: number;
+  gpuMs?: number;
+  models: { label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[];
+  threads?: { threadId: string; tokens: number; gpuMs?: number }[];
+}

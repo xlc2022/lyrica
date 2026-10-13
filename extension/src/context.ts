@@ -193,10 +193,10 @@ export function askCompaction(meter: ContextMeter, summary: string, window: numb
  * makes it: its summary keeps the goal, progress and next steps.
  */
 export function registerContext(pi: ExtensionAPI, meter: ContextMeter): void {
-  let turn = { calls: 0, prompt: 0, output: 0, processed: 0, ttft: 0, gen: 0 };
+  let turn = { calls: 0, prompt: 0, read: 0, output: 0, processed: 0, ttft: 0, gen: 0 };
   let started: number | undefined;
   let first: number | undefined;
-  pi.on("agent_start", () => { turn = { calls: 0, prompt: 0, output: 0, processed: 0, ttft: 0, gen: 0 }; });
+  pi.on("agent_start", () => { turn = { calls: 0, prompt: 0, read: 0, output: 0, processed: 0, ttft: 0, gen: 0 }; });
   pi.on("before_provider_request", () => { started = Date.now(); first = undefined; });
   pi.on("message_update", (e) => { if (e.message.role === "assistant" && started !== undefined && first === undefined) first = Date.now(); });
   pi.on("message_end", (e) => {
@@ -211,12 +211,13 @@ export function registerContext(pi: ExtensionAPI, meter: ContextMeter): void {
       turn.output += u.output;
       turn.processed += u.input + u.cacheWrite;
       turn.prompt = u.input + u.cacheRead + u.cacheWrite;
+      turn.read += turn.prompt;
     }
     started = undefined;
   });
   pi.on("agent_end", (_e, ctx) => {
     const window = ctx.model?.contextWindow ?? 0;
-    const pace = turn.calls ? speeds({ promptTokens: turn.prompt, outputTokens: turn.output, window, ttftMs: turn.ttft, genMs: turn.gen, processed: turn.processed }) : undefined;
+    const pace = turn.calls ? speeds({ promptTokens: turn.prompt, readTokens: turn.read, outputTokens: turn.output, window, ttftMs: turn.ttft, genMs: turn.gen, processed: turn.processed }) : undefined;
     meter.measure(ctx.getContextUsage()?.tokens, window, conversationTokens(ctx), pace);
   });
 

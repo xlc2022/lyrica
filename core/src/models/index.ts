@@ -323,6 +323,8 @@ export interface CallRecord {
  */
 export interface Pace {
   promptTokens: number;
+  /** Every request read, including cached reads; absent on older records. */
+  readTokens?: number;
   outputTokens: number;
   window: number;
   ttftMs: number;
@@ -1532,7 +1534,19 @@ export class Models {
         }
         const used = collectRefs(db);
         for (const r of gone(db)) if (!used.has(r.id)) db.prepare("DELETE FROM offerings WHERE id = ?").run(r.id);
-        db.prepare("DELETE FROM model_calls WHERE id <= (SELECT max(id) FROM model_calls) - ?").run(CALLS_KEPT);
+        db.transaction(() => {
+          const cutoff = (db.prepare("SELECT id FROM model_calls ORDER BY id DESC LIMIT 1 OFFSET ?").get(CALLS_KEPT) as { id: number } | undefined)?.id;
+          if (cutoff === undefined) return;
+          db.prepare(`INSERT INTO call_totals (pool, thread, label, kind, tokens, gpu_ms, calls)
+            SELECT pool, thread, label, kind,
+              sum(coalesce(read_tokens, prompt_tokens, 0) + coalesce(output_tokens, 0)),
+              sum(CASE WHEN kind = 'local' THEN coalesce(ttft_ms, 0) + coalesce(gen_ms, 0) ELSE 0 END), count(*)
+            FROM model_calls WHERE id <= ? AND task = 'chat' AND (prompt_tokens IS NOT NULL OR read_tokens IS NOT NULL OR output_tokens IS NOT NULL)
+            GROUP BY pool, thread, label, kind
+            ON CONFLICT (pool, thread, label, kind) DO UPDATE SET
+              tokens = tokens + excluded.tokens, gpu_ms = gpu_ms + excluded.gpu_ms, calls = calls + excluded.calls`).run(cutoff);
+          db.prepare("DELETE FROM model_calls WHERE id <= ?").run(cutoff);
+        })();
       });
     }
   }
@@ -1855,6 +1869,7 @@ export class Models {
     this.withUser(userId, (db) => db.transaction(() => {
       db.prepare("DELETE FROM thread_models WHERE pool = ? AND thread = ?").run(pool, threadId);
       db.prepare("DELETE FROM model_calls WHERE pool = ? AND thread = ?").run(pool, threadId);
+      db.prepare("DELETE FROM call_totals WHERE pool = ? AND thread = ?").run(pool, threadId);
       db.prepare("DELETE FROM thread_choices WHERE thread = ?").run(threadId);
       db.prepare("DELETE FROM local_only_threads WHERE thread = ?").run(threadId);
       this.index(userId, db);
@@ -2198,7 +2213,7 @@ export class Models {
     const first = r.skipped[0];
     const fallback = first && `${first.label} was skipped (${first.reason.replace(/^it /, "")}), so ${r.label} answered${r.endpoint.kind === "cloud" && r.profile === "Custom" ? ", a cloud model" : ""}`;
     this.withUser(userId, (db) => {
-      const last = opts.retry ? (db.prepare("SELECT max(id) AS id FROM model_calls WHERE thread = ? AND task = ?").get(call.threadId, call.task) as { id: number | null }).id : null;
+      const last = opts.retry ? (db.prepare("SELECT max(id) AS id FROM model_calls WHERE pool = ? AND thread = ? AND task = ?").get(call.pool, call.threadId, call.task) as { id: number | null }).id : null;
       if (last !== null) {
         db.prepare("UPDATE model_calls SET offering = ?, label = ?, endpoint = ?, kind = ?, fallback = ?, note = ? WHERE id = ?")
           .run(r.offering.id, r.label, r.endpoint.name, r.endpoint.kind, fallback ?? null, call.note ?? null, last);
@@ -2214,27 +2229,47 @@ export class Models {
    * Adds a finished turn's counts and times to its call record (the thread's
    * latest for the task). Never text, so a "Do not log" thread records it too.
    */
-  recordPace(userId: string, threadId: string, pace: Omit<Pace, "tokPerSec" | "promptTokPerSec">, task: Task = "chat"): void {
+  recordPace(userId: string, threadId: string, pace: Omit<Pace, "tokPerSec" | "promptTokPerSec">, task: Task = "chat", pool?: Pool): void {
     const n = (v: number) => Math.max(0, Math.round(Number.isFinite(v) ? v : 0));
-    this.withUser(userId, (db) => db.prepare(`UPDATE model_calls SET prompt_tokens = ?, output_tokens = ?, window = ?, ttft_ms = ?, gen_ms = ?, processed = ?
-      WHERE id = (SELECT max(id) FROM model_calls WHERE thread = ? AND task = ?)`)
-      .run(n(pace.promptTokens), n(pace.outputTokens), n(pace.window), n(pace.ttftMs), n(pace.genMs), n(pace.processed), threadId, task));
+    this.withUser(userId, (db) => db.prepare(`UPDATE model_calls SET read_tokens = ?, prompt_tokens = ?, output_tokens = ?, window = ?, ttft_ms = ?, gen_ms = ?, processed = ?
+      WHERE id = (SELECT max(id) FROM model_calls WHERE thread = ? AND task = ? AND (? IS NULL OR pool = ?))`)
+      .run(pace.readTokens === undefined ? null : n(pace.readTokens), n(pace.promptTokens), n(pace.outputTokens), n(pace.window), n(pace.ttftMs), n(pace.genMs), n(pace.processed), threadId, task, pool ?? null, pool ?? null));
   }
 
   /** The user's recent calls, newest first. With a thread, that thread's only; with `speech: false`, no Dictation or Read aloud. */
-  recentCalls(userId: string, opts: { limit?: number; threadId?: string; threadIds?: string[]; speech?: false } = {}): CallRecord[] {
-    const where = [...(opts.threadId ? ["thread = @thread"] : []), ...(opts.threadIds ? ["thread IN (SELECT value FROM json_each(@threads))"] : []),
+  recentCalls(userId: string, opts: { limit?: number; threadId?: string; threadIds?: string[]; pool?: Pool; speech?: false } = {}): CallRecord[] {
+    const where = [...(opts.pool ? ["pool = @pool"] : []), ...(opts.threadId ? ["thread = @thread"] : []), ...(opts.threadIds ? ["thread IN (SELECT value FROM json_each(@threads))"] : []),
       ...(opts.speech === false ? ["task NOT LIKE 'speech.%'"] : [])];
     const rows = this.withUser(userId, (db) => db.prepare(`SELECT * FROM model_calls ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id DESC LIMIT @limit`)
-      .all({ ...(opts.threadId ? { thread: opts.threadId } : {}), ...(opts.threadIds ? { threads: JSON.stringify(opts.threadIds) } : {}), limit: opts.limit ?? 50 })) as CallRow[];
+      .all({ ...(opts.pool ? { pool: opts.pool } : {}), ...(opts.threadId ? { thread: opts.threadId } : {}), ...(opts.threadIds ? { threads: JSON.stringify(opts.threadIds) } : {}), limit: opts.limit ?? 50 })) as CallRow[];
     return rows.map(toCall);
   }
 
-  /** Every token the threads' recorded calls read and wrote: a project's usage. */
-  tokensFor(userId: string, threadIds: string[]): number {
-    const row = this.withUser(userId, (db) => db.prepare("SELECT coalesce(sum(coalesce(prompt_tokens, 0) + coalesce(output_tokens, 0)), 0) AS n FROM model_calls WHERE thread IN (SELECT value FROM json_each(?))")
-      .get(JSON.stringify(threadIds))) as { n: number };
-    return row.n;
+  /** Turns and recursively nested subagents, filtered by both pool and thread. */
+  usage(userId: string, pool: Pool, threadIds: string[]): { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[] {
+    const rows = this.withUser(userId, (db) => db.prepare(`
+      SELECT thread AS threadId, label, kind, sum(tokens) AS tokens, sum(gpu_ms) AS gpuMs FROM (
+        SELECT thread, label, kind, coalesce(read_tokens, prompt_tokens, 0) + coalesce(output_tokens, 0) AS tokens,
+          CASE WHEN kind = 'local' THEN coalesce(ttft_ms, 0) + coalesce(gen_ms, 0) ELSE 0 END AS gpu_ms
+        FROM model_calls WHERE pool = @pool AND thread IN (SELECT value FROM json_each(@threads)) AND task = 'chat'
+          AND (prompt_tokens IS NOT NULL OR read_tokens IS NOT NULL OR output_tokens IS NOT NULL)
+        UNION ALL SELECT thread, label, kind, tokens, gpu_ms FROM call_totals
+          WHERE pool = @pool AND thread IN (SELECT value FROM json_each(@threads))
+      ) GROUP BY thread, label, kind`).all({ pool, threads: JSON.stringify(threadIds) })) as { threadId: string; label: string; kind: "local" | "cloud"; tokens: number; gpuMs: number }[];
+    const result: { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[] = rows.map(r => ({ threadId: r.threadId, label: r.label, kind: r.kind, tokens: r.tokens, ...(r.kind === "local" ? { gpuMs: r.gpuMs } : {}) }));
+    const runs = this.withUser(userId, db => db.prepare(`WITH RECURSIVE descendants(root, thread) AS (
+      SELECT value, value FROM json_each(@threads)
+      UNION SELECT d.root, r.thread FROM descendants d JOIN subagent_runs r ON r.parent = d.thread AND r.pool = @pool
+    ) SELECT d.root AS threadId, r.model AS label, r.offering, r.input_tokens + r.output_tokens AS tokens
+      FROM descendants d JOIN subagent_runs r ON r.thread = d.thread AND r.pool = @pool
+      WHERE d.thread != d.root`).all({ pool, threads: JSON.stringify(threadIds) })) as { threadId: string; label: string; offering: string | null; tokens: number }[];
+    for (const r of runs) {
+      const kind = r.offering ? this.offering(userId, r.offering)?.endpoint.kind : undefined;
+      const existing = result.find(x => x.threadId === r.threadId && x.label === r.label && x.kind === kind);
+      if (existing) existing.tokens += r.tokens;
+      else result.push({ threadId: r.threadId, label: r.label, ...(kind ? { kind } : {}), tokens: r.tokens });
+    }
+    return result;
   }
 
   /** Each copy's median speeds over its last twenty measured calls, for this user. */
@@ -2696,7 +2731,7 @@ function copyFile(modelId: string, path: string): boolean {
 
 type CallRow = {
   at: string; pool: Pool; thread: string; task: Task; offering: string; label: string; endpoint: string; kind: "cloud" | "local"; fallback: string | null; note: string | null;
-  prompt_tokens: number | null; output_tokens: number | null; window: number | null; ttft_ms: number | null; gen_ms: number | null; processed: number | null;
+  read_tokens: number | null; prompt_tokens: number | null; output_tokens: number | null; window: number | null; ttft_ms: number | null; gen_ms: number | null; processed: number | null;
   audio_seconds?: number | null;
 };
 
@@ -2704,5 +2739,5 @@ const toCall = (r: CallRow): CallRecord => ({
   at: r.at, pool: r.pool, threadId: r.thread, task: r.task, offeringId: r.offering, label: r.label, endpointName: r.endpoint, kind: r.kind,
   ...(r.fallback ? { fallback: r.fallback } : {}), ...(r.note ? { note: r.note } : {}),
   ...(typeof r.audio_seconds === "number" ? { audioSeconds: r.audio_seconds } : {}),
-  ...(r.gen_ms !== null ? { pace: speeds({ promptTokens: r.prompt_tokens ?? 0, outputTokens: r.output_tokens ?? 0, window: r.window ?? 0, ttftMs: r.ttft_ms ?? 0, genMs: r.gen_ms, processed: r.processed ?? 0 }) } : {}),
+  ...(r.gen_ms !== null ? { pace: speeds({ ...(r.read_tokens != null ? { readTokens: r.read_tokens } : {}), promptTokens: r.prompt_tokens ?? 0, outputTokens: r.output_tokens ?? 0, window: r.window ?? 0, ttftMs: r.ttft_ms ?? 0, genMs: r.gen_ms, processed: r.processed ?? 0 }) } : {}),
 });

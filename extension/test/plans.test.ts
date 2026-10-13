@@ -50,8 +50,8 @@ describe("a ChatGPT plan", () => {
 
   it("refuses a name an endpoint can't have, before a sign-in is started for it", async () => {
     const s = await setup();
-    expect(() => s.models.checkEndpointName("My ChatGPT")).toThrow(/lowercase letters/);
-    expect(() => s.models.checkEndpointName("chatgpt-2")).not.toThrow();
+    expect(() => s.models.checkEndpointName("My ChatGPT")).toThrow(/letters, digits/);
+    for (const name of ["chatgpt-2", "ChatGPT", "OpenAI"]) expect(() => s.models.checkEndpointName(name)).not.toThrow();
   });
 
   it("has no URL or key to edit, and merges only with another plan", async () => {

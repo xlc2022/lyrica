@@ -595,7 +595,7 @@ export class HostedThread {
    */
   private async afterTurn(opened: Opened, aborted: boolean): Promise<void> {
     const pace = opened.meter.takePace();
-    if (pace) this.o.models.recordPace(this.userId, this.threadId, pace);
+    if (pace) this.o.models.recordPace(this.userId, this.threadId, pace, "chat", this.pool);
     const asked = opened.meter.pending;
     opened.meter.pending = undefined;
     // Stop means stop: a stopped turn's compaction is dropped.

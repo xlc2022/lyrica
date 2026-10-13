@@ -521,7 +521,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     plain switch, not a quality floor, since models carry no quality data.
 - **Context and pace.** Lyrica and the user both see how full her context
   is and how fast her model answers.
-  - After every turn lyricad records prompt and output tokens, the window,
+  - After every turn lyricad records prompt, total read and output tokens, the window,
     time to first token and generation time, in the call record. Counts and
     times only.
   - lyricad assembles the prompt, so it can break the total down: persona,
@@ -541,6 +541,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     shows as a marker, **Compacted · 41k → 6k**, expanding to the summary.
     Pi's automatic compaction stays on at the window's edge as the safety
     net.
+  - **Tokens** follows Checklist once a thread has a counted turn. Its
+    popover sums every request's reads (cached reads included) and outputs
+    by model, with **GPU time** for local calls (first-token plus generation
+    time, including queueing and loading). Pruned call counts are retained.
+    On a phone Tokens opens rows at the foot of Context.
   - Recent calls and the text library show measured speed; nothing acts on
     it automatically.
 - **Reasoning level.** For models that support it, the message box has a
@@ -1007,7 +1012,7 @@ Projects: a running conversation, the **project chat**, where the user drops tas
 updates and questions as they come, and **threads** that Lyrica starts for
 the work and keeps track of. Agreed 2026-10-10. The back end and sleep's
 project page are built, and so is the web part except Files and images on
-Project settings and Recent calls by project. The briefs are
+the Project settings page. Recent calls can be filtered by project. The briefs are
 `docs/briefs/projects.md`, `projects-web.md` and `projects-sleep.md`.
 
 - **A project is a top-level thread marked as a project**, and its threads
@@ -1130,8 +1135,12 @@ Project settings and Recent calls by project. The briefs are
     **New project** is on the context menu of the thread list's empty space;
     it opens an empty project chat, like New thread. The Sort menu can show
     only projects or leave them out.
-  - The project chat's facts line adds **Threads** with a count, opening a
-    popover of its threads grouped by state, and the project's total tokens.
+  - The project chat's facts line adds **Threads** with a count, opening the
+    threads panel from the split width and a popover grouped by state below
+    it, and **Tokens** for the whole
+    project. Tokens opens model shares, Total, **By thread** (This chat
+    first, then threads by tokens), and a project-filtered **Recent calls**
+    link. On a phone Tokens is at the foot of the Threads popover.
     Its actions stay **Files** and **Settings**.
   - **Thread cards:** one per thread, under the message that started it,
     updated in place: title, state, what it waits on, the first line of its

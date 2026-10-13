@@ -81,8 +81,15 @@ describe("welcome cards", () => {
     const html = renderToStaticMarkup(createElement(BackendCard, { ctx }));
     expect(html).toContain('href="#/u/user/models">Models</a>');
     expect(html).toContain('class="facts"');
-    expect(html).toContain('class="badge kind cloud">cloud</span> cloud-model · Cloud host · Custom');
-    expect(html).toContain('class="badge kind local">local</span> local-model · Local host · Local');
+    for (const [kind, model, endpoint, preset] of [
+      ["cloud", "cloud-model", "Cloud host", "Custom"],
+      ["local", "local-model", "Local host", "Local"],
+    ]) {
+      expect(html).toContain(`class="badge kind ${kind}">${kind}</span>`);
+      expect(html).toContain(`class="model-name">${model}</span>`);
+      expect(html).toContain(`class="model-endpoint muted" title="${endpoint}"> · ${endpoint}</span>`);
+      expect(html).toContain(`</span> · ${preset}</dd>`);
+    }
     expect(html).toContain('class="dot away"');
     expect(html).toContain("Paused");
   });

@@ -82,7 +82,8 @@ desktop and at 390 px (principle 1). Every control has its row in ux.md §6.
   Workspace listing), Suggested threads card, Start a thread, Reopen link;
   the Project settings page with General (UI review's labels: Paused switch,
   New threads, This chat) and Memory. Not done: Files and images (needs the
-  Files panel), Notifications (7), Recent calls by project (8). The
+  Files panel), Notifications (7). Recent calls by project (8) and the Tokens
+  breakdown are built by spend-share. The
   split-view panel and the Watching threads switch and marker came as the
   next PRs (docs/web.md "The panel" and "Chat").
 
