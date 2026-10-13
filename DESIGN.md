@@ -1476,7 +1476,7 @@ Details in [docs/memory.md](docs/memory.md).
     in** show the citing sentence, previewing four cards with Show all to
     expand longer lists in place with their own scroll and Show less to
     collapse. Expansion hides History; Came from expansion also hides Used
-    in, while the memory and earlier sections stay visible. History shows the latest version, with
+    in, while the memory and earlier sections stay visible. History shows the newest earlier version, with
     Show all beside its eyebrow opening searchable numbered history pages
     and word differences between versions; a note's `about` words are its tags. Editing is in place,
     with `[[` offering pages and people. No graph: lineage is layers, so a

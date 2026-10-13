@@ -1636,7 +1636,7 @@ export interface MemoryDetail {
   usedIn: MemoryUse[];
   /** By the ID as it appears in the text, `cameFrom` or `usedIn`. */
   links: Record<string, MemoryLink>;
-  /** Most recent version only; older versions come from /history. */
+  /** Current and newest earlier version; all versions come from /history. */
   revisions: MemoryRevision[];
   users: UserMap;
 }
