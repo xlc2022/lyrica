@@ -60,10 +60,20 @@ notices.
    minutes instead of 2 while fewer than a fifth of the token's hourly
    requests remain; never retry a refused request sooner than the forge
    says.
-4. **Webhooks from a forge on the tailnet.** A Forgejo or Gitea that can
-   reach `lyricad` over the tailnet sends webhooks to
-   `POST /hooks/forge/{account}` on the listener `tailscale serve`
-   already fronts; nothing becomes public, and "never funnel" stands.
+4. **Webhooks from a forge on a private network.** A Forgejo or Gitea
+   account's host can be any name (the operator's own domain pointing at
+   tailnet addresses is fine). Its webhook is offered when that name
+   resolves to a private address: 10/8, 172.16/12, 192.168/16, the
+   tailnet's 100.64/10, or fc00::/7. It's resolved again at each use, and
+   a name that now resolves publicly loses the Webhook row and falls back
+   to polling. The forge sends webhooks to `POST /hooks/forge/{account}`
+   on the listener `tailscale serve` already fronts, so the forge's
+   machine must be on the tailnet; nothing becomes public, and "never
+   funnel" stands.
+   - Forgejo and Gitea refuse webhooks to private addresses by default.
+     The operator adds `lyricad`'s tailnet name or `100.64.0.0/10` to
+     `[webhook] ALLOWED_HOST_LIST` in the forge's `app.ini`; the guide
+     says so.
    - Each Forgejo or Gitea Git account gets a random webhook secret,
      stored like its token. A request must carry a valid
      `X-Forgejo-Signature` or `X-Gitea-Signature` (HMAC-SHA256 of the
@@ -134,6 +144,8 @@ for adding the webhook (tell Operator docs). The PR body says which.
   comments give none; a review and a finished check in one poll give one.
 - The GitHub and Forgejo/Gitea modules turn recorded API answers into the
   same shape.
+- A Forgejo/Gitea host resolving to each private range gets the Webhook
+  row; one resolving to a public address doesn't, and polls.
 - A correctly signed webhook polls that repository at once; a missing or
   wrong signature gets 401 and polls nothing; the body isn't kept.
 - A 429 or `Retry-After` delays the next request as the forge says;
