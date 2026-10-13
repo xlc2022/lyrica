@@ -63,8 +63,10 @@ third column with one control per column).
 - **Threads.** A thread's own choice is a preset (or none: its column),
   replacing `setThreadProfile`. Private and local-only threads may choose
   only a private preset; core refuses any other. The thread drawer's
-  Models section starts with a **Preset** select: "Column (<name>)" first,
-  then the presets the thread can use. The per-task selects under it stay
+  Models section starts with a **Preset** select: first its column and
+  that column's preset, "General threads (Night shift)", "General threads
+  (Custom)" or "Private threads (Local)", then the presets the thread can
+  use. The per-task selects under it stay
   as overrides, and their first option reads "Preset (<first model>)"
   instead of "Profile (…)".
 
@@ -165,7 +167,9 @@ third column with one control per column).
   docs/contracts.md, docs/ux.md (the Models row, and the word list gaining Preset, Search
   presets, Save to, Save as preset…, New preset… and Delete preset…; Nothing
   matches is there already) and the
-  operator guides that name the `profile` CLI are updated in the same PR.
+  docs/web.md (the thread drawer's Models section, where it describes
+  the "Profile (…)" option), and the operator guides that name the
+  `profile` CLI are updated in the same PR.
 
 ## After merging
 
