@@ -2478,8 +2478,8 @@ test("Tasks: the table shows each column's models; a cell's drawer adds, reorder
   await expect(local).toContainText("local-model");
   await expect(general).toContainText("cloud-model");
   await expect(general).toContainText("no fallback");
-  // A text task with no list of its own follows Chat.
-  await expect(page.locator('tr[data-task="title"] [data-col="General threads"]')).toContainText("= Chat");
+  // Titles follow cheap subagents: the default the first entry brings.
+  await expect(page.locator('tr[data-task="title"] [data-col="General threads"]')).toContainText("= Cheap subagents");
   await noHorizontalScroll(page);
   await shot("table");
 
@@ -2525,7 +2525,7 @@ test("Tasks: the table shows each column's models; a cell's drawer adds, reorder
   await expect(drawer).toHaveCount(0);
   await expect(general).toHaveAttribute("aria-pressed", "false");
 
-  // Titles follow Chat; Same as points them at Cheap subagents, which then can't follow another task itself.
+  // Same as points Titles at Cheap subagents, which then can't follow another task itself; Compaction and Watching threads follow it too.
   const titles = page.locator('tr[data-task="title"] [data-col="General threads"]');
   await titles.click();
   const edit = page.getByRole("complementary", { name: "Edit Titles" });
@@ -2536,8 +2536,8 @@ test("Tasks: the table shows each column's models; a cell's drawer adds, reorder
   await page.locator('tr[data-task="subagent.cheap"] [data-col="General threads"]').click();
   const cheap = page.getByRole("complementary", { name: "Edit Cheap subagents" });
   await expect(cheap.getByRole("radio", { name: "Same as" })).toBeDisabled();
-  await expect(cheap).toContainText("Titles uses this list.");
-  await expect(cheap.getByRole("radio", { name: "Same as" })).toHaveAccessibleDescription("Titles uses this list.");
+  await expect(cheap).toContainText("Compaction, Titles and Watching threads use this list.");
+  await expect(cheap.getByRole("radio", { name: "Same as" })).toHaveAccessibleDescription("Compaction, Titles and Watching threads use this list.");
   await cheap.getByRole("button", { name: "Close" }).click();
 
   // The Preset menu: the built-ins, switching a column, editing a followed column into Custom, Save to, New preset and its edit and delete.
@@ -2926,7 +2926,7 @@ test("Image models: a recipe opens to its parts with Change, Add a part and Dele
   await block.getByRole("button", { name: "Delete" }).click();
   const del = page.getByRole("dialog", { name: "Delete Z-Image Turbo from box?" });
   await expect(del).toContainText("Deletes z_image_turbo_bf16.safetensors, qwen_3_4b.safetensors, ae.safetensors, which frees 20.6 GB.");
-  await expect(del).toContainText("None of your profiles use it.");
+  await expect(del).toContainText("Nothing of yours uses it.");
   await del.getByRole("button", { name: "Delete" }).click();
   await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "delete" });
 
