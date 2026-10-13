@@ -414,6 +414,7 @@ class Models {                                              // new Models(keyrin
   callWithFallback(task, ctx, need, call: (r) => Promise<T>, { probeMs? }?): Promise<T>   // the next model on isUnreachable; Offline when none answers
   resolveModel(task, ctx, need?): { offeringId }             // resolve(…).ref
   allowed(ctx): { endpoint; offerings }[]                   // local endpoints only when restricted
+  nextImageModel(ctx, action, need, afterEndpoint, noCloud?): Resolution | undefined // current task list; no probes; next eligible endpoint
   // Images (memory only; caller stores and records results)
   image(ctx, request: ImageRequest, { signal?, beforeSend?: (resolution) => Promise<void> }?): Promise<{ images: GeneratedImage[]; resolution }>
   // ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
@@ -885,7 +886,20 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     of that server-local day; a policy change clears it. No viewer means denial.
     Outputs save in the encrypted thread folder and return Pi image content
     (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>”.
-    Tool details are `{ image: ImagePart }`, where `ImagePart` is
+    A content refusal returns `isError: true` with fixed text and details
+    `{ imageRefusal: { code: "image_refusal", offeringId, endpointId } }`;
+    stored tool markers and live `tool_end` carry `imageRefusal`.
+    `GET …/threads/:pool/:threadId/image-calls/:toolCallId` returns
+    `{ canEdit, userMessage?: { n, text }, next?: { offeringId, label } }`
+    for a stored refusal, under the current routing and portrait policy.
+    `POST` there with `{ next?: boolean }` repeats that stored call on its
+    original model (false) or current next eligible endpoint (true), through
+    `executeImage`; no caller-supplied prompt or model is accepted. Busy
+    threads refuse it; Stop cancels it. Its encrypted `lyrica-image-retry`
+    custom entry keeps the source user message number, args and result;
+    messages project it as a tool marker and optional image part, without
+    PNG bytes. Saved task lists are unchanged.
+    Successful tool details are `{ image: ImagePart }`, where `ImagePart` is
     `{ type: "image", paths: string[], model: string, tier?: "fast" | "quality" }`.
     `model` is the answering model's label. Saved messages carry this part
     beside the originating tool call; `tool_end` carries `image?: ImagePart`.

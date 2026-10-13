@@ -19,6 +19,7 @@ import {
 } from "./ModelsFrame.tsx";
 import { go, href, type ModelsPageUnder, type ModelsTab } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
+import { CloudImageControls } from "./CloudImageControls.tsx";
 import { TextModels } from "./TextModels.tsx";
 import { ConfirmDialog, ErrorText, hidden, shortTime, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
 
@@ -948,7 +949,7 @@ function Hosts({ ctx }: { ctx: MCtx }) {
 }
 
 /** An endpoint's models, each by its ID; a speaking model has its Settings. */
-function ModelList({ ep, onVoice }: { ep: EndpointInfo; onVoice: (m: OfferingInfo) => void }) {
+function ModelList({ ctx, ep, onVoice }: { ctx: MCtx; ep: EndpointInfo; onVoice: (m: OfferingInfo) => void }) {
   if (!ep.models.length) return <p className="muted small wide">No models yet.</p>;
   return (
     <ul className="model-list wide" aria-label={`${ep.name} models`}>
@@ -956,6 +957,7 @@ function ModelList({ ep, onVoice }: { ep: EndpointInfo; onVoice: (m: OfferingInf
         <li key={m.id} data-offering={m.id}>
           <code>{m.modelId}</code>
           {m.status !== "listed" && <span className="pill warn">{m.status}</span>}
+          {ep.kind === "cloud" && <CloudImageControls ctx={ctx} ep={ep} m={m} />}
           {m.speak?.voices.length ? <button type="button" className="link sm" aria-label={`${m.modelId} settings`} onClick={() => onVoice(m)}>Settings</button> : null}
         </li>
       ))}
@@ -1081,7 +1083,7 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
       <ErrorText error={error} />
       {actions.forms}
       {status?.gpus.map((g) => <GpuBlock key={g.index} g={g} />)}
-      {open && <ModelList ep={ep} onVoice={onVoice} />}
+      {open && <ModelList ctx={ctx} ep={ep} onVoice={onVoice} />}
     </article>
   );
 }
@@ -1121,7 +1123,7 @@ function EndpointRow({ ctx, ep, others, onEdit, onVoice }: { ctx: MCtx; ep: Endp
         {editable && <RowMenu label={`Actions for ${ep.name}`} items={actions.items} />}
       </div>
       {actions.forms}
-      {open && <ModelList ep={ep} onVoice={onVoice} />}
+      {open && <ModelList ctx={ctx} ep={ep} onVoice={onVoice} />}
     </li>
   );
 }

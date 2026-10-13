@@ -385,7 +385,14 @@ declares create, edit, mask, references, sizes, count and tier mappings.
 Grok images are unsupported; upscale remains host-only. Returned PNGs lose
 text, EXIF and other metadata. Provider errors use fixed messages and codes,
 never provider prose. `image_refusal` identifies a content refusal and stops
-fallback; outages and limits still try the next eligible model.
+fallback; outages and limits still try the next eligible model. The tool
+keeps fixed `imageRefusal` details (code, offering ID and endpoint ID) for
+the message marker. `nextImageModel` reads the current task list without
+probing: after the refused endpoint, it skips that endpoint's other models,
+unfit or unavailable models, cloud models in restricted threads, and
+cloud models when portrait policy is Never. Resend and Try run the same
+image executor with a one-call model override, checking consent again;
+saved task lists stay unchanged.
 
 The `image` tool reads workspace paths and `/photos-of-me/<file>`, enforces
 the user's portrait policy before each resolved attempt, and stores results in
@@ -481,6 +488,10 @@ recipe action `{ do: "change", change: { op: "useFor", useFor } }` forwards
 it to the host's PATCH, then refreshes discovery. Offerings cache it in their
 existing `found` JSON; there is no database migration. Image models exposes
 it as **Use for**, saved at once per host, and a fact in the recipe row.
+Cloud model blocks in Image models and the endpoint's model list expose
+Image generation, Image editing and Use for (Fast | Quality | Both). They
+save through `PATCH …/offerings/:id` to hand JSON, and only the endpoint's
+owner or a shared endpoint's administrator can change them.
 
 ## Downloads, hub tokens and deleting
 

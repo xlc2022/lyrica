@@ -1353,3 +1353,12 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
 .command-rule input { flex: 1 1 160px; min-width: 0; }
 .permission .always-allow { max-width: 100%; white-space: normal; }
 .permission .always-allow .mono { min-width: 0; overflow-wrap: anywhere; }
+
+.cloud-image-controls { flex-basis: 100%; display: grid; gap: 12px; padding: 12px 0; min-width: 0; }
+.cloud-image-controls .seg { width: fit-content; max-width: 100%; }
+.image-refusal-code { display: block; color: var(--muted); font-size: 12px; }
+.image-refusal-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; }
+.image-refusal-links .link { white-space: normal; text-align: left; overflow-wrap: anywhere; }
+@media (pointer: coarse) {
+  .image-refusal-links .link { min-height: 44px; }
+}

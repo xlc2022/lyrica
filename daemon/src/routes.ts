@@ -1,3 +1,4 @@
+import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
 import {
   describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
@@ -986,6 +987,35 @@ export function apiRoutes(d: Lyricad): Route[] {
         return { messages: toMessages(thread.id, poolOf(r), page.entries,
           (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, { ...(thread.child && thread.parent ? { parent: thread.parent } : {}), userId: user.id }), hasMore: page.hasMore };
       });
+    }),
+    route("GET", `${t}/image-calls/:toolCallId`, async (r): Promise<Api.ImageRetryOptions> => {
+      const user = d.userFor(r), pool = poolOf(r);
+      owner(d, user, o => threadOf(o, r));
+      const view = s().memory.openThreadView(user.id, pool);
+      try { return (await imageRetryOptions(s().models, s().workspace, view, user.id, pool, r.params.threadId!, r.params.toolCallId!)).options; }
+      finally { view.close(); }
+    }),
+    route("POST", `${t}/image-calls/:toolCallId`, async (r): Promise<Api.Ok> => {
+      const user = d.userFor(r), pool = poolOf(r);
+      d.refuseWhileDraining();
+      const thread = owner(d, user, o => threadOf(o, r));
+      if (thread.subagent) throw new HttpError(409, "a subagent's image can't be retried here");
+      const project = owner(d, user, o => o[pool].projectOf(thread.id));
+      if (project && project !== thread.id && s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden");
+      const body = await r.json<{ next?: boolean }>();
+      if (body.next !== undefined && typeof body.next !== "boolean") throw new HttpError(400, "next is true or false");
+      const view = s().memory.openThreadView(user.id, pool);
+      let retry;
+      try { retry = await imageRetryOptions(s().models, s().workspace, view, user.id, pool, thread.id, r.params.toolCallId!); }
+      finally { view.close(); }
+      const offeringId = body.next ? retry.options.next?.offeringId : retry.refusal.offeringId;
+      if (!offeringId) throw new HttpError(409, "no next image model is available");
+      // Check the selected model against today's privacy, capability and tier rules before starting.
+      const selected = s().models.resolve(`image.${retry.args.action}`, { ...retry.routing, fallback: false,
+        overrides: { ...retry.routing.overrides, [`image.${retry.args.action}`]: [{ offeringId }] } }, retry.need);
+      if (retry.noCloud && selected.endpoint.kind === "cloud") throw new HttpError(400, "Photos of you aren't allowed to go to cloud models.");
+      await s().host.get(user.id, pool, thread.id).retryImage(retry.args, offeringId, retry.options.userMessage?.n);
+      return { ok: true };
     }),
     route("POST", `${t}/messages`, async (r) => {
       const user = d.userFor(r);

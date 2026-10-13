@@ -391,6 +391,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Image models (`src/ImageModels.tsx`, its pure parts in `src/images.ts`)
   reads each model host's library (`GET …/hosts/:id/images`: recipes, and
   parts by role) and the plain endpoints' image models from the Models page.
+  Cloud model blocks and Hosts and endpoints' cloud model lists share
+  `CloudImageControls.tsx`: Image generation and Image editing switches
+  with tooltips, and Use for (Fast | Quality | Both) while generation is on.
+  Each change PATCHes the offering's capabilities and reloads the Models
+  page; controls are disabled for a shared endpoint's non-administrator.
+  These use ux §3's controls, §4's names and §6's model blocks.
   The facts line counts models, parts, hosts and the groups holding them,
   then links "<n> to review" when a host the user manages proposed
   anything. **Models** | **Parts**, a search (name or file) and the
@@ -949,6 +955,14 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   top of the conversation says "Plan waiting for your answer" (or
   "Approval…") and scrolls to it.
 
+A content refusal's image marker shows `image_refusal` and the small text
+links Edit message, Resend and Try <model> (ux §5's agreed action exception
+and §6's image row). The server computes choices from the current task list
+and portrait policy. Edit message appears only for the last user message
+and copies it into the composer through an in-memory event; Resend repeats
+the image call, Try selects the next eligible endpoint. Busy calls hide the
+links. Both retries save results in the conversation and recheck consent.
+
 ## Look
 
 `src/app.css` holds the design tokens as custom properties and follows
@@ -977,7 +991,7 @@ turns animations off.
   links and word diffs, mentions, which paths become links, which code
   blocks get Copy and what it copies (`codeblock.test.ts`), a checklist's
   count and current step (`checklist.test.ts`), the welcome cards' empty states,
-  hidden sleep pools and backend profiles (`cards.test.ts`), routine facts and paused
+  hidden sleep pools and backend presets (`cards.test.ts`), routine facts and paused
   schedules (`routines.test.ts`), the recorder's context
   fallback and clip limit (`voice.test.ts`), and a text model group's warn
   lines (`library.test.ts`), and flyout placement and hover intent (`flyout.test.ts`).

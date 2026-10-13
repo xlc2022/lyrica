@@ -583,6 +583,15 @@ permission flow for portrait photos, with `Send photos of you to <endpoint>?`
 in its warning and `{ question, provider }` in its arguments. Approval is per
 user through the end of that server-local day, without Allow in this thread.
 
+Content refusals carry fixed `imageRefusal` metadata on stored tool markers
+and live `tool_end`. `GET …/image-calls/:toolCallId` returns current retry
+choices and the source user message; `POST { next?: boolean }` retries the
+stored image call, on its original model or the next eligible endpoint.
+Both require the thread's user session. The shared image executor rechecks
+privacy, tools and portrait consent, and saves a `lyrica-image-retry` custom
+entry in the encrypted thread. Busy threads refuse retries; Stop cancels
+them. Model lists are unchanged.
+
 The Files panel (DESIGN, "Files and images") reaches a thread's folder and its
 grants only through `Workspace.files(t)`, so every listing, read and change
 runs in the thread's sandbox: no host path is ever handled by `lyricad`, and

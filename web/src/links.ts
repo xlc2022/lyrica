@@ -37,3 +37,7 @@ export function take<T>(key: string, base: string): T | undefined {
     return req;
   } catch { return undefined; }
 }
+
+/** Refusal actions pass text in memory only, never session storage. */
+export interface EditMessageRequest { base: string; text: string; handled?: boolean }
+export const EDIT_MESSAGE_EVENT = "lyrica:edit-message";

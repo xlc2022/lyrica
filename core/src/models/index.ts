@@ -2061,6 +2061,28 @@ export class Models {
     }
   }
 
+  /** The next eligible image model on a different endpoint, without probing or sending. */
+  nextImageModel(ctx: CallContext, action: "create" | "edit" | "upscale", need: Need, afterEndpoint: string, noCloud = false): Resolution | undefined {
+    const task = `image.${action}` as Task;
+    const catalog = this.catalog(ctx.userId), found = this.listFor(task, ctx, catalog);
+    if (!found) return undefined;
+    const list = ctx.fallback === false ? found.list.slice(0, 1) : found.list;
+    const ids = list.flatMap(ref => "offeringId" in ref ? [ref.offeringId] : catalog.groups.get(ref.groupId)?.members ?? []);
+    let passed = false;
+    for (const raw of ids) {
+      const id = this.follow(raw), offering = id ? catalog.offerings.get(id) : undefined;
+      if (!offering) continue;
+      const endpoint = catalog.endpoints.get(offering.endpointId);
+      if (!endpoint) continue;
+      if (endpoint.id === afterEndpoint) { passed = true; continue; }
+      if (!passed || (isRestricted(ctx) || noCloud) && endpoint.kind !== "local") continue;
+      if (this.unfit(task, offering, endpoint, need) || this.away(endpoint, {}, offering)) continue;
+      return { ref: { offeringId: offering.id }, endpoint, offering, label: labelOf(endpoint, offering),
+        profile: found.profile, source: found.source, skipped: [], remaining: 0 };
+    }
+    return undefined;
+  }
+
   /** Images stay in memory; the caller stores results and records the call. */
   async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void> } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution }> {
     validateImageRequest(request);

@@ -22,6 +22,13 @@ export function imagePart(tool: string, details: unknown): Extract<MessagePart, 
   return { type: "image", paths: i.paths, model: i.model, ...(i.tier ? { tier: i.tier } : {}) };
 }
 
+/** Fixed refusal metadata only; no provider text passes into the API. */
+export function imageRefusal(tool: string, details: unknown): import("./api.ts").ImageRefusal | undefined {
+  const r = (details as { imageRefusal?: import("./api.ts").ImageRefusal } | undefined)?.imageRefusal;
+  return tool === "image" && r?.code === "image_refusal" && typeof r.offeringId === "string" && typeof r.endpointId === "string"
+    ? { code: r.code, offeringId: r.offeringId, endpointId: r.endpointId } : undefined;
+}
+
 /** A run's subagent threads, from its records: a background run's result names only the run. */
 export type RunThreads = (runId: string) => string[];
 
@@ -109,6 +116,14 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
   for (const { n, data, createdAt, pinned, reactions: stored } of entries) {
     const reactions = opts.userId ? toReactions(stored, opts.userId) : undefined;
     const e = data as PiEntry;
+    if (e.type === "custom_message" && e.customType === "lyrica-image-retry") {
+      const d = (e as unknown as { details: { toolCallId: string; args: unknown; result: { details?: unknown; isError?: boolean } } }).details;
+      const image = imagePart("image", d.result.details);
+      out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "assistant", parts: [
+        { type: "tool", name: "image", toolCallId: d.toolCallId, args: d.args, result: shortResult(e.content), isError: !!d.result.isError,
+          imageRefusal: imageRefusal("image", d.result.details) }, ...(image ? [image] : [])] });
+      continue;
+    }
     if (e.type === "custom_message" && e.customType === TURN_TOOL_NOTICE) {
       out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [{ type: "delegation", text: textOf(e.content), status: "limit" }] });
       continue;
@@ -198,6 +213,7 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       if (!call) continue;
       call.part.result = shortResult(m.content);
       call.part.isError = !!m.isError;
+      call.part.imageRefusal = imageRefusal(call.part.name, m.details);
       const threads = delegateThreads(call.part.name, m.details, pool, runThreads);
       if (threads) call.part.threads = threads;
       const image = !m.isError ? imagePart(call.part.name, m.details) : undefined;

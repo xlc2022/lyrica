@@ -1,8 +1,8 @@
 // Principles 1, 2 and 8: one image tool, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, isRestricted, type CallContext, type ImageRequest, type Models, type Resolution,
+import { CloudModelForbidden, HostRefused, isRestricted, type CallContext, type ImageRequest, type Models, type Resolution,
   type ThreadImages, type WorkspaceSettings } from "@lyrica/core";
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
 import type { ApprovalRequest } from "./workspace.ts";
 
 export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality" }
@@ -20,7 +20,7 @@ export interface ImageTools {
 const path = Type.String();
 const references = Type.Optional(Type.Array(path, { maxItems: 16 }));
 const count = Type.Optional(Type.Integer({ minimum: 1, maximum: 4 }));
-const parameters = Type.Union([
+export const imageParameters = Type.Union([
   Type.Object({ action: Type.Literal("create"), prompt: Type.String(), tier: Type.Union([Type.Literal("fast"), Type.Literal("quality")]),
     size: Type.Optional(Type.Object({ width: Type.Integer(), height: Type.Integer() })),
     aspectRatio: Type.Optional(Type.String({ description: "Width:height (16:9); omit for recipe defaults." })), count, references }),
@@ -44,7 +44,7 @@ const dayOf = (date: Date) => `${date.getFullYear()}-${date.getMonth() + 1}-${da
 // One pending question per user, even across simultaneous threads in the same process.
 const pending = new WeakMap<WorkspaceSettings, Promise<boolean>>();
 
-async function allowPortrait(o: ImageTools, r: Resolution, id: string, ctx: ExtensionContext, signal?: AbortSignal): Promise<void> {
+async function allowPortrait(o: ImageTools, r: Resolution, id: string, ctx: ExtensionContext | undefined, signal?: AbortSignal): Promise<void> {
   const s = o.settings();
   const policy = s.photoCloudPolicy();
   if (policy === "never") throw new Error("Photos of you aren't allowed to go to cloud models.");
@@ -56,7 +56,7 @@ async function allowPortrait(o: ImageTools, r: Resolution, id: string, ctx: Exte
     const text = `Send photos of you to ${r.endpoint.name}?`;
     const request: ApprovalRequest = { toolCallId: id, tool: "image", input: { question: text, provider: r.endpoint.name, model: r.label }, warning: text };
     question = (async () => {
-      const allowed = o.approve ? await o.approve(request) : ctx.hasUI ? await ctx.ui.confirm(text, "An approval lasts until the end of today.") : false;
+      const allowed = o.approve ? await o.approve(request) : ctx?.hasUI ? await ctx.ui.confirm(text, "An approval lasts until the end of today.") : false;
       signal?.throwIfAborted();
       if (!allowed || day !== dayOf(o.now?.() ?? new Date()) || s.photoCloudPolicy() === "never") return false;
       if (s.photoCloudPolicy() === "ask") s.approvePhotoCloud(day);
@@ -79,43 +79,55 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
       promptSnippet: "create, edit or upscale images",
       promptGuidelines: ["Write prompts from the conversation; inspect results and retry if needed.",
         "Draw exact layouts and diagrams as HTML, SVG or Mermaid."],
-      parameters,
+      parameters: imageParameters,
       async execute(id, p, signal, _update, ctx) {
-        if (!o.enabled()) throw new Error("Images are off in this thread.");
-        let portrait = false;
-        const read = async (path: string) => {
-          const result = await o.files.read(path); portrait ||= result.portrait;
-          return result.input;
-        };
-        let request: ImageRequest;
-        if (p.action === "upscale") {
-          request = { action: p.action, image: await read(p.image), ...(p.scale === undefined ? {} : { scale: p.scale }), ...(p.maxSize === undefined ? {} : { maxSize: p.maxSize }) };
-        } else {
-          const refs = p.references ? await Promise.all(p.references.map(read)) : undefined;
-          const common = { ...(p.count === undefined ? {} : { count: p.count }), ...(refs ? { references: refs } : {}) };
-          if (p.action === "create") {
-            if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
-            const size = p.size ?? (p.aspectRatio ? ratioSize(p.aspectRatio) : undefined);
-            request = { action: p.action, prompt: p.prompt, tier: p.tier, ...(size ? { size } : {}), ...common };
-          } else request = { action: p.action, prompt: p.instruction, image: await read(p.image), ...(p.mask ? { mask: await read(p.mask) } : {}), ...common };
-        }
-        const call = o.call();
-        const out = await o.models.image(call, request, { signal, beforeSend: async r => {
-          if (!o.enabled()) throw new Error("Images are off in this thread.");
-          if (r.endpoint.kind === "cloud") {
-            if (isRestricted(o.call())) throw new CloudModelForbidden("This thread uses local models only.");
-            if (portrait) await allowPortrait(o, r, id, ctx, signal);
-          }
-          if (!o.enabled()) throw new Error("Images are off in this thread.");
-          if (r.endpoint.kind === "cloud" && isRestricted(o.call())) throw new CloudModelForbidden("This thread uses local models only.");
-        } });
-        signal?.throwIfAborted();
-        const paths = o.files.save(out.images, portrait);
-        const part: ImagePart = { type: "image", paths, model: out.resolution.label, ...(p.action === "create" ? { tier: p.tier } : {}) };
-        o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: `image.${p.action}`, resolution: out.resolution });
-        return { content: [{ type: "text" as const, text: `Made with ${out.resolution.offering.modelId} on ${out.resolution.endpoint.name}. Saved ${paths.join(", ")}.` },
-          ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };
+        return executeImage(o, id, p, signal, ctx);
       },
     });
   };
+}
+
+/** Shared by Pi and explicit refusal retries; no model-facing arguments are added. */
+export async function executeImage(o: ImageTools, id: string, p: Static<typeof imageParameters>, signal?: AbortSignal, ctx?: ExtensionContext) {
+  if (!o.enabled()) throw new Error("Images are off in this thread.");
+  let portrait = false;
+  const read = async (path: string) => {
+    const result = await o.files.read(path); portrait ||= result.portrait;
+    return result.input;
+  };
+  let request: ImageRequest;
+  if (p.action === "upscale") {
+    request = { action: p.action, image: await read(p.image), ...(p.scale === undefined ? {} : { scale: p.scale }), ...(p.maxSize === undefined ? {} : { maxSize: p.maxSize }) };
+  } else {
+    const refs = p.references ? await Promise.all(p.references.map(read)) : undefined;
+    const common = { ...(p.count === undefined ? {} : { count: p.count }), ...(refs ? { references: refs } : {}) };
+    if (p.action === "create") {
+      if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
+      const size = p.size ?? (p.aspectRatio ? ratioSize(p.aspectRatio) : undefined);
+      request = { action: p.action, prompt: p.prompt, tier: p.tier, ...(size ? { size } : {}), ...common };
+    } else request = { action: p.action, prompt: p.instruction, image: await read(p.image), ...(p.mask ? { mask: await read(p.mask) } : {}), ...common };
+  }
+  const call = o.call();
+  let attempted: Resolution | undefined;
+  let out;
+  try { out = await o.models.image(call, request, { signal, beforeSend: async r => {
+    attempted = r;
+    if (!o.enabled()) throw new Error("Images are off in this thread.");
+    if (r.endpoint.kind === "cloud") {
+      if (isRestricted(o.call())) throw new CloudModelForbidden("This thread uses local models only.");
+      if (portrait) await allowPortrait(o, r, id, ctx, signal);
+    }
+    if (!o.enabled()) throw new Error("Images are off in this thread.");
+    if (r.endpoint.kind === "cloud" && isRestricted(o.call())) throw new CloudModelForbidden("This thread uses local models only.");
+  } }); } catch (err) {
+    if (!(err instanceof HostRefused) || err.code !== "image_refusal" || !attempted) throw err;
+    return { content: [{ type: "text" as const, text: "Image generation was refused (image_refusal)." }], isError: true,
+      details: { imageRefusal: { code: "image_refusal" as const, offeringId: attempted.offering.id, endpointId: attempted.endpoint.id } } };
+  }
+  signal?.throwIfAborted();
+  const paths = o.files.save(out.images, portrait);
+  const part: ImagePart = { type: "image", paths, model: out.resolution.label, ...(p.action === "create" ? { tier: p.tier } : {}) };
+  o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: `image.${p.action}`, resolution: out.resolution });
+  return { content: [{ type: "text" as const, text: `Made with ${out.resolution.offering.modelId} on ${out.resolution.endpoint.name}. Saved ${paths.join(", ")}.` },
+    ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };
 }

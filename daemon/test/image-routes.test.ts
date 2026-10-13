@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Writable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +7,7 @@ import { RecipeBook } from "../../host/src/recipes.ts";
 import { loadTemplates } from "../../host/src/templates.ts";
 import { ensurePhotosDir } from "@lyrica/core";
 import { createImageExtension } from "@lyrica/extension";
-import type { ExtensionAPI, ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type ExtensionAPI, type ExtensionToolContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { png } from "../../core/test/fake-images.ts";
 import { apiRoutes } from "../src/routes.ts";
 import { match, statusOf, type Request } from "../src/http.ts";
@@ -52,6 +52,76 @@ async function setup() {
 }
 
 describe("image routes (principles 1 and 2)", () => {
+  it("retries a stored refusal on the next local model, preserving the source message and current boundaries", async () => {
+    const { rt, d, thread, call, dir } = await setup();
+    try {
+      const models = d.services!.models, actor = d.services!.users.get(rt.ada.id)!;
+      const refs = ["first", "second"].map(name => {
+        const ep = models.addEndpoint(actor, { name, kind: "local", baseUrl: `https://${name}.example/v1`, apiKey: "fake-key" });
+        models.reportUp(actor.id, ep.id);
+        const offering = models.addModel(actor, ep.id, { modelId: "art", image: true });
+        return { ep, ref: { offeringId: offering.id } };
+      });
+      models.setColumnTask(actor.id, "private", "image.create", refs.map(r => r.ref));
+      const view = d.services!.memory.openThreadView(actor.id, "private");
+      const args = { action: "create", prompt: "A garden", tier: "quality" };
+      let parentId: string | null = null;
+      const append = (piId: string, role: string, message: unknown) => {
+        view.own.appendEntry(thread.id, { piId, role, text: "", data: { type: "message", id: piId, parentId, timestamp: new Date().toISOString(), message } });
+        parentId = piId;
+      };
+      append("user", "user", { role: "user", content: "Make a garden." });
+      append("assistant", "assistant", { role: "assistant", content: [{ type: "toolCall", id: "refused", name: "image", arguments: args }] });
+      append("result", "toolResult", { role: "toolResult", toolCallId: "refused", toolName: "image", isError: true,
+        content: [{ type: "text", text: "Image generation was refused (image_refusal)." }],
+        details: { imageRefusal: { code: "image_refusal", offeringId: refs[0]!.ref.offeringId, endpointId: refs[0]!.ep.id } } });
+      const path = `/api/u/${actor.id}/threads/private/${encodeURIComponent(thread.id)}/image-calls/refused`;
+      expect((await call("GET", path)).value).toMatchObject({ canEdit: true, userMessage: { text: "Make a garden." }, next: { offeringId: refs[1]!.ref.offeringId } });
+      expect((await call("GET", path, rt.sam.id)).status).toBe(401);
+      expect((await call("GET", path.replace(actor.id, rt.sam.id), rt.sam.id)).status).toBe(404);
+      append("later", "user", { role: "user", content: "Another message." });
+      expect((await call("GET", path)).value).toMatchObject({ canEdit: false });
+      const sent: string[] = [];
+      vi.spyOn(models, "fetchFor").mockReturnValue((async (url: string) => {
+        sent.push(new URL(url).hostname);
+        if (url.includes("first.example")) return Response.json({ error: { code: "content_policy_violation", message: "synthetic provider prose" } }, { status: 400 });
+        return Response.json({ data: [{ b64_json: png.toString("base64") }] });
+      }) as typeof fetch);
+      expect((await call("POST", path)).status).toBe(200);
+      const page = (await call("GET", `/api/u/${actor.id}/threads/private/${encodeURIComponent(thread.id)}/messages`)).value as { messages: { parts: { toolCallId?: string }[] }[] };
+      expect(page.messages.at(-1)!.parts[0]).toMatchObject({ result: expect.stringContaining("image_refusal") });
+      expect(sent).toEqual(["first.example"]);
+      const retriedId = page.messages.at(-1)!.parts[0]!.toolCallId!;
+      const retriedPath = path.replace("refused", retriedId);
+      expect((await call("GET", retriedPath)).value).toMatchObject({ canEdit: false, userMessage: { text: "Make a garden." } });
+      expect((await call("POST", retriedPath, actor.id, { next: true })).status).toBe(200);
+      expect(sent).toEqual(["first.example", "second.example"]);
+      const after = (await call("GET", `/api/u/${actor.id}/threads/private/${encodeURIComponent(thread.id)}/messages`)).value;
+      expect(after).toMatchObject({ messages: expect.arrayContaining([expect.objectContaining({ parts: expect.arrayContaining([expect.objectContaining({ type: "image", model: "second/art" })]) })]) });
+      const restored = SessionManager.inMemory(rt.home, undefined, view.own.loadEntries(thread.id) as never).buildSessionContext();
+      expect(restored.messages).toEqual(expect.arrayContaining([expect.objectContaining({ role: "custom", customType: "lyrica-image-retry",
+        content: expect.arrayContaining([expect.objectContaining({ type: "text", text: expect.stringContaining("Made with art on second.") })]) })]));
+      expect(models.column(actor.id, "private").entries["image.create"]).toEqual(refs.map(r => r.ref));
+      d.services!.workspace.settings(actor.id).setThread(thread.id, "private", { images: false });
+      expect((await call("POST", path, actor.id, { next: true })).status).toBe(200);
+      expect(sent).toHaveLength(2);
+      d.services!.workspace.settings(actor.id).setThread(thread.id, "private", { images: true });
+      let runningSignal: AbortSignal | undefined;
+      vi.mocked(models.fetchFor).mockReturnValue((async (_url: string, init: RequestInit) => {
+        runningSignal = init.signal!;
+        return new Promise<Response>((_resolve, reject) => runningSignal!.addEventListener("abort", () => reject(runningSignal!.reason), { once: true }));
+      }) as typeof fetch);
+      const stopped = call("POST", path, actor.id, { next: true });
+      await vi.waitFor(() => expect(runningSignal).toBeDefined());
+      await d.services!.host.get(actor.id, "private", thread.id).stop();
+      expect((await stopped).status).toBe(200);
+      expect(runningSignal!.aborted).toBe(true);
+      expect(readdirSync(join(dir, "images"))).toHaveLength(1);
+      expect(d.services!.host.busy(actor.id, "private", thread.id)).toBe(false);
+      view.close();
+    } finally { await d.stop(); }
+  });
+
   it("saves Use for through the daemon recipe route and refreshes the router's offering", async () => {
     const { rt, d, call } = await setup();
     try {
@@ -95,6 +165,7 @@ describe("image routes (principles 1 and 2)", () => {
         expect(added.status).toBe(200);
         const offering = models.offerings(rt.ada.id, ep.id)[0]!;
         const path = `/api/u/${rt.ada.id}/offerings/${offering.id}`;
+        if (shared) expect((await call("PATCH", path.replace(rt.ada.id, rt.sam.id), rt.sam.id, { image: false })).status).toBe(403);
         expect((await call("PATCH", path, rt.ada.id, { useFor: "quality", image: false, edit: true })).status).toBe(200);
         expect(models.offering(rt.ada.id, offering.id)!.offering).toMatchObject({ useFor: "quality", image: false, edit: true });
         expect((await call("PATCH", path, rt.ada.id, { useFor: "slow" })).status).toBe(400);

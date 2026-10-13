@@ -1097,13 +1097,16 @@ export interface Transcription { text: string; seconds: number; model: string }
 // --- Messages ---
 
 /** One part of a stored message, as the UI draws it. */
+export interface ImageRefusal { code: "image_refusal"; offeringId: string; endpointId: string }
+export interface ImageRetryOptions { next?: { offeringId: string; label: string }; userMessage?: { n: number; text: string }; canEdit: boolean }
+/** GET …/image-calls/:toolCallId: current retry choices. POST { next?: boolean }: retry the stored call. */
 export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality" }
 
 export type MessagePart =
   | ImagePart
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
-  | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean; threads?: ThreadRef[] }
+  | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean; threads?: ThreadRef[]; imageRefusal?: ImageRefusal }
   | { type: "recall"; ids: string[] }
   | { type: "remember"; ids: string[] }
   /**
@@ -1369,7 +1372,7 @@ export type ThreadEvent =
   | { type: "thinking"; delta: string }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
   /** `result` is short: the first lines of the tool's output. */
-  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart }
+  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart; imageRefusal?: ImageRefusal }
   /** Memories recalled for this turn, automatically or with recall/read_memory. */
   | { type: "recall"; ids: string[] }
   /** Notes she saved. */

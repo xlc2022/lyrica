@@ -807,7 +807,9 @@ it's off.
     both (2026-10-12). A tier takes the first model in the task's ordered list whose tag
     matches, and falls back down the same list; cloud adapters map the tiers
     to low and high quality. **Use for** in each host's
-    recipe block on Image models saves the tag at once. It is an optional
+    recipe block on Image models saves the tag at once; cloud model blocks
+    there and in Hosts and endpoints save Use for and the Image generation
+    and Image editing switches at once. It is an optional
     `useFor` field in the host's `recipes.json`; cloud tags and image/edit
     flags live in the offering's existing hand JSON. Absent means both.
   - Results go to `images/` in the thread's encrypted folder, with prompt
@@ -818,6 +820,12 @@ it's off.
     folder only. The web shows inline thumbnails, model and tier facts,
     a lightbox and image actions; Settings → Portrait photos manages references
     and their cloud setting, with Send today and Not today on the permission card.
+  - A content refusal stops fallback and shows `image_refusal`, with small
+    text links Edit message, Resend and Try <model>. Edit message copies the
+    source into the composer only while it is the last user message; Try
+    offers the next eligible model on another endpoint in the current task
+    list. Each retry checks privacy and portrait consent again, saves its
+    result in the thread, and leaves the saved task lists in place.
   - Exact layouts and diagrams are HTML or SVG rendered to PNG by the
     sandbox's headless Chromium with internet off, not image-model calls.
 - **Local images** run on **ComfyUI**, inside the model host on a GPU machine.

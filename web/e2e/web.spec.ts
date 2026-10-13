@@ -3120,3 +3120,76 @@ test("Custom… pronouns opens the five fields, starting from the current words"
   await section.getByLabel("Pronouns").selectOption("they/them");
   await expect(section.getByLabel("herself")).toHaveCount(0);
 });
+
+test("image providers run 2: cloud switches and refusal links", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const api = async (method: string, path: string, data?: unknown) => page.evaluate(async ([method, path, data]) => {
+    const response = await fetch(path, { method, headers: { "content-type": "application/json" }, body: data === undefined ? undefined : JSON.stringify(data) });
+    if (!response.ok) throw new Error(`${method} ${path}: ${response.status}`);
+    return response.json();
+  }, [method, `/api/u/${userId}${path}`, data] as const);
+  const fake = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;
+  const ep = await api("POST", "/endpoints", { name: "image-switches", kind: "cloud", baseUrl: `${fake}/cloud/v1`, apiKey: "fake-key" }) as { id: string };
+  const model = await api("POST", `/endpoints/${ep.id}/models`, { modelId: "art-model", tools: true }) as { id: string };
+  await page.goto(`/#/u/${userId}/models/hosts`);
+  const row = page.locator(`[data-endpoint="${ep.id}"]`);
+  await row.getByRole("button", { name: /^\d+ models?$/ }).click();
+  const controls = row.locator(`[data-offering="${model.id}"]`);
+  await expect(controls.getByRole("checkbox", { name: "Image generation" })).not.toBeChecked();
+  await controls.getByRole("checkbox", { name: "Image generation" }).click();
+  await expect(controls.getByRole("checkbox", { name: "Image generation" })).toBeChecked();
+  await controls.getByRole("checkbox", { name: "Image editing" }).click();
+  await expect(controls.getByRole("checkbox", { name: "Image editing" })).toBeChecked();
+  await controls.getByRole("button", { name: "Fast", exact: true }).click();
+  await expect(controls.getByRole("button", { name: "Fast", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/image-switches-${page.viewportSize()!.width}.png` });
+  await page.goto(`/#/u/${userId}/models/images`);
+  const imageRow = page.locator(`[data-entry="${model.id}"]`);
+  await imageRow.getByRole("button").first().click();
+  await expect(imageRow.getByRole("button", { name: "Fast", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await imageRow.getByRole("button", { name: "Quality", exact: true }).click();
+  await expect(imageRow.getByRole("button", { name: "Quality", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await noHorizontalScroll(page);
+  await api("DELETE", `/endpoints/${ep.id}`);
+
+  await page.goto(`/#/u/${userId}`);
+  await newThread(page, "General");
+  await send(page, "An imaginary garden");
+  await expect(page.getByText("You said: An imaginary garden")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  let canEdit = true, next = true;
+  const asked: unknown[] = [];
+  await page.route(`**${base}/messages`, route => route.fulfill({ json: { hasMore: false, messages: [
+    { id: `e:${threadId}#1`, n: 1, role: "user", createdAt: "2026-10-12T12:00:00Z", parts: [{ type: "text", text: "An imaginary garden" }] },
+    { id: `e:${threadId}#2`, n: 2, role: "assistant", createdAt: "2026-10-12T12:00:01Z", parts: [
+      { type: "tool", toolCallId: "refused", name: "image", args: { action: "create", tier: "quality", prompt: "A garden" },
+        result: "Image generation was refused (image_refusal).", isError: true,
+        imageRefusal: { code: "image_refusal", offeringId: "art", endpointId: "ep" } },
+    ] },
+  ] } }));
+  await page.route(`**${base}/image-calls/refused`, route => {
+    if (route.request().method() === "POST") { asked.push(route.request().postDataJSON()); return route.fulfill({ json: { ok: true } }); }
+    return route.fulfill({ json: { canEdit, userMessage: { n: 1, text: "An imaginary garden" }, ...(next ? { next: { offeringId: "next-art", label: "spare/art" } } : {}) } });
+  });
+  await page.reload();
+  const marker = page.locator('.marker[data-type="tool"]');
+  await expect(marker.getByRole("button", { name: "Edit message", exact: true })).toBeVisible();
+  await expect(marker).toContainText("image_refusal");
+  await expect(marker.getByRole("button", { name: "Try spare/art", exact: true })).toBeVisible();
+  await noHorizontalScroll(page);
+  if (phone(page)) expect((await marker.getByRole("button", { name: "Resend", exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/image-refusal-${page.viewportSize()!.width}.png` });
+  await marker.getByRole("button", { name: "Edit message", exact: true }).click();
+  await expect(page.getByLabel("Message", { exact: true })).toHaveValue("An imaginary garden");
+  await marker.getByRole("button", { name: "Resend", exact: true }).click();
+  await expect.poll(() => asked).toEqual([{ next: false }]);
+  await marker.getByRole("button", { name: "Try spare/art", exact: true }).click();
+  await expect.poll(() => asked).toEqual([{ next: false }, { next: true }]);
+  canEdit = false; next = false;
+  await page.reload();
+  await expect(marker.getByRole("button", { name: "Resend", exact: true })).toBeVisible();
+  await expect(marker.getByRole("button", { name: "Edit message", exact: true })).toHaveCount(0);
+  await expect(marker.getByRole("button", { name: /^Try / })).toHaveCount(0);
+});

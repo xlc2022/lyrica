@@ -1,17 +1,17 @@
 import { randomBytes } from "node:crypto";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  appendUserMessage, ContextMeter, createDelegateExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
+  appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
-import { delegateThreads, delegationPart, imagePart, markersFor, plainError, shortResult, toReactions, turnRecall } from "./messages.ts";
+import { delegateThreads, delegationPart, imagePart, imageRefusal, markersFor, plainError, shortResult, toReactions, turnRecall } from "./messages.ts";
 
 export interface HostOptions {
   users: Users;
@@ -450,7 +450,7 @@ export class HostedThread {
   private running: Promise<void> = Promise.resolve();
 
   /** Resolves when the running turn, and the messages queued behind it, are done. */
-  settled(): Promise<void> { return this.running; }
+  settled(): Promise<void> { return this.imageRetryDone ?? this.running; }
 
   /** Waiting for an answer to a permission request. */
   get waiting(): boolean { return this.pending.size > 0; }
@@ -644,17 +644,72 @@ export class HostedThread {
    */
   async stop(): Promise<void> {
     this.unhold();
+    this.imageRetryAbort?.abort();
     for (const p of [...this.pending.values()]) p.done(false, "stopped");
     if (this.queued.length) {
       this.queued = [];
       this.emit({ type: "queue", queued: [] });
     }
+    if (this.imageRetryDone) { await this.imageRetryDone.catch(() => {}); return; }
     if (!this.busy) return this.keep();
     if (!this.opened) return;
     this.aborted = true;
     await this.opened.session.abort();
     // Lock, forgetting or shutdown disposes the session next: kept now, while it can still be synced.
     if (this.closing) this.keep();
+  }
+
+  private imageRetryAbort?: AbortController;
+  private imageRetryDone?: Promise<void>;
+
+  /** Explicit image retry: same executor and consent checks, no changes to saved task lists. */
+  retryImage(args: Parameters<typeof executeImage>[2], offeringId: string, userMessageN?: number): Promise<void> {
+    if (this.closed) throw new Error("this thread was closed");
+    if (this.busy) throw new Busy("a turn is running: stop it or wait for it to end");
+    const done = this.runImageRetry(args, offeringId, userMessageN);
+    this.imageRetryDone = done;
+    return done.finally(() => { if (this.imageRetryDone === done) this.imageRetryDone = undefined; });
+  }
+
+  private async runImageRetry(args: Parameters<typeof executeImage>[2], offeringId: string, userMessageN?: number): Promise<void> {
+    const view = this.o.memory.openThreadView(this.userId, this.pool);
+    this.busy = true;
+    const controller = this.imageRetryAbort = new AbortController();
+    const id = `image-retry-${randomBytes(12).toString("hex")}`;
+    const { workspace, models } = this.o;
+    this.stopIdle();
+    this.o.onTurn?.(this.userId, this.pool, this.threadId, true);
+    try {
+      await this.opening?.catch(() => {});
+      this.dispose();
+      const tools = workspace.forThread({ userId: this.userId, pool: this.pool, threadId: this.threadId, project: view.own.projectOf(this.threadId) });
+      this.emit({ type: "turn_start" });
+      this.emit({ type: "message_start" });
+      this.emit({ type: "tool_start", toolCallId: id, name: "image", args });
+      let result;
+      try {
+        result = await executeImage({ models, threadId: this.threadId,
+          call: () => { const ctx = models.callContext(this.userId, this.pool, this.threadId); return { ...ctx,
+            overrides: { ...ctx.overrides, [`image.${args.action}`]: [{ offeringId }] }, fallback: false }; },
+          files: workspace.imageFiles({ userId: this.userId, pool: this.pool, threadId: this.threadId }),
+          settings: () => workspace.settings(this.userId), enabled: () => tools.settings().images && tools.settings().mode !== "plan",
+          approve: r => this.approve(r),
+        }, id, args, controller.signal);
+      } catch (err) { result = { content: [{ type: "text" as const, text: plainError((err as Error).message) }], isError: true, details: undefined }; }
+      const text = shortResult(result.content);
+      const manager = SessionManager.inMemory(this.o.cwd, undefined, view.own.loadEntries(this.threadId) as never);
+      manager.appendCustomMessageEntry("lyrica-image-retry", result.content, true,
+        { toolCallId: id, args, result: { details: result.details, isError: !!result.isError }, userMessageN });
+      syncEntries(manager, view.own, this.threadId);
+      this.emit({ type: "tool_end", toolCallId: id, name: "image", result: text, isError: !!result.isError,
+        image: imagePart("image", result.details), imageRefusal: imageRefusal("image", result.details) });
+    } finally {
+      view.close(); this.imageRetryAbort = undefined; this.busy = false;
+      this.o.onTurn?.(this.userId, this.pool, this.threadId, false);
+      this.emit({ type: "turn_end", aborted: controller.signal.aborted }); this.startIdle();
+      const waiting = this.queued.splice(0);
+      if (waiting.length) { this.emit({ type: "queue", queued: [] }); await this.start(waiting.join("\n\n")); }
+    }
   }
 
   // --- Permission prompts ---
@@ -908,7 +963,8 @@ export class HostedThread {
         const result = shortResult(content);
         const threads = delegateThreads(e.toolName, (e.result as { details?: unknown } | undefined)?.details, this.pool);
         const image = !e.isError ? imagePart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;
-        this.emit({ type: "tool_end", toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}), ...(image ? { image } : {}) });
+        const refusedImage = imageRefusal(e.toolName, (e.result as { details?: unknown } | undefined)?.details);
+        this.emit({ type: "tool_end", ...(refusedImage ? { imageRefusal: refusedImage } : {}), toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}), ...(image ? { image } : {}) });
         const full = Array.isArray(content) ? content.map((p: { text?: string }) => p.text ?? "").join("\n") : String(content ?? "");
         for (const m of markersFor(e.toolName, (e as { args?: unknown }).args, full)) this.emit(m);
         break;

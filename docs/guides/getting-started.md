@@ -591,26 +591,28 @@ For OpenAI, add an endpoint under Models, Hosts and endpoints: Name
 API key. Any model marked as making images can use this adapter. A ChatGPT
 plan uses its own Responses image tool instead: sign in with ChatGPT, mark
 a plan offering as making and editing images, and put it in the same task
-lists. Masked edits skip the plan; maskless edits work there. If
-discovery doesn't mark the model as able to make and edit images, record it
-through the HTTP API (signed in, with an `Origin` matching her address);
-there is no CLI flag for it yet:
-
-```text
-POST /api/u/<user-id>/endpoints/<endpoint-id>/models
-{ "modelId": "gpt-image-1", "image": true, "edit": true }
-```
+lists. Masked edits skip the plan; maskless edits work there. Open the
+endpoint's model list and turn on **Image generation** and **Image editing**
+for a model that supports them. **Use for** chooses **Fast**, **Quality** or
+**Both**, saved at once. The same controls are in the cloud model's block
+on **Image models**. Only the endpoint's owner, or an administrator for a
+shared endpoint, can change them.
 
 Then put models in the lists, under Models, Tasks, or from a terminal
 (`private` for the Private column, `general` for the General column).
-Cloud offerings can also have `useFor: "fast"`, `"quality"`
-or `"both"` (default) in their capability JSON; create skips the other tier:
+Create skips models tagged only for the other tier:
 
 ```sh
 lyrica admin models preset set general image.create openai-images/gpt-image-1 --user ada
 lyrica admin models preset set general image.edit openai-images/gpt-image-1 --user ada
 lyrica admin models preset set private image.upscale '<host>/<recipe>' --user ada
 ```
+
+A content refusal stops with `image_refusal`. **Edit message** copies the
+source into the composer while it is still the last user message; **Resend**
+repeats the image call on the same model; **Try <model>** appears when another
+eligible endpoint follows it. Retries check portrait consent again and keep
+your saved task lists.
 
 Add reference photos and choose their cloud setting in **Settings → Portrait
 photos**. Ask once a day is the default; **Send today** allows them through

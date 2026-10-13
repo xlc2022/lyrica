@@ -1,3 +1,4 @@
+import { CloudImageControls } from "./CloudImageControls.tsx";
 // The Models area's Image models tab (docs/ux.md §6, "Image models, recipes and parts"): a row per recipe, opening to
 // its copy on each host as a block of parts, and a row per image model on a plain endpoint; Parts, every image model
 // file by type; To review, the recipes the hosts proposed; and Download image model. Each host's library is GET
@@ -210,7 +211,7 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
               <RecipeRow key={r.key} L={L} row={r} groups={groups.data ?? []} offeringOf={offeringOf} open={open === r.key} reveal={reveal}
                 onToggle={() => setOpen(open === r.key ? undefined : r.key)} />
             ))}
-            {shownPlain.map(({ ep, m }) => <PlainRow key={m.id} ep={ep} m={m} open={open === m.id} onToggle={() => setOpen(open === m.id ? undefined : m.id)} />)}
+            {shownPlain.map(({ ep, m }) => <PlainRow ctx={ctx} key={m.id} ep={ep} m={m} open={open === m.id} onToggle={() => setOpen(open === m.id ? undefined : m.id)} />)}
             {!shownRows.length && !shownPlain.length && <li className="empty">{rows.length + plain.length ? "No image models match." : "No image models yet."}</li>}
           </ul>
         ) : (
@@ -267,7 +268,7 @@ function RecipeRow({ L, row, groups, offeringOf, open, reveal, onToggle }: {
 }
 
 /** An image model on a plain endpoint: nothing to manage, so one line. */
-function PlainRow({ ep, m, open, onToggle }: { ep: Endpoint; m: OfferingInfo; open: boolean; onToggle: () => void }) {
+function PlainRow({ ctx, ep, m, open, onToggle }: { ctx: MCtx; ep: Endpoint; m: OfferingInfo; open: boolean; onToggle: () => void }) {
   return (
     <li className={`lrow img-row${open ? " open" : ""}`} data-entry={m.id}>
       <button type="button" className="lrow-main" aria-expanded={open} onClick={onToggle}>
@@ -278,6 +279,7 @@ function PlainRow({ ep, m, open, onToggle }: { ep: Endpoint; m: OfferingInfo; op
       {open && (
         <div className="ldetail">
           <p className="meta">Runs on {ep.name}.</p>
+          {ep.kind === "cloud" && <CloudImageControls ctx={ctx} ep={ep} m={m} />}
         </div>
       )}
     </li>
