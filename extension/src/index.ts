@@ -54,6 +54,8 @@ export interface LyricaOptions {
   meter?: ContextMeter;
   /** In a project chat: its threads with their state, one line each, read every turn. */
   projectThreads?: () => string | undefined;
+  /** Selected recent work for this turn only, supplied by lyricad. */
+  recentWork?: () => string | undefined;
   /** The user's reactions since her last turn, taken each turn: told to her in the turn message. */
   reactions?: () => UserReaction[];
 }
@@ -69,6 +71,10 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
     registerMemoryTools(pi, view, who, { readOnly: opts.memoryTools === "read" });
     if (opts.meter) registerContext(pi, opts.meter);
     if (opts.sleep) pi.registerCommand("sleep", { description: "Sleep now: consolidate, dream and wake, for this pool", handler: (_args, ctx) => opts.sleep!(ctx) });
+    pi.on("context_with_system", event => {
+      const recentWork = opts.recentWork?.();
+      return recentWork ? { messages: [...event.messages, { role: "system" as const, content: `Selected recent work for this turn:\n\n${recentWork}`, timestamp: Date.now() }] } : undefined;
+    });
     pi.on("before_agent_start", async (event, ctx) => {
       const persona = opts.persona();
       const topics = router.route([...persona.topics, SELF_PRIMER], event.prompt);

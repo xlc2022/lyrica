@@ -70,8 +70,10 @@ function deliverVia(pi: ExtensionAPI, ctx: ExtensionContext, thread: ThreadConte
   return ({ content, details }) => {
     try {
       const message = { customType: DELEGATE_MESSAGE, content, display: true, details };
-      if (ctx.isIdle()) {
-        pi.sendMessage(message);
+      if (!ctx.isIdle() && (details as { joinRunning?: boolean } | undefined)?.joinRunning) {
+        pi.sendMessage(message, { deliverAs: "steer", triggerTurn: true });
+      } else if (ctx.isIdle() || (details as { childDelivery?: boolean } | undefined)?.childDelivery) {
+        pi.sendMessage(message, { triggerTurn: false });
         syncEntries(ctx.sessionManager, thread.view.own, thread.threadId);
       } else {
         pi.sendMessage(message, { deliverAs: "followUp", triggerTurn: true });

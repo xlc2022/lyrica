@@ -11,7 +11,7 @@ const persona: Persona = {
 const profile: Profile = { displayName: "Ada", pronouns: PRONOUN_PRESETS.she, previousNames: [] };
 
 /** Loads the extension against a fake Pi API and returns a function that runs one turn. */
-function load(thread: ThreadContext, folders: string[] = [], budgets?: Budgets) {
+function load(thread: ThreadContext, folders: string[] = [], budgets?: Budgets, recentWork?: () => string | undefined) {
   const handlers = new Map<string, Function>();
   const tools: string[] = [];
   let active: string[] = [];
@@ -22,17 +22,28 @@ function load(thread: ThreadContext, folders: string[] = [], budgets?: Budgets) 
     getAllTools: () => tools.map((name) => ({ name })),
     setActiveTools: (names: string[]) => { active = names; },
   } as unknown as ExtensionAPI;
-  void createLyricaExtension(thread, { persona: () => persona, profile: () => profile, folders: () => folders, budgets })(pi);
+  void createLyricaExtension(thread, { persona: () => persona, profile: () => profile, folders: () => folders, budgets, recentWork })(pi);
   const turn = async (prompt: string) => {
     // Pi builds fresh options from its base for every turn.
     const options = { cwd: "/", selectedTools: [], sections: {} as Record<string, string> };
     const result = await handlers.get("before_agent_start")!({ type: "before_agent_start", prompt, systemPrompt: "", systemPromptOptions: options }, { hasUI: false });
     return { options, result, active: [...active] };
   };
-  return Object.assign(turn, { tools });
+  return Object.assign(turn, { tools, request: (messages: unknown[]) => handlers.get("context_with_system")!({ type: "context_with_system", messages }) });
 }
 
 describe("extension", () => {
+  it("adds selected work only to the current request without retaining it in prompt state", async () => {
+    let selected: string | undefined = "SELECTED-WORK";
+    const turn = load((await withMemory()).thread().context, [], undefined, () => selected);
+    const messages = [{ role: "user", content: "Set up the project", timestamp: 1 }];
+    expect(turn.request(messages).messages).toEqual([...messages, { role: "system", content: "Selected recent work for this turn:\n\nSELECTED-WORK", timestamp: expect.any(Number) }]);
+    expect(messages).toHaveLength(1);
+    expect(JSON.stringify((await turn("Set up the project")).options)).not.toContain("SELECTED-WORK");
+    selected = undefined;
+    expect(turn.request(messages)).toBeUndefined();
+  });
+
   it("edits Pi's prompt options instead of replacing the prompt, routed per turn", async () => {
     const turn = load((await withMemory()).thread().context);
     const first = await turn("sing me a song");

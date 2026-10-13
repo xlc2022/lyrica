@@ -16,6 +16,15 @@ rediscovering them (principle 6: trust her judgment, make review easy).
 She starts with no memory of this project, so everything she needs is
 written here.
 
+## Bringing existing work into this project
+
+The back end supports `threads fold { ids }` to suggest bringing existing
+work into the project, with moves applied by the user. `threads draft`
+proposes Goal and Instructions for editing; it never changes the saved
+project instructions. Continue as project leaves the source conversation
+and carries its children into a new project. The interface is built under
+[project-welcome.md](project-welcome.md).
+
 ## Setup, by the owner, once
 
 1. **New project** from the thread list's own menu (right-click or long
@@ -68,7 +77,13 @@ written here.
    tells the threads a change affects and speaks only when the owner must know
    or decide (docs/delegation.md, "Watching threads"). A thread that
    stops with an error, or finishes a task without an update, is reported
-   to the project chat whatever the setting; she reads its latest
+   to the project chat whatever the setting. Questions (`question: true`),
+   `needsYou`, final reports at idle turn end and failure notes wake the
+   project chat once, obeying pause and concurrency. Progress updates only
+   append; replies from a woken chat to its source threads append without
+   waking them, so a thread needing another turn waits for the user or a
+   wake-up. Every thread must end with a message to its parent: the result,
+   or what blocked it; she reads its latest
    messages with `threads read` and stops a thread that went wrong with
    `threads stop` (docs/delegation.md, "Child threads"). CI and reviews
    wake her without a turn being blocked: a pull request she opens through

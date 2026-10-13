@@ -240,6 +240,21 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
       db.exec(PRESET_SCHEMA);
       migrateProfilesToPresets(db);
     },
+  }, {
+    // Principle 1: editable project welcome drafts; expand only.
+    version: 9,
+    run(db) { addColumns(db, [["project_settings", "draft_goal", "TEXT"], ["project_settings", "draft_instructions", "TEXT"]]); },
+  }, {
+    // Principles 1 and 2: durable token totals within each pool. Expand only.
+    version: 10,
+    run(db) {
+      addColumns(db, [["model_calls", "read_tokens", "INTEGER"]]);
+      db.exec(`CREATE TABLE IF NOT EXISTS call_totals (
+        pool TEXT NOT NULL, thread TEXT NOT NULL, label TEXT NOT NULL, kind TEXT NOT NULL,
+        tokens INTEGER NOT NULL DEFAULT 0, gpu_ms INTEGER NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (pool, thread, label, kind)
+      )`);
+    },
   }],
   pool: [{
     version: 1, contract: true,

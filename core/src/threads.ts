@@ -91,6 +91,7 @@ export const PROJECT_CHAT_GUIDELINES = [
   "A follow-up about work a thread is already on goes to that thread (threads message); say which thread you sent it to.",
   "You're told when a thread stops with an error or finishes without a report. Read a thread's latest messages with threads read; stop one that went wrong with threads stop.",
   "When the person asks you to propose first, suggest threads (threads suggest) instead of starting them.",
+  "When setting up from recent work supplied in this turn, draft Goal and Instructions with threads draft for the person to edit in Project settings; never apply them yourself. Suggest existing threads to bring in with threads fold and their ids; the person applies the Fold in card.",
   "When the person says how they want the project run (how many threads at once, who to ask, what to avoid), save it as a note with remember.",
   "A message starting [Watching threads] isn't from the person: it is a look at the project's threads, saying which threads it was about and why, "
     + "which threads it told what (they have those lines already), and maybe a line it raised for the person. "
@@ -99,7 +100,8 @@ export const PROJECT_CHAT_GUIDELINES = [
 
 /** Her guidance in a project's thread. */
 export const PROJECT_THREAD_GUIDELINES = [
-  "Post an update to the project chat (threads message to: \"parent\") at milestones and when you finish, not after every step.",
+  "Post an update to the project chat (threads message to: \"parent\") at milestones, not after every step. Always end with a message to the parent: the result, or what blocked you.",
+  "Use question: true in a message to the parent when you need an answer; plain progress updates do not wake it.",
   "Set needsYou only when the person must decide something before you can go on.",
   "Save lasting decisions about the project with remember.",
   "When the work is delivered, resolve this thread (threads resolve).",
@@ -160,3 +162,11 @@ export function projectSection(own: PoolView["own"], threadId: string, projectTh
 
 /** Only lyricad writes a routine marker. */
 export const ROUTINE = /^\[Routine, ([^\]\n]+)\]\n\n/;
+
+/** Recent-work selection stays in one pool; local-only text needs a local-only project. */
+export function recentWorkAllowed(thread: { project?: boolean; child?: boolean; subagent?: boolean; unlogged?: boolean }, localOnly: boolean, projectLocalOnly: boolean): boolean {
+  return !thread.project && !thread.child && !thread.subagent && !thread.unlogged && (!localOnly || projectLocalOnly);
+}
+
+/** Bounded welcome context: at most ten selected threads, ten messages each, 16,000 characters total. */
+export const WELCOME_LIMITS = { threads: 10, entries: 10, chars: 16_000 };

@@ -360,7 +360,14 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     parent or the user can message it at any time. Its approvals appear in
     the child thread, and in Notifications. The parent is told when it
     stops with an error or finishes a task without an update, and can read
-    its latest messages and stop its turn.
+    its latest messages and stop its turn. A child's question, `needsYou`,
+    final report when its turn ends idle, or a daemon failure/didn't-start
+    note wakes an idle parent for one turn. Progress updates only append.
+    Pending and running wakes coalesce, share the child concurrency limit,
+    and wait while the project is paused or hidden. A parent woken by a
+    child only appends its reply to that child, so their messages can't keep
+    each other taking turns. Every child is told always to end with a
+    message to the parent: the result, or what blocked it.
   - It keeps going in the background and stays until it is forgotten.
     Forgetting a parent asks whether to forget its child threads too, ticked
     by default.
@@ -521,7 +528,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     plain switch, not a quality floor, since models carry no quality data.
 - **Context and pace.** Lyrica and the user both see how full her context
   is and how fast her model answers.
-  - After every turn lyricad records prompt and output tokens, the window,
+  - After every turn lyricad records prompt, total read and output tokens, the window,
     time to first token and generation time, in the call record. Counts and
     times only.
   - lyricad assembles the prompt, so it can break the total down: persona,
@@ -541,6 +548,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     shows as a marker, **Compacted · 41k → 6k**, expanding to the summary.
     Pi's automatic compaction stays on at the window's edge as the safety
     net.
+  - **Tokens** follows Checklist once a thread has a counted turn. Its
+    popover sums every request's reads (cached reads included) and outputs
+    by model, with **GPU time** for local calls (first-token plus generation
+    time, including queueing and loading). Pruned call counts are retained.
+    On a phone Tokens opens rows at the foot of Context.
   - Recent calls and the text library show measured speed; nothing acts on
     it automatically.
 - **Reasoning level.** For models that support it, the message box has a
@@ -985,7 +997,7 @@ Projects: a running conversation, the **project chat**, where the user drops tas
 updates and questions as they come, and **threads** that Lyrica starts for
 the work and keeps track of. Agreed 2026-10-10. The back end and sleep's
 project page are built, and so is the web part except Files and images on
-Project settings and Recent calls by project. The briefs are
+the Project settings page. Recent calls can be filtered by project. The briefs are
 `docs/briefs/projects.md`, `projects-web.md` and `projects-sleep.md`.
 
 - **A project is a top-level thread marked as a project**, and its threads
@@ -996,6 +1008,27 @@ Project settings and Recent calls by project. The briefs are
   all the way down. Depth stays 1: a project's thread delegates to
   subagents but starts no threads, and a project can't hold a project. A
   thread belongs to its project for good.
+- **Bringing recent work into a project** (principle 1): the back end lists
+  up to ten recent logged top-level non-project threads of the same pool.
+  Selected threads supply a bounded read for that project-chat turn only,
+  through `openThreadView`; a local-only thread is listed or read only for
+  a local-only project chat. `threads draft` keeps unsaved Goal and
+  Instructions in encrypted user.db, separate from the saved settings;
+  only the user's Save applies them, and discard removes them.
+  `threads fold` suggests existing thread IDs; the user applies one or all
+  from the call. Folding moves the thread and its child threads under the
+  project, retaining their state, checklists and wake-ups, with cards;
+  child threads become siblings so depth stays one. Cross-pool moves,
+  projects, subagents, already attached work and local-only work into a
+  cloud-capable project chat are refused.
+- **Continue as project** creates a new pinned project in the source
+  thread's pool, copying its workspace grants, model preset and overrides,
+  and local-only switch. The first message links to the source and asks for
+  editable Goal and Instructions drafts, using the source's own model.
+  Its child threads move under the project with their state intact. The
+  source conversation stays in its original thread. These back-end
+  operations are in `daemon/src/routes.ts`; the welcome interface is in
+  `docs/briefs/project-welcome.md`.
 - **Lyrica coordinates in the project chat.** She is the same person
   there; only her guidance and context differ. She answers a quick question
   in place, starts a thread for each piece of work (several tasks in one
@@ -1087,8 +1120,12 @@ Project settings and Recent calls by project. The briefs are
     **New project** is on the context menu of the thread list's empty space;
     it opens an empty project chat, like New thread. The Sort menu can show
     only projects or leave them out.
-  - The project chat's facts line adds **Threads** with a count, opening a
-    popover of its threads grouped by state, and the project's total tokens.
+  - The project chat's facts line adds **Threads** with a count, opening the
+    threads panel from the split width and a popover grouped by state below
+    it, and **Tokens** for the whole
+    project. Tokens opens model shares, Total, **By thread** (This chat
+    first, then threads by tokens), and a project-filtered **Recent calls**
+    link. On a phone Tokens is at the foot of the Threads popover.
     Its actions stay **Files** and **Settings**.
   - **Thread cards:** one per thread, under the message that started it,
     updated in place: title, state, what it waits on, the first line of its

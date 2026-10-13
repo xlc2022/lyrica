@@ -28,7 +28,7 @@ export function newerContext(a?: ContextInfo | null, b?: ContextInfo): ContextIn
 /** Warn from 80 %, danger from 95 %, where compaction is close. */
 export const contextLevel = (percent: number) => (percent >= 95 ? "danger" : percent >= 80 ? "warn" : undefined);
 
-export function ContextFact({ context }: { context: ContextInfo }) {
+export function ContextFact({ context, footer }: { context: ContextInfo; footer?: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -60,6 +60,7 @@ export function ContextFact({ context }: { context: ContextInfo }) {
           </ul>
           <p className="ctx-foot">Measured <span className="num">{shortTime(context.measuredAt)}</span></p>
           {context.pace && <Pace pace={context.pace} />}
+          {footer}
         </div>
       )}
     </span>

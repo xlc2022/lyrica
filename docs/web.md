@@ -112,6 +112,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   came, else `ThreadSummary.steps`, so a new list redraws the fact and
   the open popover in place; with Checklists off it shows none, a list
   already streamed included. Her call itself is a tool marker.
+  **Tokens** follows Checklist once a counted turn exists (`src/Usage.tsx`,
+  `GET …/usage`, reloaded after turns and child updates). Its mono count and
+  caret open model rows with muted local/cloud kind, mono tokens and local
+  **GPU time**, then Total, whose tooltip says “Counts every request, cached reads included.”
+  On a phone it opens rows in place at the foot of Context.
   Then, while she has wake-ups waiting (`ThreadSettings.wakeups`, soonest
   first), **Wake-up** and the soonest time in mono (`wakeTime`: HH:MM today,
   the date before it otherwise) open a popover with each one's time and an
@@ -132,8 +137,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   its state word and its time in mono); below it a popover of the project's
   threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
-  count). The facts line also carries the project's tokens ("65 tokens", "312k tokens"; on a phone the tokens
-  are the popover's first line instead). The header has a **Project**
+  count). The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
+  This chat first, then thread links by descending tokens, and **Recent
+  calls** linking to the project's filter. On a phone Tokens opens in place
+  at the foot of the Threads popover. The header has a **Project**
   link to the project settings page before the Settings button, which
   opens the thread's drawer as in any thread. The
   `child` stream event reloads the overview (`GET …/overview`) and the
@@ -319,31 +326,32 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Remove**; the notice lines as a dashed note with Dismiss. The
   thresholds are the pills' tooltips (stale: unreachable 14 days or more;
   gone: missing 30 days or more), and Replace with… carries the redirect
-  sentence as its tooltip. Recent calls: Time (mono), Thread (a link; private
+  sentence as its tooltip. Recent calls has a **Project** select in its
+  header: **All projects**, then title-sorted projects grouped General and
+  Private, hidden pools omitted. Its hash address retains `?project=&pool=`
+  and the calls API applies both filters. The project list comes from
+  `threads?all=1`, with display visibility applied here, so the sidebar
+  project filter does not remove choices. Recent calls: Time (mono), Thread (a link; private
   kind mark; "a forgotten thread" when gone), Task, Answered by ("model ·
   endpoint"), Note (the fallback or note, warn text); hidden pools left
-  out; the table stacks on a phone. Tasks (`GET …/profiles`, the former
-  Settings → Model profiles): a table of every task (grouped Conversation,
-  Memory, Sleep, Images, Speech; each name's tooltip says what the task
-  does) by profile, **Private threads** (Local) and **General threads** (the
-  default profile; **Use Custom instead** in its head sends `PATCH
-  …/profiles`; **Show Custom too** adds the third column); each head's name
-  has a tooltip about its profile ("Local profile · local models only"). A
-  cell shows the first model with its state dot (up; away when only a later
-  entry can answer; down when none can), or "No model" with a down dot when
-  the list is empty, then "+N fallbacks", "no fallback" (warn) or "= Chat"
-  for a task following another; Dictation has a cell under Private threads
-  only. A cell opens the task's drawer, its title's tooltip naming the
-  profile and the threads it serves: **Its own list** or **Same as** a task
-  of the same kind (**Task to share with**; a task with followers can't
-  follow, and a line under the choice names them, which describes the
-  disabled Same as), the ordered list with Move up,
-  Move down and Remove (in Custom, "Falls back to cloud from here" where the
-  kind changes), and **Add…**, a picker with a search box, group chips and
-  only models the task can use; each change is a `PUT
-  …/profiles/<profile>/<task>` at once, a refusal shown as an error line.
-  Settings → Sleep holds the Sleep mode select and Sleep fallback;
-  `…/settings/profiles` goes to the Tasks tab.
+  out; the table stacks on a phone. Tasks (`GET …/presets`, the former
+  Settings → Model profiles) has two columns, **Private threads** and
+  **General threads**, with a **Preset** menu in each head. Local is private;
+  Cloud is general; named presets follow their scope. The menu holds Search
+  presets, the available presets with Edit beside user presets, Save to and
+  Save as preset… while Custom, then New preset…. Picking a preset sends
+  `PUT …/columns/:column`; editing a task copies its lists to Custom without
+  changing the preset. Preset creation and renaming use the drawer, and
+  Delete preset… confirms in a dialog.
+  Rows group Conversation, Memory, Sleep, Images and Speech. A cell shows
+  the first model's state, +N fallbacks or no fallback, or = Chat for a
+  shared task. Dictation has a Private cell only. The drawer names the
+  column and preset, with **Its own list** or **Same as**, **Task to share
+  with**, ordered models with Move up, Move down and Remove, and **Add…**.
+  General lists mark where fallback crosses local/cloud; Private offers
+  local models only. Changes send `PUT …/columns/:column/:task` at once.
+  Settings → Sleep holds Sleep mode and Sleep fallback;
+  `…/settings/profiles` remains a redirect to Tasks.
   Text models (`src/TextModels.tsx`, its pure parts in `src/library.ts`)
   reads the whole library (`GET …/library/text`, 200 a request) and filters
   in the page, so the facts line ("<n> models · <c> copies on <e> endpoints
@@ -980,7 +988,7 @@ turns animations off.
   links and word diffs, mentions, which paths become links, which code
   blocks get Copy and what it copies (`codeblock.test.ts`), a checklist's
   count and current step (`checklist.test.ts`), the welcome cards' empty states,
-  hidden sleep pools and backend profiles (`cards.test.ts`), routine facts and paused
+  hidden sleep pools and backend presets (`cards.test.ts`), routine facts and paused
   schedules (`routines.test.ts`), the recorder's context
   fallback and clip limit (`voice.test.ts`), and a text model group's warn
   lines (`library.test.ts`), and flyout placement and hover intent (`flyout.test.ts`).
