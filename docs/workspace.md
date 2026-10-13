@@ -943,8 +943,9 @@ finds Chromium, gives its command, how Playwright or Puppeteer use that
 browser, and that a static page is checked once it parses and one screenshot
 looks right. Subagents and child threads get the same
 section. Every run's environment has `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`
-and `REQUESTS_CA_BUNDLE` set to `/etc/ssl/certs/ca-certificates.crt` when the
-host has it, and `CHROME_PATH` and `PUPPETEER_EXECUTABLE_PATH` set to the
+and `REQUESTS_CA_BUNDLE` set to the real path of the host's
+`/etc/ssl/certs/ca-certificates.crt` (on NixOS its store path, which the
+sandbox mounts; never the `/etc/static` link, which it doesn't), and `CHROME_PATH` and `PUPPETEER_EXECUTABLE_PATH` set to the
 sandbox's Chromium, with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` and
 `PUPPETEER_SKIP_DOWNLOAD`, so npm, pip and browser libraries use what is
 there instead of failing on certificates or downloading a browser
