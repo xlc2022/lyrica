@@ -24,7 +24,10 @@ A thread's address may carry what the panel beside it shows:
   notice says so without naming them. Logging out says when the user stays
   unlocked because another browser still holds them.
 - **Sidebar:** the app's name links home, marks it as current
-  there, and closes the phone drawer when pressed. New thread and New project (General or Private), Search (`src/Search.tsx`,
+  there, and closes the phone drawer when pressed. New thread and New project:
+  each row stays put and opens its General / Private choice in a row directly
+  below it, as Search does with its field; clicking the row again or pressing
+  Escape closes the choice, and opening one closes the other. Search (`src/Search.tsx`,
   "Search titles and messages": the list filters by title as it is typed;
   from 2 characters, 300 ms after the last key, `GET …/search` turns it
   into a group per thread in the order of their newest hit, the thread's

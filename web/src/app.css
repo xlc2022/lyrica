@@ -138,7 +138,7 @@ textarea { resize: vertical; }
 .side-nav .ic { color: var(--muted); width: 18px; height: 18px; }
 .side-nav .count, .side-nav .busy { margin-left: auto; }
 .side-nav .busy { margin-right: 6px; }
-.side-nav .new-choice { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; padding: 2px 0 4px; }
+.side-nav .new-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px 8px 8px; }
 button.private { color: var(--private); border-color: color-mix(in oklab, var(--private) 40%, var(--line)); }
 .side-nav details { position: relative; }
 .side-nav summary { list-style: none; cursor: pointer; }
