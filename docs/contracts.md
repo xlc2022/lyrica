@@ -879,10 +879,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `web_fetch` pages (`maskSecrets`) show `SECRET_HIDDEN` for each, and the
     `tool_call` gate refuses a `web_search`, `web_fetch`, `image` or MCP call whose
     input holds one (`holdsSecret`).
-  - `ThreadTools` is `{ target(machine?), settings(), network(),
+  - `ThreadTools` is `{ commandRules?(), target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
     mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
     proposePlan?(PlanRequest), recordChange?(NewChange), fileNotes?() }`.
+    `commandRules()` reads the owning project on every bash call. Forbid
+    blocks in all modes and targets; Ask always prompts; Allow skips only
+    sandbox mode prompts. Opaque commands ask with any forbid rule.
+    `user_bash` is never checked.
     `settings()` is the thread's effective settings. `fileNotes()` returns
     `{ added, removed }` paths the Files panel changed since her last turn,
     which the `workspace` prompt section names in one line. `claudeCode()`
@@ -985,7 +989,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `ThreadTools.approve?(request)`; `lyricad` supplies it and waits for an
   answer from any open view, denying on timeout or Stop. `proposePlan`
   takes the same path: `PermissionAnswer { allow, mode?: GoAhead,
-  allowInThread? }`, and approving a plan without `mode` is `400`. A
+  allowInThread?, alwaysAllow?: true }`, and approving a plan without `mode` is `400`. A
   request on a machine carries `machine` and `cwd`, a suspect one `suspect:
   true` and `warning`, an MCP one `server` and `serverTool`;
   image portrait consent uses `tool: "image"`, `args: { question, provider, model }`
@@ -993,6 +997,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `allowInThread` stores that exact command, or that server's tool, for the
   thread it runs in and is refused on any other request. A plan switching the mode, or a
   settings change, sends the thread a `{ type: "settings" }` event.
+- A sandbox `bash` permission request in a project can carry
+  `alwaysAllow: string`, computed by lyricad, never the browser. Answering
+  with `alwaysAllow: true` saves that stored prefix as a project Allow rule
+  and approves the call, also for a subagent. Other requests refuse it.
+  `ThreadChange.commandRules` replaces rules only on a project chat;
+  `ProjectSettingsInfo.commandRules` returns them.
 - **Sweep** (`Lyricad.sweep`, nightly, before sleep): `sweepUser(services,
   userId)` for each user whose home workspace is mounted clears snapshots
   and change records older than 30 days (`SWEEP_AGE_MS`), the folders and
@@ -1343,7 +1353,7 @@ new Workspace(keyring, users, { excludePorts, frontDoor? })
 //   the proxy's ports, refused on this machine's addresses, on every address
 //   `hosts` has ever resolved to, and on the proxy's addresses
 resolveAddresses(hosts): Promise<string[] | undefined>   // undefined: never resolved, so no network
-interface WorkspaceThread { userId; pool; threadId }
+interface WorkspaceThread { userId; pool; threadId; project? } // owning project, passed through subagents at every depth
 interface Network { internet: boolean; services: boolean; hosts: string[] }
 interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   cwd(): Promise<string>;
@@ -1361,7 +1371,12 @@ interface SshTransport { connect(to: SshEndpoint, verify(fingerprint): boolean):
 sandboxedTransport(sandbox: () => HelperSandbox): SshTransport  // the only client; Workspace.sshTransport (WorkspaceOptions.sshTransport for tests)
 // HelperSandbox { exclude, front?, frontHosts?, bwrap?, pasta?, refused? }: refused (the self-test's reason) fails the call
 helperSandbox(address, port, sandbox): Sandbox           // the helper's sandbox: no workspace, that address and port only
-forThread(t)  // { target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileNotes() },
+settings(userId).commandRules(pool, project): CommandRule[]
+settings(userId).setCommandRules(pool, project, rules) / addCommandRule(pool, project, rule)
+// CommandRule { prefix; decision: "allow" | "ask" | "forbid" }; at most 100; duplicate prefix replaces.
+// user step 6 adds project_settings.command_rules, JSON default []; Projects.set upserts other columns.
+// rules.ts exports commandRules (validation), decide, alwaysAllowPrefix; machines.ts exports simpleCommands.
+forThread(t)  // { commandRules(), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileNotes() },
               // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:
   // roots(), list(dir), search(root, q), images(), read(path) → { stream, size, type }, upload(dir, name, bytes) → path,

@@ -138,7 +138,7 @@ textarea { resize: vertical; }
 .side-nav .ic { color: var(--muted); width: 18px; height: 18px; }
 .side-nav .count, .side-nav .busy { margin-left: auto; }
 .side-nav .busy { margin-right: 6px; }
-.side-nav .new-choice { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; padding: 2px 0 4px; }
+.side-nav .new-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px 8px 8px; }
 button.private { color: var(--private); border-color: color-mix(in oklab, var(--private) 40%, var(--line)); }
 .side-nav details { position: relative; }
 .side-nav summary { list-style: none; cursor: pointer; }
@@ -1323,3 +1323,9 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
 @media (pointer: coarse) {
   .routine-item button.sm { min-height: 44px; }
 }
+
+/* Project commands use the existing fixed-choice buttons; rows wrap at phone width. */
+.command-rule { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.command-rule input { flex: 1 1 160px; min-width: 0; }
+.permission .always-allow { max-width: 100%; white-space: normal; }
+.permission .always-allow .mono { min-width: 0; overflow-wrap: anywhere; }

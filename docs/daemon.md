@@ -536,6 +536,16 @@ and waits for `POST …/permissions/:requestId` with `allow`. Nobody answering
 in 5 minutes, or Stop, denies. A view that opens later sees waiting requests
 in `hello`.
 
+A project's command rules are read for every `bash` call: Forbid refuses
+without a card; Ask prompts in every mode; Allow skips sandbox mode prompts.
+`PATCH …/threads/:pool/:threadId` accepts `commandRules` on a project chat
+only, and its `projectSettings.commandRules` returns the saved list.
+A plain sandbox command request in a project may carry `alwaysAllow`, the
+prefix lyricad computes. An answer with `alwaysAllow: true` adds that stored
+prefix as an Allow rule to the owning project and approves the call, also
+when it runs in a subagent. No browser-supplied prefix is read; requests
+without the stored prefix refuse this answer.
+
 A plan from Plan mode is a request with `tool: "propose_plan"` and `args: {
 plan }`. Approving it takes `mode` too (`ask`, `acceptEdits` or `auto`;
 without it the answer is refused); `lyricad` switches the thread to it and

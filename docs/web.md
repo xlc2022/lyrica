@@ -26,7 +26,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   notice says so without naming them. Logging out says when the user stays
   unlocked because another browser still holds them.
 - **Sidebar:** the app's name links home, marks it as current
-  there, and closes the phone drawer when pressed. New thread and New project (General or Private), Search (`src/Search.tsx`,
+  there, and closes the phone drawer when pressed. New thread and New project:
+  each row stays put and opens its General / Private choice in a row directly
+  below it, as Search does with its field; clicking the row again or pressing
+  Escape closes the choice, and opening one closes the other. Search (`src/Search.tsx`,
   "Search titles and messages": the list filters by title as it is typed;
   from 2 characters, 300 ms after the last key, `GET …/search` turns it
   into a group per thread in the order of their newest hit, the thread's
@@ -188,8 +191,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   servers**, the drawer's own controls,
   then a **Thread settings** link that opens the project chat with its
   drawer showing, `…/t/<pool>/<thread>/settings`, for network, local-only
-  and the other task models), and one Save, which patches the thread
-  (`goal`, `paused`, `watchThreads` when it changed, `threadsModel`,
+  and the other task models), then **Commands**: a mono prefix field per
+  rule, an Allow | Ask | Forbid segment, Remove, and **Add rule**. Empty
+  reads "No rules: commands ask as the mode says." Empty rows are ignored and dropped on Save, and duplicate prefixes (spaces collapsed) fail validation. The page has one Save, which patches the thread
+  (`goal`, `paused`, `commandRules`, `watchThreads` when it changed, `threadsModel`,
   `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
   settings (`grants`, `machines`, `repositories`, `mcpServers` among them); `lyricad`'s
   reason shows when it refuses. Every thread the project starts gets these
@@ -991,3 +996,9 @@ turns animations off.
 - `npx tsx web/e2e/shot.ts [page]...` (after a build) saves screenshots of
   ada's pages from that same throwaway `lyricad`, at both widths, light and
   dark (docs/workspace.md, "Her own code").
+
+A project sandbox command card offers secondary **Always allow `<prefix>`**
+between Allow and Deny, only when lyricad supplied `alwaysAllow`. It answers
+with `alwaysAllow: true`; the prefix is never sent back. Commands uses the
+existing segment and Remove icon (UX rules 2–3), its home in rule 6 and one
+Save with validation in rule 7; rows wrap at phone width (rule 8).

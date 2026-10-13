@@ -1836,6 +1836,12 @@ test("New project in the sidebar creates a pinned project and opens it", async (
   // One row style each, and opening one choice closes the other.
   await side.getByRole("button", { name: "New thread" }).click();
   await expect(side.getByRole("group", { name: "New thread in" })).toBeVisible();
+  // Clicking the row again closes its choice; the row stays put, collapsed.
+  await side.getByRole("button", { name: "New thread" }).click();
+  await expect(side.getByRole("group", { name: "New thread in" })).toHaveCount(0);
+  await expect(side.getByRole("button", { name: "New thread" })).toHaveAttribute("aria-expanded", "false");
+  await side.getByRole("button", { name: "New thread" }).click();
+  await expect(side.getByRole("group", { name: "New thread in" })).toBeVisible();
   await side.getByRole("button", { name: "New project" }).click();
   await expect(side.getByRole("group", { name: "New thread in" })).toHaveCount(0);
   const choice = side.getByRole("group", { name: "New project in" });
@@ -1844,6 +1850,12 @@ test("New project in the sidebar creates a pinned project and opens it", async (
   await expect(side.getByRole("button", { name: "New project" })).toHaveAttribute("aria-expanded", "true");
   await expect(side.getByRole("button", { name: "New thread" })).toHaveAttribute("aria-expanded", "false");
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sidebar-new-${page.viewportSize()!.width}.png` });
+  // Escape closes the choice too, and focus goes back to its row.
+  await page.keyboard.press("Escape");
+  await expect(choice).toHaveCount(0);
+  await expect(side.getByRole("button", { name: "New project" })).toHaveAttribute("aria-expanded", "false");
+  await expect(side.getByRole("button", { name: "New project" })).toBeFocused();
+  await side.getByRole("button", { name: "New project" }).click();
   await choice.getByRole("button", { name: "General" }).click();
   // A new project is created pinned and opened at once, same as the list menu's item does.
   await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();

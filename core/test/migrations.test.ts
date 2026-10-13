@@ -136,7 +136,7 @@ describe("user step 5 (portrait-photo cloud choice)", () => {
       expect(settings.photoCloudPolicy()).toBe(policy ?? "ask");
       expect(settings.photoCloudApproved("2026-10-12")).toBe(false);
       expect(db.prepare("SELECT value FROM settings WHERE key = 'k'").get()).toEqual({ value: "v" });
-      expect(schemaOf(db)).toEqual({ version: 5, minReader: 1 });
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: 1 });
       expect(() => checkReadable(db, "user", STEPS.user.filter(s => s.version <= v))).not.toThrow();
       db.close();
     }
@@ -207,6 +207,28 @@ describe("pool step 6 (routines)", () => {
       expect(db.prepare("SELECT new_thread, paused, last_at FROM routines").get()).toEqual({ new_thread: 0, paused: 0, last_at: null });
       db.prepare("DELETE FROM threads WHERE id = 'web/a'").run();
       expect(db.prepare("SELECT * FROM routines").all()).toEqual([]);
+      db.close();
+    }
+  });
+});
+
+describe("user step 6 (project command rules)", () => {
+  it("expands every released schema and preserves project settings and old readers", () => {
+    for (let version = 1; version < 6; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter(s => s.version <= version);
+      migrate(db, "user", {}, previous);
+      db.prepare("INSERT INTO project_settings (pool, thread, paused, thinking) VALUES ('general', 'web/project', 1, 'high')").run();
+      migrate(db, "user");
+      const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+      expect(settings.commandRules("general", "web/project")).toEqual([]);
+      settings.addCommandRule("general", "web/project", { prefix: "npm test", decision: "ask" });
+      settings.addCommandRule("general", "web/project", { prefix: "npm test", decision: "allow" });
+      expect(settings.commandRules("general", "web/project")).toEqual([{ prefix: "npm test", decision: "allow" }]);
+      expect(settings.commandRules("private", "web/project")).toEqual([]);
+      expect(db.prepare("SELECT paused, thinking FROM project_settings").get()).toEqual({ paused: 1, thinking: "high" });
+      expect(schemaOf(db)).toEqual({ version: 6, minReader: 1 });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
       db.close();
     }
   });
