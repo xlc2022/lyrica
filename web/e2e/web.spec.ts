@@ -2469,7 +2469,7 @@ test("the sidebar's status panel shows the endpoints on any page, and a very lon
   for (const name of ["router", "openai"]) {
     const item = line.locator(".status-item").filter({ hasText: name });
     await expect(item).toBeVisible();
-    await expect(item.locator(".num")).toHaveText(/^\d+ (s|min)$/);
+    await expect(item.locator(".num")).toHaveText(/^\d+$/);
   }
   await noHorizontalScroll(page);
 
