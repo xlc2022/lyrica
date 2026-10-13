@@ -43,6 +43,24 @@ function fakeModel() {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", async () => {
+      // Test-only history fixture, in encrypted stores; never a production route.
+      if (req.method === "POST" && req.url === "/history-fixture") {
+        const { userId } = JSON.parse(body) as { userId: string };
+        const view = daemon.services!.memory.openThreadView(userId, "general");
+        try {
+          const sources = view.own.addNotes(Array.from({ length: 8 }, (_, i) => ({ text: `Fixture source ${i + 1}` })), { author: "sleep" });
+          view.own.putPage({ slug: "lineage-fixture", title: "Fixture lineage", summary: "", text: `Fixture memory ${sources.map((id) => `[${id}]`).join(" ")}` }, "sleep");
+          // A second write, so the page has an earlier version for its History preview to show.
+          view.own.putPage({ slug: "lineage-fixture", title: "Fixture lineage", summary: "", text: `Fixture memory ${sources.map((id) => `[${id}]`).join(" ")} · second draft` }, "sleep");
+          for (let i = 1; i <= 8; i++) view.own.putPage({ slug: `lineage-use-${i}`, title: `Fixture use ${i}`, summary: "", text: "Uses [p:lineage-fixture]." }, "sleep");
+          for (let i = 1; i <= 24; i++) {
+            view.own.recordSleepRun("scheduled", i === 1 ? "endpoint-down" : "no-activity", `2026-09-${String(i).padStart(2, "0")}T04:00:00.000Z`);
+            view.own.putWake(`Fixture dream ${i}`, "sleep");
+            view.own.addJournal(`Fixture journal ${i}`, "sleep");
+          }
+        } finally { view.close(); }
+        res.writeHead(204); return res.end();
+      }
       if (req.url === "/speech/down" || req.url === "/speech/up") { speechDown = req.url === "/speech/down"; res.writeHead(204); return res.end(); }
       if (req.url?.startsWith("/speech/v1/")) {
         const rest = req.url.slice("/speech/v1".length);

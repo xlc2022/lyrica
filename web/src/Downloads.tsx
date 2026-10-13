@@ -1,13 +1,14 @@
 // The Models area's Downloads tab (docs/ux.md §6, "Downloads and hub accounts"): the queue of every host's downloads,
-// In progress then Finished, read again every 2 s while anything runs; the Download text model page (and what Download
+// Active work and one finished History preview, read again every 2 s while anything runs; the Download text model page (and what Download
 // image model shares with it); and Accounts, the hub tokens for gated repositories. A host's downloads need its
 // management, so a shared host's need an administrator, and only those hosts are listed. Its pure parts are in
 // src/downloads.ts.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { del, get, patch, post, put, u, type GroupInfo, type GroupSuggestion, type HostStatus, type Hub, type HubTokenInfo, type ModelsPage } from "./api.ts";
-import { downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, type HostDownload, type HubFiles } from "./downloads.ts";
+import { del, get, patch, post, put, u, type DownloadHistory, type GroupInfo, type GroupSuggestion, type HostStatus, type Hub, type HubTokenInfo, type ModelsPage } from "./api.ts";
+import { HistoryHead, HistoryList } from "./History.tsx";
+import { clearFinished, downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, type HostDownload, type HubFiles } from "./downloads.ts";
 import { canEdit, Frame, hostOf, type MCtx } from "./ModelsFrame.tsx";
-import { cameFrom, go, href } from "./route.ts";
+import { cameFrom, go, href, type Route } from "./route.ts";
 import { ErrorText, useAction, useLoad } from "./ui.tsx";
 
 type Endpoint = ModelsPage["endpoints"][number];
@@ -28,14 +29,14 @@ export function wayBack(fallback: string): string {
 }
 
 /** One host's downloads, or why they couldn't be read. */
-type HostList = { ep: Endpoint; downloads: HostDownload[]; error?: string };
+type HostList = { ep: Endpoint; downloads: HostDownload[]; finishedTotal?: number; error?: string };
 
-export function Downloads({ ctx }: { ctx: MCtx }) {
+export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?: boolean; route?: Extract<Route, { page: "models" }> }) {
   const userId = ctx.user.id;
   const hosts = useMemo(() => managedHosts(ctx).map((h) => h.ep), [ctx]);
   const key = hosts.map((ep) => `${ep.id}:${ep.name}`).join(" ");
   const lists = useLoad(() => Promise.all(hosts.map(async (ep): Promise<HostList> => {
-    try { return { ep, downloads: (await get<{ downloads: HostDownload[] }>(u(userId, "hosts", ep.id, "downloads"))).downloads }; }
+    try { return { ep, ...await get<{ downloads: HostDownload[]; finishedTotal: number }>(`${u(userId, "hosts", ep.id, "downloads")}?preview=1`) }; }
     catch (e) { return { ep, downloads: [], error: `${ep.name}: ${(e as Error).message}` }; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   })), [userId, key]);
@@ -63,7 +64,10 @@ export function Downloads({ ctx }: { ctx: MCtx }) {
 
   const cancel = (ep: Endpoint, d: HostDownload) => run(async () => { await del(u(userId, "hosts", ep.id, "downloads", d.id)); reload(); });
   const clear = () => run(async () => {
-    for (const { ep, d } of finished) await del(u(userId, "hosts", ep.id, "downloads", d.id));
+    await clearFinished(
+      (offset) => get<DownloadHistory>(`${u(userId, "models", "downloads", "history")}?limit=100&offset=${offset}`),
+      ({ endpointId, download }) => del(u(userId, "hosts", endpointId, "downloads", download.id)),
+    );
     reload();
   });
   const addToGroup = (g: GroupInfo, offeringId: string) => run(async () => {
@@ -82,42 +86,49 @@ export function Downloads({ ctx }: { ctx: MCtx }) {
     return join ? { join, offeringId: offering.id } : undefined;
   };
 
-  const facts = lists.data && <>{active.length ? <><span className="num">{active.length}</span> running</> : "Nothing running"} · <span className="num">{finished.length}</span> finished</>;
+  const finishedRow = (ep: Endpoint, d: HostDownload) => {
+    const g = groupOf(ep, d);
+    return <Item key={`${ep.id}/${d.id}`} ep={ep} d={d} busy={busy}>
+      {g?.group && <>{SEP}in the group “{g.group.name}”</>}
+      {g?.join && <>{SEP}<button type="button" className="link" disabled={busy} onClick={() => void addToGroup(g.join, g.offeringId)}>Add to the group “{g.join.name}”</button></>}
+    </Item>;
+  };
+
+  // Every finished download across the hosts, from each host's true total when it gave one (its list may be truncated).
+  const finishedCount = lists.data?.reduce((n, l) => n + (l.finishedTotal ?? l.downloads.filter((d) => !isRunning(d)).length), 0);
+  const facts = lists.data && <>{active.length ? <><span className="num">{active.length}</span> running</> : "Nothing running"} · <span className="num">{finishedCount}</span> finished</>;
   const actions = <>
     <button type="button" onClick={() => go({ page: "models", userId, tab: "downloads", add: "text" })}>Download text model</button>
     <button type="button" onClick={() => go({ page: "models", userId, tab: "images", add: "image" })}>Download image model</button>
   </>;
   return (
-    <Frame ctx={ctx} tab="downloads" title="Downloads" facts={facts} actions={actions} running={lists.data ? active.length : undefined}>
+    <Frame ctx={ctx} tab="downloads" title={history ? "Download history" : "Downloads"} facts={history ? undefined : facts} actions={history ? <a href={href({ page: "models", userId, tab: "downloads" })}>Downloads</a> : actions} running={lists.data ? active.length : undefined}>
       <ErrorText error={ctx.models.error || lists.error || error} />
       {(lists.data ?? []).map((l) => l.error && <ErrorText key={l.ep.id} error={l.error} />)}
-      <section className="section" aria-labelledby="h-queue">
+      {!history && <section className="section" aria-labelledby="h-queue">
         <div className="section-head">
           <h2 id="h-queue">Queue</h2>
           {finished.length > 0 && <button type="button" className="link" disabled={busy} onClick={() => void clear()}>Clear finished</button>}
         </div>
         <div aria-live="polite">
-          {items.length ? (
+          {active.length ? (
             <ul className="list downloads">
               {active.length > 0 && <li className="group-head eyebrow">In progress</li>}
               {active.map(({ ep, d }) => <Item key={`${ep.id}/${d.id}`} ep={ep} d={d} busy={busy} onCancel={() => void cancel(ep, d)} />)}
-              {finished.length > 0 && <li className="group-head eyebrow">Finished</li>}
-              {finished.map(({ ep, d }) => {
-                const g = groupOf(ep, d);
-                return (
-                  <Item key={`${ep.id}/${d.id}`} ep={ep} d={d} busy={busy}>
-                    {g?.group && <>{SEP}in the group “{g.group.name}”</>}
-                    {g?.join && <>{SEP}<button type="button" className="link" disabled={busy} onClick={() => void addToGroup(g.join, g.offeringId)}>Add to the group “{g.join.name}”</button></>}
-                  </Item>
-                );
-              })}
             </ul>
-          ) : lists.data && (
+          ) : lists.data && !finished.length && (
             <p className="list empty">No downloads yet. Start one from a library's <b>Download model</b> button, or here.</p>
           )}
         </div>
+      </section>}
+      <section className="section" aria-label="History" aria-live={history ? undefined : "polite"}>
+        {!history && <HistoryHead to={{ page: "models", userId, tab: "downloads", add: "history" }} count={finishedCount} />}
+        {history ? <HistoryList<DownloadHistory["entries"][number], DownloadHistory> route={route} path={u(userId, "models", "downloads", "history")} render={(page) => <ul className="list downloads">{page.entries.map(({ endpointId, download }) => {
+          const ep = hosts.find((h) => h.id === endpointId);
+          return ep ? finishedRow(ep, download) : null;
+        })}</ul>} /> : <ul className="list downloads">{finished.slice(0, 1).map(({ ep, d }) => finishedRow(ep, d))}</ul>}
       </section>
-      <Accounts ctx={ctx} />
+      {!history && <Accounts ctx={ctx} />}
     </Frame>
   );
 }

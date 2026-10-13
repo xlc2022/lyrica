@@ -21,6 +21,7 @@ import { notifications } from "./notifications.ts";
 import { SEARCH_PAGE, searchMessages } from "./search.ts";
 import { forgetThreadFiles } from "./sweep.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
+import { historyQuery } from "./history.ts";
 import { redactUrl, unredactUrl } from "./redact.ts";
 
 const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date", projects: "all", checklists: true };
@@ -405,7 +406,14 @@ export function apiRoutes(d: Lyricad): Route[] {
       return s().models.hubFiles(d.userFor(r), r.params.endpointId!, { source, repo: String(r.query.get("repo") ?? ""), ...(r.query.get("revision") ? { revision: r.query.get("revision")! } : {}) });
     }),
     route("POST", `${u}/hosts/:endpointId/downloads`, async (r) => s().models.startDownload(d.userFor(r), r.params.endpointId!, await r.json<Api.DownloadInput>())),
-    route("GET", `${u}/hosts/:endpointId/downloads`, async (r) => s().models.downloads(d.userFor(r), r.params.endpointId!)),
+    route("GET", `${u}/hosts/:endpointId/downloads`, async (r) => {
+      const result = await s().models.downloads(d.userFor(r), r.params.endpointId!);
+      if (r.query.get("preview") !== "1") return result;
+      const downloads = result.downloads as Api.HostDownload[];
+      const active = downloads.filter((x) => ["queued", "downloading", "verifying"].includes(x.state));
+      const finished = downloads.filter((x) => !active.includes(x)).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+      return { downloads: [...active, ...finished.slice(0, 1)], finishedTotal: finished.length };
+    }),
     route("DELETE", `${u}/hosts/:endpointId/downloads/:downloadId`, async (r) => s().models.cancelDownload(d.userFor(r), r.params.endpointId!, r.params.downloadId!)),
     route("GET", `${u}/hosts/:endpointId/images`, async (r) => s().models.imageLibrary(d.userFor(r).id, r.params.endpointId!)),
     route("POST", `${u}/hosts/:endpointId/recipes/:recipeId`, async (r) => {
@@ -441,7 +449,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const hosts = looks.filter(({ e }) => e.api === "host").map(({ e, look }) => look.status
         ? { endpointId: e.id, status: look.status as Api.HostStatus }
         : { endpointId: e.id, error: look.error ?? `${e.name} is down`, ...(look.unpaired ? { unpaired: true as const } : {}) });
-      return { endpoints: live, hosts, presets: presets(d, user.id), calls: m.recentCalls(user.id, { limit: 20 }), notice: m.notice(user.id), cleanup: m.cleanup(user.id).length };
+      return { endpoints: live, hosts, presets: presets(d, user.id), calls: m.callHistory(user.id, { limit: 1, offset: 0, q: "", pools: shownPools(display(d, user.id)) }).entries, notice: m.notice(user.id), cleanup: m.cleanup(user.id).length };
     }),
     route("POST", `${u}/hosts/:endpointId/:action`, async (r) => {
       const action = r.params.action;
@@ -488,6 +496,30 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("GET", `${u}/models/notice`, (r): Api.ModelsNotice => ({ lines: s().models.notice(d.userFor(r).id) })),
     route("DELETE", `${u}/models/notice`, (r) => { s().models.dismissNotice(d.userFor(r).id); return { ok: true }; }),
+    route("GET", `${u}/models/downloads/history`, async (r): Promise<Api.DownloadHistory> => {
+      const user = d.userFor(r), opts = historyQuery(r.query);
+      const hosts = s().models.endpoints(user.id).filter((ep) => ep.api === "host" && (!ep.shared || user.admin));
+      const lists = await Promise.all(hosts.map(async (ep) => {
+        const result = await s().models.downloads(user, ep.id);
+        return (result.downloads as Api.HostDownload[]).filter((x) => !["queued", "downloading", "verifying"].includes(x.state))
+          .filter((x) => [ep.name, x.path, x.source, x.repo, x.state, x.startedAt, x.error].join(" ").toLowerCase().includes(opts.q.toLowerCase()))
+          .map((download) => ({ endpointId: ep.id, download }));
+      }));
+      const entries = lists.flat().sort((a, b) => b.download.startedAt.localeCompare(a.download.startedAt) || b.download.id.localeCompare(a.download.id) || a.endpointId.localeCompare(b.endpointId));
+      return { total: entries.length, entries: entries.slice(opts.offset, opts.offset + opts.limit) };
+    }),
+    route("GET", `${u}/models/calls/history`, (r): Api.HistoryPage<Api.CallInfo> => {
+      const user = d.userFor(r), opts = historyQuery(r.query);
+      let pools = shownPools(display(d, user.id));
+      const project = r.query.get("project");
+      const pool = checkPool(r.query.get("pool") ?? "general");
+      if (project) {
+        if (!pools.includes(pool)) throw new HttpError(404, "no such project");
+        pools = [pool];
+      }
+      const threadIds = project ? owner(d, user, (o) => o[pool].projectThreads(project)) : undefined;
+      return s().models.callHistory(user.id, { ...opts, pools, ...(threadIds ? { threadIds } : {}) });
+    }),
     route("GET", `${u}/models/calls`, (r): Api.CallInfo[] => {
       const user = d.userFor(r);
       const project = r.query.get("project");
@@ -1485,6 +1517,20 @@ export function apiRoutes(d: Lyricad): Route[] {
       s().sleep.setMode(user.id, mode);
       return sleepOverview(d, user);
     }),
+    route("GET", `${u}/sleep/history`, (r): Api.HistoryPage<Api.SleepRunInfo> => {
+      const user = d.userFor(r), opts = historyQuery(r.query);
+      const pools = shownPools(display(d, user.id));
+      // Each pool uses SQL search/count. Only metadata is merged, never run text.
+      const pages = pools.map((pool) => {
+        const view = s().memory.openThreadView(user.id, pool);
+        try {
+          const page = view.own.sleepRunHistory({ ...opts, offset: 0, limit: Math.min(Number.MAX_SAFE_INTEGER, opts.offset + opts.limit) });
+          return { total: page.total, entries: page.entries.map((x) => sleepRunInfo(pool, x)) };
+        } finally { view.close(); }
+      });
+      return { total: pages.reduce((n, p) => n + p.total, 0), entries: pages.flatMap((p) => p.entries)
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.id.localeCompare(a.id) || a.pool.localeCompare(b.pool)).slice(opts.offset, opts.offset + opts.limit) };
+    }),
     route("GET", `${u}/sleep/events`, (r) => {
       const user = d.userFor(r);
       const { res } = r;
@@ -1619,6 +1665,33 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (!Array.isArray(ids)) throw new Error("ids is a list of memory IDs");
       owner(d, user, (o) => o[poolOf(r)].deleteMany(ids.map(String), author(user)));
       return { ok: true };
+    }),
+    route("GET", `${u}/memory/journal/history`, (r): Api.HistoryPage<Api.MemoryHit> => {
+      const user = d.userFor(r), opts = historyQuery(r.query);
+      const pools = shownPools(display(d, user.id)).filter((p) => !r.query.get("pool") || p === checkPool(r.query.get("pool")));
+      return owner(d, user, (o) => {
+        const pages = pools.map((pool) => {
+          const page = o[pool].journalHistory({ ...opts, offset: 0, limit: Math.min(Number.MAX_SAFE_INTEGER, opts.offset + opts.limit) });
+          return { total: page.total, entries: page.entries.map((item): Api.MemoryHit => ({ pool, id: item.id, kind: "journal", snippet: firstLine(item.text), score: 0, origin: "sleep", updatedAt: item.updatedAt })) };
+        });
+        return { total: pages.reduce((n, page) => n + page.total, 0), entries: pages.flatMap((page) => page.entries)
+          .sort((a, b) => b.updatedAt!.localeCompare(a.updatedAt!) || b.id.localeCompare(a.id) || a.pool.localeCompare(b.pool)).slice(opts.offset, opts.offset + opts.limit) };
+      });
+    }),
+    route("GET", `${u}/memory/:pool/:id/history`, (r): Api.MemoryHistory => {
+      const user = d.userFor(r), pool = poolOf(r), id = r.params.id!, show = display(d, user.id);
+      if (!shownPools(show).includes(pool)) throw new HttpError(404, "no such memory");
+      const opts = historyQuery(r.query);
+      return owner(d, user, (o) => {
+        const detail = memoryDetail(d, o, pool, id, show);
+        const page = o[pool].revisionHistory(id, opts);
+        // Older citations need the same pool/display restrictions as the current text.
+        for (const revision of page.entries) for (const ref of citationsIn(revision.body.text, pool)) {
+          const link = linkFor(o, pool, ref, show);
+          if (link) detail.links[ref] = link;
+        }
+        return { ...page, detail };
+      });
     }),
     route("GET", `${u}/memory/:pool/:id`, (r) => { const user = d.userFor(r); return owner(d, user, (o) => memoryDetail(d, o, poolOf(r), r.params.id!, display(d, user.id))); }),
     route("PATCH", `${u}/memory/:pool/:id`, async (r) => {
@@ -2179,7 +2252,7 @@ function sleepOverview(d: Lyricad, user: User): Api.SleepOverview {
       mode: d.services!.sleep.mode(user.id),
       time: d.sleepTime(),
       items: pools.flatMap((p) => o[p].listItems().map((i) => sleepItemInfo(p, i))).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-      runs: pools.flatMap((p) => o[p].listSleepRuns(30).map((r) => sleepRunInfo(p, r))).sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
+      runs: pools.flatMap((p) => o[p].listSleepRuns(1).map((r) => sleepRunInfo(p, r))).sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
     };
   });
 }
@@ -2701,7 +2774,7 @@ function memoryDetail(d: Lyricad, o: OwnerView, pool: Pool, id: string, show: Ap
     cameFrom,
     usedIn: [...own, ...other],
     links,
-    revisions: store.revisions(id).map((r) => ({ id: r.id, body: r.body, author: r.author, createdAt: r.createdAt })),
+    revisions: store.revisionHistory(id, { limit: 2, offset: 0, q: "" }).entries.map((r) => ({ id: r.id, body: r.body, author: r.author, createdAt: r.createdAt })),
     users,
   };
 }

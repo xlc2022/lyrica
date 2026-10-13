@@ -10,6 +10,7 @@ import {
   type CallInfo, type CleanupItem, type Column, type ColumnState, type ColumnTaskChange, type EndpointChange, type EndpointInfo, type Entry, type GroupInfo, type HostStatus, type ModelsNotice, type ModelsPage,
   type ModelRef, type OfferingInfo, type PlanSignInStarted, type PresetInfo, type Presets, type PresetScope, type Task, type ThreadSummary,
 } from "./api.ts";
+import { HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
 import { Downloads, DownloadText } from "./Downloads.tsx";
 import { DownloadImage, ImageModels, ImageReview } from "./ImageModels.tsx";
@@ -18,7 +19,7 @@ import {
   canEdit, Frame, GB, gb, hostOf, Kind, plural, TASK_WORD, useWords, VoiceDrawer,
   type Host, type MCtx, type ModelsState,
 } from "./ModelsFrame.tsx";
-import { go, href, type ModelsPageUnder, type ModelsTab } from "./route.ts";
+import { go, href, type ModelsPageUnder, type ModelsTab, type Route } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { CloudImageControls } from "./CloudImageControls.tsx";
 import { TextModels } from "./TextModels.tsx";
@@ -35,7 +36,7 @@ export function useCleanupCount(userId: string): { count: number; reload: () => 
  * on each tab, and every 30 s and on focus while the area stays open. A reload also refreshes the sidebar's count.
  */
 function useModelsPage(ctx: ShellContext): ModelsState {
-  const p = useLoad(() => get<ModelsPage>(u(ctx.user.id, "models", "page")), [ctx.user.id]);
+  const p = useLoad(() => get<ModelsPage>(u(ctx.user.id, "models", "page")), [ctx.user.id, ctx.me.display.showGeneral, ctx.me.display.showPrivate]);
   const { reload: reloadPage } = p;
   const { reload: reloadCount } = ctx.cleanup;
   const reload = useCallback(() => { reloadPage(); reloadCount(); }, [reloadPage, reloadCount]);
@@ -99,8 +100,8 @@ const paused = (h?: Host) => !!h && "status" in h && (h.status.state === "paused
 /** The host has revoked this server: pairing again is the fix. */
 const unpaired = (h?: Host) => !!h && "error" in h && !!h.unpaired;
 
-/** The Models area, at one of its tabs. */
-export function ModelsArea({ ctx: shell, tab = "overview", add, project, pool }: { ctx: ShellContext; tab?: ModelsTab; add?: ModelsPageUnder; project?: string; pool?: "general" | "private" }) {
+/** The Models area, at one of its tabs. `route` carries the page number and search text for Download history and Call history. */
+export function ModelsArea({ ctx: shell, tab = "overview", add, route }: { ctx: ShellContext; tab?: ModelsTab; add?: ModelsPageUnder; route?: Extract<Route, { page: "models" }> }) {
   const models = useModelsPage(shell);
   const ctx: MCtx = { ...shell, models };
   const { reload } = models;
@@ -115,9 +116,9 @@ export function ModelsArea({ ctx: shell, tab = "overview", add, project, pool }:
   if (tab === "images") return <ImageModels ctx={ctx} />;
   if (tab === "hosts") return <Hosts ctx={ctx} />;
   if (tab === "downloads" && add === "text") return <DownloadText ctx={ctx} />;
-  if (tab === "downloads") return <Downloads ctx={ctx} />;
+  if (tab === "downloads") return <Downloads ctx={ctx} history={add === "history"} route={route} />;
   if (tab === "cleanup") return <Cleanup ctx={ctx} />;
-  if (tab === "calls") return <Calls ctx={ctx} project={project} pool={pool} />;
+  if (tab === "calls") return <Calls ctx={ctx} route={route} />;
   return <Overview ctx={ctx} />;
 }
 
@@ -151,8 +152,8 @@ function Overview({ ctx }: { ctx: MCtx }) {
           ) : <p className="empty">No endpoints yet.</p>}
         </section>
         <section className="section" aria-labelledby="h-models-calls">
-          <div className="section-head"><h2 id="h-models-calls">Recent calls</h2><a href={href({ page: "models", userId, tab: "calls" })}>All calls</a></div>
-          <CallsTable ctx={ctx} calls={p.calls} limit={5} />
+          <div className="section-head"><h2 id="h-models-calls" className="eyebrow">History</h2><a href={href({ page: "models", userId, tab: "calls" })}>Show all</a></div>
+          <CallsTable ctx={ctx} calls={p.calls} limit={1} />
         </section>
       </>}
     </Frame>
@@ -1427,15 +1428,14 @@ function Cleanup({ ctx }: { ctx: MCtx }) {
 
 /* ---- Recent calls ---- */
 
-function Calls({ ctx, project, pool }: { ctx: MCtx; project?: string; pool?: "general" | "private" }) {
+function Calls({ ctx, route }: { ctx: MCtx; route?: Extract<Route, { page: "models" }> }) {
+  const { project, pool } = route ?? {};
   const allThreads = useLoad(() => get<ThreadSummary[]>(u(ctx.user.id, "threads") + "?all=1"), [ctx.user.id, ctx.threads]);
   const projects = (allThreads.data ?? ctx.threads).filter(t => t.project && !hidden(ctx.me.display, t.pool) && (ctx.me.display.showHidden || !t.hidden)).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
   const selected = projects.find(t => t.id === project && t.pool === pool);
   const filter = selected ? `?project=${encodeURIComponent(selected.id)}&pool=${selected.pool}` : "";
-  const calls = useLoad(() => get<CallInfo[]>(u(ctx.user.id, "models", "calls") + filter), [ctx.user.id, filter]);
-  const shown = (calls.data ?? []).filter((c) => !hidden(ctx.me.display, c.pool));
   return (
-    <Frame ctx={ctx} tab="calls" title="Recent calls" facts={calls.data && plural(shown.length, "call", "calls")} actions={
+    <Frame ctx={ctx} tab="calls" title="Call history" actions={
       <label className="project-filter">Project <select aria-label="Project" value={selected ? `${selected.pool}/${selected.id}` : ""} onChange={e => {
         const t = projects.find(t => `${t.pool}/${t.id}` === e.target.value);
         go({ page: "models", userId: ctx.user.id, tab: "calls", ...(t ? { project: t.id, pool: t.pool } : {}) });
@@ -1444,8 +1444,7 @@ function Calls({ ctx, project, pool }: { ctx: MCtx; project?: string; pool?: "ge
         return list.length ? <optgroup key={p} label={p === "general" ? "General" : "Private"}>{list.map(t => <option key={t.id} value={`${p}/${t.id}`}>{t.title || "New project"}</option>)}</optgroup> : null;
       })}</select></label>
     }>
-      <ErrorText error={calls.error} />
-      {calls.data && <CallsTable ctx={ctx} calls={calls.data} />}
+      <HistoryList<CallInfo> key={`${ctx.user.id}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}/${filter}`} route={route} path={u(ctx.user.id, "models", "calls", "history") + filter} render={(page) => <CallsTable ctx={ctx} calls={page.entries} />} />
     </Frame>
   );
 }
