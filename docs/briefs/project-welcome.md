@@ -39,15 +39,17 @@ one place) and the existing Projects design.
    **Instructions** are drafted from the thread (a summary Lyrica writes,
    shown for editing on the Project settings page, not applied silently),
    whose repositories, folders and machines copy the thread's grants, and
-   whose first message links back to the source thread. The source thread
-   stays as it is, and its pool and local-only setting carry over; a
+   whose first message links back to the source thread. The thread's child
+   threads move under the new project as its threads, with their state,
+   checklists and wake-ups intact, and get a card in the project chat. The
+   source thread stays as it is otherwise, and its pool and local-only setting carry over; a
    local-only thread seeds with its local model only. Make project is
    unchanged (it turns the thread itself into the project, with no way
    back).
 
 ## Out of scope
 
-- Moving or copying the thread's messages into the project.
+- Moving or copying the source thread's own messages into the project.
 - Seeding from several threads at once.
 - Any change to Make project.
 
