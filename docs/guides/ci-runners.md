@@ -60,7 +60,11 @@ The script, in order:
    checksum in its release notes, into `/home/runner/actions-runner`. It
    updates itself after that.
 4. Registers it with the repository under the name of the VM's hostname
-   and the label `lyrica-ci`, and installs it as a systemd service.
+   and the label `lyrica-ci`, and installs it as a systemd service. A runner
+   on a fast machine also needs the label `lyrica-fast`, which the `check`
+   job requires: add it on the repository's Settings, Actions, Runners page
+   (the runner's labels), since `setup.sh` does not set it. Without a
+   `lyrica-fast` runner, `check` waits in the queue.
 5. Installs `lyrica-ci-firewall`: an nftables table applied at boot before
    the runner starts, which lets the VM reach the internet, its DHCP
    resolvers on port 53 and DHCP, and rejects any new connection to a
@@ -117,5 +121,6 @@ runner keeps its registration, and the firewall is applied again.
   ./config.sh remove --token <a removal token from the Runners page>`; or
   delete it on the Runners page and discard the VM.
 - **Going back to GitHub's runners:** change `runs-on: lyrica-ci` to
-  `ubuntu-latest` in both workflows. Hosted minutes on a private repository
+  `ubuntu-latest` in both workflows, and the `check` job's `runs-on` list
+  (`[lyrica-ci, lyrica-fast]`) to `ubuntu-latest` too. Hosted minutes on a private repository
   are billed past the plan's allowance, which is why these exist.

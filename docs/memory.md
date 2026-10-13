@@ -326,7 +326,7 @@ material.
 |---|---|
 | **Archive** | She stops using the memory. It is kept, and archiving can be undone. |
 | **Delete a memory** | The text and its revisions are removed. A tombstone is left. Pages that cited it are flagged, and the next sleep rewrites them. |
-| **Forget a thread** | The thread and its entries are deleted, along with notes whose only sources were in it, and its subagents' threads the same way. Each deleted note leaves a tombstone, and pages that cited them are flagged. Its child threads (Lyrica's, branches, copies) go too with `forgetThread(id, author, { children: true })`; otherwise they are kept, with no parent. Its files go too: its folder in the home workspace, and the snapshots kept to undo its changes. |
+| **Forget a thread** | The thread and its entries are deleted, along with notes whose only sources were in it, and its subagents' threads the same way. Each deleted note leaves a tombstone, and pages that cited them are flagged. Its child threads (Lyrica's, branches, copies) go too with `forgetThread(id, author, { children: true })`; otherwise they are kept, with no parent. With `keepMemories` no note goes (nor, with `children`, the project's page and notes), its subagents' and child threads are forgotten the same way, and each forgotten thread leaves a thread tombstone. Its files go too: its folder in the home workspace, and the snapshots kept to undo its changes. |
 | **Forget a topic** | Search, review the matches, then delete them in bulk. |
 | **Remove turns** | A rewind (Delete from here, Regenerate, Edit) removes entries from one onwards as forgetting does (`truncateThread`, which also counts the pins it takes); what the turns did outside memory is in daemon.md, "What removed turns did": notes whose only sources were in them go with tombstones, pages citing those notes or the entries are flagged, and subagent threads started in them are forgotten. An entry a branch still holds a copy of keeps its notes and search row, and its citations resolve through the copy. |
 
@@ -340,6 +340,12 @@ holds: see Remove turns.
 A **tombstone** holds no text: only the deleted item's ID, its kind, when it was
 deleted, who deleted it, and the IDs of its source entries. Its one job is to
 stop sleep from re-extracting a deleted fact from a thread that still exists.
+
+A **thread tombstone** (`t:<thread>`, kind `thread`, no sources) is left by a
+thread forgotten with `keepMemories`, not even its title is kept. Its ID is how the
+user finds the memories that came from it: they still cite `t:<thread>` and
+`e:<thread>#…`, `getThreadTombstone(id)` gives `{ deletedAt }` and
+`citingThread(id)` lists the notes and pages that cite it.
 
 ## Editing memories
 
