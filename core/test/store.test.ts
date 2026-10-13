@@ -262,6 +262,37 @@ describe("deletion", () => {
     expect(own.isTombstoned(a.entry)).toBe(true);
   });
 
+  it("keeps the notes of a thread forgotten with keepMemories, and leaves a text-free thread tombstone", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const a = said(own, "the harbour at dawn");
+    const [kept] = own.addNotes([{ text: "{user} likes the harbour", source: a.entry }], { author: "lyrica", thread: a.thread });
+    const sub = own.createThread({ interface: "cli", parent: a.thread, subagent: true });
+    own.forgetThread(a.thread, "lyrica", { keepMemories: true });
+    expect(own.getThread(a.thread)).toBeUndefined();
+    expect(own.getThread(sub.id)).toBeUndefined();
+    expect(own.loadEntries(a.thread)).toEqual([]);
+    expect(own.get(kept!)).toBeDefined();
+    expect(own.search("harbour").map((h) => h.id)).toEqual([kept]);
+    expect(own.getThreadTombstone(a.thread)).toEqual({ deletedAt: expect.any(String) });
+    expect(own.getThreadTombstone(sub.id)).toBeDefined();
+    expect(own.citingThread(a.thread)).toEqual([kept]);
+    const db = (own as unknown as { db: { prepare(s: string): { get(...a: unknown[]): unknown } } }).db;
+    const tomb = db.prepare("SELECT * FROM tombstones WHERE id = ?").get(`t:${a.thread}`) as Record<string, string>;
+    expect(tomb.kind).toBe("thread");
+    expect(tomb.sources).toBe("[]");
+    expect(Object.keys(tomb).sort()).toEqual(["deleted_at", "deleted_by", "id", "kind", "sources"]);
+    expect(own.isTombstoned(a.entry)).toBe(false);
+  });
+
+  it("a thread forgotten without keepMemories leaves no thread tombstone", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const a = said(own, "first");
+    own.forgetThread(a.thread, "lyrica");
+    expect(own.getThreadTombstone(a.thread)).toBeUndefined();
+  });
+
   it("deletes the matches of a search in bulk", async () => {
     const { memory, ada } = await setup();
     const { own } = memory.openThreadView(ada.id, "general");

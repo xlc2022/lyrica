@@ -1413,7 +1413,9 @@ Details in [docs/memory.md](docs/memory.md).
 - **Deletion has four levels:** archive, delete a memory, forget a thread, and
   forget a topic. A deleted memory leaves a **tombstone** that holds no text,
   only IDs, so sleep doesn't extract the same fact again from a thread that
-  still exists.
+  still exists. Forgetting a thread can keep its memories: the notes stay, and
+  the thread leaves a text-free tombstone (its ID and deletion time) that the
+  notes' citations of it lead to.
 
 ## Sleep
 

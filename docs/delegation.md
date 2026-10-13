@@ -165,7 +165,9 @@ tool in the subagent's thread only.
 
 Prompts are adapted from `pi-subagents` 0.76.1 (MIT, credited in
 `roles.ts`). A task with no role gets the worker. The parent's prompt lists
-the roles and saved workflows.
+the roles and saved workflows, after a line (`SHARED_SANDBOX`) saying that
+subagents and child threads have her sandbox's tools and her network or
+less, so a brief asks for the result rather than a way to verify it.
 
 **Custom roles and workflows** are stored in the user's `user.db` through
 `DelegationStore` (`setRole`, `removeRole`, `setWorkflow`,

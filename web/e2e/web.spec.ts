@@ -1934,10 +1934,15 @@ test("watching threads: writing in a project's thread leads to a look, shown as 
   await send(page, "start: Beta");
   await expect(page.getByText("Started it.")).toHaveCount(2);
   // Write in Alpha (beside the chat on a wide screen, as the page on a phone); the look comes to the project chat.
+  // Its anchor can be a non-displayed entry before the user message. It must stay there,
+  // rather than moving under each new reply or child update (and putting Beta first).
+  const alphaCard = page.locator(".msg.user").filter({ has: page.getByText("start: Alpha", { exact: true }) }).locator("+ .tcard");
+  await expect(alphaCard.getByRole("link", { name: "Alpha", exact: true })).toBeVisible();
+  await expect(page.locator(".tcard-title")).toHaveText(["Alpha", "Beta"]);
   await page.locator(".tcard").first().getByRole("link", { name: "Alpha" }).click();
   const alpha = phone(page) ? page : page.getByRole("complementary", { name: "Alpha" });
   // On a phone the page is still the project chat for a moment after the click; its composer has the same label.
-  await expect(alpha.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
+  await expect(alpha.getByRole("heading", { level: 1, name: "Alpha", exact: true })).toBeVisible();
   await alpha.getByLabel("Message", { exact: true }).fill("use the raised beds");
   await alpha.getByRole("button", { name: "Send" }).click();
   await expect(alpha.getByText(/You said: use the raised beds/)).toBeVisible();

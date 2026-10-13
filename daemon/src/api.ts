@@ -847,7 +847,22 @@ export interface NewThreadGroup { name: string }
  * with its subagents. Its child threads (Lyrica's, branches, copies) go too with `children`,
  * and are otherwise kept as threads of their own.
  */
-export interface ForgetThread { children?: boolean }
+export interface ForgetThread { children?: boolean; keepMemories?: boolean }
+
+/**
+ * GET /api/u/:userId/threads/:pool/:threadId/tombstone → ThreadTombstone. What a thread
+ * deleted with "Keep memories" leaves: no text, not even its title, only its ID, when it
+ * was deleted and the memories that cite it. 404 when the thread has no tombstone (or still exists).
+ */
+export interface ThreadTombstone {
+  id: string;
+  deletedAt: string;
+  /** The notes and pages in this pool citing the thread or one of its messages. */
+  memories: MemoryUse[];
+  /** By each memory's ID, as in `MemoryDetail.links`. */
+  links: Record<string, MemoryLink>;
+  users: UserMap;
+}
 
 // --- Share with ---
 // A copy of a thread sent to another user on this server (DESIGN.md, "Where things
@@ -1547,6 +1562,8 @@ export interface MemoryLink {
   snippet: string;
   updatedAt: string;
   origin?: Origin;
+  /** A thread deleted with its memories kept: no title, an empty snippet, `updatedAt` is when it was deleted. */
+  deleted?: true;
 }
 
 /** A memory that cites this one, with the sentence that does (stored form), when its pool is shown. */

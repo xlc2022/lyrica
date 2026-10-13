@@ -18,6 +18,7 @@ import { toMessages, toReactions } from "./messages.ts";
 import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, titlesIn, type SpeechSource } from "./speech.ts";
 import { notifications } from "./notifications.ts";
 import { SEARCH_PAGE, searchMessages } from "./search.ts";
+import { forgetThreadFiles } from "./sweep.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 import { redactUrl, unredactUrl } from "./redact.ts";
 
@@ -853,7 +854,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const pool = poolOf(r);
       const threadId = owner(d, user, (o) => threadOf(o, r).id);
-      const { children } = await r.json<Api.ForgetThread>();
+      const { children, keepMemories } = await r.json<Api.ForgetThread>();
+      const keep = keepMemories === true;
       const all = children === true || r.query.get("children") === "1";
       // Its subagents' threads go with it, deepest first, and with `children` its child threads; each one's runs are stopped and their records dropped first.
       const { doomed, kept } = owner(d, user, (o) => {
@@ -867,13 +869,14 @@ export function apiRoutes(d: Lyricad): Route[] {
         return out;
       });
       // A project's page and the notes that came only from it go before its threads do, while they still say where the notes came from.
-      if (all) owner(d, user, (o) => { if (o[pool].getThread(threadId)?.project) o[pool].forgetProjectMemory(threadId, author(user)); });
+      if (all && !keep) owner(d, user, (o) => { if (o[pool].getThread(threadId)?.project) o[pool].forgetProjectMemory(threadId, author(user)); });
       for (const id of doomed) {
         await s().delegation.forget(user.id, pool, id);
         await s().host.forget(user.id, pool, id);
-        owner(d, user, (o) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user), { children: all }); });
+        owner(d, user, (o) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user), { children: all, keepMemories: keep }); });
         s().models.forgetThread(user.id, pool, id);
       }
+      forgetThreadFiles(s(), user.id, pool, doomed);
       s().children.forget(user.id, pool, doomed);
       s().wakeups.forget(user.id, pool, doomed);
       s().prefs.forget(user.id, pool, doomed);
@@ -881,6 +884,21 @@ export function apiRoutes(d: Lyricad): Route[] {
       // A kept child is a thread of its own now: its next turn opens with its own tools and workspace.
       for (const id of kept) { s().workspace.settings(user.id).detach(id); s().host.reload(user.id, pool, id); }
       return { ok: true };
+    }),
+    route("GET", `${t}/tombstone`, (r): Api.ThreadTombstone => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      const threadId = r.params.threadId!;
+      return owner(d, user, (o): Api.ThreadTombstone => {
+        const gone = o[pool].getThreadTombstone(threadId);
+        if (!gone || o[pool].getThread(threadId)) throw new HttpError(404, "no such tombstone");
+        const show = display(d, user.id);
+        const memories: Api.MemoryUse[] = o[pool].citingThread(threadId).map((id) => ({ id }));
+        const links: Record<string, Api.MemoryLink> = {};
+        for (const m of memories) { const link = linkFor(o, pool, m.id, show); if (link) links[m.id] = link; }
+        const users: Api.UserMap = Object.fromEntries(d.services!.users.all().map((u) => [u.id, { displayName: u.profile.displayName, pronouns: u.profile.pronouns }]));
+        return { id: `t:${threadId}`, deletedAt: gone.deletedAt, memories, links, users };
+      });
     }),
     route("GET", `${t}/subagents`, (r): Api.Subagents => {
       const user = d.userFor(r);
@@ -2443,7 +2461,10 @@ function linkFor(o: OwnerView, pool: Pool, ref: string, show: Api.Display): Api.
   const thread = /^[te]:([^#]+)/.exec(bare)?.[1];
   if (thread) {
     const t = store.getThread(thread);
-    if (!t) return undefined;
+    if (!t) {
+      const gone = bare.startsWith("t:") || bare.startsWith("e:") ? store.getThreadTombstone(thread) : undefined;
+      return gone ? { kind: "thread", pool: p, snippet: "", updatedAt: gone.deletedAt, deleted: true } : undefined;
+    }
     const entry = bare.startsWith("e:") ? store.entryWindow(bare, 0)[0] : undefined;
     return { kind: entry ? "entry" : "thread", pool: p, title: t.title ?? "", snippet: entry ? firstLine(entry.text) : "", updatedAt: entry?.createdAt ?? t.createdAt };
   }
