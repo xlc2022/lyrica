@@ -3137,8 +3137,8 @@ test("spend share popovers and project filter", async ({ page, baseURL }, testIn
   await expect.poll(() => page.evaluate(async ({ userId, id }) => (await (await fetch(`/api/u/${userId}/threads/general/${encodeURIComponent(id)}/usage`)).json()).tokens, { userId, id: project.id })).toBeGreaterThan(0);
   await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(project.id)}`);
   if (phone(page)) await page.getByRole("button", { name: /^Threads/ }).click();
-  await page.getByRole("button", { name: "Tokens", exact: true }).click();
-  await expect(page.getByText("Counts every request, cached reads included.")).toBeVisible();
+  await page.getByRole("button", { name: /^[\d.,]+[kM]? tokens$/ }).click();
+  await expect(page.getByTitle("Counts every request, cached reads included.")).toBeVisible();
   await expect(page.getByText("By thread", { exact: true })).toBeVisible();
   await expect(page.getByText("This chat", { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

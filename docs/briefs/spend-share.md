@@ -54,7 +54,7 @@ is the same total. `GET …/models/calls` keeps `?project=&pool=`.
 tokens" in mono with a caret (`tokenCount`), after Checklist, once the thread
 has a counted turn; reloaded after each turn. Its popover: a row per model
 (label, local or cloud muted, tokens in mono, GPU time in mono for local),
-then Total, then one muted line, "Counts every request, cached reads
+then Total, whose tooltip says "Counts every request, cached reads
 included." (a long cached tool loop counts its context once per request). In a project chat it replaces the plain "312k tokens": the same
 rows for the whole project, then **By thread** (This chat, then each thread
 as a link, tokens and GPU time), and **Recent calls** linking to that tab
@@ -67,7 +67,7 @@ pools left out), kept in the route (`web/src/route.ts`).
 **F. Docs.** DESIGN.md (Context and pace, the project facts line),
 docs/models.md, docs/delegation.md, docs/contracts.md, docs/daemon.md,
 docs/web.md, docs/ux.md (a thread's tokens row, "A project's usage", Recent
-calls; names Tokens, GPU time, By thread, All projects, and the muted line "Counts every request, cached reads included."), and the status table
+calls; names Tokens, GPU time, By thread, All projects, and the Total tooltip "Counts every request, cached reads included."), and the status table
 in docs/briefs/design.md. The guarantee, once: "Totals count her turns and her
 subagents' work; titles, images, speech and a project chat's looks at its
 threads carry no counts and aren't included."

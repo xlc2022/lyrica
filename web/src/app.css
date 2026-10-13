@@ -1354,6 +1354,7 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
 .usage-row > :first-child { overflow-wrap: anywhere; min-width: 0; }
 .usage-row > .num, .usage-head > :not(:first-child) { text-align: right; }
 .usage-inline { display: block; margin-top: 12px; }
+.usage-inline > button.link { min-height: var(--tap); }
 .usage-rows { font-size: 13px; white-space: normal; }
 
 /* Project commands use the existing fixed-choice buttons; rows wrap at phone width. */
