@@ -2,22 +2,8 @@
 // or its page's link, and the choices a repository's files make. Kept apart so a test can check them without a page.
 import type { Hub } from "./api.ts";
 
-/** A download as the host reports it (host/API.md, "POST /host/v1/downloads"). */
-export interface HostDownload {
-  id: string;
-  source: Hub | "url";
-  repo: string | null;
-  url: string | null;
-  /** Where it goes in the host's models folder: `lyrica/<source>/<repo>/<file>`, or `lyrica/url/<hostname>/<file>`. */
-  path: string;
-  size: number | null;
-  received: number;
-  state: "queued" | "downloading" | "verifying" | "done" | "failed" | "cancelled";
-  /** true: the checksum matched; false: none was given; null until done. */
-  verified: boolean | null;
-  error: string | null;
-  startedAt: string;
-}
+import type { HostDownload } from "./api.ts";
+export type { HostDownload } from "./api.ts";
 
 /** A repository's files as a host sees them (host/API.md, "GET /host/v1/hub/files"). */
 export interface HubFiles {
@@ -125,4 +111,18 @@ export function fileChoices(list: HubFiles): { choices: FileChoice[]; refused: s
   for (const f of list.files) if (!f.allowed && f.size >= 10 * 2 ** 20) reasons.set(f.reason ?? "", (reasons.get(f.reason ?? "") ?? 0) + 1);
   const refused = [...reasons].map(([reason, n]) => `${n === 1 ? "1 file is" : `${n} files are`} left out.${reason ? ` ${reason}` : ""}`);
   return { choices, refused };
+}
+
+/** Principle 6: collect a stable finished list before deletion changes the pages. */
+export async function clearFinished<T extends { endpointId: string; download: { id: string } }>(
+  load: (offset: number) => Promise<{ entries: T[]; total: number }>,
+  remove: (entry: T) => Promise<unknown>,
+): Promise<void> {
+  const finished = new Map<string, T>();
+  for (let offset = 0; ; offset += 100) {
+    const page = await load(offset);
+    for (const entry of page.entries) finished.set(`${entry.endpointId}/${entry.download.id}`, entry);
+    if (!page.entries.length || offset + 100 >= page.total) break;
+  }
+  for (const entry of finished.values()) await remove(entry);
 }

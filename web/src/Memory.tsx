@@ -8,19 +8,21 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { Components } from "react-markdown";
 import {
   del, get, patch, post, u,
-  type Display, type MemoryDetail, type MemoryHit, type MemoryKind, type MemoryLink, type MemoryOverview, type MemoryRevision, type MemoryTag, type MemoryUse, type Pool, type UserMap,
+  type Display, type MemoryDetail, type MemoryHistory, type MemoryHit, type MemoryKind, type MemoryLink, type MemoryOverview, type MemoryRevision, type MemoryTag, type MemoryUse, type Pool, type UserMap,
 } from "./api.ts";
+import { HistoryHead, HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { CITATION_GROUP, dateWord, firstWords, KIND_WORD, linkCitations, longDate, parseRef, plainCitations, plainWords, poolWord, wordDiff, wordFor, type Word } from "./memory.ts";
 import { fromEditable, readable, toEditable } from "./mentions.ts";
-import { go, href, idHref, parse } from "./route.ts";
+import { go, href, idHref, parse, type Route } from "./route.ts";
 import { Main, PageHead, usePanel, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 type Layer = "page" | "note" | "wake" | "journal";
 const LAYERS: { layer: Layer; label: string }[] = [{ layer: "page", label: "Pages" }, { layer: "note", label: "Notes" }, { layer: "wake", label: "WAKE" }, { layer: "journal", label: "Journal" }];
 const PAGE_SIZE = 40;
+const LINEAGE_PREVIEW = 4;
 
 /** Titles of memories read in this visit, for the panel's breadcrumb; nothing of a memory's text. */
 const TITLES = new Map<string, string>();
@@ -127,14 +129,17 @@ function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContex
   if (pool) params.set("pool", pool);
   if (userOnly) params.set("origin", "user");
   if (!query && layer === "note" && tag) params.set("about", tag);
-  params.set("limit", String(PAGE_SIZE));
+  const journalPreview = !query && layer === "journal";
+  // The preview shows one entry; it asks for two so a second proves there is more to open.
+  params.set("limit", String(journalPreview ? 2 : PAGE_SIZE));
   const search = params.toString();
   const hits = useLoad(() => get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}`), [userId, search, display.showGeneral, display.showPrivate]);
   const tags = useLoad(() => (layer === "note" && !query ? get<MemoryTag[]>(`${u(userId, "memory", "about")}${pool ? `?pool=${pool}` : ""}`) : Promise.resolve([] as MemoryTag[])), [userId, layer, query, pool, display.showGeneral, display.showPrivate]);
   useEffect(() => { setMore([]); setNoMore(false); setSel([]); }, [search]);
 
   const rows = [...(hits.data ?? []), ...more];
-  const canPage = !query && hits.data && hits.data.length >= PAGE_SIZE && !noMore;
+  const shownRows = journalPreview ? rows.slice(0, 1) : rows;
+  const canPage = !query && !journalPreview && hits.data && hits.data.length >= PAGE_SIZE && !noMore;
   const page = () => run(async () => {
     const last = rows.at(-1)?.updatedAt;
     if (!last) return;
@@ -187,8 +192,9 @@ function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContex
         </div>
       )}
       <ErrorText error={hits.error || tags.error || error} />
+      {journalPreview && <HistoryHead to={{ page: "history", userId, kind: "journal", ...(pool ? { pool } : {}) }} count={hits.data?.length} />}
       <div className="mem-list" aria-label={query ? "Search results" : LAYERS.find((l) => l.layer === layer)!.label} data-selecting={sel.length > 0 || undefined}>
-        {rows.map((h) => (
+        {shownRows.map((h) => (
           <a key={key(h)} href={href({ page: "memory", userId, pool: h.pool, id: h.id })} aria-current={current === h.id ? "true" : undefined} className={sel.includes(key(h)) ? "sel" : undefined}
             onClick={(e) => { if (e.ctrlKey || e.metaKey || e.shiftKey) { e.preventDefault(); e.stopPropagation(); select(e, h); } }}>
             <span className="t"><span>{nameOf(h.kind, h.title, h.snippet, h.updatedAt ?? "")}</span>{h.updatedAt && <span className="when num">{shortTime(h.updatedAt)}</span>}</span>
@@ -220,6 +226,7 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
   const d = useLoad(() => get<MemoryDetail>(u(userId, "memory", pool, id)), [userId, pool, id, display.showGeneral, display.showPrivate]);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [expanded, setExpanded] = useState<"Came from" | "Used in" | null>(null);
   const [run, busy, error] = useAction();
   const item = d.data?.item;
   const name = item && nameOf(item.kind, item.title && readable(item.title, d.data!.users), readable(item.text, d.data!.users), item.updatedAt);
@@ -266,9 +273,9 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
             </div>
           </>
         )}
-      <Lineage title="Came from" uses={cameFrom} mark={undefined} ctx={ctx} pool={item.pool} links={links} users={users} ownText />
-      <Lineage title="Used in" uses={d.data.usedIn} mark={item.id} ctx={ctx} pool={item.pool} links={links} users={users} />
-      <History detail={d.data} userId={userId} display={display} busy={busy} onRestore={(rev) => act(() => post<MemoryDetail>(`${path}/restore`, { revision: rev }))} />
+      <Lineage title="Came from" uses={cameFrom} mark={undefined} ctx={ctx} pool={item.pool} links={links} users={users} ownText expanded={expanded === "Came from"} onToggle={() => setExpanded(expanded === "Came from" ? null : "Came from")} />
+      {expanded !== "Came from" && <Lineage title="Used in" uses={d.data.usedIn} mark={item.id} ctx={ctx} pool={item.pool} links={links} users={users} expanded={expanded === "Used in"} onToggle={() => setExpanded(expanded === "Used in" ? null : "Used in")} />}
+      {!expanded && <History detail={d.data} userId={userId} display={display} busy={busy} onRestore={(rev) => act(() => post<MemoryDetail>(`${path}/restore`, { revision: rev }))} />}
       {deleting && (
         <ConfirmDialog title={`Delete “${name}”?`} confirm="Delete" danger onCancel={() => setDeleting(false)}
           sentence={`Its text and its history are gone for good; a marker with only its ID stays, so she doesn't learn it again.${d.data.usedIn.length ? ` ${d.data.usedIn.length === 1 ? "One memory cites it and is" : `${d.data.usedIn.length} memories cite it and are`} rewritten at the next sleep.` : ""}`}
@@ -329,19 +336,22 @@ function WordLink({ word, users, children, href: to }: { word: Word; users: User
 }
 
 /** Came from and Used in: a card per memory with its title or first words, its date, and the citing sentence (docs/ux.md §6). */
-function Lineage({ title, uses, mark, ctx, pool, links, users, ownText }: {
+function Lineage({ title, uses, mark, ctx, pool, links, users, ownText, expanded, onToggle }: {
   title: string; uses: MemoryUse[]; mark?: string; ctx: ShellContext; pool: Pool; links: Record<string, MemoryLink>; users: UserMap;
   /** The sentences are this memory's own (Came from): the cited memory is marked by its ref instead. */
-  ownText?: boolean;
+  ownText?: boolean; expanded: boolean; onToggle: () => void;
 }) {
   const userId = ctx.user.id;
   const { display } = ctx.me;
   if (!uses.length) return null;
   return (
-    <section className="lineage">
-      <h3>{title}</h3>
-      <div className="links">
-        {uses.map((use) => {
+    <section className="lineage" aria-label={title}>
+      <div className="section-head">
+        <h3 className="eyebrow">{title}</h3>
+        {uses.length > LINEAGE_PREVIEW && <a href="#" aria-expanded={expanded} onClick={(event) => { event.preventDefault(); onToggle(); }}>{expanded ? "Show less" : "Show all"}</a>}
+      </div>
+      <div className={`links${expanded ? " expanded" : ""}`}>
+        {(expanded ? uses : uses.slice(0, LINEAGE_PREVIEW)).map((use) => {
           const ref = parseRef(use.id, pool);
           if (!ref) return null;
           const w = wordFor(ref, links[use.id], display, userId);
@@ -376,11 +386,42 @@ function Sentence({ text, pool, links, users, display, userId, mark }: { text: s
   return <span className="q">{parts.map((p, i) => (i % 2 ? (p.trim() ? <mark key={i}>{p.trim()}</mark> : null) : p))}</span>;
 }
 
-/** History: a row per version, the current one open, each older one showing its word differences against the current text, with Restore. */
-function History({ detail, userId, display, busy, onRestore }: { detail: MemoryDetail; userId: string; display: Display; busy: boolean; onRestore: (revision: number) => void }) {
+export function JournalHistoryPage({ ctx, pool, route }: { ctx: ShellContext; pool?: Pool; route?: Extract<Route, { page: "history" }> }) {
+  const userId = ctx.user.id;
+  return <main className="main">
+    <PageHead ctx={ctx} title="Journal history"><a href={href({ page: "memory", userId })}>Memory</a></PageHead>
+    <div className="scroll"><div className="sleep">
+      <HistoryList<MemoryHit> key={`${userId}/${pool}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} route={route} path={`${u(userId, "memory", "journal", "history")}${pool ? `?pool=${pool}` : ""}`} render={(page) => <ul className="list">
+        {page.entries.map((entry) => <li key={`${entry.pool}/${entry.id}`}>
+          <div className="row between"><a href={href({ page: "memory", userId, pool: entry.pool, id: entry.id })}>{new Date(entry.updatedAt!).toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" })}</a><span className={`kind ${entry.pool}`}>{poolWord(entry.pool)}</span></div>
+          <p>{entry.snippet}</p>
+        </li>)}
+      </ul>} />
+    </div></div>
+  </main>;
+}
+
+export function MemoryHistoryPage({ ctx, pool, id, route }: { ctx: ShellContext; pool: Pool; id: string; route?: Extract<Route, { page: "history" }> }) {
+  const userId = ctx.user.id;
+  const path = u(userId, "memory", pool, id);
+  const [run, busy, error] = useAction();
+  return <main className="main">
+    <PageHead ctx={ctx} title="Memory history"><a href={href({ page: "memory", userId, pool, id })}>Memory</a></PageHead>
+    <div className="scroll"><div className="sleep">
+      <ErrorText error={error} />
+      {hidden(ctx.me.display, pool) ? <p className="empty">{poolWord(pool)} is hidden.</p> :
+        <HistoryList<MemoryRevision, MemoryHistory> route={route} path={`${path}/history`} render={(page, reload, offset) => <History detail={page.detail} entries={page.entries} offset={offset} total={page.total} userId={userId} display={ctx.me.display} busy={busy}
+          onRestore={(revision) => void run(async () => { await post(`${path}/restore`, { revision }); reload(); })} />} />}
+    </div></div>
+  </main>;
+}
+
+/** The newest earlier version in the preview (the current text is already shown above); paged versions keep their differences and Restore. */
+function History({ detail, entries, offset = 1, total, userId, display, busy, onRestore }: { detail: MemoryDetail; entries?: MemoryRevision[]; offset?: number; total?: number; userId: string; display: Display; busy: boolean; onRestore: (revision: number) => void }) {
   const { item, revisions, users, links } = detail;
-  if (!revisions.length) return null;
-  const newestFirst = [...revisions].reverse();
+  // With no earlier version there is nothing to show here at all.
+  const shown = entries ?? revisions.slice(1, 2);
+  if (!shown.length) return null;
   const plain = (text: string) => plainWords(readable(text, users), item.pool, links, display, userId);
   const current = plain(item.text);
   const by = (r: MemoryRevision) => {
@@ -389,17 +430,17 @@ function History({ detail, userId, display, busy, onRestore }: { detail: MemoryD
   };
   return (
     <section className="history">
-      <h3>History</h3>
+      {!entries && <HistoryHead to={{ page: "history", userId, kind: "memory", pool: item.pool, id: item.id }} />}
       <div className="hist">
-        {newestFirst.map((r, i) => {
-          const previous = newestFirst[i + 1];
-          const diff = i === 0 ? (previous ? wordDiff(plain(previous.body.text), current) : undefined) : wordDiff(current, plain(r.body.text));
+        {shown.map((r, i) => {
+          const isCurrent = r.id === revisions[0]?.id;
+          const diff = isCurrent ? undefined : wordDiff(current, plain(r.body.text));
           return (
             <details key={r.id} open={i === 0}>
-              <summary><span className="when num">{shortTime(r.createdAt)}</span><span className="by">{by(r)}</span><span className="n num">{i === 0 ? "current" : `${newestFirst.length - i} of ${newestFirst.length}`}</span></summary>
+              <summary><span className="when num">{shortTime(r.createdAt)}</span><span className="by">{by(r)}</span><span className="n">{isCurrent ? "current" : entries ? <><span className="num">{(total ?? 0) - (offset + i)}</span> of <span className="num">{total}</span></> : "earlier"}</span></summary>
               {diff ? <div className="wdiff">{diff.map((op, k) => (op.kind === "same" ? <span key={k}>{op.text}</span> : op.kind === "del" ? <del key={k}>{op.text}</del> : <ins key={k}>{op.text}</ins>))}</div>
                 : <div className="wdiff">{current}</div>}
-              {i > 0 && <div className="row actions"><button type="button" className="sm" disabled={busy} onClick={() => onRestore(r.id)}>Restore</button></div>}
+              {!isCurrent && <div className="row actions"><button type="button" className="sm" disabled={busy} onClick={() => onRestore(r.id)}>Restore</button></div>}
             </details>
           );
         })}

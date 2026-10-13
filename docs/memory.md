@@ -424,15 +424,24 @@ Files panel.
   hidden pool is left out of the lists, the facts and the lineage. The header
   states how many pages and notes there are and when she last slept, and
   holds **Add a memory**.
+- **Journal.** Its browse pane previews only the latest entry; Show all
+  beside the History eyebrow opens Journal history, carrying the pool
+  choice, with server-side search and numbered pages. Each entry links back
+  to its memory page, whose versions use the same history pattern.
 - **Reading.** A memory's citations read as titles, never IDs: a page link
   by the page's title, a thread citation by the thread's title, a note by a
   small dated source mark (notes have no title). Each opens the cited memory
   in place, with a breadcrumb trail, and previews its first lines on hover or
   focus. The stored text keeps the IDs. **Came from** and **Used in** show a
   card per memory with its title or first words, its date and the sentence
-  that cites it. **History** lists the versions, the current one open; an
-  older one shows its word differences against the current text, computed in
-  the browser from the revisions already returned, with **Restore**.
+  that cites it. Each previews four cards; longer lists have Show all beside
+  the eyebrow, expanding in place with their own scroll (maximum 320 px)
+  and Show less to collapse. Expansion hides History, and Came from
+  expansion also hides Used in; the memory and earlier sections stay visible.
+  Collapsing restores the hidden sections. **History** shows only the newest earlier version, open. **Show all** beside
+  the eyebrow opens a history page with server-side search and numbered
+  pages. An older version shows its word differences against the current
+  text, computed in the browser, with **Restore**.
 - **Editing** happens in place: an Edit | Preview segment, the textarea,
   Save and Cancel. Typing `[[` offers pages and people; a page is shown as
   `[[Title]]` in the editor and saved as `[p:<slug>]`, a person as their name

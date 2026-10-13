@@ -79,6 +79,16 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Pin** or **Unpin** (P, top-level threads; a toast says "Pinned to the
   top" or "Unpinned", the shell's one, gone after 4 s), **Make project…** (K, a
   top-level thread; confirms in a dialog, since there is no way back),
+  **Continue as project** (C, keeps the source), and **Move to project**
+  (top-level, non-project, non-subagent threads only): pinned then up to ten recent
+  visible projects of the same pool, local-only destinations only for
+  local-only work; omitted when none qualify. It reuses the hover flyout
+  and phone submenu. Picking a project opens the shared `FoldConfirm.tsx`
+  dialog used by FoldCard, listing children, losses and the one-way warning;
+  Cancel leaves the work in place, Fold in calls the existing fold route
+  and opens the project chat. Its unticked access box grants permissions
+  through settings before folding. Losing cloud models is listed as
+  "Cloud models" and cannot be restored by that box.
   **Resolve** or **Reopen** (E, a project's thread), Hide or Unhide (H), and
   Delete… (D), which confirms in a dialog and offers
   to delete child threads too. From the keyboard, Shift+F10 or the Menu key
@@ -236,12 +246,20 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the composer or settings.
 - **Memory** (`src/Memory.tsx`, `src/memory.ts`; [memory.md](memory.md), The
   memory browser): a notebook. The browse pane lists one layer (Pages, Notes,
-  WAKE, Journal) newest first, filtered by pool and User introduced, with
+  WAKE, Journal) newest first (Journal previews one entry with Show all
+  beside its History eyebrow), filtered by pool and User introduced, with
   tags for notes; a search replaces the list. The memory at the right shows
   its citations as titles with a hover preview (`linkCitations` turns each
   citation into a link whose word comes from `MemoryDetail.links`; the raw ID
-  is never shown), Came from and Used in with the citing sentence, History as
-  word differences (`wordDiff`, computed in the browser) with Restore, and
+  is never shown), Came from and Used in with the citing sentence. Each
+  previews four cards; a right-aligned Show all link expands longer lists
+  in place with their own scroll (maximum height 320 px), becoming Show less.
+  Either expansion hides History; Came from expansion also hides Used in.
+  The memory and earlier sections stay visible; collapsing restores the
+  hidden sections. History shows
+  the newest earlier version open, with **Show all** at the right of its eyebrow.
+  `…/history/memory/<pool>/<id>` lists versions newest first, with
+  word differences (`wordDiff`, computed in the browser) and Restore, and
   Edit in place with a `[[` popover of pages and people (a page shows as
   `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Forget… on a
   selection, and Add a memory. `…/memory/<pool>/<id>` is a memory on the
@@ -259,9 +277,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `GET …/sleep/events` reloads it as a run starts, changes phase or ends,
   and a `thread` event opens the thread a manual run leaves). Items first,
   newest first, with **Start a chat** (`POST …/items/<id>/chat`, then the
-  new thread) and **Dismiss** (`DELETE`). Then the runs: **Last night** is
-  the newest run of each pool, read at once for its summary line; **Earlier**
-  groups the rest by day and reads a run when its row opens
+  new thread) and **Dismiss** (`DELETE`). Then **History** shows only the newest visible run,
+  read at once for its summary line, with **Show all** right-aligned beside
+  the eyebrow. `…/history/sleep` lists all runs newest first and reads a run
+  when its row opens
   (`GET …/runs/<id>`). A row shows Notes, Pages with their word diff, Questions,
   Thoughts, the Dream and the WAKE, each linking to the Memory page at that
   memory (`…/memory/<pool>/<id>`; a `t:` or `e:` source links to its thread);
@@ -294,8 +313,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   each with its pool and preset beneath; links to Tasks) and Clean up (the count, the tile's
   tooltip "To decide" or "Nothing to clean up"); then the hosts and
   endpoints summary (a host with its combined VRAM bar, Pause or Resume,
-  Dashboard; a plain endpoint with its model count) and the first five
-  calls. Hosts and endpoints: **Add endpoint** (a drawer: Name, Kind, Base
+  Dashboard; a plain endpoint with its model count) and the newest visible
+  call under **History**, with **Show all** beside the eyebrow. Hosts and endpoints: **Add endpoint** (a drawer: Name, Kind, Base
   URL, API key, Shared for administrators; a plain-HTTP warning for a local URL off
   loopback and the tailnet. Kind also offers ChatGPT plan, with **Sign in with
   ChatGPT**, which opens OpenAI's page in a new tab, then **Redirect URL**
@@ -334,10 +353,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Remove**; the notice lines as a dashed note with Dismiss. The
   thresholds are the pills' tooltips (stale: unreachable 14 days or more;
   gone: missing 30 days or more), and Replace with… carries the redirect
-  sentence as its tooltip. Recent calls has a **Project** select in its
+  sentence as its tooltip. Recent calls opens **Call history**, using shared search and numbered paging, and has a **Project** select in its
   header: **All projects**, then title-sorted projects grouped General and
-  Private, hidden pools omitted. Its hash address retains `?project=&pool=`
-  and the calls API applies both filters. The project list comes from
+  Private, hidden pools omitted. Its hash address retains `?project=&pool=&q=&page=`
+  and `GET …/models/calls/history` applies both filters. The project list comes from
   `threads?all=1`, with display visibility applied here, so the sidebar
   project filter does not remove choices. Recent calls: Time (mono), Thread (a link; private
   kind mark; "a forgotten thread" when gone), Task, Answered by ("model ·
@@ -459,14 +478,18 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   library route, which reads stars, lists text models only.
   Downloads (`src/Downloads.tsx`, its wording in `src/downloads.ts`) lists
   the downloads of every host the user may manage (`GET
-  …/hosts/:id/downloads`; a shared host's need an administrator), newest
-  first, In progress then Finished, read again 2 s after each answer while
+  …/hosts/:id/downloads?preview=1`; a shared host's need an administrator),
+  active downloads and the newest finished entry per host, read again 2 s
+  after each answer while
   anything runs; that count is the Downloads link's, which elsewhere in the
   area is the hosts' own `downloads.active`. A running download has its
   bar and **Cancel** (`DELETE …/downloads/:id`); a finished one its ending
   and, once it is a model, its group or **Add to the group “<g>”** (a group
   holding a copy the strong suggestions pair it with); **Clear finished**
-  deletes each finished one. The header has **Download text model** and
+  collects finished IDs in one walk over the pages, then deletes each once. **History** shows only
+  the newest finished download, with **Show all** beside its eyebrow opening
+  `…/models/downloads/history`: server-side search and numbered pages,
+  retaining the existing ending and group actions. The header has **Download text model** and
   **Download image model**. **Download text model**
   (`…/models/downloads/text`) looks the repository up on the chosen host
   (`GET …/hub/files`; owner/name or the page's link), offers each GGUF file
@@ -986,6 +1009,23 @@ and portrait policy. Edit message appears only for the last user message
 and copies it into the composer through an in-memory event; Resend repeats
 the image call, Try selects the next eligible endpoint. Resend shows at once;
 the other two join it when the options arrive. Busy calls hide the links. Both retries save results in the conversation and recheck consent.
+
+## History
+
+`src/History.tsx` supplies the heading link and shared history list for sleep
+runs, journal entries, memory versions (including WAKE and journal versions),
+model calls and finished downloads.
+Only the latest entry appears in each preview. **Show all** is a plain link
+in the History eyebrow's row, at its right edge. The page has a **Search**
+field and numbered secondary **Page** buttons with “Page n of m” in mono;
+large page counts show the ends and nearby numbers. Search resets to page 1
+and requests after 300 ms; the APIs filter, page and return totals. Rows keep
+their existing appearance and actions. Older memory versions show their
+position as N of M (page offset plus row index, of the filtered total),
+while the current version says current. No new widgets, icons or captions.
+`…/history/journal[/<pool>]` lists journal entries and links each to its
+memory page. Kept releases are bounded, and current routines and runs in a
+thread describe active work.
 
 ## Look
 

@@ -440,6 +440,7 @@ export interface ModelsPage {
   /** A host that is down says why; `unpaired` when it has revoked this server, so pairing again is the fix. */
   hosts: ({ endpointId: string; status: HostStatus } | { endpointId: string; error: string; unpaired?: true })[];
   presets: Presets;
+  /** The newest call in the displayed pools; older ones come from /models/calls/history. */
   calls: CallInfo[];
   /** Each endpoint's call count over `model_calls` in the pools this page shows, not over `calls`; what ranks the sidebar's status panel. Endpoints with no calls aren't listed. */
   endpointUses: { endpointId: string; calls: number }[];
@@ -1637,6 +1638,7 @@ export interface MemoryDetail {
   usedIn: MemoryUse[];
   /** By the ID as it appears in the text, `cameFrom` or `usedIn`. */
   links: Record<string, MemoryLink>;
+  /** Current and newest earlier version; all versions come from /history. */
   revisions: MemoryRevision[];
   users: UserMap;
 }
@@ -1888,7 +1890,7 @@ export interface SleepItemInfo {
   createdAt: string;
 }
 
-/** GET /api/u/:userId/sleep → SleepOverview: the mode, the sleep time, open items and recent runs of both pools, newest first. */
+/** GET /api/u/:userId/sleep → SleepOverview: the mode, the sleep time, open items and the newest run of each pool, newest first. */
 export interface SleepOverview { mode: SleepMode; time: string; items: SleepItemInfo[]; runs: SleepRunInfo[] }
 /** PUT /api/u/:userId/sleep/mode → SleepOverview */
 export interface SleepModeChange { mode: SleepMode }
@@ -2000,6 +2002,31 @@ export interface PhotoCloudSetting { policy: "never" | "ask" | "always" }
 /** Routine metadata only; notes stay in the thread. */
 export interface RoutineInfo { id: number; pool: Pool; threadId: string; threadTitle: string; schedule: string; nextAt: string; paused: boolean }
 
+/** GET history endpoints: newest first, filtered total before limit/offset. */
+export interface HistoryPage<T> { entries: T[]; total: number }
+/** GET …/memory/:pool/:id/history; detail has the current item and display-safe links. */
+export interface MemoryHistory extends HistoryPage<MemoryRevision> { detail: MemoryDetail }
+
+/** A download as the host reports it (host/API.md, "POST /host/v1/downloads"). */
+export interface HostDownload {
+  id: string;
+  source: Hub | "url";
+  repo: string | null;
+  url: string | null;
+  /** Where it goes in the host's models folder: `lyrica/<source>/<repo>/<file>`, or `lyrica/url/<hostname>/<file>`. */
+  path: string;
+  size: number | null;
+  received: number;
+  state: "queued" | "downloading" | "verifying" | "done" | "failed" | "cancelled";
+  /** true: the checksum matched; false: none was given; null until done. */
+  verified: boolean | null;
+  error: string | null;
+  startedAt: string;
+}
+
+
+/** Finished downloads, newest first across manageable hosts. */
+export interface DownloadHistory extends HistoryPage<{ endpointId: string; download: HostDownload }> {}
 /** GET …/threads/:pool/:id/usage: counted turns and subagents. */
 export interface ThreadUsage {
   tokens: number;

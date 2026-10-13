@@ -1048,13 +1048,18 @@ the Project settings page. Recent calls can be filtered by project. The briefs a
   and local-only switch. The first message links to the source and asks for
   editable Goal and Instructions drafts, using the source's own model.
   Its child threads move under the project with their state intact. The
-  source conversation stays in its original thread. These back-end
+  source conversation stays in its original thread; that turn asks for drafts
+  without directions to suggest folding the source. These back-end
   operations are in `daemon/src/routes.ts`. Empty project chats show three
   secondary starters: Set up from recent work (the existing dialog with
   recent threads checked initially), Add repository (the existing popover),
-  and Make a plan (a separate Plan thread). Fold in cards show access losses;
-  Keep access confirms before widening project grants. Project settings
-  opens drafts unsaved, with Save and Discard draft.
+  and Make a plan (a separate Plan thread). Move to project in a top-level
+  thread menu lists pinned and recent projects of its own pool, keeping
+  local-only work in local-only projects. It shares the Fold in card confirmation,
+  listing children and losses before anything moves. The unticked access
+  checkbox widens project grants before folding; losing cloud models when
+  the project is local-only is listed and cannot be restored by that checkbox.
+  Project settings opens drafts unsaved, with Save and Discard draft.
 - **Lyrica coordinates in the project chat.** She is the same person
   there; only her guidance and context differ. She answers a quick question
   in place, starts a thread for each piece of work (several tasks in one
@@ -1468,8 +1473,12 @@ Details in [docs/memory.md](docs/memory.md).
     reads as the page's title, a note citation as a small dated source
     mark, a thread citation as the thread's title, each previewing on hover
     or focus, while the stored text keeps its IDs; **Came from** and **Used
-    in** show the citing sentence; history shows word differences between
-    versions; a note's `about` words are its tags. Editing is in place,
+    in** show the citing sentence, previewing four cards with Show all to
+    expand longer lists in place with their own scroll and Show less to
+    collapse. Expansion hides History; Came from expansion also hides Used
+    in, while the memory and earlier sections stay visible. History shows the newest earlier version, with
+    Show all beside its eyebrow opening searchable numbered history pages
+    and word differences between versions; a note's `about` words are its tags. Editing is in place,
     with `[[` offering pages and people. No graph: lineage is layers, so a
     graph would only redraw Came from and Used in (principle 5). No tags on
     pages, no live-preview editor, no draft kept in the browser.

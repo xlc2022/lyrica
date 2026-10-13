@@ -1,6 +1,6 @@
 // A download's words, a repository's name and the files it offers (web/src/downloads.ts), as the Downloads tab shows them.
 import { describe, expect, it } from "vitest";
-import { downloadWords, fileChoices, repoName, size, type HostDownload, type HubFiles } from "../src/downloads.ts";
+import { clearFinished, downloadWords, fileChoices, repoName, size, type HostDownload, type HubFiles } from "../src/downloads.ts";
 
 const GB = 2 ** 30;
 const download = (d: Partial<HostDownload>): HostDownload => ({
@@ -86,4 +86,16 @@ describe("what a repository offers", () => {
       refused: ["2 files are left out. Pickle files can run code when loaded."],
     });
   });
+});
+
+it("clears every finished ID once after walking the pages, even if deletes leave the list unchanged", async () => {
+  const entries = Array.from({ length: 205 }, (_, i) => ({ endpointId: "host", download: { id: String(i) } }));
+  const offsets: number[] = [], removed: string[] = [];
+  await clearFinished(async (offset) => {
+    expect(removed).toEqual([]);
+    offsets.push(offset);
+    return { entries: entries.slice(offset, offset + 100), total: entries.length };
+  }, async (entry) => { removed.push(entry.download.id); });
+  expect(offsets).toEqual([0, 100, 200]);
+  expect(removed).toEqual(entries.map(e => e.download.id));
 });
