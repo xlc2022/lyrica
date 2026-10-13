@@ -893,7 +893,7 @@ test("Search finds messages by a rare word, marks it, and a hit opens its thread
   await newThread(page, "General");
 
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
-  const side = page.getByRole("complementary", { name: "Threads" });
+  const side = page.getByRole("complementary", { name: "Threads", exact: true });
   await side.getByText("Search", { exact: true }).click();
   const box = side.getByRole("searchbox", { name: "Search titles and messages" });
   await expect(box).toHaveAttribute("placeholder", "Search titles and messages");
@@ -1665,7 +1665,7 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await fact.click();
   // From 1180 px up the fact toggles the panel's threads list (pressed while it shows); below, the popover.
   const split = page.viewportSize()!.width >= 1180;
-  const pop = split ? page.getByRole("complementary", { name: "Threads" }) : page.getByRole("dialog", { name: "The project's threads" });
+  const pop = split ? page.getByRole("complementary", { name: "Threads", exact: true }) : page.getByRole("dialog", { name: "The project's threads" });
   await expect(pop.getByRole("link", { name: /Alpha/ })).toBeVisible();
   await expect(pop.getByRole("link", { name: /Beta/ })).toBeVisible();
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-threads-${page.viewportSize()!.width}.png` });
@@ -1931,7 +1931,7 @@ test("the split view: a thread from its card opens in the panel, links inside it
   const fact = page.locator(".tfacts").getByRole("button", { name: /^Threads/ });
   await expect(fact).toHaveAttribute("aria-pressed", "false");
   await fact.click();
-  const threadList = page.getByRole("complementary", { name: "Threads" });
+  const threadList = page.getByRole("complementary", { name: "Threads", exact: true });
   await expect(threadList.getByRole("heading", { level: 1, name: "Threads" })).toBeFocused();
   await expect(fact).toHaveAttribute("aria-pressed", "true");
   expect(page.url()).toMatch(/\/panel\/.*\/threads$/);
