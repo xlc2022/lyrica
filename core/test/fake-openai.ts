@@ -10,7 +10,8 @@ export type Responder = (chat: ChatRequest) => Reply | Promise<Reply>;
 export interface ChatRequest { model: string; messages: { role: string; content?: unknown; tool_calls?: unknown }[]; tools?: { function: { name: string } }[]; stream?: boolean }
 
 const servers: Server[] = [];
-afterEach(async () => { await Promise.all(servers.splice(0).map((s) => new Promise((r) => s.close(r)))); });
+// A test may leave a request unanswered on purpose; close() would wait for it forever.
+afterEach(async () => { await Promise.all(servers.splice(0).map((s) => new Promise((r) => { s.close(r); s.closeAllConnections(); }))); });
 
 /**
  * A small OpenAI-compatible server on 127.0.0.1: GET /v1/models and streaming
