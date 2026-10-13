@@ -65,6 +65,10 @@ parallel test runs.
 
 ## Handoff notes
 
+**Status (2026-10-13):** built and pushed as PR #291; the integration tests
+ran on lunasa and the full suite passes apart from the known updater
+environment failure. In PR review.
+
 ### 2026-10-13 — implementation complete
 
 **Done:** resolved the merge conflict using main's fuller requirements.
@@ -82,9 +86,7 @@ wake-up and routine tests passed; targeted project-pause coverage passed.
 All Vitest commands used the shared `flock` and fork pool with two workers;
 no full suite, paid API or real plan endpoint was called.
 
-**Next:** the user runs the full suite, commits, pushes and sends the head
-for review. Changes stay in the tree; the checkout's Git metadata is
-read-only in this sandbox.
+**Next:** done; see the Status line.
 
 **Open questions:** none. Pending wake metadata is in memory only; encrypted
 notices remain after restart, as documented.
@@ -106,8 +108,6 @@ thread-tool and card tests passed under the shared lock. Localhost fake-server t
 cannot run in the resumed sandbox (`listen EPERM`); the earlier successful
 runs predate this merge. No full suite or paid endpoint was called.
 
-**Next:** rerun the focused integration tests on a host that permits localhost,
-then the user's full suite and review. Changes remain in the tree; no commit
-or push was made in the resumed run.
+**Next:** done; see the Status line.
 
 **Open questions:** none; the integration rerun is the remaining check.
