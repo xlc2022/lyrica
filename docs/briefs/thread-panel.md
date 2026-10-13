@@ -44,7 +44,8 @@ as the Claude app's Overview button and thread cards do.
    row (`className="sm"`, the default secondary look) that opens the panel, and a
    double-click on the card does the same. Ignore the double-click when it lands on a link or
    button, or leaves a non-empty `getSelection()` (a user selecting text to copy). Below 1180 px both open the full page.
-   The small "Open" link on subagent runs (`ThreadLinks`, Messages.tsx) opens the
+   The per-run links ("Open 1", "Open 2") have no gap today: give `.sub-head .open`
+   `display: flex; gap: 12px` in app.css. The small "Open" link on subagent runs (`ThreadLinks`, Messages.tsx) opens the
    panel at 1180 px and wider.
 
 ## Out of scope
