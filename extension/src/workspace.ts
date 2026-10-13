@@ -4,7 +4,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import {
-  holdsSecret, mcpNamespace, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  decide, type CommandRule, holdsSecret, mcpNamespace, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -12,6 +12,8 @@ import { proxmoxTool } from "./proxmox.ts";
 
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
 export interface ThreadTools {
+  /** The owning project's rules, read fresh on every command. Without it, none. */
+  commandRules?(): CommandRule[];
   /** Called on every tool call, so a change of grants applies at once: the sandbox, or one of the thread's machines. */
   target(machine?: string): ExecutionTarget;
   /** What applies to the thread now, its ancestors' limits included. */
@@ -245,6 +247,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         return { block: true, reason: `${event.toolName} is off in this thread${tools.settings().mode === "plan" ? " (Plan mode)" : ""}.` };
       }
       const input = event.input as Record<string, unknown>;
+      const rule = event.toolName === "bash" ? decide(String(input.command), tools.commandRules?.() ?? []) : undefined;
+      if (rule?.decision === "forbid") return { block: true, reason: `This project's rules forbid \`${rule.prefix}\`. Ask the user to run it, or do it another way.` };
       const mcp = mcpCall(event.toolName);
       // A call that reaches someone else (a search, a page, an MCP server) never carries one of the sandbox's credentials.
       if ((mcp || LEAVES.has(event.toolName)) && holdsSecret(JSON.stringify(input), sandboxSecrets())) {
@@ -275,7 +279,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const suspect = !!warning && !tools.allowedInThread?.(machine!.name, suspectKey(event.toolName, input));
       // The first call on a machine in a turn asks if anything earlier ran somewhere else, so output from one place can't steer her onto another.
       const moved = !!machine && !places.has(machine.name) && places.size > 0;
-      if (!irreversible && !suspect && !moved && !ASKS[mode].includes(as)) {
+      if (!irreversible && !suspect && !moved && rule?.decision !== "ask" && ((rule?.decision === "allow" && !machine) || !ASKS[mode].includes(as))) {
         if (place) places.add(place);
         return undefined;
       }

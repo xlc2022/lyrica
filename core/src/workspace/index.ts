@@ -34,6 +34,7 @@ export * from "./changes.ts";
 export * from "./files.ts";
 export * from "./home.ts";
 export * from "./machines.ts";
+export * from "./rules.ts";
 export * from "./mcp.ts";
 export * from "./net.ts";
 export * from "./paths.ts";
@@ -51,6 +52,7 @@ export interface WorkspaceThread {
   pool: Pool;
   threadId: string;
   /** A subagent's: the thread whose clones it works in, its parent's. Otherwise its own. */
+  project?: string;
   reposOf?: string;
   /** A read-only subagent's: its parent's clones are mounted read-only, so it can't change their working trees or commits. */
   reposReadOnly?: boolean;
@@ -263,6 +265,7 @@ export class Workspace {
    */
   forThread(t: WorkspaceThread) {
     return {
+      commandRules: () => t.project ? this.settings(t.userId).commandRules(t.pool, t.project) : [],
       target: (machine?: string) => this.targetFor(t, machine),
       settings: () => this.settings(t.userId).effective(t.threadId),
       machines: () => this.machinesFor(t),

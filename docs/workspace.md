@@ -837,6 +837,42 @@ gives it to no one below it. Changing a thread's workspace tells its
 descendants' open views to fetch their settings again. Parallel
 writers get their own git worktrees (see [delegation.md](delegation.md)).
 
+## Project command rules
+
+Principles 6, 2 and 8: a project keeps at most 100 Allow, Ask or Forbid
+prefixes in encrypted `user.db` (`project_settings.command_rules`, expand-only
+user step 6). A prefix has 1 to 8 words, each at most 64 characters, with no
+control characters; saving it again replaces its decision. `Projects.set`
+upserts other settings without replacing rules.
+
+A forbid rule refuses any command she writes that contains a matching command, however
+chained or wrapped; it doesn't see inside scripts or programs she runs.
+
+`rules.ts` uses `simpleCommands` from `machines.ts`: chains, pipes,
+substitutions, subshells, shell `-c` arguments and find's `-exec`, `-execdir`
+and `-ok` commands are checked; quotes and backslashes inside words are
+removed. Allow matches leading words after assignments. Ask and Forbid match
+the program anywhere, then the other prefix words in order with intervening
+words allowed. The longest prefix wins; ties prefer Forbid, then Ask, then
+Allow. Across parts Forbid wins, then Ask, and Allow needs every part allowed.
+Opaque programs (expansions, eval, source, dot, or a shell without `-c`) cannot
+be allowed; with any forbid rule they ask in every mode.
+
+The hook reads rules on every `bash` call through `ThreadTools.commandRules`.
+Forbid blocks without a card, Ask always asks, and Allow skips Ask and Accept
+edits prompts in the sandbox only. Machine limits, suspect commands, moving
+to a machine and irreversible calls still ask. The user's `user_bash` is
+unaffected. `WorkspaceThread.project` follows delegation at every depth.
+
+Project settings → General has Commands after This chat, with prefix,
+Allow | Ask | Forbid, Remove and Add rule, applied by the page's one Save.
+For a single plain sandbox command in a project, the card offers Always allow
+with lyricad's computed prefix. Shells, interpreters and wrappers get no such
+choice. The prefix is the program and its plain subcommand, plus the next
+plain word for package runners' run, exec or x (for example `npm run test`).
+The answer stores that server-held prefix in the project, including when a
+subagent asks; the browser never supplies the prefix.
+
 ## Approval
 
 The sandbox already limits what she can reach. Inside her grants she works

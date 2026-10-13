@@ -816,7 +816,7 @@ export function apiRoutes(d: Lyricad): Route[] {
           s().projects.pin(user.id, pool, thread.id, true);
         }
         const project = !!store.getThread(thread.id)!.project;
-        const settings = change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined;
+        const settings = change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.commandRules !== undefined;
         if ((change.goal !== undefined || change.instructions !== undefined || settings) && !project) {
           throw new HttpError(400, "only a project has a goal, instructions and project settings");
         }
@@ -829,6 +829,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         if (change.instructions !== undefined) {
           try { store.setProjectInstructions(thread.id, String(change.instructions), `user:${user.id}`); } catch (err) { throw new HttpError(400, (err as Error).message); }
         }
+        if (change.commandRules !== undefined) s().workspace.settings(user.id).setCommandRules(pool, thread.id, change.commandRules);
         if (settings) {
           s().projects.set(user.id, pool, thread.id, {
             ...(change.paused !== undefined ? { paused: !!change.paused } : {}),
@@ -1104,9 +1105,9 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${t}/permissions/:requestId`, async (r) => {
       const user = d.userFor(r);
-      const { allow, mode, allowInThread } = await r.json<Api.PermissionAnswer>();
+      const { allow, mode, allowInThread, alwaysAllow } = await r.json<Api.PermissionAnswer>();
       const thread = owner(d, user, (o) => threadOf(o, r));
-      if (!s().host.get(user.id, poolOf(r), thread.id).answer(r.params.requestId!, allow === true, mode, allowInThread === true)) throw new HttpError(404, "that request is no longer waiting");
+      if (!s().host.get(user.id, poolOf(r), thread.id).answer(r.params.requestId!, allow === true, mode, allowInThread === true, alwaysAllow === true)) throw new HttpError(404, "that request is no longer waiting");
       return { ok: true };
     }),
     route("POST", `${t}/uploads`, async (r): Promise<Api.UploadResponse> => {
@@ -2003,7 +2004,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
     ...(pref?.group ? { group: pref.group } : {}), ...(pref?.unread ? { unread: true } : {}),
     ...(th.project ? { project: true as const, ...(th.goal ? { goal: th.goal } : {}), ...instructionsOf(store, th.id) } : {}),
     ...(settings ? { projectSettings: {
-      pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
+      commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
     ...(mine ? { state: mine.state, ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),

@@ -1304,3 +1304,9 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
 @media (pointer: coarse) {
   .routine-item button.sm { min-height: 44px; }
 }
+
+/* Project commands use the existing fixed-choice buttons; rows wrap at phone width. */
+.command-rule { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.command-rule input { flex: 1 1 160px; min-width: 0; }
+.permission .always-allow { max-width: 100%; white-space: normal; }
+.permission .always-allow .mono { min-width: 0; overflow-wrap: anywhere; }

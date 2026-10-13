@@ -35,6 +35,7 @@ function fakeTarget(files: Map<string, string>, commands: string[], machine?: st
 }
 
 interface Run {
+  rules?: import("@lyrica/core").CommandRule[];
   /** Changes to the thread's settings, which the tools read on every call. */
   settings?: Partial<ThreadWorkspace>;
   /** Each step is one model reply; by default the calls, then "done". */
@@ -97,6 +98,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     machines: (o.machines ?? []).map((m) => m.name), repositories: [], mcpServers: [], parent: null, ...o.settings,
   };
   const workspace = createWorkspaceExtension({
+    commandRules: () => o.rules ?? [],
     target: (machine) => fakeTarget(files, commands, machine, o.secrets), settings: () => settings,
     machines: () => o.machines ?? [],
     proxmox: async (machine, action, vm) => { commands.push(`${machine}: proxmox ${action}${vm ? ` ${vm}` : ""}`); return `${action} done`; },
@@ -602,5 +604,29 @@ describe("MCP servers in a thread", () => {
       else process.env.PI_CODING_AGENT_DIR = before;
       await stray.close();
     }
+  });
+});
+
+describe("project command rules in the hook", () => {
+  it.each(["auto", "ask", "acceptEdits"] as const)("forbid blocks without a card in %s", async mode => {
+    let asked = 0;
+    const result = await run(mode, [fauxToolCall("bash", { command: 'g"i"t -C . push' })], { rules: [{ prefix: "git push", decision: "forbid" }], approve: async () => { asked++; return true; } });
+    expect(result.commands).toEqual([]);
+    expect(asked).toBe(0);
+    expect(result.results.join()).toContain("This project's rules forbid `git push`");
+  });
+  it("ask and opaque commands ask in Auto; sandbox allow skips Ask", async () => {
+    for (const command of ["git push", "x=git; $x push"]) {
+      let asked = 0;
+      await run("auto", [fauxToolCall("bash", { command })], { rules: [{ prefix: "git push", decision: command === "git push" ? "ask" : "forbid" }], approve: async () => { asked++; return false; } });
+      expect(asked).toBe(1);
+    }
+    const result = await run("ask", [fauxToolCall("bash", { command: "npm run test" })], { rules: [{ prefix: "npm run test", decision: "allow" }], approve: async () => { throw new Error("unexpected prompt"); } });
+    expect(result.commands).toEqual(["npm run test"]);
+  });
+  it("allow keeps the machine's prompts", async () => {
+    let asked = 0;
+    await run("ask", [fauxToolCall("bash", { command: "ls", machine: "nas" })], { rules: [{ prefix: "ls", decision: "allow" }], machines: [{ name: "nas", kind: "ssh", limit: "ask", root: null }], approve: async () => { asked++; return false; } });
+    expect(asked).toBe(1);
   });
 });

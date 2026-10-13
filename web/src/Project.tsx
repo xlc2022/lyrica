@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, threadPath, u,
-  type AllowedPaths, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type PermissionMode, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
+  type CommandRule, type AllowedPaths, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type PermissionMode, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
 } from "./api.ts";
 import { ChecklistButton, StepLine } from "./Checklist.tsx";
 import { Icon } from "./icons.tsx";
@@ -223,11 +223,12 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   );
 }
 
-/** Goal, Paused and Watching threads; New threads (Model, Thinking, Fallback); This chat (Model, Mode, Group, Folders, Machines, Repositories, MCP servers); one Save. */
-function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
+/** Goal, Paused and Watching threads; New threads (Model, Thinking, Fallback); This chat (Model, Mode, Group, Folders, Machines, Repositories, MCP servers); Commands; one Save. */
+export function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
 }) {
   const ps = summary.projectSettings;
+  const [rules, setRules] = useState<CommandRule[]>(ps?.commandRules ?? []);
   const [goal, setGoal] = useState(summary.goal ?? "");
   const [paused, setPaused] = useState(!!ps?.paused);
   const [watch, setWatch] = useState(ps?.watchThreads !== false);
@@ -249,14 +250,16 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
   const save = () => run(async () => {
     setSaved(false);
     const change: ThreadChange = {
-      goal, paused,
+      goal, paused, commandRules: rules,
       ...(watch !== (ps?.watchThreads !== false) ? { watchThreads: watch } : {}),
       threadsModel: model ? { offeringId: model } : null,
       threadsThinking: thinking || null,
       threadsFallback: fallback ? fallback === "on" : null,
       ...(group !== (summary.group ?? "") ? { group: group || null } : {}),
     };
-    onSummary(await patch<ThreadSummary>(base, change));
+    const updated = await patch<ThreadSummary>(base, change);
+    setRules(updated.projectSettings?.commandRules ?? rules);
+    onSummary(updated);
     if (chat !== undefined || mode !== settings.mode || grants || granted || repositories || mcpServers) {
       onSettings(await patch<ThreadSettings>(`${base}/settings`, {
         ...(chat !== undefined ? { models: { chat } } : {}), ...(mode !== settings.mode ? { mode } : {}),
@@ -266,6 +269,8 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
     }
     setSaved(true);
   });
+  const ruleError = rules.some(r => !r.prefix.trim() || /[\x00-\x1f\x7f-\x9f]/.test(r.prefix) || r.prefix.trim().split(/\s+/).length > 8 || r.prefix.trim().split(/\s+/).some(w => w.length > 64))
+    ? "A command prefix has 1 to 8 words, each at most 64 characters, with no control characters." : "";
   const newThreadsHint = `Threads ${her()} starts from this chat. Each one can be changed after it starts.`;
   return (
     <form className="card project-form" aria-labelledby="h-general" onSubmit={(e) => { e.preventDefault(); void save(); }}>
@@ -352,8 +357,20 @@ function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }:
       {/* Network, local-only, the other task models and speech stay in the chat's own drawer. */}
       <p className="small"><a href={href({ page: "thread", userId: ctx.user.id, pool: summary.pool, threadId: summary.id, drawer: true })} title="Network, local-only and the other task models, in the chat's drawer.">Thread settings</a></p>
 
+      <h3>Commands</h3>
+      {!rules.length && <p className="muted">No rules: commands ask as the mode says.</p>}
+      {rules.map((rule, i) => <div className="command-rule" key={i}>
+        <input className="mono" aria-label="Command prefix" value={rule.prefix} onChange={e => setRules(rules.map((r, n) => n === i ? { ...r, prefix: e.target.value } : r))} />
+        <div className="seg" role="group" aria-label={`Decision for ${rule.prefix || "new rule"}`}>
+          {(["allow", "ask", "forbid"] as const).map(decision => <button type="button" key={decision} aria-pressed={rule.decision === decision} onClick={() => setRules(rules.map((r, n) => n === i ? { ...r, decision } : r))}>{decision[0]!.toUpperCase() + decision.slice(1)}</button>)}
+        </div>
+        <button type="button" className="icon sm" aria-label={`Remove ${rule.prefix || "rule"}`} onClick={() => setRules(rules.filter((_, n) => n !== i))}><Icon name="close" /></button>
+      </div>)}
+      <ErrorText error={ruleError} />
+      <button type="button" disabled={rules.length >= 100} onClick={() => setRules([...rules, { prefix: "", decision: "ask" }])}>Add rule</button>
+
       <div className="row">
-        <button type="submit" className="primary" disabled={busy}>Save</button>
+        <button type="submit" className="primary" disabled={busy || !!ruleError}>Save</button>
         {saved && <span className="muted" role="status">Saved.</span>}
       </div>
       <ErrorText error={error} />

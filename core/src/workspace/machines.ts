@@ -50,31 +50,64 @@ const VALUE_FLAGS: Record<string, string[]> = {
 const SHELLS = new Set(["sh", "bash", "dash", "zsh", "ksh"]);
 
 /** A command line's simple commands, each as words with quotes removed and the program's path dropped. */
-function simpleCommands(command: string, depth = 0): string[][] {
-  return command.split(/\$\(|[;&|\n()`{}]/).flatMap((part) => {
-    const words = (part.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map((w) => w.replace(/^["']|["']$/g, ""));
-    // Skip wrappers, their flags and values, a timeout's duration and VAR=value assignments, so `sudo -u root /sbin/reboot` is reboot.
+export function simpleCommands(command: string): string[][] {
+  const commands: string[][] = [];
+  let words: string[] = [], word = "", quote = "";
+  const flushWord = () => { if (word) { words.push(word.replace(/["']/g, "")); word = ""; } };
+  const flush = () => {
+    flushWord();
+    if (!words.length) return;
+    const current = words; words = [];
+    current[0] = posix.basename(current[0]!);
+    commands.push(current);
+    const shell = current.findIndex(w => SHELLS.has(posix.basename(w)));
+    const c = current.indexOf("-c", shell + 1);
+    if (shell >= 0 && c > shell && current[c + 1]) commands.push(...simpleCommands(current[c + 1]!));
+    for (let i = 0; i < current.length; i++) if (["-exec", "-execdir", "-ok"].includes(current[i]!)) {
+      const nested = current.slice(i + 1);
+      if (nested.length) commands.push(nested);
+    }
+  };
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]!;
+    if (ch === "\\") { if (command[i + 1]) word += command[++i]; continue; }
+    if (ch === "'" || ch === '"') {
+      if (!quote) { quote = ch; continue; }
+      if (quote === ch) { quote = ""; continue; }
+    }
+    // Substitutions execute even inside double quotes. Keep their commands separately.
+    if (quote !== "'" && (ch === "`" || (ch === "$" && command[i + 1] === "("))) {
+      const start = i + (ch === "`" ? 1 : 2);
+      let end = start, depth = 1;
+      for (; end < command.length; end++) {
+        if (ch === "`" && command[end] === "`") break;
+        if (ch !== "`") { if (command[end] === "(") depth++; if (command[end] === ")" && --depth === 0) break; }
+      }
+      commands.push(...simpleCommands(command.slice(start, end)));
+      word += "$substitution"; i = end; continue;
+    }
+    if (!quote && /[;&|\n(){}]/.test(ch)) { flush(); continue; }
+    if (!quote && /\s/.test(ch)) { flushWord(); continue; }
+    word += ch;
+  }
+  flush();
+  return commands;
+}
+
+/** The warning for a suspect command, or undefined. */
+export function suspectCommand(command: string): string | undefined {
+  for (const parsed of simpleCommands(command)) {
+    const words = [...parsed];
     let wrapper = "";
-    for (;;) {
-      const w = words[0];
-      if (w === undefined) break;
+    while (words.length) {
+      const w = words[0]!;
       if (PREFIXES.has(posix.basename(w))) { wrapper = posix.basename(w); words.shift(); continue; }
       if (w.startsWith("-")) { words.shift(); if (VALUE_FLAGS[wrapper]?.includes(w)) words.shift(); continue; }
       if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w) || (wrapper === "timeout" && /^\d/.test(w))) { words.shift(); continue; }
       break;
     }
-    if (!words.length) return [];
+    if (!words.length) continue;
     words[0] = posix.basename(words[0]!);
-    // `bash -c '…'` runs its argument: look in there too.
-    const c = words.indexOf("-c");
-    if (SHELLS.has(words[0]!) && c > 0 && words[c + 1] && depth < 3) return [words, ...simpleCommands(words[c + 1]!, depth + 1)];
-    return [words];
-  });
-}
-
-/** The warning for a suspect command, or undefined. */
-export function suspectCommand(command: string): string | undefined {
-  for (const words of simpleCommands(command)) {
     const hit = SUSPECT_COMMANDS.find((s) => s.test(words));
     if (hit) return hit.warning;
   }

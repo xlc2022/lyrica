@@ -94,4 +94,37 @@ refused under forbid `git push`; Always allow on `npm run test` adds
 
 ## Handoff notes
 
-Not started.
+Implementation completed; details below.
+
+### 2026-10-13 — implementation handoff
+
+**Done:** all In scope items A–F: pure prefix matching and hardened simple
+commands; expand-only user.db step 6 after main's step 5, with tests from
+schemas 1–5; project settings upserts; live hook enforcement in the project
+chat, its threads and nested subagents; daemon-held Always allow prefixes;
+Commands under General and the command-card action. Updated DESIGN,
+workspace, delegation, contracts, UX, web, daemon, the design status table
+and her own project handoff. Serves principles 6, 2 and 8, without adding a
+tool or process. Rules remain project-only; machines get no persistent Allow.
+
+**Validation:** `npm run typecheck` passes. Only targeted Vitest files were
+run, with `--pool=forks --maxWorkers=2`, one run at a time: core command
+rules, migrations, machines and workspace; extension workspace and delegate;
+daemon command rules, projects and delegation; web command rules. Across
+these files 165 tests passed and 4 host-dependent workspace tests skipped.
+All command-rule cases use fake models and recording command targets. No
+real paid API or plan endpoint was called. The full suite was not run, per
+this run's instruction. No push.
+
+**Commit blocked:** this workspace mounts `.git` read-only; `git add`
+failed creating `.git/index.lock` with "Read-only file system". All changes
+remain in the working tree. Commit from a writable checkout with the message
+"Add project command rules and trusted command approvals", followed by a
+blank line and `Co-Authored-By: Codex <noreply@openai.com>`.
+
+**Next:** commit locally, then PR review and UI review, then CI. Browser screenshots at 1280 and
+390 remain for UI review: Chromium is unavailable in this checkout. The
+rendered web tests verify the Commands home, existing segment, one Save,
+validation, and the Always allow action's placement and availability.
+
+**Open questions:** none.

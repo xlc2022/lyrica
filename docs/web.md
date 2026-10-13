@@ -176,8 +176,10 @@ A thread's address may carry what the panel beside it shows:
   servers**, the drawer's own controls,
   then a **Thread settings** link that opens the project chat with its
   drawer showing, `…/t/<pool>/<thread>/settings`, for network, local-only
-  and the other task models), and one Save, which patches the thread
-  (`goal`, `paused`, `watchThreads` when it changed, `threadsModel`,
+  and the other task models), then **Commands**: a mono prefix field per
+  rule, an Allow | Ask | Forbid segment, Remove, and **Add rule**. Empty
+  reads "No rules: commands ask as the mode says." The page has one Save, which patches the thread
+  (`goal`, `paused`, `commandRules`, `watchThreads` when it changed, `threadsModel`,
   `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
   settings (`grants`, `machines`, `repositories`, `mcpServers` among them); `lyricad`'s
   reason shows when it refuses. Every thread the project starts gets these
@@ -971,3 +973,9 @@ turns animations off.
 - `npx tsx web/e2e/shot.ts [page]...` (after a build) saves screenshots of
   ada's pages from that same throwaway `lyricad`, at both widths, light and
   dark (docs/workspace.md, "Her own code").
+
+A project sandbox command card offers secondary **Always allow `<prefix>`**
+between Allow and Deny, only when lyricad supplied `alwaysAllow`. It answers
+with `alwaysAllow: true`; the prefix is never sent back. Commands uses the
+existing segment and Remove icon (UX rules 2–3), its home in rule 6 and one
+Save with validation in rule 7; rows wrap at phone width (rule 8).

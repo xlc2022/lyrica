@@ -1,0 +1,45 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { GeneralSection } from "../src/Project.tsx";
+import { PermissionPrompt } from "../src/Messages.tsx";
+import type { CommandRule, PermissionRequest, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { ShellContext } from "../src/Shell.tsx";
+
+const general = (rules: CommandRule[]) => renderToStaticMarkup(createElement(GeneralSection, {
+  ctx: { user: { id: "ada" }, groups: [] } as unknown as ShellContext, base: "/project",
+  summary: { id: "project", pool: "general", projectSettings: { commandRules: rules } } as ThreadSummary,
+  settings: { mode: "ask", models: { chat: { source: "profile" } }, allowed: [], grants: [], machines: [], repositories: [], mcpServers: [] } as unknown as ThreadSettings,
+  onSummary: () => {}, onSettings: () => {},
+}));
+const permission = (alwaysAllow?: string) => renderToStaticMarkup(createElement(PermissionPrompt, {
+  base: "/project", p: { requestId: "call", toolCallId: "bash", tool: "bash", args: { command: "npm run test" }, expiresAt: "2026-10-14T00:00:00Z", alwaysAllow } satisfies PermissionRequest,
+  env: { userId: "ada", pool: "general", threadId: "project" } as Parameters<typeof PermissionPrompt>[0]["env"],
+}));
+
+describe("command rules in the web UI", () => {
+  it("puts Commands after This chat, with the page's single Save and the empty state", () => {
+    const html = general([]);
+    expect(html.indexOf("This chat</h3>")).toBeLessThan(html.indexOf("Commands</h3>"));
+    expect(html).toContain("No rules: commands ask as the mode says.");
+    expect(html.match(/>Save<\/button>/g)).toHaveLength(1);
+    expect(html).toContain("Add rule</button>");
+  });
+  it("shows saved decisions in the existing segment and refuses an invalid prefix before Save", () => {
+    const html = general([{ prefix: "git push", decision: "forbid" }]);
+    expect(html).toContain('class="mono" aria-label="Command prefix" value="git push"');
+    expect(html).toContain('class="seg" role="group"');
+    expect(html).toContain('aria-pressed="true">Forbid</button>');
+    expect(html).toContain('aria-label="Remove git push"');
+    const invalid = general([{ prefix: "", decision: "ask" }]);
+    expect(invalid).toContain('disabled="">Save</button>');
+    expect(invalid).toContain("A command prefix has 1 to 8 words");
+  });
+  it("offers Always allow between Allow and Deny only with a daemon prefix", () => {
+    const html = permission("npm run test");
+    expect(html.indexOf(">Allow</button>")).toBeLessThan(html.indexOf("Always allow"));
+    expect(html.indexOf("Always allow")).toBeLessThan(html.indexOf(">Deny</button>"));
+    expect(html).toContain('class="mono">npm run test</span>');
+    expect(permission()).not.toContain("Always allow");
+  });
+});

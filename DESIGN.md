@@ -1539,6 +1539,13 @@ Details in [docs/sleep.md](docs/sleep.md).
   - **Plan:** she can only read, recall and use read-only subagents. She
     writes a plan and asks to go ahead; approving it switches the thread to
     the mode the user picks, and she carries on.
+  - **Project command rules:** Allow, Ask or Forbid prefixes, edited under
+    Commands in Project settings → General, apply to the project chat, its
+    threads and their subagents. Forbid refuses `bash` in every mode and
+    place; Ask always asks. Allow skips mode prompts only in the sandbox,
+    never machine limits or irreversible-action prompts. A sandbox command
+    card can save its computed prefix with **Always allow**. Opaque commands
+    ask when the project has a forbid rule.
   - Irreversible actions that leave the server always ask, whatever the
     mode. Subagents and child threads get the parent's mode or a stricter
     one, and follow the parent when it is made stricter later, at any

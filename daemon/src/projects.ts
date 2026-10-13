@@ -50,7 +50,7 @@ export class Projects {
     const model = change.model === undefined ? now.model : change.model ?? undefined;
     const thinking = change.thinking === undefined ? now.thinking : change.thinking ?? undefined;
     const fallback = change.fallback === undefined ? now.fallback : change.fallback ?? undefined;
-    this.db(userId, (db) => db.prepare("INSERT OR REPLACE INTO project_settings (pool, thread, paused, model, thinking, watch, fallback) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    this.db(userId, (db) => db.prepare("INSERT INTO project_settings (pool, thread, paused, model, thinking, watch, fallback) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(pool, thread) DO UPDATE SET paused = excluded.paused, model = excluded.model, thinking = excluded.thinking, watch = excluded.watch, fallback = excluded.fallback")
       .run(pool, project, (change.paused ?? now.paused) ? 1 : 0, model ? JSON.stringify(model) : null, thinking ?? null, (change.watch ?? now.watch) ? 1 : 0,
         fallback === undefined ? null : fallback ? 1 : 0));
     return this.settings(userId, pool, project);

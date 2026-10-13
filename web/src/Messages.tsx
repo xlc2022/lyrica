@@ -666,9 +666,9 @@ function permissionText(args: unknown): string {
   return JSON.stringify(a, null, 2);
 }
 
-function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest; env: Env }) {
+export function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest; env: Env }) {
   const [run, busy, error] = useAction();
-  const answer = (allow: boolean, mode?: GoAhead, allowInThread?: boolean) => run(() => post(`${base}/permissions/${encodeURIComponent(p.requestId)}`, { allow, mode, allowInThread }));
+  const answer = (allow: boolean, mode?: GoAhead, allowInThread?: boolean, alwaysAllow?: true) => run(() => post(`${base}/permissions/${encodeURIComponent(p.requestId)}`, { allow, mode, allowInThread, alwaysAllow }));
   const left = useCountdown(p.expiresAt);
   if (p.tool === "image") return <PortraitPrompt p={p} answer={answer} busy={busy} left={left} error={error} />;
   if (p.tool === "propose_plan" && !p.subagent) {
@@ -718,6 +718,7 @@ function PermissionPrompt({ base, p, env }: { base: string; p: PermissionRequest
       <pre>{permissionText(p.args)}</pre>
       <div className="row">
         <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Allow</button>
+        {p.alwaysAllow && <button type="button" className="always-allow" disabled={busy} onClick={() => answer(true, undefined, undefined, true)}>Always allow <span className="mono">{p.alwaysAllow}</span></button>}
         <button type="button" disabled={busy} onClick={() => answer(false)}>Deny</button>
         {p.suspect && <button type="button" disabled={busy} onClick={() => answer(true, undefined, true)}>Allow in this thread</button>}
         <span className="muted">{left}</span>
