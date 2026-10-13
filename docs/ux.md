@@ -160,7 +160,7 @@ Rules:
   Details, Strength, Download image model, Scan folder, Scan now, Found,
   Files to download, Portrait photos, Add photos, Send today, Not today,
   Edit…, Making an image, Editing an image, Upscaling an image, Show in Files,
-  Use for, Fast, Quality, Both.
+  Use for, Fast, Quality, Both, Tokens, GPU time, By thread, All projects, Total.
 - Numbers get units beside the field (GB, %, tokens), and a maximum shown
   where one exists ("of 128k").
 
@@ -271,7 +271,9 @@ Rules:
 | The tailnet | the **Tailnet** section of Administration: a facts line in mono (tailnet, address, MagicDNS name, control server), one state (Connected green, Disconnected amber, Not installed red, Not joined the word alone); **Connect** primary and **Disconnect** secondary; Leave and Connect to another tailnet behind ⋯; Disconnect and Leave each confirmed by a **dialog** with its one sentence (**Disconnect** / **Stay connected**, **Leave** / **Stay**); joining happens in the **drawer** (Auth key, Hostname, Advanced → Control server) |
 | A web search provider | the **Web search** section of Administration: one field, **SearXNG address** (a URL, in mono, shown without any password; tooltip "Add user:password@ to the address to use basic auth.", or once one is stored "Its password is kept. Type user:password@ to replace it."), one **Save**, and a status line beneath as a dot and a word (Reachable green, Unreachable amber with what failed as its tooltip; nothing when unset). Without an address, the "+" menu's and the thread drawer's **Web search** switch stays usable (it gives `web_fetch`) with the tooltip "Search needs a SearXNG address in Administration" |
 | Web access over the tailnet, or straight to the machine | the **Tailnet** and **Direct** modes of Web access, next to Off, Built-in Caddy and External proxy; their state lines show the name and the certificate, or the addresses and the fingerprint in mono, as the other modes do |
-| A project's usage | a fact in the project chat's facts line ("312k tokens"; on a phone, the first line of the Threads popover); the breakdown in Models → Recent calls, filtered to the project |
+| A thread's tokens | **Tokens** after Checklist in the facts line once a counted turn exists: mono “<n> tokens” and a caret; popover rows by model, muted local/cloud kind, mono tokens and local **GPU time**, then **Total**, whose tooltip says “Counts every request, cached reads included.”; a cloud row shows a muted “—” for GPU time; on a phone a line at the foot of Context opens the rows in place |
+| A project's usage | **Tokens** in the project chat's facts line for the whole project; the same model rows, then **By thread** (This chat first, thread links by tokens descending, mono tokens and GPU time), then **Recent calls** linking to its project filter; on a phone a line at the foot of Threads opens the rows in place |
+| Recent calls by project | a **Project** select in the tab's header: **All projects**, then projects by title grouped General and Private, hidden pools omitted; the route keeps the selection |
 
 The project rows are drawn in the app mockup's projects frame
 (https://claude.ai/artifact/96BoPXPoxL2LDBg8eLxjHx, version 22: `#t/p1` and

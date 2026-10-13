@@ -112,6 +112,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   came, else `ThreadSummary.steps`, so a new list redraws the fact and
   the open popover in place; with Checklists off it shows none, a list
   already streamed included. Her call itself is a tool marker.
+  **Tokens** follows Checklist once a counted turn exists (`src/Usage.tsx`,
+  `GET …/usage`, reloaded after turns and child updates). Its mono count and
+  caret open model rows with muted local/cloud kind, mono tokens and local
+  **GPU time**, then Total, whose tooltip says “Counts every request, cached reads included.”
+  On a phone it opens rows in place at the foot of Context.
   Then, while she has wake-ups waiting (`ThreadSettings.wakeups`, soonest
   first), **Wake-up** and the soonest time in mono (`wakeTime`: HH:MM today,
   the date before it otherwise) open a popover with each one's time and an
@@ -132,8 +137,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   its state word and its time in mono); below it a popover of the project's
   threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
-  count). The facts line also carries the project's tokens ("65 tokens", "312k tokens"; on a phone the tokens
-  are the popover's first line instead). The header has a **Project**
+  count). The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
+  This chat first, then thread links by descending tokens, and **Recent
+  calls** linking to the project's filter. On a phone Tokens opens in place
+  at the foot of the Threads popover. The header has a **Project**
   link to the project settings page before the Settings button, which
   opens the thread's drawer as in any thread. The
   `child` stream event reloads the overview (`GET …/overview`) and the
@@ -282,8 +289,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   30 s not asked again). Overview: a banner for a paused host or a stale
   endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
   the first one down, "+N" for more), Backend (the first `chat` model of
-  the General and Private columns, following Same as, each with its pool
-  and preset name (or Custom) beneath; links to Tasks) and Clean up (the count, the tile's
+  the general profile and of Local, following Same as, each with its pool
+  and profile beneath; links to Tasks) and Clean up (the count, the tile's
   tooltip "To decide" or "Nothing to clean up"); then the hosts and
   endpoints summary (a host with its combined VRAM bar, Pause or Resume,
   Dashboard; a plain endpoint with its model count) and the first five
@@ -318,32 +325,32 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Remove**; the notice lines as a dashed note with Dismiss. The
   thresholds are the pills' tooltips (stale: unreachable 14 days or more;
   gone: missing 30 days or more), and Replace with… carries the redirect
-  sentence as its tooltip. Recent calls: Time (mono), Thread (a link; private
+  sentence as its tooltip. Recent calls has a **Project** select in its
+  header: **All projects**, then title-sorted projects grouped General and
+  Private, hidden pools omitted. Its hash address retains `?project=&pool=`
+  and the calls API applies both filters. The project list comes from
+  `threads?all=1`, with display visibility applied here, so the sidebar
+  project filter does not remove choices. Recent calls: Time (mono), Thread (a link; private
   kind mark; "a forgotten thread" when gone), Task, Answered by ("model ·
   endpoint"), Note (the fallback or note, warn text); hidden pools left
-  out; the table stacks on a phone. Tasks (`GET …/presets`): a table of every
-  task (grouped Conversation,
-  Memory, Sleep, Images, Speech; each name's tooltip says what the task
-  does) by column, **Private threads** and **General threads**. Each
-  column's **Preset** button opens a searchable dialog of its usable
-  presets; choosing one sends `PUT …/columns/<column>`. A private column
-  offers private presets only. Custom columns offer **Save to <name>**
-  and **Save as preset…**; **New preset…** and a user preset's Edit open
-  the Name drawer. A cell shows the first model with its state dot (up;
-  away when only a later entry can answer; down when none can), or
-  "No model" with a down dot, then "+N fallbacks", "no fallback" (warn)
-  or "= Chat" for a task following another. Dictation has a cell under
-  Private threads only. A cell opens the task drawer naming its column
-  and preset: **Its own list** or **Same as** a task of the same kind,
-  the ordered list with Move up, Move down and Remove, and **Add…**, a
-  picker with search and group chips offering only suitable models (local
-  only for Private). A change sends `PUT …/columns/<column>/<task>` and
-  makes that column Custom, leaving the preset unchanged; refusals show
-  as an error line. Saving uses `POST …/columns/<column>/save`; creating,
-  renaming and deleting presets use `POST …/presets` and
-  `PATCH`/`DELETE …/presets/<id>`.
-  Settings → Sleep holds the Sleep mode select and Sleep fallback;
-  `…/settings/profiles` goes to the Tasks tab.
+  out; the table stacks on a phone. Tasks (`GET …/presets`, the former
+  Settings → Model profiles) has two columns, **Private threads** and
+  **General threads**, with a **Preset** menu in each head. Local is private;
+  Cloud is general; named presets follow their scope. The menu holds Search
+  presets, the available presets with Edit beside user presets, Save to and
+  Save as preset… while Custom, then New preset…. Picking a preset sends
+  `PUT …/columns/:column`; editing a task copies its lists to Custom without
+  changing the preset. Preset creation and renaming use the drawer, and
+  Delete preset… confirms in a dialog.
+  Rows group Conversation, Memory, Sleep, Images and Speech. A cell shows
+  the first model's state, +N fallbacks or no fallback, or = Chat for a
+  shared task. Dictation has a Private cell only. The drawer names the
+  column and preset, with **Its own list** or **Same as**, **Task to share
+  with**, ordered models with Move up, Move down and Remove, and **Add…**.
+  General lists mark where fallback crosses local/cloud; Private offers
+  local models only. Changes send `PUT …/columns/:column/:task` at once.
+  Settings → Sleep holds Sleep mode and Sleep fallback;
+  `…/settings/profiles` remains a redirect to Tasks.
   Text models (`src/TextModels.tsx`, its pure parts in `src/library.ts`)
   reads the whole library (`GET …/library/text`, 200 a request) and filters
   in the page, so the facts line ("<n> models · <c> copies on <e> endpoints
@@ -478,7 +485,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   administrator: Tailnet (the state, an Auth key with Hostname and Advanced →
   Control server, **Connect**, then a **Web access over the tailnet** switch
   applied on Continue; or Skip), Models (one endpoint, shared, its first
-  chat model set for the column; or Skip), Done (the addresses to open her
+  chat model set for the profile; or Skip), Done (the addresses to open her
   at with the fingerprint, the administrator's login, the tailnet, and a
   sentence when she starts locked), **Start a chat**. The current step's
   button is the one primary; a done step's turns secondary; the fields of a
@@ -644,7 +651,7 @@ stack when they don't fit. Each card has a plain h2 with its link on the right:
 and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
 time in mono. **Notifications** has All <n> and "Nothing waiting." when
 empty. **Backend** has Models and lists each pool's first chat model, host,
-local/cloud chip and preset name (or Custom), then each model host's state as a dot and word.
+local/cloud chip and profile, then each model host's state as a dot and word.
 
 ## Chat
 
@@ -978,7 +985,7 @@ turns animations off.
   links and word diffs, mentions, which paths become links, which code
   blocks get Copy and what it copies (`codeblock.test.ts`), a checklist's
   count and current step (`checklist.test.ts`), the welcome cards' empty states,
-  hidden sleep pools and backend profiles (`cards.test.ts`), routine facts and paused
+  hidden sleep pools and backend presets (`cards.test.ts`), routine facts and paused
   schedules (`routines.test.ts`), the recorder's context
   fallback and clip limit (`voice.test.ts`), and a text model group's warn
   lines (`library.test.ts`), and flyout placement and hover intent (`flyout.test.ts`).

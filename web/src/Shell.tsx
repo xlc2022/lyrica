@@ -110,7 +110,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
     ) : r.page === "sleep" ? (
       <SleepPage ctx={ctx} />
     ) : r.page === "models" ? (
-      <ModelsArea ctx={ctx} tab={r.tab} add={r.add} />
+      <ModelsArea ctx={ctx} tab={r.tab} add={r.add} project={r.project} pool={r.pool} />
     ) : r.page === "notifications" ? (
       <NotificationsPage ctx={ctx} />
     ) : r.page === "settings" ? (

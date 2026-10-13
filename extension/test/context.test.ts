@@ -84,3 +84,20 @@ describe("her context lines", () => {
     expect(meter.report()!.pace).toMatchObject({ tokPerSec: 38 });
   });
 });
+
+describe("every request's reads", () => {
+  it("includes cached reads on every request while context remains the last prompt", async () => {
+    const { registerContext } = await import("../src/context.ts");
+    const handlers = new Map<string, (...args: any[]) => any>();
+    const pi = { on: (name: string, fn: (...args: any[]) => any) => handlers.set(name, fn) };
+    const meter = new ContextMeter();
+    registerContext(pi as any, meter);
+    handlers.get("agent_start")!();
+    for (const usage of [{ input: 10, cacheRead: 20, cacheWrite: 5, output: 3 }, { input: 5, cacheRead: 40, cacheWrite: 2, output: 4 }]) {
+      handlers.get("before_provider_request")!();
+      handlers.get("message_end")!({ message: { role: "assistant", usage } });
+    }
+    handlers.get("agent_end")!({}, { model: { contextWindow: 1000 }, getContextUsage: () => ({ tokens: 47 }), sessionManager: { getEntries: () => [], getLeafId: () => null } });
+    expect(meter.takePace()).toMatchObject({ promptTokens: 47, readTokens: 82, outputTokens: 7, processed: 22 });
+  });
+});

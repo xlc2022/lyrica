@@ -1,15 +1,16 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTombstone, type WakeupInfo } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTombstone, type ThreadUsage, type WakeupInfo } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { hasConsequences, jumpTo, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { JUMP_EVENT, JUMP_KEY, SHOW_EVENT, SHOW_KEY, take, type JumpRequest, type ShowRequest } from "./links.ts";
 import { go, href } from "./route.ts";
-import { ThreadsFact, tokenCount, useOverview, type ProjectEnv } from "./Project.tsx";
+import { ThreadsFact, useOverview, type ProjectEnv } from "./Project.tsx";
 import { useThread } from "./stream.ts";
 import { Conversation, MessageBox } from "./Messages.tsx";
 import { Composer } from "./Composer.tsx";
 import { ContextFact, newerContext } from "./ContextMeter.tsx";
+import { TokensFact } from "./Usage.tsx";
 import { RoutinesFact } from "./Routines.tsx";
 import { ChecklistButton } from "./Checklist.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
@@ -44,7 +45,9 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const { refreshThreads } = ctx;
   // A project chat: its threads, reloaded when one changes state or a turn ends.
   const isProject = !!summary.data?.project;
+  const usage = useLoad(() => get<ThreadUsage>(`${base}/usage`), [base, t.live.children, t.live.reload]);
   const overview = useOverview(userId, pool, threadId, isProject, t.live.children + t.live.reload);
+  const usageProps = usage.data ? { usage: usage.data, userId, pool, threadId, threads: overview.data?.threads ?? threads } : undefined;
   useEffect(() => { if (t.live.children) refreshThreads(); }, [t.live.children, refreshThreads]);
   // Each thread's last update to the project chat, for its card.
   const lastUpdates = useMemo(() => {
@@ -260,10 +263,10 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!s?.subagent} />}
             {pins.data && !s?.subagent && <PinnedBadge pins={pins.data} you={ctx.user.displayName} userId={ctx.user.id} pool={pool} />}
             {s && !s.subagent && !s.child && <GroupPicker ctx={ctx} base={base} summary={s} onChange={(x) => { summary.set(x); refreshThreads(); }} />}
-            {context && <ContextFact context={context} />}
+            {context && <ContextFact context={context} footer={phone && !isProject && usageProps ? <TokensFact {...usageProps} inline /> : undefined} />}
             {!!steps?.length && <ChecklistButton steps={steps} />}
-            {s?.project && overview.data && <ThreadsFact userId={userId} pool={pool} threadId={threadId} overview={overview.data} phone={phone} />}
-            {s?.project && overview.data && !phone && <span className="tokens"><span className="num">{tokenCount(overview.data.tokens)}</span> tokens</span>}
+            {!phone && usageProps && <TokensFact {...usageProps} />}
+            {s?.project && overview.data && <ThreadsFact userId={userId} pool={pool} threadId={threadId} overview={overview.data} footer={phone && usageProps ? <TokensFact {...usageProps} inline /> : undefined} />}
             {!!settings.data?.routines?.length && <RoutinesFact userId={userId} routines={settings.data.routines} onChange={refreshSettings} />}
             {!!settings.data?.wakeups?.length && <WakeupsFact base={base} wakeups={settings.data.wakeups} onChange={setWakeups} />}
             {settings.data?.localOnly && pool === "general" && <span className="badge"><span className="k local">local-only</span></span>}

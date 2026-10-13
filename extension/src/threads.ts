@@ -14,6 +14,7 @@ import { formatEntry } from "./memory.ts";
 
 export interface ThreadsHost {
   readonly limits: ThreadsLimits;
+  draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
   /**
    * Creates a child of `parent`, with its settings or narrower ones, and
    * starts it on the task in the background. In a project, past the at-once
@@ -47,7 +48,10 @@ export const READ_DEFAULT = 10;
 export const READ_MAX = 30;
 
 const Params = Type.Object({
-  action: Type.Union(["start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "resolve", "reopen", "compact"].map((a) => Type.Literal(a))),
+  action: Type.Union(["start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"].map((a) => Type.Literal(a))),
+  goal: Type.Optional(Type.String({ maxLength: 2000 })),
+  instructions: Type.Optional(Type.String({ maxLength: 2000 })),
+  ids: Type.Optional(Type.Array(Type.String(), { maxItems: 10, description: "For fold: existing thread IDs to suggest bringing into this project. The person applies the card." })),
   title: Type.Optional(Type.String({ description: "For start: the child thread's title." })),
   task: Type.Optional(Type.String({ description: "For start: what to work on, with everything it needs. It starts with your persona and memory, but none of this conversation." })),
   folders: Type.Optional(Type.Array(Type.String(), { description: "For start: only these of this thread's folders." })),
@@ -127,7 +131,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         : child
           ? "Send your parent thread a short update: threads({ action: \"message\", to: \"parent\", text })."
           : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message one; list them; read one's latest messages; stop one's running turn."
-            + (inProjectChat() ? " In this project chat, also suggest threads (a card the person starts them from), and resolve or reopen one." : ""),
+            + (inProjectChat() ? " In this project chat, also suggest threads (a card the person starts them from), suggest folding in existing work with fold and ids, draft Goal and Instructions for editing in Project settings, and resolve or reopen one." : ""),
       host?.later ? "Set a wake-up for this thread: threads({ action: \"later\", minutes, note }) starts a turn here then, with your note." : "",
       host ? "Manage only this thread's routines: threads({ action: \"routine\", routineAction: \"add\", schedule, note, newThread? }); list, pause, resume or remove with routineAction and routineId. At most 10, including paused routines." : "",
       steps ? "Keep this thread's checklist, shown on its card: threads({ action: \"steps\", steps })." : "",
@@ -254,6 +258,17 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           return text(`${resolved ? "Resolved" : "Reopened"} ${id ? `[t:${id}]` : "this thread"}.`, id ? { threads: [id] } : undefined);
         }
         if (child) throw new Error("a child thread can't start child threads; it can delegate, and message its parent");
+        if (p.action === "fold") {
+          if (!inProjectChat()) throw new Error("fold is for a project chat");
+          if (!p.ids?.length) throw new Error("fold needs thread ids");
+          return text(`Suggested folding in ${p.ids.length} threads; the person applies the card.`, { threads: p.ids });
+        }
+        if (p.action === "draft") {
+          if (!inProjectChat() || !host.draft) throw new Error("draft is for a project chat");
+          if (p.goal === undefined && p.instructions === undefined) throw new Error("draft needs Goal or Instructions");
+          host.draft(thread, { goal: p.goal, instructions: p.instructions });
+          return text("Draft saved for editing in Project settings; nothing applied.");
+        }
         if (p.action === "suggest") {
           if (!inProjectChat()) throw new Error("suggest is for a project chat");
           const list = (p.threads ?? []).map((t) => ({ title: t.title.trim(), task: t.task.trim() })).filter((t) => t.title && t.task);

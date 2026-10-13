@@ -63,7 +63,7 @@ function threadGroups(threads: ThreadSummary[]): { label: string; threads: Threa
 }
 
 /** "Threads 4" in the project chat's facts line: from the split width it toggles the panel's threads list; below it, a popover of its threads grouped by state. */
-export function ThreadsFact({ userId, pool, threadId, overview, phone }: { userId: string; pool: Pool; threadId: string; overview: ProjectOverview; phone?: boolean }) {
+export function ThreadsFact({ userId, pool, threadId, overview, footer }: { userId: string; pool: Pool; threadId: string; overview: ProjectOverview; footer?: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -81,7 +81,6 @@ export function ThreadsFact({ userId, pool, threadId, overview, phone }: { userI
       </button>
       {!wide && open && (
         <div className="picker threads-pop" role="dialog" aria-label="The project's threads">
-          {phone && <p className="small tokens"><span className="num">{tokenCount(overview.tokens)}</span> tokens</p>}
           {!threads.length && <p className="muted small">No threads yet. Ask {her()} for some, or pick Start a thread in a message's menu.</p>}
           {threadGroups(threads).map((g) => (
             <div key={g.label} className="picker-group">
@@ -95,6 +94,7 @@ export function ThreadsFact({ userId, pool, threadId, overview, phone }: { userI
               ))}
             </div>
           ))}
+          {footer}
         </div>
       )}
     </span>

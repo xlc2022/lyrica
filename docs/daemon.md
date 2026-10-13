@@ -45,6 +45,19 @@ The web UI renders image parts and manages portraits in Settings → Portrait ph
 It saves on the host and refreshes discovered offerings; the tag is in the
 host's `recipes.json`, with absent reading as both, not a new database column.
 
+## Project welcome back end
+
+Principle 1: a project can continue from existing work without retyping it.
+The recent-work, fold and Continue as project routes are in `routes.ts`,
+with request shapes in `api.ts` and the full contract in [contracts.md](contracts.md).
+Recent work is logged, same-pool and top-level; local-only text reaches only
+local-only project chats. Selected reads use `openThreadView` and stay in
+one turn's system context, never in stored messages. Fold suggestions need
+user application; Goal and Instructions drafts stay unsaved in encrypted
+user.db until the user saves or discards them. Moving threads keeps their
+IDs, checklists, wake-ups and child state, narrowing workspace grants to
+the project. The welcome web interface is a separate build.
+
 ## Starting and unlocking
 
 `lyrica serve [--runtime <dir>] [--port <port>]` starts it. It listens on
@@ -204,7 +217,8 @@ Each active thread is one Pi session from `openThreadSession`, with
   keeps running, so one thread's failure never takes the others down.
 - **Context and pace.** Each hosted thread has a `ContextMeter`
   (`extension/src/context.ts`), fed by the Lyrica extension from Pi's events:
-  - Per request: time to first token, generation time and usage.
+  - Per request: time to first token, generation time and usage. Total
+    `readTokens` sums input, cache reads and cache writes across all requests.
   - At the turn's end: the measured total from `getContextUsage()` and an
     estimate of each part, using Pi's `estimateTokens` and the prompt sections
     `assemble` made. The parts are persona (with topics, who she's talking
@@ -419,7 +433,11 @@ Each active thread is one Pi session from `openThreadSession`, with
   …/suggestions/:callId/start` starts one (`index`) or all of a Suggested
   threads card's threads, each once. `GET …/overview` lists its threads, how
   many wait on the user, its total tokens and which suggestions were
-  started; `models/calls?project=&pool=` its calls. A project's thread's
+  started; `models/calls?project=&pool=` its calls, filtered by both pool
+  and project thread IDs. `GET …/usage` returns `ThreadUsage`: total tokens,
+  optional local GPU milliseconds, model shares, and for a project chat
+  thread shares (chat first, then descending tokens). The overview uses
+  this same sum of retained calls, folded totals and nested subagent runs. A project's thread's
   summary has `state`, `anchor` and `needsYou`; the project chat's stream
   gets a `child` event when one of them changes. Deleting a project with its
   threads forgets its page and the notes that came only from it first.
