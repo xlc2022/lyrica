@@ -85,6 +85,31 @@ describe("image routes (principles 1 and 2)", () => {
     } finally { await d.stop(); }
   });
 
+  it("stores cloud Use for and generation/edit flags in hand JSON for personal and shared offerings", async () => {
+    const { rt, d, call } = await setup();
+    try {
+      const models = d.services!.models, actor = d.services!.users.get(rt.ada.id)!;
+      for (const shared of [false, true]) {
+        const ep = models.addEndpoint(actor, { name: shared ? "shared-images" : "own-images", kind: "cloud", baseUrl: "https://images.example/v1", apiKey: "fake-key" }, { shared });
+        const added = await call("POST", `/api/u/${rt.ada.id}/endpoints/${ep.id}/models`, rt.ada.id, { modelId: "art-model", image: true, edit: true, useFor: "fast" });
+        expect(added.status).toBe(200);
+        const offering = models.offerings(rt.ada.id, ep.id)[0]!;
+        const path = `/api/u/${rt.ada.id}/offerings/${offering.id}`;
+        expect((await call("PATCH", path, rt.ada.id, { useFor: "quality", image: false, edit: true })).status).toBe(200);
+        expect(models.offering(rt.ada.id, offering.id)!.offering).toMatchObject({ useFor: "quality", image: false, edit: true });
+        expect((await call("PATCH", path, rt.ada.id, { useFor: "slow" })).status).toBe(400);
+        expect((await call("PATCH", path, rt.ada.id, { useFor: true })).status).toBe(400);
+        const db = shared ? d.keyring.self() : d.services!.users.openUserDb(rt.ada.id);
+        try {
+          const row = db.prepare("SELECT hand FROM offerings WHERE id = ?").get(offering.id) as { hand: string };
+          expect(JSON.parse(row.hand)).toMatchObject({ useFor: "quality", image: false, edit: true });
+        } finally { if (!shared) db.close(); }
+        expect((await call("PATCH", path, rt.ada.id, { useFor: null })).status).toBe(200);
+        expect(models.offering(rt.ada.id, offering.id)!.offering.useFor).toBeUndefined();
+      }
+    } finally { await d.stop(); }
+  });
+
   it("serves sniffed, uncached thread results only to their owner; traversal and symlinks are 404", async () => {
     const { rt, d, homes, dir, thread, call } = await setup();
     try {

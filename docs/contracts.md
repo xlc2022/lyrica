@@ -333,12 +333,12 @@ interface Endpoint {
   downSince?: string; stale: boolean;       // stale: unreachable for STALE_DAYS (14)
 }
 interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; upscale?; reasoning?: ("low" | "medium" | "high")[];
-                         transcribe?: boolean; speak?: { voices: Voice[] } }
+                         transcribe?: boolean; speak?: { voices: Voice[] }; useFor?: "fast" | "quality" | "both" }
 interface Voice { id; language }                             // language: a primary tag, "en" or "zh"
 interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
   id; endpointId; modelId; manual: boolean;
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
-  digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; useFor?: "fast" | "quality" | "both"; separate?;   // reported by a host
+  digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host; useFor inherited from Capabilities
   opensThinking?;                                            // a host's chat template writes <think> itself
 }
 type ModelRef = { offeringId: string } | { groupId: string };
@@ -354,7 +354,7 @@ interface CallContext {
   thinking?: ThinkingLevel;
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
 }
-interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality" }        // what the call needs from a model
+interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean }        // what the call needs from a model
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: ProfileName;
                        source: "thread" | "profile"; skipped: { label; reason }[]; remaining: number }
 interface Pace { promptTokens; outputTokens; window; ttftMs; genMs; processed }   // counts and times only
@@ -415,7 +415,12 @@ class Models {                                              // new Models(keyrin
   //   | edit { prompt, image: ImageInput, mask?: ImageInput, count?, references?: ImageInput[] }
   //   | upscale { image: ImageInput, scale?, maxSize? }; each has action: "create" | "edit" | "upscale"
   // GeneratedImage { bytes: Uint8Array; type: "image/png"; width; height; seed? }; no prompt metadata
-  // Create passes imageTier to resolution: local recipes skip a useFor tag of only the other tier; cloud models serve both.
+  // Create passes imageTier to resolution: recipes and cloud offerings skip a useFor tag of only the other tier.
+  // Edit passes imageMask: the ChatGPT plan is skipped for masks before any input is sent.
+  // CLOUD_IMAGE_PROVIDERS selects by endpoint.api: openai-compatible (key, any marked model) or chatgpt (plan Responses image_generation).
+  // Each adapter declares create/edit/mask/references/sizes/count and low/high tier mappings; upscale is host-only.
+  // Content refusal throws HostRefused("image_refusal", fixed message) and stops fallback. Limits/outages fall back.
+  // Cloud useFor/image/edit are offerings.hand JSON in self.db (shared) or user.db (personal); no schema step.
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
@@ -491,10 +496,13 @@ class Models {                                              // new Models(keyrin
 - **Subscription plans** (ChatGPT, Grok). `addPlan(actor, { name, plan, credential })` (personal only),
   `planCredential(userId, id)`, `setPlanCredential(userId, id, credential |
   null)` (null signs it out), `setPlanCatalog(list)` (discovery, from Pi's
-  catalogue; set by `lyricad`), `reportPlanLimit(id)` (skipped for an
+  catalogue; set by `lyricad`), `setPlanImageToken(resolve)` (async token
+  resolver, installed by lyricad using extension's `planImageToken` and the
+  same serialized Pi refresh as chat), `reportPlanLimit(id)` (skipped for an
   hour) and `installationId()` (self.db). The
   sign-in is kept in the plan's `api_key` column as JSON and never leaves
-  core except into Pi's credential store (`PlanCredentials`, extension).
+  core except into Pi's credential store (`PlanCredentials`, extension);
+  image calls consume the resolved access token inside core/models.
 - **What never crosses.** API keys stay in core (`EndpointInfo.hasApiKey`).
   Hub tokens leave core only as `X-Hub-Token` to a host, never in a response,
   log or call record. Call records hold model metadata, never prompt text.
@@ -826,7 +834,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Always and local models allow. Ask's approval is per user through the end
     of that server-local day; a policy change clears it. No viewer means denial.
     Outputs save in the encrypted thread folder and return Pi image content
-    (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text.
+    (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>”.
     Tool details are `{ image: ImagePart }`, where `ImagePart` is
     `{ type: "image", paths: string[], model: string, tier?: "fast" | "quality" }`.
     `model` is the answering model's label. Saved messages carry this part

@@ -166,12 +166,19 @@ describe("image tool results (principles 1 and 4)", () => {
     const saved = readFileSync(join(s.folder, "images", part.paths[0]!.split("/").at(-1)!));
     expect(saved).toEqual(png); expect(saved.toString()).not.toContain("A garden");
     expect(readdirSync(join(s.folder, "images"))).toHaveLength(2);
+    expect(out.content).toContainEqual({ type: "text", text: expect.stringContaining("Made with gpt-image-1 on openai.") });
     expect(out.content).toContainEqual({ type: "image", data: png.toString("base64"), mimeType: "image/png" });
     const image = await s.files.read(part.paths[0]!);
     expect(image.portrait).toBe(false); expect(image.input.bytes).toEqual(png);
     await s.run({ action: "edit", instruction: "Add flowers", image: part.paths[0] });
     expect(s.models.recentCalls(s.ada.id)).toHaveLength(2);
     expect(JSON.stringify(s.models.recentCalls(s.ada.id))).not.toMatch(/garden|flowers/);
+  });
+  it("names the host and recipe that made the image", async () => {
+    const s = await setup();
+    s.context({ localOnly: true });
+    const out = await s.run({ action: "create", prompt: "A garden", tier: "quality" });
+    expect(out.content).toContainEqual({ type: "text", text: expect.stringContaining("Made with recipe/art on workstation.") });
   });
   it("Pi passes the result back to the model as image content, with no disk session", async () => {
     const s = await setup();

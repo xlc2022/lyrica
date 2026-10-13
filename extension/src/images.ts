@@ -113,7 +113,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         const paths = o.files.save(out.images, portrait);
         const part: ImagePart = { type: "image", paths, model: out.resolution.label, ...(p.action === "create" ? { tier: p.tier } : {}) };
         o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: `image.${p.action}`, resolution: out.resolution });
-        return { content: [{ type: "text" as const, text: `Saved ${paths.join(", ")}.` },
+        return { content: [{ type: "text" as const, text: `Made with ${out.resolution.offering.modelId} on ${out.resolution.endpoint.name}. Saved ${paths.join(", ")}.` },
           ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };
       },
     });

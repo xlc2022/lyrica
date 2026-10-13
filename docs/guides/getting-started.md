@@ -573,20 +573,25 @@ See [docs/models.md](../models.md).
 
 ### Image models
 
-Her `image` tool creates and edits pictures through OpenAI or through
+Her `image` tool creates and edits pictures through a ChatGPT plan, a keyed
+OpenAI-compatible endpoint, or through
 confirmed recipes on a paired model host, and upscales through host recipes
 only. It uses the `image.create`, `image.edit` and `image.upscale` task
 lists; private and local-only threads always use the local profile's. Each
 list is an ordered fallback. In **Models → Image models**, open a recipe
 and set **Use for** to **Fast**, **Quality** or **Both** (default) per host.
-Create takes the first matching recipe and falls back down the same list. Hosts
+Create takes the first matching recipe or cloud offering and falls back down
+the same list. Hosts
 keep their recipe defaults for both fast and quality; OpenAI uses low or
 high quality. Results are saved in the encrypted thread folder, with no
 prompt metadata.
 
 For OpenAI, add an endpoint under Models, Hosts and endpoints: Name
 `openai-images`, Kind cloud, Base URL `https://api.openai.com/v1`, and the
-API key. A ChatGPT subscription endpoint doesn't supply this API. If
+API key. Any model marked as making images can use this adapter. A ChatGPT
+plan uses its own Responses image tool instead: sign in with ChatGPT, mark
+a plan offering as making and editing images, and put it in the same task
+lists. Masked edits skip the plan; maskless edits work there. If
 discovery doesn't mark the model as able to make and edit images, record it
 through the HTTP API (signed in, with an `Origin` matching her address);
 there is no CLI flag for it yet:
@@ -598,7 +603,8 @@ POST /api/u/<user-id>/endpoints/<endpoint-id>/models
 
 Then put models in the lists, under Models, Tasks, or from a terminal
 (use `custom` instead of `cloud` for a user whose general threads use the
-Custom profile):
+Custom profile). Cloud offerings can also have `useFor: "fast"`, `"quality"`
+or `"both"` (default) in their capability JSON; create skips the other tier:
 
 ```sh
 lyrica admin models profile set cloud image.create openai-images/gpt-image-1 --user ada

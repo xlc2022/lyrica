@@ -803,14 +803,16 @@ it's off.
   - The profiles' `image.create` and `image.edit` tasks decide what those
     mean, so the router's rules apply as for text. Private and local-only
     threads use local image models only.
-  - Each recipe is tagged **fast**, **quality** or both (2026-10-12). A
-    tier takes the first model in the task's ordered list whose tag
-    matches, and falls back down the same list; a cloud model serves both,
-    asking its service for low or high quality. **Use for** in each host's
+  - Each recipe or cloud image offering is tagged **fast**, **quality** or
+    both (2026-10-12). A tier takes the first model in the task's ordered list whose tag
+    matches, and falls back down the same list; cloud adapters map the tiers
+    to low and high quality. **Use for** in each host's
     recipe block on Image models saves the tag at once. It is an optional
-    `useFor` field in the host's `recipes.json`; absent means both.
+    `useFor` field in the host's `recipes.json`; cloud tags and image/edit
+    flags live in the offering's existing hand JSON. Absent means both.
   - Results go to `images/` in the thread's encrypted folder, with prompt
-    metadata removed, and return to her as image content. Messages and
+    metadata removed, and return to her as image content with text naming
+    the model and host or endpoint that made them. Messages and
     `tool_end` carry image paths, model and create tier; the prompts stay in
     encrypted tool calls. The authenticated file API serves the thread's
     folder only. The web shows inline thumbnails, model and tier facts,
@@ -889,10 +891,14 @@ it's off.
   3B on the 3090), and the `image` tool offers `upscale`. Portrait photos
   follow the same rule as for edits. Video is out of scope.
 - **Cloud image services** are cloud endpoints like any other. The provider
-  table currently supports OpenAI's GPT image generation and editing API,
-  with an API key. They're used only where cloud is allowed. Host recipes
-  retain their defaults for both fast and quality; OpenAI maps the tiers to
-  low and high quality.
+  table selects by endpoint kind: OpenAI-compatible image generation and
+  editing with a key (any marked image model), and the ChatGPT plan's own
+  Responses endpoint and built-in image tool with the plan token. The plan
+  supports create and maskless edits; masked edits skip it. Grok images are
+  unsupported. They're used only where cloud is allowed. Host recipes retain
+  their defaults; cloud adapters map fast and quality to low and high.
+  Outages and limits fall down the list; content refusal stops with the fixed
+  `image_refusal` code, without provider text.
 - **Portrait photos.** Each user can keep reference photos of themselves in
   `photos-of-me/` in their encrypted home, outside sandbox grants, for edits
   and for putting them in new scenes. The authenticated API lists, uploads

@@ -190,6 +190,7 @@ export interface CredentialsChange { save: boolean }
 
 /** What a model can do: discovered where the endpoint says, else set by hand. */
 export interface Capabilities {
+  useFor?: "fast" | "quality" | "both";
   contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean; upscale?: boolean;
   /** The thinking levels it offers, besides off. */
   reasoning?: ("low" | "medium" | "high")[];
@@ -227,8 +228,6 @@ export interface OfferingInfo extends Capabilities {
   size?: number;
   /** An image model on a host: the confirmed recipe's name. */
   recipe?: string;
-  /** A host recipe's create tiers; absent means both. */
-  useFor?: "fast" | "quality" | "both";
   /** Moved to a library entry of its own (Not this model). */
   separate?: boolean;
 }
