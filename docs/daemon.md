@@ -492,6 +492,14 @@ delivers into the thread (a background result or question, a note, a user's
 message to a subagent) goes out as `notice`, with its status and threads,
 and is stored: the message list shows it as a `notice` message.
 
+Child-thread notices use the same encrypted delivery path. Questions,
+`needsYou`, a report at the child's idle turn end, and failure/didn't-start
+notes wake an idle parent once (`ChildThreads`, `HostedThread.wakeChild`).
+Progress updates append. Pending wakes coalesce, wait through project pause
+or hidden, and share the child concurrency budget; replies to the children
+that woke the parent are saved without starting or steering them. Pending
+wake metadata is in memory only; notices remain in the stored thread.
+
 ## Subagents
 
 `lyricad` builds one `Delegation` (Delegation's default limits). Every hosted

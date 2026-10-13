@@ -18,14 +18,20 @@ model also skips the "post an update when you finish" guideline.
 
 ## Change
 
-1. A message from a child to its parent, and the daemon's notes "finished
-   without a report", "stopped with an error" and "didn't start", start one
-   turn in an idle parent (`triggerTurn: true`) instead of waiting for the
-   next time the person writes. Subagent run results keep today's behaviour.
-2. The wake obeys the wake-up guards: nothing while the project is paused,
-   the concurrency limit holds, and a bad end wakes its parent once until the
-   child reports or the person writes in it (`noticed`). A child's `needsYou`
-   or update line in a project chat counts the same.
+1. What wakes an idle parent, for one turn (`triggerTurn: true`): a child's
+   question or `needsYou` message, the daemon's notes ("finished without a
+   report", "stopped with an error", "didn't start"), and a child's report
+   at the end of its task (its turn ends idle after it messaged the parent,
+   so the parent hears that it is done). Plain progress updates are appended
+   as today and wake nobody. Subagent run results keep today's behaviour.
+2. Guards. The wake-up guards hold: nothing while the project is paused, the
+   concurrency limit holds, and a bad end wakes its parent once until the
+   child reports or the person writes in it (`noticed`). Coalescing: while a
+   woken parent turn is queued or running, more child messages join it
+   instead of adding turns.
+   No loop: a parent turn started by a child's message can't start a turn in
+   that child through its own reply. The reply is appended, and the child
+   sees it on its next turn or when the person writes in it.
 3. Tighten the child guideline in `core/src/threads.ts`
    (`PROJECT_THREAD_GUIDELINES`, and the equivalent for children outside a
    project): "Always end with a message to the parent: the result, or what
@@ -46,9 +52,11 @@ body says which.
 
 ## Tests
 
-Idle parent gets a turn when a child reports and when a child ends without a
-report; a paused project and a repeated bad end do not wake; subagent result
-into an idle parent still doesn't.
+Idle parent gets a turn when a child asks, ends with a report, or ends without
+a report; a progress update, a paused project and a repeated bad end do not
+wake; a subagent result into an idle parent still doesn't. Three quick child
+messages give at most one parent turn. A parent woken by a child that replies
+to it starts no child turn.
 
 ## Build
 
@@ -57,4 +65,28 @@ parallel test runs.
 
 ## Handoff notes
 
-(The building thread fills this in if it stops before it's done.)
+### 2026-10-13 — implementation complete
+
+**Done:** resolved the merge conflict using main's fuller requirements.
+Questions use `question: true`; project `needsYou`, idle final reports,
+failed/no-report ends and didn't-start notes wake the parent. Progress
+updates append, subagent delivery stays as before, pending/running wakes
+coalesce, pause/hidden and concurrency hold, and a woken parent's replies
+to its source children only append. Tightened both child prompts. Serves
+Principle 1; no new tool or process, and no schema migration or number taken.
+Updated DESIGN, contracts, delegation, daemon, UX, child-threads and the
+lyrica-project handoff; no new UI control (existing child card, UX §6).
+
+**Validation:** typecheck passed. Focused child, delegation, thread-tool,
+wake-up and routine tests passed; targeted project-pause coverage passed.
+All Vitest commands used the shared `flock` and fork pool with two workers;
+no full suite, paid API or real plan endpoint was called.
+
+**Next:** the user runs the full suite, pushes and sends the head for review.
+This sandbox makes the checkout's `.git` read-only. Commits were created
+in a writable copy of its metadata; `/tmp/lyrica-child-wakes.bundle` carries
+the completed merge and implementation commits. Import those commits to
+advance this checkout before pushing; the source changes are already here.
+
+**Open questions:** none. Pending wake metadata is in memory only; encrypted
+notices remain after restart, as documented.

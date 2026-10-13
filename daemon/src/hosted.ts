@@ -43,6 +43,7 @@ export interface HostOptions {
   onEvent?: (userId: string, pool: Pool, threadId: string, event: ThreadEvent) => void;
 }
 
+const CHILD_WAKE = "lyrica-child-wake";
 /** Events kept for reconnecting streams. Older ones reload from stored entries. */
 const BUFFER = 500;
 /** Each lyricad run gets its own epoch, so an event ID from before a restart is never mistaken for a current one. */
@@ -459,7 +460,38 @@ export class HostedThread {
   /** A turn runs, or a message waits for a model to answer. */
   get working(): boolean { return this.busy || !!this.held; }
 
-  private async run(text: string): Promise<void> {
+  /** Child notices are already delivered; wake once without inventing a user message. */
+  async wakeChild(): Promise<void> {
+    if (this.busy || this.closed) return;
+    this.busy = true;
+    try { await this.open(); }
+    catch (err) { this.busy = false; throw err; }
+    this.running = this.run(CHILD_WAKE, true);
+  }
+
+  private readonly parentReplies: string[] = [];
+
+  /** A reply from a parent woken by this child is saved, never steered or run. */
+  appendParent(text: string, parent: string): void {
+    this.parentReplies.push(`${fromParent(parent)}${text}`);
+    if (!this.busy) this.keepParentReplies();
+  }
+
+  private keepParentReplies(): void {
+    if (!this.parentReplies.length) return;
+    const view = this.o.memory.openThreadView(this.userId, this.pool);
+    try {
+      if (!view.own.getThread(this.threadId)) { this.parentReplies.length = 0; return; }
+      if (this.opened) syncEntries(this.opened.session.sessionManager, view.own, this.threadId);
+      for (const text of this.parentReplies.splice(0)) {
+        appendUserMessage(view.own, this.threadId, text);
+        this.emit({ type: "received", text });
+      }
+      this.dispose();
+    } finally { view.close(); }
+  }
+
+  private async run(text: string, childWake = false): Promise<void> {
     this.stopIdle();
     let aborted = false;
     this.o.onTurn?.(this.userId, this.pool, this.threadId, true);
@@ -485,7 +517,10 @@ export class HostedThread {
         opened.meter.pending = undefined;
         this.failed = false;
         const entry = (next === OPENING ? opened.view.own.loadEntries(this.threadId).at(-1) : undefined) as { message?: { role?: string; content?: unknown } } | undefined;
-        if (next === OPENING && entry?.message?.role === "user" && textOf(entry.message.content) === OPENING) {
+        if (childWake) {
+          childWake = false;
+          await opened.session.sendCustomMessage({ customType: CHILD_WAKE, content: "Read the child thread notices and respond to the result or question.", display: false }, { triggerTurn: true });
+        } else if (next === OPENING && entry?.message?.role === "user" && textOf(entry.message.content) === OPENING) {
           await this.answerOpening(opened.session);
         } else {
           await opened.session.prompt(next);
@@ -499,6 +534,7 @@ export class HostedThread {
         this.aborted = false;
         void this.maybeTitle(opened);
         if (this.stale) this.dispose();
+        this.keepParentReplies();
         next = this.next();
       }
     } catch (err) {
@@ -508,6 +544,7 @@ export class HostedThread {
       this.queued = [];
     } finally {
       this.busy = false;
+      this.keepParentReplies();
       this.aborted = false;
       // A session that lacks what keep stored: the next turn opens afresh.
       if (this.stale) this.dispose();

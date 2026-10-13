@@ -25,7 +25,7 @@ export interface ThreadsHost {
    * (`to: "parent"`, with `needsYou` when the person must decide), or in a
    * project from one of its threads to another.
    */
-  message(from: ThreadContext, to: string, text: string, opts?: { needsYou?: boolean }): Promise<void>;
+  message(from: ThreadContext, to: string, text: string, opts?: { needsYou?: boolean; question?: boolean }): Promise<void>;
   /** This thread's children; in a project's thread, the project's other threads. */
   list(parent: ThreadContext): ChildInfo[];
   /** Resolves a project's thread (`id`, or the calling thread itself), or reopens one. */
@@ -72,6 +72,7 @@ const Params = Type.Object({
   last: Type.Optional(Type.Number({ description: `For read: how many of its latest messages, ${READ_DEFAULT} by default, at most ${READ_MAX}.` })),
   to: Type.Optional(Type.Literal("parent", { description: "For message from a child thread: to its parent." })),
   text: Type.Optional(Type.String({ description: "For message: what to say." })),
+  question: Type.Optional(Type.Boolean({ description: "For message to the parent: a question that needs an answer; wakes an idle parent." })),
   needsYou: Type.Optional(Type.Boolean({ description: "For message to the parent from a project's thread: the person must decide something before you can go on." })),
   threads: Type.Optional(Type.Array(Type.Object({ title: Type.String(), task: Type.String() }), { description: "For suggest: the threads you propose, each with a title and its task." })),
   summary: Type.Optional(Type.String({ description: "For compact: what the next stretch needs: what you're doing, decisions, open questions, paths and names." })),
@@ -115,7 +116,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           ? `This is a thread of the project [t:${self.parent}]${parent?.title ? ` ("${parent.title}")` : ""}: one task of the project, with its own conversation. `
             + "The person may also write here; that conversation is yours and theirs, and the project chat isn't told."
           : `This is a child thread of [t:${self.parent}]${parent?.title ? ` ("${parent.title}")` : ""}: a stream of work of its own. `
-            + "Post a short update to the parent with threads message to: \"parent\" at milestones and when you finish, not after every step. "
+            + "Post a short update to the parent with threads message to: \"parent\" at milestones, not after every step. Always end with a message to the parent: the result, or what blocked you. Use question: true when you need an answer; progress updates do not wake the parent. "
             + "The person you're talking with may also write here; that conversation is yours and theirs, and the parent isn't told.",
       };
     });
@@ -200,7 +201,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           if (!p.text?.trim()) throw new Error("message needs text");
           if (child && p.to === "parent") {
             if (p.needsYou && !inProject) throw new Error("needsYou is for a project's thread");
-            await host.message(thread, "parent", p.text, { needsYou: !!p.needsYou });
+            await host.message(thread, "parent", p.text, { needsYou: !!p.needsYou, question: !!p.question });
             return text(p.needsYou ? "Sent to the project chat; it shows you're waiting on the person." : "Sent to the parent thread.");
           }
           if (child && !inProject) throw new Error("a child thread messages only its parent: to: \"parent\"");

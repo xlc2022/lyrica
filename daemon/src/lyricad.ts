@@ -555,6 +555,7 @@ export class Lyricad implements Drainable {
     if (!this.services) return;
     const now = new Date();
     if (!this.draining) {
+      this.services.children.drainWakes();
       this.services.wakeups.tick(now);
       this.services.routines.tick(now);
     }

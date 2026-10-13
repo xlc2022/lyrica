@@ -62,6 +62,11 @@ export class ChildThreads implements ThreadsHost {
    * fails every time can't keep its parent taking turns.
    */
   private readonly noticed = new Set<string>();
+  /** A report in this turn, including a turn started by the user. */
+  private readonly reports = new Set<string>();
+  private readonly locking = new Set<string>();
+  /** One pending or running wake per parent; the source children prevent reply loops. */
+  private readonly parentWakes = new Map<string, { userId: string; pool: Pool; parent: string; children: Set<string>; running: boolean }>();
 
   constructor(private readonly o: ChildOptions) {
     this.limits = { ...DEFAULT_THREADS_LIMITS, ...o.limits };
@@ -178,20 +183,21 @@ export class ChildThreads implements ThreadsHost {
   }
 
   /** `task`: a parent's message is work its child reports back on; a look's line isn't. */
-  async message(from: ThreadContext, to: string, text: string, opts: { needsYou?: boolean } = {}, task = true): Promise<void> {
+  async message(from: ThreadContext, to: string, text: string, opts: { needsYou?: boolean; question?: boolean } = {}, task = true): Promise<void> {
     const userId = from.user.id;
     if (to === "parent") {
       const row = this.row(userId, from.pool, from.threadId);
       if (!row || !from.view.own.getThread(row.parent)) throw new Error("this thread's parent is gone");
       const t = this.tasked.get(`${userId}/${from.pool}/${from.threadId}`);
       if (t) t.reported = true;
+      this.reports.add(`${userId}/${from.pool}/${from.threadId}`);
       this.noticed.delete(`${userId}/${from.pool}/${from.threadId}`);
       const needsYou = !!opts.needsYou && !!from.view.own.getThread(row.parent)?.project;
       this.db(userId, (db) => db.prepare("UPDATE child_threads SET unseen = unseen + 1, needs_you = CASE WHEN ? THEN 1 ELSE needs_you END WHERE pool = ? AND thread = ?")
         .run(needsYou ? 1 : 0, from.pool, from.threadId));
       // The mention shows as the current title, so none is written beside it.
       const head = needsYou ? `Child thread [t:${from.threadId}] is waiting on the person` : `Update from child thread [t:${from.threadId}]`;
-      this.deliver(userId, from.pool, row.parent, `${head}:\n${text}`, from.threadId, needsYou ? "waiting" : "update");
+      this.deliver(userId, from.pool, row.parent, `${head}:\n${text}`, from.threadId, needsYou ? "waiting" : "update", needsYou || !!opts.question);
       if (from.view.own.getThread(row.parent)?.project) this.o.updated?.(userId, from.pool, row.parent, from.threadId);
       return;
     }
@@ -202,6 +208,11 @@ export class ChildThreads implements ThreadsHost {
     if (!target || (target.parent !== from.threadId && !sibling)) throw new Error(`[t:${to}] isn't a child thread of this one${mine ? ", or another thread of this project" : ""}`);
     if (this.o.paused?.(userId, from.pool, target.parent)) throw new Error("this project is paused; its threads take no messages until the person resumes it");
     if (target.queued) throw new Error(`[t:${to}] is queued and hasn't started; it starts when another thread finishes`);
+    const wake = this.parentWakes.get(`${userId}/${from.pool}/${from.threadId}`);
+    if (wake?.running && wake.children.has(to)) {
+      this.o.host().get(userId, from.pool, to).appendParent(text, from.threadId);
+      return;
+    }
     // An idle child starts a turn, so the limit holds here too; a working one takes it into its running turn.
     if (!this.o.host().busy(userId, from.pool, to)) this.mayStartTurn(userId);
     if (target.resolved_at) this.setResolved(userId, from.pool, to, false);
@@ -223,7 +234,15 @@ export class ChildThreads implements ThreadsHost {
    */
   ended(userId: string, pool: Pool, thread: string, how: "done" | "error" | "stopped"): void {
     const key = `${userId}/${pool}/${thread}`;
+    const wake = this.parentWakes.get(key);
+    if (wake?.running) this.parentWakes.delete(key);
+    const reported = this.reports.delete(key);
     const t = this.tasked.get(key);
+    if (how === "done" && reported) {
+      const row = this.row(userId, pool, thread);
+      if (row) this.queueParentWake(userId, pool, row.parent, thread);
+    }
+    this.drainWakes(userId);
     if (!t) return;
     this.tasked.delete(key);
     if (how === "stopped" || (how === "done" && t.reported) || this.noticed.has(key)) return;
@@ -233,7 +252,7 @@ export class ChildThreads implements ThreadsHost {
     this.noticed.add(key);
     this.deliver(userId, pool, row.parent, how === "error"
       ? `Child thread [t:${thread}] stopped with an error, and is idle. Read it with threads read, or message it to go on.`
-      : `Child thread [t:${thread}] finished without a report, and is idle. Read it with threads read, or message it.`, thread);
+      : `Child thread [t:${thread}] finished without a report, and is idle. Read it with threads read, or message it.`, thread, "update", true);
   }
 
   /** Stops a child's running turn, as Pause does: from its parent, or from the project chat. */
@@ -526,6 +545,7 @@ export class ChildThreads implements ThreadsHost {
   /** A project was resumed or shown again: its queued threads may start. */
   resume(userId: string): void {
     void this.startQueued(userId);
+    this.drainWakes(userId);
   }
 
   /** A slot freed: the oldest queued thread of a project that isn't paused or hidden starts. */
@@ -545,7 +565,7 @@ export class ChildThreads implements ThreadsHost {
       await this.o.host().get(userId, next.pool, next.thread).send(q.task, { fromParent: q.parent });
     } catch {
       this.tasked.delete(key);
-      this.deliver(userId, next.pool, next.parent, `Queued thread [t:${next.thread}] couldn't start, and is idle. Message it to go on.`, next.thread);
+      this.deliver(userId, next.pool, next.parent, `Queued thread [t:${next.thread}] couldn't start, and is idle. Message it to go on.`, next.thread, "update", true);
     }
   }
 
@@ -555,17 +575,21 @@ export class ChildThreads implements ThreadsHost {
    * anyway, so the note is stored rather than left waiting for a next turn.
    */
   async lock(userId: string): Promise<void> {
+    this.locking.add(userId);
+    for (const [key, w] of this.parentWakes) if (w.userId === userId) this.parentWakes.delete(key);
     const host = this.o.host();
     const working = this.rows(userId).filter((r) => host.busy(userId, r.pool, r.thread));
     await Promise.all(working.map((r) => host.get(userId, r.pool, r.thread).stop()));
     const parents = [...new Map(working.map((r) => [`${r.pool}/${r.parent}`, r])).values()].filter((r) => host.busy(userId, r.pool, r.parent));
     await Promise.all(parents.map(async (r) => { const p = host.get(userId, r.pool, r.parent); await p.stop(); await p.settled(); }));
     this.idle(userId, working, "was stopped when the user locked Lyrica");
+    for (const [key, w] of this.parentWakes) if (w.userId === userId) this.parentWakes.delete(key);
+    this.locking.delete(userId);
   }
 
   /** Drops the records of forgotten threads, and of the children they kept, which are threads of their own now. */
   forget(userId: string, pool: Pool, threads: string[]): void {
-    for (const t of threads) { this.tasked.delete(`${userId}/${pool}/${t}`); this.noticed.delete(`${userId}/${pool}/${t}`); }
+    for (const t of threads) { this.parentWakes.delete(`${userId}/${pool}/${t}`); this.reports.delete(`${userId}/${pool}/${t}`); this.tasked.delete(`${userId}/${pool}/${t}`); this.noticed.delete(`${userId}/${pool}/${t}`); }
     this.db(userId, (db) => db.prepare("DELETE FROM child_threads WHERE pool = @pool AND (thread IN (SELECT value FROM json_each(@t)) OR parent IN (SELECT value FROM json_each(@t)))")
       .run({ pool, t: JSON.stringify(threads) }));
   }
@@ -577,7 +601,7 @@ export class ChildThreads implements ThreadsHost {
     // A queued task was held in memory only: the thread is there, but hasn't started.
     const lost = this.rows(userId).filter((r) => r.queued && !this.queue.has(`${userId}/${r.pool}/${r.thread}`));
     this.db(userId, (db) => { for (const r of lost) db.prepare("UPDATE child_threads SET queued = 0 WHERE pool = ? AND thread = ?").run(r.pool, r.thread); });
-    for (const r of lost) this.deliver(userId, r.pool, r.parent, `Queued thread [t:${r.thread}] didn't start before Lyrica restarted, and is idle. Message it to start it.`, r.thread);
+    for (const r of lost) this.deliver(userId, r.pool, r.parent, `Queued thread [t:${r.thread}] didn't start before Lyrica restarted, and is idle. Message it to start it.`, r.thread, "update", true);
     this.recovered.add(userId);
   }
 
@@ -607,13 +631,41 @@ export class ChildThreads implements ThreadsHost {
   }
 
   /** Into the parent: its live session, or its stored thread; the open views see it either way. */
-  private deliver(userId: string, pool: Pool, parent: string, content: string, child: string, status: "update" | "waiting" = "update"): void {
+  private deliver(userId: string, pool: Pool, parent: string, content: string, child: string, status: "update" | "waiting" = "update", wake = false): void {
     const ref = { user: { id: userId }, pool, threadId: parent } as Parameters<Delegation["deliver"]>[0];
-    const details = { status, threads: [child], id: randomBytes(8).toString("hex") };
+    const details = { childDelivery: true, joinRunning: this.parentWakes.get(`${userId}/${pool}/${parent}`)?.running ?? false, status, threads: [child], id: randomBytes(8).toString("hex") };
     try {
       this.o.delegation.deliver(ref, content, details);
       this.o.host().delivered(userId, pool, parent, content, details);
+      if (wake) this.queueParentWake(userId, pool, parent, child);
     } catch { /* locked */ }
+  }
+
+  private queueParentWake(userId: string, pool: Pool, parent: string, child: string): void {
+    const key = `${userId}/${pool}/${parent}`;
+    const existing = this.parentWakes.get(key);
+    if (existing) { existing.children.add(child); return; }
+    this.parentWakes.set(key, { userId, pool, parent, children: new Set([child]), running: false });
+    this.drainWakes(userId);
+  }
+
+  /** Pending notices wait for a slot or project resume; only metadata lives here. */
+  drainWakes(userId?: string): void {
+    for (const [key, wake] of this.parentWakes) {
+      if (wake.running || this.locking.has(wake.userId) || (userId && wake.userId !== userId)) continue;
+      try {
+        if (this.o.paused?.(wake.userId, wake.pool, wake.parent)) continue;
+        if (this.o.host().busy(wake.userId, wake.pool, wake.parent)) continue;
+        if (this.workingCount(wake.userId) >= this.limits.concurrency) continue;
+        const reservation = this.reserveRoutine(wake.userId, wake.pool, wake.parent);
+        if (!reservation) continue;
+        reservation.track(wake.parent);
+        wake.running = true;
+        void this.o.host().get(wake.userId, wake.pool, wake.parent).wakeChild()
+          .catch(() => { this.parentWakes.delete(key); })
+          .finally(() => reservation.release());
+      } catch { /* locked; the stored notices remain */ }
+    }
   }
 
   private row(userId: string, pool: Pool, thread: string): Row | undefined {
