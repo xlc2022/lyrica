@@ -322,6 +322,7 @@ export class HostedThread {
   // --- Turns ---
 
   /** Selection is held only in memory, and never enters stored messages. */
+  private recentWorkSource: string | undefined;
   private recentWorkIds: string[] | undefined;
 
   private recentWork(view: PoolView): string | undefined {
@@ -332,7 +333,11 @@ export class HostedThread {
       if (!row || !recentWorkAllowed(row, this.o.models.callContext(this.userId, this.pool, id).localOnly, local)) throw new Error("selected work is no longer readable by this project");
       return `[t:${id}]\n${view.own.latestEntries(id, WELCOME_LIMITS.entries).map(formatEntry).join("\n\n")}`;
     }).join("\n\n").slice(0, WELCOME_LIMITS.chars);
-    return `${RECENT_WORK_DIRECTIONS}\n\n${work}`;
+    const keepsSource = this.recentWorkIds.length === 1 && this.recentWorkIds[0] === this.recentWorkSource;
+    const directions = keepsSource
+      ? "Continue from this thread, which stays in place. Store a draft Goal and Instructions with `threads draft`, then reply ending with a link to Project settings."
+      : RECENT_WORK_DIRECTIONS;
+    return `${directions}\n\n${work}`;
   }
 
   /**
@@ -346,7 +351,7 @@ export class HostedThread {
    * watcher with `watching`, and only a wake-up with `wakeup` (its mark);
    * anyone else's text can't carry the line that marks it.
    */
-  async send(text: string, opts: { fromParent?: string; fromThread?: string; watching?: boolean; wakeup?: string; routine?: string; recentThreadIds?: string[] } = {}): Promise<{ queued: boolean }> {
+  async send(text: string, opts: { fromParent?: string; fromThread?: string; watching?: boolean; wakeup?: string; routine?: string; recentThreadIds?: string[]; recentWorkSource?: string } = {}): Promise<{ queued: boolean }> {
     if (!text.trim()) throw new Error("the message is empty");
     if (FROM_PARENT.test(text)) throw new MarkedText("a message can't start with a [From t:…] line");
     if (WATCHING.test(text)) throw new MarkedText("a message can't start with a [Watching threads] line");
@@ -355,7 +360,8 @@ export class HostedThread {
     if (opts.recentThreadIds) {
       if (this.working || this.recentWorkIds) throw new Busy("recent work needs an idle project chat");
       this.recentWorkIds = opts.recentThreadIds;
-      try { return await this.post(text); } catch (err) { this.recentWorkIds = undefined; throw err; }
+      this.recentWorkSource = opts.recentWorkSource;
+      try { return await this.post(text); } catch (err) { this.recentWorkIds = undefined; this.recentWorkSource = undefined; throw err; }
     }
     if (opts.routine) return this.post(`${opts.routine}${text}`, true);
     if (opts.watching) return this.post(`${WATCHING_MARK}${text}`, true);
@@ -557,7 +563,7 @@ export class HostedThread {
         } else if (next === OPENING && entry?.message?.role === "user" && textOf(entry.message.content) === OPENING) {
           await this.answerOpening(opened.session);
         } else {
-          try { await opened.session.prompt(next); } finally { this.recentWorkIds = undefined; }
+          try { await opened.session.prompt(next); } finally { this.recentWorkIds = undefined; this.recentWorkSource = undefined; }
         }
         aborted = this.aborted;
         await this.afterTurn(opened, aborted);

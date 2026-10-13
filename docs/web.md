@@ -79,6 +79,16 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Pin** or **Unpin** (P, top-level threads; a toast says "Pinned to the
   top" or "Unpinned", the shell's one, gone after 4 s), **Make project…** (K, a
   top-level thread; confirms in a dialog, since there is no way back),
+  **Continue as project** (C, keeps the source), and **Move to project**
+  (top-level, non-project, non-subagent threads only): pinned then recent
+  visible projects of the same pool, local-only destinations only for
+  local-only work; omitted when none qualify. It reuses the hover flyout
+  and phone submenu. Picking a project opens the shared `FoldConfirm.tsx`
+  dialog used by FoldCard, listing children, losses and the one-way warning;
+  Cancel leaves the work in place, Fold in calls the existing fold route
+  and opens the project chat. Its unticked access box grants permissions
+  through settings before folding. Losing cloud models is listed as
+  "Cloud models (becomes local-only)" and cannot be restored by that box.
   **Resolve** or **Reopen** (E, a project's thread), Hide or Unhide (H), and
   Delete… (D), which confirms in a dialog and offers
   to delete child threads too. From the keyboard, Shift+F10 or the Menu key

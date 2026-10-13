@@ -1213,7 +1213,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     project's `ThreadSummary`: copies workspace and model settings,
     including local-only, moves children, leaves the source conversation,
     and sends a first linked message asking for drafts with a selected
-    read of the source. An unlogged source is refused.
+    read of the source. That turn asks for drafts without fold-suggesting directions: the source stays in place. An unlogged source is refused.
     `threads draft { goal?, instructions? }` keeps unsaved text (each at
     most 2,000 characters) in `project_settings.draft_goal` and
     `draft_instructions`, nullable columns added by expand-only user step 9.
