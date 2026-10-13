@@ -262,7 +262,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             {s && !s.subagent && !s.child && <GroupPicker ctx={ctx} base={base} summary={s} onChange={(x) => { summary.set(x); refreshThreads(); }} />}
             {context && <ContextFact context={context} />}
             {!!steps?.length && <ChecklistButton steps={steps} />}
-            {s?.project && overview.data && <ThreadsFact userId={userId} overview={overview.data} phone={phone} />}
+            {s?.project && overview.data && <ThreadsFact userId={userId} pool={pool} threadId={threadId} overview={overview.data} phone={phone} />}
             {s?.project && overview.data && !phone && <span className="tokens"><span className="num">{tokenCount(overview.data.tokens)}</span> tokens</span>}
             {!!settings.data?.routines?.length && <RoutinesFact userId={userId} routines={settings.data.routines} onChange={refreshSettings} />}
             {!!settings.data?.wakeups?.length && <WakeupsFact base={base} wakeups={settings.data.wakeups} onChange={setWakeups} />}

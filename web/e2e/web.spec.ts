@@ -1663,11 +1663,13 @@ test("a project: New project, suggested threads start into cards, the Threads po
   const fact = page.getByRole("button", { name: /^Threads/ });
   await expect(fact).toContainText("2");
   await fact.click();
-  const pop = page.getByRole("dialog", { name: "The project's threads" });
+  // From 1180 px up the fact toggles the panel's threads list (pressed while it shows); below, the popover.
+  const split = page.viewportSize()!.width >= 1180;
+  const pop = split ? page.locator("aside.panel") : page.getByRole("dialog", { name: "The project's threads" });
   await expect(pop.getByRole("link", { name: /Alpha/ })).toBeVisible();
   await expect(pop.getByRole("link", { name: /Beta/ })).toBeVisible();
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-threads-${page.viewportSize()!.width}.png` });
-  await page.keyboard.press("Escape");
+  if (split) { await expect(fact).toHaveAttribute("aria-pressed", "true"); await fact.click(); await expect(pop).toHaveCount(0); } else await page.keyboard.press("Escape");
 
   // Start a thread from a message's menu; the sidebar nests the project's threads with their state.
   await page.locator(".msg.user").first().getByRole("button", { name: "Message actions" }).click();
@@ -1863,7 +1865,7 @@ test("New project in the sidebar creates a pinned project and opens it", async (
   await expect(side.locator(".eyebrow").first()).toContainText("Pinned");
 });
 
-test("the split view: a thread from its card opens in the panel, links inside it grow the breadcrumb, Open as a page and Close panel, and below 1180 px the address is the page", async ({ page, baseURL }) => {
+test("the split view: a thread from its card opens in the panel, links inside it grow the breadcrumb, Open as a page and Close panel; Open beside, View thread and the Threads list open beside at 1180 px up, and below it they navigate", async ({ page, baseURL }) => {
   test.skip(phone(page), "the panel starts at 1180 px");
   await enter(page, baseURL!);
   const list = page.locator(".threads");
@@ -1913,6 +1915,15 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await expect(divider).toHaveAttribute("aria-valuenow", "460");
   await page.reload();
   await expect(page.getByRole("separator", { name: "Panel width" })).toHaveAttribute("aria-valuenow", "460");
+  // Dragging it changes the column itself, not just its number: --panel-w has to reach .app's grid.
+  const dbox = (await divider.boundingBox())!;
+  await page.mouse.move(dbox.x + dbox.width / 2, dbox.y + dbox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(dbox.x + dbox.width / 2 - 70, dbox.y + dbox.height / 2);
+  await page.mouse.up();
+  await expect(divider).toHaveAttribute("aria-valuenow", "520");
+  const dragged = (await settings.boundingBox())!;
+  expect(Math.round(dragged.width)).toBe(520);
   await page.getByRole("complementary", { name: "Project settings" }).getByRole("link", { name: "Open as a page" }).click();
   await expect(page.getByRole("complementary", { name: "Project settings" })).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
@@ -1928,6 +1939,60 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await expect(page.getByRole("complementary", { name: "Project settings" })).toBeVisible();
   await page.getByRole("button", { name: "Close panel" }).click();
   await expect(page.getByRole("complementary", { name: "Project settings" })).toHaveCount(0);
+  // The Threads fact in the chat's facts line toggles the project's threads list in the panel, pressed while it shows.
+  const fact = page.locator(".tfacts").getByRole("button", { name: /^Threads/ });
+  await expect(fact).toHaveAttribute("aria-pressed", "false");
+  await fact.click();
+  const threadList = page.locator("aside.panel");
+  await expect(threadList.getByRole("heading", { level: 1, name: "Threads" })).toBeFocused();
+  await expect(fact).toHaveAttribute("aria-pressed", "true");
+  expect(page.url()).toMatch(/\/panel\/.*\/threads$/);
+  // The popover's groups and rows (§5): state as a word, time in mono. A row swaps that thread into the panel; the breadcrumb grows.
+  await expect(threadList.locator(".picker-ep").first()).toBeVisible();
+  await expect(threadList.getByRole("link", { name: /Alpha/ })).toBeVisible();
+  await expect(threadList.getByRole("link", { name: /Beta/ })).toBeVisible();
+  await threadList.getByRole("link", { name: /^Alpha/ }).click();
+  const alphaTrail = page.getByRole("complementary", { name: "Threads › Alpha" });
+  await expect(alphaTrail.getByRole("heading", { level: 1, name: "Alpha" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(fact).toHaveAttribute("aria-pressed", "false");
+  // Open beside: a child row's menu item, and Shift+click on the row itself, open it in the panel beside the chat in a fresh trail.
+  const betaRow = page.locator('.side li:has(> .trow a[aria-current="page"]) .children a.thread, .side li:has(> .children a[aria-current="page"]) .children a.thread').filter({ has: page.locator(".title", { hasText: /^Beta$/ }) });
+  await betaRow.click({ button: "right" });
+  await page.getByRole("menu", { name: "Beta menu" }).getByRole("menuitem", { name: "Open beside" }).click();
+  const betaBeside = page.getByRole("complementary", { name: "Beta" });
+  await expect(betaBeside.getByRole("heading", { level: 1, name: "Beta" })).toBeFocused();
+  await page.locator(".side li:has(> .trow a[aria-current=\"page\"]) .children a.thread").filter({ has: page.locator(".title", { hasText: /^Alpha$/ }) }).click({ modifiers: ["Shift"] });
+  const alphaBeside = page.getByRole("complementary", { name: "Alpha" });
+  await expect(alphaBeside.getByRole("heading", { level: 1, name: "Alpha" })).toBeFocused();
+  await page.getByRole("button", { name: "Close panel" }).click();
+  // View thread at a card's foot opens the thread beside the chat; so does a double-click on the card's empty space.
+  const alphaCard = page.locator(".tcard").filter({ has: page.getByRole("link", { name: "Alpha", exact: true }) });
+  await alphaCard.getByRole("link", { name: "View thread" }).click();
+  const viewed = page.getByRole("complementary", { name: "Alpha" });
+  await expect(viewed.getByRole("heading", { level: 1, name: "Alpha" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await alphaCard.dblclick({ position: { x: 4, y: 4 } });
+  await expect(viewed).toBeVisible();
+  expect(page.url()).toContain("/panel/");
+  await page.keyboard.press("Escape");
+  // Below 1180 px they navigate: Threads is the popover again, View thread goes to the page, Shift+click on a row opens it as the page, and its menu has no Open beside.
+  await page.setViewportSize({ width: 1000, height: size.height });
+  await fact.click();
+  const pop = page.getByRole("dialog", { name: "The project's threads" });
+  await expect(pop).toBeVisible();
+  expect(page.url()).not.toContain("/panel/");
+  await page.keyboard.press("Escape");
+  await alphaCard.getByRole("link", { name: "View thread" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
+  expect(page.url()).not.toContain("/panel/");
+  await betaRow.click({ button: "right" });
+  await expect(page.getByRole("menu", { name: "Beta menu" }).getByRole("menuitem", { name: "Open beside" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await betaRow.click({ modifiers: ["Shift"] });
+  await expect(page.getByRole("heading", { level: 1, name: "Beta" })).toBeVisible();
+  expect(page.url()).not.toContain("/panel/");
+  await page.setViewportSize(size);
   await noHorizontalScroll(page);
 });
 
