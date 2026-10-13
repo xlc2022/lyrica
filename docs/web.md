@@ -88,7 +88,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Cancel leaves the work in place, Fold in calls the existing fold route
   and opens the project chat. Its unticked access box grants permissions
   through settings before folding. Losing cloud models is listed as
-  "Cloud models (becomes local-only)" and cannot be restored by that box.
+  "Cloud models" and cannot be restored by that box.
   **Resolve** or **Reopen** (E, a project's thread), Hide or Unhide (H), and
   Delete… (D), which confirms in a dialog and offers
   to delete child threads too. From the keyboard, Shift+F10 or the Menu key

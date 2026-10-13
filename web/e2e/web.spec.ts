@@ -3426,9 +3426,9 @@ test("move to project confirms children and losses, filters pools and local-only
   if (process.env.LYRICA_PROJECT_SHOTS) await page.screenshot({ path: `../shots/move-flyout-${width}.png` });
   await page.getByRole("menuitem", { name: "Garden", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("heading", { name: "Fold Seed notes into Garden?" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Move Seed notes to Garden?" })).toBeVisible();
   await expect(dialog).toContainText("Watering");
-  await expect(dialog).toContainText("Cloud models (becomes local-only)");
+  await expect(dialog).toContainText("Cloud models");
   await expect(dialog.getByRole("checkbox")).not.toBeChecked();
   expect((await api("GET", path("general", source.id))).parent).toBeUndefined();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
@@ -3438,7 +3438,7 @@ test("move to project confirms children and losses, filters pools and local-only
   await open("general", source.id);
   await page.getByRole("menuitem", { name: "Garden", exact: true }).click();
   await dialog.getByRole("checkbox").check();
-  await dialog.getByRole("button", { name: "Fold in", exact: true }).click();
+  await dialog.getByRole("button", { name: "Move", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(new RegExp(encodeURIComponent(garden.id)));
   expect((await api("GET", path("general", source.id))).parent).toBe(garden.id);

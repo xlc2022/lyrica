@@ -163,7 +163,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
 
   if (moving) {
     const projectBase = threadPath(userId, t.pool, moving.project.id);
-    return <FoldConfirm chosen={moving.chosen} tree={moving.chosen.map(r => r.thread)} settings={moving.settings} base={projectBase} projectName={moving.project.title || "the project"}
+    return <FoldConfirm move chosen={moving.chosen} tree={moving.chosen.map(r => r.thread)} settings={moving.settings} base={projectBase} projectName={moving.project.title || "the project"}
       onFold={r => post(`${projectBase}/fold`, { threadId: r.thread.id })} onCancel={onClose}
       onDone={() => { onChange(); go({ page: "project", userId, pool: t.pool, threadId: moving.project.id }); onClose(); }} />;
   }
@@ -247,7 +247,7 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
         {!t.child && !t.parent && <Item label={t.pinned ? "Unpin" : "Pin"} kbd="P" onClick={() => act(() => (t.pinned ? del(`${base}/pin`) : put(`${base}/pin`, {})), t.pinned ? "Unpinned" : "Pinned to the top")} />}
         {!t.child && !t.parent && !t.project && <Item label="Make project…" title="Turns this thread into a project." kbd="K" onClick={() => setSub("project")} />}
         {!t.child && !t.parent && !t.project && !t.subagent && <Item label="Continue as project" kbd="C" title="Starts a new project from this thread; the thread stays." onClick={() => setSub("continue")} />}
-        {eligible && projects.length > 0 && <Item label="Move to project" sub submenu="move" expanded={sub === "move"} title="Moves this thread and its child threads into a project." onClick={() => setSub("move")} />}
+        {eligible && projects.length > 0 && <Item label="Move to project" kbd="J" sub submenu="move" expanded={sub === "move"} title="Moves this thread and its child threads into a project." onClick={() => setSub("move")} />}
         {inProject && <Item label={t.state === "resolved" ? "Reopen" : "Resolve"} kbd="E" onClick={() => act(() => post(`${base}/${t.state === "resolved" ? "reopen" : "resolve"}`))} />}
         <div className="sep" role="separator" />
         <Item label={t.hidden ? "Unhide" : "Hide"} kbd="H" onClick={() => change({ hidden: !t.hidden })} />

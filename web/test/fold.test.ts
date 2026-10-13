@@ -18,7 +18,7 @@ it("warns that folding into a local-only project loses cloud models, without off
     base: "/fake", projectName: "Garden", onFold: vi.fn(), onDone: vi.fn(), onCancel: vi.fn(),
   }));
   expect(html).toContain("Loses");
-  expect(html).toContain("Cloud models (becomes local-only)");
+  expect(html).toContain("Cloud models");
   expect(html).not.toContain("Give Garden access to these");
   expect(html).toContain("Cancel");
 });
