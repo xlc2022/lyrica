@@ -53,7 +53,7 @@ async function setup(real: boolean) {
     if (!want) throw new Error(`the endpoint doesn't offer ${process.env.LYRICA_EVAL_MODEL}`);
     ref = { offeringId: want.id };
   }
-  m.models.setProfile(m.ada.id, "cloud", "chat", ref);
+  m.models.setColumnTask(m.ada.id, "general", "chat", ref);
   const memory = new Memory(m.keyring, m.users);
   const persona = new PersonaStore(m.keyring.self());
   persona.importSeed(fileURLToPath(new URL("../persona", import.meta.url)));

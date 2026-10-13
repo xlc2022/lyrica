@@ -88,6 +88,13 @@ Run `npm run typecheck` after each step. One test suite at a time.
 
 ## Handoff
 
-Done: nothing built. Next: steps 1 to 5 in order. Open: whether the panel
-list rows need the latest-message line at launch (drop it if the list API
-doesn't give it).
+Done: steps 1 to 5 built — the divider's `--panel-w` reaches `.app` and drags;
+`showInPanel`, **Open beside** (B) with Shift+click and Shift+Enter on a child
+row; **View thread** at a card's foot and its double-click, with one **Threads
+<n>** pill replacing the per-run Open links when a run made several; the
+`{page:"threads"}` panel page toggled by the Threads fact from 1180 px up (the
+popover below); docs/ux.md, docs/web.md and this brief updated; the split-view
+e2e test extended with all of it and the below-1180 px navigation. Next: the PR
+to review, with screenshots at 1280 and 390. Open: none — the list's rows show
+state as a word and the time in mono, no latest-message line (the overview
+gives `updatedAt`, not a message preview).

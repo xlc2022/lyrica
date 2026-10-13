@@ -83,7 +83,7 @@ async function scenario(opts: { aboutPage: boolean }) {
 /** Thread 1 notes the dislike; a night's sleep writes p:about-user from the note; thread 2 returns what the model saw. */
 async function afterSleep() {
   const m = await withModels();
-  m.models.setProfile(m.ada.id, "cloud", "chat", m.cloudRef);
+  m.models.setColumnTask(m.ada.id, "general", "chat", m.cloudRef);
   const memory = new Memory(m.keyring, m.users);
   const thread = (): ThreadContext => {
     const view = memory.openThreadView(m.ada.id, "general");

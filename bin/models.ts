@@ -3,14 +3,19 @@ import { checkTask, Models, refId, TASKS, type Entry, type Keyring, type ModelRe
 export const MODELS_USAGE = `  lyrica admin models endpoints add <name> cloud|local <base-url> [--shared | --user <login>]
   lyrica admin models endpoints list|remove|probe [<name>] [--shared | --user <login>]
   lyrica admin models endpoints model <name> <model-id> [--context <tokens>] [--tools] [--shared | --user <login>]
-  lyrica admin models profile show --user <login>
-  lyrica admin models profile set local|cloud|custom <task> <endpoint>/<model>[,<endpoint>/<model>…]|same:<task>|none --user <login>
-  lyrica admin models profile default cloud|custom --user <login>`;
+  lyrica admin models preset list --user <login>
+  lyrica admin models preset show <name> --user <login>
+  lyrica admin models preset use private|general <name> --user <login>
+  lyrica admin models preset set private|general <task> <endpoint>/<model>[,<endpoint>/<model>…]|same:<task>|none --user <login>
+  lyrica admin models preset save private|general <name> --user <login>
+  lyrica admin models preset add private|general <name> --user <login>
+  lyrica admin models preset rename <name> <new-name> --user <login>
+  lyrica admin models preset remove <name> --user <login>`;
 
 type Ask = (question: string, hidden?: boolean) => Promise<string>;
 
 /**
- * Endpoints and model profiles. A user's own endpoints and profiles live in
+ * Endpoints and model presets. A user's own endpoints and presets live in
  * their user.db, so their password opens it; --shared signs in as an
  * administrator and changes the shared endpoints in self.db.
  */
@@ -79,34 +84,62 @@ export async function modelsAdmin(keyring: Keyring, users: Users, args: string[]
       if (contextWindow !== undefined && !(contextWindow > 0)) throw new Error("--context takes a number of tokens");
       models.addModel(actor, id(rest[0]!), { modelId: rest[1]!, contextWindow, tools: tools || undefined });
       console.log(`Recorded ${label(rest[0]!)}/${rest[1]}.`);
-    } else if (what === "profile" && action === "show" && !shared) {
+    } else if (what === "preset" && !shared) {
+      const column = (c: string) => { if (c !== "private" && c !== "general") throw usage; return c; };
+      const presetId = (name: string) => {
+        const p = models.presets(actor.id).find((x) => x.id === name || x.name.toLowerCase() === name.toLowerCase());
+        if (!p) throw new Error(`no preset ${name}`);
+        return p.id;
+      };
       const name = (r: ModelRef) => models.label(actor.id, refId(r)) ?? "(a model that no longer exists)";
-      for (const p of ["local", "cloud", "custom"] as const) {
-        const profile = models.profile(actor.id, p);
-        console.log(`${p}${p !== "local" && models.defaultProfile(actor.id) === p ? " (general threads use it)" : ""}:`);
-        for (const task of TASKS) {
-          const e = profile[task];
-          console.log(`  ${task}: ${!e ? "(the chat list)" : Array.isArray(e) ? e.map(name).join(", ") : `same as ${e.same}`}`);
+      const taskLine = (task: (typeof TASKS)[number], e: Entry | undefined) => `${task}: ${!e ? "(the chat list)" : Array.isArray(e) ? e.map(name).join(", ") : `same as ${e.same}`}`;
+      if (action === "list" && rest.length === 0) {
+        const columns = { private: models.column(actor.id, "private").preset?.name ?? "Custom", general: models.column(actor.id, "general").preset?.name ?? "Custom" };
+        for (const p of models.presets(actor.id)) {
+          console.log(`${p.name} (${p.scope}${p.builtin ? `, built-in ${p.builtin}` : ""})${columns.private === p.name ? " · Private threads use it" : ""}${columns.general === p.name ? " · General threads use it" : ""}:`);
+          for (const task of TASKS) console.log(`  ${taskLine(task, p.entries[task])}`);
         }
+      } else if (action === "show" && rest.length === 1) {
+        const p = models.preset(actor.id, presetId(rest[0]!));
+        if (!p) throw new Error(`no preset ${rest[0]}`);
+        console.log(`${p.name} (${p.scope}${p.builtin ? `, built-in ${p.builtin}` : ""}):`);
+        for (const task of TASKS) console.log(`  ${taskLine(task, p.entries[task])}`);
+      } else if (action === "use" && rest.length === 2) {
+        const c = column(rest[0]!);
+        const id = presetId(rest[1]!);
+        models.useColumnPreset(actor.id, c, id);
+        console.log(`${c === "private" ? "Private" : "General"} threads use the ${rest[1]} preset.`);
+      } else if (action === "set" && rest.length === 3) {
+        const c = column(rest[0]!);
+        const [task, value] = rest.slice(1) as [string, string];
+        let entry: Entry | undefined;
+        if (value.startsWith("same:")) entry = { same: checkTask(value.slice(5)) };
+        else if (value !== "none") {
+          entry = value.split(",").map((v) => {
+            const found = models.find(actor.id, v.trim());
+            if (!found) throw new Error(`no model ${v}; name it as <endpoint>/<model>`);
+            return found;
+          });
+        }
+        models.setColumnTask(actor.id, c, checkTask(task), entry);
+        console.log(`${c === "private" ? "Private" : "General"} ${task}: ${value}.`);
+      } else if (action === "save" && rest.length === 2) {
+        const c = column(rest[0]!);
+        models.savePreset(actor.id, presetId(rest[1]!), c);
+        console.log(`${rest[1]} now holds the ${c} column.`);
+      } else if (action === "add" && rest.length === 2) {
+        const c = column(rest[0]!);
+        const p = models.addPreset(actor.id, { name: rest[1]!, scope: c === "private" ? "private" : "general" }, c);
+        console.log(`Added ${p.name} (${p.scope}) from the ${c} column.`);
+      } else if (action === "rename" && rest.length === 2) {
+        const p = models.editPreset(actor.id, presetId(rest[0]!), { name: rest[1]! });
+        console.log(`Renamed to ${p.name}.`);
+      } else if (action === "remove" && rest.length === 1) {
+        models.removePreset(actor.id, presetId(rest[0]!));
+        console.log(`Removed ${rest[0]}.`);
+      } else {
+        throw usage;
       }
-    } else if (what === "profile" && action === "set" && !shared && rest.length === 3) {
-      const [p, task, value] = rest as [string, string, string];
-      if (p !== "cloud" && p !== "local" && p !== "custom") throw usage;
-      let entry: Entry | undefined;
-      if (value.startsWith("same:")) entry = { same: checkTask(value.slice(5)) };
-      else if (value !== "none") {
-        entry = value.split(",").map((v) => {
-          const found = models.find(actor.id, v.trim());
-          if (!found) throw new Error(`no model ${v}; name it as <endpoint>/<model>`);
-          return found;
-        });
-      }
-      models.setProfile(actor.id, p, checkTask(task), entry);
-      console.log(`${p} ${task}: ${value}.`);
-    } else if (what === "profile" && action === "default" && !shared && rest.length === 1) {
-      if (rest[0] !== "cloud" && rest[0] !== "custom") throw usage;
-      models.setDefaultProfile(actor.id, rest[0]);
-      console.log(`General threads use the ${rest[0]} profile.`);
     } else {
       throw usage;
     }

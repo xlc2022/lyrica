@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { SELF_SCHEMA, THREAD_SHARES_SCHEMA, USER_SCHEMA, type Db } from "./db.ts";
 import { DELEGATION_SCHEMA } from "./delegation.ts";
 import { IDENTITY_SCHEMA } from "./models/host.ts";
-import { addNotice, ENDPOINT_SCHEMA, migrate as moveModels, MODEL_CHOICE_SCHEMA, REDIRECT_SCHEMA, upgradeCalls } from "./models/schema.ts";
+import { addNotice, ENDPOINT_SCHEMA, MIXED_PRESET, migrate as moveModels, MODEL_CHOICE_SCHEMA, PRESET_SCHEMA, REDIRECT_SCHEMA, upgradeCalls } from "./models/schema.ts";
 import { PREFS_SCHEMA } from "./prefs.ts";
-import { POOL_SCHEMA, POOL_UPGRADES, ROUTINES_SCHEMA, WAKEUPS_SCHEMA } from "./store/schema.ts";
+import { POOL_SCHEMA, POOL_UPGRADES, ROUTINES_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
 import { CHANGES_SCHEMA } from "./workspace/changes.ts";
 import { MACHINES_SCHEMA, upgradeWorkspace, WORKSPACE_SCHEMA } from "./workspace/settings.ts";
 
@@ -222,6 +223,23 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principle 2: the user's portrait-photo cloud choice, default Ask once a day. Expand only.
     version: 5,
     run(db) { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('images.photos.cloud', 'ask')").run(); },
+  }, {
+    // Principles 6 and 2: project command rules, expand only.
+    version: 6,
+    run(db) { addColumns(db, [["project_settings", "command_rules", "TEXT NOT NULL DEFAULT '[]'"]]); },
+  }, {
+    // A webhook secret per Forgejo/Gitea account (docs/briefs/ci-wakes.md). Adds a column only.
+    version: 7,
+    run(db) { addColumns(db, [["git_accounts", "webhook_secret", "TEXT"]]); },
+  }, {
+    // Model presets replace profiles (docs/briefs/model-presets.md). Expands only: the
+    // legacy profile tables and thread choices stay, kept in step, so a rollback keeps the user's choices.
+    version: 8,
+    run(db) {
+      addColumns(db, [["thread_choices", "preset", "TEXT"]]);
+      db.exec(PRESET_SCHEMA);
+      migrateProfilesToPresets(db);
+    },
   }],
   pool: [{
     version: 1, contract: true,
@@ -260,13 +278,48 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
   }, {
     version: 6,
     run(db) { db.exec(ROUTINES_SCHEMA); },
+  }, {
+    // Pull requests a thread opened, watched until CI and reviews land (docs/briefs/ci-wakes.md). Adds a table only.
+    version: 7,
+    run(db) { db.exec(WATCHES_SCHEMA); },
   }],
 };
 
 const last = (steps: MigrationStep[]) => steps[steps.length - 1]!.version;
 const lastContract = (steps: MigrationStep[]) => steps.filter((s) => s.contract).reduce((m, s) => Math.max(m, s.version), 0);
 
-/** This release's schema version for each kind of database. */
+/**
+ * Builds the preset tables from the legacy profiles, once per user: Local and
+ * Cloud become built-in presets, a non-empty Custom becomes a general preset
+ * named Mixed. The Private column follows Local; the General column follows
+ * Cloud or Mixed, as the old default said. Thread choices of cloud/custom
+ * become those presets. The legacy tables and settings stay, kept in step by
+ * `syncLegacy`, so a rollback keeps the user's choices.
+ */
+function migrateProfilesToPresets(db: Db): void {
+  const now = new Date().toISOString();
+  const read = (profile: string) => {
+    const out: Record<string, unknown> = {};
+    for (const r of db.prepare("SELECT task, entry FROM model_profiles WHERE profile = ?").all(profile) as { task: string; entry: string }[]) {
+      out[r.task] = JSON.parse(r.entry);
+    }
+    return out;
+  };
+  db.prepare("INSERT INTO model_presets (id, name, scope, builtin, entries, updated_at) VALUES ('builtin.local', 'Local', 'private', 'local', ?, ?)").run(JSON.stringify(read("local")), now);
+  db.prepare("INSERT INTO model_presets (id, name, scope, builtin, entries, updated_at) VALUES ('builtin.cloud', 'Cloud', 'general', 'cloud', ?, ?)").run(JSON.stringify(read("cloud")), now);
+  let mixed: string | null = null;
+  const custom = read("custom");
+  if (Object.keys(custom).length) {
+    mixed = randomUUID();
+    db.prepare("INSERT INTO model_presets (id, name, scope, builtin, entries, updated_at) VALUES (?, 'Mixed', 'general', NULL, ?, ?)").run(mixed, JSON.stringify(custom), now);
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(MIXED_PRESET, mixed);
+  }
+  const generalProfile = (db.prepare("SELECT value FROM settings WHERE key = 'general_profile'").get() as { value: string } | undefined)?.value;
+  const generalPreset = generalProfile === "custom" && mixed ? mixed : "builtin.cloud";
+  db.prepare("INSERT INTO model_columns (column, preset, from_preset, entries) VALUES ('private', 'builtin.local', NULL, '{}')").run();
+  db.prepare("INSERT INTO model_columns (column, preset, from_preset, entries) VALUES ('general', ?, NULL, '{}')").run(generalPreset);
+  db.prepare("UPDATE thread_choices SET preset = CASE WHEN profile = 'cloud' THEN 'builtin.cloud' WHEN profile = 'custom' THEN ? ELSE NULL END").run(mixed);
+}/** This release's schema version for each kind of database. */
 export const SCHEMA: Record<DbKind, number> = { self: last(STEPS.self), user: last(STEPS.user), pool: last(STEPS.pool) };
 
 /** The min_reader this release leaves on a database it migrated: the oldest schema that can read it. */

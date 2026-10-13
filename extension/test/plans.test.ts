@@ -7,13 +7,13 @@ const TOKEN_URLS = { chatgpt: "https://auth.openai.com/api/accounts/oauth/token"
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; vi.restoreAllMocks(); });
 
-/** The user with a ChatGPT plan whose sign-in has `expires`, and its first model in their cloud profile. */
+/** The user with a ChatGPT plan whose sign-in has `expires`, and its first model in their general column. */
 async function setup(expires = Date.now() + 3_600_000, kind: "chatgpt" | "grok" = "chatgpt") {
   const m = await withModels();
   m.models.setPlanCatalog(planCatalog);
   const plan = m.models.addPlan(m.ada, { name: kind, plan: kind, credential: { access: "at-1", refresh: "rt-1", expires, clientId: "client-1", scopes: [] } });
   const offerings = await m.models.discover(m.ada, plan.id);
-  m.models.setProfile(m.ada.id, "cloud", "chat", { offeringId: offerings.find((o) => o.modelId === "gpt-5")?.id ?? offerings[0]!.id });
+  m.models.setColumnTask(m.ada.id, "general", "chat", { offeringId: offerings.find((o) => o.modelId === "gpt-5")?.id ?? offerings[0]!.id });
   return { ...m, plan, offerings };
 }
 
@@ -113,7 +113,7 @@ describe("a ChatGPT plan", () => {
 
   it("is skipped for a while once its usage limit is reached, so the next turn falls back", async () => {
     const s = await setup();
-    s.models.setProfile(s.ada.id, "cloud", "chat", [s.offerings[0]!.id, s.cloudRef.offeringId].map((offeringId) => ({ offeringId })));
+    s.models.setColumnTask(s.ada.id, "general", "chat", [s.offerings[0]!.id, s.cloudRef.offeringId].map((offeringId) => ({ offeringId })));
     s.models.reportPlanLimit(s.plan.id);
     const r = s.models.resolve("chat", s.ctx());
     expect(r.endpoint.id).toBe(s.openrouter.id);

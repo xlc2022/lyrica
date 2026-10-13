@@ -93,19 +93,34 @@ export function Switch({ label, hint, checked, disabled, onChange }: {
 }
 
 /** Asks before doing something that can't be undone, in place rather than in a browser dialog. */
-/** A control that asks before it acts, in place. `option` adds one checkbox (ticked by default); `onConfirm` gets its state. */
-export function Confirm({ label, question, confirm, danger, option, onConfirm }: {
-  label: string; question: string; confirm: string; danger?: boolean; option?: string; onConfirm: (option: boolean) => void;
+/** A checkbox in a confirm: its words and whether it starts ticked. */
+export interface ConfirmOption { label: string; ticked: boolean }
+
+/** The ticked state of a confirm's options, starting from their defaults. */
+function useTicks(options: ConfirmOption[] | undefined): [boolean[], (i: number, v: boolean) => void] {
+  const [ticks, setTicks] = useState(() => (options ?? []).map((o) => o.ticked));
+  return [ticks, (i, v) => setTicks((t) => t.map((x, j) => (j === i ? v : x)))];
+}
+
+function Options({ options, ticks, set }: { options?: ConfirmOption[]; ticks: boolean[]; set: (i: number, v: boolean) => void }) {
+  return <>{options?.map((o, i) => (
+    <label key={o.label} className="check"><input type="checkbox" checked={ticks[i] ?? o.ticked} onChange={(e) => set(i, e.target.checked)} />{" "}{o.label}</label>
+  ))}</>;
+}
+
+/** A control that asks before it acts, in place. `options` add checkboxes, each with its own default; `onConfirm` gets their states. `question` may follow them. */
+export function Confirm({ label, question, confirm, danger, options, onConfirm }: {
+  label: string; question: string | ((ticked: boolean[]) => string); confirm: string; danger?: boolean; options?: ConfirmOption[]; onConfirm: (ticked: boolean[]) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [ticked, setTicked] = useState(true);
+  const [ticks, set] = useTicks(options);
   if (!open) return <button type="button" className={danger ? "danger" : ""} onClick={() => setOpen(true)}>{label}</button>;
   return (
     <div className="confirm" role="group" aria-label={label}>
-      <p>{question}</p>
-      {option && <label className="check"><input type="checkbox" checked={ticked} onChange={(e) => setTicked(e.target.checked)} />{" "}{option}</label>}
+      <p>{typeof question === "function" ? question(ticks) : question}</p>
+      <Options options={options} ticks={ticks} set={set} />
       <div className="row">
-        <button type="button" className={danger ? "danger solid" : "primary"} onClick={() => { setOpen(false); onConfirm(!!option && ticked); }}>{confirm}</button>
+        <button type="button" className={danger ? "danger solid" : "primary"} onClick={() => { setOpen(false); onConfirm(ticks); }}>{confirm}</button>
         <button type="button" onClick={() => setOpen(false)}>Cancel</button>
       </div>
     </div>
@@ -167,18 +182,18 @@ export function Prose({ text, files, onLarge, a, copyCode }: { text: string; fil
 
 /**
  * A dialog confirms an action with a consequence: the sentence and two buttons (docs/ux.md §6).
- * `option` adds one checkbox, ticked by default; `onConfirm` gets its state.
+ * `options` add checkboxes, each with its own default, in order; `sentence` may follow their state; `onConfirm` gets their states.
  */
-export function ConfirmDialog({ title, commit, sentence, confirm, cancel, danger, option, onConfirm, onCancel }: {
-  title: string; /** A commit in mono after the title (Roll back). */ commit?: string; sentence: string; confirm: string; /** The cancel button's word; default Cancel. */ cancel?: string;
-  danger?: boolean; option?: string; onConfirm: (option: boolean) => void; onCancel: () => void;
+export function ConfirmDialog({ title, commit, sentence, confirm, cancel, danger, options, onConfirm, onCancel }: {
+  title: string; /** A commit in mono after the title (Roll back). */ commit?: string; sentence: string | ((ticked: boolean[]) => string); confirm: string; /** The cancel button's word; default Cancel. */ cancel?: string;
+  danger?: boolean; options?: ConfirmOption[]; onConfirm: (ticked: boolean[]) => void; onCancel: () => void;
 }) {
-  const [ticked, setTicked] = useState(true);
+  const [ticks, set] = useTicks(options);
   return (
-    <Dialog labelledBy="confirm-title" onCancel={onCancel} onSubmit={() => onConfirm(!!option && ticked)}>
+    <Dialog labelledBy="confirm-title" onCancel={onCancel} onSubmit={() => onConfirm(ticks)}>
       <h2 id="confirm-title">{title}{commit && <> <span className="mono dlg-commit">{commit}</span></>}</h2>
-      <p>{sentence}</p>
-      {option && <label className="check"><input type="checkbox" checked={ticked} onChange={(e) => setTicked(e.target.checked)} />{" "}{option}</label>}
+      <p>{typeof sentence === "function" ? sentence(ticks) : sentence}</p>
+      <Options options={options} ticks={ticks} set={set} />
       <div className="dlg-actions">
         <button type="button" onClick={onCancel}>{cancel ?? "Cancel"}</button>
         <button type="submit" className={danger ? "danger primary" : "primary"} autoFocus>{confirm}</button>

@@ -131,8 +131,8 @@ describe("image tool: portrait photos (principle 2)", () => {
   });
   it("checks the actual fallback model, before a local to cloud fallback sends portraits", async () => {
     const s = await setup();
-    s.models.setProfile(s.ada.id, "custom", "image.create", [s.workstation.ref, s.ref]);
-    s.context({ profile: "custom" }); s.workstation.server.imagesOff();
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [s.workstation.ref, s.ref]);
+    s.context({}); s.workstation.server.imagesOff();
     s.settings.setPhotoCloudPolicy("never");
     await expect(s.run(create)).rejects.toThrow(/aren't allowed/);
     expect(s.heard).toEqual([]); expect(s.asked).toEqual([]);

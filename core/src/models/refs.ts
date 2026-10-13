@@ -1,16 +1,16 @@
-// Reading and rewriting the references in one database's lists: profiles,
+// Reading and rewriting the references in one database's lists: presets,
 // thread choices, saved workflows and model groups.
 
 import type { Db } from "../db.ts";
-import type { ModelRef, Pool, Task } from "../types.ts";
+import type { Column, ModelRef, Pool, Task } from "../types.ts";
 
-export type ProfileName = "cloud" | "local" | "custom";
-/** A profile's entry for a task: an ordered list, or another task's list. */
+/** A preset's (or a column's) entry for a task: an ordered list, or another task's list. */
 export type Entry = ModelRef[] | { same: Task };
 
 /** Where a list names a model or a group. */
 export type Use =
-  | { where: "profile"; profile: ProfileName; task: Task }
+  | { where: "preset"; presetId: string; name: string; task: Task }
+  | { where: "column"; column: Column; task: Task }
   | { where: "thread"; pool: Pool; threadId: string; task: Task }
   | { where: "workflow"; name: string }
   | { where: "group"; groupId: string; name: string };
@@ -27,11 +27,17 @@ const hasTable = (db: Db, name: string) => !!db.prepare("SELECT 1 FROM sqlite_ma
 export function collectRefs(db: Db): Map<string, Use[]> {
   const out = new Map<string, Use[]>();
   const add = (id: string, use: Use) => out.set(id, [...(out.get(id) ?? []), use]);
-  if (hasTable(db, "model_profiles")) {
-    for (const r of db.prepare("SELECT profile, task, entry FROM model_profiles").all() as { profile: ProfileName; task: Task; entry: string }[]) {
-      const e = JSON.parse(r.entry) as Entry;
-      if (isList(e)) for (const ref of e) add(refId(ref), { where: "profile", profile: r.profile, task: r.task });
+  if (hasTable(db, "model_presets")) {
+    for (const r of db.prepare("SELECT id, name, entries FROM model_presets").all() as { id: string; name: string; entries: string }[]) {
+      const table = JSON.parse(r.entries) as Record<string, Entry>;
+      for (const [task, e] of Object.entries(table)) if (isList(e)) for (const ref of e) add(refId(ref), { where: "preset", presetId: r.id, name: r.name, task: task as Task });
     }
+    for (const r of db.prepare("SELECT column, entries FROM model_columns").all() as { column: Column; entries: string }[]) {
+      const table = JSON.parse(r.entries) as Record<string, Entry>;
+      for (const [task, e] of Object.entries(table)) if (isList(e)) for (const ref of e) add(refId(ref), { where: "column", column: r.column, task: task as Task });
+    }
+  }
+  if (hasTable(db, "thread_models")) {
     for (const r of db.prepare("SELECT pool, thread, task, entry FROM thread_models").all() as { pool: Pool; thread: string; task: Task; entry: string }[]) {
       for (const ref of JSON.parse(r.entry) as ModelRef[]) add(refId(ref), { where: "thread", pool: r.pool, threadId: r.thread, task: r.task });
     }
@@ -82,22 +88,37 @@ export function moveSettings(db: Db, map: Map<string, string | null>): void {
 }
 
 /**
- * Rewrites a database's lists through `map`: profiles, thread choices, saved
- * workflows and groups. A list left empty is cleared. Returns the lines for
- * the user's notice.
+ * Rewrites a database's lists through `map`: presets, the two columns' Custom
+ * entries, thread choices, saved workflows and groups. A list left empty is
+ * cleared. Returns the lines for the user's notice.
  */
 export function rewrite(db: Db, map: Map<string, string | null>, oldLabel: (id: string) => string, newLabel: (id: string) => string | undefined): string[] {
   const places = new Map<string, Set<string>>();
   const threads = new Map<string, Set<string>>();
   const note = (into: Map<string, Set<string>>, from: string, where: string) => into.set(from, (into.get(from) ?? new Set()).add(where));
-  if (hasTable(db, "model_profiles")) {
-    for (const r of db.prepare("SELECT profile, task, entry FROM model_profiles").all() as { profile: string; task: string; entry: string }[]) {
-      const e = JSON.parse(r.entry) as Entry;
-      if (!isList(e)) continue;
-      const next = mapList(e, map, (from) => note(places, from, `the ${r.profile} profile's ${r.task}`));
-      if (next === null) db.prepare("DELETE FROM model_profiles WHERE profile = ? AND task = ?").run(r.profile, r.task);
-      else if (next) db.prepare("UPDATE model_profiles SET entry = ? WHERE profile = ? AND task = ?").run(JSON.stringify(next), r.profile, r.task);
+  if (hasTable(db, "model_presets")) {
+    const rewriteTable = (table: Record<string, Entry>, where: (task: string) => string): boolean => {
+      let changed = false;
+      for (const [task, e] of Object.entries(table)) {
+        if (!isList(e)) continue;
+        const next = mapList(e, map, (from) => note(places, from, where(task)));
+        if (next === null) { delete table[task]; changed = true; }
+        else if (next) { table[task] = next; changed = true; }
+      }
+      return changed;
+    };
+    const savePreset = db.prepare("UPDATE model_presets SET entries = ? WHERE id = ?");
+    for (const r of db.prepare("SELECT id, name, entries FROM model_presets").all() as { id: string; name: string; entries: string }[]) {
+      const table = JSON.parse(r.entries) as Record<string, Entry>;
+      if (rewriteTable(table, (task) => `the ${r.name} preset's ${task}`)) savePreset.run(JSON.stringify(table), r.id);
     }
+    const saveColumn = db.prepare("UPDATE model_columns SET entries = ? WHERE column = ?");
+    for (const r of db.prepare("SELECT column, entries FROM model_columns").all() as { column: string; entries: string }[]) {
+      const table = JSON.parse(r.entries) as Record<string, Entry>;
+      if (rewriteTable(table, (task) => `the ${r.column} column's ${task}`)) saveColumn.run(JSON.stringify(table), r.column);
+    }
+  }
+  if (hasTable(db, "thread_models")) {
     for (const r of db.prepare("SELECT pool, thread, task, entry FROM thread_models").all() as { pool: string; thread: string; task: string; entry: string }[]) {
       const next = mapList(JSON.parse(r.entry), map, (from) => note(threads, from, `${r.pool}/${r.thread}`));
       if (next === null) db.prepare("DELETE FROM thread_models WHERE pool = ? AND thread = ? AND task = ?").run(r.pool, r.thread, r.task);

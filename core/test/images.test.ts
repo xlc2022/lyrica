@@ -59,7 +59,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
     await s.models.discover(s.ada, s.workstation.ep.id);
     await s.models.discover(s.ada, s.spare.ep.id);
     const last = await s.host("last", tier);
-    s.models.setProfile(s.ada.id, "local", "image.create", [s.workstation.ref, s.spare.ref, last.ref]);
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [s.workstation.ref, s.spare.ref, last.ref]);
     const ctx = s.ctx({ localOnly: true });
     const request = { action: "create" as const, prompt: "A garden", tier };
     const first = await s.models.image(ctx, request);
@@ -75,7 +75,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
     const s = await setup();
     const ep = s.models.endpoint(s.ada.id, s.models.offering(s.ada.id, s.ref.offeringId)!.endpoint.id)!;
     const fast = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "art-model", image: true, edit: true, useFor: "fast" }).id };
-    s.models.setProfile(s.ada.id, "cloud", "image.create", [fast, s.ref]);
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [fast, s.ref]);
     expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "fast" })).resolution.ref).toEqual(fast);
     expect(s.heard[0]!.body).toMatchObject({ model: "art-model" });
     expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "quality" })).resolution.ref).toEqual(s.ref);
@@ -92,7 +92,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
     const s = await setup();
     const ep = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
     const ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "plan-model", image: true, edit: true }).id };
-    for (const task of ["image.create", "image.edit"] as const) s.models.setProfile(s.ada.id, "cloud", task, [ref, s.ref]);
+    for (const task of ["image.create", "image.edit"] as const) s.models.setColumnTask(s.ada.id, "general", task, [ref, s.ref]);
     const calls: { url: string; body: any }[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, opts: RequestInit) => {
       expect(url).toBe("https://api.openai.com/v1/responses");
@@ -127,12 +127,13 @@ describe("image calls through the router (principles 1 and 2)", () => {
       const ep = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
       ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "plan-model", image: true }).id };
     }
-    s.models.setProfile(s.ada.id, "custom", "image.create", [ref, s.workstation.ref]);
-    expect(s.models.resolve("image.create", s.ctx({ profile: "custom" })).ref).toEqual(ref);
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.workstation.ref]);
+    const preset = s.models.addPreset(s.ada.id, { name: "Image fallbacks", scope: "general" }, "general");
+    expect(s.models.resolve("image.create", s.ctx({ preset: preset.id })).ref).toEqual(ref);
     vi.stubGlobal("fetch", vi.fn(async () => kind === "key"
       ? Response.json({ error: { code: "content_policy_violation", message: "SECRET provider prompt" } }, { status: 400 })
       : Response.json({ output: [{ type: "message", content: [{ type: "refusal", refusal: "SECRET provider prompt" }] }] })));
-    await expect(s.models.image(s.ctx({ profile: "custom" }), { action: "create", prompt: "A garden", tier: "fast" })).rejects.toMatchObject({ code: "image_refusal", message: "Image generation was refused (image_refusal)." });
+    await expect(s.models.image(s.ctx({ preset: preset.id }), { action: "create", prompt: "A garden", tier: "fast" })).rejects.toMatchObject({ code: "image_refusal", message: "Image generation was refused (image_refusal)." });
     expect(s.workstation.server.images).toEqual([]);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -140,7 +141,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
     const s = await setup();
     const ep = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
     const ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "plan-model", image: true }).id };
-    s.models.setProfile(s.ada.id, "cloud", "image.create", [ref, s.ref]);
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.ref]);
     vi.stubGlobal("fetch", vi.fn(async (url: string) => new URL(url).pathname.endsWith("/responses")
       ? Response.json({ error: { message: "SECRET provider prompt" } }, { status })
       : Response.json({ data: [{ b64_json: png.toString("base64") }] })));
@@ -151,7 +152,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
     const s = await setup();
     const ep = s.models.addPlan(s.ada, { name: "grok", plan: "grok", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
     const ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "grok-model", image: true }).id };
-    s.models.setProfile(s.ada.id, "cloud", "image.create", [ref, s.ref]);
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.ref]);
     expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "fast" })).resolution.ref).toEqual(s.ref);
     expect(s.heard).toHaveLength(1);
     expect(s.heard[0]!.path).toBe("/v1/images/generations");

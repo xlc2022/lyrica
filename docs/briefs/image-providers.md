@@ -136,3 +136,23 @@ scroll, and the row's actions stay where they are.
 (The building thread fills this in if it stops before it's done.) A partial
 diff from a stopped pills run is at /tmp/claude-1000/iu/run4-stopped.patch on
 the test machine; use it only as a reference.
+
+Run 2 repairs run 1's local-image routing regression (principles 1 and 2).
+The cloud-provider check now applies only to cloud endpoints; local endpoints
+still resolve from their image capabilities, as the existing fallback test
+requires. That test is unchanged. Run 1's image tests now use columns and a
+named preset after model presets (#283), and the contracts and getting-started
+merge conflicts retain both presets and the image-provider additions. The
+Images UI has no model-profile references; the welcome Backend card already
+reads presets. No migration is added; user.db steps through 8 stay intact.
+The remaining provider UI, refusal links and screenshots in this brief still
+need their build and reviews. This run uses only fake providers and leaves
+changes uncommitted for the coordinating thread.
+
+Validation: `npm run typecheck` passes. Under `/tmp/lyrica-tests.lock` with
+Vitest forks and two workers, the focused regression run passed 41 tests.
+Every test file under core/test and daemon/test mentioning images, models or
+fallbacks was then selected: 36 files passed, one skipped; 366 tests passed,
+eight skipped. No full-suite run or real provider call was made. The resolved
+docs conflicts still need staging by the coordinating thread because this
+checkout's Git index is read-only.

@@ -645,8 +645,9 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
 - **The Git guide** (`extension/src/git.md`) is in the prompt of every turn
   of a thread with repositories, with the repository list and their
   folders: a branch per piece of work, never commits on the default
-  branch, merge or rebase the base before pushing, a pull request, wait
-  for CI, read a failing check's log and never merge on red, the merge
+  branch, merge or rebase the base before pushing, a pull request (then
+  `lyricad` wakes the thread when its checks finish or someone reviews
+  it), read a failing check's log and never merge on red, the merge
   queue where there is one, delete merged branches. The project's instructions win where they differ.
 
 ## MCP servers
@@ -789,6 +790,16 @@ her account is general.
   (encrypted homes, rewind, uploads, network switches, the SSH helper)
   skip there, since her sandbox has neither; CI runs them with
   `LYRICA_SANDBOX_TESTS=require`, so they can't skip.
+- **CI wakes.** A pull request she opens through the run's relay is
+  watched (DESIGN.md "CI wakes"): when every check on its head commit
+  finishes, or someone else reviews or comments, the thread gets one turn,
+  marked as a wake-up, with a note `lyricad` writes — the pull request
+  number, the commit's short hash, each check's name and result, and who
+  reviewed, never log or comment text. GitHub is polled; a Forgejo or
+  Gitea account whose host resolves into her own network also gets a
+  signed tailnet webhook (Settings → Git accounts, **Webhook**) that nudges
+  a poll at once, with polling as the fallback. A merged or closed pull
+  request ends the watch without a turn.
 - **Screenshots.** After `npm run build`, `npx tsx web/e2e/shot.ts
   [page]...` starts a throwaway `lyricad` with ada signed in (the e2e one,
   web/e2e/serve.ts), saves each page at 390×844 and 1280×800, light and
@@ -837,6 +848,42 @@ written into their own settings as well, so a parent that gets a folder back
 gives it to no one below it. Changing a thread's workspace tells its
 descendants' open views to fetch their settings again. Parallel
 writers get their own git worktrees (see [delegation.md](delegation.md)).
+
+## Project command rules
+
+Principles 6, 2 and 8: a project keeps at most 100 Allow, Ask or Forbid
+prefixes in encrypted `user.db` (`project_settings.command_rules`, expand-only
+user step 6). A prefix has 1 to 8 words, each at most 64 characters, with no
+control characters; saving it again replaces its decision. `Projects.set`
+upserts other settings without replacing rules.
+
+A forbid rule refuses any command she writes that contains a matching command, however
+chained or wrapped; it doesn't see inside scripts or programs she runs.
+
+`rules.ts` uses `simpleCommands` from `machines.ts`: chains, pipes,
+substitutions, subshells, shell `-c` arguments and find's `-exec`, `-execdir`
+and `-ok` commands are checked; quotes and backslashes inside words are
+removed. Allow matches leading words after assignments. Ask and Forbid match
+the program anywhere, then the other prefix words in order with intervening
+words allowed. The longest prefix wins; ties prefer Forbid, then Ask, then
+Allow. Across parts Forbid wins, then Ask, and Allow needs every part allowed.
+Opaque programs (expansions, eval, source, dot, or a shell without `-c`) cannot
+be allowed; with any forbid rule they ask in every mode.
+
+The hook reads rules on every `bash` call through `ThreadTools.commandRules`.
+Forbid blocks without a card, Ask always asks, and Allow skips Ask and Accept
+edits prompts in the sandbox only. Machine limits, suspect commands, moving
+to a machine and irreversible calls still ask. The user's `user_bash` is
+unaffected. `WorkspaceThread.project` follows delegation at every depth.
+
+Project settings → General has Commands after This chat, with prefix,
+Allow | Ask | Forbid, Remove and Add rule, applied by the page's one Save.
+For a single plain sandbox command in a project, the card offers Always allow
+with lyricad's computed prefix. Shells, interpreters and wrappers get no such
+choice. The prefix is the program and its plain subcommand, plus the next
+plain word for package runners' run, exec or x (for example `npm run test`).
+The answer stores that server-held prefix in the project, including when a
+subagent asks; the browser never supplies the prefix.
 
 ## Approval
 
@@ -891,9 +938,18 @@ with the call's target (the sandbox, or the machine its `machine` argument
 names) looked up on every call, so changing a thread's settings applies at
 once. Commands typed with `!` in the terminal run in the sandbox. A short
 `workspace` prompt section tells her where she works, what she was given,
-whether she has internet, and her machines. It also names the sandbox's
-headless Chromium and its flags, and that a static page is checked once it
-parses and one screenshot looks right. With internet off, it tells her not to
+whether she has internet, and her machines. It also lists the programs the
+sandbox has on this host (`sandboxTools` in `sandbox.ts`) and, only when it
+finds Chromium, gives its command, how Playwright or Puppeteer use that
+browser, and that a static page is checked once it parses and one screenshot
+looks right. Subagents and child threads get the same
+section. Every run's environment has `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`
+and `REQUESTS_CA_BUNDLE` set to `/etc/ssl/certs/ca-certificates.crt` when the
+host has it, and `CHROME_PATH` and `PUPPETEER_EXECUTABLE_PATH` set to the
+sandbox's Chromium, with `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` and
+`PUPPETEER_SKIP_DOWNLOAD`, so npm, pip and browser libraries use what is
+there instead of failing on certificates or downloading a browser
+(`toolEnv` in `sandbox.ts`). With internet off, it tells her not to
 mirror or proxy CDNs or registries, but to say what she couldn't check or ask
 for Internet or an allowed host. `proxmox` is the tool for
 Proxmox machines ([above](#proxmox)). The memory tool
