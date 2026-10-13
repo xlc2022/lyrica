@@ -47,7 +47,7 @@ third column with one control per column).
   dialogs confirm): **Name**, then a read-only summary of the column's
   table it will copy (task, first model, "+N fallbacks"), then Save. The
   scope is the column's. A preset's own Edit opens the same drawer to
-  rename it, with **Delete** at its foot, confirmed by a dialog.
+  rename it, with **Delete preset** at its foot, confirmed by a dialog.
 - **Names** are 1 to 40 characters, unique per user ignoring case, and
   never "Custom". The drawer shows "A preset called <name> already
   exists." under Name and keeps Save from saving; core and the daemon
@@ -112,10 +112,14 @@ third column with one control per column).
 4. **Web (Models → Tasks).** Per the mockup:
    - Each column head: the column name, then the **Preset** menu button
      showing the current preset's name, or **Custom**, with a chevron.
+     A long name is truncated with an ellipsis (full name in its title),
+     so the heads stay side by side on a phone.
    - The menu: a search box at the top ("Search presets"), the presets the
      column can use with the current one ticked (in the General column,
-     General then Private under small headings), each with an **Edit**
-     icon button; **Nothing matches** when the search finds none; then
+     General then Private under small headings; the Private column lists
+     only private presets, with no headings), each user preset with an
+     **Edit** icon button beside it (built-ins Local and Cloud have none,
+     since there is nothing to edit); **Nothing matches** when the search finds none; then
      **Save to <name>** and **Save as preset…** while the column is Custom;
      then **New preset…** last.
    - Roles: the button has `aria-haspopup="dialog"` and `aria-expanded`;
@@ -124,9 +128,12 @@ third column with one control per column).
      it, not inside it (so not `role="menu"`, since a menu item can't hold
      a button).
    - Keyboard: the button opens the menu with focus in the search box;
-     arrows move through items, Enter picks, Escape closes and returns
-     focus to the button. The Edit icon has an accessible name ("Edit
-     <name>") and a tooltip. docs/ux.md records this keyboard model.
+     arrows move through items, Enter picks, **E** on a highlighted user
+     preset opens its Edit, Tab reaches the Edit buttons too, and Escape
+     closes and returns focus to the button. The Edit icon has an accessible name ("Edit
+     <name>") and the tooltip "Edit <name> (E)". It is a new `edit`
+     (pencil) icon in `web/src/icons.tsx`, in the set's stroke, and every
+     menu row is at least `--tap` tall on coarse pointers. docs/ux.md records this keyboard model.
    - Remove **Use Cloud instead**, **Use Custom instead**, **Show Custom
      too**, **Hide Custom**, **Show Cloud too**, **Hide Cloud** and the
      third column.
@@ -152,7 +159,9 @@ third column with one control per column).
 - A gone model in a preset shows red, the next model answers, and the
   stored preset is unchanged (tested).
 - DESIGN.md (Profiles, Fallbacks, the Models page), docs/models.md,
-  docs/contracts.md, docs/ux.md (the Models row and the word list) and the
+  docs/contracts.md, docs/ux.md (the Models row, and the word list gaining Preset, Search
+  presets, Save to, Save as preset…, New preset… and Delete preset; Nothing
+  matches is there already) and the
   operator guides that name the `profile` CLI are updated in the same PR.
 
 ## After merging
@@ -163,6 +172,8 @@ profile` commands became `… preset`.
 ## Handoff notes
 
 - 2026-10-13: brief written; PR review's three findings (rollback for
-  Mixed, preset names, the menu's role) folded in. The build PR carries
+  Mixed, preset names, the menu's role) and UI review's (no Edit on built-ins, E and Tab
+  reach Edit, a pencil icon, no headings in the Private menu, truncated
+  names, the word list) folded in. The build PR carries
   the DESIGN, contracts, models and ux doc changes (PR review's call). Next: mockup to UI review and PR review, then
   the build on lunasa.
