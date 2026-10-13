@@ -75,11 +75,13 @@ describe("decide", () => {
   });
 
   it("gives one turn for a review or comment from another account, grouped by author and kind", () => {
+    // First sight of the head is at 10:45, after these reviews; the re-poll
+    // below stays inside the 15-minute no-checks window so only dedup is tested.
     const out = run(fresh(), pull({ reviews: [
       review("r1", "ada", "commented"),
       review("r2", "sam", "approved"),
       review("r3", "ada", "commented", "2026-10-12T10:40:00Z"),
-    ] }));
+    ] }), "2026-10-12T10:45:00Z");
     expect(out.note?.ci).toBeNull();
     expect(out.note?.reviews).toEqual([
       { author: "ada", kind: "commented", count: 2 },
