@@ -270,7 +270,7 @@ checks it reaches her, and with a real model which she picks. Code:
 - `start({ title, task, folders?, readOnly?, internet? })` creates the child
   (`createThread({ parent, child: true })`) and sends it the task, then
   returns its ID at once, as `[t:<id>]`, which she mentions it by. It gets the parent's model context
-  (`models.inheritContext`: pool, local-only, profile, thinking, models) and
+  (`models.inheritContext`: pool, local-only, preset, thinking, models) and
   workspace (`inheritSettings`, narrowed by `folders`, `readOnly` and
   `internet: false`; any of those also leaves it no machines); the workspace refuses anything wider, and a folder the
   parent doesn't have is refused. It inherits "Do not log" from the store.
@@ -286,10 +286,23 @@ checks it reaches her, and with a real model which she picks. Code:
   only in a child thread. A sibling's message in a project, and a look,
   reach a busy thread the same way. If the turn is stopped or fails before
   taking the message, it is appended to the thread's stored messages, so it
-  is never lost. `message({ to: "parent", text })` from a child posts an update:
+  is never lost. `message({ to: "parent", text, question? })` from a child
+  posts an update:
   delivered like a background subagent's result (`Delegation.deliver`, a
   `notice` with status `update` naming the child), into the live parent or
-  its stored thread, without starting a turn there.
+  its stored thread. Plain progress updates start no turn. `question: true`
+  (a question needing an answer), or a project's `needsYou: true`, wakes an
+  idle parent. When a child ends idle after messaging its parent, that report
+  also wakes it, including when the user started the child's turn. The
+  parent runs with `triggerTurn: true`; subagent results keep their existing
+  delivery behaviour.
+
+  One pending or running child wake per parent coalesces further notices;
+  messages during that wake join its running turn as Pi steers. Wakes share
+  the child concurrency budget and wait while the project is paused or
+  hidden. Pending wake metadata lives in memory; notices stay encrypted in
+  the thread. A parent's reply to a child that woke it is appended without
+  starting or steering the child; it sees the reply on its next turn.
 - `list`: the children, with status (working, waiting for approval, idle)
   and last update.
 - `read({ id, last? })`: the latest `last` messages (10 by default, at
@@ -309,8 +322,9 @@ The tool also has `later`, `routine` and `steps` (below), and `suggest`,
 A subagent's thread never gets the tool. An ordinary child can message its
 parent, set wake-ups, manage routines, keep a checklist and compact itself;
 her prompt says it
-is a child thread and to post updates at milestones and when done, not after
-every step. **Depth 1:** the store refuses a child of a child; a child can
+is a child thread and to post updates at milestones, not after every step,
+and always end with a message to the parent: the result, or what blocked it.
+**Depth 1:** the store refuses a child of a child; a child can
 delegate. The user talks in a child like any thread, and the parent isn't
 told. Its approvals work as in any thread.
 
@@ -377,7 +391,8 @@ summaries carry no steps.
 **Told when a child ends.** A child working on a task from its parent (a
 `start`, a queued start that began, or a parent's `message`; not a look's
 line) owes it a report. When its turn ends and it is idle, the parent gets
-a note, delivered like an update: "stopped with an error" if the turn
+a note that wakes the idle parent under the same guards: "stopped with an
+error" if the turn
 ended with an error, or "finished without a report" if the child sent no
 `message to: "parent"` since the task. The parent hears this once: after
 a note, the child's next bad end tells nobody until it messages the parent
@@ -389,7 +404,8 @@ held in memory; a restart tells the parent anyway.
 **Limits:** `start`s per message to the parent (`perRequest`, default 3,
 counted before each start so parallel calls can't slip past), and children
 working at once per user (`concurrency`, default 2), checked by `start` and
-by a parent's message that wakes an idle child; `LyricadOptions.threads`.
+by a parent's message that wakes an idle child; parent wakes and routines
+share that budget too. `LyricadOptions.threads`.
 
 **Records and restarts.** `user.db` has `child_threads`: pool, thread,
 parent, whether a turn was running, and unseen updates (no text). A turn's

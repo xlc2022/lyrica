@@ -360,7 +360,14 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     parent or the user can message it at any time. Its approvals appear in
     the child thread, and in Notifications. The parent is told when it
     stops with an error or finishes a task without an update, and can read
-    its latest messages and stop its turn.
+    its latest messages and stop its turn. A child's question, `needsYou`,
+    final report when its turn ends idle, or a daemon failure/didn't-start
+    note wakes an idle parent for one turn. Progress updates only append.
+    Pending and running wakes coalesce, share the child concurrency limit,
+    and wait while the project is paused or hidden. A parent woken by a
+    child only appends its reply to that child, so their messages can't keep
+    each other taking turns. Every child is told always to end with a
+    message to the parent: the result, or what blocked it.
   - It keeps going in the background and stays until it is forgotten.
     Forgetting a parent asks whether to forget its child threads too, ticked
     by default.

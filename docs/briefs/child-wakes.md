@@ -65,4 +65,49 @@ parallel test runs.
 
 ## Handoff notes
 
-(The building thread fills this in if it stops before it's done.)
+**Status (2026-10-13):** built and pushed as PR #291; the integration tests
+ran on lunasa and the full suite passes apart from the known updater
+environment failure. In PR review.
+
+### 2026-10-13 — implementation complete
+
+**Done:** resolved the merge conflict using main's fuller requirements.
+Questions use `question: true`; project `needsYou`, idle final reports,
+failed/no-report ends and didn't-start notes wake the parent. Progress
+updates append, subagent delivery stays as before, pending/running wakes
+coalesce, pause/hidden and concurrency hold, and a woken parent's replies
+to its source children only append. Tightened both child prompts. Serves
+Principle 1; no new tool or process, and no schema migration or number taken.
+Updated DESIGN, contracts, delegation, daemon, UX, child-threads and the
+lyrica-project handoff; no new UI control (existing child card, UX §6).
+
+**Validation:** typecheck passed. Focused child, delegation, thread-tool,
+wake-up and routine tests passed; targeted project-pause coverage passed.
+All Vitest commands used the shared `flock` and fork pool with two workers;
+no full suite, paid API or real plan endpoint was called.
+
+**Next:** done; see the Status line.
+
+**Open questions:** none. Pending wake metadata is in memory only; encrypted
+notices remain after restart, as documented.
+
+
+### 2026-10-13 — resumed after main's presets merge
+
+**Done:** resolved `docs/ux.md` by retaining main's project panels/cards and
+this feature's child-wake behavior. Checked the welcome Backend card and
+Images controls against named presets; the merged code already uses them.
+Updated delegation's inherited context to say preset, and repaired stale
+profile routes/Backend wording in docs/web.md. Reply suppression applies
+only to the child-started turn, so a queued user turn can still start a child normally; pending wakes wait during an
+update drain too. This feature adds no migration:
+main's user steps through 8 and pool steps through 7 remain unchanged.
+
+**Validation:** typecheck passed after the merge. All 17 socket-free guard,
+thread-tool and card tests passed under the shared lock. Localhost fake-server tests
+cannot run in the resumed sandbox (`listen EPERM`); the earlier successful
+runs predate this merge. No full suite or paid endpoint was called.
+
+**Next:** done; see the Status line.
+
+**Open questions:** none; the integration rerun is the remaining check.

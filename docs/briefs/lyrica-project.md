@@ -77,7 +77,13 @@ and carries its children into a new project. The interface is built under
    tells the threads a change affects and speaks only when the owner must know
    or decide (docs/delegation.md, "Watching threads"). A thread that
    stops with an error, or finishes a task without an update, is reported
-   to the project chat whatever the setting; she reads its latest
+   to the project chat whatever the setting. Questions (`question: true`),
+   `needsYou`, final reports at idle turn end and failure notes wake the
+   project chat once, obeying pause and concurrency. Progress updates only
+   append; replies from a woken chat to its source threads append without
+   waking them, so a thread needing another turn waits for the user or a
+   wake-up. Every thread must end with a message to its parent: the result,
+   or what blocked it; she reads its latest
    messages with `threads read` and stops a thread that went wrong with
    `threads stop` (docs/delegation.md, "Child threads"). CI and reviews
    wake her without a turn being blocked: a pull request she opens through
