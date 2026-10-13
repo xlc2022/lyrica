@@ -75,7 +75,26 @@ const PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 // the system's generated configs. The tools' bin is first on the host's PATH
 // too, for pasta, nft and bwrap.
 const tools = () => process.env.LYRICA_SANDBOX_TOOLS || undefined;
-const env = () => ({ PATH: tools() ? `${tools()}/bin:${PATH}` : PATH, HOME: WORKDIR, LANG: "C.UTF-8", TERM: "dumb" });
+const env = () => ({ PATH: tools() ? `${tools()}/bin:${PATH}` : PATH, HOME: WORKDIR, LANG: "C.UTF-8", TERM: "dumb", ...toolEnv() });
+// The system's CA bundle (mounted with /etc/ssl), which Node and Python don't read by themselves.
+const CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt";
+const BROWSERS = ["chromium", "chromium-headless-shell", "chromium-browser"];
+// Programs her prompt names when present, by the name it uses.
+const LISTED: [string[], string][] = [[["git"], "git"], [["curl"], "curl"], [["jq"], "jq"], [["rg"], "ripgrep"], [["node"], "Node"], [["npm"], "npm"], [["python3"], "Python 3"], [["magick", "convert"], "ImageMagick"]];
+const binDirs = () => (tools() ? [`${tools()}/bin`] : PATH.split(":"));
+const find = (names: string[]) => binDirs().flatMap((d) => names.map((n) => `${d}/${n}`)).find((p) => existsSync(p));
+/** What the sandbox has on this host: the programs her prompt names, and Chromium's path if there is one. */
+export function sandboxTools(): { programs: string[]; browser?: string } {
+  return { programs: LISTED.filter(([names]) => find(names)).map(([, label]) => label), browser: find(BROWSERS) };
+}
+/** Where the sandbox's CA bundle and Chromium are, so npm, pip, Playwright and Puppeteer use them instead of failing or downloading their own. */
+export function toolEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  if (existsSync(CA_BUNDLE)) Object.assign(env, { SSL_CERT_FILE: CA_BUNDLE, NODE_EXTRA_CA_CERTS: CA_BUNDLE, REQUESTS_CA_BUNDLE: CA_BUNDLE });
+  const browser = find(BROWSERS);
+  if (browser) Object.assign(env, { CHROME_PATH: browser, PUPPETEER_EXECUTABLE_PATH: browser, PUPPETEER_SKIP_DOWNLOAD: "1", PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1" });
+  return env;
+}
 // The gh and tea wrappers for a run with repositories (forge.sh), first on its PATH.
 const FORGE_BIN = "/run/lyrica/bin";
 const FORGE = readFileSync(new URL("./forge.sh", import.meta.url), "utf8");

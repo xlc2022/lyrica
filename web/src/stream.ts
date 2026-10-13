@@ -90,7 +90,10 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
           } catch { /* not ours */ }
         });
       }
-      es.onerror = () => {
+      es.onopen = () => setConnected(true);
+      // A thread's own `error` event (a failed or stopped turn) arrives here too, as a MessageEvent: the stream is fine.
+      es.onerror = (ev) => {
+        if (ev instanceof MessageEvent) return;
         setConnected(false);
         if (es?.readyState !== EventSource.CLOSED || stopped) return;
         get(base).catch(() => {});
