@@ -8,7 +8,7 @@ import { FileChanges, Users, type ExecutionTarget, type ToolOps } from "@lyrica/
 import { recording } from "@lyrica/extension";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { applyRemoval, removalPlan, type Entry, type RemovalContext } from "../src/removal.ts";
-import { forgetWorktree } from "../src/sweep.ts";
+import { forgetFiles, forgetWorktree } from "../src/sweep.ts";
 
 /** Stands in for the sandbox: the same operations, on the host, in a temp folder. Paths are host paths. */
 function localTarget(cwd: string): ExecutionTarget {
@@ -181,6 +181,28 @@ describe("the sweep of change records", () => {
     expect(changes.sweep(new Date(Date.now() - 864e5))).toEqual({ records: 0, snapshots: 1 });
     expect(changes.sweep(new Date(Date.now() + 1000))).toEqual({ records: 1, snapshots: 0 });
     expect(readdirSync(join(home, "snapshots"))).toEqual([]);
+  });
+
+  it("takes a forgotten thread's records, snapshots and folders at once, and leaves other threads' alone", async () => {
+    const { home, ws, write, changes } = await setup();
+    writeFileSync(join(ws, "f.txt"), "before");
+    await write("c1", join(ws, "f.txt"), "after");
+    for (const dir of ["threads/web%2Ft/docs", "claude/web%2Ft", "threads/web%2Fu"]) mkdirSync(join(home, dir), { recursive: true });
+    writeFileSync(join(home, "threads/web%2Ft/docs/notes.md"), "x");
+    expect(readdirSync(join(home, "snapshots"))).toHaveLength(1);
+
+    expect(forgetFiles(home, changes, "general", ["web/t"], [], () => false)).toBe(2);
+    expect(changes.forThreads("general", ["web/t"])).toEqual([]);
+    expect(readdirSync(join(home, "snapshots"))).toEqual([]);
+    expect(readdirSync(join(home, "threads"))).toEqual(["web%2Fu"]);
+    expect(readdirSync(join(home, "claude"))).toEqual([]);
+  });
+
+  it("keeps a forgotten thread's folder while a thread in the other pool has the same id", async () => {
+    const { home, changes } = await setup();
+    mkdirSync(join(home, "threads/web%2Ft"), { recursive: true });
+    expect(forgetFiles(home, changes, "general", ["web/t"], [], (id) => id === "web/t")).toBe(0);
+    expect(readdirSync(join(home, "threads"))).toEqual(["web%2Ft"]);
   });
 
   it("forgets git's record of a worktree it removes, so its branch can be deleted, and only in a folder the user may grant", async () => {

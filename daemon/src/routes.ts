@@ -18,6 +18,7 @@ import { toMessages, toReactions } from "./messages.ts";
 import { messageText, readAloud, readClip, speechState, storedSource, transcribeClip, titlesIn, type SpeechSource } from "./speech.ts";
 import { notifications } from "./notifications.ts";
 import { SEARCH_PAGE, searchMessages } from "./search.ts";
+import { forgetThreadFiles } from "./sweep.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 import { redactUrl, unredactUrl } from "./redact.ts";
 
@@ -873,6 +874,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         owner(d, user, (o) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user), { children: all }); });
         s().models.forgetThread(user.id, pool, id);
       }
+      forgetThreadFiles(s(), user.id, pool, doomed);
       s().children.forget(user.id, pool, doomed);
       s().wakeups.forget(user.id, pool, doomed);
       s().prefs.forget(user.id, pool, doomed);
