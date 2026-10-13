@@ -859,9 +859,11 @@ export interface StartSuggestion { index?: number }
 export interface FoldThread { threadId: string }
 /** POST …/threads/:pool/:projectId/folds/:callId/apply → ThreadSummary[]. Index or all; idempotent. */
 export interface ApplyFold { index?: number }
-/** POST …/threads/:pool/:threadId/continue-as-project → ThreadSummary. Source stays; children move. */
-/** GET …/threads/:pool/recent?top=10&project=:id → ThreadSummary[]. Logged top-level non-project work only. */
-/** GET …/threads/:pool/:projectId/overview → ProjectOverview */
+/**
+ * POST …/threads/:pool/:threadId/continue-as-project → ThreadSummary. Source stays; children move.
+ * GET …/threads/:pool/recent?top=10&project=:id → ThreadSummary[]. Logged top-level non-project work only.
+ * GET …/threads/:pool/:projectId/overview → ProjectOverview
+ */
 export interface ProjectOverview {
   threads: ThreadSummary[];
   /** How many wait on the user: the project row's amber dot. */
