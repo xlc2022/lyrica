@@ -4,7 +4,7 @@
 wrote this brief reviews each diff, opens the PRs and takes them through
 PR review and UI review. **Branches:** `feature/project-welcome-api`, then
 `feature/project-welcome`.
-**Status:** back end implemented; web run remains after its review and merge.
+**Status:** back end implemented; web implementation prepared for review.
 
 **Read first:** AGENTS.md, docs/ux.md §6 (the Project rows and the
 vocabulary list), DESIGN.md "Projects", docs/contracts.md (daemon,
@@ -217,3 +217,13 @@ bounded by `WELCOME_LIMITS`; unlogged threads, and local-only threads for a
 cloud project chat, are refused. Drafts apply only on Save or discard.
 Typecheck and the full suite passed on lunasa apart from the known updater
 environment failure. Next: PR review of PR 1, then Codex run 2 (web).
+
+Run 2: web implementation prepared on feature/project-welcome, based on main
+with model presets. Welcome, recent-work selection, repository starter, Plan
+thread, Fold in with confirmed Keep access, Continue as project (C), and
+editable drafts are built. Existing controls supply UX rules 2–3; their homes
+and dialog exception are in rule 6, Save/Discard follow rule 7, and phone
+stacking follows rule 8. Design skills were unavailable in this harness;
+rendered screens were checked against docs/ux.md directly. Next: the owner
+runs the full suite, commits and pushes; then the brief's thread opens the
+PR for PR and UI review. Local Playwright config and shots stay untracked.

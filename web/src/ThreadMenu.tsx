@@ -40,13 +40,13 @@ export function useThreadMenu() {
   return { at, close: () => setAt(undefined), handlers };
 }
 
-function Item({ label, kbd, danger, sub, submenu, expanded, onClick }: {
-  label: ReactNode; kbd?: string; danger?: boolean; sub?: boolean;
+function Item({ label, kbd, danger, sub, submenu, expanded, title, onClick }: {
+  label: ReactNode; title?: string; kbd?: string; danger?: boolean; sub?: boolean;
   /** The flyout this item opens on a device that can hover (docs/ux.md §3). */ submenu?: string; expanded?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button type="button" role="menuitem" className={`${danger ? "danger" : ""}${sub ? " has-sub" : ""}`} data-key={kbd} data-submenu={submenu} aria-expanded={submenu ? !!expanded : undefined} onClick={onClick}>
+    <button type="button" role="menuitem" className={`${danger ? "danger" : ""}${sub ? " has-sub" : ""}`} title={title} data-key={kbd} data-submenu={submenu} aria-expanded={submenu ? !!expanded : undefined} onClick={onClick}>
       <span>{label}</span>{kbd && <kbd>{kbd}</kbd>}
     </button>
   );
@@ -202,7 +202,8 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
         {!t.project && !t.subagent && <Item label="Share with" kbd="S" sub submenu="share" expanded={sub === "share"} onClick={() => setSub("share")} />}
         <Item label="Move to group" kbd="M" sub submenu="group" expanded={sub === "group"} onClick={() => setSub("group")} />
         {!t.child && !t.parent && <Item label={t.pinned ? "Unpin" : "Pin"} kbd="P" onClick={() => act(() => (t.pinned ? del(`${base}/pin`) : put(`${base}/pin`, {})), t.pinned ? "Unpinned" : "Pinned to the top")} />}
-        {!t.child && !t.parent && !t.project && <Item label="Make project…" kbd="K" onClick={() => setSub("project")} />}
+        {!t.child && !t.parent && !t.project && <Item label="Make project…" title="Turns this thread into a project." kbd="K" onClick={() => setSub("project")} />}
+        {!t.child && !t.parent && !t.project && !t.subagent && <Item label="Continue as project" kbd="C" title="Starts a new project from this thread; the thread stays." onClick={() => act(async () => { const project = await post<ThreadSummary>(`${base}/continue-as-project`); go({ page: "project", userId, pool: t.pool, threadId: project.id }); })} />}
         {inProject && <Item label={t.state === "resolved" ? "Reopen" : "Resolve"} kbd="E" onClick={() => act(() => post(`${base}/${t.state === "resolved" ? "reopen" : "resolve"}`))} />}
         <div className="sep" role="separator" />
         <Item label={t.hidden ? "Unhide" : "Hide"} kbd="H" onClick={() => change({ hidden: !t.hidden })} />

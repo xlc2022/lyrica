@@ -90,5 +90,5 @@ desktop and at 390 px (principle 1). Every control has its row in ux.md §6.
 
 The welcome interface is specified in [project-welcome.md](project-welcome.md).
 Its back-end routes and tool actions are implemented in the first build;
-the welcome card, Fold in card, Continue as project menu item and editable
-project drafts remain for the separate web build.
+the welcome card, recent-work dialog, Fold in card, Continue as project menu
+item and editable project drafts are built in the separate web change.

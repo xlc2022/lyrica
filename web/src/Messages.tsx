@@ -12,7 +12,7 @@ import { RowMenu } from "./Machines.tsx";
 import { ask, EDIT_IMAGE_EVENT, type EditImageRequest } from "./links.ts";
 import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
-import { stateWord, SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
+import { FoldCard, stateWord, SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
 import { ChecklistButton, StepLine } from "./Checklist.tsx";
 import { findThread } from "./Thread.tsx";
 import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
@@ -79,7 +79,8 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
     <>
       {hasMore && <button type="button" className="older" disabled={loading} onClick={() => run(loadOlder)}>Show earlier messages</button>}
       <ErrorText error={error} />
-      {loaded && !messages.length && !live.items.length && <p className="muted empty">Say hello.</p>}
+      {loaded && !project && !messages.length && !live.items.length && <p className="muted empty">Say hello.</p>}
+      {!shownMessages.length && project?.overview.threads.map(t => <ThreadCard key={t.id} t={t} userId={ctx.user.id} env={project} />)}
       {shownMessages.map((m) => (
         <StoredMessage key={m.id} m={m} env={env} you={ctx.user.displayName} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)}
           cards={cards.get(m.n)} />
@@ -372,6 +373,8 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
   if (part.type === "tool" && part.name === "propose_plan" && part.result === undefined) return null;
   if (part.type === "tool" && part.name === "threads") {
     const action = (part.args as { action?: string } | null)?.action;
+    if (action === "fold") return <FoldCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} />;
+    if (action === "draft") return <a href={href({ page: "project", userId: env.userId, pool: env.pool, threadId: env.threadId })}>Project settings</a>;
     if (action === "suggest") return <SuggestedCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} />;
     // Her checklist shows in the header's facts line; its call is a marker like any tool's.
     if (action !== "steps") return <ThreadsCard part={part} env={env} />;

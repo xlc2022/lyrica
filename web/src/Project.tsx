@@ -15,7 +15,7 @@ import { Repositories } from "./Git.tsx";
 import { McpServers } from "./Mcp.tsx";
 import { Folders, Machines, TaskSelect } from "./Settings.tsx";
 import { Main, PageHead, useWide, type ShellContext } from "./Shell.tsx";
-import { ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
+import { ConfirmDialog, Dialog, ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
 
 /** A project thread's state, in the sidebar's words. */
 export function stateWord(t: Pick<ThreadSummary, "state" | "needsYou">): string {
@@ -250,6 +250,11 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   const cur = SECTIONS.find((s) => s.key === section) ?? SECTIONS[0]!;
   const s = summary.data;
   const title = s?.title || "New project";
+  useEffect(() => {
+    if (!s?.busy) return;
+    const timer = setInterval(summary.reload, 1000);
+    return () => clearInterval(timer);
+  }, [s?.busy, summary.reload]);
   return (
     <Main className="main">
       <PageHead ctx={ctx} title="Project settings" facts={s && <a href={href({ page: "thread", userId, pool, threadId })}>{title}</a>} />
@@ -275,7 +280,8 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
 }) {
   const ps = summary.projectSettings;
   const [rules, setRules] = useState<CommandRule[]>(ps?.commandRules ?? []);
-  const [goal, setGoal] = useState(summary.goal ?? "");
+  const [goal, setGoal] = useState(ps?.draftGoal ?? summary.goal ?? "");
+  useEffect(() => { if (ps?.draftGoal !== undefined) setGoal(ps.draftGoal); }, [ps?.draftGoal]);
   const [paused, setPaused] = useState(!!ps?.paused);
   const [watch, setWatch] = useState(ps?.watchThreads !== false);
   const [model, setModel] = useState(refOf(ps?.threadsModel));
@@ -420,6 +426,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
 
       <div className="row">
         <button type="submit" className="primary" disabled={busy || !!ruleError}>Save</button>
+        {ps?.draftGoal !== undefined && <button type="button" disabled={busy} onClick={() => run(async () => { const updated = await patch<ThreadSummary>(base, { discardDraft: true }); onSummary(updated); setGoal(updated.goal ?? ""); })}>Discard draft</button>}
         {saved && <span className="muted" role="status">Saved.</span>}
       </div>
       <ErrorText error={error} />
@@ -429,10 +436,10 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
 
 /** Instructions, kept on the project page apart from what sleep writes; and the page itself in the memory browser. */
 function MemorySection({ base, summary, pool, userId, onSummary }: { base: string; summary: ThreadSummary; pool: Pool; userId: string; onSummary: (s: ThreadSummary) => void }) {
-  const [instructions, setInstructions] = useState(summary.instructions ?? "");
+  const [instructions, setInstructions] = useState(summary.projectSettings?.draftInstructions ?? summary.instructions ?? "");
   const [run, busy, error] = useAction();
   const [saved, setSaved] = useState(false);
-  useEffect(() => setInstructions(summary.instructions ?? ""), [summary.instructions]);
+  useEffect(() => setInstructions(summary.projectSettings?.draftInstructions ?? summary.instructions ?? ""), [summary.instructions, summary.projectSettings?.draftInstructions]);
   const save = () => run(async () => { setSaved(false); onSummary(await patch<ThreadSummary>(base, { instructions })); setSaved(true); });
   return (
     <form className="card project-form" aria-labelledby="h-memory" onSubmit={(e) => { e.preventDefault(); void save(); }}>
@@ -445,9 +452,90 @@ function MemorySection({ base, summary, pool, userId, onSummary }: { base: strin
       <p className="small"><a href={href({ page: "memory", userId, pool, id: summary.projectSettings!.pageId })}>Project page</a> <span className="muted">· what {her()} knows about the project, rewritten while she sleeps</span></p>
       <div className="row">
         <button type="submit" className="primary" disabled={busy}>Save</button>
+        {summary.projectSettings?.draftInstructions !== undefined && <button type="button" disabled={busy} onClick={() => run(async () => { const updated = await patch<ThreadSummary>(base, { discardDraft: true }); onSummary(updated); setInstructions(updated.instructions ?? ""); })}>Discard draft</button>}
         {saved && <span className="muted" role="status">Saved.</span>}
       </div>
       <ErrorText error={error} />
     </form>
   );
+}
+
+/** Empty project state; only explicitly selected work is supplied to the next turn. */
+export function ProjectWelcome({ userId, pool, project, settings, onChange }: { userId: string; pool: Pool; project: ThreadSummary; settings: ThreadSettings; onChange: () => void }) {
+  const base = threadPath(userId, pool, project.id);
+  const [recent, setRecent] = useState<ThreadSummary[]>();
+  const [picked, setPicked] = useState<string[]>([]);
+  const [run, busy, error] = useAction();
+  const setup = () => run(async () => {
+    const rows = await get<ThreadSummary[]>(`${u(userId, "threads", pool, "recent")}?top=10&project=${encodeURIComponent(project.id)}`);
+    setPicked(rows.map(t => t.id)); setRecent(rows);
+  });
+  const makePlan = () => run(async () => {
+    const plan = await post<ThreadSummary>(u(userId, "threads"), { pool, title: "Plan" });
+    const planBase = threadPath(userId, pool, plan.id);
+    await patch(`${planBase}/settings`, {
+      localOnly: settings.localOnly, preset: settings.preset,
+      models: { chat: project.projectSettings?.threadsModel ?? settings.models.chat.list ?? settings.models.chat.model ?? null },
+      thinking: project.projectSettings?.threadsThinking ?? settings.thinking,
+      grants: settings.grants, machines: settings.machines, repositories: settings.repositories, mcpServers: settings.mcpServers,
+      internet: settings.network.internet, services: settings.network.services, hosts: settings.network.hosts,
+    });
+    await post(`${base}/fold`, { threadId: plan.id });
+    await post(`${planBase}/messages`, { text: `Make a plan for ${project.goal || "this project's goal"}. Use propose_plan for the plan card. Send suggested threads to the project chat for its Suggested threads card.` });
+    onChange(); go({ page: "thread", userId, pool, threadId: plan.id });
+  });
+  return <div className="permission plan project-welcome">
+    <h2>Welcome to {project.title || "your project"}</h2>
+    <div className="row welcome-starters">
+      <button type="button" disabled={busy} onClick={setup}>Set up from recent work</button>
+      <Repositories starter userId={userId} pool={pool} granted={settings.repositories} onChange={repositories => run(async () => { await patch(`${base}/settings`, { repositories }); await post(`${base}/messages`, { text: `Repository added: ${repositories.at(-1)!.name}. Do not clone it yet.` }); onChange(); })} />
+      <button type="button" disabled={busy} onClick={makePlan}>Make a plan</button>
+    </div>
+    <ErrorText error={error} />
+    {recent && <Dialog className="recent-work" labelledBy="recent-work-title" onCancel={() => setRecent(undefined)} onSubmit={() => run(async () => { await post(`${base}/messages`, { text: "Set up this project from the selected recent work. Draft Goal and Instructions for Project settings and suggest threads to fold in.", recentThreadIds: picked }); setRecent(undefined); onChange(); })}>
+      <h2 id="recent-work-title">Set up from recent work</h2>
+      {recent.map(t => <label className="check" key={t.id}><input type="checkbox" checked={picked.includes(t.id)} onChange={e => setPicked(e.target.checked ? [...picked, t.id] : picked.filter(id => id !== t.id))} /> {t.title || "New thread"}</label>)}
+      {!recent.length && <p className="muted">No recent work.</p>}
+      <ErrorText error={error} />
+      <div className="dlg-actions"><button type="button" onClick={() => setRecent(undefined)}>Cancel</button><button type="submit" className="primary" disabled={busy || !picked.length}>Continue</button></div>
+    </Dialog>}
+  </div>;
+}
+
+/** Existing-work suggestions share the Suggested threads card's rows and actions. */
+export function FoldCard({ part, userId, pool, projectId, env }: { part: Extract<MessagePart, { type: "tool" }>; userId: string; pool: Pool; projectId: string; env?: ProjectEnv }) {
+  const ids = (part.args as { ids?: string[] } | null)?.ids ?? [];
+  const base = threadPath(userId, pool, projectId);
+  const rows = useLoad(() => Promise.all(ids.map(async id => ({ thread: await get<ThreadSummary>(threadPath(userId, pool, id)), settings: await get<ThreadSettings>(threadPath(userId, pool, id, "settings")) }))), [base, part.toolCallId]);
+  const summary = useLoad(() => get<ThreadSummary>(base), [base]);
+  const project = useLoad(() => get<ThreadSettings>(`${base}/settings`), [base]);
+  const [run, busy, error] = useAction();
+  const [confirm, setConfirm] = useState<ThreadSettings>();
+  const started = env?.overview.started ?? {};
+  const left = ids.filter((_, i) => !started[`${part.toolCallId}#${i}`]).length;
+  const losses = (s: ThreadSettings, p: ThreadSettings) => [
+    ...s.grants.filter(g => !p.grants.some(x => (x.path === g.path || g.path.startsWith(`${x.path.replace(/\/$/, "")}/`)) && (!g.writable || x.writable))).map(g => g.path),
+    ...s.machines.filter(x => !p.machines.includes(x)),
+    ...s.repositories.filter(r => !p.repositories.some(x => x.name === r.name && x.account === r.account)).map(r => r.name),
+    ...s.network.hosts.filter(x => !p.network.hosts.includes(x)),
+    ...(s.network.internet && !p.network.internet ? ["Internet"] : []), ...(s.network.services && !p.network.services ? ["Services"] : []),
+  ];
+  const apply = (index?: number) => run(async () => { await post(`${base}/folds/${encodeURIComponent(part.toolCallId)}/apply`, index === undefined ? {} : { index }); env?.onChange(); });
+  if (!left) return null;
+  return <div className="permission plan suggested" role="group" aria-label="Fold in" data-pending="Suggestions">
+    <div className="plan-head"><b>Fold in</b><span className="num">{left}</span></div>
+    <ol className="suggestions">{rows.data?.map(({ thread, settings }, i) => {
+      if (started[`${part.toolCallId}#${i}`]) return null;
+      const lost = project.data ? losses(settings, project.data) : [];
+      return <li key={thread.id}><div className="suggestion-text"><b className="as-is">{thread.title || "New thread"}</b>{!!lost.length && <div className="muted small fold-loss" title={lost.join(", ")}>Loses <span className="mono">{lost.slice(0, 3).join(", ")}{lost.length > 3 ? ` +${lost.length - 3}` : ""}</span> · <button type="button" className="link" disabled={busy} onClick={() => setConfirm(settings)}>Keep access</button></div>}</div><button type="button" className="sm" disabled={busy || !env || !project.data} onClick={() => apply(i)}>Fold in</button></li>;
+    })}</ol>
+    <div className="row"><button type="button" className="primary" disabled={busy || !env || !rows.data || !project.data} onClick={() => apply()}>Fold in all <span className="num">{left}</span></button></div>
+    <ErrorText error={error || rows.error || project.error} />
+    {confirm && project.data && <ConfirmDialog title="Keep access" sentence={`Give ${summary.data?.title || "the project"} access to ${losses(confirm, project.data).join(", ")}? Every thread in it can use them.`} confirm="Give access" onCancel={() => setConfirm(undefined)} onConfirm={() => run(async () => {
+      const p = project.data!;
+      const grants = [...p.grants]; for (const g of confirm.grants) { const i = grants.findIndex(x => x.path === g.path); if (i < 0) grants.push(g); else if (g.writable) grants[i] = g; }
+      const repositories = [...p.repositories]; for (const r of confirm.repositories) if (!repositories.some(x => x.name === r.name && x.account === r.account)) repositories.push(r);
+      project.set(await patch<ThreadSettings>(`${base}/settings`, { grants, repositories, machines: [...new Set([...p.machines, ...confirm.machines])], hosts: [...new Set([...p.network.hosts, ...confirm.network.hosts])], internet: p.network.internet || confirm.network.internet, services: p.network.services || confirm.network.services })); setConfirm(undefined); env?.onChange();
+    })} />}
+  </div>;
 }

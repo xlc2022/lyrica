@@ -1365,3 +1365,12 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
 
 .models-actions .project-filter { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .models-actions .project-filter select { width: min(240px, 55vw); }
+
+/* Project welcome uses the existing card, repository popover and dialog. */
+.fold-loss { overflow-wrap: anywhere; }
+.suggestions > li > button { flex-shrink: 0; }
+@media (max-width: 759px) {
+  .welcome-starters { flex-direction: column; align-items: stretch; }
+  .welcome-starters > button, .welcome-starters .machine-add, .welcome-starters .machine-add > button { width: 100%; }
+  dialog.recent-work { width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; border-radius: 0; }
+}
