@@ -60,6 +60,13 @@ of:
 Any of them can add `background: true`, `folders`, `readOnly: true` or
 `internet: false`.
 
+`folders` narrows granted **host folders**, not paths inside the sandbox such
+as `/workspace/repos/<name>`. Omit it when a scout needs to read the parent's
+repository checkouts: subagents share those clones, read-only for scouts or
+narrowed runs, without forge credentials. An invalid folder is refused with
+this distinction and the omitted-`folders` alternative; it is never turned
+into a host grant.
+
 **Fork.** A task with `fork: true` starts its subagent from a copy of the
 parent's stored conversation, then its task. The copy is made with
 `copyEntries`, as an export is: entry for entry, so it is compacted as the
