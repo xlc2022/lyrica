@@ -2678,6 +2678,8 @@ test("New preset summary: +N fallbacks and a red gone model", async ({ page, bas
     real.presets.columns.general.entries.chat = [{ offeringId: "off-gone" }, { offeringId: live.id }, { offeringId: live.id }];
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(real) });
   });
+  // The shell fetches …/models/page when the app first loads, before this mock existed; reload once so its answer comes through it.
+  await page.reload();
   await page.goto(`/#/u/${userId}/models/tasks`);
   await expect(page.getByRole("heading", { level: 1, name: "Tasks" })).toBeVisible();
   await page.locator(".ttable thead th").nth(2).locator("button.preset-button").click();
