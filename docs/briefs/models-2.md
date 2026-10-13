@@ -49,7 +49,7 @@ can be off, paused or busy gaming without Lyrica going dark.
 4. **Permanent IDs.**
    - Endpoints get a UUID, with the name as a label.
    - Each model an endpoint offers gets its own UUID (an *offering*), and
-     profiles, overrides and recent calls refer to it. Migrate existing
+     presets, overrides and recent calls refer to it. Migrate existing
      `{ endpointId, modelId }` references.
    - A model the endpoint stops listing keeps its offering, marked
      `missing`.
@@ -63,7 +63,7 @@ can be off, paused or busy gaming without Lyrica going dark.
        (suggesting the same model on another endpoint) and **Remove**.
    - **Redirects and tombstones** (`offering_redirects`) in `self.db` or
      `user.db`, followed by the router at once.
-     - Each user's profiles, overrides and saved workflows are rewritten when
+     - Each user's presets, overrides and saved workflows are rewritten when
        that user unlocks, with a one-time notice.
      - A redirect is deleted once no user still refers to it, which is
        tracked per user.
@@ -98,8 +98,8 @@ can be off, paused or busy gaming without Lyrica going dark.
      - an unfit member is skipped;
      - a member removed while another user is locked is gone from that user's
        group after they unlock.
-6. **The Custom profile.**
-   - A third profile, `custom`, mixes local and cloud. Only general threads
+6. **The Custom column.**
+   - A third option, `custom`, mixes local and cloud. Only general threads
      that aren't local-only use it.
    - A per-user default ("general threads use Cloud or Custom") plus a
      per-thread switch.
@@ -146,10 +146,10 @@ can be off, paused or busy gaming without Lyrica going dark.
    - A finished download is discovered as a new offering at once, with a
      suggestion to add it to a group of the same model.
 8. **Ordered fallbacks** (the contract change already planned):
-   - A profile entry and a thread override become `ModelRef[]`, or
+   - A preset entry and a thread override become `ModelRef[]`, or
      `{ same: Task }` for a task that uses another task's list (one level
      deep, same capability). Migrate existing single entries in place. New
-     profiles start with titles and compaction following cheap subagents,
+     presets start with titles and compaction following cheap subagents,
      and sleep following strong.
    - `resolveModel` returns the first model whose endpoint is up, using a
      short-lived health cache fed by probes and by failed calls.
@@ -165,7 +165,7 @@ can be off, paused or busy gaming without Lyrica going dark.
      link to the host's own dashboard (at the address last reached; the
      host keeps its own password check), the rest proxied through the
      paired connection with administrator checks for shared hosts;
-   - the ordered list for each task in each profile, with reorder, add and
+   - the ordered list for each task in each preset, with reorder, add and
      remove;
    - recent calls for the user: time, thread, task, answering model,
      fallback note. Never prompt text.
@@ -224,7 +224,7 @@ can be off, paused or busy gaming without Lyrica going dark.
   - a fallback is used when the first host is paused or down, the thread
     records which model answered, and a list never crosses between local and
     cloud;
-  - existing profiles migrate to lists;
+  - existing presets migrate to lists;
   - a personal host is invisible to other users;
   - shared host management needs an administrator;
   - recent calls carry no prompt text;

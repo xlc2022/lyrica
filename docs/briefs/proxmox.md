@@ -30,7 +30,7 @@ does the job; principle 6: start and stop are what the user asks for).
    The refusal says why. The owner adds that node later, by hand, when they decide.
 3. **One tool, `proxmox`**, in `extension/src/proxmox.ts`: a schema plus
    one call into `core/workspace`, which makes the API call; nothing else
-   lives in the extension, which is at about 1,900 of its 2,000-line budget
+   lives in the extension, which is at about 1,900 of its budget of about 8,000 lines
    (principle 8). The PR reports the extension's line count; if it goes
    over, it says what is removed or asks for the DESIGN change. Named
    actions: `status`, `list` (VMs and containers the token can see),

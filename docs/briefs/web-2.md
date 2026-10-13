@@ -540,7 +540,7 @@ stands; change the contract only where the UI needs it, in the same PR.
   the other; a daemon test that a photo never reaches a cloud call when
   the setting is Never.
 
-### Pin in the remaining places
+### Pin in the remaining places (built, PR 26)
 
 Built: the thread menu's Pin/Unpin (sidebar), the Pinned group at the top
 of the list, the message Pin/Unpin in the message menu, the pinned badge,
@@ -556,14 +556,14 @@ the header's "<n> pinned ▾" popover. Remaining, per the mockup:
 - The Search results (above) show pinned messages with their badge.
 - No ux.md change beyond the §6 row's list of places.
 
-### The speech drawer in the remaining places
+### The speech drawer in the remaining places (built, PR 26)
 
 The speaking model's Settings drawer (VoiceDrawer in ModelsFrame.tsx: a
 voice per language, speed, source words, Reset) opens from an endpoint's
 model list and from Text models' copy rows for a speak-capable copy (PR C
 above). Remaining: the same drawer from the thread drawer's Read aloud
 select (a small Settings link after the select, opening the drawer for the
-chosen model, or the profile's when none is chosen). No new strings;
+chosen model, or the preset's when none is chosen). No new strings;
 docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
 
 ## Handoff notes

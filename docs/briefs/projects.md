@@ -169,6 +169,5 @@ Left for a follow-up, each small:
 - A read-only project thread can still write in the shared project folder,
   as a read-only child thread can today (threads work in their parent's
   folder through `folderThread`).
-- There is no Notifications API yet, so there is no `waiting` type; the
-  `needsYou` summary field and the `waiting` notice carry it until Web UI 2
-  builds Notifications.
+- The Notifications API (`daemon/src/api.ts`) has no `waiting` type; the
+  `needsYou` summary field and the `waiting` notice carry it.
