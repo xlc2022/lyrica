@@ -437,7 +437,7 @@ function History({ detail, entries, offset = 1, total, userId, display, busy, on
           const diff = isCurrent ? undefined : wordDiff(current, plain(r.body.text));
           return (
             <details key={r.id} open={i === 0}>
-              <summary><span className="when num">{shortTime(r.createdAt)}</span><span className="by">{by(r)}</span><span className="n num">{isCurrent ? "current" : entries ? `${offset + i + 1} of ${total}` : "earlier"}</span></summary>
+              <summary><span className="when num">{shortTime(r.createdAt)}</span><span className="by">{by(r)}</span><span className="n">{isCurrent ? "current" : entries ? <><span className="num">{(total ?? 0) - (offset + i)}</span> of <span className="num">{total}</span></> : "earlier"}</span></summary>
               {diff ? <div className="wdiff">{diff.map((op, k) => (op.kind === "same" ? <span key={k}>{op.text}</span> : op.kind === "del" ? <del key={k}>{op.text}</del> : <ins key={k}>{op.text}</ins>))}</div>
                 : <div className="wdiff">{current}</div>}
               {!isCurrent && <div className="row actions"><button type="button" className="sm" disabled={busy} onClick={() => onRestore(r.id)}>Restore</button></div>}
