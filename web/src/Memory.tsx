@@ -22,6 +22,7 @@ import { ConfirmDialog, ErrorText, hidden, Prose, shortTime, useAction, useDismi
 type Layer = "page" | "note" | "wake" | "journal";
 const LAYERS: { layer: Layer; label: string }[] = [{ layer: "page", label: "Pages" }, { layer: "note", label: "Notes" }, { layer: "wake", label: "WAKE" }, { layer: "journal", label: "Journal" }];
 const PAGE_SIZE = 40;
+const LINEAGE_PREVIEW = 4;
 
 /** Titles of memories read in this visit, for the panel's breadcrumb; nothing of a memory's text. */
 const TITLES = new Map<string, string>();
@@ -223,6 +224,7 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
   const d = useLoad(() => get<MemoryDetail>(u(userId, "memory", pool, id)), [userId, pool, id, display.showGeneral, display.showPrivate]);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [expanded, setExpanded] = useState<"Came from" | "Used in" | null>(null);
   const [run, busy, error] = useAction();
   const item = d.data?.item;
   const name = item && nameOf(item.kind, item.title && readable(item.title, d.data!.users), readable(item.text, d.data!.users), item.updatedAt);
@@ -269,9 +271,9 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
             </div>
           </>
         )}
-      <Lineage title="Came from" uses={cameFrom} mark={undefined} ctx={ctx} pool={item.pool} links={links} users={users} ownText />
-      <Lineage title="Used in" uses={d.data.usedIn} mark={item.id} ctx={ctx} pool={item.pool} links={links} users={users} />
-      <History detail={d.data} userId={userId} display={display} busy={busy} onRestore={(rev) => act(() => post<MemoryDetail>(`${path}/restore`, { revision: rev }))} />
+      <Lineage title="Came from" uses={cameFrom} mark={undefined} ctx={ctx} pool={item.pool} links={links} users={users} ownText expanded={expanded === "Came from"} onToggle={() => setExpanded(expanded === "Came from" ? null : "Came from")} />
+      {expanded !== "Came from" && <Lineage title="Used in" uses={d.data.usedIn} mark={item.id} ctx={ctx} pool={item.pool} links={links} users={users} expanded={expanded === "Used in"} onToggle={() => setExpanded(expanded === "Used in" ? null : "Used in")} />}
+      {!expanded && <History detail={d.data} userId={userId} display={display} busy={busy} onRestore={(rev) => act(() => post<MemoryDetail>(`${path}/restore`, { revision: rev }))} />}
       {deleting && (
         <ConfirmDialog title={`Delete “${name}”?`} confirm="Delete" danger onCancel={() => setDeleting(false)}
           sentence={`Its text and its history are gone for good; a marker with only its ID stays, so she doesn't learn it again.${d.data.usedIn.length ? ` ${d.data.usedIn.length === 1 ? "One memory cites it and is" : `${d.data.usedIn.length} memories cite it and are`} rewritten at the next sleep.` : ""}`}
@@ -332,19 +334,22 @@ function WordLink({ word, users, children, href: to }: { word: Word; users: User
 }
 
 /** Came from and Used in: a card per memory with its title or first words, its date, and the citing sentence (docs/ux.md §6). */
-function Lineage({ title, uses, mark, ctx, pool, links, users, ownText }: {
+function Lineage({ title, uses, mark, ctx, pool, links, users, ownText, expanded, onToggle }: {
   title: string; uses: MemoryUse[]; mark?: string; ctx: ShellContext; pool: Pool; links: Record<string, MemoryLink>; users: UserMap;
   /** The sentences are this memory's own (Came from): the cited memory is marked by its ref instead. */
-  ownText?: boolean;
+  ownText?: boolean; expanded: boolean; onToggle: () => void;
 }) {
   const userId = ctx.user.id;
   const { display } = ctx.me;
   if (!uses.length) return null;
   return (
-    <section className="lineage">
-      <h3>{title}</h3>
-      <div className="links">
-        {uses.map((use) => {
+    <section className="lineage" aria-label={title}>
+      <div className="section-head">
+        <h3 className="eyebrow">{title}</h3>
+        {uses.length > LINEAGE_PREVIEW && <a href="#" aria-expanded={expanded} onClick={(event) => { event.preventDefault(); onToggle(); }}>{expanded ? "Show less" : "Show all"}</a>}
+      </div>
+      <div className={`links${expanded ? " expanded" : ""}`}>
+        {(expanded ? uses : uses.slice(0, LINEAGE_PREVIEW)).map((use) => {
           const ref = parseRef(use.id, pool);
           if (!ref) return null;
           const w = wordFor(ref, links[use.id], display, userId);

@@ -18,6 +18,11 @@ offset, q and a filtered total, documented in the contracts. Sleep is wired
 first, then memory versions, journal entries, model calls and finished
 downloads.
 
+Came from and Used in also preview four cards, with the same heading link
+expanding longer lists in place (maximum height 320 px, own scroll), then
+Show less to collapse. Either expansion hides History; Came from expansion
+also hides Used in. The memory and earlier sections stay visible.
+
 ## Out of scope
 
 Pages and Notes keep their existing browse and search. Current routines and
@@ -31,6 +36,8 @@ styles or changes to memory boundaries. No message text in logs.
 Previews contain one entry; heading links open searchable numbered history
 pages; API tests cover paging, counts and search; the sleep web e2e covers
 the preview, navigation, paging and search at desktop and phone widths.
+The memory e2e covers both lineage previews, expansion, scrolling, heading
+link alignment, collapse and the section visibility rules at both widths.
 Docs match the implementation. Targeted tests run under the shared lock,
 using fakes only. The local Playwright config is used only for checks and
 removed afterwards.
@@ -67,3 +74,23 @@ and the requested Nix Chromium. From web/, run the targeted Playwright
 checks under `flock /tmp/lyrica-tests.lock`, with one worker and the local
 config, matching `Sleep:|Models: the sidebar|Downloads:`. Remove the local
 config again before committing. No open design questions.
+
+## Handoff: lineage expansion (2026-10-13)
+
+Done: four-card previews and inline Show all / Show less for Came from and
+Used in, reusing History’s heading styling. Expanded lists scroll at 320 px;
+History hides for either expansion and Used in hides for Came from. Memory
+and earlier sections remain visible. The fake encrypted history fixture
+and desktop/phone e2e cover the rules, collapse and short lists. UX, web,
+memory and DESIGN docs match. Preset adaptations from the prior merge are
+retained; no API or schema change.
+
+Checks: typecheck and web build pass; under the shared lock, six history
+handler tests and five Backend/card tests pass. The extended Sleep/memory
+browser test passes at 390 px and 1280 px, including lineage scrolling and
+card heights. Screenshots were inspected; the temporary local Playwright
+config was removed. Tests use fakes only.
+
+Next: run the full suite on the shared host, then stage, commit and push.
+This run leaves edits in the tree.
+No open design questions.

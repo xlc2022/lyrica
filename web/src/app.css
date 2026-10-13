@@ -527,6 +527,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .wl:hover .preview, .wl:focus-within .preview, .cite:hover .preview, .cite:focus-within .preview { display: block; }
 /* Came from and Used in: a card per memory. */
 .links { display: grid; gap: 6px; }
+.lineage .links.expanded { grid-auto-rows: max-content; max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
 .links .lk { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: baseline; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--fg); min-height: var(--tap); }
 .links a.lk:hover { text-decoration: none; border-color: var(--accent); }
 .links .lk .eyebrow { margin-right: 6px; }

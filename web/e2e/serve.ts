@@ -48,6 +48,9 @@ function fakeModel() {
         const { userId } = JSON.parse(body) as { userId: string };
         const view = daemon.services!.memory.openThreadView(userId, "general");
         try {
+          const sources = view.own.addNotes(Array.from({ length: 8 }, (_, i) => ({ text: `Fixture source ${i + 1}` })), { author: "sleep" });
+          view.own.putPage({ slug: "lineage-fixture", title: "Fixture lineage", summary: "", text: `Fixture memory ${sources.map((id) => `[${id}]`).join(" ")}` }, "sleep");
+          for (let i = 1; i <= 8; i++) view.own.putPage({ slug: `lineage-use-${i}`, title: `Fixture use ${i}`, summary: "", text: "Uses [p:lineage-fixture]." }, "sleep");
           for (let i = 1; i <= 24; i++) {
             view.own.recordSleepRun("scheduled", i === 1 ? "endpoint-down" : "no-activity", `2026-09-${String(i).padStart(2, "0")}T04:00:00.000Z`);
             view.own.putWake(`Fixture dream ${i}`, "sleep");

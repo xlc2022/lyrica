@@ -234,7 +234,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   tags for notes; a search replaces the list. The memory at the right shows
   its citations as titles with a hover preview (`linkCitations` turns each
   citation into a link whose word comes from `MemoryDetail.links`; the raw ID
-  is never shown), Came from and Used in with the citing sentence, History as
+  is never shown), Came from and Used in with the citing sentence. Each
+  previews four cards; a right-aligned Show all link expands longer lists
+  in place with their own scroll (maximum height 320 px), becoming Show less.
+  Either expansion hides History; Came from expansion also hides Used in.
+  The memory and earlier sections stay visible; collapsing restores the
+  hidden sections. History shows
   the most recent version open, with **Show all** at the right of its eyebrow.
   `…/history/memory/<pool>/<id>` lists versions newest first, with
   word differences (`wordDiff`, computed in the browser) and Restore, and

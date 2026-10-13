@@ -2341,6 +2341,50 @@ test("Sleep: the sidebar link opens it empty, the mode is set in Settings, Sleep
   await page.getByLabel("Search", { exact: true }).fill("absent-night");
   await expect(page.getByText("Nothing matches.")).toBeVisible();
 
+  // Lineage expands in place, keeping the memory and earlier sections visible.
+  await page.goto(`/#/u/${userId}/memory/general/p:lineage-fixture`);
+  const cameFrom = page.getByRole("region", { name: "Came from", exact: true });
+  const usedIn = page.getByRole("region", { name: "Used in", exact: true });
+  const memoryText = page.locator(".mem-item > .prose");
+  await expect(cameFrom.locator(".lk")).toHaveCount(4);
+  await expect(usedIn.locator(".lk")).toHaveCount(4);
+  const memoryURL = page.url();
+  for (const section of [cameFrom, usedIn]) {
+    const heading = await section.getByRole("heading").boundingBox();
+    const link = await section.getByRole("link", { name: "Show all", exact: true }).boundingBox();
+    const row = await section.locator(".section-head").boundingBox();
+    expect(Math.abs(heading!.y - link!.y)).toBeLessThan(12);
+    expect(link!.x).toBeGreaterThan(heading!.x + heading!.width);
+    expect(row!.x + row!.width - link!.x - link!.width).toBeLessThan(2);
+  }
+  for (const section of [usedIn, cameFrom]) {
+    await section.getByRole("link", { name: "Show all", exact: true }).click();
+    await expect(page).toHaveURL(memoryURL);
+    await expect(section.locator(".lk")).toHaveCount(8);
+    await expect(section.getByRole("link", { name: "Show less", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(memoryText).toBeVisible();
+    await expect(page.locator(".history")).toHaveCount(0);
+    if (section === usedIn) await expect(cameFrom).toBeVisible();
+    else await expect(usedIn).toHaveCount(0);
+    const list = section.locator(".links");
+    expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY === "auto")).toBe(true);
+    expect(await list.locator(".lk").evaluateAll((cards) => cards.every((card) => card.scrollHeight <= card.clientHeight + 1))).toBe(true);
+    await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+    expect(await list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    await noHorizontalScroll(page);
+    await page.screenshot({ path: testInfo.outputPath(section === usedIn ? "used-in-expanded.png" : "came-from-expanded.png") });
+    await section.getByRole("link", { name: "Show less", exact: true }).click();
+    await expect(section.locator(".lk")).toHaveCount(4);
+    await expect(page.locator(".history")).toBeVisible();
+    await expect(usedIn).toBeVisible();
+  }
+  // A short list needs no expansion link; navigating also resets expansion.
+  await cameFrom.getByRole("link", { name: "Show all", exact: true }).click();
+  await page.goto(`/#/u/${userId}/memory/general/p:lineage-use-1`);
+  await expect(cameFrom.locator(".lk")).toHaveCount(1);
+  await expect(cameFrom.getByRole("link", { name: "Show all", exact: true })).toHaveCount(0);
+  await expect(page.locator(".history")).toBeVisible();
+
   // WAKE's sleep versions use the same preview and page, retaining Restore.
   await page.goto(`/#/u/${userId}/memory/general/wake`);
   await expect(page.locator(".hist details")).toHaveCount(1);
