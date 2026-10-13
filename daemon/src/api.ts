@@ -968,7 +968,7 @@ export interface NotificationPage { items: Notification[]; total: number; waitin
 
 /** Where a thread's model for one task comes from. */
 export interface TaskModel {
-  /** The model that answers now. */
+  /** The model set for the task, named even while its endpoint is down (what answers now is `speech` and the Models page's status). */
   model?: { offeringId: string };
   /** The thread's own list, when it has one. */
   list?: ModelRef[];
@@ -979,7 +979,7 @@ export interface TaskModel {
   endpointName?: string;
   /** "thread" when overridden here, "preset" or "column" when following one of those, "none" when nothing is set. */
   source: "thread" | "preset" | "column" | "none";
-  /** Why it can't be used, in plain words, if it can't. */
+  /** Why nothing usable is set here (unset, or a cloud model in a private thread), in plain words. */
   problem?: string;
 }
 

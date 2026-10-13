@@ -2364,7 +2364,8 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     const override = ctx.overrides?.[task];
     const list = override?.length ? { list: override } : {};
     try {
-      const r = models.resolve(task, task === "speech.transcribe" ? voiceContext(ctx) : ctx);
+      // evenIfDown: the drawer names what is set here; whether its machine answers now is speechState's and the status panel's to say.
+      const r = models.resolve(task, task === "speech.transcribe" ? voiceContext(ctx) : ctx, {}, { evenIfDown: true });
       if (task === "chat") thinkingLevels = ["off", ...(r.offering.reasoning ?? [])];
       return {
         model: r.ref, ...list, kind: r.endpoint.kind, endpointName: r.endpoint.name, label: r.label, modelId: r.offering.modelId,
