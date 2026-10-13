@@ -1,5 +1,7 @@
 # Brief: Spend share
 
+**Status:** Merged as #287 (4a76109). Handoff notes below are history.
+
 **Branch:** `feature/spend-share`. **Built by:** Codex on the test machine.
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md "Context and pace" and
 Projects (the facts line), docs/models.md (Recent calls), docs/delegation.md

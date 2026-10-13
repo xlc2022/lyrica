@@ -1,5 +1,7 @@
 # Brief: CI results and reviews wake the thread that opened the pull request
 
+**Status:** Merged as #281 (3ca7c87). Handoff notes below are history.
+
 **Branch:** `feature/ci-wakes`. **Approved:** by the user, 2026-10-13, to
 build now (ahead of the first real install).
 

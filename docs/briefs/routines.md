@@ -1,5 +1,7 @@
 # Brief: Routines
 
+**Status:** Merged as #231 (9b6a7af). Handoff notes below are history.
+
 **Thread:** Roadmap (coordinates). **Branch:** `feature/routines`.
 **Built by:** Codex on the test machine, and the local model for part A
 (below). The Roadmap thread reviews each part before it goes to PR review.

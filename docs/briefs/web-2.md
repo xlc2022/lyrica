@@ -199,8 +199,9 @@ API `GET …/library/text` (`TextLibrary`, `LibraryEntry`), `PUT
   a ⋯ menu with **Not this model** (`PUT …/separate`; the copy becomes a
   row of its own with "Separated from <name> · Undo") and **Delete from
   host…** when `downloaded`. Under the table, one warn line per group
-  mismatch, exactly: "Mixes local and cloud: Local and Cloud profiles use
-  only the matching copies, Custom uses all of them.", "Quantisations
+  mismatch, exactly: "Mixes local and cloud: a private preset or the Private
+  column uses only the local copies, a general preset or a Custom column
+  uses all of them.", "Quantisations
   differ: answers can vary a little between copies.", "Context windows
   differ: long conversations skip the smaller copies.", "Only some copies
   can see images: calls with images skip the others." Then the group
@@ -214,7 +215,7 @@ API `GET …/library/text` (`TextLibrary`, `LibraryEntry`), `PUT
   <endpoint>?", "<code>raw</code> is deleted from the host, which frees
   <GB>. It's loaded now, so it's unloaded first." (second sentence when
   loaded), "Used in <lists>. Those lists skip it from now on, and the
-  group keeps its other copies." or the muted "None of your profiles use
+  group keeps its other copies." or the muted "Nothing of yours uses
   it.", and on a shared host "This host is shared, so other people's lists
   skip it too." Buttons Cancel and the danger primary **Delete**. The
   first call to `delete-copy` without `confirm` gives `usedIn` for the
@@ -269,7 +270,7 @@ API `GET …/library/text` (`TextLibrary`, `LibraryEntry`), `PUT
     error line; `above_recommended` shows it with a **Save anyway** button
     beside Save. A toast "Saved." or "Saved. Reloading <name> with the new
     settings." after.
-- The speaking model's drawer (VoiceDrawer, already in Models.tsx) stays
+- The speaking model's drawer (VoiceDrawer, in ModelsFrame.tsx) stays
   where it is; a speak-capable copy's Settings opens it.
 - Phone: the table stacks (`data-h` labels), the drawer is full width, the
   segmented controls wrap.
@@ -439,8 +440,9 @@ mockup doesn't draw (its only Copy is the message-level one). Design:
 
 ### Message-text search (pre-deployment batch)
 
-The sidebar's Search (Shell.tsx:397, placeholder "Titles") searches titles
-in the browser today. The mockup's stub says "Search titles and messages"
+Before this was built, the sidebar's Search (placeholder "Titles")
+searched titles in the browser only; it is now "Search titles and
+messages" (Shell.tsx). The mockup's stub says "Search titles and messages"
 with radios All threads / Pinned messages / Hidden threads. Design:
 
 - API: `GET …/search?q=&pool=&limit=&before=` → `{ hits: SearchHit[] }`,

@@ -1,5 +1,7 @@
 # Brief: Folders narrow at once
 
+**Status:** Built; on main (`narrowGrants` in `core/src/workspace/settings.ts`). Handoff notes below are history.
+
 **Thread:** Folder narrowing. **Branch:** `feature/folder-narrowing`.
 **Model:** Opus. **Depends on:** nothing; can run alongside Project
 workspace ([project-workspace.md](project-workspace.md)).

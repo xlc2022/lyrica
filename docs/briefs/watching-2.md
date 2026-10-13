@@ -1,5 +1,7 @@
 # Brief: Watching threads, part 2
 
+**Status:** Merged as #156 (5dfcb53). Handoff notes below are history.
+
 **Thread:** the feature comparison thread (Fable directs; Opus and Sonnet
 subagents build). **Branch:** `claude/project-thread-mlqt59`. **Depends
 on:** nothing beyond main. **Touches the same files as:** Web UI 2 (the

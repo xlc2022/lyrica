@@ -1,5 +1,7 @@
 # Brief: Thread panel (threads list, Open beside, View thread, divider fix)
 
+**Status:** Merged as #276 (0700d82). Handoff notes below are history.
+
 **Thread:** Web UI. **Branch:** `feature/thread-panel`. **Model:** Qwen on
 lunasa first (small steps below), Codex as the fallback; Fable reviews the UI.
 

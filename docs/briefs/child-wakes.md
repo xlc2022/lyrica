@@ -1,5 +1,7 @@
 # Brief: Child threads wake an idle parent
 
+**Status:** Merged as #291 (34f2e19). Handoff notes below are history.
+
 **Branch:** `feature/child-wakes`. **Approved:** by the user, 2026-10-13.
 
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md (child threads),
