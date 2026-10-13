@@ -133,6 +133,25 @@ scroll, and the row's actions stay where they are.
 
 ## Handoff notes
 
-(The building thread fills this in if it stops before it's done.) A partial
-diff from a stopped pills run is at /tmp/claude-1000/iu/run4-stopped.patch on
-the test machine; use it only as a reference.
+Built by Codex on the test machine in four runs, then committed, merged
+with main and pushed by the coordinating thread as PR #294. Runs 1 and 2
+built the provider adapters, hand-JSON flags and tiers, the refusal code and
+retries, maker attribution, the switches and the refusal links; only cloud
+endpoints use the provider table. Run 3 built the Hosts and endpoints UI
+(API key and plan pills, Text / Vision / Image pills, masked key suffixes,
+plan facts without placeholder URLs, an account label only when sign-in
+supplies one, ChatGPT and OpenAI default names, the endpoint named after
+each model in every picker). Run 4 resolved the main merge and adapted three
+tests to it (capitalised plan names, the ModelLabel markup, a 1 ms clock
+step before sleep). The UI review round replaced the raw refusal code with
+"The model declined this image.", shows Resend before the retry options
+load, and kept the `code.raw` rule. No database migration; the flags live
+in `offerings.hand`.
+
+Validation used fakes only, never a plan sign-in or a real API call.
+Typecheck and unit tests pass; focused Playwright checks pass at 390 and
+1280 px.
+
+Left: CI, PR review and UI review of the PR's head; the full Playwright run,
+which needs a host with FUSE for the upload tests; and Operator docs
+reviewing the getting-started guide's endpoint setup and image switches.

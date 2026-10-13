@@ -299,8 +299,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   30 s not asked again). Overview: a banner for a paused host or a stale
   endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
   the first one down, "+N" for more), Backend (the first `chat` model of
-  the general profile and of Local, following Same as, each with its pool
-  and profile beneath; links to Tasks) and Clean up (the count, the tile's
+  the General and Private columns, following their presets and Same as,
+  each with its pool and preset beneath; links to Tasks) and Clean up (the count, the tile's
   tooltip "To decide" or "Nothing to clean up"); then the hosts and
   endpoints summary (a host with its combined VRAM bar, Pause or Resume,
   Dashboard; a plain endpoint with its model count) and the first five
@@ -323,9 +323,17 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the addresses, `PUT …/addresses`), per GPU its card, used/total in mono,
   a bar of pinned, loaded-on-demand and vLLM-share segments, the loaded
   models and the queue when nonzero. A plain endpoint row: name, kind,
-  ChatGPT plan or Grok plan, unencrypted and stale pills, URL, shared or only you, ID, state, "N
-  models", **Edit** (the same drawer; API key "leave blank to keep",
-  Remove key; a plan's drawer has Name only). A plan whose sign-in lapsed
+  ChatGPT plan or Grok plan versus API key, and cloud Text, Vision and Image
+  pills (only when a marked image model has a callable provider and the
+  required key). Capability pills wrap under the name on a phone. Facts:
+  a plan's kind, only you and explicit account label in mono if supplied,
+  hiding its placeholder URL; a keyed endpoint's URL, masked key suffix in
+  mono, shared or only you and ID. Short keys show the mask alone. Local rows
+  keep unencrypted and stale pills. State, "N models", **Edit** (the same
+  drawer; API key "leave blank to keep",
+  Remove key; a plan's drawer has Name only). Add endpoint suggests ChatGPT
+  for that plan and OpenAI for api.openai.com without replacing a name the
+  user typed. Names preserve capitals. A plan whose sign-in lapsed
   reads **Signed out**. Each row's ⋯: Sign in again (plans), Read its models, Add a model by hand, Pair
   again… (hosts), Reset IDs…, Merge into… (same kind and sharing), Remove,
   the last three confirmed by a dialog. Clean up: a row per item with a
@@ -359,6 +367,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   with**, ordered models with Move up, Move down and Remove, and **Add…**.
   General lists mark where fallback crosses local/cloud; Private offers
   local models only. Changes send `PUT …/columns/:column/:task` at once.
+  The model picker, Tasks entries, Text models copies and Image models show
+  a muted endpoint name after each model, truncating the endpoint first.
+  `ModelLabel.tsx` shares that display.
   Settings → Sleep holds Sleep mode and Sleep fallback;
   `…/settings/profiles` remains a redirect to Tasks.
   Text models (`src/TextModels.tsx`, its pure parts in `src/library.ts`)
@@ -374,9 +385,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   <endpoints>", opening in place to a table of its copies, the group's
   members first in order (Move up, Move down, Remove from the group: `PATCH
   …/groups/:id`), then the others (**Add to group** when the row's group is
-  the user's to change). A Copy cell: endpoint and kind, status and "same
-  file" pills (the Models page's checksum), the raw name, "downloaded by
-  Lyrica" or "shared folder", tok/s and **Settings**; Context and Vision
+  the user's to change). A Copy cell: raw model name with its endpoint muted
+  after it, kind, status and "same file" pills (the Models page's checksum),
+  "downloaded by Lyrica" or "shared folder", tok/s and **Settings**; Context and Vision
   cells tinted where the copies differ; a ⋯ with **Not this model** (`PUT
   …/separate`; the new row reads "Separated from <name> · Undo", the name
   known for the visit, else "Separated") and **Delete from host…** (a dialog
@@ -409,6 +420,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Image models (`src/ImageModels.tsx`, its pure parts in `src/images.ts`)
   reads each model host's library (`GET …/hosts/:id/images`: recipes, and
   parts by role) and the plain endpoints' image models from the Models page.
+  Cloud model blocks and Hosts and endpoints' cloud model lists share
+  `CloudImageControls.tsx`: Image generation and Image editing switches
+  with tooltips, and Use for (Fast | Quality | Both) while generation is on.
+  Each change PATCHes the offering's capabilities and reloads the Models
+  page; controls are disabled for a shared endpoint's non-administrator.
+  These use ux §3's controls, §4's names and §6's model blocks.
   The facts line counts models, parts, hosts and the groups holding them,
   then links "<n> to review" when a host the user manages proposed
   anything. **Models** | **Parts**, a search (name or file) and the
@@ -417,7 +434,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   is left out. A row opens to a block per host (template and defaults, a
   segmented **Use for** (**Fast** | **Quality** | **Both**, default Both),
   row per part with precision, "downloaded by Lyrica" or "shared folder",
-  the other recipes using it and its size); every change is a recipe action
+  the other recipes using it and its size). Part filenames and facts wrap
+  within their column on a phone. Every change is a recipe action
   (`POST …/hosts/:id/recipes/:recipeId`, models.md "Image models"):
   **Use for** saves at once (`change { op: "useFor", useFor }`), disabled
   while saving or when the user cannot manage the host. The row's facts say
@@ -495,7 +513,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   administrator: Tailnet (the state, an Auth key with Hostname and Advanced →
   Control server, **Connect**, then a **Web access over the tailnet** switch
   applied on Continue; or Skip), Models (one endpoint, shared, its first
-  chat model set for the profile; or Skip), Done (the addresses to open her
+  chat model set for the preset; or Skip), Done (the addresses to open her
   at with the fingerprint, the administrator's login, the tailnet, and a
   sentence when she starts locked), **Start a chat**. The current step's
   button is the one primary; a done step's turns secondary; the fields of a
@@ -661,7 +679,7 @@ stack when they don't fit. Each card has a plain h2 with its link on the right:
 and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
 time in mono. **Notifications** has All <n> and "Nothing waiting." when
 empty. **Backend** has Models and lists each pool's first chat model, host,
-local/cloud chip and profile, then each model host's state as a dot and word.
+local/cloud chip and preset, then each model host's state as a dot and word.
 
 ## Chat
 
@@ -966,6 +984,15 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   plan or an approval) has scrolled out of view, a thin accent bar across the
   top of the conversation says "Plan waiting for your answer" (or
   "Approval…") and scrolls to it.
+
+A content refusal's image marker says "The model declined this image." (never
+the code) and the small text
+links Edit message, Resend and Try <model> (ux §5's agreed action exception
+and §6's image row). The server computes choices from the current task list
+and portrait policy. Edit message appears only for the last user message
+and copies it into the composer through an in-memory event; Resend repeats
+the image call, Try selects the next eligible endpoint. Resend shows at once;
+the other two join it when the options arrive. Busy calls hide the links. Both retries save results in the conversation and recheck consent.
 
 ## Look
 

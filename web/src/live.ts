@@ -88,7 +88,7 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "tool_end":
       return withParts(s, (parts) => parts.flatMap((p) =>
         p.type === "tool" && p.toolCallId === e.toolCallId
-          ? [{ ...p, result: e.result, isError: e.isError, ...(e.threads && { threads: e.threads }) }, ...(e.image ? [e.image] : [])]
+          ? [{ ...p, result: e.result, isError: e.isError, ...(e.imageRefusal && { imageRefusal: e.imageRefusal }), ...(e.threads && { threads: e.threads }) }, ...(e.image ? [e.image] : [])]
           : [p]));
     case "recall":
     case "remember":

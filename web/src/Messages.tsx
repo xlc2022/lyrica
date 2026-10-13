@@ -1,7 +1,7 @@
 // The conversation: stored messages, then what's streaming now.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { get, post, threadPath, u, type GoAhead, type ImagePart, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
+import { get, post, threadPath, u, type GoAhead, type ImagePart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import { storedUserItems, type LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
@@ -9,7 +9,7 @@ import { ScheduleText } from "./Routines.tsx";
 import { Icon } from "./icons.tsx";
 import { go, href, idHref } from "./route.ts";
 import { RowMenu } from "./Machines.tsx";
-import { ask, EDIT_IMAGE_EVENT, type EditImageRequest } from "./links.ts";
+import { ask, EDIT_MESSAGE_EVENT, type EditMessageRequest, EDIT_IMAGE_EVENT, type EditImageRequest } from "./links.ts";
 import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
 import { FoldCard, stateWord, SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
@@ -58,7 +58,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const [large, setLarge] = useState<{ path: string; url: string }>();
   const openLarge = useCallback((path: string, files: FileLinks) => setLarge({ path, url: files.url(path) }), []);
   const env: Env = {
-    userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
+    busy: live.busy, settingsVersion: live.settings, lastUser: messages.findLast(m => m.role === "user")?.n, userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
     permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
     lastHers: messages.findLast((m) => m.role === "assistant")?.n, large: openLarge, threads: ctx.threads,
   };
@@ -109,6 +109,9 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
 }
 
 interface Env {
+  busy: boolean;
+  settingsVersion: number;
+  lastUser?: number;
   userId: string;
   parentTitle?: string;
   you: string;
@@ -418,8 +421,36 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
     <div className="marker" data-type={part.type}>
       <button type="button" aria-expanded={open} onClick={toggle}>{label}</button>
       {open && <div className="marker-body">{body}</div>}
+      {part.type === "tool" && part.name === "image" && part.imageRefusal && <ImageRefusalLinks part={part} env={env} />}
     </div>
   );
+}
+
+function ImageRefusalLinks({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {
+  const [options, setOptions] = useState<ImageRetryOptions>();
+  const [run, busy, error] = useAction();
+  const path = `${env.base}/image-calls/${encodeURIComponent(part.toolCallId)}`;
+  useEffect(() => {
+    let live = true;
+    setOptions(undefined);
+    if (!env.busy && !env.subagent) void get<ImageRetryOptions>(path).then(o => { if (live) setOptions(o); }, () => {});
+    return () => { live = false; };
+  }, [path, env.busy, env.settingsVersion, env.lastUser]);
+  const retry = (next: boolean) => void run(async () => { await post(path, { next }); });
+  const edit = () => void run(async () => {
+    const current = await get<ImageRetryOptions>(path);
+    if (current.canEdit && current.userMessage) ask<EditMessageRequest>(EDIT_MESSAGE_EVENT, { base: env.base, text: current.userMessage.text });
+    setOptions(current);
+  });
+  return <>
+    <span className="image-refusal-note">The model declined this image.</span>
+    {!busy && !env.busy && <div className="image-refusal-links">
+      {options?.canEdit && <button type="button" className="link sm" onClick={edit}>Edit message</button>}
+      <button type="button" className="link sm" onClick={() => retry(false)}>Resend</button>
+      {options?.next && <button type="button" className="link sm" onClick={() => retry(true)}>Try {options.next.label}</button>}
+    </div>}
+    <ErrorText error={error} />
+  </>;
 }
 
 function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {

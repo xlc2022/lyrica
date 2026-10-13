@@ -166,6 +166,7 @@ describe("image tool results (principles 1 and 4)", () => {
     const saved = readFileSync(join(s.folder, "images", part.paths[0]!.split("/").at(-1)!));
     expect(saved).toEqual(png); expect(saved.toString()).not.toContain("A garden");
     expect(readdirSync(join(s.folder, "images"))).toHaveLength(2);
+    expect(out.content).toContainEqual({ type: "text", text: expect.stringContaining("Made with gpt-image-1 on openai.") });
     expect(out.content).toContainEqual({ type: "image", data: png.toString("base64"), mimeType: "image/png" });
     const image = await s.files.read(part.paths[0]!);
     expect(image.portrait).toBe(false); expect(image.input.bytes).toEqual(png);
@@ -173,8 +174,15 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(s.models.recentCalls(s.ada.id)).toHaveLength(2);
     expect(JSON.stringify(s.models.recentCalls(s.ada.id))).not.toMatch(/garden|flowers/);
   });
-  it("Pi passes the result back to the model as image content, with no disk session", async () => {
+  it("names the host and recipe that made the image", async () => {
     const s = await setup();
+    s.context({ localOnly: true });
+    const out = await s.run({ action: "create", prompt: "A garden", tier: "quality" });
+    expect(out.content).toContainEqual({ type: "text", text: expect.stringContaining("Made with recipe/art on workstation.") });
+  });
+  it.each(["image", "refusal"] as const)("Pi passes the %s result back to the model, with no disk session", async kind => {
+    const s = await setup();
+    if (kind === "refusal") vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: { code: "content_policy_violation" } }, { status: 400 })));
     const faux = fauxProvider({ provider: "faux", models: [{ id: "vision", input: ["text", "image"] }] });
     let seen: unknown;
     faux.setResponses([fauxAssistantMessage([fauxToolCall("image", { action: "create", prompt: "A garden", tier: "quality" })]),
@@ -185,7 +193,9 @@ describe("image tool results (principles 1 and 4)", () => {
     const { session } = await createAgentSession({ cwd: s.home, agentDir: s.home, resourceLoader: loader, sessionManager: SessionManager.inMemory(s.home), noTools: "builtin" });
     try {
       await session.bindExtensions({}); await session.setModel(faux.getModel()); await session.prompt("Make a garden image.");
-      expect(seen).toEqual(expect.arrayContaining([expect.objectContaining({ role: "toolResult", toolName: "image",
+      if (kind === "refusal") expect(seen).toEqual(expect.arrayContaining([expect.objectContaining({ role: "toolResult", toolName: "image", isError: true,
+        details: { imageRefusal: expect.objectContaining({ code: "image_refusal" }) } })]));
+      else expect(seen).toEqual(expect.arrayContaining([expect.objectContaining({ role: "toolResult", toolName: "image",
         content: expect.arrayContaining([{ type: "image", data: png.toString("base64"), mimeType: "image/png" }]) })]));
     } finally { session.dispose(); }
   });
@@ -197,4 +207,47 @@ describe("image tool results (principles 1 and 4)", () => {
     s.enable(true);
     await expect(s.run({ action: "create", prompt: "A garden", tier: "fast", size: { width: 1024, height: 1024 }, aspectRatio: "1:1" })).rejects.toThrow(/size or an aspect ratio/);
   });
+});
+
+it("keeps a content refusal as fixed metadata and stops before another endpoint", async () => {
+  const s = await setup();
+  s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref, s.workstation.ref]);
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: { code: "content_policy_violation", message: "synthetic provider text" } }, { status: 400 })));
+  const result = await s.run({ action: "create", prompt: "A garden", tier: "quality" });
+  expect(result).toMatchObject({ isError: true, details: { imageRefusal: { code: "image_refusal", offeringId: s.ref.offeringId } } });
+  expect(JSON.stringify(result)).not.toContain("synthetic provider text");
+  expect(s.workstation.server.images).toHaveLength(0);
+  const next = s.models.nextImageModel(s.ctx(), "create", { imageTier: "quality" }, s.models.offering(s.ada.id, s.ref.offeringId)!.endpoint.id);
+  expect(next?.ref).toEqual(s.workstation.ref);
+  s.context({ overrides: { "image.create": [s.workstation.ref] } });
+  expect((await s.run({ action: "create", prompt: "A garden", tier: "quality" })).details).toHaveProperty("image");
+});
+
+it("Try follows named presets and tier rules, and never offers cloud in restricted contexts", async () => {
+  const s = await setup();
+  const ep = s.models.offering(s.ada.id, s.ref.offeringId)!.endpoint;
+  const sameEndpoint = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "other-art", image: true }).id };
+  s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref, sameEndpoint, s.workstation.ref, s.spare.ref]);
+  s.models.setCapabilities(s.ada, s.workstation.ref.offeringId, { useFor: "fast" });
+  const preset = s.models.addPreset(s.ada.id, { name: "Pictures", scope: "general" }, "general");
+  s.context({ preset: preset.id });
+  expect(s.models.nextImageModel(s.ctx({ preset: preset.id }), "create", { imageTier: "quality" }, ep.id)?.ref).toEqual(s.spare.ref);
+  for (const restricted of [{ pool: "private" as const }, { localOnly: true }]) {
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [s.workstation.ref, s.spare.ref]);
+    expect(s.models.nextImageModel(s.ctx(restricted), "create", { imageTier: "fast" }, s.workstation.ep.id)?.endpoint.kind).toBe("local");
+    expect(s.models.nextImageModel(s.ctx(restricted), "create", { imageTier: "quality" }, s.spare.ep.id)).toBeUndefined();
+  }
+  expect(s.models.nextImageModel(s.ctx({ fallback: false }), "create", {}, ep.id)).toBeUndefined();
+});
+
+it("Try skips a maskless plan for masked edits and skips cloud endpoints for forbidden portraits", async () => {
+  const s = await setup();
+  const plan = s.models.addPlan(s.ada, { name: "plan", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
+  const planRef = { offeringId: s.models.addModel(s.ada, plan.id, { modelId: "plan-art", image: true, edit: true }).id };
+  s.models.setColumnTask(s.ada.id, "general", "image.edit", [s.ref, planRef, s.workstation.ref]);
+  const after = s.models.offering(s.ada.id, s.ref.offeringId)!.endpoint.id;
+  expect(s.models.nextImageModel(s.ctx(), "edit", {}, after)?.ref).toEqual(planRef);
+  expect(s.models.nextImageModel(s.ctx(), "edit", { imageMask: true }, after)?.ref).toEqual(s.workstation.ref);
+  expect(s.models.nextImageModel(s.ctx(), "edit", {}, after, true)?.ref).toEqual(s.workstation.ref);
+  expect(s.heard).toEqual([]);
 });

@@ -402,7 +402,8 @@ is pending is checked again before sending.
 Results have exclusive `images/<uuid>.png` names under the thread's encrypted
 folder, following its shared project/parent folder where applicable. Writes
 require an unlocked key and mounted home, follow no symlinks, and strip PNG
-metadata. Nothing stores a prompt beside an image. Pi gets the bytes as image
+metadata. Nothing stores a prompt beside an image. The text result names the
+model and host or endpoint that made the image. Pi gets the bytes as image
 content so Lyrica can look and try again; messages and `tool_end` carry paths,
 model label and the create tier. The prompt stays only in the encrypted tool
 call. The Images switch and Plan mode disable the tool.

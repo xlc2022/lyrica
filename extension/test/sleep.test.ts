@@ -13,7 +13,7 @@ import { DREAM_HEADER, memorySections, Sleep, type SleepLimits } from "../src/in
 
 const SEED = fileURLToPath(new URL("../../persona", import.meta.url));
 const dirs: string[] = [];
-afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => { vi.useRealTimers(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 type Phase = "consolidate" | "dream" | "wake";
 type Step = Reply | ((chat: ChatRequest) => Reply);
@@ -358,7 +358,10 @@ describe("project pages", () => {
   it("keeps each project's page from that night's project notes, citing them, and the next thread of the project starts with it", async () => {
     const s = await setup();
     const v = s.view();
+    vi.useFakeTimers({ toFake: ["Date"] });
     const p = project(v, "Let's use SQLite, not Postgres.", "{user} decided the garden app uses SQLite, not Postgres");
+    // Sleep covers material strictly before its cutoff, including on a fast test host.
+    vi.advanceTimersByTime(1);
     let instruction = "";
     s.script({
       consolidate: [
