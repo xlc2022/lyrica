@@ -1931,7 +1931,7 @@ test("the split view: a thread from its card opens in the panel, links inside it
   const fact = page.locator(".tfacts").getByRole("button", { name: /^Threads/ });
   await expect(fact).toHaveAttribute("aria-pressed", "false");
   await fact.click();
-  const threadList = page.getByRole("complementary", { name: "Threads" });
+  const threadList = page.locator("aside.panel");
   await expect(threadList.getByRole("heading", { level: 1, name: "Threads" })).toBeFocused();
   await expect(fact).toHaveAttribute("aria-pressed", "true");
   expect(page.url()).toMatch(/\/panel\/.*\/threads$/);
