@@ -1,7 +1,7 @@
 # Working on Lyrica
 
 This guide is for every contributor: people, Claude, ChatGPT, DeepSeek, and
-eventually Lyrica herself. It is never loaded into Lyrica's own conversations.
+eventually Lyrica herself.
 
 ## Before you start
 
