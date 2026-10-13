@@ -190,14 +190,14 @@ What landed:
   (`Workspace.onPullCreate` → `ForgeWatcher.record`) stores a watch in the
   thread's pool (pool step 7, `WATCHES_SCHEMA`); lyricad's tick polls each
   unlocked user's due watches through `core/models`-only forge fetch, joins
-  the pages into a snapshot, runs Part A's `decide`, and hands the note to
+  the pages into a snapshot, runs Part A's `decideWatch`, and hands the note to
   the wake-up path via `settleWatch` + `wakeups.wake`. One request at a time
   per token (`enqueue`), Retry-After and `x-ratelimit-reset` honoured, and
   ten-minute polling once a token is low or the repo is webhooked.
 - The webhook: signed `POST /hooks/forge/{account}` on the tailscale-serve
   listener only (404 off the tailnet), HMAC-SHA256 with
   `timingSafeEqual`, one secret per Git account (`webhook_secret` in user
-  step 6), and a `webhook` nudge that triggers an immediate poll and eases
+  step 7), and a `webhook` nudge that triggers an immediate poll and eases
   the watch to ten minutes. The account drawer gains the Webhook row
   (docs/ux.md row written), and `git.md` covers it.
 - Part A was reviewed against `core/src/forge/types.ts` and the brief and

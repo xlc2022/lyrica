@@ -233,3 +233,25 @@ describe("pool step 7 (watches)", () => {
     }
   });
 });
+
+describe("user step 6 (project command rules)", () => {
+  it("expands every released schema and preserves project settings and old readers", () => {
+    for (let version = 1; version < 6; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter(s => s.version <= version);
+      migrate(db, "user", {}, previous);
+      db.prepare("INSERT INTO project_settings (pool, thread, paused, thinking) VALUES ('general', 'web/project', 1, 'high')").run();
+      migrate(db, "user");
+      const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+      expect(settings.commandRules("general", "web/project")).toEqual([]);
+      settings.addCommandRule("general", "web/project", { prefix: "npm test", decision: "ask" });
+      settings.addCommandRule("general", "web/project", { prefix: "npm test", decision: "allow" });
+      expect(settings.commandRules("general", "web/project")).toEqual([{ prefix: "npm test", decision: "allow" }]);
+      expect(settings.commandRules("private", "web/project")).toEqual([]);
+      expect(db.prepare("SELECT paused, thinking FROM project_settings").get()).toEqual({ paused: 1, thinking: "high" });
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      db.close();
+    }
+  });
+});

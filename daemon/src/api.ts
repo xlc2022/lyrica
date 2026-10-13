@@ -779,7 +779,10 @@ export interface ThreadSummary {
 /** One step of a thread's checklist: done, under way, or not started. */
 export interface ThreadStep { text: string; state: "done" | "doing" | "todo" }
 
+export interface CommandRule { prefix: string; decision: "allow" | "ask" | "forbid" }
+
 export interface ProjectSettingsInfo {
+  commandRules: CommandRule[];
   /** The project page's memory ID, for the memory browser. The page exists once instructions are saved or sleep writes it. */
   pageId: string;
   /** Paused: its threads stop, nothing new starts, and they take no messages. */
@@ -811,6 +814,7 @@ export interface ThreadChange {
   /** `group` and `unread` are the user's own view of the thread, kept in user.db; `null` takes it out of its group. */
   group?: string | null; unread?: boolean;
   title?: string; hidden?: boolean; project?: true; goal?: string; instructions?: string;
+  commandRules?: CommandRule[];
   paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; threadsFallback?: boolean | null; watchThreads?: boolean;
 }
 /** PUT and DELETE /api/u/:userId/threads/:pool/:threadId/pin → ThreadSummary. The user's own pin, in user.db. */
@@ -1276,6 +1280,7 @@ export interface Pin { id: string; n: number; role: "user" | "assistant"; text: 
  * Approving a plan (`propose_plan`) says which mode to go ahead in; refusing it keeps planning.
  */
 export interface PermissionAnswer {
+  alwaysAllow?: true;
   allow: boolean;
   mode?: GoAhead;
   /** For a suspect command: that exact command stops asking in the thread it runs in, and nowhere else. */
@@ -1411,6 +1416,7 @@ export type DelegationEvent =
   | (RunRef & { type: "usage"; inputTokens: number; outputTokens: number });
 
 export interface PermissionRequest {
+  alwaysAllow?: string;
   requestId: string;
   toolCallId: string;
   /** "propose_plan" is a plan to approve, with `args` `{ plan }`: the plan card. "image" asks for daily portrait consent; its args carry { question, provider, model } with the resolved model label. */

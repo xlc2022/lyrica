@@ -9,7 +9,7 @@ import type { ForgeDecide, ForgeWakeNote, ForgeWatchState } from "./types.ts";
 /** No checks reported this long after a head was observed: one note says so (brief step 5). */
 const NO_CHECKS_WAIT_MS = 15 * 60_000;
 
-export const decide: ForgeDecide = ({ number, account, now, last, poll }) => {
+export const decideWatch: ForgeDecide = ({ number, account, now, last, poll }) => {
   // A token the API refuses ends the watch with one note saying why (brief step 8).
   if (poll.kind === "unreadable") {
     return { next: last, stop: true, note: { number, head: last.head, ci: null, reviews: [], tokenUnreadable: true } };

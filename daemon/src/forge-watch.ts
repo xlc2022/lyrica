@@ -8,7 +8,7 @@
 // webhooked. Nothing here logs a body.
 
 import {
-  decide, forgejoPullRequest, githubPullRequest,
+  decideWatch, forgejoPullRequest, githubPullRequest,
   type ForgeKind, type ForgePollResult, type ForgePullRequest, type ForgeWakeNote, type ForgeWatchState,
   type Memory, type Pool, type Watch, type Workspace,
 } from "@lyrica/core";
@@ -28,7 +28,7 @@ interface Account {
   name: string;
   kind: ForgeKind;
   host: string;
-  /** The forge login, for decide's own-account exclusion. */
+  /** The forge login, for decideWatch's own-account exclusion. */
   account: string;
   token: string;
 }
@@ -231,7 +231,7 @@ export class ForgeWatcher {
       return;
     }
     const lastState: ForgeWatchState = { head: w.head, headSince: w.headSince, notifiedHeads: w.notifiedHeads, seenReviews: w.seenReviews };
-    const out = decide({ number: w.number, account: a.account, now: now.toISOString(), last: lastState, poll });
+    const out = decideWatch({ number: w.number, account: a.account, now: now.toISOString(), last: lastState, poll });
     const note = out.note ? renderNote(out.note) : null;
     const view = this.o.memory.openThreadView(userId, pool);
     let wakeId: number | undefined;

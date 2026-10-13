@@ -138,7 +138,7 @@ textarea { resize: vertical; }
 .side-nav .ic { color: var(--muted); width: 18px; height: 18px; }
 .side-nav .count, .side-nav .busy { margin-left: auto; }
 .side-nav .busy { margin-right: 6px; }
-.side-nav .new-choice { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; padding: 2px 0 4px; }
+.side-nav .new-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px 8px 8px; }
 button.private { color: var(--private); border-color: color-mix(in oklab, var(--private) 40%, var(--line)); }
 .side-nav details { position: relative; }
 .side-nav summary { list-style: none; cursor: pointer; }
@@ -225,6 +225,8 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .tfacts > span, .tfacts > button { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
 .tfacts .num { font-size: 12px; }
 .tfacts .link { font-size: 13px; min-height: 26px; padding: 0; position: relative; }
+/* The Threads fact while the panel shows its list (docs/briefs/thread-panel.md item 1): pressed look. */
+.tfacts .link[aria-pressed="true"] { color: var(--fg); font-weight: 600; }
 .badge .name { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tfacts .folder { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .head-actions { display: flex; gap: 6px; align-self: start; flex: none; }
@@ -605,7 +607,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 /* Touch screens: every control is at least 44 px. Last, so nothing above overrides it. */
 @media (pointer: coarse) {
   button.badge, .chev, .chips button, .check, .marker > button, .from-head, .picker-item, .showing > summary, .showing label { min-height: 44px; }
-  .tfacts .link::after, .tcard-count .link::after { content: ""; position: absolute; inset: -9px -6px; }
+  .tfacts .link::after, .tcard-count .link::after, .threads-pill > .link::after, .tcard .row a.sm::after { content: ""; position: absolute; inset: -9px -6px; }
   .chev { width: 32px; height: 44px; }
   .threads .trow { grid-template-columns: 32px minmax(0, 1fr); }
   button.icon-btn, button.icon.sm { width: 44px; height: 44px; min-height: 44px; }
@@ -724,13 +726,17 @@ form.drawer-body { flex: 1; }
 .tfacts .tokens { white-space: nowrap; }
 .head-actions .project-link { font-size: 13px; padding: 0 6px; }
 .head-actions .project-link .ic { width: 15px; height: 15px; }
-.threads-pop .picker-ep { display: flex; gap: 6px; align-items: baseline; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; font-weight: 600; }
+.threads-pop .picker-ep, .threads-list .picker-ep { display: flex; gap: 6px; align-items: baseline; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; font-weight: 600; }
 .threads-pop .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
 .threads-pop .thread-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status[data-state="working"] { background: var(--info); animation: pulse 1.4s ease-in-out infinite; }
 .status[data-state="waiting"], .status[data-state="needsYou"] { background: var(--warn); }
 .status[data-state="resolved"] { background: var(--ok); }
 .threads-pop .tokens { margin: 0; padding: 2px 6px 4px; color: var(--muted); }
+/* A project's threads as a panel page, opened by the Threads fact from the split width (docs/briefs/thread-panel.md item 1): the popover's groups; rows carry state as a dot and a word and the time in mono (docs/ux.md §5). */
+.threads-list .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
+.threads-list .thread-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.threads-list .thread-item .when { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); white-space: nowrap; }
 /* The header's Context: the percent in warn from 80 %, danger from 95 %; the popover's bar and rows share one shade per part, all from the accent. */
 .ctx-pct[data-level="warn"] { color: var(--warn); }
 .ctx-pct[data-level="danger"] { color: var(--danger); }
@@ -767,6 +773,14 @@ form.drawer-body { flex: 1; }
 .tcard-count > .picker { left: auto; right: 0; }
 .sub-head .tcard-count { margin-left: auto; }
 .sub-head .tcard-count + .open { margin-left: 0; }
+/* View thread (docs/briefs/thread-panel.md item 3): the card's one visible action, an <a> so openInPanel opens it in the panel at 1180 px and wider. */
+.tcard .row a.sm { position: relative; min-height: 30px; padding: 0 9px; font-size: 13px; border-radius: 7px; border: 1px solid var(--edge); background: var(--panel); color: var(--fg); display: inline-flex; align-items: center; gap: 6px; }
+.tcard .row a.sm:hover { border-color: color-mix(in oklab, var(--fg) 25%, var(--line)); text-decoration: none; }
+/* A run's threads behind one pill in the card's head (item 3): the chevron turns down while its list is open. */
+.threads-pill > .link { position: relative; white-space: nowrap; }
+.threads-pill .chev-ic { width: 12px; height: 12px; transition: transform 0.15s; }
+.threads-pill > button[aria-expanded="true"] .chev-ic { transform: rotate(90deg); }
+.sub-head .threads-pill > .picker { left: auto; right: 0; }
 .tcard-step { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tcard-step .step-mark { color: var(--muted); margin-right: 6px; }
 .step-mark { font-family: var(--mono); }
@@ -782,6 +796,10 @@ form.drawer-body { flex: 1; }
   .tcard-count { display: contents; }
   .sub-head .tcard-count > .link { margin-left: auto; }
   .tcard-count > .picker { position: static; order: 1; flex-basis: 100%; width: auto; max-height: none; margin-top: 2px; box-shadow: none; }
+  /* A run's Threads list opens in flow under the card's head at the card's full width, like its checklist. */
+  .sub-head .threads-pill { display: contents; }
+  .sub-head .threads-pill > .link { margin-left: auto; }
+  .threads-pill > .picker { position: static; order: 1; flex-basis: 100%; width: auto; max-height: none; margin-top: 2px; box-shadow: none; }
 }
 /* Suggested threads: like the plan card. */
 .suggestions { margin: 0; padding: 0 0 0 20px; display: grid; gap: 8px; }
@@ -920,6 +938,7 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .field-fact { padding: 7px 0; }
 
 /* Notifications (docs/ux.md §6): one list over what waits for the user; rows with their actions, filters above. */
+.scroll > .notifications { max-width: 900px; }
 .ntop { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
 .ntop select { min-height: 32px; font-size: 13px; }
 .ntop .cap { display: inline-flex; gap: 6px; align-items: center; }
@@ -1304,3 +1323,9 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
 @media (pointer: coarse) {
   .routine-item button.sm { min-height: 44px; }
 }
+
+/* Project commands use the existing fixed-choice buttons; rows wrap at phone width. */
+.command-rule { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.command-rule input { flex: 1 1 160px; min-width: 0; }
+.permission .always-allow { max-width: 100%; white-space: normal; }
+.permission .always-allow .mono { min-width: 0; overflow-wrap: anywhere; }

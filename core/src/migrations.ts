@@ -223,8 +223,12 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     version: 5,
     run(db) { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('images.photos.cloud', 'ask')").run(); },
   }, {
-    // A webhook secret per Forgejo/Gitea account (docs/briefs/ci-wakes.md). Adds a column only.
+    // Principles 6 and 2: project command rules, expand only.
     version: 6,
+    run(db) { addColumns(db, [["project_settings", "command_rules", "TEXT NOT NULL DEFAULT '[]'"]]); },
+  }, {
+    // A webhook secret per Forgejo/Gitea account (docs/briefs/ci-wakes.md). Adds a column only.
+    version: 7,
     run(db) { addColumns(db, [["git_accounts", "webhook_secret", "TEXT"]]); },
   }],
   pool: [{

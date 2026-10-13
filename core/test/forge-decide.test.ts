@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { decide } from "../src/forge/decide.ts";
+import { decideWatch } from "../src/forge/decide.ts";
 import type { CheckResult, ForgePollResult, ForgePullRequest, ForgeReview, ForgeWatchState } from "../src/forge/types.ts";
 
 // Made-up fixtures (AGENTS.md): the watching account is lyrica-bot; Ada and Sam
-// are other accounts. decide takes the common shape, so no forge answers here.
+// are other accounts. decideWatch takes the common shape, so no forge answers here.
 const HEAD_A = "ab".repeat(20);
 const HEAD_B = "cd".repeat(20);
 
@@ -18,9 +18,9 @@ const fresh = (over: Partial<ForgeWatchState> = {}): ForgeWatchState =>
   ({ head: null, headSince: "2026-10-12T10:00:00Z", notifiedHeads: [], seenReviews: [], ...over });
 
 const run = (last: ForgeWatchState, poll: ForgePollResult, now = "2026-10-12T10:05:00Z") =>
-  decide({ number: 7, account: "lyrica-bot", now, last, poll });
+  decideWatch({ number: 7, account: "lyrica-bot", now, last, poll });
 
-describe("decide", () => {
+describe("decideWatch", () => {
   it("gives one turn with the right note when every check on the head has finished", () => {
     const out = run(fresh(), pull({ checks: [check("build", "passed"), check("e2e", "failed")] }));
     expect(out.stop).toBe(false);
