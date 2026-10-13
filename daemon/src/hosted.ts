@@ -37,8 +37,8 @@ export interface HostOptions {
   offlineRetryMs?: number;
   /** A project chat's threads, one line each, for her project section. */
   projectThreads?: (userId: string, pool: Pool, project: string) => string | undefined;
-  /** A turn started or ended in a thread. */
-  onTurn?: (userId: string, pool: Pool, threadId: string, working: boolean) => void;
+  /** A turn started or ended in a thread; at the end, whether the person's own text was part of it (a child's wake isn't). */
+  onTurn?: (userId: string, pool: Pool, threadId: string, working: boolean, byPerson?: boolean) => void;
   /** Every event the thread's stream carries, as it goes out (the watcher hears of errors and approvals from it). */
   onEvent?: (userId: string, pool: Pool, threadId: string, event: ThreadEvent) => void;
 }
@@ -384,7 +384,8 @@ export class HostedThread {
       this.emit({ type: "error", message });
       throw new Error(message);
     }
-    this.running = this.run(prompt);
+    // Text given here is the person's (held or unmarked); a turn started from steering isn't.
+    this.running = this.run(prompt, { person: text !== undefined });
     return { queued: false };
   }
 
@@ -468,7 +469,7 @@ export class HostedThread {
     this.busy = true;
     try { await this.open(); }
     catch (err) { this.busy = false; throw err; }
-    this.running = this.run(CHILD_WAKE, true);
+    this.running = this.run(CHILD_WAKE, { childWake: true });
   }
 
   private readonly parentReplies: string[] = [];
@@ -493,9 +494,12 @@ export class HostedThread {
     } finally { view.close(); }
   }
 
-  private async run(text: string, childWake = false): Promise<void> {
+  private async run(text: string, opts: { childWake?: boolean; person?: boolean } = {}): Promise<void> {
     this.stopIdle();
     let aborted = false;
+    // Whether the person's own text is part of this turn: a child's wake or a marked message isn't.
+    let theirs = !!opts.person;
+    let childWake = !!opts.childWake;
     this.o.onTurn?.(this.userId, this.pool, this.threadId, true);
     try {
       for (let next: string | undefined = text; next !== undefined && !this.closed;) {
@@ -538,7 +542,9 @@ export class HostedThread {
         void this.maybeTitle(opened);
         if (this.stale) this.dispose();
         this.keepParentReplies();
-        next = this.next();
+        const nxt = this.next();
+        if (nxt.person) theirs = true;
+        next = nxt.text;
       }
     } catch (err) {
       this.emit({ type: "error", message: plainError(refusal(err)) });
@@ -553,24 +559,24 @@ export class HostedThread {
       // A session that lacks what keep stored: the next turn opens afresh.
       if (this.stale) this.dispose();
       // Shutdown, Lock or forgetting closes it: a child keeps its record of working, so a restart tells its parent.
-      if (!this.closing) this.o.onTurn?.(this.userId, this.pool, this.threadId, false);
+      if (!this.closing) this.o.onTurn?.(this.userId, this.pool, this.threadId, false, theirs);
       this.startIdle();
     }
   }
 
   private aborted = false;
 
-  /** The next turn's message: the person's follow-ups together, else the first marked message waiting. */
-  private next(): string | undefined {
+  /** The next turn's message and whether it is the person's own text: their follow-ups together, else the first marked message waiting. */
+  private next(): { text?: string; person: boolean } {
     if (this.queued.length) {
       const text = this.queued.splice(0).join("\n\n");
       this.emit({ type: "queue", queued: [] });
-      return text;
+      return { text, person: true };
     }
     const s = this.steering[0];
-    if (!s) return undefined;
+    if (!s) return { person: false };
     s.prompt = true;
-    return s.text;
+    return { text: s.text, person: false };
   }
 
   /**

@@ -455,12 +455,13 @@ export class Lyricad implements Drainable {
     host = new ThreadHost({
       users, memory, models, workspace, persona, delegation, cwd, log: this.log, searxng: () => searxngAddress(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
-      threads: children, onTurn: (u, p, t, working) => {
+      threads: children, onTurn: (u, p, t, working, byPerson) => {
         children.turn(u, p, t, working);
         if (!working) routines.ended(u, p, t);
         const k = `${u}/${p}/${t}`;
         if (working) { erred.delete(k); aborted.delete(k); return watcher.turnStarted(u, p, t); }
-        watcher.turnEnded(u, p, t);
+        // Only a turn the person wrote in resets the run of looks; a child's wake or a marked message isn't one.
+        if (byPerson ?? true) watcher.turnEnded(u, p, t);
         const failed = erred.delete(k);
         children.ended(u, p, t, failed ? "error" : aborted.delete(k) ? "stopped" : "done");
         if (!failed) return;
