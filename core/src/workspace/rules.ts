@@ -1,8 +1,8 @@
 import { posix } from "node:path";
-import { simpleCommands } from "./machines.ts";
+import { SHELLS, simpleCommands } from "./machines.ts";
 
 export interface CommandRule { prefix: string; decision: "allow" | "ask" | "forbid" }
-const SHELL = /^(?:sh|bash|dash|zsh|ksh|fish)$/;
+const SHELL = { test: (w: string) => SHELLS.has(w) };
 const WRAPPER = /^(?:sudo|doas|env|nohup|exec|command|time|nice|ionice|builtin|timeout|xargs|stdbuf|chroot)$/;
 const assignment = (w: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w);
 const plain = (w: string | undefined) => !!w && /^[a-z][a-z0-9:_-]*$/.test(w);

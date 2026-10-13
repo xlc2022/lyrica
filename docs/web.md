@@ -178,7 +178,7 @@ A thread's address may carry what the panel beside it shows:
   drawer showing, `…/t/<pool>/<thread>/settings`, for network, local-only
   and the other task models), then **Commands**: a mono prefix field per
   rule, an Allow | Ask | Forbid segment, Remove, and **Add rule**. Empty
-  reads "No rules: commands ask as the mode says." The page has one Save, which patches the thread
+  reads "No rules: commands ask as the mode says." Empty rows are ignored and dropped on Save, and duplicate prefixes (spaces collapsed) fail validation. The page has one Save, which patches the thread
   (`goal`, `paused`, `commandRules`, `watchThreads` when it changed, `threadsModel`,
   `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
   settings (`grants`, `machines`, `repositories`, `mcpServers` among them); `lyricad`'s

@@ -47,7 +47,8 @@ const VALUE_FLAGS: Record<string, string[]> = {
   sudo: ["-u", "-g", "-h", "-p", "-C", "-U"], doas: ["-u", "-C"], nice: ["-n"], ionice: ["-c", "-n", "-p"], timeout: ["-s", "-k"],
   xargs: ["-I", "-P", "-L", "-d", "-n", "-s", "-a"], env: ["-u", "-C", "-S"],
 };
-const SHELLS = new Set(["sh", "bash", "dash", "zsh", "ksh"]);
+/** Shells whose `-c` argument is a command line; rules.ts shares this list. */
+export const SHELLS = new Set(["sh", "bash", "dash", "zsh", "ksh", "fish"]);
 
 /** A command line's simple commands, each as words with quotes removed and the program's path dropped. */
 export function simpleCommands(command: string): string[][] {

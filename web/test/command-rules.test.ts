@@ -27,13 +27,20 @@ describe("command rules in the web UI", () => {
   });
   it("shows saved decisions in the existing segment and refuses an invalid prefix before Save", () => {
     const html = general([{ prefix: "git push", decision: "forbid" }]);
-    expect(html).toContain('class="mono" aria-label="Command prefix" value="git push"');
+    expect(html).toContain('class="mono" aria-label="Command prefix" placeholder="npm test" value="git push"');
     expect(html).toContain('class="seg" role="group"');
     expect(html).toContain('aria-pressed="true">Forbid</button>');
     expect(html).toContain('aria-label="Remove git push"');
-    const invalid = general([{ prefix: "", decision: "ask" }]);
+    expect(html).toContain('placeholder="npm test"');
+    const empty = general([{ prefix: "", decision: "ask" }]);
+    expect(empty).not.toContain("A command prefix has 1 to 8 words");
+    expect(empty).not.toContain('disabled="">Save</button>');
+    const invalid = general([{ prefix: "git\u0001push", decision: "ask" }]);
     expect(invalid).toContain('disabled="">Save</button>');
     expect(invalid).toContain("A command prefix has 1 to 8 words");
+    const duplicate = general([{ prefix: "npm test", decision: "allow" }, { prefix: " npm   test ", decision: "forbid" }]);
+    expect(duplicate).toContain("Each prefix can have one rule.");
+    expect(duplicate).toContain('disabled="">Save</button>');
   });
   it("offers Always allow between Allow and Deny only with a daemon prefix", () => {
     const html = permission("npm run test");

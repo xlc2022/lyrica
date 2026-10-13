@@ -3,7 +3,7 @@ import { alwaysAllowPrefix, commandRules, decide } from "../src/workspace/rules.
 
 const forbid = commandRules([{ prefix: "git push", decision: "forbid" }]);
 describe("project command matching", () => {
-  it.each(['ls && git push', 'echo $(git push)', "bash -c 'git push'", 'sudo git push', 'timeout 5 git push', 'FOO=1 git push', 'git -C . push', 'g"i"t push', 'g\\it push', 'ls | git push', '`git push`', '(git push)', 'find . -exec git push \\;', 'find . -execdir git -C . push {} +', 'find . -ok git push \\;'])("refuses %s", command => {
+  it.each(['ls && git push', 'echo $(git push)', "bash -c 'git push'", "fish -c 'git push'", 'sudo git push', 'timeout 5 git push', 'FOO=1 git push', 'git -C . push', 'g"i"t push', 'g\\it push', 'ls | git push', '`git push`', '(git push)', 'find . -exec git push \\;', 'find . -execdir git -C . push {} +', 'find . -ok git push \\;'])("refuses %s", command => {
     expect(decide(command, forbid)).toEqual(forbid[0]);
   });
   it("asks about opaque programs and never allows them", () => {

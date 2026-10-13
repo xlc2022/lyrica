@@ -250,7 +250,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
   const save = () => run(async () => {
     setSaved(false);
     const change: ThreadChange = {
-      goal, paused, commandRules: rules,
+      goal, paused, commandRules: rules.filter(r => r.prefix.trim()),
       ...(watch !== (ps?.watchThreads !== false) ? { watchThreads: watch } : {}),
       threadsModel: model ? { offeringId: model } : null,
       threadsThinking: thinking || null,
@@ -269,8 +269,11 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
     }
     setSaved(true);
   });
-  const ruleError = rules.some(r => !r.prefix.trim() || /[\x00-\x1f\x7f-\x9f]/.test(r.prefix) || r.prefix.trim().split(/\s+/).length > 8 || r.prefix.trim().split(/\s+/).some(w => w.length > 64))
-    ? "A command prefix has 1 to 8 words, each at most 64 characters, with no control characters." : "";
+  const filled = rules.filter(r => r.prefix.trim());
+  const normal = (prefix: string) => prefix.trim().split(/\s+/).join(" ");
+  const ruleError = filled.some(r => /[\x00-\x1f\x7f-\x9f]/.test(r.prefix) || r.prefix.trim().split(/\s+/).length > 8 || r.prefix.trim().split(/\s+/).some(w => w.length > 64))
+    || new Set(filled.map(r => normal(r.prefix))).size < filled.length
+    ? "A command prefix has 1 to 8 words, each at most 64 characters, with no control characters. Each prefix can have one rule." : "";
   const newThreadsHint = `Threads ${her()} starts from this chat. Each one can be changed after it starts.`;
   return (
     <form className="card project-form" aria-labelledby="h-general" onSubmit={(e) => { e.preventDefault(); void save(); }}>
@@ -360,7 +363,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
       <h3>Commands</h3>
       {!rules.length && <p className="muted">No rules: commands ask as the mode says.</p>}
       {rules.map((rule, i) => <div className="command-rule" key={i}>
-        <input className="mono" aria-label="Command prefix" value={rule.prefix} onChange={e => setRules(rules.map((r, n) => n === i ? { ...r, prefix: e.target.value } : r))} />
+        <input className="mono" aria-label="Command prefix" placeholder="npm test" autoFocus={!rule.prefix} value={rule.prefix} onChange={e => setRules(rules.map((r, n) => n === i ? { ...r, prefix: e.target.value } : r))} />
         <div className="seg" role="group" aria-label={`Decision for ${rule.prefix || "new rule"}`}>
           {(["allow", "ask", "forbid"] as const).map(decision => <button type="button" key={decision} aria-pressed={rule.decision === decision} onClick={() => setRules(rules.map((r, n) => n === i ? { ...r, decision } : r))}>{decision[0]!.toUpperCase() + decision.slice(1)}</button>)}
         </div>
