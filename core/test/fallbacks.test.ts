@@ -134,6 +134,20 @@ describe("a general column's table", () => {
     s.models.setThreadPreset(s.ada.id, "general", "web/c", "builtin.cloud");
     expect(s.models.callContext(s.ada.id, "general", "web/c").preset).toBe("builtin.cloud");
   });
+
+  it("ignores a general preset a thread chose once it becomes local-only or moves to the private pool, using the Private column without throwing", async () => {
+    const s = await setup();
+    s.models.setColumnTask(s.ada.id, "private", "chat", [s.blackwell.ref]);
+    s.models.setThreadPreset(s.ada.id, "general", "web/g", "builtin.cloud");
+    expect(s.models.callContext(s.ada.id, "general", "web/g").preset).toBe("builtin.cloud");
+    // Made local-only later: the choice is ignored, the Private column answers.
+    s.models.setLocalOnly(s.ada.id, "general", "web/g", true);
+    expect(s.models.resolveModel("chat", s.models.callContext(s.ada.id, "general", "web/g"))).toEqual(s.blackwell.ref);
+    // Moved to the private pool: the stored choice is still ignored, the Private column answers.
+    const moved = s.models.callContext(s.ada.id, "private", "web/g");
+    expect(moved.preset).toBe("builtin.cloud");
+    expect(s.models.resolveModel("chat", moved)).toEqual(s.blackwell.ref);
+  });
 });
 
 describe("model groups", () => {

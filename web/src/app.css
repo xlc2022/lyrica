@@ -612,7 +612,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .threads .trow { grid-template-columns: 32px minmax(0, 1fr); }
   button.icon-btn, button.icon.sm { width: 44px; height: 44px; min-height: 44px; }
   .head-actions button.sm { min-height: 44px; min-width: 44px; }
-  button.code-copy { min-height: 44px; min-width: 44px; }
+  button.code-copy, button.copy-button { min-height: 44px; min-width: 44px; }
   .chips button { min-width: 44px; }
   .check input, .showing input { width: 22px; height: 22px; }
 }

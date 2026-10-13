@@ -788,6 +788,15 @@ routes, exit nodes or `--reset`. Administrators only; one change at a time.
   off; over the LAN or on the machine they work.
 - Her outbound traffic to tailnet peers still goes through the host's
   network; the host's own Tailscale, if any, is never touched.
+- `POST /hooks/forge/:account` answers on the serve port only (anywhere else
+  it is 404), so it arrives through her tailnet address. It is a nudge, not a
+  trusted read: `lyricad` checks the forge's HMAC signature
+  (`X-Forgejo-Signature` or `X-Gitea-Signature`) against that Git account's
+  one `webhook_secret`, reads only the repository's full name from the body,
+  and at once polls that account's watched pull requests (DESIGN.md, "CI
+  wakes"). A missing or wrong signature is 401; no body text is kept. Each
+  Git account has its own secret, and the webhook is offered only for a
+  Forgejo or Gitea account whose host resolves to a private address.
 
 ## Web access
 

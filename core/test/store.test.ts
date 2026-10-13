@@ -599,3 +599,47 @@ describe("on disk", () => {
     for (const f of readdirSync(dir)) expect(readFileSync(join(dir, f)).toString("latin1")).not.toMatch(/MARKER/);
   });
 });
+
+describe("watches", () => {
+  it("round-trips the record a relay makes, a poll's state and a webhook's mark, and settles a watch to its end", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const t = own.createThread({ interface: "cli" });
+    const at = "2026-01-01T00:00:00.000Z";
+    const id = own.addWatch(t.id, { repo: "ada/lyrica", kind: "forgejo", host: "forge.lan", account: "forge", number: 12 }, at);
+    expect(own.watches(t.id)).toEqual([
+      { id, thread: t.id, repo: "ada/lyrica", kind: "forgejo", host: "forge.lan", account: "forge", number: 12, head: null, headSince: at, notifiedHeads: [], seenReviews: [], createdAt: at },
+    ]);
+
+    // A poll saves decision state, and a signed webhook marks its arrival.
+    const state = { head: "abc123", headSince: "2026-01-02T00:00:00.000Z", notifiedHeads: ["abc123"], seenReviews: ["ada:approved"] };
+    expect(own.updateWatch(id, state)).toBe(true);
+    own.markWatchWebhook(id, "2026-01-03T00:00:00.000Z");
+    expect(own.watches()[0]).toMatchObject({ ...state, webhookAt: "2026-01-03T00:00:00.000Z" });
+
+    // Settling the end removes the watch and records the wake-up once.
+    const wakeId = own.settleWatch(id, state, true, { thread: t.id, dueAt: "2026-01-03T00:00:00.000Z", text: "PR #12: checks finished." });
+    expect(typeof wakeId).toBe("number");
+    expect(own.watches()).toEqual([]);
+    expect(own.wakeups(t.id)).toEqual([{ id: wakeId, thread: t.id, dueAt: "2026-01-03T00:00:00.000Z", note: "PR #12: checks finished.", setAt: "2026-01-03T00:00:00.000Z" }]);
+    // Settling a watch that is gone changes nothing.
+    expect(own.settleWatch(id, state, false, null)).toBeUndefined();
+
+    // A kept watch saves the state and adds no wake-up; it can then be removed.
+    const id2 = own.addWatch(t.id, { repo: "ada/notes", kind: "github", host: "github.com", account: "gh", number: 3 }, at);
+    expect(own.settleWatch(id2, state, false, null)).toBeUndefined();
+    expect(own.watches(t.id)).toHaveLength(1);
+    expect(own.watches(t.id)[0]).toMatchObject(state);
+    expect(own.removeWatch(id2)).toBe(true);
+    expect(own.removeWatch(id2)).toBe(false);
+  });
+
+  it("removes a watch with its thread", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const t = own.createThread({ interface: "cli" });
+    own.addWatch(t.id, { repo: "ada/lyrica", kind: "forgejo", host: "forge.lan", account: "forge", number: 1 }, "2026-01-01T00:00:00.000Z");
+    own.forgetThread(t.id, "lyrica");
+    expect(own.watches()).toEqual([]);
+  });
+});

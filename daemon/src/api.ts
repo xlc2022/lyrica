@@ -685,6 +685,13 @@ export interface GitAccountInfo {
   offNetwork: boolean;
   /** How the last use went, and since when: signedIn (the token worked), rejected (the host refused it), unreachable. Absent before the first. */
   state?: { kind: "signedIn" | "rejected" | "unreachable"; since: string };
+  /**
+   * A Forgejo/Gitea account whose host resolves into her own network gets the
+   * tailnet webhook (docs/briefs/ci-wakes.md step 4): where the forge POSTs,
+   * and the secret that signs it. Absent for GitHub (which is polled) and for
+   * an account whose host is off her network.
+   */
+  webhook?: { url: string; secret: string };
 }
 /**
  * POST /api/u/:userId/git-accounts/probe (GitAccountInput) → Ok. Checks the

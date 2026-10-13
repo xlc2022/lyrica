@@ -190,7 +190,7 @@ profile` commands became `… preset`.
   the build on lunasa.
 - 2026-10-13 (build done): the feature is built and self-tested. Core:
   `model_presets` / `model_columns` and `thread_choices.preset`, the
-  presets API, the private-scope boundary in core, migration step 11
+  presets API, the private-scope boundary in core, migration step 8
   (expand-only; `syncLegacy` keeps the legacy tables for a rollback).
   Daemon: the presets/columns routes replace the profiles routes, and the
   thread settings `PATCH` takes `preset`. CLI: `lyrica admin models preset

@@ -136,7 +136,7 @@ describe("user step 5 (portrait-photo cloud choice)", () => {
       expect(settings.photoCloudPolicy()).toBe(policy ?? "ask");
       expect(settings.photoCloudApproved("2026-10-12")).toBe(false);
       expect(db.prepare("SELECT value FROM settings WHERE key = 'k'").get()).toEqual({ value: "v" });
-      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: 1 });
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
       expect(() => checkReadable(db, "user", STEPS.user.filter(s => s.version <= v))).not.toThrow();
       db.close();
     }
@@ -199,7 +199,7 @@ describe("pool step 6 (routines)", () => {
       migrate(db, "pool", {}, previous);
       SEED.pool(db);
       migrate(db, "pool");
-      expect(schemaOf(db)).toEqual({ version: 6, minReader: 1 });
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.pool, minReader: MIN_READER.pool });
       expect(() => checkReadable(db, "pool", previous)).not.toThrow();
       expect(db.prepare("SELECT title FROM threads WHERE id = 'web/a'").get()).toEqual({ title: "A test thread" });
       expect((db.prepare("PRAGMA table_info(routines)").all() as { name: string }[]).map(r => r.name)).toEqual(["id", "thread", "schedule", "note", "new_thread", "paused", "next_at", "last_at", "created_at"]);
@@ -207,6 +207,28 @@ describe("pool step 6 (routines)", () => {
       expect(db.prepare("SELECT new_thread, paused, last_at FROM routines").get()).toEqual({ new_thread: 0, paused: 0, last_at: null });
       db.prepare("DELETE FROM threads WHERE id = 'web/a'").run();
       expect(db.prepare("SELECT * FROM routines").all()).toEqual([]);
+      db.close();
+    }
+  });
+});
+
+describe("pool step 7 (watches)", () => {
+  it("expands every released pool schema with an empty watch table, keeps the previous readers and thread data, and removes a watch with its thread", () => {
+    for (let version = 1; version < 7; version++) {
+      const db = scratchDb();
+      const previous = STEPS.pool.filter(s => s.version <= version);
+      migrate(db, "pool", {}, previous);
+      SEED.pool(db);
+      migrate(db, "pool");
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.pool, minReader: MIN_READER.pool });
+      expect(() => checkReadable(db, "pool", previous)).not.toThrow();
+      expect(db.prepare("SELECT title FROM threads WHERE id = 'web/a'").get()).toEqual({ title: "A test thread" });
+      expect((db.prepare("PRAGMA table_info(watches)").all() as { name: string }[]).map(r => r.name)).toEqual(
+        ["id", "thread", "repo", "kind", "host", "account", "number", "head", "head_since", "notified_heads", "seen_reviews", "webhook_at", "created_at"]);
+      db.prepare("INSERT INTO watches (thread, repo, kind, host, account, number, head_since, created_at) VALUES ('web/a', 'ada/lyrica', 'forgejo', 'forge.lan', 'forge', 12, '2026-01-02', '2026-01-01')").run();
+      expect(db.prepare("SELECT head, notified_heads, seen_reviews, webhook_at FROM watches").get()).toEqual({ head: null, notified_heads: "[]", seen_reviews: "[]", webhook_at: null });
+      db.prepare("DELETE FROM threads WHERE id = 'web/a'").run();
+      expect(db.prepare("SELECT * FROM watches").all()).toEqual([]);
       db.close();
     }
   });
@@ -227,14 +249,14 @@ describe("user step 6 (project command rules)", () => {
       expect(settings.commandRules("general", "web/project")).toEqual([{ prefix: "npm test", decision: "allow" }]);
       expect(settings.commandRules("private", "web/project")).toEqual([]);
       expect(db.prepare("SELECT paused, thinking FROM project_settings").get()).toEqual({ paused: 1, thinking: "high" });
-      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: 1 });
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
       expect(() => checkReadable(db, "user", previous)).not.toThrow();
       db.close();
     }
   });
 });
 
-describe("user step 11 (model presets)", () => {
+describe("user step 8 (model presets)", () => {
   /** The legacy profiles and a thread's choice of each, as an old release wrote them. */
   const seedProfiles = (db: Db) => {
     const list = (offering: string) => JSON.stringify([{ offeringId: offering }]);
@@ -248,7 +270,7 @@ describe("user step 11 (model presets)", () => {
   };
 
   it("turns each released schema's profiles into presets, keeps the legacy tables for a rollback, and the release before still opens it", () => {
-    for (let version = 1; version <= 6; version++) {
+    for (let version = 1; version < SCHEMA.user; version++) {
       const db = scratchDb();
       const previous = STEPS.user.filter((s) => s.version <= version);
       migrate(db, "user", {}, previous);
@@ -278,7 +300,7 @@ describe("user step 11 (model presets)", () => {
 
   it("without a custom profile, the General column follows Cloud and no Mixed preset is made", () => {
     const db = scratchDb();
-    migrate(db, "user", {}, STEPS.user.filter((s) => s.version <= 6));
+    migrate(db, "user", {}, STEPS.user.filter((s) => s.version < SCHEMA.user));
     db.prepare("INSERT INTO model_profiles (profile, task, entry) VALUES ('local', 'chat', ?)").run(JSON.stringify([{ offeringId: "off-local" }]));
     migrate(db, "user");
     expect(db.prepare("SELECT preset FROM model_columns WHERE column = 'general'").get()).toEqual({ preset: "builtin.cloud" });

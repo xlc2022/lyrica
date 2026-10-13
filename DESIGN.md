@@ -1143,6 +1143,19 @@ Project settings and Recent calls by project. The briefs are
   facts line, and every routine in **Settings → Routines**, with **Pause**,
   **Resume** and **Remove**.
   One-shot reminders stay wake-ups; a calendar is Later.
+- **CI wakes** (2026-10-13). A pull request a run opens through its relay
+  is watched by `lyricad`, so its thread doesn't schedule its own wake for
+  CI: when every check on the head commit finishes, or someone else reviews
+  or comments, the thread gets one turn, marked as a wake-up, with a
+  metadata-only note `lyricad` writes (the pull request number, the commit's
+  short hash, check names and results, review authors and kinds — never
+  log or comment text). GitHub is polled every 2 minutes; a Forgejo or
+  Gitea account whose host resolves into her own network also gets a signed
+  tailnet webhook that nudges a poll at once, and polling stays as its
+  fallback. A merged or closed pull request ends the watch without a turn.
+  Watches are stored in the thread's pool like wake-ups, at most 10 per
+  thread, and share the wake-up guards: the at-once limit, paused projects,
+  and the 24-a-day cap. `threads later` stays for everything else.
 - **Not in projects:** moving an existing thread into a project, and
   sharing a project (Share with copies one thread).
 
