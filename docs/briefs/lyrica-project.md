@@ -42,6 +42,10 @@ written here.
    on the project chat's **Claude Code** switch in Thread settings, so the
    project's threads inherit it (docs/workspace.md, "Claude Code"); with
    the internet off, also allow `api.anthropic.com`.
+   Project settings → General → **Commands** can save trusted checks as
+   Allow rules, pushes as Ask, and commands she must leave to the user as
+   Forbid. These apply to the project chat, its threads and subagents;
+   Always allow on a sandbox command card saves its prefix for this project.
 2. Paste the **Project instructions** below into Project settings →
    Memory → Instructions (the count shows it is under 2,000; only the owner can
    change them).

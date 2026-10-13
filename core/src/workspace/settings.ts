@@ -1,3 +1,4 @@
+import { commandRules as checkCommandRules, type CommandRule } from "./rules.ts";
 import { isAbsolute, posix } from "node:path";
 import type { Db } from "../db.ts";
 import type { Pool } from "../types.ts";
@@ -280,6 +281,25 @@ export type PhotoCloudPolicy = "never" | "ask" | "always";
  * grant are an administrator's, in self.db; `allowed` reads them.
  */
 export class WorkspaceSettings {
+  commandRules(pool: Pool, project: string): CommandRule[] {
+    const row = this.db.prepare("SELECT command_rules FROM project_settings WHERE pool = ? AND thread = ?").get(pool, project) as { command_rules: string } | undefined;
+    return row ? JSON.parse(row.command_rules) : [];
+  }
+
+  setCommandRules(pool: Pool, project: string, rules: unknown): CommandRule[] {
+    const checked = checkCommandRules(rules);
+    this.db.prepare("INSERT INTO project_settings (pool, thread, command_rules) VALUES (?, ?, ?) ON CONFLICT(pool, thread) DO UPDATE SET command_rules = excluded.command_rules").run(pool, project, JSON.stringify(checked));
+    return checked;
+  }
+
+  addCommandRule(pool: Pool, project: string, rule: CommandRule): void {
+    this.db.transaction(() => {
+      const checked = checkCommandRules([rule])[0]!;
+      const rules = this.commandRules(pool, project).filter(r => r.prefix !== checked.prefix);
+      this.setCommandRules(pool, project, [...rules, checked]);
+    })();
+  }
+
   constructor(private readonly db: Db, readonly allowed: () => Record<Pool, string[]>) {}
 
   close(): void { this.db.close(); }

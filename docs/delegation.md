@@ -144,6 +144,11 @@ the subagent being stopped refuses that one call, and the subagent is told
 such call is refused. So writers run in threads that ask first, and parallel
 writers each ask for their own calls.
 
+A subagent carries the owning project through every delegation depth. Its
+`bash` hook reads that project's command rules on every call: Forbid refuses,
+Ask always asks, and Allow skips sandbox mode prompts. Always allow on its
+command card saves lyricad's computed prefix for the whole project.
+
 An MCP call that its server doesn't mark read-only asks the same way in
 every mode, shown in both threads; **Allow in this thread** holds for that
 tool in the subagent's thread only.
