@@ -1291,7 +1291,7 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
   // Dictation and Read aloud selects in the drawer's Models, offering only models that transcribe or speak; a cloud pick is this thread's.
   let drawer = await openSettings(page);
   const dictation = drawer.getByRole("combobox", { name: "Dictation" });
-  await expect(dictation.locator("option")).toHaveText(["Profile (local · whisper · speech)", "cloud · whisper · openai", "local · whisper · speech"]);
+  await expect(dictation.locator("option")).toHaveText(["Preset (local · whisper · speech)", "cloud · whisper · openai", "local · whisper · speech"]);
   await expect(drawer.getByLabel("Voice to cloud")).toHaveCount(0);
   // A cloud pick asks first: Cancel (or Escape) keeps the profile's, and the drawer stays open.
   const ask = page.getByRole("dialog", { name: "Send your voice to the cloud?" });
@@ -1300,7 +1300,7 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
   await shot("dictation-cloud-confirm");
   await page.keyboard.press("Escape");
   await expect(ask).toHaveCount(0);
-  await expect(dictation.locator("option:checked")).toHaveText("Profile (local · whisper · speech)");
+  await expect(dictation.locator("option:checked")).toHaveText("Preset (local · whisper · speech)");
   await dictation.selectOption({ label: "cloud · whisper · openai" });
   await ask.getByRole("button", { name: "Use cloud dictation" }).click();
   await expect(dictation.locator("option:checked")).toHaveText("cloud · whisper · openai");
@@ -1360,7 +1360,7 @@ test("dictation goes in at the caret, Read aloud plays her reply, and a speech s
     const picked = drawer.getByRole("combobox", { name: "Dictation" });
     await expect(picked.locator("option:checked")).toHaveText("cloud · whisper · openai");
     await picked.selectOption({ index: 0 });
-    await expect(picked.locator("option:checked")).toHaveText("Profile (local · whisper · speech)");
+    await expect(picked.locator("option:checked")).toHaveText("Preset (local · whisper · speech)");
   } finally {
     await request.post(`${models}/speech/up`);
   }
