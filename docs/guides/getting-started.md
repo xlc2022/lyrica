@@ -673,12 +673,24 @@ list of authorities.
 A Forgejo or Gitea account whose host is on her own network shows a
 **Webhook** section in the account's drawer: a URL on her tailnet address
 and a secret, one per account. To have the forge wake her when a pull
-request changes (instead of waiting up to the next poll), add that URL and
-secret as a forge webhook on the repository, with the "Pull request" event.
-Forgejo and Gitea refuse to deliver to a private address unless the forge's
-`app.ini` allows it, so add her tailnet name (or `100.64.0.0/10`) to
-`[webhook] ALLOWED_HOST_LIST` and restart the forge. GitHub stays on
-polling; its account drawer has no Webhook section.
+request changes, instead of waiting for the next poll (every 2 minutes),
+add that URL and secret as a webhook on the repository:
+
+- Keep the content type `application/json`. A form-encoded body is
+  refused.
+- Choose the pull request, pull request reviewed, pull request comment
+  and status events. For a day after a repository's last webhook, she
+  polls it only every 10 minutes, so an event left out can wait that
+  long.
+- The forge machine must be on her tailnet, because the URL is her
+  tailnet name.
+- Forgejo and Gitea refuse to deliver to a private address unless the
+  forge's `app.ini` allows it. Add her tailnet name or `100.64.0.0/10`
+  to `[webhook] ALLOWED_HOST_LIST`, keeping `external` in the list if
+  the forge sends other webhooks to public hosts (for example
+  `ALLOWED_HOST_LIST = external,100.64.0.0/10`), then restart the forge.
+
+GitHub stays on polling, and its account drawer has no Webhook section.
 
 A project's **Repositories** row (Project settings, under This chat) and
 the thread drawer list which repositories a thread has. Each thread clones
