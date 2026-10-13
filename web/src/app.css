@@ -804,6 +804,8 @@ form.drawer-body { flex: 1; }
 }
 /* Suggested threads: like the plan card. */
 .suggestions { margin: 0; padding: 0 0 0 20px; display: grid; gap: 8px; }
+.fold-list { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.suggestions.fold-rows { padding: 0; list-style: none; }
 .suggestions li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
 .suggestion-text { display: grid; gap: 2px; min-width: 0; }
 .suggestion-text .prose.small { font-size: 14px; line-height: 1.5; }

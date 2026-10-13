@@ -470,49 +470,50 @@ export function ProjectWelcome({ userId, pool, project, settings, onChange }: { 
     const rows = await get<ThreadSummary[]>(`${u(userId, "threads", pool, "recent")}?top=10&project=${encodeURIComponent(project.id)}`);
     setPicked(rows.map(t => t.id)); setRecent(rows);
   });
+  const opener = useRef<HTMLButtonElement>(null);
+  const close = () => { setRecent(undefined); setTimeout(() => opener.current?.focus()); };
   const makePlan = () => run(async () => {
-    const plan = await post<ThreadSummary>(u(userId, "threads"), { pool, title: "Plan" });
-    const planBase = threadPath(userId, pool, plan.id);
-    await patch(`${planBase}/settings`, {
-      localOnly: settings.localOnly, preset: settings.preset,
-      models: { chat: project.projectSettings?.threadsModel ?? settings.models.chat.list ?? settings.models.chat.model ?? null },
-      thinking: project.projectSettings?.threadsThinking ?? settings.thinking,
-      grants: settings.grants, machines: settings.machines, repositories: settings.repositories, mcpServers: settings.mcpServers,
-      internet: settings.network.internet, services: settings.network.services, hosts: settings.network.hosts,
-    });
-    await post(`${base}/fold`, { threadId: plan.id });
-    await post(`${planBase}/messages`, { text: `Make a plan for ${project.goal || "this project's goal"}. Use propose_plan for the plan card. Send suggested threads to the project chat for its Suggested threads card.` });
+    const plan = await post<ThreadSummary>(`${base}/plan`, {});
     onChange(); go({ page: "thread", userId, pool, threadId: plan.id });
   });
   return <div className="permission plan project-welcome">
     <h2>Welcome to {project.title || "your project"}</h2>
+    <p>Let's get to work!</p>
     <div className="row welcome-starters">
-      <button type="button" disabled={busy} onClick={setup}>Set up from recent work</button>
-      <Repositories starter userId={userId} pool={pool} granted={settings.repositories} onChange={repositories => run(async () => { await patch(`${base}/settings`, { repositories }); await post(`${base}/messages`, { text: `Repository added: ${repositories.at(-1)!.name}. Do not clone it yet.` }); onChange(); })} />
+      <button type="button" ref={opener} disabled={busy} onClick={setup}>Set up from recent work</button>
+      <Repositories starter userId={userId} pool={pool} granted={settings.repositories} onChange={repositories => run(async () => { await patch(`${base}/settings`, { repositories }); await post(`${base}/messages`, { text: `I added ${repositories.at(-1)!.name}.` }); onChange(); })} />
       <button type="button" disabled={busy} onClick={makePlan}>Make a plan</button>
     </div>
     <ErrorText error={error} />
-    {recent && <Dialog className="recent-work" labelledBy="recent-work-title" onCancel={() => setRecent(undefined)} onSubmit={() => run(async () => { await post(`${base}/messages`, { text: "Set up this project from the selected recent work. Draft Goal and Instructions for Project settings and suggest threads to fold in.", recentThreadIds: picked }); setRecent(undefined); onChange(); })}>
+    {recent && <Dialog className="recent-work" labelledBy="recent-work-title" onCancel={close} onSubmit={() => run(async () => { await post(`${base}/messages`, { text: "Set up this project from my recent work.", recentThreadIds: picked }); close(); onChange(); })}>
       <h2 id="recent-work-title">Set up from recent work</h2>
       {recent.map(t => <label className="check" key={t.id}><input type="checkbox" checked={picked.includes(t.id)} onChange={e => setPicked(e.target.checked ? [...picked, t.id] : picked.filter(id => id !== t.id))} /> {t.title || "New thread"}</label>)}
       {!recent.length && <p className="muted">No recent work.</p>}
       <ErrorText error={error} />
-      <div className="dlg-actions"><button type="button" onClick={() => setRecent(undefined)}>Cancel</button><button type="submit" className="primary" disabled={busy || !picked.length}>Continue</button></div>
+      <div className="dlg-actions"><button type="button" onClick={close}>{recent.length ? "Cancel" : "Close"}</button>{!!recent.length && <button type="submit" className="primary" disabled={busy || !picked.length}>Continue</button>}</div>
     </Dialog>}
   </div>;
 }
 
-/** Existing-work suggestions share the Suggested threads card's rows and actions. */
+/** Existing-work suggestions share the Suggested threads card's rows and actions. Nothing is folded until the dialog confirms it. */
 export function FoldCard({ part, userId, pool, projectId, env }: { part: Extract<MessagePart, { type: "tool" }>; userId: string; pool: Pool; projectId: string; env?: ProjectEnv }) {
   const ids = (part.args as { ids?: string[] } | null)?.ids ?? [];
   const base = threadPath(userId, pool, projectId);
-  const rows = useLoad(() => Promise.all(ids.map(async id => ({ thread: await get<ThreadSummary>(threadPath(userId, pool, id)), settings: await get<ThreadSettings>(threadPath(userId, pool, id, "settings")) }))), [base, part.toolCallId]);
+  // Each row loads on its own: a thread that is gone or unreadable drops its row and leaves the rest. `index` is the row's place in the call.
+  const rows = useLoad(async () => (await Promise.allSettled(ids.map(async (id, index) => ({ index, thread: await get<ThreadSummary>(threadPath(userId, pool, id)), settings: await get<ThreadSettings>(threadPath(userId, pool, id, "settings")) }))))
+    .flatMap(r => r.status === "fulfilled" ? [r.value] : []), [base, part.toolCallId]);
+  // The thread list carries each thread's child threads; without it the dialog lists none.
+  const tree = useLoad(() => get<ThreadSummary[]>(`${u(userId, "threads")}?all=1`).catch(() => [] as ThreadSummary[]), [base, part.toolCallId]);
   const summary = useLoad(() => get<ThreadSummary>(base), [base]);
   const project = useLoad(() => get<ThreadSettings>(`${base}/settings`), [base]);
   const [run, busy, error] = useAction();
-  const [confirm, setConfirm] = useState<ThreadSettings>();
+  const [asked, setAsked] = useState<number[]>();
+  const [give, setGive] = useState(false);
+  // Kept in this browser only: no server action stores a dismissal.
+  const [dismissed, setDismissed] = useState(false);
   const started = env?.overview.started ?? {};
   const left = ids.filter((_, i) => !started[`${part.toolCallId}#${i}`]).length;
+  const SWITCHES = ["Internet", "Services"];
   const losses = (s: ThreadSettings, p: ThreadSettings) => [
     ...s.grants.filter(g => !p.grants.some(x => (x.path === g.path || g.path.startsWith(`${x.path.replace(/\/$/, "")}/`)) && (!g.writable || x.writable))).map(g => g.path),
     ...s.machines.filter(x => !p.machines.includes(x)),
@@ -520,22 +521,54 @@ export function FoldCard({ part, userId, pool, projectId, env }: { part: Extract
     ...s.network.hosts.filter(x => !p.network.hosts.includes(x)),
     ...(s.network.internet && !p.network.internet ? ["Internet"] : []), ...(s.network.services && !p.network.services ? ["Services"] : []),
   ];
-  const apply = (index?: number) => run(async () => { await post(`${base}/folds/${encodeURIComponent(part.toolCallId)}/apply`, index === undefined ? {} : { index }); env?.onChange(); });
-  if (!left) return null;
+  /** The loss names in the Loses line's format: switches plain, the rest in mono, at most three then +n. */
+  const names = (lost: string[]) => <>{lost.slice(0, 3).map((name, n) => <span key={name}>{n > 0 && ", "}{SWITCHES.includes(name) ? name : <span className="mono">{name}</span>}</span>)}{lost.length > 3 ? ` +${lost.length - 3}` : ""}</>;
+  const pending = (rows.data ?? []).filter(r => !started[`${part.toolCallId}#${r.index}`]);
+  const apply = (index: number) => post(`${base}/folds/${encodeURIComponent(part.toolCallId)}/apply`, { index });
+  const projectName = summary.data?.title || "the project";
+  if (!left || dismissed) return null;
+  const chosen = pending.filter(r => asked?.includes(r.index));
+  const lostBy = (r: { settings: ThreadSettings }) => (project.data ? losses(r.settings, project.data) : []);
+  const allLost = [...new Set(chosen.flatMap(lostBy))];
+  const close = () => { setAsked(undefined); setGive(false); };
+  const fold = () => run(async () => {
+    const p = project.data!;
+    if (give && allLost.length) {
+      const grants = [...p.grants]; const repositories = [...p.repositories];
+      for (const { settings: c } of chosen) {
+        for (const g of c.grants) { const i = grants.findIndex(x => x.path === g.path); if (i < 0) grants.push(g); else if (g.writable) grants[i] = g; }
+        for (const r of c.repositories) if (!repositories.some(x => x.name === r.name && x.account === r.account)) repositories.push(r);
+      }
+      project.set(await patch<ThreadSettings>(`${base}/settings`, {
+        grants, repositories, machines: [...new Set([...p.machines, ...chosen.flatMap(c => c.settings.machines)])], hosts: [...new Set([...p.network.hosts, ...chosen.flatMap(c => c.settings.network.hosts)])],
+        internet: p.network.internet || chosen.some(c => c.settings.network.internet), services: p.network.services || chosen.some(c => c.settings.network.services),
+      }));
+    }
+    for (const r of chosen) await apply(r.index);
+    close(); env?.onChange();
+  });
   return <div className="permission plan suggested" role="group" aria-label="Fold in" data-pending="Suggestions">
     <div className="plan-head"><b>Fold in</b><span className="num">{left}</span></div>
-    <ol className="suggestions">{rows.data?.map(({ thread, settings }, i) => {
+    <ol className="suggestions fold-rows">{rows.data?.map(({ thread, settings, index: i }) => {
       if (started[`${part.toolCallId}#${i}`]) return null;
       const lost = project.data ? losses(settings, project.data) : [];
-      return <li key={thread.id}><div className="suggestion-text"><b className="as-is">{thread.title || "New thread"}</b>{!!lost.length && <div className="muted small fold-loss" title={lost.join(", ")}>Loses <span className="mono">{lost.slice(0, 3).join(", ")}{lost.length > 3 ? ` +${lost.length - 3}` : ""}</span> · <button type="button" className="link" disabled={busy} onClick={() => setConfirm(settings)}>Keep access</button></div>}</div><button type="button" className="sm" disabled={busy || !env || !project.data} onClick={() => apply(i)}>Fold in</button></li>;
+      return <li key={thread.id}><div className="suggestion-text"><b className="as-is">{thread.title || "New thread"}</b>{!!lost.length && <div className="muted small fold-loss" title={lost.join(", ")}>Loses {names(lost)}</div>}</div><button type="button" className="sm" disabled={busy || !env || !project.data} onClick={() => setAsked([i])}>Fold in</button></li>;
     })}</ol>
-    <div className="row"><button type="button" className="primary" disabled={busy || !env || !rows.data || !project.data} onClick={() => apply()}>Fold in all <span className="num">{left}</span></button></div>
+    <div className="row"><button type="button" className="primary" disabled={busy || !env || !rows.data || !project.data || !pending.length} onClick={() => setAsked(pending.map(r => r.index))}>Fold in all <span className="num">{pending.length}</span></button><button type="button" disabled={busy} onClick={() => setDismissed(true)}>Cancel</button></div>
     <ErrorText error={error || rows.error || project.error} />
-    {confirm && project.data && <ConfirmDialog title="Keep access" sentence={`Give ${summary.data?.title || "the project"} access to ${losses(confirm, project.data).join(", ")}? Every thread in it can use them.`} confirm="Give access" onCancel={() => setConfirm(undefined)} onConfirm={() => run(async () => {
-      const p = project.data!;
-      const grants = [...p.grants]; for (const g of confirm.grants) { const i = grants.findIndex(x => x.path === g.path); if (i < 0) grants.push(g); else if (g.writable) grants[i] = g; }
-      const repositories = [...p.repositories]; for (const r of confirm.repositories) if (!repositories.some(x => x.name === r.name && x.account === r.account)) repositories.push(r);
-      project.set(await patch<ThreadSettings>(`${base}/settings`, { grants, repositories, machines: [...new Set([...p.machines, ...confirm.machines])], hosts: [...new Set([...p.network.hosts, ...confirm.network.hosts])], internet: p.network.internet || confirm.network.internet, services: p.network.services || confirm.network.services })); setConfirm(undefined); env?.onChange();
-    })} />}
+    {asked && project.data && chosen.length > 0 && <Dialog labelledBy="fold-title" onCancel={close} onSubmit={() => void fold()}>
+      <h2 id="fold-title">{chosen.length === 1 ? `Fold ${chosen[0]!.thread.title || "New thread"} into ${projectName}?` : `Fold ${chosen.length} threads into ${projectName}?`}</h2>
+      <ul className="fold-list">{chosen.map(r => {
+        const kids = tree.data?.find(t => t.id === r.thread.id)?.children ?? [];
+        return <li key={r.thread.id}>{r.thread.title || "New thread"}{!!kids.length && <span className="muted"> and its child {kids.length === 1 ? "thread" : "threads"}: {kids.map(k => k.title || "New thread").join(", ")}</span>}</li>;
+      })}</ul>
+      {!!allLost.length && <>
+        <p className="muted small fold-loss" title={allLost.join(", ")}>Loses {names(allLost)}</p>
+        <label className="check"><input type="checkbox" checked={give} onChange={e => setGive(e.target.checked)} /> Give {projectName} access to these</label>
+      </>}
+      <p>A thread can't be taken out of a project once it's in.</p>
+      <ErrorText error={error} />
+      <div className="dlg-actions"><button type="button" onClick={close}>Cancel</button><button type="submit" className="primary" autoFocus disabled={busy}>Fold in</button></div>
+    </Dialog>}
   </div>;
 }

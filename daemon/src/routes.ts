@@ -1167,6 +1167,21 @@ export function apiRoutes(d: Lyricad): Route[] {
       try { id = await s().children.startFrom(user.id, pool, project, n, { title: name, task }); } catch (err) { throw new HttpError(409, (err as Error).message); }
       return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, []));
     }),
+    route("POST", `${t}/plan`, async (r): Promise<Api.StartPlanResult> => {
+      const user = d.userFor(r);
+      const pool = poolOf(r);
+      const { project, goal } = owner(d, user, (o) => {
+        const thread = threadOf(o, r);
+        if (!thread.project) throw new HttpError(400, "a plan is started from a project chat");
+        return { project: thread.id, goal: thread.goal?.trim() };
+      });
+      if (s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden; resume it to start threads");
+      d.refuseWhileDraining();
+      const task = `Make a plan for ${goal || "this project's goal"}. Propose it with propose_plan, and suggest the threads it needs for the project chat's Suggested threads card.`;
+      let id: string;
+      try { id = await s().children.startFrom(user.id, pool, project, undefined, { title: "Plan", task }); } catch (err) { throw new HttpError(409, (err as Error).message); }
+      return owner(d, user, (o) => summary(d, user, pool, o[pool], o[pool].getThread(id)!, []));
+    }),
     route("POST", `${t}/resolve`, (r) => resolveThread(d, d.userFor(r), r, true)),
     route("POST", `${t}/reopen`, (r) => resolveThread(d, d.userFor(r), r, false)),
     route("POST", `${t}/suggestions/:callId/start`, async (r) => {

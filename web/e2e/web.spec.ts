@@ -3182,25 +3182,51 @@ test("project welcome and fold in", async ({ page, baseURL }) => {
   await page.goto(`/#/u/${user.id}/t/general/${encodeURIComponent(p.id)}`);
   const width = page.viewportSize()!.width;
   await expect(page.getByRole("button", { name: "Set up from recent work" })).toBeVisible();
+  await expect(page.getByText("Let's get to work!", { exact: true })).toBeVisible();
   if (process.env.LYRICA_PROJECT_SHOTS) await page.screenshot({ path: `../shots/welcome-${width}.png` });
   await page.getByRole("button", { name: "Set up from recent work" }).click();
   await expect(page.getByRole("dialog").getByLabel("Garden notes")).toBeChecked();
   if (process.env.LYRICA_PROJECT_SHOTS) await page.screenshot({ path: `../shots/dialog-${width}.png` });
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Set up from recent work" })).toBeFocused();
+  await page.getByRole("button", { name: "Set up from recent work" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Set up from recent work" })).toBeFocused();
   await api("POST", `${u}/threads/general/${encodeURIComponent(p.id)}/messages`, { text: `fold: ${a.id}, ${b.id}` });
   await expect(page.getByRole("group", { name: "Fold in", exact: true })).toBeVisible();
   await expect(page.getByText("Loses", { exact: false }).first()).toBeVisible();
   if (process.env.LYRICA_PROJECT_SHOTS) await page.screenshot({ path: `../shots/fold-in-${width}.png` });
-  await page.getByRole("button", { name: "Keep access" }).first().click();
-  await page.getByRole("button", { name: "Give access" }).click();
+  const card = page.getByRole("group", { name: "Fold in", exact: true });
+  const overview = async () => (await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}/overview`)).threads;
+  const dialog = page.getByRole("dialog");
+  // Nothing folds before the dialog confirms it; Cancel leaves the thread where it was.
+  await card.getByRole("button", { name: "Fold in", exact: true }).first().click();
+  await expect(dialog.getByRole("heading", { name: /^Fold Garden notes into Garden\?$/ })).toBeVisible();
+  await expect(dialog.getByText("A thread can't be taken out of a project once it's in.")).toBeVisible();
+  if (process.env.LYRICA_PROJECT_SHOTS) await page.screenshot({ path: `../shots/fold-dialog-${width}.png` });
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await overview()).toHaveLength(0);
+  expect((await api("GET", `${u}/threads/general/${encodeURIComponent(a.id)}`)).parent).toBeUndefined();
+  // Confirming with the access box ticked grants the losses, then folds.
+  await card.getByRole("button", { name: "Fold in", exact: true }).first().click();
+  await dialog.getByRole("checkbox", { name: /^Give Garden access to these/ }).check();
+  await dialog.getByRole("button", { name: "Fold in", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(async () => (await overview()).length).toBe(1);
   await expect(page.getByText("Loses", { exact: false })).toHaveCount(0);
-  await page.getByRole("button", { name: "Fold in all" }).click();
-  await expect(page.getByRole("group", { name: "Fold in", exact: true })).toHaveCount(0);
-  expect((await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}/overview`)).threads).toHaveLength(2);
+  await card.getByRole("button", { name: /^Fold in all/ }).click();
+  await expect(dialog.getByRole("heading", { name: /^Fold 1 thread/ }).or(dialog.getByRole("heading", { name: /^Fold Seed catalogue into/ }))).toBeVisible();
+  await dialog.getByRole("button", { name: "Fold in", exact: true }).click();
+  await expect(card).toHaveCount(0);
+  expect(await overview()).toHaveLength(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   await api("POST", `${u}/threads/general/${encodeURIComponent(p.id)}/messages`, { text: "draft: Grow seedlings | Keep a planting journal" });
-  await expect(page.getByRole("link", { name: "Project settings", exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "Project settings", exact: true }).click();
+  // The header may carry the same link; the draft's is the last.
+  await expect(page.getByRole("link", { name: "Project settings", exact: true }).last()).toBeVisible();
+  await page.getByRole("link", { name: "Project settings", exact: true }).last().click();
   const goal = page.getByRole("textbox", { name: "Goal", exact: true });
   await expect(goal).toHaveValue("Grow seedlings");
   expect((await api("GET", `${u}/threads/general/${encodeURIComponent(p.id)}`)).goal).toBeUndefined();
@@ -3225,6 +3251,8 @@ test("project welcome and fold in", async ({ page, baseURL }) => {
   await page.goto(`/#/u/${user.id}/t/general/${encodeURIComponent(setup.id)}`);
   await page.getByRole("button", { name: "Set up from recent work" }).click();
   const options = page.getByRole("dialog").getByRole("checkbox");
+  // The list loads after the dialog opens, and earlier tests leave threads: wait for the rows, then untick them all.
+  await expect(page.getByRole("dialog").getByRole("checkbox", { name: "Recent planting" })).toBeVisible();
   for (const option of await options.all()) await option.uncheck();
   await page.getByRole("dialog").getByRole("checkbox", { name: "Recent planting" }).check();
   const sent = page.waitForRequest(r => r.method() === "POST" && r.url().endsWith("/messages"));
@@ -3237,6 +3265,8 @@ test("project welcome and fold in", async ({ page, baseURL }) => {
   const continuation = page.getByRole("menuitem", { name: "Continue as project" });
   await expect(continuation).toHaveAttribute("title", "Starts a new project from this thread; the thread stays.");
   await page.keyboard.press("c");
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "Start a project from Recent planting?" })).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Continue as project", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Project settings", exact: true })).toBeVisible();
   expect((await api("GET", `${u}/threads/general/${encodeURIComponent(source.id)}`)).project).toBeFalsy();
 });

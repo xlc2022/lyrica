@@ -1158,7 +1158,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     shows it as `{ kind: "watching", told?: Told[] }` (`Told`: `threadId`,
     `text`; absent on looks from before looks were one call), and its live
     `notice` event has `status: "watching"` and `told`; `POST …/messages/:n/thread` (Start a
-    thread) → `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`;
+    thread) → `ThreadSummary`; `POST …/threads/:pool/:projectId/plan` (Make a plan: no body, a
+    thread titled Plan with a server-written task, no anchor; 409 while paused or hidden, creating
+    nothing) → `ThreadSummary`; `POST threads/:id/resolve` and `…/reopen`;
     `POST …/suggestions/:callId/start` (`index`, or all with none; `user.db`
     `started_suggestions`); `GET threads/:id/overview` (`ProjectOverview`:
     its threads, the waiting count, total tokens, started suggestions);

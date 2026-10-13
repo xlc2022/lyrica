@@ -154,6 +154,21 @@ describe("projects", () => {
     expect((await ada.post(`${u}/threads/private/${enc(unlogged.id)}/continue-as-project`, {})).status).toBe(400);
   });
 
+  it("refuses to fold a general thread into a private project, leaving it where it was", async () => {
+    const { ada, u, threadPath } = await setup();
+    const general = (await ada.post<ThreadSummary>(`${u}/threads`, { pool: "general", title: "General garden" })).body;
+    const project = (await ada.post<ThreadSummary>(`${u}/threads`, { pool: "private", title: "Garden", project: true })).body;
+    expect((await ada.post(`${u}/threads/private/${enc(project.id)}/fold`, { threadId: general.id })).status).toBe(404);
+    expect((await ada.get<ThreadSummary>(threadPath(general.id))).body).toMatchObject({ id: general.id, child: false });
+    expect((await ada.get<ThreadSummary>(threadPath(general.id))).body.parent).toBeUndefined();
+  });
+
+  it("refuses recent work from the private pool in a general project chat", async () => {
+    const { ada, u, path } = await setup();
+    const secret = (await ada.post<ThreadSummary>(`${u}/threads`, { pool: "private", title: "Private garden" })).body;
+    expect((await ada.post(`${path}/messages`, { text: "Set up", recentThreadIds: [secret.id] })).status).toBe(400);
+  });
+
   it("stores drafts without applying them, preserves them through other settings, and clears on Save or discard", async () => {
     const { ada, script, say, path } = await setup();
     const commandRules = [{ prefix: "npm test", decision: "ask" }];
@@ -625,6 +640,23 @@ describe("projects", () => {
     expect(rest.map((t) => t.title)).toEqual(["DNS"]);
     expect(Object.keys((await overview()).started).sort()).toEqual([`${end.toolCallId}#0`, `${end.toolCallId}#1`]);
     expect((await ada.post<ThreadSummary[]>(`${path}/suggestions/${end.toolCallId}/start`, {})).body).toEqual([]);
+  });
+
+  it("makes a plan in one call: a Plan thread with a card, and nothing while paused", async () => {
+    const { ada, path, script, get, overview, messages, threadPath } = await setup();
+    script("make").push({ text: "Planning." });
+    expect((await ada.patch(path, { paused: true })).status).toBe(200);
+    expect((await ada.post(`${path}/plan`, {})).status).toBe(409);
+    expect((await overview()).threads).toEqual([]);
+    expect((await ada.patch(path, { paused: false })).status).toBe(200);
+    const plan = await ada.post<ThreadSummary>(`${path}/plan`, {});
+    expect(plan.status).toBe(200);
+    expect(plan.body).toMatchObject({ title: "Plan", parent: plan.body.parent, child: true });
+    const rows = (await overview()).threads;
+    expect(rows.map(t => t.title)).toEqual(["Plan"]);
+    expect(rows[0]!.anchor).toBeUndefined();
+    expect((await get(plan.body.id)).title).toBe("Plan");
+    await until(() => messages(threadPath(plan.body.id)), m => JSON.stringify(m).includes("Move the homelab to the new rack"));
   });
 
   it("keep anchors through a rewind of later turns, and branches inside the project", async () => {
