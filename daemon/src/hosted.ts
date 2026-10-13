@@ -2,11 +2,11 @@ import { randomBytes } from "node:crypto";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
-  alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
+  recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
+  formatEntry, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -310,6 +310,19 @@ export class HostedThread {
 
   // --- Turns ---
 
+  /** Selection is held only in memory, and never enters stored messages. */
+  private recentWorkIds: string[] | undefined;
+
+  private recentWork(view: PoolView): string | undefined {
+    if (!this.recentWorkIds) return undefined;
+    const local = this.o.models.callContext(this.userId, this.pool, this.threadId).localOnly;
+    return this.recentWorkIds.map(id => {
+      const row = view.own.getThread(id);
+      if (!row || !recentWorkAllowed(row, this.o.models.callContext(this.userId, this.pool, id).localOnly, local)) throw new Error("selected work is no longer readable by this project");
+      return `[t:${id}]\n${view.own.latestEntries(id, WELCOME_LIMITS.entries).map(formatEntry).join("\n\n")}`;
+    }).join("\n\n").slice(0, WELCOME_LIMITS.chars);
+  }
+
   /**
    * Starts a turn, or, while one runs, queues the person's message as a
    * follow-up; a marked message joins the running turn as a steer, after its
@@ -321,12 +334,17 @@ export class HostedThread {
    * watcher with `watching`, and only a wake-up with `wakeup` (its mark);
    * anyone else's text can't carry the line that marks it.
    */
-  async send(text: string, opts: { fromParent?: string; fromThread?: string; watching?: boolean; wakeup?: string; routine?: string } = {}): Promise<{ queued: boolean }> {
+  async send(text: string, opts: { fromParent?: string; fromThread?: string; watching?: boolean; wakeup?: string; routine?: string; recentThreadIds?: string[] } = {}): Promise<{ queued: boolean }> {
     if (!text.trim()) throw new Error("the message is empty");
     if (FROM_PARENT.test(text)) throw new MarkedText("a message can't start with a [From t:…] line");
     if (WATCHING.test(text)) throw new MarkedText("a message can't start with a [Watching threads] line");
     if (WAKEUP.test(text)) throw new MarkedText("a message can't start with a [Wake-up, …] line");
     if (ROUTINE.test(text)) throw new MarkedText("a message can’t start with a [Routine, …] line");
+    if (opts.recentThreadIds) {
+      if (this.working || this.recentWorkIds) throw new Busy("recent work needs an idle project chat");
+      this.recentWorkIds = opts.recentThreadIds;
+      try { return await this.post(text); } catch (err) { this.recentWorkIds = undefined; throw err; }
+    }
     if (opts.routine) return this.post(`${opts.routine}${text}`, true);
     if (opts.watching) return this.post(`${WATCHING_MARK}${text}`, true);
     if (opts.wakeup) return this.post(`${opts.wakeup}${text}`, true);
@@ -488,7 +506,7 @@ export class HostedThread {
         if (next === OPENING && entry?.message?.role === "user" && textOf(entry.message.content) === OPENING) {
           await this.answerOpening(opened.session);
         } else {
-          await opened.session.prompt(next);
+          try { await opened.session.prompt(next); } finally { this.recentWorkIds = undefined; }
         }
         aborted = this.aborted;
         await this.afterTurn(opened, aborted);
@@ -835,6 +853,7 @@ export class HostedThread {
         extensions: [
           createLyricaExtension(ctx, {
             persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter,
+            recentWork: () => this.recentWork(view),
             reactions: () => this.unseenReactions.splice(0),
             ...(thread.project ? { projectThreads: () => this.o.projectThreads?.(this.userId, this.pool, this.threadId) } : {}),
           }),

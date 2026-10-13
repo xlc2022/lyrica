@@ -133,26 +133,52 @@ scroll, and the row's actions stay where they are.
 
 ## Handoff notes
 
-(The building thread fills this in if it stops before it's done.) A partial
-diff from a stopped pills run is at /tmp/claude-1000/iu/run4-stopped.patch on
-the test machine; use it only as a reference.
+Runs 1 and 2 are committed at `65f5bae` and `24ba1db`. They built the
+provider adapters, hand-JSON flags and tiers, refusal code and retries,
+maker attribution, switches and refusal links. The local-image regression
+was repaired before run 3: only cloud endpoints use the provider table.
 
-Run 2 repairs run 1's local-image routing regression (principles 1 and 2).
-The cloud-provider check now applies only to cloud endpoints; local endpoints
-still resolve from their image capabilities, as the existing fallback test
-requires. That test is unchanged. Run 1's image tests now use columns and a
-named preset after model presets (#283), and the contracts and getting-started
-merge conflicts retain both presets and the image-provider additions. The
-Images UI has no model-profile references; the welcome Backend card already
-reads presets. No migration is added; user.db steps through 8 stay intact.
-The remaining provider UI, refusal links and screenshots in this brief still
-need their build and reviews. This run uses only fake providers and leaves
-changes uncommitted for the coordinating thread.
+Run 3 completes the Hosts and endpoints UI (principles 1 and 8): API key
+versus plan pills, Text / Vision / callable Image capabilities, masked key
+suffixes, plan facts without placeholder URLs, and an explicit account
+label only when sign-in supplies it. Current Pi ChatGPT sign-in does not
+supply an account label; none is inferred from its tokens. Add endpoint
+suggests ChatGPT and OpenAI without replacing a user-entered name. Endpoint
+names now accept capitals, with the existing character and length limits,
+so these defaults can be saved. Shared ModelLabel rendering names the
+endpoint after each model in the picker, Tasks, Text copies and Images;
+endpoint text is muted and truncates first. Capability pills wrap below
+the name on a phone. Controls follow docs/ux.md §6's Models and Image models
+rows; pills use the agreed §5 exception. No new tool or database migration.
 
-Validation: `npm run typecheck` passes. Under `/tmp/lyrica-tests.lock` with
-Vitest forks and two workers, the focused regression run passed 41 tests.
-Every test file under core/test and daemon/test mentioning images, models or
-fallbacks was then selected: 36 files passed, one skipped; 366 tests passed,
-eight skipped. No full-suite run or real provider call was made. The resolved
-docs conflicts still need staging by the coordinating thread because this
-checkout's Git index is read-only.
+Presets remain the source of routing and the welcome Backend card. Images
+and Backend contain no model-profile references. The docs now describe
+presets/columns and `lyrica admin models preset`, including the stale
+Tasks description in docs/web.md. Updated: DESIGN.md Images,
+docs/contracts.md, docs/models.md, docs/ux.md, docs/web.md and the
+getting-started guide. Run 3 does not touch migrations or use taken user.db
+steps. Pre-existing staged work is preserved. The pre-existing import-only
+conflict in daemon/src/hosted.ts is resolved in the working file by keeping
+both formatEntry (main) and executeImage (image retries); the read-only Git
+index still needs staging by the coordinating thread.
+
+Validation uses fakes only, never a plan sign-in or real API call. Typecheck
+and the web build pass. Focused Vitest files: core/test/models.test.ts (26),
+web/test/images.test.ts (7), daemon/test/image-routes.test.ts (9), including
+the new safe endpoint-metadata check. All 42 pass. Every test command uses
+`/tmp/lyrica-tests.lock`, with Vitest forks and two workers; no full suite
+was run. Focused Playwright checks at 390 and 1280 cover the image switches,
+refusal links, five-pill endpoint row and default names, Text model copies,
+private/local-only picker and Tasks presets: all 10 checks pass in the final
+run. The default ports were busy
+and the bundled Chromium lacked host libraries, so the runs use isolated
+ports 17741/17742 and the installed Nix Chromium through a temporary config.
+Screenshots are in `/tmp/lyrica-image-providers-run3/`: image-endpoints-390.png,
+image-endpoints-1280.png, image-refusal-390.png and image-refusal-1280.png,
+with additional switches, Tasks and Text copies views. Checked visually and
+by no-horizontal-scroll assertions at both widths.
+
+Left: the coordinating thread stages and commits this working-tree diff,
+runs the full suite, pushes, and obtains CI plus PR review and UI review of
+the head commit. Operator docs should review the guide's endpoint setup and
+preset instructions. No commit or push was attempted here.

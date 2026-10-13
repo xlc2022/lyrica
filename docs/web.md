@@ -282,8 +282,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   30 s not asked again). Overview: a banner for a paused host or a stale
   endpoint; tiles Endpoints (n of m up, then a dot and "All reachable" or
   the first one down, "+N" for more), Backend (the first `chat` model of
-  the general profile and of Local, following Same as, each with its pool
-  and profile beneath; links to Tasks) and Clean up (the count, the tile's
+  the General and Private columns, following their presets and Same as,
+  each with its pool and preset beneath; links to Tasks) and Clean up (the count, the tile's
   tooltip "To decide" or "Nothing to clean up"); then the hosts and
   endpoints summary (a host with its combined VRAM bar, Pause or Resume,
   Dashboard; a plain endpoint with its model count) and the first five
@@ -306,9 +306,17 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the addresses, `PUT …/addresses`), per GPU its card, used/total in mono,
   a bar of pinned, loaded-on-demand and vLLM-share segments, the loaded
   models and the queue when nonzero. A plain endpoint row: name, kind,
-  ChatGPT plan or Grok plan, unencrypted and stale pills, URL, shared or only you, ID, state, "N
-  models", **Edit** (the same drawer; API key "leave blank to keep",
-  Remove key; a plan's drawer has Name only). A plan whose sign-in lapsed
+  ChatGPT plan or Grok plan versus API key, and cloud Text, Vision and Image
+  pills (only when a marked image model has a callable provider and the
+  required key). Capability pills wrap under the name on a phone. Facts:
+  a plan's kind, only you and explicit account label in mono if supplied,
+  hiding its placeholder URL; a keyed endpoint's URL, masked key suffix in
+  mono, shared or only you and ID. Short keys show the mask alone. Local rows
+  keep unencrypted and stale pills. State, "N models", **Edit** (the same
+  drawer; API key "leave blank to keep",
+  Remove key; a plan's drawer has Name only). Add endpoint suggests ChatGPT
+  for that plan and OpenAI for api.openai.com without replacing a name the
+  user typed. Names preserve capitals. A plan whose sign-in lapsed
   reads **Signed out**. Each row's ⋯: Sign in again (plans), Read its models, Add a model by hand, Pair
   again… (hosts), Reset IDs…, Merge into… (same kind and sharing), Remove,
   the last three confirmed by a dialog. Clean up: a row per item with a
@@ -321,28 +329,24 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   sentence as its tooltip. Recent calls: Time (mono), Thread (a link; private
   kind mark; "a forgotten thread" when gone), Task, Answered by ("model ·
   endpoint"), Note (the fallback or note, warn text); hidden pools left
-  out; the table stacks on a phone. Tasks (`GET …/profiles`, the former
-  Settings → Model profiles): a table of every task (grouped Conversation,
-  Memory, Sleep, Images, Speech; each name's tooltip says what the task
-  does) by profile, **Private threads** (Local) and **General threads** (the
-  default profile; **Use Custom instead** in its head sends `PATCH
-  …/profiles`; **Show Custom too** adds the third column); each head's name
-  has a tooltip about its profile ("Local profile · local models only"). A
-  cell shows the first model with its state dot (up; away when only a later
-  entry can answer; down when none can), or "No model" with a down dot when
-  the list is empty, then "+N fallbacks", "no fallback" (warn) or "= Chat"
-  for a task following another; Dictation has a cell under Private threads
-  only. A cell opens the task's drawer, its title's tooltip naming the
-  profile and the threads it serves: **Its own list** or **Same as** a task
-  of the same kind (**Task to share with**; a task with followers can't
-  follow, and a line under the choice names them, which describes the
-  disabled Same as), the ordered list with Move up,
-  Move down and Remove (in Custom, "Falls back to cloud from here" where the
-  kind changes), and **Add…**, a picker with a search box, group chips and
-  only models the task can use; each change is a `PUT
-  …/profiles/<profile>/<task>` at once, a refusal shown as an error line.
+  out; the table stacks on a phone. Tasks (`GET …/presets`): a table of every
+  task grouped Conversation,
+  Memory, Sleep, Images and Speech, against Private threads and General
+  threads. Each column follows a named preset or holds its own Custom table.
+  The Preset menu searches eligible presets, applies one, saves a Custom
+  table to its source preset or as a new preset, and opens a preset's drawer
+  for renaming or deleting it; Local and Cloud built-ins cannot be renamed
+  or deleted. Private accepts only private presets. A cell shows its first
+  model with a state dot and muted endpoint, followed by fallback count or
+  Same as. It opens the task drawer: Its own list or Same as, the ordered
+  list with Move up, Move down and Remove, and Add… with search and group
+  chips. Changes save at once through `PUT …/columns/:column/:task` and
+  make a followed column Custom. On a phone the two column heads remain
+  together above the stacked task rows. The model picker, Tasks entries,
+  Text models copies and Image models show a muted endpoint name after each
+  model, truncating the endpoint first. `ModelLabel.tsx` shares that display.
   Settings → Sleep holds the Sleep mode select and Sleep fallback;
-  `…/settings/profiles` goes to the Tasks tab.
+  `…/settings/profiles` remains a redirect to Tasks.
   Text models (`src/TextModels.tsx`, its pure parts in `src/library.ts`)
   reads the whole library (`GET …/library/text`, 200 a request) and filters
   in the page, so the facts line ("<n> models · <c> copies on <e> endpoints
@@ -356,9 +360,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   <endpoints>", opening in place to a table of its copies, the group's
   members first in order (Move up, Move down, Remove from the group: `PATCH
   …/groups/:id`), then the others (**Add to group** when the row's group is
-  the user's to change). A Copy cell: endpoint and kind, status and "same
-  file" pills (the Models page's checksum), the raw name, "downloaded by
-  Lyrica" or "shared folder", tok/s and **Settings**; Context and Vision
+  the user's to change). A Copy cell: raw model name with its endpoint muted
+  after it, kind, status and "same file" pills (the Models page's checksum),
+  "downloaded by Lyrica" or "shared folder", tok/s and **Settings**; Context and Vision
   cells tinted where the copies differ; a ⋯ with **Not this model** (`PUT
   …/separate`; the new row reads "Separated from <name> · Undo", the name
   known for the visit, else "Separated") and **Delete from host…** (a dialog
@@ -483,7 +487,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   administrator: Tailnet (the state, an Auth key with Hostname and Advanced →
   Control server, **Connect**, then a **Web access over the tailnet** switch
   applied on Continue; or Skip), Models (one endpoint, shared, its first
-  chat model set for the profile; or Skip), Done (the addresses to open her
+  chat model set for the preset; or Skip), Done (the addresses to open her
   at with the fingerprint, the administrator's login, the tailnet, and a
   sentence when she starts locked), **Start a chat**. The current step's
   button is the one primary; a done step's turns secondary; the fields of a
@@ -649,7 +653,7 @@ stack when they don't fit. Each card has a plain h2 with its link on the right:
 and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
 time in mono. **Notifications** has All <n> and "Nothing waiting." when
 empty. **Backend** has Models and lists each pool's first chat model, host,
-local/cloud chip and profile, then each model host's state as a dot and word.
+local/cloud chip and preset, then each model host's state as a dot and word.
 
 ## Chat
 

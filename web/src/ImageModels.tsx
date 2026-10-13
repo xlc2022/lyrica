@@ -1,3 +1,4 @@
+import { ModelLabel } from "./ModelLabel.tsx";
 import { CloudImageControls } from "./CloudImageControls.tsx";
 // The Models area's Image models tab (docs/ux.md §6, "Image models, recipes and parts"): a row per recipe, opening to
 // its copy on each host as a block of parts, and a row per image model on a plain endpoint; Parts, every image model
@@ -272,8 +273,8 @@ function PlainRow({ ctx, ep, m, open, onToggle }: { ctx: MCtx; ep: Endpoint; m: 
   return (
     <li className={`lrow img-row${open ? " open" : ""}`} data-entry={m.id}>
       <button type="button" className="lrow-main" aria-expanded={open} onClick={onToggle}>
-        <span className="name">{m.modelId}</span>
-        <span className="meta">{[ep.kind, m.image ? "create" : "", m.edit ? "edit" : "", ep.name].filter(Boolean).join(" · ")}</span>
+        <span className="name"><ModelLabel model={m.modelId} endpoint={ep.name} /></span>
+        <span className="meta">{[ep.kind, m.image ? "create" : "", m.edit ? "edit" : ""].filter(Boolean).join(" · ")}</span>
         <Icon name="right" className="lchev" />
       </button>
       {open && (

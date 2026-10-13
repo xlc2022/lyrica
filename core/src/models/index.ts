@@ -364,7 +364,7 @@ const NEW_PROFILE: Partial<Record<Task, { same: Task }>> = {
 /** Tasks added after presets were first stored: a preset with no entry for one gets its NEW_PROFILE default when read. */
 const LATER_TASKS: readonly Task[] = ["watching"];
 
-const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
+const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/i;
 /** A primary language tag: "en", "zh", "yue". */
 export const LANGUAGE = /^[a-zA-Z]{2,3}$/;
 const SHARED = "shared.";
@@ -555,6 +555,13 @@ export class Models {
       const r = db.prepare("SELECT api_key FROM endpoints WHERE id = ? AND api IN ('chatgpt', 'grok')").get(endpointId) as { api_key: string | null } | undefined;
       return r?.api_key ? JSON.parse(r.api_key) as PlanCredential : undefined;
     });
+  }
+
+  /** Only an explicit account label from sign-in; never decode or return tokens. */
+  planAccount(userId: string, endpointId: string): string | undefined {
+    const c = this.planCredential(userId, endpointId);
+    const account = c?.email ?? c?.accountId;
+    return typeof account === "string" && account.trim() ? account : undefined;
   }
 
   /**
@@ -2607,7 +2614,7 @@ function checkCredential(c: PlanCredential): PlanCredential {
 const labelOf = (ep: Endpoint, o: Offering) => `${ep.shared ? SHARED : ""}${ep.name}/${o.modelId}`;
 
 function checkName(name: string): void {
-  if (!NAME.test(name)) throw new Error("endpoint names use lowercase letters, digits and '-'");
+  if (!NAME.test(name)) throw new Error("endpoint names use letters, digits and '-'");
 }
 
 function checkAddresses(addresses: string[]): string[] {

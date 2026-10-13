@@ -1218,9 +1218,8 @@ button.star[aria-pressed="true"] .ic { fill: currentColor; }
 .ldetail .tablewrap:has(.row-menu .menu) { overflow: visible; }
 .ldetail p { margin: 0; }
 .ldetail .note .meta { align-self: center; }
-code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .models td.differs { background: color-mix(in oklab, var(--accent) 7%, var(--panel)); }
-.copies td.copy > code.raw, .copies td.copy > .cap { display: block; margin-top: 2px; }
+.copies td.copy > .cap { display: block; margin-top: 2px; }
 .copy-name { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
 .copies td.act { width: 1%; white-space: nowrap; }
 .copies .octl { justify-content: end; align-items: center; gap: 4px; }
@@ -1361,4 +1360,18 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
 .image-refusal-links .link { white-space: normal; text-align: left; overflow-wrap: anywhere; }
 @media (pointer: coarse) {
   .image-refusal-links .link { min-height: 44px; }
+}
+
+/* Endpoint capability pills are the agreed exception to §5 (principles 1 and 8). */
+.endpoint-name, .endpoint-capabilities { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.model-label { display: inline-flex; align-items: baseline; max-width: 100%; min-width: 0; }
+.model-name { flex: 0 0 auto; max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
+.model-endpoint { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-item > .model-label { flex: 1; }
+.cell .m > span:has(> .model-label) { flex: 1; min-width: 0; }
+.cell .m > span > .model-label { display: flex; }
+.badge.model > .name { min-width: 0; }
+.badge.model .model-label { display: flex; }
+@media (max-width: 760px) {
+  .endpoint-capabilities { flex-basis: 100%; }
 }

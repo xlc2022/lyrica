@@ -36,6 +36,7 @@ export interface ChildOptions {
   /** Whether a project is paused or hidden: its threads start nothing and take no messages. */
   paused?: (userId: string, pool: Pool, project: string) => boolean;
   /** The model and thinking a project's new threads start with, if the user chose them. */
+  draft?: (userId: string, pool: Pool, project: string, change: { goal?: string; instructions?: string }) => void;
   project?: (userId: string, pool: Pool, project: string) => ProjectSettings;
   /** A project's thread posted to the project chat. */
   updated?: (userId: string, pool: Pool, project: string, thread: string) => void;
@@ -430,10 +431,19 @@ export class ChildThreads implements ThreadsHost {
     this.o.host().changed(userId, pool, row.parent, thread);
   }
 
+  draft(from: ThreadContext, change: { goal?: string; instructions?: string }): void {
+    if (!from.view.own.getThread(from.threadId)?.project || !this.o.draft) throw new Error("draft is for a project chat");
+    this.o.draft(from.user.id, from.pool, from.threadId, change);
+    this.o.host().peek(from.user.id, from.pool, from.threadId)?.publish({ type: "settings" });
+  }
+
   /** A branch made in a project: a thread of the project, hanging at `anchor`. */
   adopt(userId: string, pool: Pool, thread: string, project: string, anchor: number | undefined): void {
     this.db(userId, (db) => db.prepare("INSERT OR IGNORE INTO child_threads (pool, thread, parent, started_at, anchor) VALUES (?, ?, ?, ?, ?)")
       .run(pool, thread, project, new Date().toISOString(), anchor ?? null));
+    this.db(userId, (db) => db.prepare("UPDATE child_threads SET parent = ?, anchor = ? WHERE pool = ? AND thread = ?").run(project, anchor ?? null, pool, thread));
+    const queued = this.queue.get(`${userId}/${pool}/${thread}`);
+    if (queued) queued.parent = project;
     this.o.host().changed(userId, pool, project, thread);
   }
 

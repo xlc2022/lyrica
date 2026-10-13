@@ -448,6 +448,7 @@ export class Lyricad implements Drainable {
       users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads,
       paused: stopped,
       project: (u, p, project) => projects.settings(u, p, project),
+      draft: (u, p, project, change) => { projects.set(u, p, project, { draftGoal: change.goal, draftInstructions: change.instructions }); },
       updated: (u, p, project, thread) => watcher.updated(u, p, project, thread),
       wakeups: (): Wakeups => wakeups,
     });

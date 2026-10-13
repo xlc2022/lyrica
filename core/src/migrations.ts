@@ -240,6 +240,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
       db.exec(PRESET_SCHEMA);
       migrateProfilesToPresets(db);
     },
+  }, {
+    // Principle 1: editable project welcome drafts; expand only.
+    version: 9,
+    run(db) { addColumns(db, [["project_settings", "draft_goal", "TEXT"], ["project_settings", "draft_instructions", "TEXT"]]); },
   }],
   pool: [{
     version: 1, contract: true,

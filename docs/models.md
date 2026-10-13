@@ -16,6 +16,19 @@ general thread is outside this.
 An endpoint is a name, a kind (`cloud` or `local`, declared by whoever adds
 it, never inferred), an OpenAI-compatible base URL and an optional API key.
 
+The Hosts and endpoints page distinguishes a plan from a keyed service:
+ChatGPT plan or Grok plan versus API key pills. A cloud row also shows Text,
+Vision and Image when offered; Image requires an adapter that can call a
+marked image model and a key where required. A plan shows its kind and "only
+you", plus an explicit account label from sign-in if supplied, instead of
+its placeholder URL. A keyed endpoint shows its URL and a masked key suffix
+(the last four characters, omitted for keys of four or fewer). No token is
+returned. Capability pills wrap under the name on a phone. Model choices
+name the endpoint after the model, muted, with the endpoint truncating first.
+Add endpoint suggests **ChatGPT** for that plan and **OpenAI** for
+api.openai.com; names remain editable. Endpoint names accept letters, digits
+and `-`, at most 40 characters.
+
 - **Permanent IDs.** Every endpoint has a UUID, and its name is a label that
   can change. Every model it offers is an **offering** with its own UUID, so
   the same model on two endpoints is two offerings. Presets, columns and thread
@@ -637,8 +650,8 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   (`https://api.openai.com/v1`, `https://api.x.ai/v1`). Its sign-in (Pi's
   credential: `access`, `refresh`, `expires`, and for ChatGPT `clientId`
   and `scopes`) is kept as JSON in the endpoint's `api_key` column in their
-  `user.db`, read only through `planCredential`; `Endpoint.apiKey` is never
-  set for a plan, and it has no URL or key to edit. It merges only with a
+  `user.db`, read through `planCredential` for calls and `planAccount` for
+  an explicit account label; `Endpoint.apiKey` is never set for a plan, and it has no URL or key to edit. It merges only with a
   plan of the same kind. No schema change: after a rollback, an older release
   sends the stored JSON (refresh token included) as its bearer key to the
   provider that issued it, whose refusal marks the endpoint down.
@@ -651,7 +664,7 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
     state and exchanges the code.
   - **Grok:** xAI's device code: the person opens xAI's page, enters the
     code shown if asked, and approves; Finish waits for xAI to confirm.
-  A new plan's name is checked (lowercase letters, digits and `-`) before the
+  A new plan's name is checked (letters, digits and `-`) before the
   sign-in starts, so a bad name never costs a sign-in.
   A sign-in under way is held in `lyricad`'s memory for 10 minutes, one per
   user, and belongs to the user who started it. When it ends (finished,

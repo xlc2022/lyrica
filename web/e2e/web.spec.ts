@@ -2669,8 +2669,9 @@ test("Text models: a row per model with starred first; a row opens to its copies
   await expect(local.locator(".lrow-main")).toHaveAttribute("aria-expanded", "true");
   const detail = local.locator(".ldetail");
   await expect(detail.locator("tr[data-offering]")).toHaveCount(1);
-  await expect(detail.locator("code.raw")).toHaveText("local-model");
-  await expect(detail.locator(".copy-name")).toContainText("gpu local");
+  await expect(detail.locator(".model-name")).toHaveText("local-model");
+  await expect(detail.locator(".model-endpoint")).toHaveText(" · gpu");
+  await expect(detail.locator(".copy-name")).toContainText("local");
   await noHorizontalScroll(page);
   expect(await inView()).toEqual({ wide: false, past: [] });
   await shot("detail");
@@ -3192,4 +3193,50 @@ test("image providers run 2: cloud switches and refusal links", async ({ page, b
   await expect(marker.getByRole("button", { name: "Resend", exact: true })).toBeVisible();
   await expect(marker.getByRole("button", { name: "Edit message", exact: true })).toHaveCount(0);
   await expect(marker.getByRole("button", { name: /^Try / })).toHaveCount(0);
+});
+
+test("image providers run 3: endpoint facts, five pills and default names", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const base = `/api/u/${userId}`;
+  const fake = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;
+  const ep = await page.evaluate(async ({ base, fake }) => {
+    const add = await fetch(`${base}/endpoints`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "keyed-images", kind: "cloud", baseUrl: `${fake}/cloud/v1`, apiKey: "fake-secret-1234" }) });
+    if (!add.ok) throw new Error(`add endpoint: ${add.status}`);
+    const ep = await add.json();
+    await fetch(`${base}/endpoints/${ep.id}/models`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ modelId: "art-chat", tools: true, vision: true, image: true, edit: true }) });
+    return ep as { id: string };
+  }, { base, fake });
+  // Only a page fixture for the plan: no sign-in, token refresh, probe or plan call.
+  await page.route(`**${base}/models/page`, async route => {
+    const response = await route.fetch();
+    const data = await response.json();
+    data.endpoints.push({ id: "fake-plan", name: "ChatGPT", kind: "cloud", api: "chatgpt", baseUrl: "https://api.openai.com/v1", hasApiKey: false, shared: false, unencrypted: false, stale: false, state: "up", planAccount: "ada@example.test", cloudCapabilities: ["Text", "Vision", "Image"], models: [] });
+    data.endpoints.push({ id: "fake-grok", name: "Grok", kind: "cloud", api: "grok", baseUrl: "https://api.x.ai/v1", hasApiKey: false, shared: false, unencrypted: false, stale: false, state: "up", cloudCapabilities: ["Text"], models: [] });
+    await route.fulfill({ json: data });
+  });
+  await page.goto(`/#/u/${userId}/models/hosts`);
+  const row = page.locator(`[data-endpoint="${ep.id}"]`);
+  for (const pill of ["cloud", "API key", "Text", "Vision", "Image"]) await expect(row.locator(".pill, .kind").filter({ hasText: new RegExp(`^${pill}$`) })).toBeVisible();
+  await expect(row).toContainText("key ••••1234");
+  await expect(row).not.toContainText("fake-secret");
+  const plan = page.locator('[data-endpoint="fake-plan"]');
+  await expect(plan).toContainText("ChatGPT plan · only you · ada@example.test");
+  await expect(plan).not.toContainText("https://");
+  await expect(plan).not.toContainText("API key");
+  await expect(page.locator('[data-endpoint="fake-grok"] .pill').filter({ hasText: /^Image$/ })).toHaveCount(0);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/image-endpoints-${page.viewportSize()!.width}.png`, fullPage: true });
+  await page.getByRole("button", { name: "Add endpoint", exact: true }).click();
+  const drawer = page.getByRole("complementary", { name: "Add endpoint" });
+  await drawer.getByRole("combobox", { name: "Kind", exact: true }).selectOption("chatgpt");
+  await expect(drawer.getByLabel("Name", { exact: true })).toHaveValue("ChatGPT");
+  await drawer.getByRole("combobox", { name: "Kind", exact: true }).selectOption("custom");
+  await drawer.getByLabel("Base URL", { exact: true }).fill("https://api.openai.com/v1");
+  await expect(drawer.getByLabel("Name", { exact: true })).toHaveValue("OpenAI");
+  await drawer.getByLabel("Name", { exact: true }).fill("my-images");
+  await drawer.getByRole("combobox", { name: "Kind", exact: true }).selectOption("chatgpt");
+  await expect(drawer.getByLabel("Name", { exact: true })).toHaveValue("my-images");
+  await drawer.getByRole("button", { name: "Close", exact: true }).click();
+  await page.unroute(`**${base}/models/page`);
+  await page.evaluate(async path => { await fetch(path, { method: "DELETE" }); }, `${base}/endpoints/${ep.id}`);
 });

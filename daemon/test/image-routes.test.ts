@@ -52,6 +52,34 @@ async function setup() {
 }
 
 describe("image routes (principles 1 and 2)", () => {
+  it("shows safe key and plan facts and only callable cloud image capabilities", async () => {
+    const { rt, d, call } = await setup();
+    try {
+      const models = d.services!.models, actor = d.services!.users.get(rt.ada.id)!;
+      const keyed = models.addEndpoint(actor, { name: "OpenAI", kind: "cloud", baseUrl: "https://images.example/v1", apiKey: "fake-secret-1234" });
+      const art = models.addModel(actor, keyed.id, { modelId: "art", image: true, edit: true });
+      models.addModel(actor, keyed.id, { modelId: "chat", tools: true, vision: true });
+      const plan = models.addPlan(actor, { name: "ChatGPT", plan: "chatgpt", credential: { access: "fake-access", refresh: "fake-refresh", expires: Date.now() + 60_000, email: "ada@example.test" } });
+      models.addModel(actor, plan.id, { modelId: "chat", tools: true, vision: true, image: true });
+      const grok = models.addPlan(actor, { name: "Grok", plan: "grok", credential: { access: "fake-grok-access", refresh: "fake-grok-refresh", expires: Date.now() + 60_000 } });
+      models.addModel(actor, grok.id, { modelId: "art", image: true });
+      const path = `/api/u/${actor.id}/endpoints`;
+      const info = (await call("GET", path)).value as { id: string; keyLast4?: string; planAccount?: string; cloudCapabilities?: string[] }[];
+      expect(info.find(e => e.id === keyed.id)).toMatchObject({ keyLast4: "1234", cloudCapabilities: ["Text", "Vision", "Image"] });
+      expect(info.find(e => e.id === plan.id)).toMatchObject({ planAccount: "ada@example.test", hasApiKey: false, cloudCapabilities: ["Text", "Vision", "Image"] });
+      expect(info.find(e => e.id === plan.id)?.keyLast4).toBeUndefined();
+      expect(info.find(e => e.id === grok.id)?.cloudCapabilities).not.toContain("Image");
+      for (const secret of ["fake-secret-1234", "fake-access", "fake-refresh", "fake-grok-access"]) expect(JSON.stringify(info)).not.toContain(secret);
+      models.editEndpoint(actor, keyed.id, { apiKey: null });
+      expect(((await call("GET", path)).value as typeof info).find(e => e.id === keyed.id)).toMatchObject({ hasApiKey: false, cloudCapabilities: ["Text", "Vision"] });
+      models.editEndpoint(actor, keyed.id, { apiKey: "abc" });
+      expect(((await call("GET", path)).value as typeof info).find(e => e.id === keyed.id)?.keyLast4).toBeUndefined();
+      models.setCapabilities(actor, art.id, { image: false, edit: false });
+      expect(((await call("GET", path)).value as typeof info).find(e => e.id === keyed.id)?.cloudCapabilities).not.toContain("Image");
+      expect((await call("GET", path, rt.sam.id)).status).toBe(401);
+    } finally { await d.stop(); }
+  });
+
   it("retries a stored refusal on the next local model, preserving the source message and current boundaries", async () => {
     const { rt, d, thread, call, dir } = await setup();
     try {

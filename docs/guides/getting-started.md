@@ -586,8 +586,18 @@ keep their recipe defaults for both fast and quality; OpenAI uses low or
 high quality. Results are saved in the encrypted thread folder, with no
 prompt metadata.
 
+Hosts and endpoints distinguishes **ChatGPT plan** and **Grok plan** from
+**API key** services. Cloud rows show **Text**, **Vision** and **Image** when
+available; Image requires a supported adapter and a key when it needs one.
+Plans show their type, "only you" and an account label if sign-in supplies
+one; keyed services show their URL and `key ••••last4`. Add endpoint suggests
+**ChatGPT** for that plan and **OpenAI** for api.openai.com; you can rename
+either. Model choices show the endpoint after the model. Put the plan first
+in the General threads column's image task list and the API key after it to
+use the key as a paid fallback; save the column to a named preset if wanted.
+
 For OpenAI, add an endpoint under Models, Hosts and endpoints: Name
-`openai-images`, Kind cloud, Base URL `https://api.openai.com/v1`, and the
+`openai-images` (or keep the suggested `OpenAI`), Kind Custom, select Cloud, Base URL `https://api.openai.com/v1`, and the
 API key. Any model marked as making images can use this adapter. A ChatGPT
 plan uses its own Responses image tool instead: sign in with ChatGPT, mark
 a plan offering as making and editing images, and put it in the same task
