@@ -125,8 +125,8 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   const act = (fn: () => Promise<unknown>, said?: string) => fn().then(() => { onChange(); if (said) onToast(said); onClose(); }, (e: Error) => setError(e.message));
   const change = (c: { title?: string; hidden?: boolean; group?: string | null; unread?: boolean; project?: true }) => act(() => patch(base, c));
   const inProject = t.state !== undefined;
-  const forget = (withChildren: boolean) => act(async () => {
-    await del(base, { children: withChildren });
+  const forget = (withChildren: boolean, keepMemories: boolean) => act(async () => {
+    await del(base, { children: withChildren, keepMemories });
     // The open thread is gone: leave it.
     if (onGone) onGone();
     else if (route?.page === "thread" && route.threadId === t.id) go({ page: "home", userId });
@@ -149,9 +149,11 @@ export function ThreadMenu({ at, userId, route, groups, onGroups, onChange, onTo
   }
   if (sub === "delete") {
     return (
-      <ConfirmDialog title="Delete this thread?" danger confirm="Delete" onCancel={onClose} onConfirm={forget}
-        sentence={`Its messages are deleted, and so is what ${her()} learned only from it. This can't be undone.`}
-        {...(children > 0 ? { option: `Also delete its ${children === 1 ? "child thread" : `${children} child threads`}` } : {})} />
+      <ConfirmDialog title="Delete this thread?" danger confirm="Delete" onCancel={onClose} onConfirm={([keep, kids]) => forget(!!kids, !!keep)}
+        sentence={([keep]) => keep
+          ? `Its messages are deleted. What ${her()} learned from it stays in memory. This can't be undone.`
+          : `Its messages are deleted, and so is what ${her()} learned only from it. This can't be undone.`}
+        options={[{ label: "Keep memories", ticked: false }, ...(children > 0 ? [{ label: `Also delete its ${children === 1 ? "child thread" : `${children} child threads`}`, ticked: true }] : [])]} />
     );
   }
   // The submenu contents, shared by the in-place replacement and the flyout.
