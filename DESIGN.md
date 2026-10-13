@@ -1392,8 +1392,9 @@ Details in [docs/memory.md](docs/memory.md).
     reads as the page's title, a note citation as a small dated source
     mark, a thread citation as the thread's title, each previewing on hover
     or focus, while the stored text keeps its IDs; **Came from** and **Used
-    in** show the citing sentence; history shows word differences between
-    versions; a note's `about` words are its tags. Editing is in place,
+    in** show the citing sentence; History shows the latest version, with
+    Show all beside its eyebrow opening searchable numbered history pages
+    and word differences between versions; a note's `about` words are its tags. Editing is in place,
     with `[[` offering pages and people. No graph: lineage is layers, so a
     graph would only redraw Came from and Used in (principle 5). No tags on
     pages, no live-preview editor, no draft kept in the browser.

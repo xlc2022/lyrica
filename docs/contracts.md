@@ -219,8 +219,8 @@ nothing else. No code path gives a general view a private handle.
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `userIntroduced` |
 | Search | `search(query, { kinds, limit })`, returning `{ id, kind, snippet, score }`; `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
-| Lineage | `cameFrom`, `usedIn`, `revisions`, `isTombstoned(entryId)`, `editedSince(since)` |
-| Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` |
+| Lineage | `cameFrom`, `usedIn`, `revisions`, `revisionHistory(id, { limit, offset, q })` → `{ entries, total }` (newest first), `isTombstoned(entryId)`, `editedSince(since)` |
+| Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `sleepRunHistory({ limit, offset, q })` → `{ entries, total }`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` |
 | Sleep items | `addItem`, `listItems`, `getItem`, `startItem(id, threadId)`, `dismissItem`, `itemForThread` |
 
 IDs:
@@ -421,6 +421,7 @@ class Models {                                              // new Models(keyrin
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked): { level; note? }
   recordCall(userId, { pool, threadId, task, resolution, note?, audioSeconds? }, { retry? }) / recentCalls(userId, { limit?, threadId?, speech?: false }): CallRecord[]
+  callHistory(userId, { limit, offset, q, pools, threadIds? }): { entries: CallRecord[]; total }
   recordPace(userId, pool, threadId, task, pace) / speedsByOffering(userId): Map<offeringId, { tokPerS?; promptTokPerS? }>   // medians over the last 20 calls
   // Hosts and pairing
   pairHost(actor, { name, addresses, code }, { shared?, endpointId? }): Promise<Endpoint>   // endpointId: pair again, IDs kept
@@ -1229,8 +1230,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     display shows: a hidden pool's ref keeps its id and gets no link, and a
     general memory's detail never carries a private ref's title, snippet or
     sentence (a private citer is listed by id with no sentence), whatever
-    the display. Differences between revisions are computed in the browser
-    from the revisions already returned; nothing new is stored;
+    the display. `MemoryDetail.revisions` contains only the most recent revision.
+    `GET …/memory/:pool/:id/history` → `MemoryHistory { entries, total,
+    detail }` returns versions newest first by revision ID and the current
+    memory with display-safe links, including citations in the returned
+    versions. A hidden pool returns 404. Search matches literal text, title,
+    summary, author and date, case-insensitively. Differences are computed
+    in the browser against the current text; Restore keeps its existing
+    contract;
   - speech: `POST …/threads/:pool/:threadId/transcribe` and `POST
     /api/u/:userId/transcribe?pool=` (an `audio/wav` body, `?language=`) →
     `Transcription { text, seconds, model }`; `GET
@@ -1246,7 +1253,20 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     writes, off by default), `ProfilesChange.readAloudLive`;
     `Capabilities.transcribe` and `speak`, `AnswerSettings.voices` and
     `speed`, `CallInfo.audioSeconds`;
-  - sleep: overview, run detail, items (start a chat, dismiss), `sleep.mode`,
+  - history: `limit` (default 20, 1–100), `offset` (default 0,
+    nonnegative safe integer) and `q` (trimmed, at most 200 characters) on
+    `GET …/sleep/history`, `…/memory/:pool/:id/history` and
+    `…/models/calls/history`. Invalid bounds return 400. Each returns
+    `{ entries, total }`, where total counts matches before paging. Search
+    and paging run on the server; hidden pools are excluded before counting.
+    No search query, memory or message text is logged.
+    Sleep entries are run metadata, ordered by startedAt then ID descending
+    and pool ascending; search matches ID, date, status, skip reason and
+    scheduled/manual reason. Call entries are `CallInfo`, newest first by
+    stored ID; search matches model label, endpoint, task, thread ID, date,
+    fallback and note. Calls accept the existing `project` and `pool`
+    filters. The older `GET …/models/calls` array remains for existing clients.
+  - sleep: overview (newest run per pool only), run detail, items (start a chat, dismiss), `sleep.mode`,
     start a run, and an event stream. `/sleep` typed in a thread is
     `SendRequest.confirm` and `SendResponse.sleep`.
 - **Local socket:** a Unix socket (mode `0600`, owned by the service user)

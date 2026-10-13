@@ -146,7 +146,9 @@ first model only: when that one is away, the pool is skipped as above.
 
 ## Sleep in the UI
 
-The web UI has a **Sleep** section in the sidebar. For each run, per pool, it
+The web UI has a **Sleep** section in the sidebar. Its **History** box
+shows only the newest visible run. **Show all**, at the right of the History
+eyebrow, opens all runs with server-side search and numbered pages. Each run
 shows:
 
 - the status (complete, partial, or skipped and why);

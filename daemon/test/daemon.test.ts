@@ -315,8 +315,10 @@ describe("the memory browser", () => {
     const url = `${m}/general/${enc(item.id)}`;
     await ada.patch(url, { text: `[[u:${rt.ada.id}]] grows tomatoes and basil` });
     const edited = (await ada.get<MemoryDetail>(url)).body;
-    expect(edited.revisions).toHaveLength(2);
-    await ada.post(`${url}/restore`, { revision: edited.revisions[0]!.id });
+    expect(edited.revisions).toHaveLength(1);
+    await ada.patch(`/api/u/${rt.ada.id}/me/display`, { showGeneral: true });
+    const history = (await ada.get<{ entries: { id: number }[] }>(`${url}/history`)).body;
+    await ada.post(`${url}/restore`, { revision: history.entries[1]!.id });
     expect((await ada.get<MemoryDetail>(url)).body.item.text).toBe(`[[u:${rt.ada.id}]] grows tomatoes`);
     expect((await ada.del(url)).status).toBe(200);
     expect((await ada.get(url)).status).toBe(404);

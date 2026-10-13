@@ -2,22 +2,8 @@
 // or its page's link, and the choices a repository's files make. Kept apart so a test can check them without a page.
 import type { Hub } from "./api.ts";
 
-/** A download as the host reports it (host/API.md, "POST /host/v1/downloads"). */
-export interface HostDownload {
-  id: string;
-  source: Hub | "url";
-  repo: string | null;
-  url: string | null;
-  /** Where it goes in the host's models folder: `lyrica/<source>/<repo>/<file>`, or `lyrica/url/<hostname>/<file>`. */
-  path: string;
-  size: number | null;
-  received: number;
-  state: "queued" | "downloading" | "verifying" | "done" | "failed" | "cancelled";
-  /** true: the checksum matched; false: none was given; null until done. */
-  verified: boolean | null;
-  error: string | null;
-  startedAt: string;
-}
+import type { HostDownload } from "./api.ts";
+export type { HostDownload } from "./api.ts";
 
 /** A repository's files as a host sees them (host/API.md, "GET /host/v1/hub/files"). */
 export interface HubFiles {

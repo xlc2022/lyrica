@@ -8,11 +8,11 @@ import { useDictation, stopReading } from "./Voice.tsx";
 import { her } from "./name.ts";
 import { Brand } from "./Brand.tsx";
 import { Thread, findThread } from "./Thread.tsx";
-import { Memory, memoryTitle } from "./Memory.tsx";
+import { MemoryHistoryPage, Memory, memoryTitle } from "./Memory.tsx";
 import { AdminPage, SettingsPage } from "./Panel.tsx";
 import { FilesPage } from "./Files.tsx";
 import { NotificationsCard, useWaiting } from "./Notifications.tsx";
-import { SleepCard, SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
+import { SleepCard, SleepHistoryPage, SleepPage, useSleepOverview, type SleepState } from "./Sleep.tsx";
 import { BackendCard, ModelsArea, useCleanupCount } from "./Models.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
 import { Flyout, useCanHover, useFlyout } from "./flyout.tsx";
@@ -103,6 +103,10 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
       <ProjectPage key={`${r.pool}/${r.threadId}`} ctx={ctx} pool={r.pool} threadId={r.threadId} section={r.section} />
     ) : r.page === "memory" ? (
       <Memory ctx={ctx} pool={r.pool} id={r.id} />
+    ) : r.page === "history" && r.kind === "sleep" ? (
+      <SleepHistoryPage ctx={ctx} />
+    ) : r.page === "history" && r.pool && r.id ? (
+      <MemoryHistoryPage key={`${r.pool}/${r.id}`} ctx={ctx} pool={r.pool} id={r.id} />
     ) : r.page === "sleep" ? (
       <SleepPage ctx={ctx} />
     ) : r.page === "models" ? (

@@ -1555,6 +1555,7 @@ export interface MemoryDetail {
   usedIn: MemoryUse[];
   /** By the ID as it appears in the text, `cameFrom` or `usedIn`. */
   links: Record<string, MemoryLink>;
+  /** Most recent version only; older versions come from /history. */
   revisions: MemoryRevision[];
   users: UserMap;
 }
@@ -1806,7 +1807,7 @@ export interface SleepItemInfo {
   createdAt: string;
 }
 
-/** GET /api/u/:userId/sleep → SleepOverview: the mode, the sleep time, open items and recent runs of both pools, newest first. */
+/** GET /api/u/:userId/sleep → SleepOverview: the mode, the sleep time, open items and the newest run of each pool, newest first. */
 export interface SleepOverview { mode: SleepMode; time: string; items: SleepItemInfo[]; runs: SleepRunInfo[] }
 /** PUT /api/u/:userId/sleep/mode → SleepOverview */
 export interface SleepModeChange { mode: SleepMode }
@@ -1917,3 +1918,29 @@ export interface PhotoCloudSetting { policy: "never" | "ask" | "always" }
 
 /** Routine metadata only; notes stay in the thread. */
 export interface RoutineInfo { id: number; pool: Pool; threadId: string; threadTitle: string; schedule: string; nextAt: string; paused: boolean }
+
+/** GET history endpoints: newest first, filtered total before limit/offset. */
+export interface HistoryPage<T> { entries: T[]; total: number }
+/** GET …/memory/:pool/:id/history; detail has the current item and display-safe links. */
+export interface MemoryHistory extends HistoryPage<MemoryRevision> { detail: MemoryDetail }
+
+/** A download as the host reports it (host/API.md, "POST /host/v1/downloads"). */
+export interface HostDownload {
+  id: string;
+  source: Hub | "url";
+  repo: string | null;
+  url: string | null;
+  /** Where it goes in the host's models folder: `lyrica/<source>/<repo>/<file>`, or `lyrica/url/<hostname>/<file>`. */
+  path: string;
+  size: number | null;
+  received: number;
+  state: "queued" | "downloading" | "verifying" | "done" | "failed" | "cancelled";
+  /** true: the checksum matched; false: none was given; null until done. */
+  verified: boolean | null;
+  error: string | null;
+  startedAt: string;
+}
+
+
+/** Finished downloads, newest first across manageable hosts. */
+export interface DownloadHistory extends HistoryPage<{ endpointId: string; download: HostDownload }> {}

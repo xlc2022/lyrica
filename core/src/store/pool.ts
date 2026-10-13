@@ -563,6 +563,14 @@ export class PoolReader {
     return (this.db.prepare("SELECT * FROM sleep_runs ORDER BY started_at DESC, rowid DESC LIMIT ?").all(limit) as SleepRunRow[]).map(toRun);
   }
 
+  /** Metadata search and paging, without loading a run's memory text. */
+  sleepRunHistory({ limit, offset, q }: { limit: number; offset: number; q: string }) {
+    const where = "instr(lower(id || ' ' || started_at || ' ' || status || ' ' || coalesce(skip_reason, '') || ' ' || reason), lower(@q)) > 0";
+    const total = (this.db.prepare(`SELECT count(*) AS n FROM sleep_runs WHERE ${where}`).get({ q }) as { n: number }).n;
+    const rows = this.db.prepare(`SELECT * FROM sleep_runs WHERE ${where} ORDER BY started_at DESC, id DESC LIMIT @limit OFFSET @offset`).all({ q, limit, offset }) as SleepRunRow[];
+    return { total, entries: rows.map(toRun) };
+  }
+
   getSleepRun(id: string): SleepRunRecord | undefined {
     const row = this.db.prepare("SELECT * FROM sleep_runs WHERE id = ?").get(id) as SleepRunRow | undefined;
     return row && toRun(row);
@@ -730,6 +738,14 @@ export class PoolReader {
   revisions(id: string): MemoryRevision[] {
     return (this.db.prepare("SELECT * FROM revisions WHERE item = ? ORDER BY id").all(id) as RevisionRow[])
       .map((r) => ({ id: r.id, item: r.item, body: json(r.body), author: r.author, createdAt: r.created_at }));
+  }
+
+  /** Versions newest first; search literal text, title, summary, author and date. */
+  revisionHistory(id: string, { limit, offset, q }: { limit: number; offset: number; q: string }) {
+    const where = "item = @id AND instr(lower(coalesce(json_extract(body, '$.text'), '') || ' ' || coalesce(json_extract(body, '$.title'), '') || ' ' || coalesce(json_extract(body, '$.summary'), '') || ' ' || author || ' ' || created_at), lower(@q)) > 0";
+    const total = (this.db.prepare(`SELECT count(*) AS n FROM revisions WHERE ${where}`).get({ id, q }) as { n: number }).n;
+    const rows = this.db.prepare(`SELECT * FROM revisions WHERE ${where} ORDER BY id DESC LIMIT @limit OFFSET @offset`).all({ id, q, limit, offset }) as RevisionRow[];
+    return { total, entries: rows.map((r): MemoryRevision => ({ id: r.id, item: r.item, body: json(r.body), author: r.author, createdAt: r.created_at })) };
   }
 
   /** Whether a deleted memory came from this entry (or its whole thread), so sleep mustn't extract it again. */

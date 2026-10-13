@@ -9,6 +9,7 @@ import {
   type CallInfo, type CleanupItem, type EndpointChange, type EndpointInfo, type GroupInfo, type HostStatus, type ModelsNotice, type ModelsPage,
   type ModelRef, type OfferingInfo, type PlanSignInStarted, type ProfileEntry, type ProfileEntryChange, type Profiles, type Task,
 } from "./api.ts";
+import { HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
 import { Downloads, DownloadText } from "./Downloads.tsx";
 import { DownloadImage, ImageModels, ImageReview } from "./ImageModels.tsx";
@@ -113,7 +114,7 @@ export function ModelsArea({ ctx: shell, tab = "overview", add }: { ctx: ShellCo
   if (tab === "images") return <ImageModels ctx={ctx} />;
   if (tab === "hosts") return <Hosts ctx={ctx} />;
   if (tab === "downloads" && add === "text") return <DownloadText ctx={ctx} />;
-  if (tab === "downloads") return <Downloads ctx={ctx} />;
+  if (tab === "downloads") return <Downloads ctx={ctx} history={add === "history"} />;
   if (tab === "cleanup") return <Cleanup ctx={ctx} />;
   if (tab === "calls") return <Calls ctx={ctx} />;
   return <Overview ctx={ctx} />;
@@ -149,8 +150,8 @@ function Overview({ ctx }: { ctx: MCtx }) {
           ) : <p className="empty">No endpoints yet.</p>}
         </section>
         <section className="section" aria-labelledby="h-models-calls">
-          <div className="section-head"><h2 id="h-models-calls">Recent calls</h2><a href={href({ page: "models", userId, tab: "calls" })}>All calls</a></div>
-          <CallsTable ctx={ctx} calls={p.calls} limit={5} />
+          <div className="section-head"><h2 id="h-models-calls" className="eyebrow">History</h2><a href={href({ page: "models", userId, tab: "calls" })}>Show all</a></div>
+          <CallsTable ctx={ctx} calls={p.calls} limit={1} />
         </section>
       </>}
     </Frame>
@@ -1198,12 +1199,9 @@ function Cleanup({ ctx }: { ctx: MCtx }) {
 /* ---- Recent calls ---- */
 
 function Calls({ ctx }: { ctx: MCtx }) {
-  const calls = useLoad(() => get<CallInfo[]>(u(ctx.user.id, "models", "calls")), [ctx.user.id]);
-  const shown = (calls.data ?? []).filter((c) => !hidden(ctx.me.display, c.pool));
   return (
-    <Frame ctx={ctx} tab="calls" title="Recent calls" facts={calls.data && plural(shown.length, "call", "calls")}>
-      <ErrorText error={calls.error} />
-      {calls.data && <CallsTable ctx={ctx} calls={calls.data} />}
+    <Frame ctx={ctx} tab="calls" title="Call history">
+      <HistoryList<CallInfo> key={`${ctx.user.id}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} path={u(ctx.user.id, "models", "calls", "history")} render={(page) => <CallsTable ctx={ctx} calls={page.entries} />} />
     </Frame>
   );
 }

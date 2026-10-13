@@ -8,8 +8,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { Components } from "react-markdown";
 import {
   del, get, patch, post, u,
-  type Display, type MemoryDetail, type MemoryHit, type MemoryKind, type MemoryLink, type MemoryOverview, type MemoryRevision, type MemoryTag, type MemoryUse, type Pool, type UserMap,
+  type Display, type MemoryDetail, type MemoryHistory, type MemoryHit, type MemoryKind, type MemoryLink, type MemoryOverview, type MemoryRevision, type MemoryTag, type MemoryUse, type Pool, type UserMap,
 } from "./api.ts";
+import { HistoryHead, HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { CITATION_GROUP, dateWord, firstWords, KIND_WORD, linkCitations, longDate, parseRef, plainCitations, plainWords, poolWord, wordDiff, wordFor, type Word } from "./memory.ts";
@@ -376,11 +377,26 @@ function Sentence({ text, pool, links, users, display, userId, mark }: { text: s
   return <span className="q">{parts.map((p, i) => (i % 2 ? (p.trim() ? <mark key={i}>{p.trim()}</mark> : null) : p))}</span>;
 }
 
-/** History: a row per version, the current one open, each older one showing its word differences against the current text, with Restore. */
-function History({ detail, userId, display, busy, onRestore }: { detail: MemoryDetail; userId: string; display: Display; busy: boolean; onRestore: (revision: number) => void }) {
+export function MemoryHistoryPage({ ctx, pool, id }: { ctx: ShellContext; pool: Pool; id: string }) {
+  const userId = ctx.user.id;
+  const path = u(userId, "memory", pool, id);
+  const [run, busy, error] = useAction();
+  return <main className="main">
+    <PageHead ctx={ctx} title="Memory history"><a href={href({ page: "memory", userId, pool, id })}>Memory</a></PageHead>
+    <div className="scroll"><div className="sleep">
+      <ErrorText error={error} />
+      {hidden(ctx.me.display, pool) ? <p className="empty">{poolWord(pool)} is hidden.</p> :
+        <HistoryList<MemoryRevision, MemoryHistory> path={`${path}/history`} render={(page, reload) => <History detail={page.detail} entries={page.entries} userId={userId} display={ctx.me.display} busy={busy}
+          onRestore={(revision) => void run(async () => { await post(`${path}/restore`, { revision }); reload(); })} />} />}
+    </div></div>
+  </main>;
+}
+
+/** One latest version in the preview; paged versions keep their differences and Restore. */
+function History({ detail, entries, userId, display, busy, onRestore }: { detail: MemoryDetail; entries?: MemoryRevision[]; userId: string; display: Display; busy: boolean; onRestore: (revision: number) => void }) {
   const { item, revisions, users, links } = detail;
   if (!revisions.length) return null;
-  const newestFirst = [...revisions].reverse();
+  const newestFirst = entries ?? revisions.slice(0, 1);
   const plain = (text: string) => plainWords(readable(text, users), item.pool, links, display, userId);
   const current = plain(item.text);
   const by = (r: MemoryRevision) => {
@@ -389,17 +405,17 @@ function History({ detail, userId, display, busy, onRestore }: { detail: MemoryD
   };
   return (
     <section className="history">
-      <h3>History</h3>
+      {!entries && <HistoryHead to={{ page: "history", userId, kind: "memory", pool: item.pool, id: item.id }} />}
       <div className="hist">
         {newestFirst.map((r, i) => {
-          const previous = newestFirst[i + 1];
-          const diff = i === 0 ? (previous ? wordDiff(plain(previous.body.text), current) : undefined) : wordDiff(current, plain(r.body.text));
+          const isCurrent = r.id === revisions[0]?.id;
+          const diff = isCurrent ? undefined : wordDiff(current, plain(r.body.text));
           return (
             <details key={r.id} open={i === 0}>
-              <summary><span className="when num">{shortTime(r.createdAt)}</span><span className="by">{by(r)}</span><span className="n num">{i === 0 ? "current" : `${newestFirst.length - i} of ${newestFirst.length}`}</span></summary>
+              <summary><span className="when num">{shortTime(r.createdAt)}</span><span className="by">{by(r)}</span><span className="n num">{isCurrent ? "current" : r.id}</span></summary>
               {diff ? <div className="wdiff">{diff.map((op, k) => (op.kind === "same" ? <span key={k}>{op.text}</span> : op.kind === "del" ? <del key={k}>{op.text}</del> : <ins key={k}>{op.text}</ins>))}</div>
                 : <div className="wdiff">{current}</div>}
-              {i > 0 && <div className="row actions"><button type="button" className="sm" disabled={busy} onClick={() => onRestore(r.id)}>Restore</button></div>}
+              {!isCurrent && <div className="row actions"><button type="button" className="sm" disabled={busy} onClick={() => onRestore(r.id)}>Restore</button></div>}
             </details>
           );
         })}

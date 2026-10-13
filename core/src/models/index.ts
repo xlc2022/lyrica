@@ -2030,6 +2030,18 @@ export class Models {
     return rows.map(toCall);
   }
 
+  /** Paged call metadata, restricted to the displayed pools before counting. */
+  callHistory(userId: string, opts: { limit: number; offset: number; q: string; pools: Pool[]; threadIds?: string[] }) {
+    const where = "pool IN (SELECT value FROM json_each(@pools)) AND instr(lower(label || ' ' || endpoint || ' ' || task || ' ' || thread || ' ' || at || ' ' || coalesce(fallback, '') || ' ' || coalesce(note, '')), lower(@q)) > 0" +
+      (opts.threadIds ? " AND thread IN (SELECT value FROM json_each(@threads))" : "");
+    const params = { pools: JSON.stringify(opts.pools), q: opts.q, ...(opts.threadIds ? { threads: JSON.stringify(opts.threadIds) } : {}) };
+    return this.withUser(userId, (db) => {
+      const total = (db.prepare(`SELECT count(*) AS n FROM model_calls WHERE ${where}`).get(params) as { n: number }).n;
+      const rows = db.prepare(`SELECT * FROM model_calls WHERE ${where} ORDER BY id DESC LIMIT @limit OFFSET @offset`).all({ ...params, limit: opts.limit, offset: opts.offset }) as CallRow[];
+      return { total, entries: rows.map(toCall) };
+    });
+  }
+
   /** Every token the threads' recorded calls read and wrote: a project's usage. */
   tokensFor(userId: string, threadIds: string[]): number {
     const row = this.withUser(userId, (db) => db.prepare("SELECT coalesce(sum(coalesce(prompt_tokens, 0) + coalesce(output_tokens, 0)), 0) AS n FROM model_calls WHERE thread IN (SELECT value FROM json_each(?))")

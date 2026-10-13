@@ -1,5 +1,5 @@
 // Sleep (docs/sleep.md "Sleep in the UI"): her items from the night at the top, each with Start a chat
-// and Dismiss; then each run per pool, Last night and Earlier, opening to its notes, pages with their word
+// and Dismiss; then the newest run, with Show all beside History, opening to its notes, pages with their word
 // differences, questions, dream and WAKE, each linking into the memory browser; Sleep now at the foot.
 // Also the per-user mode (Settings → Sleep) and the administrator's sleep time.
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -7,6 +7,7 @@ import {
   del, get, HttpError, post, put, u,
   type Display, type Pool, type SleepEvent, type SleepItemInfo, type SleepMode, type SleepOverview, type SleepRunDetail, type SleepRunInfo, type SleepStarted, type SleepTime, type ThreadSummary, type UserMap,
 } from "./api.ts";
+import { HistoryHead, HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
 import { longDate, plainCitations, poolWord, wordDiff } from "./memory.ts";
 import { readable } from "./mentions.ts";
@@ -139,15 +140,7 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
     return () => es.close();
   }, [userId, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The newest run of each pool is Last night; the rest are Earlier, by day.
-  const { last, earlier } = useMemo(() => {
-    const runs = o?.runs ?? [];
-    const last = (["general", "private"] as const).map((p) => runs.find((r) => r.pool === p)).filter((r): r is SleepRunInfo => !!r);
-    const rest = runs.filter((r) => !last.includes(r));
-    const days = new Map<string, SleepRunInfo[]>();
-    for (const r of rest) { const k = new Date(r.startedAt).toDateString(); days.set(k, [...(days.get(k) ?? []), r]); }
-    return { last, earlier: [...days.values()] };
-  }, [o]);
+  const last = (o?.runs ?? []).slice(0, 1);
 
   // Last night's runs are read at once, for their lines; an earlier one when it opens. Reread when a run ends.
   const load = useCallback((r: SleepRunInfo) => get<SleepRunDetail>(u(userId, "sleep", r.pool, "runs", r.id)).then((d) => setDetails((m) => ({ ...m, [`${r.pool}/${r.id}`]: d }))), [userId]);
@@ -198,29 +191,31 @@ export function SleepPage({ ctx }: { ctx: ShellContext }) {
               <p key={p} className="muted small">{poolWord(p)} is hidden. Turn on {poolWord(p)} in the Sort menu to see it.</p>
             ))}
           </section>
-          {last.length > 0 && (
-            <section aria-labelledby="h-last-night" className="sleep-block">
-              <h2 id="h-last-night" className="eyebrow">Last night</h2>
-              <div className="list sleep-runs">{last.map(row)}</div>
-            </section>
-          )}
-          {earlier.length > 0 && (
-            <section aria-labelledby="h-earlier" className="sleep-block">
-              <h2 id="h-earlier" className="eyebrow">Earlier</h2>
-              {earlier.map((day) => (
-                <div key={day[0]!.startedAt} className="sleep-day">
-                  <div className="eyebrow">{longDate(day[0]!.startedAt)}</div>
-                  <div className="list sleep-runs">{day.map(row)}</div>
-                </div>
-              ))}
-            </section>
-          )}
+          <section aria-label="History" className="sleep-block">
+            <HistoryHead to={{ page: "history", userId, kind: "sleep" }} />
+            <div className="list sleep-runs">{last.map(row)}</div>
+          </section>
           {o && !o.runs.length && <p className="empty">No sleep yet.</p>}
           <SleepFoot ctx={ctx} />
         </div>
       </div>
     </main>
   );
+}
+
+export function SleepHistoryPage({ ctx }: { ctx: ShellContext }) {
+  const userId = ctx.user.id;
+  const [details, setDetails] = useState<Record<string, SleepRunDetail>>({});
+  const load = (r: SleepRunInfo) => get<SleepRunDetail>(u(userId, "sleep", r.pool, "runs", r.id)).then((d) => setDetails((all) => ({ ...all, [`${r.pool}/${r.id}`]: d })));
+  return <main className="main">
+    <PageHead ctx={ctx} title="Sleep history"><a href={href({ page: "sleep", userId })}>Sleep</a></PageHead>
+    <div className="scroll"><div className="sleep">
+      <HistoryList<SleepRunInfo> key={`${userId}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} path={u(userId, "sleep", "history")} render={(page) => <div className="list sleep-runs">{page.entries.map((r) => <div key={`${r.pool}/${r.id}`}>
+        <div className="eyebrow num">{longDate(r.startedAt)}</div>
+        <RunRow run={r} detail={details[`${r.pool}/${r.id}`]} userId={userId} users={{ [userId]: { displayName: ctx.user.displayName, pronouns: ctx.user.pronouns } }} load={load} />
+      </div>)}</div>} />
+    </div></div>
+  </main>;
 }
 
 /** One run: the pool, the time, its line; it opens to what it wrote. */

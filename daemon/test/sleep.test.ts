@@ -112,7 +112,9 @@ describe("sleep in lyricad", () => {
     await s.ada.put(`${s.u}/profiles/custom/sleep.wake`, { model: { offeringId: m.id } });
     const down = await s.ada.post(`${s.u}/sleep/general`, {});
     expect(down).toMatchObject({ status: 409, body: { error: "Sleep can't run now: no model for Sleep: wake can be reached now (dead/m: dead is down)." } });
-    expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => r.skipReason)).toEqual(["endpoint-down", "no-activity"]);
+    expect((await s.ada.get<SleepOverview>(`${s.u}/sleep`)).body.runs.map((r) => r.skipReason)).toEqual(["endpoint-down"]);
+    const history = (await s.ada.get<{ entries: { skipReason: string }[] }>(`${s.u}/sleep/history`)).body;
+    expect(history.entries.map((r) => r.skipReason)).toEqual(["endpoint-down", "no-activity"]);
   });
 
   it("starts a chat from an item, where she speaks first, and dismisses others", async () => {

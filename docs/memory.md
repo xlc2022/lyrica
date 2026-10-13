@@ -415,9 +415,10 @@ Files panel.
   in place, with a breadcrumb trail, and previews its first lines on hover or
   focus. The stored text keeps the IDs. **Came from** and **Used in** show a
   card per memory with its title or first words, its date and the sentence
-  that cites it. **History** lists the versions, the current one open; an
-  older one shows its word differences against the current text, computed in
-  the browser from the revisions already returned, with **Restore**.
+  that cites it. **History** shows only the most recent version, open. **Show all** beside
+  the eyebrow opens a history page with server-side search and numbered
+  pages. An older version shows its word differences against the current
+  text, computed in the browser, with **Restore**.
 - **Editing** happens in place: an Edit | Preview segment, the textarea,
   Save and Cancel. Typing `[[` offers pages and people; a page is shown as
   `[[Title]]` in the editor and saved as `[p:<slug>]`, a person as their name

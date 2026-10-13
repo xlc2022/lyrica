@@ -2177,7 +2177,7 @@ test("Share with sends a copy; the recipient sees it in Notifications and adds i
   await noHorizontalScroll(page);
 });
 
-test("Sleep: the sidebar link opens it empty, the mode is set in Settings, Sleep now asks and then runs, and the administrator sets the time", async ({ page, baseURL }) => {
+test("Sleep: the sidebar link opens it empty, the mode is set in Settings, Sleep now asks and then runs, and the administrator sets the time", async ({ page, baseURL, request }, testInfo) => {
   const userId = await enter(page, baseURL!);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   await page.locator('a[data-nav="sleep"]').click();
@@ -2216,7 +2216,7 @@ test("Sleep: the sidebar link opens it empty, the mode is set in Settings, Sleep
   // The fake model only echoes and never calls her sleep tools, so the phases end unwritten: the run is partial.
   await expect(row).toHaveAttribute("data-status", "partial");
   await expect(row).toContainText("Stopped early");
-  await expect(page.getByRole("heading", { name: "Last night" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "History", exact: true })).toBeVisible();
   await expect(page.getByText("No sleep yet.")).toHaveCount(0);
   await row.locator("summary.sleep-sum").click();
   await expect(row.locator(".sleep-detail")).toBeVisible();
@@ -2225,6 +2225,53 @@ test("Sleep: the sidebar link opens it empty, the mode is set in Settings, Sleep
   await noHorizontalScroll(page);
   // Items need her to call tools, which the fake model doesn't: Start a chat and Dismiss are covered by daemon tests.
   await expect(page.locator("ul.sleep-items")).toHaveCount(0);
+
+  // More nights: one preview, a heading link, then server-side paging and search.
+  const fixture = await request.post(`http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}/history-fixture`, { data: { userId } });
+  expect(fixture.ok()).toBe(true);
+  await page.reload();
+  await expect(page.locator(".sleep-run")).toHaveCount(1);
+  const historyHead = page.locator(".section-head", { has: page.getByRole("heading", { name: "History", exact: true }) });
+  const all = historyHead.getByRole("link", { name: "Show all" });
+  const headingBox = await historyHead.getByRole("heading").boundingBox();
+  const linkBox = await all.boundingBox();
+  expect(Math.abs(headingBox!.y - linkBox!.y)).toBeLessThan(12);
+  expect(linkBox!.x).toBeGreaterThan(headingBox!.x + headingBox!.width);
+  const headBox = await historyHead.boundingBox();
+  expect(headBox!.x + headBox!.width - (linkBox!.x + linkBox!.width)).toBeLessThan(2);
+  await page.screenshot({ path: testInfo.outputPath("sleep-preview.png") });
+  await all.click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/history/sleep$`));
+  await expect(page.getByRole("heading", { level: 1, name: "Sleep history" })).toBeVisible();
+  await expect(page.locator(".sleep-run")).toHaveCount(20);
+  await page.screenshot({ path: testInfo.outputPath("sleep-history.png") });
+  const firstIds = await page.locator(".sleep-run").evaluateAll((rows) => rows.map((r) => r.getAttribute("data-run")));
+  await page.getByRole("button", { name: "Page 2", exact: true }).click();
+  await expect(page.locator(".sleep-run")).toHaveCount(5);
+  const secondIds = await page.locator(".sleep-run").evaluateAll((rows) => rows.map((r) => r.getAttribute("data-run")));
+  expect(secondIds.some((id) => firstIds.includes(id))).toBe(false);
+  await page.getByLabel("Search", { exact: true }).fill("endpoint-down");
+  await expect(page.locator(".sleep-run")).toHaveCount(1);
+  await expect(page.locator(".sleep-run")).toContainText("Skipped: the endpoint was down");
+  await expect(page.locator("main").getByRole("navigation", { name: "Pages", exact: true })).toContainText("Page 1 of 1");
+  await noHorizontalScroll(page);
+  await page.getByLabel("Search", { exact: true }).fill("absent-night");
+  await expect(page.getByText("Nothing matches.")).toBeVisible();
+
+  // WAKE's sleep versions use the same preview and page, retaining Restore.
+  await page.goto(`/#/u/${userId}/memory/general/wake`);
+  await expect(page.locator(".hist details")).toHaveCount(1);
+  await expect(page.locator(".hist")).toContainText("Fixture dream 24");
+  await page.locator(".history").getByRole("link", { name: "Show all" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Memory history" })).toBeVisible();
+  await expect(page.locator(".hist details")).toHaveCount(20);
+  await page.getByRole("button", { name: "Page 2", exact: true }).click();
+  await expect(page.locator(".hist details")).toHaveCount(4);
+  await page.getByLabel("Search", { exact: true }).fill("Fixture dream 1");
+  await expect(page.locator(".hist details")).toHaveCount(11);
+  await expect(page.locator(".hist details").first().getByRole("button", { name: "Restore" })).toBeVisible();
+  await noHorizontalScroll(page);
+  await page.goto(`/#/u/${userId}/sleep`);
 
   // Private hidden in the Sort menu: its line shows and Sleep now no longer offers it. Then back on.
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
@@ -2301,15 +2348,15 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   await expect(page.locator('[data-tile="cleanup"]')).toHaveAttribute("title", "Nothing to clean up");
   const summary = page.getByRole("region", { name: "Hosts and endpoints" });
   for (const name of ["gpu", "router", "speech", "openai"]) await expect(summary.locator("li.hostrow").filter({ hasText: new RegExp(`^${name}`) })).toBeVisible();
-  const recent = page.getByRole("region", { name: "Recent calls" });
-  await expect(recent.locator("tr[data-task=chat]").first()).toContainText(answered);
+  const recent = page.getByRole("region", { name: "History", exact: true });
+  await expect(recent.locator("tbody tr")).toHaveCount(1);
   await noHorizontalScroll(page);
   await shot("overview");
 
   // Recent calls: the chat call, its thread a link.
-  await recent.getByRole("link", { name: "All calls" }).click();
+  await recent.getByRole("link", { name: "Show all" }).click();
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/calls$`));
-  await expect(page.getByRole("heading", { level: 1, name: "Recent calls" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Call history" })).toBeVisible();
   const row = page.locator("tr[data-task=chat]").first();
   await expect(row).toContainText(answered);
   await expect(row.getByRole("link")).toBeVisible();
@@ -2595,16 +2642,27 @@ async function fakeHost(page: Page, downloads: Record<string, unknown>[], models
     } });
     await route.fulfill(json(real));
   });
-  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/downloads(\/[^/]+)?$/, async (route) => {
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/downloads(\/[^/?]+)?(\?[^/]*)?$/, async (route) => {
     const method = route.request().method();
     const id = /downloads\/([^/]+)$/.exec(route.request().url())?.[1];
-    if (method === "GET") return route.fulfill(json({ downloads }));
+    if (method === "GET") {
+      const finished = downloads.filter((d) => !["queued", "downloading", "verifying"].includes(String(d.state)));
+      return route.fulfill(json({ downloads: new URL(route.request().url()).searchParams.has("preview") ? [...downloads.filter((d) => !finished.includes(d)), ...finished.sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt))).slice(0, 1)] : downloads, finishedTotal: finished.length }));
+    }
     if (method === "POST") { started.push(route.request().postDataJSON()); return route.fulfill(json({ downloads: [] })); }
     // DELETE cancels a running one, or clears a finished one from the list.
     const at = downloads.findIndex((d) => d.id === id);
     if (downloads[at]!.state === "downloading") downloads[at] = { ...downloads[at], state: "cancelled" };
     else downloads.splice(at, 1);
     return route.fulfill(json({}));
+  });
+  await page.route(/\/api\/u\/[^/]+\/models\/downloads\/history\?/, (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    const q = (query.get("q") ?? "").toLowerCase();
+    const entries = downloads.filter((d) => !["queued", "downloading", "verifying"].includes(String(d.state)))
+      .filter((d) => Object.values(d).join(" ").toLowerCase().includes(q)).map((download) => ({ endpointId: "ep-box", download }));
+    const offset = Number(query.get("offset") ?? 0), limit = Number(query.get("limit") ?? 20);
+    return route.fulfill(json({ total: entries.length, entries: entries.slice(offset, offset + limit) }));
   });
   await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/hub\/files\?/, (route) => route.fulfill(json({
     source: "huggingface", repo: new URL(route.request().url()).searchParams.get("repo"), revision: "abc", gated: false, card: null, free: 96 * GB,
@@ -2654,6 +2712,14 @@ test("Downloads: the queue shows progress with Cancel and how each ended, Accoun
   await running.getByRole("button", { name: "Cancel m-Q4_K_M.gguf" }).click();
   await expect(running).toContainText("Cancelled Nothing was kept.");
   await expect(page.locator(".head .cap")).toHaveText("Nothing running · 2 finished");
+  await expect(page.locator("li.dl")).toHaveCount(1);
+  await page.getByRole("link", { name: "Show all", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Download history" })).toBeVisible();
+  await expect(page.locator("li.dl")).toHaveCount(2);
+  await page.getByLabel("Search", { exact: true }).fill("vae.safetensors");
+  await expect(page.locator("li.dl")).toHaveCount(1);
+  await expect(page.locator("li.dl")).toContainText("vae.safetensors");
+  await page.locator(".head").getByRole("link", { name: "Downloads", exact: true }).click();
   await page.getByRole("button", { name: "Clear finished" }).click();
   await expect(page.getByText("No downloads yet. Start one from a library's Download model button, or here.")).toBeVisible();
 

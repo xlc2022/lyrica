@@ -43,6 +43,18 @@ function fakeModel() {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", async () => {
+      // Test-only history fixture, in encrypted stores; never a production route.
+      if (req.method === "POST" && req.url === "/history-fixture") {
+        const { userId } = JSON.parse(body) as { userId: string };
+        const view = daemon.services!.memory.openThreadView(userId, "general");
+        try {
+          for (let i = 1; i <= 24; i++) {
+            view.own.recordSleepRun("scheduled", i === 1 ? "endpoint-down" : "no-activity", `2026-09-${String(i).padStart(2, "0")}T04:00:00.000Z`);
+            view.own.putWake(`Fixture dream ${i}`, "sleep");
+          }
+        } finally { view.close(); }
+        res.writeHead(204); return res.end();
+      }
       if (req.url === "/speech/down" || req.url === "/speech/up") { speechDown = req.url === "/speech/down"; res.writeHead(204); return res.end(); }
       if (req.url?.startsWith("/speech/v1/")) {
         const rest = req.url.slice("/speech/v1".length);

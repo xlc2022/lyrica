@@ -284,7 +284,9 @@ Tools are asked of a model only when the thread has tools.
 **Recent calls** (`recentCalls`, `model_calls` in `user.db`) hold the time,
 thread, task, the answering model's ID with its label, endpoint and kind,
 the fallback taken and why, and a note such as a model that couldn't think.
-Never prompt text. The latest 500 per user are kept.
+Never prompt text. The latest 500 per user are kept. Models Overview shows
+only the latest visible call under History; Show all beside its eyebrow
+opens Call history with server-side search and numbered pages.
 
 Once a turn ends, `recordPace` adds its counts and times to the record
 (`pace`): the last request's prompt tokens (the context used), output tokens,

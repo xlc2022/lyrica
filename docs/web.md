@@ -217,7 +217,9 @@ A thread's address may carry what the panel beside it shows:
   its citations as titles with a hover preview (`linkCitations` turns each
   citation into a link whose word comes from `MemoryDetail.links`; the raw ID
   is never shown), Came from and Used in with the citing sentence, History as
-  word differences (`wordDiff`, computed in the browser) with Restore, and
+  the most recent version open, with **Show all** at the right of its eyebrow.
+  `…/history/memory/<pool>/<id>` lists versions newest first, with
+  word differences (`wordDiff`, computed in the browser) and Restore, and
   Edit in place with a `[[` popover of pages and people (a page shows as
   `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Forget… on a
   selection, and Add a memory. `…/memory/<pool>/<id>` is a memory on the
@@ -235,9 +237,10 @@ A thread's address may carry what the panel beside it shows:
   `GET …/sleep/events` reloads it as a run starts, changes phase or ends,
   and a `thread` event opens the thread a manual run leaves). Items first,
   newest first, with **Start a chat** (`POST …/items/<id>/chat`, then the
-  new thread) and **Dismiss** (`DELETE`). Then the runs: **Last night** is
-  the newest run of each pool, read at once for its summary line; **Earlier**
-  groups the rest by day and reads a run when its row opens
+  new thread) and **Dismiss** (`DELETE`). Then **History** shows only the newest visible run,
+  read at once for its summary line, with **Show all** right-aligned beside
+  the eyebrow. `…/history/sleep` lists all runs newest first and reads a run
+  when its row opens
   (`GET …/runs/<id>`). A row shows Notes, Pages with their word diff, Questions,
   Thoughts, the Dream and the WAKE, each linking to the Memory page at that
   memory (`…/memory/<pool>/<id>`; a `t:` or `e:` source links to its thread);
@@ -269,8 +272,8 @@ A thread's address may carry what the panel beside it shows:
   and profile beneath; links to Tasks) and Clean up (the count, the tile's
   tooltip "To decide" or "Nothing to clean up"); then the hosts and
   endpoints summary (a host with its combined VRAM bar, Pause or Resume,
-  Dashboard; a plain endpoint with its model count) and the first five
-  calls. Hosts and endpoints: **Add endpoint** (a drawer: Name, Kind, Base
+  Dashboard; a plain endpoint with its model count) and the newest visible
+  call under **History**, with **Show all** beside the eyebrow. Hosts and endpoints: **Add endpoint** (a drawer: Name, Kind, Base
   URL, API key, Shared for administrators; a plain-HTTP warning for a local URL off
   loopback and the tailnet. Kind also offers ChatGPT plan, with **Sign in with
   ChatGPT**, which opens OpenAI's page in a new tab, then **Redirect URL**
@@ -301,7 +304,7 @@ A thread's address may carry what the panel beside it shows:
   **Remove**; the notice lines as a dashed note with Dismiss. The
   thresholds are the pills' tooltips (stale: unreachable 14 days or more;
   gone: missing 30 days or more), and Replace with… carries the redirect
-  sentence as its tooltip. Recent calls: Time (mono), Thread (a link; private
+  sentence as its tooltip. Recent calls opens **Call history**, using the shared paging and search. Time (mono), Thread (a link; private
   kind mark; "a forgotten thread" when gone), Task, Answered by ("model ·
   endpoint"), Note (the fallback or note, warn text); hidden pools left
   out; the table stacks on a phone. Tasks (`GET …/profiles`, the former
@@ -923,6 +926,19 @@ local/cloud chip and profile, then each model host's state as a dot and word.
   plan or an approval) has scrolled out of view, a thin accent bar across the
   top of the conversation says "Plan waiting for your answer" (or
   "Approval…") and scrolls to it.
+
+## History
+
+`src/History.tsx` supplies the heading link and shared history list for sleep
+runs, memory versions (including WAKE and journal versions), and model calls.
+Only the latest entry appears in each preview. **Show all** is a plain link
+in the History eyebrow's row, at its right edge. The page has a **Search**
+field and numbered secondary **Page** buttons with “Page n of m” in mono;
+large page counts show the ends and nearby numbers. Search resets to page 1
+and requests after 300 ms; the APIs filter, page and return totals. Rows keep
+their existing appearance and actions. No new widgets, icons or captions.
+Journal entries remain in the existing paged memory browser; kept releases
+are bounded, and current routines and runs in a thread describe active work.
 
 ## Look
 
