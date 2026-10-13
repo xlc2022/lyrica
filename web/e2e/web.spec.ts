@@ -1663,11 +1663,13 @@ test("a project: New project, suggested threads start into cards, the Threads po
   const fact = page.getByRole("button", { name: /^Threads/ });
   await expect(fact).toContainText("2");
   await fact.click();
-  const pop = page.getByRole("dialog", { name: "The project's threads" });
+  // From 1180 px up the fact toggles the panel's threads list (pressed while it shows); below, the popover.
+  const split = page.viewportSize()!.width >= 1180;
+  const pop = split ? page.getByRole("complementary", { name: "Threads" }) : page.getByRole("dialog", { name: "The project's threads" });
   await expect(pop.getByRole("link", { name: /Alpha/ })).toBeVisible();
   await expect(pop.getByRole("link", { name: /Beta/ })).toBeVisible();
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-threads-${page.viewportSize()!.width}.png` });
-  await page.keyboard.press("Escape");
+  if (split) { await expect(fact).toHaveAttribute("aria-pressed", "true"); await fact.click(); await expect(pop).toHaveCount(0); } else await page.keyboard.press("Escape");
 
   // Start a thread from a message's menu; the sidebar nests the project's threads with their state.
   await page.locator(".msg.user").first().getByRole("button", { name: "Message actions" }).click();
