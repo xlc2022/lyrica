@@ -617,8 +617,8 @@ lyrica admin models preset set private image.upscale '<host>/<recipe>' --user ad
 When a model refuses, the image says it declined, and nothing falls back.
 **Edit message** puts the request back in the composer while it is still
 the last message, **Resend** asks the same model again, and **Try**
-followed by a model name appears when another eligible model follows it in
-the list. A retry checks portrait consent again and doesn't change your
+followed by a model name appears when an eligible model on another
+endpoint follows it in the list. A retry checks portrait consent again and doesn't change your
 task lists.
 
 Add reference photos and choose their cloud setting in **Settings → Portrait
