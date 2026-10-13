@@ -50,7 +50,12 @@ ever reads its text.
      mono ("Fold in all 3"); a row goes once it is folded. Folded work takes the
      project's limits (a child's settings are its parent's or narrower), so
      each row names, muted, any folder, machine, repository or network host
-     the fold would remove, and ux.md's Fold in row says so. Folding a thread
+     the fold would remove, then **Add to project** (secondary): it grants
+     those folders, machines, repositories and hosts to the project chat
+     through the existing settings route, as Save on Project settings
+     would, after which the row lists nothing lost and Fold in keeps the
+     thread's access. Nothing is added without that click. ux.md's Fold in
+     row says so. Folding a thread
      in moves it, with its child threads, under the project, as Continue
      as project does.
    - **Add repository** opens the Add repository popover in place under
