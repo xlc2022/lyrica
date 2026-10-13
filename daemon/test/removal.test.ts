@@ -191,11 +191,18 @@ describe("the sweep of change records", () => {
     writeFileSync(join(home, "threads/web%2Ft/docs/notes.md"), "x");
     expect(readdirSync(join(home, "snapshots"))).toHaveLength(1);
 
-    expect(forgetFiles(home, changes, "general", ["web/t"], [])).toBe(2);
+    expect(forgetFiles(home, changes, "general", ["web/t"], [], () => false)).toBe(2);
     expect(changes.forThreads("general", ["web/t"])).toEqual([]);
     expect(readdirSync(join(home, "snapshots"))).toEqual([]);
     expect(readdirSync(join(home, "threads"))).toEqual(["web%2Fu"]);
     expect(readdirSync(join(home, "claude"))).toEqual([]);
+  });
+
+  it("keeps a forgotten thread's folder while a thread in the other pool has the same id", async () => {
+    const { home, changes } = await setup();
+    mkdirSync(join(home, "threads/web%2Ft"), { recursive: true });
+    expect(forgetFiles(home, changes, "general", ["web/t"], [], (id) => id === "web/t")).toBe(0);
+    expect(readdirSync(join(home, "threads"))).toEqual(["web%2Ft"]);
   });
 
   it("forgets git's record of a worktree it removes, so its branch can be deleted, and only in a folder the user may grant", async () => {

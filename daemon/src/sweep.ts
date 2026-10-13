@@ -26,14 +26,7 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
 
   const threadsDir = join(home, "threads");
   if (!existsSync(threadsDir)) return counts;
-  const o = s.memory.openOwnerView(userId);
-  let exists: (id: string) => boolean;
-  try {
-    const ids = new Set([...o.general.listThreads({ includeHidden: true }), ...o.private.listThreads({ includeHidden: true })].map((t) => t.id));
-    exists = (id) => ids.has(id);
-  } finally {
-    o.close();
-  }
+  const exists = threadExists(s, userId);
   const allowed = allowedOf(s, userId);
   const forgetRun = (runDir: string) => forgetRunWorktrees(runDir, allowed);
   const live = new Set((["general", "private"] as const).flatMap((pool) => s.delegation.store.liveRuns(userId, pool)));
@@ -80,14 +73,29 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
 export function forgetThreadFiles(s: Services, userId: string, pool: Pool, threads: string[]): number {
   const home = s.workspace.homeDir(userId);
   if (!threads.length || !isMounted(home)) return 0;
-  return forgetFiles(home, s.workspace.changes(userId), pool, threads, allowedOf(s, userId));
+  return forgetFiles(home, s.workspace.changes(userId), pool, threads, allowedOf(s, userId), threadExists(s, userId));
 }
 
-/** forgetThreadFiles in a mounted home. */
-export function forgetFiles(home: string, changes: FileChanges, pool: Pool, threads: string[], allowed: string[]): number {
+/** Whether a thread with this id is in either pool: folders are named by id alone. */
+function threadExists(s: Services, userId: string): (id: string) => boolean {
+  const o = s.memory.openOwnerView(userId);
+  try {
+    const ids = new Set([...o.general.listThreads({ includeHidden: true }), ...o.private.listThreads({ includeHidden: true })].map((t) => t.id));
+    return (id) => ids.has(id);
+  } finally {
+    o.close();
+  }
+}
+
+/**
+ * forgetThreadFiles in a mounted home. A folder whose id a thread in the
+ * other pool still has is kept, as the sweep keeps it.
+ */
+export function forgetFiles(home: string, changes: FileChanges, pool: Pool, threads: string[], allowed: string[], exists: (id: string) => boolean): number {
   changes.forget(changes.forThreads(pool, threads).map((c) => c.id));
   let n = 0;
   for (const id of threads) {
+    if (exists(id)) continue;
     const name = encodeURIComponent(id);
     if (!name || name === "." || name === "..") continue;
     const dir = join(home, "threads", name);

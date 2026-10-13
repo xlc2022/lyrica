@@ -1004,7 +1004,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   reached with no symlinks, and names that worktree back. Logs counts only.
   `forgetThreadFiles(services, userId, pool, threads)` does the same for
   threads just forgotten, at once and with no age limit, and drops their
-  change records and snapshots too; `DELETE …/threads/:pool/:threadId` calls it.
+  change records and snapshots too, keeping a folder whose id a thread in
+  either pool still has; `DELETE …/threads/:pool/:threadId` calls it.
 - **Web access** (`LyricadOptions.web`): built-in Caddy, configured through
   its admin socket `/run/lyrica-caddy/admin.sock`, or an external proxy, with
   an extra listener whose settings and TLS key are in
