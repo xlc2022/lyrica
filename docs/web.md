@@ -24,7 +24,7 @@ A thread's address may carry what the panel beside it shows:
   notice says so without naming them. Logging out says when the user stays
   unlocked because another browser still holds them.
 - **Sidebar:** the app's name links home, marks it as current
-  there, and closes the phone drawer when pressed. New thread (General or Private), Search (`src/Search.tsx`,
+  there, and closes the phone drawer when pressed. New thread and New project (General or Private), Search (`src/Search.tsx`,
   "Search titles and messages": the list filters by title as it is typed;
   from 2 characters, 300 ms after the last key, `GET …/search` turns it
   into a group per thread in the order of their newest hit, the thread's
@@ -283,7 +283,7 @@ A thread's address may carry what the panel beside it shows:
   Unpaired when the host has revoked this server), Pause or Resume
   (administrators on a shared host; disabled with "Nothing is loaded"),
   or **Pair again…** in their place while Unpaired, opening Pairing code
-  and **Pair** in the card (otherwise Pair again… is in the ⋯), Dashboard (`GET …/dashboard`, a new tab), "N models"
+  and **Pair** in the card (otherwise Pair again… is in the ⋯), Dashboard (`GET …/dashboard`, a new tab; administrators on a shared host), "N models"
   opening its model list (a speaking model's **Settings** there), the facts
   line (shared or only you, paired unless Unpaired, ID and addresses in mono, **Edit** for
   the addresses, `PUT …/addresses`), per GPU its card, used/total in mono,
@@ -955,7 +955,7 @@ turns animations off.
   hidden sleep pools and backend profiles (`cards.test.ts`), routine facts and paused
   schedules (`routines.test.ts`), the recorder's context
   fallback and clip limit (`voice.test.ts`), and a text model group's warn
-  lines (`library.test.ts`).
+  lines (`library.test.ts`), and flyout placement and hover intent (`flyout.test.ts`).
 - `npm run e2e -w @lyrica/web` runs Playwright (after a build). The upload
   test needs `gocryptfs`, as `lyricad` does. Each project in
   `playwright.config.ts` (phone 390×844 with touch, desktop 1280×800, and a

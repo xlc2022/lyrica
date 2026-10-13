@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLAN_URLS } from "@lyrica/core";
 import { profile, withModels } from "../../core/test/helpers.ts";
-import { modelRuntimeFor, planCatalog, planError } from "../src/index.ts";
+import { modelRuntimeFor, planCatalog, planError, startPlanSignIn } from "../src/index.ts";
 
 const TOKEN_URLS = { chatgpt: "https://auth.openai.com/api/accounts/oauth/token", grok: "https://auth.x.ai/oauth2/token" };
 const realFetch = globalThis.fetch;
@@ -46,6 +46,12 @@ describe("a ChatGPT plan", () => {
     const bo = await s.users.createUser("bo", "pw", profile("Bo"), { admin: false });
     await s.users.authenticate("bo", "pw");
     expect(s.models.endpoint(bo.id, s.plan.id)).toBeUndefined();
+  });
+
+  it("refuses a name an endpoint can't have, before a sign-in is started for it", async () => {
+    const s = await setup();
+    expect(() => s.models.checkEndpointName("My ChatGPT")).toThrow(/lowercase letters/);
+    expect(() => s.models.checkEndpointName("chatgpt-2")).not.toThrow();
   });
 
   it("has no URL or key to edit, and merges only with another plan", async () => {
@@ -117,5 +123,16 @@ describe("a provider's refusal", () => {
     expect(planError(e, "chatgpt", "sign-in").message).toBe("ChatGPT refused the sign-in (HTTP 400).");
     expect(planError(new Error("token refresh failed (HTTP 401)"), "grok", "sign-in refresh").message).toBe("Grok refused the sign-in refresh (HTTP 401).");
     expect(planError(new Error("state mismatch\nmore"), "chatgpt", "sign-in").message).toBe("state mismatch");
+  });
+});
+
+describe("a ChatGPT sign-in", () => {
+  it("lets go of the listener on port 1455 when it is cancelled", async () => {
+    const id = "00000000-0000-4000-8000-000000000001";
+    const first = await startPlanSignIn("chatgpt", id);
+    first.cancel();
+    const second = await startPlanSignIn("chatgpt", id); // "Port 1455 is in use" if the first still held it
+    second.cancel();
+    expect(second.url).toContain("auth");
   });
 });

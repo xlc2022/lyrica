@@ -890,7 +890,11 @@ with the call's target (the sandbox, or the machine its `machine` argument
 names) looked up on every call, so changing a thread's settings applies at
 once. Commands typed with `!` in the terminal run in the sandbox. A short
 `workspace` prompt section tells her where she works, what she was given,
-whether she has internet, and her machines. `proxmox` is the tool for
+whether she has internet, and her machines. It also names the sandbox's
+headless Chromium and its flags, and that a static page is checked once it
+parses and one screenshot looks right. With internet off, it tells her not to
+mirror or proxy CDNs or registries, but to say what she couldn't check or ask
+for Internet or an allowed host. `proxmox` is the tool for
 Proxmox machines ([above](#proxmox)). The memory tool
 is `read_memory`, so it doesn't clash with `read`.
 

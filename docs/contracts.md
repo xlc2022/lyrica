@@ -1162,6 +1162,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       code? }`); `POST plans/sign-in/:id` (`PlanSignInFinish` `{ redirectUrl? }`:
       ChatGPT's sends the address it was sent back to, Grok's no body →
       `EndpointInfo`); `DELETE plans/sign-in/:id`.
+    - **OpenRouter:** `POST openrouter/sign-in` (`OpenRouterSignInStart`:
+      `name`, `shared?` → `PlanSignInStarted` `{ id, url }`); `POST
+      openrouter/sign-in/:id` (`OpenRouterSignInFinish` `{ code }` →
+      `EndpointInfo`, a cloud endpoint holding the returned key); `DELETE
+      openrouter/sign-in/:id`.
     - **Hosts:** `POST hosts` (pair, then discover); `POST hosts/:id/pair`
       (again, same addresses); `PUT …/addresses`; `GET …/status`; `POST
       …/pause|resume|restart`; `GET …/dashboard` (→ `{ url }`); `POST …/manage`;
