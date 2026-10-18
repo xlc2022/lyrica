@@ -38,6 +38,10 @@ which is where its lists and checkboxes already are; Codex picks its own
 model; a call without a Codex sign-in fails with a fixed line naming
 Settings → Codex.
 
+Later (owner, 2026-10-18): the Codex sign-in shares one Settings section
+with Claude Code, **Claude Code and Codex**; the disabled tools are those
+the installed Codex lists, since NixOS's isn't 0.163.0.
+
 ## Out of scope
 
 ChatGPT Images without a ChatGPT plan endpoint; Codex for anything but

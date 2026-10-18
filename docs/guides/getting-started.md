@@ -602,8 +602,8 @@ endpoints:
 
 A signed-in ChatGPT plan shows one image model, **ChatGPT Images**, under
 Cloud on Models, Image models. OpenAI doesn't let the plan's sign-in make
-images, so ChatGPT Images runs your own Codex: under Settings, **Codex**,
-choose **Sign in**, open the page it shows, sign in to ChatGPT and enter
+images, so ChatGPT Images runs your own Codex: under Settings, **Claude Code and
+Codex**, choose **Sign in** in the Codex card, open the page it shows, sign in to ChatGPT and enter
 the code. Images then come out of your plan's Codex limits.
 For a key, open Image models, then **Other cloud models** at the foot of
 the Cloud group, and tick **Generate** and **Edit** for each model that
@@ -733,7 +733,7 @@ conversation and memory never go through it.
 
 1. On any computer where you're signed in to Claude, run
    `claude setup-token` and copy the token it prints.
-2. Paste it under Settings, **Claude Code**, and save. It stays in
+2. Paste it under Settings, **Claude Code and Codex**, and save. It stays in
    `lyricad`, is never shown back, and never enters her sandbox.
 3. In a thread's drawer, turn on **Claude Code**. It is off by default, and
    appears only once a token is saved and Claude Code is installed. It works

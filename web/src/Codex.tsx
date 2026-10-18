@@ -1,4 +1,4 @@
-// Settings → Codex (docs/ux.md §6): the user's own Codex, which makes ChatGPT Images. Codex's device sign-in, shown as its link and code.
+// Settings → Claude Code and Codex, its second card (docs/ux.md §6): the user's own Codex, which makes ChatGPT Images. Codex's device sign-in, shown as its link and code.
 import { useEffect } from "react";
 import { del, get, post, u, type CodexStatus } from "./api.ts";
 import type { ShellContext } from "./Shell.tsx";

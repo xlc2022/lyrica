@@ -20,6 +20,7 @@ case "$1 $2" in
   "login status") [ -f "$CODEX_HOME/auth.json" ] ;;
   "login --device-auth") printf '\\e[1mOpen https://auth.openai.com/codex/device\\e[0m\\nEnter ABCD-12345\\n'; sleep 0.2; echo '{}' > "$CODEX_HOME/auth.json" ;;
   "logout ") rm -f "$CODEX_HOME/auth.json" ;;
+  "features list") for f in image_generation shell_tool unified_exec browser_use computer_use in_app_browser apps plugins memories; do echo "$f  stable  true"; done ;;
   exec*)
     echo start >> "$bin/log"; sleep 0.1
     cat > "$bin/stdin"
@@ -72,7 +73,9 @@ describe("ChatGPT Images through the user's own Codex (principles 1 and 2)", () 
     expect(args).toEqual(expect.arrayContaining(["exec", "--ephemeral", "--enable", "image_generation", "-"]));
     // Codex's own tools are off; Lyrica's sandbox is the fence.
     for (const f of ["shell_tool", "unified_exec", "browser_use", "computer_use", "apps", "plugins"]) expect(CODEX_DISABLED).toContain(f);
-    for (const f of CODEX_DISABLED) expect(args[args.indexOf(f) - 1]).toBe("--disable");
+    // Every one this Codex lists is off; one it doesn't list (view_image here) isn't passed.
+    for (const f of CODEX_DISABLED.filter((f) => f !== "view_image")) expect(args[args.indexOf(f) - 1]).toBe("--disable");
+    expect(args).not.toContain("view_image");
     expect(args.join(" ")).not.toContain("A garden");
     expect(readFileSync(join(bin, "stdin"), "utf8")).toMatch(/Generate one image[\s\S]*portrait[\s\S]*Prompt:\nA garden$/);
     await codexImage(box, { action: "edit", prompt: "Add flowers", image: { bytes: png, type: "image/png" }, references: [{ bytes: png, type: "image/jpeg" }] });
@@ -92,7 +95,7 @@ describe("ChatGPT Images through the user's own Codex (principles 1 and 2)", () 
   });
 
   it("answers with fixed lines, never Codex's own output, and refuses what it can't do", async () => {
-    await expect(codexImage(box, { action: "create", prompt: "A garden", tier: "fast" })).rejects.toMatchObject({ code: "invalid", message: "Codex is signed out: sign in under Settings → Codex." });
+    await expect(codexImage(box, { action: "create", prompt: "A garden", tier: "fast" })).rejects.toMatchObject({ code: "invalid", message: "Codex is signed out: sign in under Settings → Claude Code and Codex." });
     writeFileSync(join(home, "auth.json"), "{}");
     // Codex gets none of the daemon's environment, so the stand-in reads its failure from a file.
     writeFileSync(join(bin, "fail"), "You've hit your usage limit");
