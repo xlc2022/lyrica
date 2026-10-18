@@ -36,8 +36,13 @@ ask({ question, options: { label, consequence }[], recommended, context? })
 - `paramsFor` offers `ask` in every hosted thread except an ordinary child
   thread, which keeps asking its parent with `message({ question: true })`.
   Subagents don't get the `threads` tool at all.
-- The result tells her the question is on a card and to end her turn there.
-  She carries on only once a later turn brings the answer.
+- The result says the question is on a card. It then says what E says: carry
+  on with the recommended option if that step can be undone, and otherwise
+  end the turn. The answer arrives in a later turn.
+- Principle 8: `ask`'s fields and description stay to one short line each.
+  The size check in `extension/test/threads.test.ts` (the per-kind `size`
+  snapshot) is updated, and the increase is named in the PR.
+- Routine and wake-up turns run in the thread itself, so they may ask too.
 
 **B. State.** The thread is waiting on the user while its question is open.
 
@@ -47,8 +52,14 @@ ask({ question, options: { label, consequence }[], recommended, context? })
   ask the user. `needsYou` stays as it is.
 - In any other thread, `ThreadSummary.question` is set, and the sidebar
   shows Waiting on you.
-- A thread has at most one open question. A new `ask` withdraws the open one,
-  and its card reads **Withdrawn**.
+- A thread has at most one open question. A new `ask` withdraws the open
+  one, and so do resolving or stopping the thread. Its card reads
+  **Withdrawn**.
+- A tap, a typed answer and a withdrawal each close the question and set
+  `needs_you` to 0 in the same transaction. The parent card, the sidebar
+  and Notifications then stop showing Waiting on you at once, without
+  waiting for her next message. Today `needs_you` changes only on the
+  child's next message, or on resolve or reopen.
 - Store a pointer only: the thread, the entry number of the tool call, the
   time asked, and when it closes, the chosen index or "words" or
   "withdrawn". This is a new pool.db step, `questions`. The text stays only
@@ -60,9 +71,14 @@ ask({ question, options: { label, consequence }[], recommended, context? })
 **C. Answering.**
 
 - `POST …/threads/:pool/:id/questions/:n/answer { option }` posts the user's
-  message `<label>`. It carries a reply mark, `[Answer to q:<n>]`, which only
-  lyricad writes, so she knows which question it answers. The message starts
-  a turn as any user message does.
+  message `<label>`. It carries a reply mark, `[Answer to q:<n>]`, so she
+  knows which question it answers. The message starts a turn as any user
+  message does.
+- The mark is `ANSWER` in `core/src/threads.ts`, next to `FROM_PARENT` and
+  `WATCHING`, and is guarded the same way. A typed or API message that
+  starts with it is refused with 400 in `daemon/src/routes.ts` and by
+  `MarkedText` in `daemon/src/hosted.ts`. Only lyricad writes it.
+- The route answers 404 for an unknown question, or one in another thread.
 - Any message the user types in the thread while the question is open
   closes it as "words". The text goes through unchanged.
 - An answered, word-answered or withdrawn question refuses a tap with 409.
@@ -86,7 +102,8 @@ ask({ question, options: { label, consequence }[], recommended, context? })
   decision. Its title is the question and its detail the recommended
   option's consequence. Its actions are the option buttons, with the
   recommended one first, plus Open thread. The bulk bar offers nothing for
-  questions, because two questions never share options.
+  questions, because two questions never share options. A private thread's
+  question shows under Where = Private, as other decisions do.
 
 **E. Guidance.** Add a few lines to the thread guidelines:
 
@@ -97,13 +114,26 @@ ask({ question, options: { label, consequence }[], recommended, context? })
 - Keep working on the recommended option where the step can be undone, and
   stop where it can't.
 
+**F. Contracts.** Pin these shapes in docs/contracts.md:
+
+- `ThreadSummary.question?: { n: number; asked: string }`: the entry number
+  of the open question's tool call and the time it was asked. The card and
+  Notifications read the text from the log.
+- `NotificationType` gains `question`. Its id is `question:<pool>/<thread>/<n>`
+  and `decision` is true. Its actions are one `POST …/questions/:n/answer`
+  per option, with `{ option }`, then Open thread.
+- `POST /api/u/:userId/threads/:pool/:id/questions/:n/answer { option }`
+  answers 204, 404 for an unknown question, 409 once it is closed, and 400
+  for an option out of range.
+- The `ANSWER` mark, and `Message.from.kind` stays `user`.
+- The `threads` `ask` action and `ASK_LIMITS`.
+
 ## Out of scope
 
 - Push notifications (item 3).
 - A free-text field on the card, since typing in the thread already answers.
 - More than one open question per thread.
 - Questions from subagents.
-- Questions asked by a routine run, which works as before.
 
 ## Done when
 
@@ -113,7 +143,10 @@ ask({ question, options: { label, consequence }[], recommended, context? })
   answers it, and the thread wakes with `<label>` and the mark.
 - In a plain chat: ask, then a typed answer closes the question as "words".
   Ask twice and the first card reads Withdrawn.
-- A second tap on an answered question gets 409.
+- A second tap on an answered question gets 409. A typed message starting
+  with `[Answer to q:` gets 400.
+- Resolving a thread withdraws its question, and the parent card drops
+  Waiting on you at once.
 - The pool migration has a test from every released pool schema and keeps
   older readers working.
 - Playwright on desktop and phone covers the card, a tap, the collapsed
