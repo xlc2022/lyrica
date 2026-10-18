@@ -7,10 +7,13 @@
 # release can't break what takes it back. In order: fetch main and the update
 # tags with the read-only deploy key; refuse a tag that isn't annotated or
 # whose commit isn't on main; pause host-api (running jobs finish, up to 10
-# minutes, else resume and change nothing); check the commit out; run
-# install.sh; probation (host-api answers with the new commit within 5
-# minutes), else check the old commit out and run install.sh again. The host
-# ends paused only if it was paused before. One run at a time.
+# minutes, else resume and change nothing); unpack the commit from the
+# updater's own repository into a root-owned tree under /opt/lyrica-host;
+# run that tree's install.sh, with the settings carried over; probation
+# (host-api answers with the new commit within 5 minutes), else install the
+# commit before from its own tree the same way. Root never runs code from a
+# person's checkout. The host ends paused only if it was paused before. One
+# run at a time.
 # Logs commits, tags and step names; never prompts or model output. See host/README.md, "Updates".
 set -euo pipefail
 
@@ -19,20 +22,18 @@ say() { printf '%s: %s\n' "$ME" "$*" >&2; }
 die() { say "$*"; exit 1; }
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
-HOST_DIR=${LYRICA_HOST_DIR:?set LYRICA_HOST_DIR to the host folder of the checkout}
 UPDATE=${LYRICA_HOST_UPDATE_DIR:-/var/lib/lyrica-host-update}
 REPO=$UPDATE/repo.git
+RELEASES=${LYRICA_HOST_RELEASES:-/opt/lyrica-host}
 KEY=${LYRICA_HOST_DEPLOY_KEY:-/etc/lyrica-host/deploy-key}
 KNOWN=${LYRICA_HOST_KNOWN_HOSTS:-/etc/lyrica-host/known_hosts}
 API=${LYRICA_HOST_API:-http://127.0.0.1:7236}
-INSTALL=${LYRICA_HOST_INSTALL:-$HOST_DIR/install.sh}
 DRAIN_SECONDS=${LYRICA_HOST_DRAIN_SECONDS:-600}
 PROBATION_SECONDS=${LYRICA_HOST_PROBATION_SECONDS:-300}
 POLL=${LYRICA_HOST_POLL:-2}
+KEEP=3
 
 [ "$(id -u)" = 0 ] || [ -n "${LYRICA_TEST:-}" ] || die "run this as root"
-CHECKOUT=$(cd "$HOST_DIR/.." && pwd)
-OWNER=$(stat -c %U "$CHECKOUT")
 mkdir -p "$UPDATE/status"
 exec 9>"$UPDATE/update.lock"
 case "${1:-}" in
@@ -59,13 +60,10 @@ fail() { # step: the update stops here, and the running commit is untouched
   die "update ${TAG:-} failed: $1"
 }
 
-# The checkout belongs to whoever cloned it: git runs as them, so root never owns a file in it.
-as_owner() { if [ "$(id -u)" = 0 ] && [ "$OWNER" != root ]; then runuser -u "$OWNER" -- "$@"; else "$@"; fi; }
-work() { as_owner git -C "$CHECKOUT" "$@"; }
-
 api() { curl -fsS --max-time 10 -X "$1" "$API$2" 2>/dev/null; }
 host_state() { api GET /host/v1/status | jq -r '.state // empty' 2>/dev/null || true; }
 host_commit() { api GET /host/v1/status | jq -r '.commit // empty' 2>/dev/null || true; }
+rgit() { git --git-dir="$REPO" "$@"; }
 
 TAG=
 case "${1:-}" in
@@ -81,24 +79,28 @@ case "${1:-}" in
 esac
 [[ $TAG =~ ^update/[A-Za-z0-9._-]{1,64}$ ]] || fail "not an update tag"
 
+# The installed host folder, as install.sh last recorded it: a checkout the
+# first time, a tree under $RELEASES after an update. Root only reads its settings.
+HOST_DIR=$(cat "$UPDATE/current" 2>/dev/null || true)
+[ -n "$HOST_DIR" ] && [ -f "$HOST_DIR/.env" ] || fail "no installed host (run install.sh)"
+
 # --- Fetch, and check the tag ---
 set_state fetching "$TAG"
 [ -d "$REPO" ] || fail "no deploy repository (run install.sh)"
 GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN" \
-  git --git-dir="$REPO" fetch --quiet --prune --force origin '+refs/heads/main:refs/heads/main' '+refs/tags/update/*:refs/tags/update/*' \
+  rgit fetch --quiet --prune --force origin '+refs/heads/main:refs/heads/main' '+refs/tags/update/*:refs/tags/update/*' \
   || fail "fetch"
-[ "$(git --git-dir="$REPO" cat-file -t "refs/tags/$TAG" 2>/dev/null)" = tag ] || fail "not an annotated update tag"
-COMMIT=$(git --git-dir="$REPO" rev-parse "$TAG^{commit}")
-git --git-dir="$REPO" merge-base --is-ancestor "$COMMIT" main || fail "not on main"
-[ -z "$(work status --porcelain --untracked-files=no)" ] || fail "the checkout has local changes"
-OLD=$(work rev-parse HEAD)
+[ "$(rgit cat-file -t "refs/tags/$TAG" 2>/dev/null)" = tag ] || fail "not an annotated update tag"
+COMMIT=$(rgit rev-parse "$TAG^{commit}")
+rgit merge-base --is-ancestor "$COMMIT" main || fail "not on main"
+OLD=$(host_commit)
+[[ $OLD =~ ^[0-9a-f]{40}$ ]] || OLD=$(sed -n 's/^HOST_COMMIT=\([0-9a-f]\{40\}\)$/\1/p' "$HOST_DIR/.env" | tail -n 1)
 if [ "$COMMIT" = "$OLD" ]; then set_state idle; say "${COMMIT:0:12} is already running"; exit 0; fi
 say "updating to ${COMMIT:0:12} ($TAG) from ${OLD:0:12}"
 
 # --- Pause: running jobs finish first ---
 set_state draining "$TAG"
-BEFORE=$(host_state)
-WAS_PAUSED=; [ "$BEFORE" = paused ] && WAS_PAUSED=1
+WAS_PAUSED=; [ "$(host_state)" = paused ] && WAS_PAUSED=1
 resume() { [ -n "$WAS_PAUSED" ] || api POST /host/v1/resume >/dev/null || true; }
 if [ -z "$WAS_PAUSED" ]; then
   api POST /host/v1/pause >/dev/null || fail "pause"
@@ -109,23 +111,52 @@ if [ -z "$WAS_PAUSED" ]; then
   done
 fi
 
-# --- Switch, install, probation ---
-switch() { # commit: check it out and install it; true once host-api answers with it
-  work -c advice.detachedHead=false checkout --quiet --detach "$1" || return 1
-  # install.sh reads the commit with git as root, in the owner's checkout.
-  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$CHECKOUT" "$INSTALL" --yes </dev/null || return 1
-  # install.sh rewrites .env; it stays the checkout owner's.
-  [ "$(id -u)" != 0 ] || [ "$OWNER" = root ] || chown "$OWNER" "$HOST_DIR/.env" 2>/dev/null || true
-  local waited=0
+# --- Trees, install, probation ---
+tree() { # commit: its root-owned tree's host folder, unpacked from the updater's repository
+  local dir=$RELEASES/$1 tmp
+  if [ ! -d "$dir" ]; then
+    mkdir -p "$RELEASES"; chmod 0755 "$RELEASES"
+    tmp=$(mktemp -d "$RELEASES/.new.XXXXXX")
+    rgit archive "$1" | tar -x -C "$tmp" || { rm -rf "$tmp"; return 1; }
+    chmod -R go-w "$tmp"; chmod 0755 "$tmp"
+    mv "$tmp" "$dir"
+  fi
+  printf '%s/host\n' "$dir"
+}
+# Settings are plain files root reads, never runs: .env (install.sh writes it
+# afresh from the values it knows) and Tailscale's joined mark.
+carry() { # from, to
+  local f
+  for f in .env .tailscale-joined; do
+    if [ -f "$1/$f" ] && [ ! -L "$1/$f" ]; then install -m 0600 "$1/$f" "$2/$f"; fi
+  done
+}
+switch() { # commit, version: install it from its tree; true once host-api answers with it
+  local dir waited=0
+  dir=$(tree "$1") || return 1
+  carry "$HOST_DIR" "$dir"
+  ( cd "$dir" && LYRICA_HOST_UPDATING=1 LYRICA_HOST_COMMIT=$1 LYRICA_HOST_VERSION=$2 "${LYRICA_HOST_INSTALL:-./install.sh}" --yes </dev/null ) || return 1
   until [ "$(host_commit)" = "$1" ]; do
     [ "$waited" -lt "$PROBATION_SECONDS" ] || return 1
     sleep "$POLL"; waited=$((waited + POLL))
   done
+  printf '%s\n' "$dir" >"$UPDATE/current"
 }
+prune() { # keeps the newest $KEEP trees, and the running one
+  local keep running d
+  running=$(dirname "$(cat "$UPDATE/current")")
+  keep=$(ls -1td "$RELEASES"/*/ 2>/dev/null | head -n "$KEEP" || true)
+  for d in "$RELEASES"/*/; do
+    d=${d%/}
+    [ -d "$d" ] || continue
+    [ "$d" = "$running" ] || grep -qxF "$d/" <<<"$keep" || rm -rf -- "$d"
+  done
+}
+
 set_state building "$TAG"
-work fetch --quiet "$REPO" "$COMMIT" || { resume; fail "fetch"; }
-if switch "$COMMIT"; then
+if switch "$COMMIT" "$TAG"; then
   resume
+  prune
   write_json "$STATE_FILE" --arg s idle --arg at "$(now)" --arg t "$TAG" --arg c "$COMMIT" \
     '(. // {}) | .state = $s | .since = $at | del(.tag, .error) | .last = {tag: $t, commit: $c, at: $at, ok: true}'
   say "running ${COMMIT:0:12} ($TAG)"
@@ -134,8 +165,12 @@ fi
 
 say "${COMMIT:0:12} didn't come up; going back to ${OLD:0:12}"
 set_state rolling-back "$TAG"
-switch "$OLD" || say "${OLD:0:12} didn't come up either: run $HOST_DIR/install.sh by hand"
+if [ -z "$OLD" ] || ! rgit cat-file -e "$OLD^{commit}" 2>/dev/null; then
+  say "${OLD:0:12} isn't in the updater's repository: run install.sh in $HOST_DIR by hand"
+elif ! switch "$OLD" "${OLD:0:12}"; then
+  say "${OLD:0:12} didn't come up either: run install.sh in $HOST_DIR by hand"
+fi
 resume
 write_json "$STATE_FILE" --arg at "$(now)" --arg t "$TAG" --arg c "$COMMIT" \
   '(. // {}) | .state = "failed" | .since = $at | .tag = $t | .error = "probation" | .last = {tag: $t, commit: $c, at: $at, ok: false}'
-die "update $TAG failed: probation; rolled back to ${OLD:0:12}"
+die "update $TAG failed: probation; went back to ${OLD:0:12}"

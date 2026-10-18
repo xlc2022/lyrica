@@ -8,7 +8,6 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-Environment=LYRICA_HOST_DIR=@HOST_DIR@
 ExecStart=/usr/local/sbin/lyrica-host-update --request
 TimeoutStartSec=infinity
 Nice=10

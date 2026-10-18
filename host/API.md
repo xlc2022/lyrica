@@ -423,8 +423,8 @@ Only the repository's name and revision leave the host.
   another, never interleaved.
 - `POST /host/v1/restart`: fails queued requests with `restarting`, unloads
   everything, asks each server to reset, and loads pinned models again.
-- `POST /host/v1/update` with `{ "tag": "update/<name>" }`: asks the
-  host's updater (README.md, "Updates") for that release, and answers `202`
+- `POST /host/v1/update` with `{ "tag": "update/<name>" }` (a paired
+  Lyrica, or the dashboard): asks the host's updater (README.md, "Updates") for that release, and answers `202`
   with `{ "update": … }`. `409 unavailable` when the host has no updater
   (NixOS, no systemd, or an install from before updates), with the reason;
   `409 updating` while one runs. `update` is `{ available, reason?, state,

@@ -97,8 +97,7 @@ function updateFailure(step: string | undefined): string {
   if (step === "fetch") return "it couldn't fetch the release; check that its deploy key is added";
   if (step === "drain") return "jobs were still running after 10 minutes, so nothing changed";
   if (step === "probation") return "the new version didn't start, so it went back to the one before";
-  if (step === "the checkout has local changes") return "the host's copy of the code has local changes, so nothing changed";
-  if (step?.startsWith("no deploy repository")) return "the host's updater isn't set up; run install.sh on the host again";
+  if (step?.startsWith("no ")) return "the host's updater isn't set up; run install.sh on the host again";
   if (step?.startsWith("not ")) return "the host refused the release, so nothing changed";
   return "something went wrong on the host, so nothing changed";
 }

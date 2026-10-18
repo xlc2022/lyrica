@@ -203,7 +203,7 @@ jobs:
           docker compose down -v --remove-orphans || true
           sudo systemctl disable --now lyrica-host-egress.service lyrica-host-update.path || true
           sudo rm -f /etc/systemd/system/lyrica-host-egress.service /etc/systemd/system/lyrica-host-update.path /etc/systemd/system/lyrica-host-update.service /usr/local/sbin/lyrica-host-update
-          sudo rm -rf /var/lib/lyrica-host-update /etc/lyrica-host
+          sudo rm -rf /var/lib/lyrica-host-update /etc/lyrica-host /opt/lyrica-host
           sudo systemctl daemon-reload
           sudo ./egress.sh remove || true
           sudo rm -f /etc/docker/daemon.json

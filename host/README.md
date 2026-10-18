@@ -44,13 +44,18 @@ out: the updater fetches `main` and the `update/*` tags into its own
 repository there with a read-only deploy key, `/etc/lyrica-host/deploy-key`,
 which `install.sh` prints the first time: add it to the repository as a
 deploy key. Then the updater refuses a tag that isn't annotated or isn't on
-`main`, or a checkout with local changes; pauses the host (running jobs
-finish, up to 10 minutes, or nothing changes); checks the release out as the
-checkout's owner; runs `install.sh --yes`; and waits up to 5 minutes for
-host-api to answer with the new commit. If it doesn't, it checks the old
-commit out and runs `install.sh` again. The host resumes unless it was
-paused before. Its progress is in `/var/lib/lyrica-host-update/status/state.json`
-and the host's status; by hand: `sudo lyrica-host-update --tag update/<name>`.
+`main`; pauses the host (running jobs finish, up to 10 minutes, or nothing
+changes); unpacks the release from its own repository into a root-owned
+tree, `/opt/lyrica-host/<commit>`; carries `.env` over from the installed
+folder; runs that tree's `install.sh --yes`; and waits up to 5 minutes for
+host-api to answer with the new commit. If it doesn't, it installs the
+commit before from its own tree the same way. Root never runs code from your
+checkout, only reads its `.env`. The last 3 trees are kept, and the running
+one is the installed folder from then on: change a setting by running
+`install.sh` there, or `git pull && host/install.sh` in your checkout to go
+back to it. The host resumes unless it was paused before. Its progress is in
+`/var/lib/lyrica-host-update/status/state.json` and the host's status; by
+hand: `sudo lyrica-host-update --tag update/<name>`.
 
 ### On NixOS
 

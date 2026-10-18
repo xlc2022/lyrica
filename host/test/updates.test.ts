@@ -18,15 +18,16 @@ afterEach(async () => { for (const c of cleanup.splice(0).reverse()) await c(); 
 
 async function world() {
   const root = mkdtempSync(join(tmpdir(), "lyrica-host-update-"));
-  cleanup.push(() => rmSync(root, { recursive: true, force: true }));
-  const origin = join(root, "origin.git"), work = join(root, "work"), checkout = join(root, "lyrica"), dir = join(root, "update"), fake = join(root, "fake");
+  // Trees are made read-only for others: writable again first.
+  cleanup.push(() => { execFileSync("chmod", ["-R", "u+w", root]); rmSync(root, { recursive: true, force: true }); });
+  const origin = join(root, "origin.git"), work = join(root, "work"), checkout = join(root, "lyrica"), dir = join(root, "update"), releases = join(root, "releases"), fake = join(root, "fake");
   mkdirSync(fake);
   const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: ["ignore", "pipe", "pipe"] }).toString().trim();
   execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
   execFileSync("git", ["clone", "-q", origin, work], { stdio: "ignore" });
   git(work, "config", "user.email", "t@example.com"); git(work, "config", "user.name", "T");
   mkdirSync(join(work, "host"));
-  // Releases are made elsewhere and pushed; the host's checkout only fetches.
+  // Releases are made elsewhere and pushed.
   const release = (name: string, o: { broken?: boolean; lightweight?: boolean; branch?: string } = {}) => {
     if (o.branch) git(work, "checkout", "-q", "-B", o.branch);
     writeFileSync(join(work, "host", "version"), name);
@@ -39,15 +40,22 @@ async function world() {
     return commit;
   };
   const first = release("one");
+  // The person's checkout, installed by hand: its settings, and code root must never run.
   execFileSync("git", ["clone", "-q", origin, checkout], { stdio: "ignore" });
+  writeFileSync(join(checkout, "host", ".env"), `HOST_NAME=box\nHOST_COMMIT=${first}\n`);
+  writeFileSync(join(checkout, "host", "install.sh"), `#!/usr/bin/env bash\ntouch "${fake}/checkout-ran"\n`);
+  chmodSync(join(checkout, "host", "install.sh"), 0o755);
   mkdirSync(join(dir, "status"), { recursive: true });
   mkdirSync(join(dir, "inbox"));
+  writeFileSync(join(dir, "current"), `${join(checkout, "host")}\n`);
   execFileSync("git", ["init", "-q", "--bare", join(dir, "repo.git")]);
   execFileSync("git", ["--git-dir", join(dir, "repo.git"), "remote", "add", "origin", origin]);
 
-  // host-api: its state, and the commit install.sh left it on.
+  // host-api: its state, and the commit the last install left it on.
   const api = { state: "running", calls: [] as string[] };
-  const commitNow = () => git(checkout, "rev-parse", "HEAD");
+  const running = join(fake, "running");
+  writeFileSync(running, first);
+  const commitNow = () => readFileSync(running, "utf8").trim();
   const server: Server = createServer((req, res) => {
     api.calls.push(`${req.method} ${req.url}`);
     if (req.url === "/host/v1/pause") api.state = "paused";
@@ -57,12 +65,16 @@ async function world() {
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   cleanup.push(() => new Promise<void>((r) => server.close(() => r())));
-  // install.sh: fails on a broken release, as one that doesn't build would.
-  writeFileSync(join(fake, "install"), `#!/usr/bin/env bash\necho "$(cat "${checkout}/host/version")" >>"${fake}/installs"\n[ ! -e "${checkout}/host/BROKEN" ]\n`);
+  // install.sh, run in the tree: fails on a broken release, as one that doesn't build would.
+  writeFileSync(join(fake, "install"), `#!/usr/bin/env bash
+echo "$(cat version) $PWD $(cat .env | head -n 1)" >>"${fake}/installs"
+[ ! -e BROKEN ] || exit 1
+echo "$LYRICA_HOST_COMMIT" >"${running}"
+`);
   chmodSync(join(fake, "install"), 0o755);
 
   const env = {
-    ...process.env, LYRICA_TEST: "1", LYRICA_HOST_DIR: join(checkout, "host"), LYRICA_HOST_UPDATE_DIR: dir,
+    ...process.env, LYRICA_TEST: "1", LYRICA_HOST_UPDATE_DIR: dir, LYRICA_HOST_RELEASES: releases,
     LYRICA_HOST_API: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, LYRICA_HOST_INSTALL: join(fake, "install"),
     LYRICA_HOST_DRAIN_SECONDS: "2", LYRICA_HOST_PROBATION_SECONDS: "2", LYRICA_HOST_POLL: "1",
   };
@@ -71,7 +83,8 @@ async function world() {
   });
   const state = () => JSON.parse(readFileSync(join(dir, "status", "state.json"), "utf8"));
   const installs = () => (existsSync(join(fake, "installs")) ? readFileSync(join(fake, "installs"), "utf8").trim().split("\n") : []);
-  return { dir, api, first, release, run, state, installs, commitNow };
+  const current = () => readFileSync(join(dir, "current"), "utf8").trim();
+  return { dir, api, first, release, run, state, installs, commitNow, current, releases, checkout, fake };
 }
 
 describe("lyrica-host-update", () => {
@@ -82,7 +95,10 @@ describe("lyrica-host-update", () => {
     const r = await w.run("--request");
     expect(r.code, r.err).toBe(0);
     expect(w.commitNow()).toBe(two);
-    expect(w.installs()).toEqual(["two"]);
+    // From a tree of its own, with the checkout's settings, never the checkout's code.
+    expect(w.installs()).toEqual([`two ${join(w.releases, two, "host")} HOST_NAME=box`]);
+    expect(w.current()).toBe(join(w.releases, two, "host"));
+    expect(existsSync(join(w.fake, "checkout-ran"))).toBe(false);
     expect(w.api.calls).toContain("POST /host/v1/pause");
     expect(w.api.state).toBe("running");
     expect(w.state()).toMatchObject({ state: "idle", last: { tag: "update/two", commit: two, ok: true } });
@@ -119,7 +135,9 @@ describe("lyrica-host-update", () => {
     const r = await w.run("--tag", "update/broken");
     expect(r.code).not.toBe(0);
     expect(w.commitNow()).toBe(w.first);
-    expect(w.installs()).toEqual(["broken", "one"]);
+    expect(w.installs().map((l) => l.split(" ")[0])).toEqual(["broken", "one"]);
+    expect(w.current()).toBe(join(w.releases, w.first, "host"));
+    expect(existsSync(join(w.fake, "checkout-ran"))).toBe(false);
     expect(w.api.state).toBe("running");
     expect(w.state()).toMatchObject({ state: "failed", error: "probation", last: { tag: "update/broken", ok: false } });
   });

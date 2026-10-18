@@ -221,8 +221,9 @@ UNIFIED=
 RENDER_GID=$(getent group render 2>/dev/null | cut -d: -f3 || true)
 [[ $WANT_LAN == 1 ]] && FILES+=:compose.lan.yaml
 [[ -n $TS_HOSTNAME ]] && FILES+=:compose.tailscale.yaml
-VERSION=$(git describe --always --dirty 2>/dev/null || echo dev)
-COMMIT=$(git rev-parse HEAD 2>/dev/null || true)
+# The updater installs a tree without .git, and names its commit.
+VERSION=${LYRICA_HOST_VERSION:-$(git describe --always --dirty 2>/dev/null || echo dev)}
+COMMIT=${LYRICA_HOST_COMMIT:-$(git rev-parse HEAD 2>/dev/null || true)}
 LAN_BIND=$LAN
 [[ $LAN == *:* ]] && LAN_BIND="[$LAN]"
 
@@ -287,7 +288,8 @@ fi
 # Updates from Lyrica (README.md, "Updates"): host-api may write a request into
 # inbox/ and read status/; the updater runs as root, outside it, from a copy in
 # /usr/local/sbin that an update never replaces. It fetches with a read-only
-# deploy key, into its own repository.
+# deploy key, into its own repository, and installs root-owned trees from it.
+# Run by the updater (LYRICA_HOST_UPDATING), this leaves the updater alone.
 UPDATER=/var/lib/lyrica-host-update
 "${SUDO[@]}" mkdir -p "$UPDATER/inbox" "$UPDATER/status"
 "${SUDO[@]}" chown 10001:10001 "$UPDATER/inbox"
@@ -311,6 +313,8 @@ elif [[ ! -d /run/systemd/system ]]; then
   updater_status false "This host has no systemd: update it with git pull and install.sh."
 elif ! command -v jq >/dev/null || ! command -v git >/dev/null || ! command -v ssh >/dev/null; then
   updater_status false "Install jq, git and ssh on the host, then run install.sh again."
+elif [[ -n ${LYRICA_HOST_UPDATING:-} ]]; then
+  :
 else
   "${SUDO[@]}" mkdir -p /etc/lyrica-host
   if ! "${SUDO[@]}" test -f /etc/lyrica-host/deploy-key; then
@@ -323,13 +327,13 @@ else
     "${SUDO[@]}" git init -q --bare "$UPDATER/repo.git"
     "${SUDO[@]}" git --git-dir="$UPDATER/repo.git" remote add origin "$REPO_URL"
   fi
-  # The checkout's owner fetches from it.
-  "${SUDO[@]}" chmod -R a+rX "$UPDATER/repo.git"
   "${SUDO[@]}" install -m 0755 update.sh /usr/local/sbin/lyrica-host-update
-  sed "s#@HOST_DIR@#$PWD#g" lyrica-host-update.service | "${SUDO[@]}" tee /etc/systemd/system/lyrica-host-update.service >/dev/null
+  "${SUDO[@]}" install -m 0644 lyrica-host-update.service /etc/systemd/system/lyrica-host-update.service
   "${SUDO[@]}" install -m 0644 lyrica-host-update.path /etc/systemd/system/lyrica-host-update.path
   "${SUDO[@]}" systemctl daemon-reload
   "${SUDO[@]}" systemctl enable --now lyrica-host-update.path >/dev/null
+  # The folder the updater carries the settings from.
+  printf '%s\n' "$PWD" | "${SUDO[@]}" tee "$UPDATER/current" >/dev/null
   updater_status true
 fi
 

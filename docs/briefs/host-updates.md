@@ -35,11 +35,13 @@ updated only by `git pull && host/install.sh` on the machine.
 4. **Steps:** read the request (a tag only, checked by regex); fetch `main`
    and `update/*` with the deploy key; check the tag; ask host-api to
    pause (its existing Pause: running jobs finish, up to 10 minutes); note the
-   running commit; `git checkout --detach` the tag's commit; run
-   `install.sh --yes`; then probation: `/host/v1/status` answers with the new
-   commit within 5 minutes. Otherwise check out the old commit, run
-   `install.sh --yes` again, and record the failure. The update leaves the
-   host paused as it found it, or running.
+   running commit; unpack the tag's commit with `git archive` into a
+   root-owned tree, `/opt/lyrica-host/<commit>`, and carry `.env` over; run
+   that tree's `install.sh --yes`; then probation: `/host/v1/status` answers
+   with the new commit within 5 minutes. Otherwise install the old commit
+   from its own tree the same way, and record the failure. Root never runs a
+   person's checkout (PR review). The update leaves the host paused as it
+   found it, or running.
 5. **State** lives in `/var/lib/lyrica-host-update/status/state.json` (mounted read-only) (`idle`,
    `fetching`, `draining`, `building`, `rolling-back`, `failed`, with the tag,
    the failed step and the last update), plus `requested` while a request
@@ -56,8 +58,7 @@ updated only by `git pull && host/install.sh` on the machine.
 7. **NixOS and hand-run hosts.** A host whose install has no updater (NixOS,
    no systemd, or no jq, git or ssh) reports `update: {available: false,
    reason}`; Lyrica shows the version with the reason in a tooltip, and no
-   Update. A checkout with local changes fails the update with nothing
-   changed.
+   Update.
 
 ## Out of scope
 
