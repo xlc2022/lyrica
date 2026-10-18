@@ -1426,6 +1426,8 @@ export type ThreadEvent =
   | { type: "message_start"; model?: string }
   | { type: "text"; delta: string }
   | { type: "thinking"; delta: string }
+  /** The model has started writing a tool call: shown at once, with its arguments when it runs (`tool_start`). */
+  | { type: "tool_call"; toolCallId: string; name: string }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
   /** `result` is short: the first lines of the tool's output. */
   | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart; imageRefusal?: ImageRefusal }

@@ -1004,6 +1004,12 @@ export class HostedThread {
         const a = e.assistantMessageEvent;
         if (a.type === "text_delta") this.emit({ type: "text", delta: a.delta });
         if (a.type === "thinking_delta") this.emit({ type: "thinking", delta: a.delta });
+        // Principle 1: a call shows as the model starts writing it, not when the reply ends, so a reply of many calls isn't silent.
+        // Its arguments follow with tool_start when it runs.
+        if (a.type === "toolcall_start") {
+          const call = a.partial.content[a.contentIndex];
+          if (call?.type === "toolCall" && call.id && call.name) this.emit({ type: "tool_call", toolCallId: call.id, name: call.name });
+        }
         break;
       }
       case "message_end": {

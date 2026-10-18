@@ -37,6 +37,28 @@ describe("the live view of a thread's stream", () => {
     expect(next.items).toEqual([{ role: "user", text: "again" }]);
   });
 
+  it("shows a call as soon as the model starts writing it, and fills in its arguments in place when it runs", () => {
+    const s = run([
+      { type: "turn_start" },
+      { type: "message_start", model: "m" },
+      { type: "tool_call", toolCallId: "c1", name: "image" },
+      { type: "tool_call", toolCallId: "c2", name: "bash" },
+      { type: "tool_call", toolCallId: "c1", name: "image" },
+    ]);
+    expect(s.items).toEqual([{ role: "assistant", model: "m", parts: [
+      { type: "tool", toolCallId: "c1", name: "image", args: {} },
+      { type: "tool", toolCallId: "c2", name: "bash", args: {} },
+    ] }]);
+    const ran = run([
+      { type: "tool_start", toolCallId: "c1", name: "image", args: { action: "create", prompt: "A garden" } },
+      { type: "tool_end", toolCallId: "c1", name: "image", result: "made", isError: false },
+    ], s);
+    expect((ran.items[0] as { parts: unknown[] }).parts).toEqual([
+      { type: "tool", toolCallId: "c1", name: "image", args: { action: "create", prompt: "A garden" }, result: "made", isError: false },
+      { type: "tool", toolCallId: "c2", name: "bash", args: {} },
+    ]);
+  });
+
   it("keeps a delegate call's subagent threads, and shows a delivered notice", () => {
     const s = run([
       { type: "turn_start" },

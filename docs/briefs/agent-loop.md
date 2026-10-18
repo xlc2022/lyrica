@@ -1,7 +1,7 @@
 # Brief: Agent loop reliability
 
-**Status:** merged as #309; the tool-definition follow-up below is in PR
-review. **Branch:** `claude/agent-loop-reliability-661bmo`. **Model:** Opus.
+**Status:** merged as #309 and #314 (smaller tool definitions); live tool
+calls, below, are in PR review. **Branch:** `claude/agent-loop-reliability-661bmo`. **Model:** Opus.
 
 **Read first:** AGENTS.md, docs/delegation.md ("Child threads"),
 docs/contracts.md (threads, turn tool limits, the `image` tool), docs/models.md.
@@ -77,16 +77,33 @@ The user asked for the trim after #309. Measured as each tool's
 
 Principle 8.
 
+## Follow-up: tool calls while a reply streams
+
+The user asked for this after #314. The views already fold three or more
+markers into "<n> tool calls" with a running dot, but a call's marker arrived
+only when it ran, after the reply ended, so a reply of many calls looked
+silent.
+
+- The daemon sends `tool_call` (`toolCallId`, `name`) on Pi's
+  `toolcall_start`; the live view adds the call's marker, running, and
+  `tool_start` fills in its arguments in place. Calls the 32-call cap stops
+  show while they stream, then go when the stored reply (which has none)
+  loads.
+- Pi's OpenAI-compatible stream sends `toolcall_end` only after the whole
+  reply, so `toolcall_start` is the only per-call signal; a call without an
+  id at its start isn't shown early.
+- No new control: docs/ux.md's markers row gains one sentence.
+
+Principle 1.
+
 ## Out of scope
 
-Showing tool calls while a reply streams (a UI change for UI review),
-trimming the `delegate` schema further, inline rename (Side panels
+Trimming the `delegate` schema further, inline rename (Side panels
 and files), image recipes and the cloud image 400 (Image settings and
 recipes, #305).
 
 ## Handoff
 
-- **Done:** all of Change (#309) and the tool-definition follow-up, with
-  tests and docs.
-- **Next:** PR review of the follow-up.
-- **Open:** whether the views should show tool calls as they stream.
+- **Done:** all of Change (#309), smaller tool definitions (#314), live
+  tool calls, with tests and docs.
+- **Next:** PR review and UI review of live tool calls.
