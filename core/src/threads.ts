@@ -11,20 +11,53 @@ export const ANSWER = /^\[Answer to q:/;
 export const answerMark = (n: number) => `[Answer to q:${n}]\n\n`;
 export interface Ask { question: string; options: { label: string; consequence: string }[]; recommended: number; context?: string }
 export const ASK_LIMITS = { question: 300, context: 1200, minOptions: 2, maxOptions: 4, label: 40, consequence: 200 };
+/** Only unambiguous repairs, shared by Pi preparation and encrypted-log readers. */
+export function normalizeThreadArguments(input: unknown): any {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const a = { ...input } as Record<string, any>;
+  for (const field of ["options", "steps"]) {
+    if (typeof a[field] === "string") {
+      try { const parsed = JSON.parse(a[field]); if (Array.isArray(parsed)) a[field] = parsed; } catch { /* Validation explains the shape. */ }
+    }
+  }
+  if (Array.isArray(a.steps)) a.steps = a.steps.map((s: any) => {
+    if (typeof s === "string") return { text: s, state: "todo" };
+    if (!s || typeof s !== "object") return s;
+    const aliases: Record<string, string> = { in_progress: "doing", "in progress": "doing", active: "doing", started: "doing", pending: "todo", "not started": "todo", complete: "done", completed: "done", finished: "done" };
+    return { ...s, state: typeof s.state === "string" ? aliases[s.state.toLowerCase()] ?? s.state : s.state };
+  });
+  if (typeof a.recommended === "string" && Array.isArray(a.options)) {
+    const matches = a.options.flatMap((o: any, i: number) => typeof o?.label === "string" && o.label.toLowerCase() === a.recommended.toLowerCase() ? [i] : []);
+    if (matches.length === 1) a.recommended = matches[0];
+  }
+  return a;
+}
+const received = (v: unknown) => v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
+function invalid(action: "ask" | "steps", field: string, value: unknown, allowed: string): never {
+  const example = action === "ask"
+    ? 'threads({ action: "ask", question, options: [{ label, consequence }, …], recommended: 0 })'
+    : 'threads({ action: "steps", steps: [{ text, state: "todo" }] })';
+  throw new Error(`${field} received ${received(value)}; ${allowed}. Example: ${example}`);
+}
 /** Structural validation, shared by the tool and encrypted-log readers. */
 export function cleanAsk(input: unknown): Ask {
-  const a = input as Partial<Ask> | null;
-  const str = (v: unknown, max: number, name: string): string => {
-    if (typeof v !== "string" || !v.trim() || v.trim().length > max) throw new Error(`${name} has 1 to ${max} characters`);
-    return v.trim();
+  const a = normalizeThreadArguments(input);
+  const str = (v: unknown, max: number, field: string): string => {
+    if (typeof v !== "string" || !v.trim() || v.trim().length > max) invalid("ask", field, v, `must have 1 to ${max} characters`);
+    return (v as string).trim();
   };
   const question = str(a?.question, ASK_LIMITS.question, "question");
-  if (!Array.isArray(a?.options) || a.options.length < 2 || a.options.length > 4) throw new Error("ask needs 2 to 4 options");
-  const options = a.options.map(o => ({ label: str(o?.label, ASK_LIMITS.label, "label"), consequence: str(o?.consequence, ASK_LIMITS.consequence, "consequence") }));
-  if (new Set(options.map(o => o.label.toLowerCase())).size !== options.length) throw new Error("option labels must be unique ignoring case");
-  if (!Number.isInteger(a.recommended) || a.recommended! < 0 || a.recommended! >= options.length) throw new Error("recommended must be an option index");
-  if (a.context !== undefined && (typeof a.context !== "string" || a.context.trim().length > ASK_LIMITS.context)) throw new Error("context has at most 1200 characters");
-  return { question, options, recommended: a.recommended!, ...(a.context !== undefined ? { context: a.context.trim() } : {}) };
+  if (!Array.isArray(a?.options) || a.options.length < 2 || a.options.length > 4) invalid("ask", "options", a?.options, "must be an array of 2 to 4 options");
+  const options = a.options.map((o: any, i: number) => {
+    if (!o || typeof o !== "object" || Array.isArray(o)) invalid("ask", `options[${i}]`, o, "each option is { label, consequence }");
+    return { label: str(o.label, ASK_LIMITS.label, `options[${i}].label`), consequence: str(o.consequence, ASK_LIMITS.consequence, `options[${i}].consequence`) };
+  });
+  options.forEach((o: Ask["options"][number], i: number) => {
+    if (options.some((other: Ask["options"][number], j: number) => j < i && other.label.toLowerCase() === o.label.toLowerCase())) invalid("ask", `options[${i}].label`, o.label, "option labels must be unique ignoring case");
+  });
+  if (!Number.isInteger(a.recommended) || a.recommended < 0 || a.recommended >= options.length) invalid("ask", "recommended", a.recommended, `must be an option index from 0 to ${options.length - 1}`);
+  if (a.context !== undefined && (typeof a.context !== "string" || a.context.trim().length > ASK_LIMITS.context)) invalid("ask", "context", a.context, "must be a string of at most 1200 characters");
+  return { question, options, recommended: a.recommended, ...(a.context !== undefined ? { context: a.context.trim() } : {}) };
 }
 export const ASK_GUIDELINE = "Ask on a card (threads ask) only for a fork that changes the person's goal, an output they will notice, or a step no one can undo. Ask once, without repeating it in prose. Put the recommended option first. Keep working on it where the step can be undone; otherwise end the turn. The answer arrives in a later turn.";
 
@@ -70,9 +103,16 @@ export const STEPS_LIMITS = { steps: 12, chars: 80 };
 export const STEPS_GUIDELINE = "On work of several steps that runs a while, keep this thread's checklist, which the person follows on its card instead of reading the thread: threads({ action: \"steps\", steps }), each step short, with its state (todo, doing or done). Set it when you start, update it as each step starts or finishes, and leave every step at its real end state when the work ends. Not for a quick answer.";
 
 /** A checklist as `threads` takes it: steps trimmed and cut to `STEPS_LIMITS.chars`, empty ones dropped. Refuses one that is too long. */
-export function cleanSteps(steps: ThreadStep[]): ThreadStep[] {
-  const clean = steps.map((s) => ({ text: s.text.trim().replace(/\s+/g, " "), state: s.state })).filter((s) => s.text);
-  if (clean.length > STEPS_LIMITS.steps) throw new Error(`a checklist has at most ${STEPS_LIMITS.steps} steps; merge some`);
+export function cleanSteps(input: unknown): ThreadStep[] {
+  const steps = normalizeThreadArguments({ steps: input }).steps;
+  if (!Array.isArray(steps)) invalid("steps", "steps", steps, "must be an array of { text, state }");
+  const clean: ThreadStep[] = steps.map((s: any, i: number) => {
+    if (!s || typeof s !== "object" || Array.isArray(s)) invalid("steps", `steps[${i}]`, s, "each step is { text, state }");
+    if (typeof s.text !== "string") invalid("steps", `steps[${i}].text`, s.text, "must be a string");
+    if (!["todo", "doing", "done"].includes(s.state)) invalid("steps", `steps[${i}].state`, s.state, "must be one of todo, doing, done");
+    return { text: s.text.trim().replace(/\s+/g, " "), state: s.state };
+  }).filter((s: ThreadStep) => s.text);
+  if (clean.length > STEPS_LIMITS.steps) invalid("steps", "steps", steps, `a checklist has at most ${STEPS_LIMITS.steps} steps; merge some`);
   return clean.map((s) => ({ ...s, text: s.text.length > STEPS_LIMITS.chars ? `${s.text.slice(0, STEPS_LIMITS.chars - 1)}…` : s.text }));
 }
 

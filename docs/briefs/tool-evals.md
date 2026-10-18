@@ -1,6 +1,6 @@
 # Brief: Question cards and checklists on every model
 
-**Status:** brief in review. **Branch:** the build is on a new `feature/tool-evals` from `main`, made after this brief merges. **Built by:**
+**Status:** implemented; awaiting review. **Branch:** the build is on a new `feature/tool-evals` from `main`, made after this brief merges. **Built by:**
 Codex on the test machine; the Agent loop thread (Opus) owns review and the PR.
 **Read first:** AGENTS.md, PRINCIPLES.md, docs/briefs/question-card.md,
 docs/briefs/truthful-continuation.md, docs/contracts.md (Child threads, the
@@ -143,6 +143,32 @@ handoff.
 
 ## Handoff
 
-- **Done:** brief.
-- **Next:** PR review of the brief, then the Codex build on the test
-  machine, queued after push notifications.
+- **Done:** shared core normalization and specific ask/steps errors, Pi
+  preparation before schema validation, and normalized reconstruction of
+  encrypted question calls. The extension sends the fixed hidden
+  `lyrica-ask-nudge` follow-up once per agent run for either final prose
+  question shape, suppresses it after any ask call or an open question, and
+  drops earlier nudges at the next user message or turn-context marker.
+  No new controls, tools, prompt descriptions or definition ceilings.
+- **Evals:** question-card and checklist each cover three positive and three
+  negative synthetic requests. A shared harness records raw first calls,
+  validation, tool-call position and response position, and one correction.
+  It stops before a valid call executes or after two invalid attempts.
+  Optional endpoints use presets/columns through `setColumnTask` and support
+  `LYRICA_EVAL_KIND=local`; the remaining `profile` callback is the user's
+  name/pronouns profile, not a model profile. No Images or welcome-page
+  changes, model-profile routes or database migrations were needed.
+- **Docs:** contracts and delegation describe accepted repairs, specific
+  errors, hidden follow-up lifetime and the evals. Principles 1 and 3 remain
+  the reason for the change. No UX change: the follow-up is hidden and the
+  existing question-card and checklist controls retain their homes.
+- **Validation:** typecheck passes. Focused tests run separately under
+  `/tmp/lyrica-tests.lock`, with forks and at most two workers: core thread
+  arguments, core questions, extension Pi sessions, threads and context.
+  `npm run evals` uses the same lock and worker limit; 14 pass and five
+  optional real-model checks skip. No `LYRICA_EVAL_*` variables were set;
+  only fake models and made-up data were used. No paid, plan or local model
+  host endpoint was called. The full test suite was deliberately not run.
+- **Next:** review, the user's full-suite run, commit and push. Changes are
+  left in the working tree; this run cannot write `.git` and does not push.
+  Real-model evals remain explicitly out of scope. No open design questions.

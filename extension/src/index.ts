@@ -1,7 +1,7 @@
 import type { BuildSystemPromptOptions, ExtensionCommandContext, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { isThreadView, type CallContext, type Interface, type Persona, type Pool, type PoolView, type Profile, type User } from "@lyrica/core";
 import { assemble, type Budgets, type Section } from "./assemble.ts";
-import { contextLines, registerContext, type ContextMeter } from "./context.ts";
+import { dropAskNudges, contextLines, registerContext, type ContextMeter } from "./context.ts";
 import { setToolsOff } from "./gate.ts";
 import { memorySections } from "./memory.ts";
 import { SELF_PRIMER } from "./primer.ts";
@@ -73,8 +73,9 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
     if (opts.meter) registerContext(pi, opts.meter);
     if (opts.sleep) pi.registerCommand("sleep", { description: "Sleep now: consolidate, dream and wake, for this pool", handler: (_args, ctx) => opts.sleep!(ctx) });
     pi.on("context_with_system", event => {
+      const messages = dropAskNudges(event.messages);
       const recentWork = opts.recentWork?.();
-      return recentWork ? { messages: [...event.messages, { role: "system" as const, content: `Selected recent work for this turn:\n\n${recentWork}`, timestamp: Date.now() }] } : undefined;
+      return recentWork ? { messages: [...messages, { role: "system" as const, content: `Selected recent work for this turn:\n\n${recentWork}`, timestamp: Date.now() }] } : { messages };
     });
     pi.on("before_agent_start", async (event, ctx) => {
       const persona = opts.persona();

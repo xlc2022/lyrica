@@ -347,6 +347,23 @@ checks it reaches her, and with a real model which she picks. Code:
 - `compact({ summary })`: compacts the thread she's in with her summary
   (daemon.md, "Compacting herself"). Child threads have it too.
 
+For ask and steps, one core normalizer accepts JSON-encoded arrays, unique
+case-insensitive recommendation labels, bare string steps (todo), and step
+aliases: in_progress, in progress, active, started → doing; pending, not
+started → todo; complete, completed, finished → done (ignoring case).
+Other malformed fields get a specific error naming their position, received
+type and allowed shape, with an example, so Pi can let the model correct it.
+Stored question calls use the same normalization when rebuilding the card.
+
+A final prose question with two to four adjacent list items, before or after
+it, gets at most one hidden follow-up when this thread can ask, has no open
+question and made no ask call. It asks her to use a card if the choice blocks
+progress. The custom message `lyrica-ask-nudge` is hidden and removed from
+model context at the next turn. The question-card and checklist
+evals exercise fake models by default and optionally record real-model
+validation and one correction; they never apply the calls. Principles 1 and
+3: correct failures seen in use through Pi's existing hooks.
+
 The tool also has `later`, `routine` and `steps` (below), and `suggest`,
 `resolve` and `reopen` in projects. Each thread is sent only the actions it
 can use, with their fields, so a definition resent with every reply carries
