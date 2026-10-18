@@ -453,8 +453,9 @@ workstation"). Note what goes wrong against each.
 8. A download of a gated repository with a token, and one from a link.
 9. An image: install the Z-Image Turbo starter recipe (Image models,
    **Download image model**, which opens on Starter recipes; missing parts
-   download after you confirm), make an image, edit and upscale. The ComfyUI workflow templates have never run, so expect
-   node or input names in `host/workflows/` to need fixing.
+   download after you confirm), make an image, edit and upscale. The
+   ComfyUI workflow templates have never run, so expect node or input
+   names in `host/workflows/` to need fixing.
 
 Report what fails, with the `host-api` log lines, in the Operator docs
 thread.

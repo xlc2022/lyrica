@@ -584,8 +584,8 @@ encrypted thread folder, with no prompt metadata.
 **Use for** sets each image model to **Fast**, **Quality** or **Both** (the
 default), and a request skips models set only for the other one. It is
 saved at once. Hosts keep their recipe defaults for both; OpenAI uses low
-or high quality. Set it in **Models → Image models**: on a host recipe, or
-for a key's model under **Other cloud models**.
+or high quality. Set it in **Models → Image models**, in the model's opened
+row: a host recipe, ChatGPT Images, or a key's model once Generate is on.
 
 To make images in the cloud, add an endpoint under Models, Hosts and
 endpoints:
