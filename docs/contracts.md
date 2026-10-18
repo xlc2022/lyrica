@@ -441,7 +441,8 @@ class Models {                                              // new Models(keyrin
   // Hosts and pairing
   pairHost(actor, { name, addresses, code }, { shared?, endpointId? }): Promise<Endpoint>   // endpointId: pair again, IDs kept
   setHostAddresses(actor, id, addresses): Endpoint / fetchFor(endpoint): typeof fetch | undefined   // undefined for a plain endpoint
-  hostStatus(userId, id) / hostControl(actor, id, "pause" | "resume" | "restart")
+  hostStatus(userId, id) / hostControl(actor, id, "pause" | "resume" | "restart")   // hostControl answers the whole status after
+  // editEndpoint(actor, id, { name?, baseUrl?, apiKey?, paused? }): paused pauses a plain endpoint or plan (Endpoint.pausedAt); the router skips it
   // Speech: the only way audio reaches a model
   transcribe(ctx, wav, { language?, signal? }): Promise<{ text; resolution; audioSeconds? }>   // in voiceContext(ctx); CloudModelForbidden, NoModel, Offline
   speak(ctx, text, { voice?, speed?, language?, signal? }): Promise<{ audio: ReadableStream<Uint8Array>; resolution; voice? }>   // raw PCM, SPEECH_FORMAT
@@ -468,6 +469,7 @@ class Models {                                              // new Models(keyrin
   lookupRecommended(actor, offeringId, repo?)               // reads the card through the host's fetch service; administrator (shared) or owner
   // setServingSettings(…, { anyway: true }) saves a stretch above the card's factor (host code above_recommended otherwise)
   hostCopies(actor, ctx): { offering, name, host }[]       // host chat models the actor can manage; [] for a private or local-only ctx
+  downloadHosts(actor, ctx): { id, name }[]                 // hosts her model_files and download_model reach; [] for a private or local-only ctx
   hostDashboard(userId, hostId): string                     // a direct link, at the address that last answered
 }
 // Also exported: CloudModelForbidden, NoModel, Offline (a NoModel: code "offline", task, tried), isUnreachable(err),

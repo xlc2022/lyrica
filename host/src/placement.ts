@@ -32,7 +32,17 @@ export interface ModelSettings {
   chatTemplate?: string;
   /** YaRN: raises the context's limit to the trained length times the factor. Off unless set. */
   stretch?: Stretch;
+  /** llama.cpp: false leaves the vision projector out (less memory, no images). On when the model has one. */
+  vision?: boolean;
+  /** llama.cpp: false turns off drafting with MTP. On when the model has an MTP file or its own MTP layers. */
+  mtp?: boolean;
+  /** llama.cpp: tokens MTP drafts ahead, 1 to 6; 2 unless set. */
+  draftMax?: number;
 }
+
+/** Whether a model runs with its projector and with MTP, under its settings. */
+export const usesVision = (model: TextModel, s: ModelSettings) => !!model.mmproj && s.vision !== false;
+export const usesMtp = (model: TextModel, s: ModelSettings) => (!!model.mtp || !!model.builtInMtp) && s.mtp !== false;
 
 export interface Stretch {
   type: "yarn";
@@ -62,7 +72,8 @@ export function serverOf(model: TextModel): Server {
 
 /** The longest context a model may be served with: what it was trained for, times its stretch. */
 export function maxContextOf(model: TextModel, s: ModelSettings): number | null {
-  return model.contextLength === null ? null : model.contextLength * (s.stretch?.factor ?? 1);
+  const base = model.contextLength ?? s.stretch?.originalContext ?? null;
+  return base === null ? null : base * (s.stretch?.factor ?? 1);
 }
 
 /** The context the model is served with: its setting, else 32k, never past its maximum. */
@@ -75,7 +86,8 @@ export function sizes(model: TextModel, s: ModelSettings): { weights: number; kv
   if (model.kind === "image" || model.kind === "speak") return { weights: Math.round(model.size * 1.1), kv: 0 };
   const context = model.kind === "embedding" ? Math.min(contextOf(model, s), 8192) : contextOf(model, s);
   const perToken = model.kvPerToken !== null ? model.kvPerToken * KV_BYTES[s.kvCacheType ?? "f16"] : (2 * GIB) / DEFAULT_CONTEXT;
-  return { weights: Math.round(model.size * 1.05), kv: Math.round(perToken * context) };
+  const extras = (usesVision(model, s) ? model.mmprojSize ?? 0 : 0) + (usesMtp(model, s) ? model.mtpSize ?? 0 : 0);
+  return { weights: Math.round((model.size + extras) * 1.05), kv: Math.round(perToken * context) };
 }
 
 /** One way to run a model: its GPUs, and what it takes on each. */
@@ -173,7 +185,7 @@ const oneOf = (v: unknown, values: readonly string[], what: string) => {
   if (v !== undefined && !values.includes(v as string)) throw invalid(`${what} must be one of ${values.join(", ")}.`);
 };
 
-const LLAMA_ONLY = ["kvCacheType", "flashAttention", "gpuLayers", "parallel"] as const;
+const LLAMA_ONLY = ["kvCacheType", "flashAttention", "gpuLayers", "parallel", "vision", "mtp", "draftMax"] as const;
 const VLLM_ONLY = ["memoryShare", "maxSeqs", "dtype"] as const;
 const KEYS = ["placement", "contextLength", "batchSize", "chatTemplate", "stretch", ...LLAMA_ONLY, ...VLLM_ONLY];
 
@@ -186,9 +198,9 @@ const MAX_CONTEXT = 1_048_576;
  */
 function checkStretch(model: TextModel, server: Server, v: unknown): Stretch {
   if (model.kind !== "chat") throw invalid("Only chat models can be stretched.");
-  if (!model.contextLength) throw invalid("The host couldn't read how long a context this model was trained for, so there is nothing to stretch from.");
   if (!v || typeof v !== "object" || Array.isArray(v)) throw invalid("stretch is { type: \"yarn\", factor, originalContext }.");
   const o = v as Record<string, unknown>;
+  if (!model.contextLength && o.originalContext === undefined) throw invalid("The host couldn't read how long a context this model was trained for: give the original context to stretch from.");
   for (const k of Object.keys(o)) if (!["type", "factor", "originalContext"].includes(k)) throw invalid(`Unknown stretch field: ${k}.`);
   if (o.type !== "yarn") throw invalid("stretch.type must be yarn.");
   const whole = server === "llamacpp";
@@ -196,7 +208,7 @@ function checkStretch(model: TextModel, server: Server, v: unknown): Stretch {
     throw invalid(whole ? "stretch.factor must be a whole number from 1 to 8 for llama.cpp." : "stretch.factor must be from 1 to 8.");
   }
   int(o.originalContext, 512, MAX_CONTEXT, "stretch.originalContext");
-  return { type: "yarn", factor: o.factor, originalContext: (o.originalContext as number | undefined) ?? model.contextLength };
+  return { type: "yarn", factor: o.factor, originalContext: (o.originalContext as number | undefined) ?? model.contextLength! };
 }
 
 /** The one way to run a server on the CPU: no GPUs, nothing counted against them. */
@@ -238,6 +250,10 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
     throw invalid("A q8_0 or q4_0 KV cache needs flashAttention set to on.");
   }
   int(body.gpuLayers, 0, 999, "gpuLayers");
+  for (const k of ["vision", "mtp"] as const) if (body[k] !== undefined && typeof body[k] !== "boolean") throw invalid(`${k} is true or false.`);
+  if (body.vision !== undefined && !model.mmproj) throw invalid("This model has no vision projector.");
+  if (body.mtp !== undefined && !model.mtp && !model.builtInMtp) throw invalid("This model has no MTP file or layers.");
+  int(body.draftMax, 1, 6, "draftMax");
   int(body.parallel, 1, 64, "parallel");
   int(body.batchSize, 32, 65536, "batchSize");
   int(body.maxSeqs, 1, 1024, "maxSeqs");

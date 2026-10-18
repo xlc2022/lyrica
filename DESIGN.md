@@ -585,15 +585,19 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - **Serving**, for models on a model host: context length,
     KV-cache type, flash attention, GPU layers, parallel requests and batch
     size, plus for vLLM its memory share, maximum sequences and dtype, and a
-    chat-template override. They are saved on the host with the model's
+    chat-template override; for llama.cpp also **Vision** (its projector)
+    and **MTP** (multi-token prediction from an MTP file or the model's own
+    layers, with its draft tokens), on when the model has them. A vision
+    projector and an MTP file go with a model and are never models of their
+    own. They are saved on the host with the model's
     placement (administrators for shared hosts) and apply at its next load,
     with **Reload now** when it's idle.
   - **Stretch**, for text models on a host: YaRN with a factor and the
     original context, which raises the context length's limit from the
     trained length to that length times the factor, and gives llama.cpp
     and vLLM the flags their publisher documents. It is off unless set,
-    since static YaRN costs a little on short prompts, and refused on a
-    model whose trained length the host couldn't read. A factor above the
+    since static YaRN costs a little on short prompts; a model whose
+    trained length the host couldn't read needs the original context. A factor above the
     publisher's needs **Save anyway**, or Allow on her card, which names
     the documented factor. The host counts KV cache for the
     layers that hold one, so a hybrid model (Qwen3.5 and later) is placed
@@ -608,7 +612,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - Lyrica has a `models` tool in general threads: `lookup` returns a
     model's recommended settings and the host's fit estimate; `propose`
     asks the copy's administrator or owner on a card, and applies on Allow.
-    Private and local-only threads have no `models` tool. See
+    Private and local-only threads have no `models` tool. She also has
+    `model_files` and `download_model` there, for a user who manages a
+    host: she downloads a model when asked, asking which host when there
+    are several, and the permission card asks before anything downloads.
+    See
     [docs/briefs/context-stretch.md](docs/briefs/context-stretch.md).
   - The context length is the window Lyrica plans for, used by compaction
     and when a group skips a member too small for the conversation. For

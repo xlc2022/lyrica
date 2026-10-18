@@ -5,7 +5,7 @@ import type { RecordEntry } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import { scanTextModels, type TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
-import { SERVER_NAMES, SERVERS, contextOf, maxContextOf, serverOf, sizes, validate, type Server } from "./placement.ts";
+import { SERVER_NAMES, SERVERS, contextOf, maxContextOf, serverOf, sizes, usesVision, validate, type Server } from "./placement.ts";
 import { PRIORITIES, type Priority, type Scheduler } from "./scheduler.ts";
 import { NO_USAGE, type StateFile, type Usage } from "./state.ts";
 
@@ -265,6 +265,8 @@ export class Runtime {
       recommended: this.state.get().recommended[m.id] ?? null,
       // vLLM 0.30 misreads the original context on Qwen3.5-style M-RoPE (vllm#58870).
       stretchUntested: m.server === "vllm",
+      // What the Vision and MTP switches can turn off: a projector, and an MTP file or the model's own MTP layers.
+      extras: { vision: !!m.mmproj, mtp: m.mtp ? "file" : m.builtInMtp ? "built-in" : null },
     };
   }
 
@@ -282,7 +284,8 @@ export class Runtime {
       sha256: entry?.sha256 ?? null,
       downloaded: !!(entry ?? folder),
       identity: { ...m.identity, card: (entry ?? folder)?.card ?? null },
-      capabilities: m.capabilities,
+      // A projector left out by its setting takes the model's sight with it.
+      capabilities: { ...m.capabilities, ...(m.mmproj ? { vision: usesVision(m, this.scheduler.settings(m)) } : {}) },
       // The context it is served with; maxContextLength is what it was trained for.
       contextLength: m.kind === "image" || m.kind === "speak" ? null : contextOf(m, this.scheduler.settings(m)),
       maxContextLength: m.contextLength,

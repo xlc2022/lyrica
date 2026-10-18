@@ -76,6 +76,8 @@ export interface SchedulerOptions {
    * Vulkan, or on ROCm with unified memory. The others see its carve-out only.
    */
   sharedMemory?: Server[];
+  /** Longest wait, in ms, for an unloaded model's memory to come back before the next load is planned. */
+  settleMs?: number;
 }
 
 export type HostRunState = "running" | "pausing" | "paused" | "restarting";
@@ -95,6 +97,9 @@ export class Scheduler {
   private changing = 0;
   /** Invalidates GPU-delta attribution when another request or memory change starts. */
   private memoryEpoch = 0;
+  /** GPUs whose unloaded model's memory hasn't come back yet, and the use that means it has. */
+  private readonly releasing = new Map<number, { until: number; below: number }>();
+  private retry: ReturnType<typeof setTimeout> | null = null;
   runState: HostRunState = "running";
   /** What went wrong the last time the host paused, restarted or reset: shown in the status. */
   problems: string[] = [];
@@ -322,6 +327,13 @@ export class Scheduler {
           }
           const plan = this.plan(job, held);
           if (plan instanceof HostError) {
+            // Too big while an unloaded model's memory is still coming back: wait for it before saying so.
+            const releasing = plan.code === "too_big" ? this.stillReleasing() : [];
+            if (releasing.length) {
+              job.waitingOn = releasing;
+              this.pumpSoon();
+              continue;
+            }
             this.finish(job, plan);
             continue;
           }
@@ -332,6 +344,14 @@ export class Scheduler {
           }
           try {
             for (const e of plan.evict) await this.unload(e);
+            if (plan.evict.length) {
+              // Load only once what was unloaded has let go of its memory: plan again from the top.
+              await this.readGpus();
+              if (this.stillReleasing().some((g) => plan.option.gpus.includes(g))) {
+                this.again = true;
+                break;
+              }
+            }
             await this.load(job.model, plan.option);
           } catch (e) {
             this.finish(job, e instanceof HostError ? e : new HostError(503, "model_unavailable", "The model server couldn't load this model."));
@@ -458,13 +478,40 @@ export class Scheduler {
   private async unload(l: Loaded): Promise<void> {
     this.memoryEpoch++;
     this.changing++;
+    const before = Object.fromEntries((await this.readGpus()).map((g) => [g.index, g.used]));
     try {
       await this.backend(l.model).unload(l.model);
     } finally {
       this.changing--;
     }
     this.loaded.delete(l.model.id);
+    // Until the server's process lets go of the memory, it looks like other programs'.
+    const until = Date.now() + (this.o.settleMs ?? 30_000);
+    for (const g of l.option.gpus) this.releasing.set(g, { until, below: (before[g] ?? 0) - (l.vram[g] ?? 0) / 2 });
     this.o.log("unloaded", { model: l.model.id });
+  }
+
+  /**
+   * GPUs an unloaded model may still hold memory on: a server's process can
+   * take seconds to exit after it says it unloaded. Done once a GPU has freed
+   * half of what the model held, or after `settleMs`.
+   */
+  private stillReleasing(): number[] {
+    for (const [g, r] of this.releasing) {
+      const used = this.gpus.find((x) => x.index === g)?.used ?? 0;
+      if (used <= r.below || Date.now() >= r.until) this.releasing.delete(g);
+    }
+    return [...this.releasing.keys()];
+  }
+
+  /** Looks at the queue again shortly, while memory is still coming back. */
+  private pumpSoon(): void {
+    if (this.retry) return;
+    this.retry = setTimeout(() => {
+      this.retry = null;
+      void this.pump();
+    }, 250);
+    this.retry.unref?.();
   }
 
   /** Loads a model now (the load API), queued like a chat request. */

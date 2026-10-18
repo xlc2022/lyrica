@@ -841,6 +841,7 @@ export function PermissionPrompt({ base, p, env }: { base: string; p: Permission
     );
   }
   if (p.tool === "models" && !p.subagent) return <ServingPrompt p={p} answer={answer} busy={busy} left={left} error={error} />;
+  if (p.tool === "download_model" && !p.subagent) return <DownloadPrompt p={p} answer={answer} busy={busy} left={left} error={error} />;
   const sub = p.subagent;
   // A subagent's request shows here and in its parent's thread; the first answer counts.
   const who = !sub ? <>{her()} wants</>
@@ -890,6 +891,27 @@ export function PortraitPrompt({ p, answer, busy, left, error }: { p: Permission
       <div className="row">
         <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Send today</button>
         <button type="button" disabled={busy} onClick={() => answer(false)}>Not today</button>
+        <span className="muted">{left}</span>
+      </div>
+      <ErrorText error={error} />
+    </div>
+  );
+}
+
+/** Her `download_model` call: what, from where and to which host, in one question; the files in mono. */
+function DownloadPrompt({ p, answer, busy, left, error }: { p: PermissionRequest; answer: (allow: boolean) => void; busy: boolean; left: string; error: string }) {
+  const a = (p.args ?? {}) as { host?: string; repo?: string; files?: string[]; companions?: boolean };
+  const files = Array.isArray(a.files) ? a.files : [];
+  return (
+    <div className="permission" role="group" data-pending="Approval" aria-label={`Download from ${a.repo ?? "a repository"}?`}>
+      <p>
+        Download from <b className="mono">{a.repo}</b>{a.host ? <> to <b>{a.host}</b></> : null}?
+        {a.companions !== false && " A model's vision projector and MTP file come with it."}
+      </p>
+      <pre>{files.join("\n")}</pre>
+      <div className="row">
+        <button type="button" className="primary" disabled={busy} onClick={() => answer(true)}>Allow</button>
+        <button type="button" disabled={busy} onClick={() => answer(false)}>Deny</button>
         <span className="muted">{left}</span>
       </div>
       <ErrorText error={error} />

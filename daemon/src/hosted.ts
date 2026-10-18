@@ -6,8 +6,8 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  formatEntry, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
-  GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
+  formatEntry, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
+  GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
@@ -822,6 +822,22 @@ export class HostedThread {
     };
   }
 
+  /** What her download tools reach: read again on each call, so a thread turned local-only loses its hosts at once. */
+  private downloadsHost(): DownloadsHost {
+    const { models, users } = this.o;
+    const actor = () => users.get(this.userId)!;
+    const hosts = () => models.downloadHosts(actor(), models.callContext(this.userId, this.pool, this.threadId));
+    const mine = (id: string) => {
+      if (!hosts().some((h) => h.id === id)) throw new Error("That isn't a model host you can manage here.");
+      return id;
+    };
+    return {
+      hosts,
+      files: async (id, source, repo) => (await models.hubFiles(actor(), mine(id), { source, repo })) as HubListing,
+      start: async (id, source, repo, files) => { await models.startDownload(actor(), mine(id), { source, repo, files }); },
+    };
+  }
+
   /** Asks every open view of the thread. A timeout or Stop denies. */
   private async approve(r: ApprovalRequest): Promise<boolean> {
     return (await this.ask(r.toolCallId, r.tool, r.input, { ...onMachine(r), ...commandApproval(this.o, this.userId, this.pool, this.threadId, r.tool, r.input) })).allowed;
@@ -947,6 +963,8 @@ export class HostedThread {
           ...(!thread.subagent ? [createReactExtension(ctx, { reacted: (n, reactions) => this.reacted(n, toReactions(reactions, this.userId) ?? []) })] : []),
           // The models tool: general threads only, for a user who can manage a host. Never a subagent's.
           ...(!thread.subagent && models.hostCopies(user, call).length ? [createModelsExtension(this.modelsHost())] : []),
+          // Downloading models when asked: general threads only, for a user who can manage a host. Never a subagent's.
+          ...(!thread.subagent && models.downloadHosts(user, call).length ? [createDownloadsExtension(this.downloadsHost())] : []),
         ],
       });
       const unsubscribe = session.subscribe((e) => this.forward(e));

@@ -70,6 +70,29 @@ describe("the models folder", () => {
     expect(qwen.contextLength).toBe(40960);
     expect(models[3]!.remoteCode).toBe(true);
   });
+
+  it("lists a model's vision projector and MTP file as its companions, never as models of their own", () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-models-"));
+    const repo = join(dir, "lyrica/huggingface/org/Model-GGUF");
+    mkdirSync(join(repo, "Q4_K_M"), { recursive: true });
+    mkdirSync(join(repo, "MTP"), { recursive: true });
+    const chat = { "general.architecture": "qwen3", "qwen3.context_length": 40960, "tokenizer.ggml.model": "gpt2" };
+    writeFileSync(join(repo, "Q4_K_M/Model-Q4_K_M.gguf"), ggufBytes(chat));
+    writeFileSync(join(repo, "Model-Q8_0.gguf"), ggufBytes(chat));
+    writeFileSync(join(repo, "mmproj-F32.gguf"), ggufBytes({ "general.architecture": "clip" }));
+    writeFileSync(join(repo, "mmproj-F16.gguf"), ggufBytes({ "general.architecture": "clip" }));
+    writeFileSync(join(repo, "MTP/mtp-Model-Q4_K_M.gguf"), ggufBytes(chat));
+    writeFileSync(join(repo, "MTP/mtp-Model-Q8_0.gguf"), ggufBytes(chat));
+    // A model with its own MTP layers needs no file.
+    writeFileSync(join(dir, "Built-in-MTP.gguf"), ggufBytes({ ...chat, "qwen3.nextn_predict_layers": 1 }));
+    const models = scanTextModels(dir);
+    const base = "lyrica/huggingface/org/Model-GGUF";
+    expect(models.map((m) => [m.id, m.mmproj, m.mtp ?? null, !!m.builtInMtp, m.capabilities.vision])).toEqual([
+      ["Built-in-MTP.gguf", null, null, true, false],
+      [`${base}/Model-Q8_0.gguf`, `${base}/mmproj-F16.gguf`, `${base}/MTP/mtp-Model-Q8_0.gguf`, false, true],
+      [`${base}/Q4_K_M/Model-Q4_K_M.gguf`, `${base}/mmproj-F16.gguf`, `${base}/MTP/mtp-Model-Q4_K_M.gguf`, false, true],
+    ]);
+  });
 });
 
 describe("routing /v1 to the model servers", () => {

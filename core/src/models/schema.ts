@@ -25,7 +25,9 @@ CREATE TABLE IF NOT EXISTS endpoints (
   down_since TEXT,
   -- A model host (api 'host'): its addresses in order (JSON) and its pinned key fingerprint.
   addresses  TEXT,
-  pin        TEXT
+  pin        TEXT,
+  -- When a plain endpoint was paused by hand: fallbacks skip it until it is resumed. NULL while it runs.
+  paused_at  TEXT
 );
 -- Each model an endpoint offers, with a permanent id. found: what discovery
 -- reported (context window, capabilities); hand: what was set by hand, which
@@ -233,7 +235,7 @@ const hasTable = (db: Db, table: string) => !!db.prepare("SELECT 1 FROM sqlite_m
 
 /** Adds the columns later versions gave `endpoints`, to a table made before them. */
 export function upgradeEndpoints(db: Db): void {
-  for (const [column, type] of [["down_since", "TEXT"], ["addresses", "TEXT"], ["pin", "TEXT"]] as const) {
+  for (const [column, type] of [["down_since", "TEXT"], ["addresses", "TEXT"], ["pin", "TEXT"], ["paused_at", "TEXT"]] as const) {
     if (!hasColumn(db, "endpoints", column)) db.exec(`ALTER TABLE endpoints ADD COLUMN ${column} ${type}`);
   }
 }

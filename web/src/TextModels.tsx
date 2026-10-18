@@ -453,7 +453,12 @@ type Scope = "mine" | "shared";
 type Placement = { mode: "auto" } | { mode: "gpus"; gpus: number[]; split?: number[]; parallel?: "tensor" | "pipeline" };
 type Stretch = { type: "yarn"; factor: number; originalContext?: number };
 /** The host's settings that size the model's memory: Reset in the Memory group takes them back to the host's defaults. */
-const MEMORY_KEYS = ["contextLength", "stretch", "kvCacheType", "gpuLayers", "flashAttention"];
+const VISION_TIP = "The vision projector: off saves its memory, and the model no longer sees images.";
+const MTP_TIPS = {
+  file: "Multi-token prediction with the model's MTP file: faster answers for a little more memory.",
+  "built-in": "Multi-token prediction with the model's own MTP layers: faster answers.",
+} as const;
+const MEMORY_KEYS = ["contextLength", "stretch", "kvCacheType", "gpuLayers", "flashAttention", "vision", "mtp", "draftMax"];
 const MAX_STRETCH = 8;
 
 /** A label, a control and its unit; `word` is the value's source after the label. */
@@ -569,9 +574,11 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   const sameCards = chosen.length > 1 && new Set(chosen.map((i) => gpus.find((g) => g.index === i)?.name)).size === 1;
   const stretch = draft?.stretch as Stretch | undefined;
   const rec = sv?.recommended;
-  const maxContext = sv ? (sv.trainedContextLength ? sv.trainedContextLength * (stretch?.factor ?? 1) : sv.maxContextLength) : null;
+  // The context a stretch multiplies: the trained length, else the card's original context.
+  const base = sv?.trainedContextLength ?? rec?.originalContext ?? null;
+  const maxContext = sv ? (base ? (stretch?.originalContext ?? base) * (stretch?.factor ?? 1) : sv.maxContextLength) : null;
   const setFactor = (text: string) => set("stretch", text.trim() === "" ? undefined
-    : { type: "yarn", factor: Number(text), ...(stretch?.originalContext ? { originalContext: stretch.originalContext } : {}) });
+    : { type: "yarn", factor: Number(text), ...(stretch?.originalContext ? { originalContext: stretch.originalContext } : !sv?.trainedContextLength && rec?.originalContext ? { originalContext: rec.originalContext } : {}) });
   const setOriginal = (text: string) => {
     if (!stretch) return;
     const { originalContext: _, ...rest } = stretch;
@@ -711,15 +718,17 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
         <input type="number" min={512} max={maxContext ?? undefined} step={1024} aria-label="Context length" placeholder={String(sv.contextLength)} value={num("contextLength")}
           onChange={(e) => setNum("contextLength", e.target.value)} onBlur={() => clamp("contextLength", 512, maxContext ?? Infinity)} />
       </SRow>
-      <SRow label="Stretch" title="YaRN. Applies to every request, so publishers suggest it only for long contexts."
-        word={stretch ? "yours" : rec?.factor ? "recommended" : undefined} unit="×">
-        <input type="number" min={1} max={MAX_STRETCH} step={llama ? 1 : 0.5} aria-label="Stretch" disabled={!sv.trainedContextLength}
-          placeholder={rec?.factor ? String(rec.factor) : undefined} value={stretch ? String(stretch.factor) : ""} onChange={(e) => setFactor(e.target.value)} onBlur={clampFactor} />
+      <SRow label="Stretch" title={`RoPE scaling (YaRN): off while empty. It applies to every request, so publishers suggest it only for long contexts.${rec?.factor ? ` The model's card suggests ${rec.factor}×.` : ""}`}
+        word={stretch ? "yours" : undefined} unit="×">
+        <input type="number" min={1} max={MAX_STRETCH} step={llama ? 1 : 0.5} aria-label="Stretch" disabled={!base}
+          placeholder="Off" value={stretch ? String(stretch.factor) : ""} onChange={(e) => setFactor(e.target.value)} onBlur={clampFactor} />
       </SRow>
-      <SRow label="Original context" word={stretch?.originalContext ? "yours" : rec?.originalContext ? "recommended" : undefined} unit="tokens">
-        <input type="number" min={512} step={1024} aria-label="Original context" disabled={!stretch}
-          placeholder={String(rec?.originalContext ?? sv.trainedContextLength ?? "")} value={stretch?.originalContext ? String(stretch.originalContext) : ""} onChange={(e) => setOriginal(e.target.value)} />
-      </SRow>
+      {stretch && (
+        <SRow label="Original context" title="The context the model was trained for, which the stretch multiplies." word={stretch.originalContext ? "yours" : undefined} unit="tokens">
+          <input type="number" min={512} step={1024} aria-label="Original context"
+            placeholder={String(rec?.originalContext ?? sv.trainedContextLength ?? "")} value={stretch.originalContext ? String(stretch.originalContext) : ""} onChange={(e) => setOriginal(e.target.value)} />
+        </SRow>
+      )}
       {llama && <>
         <SRow label="KV cache">
           <select aria-label="KV cache" value={typeof draft.kvCacheType === "string" ? draft.kvCacheType : "f16"} onChange={(e) => kvCache(e.target.value)}>
@@ -730,6 +739,21 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
           <input type="number" min={0} max={999} step={1} aria-label="GPU layers" placeholder="999" value={num("gpuLayers")} onChange={(e) => setNum("gpuLayers", e.target.value)} onBlur={() => clamp("gpuLayers", 0, 999)} />
         </SRow>
         <label className="check"><input type="checkbox" checked={draft.flashAttention === "on"} onChange={(e) => set("flashAttention", e.target.checked ? "on" : undefined)} /> Flash attention</label>
+        {sv.extras?.vision && (
+          <label className="check" title={VISION_TIP}>
+            <input type="checkbox" checked={draft.vision !== false} onChange={(e) => set("vision", e.target.checked ? undefined : false)} /> Vision<span className="sr-only">. {VISION_TIP}</span>
+          </label>
+        )}
+        {sv.extras?.mtp && <>
+          <label className="check" title={MTP_TIPS[sv.extras.mtp]}>
+            <input type="checkbox" checked={draft.mtp !== false} onChange={(e) => set("mtp", e.target.checked ? undefined : false)} /> MTP<span className="sr-only">. {MTP_TIPS[sv.extras.mtp]}</span>
+          </label>
+          {draft.mtp !== false && (
+            <SRow label="Draft tokens" title="Tokens MTP guesses ahead. Try 1 to 6." unit="of 6">
+              <input type="number" min={1} max={6} step={1} aria-label="Draft tokens" placeholder="2" value={num("draftMax")} onChange={(e) => setNum("draftMax", e.target.value)} onBlur={() => clamp("draftMax", 1, 6)} />
+            </SRow>
+          )}
+        </>}
       </>}
     </fieldset>
     <fieldset className="sgroup" disabled={busy || !serveOwn}>

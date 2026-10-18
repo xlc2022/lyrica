@@ -1090,6 +1090,7 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .note .plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .list > li.hostrow { grid-template-columns: 12px minmax(0, 1.2fr) minmax(120px, 1fr) auto; gap: 6px 12px; align-items: center; min-height: 48px; }
 .list > li.ep-row { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; min-height: 48px; }
+@media (pointer: coarse) { .list > li.ep-row button.sm:not(.link) { min-height: var(--tap); } }
 .bar { height: 8px; border-radius: 999px; background: var(--tool); display: flex; overflow: hidden; width: 100%; }
 .bar span { height: 100%; }
 .seg-pinned { background: var(--pinned); } .seg-loaded { background: var(--loaded); } .seg-vllm { background: var(--vllm); }

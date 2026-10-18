@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { del, get, patch, post, put, u, type DownloadHistory, type GroupInfo, type GroupSuggestion, type HostStatus, type Hub, type HubTokenInfo, type ModelsPage } from "./api.ts";
 import { HistoryHead, HistoryList } from "./History.tsx";
-import { clearFinished, downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, type HostDownload, type HubFiles } from "./downloads.ts";
+import { clearFinished, companionsOf, downloadWords, fileChoices, fileLink, HUB_WORD, isRunning, repoName, size, speed, speeds, type HostDownload, type HubFiles } from "./downloads.ts";
 import { canEdit, Frame, hostOf, type MCtx } from "./ModelsFrame.tsx";
 import { cameFrom, go, href, type Route } from "./route.ts";
 import { ErrorText, useAction, useLoad } from "./ui.tsx";
@@ -47,6 +47,11 @@ export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?
     .sort((a, b) => b.d.startedAt.localeCompare(a.d.startedAt)), [lists.data]);
   const active = items.filter(({ d }) => isRunning(d));
   const finished = items.filter(({ d }) => !isRunning(d));
+  // Speed from one look to the next, by host and download.
+  const seen = useRef(new Map<string, { received: number; at: number; rate?: number }>());
+  const rates = useMemo(() => speeds(active.map(({ ep, d }) => ({ ...d, id: `${ep.id}/${d.id}` })), seen.current, Date.now()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lists.data]);
   const { reload } = lists, { reload: reloadModels } = ctx.models, { reload: reloadGroups } = groups, { reload: reloadSuggestions } = suggestions;
   // Every 2 s while anything runs, counted from the last answer so a slow host never stacks requests.
   useEffect(() => {
@@ -114,7 +119,7 @@ export function Downloads({ ctx, history = false, route }: { ctx: MCtx; history?
           {active.length ? (
             <ul className="list downloads">
               {active.length > 0 && <li className="group-head eyebrow">In progress</li>}
-              {active.map(({ ep, d }) => <Item key={`${ep.id}/${d.id}`} ep={ep} d={d} busy={busy} onCancel={() => void cancel(ep, d)} />)}
+              {active.map(({ ep, d }) => <Item key={`${ep.id}/${d.id}`} ep={ep} d={d} busy={busy} rate={rates.get(`${ep.id}/${d.id}`)} onCancel={() => void cancel(ep, d)} />)}
             </ul>
           ) : lists.data && !finished.length && (
             <p className="list empty">No downloads yet. Start one from a library's <b>Download model</b> button, or here.</p>
@@ -138,8 +143,8 @@ const Dot = ({ dot, word }: { dot: string; word: string }) => <span className="s
 export const Size = ({ text }: { text: string }) => { const [n, unit] = text.split(" "); return <><span className="num">{n}</span> {unit}</>; };
 const SEP = "\u00a0· ";
 
-/** One download: its file, where from and to, and its progress with Cancel, or how it ended. */
-function Item({ ep, d, busy, onCancel, children }: { ep: Endpoint; d: HostDownload; busy: boolean; onCancel?: () => void; children?: React.ReactNode }) {
+/** One download: its file, where from and to, and its progress and speed with Cancel, or how it ended. */
+function Item({ ep, d, busy, rate, onCancel, children }: { ep: Endpoint; d: HostDownload; busy: boolean; rate?: number; onCancel?: () => void; children?: React.ReactNode }) {
   const w = downloadWords(d, ep.name);
   return (
     <li className="dl" data-download={d.id}>
@@ -149,7 +154,7 @@ function Item({ ep, d, busy, onCancel, children }: { ep: Endpoint; d: HostDownlo
           <span className="seg-loaded" style={{ width: `${w.percent ?? 0}%` }} />
         </div>
         <div className="dl-foot">
-          <span className="meta">{w.progress.phase} · <Size text={w.progress.got} />{w.progress.of && <> of <Size text={w.progress.of} /></>}</span>
+          <span className="meta">{w.progress.phase} · <Size text={w.progress.got} />{w.progress.of && <> of <Size text={w.progress.of} /></>}{rate !== undefined && <> · <Size text={speed(rate)} /></>}</span>
           <button type="button" className="sm" aria-label={`Cancel ${w.label}`} disabled={busy} onClick={onCancel}>Cancel</button>
         </div>
       </> : w.ending && (
@@ -339,6 +344,9 @@ export async function startDownload(userId: string, hostId: string, body: { sour
 }
 
 /** Download text model: a host, then a file from Hugging Face or ModelScope, or a link. A started download goes to Downloads. */
+/** What a vision projector or MTP file does, for its pill's tooltip. */
+const COMPANION_TIPS = { vision: "Lets the model see images", mtp: "Multi-token prediction: faster answers" } as const;
+
 export function DownloadText({ ctx }: { ctx: MCtx }) {
   const userId = ctx.user.id;
   const hosts = managedHosts(ctx).filter((h) => h.status);
@@ -347,7 +355,9 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
   const [source, setSource] = useState<Hub | "url">("huggingface");
   const look = useLookup(userId, host?.ep.id, source);
   const tokens = useLoad(() => get<HubTokenInfo[]>(u(userId, "hub-tokens")), [userId]);
-  const [choice, setChoice] = useState<string>();
+  // The ticked files, and the companions ticked for a model rather than by hand.
+  const [picked, setPicked] = useState<string[]>([]);
+  const [auto, setAuto] = useState<string[]>([]);
   const [token, setToken] = useState("");
   const [keep, setKeep] = useState(true);
   const [link, setLink] = useState("");
@@ -358,7 +368,28 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
   const found = look.found;
   const offered = useMemo(() => (found ? fileChoices(found) : undefined), [found]);
   // What was said about the last try goes once the repository or its answer changes.
-  useEffect(() => { setChoice(undefined); setProblem(""); }, [found, look.repo]);
+  useEffect(() => { setPicked([]); setAuto([]); setProblem(""); }, [found, look.repo]);
+  /** Ticking a model ticks its vision projector and MTP file too; unticking the last model unticks those again. */
+  const toggle = (key: string, on: boolean) => {
+    if (!offered) return;
+    setProblem("");
+    const c = offered.choices.find((x) => x.key === key);
+    if (c?.kind) {
+      setAuto((a) => a.filter((k) => k !== key));
+      setPicked((p) => on ? [...p, key] : p.filter((k) => k !== key));
+      return;
+    }
+    if (on) {
+      const add = companionsOf(offered.choices, key).filter((k) => !picked.includes(k));
+      setPicked([...picked, key, ...add]);
+      setAuto([...auto, ...add]);
+    } else {
+      const rest = picked.filter((k) => k !== key);
+      const modelLeft = rest.some((k) => !offered.choices.find((x) => x.key === k)?.kind);
+      setPicked(modelLeft ? rest : rest.filter((k) => !auto.includes(k)));
+      if (!modelLeft) setAuto([]);
+    }
+  };
   const saved = source === "url" ? undefined : tokenFor(tokens.data, source);
   const paused = host?.status?.state === "paused" || host?.status?.state === "pausing";
 
@@ -370,12 +401,13 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
       if (why) { setProblem(why); return; }
       body = { source: "url", url: link.trim(), ...(sha.trim() ? { sha256: sha.trim() } : {}) };
     } else {
-      const picked = offered?.choices.find((c) => c.key === choice);
-      const why = !found ? "Look up the repository first." : !picked ? "Choose a file."
+      const chosen = (offered?.choices ?? []).filter((c) => picked.includes(c.key));
+      const total = chosen.reduce((n, c) => n + c.size, 0);
+      const why = !found ? "Look up the repository first." : !chosen.length ? "Choose a file."
         : found.gated && !saved && !token.trim() ? "This repository needs a token."
-        : picked.size > found.free ? `Not enough space on ${host.ep.name}.` : "";
-      if (why || !found || !picked) { setProblem(why); return; }
-      body = { source, repo: found.repo, files: picked.files };
+        : total > found.free ? `Not enough space on ${host.ep.name}.` : "";
+      if (why || !found || !chosen.length) { setProblem(why); return; }
+      body = { source, repo: found.repo, files: chosen.flatMap((c) => c.files) };
     }
     setProblem("");
     void run(async () => {
@@ -406,15 +438,16 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
             {found && offered && <>
               {found.gated && <GatedNote hub={source} saved={saved} token={token} setToken={setToken} keep={keep} setKeep={setKeep} />}
               <div className="field">
-                <span id="h-file">File to download</span>
+                <span id="h-file">Files to download</span>
                 {offered.choices.length ? (
-                  <div className="choices" role="radiogroup" aria-labelledby="h-file">
+                  <div className="choices" role="group" aria-labelledby="h-file">
                     {offered.choices.map((c) => (
                       <label key={c.key} className="choice">
-                        <input type="radio" name="file" checked={choice === c.key} disabled={c.present || !c.fits} onChange={() => { setChoice(c.key); setProblem(""); }} />
+                        <input type="checkbox" checked={picked.includes(c.key)} disabled={c.present || !c.fits} onChange={(e) => toggle(c.key, e.target.checked)} />
                         <span className="choice-name">
                           <span className="mono">{c.label}</span>
                           {c.parts && <span className="meta"><span className="num">{c.parts}</span> files</span>}
+                          {c.kind && <span className="pill" title={COMPANION_TIPS[c.kind]}>{c.kind === "vision" ? "Vision" : "MTP"}<span className="sr-only">. {COMPANION_TIPS[c.kind]}</span></span>}
                           {c.present ? <span className="pill">already on this host</span> : !c.fits && <span className="pill warn">not enough space</span>}
                         </span>
                         <span className="muted"><Size text={size(c.size)} /></span>

@@ -34,6 +34,9 @@ and `-`, at most 40 characters.
   the same model on two endpoints is two offerings. Presets, columns and thread
   choices name offerings (`ModelRef` is `{ offeringId }`). Renaming an
   endpoint, or changing its URL or key (`editEndpoint`), keeps every ID.
+- **Paused.** `editEndpoint { paused }` pauses or resumes a plain endpoint
+  or plan (`paused_at` on `endpoints`): the router skips it ("is paused")
+  until it resumes. A model host pauses itself instead (`hostControl`).
 - **Labels.** People and Lyrica name a model as `<endpoint>/<model>`, with
   `shared.` before a shared endpoint's name, so the two never collide. A host
   recipe's `<model>` is its name (`modelName`), never its `recipe/<id>`;
@@ -117,7 +120,8 @@ administrator pairs or manages them; a personal host lives in its user's
   gets `reasoning_effort` like any OpenAI-compatible endpoint.
 - `hostStatus` returns the host's status (GPUs, placements, loaded and
   pinned models, VRAM, queue) to anyone who can use it; `hostControl`
-  pauses, resumes or restarts it.
+  pauses, resumes or restarts it and answers the whole status after, since
+  the host's own answer is only its state.
 - `pageStatus` is an endpoint's state for the Models page: one seen down in
   the last 30 seconds isn't asked again, and nothing waits more than 3
   seconds, so a host that's off doesn't hold the page — which matters because
@@ -125,7 +129,9 @@ administrator pairs or manages them; a personal host lives in its user's
   app-wide on every open tab: on load, every 30 seconds and on focus. A cloud
   endpoint whose provider would take a real probe request is asked at most
   every 90 seconds — its last answer stands in between; local endpoints stay
-  at 30 seconds. A host that answered
+  at 30 seconds. A host that last answered paused, pausing or restarting
+  keeps that status on the page while the router skips it, so the page can
+  offer Resume. A host that answered
   `unpaired` (it revoked this server) says `unpaired: true` until it answers
   again or is paired again, so the page can offer Pair again….
 - Unpairing is removing the endpoint; the host keeps listing this server
@@ -599,6 +605,18 @@ link); the user's hub token goes along, marked with the hub it is for. A
 stretch above the card's factor is saved only with `{ anyway: true }` (Save
 anyway). Lookups and changes need the host's administrator (shared) or
 owner.
+
+**Downloading when asked** (extension/src/downloads-tool.ts):
+`model_files { host?, source?, repo }` lists what a repository offers as
+the host sees it (sizes, present, fits, and which files are a vision
+projector or MTP file), and `download_model { host?, source?, repo, files,
+companions? }` starts downloads after the permission card asks, whatever
+the thread's mode. Named files get every shard of a split GGUF and, with a
+GGUF model, its projector and closest MTP file, as the Download text model
+page ticks them. With no host named and more than one, the tool answers
+that she should ask which. lyricad registers both only when
+`downloadHosts` lists a host the user can manage, and never in a private or
+local-only thread or a subagent: the repository's name leaves the host.
 
 **The `models` tool** (extension/src/models-tool.ts): `lookup { offering,
 repo? }` returns the recommended settings and the KV estimate as numbers;

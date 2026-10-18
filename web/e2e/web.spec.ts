@@ -2981,13 +2981,18 @@ async function fakeHost(page: Page, downloads: Record<string, unknown>[], models
     const offset = Number(query.get("offset") ?? 0), limit = Number(query.get("limit") ?? 20);
     return route.fulfill(json({ total: entries.length, entries: entries.slice(offset, offset + limit) }));
   });
-  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/hub\/files\?/, (route) => route.fulfill(json({
-    source: "huggingface", repo: new URL(route.request().url()).searchParams.get("repo"), revision: "abc", gated: false, card: null, free: 96 * GB,
-    files: [
-      { path: "m-Q4_K_M.gguf", size: 4.7 * GB, sha256: null, allowed: true, reason: null, present: false, fits: true },
-      { path: "m-Q8_0.gguf", size: 8.5 * GB, sha256: null, allowed: true, reason: null, present: true, fits: true },
-    ],
-  })));
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/hub\/files\?/, (route) => {
+    const repo = new URL(route.request().url()).searchParams.get("repo");
+    return route.fulfill(json({
+      source: "huggingface", repo, revision: "abc", gated: false, card: null, free: 96 * GB,
+      files: [
+        { path: "m-Q4_K_M.gguf", size: 4.7 * GB, sha256: null, allowed: true, reason: null, present: false, fits: true },
+        { path: "m-Q8_0.gguf", size: 8.5 * GB, sha256: null, allowed: true, reason: null, present: true, fits: true },
+        // A GGUF repository's vision projector.
+        ...(repo?.endsWith("-GGUF") ? [{ path: "mmproj-F16.gguf", size: 0.9 * GB, sha256: null, allowed: true, reason: null, present: false, fits: true }] : []),
+      ],
+    }));
+  });
   return started;
 }
 
@@ -3073,18 +3078,24 @@ test("Downloads History: the queue shows progress with Cancel and how each ended
   await expect(page.getByRole("alert").filter({ hasText: "That isn't a repository. Use owner/name, or paste the page's link." })).toHaveText("That isn't a repository. Use owner/name, or paste the page's link.");
   await page.getByLabel("Repository").fill("https://huggingface.co/a/m-GGUF/tree/main");
   await page.getByRole("button", { name: "Look up" }).click();
-  const files = page.getByRole("radiogroup", { name: "File to download" });
-  await expect(files.getByRole("radio")).toHaveCount(2);
+  const files = page.getByRole("group", { name: "Files to download" });
+  await expect(files.getByRole("checkbox")).toHaveCount(3);
+  await expect(files.locator(".choice").nth(2)).toContainText("Vision");
   await expect(files.locator(".choice").nth(1)).toContainText("already on this host");
-  await expect(files.getByRole("radio").nth(1)).toBeDisabled();
+  await expect(files.getByRole("checkbox").nth(1)).toBeDisabled();
   await page.getByRole("button", { name: "Download", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Choose a file." })).toHaveText("Choose a file.");
-  await files.getByRole("radio").first().check();
+  // Ticking a model ticks its vision projector; unticking the last model unticks it again.
+  await files.getByRole("checkbox").first().check();
+  await expect(files.getByRole("checkbox").nth(2)).toBeChecked();
+  await files.getByRole("checkbox").first().uncheck();
+  await expect(files.getByRole("checkbox").nth(2)).not.toBeChecked();
+  await files.getByRole("checkbox").first().check();
   await noHorizontalScroll(page);
   await shot("text");
   await page.getByRole("button", { name: "Download", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/downloads$`));
-  expect(started).toEqual([{ source: "huggingface", repo: "a/m-GGUF", files: ["m-Q4_K_M.gguf"] }]);
+  expect(started).toEqual([{ source: "huggingface", repo: "a/m-GGUF", files: ["m-Q4_K_M.gguf", "mmproj-F16.gguf"] }]);
   // A link must be https and name one model file.
   await page.goto(`/#/u/${userId}/models/downloads/text`);
   await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Link" }).click();

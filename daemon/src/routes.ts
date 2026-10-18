@@ -326,6 +326,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         ...(c.name !== undefined ? { name: String(c.name) } : {}),
         ...(c.baseUrl !== undefined ? { baseUrl: unredactUrl(String(c.baseUrl), s().models.endpoint(user.id, r.params.endpointId!)?.baseUrl ?? "") } : {}),
         ...(c.apiKey !== undefined ? { apiKey: c.apiKey === null ? null : String(c.apiKey) } : {}),
+        ...(c.paused !== undefined ? { paused: c.paused === true } : {}),
       });
       return endpointInfo(d, user.id, r.params.endpointId!);
     }),
@@ -2060,7 +2061,7 @@ function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo 
     ...(ep.kind === "cloud" ? { cloudCapabilities } : {}),
     id: ep.id, name: ep.name, kind: ep.kind, api: ep.api, baseUrl: redactUrl(ep.baseUrl), hasApiKey: !!ep.apiKey, shared: ep.shared,
     ...(ep.addresses ? { addresses: ep.addresses } : {}), ...(ep.fingerprint ? { fingerprint: ep.fingerprint } : {}),
-    unencrypted: ep.unencrypted, stale: ep.stale, ...(ep.downSince ? { downSince: ep.downSince } : {}), ...(ep.signedOut ? { signedOut: true } : {}),
+    unencrypted: ep.unencrypted, stale: ep.stale, ...(ep.downSince ? { downSince: ep.downSince } : {}), ...(ep.signedOut ? { signedOut: true } : {}), ...(ep.pausedAt ? { pausedAt: ep.pausedAt } : {}),
     models: models.map((o) => toOfferingInfo(ep, o)),
   };
 }
