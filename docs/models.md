@@ -439,23 +439,32 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   `edit`, `upscale` and `useFor`). OpenAI refuses images over the plan's
   "Sign in with ChatGPT" token, so ChatGPT Images runs the user's own
   unmodified Codex (`codex.ts`, the owner's choice; docs/briefs/codex-images.md):
-  one `codex exec` per image with `--json --ephemeral --ignore-user-config
-  --sandbox read-only`, approvals off and `image_generation` on, the
-  instructions and prompt on stdin (never argv), an edit's image and any
+  one `codex exec` per image with `--json --ephemeral --ignore-user-config`,
+  approvals off, `image_generation` on and every other Codex tool off
+  (`CODEX_DISABLED`: its shell, browser, computer use, apps and plugins;
+  checked against `codex features list` when the pinned version moves),
+  the instructions and prompt on stdin (never argv), an edit's image and any
   references as `--image` files, and the PNG read from the event's
-  `saved_path`. Codex's home (`CODEX_HOME`, also its `HOME`) is `codex/` in
-  the user's encrypted home workspace (`Workspace.codexDir`), so its sign-in
-  and every file it writes stay encrypted; each call's inputs and saved
-  images are removed after it, and Codex gets no other environment. Codex
+  `saved_path`. The isolation is structural, not the prompt: Codex runs in
+  Lyrica's sandbox (`Workspace.codexBox`, `codexSandbox`) holding only its
+  home, at `/workspace`, with the internet on and the machine's services
+  off, so it never sees another folder, user or the daemon's state. Its own
+  sandbox can't start inside Lyrica's, so it runs as
+  `--sandbox danger-full-access` there. Codex's home (`CODEX_HOME`, also its
+  `HOME`) is `codex/` in the user's encrypted home workspace
+  (`Workspace.codexDir`), so its sign-in and every file it writes stay
+  encrypted; each call's inputs and saved images are removed after it, and a
+  user's calls run one at a time, since they share one sign-in. Codex
   picks the image model. Size becomes square, portrait or landscape and the
   tier a quality word in the instructions. A failed run is a fixed line:
   signed out (`invalid`, naming Settings → Codex), its usage limit
   (`unavailable`), a refusal (`image_refusal`), else `unavailable`. Codex's
   sign-in is its own device sign-in (`codexSignIn`, `codex login
   --device-auth`), from Settings → **Codex** (`/api/u/:userId/codex`). The
-  daemon installs the runner with `setCodexImages`. `codex` is on the
-  daemon's path: nixpkgs' `codex` on NixOS, a pinned `@openai/codex` in
-  `/usr/local` from `install.sh`. The first time discovery finds ChatGPT
+  daemon installs the runner with `setCodexImages`. `codex` is among the
+  sandbox's tools: nixpkgs' `codex` in `nix/sandbox-tools.nix` on NixOS
+  (whatever version nixpkgs has), a pinned `@openai/codex` in `/usr/local`
+  from `install.sh`. The first time discovery finds ChatGPT
   Images, image task lists in the user's presets and columns that named one
   of the plan's chat models name it instead, and an empty Image edits list
   in a general preset or the general column gets it (private ones never

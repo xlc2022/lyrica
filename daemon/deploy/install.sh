@@ -89,8 +89,8 @@ fi
 
 # --- Codex ---
 # OpenAI's `codex` program, which makes ChatGPT Images with the user's own
-# Codex sign-in (docs/models.md, "Image canvases"), in /usr/local, on the
-# daemon's path. An update leaves it as it is.
+# Codex sign-in (docs/models.md, "Image canvases"), in /usr/local, where
+# Lyrica's sandbox finds it. An update leaves it as it is.
 CODEX_VERSION=0.163.0
 if [ "$(/usr/local/bin/codex --version 2>/dev/null | awk '{print $NF}')" != "$CODEX_VERSION" ]; then
   say "Installing Codex..."

@@ -418,7 +418,7 @@ export class Lyricad implements Drainable {
     const memory = new Memory(keyring, users);
     const models = new Models(keyring, users);
     models.setPlanCatalog(planCatalog);
-    models.setCodexImages((userId, request, signal) => codexImage(workspace.codexDir(userId), request, signal));
+    models.setCodexImages((userId, request, signal) => codexImage(workspace.codexBox(userId), request, signal));
     const persona = new PersonaStore(keyring.self());
     const cwd = join(this.opts.home, "run");
     mkdirSync(cwd, { recursive: true, mode: 0o700 });

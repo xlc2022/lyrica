@@ -518,7 +518,7 @@ class Models {                                              // new Models(keyrin
   null)` (null signs it out), `setPlanCatalog(list)` (discovery, from Pi's
   catalogue; set by `lyricad`), `setCodexImages(run)` (ChatGPT Images'
   runner, installed by lyricad: `codexImage` in the user's
-  `Workspace.codexDir`), `reportPlanLimit(id)` (skipped for an
+  `Workspace.codexBox`), `reportPlanLimit(id)` (skipped for an
   hour) and `installationId()` (self.db). The
   sign-in is kept in the plan's `api_key` column as JSON; its tokens never leave
   core except into Pi's credential store (`PlanCredentials`, extension);
@@ -1868,8 +1868,12 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   signs out) and `POST …/codex/sign-in` (starts Codex's device sign-in,
   replacing one under way; `409` when `codex` isn't installed), each
   answering `CodexStatus { installed, signedIn, signIn? { url, code } }`.
-  Core exports `codexImage(home, request, signal)`, `codexInstalled()`,
-  `codexSignedIn(home)`, `codexSignIn(home)` and `codexSignOut(home)`.
+  Core exports `codexImage(box, request, signal)`, `codexSignedIn(box)`,
+  `codexSignIn(box)`, `codexSignOut(box)` and `CODEX_DISABLED`, where a
+  `CodexBox { home, inner, installed, start(args, cwd?) }` is
+  `Workspace.codexBox(userId)`: Codex in a sandbox of its own
+  (`codexSandbox(home, door)`), its home `codex/` in the encrypted home
+  workspace.
 - **Claude Code API:** `lyricad`'s `/api/u/:userId/claude-code` (`GET`;
   `PUT { token }`; `DELETE`), each answering `ClaudeCodeStatus { token,
   installed }`: whether a token is saved, never the token. Thread settings

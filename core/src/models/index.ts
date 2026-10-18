@@ -1,6 +1,6 @@
 import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
 export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
-export { codexImage, codexInstalled, codexSignedIn, codexSignIn, codexSignOut, type CodexSignIn } from "./codex.ts";
+export { CODEX_DISABLED, codexImage, codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn } from "./codex.ts";
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import type { Db } from "../db.ts";

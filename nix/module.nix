@@ -310,8 +310,8 @@ in {
         LYRICA_HOME = state;
         LYRICA_SANDBOX_TOOLS = "${sandboxTools}";
         LYRICA_SANDBOX_CLOSURE = "${sandboxClosure}/store-paths";
-        # The setuid wrappers first: fusermount3 must be the setuid one. codex makes ChatGPT Images (docs/models.md).
-        PATH = lib.mkForce "/run/wrappers/bin:${lib.makeBinPath ([ pkgs.gocryptfs pkgs.openssl pkgs.systemd pkgs.coreutils pkgs.bash pkgs.codex sandboxTools ] ++ lib.optional cfg.tailscale cfg.tailscalePackage)}";
+        # The setuid wrappers first: fusermount3 must be the setuid one.
+        PATH = lib.mkForce "/run/wrappers/bin:${lib.makeBinPath ([ pkgs.gocryptfs pkgs.openssl pkgs.systemd pkgs.coreutils pkgs.bash sandboxTools ] ++ lib.optional cfg.tailscale cfg.tailscalePackage)}";
       };
       serviceConfig = {
         Type = "simple";
