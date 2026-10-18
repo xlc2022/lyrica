@@ -26,9 +26,12 @@ HTTPS.
 ## In scope
 
 **A. What fires.** A push fires for a new item on the user's Notifications
-page with `decision: true`, and for nothing else. Today those are
-questions, permissions, approvals, shares, persona suggestions and
-approvals, and a project thread's Waiting on you.
+page with `decision && type !== "sleep"`, and for nothing else. Today those
+are questions, permissions, shares, persona suggestions, persona changes
+waiting for an administrator's approval, and a project thread's Waiting on
+you. Items from the night are marked `decision: true` too
+(daemon/src/notifications.ts), but they are not an ask the user is
+blocking, so they are excluded by type.
 
 - The rule is structural: lyricad diffs each unlocked user's decision ids
   against the ids it has already pushed. A new type with `decision: true`
@@ -41,9 +44,16 @@ approvals, and a project thread's Waiting on you.
   join the next push.
 - An item is pushed once. Pushed ids live in user.db
   (`push_sent (id, at)`), so a restart doesn't push them again. Prune rows
-  after 30 days, and prune ids no longer on the page.
+  after 30 days, and prune ids no longer on the page. An item that clears
+  and comes back with the same id (a thread waits, the user answers, it
+  waits again) therefore pushes again. That is intended: it is a new ask.
 - A locked server can't read the page, so nothing pushes while it is
-  locked. On unlock, it pushes what is new since, as one push.
+  locked. On unlock, it pushes what is new since, as one push, by the same
+  rule as below.
+- **First enable.** When the user saves a URL (and on unlock), decisions
+  already waiting and not in `push_sent` go out as one push, by the usual
+  phrases, and are then recorded. A user who just turned push on gets one
+  ping that shows it works.
 - Hidden threads, and pools the display has off, are left out, exactly as
   the page leaves them out. Reuse `notifications()`.
 
@@ -51,22 +61,43 @@ approvals, and a project thread's Waiting on you.
 threads. That means no question, no thread title, no pool name and no
 detail.
 
-- Title "Lyrica". Body by kind, for one item: "A question is waiting.",
-  "A permission is waiting.", "A share is waiting.", "An approval is
-  waiting.", "A thread is waiting on you."; for more: "<n> things are
-  waiting."
+- Title "Lyrica". Body for one item, keyed by `NotificationType` in one
+  exported table `PUSH_PHRASES`:
+
+  | Type | Body |
+  | --- | --- |
+  | `question` | "A question is waiting." |
+  | `permission` | "A permission is waiting." |
+  | `share` | "A share is waiting." |
+  | `suggestion` | "A suggested persona change is waiting." |
+  | `approval` | "A persona change waits for approval." |
+  | `update` (Waiting on you) | "A thread is waiting on you." |
+  | any other type | "Something is waiting." |
+
+  For more than one item: "<n> things are waiting."
 - The format is ntfy's: a plain-text body with `Title`, `Click` and `Tags`
   headers. Any receiver that accepts a plain-text POST works.
-- `Click` is the user's Notifications page on the address the user saved
-  the setting from (`location.origin` when they press Save). Without a
-  saved address there is no `Click` header.
+- `Click` is off by default, because a link tells the receiver (ntfy.sh
+  is a third party) the install's address. A checkbox **Include a link**
+  turns it on. The link is the address the user saved the setting from
+  (`location.origin` when they press Save) plus the fixed path
+  `/notifications`, never the user id. Add that route to the web app: it
+  redirects to the signed-in user's Notifications page, or to sign-in.
 - An optional token is sent as `Authorization: Bearer <token>`, for a
   private ntfy server or a self-hosted receiver.
 - The request goes out from lyricad with a 10-second timeout, over HTTPS
-  only. Plain `http:` is allowed only for a host on the user's own network
-  (the same check the Forgejo webhook uses). It is retried twice, with
-  backoff. Failures log the status code and host, never the URL's path,
-  since an ntfy topic in the path acts as a secret.
+  only. Plain `http:` is allowed only for a host on the operator's own
+  network, by `resolveHost`/`inOwnNetwork` in core/src/workspace/index.ts
+  (export what's needed; don't copy it), and only for administrators. A
+  non-admin user on a multi-user install may use only HTTPS to a public
+  host.
+- For http and https alike, refuse loopback, link-local and lyricad's own
+  listen addresses, so a push can't reach a host API or lyricad itself.
+- Check at Save and resolve again at every send, since DNS can change in
+  between. A send whose host now fails the check counts as a failure.
+- It is retried twice, with backoff. Failures log the status code and
+  host, never the URL's path, since an ntfy topic in the path acts as a
+  secret.
 
 **C. Settings.** A new section, **Push**, after Appearance in Settings. Add
 its row to docs/ux.md.
@@ -78,16 +109,18 @@ its row to docs/ux.md.
 - **Send a test** sends "Test from Lyrica." and shows the result inline as
   Sent, or the status code and reason.
 - **Turn off** clears the URL and token.
-- The line "Pushes say only that something waits, never what." sits as the
-  section's tooltip and its visually hidden description, per ux.md.
+- **Include a link**, off by default, as in B.
+- The line "Pushes say only that something waits, never what. A link
+  shows the receiver this server's address." sits as the section's tooltip and its visually hidden description, per ux.md.
 - The status line shows the last failure: "Last push failed at 14:02:
   403", with the time in mono. A success clears it.
 
 **D. Contracts.** Pin these in docs/contracts.md:
 
-- `GET/PUT/DELETE /api/u/:userId/push`. The body is `{ url, token?, origin }`.
-  GET returns `{ host, set: boolean, token: boolean, lastFailure?: { at,
-  status } }`.
+- `GET/PUT/DELETE /api/u/:userId/push`. The body is `{ url, token?, link:
+  boolean, origin }`. GET returns `{ host, path (masked), set: boolean,
+  token: boolean, link: boolean, lastFailure?: { at, status } }`.
+- `PUSH_PHRASES` (B), and the `/notifications` web route.
 - `POST …/push/test` returns 204, or 502 with `{ status, reason }`.
 - `PushSettings` and `PUSH_LIMITS`: window 30 s, minimum gap 60 s,
   timeout 10 s, 2 retries.
@@ -110,10 +143,18 @@ its row to docs/ux.md.
   unique.
 - A new question pushes once. A restart doesn't push it again. Two
   questions within the window go as one push, "2 things are waiting.".
-- A hidden thread's question doesn't push.
+- A hidden thread's question doesn't push, and neither do items from the
+  night.
+- Every type in `PUSH_PHRASES` has a test, and an unknown type gets
+  "Something is waiting.".
+- Saving a URL with two decisions waiting sends one push, "2 things are
+  waiting.", and nothing more for them.
+- No `Click` header unless Include a link is on, and then it ends in
+  `/notifications` with no user id.
 - A locked server sends nothing. After unlock it sends what is new.
-- `http:` to a public host is refused at Save. The token is never returned
-  by GET.
+- `http:` to a public host is refused at Save, and so is `http:` from a
+  non-admin. Loopback and link-local are refused for both schemes, at
+  Save and again at send. The token is never returned by GET.
 - Send a test works against a fake receiver, and a failing receiver shows
   Last push failed.
 - The migration has a test from every released user schema.
