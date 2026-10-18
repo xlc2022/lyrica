@@ -138,6 +138,22 @@ describe("the GPU queue", () => {
     busy.release();
   });
 
+  it("waits for an unloaded model's memory to come back before loading the next", async () => {
+    const { scheduler, llamacpp, gpus } = setup([24]);
+    await scheduler.start([]);
+    await scheduler.run(textModel("first", 14), "chat", async () => {});
+    // The server says it unloaded at once, but its process lets go of the memory a moment later.
+    llamacpp.unload = async (model) => {
+      llamacpp.calls.push(`unload ${model.id}`);
+      const held = gpus.loaded.get(model.id)!;
+      gpus.loaded.set(`${model.id} (exiting)`, held);
+      gpus.loaded.delete(model.id);
+      setTimeout(() => gpus.loaded.delete(`${model.id} (exiting)`), 600);
+    };
+    await scheduler.run(textModel("second", 14), "chat", async () => {});
+    expect(llamacpp.calls).toEqual(["load first@0", "unload first", "load second@0"]);
+  });
+
   it("fails at once with a plain reason when a model can never fit", async () => {
     const { scheduler } = setup([24]);
     await scheduler.start([]);

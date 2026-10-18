@@ -76,6 +76,8 @@ export interface SchedulerOptions {
    * Vulkan, or on ROCm with unified memory. The others see its carve-out only.
    */
   sharedMemory?: Server[];
+  /** Longest wait, in ms, for an unloaded model's memory to come back before the next load is planned. */
+  settleMs?: number;
 }
 
 export type HostRunState = "running" | "pausing" | "paused" | "restarting";
@@ -458,6 +460,7 @@ export class Scheduler {
   private async unload(l: Loaded): Promise<void> {
     this.memoryEpoch++;
     this.changing++;
+    const before = Object.fromEntries((await this.readGpus()).map((g) => [g.index, g.used]));
     try {
       await this.backend(l.model).unload(l.model);
     } finally {
@@ -465,6 +468,24 @@ export class Scheduler {
     }
     this.loaded.delete(l.model.id);
     this.o.log("unloaded", { model: l.model.id });
+    await this.settle(l, before);
+  }
+
+  /**
+   * Waits for an unloaded model's memory to come back: a server's process can
+   * take seconds to exit after it says it unloaded, and until then the next
+   * plan would count that memory as other programs' and refuse the model.
+   * Done once each GPU has freed at least half of what the model held, or
+   * after `settleMs`.
+   */
+  private async settle(l: Loaded, before: Record<number, number>): Promise<void> {
+    const deadline = Date.now() + (this.o.settleMs ?? 30_000);
+    for (;;) {
+      const gpus = await this.readGpus();
+      const freed = l.option.gpus.every((g) => (gpus.find((x) => x.index === g)?.used ?? 0) <= (before[g] ?? 0) - (l.vram[g] ?? 0) / 2);
+      if (freed || Date.now() >= deadline) return;
+      await new Promise((r) => setTimeout(r, 250));
+    }
   }
 
   /** Loads a model now (the load API), queued like a chat request. */

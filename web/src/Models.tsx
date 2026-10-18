@@ -286,8 +286,17 @@ function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
   );
 }
 
-/** Each GPU's models as bar segments: pinned, vLLM's share on a vLLM GPU, or loaded on demand. */
-const segments = (g: Gpu) => g.models.filter((m) => m.vram).map((m) => ({ id: m.id, kind: m.pinned ? "pinned" : g.role === "vllm" ? "vllm" : "loaded", bytes: m.vram! }));
+/**
+ * Each GPU's models as bar segments: pinned, vLLM's share on a vLLM GPU, or loaded on demand. A model's share is what
+ * it took when it loaded (or an estimate), and one that holds memory only during a job (an image recipe) can claim more
+ * than the GPU now uses: the segments shrink to what it reports, so the bar never shows more than the numbers beside it.
+ */
+function segments(g: Gpu) {
+  const segs = g.models.filter((m) => m.vram).map((m) => ({ id: m.id, kind: m.pinned ? "pinned" : g.role === "vllm" ? "vllm" : "loaded", bytes: m.vram! }));
+  const claimed = segs.reduce((n, s) => n + s.bytes, 0);
+  const scale = claimed > g.vram.used ? g.vram.used / claimed : 1;
+  return segs.map((s) => ({ ...s, bytes: s.bytes * scale }));
+}
 
 function Bar({ gpus }: { gpus: Gpu[] }) {
   const total = gpus.reduce((n, g) => n + g.vram.total, 0);
