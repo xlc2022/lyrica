@@ -147,15 +147,26 @@ export type Listener = NetServer & { closeAllConnections(): void; closeIdleConne
  * response calls as node:http's.
  */
 export function secureServer(tls: { key: string; cert: string }, handler: (req: IncomingMessage, res: ServerResponse) => void): Listener {
-  const server = createSecureServer({ key: tls.key, cert: tls.cert, minVersion: "TLSv1.2", allowHTTP1: true }, handler as never);
-  const sockets = new Set<TLSSocket>();
+  // Each socket's HTTP/1.1 requests still open, so an idle keep-alive socket can be closed as node:http does.
+  const open = new Map<TLSSocket, number>();
   const sessions = new Set<Http2Session>();
-  server.on("secureConnection", (s) => { sockets.add(s); s.once("close", () => sockets.delete(s)); });
+  const server = createSecureServer({ key: tls.key, cert: tls.cert, minVersion: "TLSv1.2", allowHTTP1: true }, (req, res) => {
+    if (req.httpVersionMajor === 1) {
+      const socket = req.socket as TLSSocket;
+      open.set(socket, (open.get(socket) ?? 0) + 1);
+      res.once("close", () => { if (open.has(socket)) open.set(socket, open.get(socket)! - 1); });
+    }
+    handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+  });
+  server.on("secureConnection", (s: TLSSocket) => { open.set(s, 0); s.once("close", () => open.delete(s)); });
   server.on("session", (s) => { sessions.add(s); s.once("close", () => sessions.delete(s)); });
   return Object.assign(server, {
-    closeAllConnections: () => { for (const s of sockets) s.destroy(); },
-    // HTTP/2 sessions finish their open requests and take no more; HTTP/1.1 sockets wait for closeAllConnections.
-    closeIdleConnections: () => { for (const s of sessions) s.close(); },
+    closeAllConnections: () => { for (const s of open.keys()) s.destroy(); },
+    // HTTP/2 sessions finish their open requests and take no more.
+    closeIdleConnections: () => {
+      for (const s of sessions) s.close();
+      for (const [s, n] of open) if (!n && s.alpnProtocol !== "h2") s.destroy();
+    },
   });
 }
 

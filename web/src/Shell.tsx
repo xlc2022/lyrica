@@ -83,7 +83,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   const models = useModelsPage(user.id, cleanup.reload, me.data?.display.showGeneral ?? true, me.data?.display.showPrivate ?? true);
   const [checkedAt, setCheckedAt] = useState(0);
   useEffect(() => { if (models.page) setCheckedAt(Date.now()); }, [models.page]);
-  // Principles 2 and 8: one text-free user stream keeps the shell in step across tabs and devices.
+  // The user stream says when something changed, from this tab, another or her own work: the shell reads its lists again.
   const refreshShell = useCallback(() => {
     me.reload(); threads.reload(); groups.reload(); notes.reload(); sleep.reload();
   }, [me.reload, threads.reload, groups.reload, notes.reload, sleep.reload]);

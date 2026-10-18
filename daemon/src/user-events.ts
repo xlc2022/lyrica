@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { UserEvent } from "./api.ts";
 
-/** Principles 2 and 8: per-user invalidation only, with no text or durable state. */
+/** Tells a user's open tabs that their lists may have changed: no text, no ids, nothing kept. */
 export class UserEvents {
   private readonly events = new EventEmitter();
   private readonly pending = new Map<string, NodeJS.Timeout>();

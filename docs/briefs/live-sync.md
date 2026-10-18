@@ -1,8 +1,7 @@
 # Brief: Live sync across tabs and devices
 
-**Status:** Building on `claude/project-thread-kunoz9`. **Built by:** Codex on
-the test machine; the PR and reviews go through the Claude thread that wrote
-this brief.
+**Status:** In review on `claude/project-thread-kunoz9`. **Built by:** Codex
+on the test machine and the Claude thread that wrote this brief.
 **Read first:** AGENTS.md, PRINCIPLES.md (2, 8), docs/daemon.md (The event
 stream, Web access), docs/web.md (the sidebar), docs/contracts.md (HTTP/SSE
 API).
@@ -66,52 +65,16 @@ still reloads everything.
 
 ## Handoff
 
-**Done** (first commit on the branch): part A's code. `secureServer` in
-`daemon/src/http.ts` serves HTTP/2 with HTTP/1.1 fallback and tracks its
-sockets and sessions so `closeAllConnections` and `closeIdleConnections`
-work as node:http's do; `checkOrigin` reads `:authority` when there is no
-`Host`; `listenExternal` in `daemon/src/lyricad.ts` and `web/access.ts` use
-the `Listener` type.
+**Done.** Part A (`secureServer` in `daemon/src/http.ts`, `checkOrigin`
+reading `:authority`, the test in `daemon/test/web-access.test.ts`), part B
+(`daemon/src/user-events.ts`, the `…/events` route, the feeds in
+`lyricad.ts`, `daemon/test/user-events.test.ts`) and part C (the stream in
+`web/src/Shell.tsx`), with docs/daemon.md, docs/contracts.md, docs/web.md
+and DESIGN.md updated. Codex built parts A's test, B and C on the test
+machine.
 
-**Done (step 1, committed):** Part A's test and docs,
-serving principles 8 (streams share one connection) and 2 (same-origin
-boundary). `daemon/test/web-access.test.ts` enables Direct on a free
-loopback port and uses an HTTP/2 client trusting the panel's PEM. It verifies
-`h2` negotiation, `/api/state` 200, same-origin `/api/login` 200 with
-`:authority` and no `Host`, and a mismatched origin 403. No model or plan
-endpoint is called. Updated docs/daemon.md's Web access and origin check,
-and DESIGN.md's Direct paragraph for HTTP/2 with HTTP/1.1 fallback.
-`npm run typecheck` passed; all 10 tests in `daemon/test/web-access.test.ts`
-passed with `flock /tmp/lyrica-tests.lock npx vitest run --pool=forks
---maxWorkers=2 daemon/test/web-access.test.ts`. No preset, UI or schema
-changes were needed. Parts B and C are completed below.
-
-**Done (step 2, committed):** Part B, serving
-principles 2 and 8. Added `UserEvent` and the text-free per-user SSE route,
-with hello, session/key checks, keep-alive and listener cleanup.
-`UserEvents` coalesces per user over 250 ms; successful user-path mutations,
-the listed thread events and Sleep events feed it. Updated docs/daemon.md
-and docs/contracts.md. The new daemon/test/user-events.test.ts covers
-coalescing, cross-session API changes, turn start/end independently of HTTP
-mutations, Sleep, user isolation, text-free payloads and logout/Lock closure.
-No preset, UI, schema, paid API or plan changes. Validation: `npm run
-typecheck` and the new test file under the shared lock passed (2 tests).
-Part C is completed below.
-
-**Done (step 3, left in the tree for the operator):** Part C, serving
-principles 2 and 8. `web/src/Shell.tsx` opens one user EventSource and
-reloads Me/display settings, threads, groups, Notifications and Sleep on
-`hello` and `changed`, including after reconnect. EventSource handles normal
-reconnects; terminal HTTP errors retry with the same 1–30 second backoff as
-the thread stream, and a Me reload checks for logout or Lock. Cleanup closes
-the stream and cancels its retry when the user changes or the shell unmounts.
-The 30-second timer now reloads only Models (and its existing Clean up
-refresh); focus reloads all shell state and Models. Updated docs/web.md's
-stream, sidebar and Sleep descriptions. No new controls (existing homes in
-docs/ux.md §6), preset/profile, schema, daemon, paid API or plan changes.
-Validation: `npm run typecheck` passed. No test files were touched, so no
-test commands or full suite were run.
-
-**Next:** All three implementation steps are complete. The operator commits
-and pushes this step, runs the full suite, and routes the PR/head to the
-required reviewers. No commit or push was attempted in step 3.
+**Next:** review. A known limit: a browser that opens lyricad's plain HTTP
+on loopback directly (not through Caddy, Tailnet or Direct) still has
+HTTP/1.1's six connections, and each tab now holds two streams. Sharing one
+stream between tabs (a BroadcastChannel leader) would lift it if that use
+matters.
