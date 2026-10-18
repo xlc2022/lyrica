@@ -445,7 +445,8 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   realtime and spark models (`planImageDriver`); the image tool picks the image model,
   which is unreported. The first time discovery finds it, image task lists
   in the user's presets and columns that named one of the plan's chat
-  models name ChatGPT Images instead. The Models page and every image call
+  models name ChatGPT Images instead, and an empty Image edits list in a
+  general preset or the general column gets it (private ones never do). The Models page and every image call
   discover a signed-in plan that lacks it (`planImages`), which reads no network. Fast asks for
   low quality, quality for high. Inputs are in-memory data URLs. Count uses
   one request per image (up to four); references are supported.

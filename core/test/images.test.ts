@@ -174,6 +174,29 @@ describe("image calls through the router (principles 1 and 2)", () => {
     await s.models.discover(s.ada, ep.id);
     expect(s.models.column(s.ada.id, "general").entries["image.edit"]).toEqual([s.ref]);
   });
+  it("puts ChatGPT Images in empty Image edits lists that may use cloud, once, when it is first found", async () => {
+    const s = await setup();
+    const general = s.models.addPreset(s.ada.id, { name: "Mixed images", scope: "general" }, "general");
+    const set = s.models.addPreset(s.ada.id, { name: "Set edits", scope: "general" }, "general");
+    const lists = s.models as unknown as { editLists: (u: string, f: (t: Record<string, unknown>) => boolean) => void };
+    lists.editLists(s.ada.id, (t) => { delete t["image.edit"]; return true; });
+    s.models.useColumnPreset(s.ada.id, "general", set.id);
+    s.models.setColumnTask(s.ada.id, "general", "image.edit", [s.ref]);
+    s.models.savePreset(s.ada.id, set.id, "general");
+    s.models.useColumnPreset(s.ada.id, "general", general.id);
+    const local = s.models.addPreset(s.ada.id, { name: "Local images", scope: "private" }, "private");
+    const { ep, ref } = await planImages(s);
+    expect(s.models.preset(s.ada.id, general.id)!.entries["image.edit"]).toEqual([ref]);
+    expect(s.models.column(s.ada.id, "general").entries["image.edit"]).toEqual([ref]);
+    expect(s.models.preset(s.ada.id, set.id)!.entries["image.edit"]).toEqual([s.ref]);
+    expect(s.models.preset(s.ada.id, local.id)!.entries["image.edit"]).toBeUndefined();
+    expect(s.models.preset(s.ada.id, "builtin.local")!.entries["image.edit"]).toBeUndefined();
+    // A list the user empties afterwards stays empty.
+    s.models.setColumnTask(s.ada.id, "general", "image.edit", []);
+    s.models.savePreset(s.ada.id, general.id, "general");
+    await s.models.discover(s.ada, ep.id);
+    expect(s.models.preset(s.ada.id, general.id)!.entries["image.edit"]).toBeUndefined();
+  });
   it("makes an image through ChatGPT Images for a plan added before it, without the Models page opening first", async () => {
     const s = await setup();
     s.models.setPlanCatalog(() => PLAN_MODELS);
