@@ -589,6 +589,20 @@ and `HostedThread.wakeChild(note)` wakes it when a slot frees. Pending wake
 metadata is in memory only; notices and saved messages remain in the stored
 thread.
 
+## The user event stream
+
+Principles 2 and 8: `GET /api/u/:userId/events` sends only
+`UserEvent` (`hello` on connect, then `changed`), never text or resource
+details. `UserEvents` in `daemon/src/user-events.ts` coalesces changes per
+user in 250 ms windows. Successful mutations under that user's API path,
+thread `turn_start`, `turn_end`, `title`, `settings`, `permission`,
+`permission_end` and `child` events, and Sleep events trigger it.
+Clients read current state through the existing authenticated routes; there
+is no replay buffer, and reconnect always sends `hello`.
+The addressed user's session and loaded key are required, checked on every
+event and at the 25-second keep-alive. Logout and Lock end the stream;
+closing it removes its listener.
+
 ## Subagents
 
 `lyricad` builds one `Delegation` (Delegation's default limits). Every hosted

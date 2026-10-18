@@ -1622,6 +1622,23 @@ export function apiRoutes(d: Lyricad): Route[] {
       return { total: pages.reduce((n, p) => n + p.total, 0), entries: pages.flatMap((p) => p.entries)
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.id.localeCompare(a.id) || a.pool.localeCompare(b.pool)).slice(opts.offset, opts.offset + opts.limit) };
     }),
+    route("GET", `${u}/events`, (r) => {
+      const user = d.userFor(r);
+      const { res } = r;
+      res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+      res.write("retry: 3000\n\n");
+      const allowed = () => !!d.sessions.users(r.cookie)?.has(user.id) && d.keyring.hasUserKey(user.id);
+      let n = 0;
+      const send = (event: Api.UserEvent) => {
+        if (!allowed()) return void res.end();
+        res.write(`id: ${++n}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+      };
+      const unsubscribe = d.userEvents.subscribe(user.id, send);
+      send({ type: "hello" });
+      const check = setInterval(() => { if (!allowed()) res.end(); else res.write(": keep-alive\n\n"); }, 25_000);
+      res.on("close", () => { clearInterval(check); unsubscribe(); });
+      return undefined;
+    }),
     route("GET", `${u}/sleep/events`, (r) => {
       const user = d.userFor(r);
       const { res } = r;

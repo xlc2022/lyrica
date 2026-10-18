@@ -73,7 +73,7 @@ work as node:http's do; `checkOrigin` reads `:authority` when there is no
 `Host`; `listenExternal` in `daemon/src/lyricad.ts` and `web/access.ts` use
 the `Listener` type.
 
-**Done (step 1, left uncommitted for the operator):** Part A's test and docs,
+**Done (step 1, committed):** Part A's test and docs,
 serving principles 8 (streams share one connection) and 2 (same-origin
 boundary). `daemon/test/web-access.test.ts` enables Direct on a free
 loopback port and uses an HTTP/2 client trusting the panel's PEM. It verifies
@@ -84,21 +84,22 @@ and DESIGN.md's Direct paragraph for HTTP/2 with HTTP/1.1 fallback.
 `npm run typecheck` passed; all 10 tests in `daemon/test/web-access.test.ts`
 passed with `flock /tmp/lyrica-tests.lock npx vitest run --pool=forks
 --maxWorkers=2 daemon/test/web-access.test.ts`. No preset, UI or schema
-changes were needed. Parts B and C remain unbuilt.
+changes were needed. Part B is completed below; Part C remains unbuilt.
+
+**Done (step 2, left in the tree for the operator):** Part B, serving
+principles 2 and 8. Added `UserEvent` and the text-free per-user SSE route,
+with hello, session/key checks, keep-alive and listener cleanup.
+`UserEvents` coalesces per user over 250 ms; successful user-path mutations,
+the listed thread events and Sleep events feed it. Updated docs/daemon.md
+and docs/contracts.md. The new daemon/test/user-events.test.ts covers
+coalescing, cross-session API changes, turn start/end independently of HTTP
+mutations, Sleep, user isolation, text-free payloads and logout/Lock closure.
+No preset, UI, schema, paid API or plan changes. Validation: `npm run
+typecheck` and the new test file under the shared lock passed (2 tests).
+Part C remains the next step; the shell and docs/web.md are unchanged.
 
 **Next**, one Codex run each, in order (original step numbers retained):
 
-2. Part B: a small `UserEvents` emitter (`daemon/src/user-events.ts`,
-   coalescing per user, 250 ms), fed from `Lyricad.handle` after a
-   successful non-GET under `/api/u/:userId/`, from `onEvent` in
-   `lyricad.ts` for the listed thread events, and from `sleep.events`. The
-   route `GET ${u}/events` in `daemon/src/routes.ts` copies the
-   `…/sleep/events` route's shape (session check, keep-alive, `close`).
-   Add `UserEvent` to `daemon/src/api.ts`. Test in a new
-   `daemon/test/user-events.test.ts`: a thread created through the API
-   reaches an open stream as `changed`, and a turn's start and end do too.
-   Update docs/daemon.md (a section after The event stream) and
-   docs/contracts.md (HTTP/SSE API).
 3. Part C: in `web/src/Shell.tsx`, open the user stream once
    (`EventSource`, reconnecting as `web/src/stream.ts` does) and on `hello`
    or `changed` reload `me`, `threads`, `groups`, `notes` and `sleep`;
