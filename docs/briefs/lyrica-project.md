@@ -79,10 +79,11 @@ and carries its children into a new project. The interface is built under
    stops with an error, or finishes a task without an update, is reported
    to the project chat whatever the setting. Questions (`question: true`),
    `needsYou`, final reports at idle turn end and failure notes wake the
-   project chat once, obeying pause and concurrency. Progress updates only
-   append; replies from a woken chat to its source threads append without
-   waking them, so a thread needing another turn waits for the user or a
-   wake-up. Every thread must end with a message to its parent: the result,
+   project chat once, obeying pause. Progress updates only append. A woken
+   chat's answer starts its source thread's turn for up to three rounds;
+   past that it is saved until the user writes. A message to an idle thread
+   while the at-once limit is full waits for a slot, and the tool says so.
+   Every thread must end with a message to its parent: the result,
    or what blocked it; she reads its latest
    messages with `threads read` and stops a thread that went wrong with
    `threads stop` (docs/delegation.md, "Child threads"). CI and reviews

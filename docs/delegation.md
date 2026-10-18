@@ -307,11 +307,21 @@ checks it reaches her, and with a real model which she picks. Code:
   delivery behaviour.
 
   One pending or running child wake per parent coalesces further notices;
-  messages during that wake join its running turn as Pi steers. Wakes share
-  the child concurrency budget and wait while the project is paused or
-  hidden. Pending wake metadata lives in memory; notices stay encrypted in
-  the thread. A parent's reply to a child that woke it is appended without
-  starting or steering the child; it sees the reply on its next turn.
+  messages during that wake join its running turn as Pi steers. Wakes wait
+  while the project is paused or hidden, and take no child slot: a parent
+  waiting for a slot its own children hold would never answer them. A
+  parent's reply to a child that woke it starts the child's turn, for up to
+  three rounds (`MAX_WAKE_ROUNDS`) until the person writes in either thread;
+  past that it is saved without starting the child, which sees it on its
+  next turn. Pending wake metadata lives in memory; notices stay encrypted
+  in the thread.
+
+  `message` returns what happened, and the tool tells her: the thread
+  started a turn, took the message into its running turn, waits for a slot
+  (the at-once limit is full: the message is saved in the thread and it
+  wakes when a slot frees), or was only saved. A child's message to its
+  parent says whether it wakes the parent; a plain update tells the child to
+  use `question: true` when it needs an answer before going on.
 - `list`: the children, with status (working, waiting for approval, idle)
   and last update.
 - `read({ id, last? })`: the latest `last` messages (10 by default, at
@@ -413,8 +423,9 @@ held in memory; a restart tells the parent anyway.
 **Limits:** `start`s per message to the parent (`perRequest`, default 3,
 counted before each start so parallel calls can't slip past), and children
 working at once per user (`concurrency`, default 2), checked by `start` and
-by a parent's message that wakes an idle child; parent wakes and routines
-share that budget too. `LyricadOptions.threads`.
+by a message that would start an idle child's turn (past it the message is
+saved and the child wakes when a slot frees); routines share that budget,
+parent wakes don't. `LyricadOptions.threads`.
 
 **Records and restarts.** `user.db` has `child_threads`: pool, thread,
 parent, whether a turn was running, and unseen updates (no text). A turn's

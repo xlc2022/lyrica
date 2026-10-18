@@ -18,6 +18,9 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
     background mechanism and distinguish queued from running. Otherwise
     report the stopping point and idle. Routines require a user request for
     recurring work. This is guidance, not an autonomous continuation loop.
+    Her prompt and every subagent's also get `WORK_GUIDELINES`: independent
+    tool calls go together in one reply, and a file already read isn't read
+    again unless it changed, since every reply resends the whole context.
   - It returns content that changes every turn (recall and the time) as a
     hidden `lyrica-turn` message.
 
@@ -70,7 +73,10 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   the thread's folders to Memory.
 - **`images.ts`**: `createImageExtension` adds the one `image` tool (create,
   edit, upscale), checks portrait consent before each routed attempt, saves
-  results through `Workspace.imageFiles` and returns Pi image content. The
+  results through `Workspace.imageFiles` and returns Pi image content. Its
+  parameters are one object with `action`, never a top-level union, which
+  LM Studio refuses and small models can't read; a failed call names the
+  model and recipe it reached. The
   workspace's Images switch and Plan mode gate it. See
   [docs/workspace.md](../docs/workspace.md#images-and-portrait-photos).
   Exact layouts and diagrams use HTML/SVG and the sandbox's offline Chromium
@@ -78,7 +84,10 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   principle 8 charges every context token on every turn.
 - **`models.ts`**: `modelRuntimeFor(models, call)` builds the Pi
   `ModelRuntime` for a thread from the router, and `piModelFor` resolves a
-  task to a Pi model. See [docs/models.md](../docs/models.md).
+  task to a Pi model. See [docs/models.md](../docs/models.md). Local
+  servers' and model hosts' streams go through `inline-thinking.ts` and
+  `tool-stream.ts`, which sends every tool's parameters as an object and
+  stops a reply with more than 32 tool calls.
 - **`session.ts`**: `openThreadSession` hosts one thread in process: its
   stored entries, the given extensions, Pi's built-in tools off, the router's
   runtime and chat model, and entries recorded as turns end.

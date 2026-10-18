@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil
 import { LIVE_STATUSES, type Role, type SubagentRecord } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { setToolsOff } from "../gate.ts";
-import { toolGuidance, type ThreadContext } from "../index.ts";
+import { toolGuidance, WORK_GUIDELINES, type ThreadContext } from "../index.ts";
 import { syncEntries } from "../record.ts";
 import { registerMemoryTools } from "../tools.ts";
 import { subagentPrompt } from "./roles.ts";
@@ -215,7 +215,7 @@ export function createSubagentExtension(thread: ThreadContext, role: Role, hooks
     });
     pi.on("before_agent_start", (event) => {
       const o = event.systemPromptOptions;
-      const tools = toolGuidance(o);
+      const tools = toolGuidance(o, WORK_GUIDELINES);
       o.customPrompt = subagentPrompt(role, name);
       o.sections = { ...(tools ? { tools } : {}), ...o.sections };
     });

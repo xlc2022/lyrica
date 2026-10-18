@@ -237,7 +237,8 @@ export class ChildThreads implements ThreadsHost {
     if (!busy && (this.waiting.has(key) || this.workingCount(userId) >= this.limits.concurrency)) {
       host.get(userId, from.pool, to).appendParent(text, from.threadId);
       this.waiting.set(key, { userId, pool: from.pool, thread: to, parent: target.parent });
-      return "queued";
+      this.wakeWaiting(userId);
+      return this.waiting.has(key) ? "queued" : "started";
     }
     await host.get(userId, from.pool, to).send(text, sibling ? { fromThread: from.threadId } : { fromParent: from.threadId });
     return busy ? "running" : "started";
@@ -596,8 +597,9 @@ export class ChildThreads implements ThreadsHost {
         const mine = this.starting.get(userId) ?? new Set();
         this.starting.set(userId, mine);
         mine.add(slot);
+        // The slot goes when its turn starts (`turn`), or here if none did.
         void this.o.host().get(userId, w.pool, w.thread).wakeChild("Read the messages above, sent while you were waiting for a free slot, and go on.")
-          .catch(() => { mine.delete(slot); });
+          .catch(() => {}).finally(() => { if (!this.o.host().busy(userId, w.pool, w.thread)) mine.delete(slot); });
       } catch { return; /* locked; the saved messages remain */ }
     }
   }

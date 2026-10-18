@@ -522,10 +522,14 @@ and is stored: the message list shows it as a `notice` message.
 Child-thread notices use the same encrypted delivery path. Questions,
 `needsYou`, a report at the child's idle turn end, and failure/didn't-start
 notes wake an idle parent once (`ChildThreads`, `HostedThread.wakeChild`).
-Progress updates append. Pending wakes coalesce, wait through project pause
-or hidden, and share the child concurrency budget; replies to the children
-that woke the parent are saved without starting or steering them. Pending
-wake metadata is in memory only; notices remain in the stored thread.
+Progress updates append. Pending wakes coalesce and wait through project
+pause or hidden; they take no child slot. A woken parent's reply to the child
+that woke it starts that child's turn for up to `MAX_WAKE_ROUNDS` (3) rounds,
+then is only saved until the person writes in either thread. A message to an
+idle child while the at-once limit is full is saved in it (`appendParent`)
+and `HostedThread.wakeChild(note)` wakes it when a slot frees. Pending wake
+metadata is in memory only; notices and saved messages remain in the stored
+thread.
 
 ## Subagents
 
