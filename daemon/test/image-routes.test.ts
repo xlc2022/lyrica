@@ -61,6 +61,8 @@ describe("image routes (principles 1 and 2)", () => {
       models.addModel(actor, keyed.id, { modelId: "chat", tools: true, vision: true });
       const plan = models.addPlan(actor, { name: "ChatGPT", plan: "chatgpt", credential: { access: "fake-access", refresh: "fake-refresh", expires: Date.now() + 60_000, email: "ada@example.test" } });
       models.addModel(actor, plan.id, { modelId: "chat", tools: true, vision: true, image: true });
+      // The plan's image model; the switch on its chat model no longer counts.
+      models.addModel(actor, plan.id, { modelId: "chatgpt-images", image: true, edit: true });
       const grok = models.addPlan(actor, { name: "Grok", plan: "grok", credential: { access: "fake-grok-access", refresh: "fake-grok-refresh", expires: Date.now() + 60_000 } });
       models.addModel(actor, grok.id, { modelId: "art", image: true });
       const path = `/api/u/${actor.id}/endpoints`;

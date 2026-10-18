@@ -37,6 +37,8 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   const served = new Map<string, unknown>();
   const parts: { file: string; role: string; downloaded: boolean }[] = [];
   const tokens: (string | undefined)[] = [];
+  /** The starter recipes it ships, as host/API.md lists them. */
+  const starters: { id: string; name: string; template: string; parts: { role: string; source: string; repo: string; path: string; sha256: string; size?: number; present: boolean }[]; loras: []; defaults: Record<string, number> }[] = [];
   const lookups: { model: string; repo?: string; hub?: string; token?: string }[] = [];
   const downloads: { id: string; path: string; state: string }[] = [];
   /** More files in the download record (a split model's other shards), and files a running request holds. */
@@ -118,6 +120,18 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
         return json(res, 202, { downloads: made });
       }
       if (req.method === "GET" && url.pathname === "/host/v1/downloads") return json(res, 200, downloads);
+      if (req.method === "GET" && url.pathname === "/host/v1/starters") return json(res, 200, { starters });
+      const install = /^\/host\/v1\/starters\/([\w.-]+)\/install$/.exec(url.pathname);
+      if (install && req.method === "POST") {
+        const st = starters.find((x) => x.id === install[1]);
+        if (!st) return json(res, 404, { error: { code: "not_found", message: "No such starter." } });
+        tokens.push(req.headers["x-hub-token"] as string | undefined);
+        const made = st.parts.filter((p) => !p.present).map((p) => ({ id: randomBytes(4).toString("hex"), path: `lyrica/${p.source}/${p.repo}/${p.path}`, state: "downloading" }));
+        downloads.push(...made);
+        const recipe = { id: `starter-${st.id}`, name: st.name, state: "confirmed", does: ["create"], parts: [] } as unknown as Recipe;
+        if (!recipes.some((r) => r.id === recipe.id)) recipes.push(recipe);
+        return json(res, 200, { recipe, downloads: made });
+      }
       if (req.method === "GET" && url.pathname === "/host/v1/recipes") {
         const state = url.searchParams.get("state");
         return json(res, 200, { recipes: recipes.filter((r) => !state || r.state === state) });
@@ -212,6 +226,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
     recipes,
     parts,
     tokens,
+    starters,
     lookups,
     downloads,
     record,

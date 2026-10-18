@@ -155,6 +155,22 @@ async function chatgpt(t: Target, r: ImageRequest, signal?: AbortSignal): Promis
   return images;
 }
 
+/** A ChatGPT plan's one image model: the plan's image tool, which picks its own image model (docs/models.md, "Subscription plans"). */
+export const PLAN_IMAGE_MODEL = "chatgpt-images";
+export const PLAN_IMAGE: { modelId: string; recipe: string; image: true; edit: true; vision: true } = { modelId: PLAN_IMAGE_MODEL, recipe: "ChatGPT Images", image: true, edit: true, vision: true };
+
+/**
+ * The plan model a ChatGPT Images request goes through: the newest GPT by its
+ * version number, leaving out pro, mini, nano, chat, codex, realtime and
+ * spark models; at equal versions the shorter ID. Undefined when the plan lists none.
+ */
+export function planImageDriver(modelIds: string[]): string | undefined {
+  const version = (id: string) => /^gpt-(\d+)(?:\.(\d+))?(?:-[a-z]+)?$/.exec(id);
+  return modelIds.filter((id) => version(id) && !/-(pro|mini|nano|chat|codex|realtime|spark)\b/.test(id))
+    .map((id) => { const m = version(id)!; return { id, v: Number(m[1]) * 1000 + Number(m[2] ?? 0) }; })
+    .sort((a, b) => b.v - a.v || a.id.length - b.id.length || a.id.localeCompare(b.id))[0]?.id;
+}
+
 export interface CloudImageProvider {
   run: (t: Target, r: ImageRequest, signal?: AbortSignal) => Promise<GeneratedImage[]>;
   create: boolean; edit: boolean; mask: boolean; references: boolean; sizes: boolean; count: number;

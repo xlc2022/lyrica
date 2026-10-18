@@ -257,7 +257,7 @@ it("Try follows named presets and tier rules, and never offers cloud in restrict
 it("Try skips a maskless plan for masked edits and skips cloud endpoints for forbidden portraits", async () => {
   const s = await setup();
   const plan = s.models.addPlan(s.ada, { name: "plan", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
-  const planRef = { offeringId: s.models.addModel(s.ada, plan.id, { modelId: "plan-art", image: true, edit: true }).id };
+  const planRef = { offeringId: s.models.addModel(s.ada, plan.id, { modelId: "chatgpt-images", image: true, edit: true }).id };
   s.models.setColumnTask(s.ada.id, "general", "image.edit", [s.ref, planRef, s.workstation.ref]);
   const after = s.models.offering(s.ada.id, s.ref.offeringId)!.endpoint.id;
   expect(s.models.nextImageModel(s.ctx(), "edit", {}, after)?.ref).toEqual(planRef);

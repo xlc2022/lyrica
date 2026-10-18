@@ -598,11 +598,13 @@ endpoints:
   defaults to **OpenAI**; you can rename it, and the examples below call
   it `openai-images`.
 
-Then open the endpoint's model list and turn on **Image generation** and
-**Image editing** for each model that supports them (the same switches are
-in its block on Image models). Only the endpoint's owner, or an
-administrator for a shared endpoint, can change them. To use the plan
-first and the key as a paid fallback, put the plan's model first in the
+A signed-in ChatGPT plan shows one image model, **ChatGPT Images**, under
+Cloud on Models, Image models; it makes and edits images from the start.
+For a key, open Image models, then **Other cloud models** at the foot of
+the Cloud group, and tick **Generate** and **Edit** for each model that
+supports them (`gpt-image-1`, for example). Only the endpoint's owner, or
+an administrator for a shared endpoint, can change them. To use the plan
+first and the key as a paid fallback, put ChatGPT Images first in the
 General threads column's image lists and the key's model after it.
 
 Then put models in the lists, under Models, Tasks, or from a terminal

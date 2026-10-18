@@ -417,6 +417,8 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("DELETE", `${u}/hosts/:endpointId/downloads/:downloadId`, async (r) => s().models.cancelDownload(d.userFor(r), r.params.endpointId!, r.params.downloadId!)),
     route("GET", `${u}/hosts/:endpointId/images`, async (r) => s().models.imageLibrary(d.userFor(r).id, r.params.endpointId!)),
+    route("GET", `${u}/hosts/:endpointId/starters`, async (r) => ({ starters: await s().models.starters(d.userFor(r).id, r.params.endpointId!) })),
+    route("POST", `${u}/hosts/:endpointId/starters/:starterId/install`, async (r) => s().models.installStarter(d.userFor(r), r.params.endpointId!, r.params.starterId!)),
     route("POST", `${u}/hosts/:endpointId/recipes/:recipeId`, async (r) => {
       const a = await r.json<Api.RecipeAction>();
       if (!["confirm", "ignore", "download-parts", "delete", "change", "copy"].includes(a.do)) throw new HttpError(400, "a recipe can be confirmed, ignored, changed, copied, deleted, or have its parts downloaded");
@@ -445,6 +447,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const m = s().models;
       const pools = shownPools(display(d, user.id));
       const release = runningRelease(d);
+      // A ChatGPT plan signed in before it had an image model finds it here, as at an image call.
+      await m.planImages(user.id);
       const eps = m.endpoints(user.id);
       // One look per endpoint, within 3 s, so a host that's off doesn't hold the page.
       const looks = await Promise.all(eps.map(async (e) => ({ e, look: await m.pageStatus(user.id, e.id).catch((err: Error) => ({ state: "down" as const, error: err.message, status: undefined, warning: undefined, unpaired: undefined })) })));
@@ -2459,7 +2463,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
       const r = models.resolve(task, task === "speech.transcribe" ? voiceContext(ctx) : ctx, {}, { evenIfDown: true });
       if (task === "chat") thinkingLevels = ["off", ...(r.offering.reasoning ?? [])];
       return {
-        model: r.ref, ...list, kind: r.endpoint.kind, endpointName: r.endpoint.name, label: r.label, modelId: r.offering.modelId,
+        model: r.ref, ...list, kind: r.endpoint.kind, endpointName: r.endpoint.name, label: r.label, modelId: r.offering.modelId, name: modelName(r.offering),
         source: r.source,
       };
     } catch (err) {

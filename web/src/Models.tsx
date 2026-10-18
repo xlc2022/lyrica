@@ -21,7 +21,6 @@ import {
 } from "./ModelsFrame.tsx";
 import { go, href, type ModelsPageUnder, type ModelsTab, type Route } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { CloudImageControls } from "./CloudImageControls.tsx";
 import { TextModels } from "./TextModels.tsx";
 import { ConfirmDialog, ErrorText, hidden, shortTime, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
 
@@ -995,7 +994,6 @@ function ModelList({ ctx, ep, onVoice }: { ctx: MCtx; ep: EndpointInfo; onVoice:
         <li key={m.id} data-offering={m.id}>
           <ModelLabel model={m.modelId} endpoint={ep.name} raw />
           {m.status !== "listed" && <span className="pill warn">{m.status}</span>}
-          {ep.kind === "cloud" && <CloudImageControls ctx={ctx} ep={ep} m={m} />}
           {m.speak?.voices.length ? <button type="button" className="link sm" aria-label={`${m.modelId} settings`} onClick={() => onVoice(m)}>Settings</button> : null}
         </li>
       ))}
@@ -1166,7 +1164,10 @@ function EndpointRow({ ctx, ep, others, onEdit, onVoice }: { ctx: MCtx; ep: Endp
         <span className={ep.kind === "cloud" ? "name endpoint-name" : "name"}>
           {ep.name} <Kind kind={ep.kind} />
           {plan ? <span className="pill">{PLAN_NAMES[plan]} plan</span> : ep.kind === "cloud" && ep.hasApiKey ? <span className="pill">API key</span> : null}
-          {!!ep.cloudCapabilities?.length && <span className="endpoint-capabilities">{ep.cloudCapabilities.map(cap => <span className="pill" key={cap}>{cap}</span>)}</span>}
+          {!!ep.cloudCapabilities?.length && <span className="endpoint-capabilities">{ep.cloudCapabilities.map(cap => cap === "Image"
+            // Its image models are set on Image models.
+            ? <a className="pill" key={cap} href={href({ page: "models", userId: ctx.user.id, tab: "images" })}>{cap}</a>
+            : <span className="pill" key={cap}>{cap}</span>)}</span>}
           {ep.unencrypted && <span className="pill warn">unencrypted</span>}{ep.stale && <span className="pill bad">stale</span>}</span>
         <span className="meta muted">{plan ? <>{PLAN_NAMES[plan]} plan · only you{ep.planAccount && <> · <span className="mono">{ep.planAccount}</span></>}</> : <><code className="url">{ep.baseUrl}</code> · {ep.shared ? "shared" : "only you"}{ep.hasApiKey && <> · <span className="mono">key ••••{ep.keyLast4}</span></>}</>} · ID <span className="mono">{ep.id}</span></span>
         {ep.warning && <span className="warn-text">{ep.warning}</span>}

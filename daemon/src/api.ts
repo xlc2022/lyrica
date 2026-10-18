@@ -28,7 +28,7 @@ export type Task =
   | "title" | "watching" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
   | "image.create" | "image.edit" | "image.upscale" | "speech.transcribe" | "speech.speak";
 /** The tasks a thread can choose models for. Compaction isn't one: Pi compacts with the thread's chat model. */
-export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title", "watching", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
+export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title", "watching", "image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
 
 /** One model on one endpoint, by its permanent offering ID, or a model group, which expands into its members in order. */
@@ -426,6 +426,14 @@ export type DownloadInput = { source: Hub; repo: string; revision?: string; file
 export type RecipeUseFor = "fast" | "quality" | "both";
 /** change { op: "useFor", useFor } saves a recipe's create tiers on the host; absent defaults to both. */
 export type RecipeAction = { do: "confirm" | "ignore" | "download-parts" | "delete" } | { do: "change"; change: Record<string, unknown> & { useFor?: RecipeUseFor } } | { do: "copy"; name: string };
+/** GET /api/u/:userId/hosts/:endpointId/starters → { starters }: the host's starter recipes (host/API.md), each part `present` when it is on the host. */
+export interface HostStarter {
+  id: string; name: string; template: string;
+  parts: { role: string; slot?: string; source: string; repo: string; path: string; sha256: string; size?: number; present: boolean }[];
+  loras: { file: string; strength: number }[];
+  defaults: Record<string, string | number>;
+}
+// POST /api/u/:userId/hosts/:endpointId/starters/:starterId/install → { recipe, downloads }: downloads what is missing, with the user's hub token, and confirms the recipe.
 /** POST /api/u/:userId/hosts/:endpointId/manage → the host's answer. Loading, pinning, GPU settings, placements, scan, usage only. */
 export interface HostManage { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; path: string; body?: unknown }
 /** GET /api/u/:userId/hosts/:endpointId/dashboard → { url } */
@@ -1001,6 +1009,8 @@ export interface TaskModel {
   /** `<endpoint>/<model>`, kept readable after the model is gone. */
   label?: string;
   modelId?: string;
+  /** What to call it: a recipe's or plan image model's name, else its model ID. */
+  name?: string;
   kind?: "cloud" | "local";
   endpointName?: string;
   /** "thread" when overridden here, "preset" or "column" when following one of those, "none" when nothing is set. */

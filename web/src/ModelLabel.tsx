@@ -4,7 +4,7 @@ import type { OfferingInfo } from "./api.ts";
 export const isChatModel = (m: Pick<OfferingInfo, "recipe" | "image" | "embedding" | "transcribe" | "speak">) => !m.recipe && !m.image && !m.embedding && !m.transcribe && !m.speak;
 
 // Principle 1: copies with the same model ID still name the endpoint the user picks.
-/** What to call a model: a host recipe by its name, anything else by its model ID. */
+/** What to call a model: an image model (a host recipe, or a plan's image tool) by its name, anything else by its model ID. */
 export const modelName = (m: { modelId: string; recipe?: string }) => m.recipe ?? m.modelId;
 
 export function ModelLabel({ model, endpoint, raw = false }: { model: string; endpoint: string; raw?: boolean }) {

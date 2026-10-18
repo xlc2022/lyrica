@@ -436,8 +436,17 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   `image_generation` tool, with storage off and the answer streamed, as
   chat's client always streams; the image comes from the finished
   `image_generation_call` item. Sizes map to the nearest of the three GPT
-  Image canvases. The selected offering is the
-  Responses model; the underlying image model is unreported. Fast asks for
+  Image canvases. A ChatGPT plan has one image model, **ChatGPT Images**
+  (`PLAN_IMAGE_MODEL`, `chatgpt-images`, named by its `recipe` field), which
+  discovery adds to the plan's catalogue; its chat models never make
+  images, whatever an older switch set (the catalogue drops their `image`,
+  `edit`, `upscale` and `useFor`). Its requests go through the plan's newest
+  GPT by version number, leaving out pro, mini, nano, chat, codex,
+  realtime and spark models (`planImageDriver`); the image tool picks the image model,
+  which is unreported. The first time discovery finds it, image task lists
+  in the user's presets and columns that named one of the plan's chat
+  models name ChatGPT Images instead. The Models page and every image call
+  discover a signed-in plan that lacks it (`planImages`), which reads no network. Fast asks for
   low quality, quality for high. Inputs are in-memory data URLs. Count uses
   one request per image (up to four); references are supported.
   Maskless edits are supported; masked edits skip the plan before sending
@@ -544,7 +553,11 @@ proposals and missing parts) and parts by role, as the host reports them.
 Confirm, ignore, download missing parts (with the hub token for the hub
 they come from), change (swap a part within its role
 and slot, LoRAs, defaults, rename, or `useFor`), copy or delete; the host keeps every part
-another recipe uses. Only confirmed recipes become offerings (`recipe/<id>`,
+another recipe uses. **Starter recipes** (`starters`, `installStarter`):
+the host's own, from `GET /host/v1/starters`, each part marked `present`;
+making one posts `…/starters/<id>/install` with the hub token when a part
+is missing, and the host downloads those and confirms the recipe. A shared
+host needs an administrator. Only confirmed recipes become offerings (`recipe/<id>`,
 with `image` or `edit`), so a proposal never resolves; a recipe deleted here
 leaves a tombstone. The tag is `fast`, `quality` or `both`, stored as an
 optional field in the host's `recipes.json`; absent reads as both. The daemon
@@ -552,9 +565,9 @@ recipe action `{ do: "change", change: { op: "useFor", useFor } }` forwards
 it to the host's PATCH, then refreshes discovery. Offerings cache it in their
 existing `found` JSON; there is no database migration. Image models exposes
 it as **Use for**, saved at once per host, and a fact in the recipe row.
-Cloud model blocks in Image models and the endpoint's model list expose
-Image generation, Image editing and Use for (Fast | Quality | Both). They
-save through `PATCH …/offerings/:id` to hand JSON, and only the endpoint's
+Cloud model rows in Image models expose Generate and Edit checkboxes and
+Use for (Fast | Quality | Both); the Cloud group's "Other cloud models" lists
+a keyed endpoint's other models with Generate and Edit. They save through `PATCH …/offerings/:id` to hand JSON, and only the endpoint's
 owner or a shared endpoint's administrator can change them.
 
 ## Downloads, hub tokens and deleting
@@ -747,7 +760,7 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   reaches the thread as `planError`'s fixed line.
 - **Models** come from Pi's catalogue for that provider (`planCatalog`,
   given to core with `setPlanCatalog`), not `/v1/models`, with their
-  context windows, vision and thinking.
+  context windows, vision and thinking; a ChatGPT plan adds ChatGPT Images.
 - A plan is up while signed in; nothing is probed. When its usage limit is
   reached (`isPlanLimit`), the turn ends with the provider's message and
   the router skips the plan for an hour (`reportPlanLimit`), so the next

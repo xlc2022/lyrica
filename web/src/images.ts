@@ -23,6 +23,8 @@ export interface HostRecipe {
   defaults: Record<string, unknown>;
   /** The recipe this one was copied from. */
   base: string | null;
+  /** The starter recipe it was made from. */
+  starter?: string | null;
 }
 
 /** One host's image library, as GET …/hosts/:id/images gives it (its parts flattened from by-role). */
@@ -114,7 +116,7 @@ export function deletePlan(r: HostRecipe, parts: HostPart[], recipeOf: (id: stri
 /** The name a recipe with a LoRA built in is saved as: "Z-Image Turbo + pixel art". */
 export const withLora = (name: string, lora: string) => `${name} + ${fileName(lora).replace(/\.(safetensors|gguf)$/i, "").replace(/[-_]+/g, " ").trim()}`;
 
-/** The parts Add a part offers: a LoRA always; a VAE and a text encoder for a checkpoint that has none added. */
+/** The parts Add part offers: a LoRA always; a VAE and a text encoder for a checkpoint that has none added. */
 export function addableRoles(r: HostRecipe): Role[] {
   const roles: Role[] = ["lora"];
   if (r.parts.some((p) => p.role === "checkpoint")) for (const role of ["vae", "text_encoder"] as const) if (!r.parts.some((p) => p.role === role)) roles.push(role);
