@@ -215,6 +215,10 @@ describe("endpoints and offerings", () => {
     const [qwen, flash] = lan.models;
     const edited = (await ada.patch<EndpointInfo>(`/api/u/${rt.ada.id}/endpoints/${lan.id}`, { name: "blackwell", apiKey: null })).body;
     expect(edited).toMatchObject({ id: lan.id, name: "blackwell", hasApiKey: false });
+    // A bare address gets http:// and /v1; one that isn't a URL is a plain reason, not an internal error.
+    expect((await ada.patch<EndpointInfo>(`/api/u/${rt.ada.id}/endpoints/${lan.id}`, { baseUrl: "10.0.0.5:1234" })).body.baseUrl).toBe("http://10.0.0.5:1234/v1");
+    expect((await ada.patch(`/api/u/${rt.ada.id}/endpoints/${lan.id}`, { baseUrl: "10.0.0.5:99999" })).body).toEqual({ error: "the base URL isn't a valid URL" });
+    expect((await ada.patch(`/api/u/${rt.ada.id}/endpoints/${lan.id}`, { baseUrl: local.baseUrl })).status).toBe(200);
     expect(edited.models.map((m) => [m.id, m.label])).toEqual([[qwen!.id, "shared.blackwell/qwen3.8-27b"], [flash!.id, "shared.blackwell/qwen3.8-flash"]]);
 
     const samU = `/api/u/${rt.sam.id}`;

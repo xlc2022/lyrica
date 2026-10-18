@@ -15,6 +15,9 @@ general thread is outside this.
 
 An endpoint is a name, a kind (`cloud` or `local`, declared by whoever adds
 it, never inferred), an OpenAI-compatible base URL and an optional API key.
+A base URL without a scheme gets `http://` (local) or `https://` (cloud),
+and one without a path gets `/v1`, so `10.0.0.5:1234` saves as
+`http://10.0.0.5:1234/v1`; a given path is kept.
 
 The Hosts and endpoints page distinguishes a plan from a keyed service:
 ChatGPT plan or Grok plan versus API key pills. A cloud row also shows Text,
