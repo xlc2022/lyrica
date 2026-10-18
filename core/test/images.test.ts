@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CloudModelForbidden, PLAN_IMAGE_MODEL, planImageDriver } from "../src/index.ts";
-import { cleanPng } from "../src/models/images.ts";
+import { cleanPng, imageAt } from "../src/models/images.ts";
 
 import { fakeImages as setup } from "./fake-images.ts";
 
@@ -269,5 +269,20 @@ describe("image calls through the router (principles 1 and 2)", () => {
     const chunk = (tag: string) => { const b = Buffer.alloc(18); b.writeUInt32BE(6); b.write(tag, 4); b.write("secret", 8); return b; };
     const dirty = Buffer.concat([png.subarray(0, 33), chunk("tEXt"), chunk("iTXt"), chunk("zTXt"), chunk("eXIf"), png.subarray(33)]);
     expect(cleanPng(dirty).bytes).toEqual(png);
+  });
+});
+
+describe("a failed image call's error", () => {
+  const image = { bytes: png, type: "image/png" as const };
+  it("passes on the host's own message, such as a recipe that doesn't fit its GPU", async () => {
+    const fetch = vi.fn(async () => Response.json({ error: { code: "too_big", message: "This model needs about 18 GB on GPU 0; it has 16 GB." } }, { status: 413 })) as unknown as typeof globalThis.fetch;
+    await expect(imageAt({ fetch, baseUrl: "https://host.example", host: true, modelId: "recipe/art" }, { action: "edit", prompt: "Add eyeliner", image }))
+      .rejects.toMatchObject({ code: "too_big", message: "image endpoint answered 413: This model needs about 18 GB on GPU 0; it has 16 GB." });
+  });
+  it("names a cloud error's code, type and parameter, never its message", async () => {
+    const fetch = vi.fn(async () => Response.json({ error: { code: "invalid_value", type: "invalid_request_error", param: "size", message: "SECRET provider prompt" } }, { status: 400 })) as unknown as typeof globalThis.fetch;
+    const failed = imageAt({ fetch, baseUrl: "https://images.example/v1", host: false, modelId: "gpt-image-1", apiKey: "fake-key" }, { action: "create", prompt: "A garden", tier: "fast" });
+    await expect(failed).rejects.toMatchObject({ code: "invalid", message: "image endpoint answered 400 (code invalid_value, type invalid_request_error, parameter size)" });
+    await expect(failed).rejects.not.toMatchObject({ message: expect.stringContaining("SECRET") });
   });
 });
