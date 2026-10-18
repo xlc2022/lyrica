@@ -47,6 +47,12 @@ describe("user events", () => {
       expect(created.status).toBe(200);
       await stream.until((e) => (e.type as string) === "changed", from);
 
+      // A draft saves after each pause in typing and no list shows it: no `changed`.
+      const drafted = stream.events.length;
+      expect((await writer.put(`${u}/threads/general/${encodeURIComponent(created.body.id)}/draft`, { text: "Invented draft marker." })).status).toBe(200);
+      await new Promise((r) => setTimeout(r, 400));
+      expect(stream.events.length).toBe(drafted);
+
       let release!: (reply: Reply) => void;
       model.respond(() => new Promise<Reply>((resolve) => { release = resolve; }));
       const hosted = d.services!.host.get(rt.ada.id, "general", created.body.id);
@@ -66,6 +72,7 @@ describe("user events", () => {
       expect(other.events.map((e) => e.event)).toEqual([{ type: "hello" }]);
       expect(stream.events.every((e) => JSON.stringify(e.event) === '{"type":"hello"}' || JSON.stringify(e.event) === '{"type":"changed"}')).toBe(true);
       expect(logs.join("\n")).not.toContain("Invented stream privacy marker.");
+      expect(logs.join("\n")).not.toContain("Invented draft marker.");
 
       await reader.post("/api/logout");
       d.userEvents.changed(rt.ada.id);

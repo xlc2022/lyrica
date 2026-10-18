@@ -25,6 +25,8 @@ import { ThreadHost } from "./hosted.ts";
 
 /** Model host refusals the web UI acts on, so their code goes with the message. */
 const HOST_CODES = ["need_repo", "above_recommended"];
+/** Changes no list in the shell shows, so they don't tell the user's other tabs: a draft saves after each pause in typing. */
+const UNLISTED = new Set(["/api/u/:userId/threads/:pool/:threadId/draft"]);
 import {
   checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, readBody, secureServer, sendJson, serveStatic, statusOf, Updating,
   type Listener, type Request, type Route, type TrustForwarded,
@@ -778,7 +780,7 @@ export class Lyricad implements Drainable {
       if (method !== "GET" && method !== "HEAD") checkOrigin(req);
       const r: Request = makeRequest(req, res, routeName, found.params, url, trust, via);
       const body = await found.route.handler(r);
-      if (method !== "GET" && method !== "HEAD" && found.params.userId && res.statusCode >= 200 && res.statusCode < 300) this.userEvents.changed(found.params.userId);
+      if (method !== "GET" && method !== "HEAD" && found.params.userId && res.statusCode >= 200 && res.statusCode < 300 && !UNLISTED.has(routeName)) this.userEvents.changed(found.params.userId);
       if (res.headersSent) return; // a stream, or a handler that answered itself
       sendJson(res, 200, body);
     } catch (err) {

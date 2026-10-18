@@ -1301,7 +1301,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - auth;
   - `GET /api/u/:userId/events` → SSE `UserEvent`: `{ type: "hello" }`
     on every connection, then `{ type: "changed" }`, coalesced per user
-    at most once per 250 ms. Successful mutations under that user's path,
+    at most once per 250 ms. Successful mutations under that user's path
+    (except `PUT …/draft`),
     thread list events (`turn_start`, `turn_end`, `title`, `settings`,
     `permission`, `permission_end`, `child`) and Sleep events trigger it.
     No text, IDs or replay; clients re-read existing routes. Requires the

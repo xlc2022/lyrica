@@ -34,7 +34,7 @@ every tab's streams. Plain-HTTP listeners on loopback stay HTTP/1.1.
 on connect, then `changed` whenever the user's lists may have moved:
 
 - any successful state-changing request under `/api/u/:userId/` (from any
-  tab or device);
+  tab or device), except a draft save, which no list shows;
 - a thread event that changes how the thread looks in a list: `turn_start`,
   `turn_end`, `title`, `settings`, `permission`, `permission_end`, `child`;
 - a Sleep event.

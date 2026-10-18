@@ -594,7 +594,7 @@ thread.
 `GET /api/u/:userId/events` sends only
 `UserEvent` (`hello` on connect, then `changed`), never text or resource
 details. `UserEvents` in `daemon/src/user-events.ts` coalesces changes per
-user in 250 ms windows. Successful mutations under that user's API path,
+user in 250 ms windows. Successful mutations under that user's API path (except a draft save, which no list shows),
 thread `turn_start`, `turn_end`, `title`, `settings`, `permission`,
 `permission_end` and `child` events, and Sleep events trigger it.
 Clients read current state through the existing authenticated routes; there
