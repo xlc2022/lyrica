@@ -113,6 +113,8 @@ describe("server-side history", () => {
       said = view.own.appendEntry(t.id, { piId: "a1", role: "user", data: {}, text: "Water the trays on Sunday." }, "2026-10-13T10:00:00.000Z");
       view.own.appendEntry(t.id, { piId: "a2", role: "assistant", data: {}, text: "Noted: Sunday." }, "2026-10-13T10:00:01.000Z");
       view.own.appendEntry(t.id, { piId: "a3", role: "toolResult", data: {}, text: "ok" }, "2026-10-13T10:00:02.000Z");
+      // A parent's message to this thread is stored as a user turn, but it is hers, not a person's: not in Recent.
+      view.own.appendEntry(t.id, { piId: "a4", role: "user", data: {}, text: "[From t:general/web%2Fp1]\n\nMind the seedlings too." }, "2026-10-13T10:00:03.000Z");
       const u = view.own.createThread({ interface: "web", title: "Quiet", unlogged: true });
       quiet = view.own.appendEntry(u.id, { piId: "u1", role: "user", data: {}, text: "Not for the index." }, "2026-10-13T11:00:00.000Z");
     } finally { view.close(); }

@@ -6,7 +6,7 @@ import type { Db } from "../db.ts";
 import { render, toStored, type UserId } from "../mentions.ts";
 import type { Profile } from "../profile.ts";
 import type { Interface, Pool } from "../types.ts";
-import { WATCHING, type ThreadStep } from "../threads.ts";
+import { FROM_PARENT, ROUTINE, WAKEUP, WATCHING, type ThreadStep } from "../threads.ts";
 import { citationsIn, ftsQuery, indexText, kindOf, queryWords, searchWords, snippet, stripCitations, type Kind } from "./refs.ts";
 
 /** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
@@ -532,11 +532,26 @@ export class PoolReader {
    * said, never a tool's result or one of her looks at other threads.
    */
   recentEntries(opts: { limit: number; before?: string }): Item[] {
-    const rows = this.db.prepare(`SELECT thread, n FROM entries WHERE unlogged = 0 AND role IN ('user', 'assistant') AND text != ''
-      AND created_at > @since AND (@before IS NULL OR created_at < @before)
-      AND text NOT LIKE '[Watching threads]%' AND text NOT LIKE '[Wake-up, set %' AND text NOT LIKE '[Routine, %'
-      ORDER BY created_at DESC, n DESC LIMIT @limit`).all({ since: this.watermark() ?? "", before: opts.before ?? null, limit: Math.max(1, opts.limit) }) as { thread: string; n: number }[];
-    return rows.map((r) => this.get(entryId(r.thread, r.n))).filter((x): x is Item => !!x);
+    const limit = Math.max(1, opts.limit);
+    const stmt = this.db.prepare(`SELECT thread, n, text, created_at FROM entries WHERE unlogged = 0 AND role IN ('user', 'assistant') AND text != ''
+      AND created_at > @since AND (@before IS NULL OR created_at < @before) ORDER BY created_at DESC, n DESC LIMIT @limit`);
+    const since = this.watermark() ?? "";
+    let before = opts.before ?? null;
+    const out: Item[] = [];
+    // A message from another thread (a parent's or sibling's), a watch, a wake-up or a routine is hers or the daemon's, not a person's: left out.
+    const marked = [FROM_PARENT, WATCHING, WAKEUP, ROUTINE];
+    for (;;) {
+      const batch = limit * 2;
+      const rows = stmt.all({ since, before, limit: batch }) as { thread: string; n: number; text: string; created_at: string }[];
+      for (const r of rows) {
+        if (marked.some((m) => m.test(r.text))) continue;
+        const item = this.get(entryId(r.thread, r.n));
+        if (item) out.push(item);
+        if (out.length === limit) return out;
+      }
+      if (rows.length < batch) return out;
+      before = rows[rows.length - 1]!.created_at;
+    }
   }
 
   listJournal(limit = 20): Item[] {
