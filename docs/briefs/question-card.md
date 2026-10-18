@@ -189,8 +189,6 @@ Local execution uses UNTRACKED `web/playwright.local.config.ts`, ports
 `shots/`. Run browser coverage from `web/` with
 `SCREENSHOTS=../shots flock /tmp/lyrica-tests.lock npx playwright test -c playwright.local.config.ts -g 'question cards|private question Notifications' --project=phone --project=desktop`.
 
-Next: the operator runs the full suite, commits and pushes the tracked
-changes, then sends the head to PR and UI review. Run 3 leaves changes in
-the tree because `.git` is read-only. Nothing was pushed. Push notifications,
-card free-text inputs, multiple open questions and subagent questions remain
-out of scope. No open design questions.
+Status: pushed at `ede795c`, main merged, and sent to PR and UI review.
+Push notifications, card free-text inputs, multiple open questions and
+subagent questions remain out of scope. No open design questions.
