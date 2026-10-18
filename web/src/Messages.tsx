@@ -565,7 +565,8 @@ function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool"
 function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {
   const args = (part.args ?? {}) as { action?: string; title?: string; task?: string; text?: string; to?: string };
   const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
-  const head = args.action === "start" ? `Child thread: ${args.title ?? ""}` : args.action === "list" ? "Child threads"
+  // No action yet while she writes the call: the tool's own name, until it runs.
+  const head = args.action === "start" ? `Child thread: ${args.title ?? ""}` : !args.action || args.action === "list" ? "Child threads"
     : args.to === "parent" ? "Update to the parent thread" : "Message to a child thread";
   const started = args.action === "start" ? part.threads?.[0] : undefined;
   const child = started && findThread(env.threads, started.pool, started.id);
@@ -788,9 +789,11 @@ export function MessageBox({ thread, env, onSent }: { thread: ThreadRef; env: Pi
 }
 
 /** One line for a tool call: the command, path, Proxmox action or first argument; never the machine, which is named on its own. */
-function summarizeArgs(args: unknown): string {
+export function summarizeArgs(args: unknown): string {
   if (!args || typeof args !== "object") return String(args ?? "");
   const { machine: _, ...a } = args as Record<string, unknown>;
+  // A call she is still writing has no arguments yet: its marker is the tool's name alone.
+  if (!Object.keys(a).length) return "";
   if (typeof a.action === "string") return [a.action, a.vm].filter((x) => typeof x === "string" && x).join(" ");
   const main = a.command ?? a.path ?? a.query ?? a.url ?? Object.values(a)[0];
   return typeof main === "string" ? main.split("\n")[0]! : JSON.stringify(main ?? "");

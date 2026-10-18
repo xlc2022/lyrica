@@ -85,8 +85,14 @@ export function liveReducer(s: Live, e: LiveAction): Live {
         if (last && last.type === e.type) return [...parts.slice(0, -1), { type: e.type, text: last.text + e.delta }];
         return [...parts, { type: e.type, text: e.delta }];
       });
+    case "tool_call":
+      return withParts(s, (parts) => parts.some((p) => p.type === "tool" && p.toolCallId === e.toolCallId) ? parts
+        : [...parts, { type: "tool", toolCallId: e.toolCallId, name: e.name, args: {} }]);
     case "tool_start":
-      return withParts(s, (parts) => [...parts, { type: "tool", toolCallId: e.toolCallId, name: e.name, args: e.args }]);
+      // A call already shown as written gets its arguments in place.
+      return withParts(s, (parts) => parts.some((p) => p.type === "tool" && p.toolCallId === e.toolCallId)
+        ? parts.map((p) => p.type === "tool" && p.toolCallId === e.toolCallId ? { ...p, name: e.name, args: e.args } : p)
+        : [...parts, { type: "tool", toolCallId: e.toolCallId, name: e.name, args: e.args }]);
     case "tool_end":
       return withParts({ ...s, tools: s.tools + 1 }, (parts) => parts.flatMap((p) =>
         p.type === "tool" && p.toolCallId === e.toolCallId

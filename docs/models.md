@@ -386,7 +386,9 @@ code about the tags, is parsed too: an accepted trade-off.
 The same streams pass two tool guards (`extension/src/tool-stream.ts`):
 every tool's parameters go out as `"type": "object"`, which LM Studio
 requires, and a reply streaming more than 32 tool calls ends with an error
-and none of them run, since tool calls show only once a reply ends.
+and none of them run. Each call shows in the views as soon as the model
+starts writing it (daemon.md, "The event stream"), so a runaway reply is
+seen while it streams.
 
 ## Image calls
 

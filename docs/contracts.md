@@ -757,9 +757,10 @@ One model-facing tool: `delegate({ action?, ... })`.
   (`Display.checklists`, default on; changing it reloads the user's
   sessions). Each thread is sent only the actions it can use and their
   fields (`paramsFor`): `start` and `stop` where it can start children,
-  `suggest`, `fold`, `draft` and `reopen` only in a project chat, `list`,
-  `read` and `resolve` in a project's thread, and only `message` (with `to`
-  and `question`) in another child; `needsYou` only in a project's thread.
+  `suggest`, `fold`, `draft` and `reopen` only in a project chat, `list` and
+  `read` everywhere but an ordinary child, `resolve` in a project chat and a
+  project's thread, and only `message` (with `to` and `question`) in an
+  ordinary child; `needsYou` only in a project's thread.
   Any other action fails Pi's validation. Its results
   and guidance mention threads as `[t:<id>]`. A child thread is
   `createThread({ parent, child: true })`, hosted like any thread, with the
@@ -919,9 +920,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `"type": "object"` (an MCP server's schema may lack it, and LM Studio then
   refuses the whole request with a 400). `capToolCalls` ends a reply that
   streams more than `MAX_REPLY_TOOL_CALLS` (32) tool calls with an error
-  naming the limit, stopping the request; none of its calls run. Tool calls
-  show only once a reply ends, so without it a model repeating one call
-  streams hundreds unseen.
+  naming the limit, stopping the request; none of its calls run. Calls run
+  only once a reply ends, so without it a model repeating one call would run
+  hundreds. Each call reaches the views as `tool_call` (`toolCallId`, `name`)
+  as soon as the model starts writing it; the live view adds its marker then
+  and fills in its arguments in place at `tool_start`.
 - **Tool definitions are resent with every reply** (principle 8): a
   model-facing choice of strings is Pi's `StringEnum` (`"enum"`), not a union
   of literals, which is shorter and accepted by every provider; a tool's
