@@ -1932,3 +1932,63 @@ is also `ProjectOverview.tokens`. User step 10 adds nullable
 `model_calls.read_tokens` and `call_totals` keyed by pool, thread, label,
 kind, with tokens, gpu_ms and calls. Pruning folds counted chat records
 before deleting them, in one transaction; forgetting removes their totals.
+
+## Push notifications
+
+Principles 6 and 2: decision requests reach the user without sending their
+words. `daemon/src/push.ts` reuses `notifications()` with the saved display,
+including every page, and selects `decision && type !== "sleep"`. The tick
+catches every type; question/settings events, permission requests and share
+mutations also trigger a diff. Locked users are skipped; key availability
+and saving a URL trigger an immediate batch of unsent decisions.
+
+`core/src/push.ts` exports `PushSettings { url: string; token?: string;
+link: boolean; origin: string }` and `PUSH_LIMITS { window: 30000,
+minimumGap: 60000, timeout: 10000, retries: 2 }` (milliseconds). Ordinary
+changes batch for at least 30 seconds, with at least 60 seconds between
+automatic batches, including failed attempts. Held items join the next batch.
+Retries wait 1 then 2 seconds and re-resolve each time. A successful send
+records IDs in encrypted user.db's `push_sent (id TEXT PRIMARY KEY, at
+INTEGER NOT NULL)`, added by expand-only **user step 11** (steps 9 and 10
+are project drafts and usage totals). Rows older than 30 days or absent
+from the current decision list are pruned at each diff. An ID that clears
+and returns therefore pushes again; restart keeps delivered IDs and the
+last attempt time. URL, token and failure state live in encrypted `settings`.
+
+- `GET /api/u/:userId/push` → `PushInfo { host, path, set: boolean,
+  token: boolean, link: boolean, lastFailure?: { at: string, status: number } }`.
+  `path` is `/•••` when set; neither URL path/query nor token is returned.
+- `PUT` at the same path takes `PushSettings`, validates before saving and
+  returns `PushInfo`. `origin` is the browser's saved `location.origin`.
+  `DELETE` clears URL, token and failure, returning 204. All require the
+  addressed user's session; mutations use the usual origin check.
+- `POST …/push/test` sends `Test from Lyrica.`; 204 on success, 502 with
+  `{ status, reason }` otherwise; 400 without settings. Status 0 means no
+  HTTP response or a refused destination. Failure reasons are fixed text.
+  Last failure is an ISO timestamp and status; success clears it.
+- Sends are plain-text POSTs with `Title: Lyrica`, `Tags: bell`, optional
+  `Authorization: Bearer <token>` and no redirects. `Click` is absent
+  unless `link` is true, then it is the saved origin plus `/notifications`,
+  without any user ID. The web `/notifications` landing route goes to the
+  signed-in user's Notifications page, through sign-in/unlock if needed.
+- HTTPS is required except for administrators using HTTP on their own
+  network. Non-administrators may use only public HTTPS hosts. Both schemes
+  refuse loopback, link-local, unspecified/multicast and this machine's
+  addresses and the configured tailnet/proxy front door. `pushTarget` reuses exported `resolveHost` and `inOwnNetwork`
+  from core/workspace, validates all answers at Save and every send, and
+  pins the actual connection to a checked address. Logs contain only host
+  and status, never path, query, token or receiver response text.
+
+`PUSH_PHRASES` is exported from `daemon/src/push.ts`; it is the only source
+of single-item push wording. No titles, questions, pool names or details
+enter a payload. Multiple items use `<n> things are waiting.`.
+
+| Notification type | Body |
+|---|---|
+| question | A question is waiting. |
+| permission | A permission is waiting. |
+| share | A share is waiting. |
+| suggestion | A suggested persona change is waiting. |
+| approval | A persona change waits for approval. |
+| update | A thread is waiting on you. |
+| any other type | Something is waiting. |

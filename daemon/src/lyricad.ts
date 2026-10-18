@@ -1,3 +1,4 @@
+import { Push } from "./push.ts";
 import { execFileSync } from "node:child_process";
 import { createHmac, randomBytes, timingSafeEqual, X509Certificate } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -158,6 +159,7 @@ export const BUILD: Pick<State, "version" | "build"> = (() => {
  * Unix socket. It starts locked unless the self.db passphrase was saved.
  */
 export class Lyricad implements Drainable {
+  readonly push = new Push(this);
   readonly keyring: Keyring;
   readonly sessions: Sessions;
   readonly limiter: RateLimiter;
@@ -471,6 +473,7 @@ export class Lyricad implements Drainable {
         if (project) watcher.failed(u, p, project, t);
       },
       onEvent: (u, p, t, e) => {
+        if (e.type === "permission" || e.type === "settings") queueMicrotask(() => this.push.tick());
         const k = `${u}/${p}/${t}`;
         if (e.type === "error" && host.busy(u, p, t)) erred.add(k);
         else if (e.type === "message_start" || e.type === "turn_start") { erred.delete(k); aborted.delete(k); }
@@ -503,6 +506,8 @@ export class Lyricad implements Drainable {
   /** The user's key is in memory: mount their home workspace. A failed mount leaves tools failing with the reason. */
   async keyAvailable(userId: string): Promise<void> {
     if (this.mounted.has(userId)) return;
+    const pushUser = this.services!.users.get(userId);
+    if (pushUser) void this.push.check(pushUser, true).catch(() => this.log("push check failed"));
     this.services!.users.ensureRecoveryCopy(userId);
     try {
       await this.services!.workspace.mountHome(userId);
@@ -565,6 +570,7 @@ export class Lyricad implements Drainable {
 
   private tick(): void {
     if (!this.services) return;
+    this.push.tick();
     const now = new Date();
     if (!this.draining) {
       this.services.children.drainWakes();
@@ -768,6 +774,7 @@ export class Lyricad implements Drainable {
       if (method !== "GET" && method !== "HEAD") checkOrigin(req);
       const r: Request = makeRequest(req, res, routeName, found.params, url, trust, via);
       const body = await found.route.handler(r);
+      if (method !== "GET" && (routeName.includes("/shares") || routeName.endsWith("/share"))) this.push.tick();
       if (res.headersSent) return; // a stream, or a handler that answered itself
       sendJson(res, 200, body);
     } catch (err) {

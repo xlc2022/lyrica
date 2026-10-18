@@ -2076,3 +2076,10 @@ export interface ThreadUsage {
   models: { label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[];
   threads?: { threadId: string; tokens: number; gpuMs?: number }[];
 }
+
+/** GET/PUT/DELETE /api/u/:userId/push; POST …/push/test → 204 or 502 { status, reason }. */
+export interface PushInfo {
+  host: string; path: string; set: boolean; token: boolean; link: boolean;
+  lastFailure?: { at: string; status: number };
+}
+export type { PushSettings } from "@lyrica/core";

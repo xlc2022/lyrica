@@ -1,3 +1,5 @@
+import { PushStore, type PushSettings } from "@lyrica/core";
+import { pushTarget } from "./push.ts";
 import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
 import {
@@ -783,6 +785,36 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("PATCH", `${u}/thread-groups/:groupId`, async (r): Promise<Api.ThreadGroup> => s().prefs.renameGroup(d.userFor(r).id, r.params.groupId!, String((await r.json<Api.NewThreadGroup>()).name ?? ""))),
     route("DELETE", `${u}/thread-groups/:groupId`, (r) => { s().prefs.removeGroup(d.userFor(r).id, r.params.groupId!); return { ok: true }; }),
 
+    route("GET", `${u}/push`, r => pushInfo(d, d.userFor(r))),
+    route("PUT", `${u}/push`, async r => {
+      const user = d.userFor(r);
+      const body = await r.json<PushSettings>();
+      if (!body || typeof body.url !== "string" || typeof body.link !== "boolean" || typeof body.origin !== "string" || (body.token !== undefined && (typeof body.token !== "string" || /[\r\n]/.test(body.token)))) throw new HttpError(400, "Invalid push settings.");
+      let origin: URL;
+      try {
+        origin = new URL(body.origin);
+        if (!["http:", "https:"].includes(origin.protocol) || origin.origin !== body.origin) throw new Error();
+        await pushTarget(body.url, user.admin, undefined, s().web.frontDoor().hosts);
+      } catch { throw new HttpError(400, "Push requires an allowed HTTP or HTTPS destination and a valid origin."); }
+      const db = s().users.openUserDb(user.id);
+      try { new PushStore(db).save({ url: body.url, token: body.token, link: body.link, origin: origin.origin }); } finally { db.close(); }
+      await d.push.check(user, true);
+      return pushInfo(d, user);
+    }),
+    route("DELETE", `${u}/push`, r => {
+      const db = s().users.openUserDb(d.userFor(r).id);
+      try { new PushStore(db).off(); } finally { db.close(); }
+      r.res.writeHead(204); r.res.end();
+    }),
+    route("POST", `${u}/push/test`, async r => {
+      const user = d.userFor(r), db = s().users.openUserDb(user.id);
+      let settings: PushSettings | undefined;
+      try { settings = new PushStore(db).settings(); } finally { db.close(); }
+      if (!settings) throw new HttpError(400, "Save a push URL first.");
+      const result = await d.push.send(user, settings, "Test from Lyrica.");
+      if (result.status >= 200 && result.status < 300) { r.res.writeHead(204); r.res.end(); }
+      else { r.res.writeHead(502, { "Content-Type": "application/json" }); r.res.end(JSON.stringify(result)); }
+    }),
     // --- Share with, and Notifications (daemon/src/notifications.ts) ---
     route("GET", `${u}/people`, (r): Api.Person[] => {
       const user = d.userFor(r);
@@ -2034,7 +2066,7 @@ function roles(d: Lyricad, userId: string): Api.RoleInfo[] {
   return d.services!.delegation.roles(userId).map((r) => ({ ...r, custom: custom.has(r.name) }));
 }
 
-function display(d: Lyricad, userId: string): Api.Display {
+export function display(d: Lyricad, userId: string): Api.Display {
   const db = d.services!.users.openUserDb(userId);
   try {
     const row = db.prepare("SELECT value FROM settings WHERE key = 'display'").get() as { value: string } | undefined;
@@ -2867,4 +2899,13 @@ function routineList(d: Lyricad, user: User, pool: Pool, threadId?: string): Api
       return thread ? [{ id: r.id, pool, threadId: thread.id, threadTitle: thread.title ?? "Untitled", schedule: describe(r.schedule), nextAt: r.nextAt, paused: r.paused }] : [];
     });
   } finally { view.close(); }
+}
+
+function pushInfo(d: Lyricad, user: User): Api.PushInfo {
+  const db = d.services!.users.openUserDb(user.id);
+  try {
+    const store = new PushStore(db), settings = store.settings(), lastFailure = store.failure();
+    const url = settings ? new URL(settings.url) : undefined;
+    return { host: url?.host ?? "", path: url ? "/•••" : "", set: !!settings, token: !!settings?.token, link: settings?.link ?? false, ...(lastFailure ? { lastFailure } : {}) };
+  } finally { db.close(); }
 }

@@ -13,6 +13,16 @@ export function App() {
   // One line about what just happened to the session, such as another user signed out.
   const [notice, setNotice] = useState("");
   const route = useRoute();
+  const pushLanding = location.pathname === "/notifications";
+  useEffect(() => {
+    if (!pushLanding || !state || state.locked) return;
+    const user = state.users[0];
+    if (user) {
+      const oldURL = location.href;
+      history.replaceState(null, "", `/#/u/${encodeURIComponent(user.id)}/notifications`);
+      dispatchEvent(new HashChangeEvent("hashchange", { oldURL, newURL: location.href }));
+    }
+  }, [pushLanding, state]);
 
   const refresh = useCallback(() => {
     get<State>("/api/state").then((s) => { setHer(s.name); setState(s); setUnreachable(""); }, (e: Error) => setUnreachable(e.message));
@@ -36,7 +46,7 @@ export function App() {
         <Login canCancel={state.users.length > 0} onDone={(r) => {
           if (r.replaced) setNotice("Signed out the previous user on this browser.");
           refresh();
-          go({ page: "home", userId: r.user.id });
+          go({ page: pushLanding ? "notifications" : "home", userId: r.user.id });
         }} />
         {toast}
       </>

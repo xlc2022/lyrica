@@ -148,7 +148,7 @@ export function parseMachineAddress(address: string): { username: string; host: 
 }
 
 /** A host's addresses, and whether any is outside the operator's own network. A resolver that never answers is no answer. */
-async function resolveHost(host: string): Promise<{ addresses: string[]; outside: boolean }> {
+export async function resolveHost(host: string): Promise<{ addresses: string[]; outside: boolean }> {
   const addresses = isIP(host) ? [host] : await Promise.race([
     lookup(host, { all: true }).then((all) => all.map((a) => a.address)),
     new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${host} doesn't resolve`)), 5000).unref()),
@@ -1118,3 +1118,5 @@ function gitFailure(stderr: string): GitAccountState["kind"] | undefined {
 }
 
 const lastLine = (text: string): string => text.trim().split("\n").at(-1)?.replace(/^fatal: /, "").slice(0, 300) || "git failed";
+
+export { inOwnNetwork } from "../models/http.ts";
