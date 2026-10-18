@@ -4,7 +4,7 @@ import {
   CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
-  searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled,
+  searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled, modelName,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
@@ -2074,7 +2074,7 @@ function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo 
 
 function toOfferingInfo(ep: Endpoint, o: Offering): Api.OfferingInfo {
   const { endpointId: _e, ...rest } = o;
-  return { ...rest, label: `${ep.shared ? "shared." : ""}${ep.name}/${o.modelId}` };
+  return { ...rest, label: `${ep.shared ? "shared." : ""}${ep.name}/${modelName(o)}` };
 }
 
 function offeringInfo(d: Lyricad, userId: string, id: string): Api.OfferingInfo {

@@ -647,7 +647,9 @@ export class Models {
     if (i <= 0) return undefined;
     const ep = this.findEndpoint(userId, idOrLabel.slice(0, i));
     const model = idOrLabel.slice(i + 1);
-    const o = ep && [...c.offerings.values()].find((x) => x.endpointId === ep.id && x.modelId === model);
+    const on = ep ? [...c.offerings.values()].filter((x) => x.endpointId === ep.id) : [];
+    // A recipe's label uses its name; its `recipe/<id>` model ID still works.
+    const o = on.find((x) => x.modelId === model) ?? on.find((x) => x.recipe === model);
     return o && { offeringId: o.id };
   }
 
@@ -686,7 +688,44 @@ export class Models {
       for (const k of CAPABILITIES) if (caps[k] === null) delete hand[k]; else if (caps[k] !== undefined) hand[k] = caps[k];
       db.prepare("UPDATE offerings SET hand = ? WHERE id = ?").run(JSON.stringify(hand), offeringId);
     });
-    return this.offering(actor.id, offeringId)!.offering;
+    const after = this.offering(actor.id, offeringId)!.offering;
+    const lost = DROPPABLE.filter(([, has]) => has(o.offering) && !has(after)).map(([task]) => task);
+    if (lost.length) this.dropFromLists(actor.id, offeringId, lost);
+    return after;
+  }
+
+  /**
+   * A model that can no longer do a task leaves that task's lists in this
+   * user's presets and columns, so a list never holds an entry the router
+   * would skip and the user couldn't remove. Groups stay: other copies may fit.
+   */
+  private dropFromLists(userId: string, offeringId: string, tasks: Task[]): void {
+    const prune = (raw: string): string | undefined => {
+      const table = JSON.parse(raw) as Profiles;
+      let changed = false;
+      for (const task of tasks) {
+        const e = table[task];
+        if (!isList(e) || !e.some((r) => "offeringId" in r && r.offeringId === offeringId)) continue;
+        const kept = e.filter((r) => !("offeringId" in r && r.offeringId === offeringId));
+        if (kept.length) table[task] = kept; else delete table[task];
+        changed = true;
+      }
+      return changed ? JSON.stringify(table) : undefined;
+    };
+    this.withUser(userId, (db) => {
+      db.transaction(() => {
+        for (const r of db.prepare("SELECT id, entries FROM model_presets").all() as { id: string; entries: string }[]) {
+          const next = prune(r.entries);
+          if (next) db.prepare("UPDATE model_presets SET entries = ?, updated_at = ? WHERE id = ?").run(next, new Date().toISOString(), r.id);
+        }
+        for (const r of db.prepare("SELECT column, entries FROM model_columns").all() as { column: string; entries: string }[]) {
+          const next = prune(r.entries);
+          if (next) db.prepare("UPDATE model_columns SET entries = ? WHERE column = ?").run(next, r.column);
+        }
+        syncLegacy(db);
+      })();
+      this.index(userId, db);
+    });
   }
 
   /**
@@ -2740,7 +2779,13 @@ function checkCredential(c: PlanCredential): PlanCredential {
   return rest as PlanCredential;
 }
 
-const labelOf = (ep: Endpoint, o: Offering) => `${ep.shared ? SHARED : ""}${ep.name}/${o.modelId}`;
+/** Tasks a hand-set switch can take away from a model, and the capability each needs. */
+const DROPPABLE: [Task, (o: Offering) => boolean][] = [
+  ["image.create", (o) => !!o.image], ["image.edit", (o) => !!o.edit], ["image.upscale", (o) => !!o.upscale], ["speech.transcribe", (o) => !!o.transcribe],
+];
+/** What to call a model: a host recipe by its name, anything else by its model ID. */
+export const modelName = (o: { modelId: string; recipe?: string }) => o.recipe ?? o.modelId;
+const labelOf = (ep: Endpoint, o: Offering) => `${ep.shared ? SHARED : ""}${ep.name}/${modelName(o)}`;
 
 function checkName(name: string): void {
   if (!NAME.test(name)) throw new Error("endpoint names use letters, digits and '-'");
