@@ -1,5 +1,6 @@
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
+import { StringEnum } from "@earendil-works/pi-ai";
 import {
   CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS,
   type ChildInfo, type StartRequest, type ThreadsLimits,
@@ -55,7 +56,7 @@ export const READ_DEFAULT = 10;
 export const READ_MAX = 30;
 
 const Params = Type.Object({
-  action: Type.Union(["start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"].map((a) => Type.Literal(a))),
+  action: StringEnum(["start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"] as const),
   goal: Type.Optional(Type.String({ maxLength: 2000 })),
   instructions: Type.Optional(Type.String({ maxLength: 2000 })),
   ids: Type.Optional(Type.Array(Type.String(), { maxItems: 10, description: "For fold: existing thread IDs to suggest bringing into this project. The person applies the card." })),
@@ -67,7 +68,7 @@ const Params = Type.Object({
   id: Type.Optional(Type.String({ description: "For message, read, stop, resolve and reopen: the thread, by its ID ([t:…]) or its current title." })),
   minutes: Type.Optional(Type.Number({ description: `For later: how many minutes from now to wake this thread, 1 to ${WAKEUP_LIMITS.maxMinutes}.` })),
   note: Type.Optional(Type.String({ description: "For later or routine add: the note to yourself the wake-up starts with: what to check and what to do then." })),
-  routineAction: Type.Optional(Type.Union(["add", "list", "pause", "resume", "remove"].map((a) => Type.Literal(a)), { description: "For routine: what to do with this thread's routines." })),
+  routineAction: Type.Optional(StringEnum(["add", "list", "pause", "resume", "remove"] as const, { description: "For routine: what to do with this thread's routines." })),
   routineId: Type.Optional(Type.Integer({ minimum: 1, description: "For routine pause, resume or remove: the routine's numeric ID from routine list." })),
   schedule: Type.Optional(Type.Object({
     kind: Type.String({ description: "daily, weekdays, weekly, yearly or every." }),
@@ -78,7 +79,7 @@ const Params = Type.Object({
   }, { description: "For routine add: the recurring schedule." })),
   newThread: Type.Optional(Type.Boolean({ description: "For routine add: open a fresh thread each time; false (default) runs here." })),
   cancel: Type.Optional(Type.Literal(true, { description: "For later: drop this thread's pending wake-ups instead." })),
-  steps: Type.Optional(Type.Array(Type.Object({ text: Type.String(), state: Type.Union([Type.Literal("todo"), Type.Literal("doing"), Type.Literal("done")]) }),
+  steps: Type.Optional(Type.Array(Type.Object({ text: Type.String(), state: StringEnum(["todo", "doing", "done"] as const) }),
     { description: `For steps: this thread's whole checklist, at most ${STEPS_LIMITS.steps} steps of a few words each; an empty list clears it.` })),
   last: Type.Optional(Type.Number({ description: `For read: how many of its latest messages, ${READ_DEFAULT} by default, at most ${READ_MAX}.` })),
   to: Type.Optional(Type.Literal("parent", { description: "For message from a child thread: to its parent." })),
@@ -89,6 +90,24 @@ const Params = Type.Object({
   summary: Type.Optional(Type.String({ description: "For compact: what the next stretch needs: what you're doing, decisions, open questions, paths and names." })),
 });
 type Params = Static<typeof Params>;
+type Field = keyof typeof Params.properties;
+
+/** The actions each field serves: a thread is sent only the fields of the actions it has. */
+const FIELD_ACTIONS: Record<Exclude<Field, "action">, string[]> = {
+  goal: ["draft"], instructions: ["draft"], ids: ["fold"], threads: ["suggest"],
+  title: ["start"], task: ["start"], folders: ["start"], readOnly: ["start"], internet: ["start"],
+  id: ["message", "read", "stop", "resolve", "reopen"], text: ["message"], to: ["message"], question: ["message"], needsYou: ["message"], last: ["read"],
+  minutes: ["later"], cancel: ["later"], note: ["later", "routine"],
+  routineAction: ["routine"], routineId: ["routine"], schedule: ["routine"], newThread: ["routine"],
+  steps: ["steps"], summary: ["compact"],
+};
+
+/** Principle 8: the parameters for these actions only, so a thread's tool definition carries nothing it can't use. */
+function paramsFor(actions: string[], drop: Field[]) {
+  const keep = Object.entries(Params.properties).filter(([k]) => k !== "action" && !drop.includes(k as Field)
+    && FIELD_ACTIONS[k as Exclude<Field, "action">].some((a) => actions.includes(a)));
+  return Type.Object({ action: StringEnum(actions), ...Object.fromEntries(keep) });
+}
 
 const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as const, text: t }], details });
 
@@ -140,18 +159,29 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       };
     });
 
+    // The schema says how to call each action; the description says what each is for, once.
     const description = () => [
       !host ? "" : projectThread()
-        ? "Post an update to the project chat (to: \"parent\", needsYou when the person must decide), message another thread of the project, list them, read one's latest messages, or resolve this thread when its work is delivered."
+        ? "Post an update to the project chat (message to: \"parent\"), message another thread of the project, list them, read one's latest messages, or resolve this thread when its work is delivered."
         : child
-          ? "Send your parent thread a short update: threads({ action: \"message\", to: \"parent\", text })."
-          : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message one; list them; read one's latest messages; stop one's running turn."
-            + (inProjectChat() ? " In this project chat, also suggest threads (a card the person starts them from), suggest folding in existing work with fold and ids, draft Goal and Instructions for editing in Project settings, and resolve or reopen one." : ""),
-      host?.later ? "Set a wake-up for this thread: threads({ action: \"later\", minutes, note }) starts a turn here then, with your note." : "",
-      host ? "Manage only this thread's routines: threads({ action: \"routine\", routineAction: \"add\", schedule, note, newThread? }); list, pause, resume or remove with routineAction and routineId. At most 10, including paused routines." : "",
-      steps ? "Keep this thread's checklist, shown on its card: threads({ action: \"steps\", steps })." : "",
-      meter ? "When your context is filling up, compact this thread: threads({ action: \"compact\", summary }) replaces the older part of the conversation with your summary when this turn ends; recent messages stay." : "",
+          ? "Send your parent thread a short update (message to: \"parent\")."
+          : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message, list, read or stop one."
+            + (inProjectChat() ? " In this project chat, also suggest threads (a card the person starts them from), fold in existing threads, draft Goal and Instructions for Project settings, and resolve or reopen one." : ""),
+      host?.later ? "later: a wake-up that starts a turn here with your note." : "",
+      host ? "routine: this thread's routines, at most 10 including paused ones." : "",
+      steps ? "steps: this thread's checklist, shown on its card." : "",
+      meter ? "compact: when this turn ends, your summary replaces the older part of this conversation; recent messages stay." : "",
     ].filter(Boolean).join(" ");
+
+    const actions = [
+      ...(!host ? [] : projectThread() ? ["message", "list", "read", ...(host.resolve ? ["resolve"] : [])]
+        : child ? ["message"]
+        : ["start", "message", "list", "read", ...(host.stop ? ["stop"] : []),
+          ...(inProjectChat() ? ["suggest", "fold", ...(host.draft ? ["draft"] : []), ...(host.resolve ? ["resolve", "reopen"] : [])] : [])]),
+      ...(host?.later ? ["later"] : []), ...(host ? ["routine"] : []), ...(steps ? ["steps"] : []), ...(meter ? ["compact"] : []),
+    ];
+    // to and question are a child's, needsYou a project thread's; a child outside a project messages only its parent.
+    const drop: Field[] = [...(child ? [] : ["to", "question"] as const), ...(projectThread() ? [] : ["needsYou"] as const), ...(child && !projectThread() ? ["id"] as const : [])];
 
     pi.registerTool({
       name: "threads",
@@ -162,7 +192,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         ...(!host ? [] : projectThread() ? PROJECT_THREAD_GUIDELINES : child ? [] : inProjectChat() ? PROJECT_CHAT_GUIDELINES : CHILD_THREAD_GUIDELINES),
         ...(host?.later ? [WAKEUP_GUIDELINE] : []), ...(host ? [ROUTINE_GUIDELINE] : []), ...(steps ? [STEPS_GUIDELINE] : []), ...(host || meter ? [MENTION_GUIDELINE] : []), ...(meter ? COMPACT_GUIDELINES : []),
       ],
-      parameters: Params,
+      parameters: paramsFor(actions, drop),
       async execute(_id, p: Params, _signal, _update, ctx) {
         if (p.action === "compact") {
           if (!meter) throw new Error("this thread can't compact");

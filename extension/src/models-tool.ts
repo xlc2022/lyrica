@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import type { ServingEntry } from "@lyrica/core";
 import { Type } from "typebox";
+import { StringEnum } from "@earendil-works/pi-ai";
 
 // The `models` tool (DESIGN.md, Model settings): she looks up a host model's
 // recommended context on its card and proposes a serving change, which the
@@ -71,7 +72,7 @@ export function createModelsExtension(host: ModelsHost): ExtensionFactory {
       // Reads the internet and, on Allow, changes the host. propose asks on its own card (OWN_CARD in workspace.ts).
       annotations: { openWorldHint: true, readOnlyHint: false },
       parameters: Type.Object({
-        action: Type.Union([Type.Literal("lookup"), Type.Literal("propose")]),
+        action: StringEnum(["lookup", "propose"] as const),
         offering: Type.String({ description: "The model's offering ID on its host." }),
         repo: Type.Optional(Type.String({ description: "lookup: the repository to read, owner/name or modelscope:owner/name, when the host doesn't know it." })),
         contextLength: Type.Optional(Type.Integer({ description: "propose: the context length to serve, in tokens." })),

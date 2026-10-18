@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { StringEnum } from "@earendil-works/pi-ai";
 
 // Downloading models when asked (docs/models.md, "Downloads"): `model_files`
 // reads what a repository on Hugging Face or ModelScope offers, as a model
@@ -88,7 +89,7 @@ function pickHost(host: DownloadsHost, name: string | undefined): DownloadHost |
 
 const PARAMS = {
   host: Type.Optional(Type.String({ description: "The model host's name. Leave it out when there is only one; with more, ask the person which." })),
-  source: Type.Optional(Type.Union([Type.Literal("huggingface"), Type.Literal("modelscope")], { description: "huggingface unless the person named ModelScope." })),
+  source: Type.Optional(StringEnum(["huggingface", "modelscope"] as const, { description: "huggingface unless the person named ModelScope." })),
   repo: Type.String({ description: "The repository: owner/name, or its page's link." }),
 };
 

@@ -338,7 +338,10 @@ checks it reaches her, and with a real model which she picks. Code:
   (daemon.md, "Compacting herself"). Child threads have it too.
 
 The tool also has `later`, `routine` and `steps` (below), and `suggest`,
-`resolve` and `reopen` in projects.
+`resolve` and `reopen` in projects. Each thread is sent only the actions it
+can use, with their fields, so a definition resent with every reply carries
+nothing it can't call: an ordinary child's tool has no `start`, `list` or
+`read`, and an action a thread lacks fails Pi's validation.
 
 A subagent's thread never gets the tool. An ordinary child can message its
 parent, set wake-ups, manage routines, keep a checklist and compact itself;
