@@ -58,11 +58,13 @@ async function answer(t: Target, path: string, body: string | FormData, headers:
     throw new HostRefused("unavailable", "The image endpoint could not be reached.");
   }
   if (!res.ok) {
-    // Never echo a provider's error message: it may include the prompt.
+    // A host's message is its own fixed text, so it is passed on whole (a 413 is a recipe that doesn't fit its GPU).
+    // Never echo a cloud provider's message: it may include the prompt. Its code, type and parameter are named instead.
     const err = t.host ? await hostError(res) : undefined;
     const cloud: any = !t.host ? await res.json().catch(() => ({})) : undefined;
     if (isRefusal(cloud?.error?.code) || isRefusal(cloud?.error?.type)) throw imageRefusal();
-    throw new HostRefused(err?.code ?? (res.status >= 500 || res.status === 429 ? "unavailable" : "invalid"), `image endpoint answered ${res.status}`);
+    const said = err ? `: ${err.message}` : cloudFields(cloud?.error);
+    throw new HostRefused(err?.code ?? (res.status >= 500 || res.status === 429 ? "unavailable" : "invalid"), `image endpoint answered ${res.status}${said}`);
   }
   let out: any;
   try { out = (res.headers.get("content-type") ?? "").includes("text/event-stream") ? await finalResponse(res) : await res.json(); }
@@ -70,6 +72,13 @@ async function answer(t: Target, path: string, body: string | FormData, headers:
   if (isRefusal(out?.error?.code) || isRefusal(out?.error?.type)) throw imageRefusal();
   return out;
 }
+/** A cloud error's short identifiers, never its prose: " (code x, type y, parameter z)", or nothing. */
+function cloudFields(e: any): string {
+  const id = (v: unknown) => typeof v === "string" && /^[\w.\[\]-]{1,64}$/.test(v) ? v : undefined;
+  const parts = [["code", id(e?.code)], ["type", id(e?.type)], ["parameter", id(e?.param)]].filter(([, v]) => v).map(([k, v]) => `${k} ${v}`);
+  return parts.length ? ` (${parts.join(", ")})` : "";
+}
+
 /**
  * A streamed Responses answer as one response: the plan's endpoint answers
  * requests that aren't streamed with 400, as chat's own client never sends one.

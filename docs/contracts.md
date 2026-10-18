@@ -962,7 +962,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     templates show a top-level union no fields. The tool checks an action's
     required fields and names any missing. A failed call's error names the
     model label (a host recipe by its name) and error code it reached:
-    `Image <action> failed with <label> [<code>]: <message>`.
+    `Image <action> failed with <label> [<code>]: <message>`. When the
+    endpoint answers an error, the message is `image endpoint answered
+    <status>` followed by a model host's own message whole (a `too_big` 413
+    says how much GPU memory the recipe needs and has), or, from a cloud
+    endpoint, only its error `code`, `type` and `parameter`, never its prose,
+    which may quote the prompt.
     Inputs name workspace paths or `/photos-of-me/<file>`. `ImageTools` supplies
     `models`, fresh `call()`, `threadId`, `files: ThreadImages`, user `settings()`,
     `enabled()`, optional `approve(ApprovalRequest)` and injectable `now()`.
