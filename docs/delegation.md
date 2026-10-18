@@ -347,22 +347,16 @@ checks it reaches her, and with a real model which she picks. Code:
 - `compact({ summary })`: compacts the thread she's in with her summary
   (daemon.md, "Compacting herself"). Child threads have it too.
 
-For ask and steps, one core normalizer accepts JSON-encoded arrays, unique
-case-insensitive recommendation labels, bare string steps (todo), and step
-aliases: in_progress, in progress, active, started → doing; pending, not
-started → todo; complete, completed, finished → done (ignoring case).
-Other malformed fields get a specific error naming their position, received
-type and allowed shape, with an example, so Pi can let the model correct it.
-Stored question calls use the same normalization when rebuilding the card.
-
-A final prose question with two to four adjacent list items, before or after
-it, gets at most one hidden follow-up when this thread can ask, has no open
-question and made no ask call. It asks her to use a card if the choice blocks
-progress. The custom message `lyrica-ask-nudge` is hidden and removed from
-model context at the next turn. The question-card and checklist
-evals exercise fake models by default and optionally record real-model
-validation and one correction; they never apply the calls. Principles 1 and
-3: correct failures seen in use through Pi's existing hooks.
+For `ask` and `steps`, unambiguous slips (an array sent as a JSON string,
+the recommended option named by label, near-synonyms for a step's state)
+are accepted, and any other mistake gets an error saying exactly what to
+fix, so a weaker model can correct the call in the same turn (contracts.md).
+A reply that ends with a question and 2 to 4 listed options, with no card,
+gets one hidden follow-up asking her to put it on a card if the choice
+blocks her. `evals/question-card.eval.ts` and `evals/checklist.eval.ts`
+show how well a given model uses both, with a fake model by default or a
+real one through `LYRICA_EVAL_*` (`LYRICA_EVAL_KIND=local` for a local
+server).
 
 The tool also has `later`, `routine` and `steps` (below), and `suggest`,
 `resolve` and `reopen` in projects. Each thread is sent only the actions it

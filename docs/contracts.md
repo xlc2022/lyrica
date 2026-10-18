@@ -22,7 +22,7 @@ host/        the model host: a Docker Compose stack for a GPU machine
 web/         web chat, control panel, memory browser, sleep sidebar
 persona/     seed, imported into self.db on first run
 bin/         launchers and admin commands
-evals/       continuity scenarios, including question-card.eval.ts and checklist.eval.ts, run with `npm run evals`
+evals/       continuity and tool-use scenarios, run with `npm run evals`
 ```
 
 ## Vocabulary
@@ -811,26 +811,20 @@ One model-facing tool: `delegate({ action?, ... })`.
   of 1–300 characters, optional context up to 1200, 2–4 options with labels
   of 1–40 and consequences of 1–200 characters, case-insensitively unique
   labels, and an integer recommended index in range. Strings are trimmed.
-  `normalizeThreadArguments` runs in `prepareArguments` before Pi validation
-  and in `cleanAsk` when reconstructing stored calls. JSON strings parsing
-  to arrays are accepted for options and steps; a case-insensitive unique
-  option label may name the recommendation. Bare string steps become todo.
-  Step state aliases (case-insensitive): in_progress, in progress, active,
-  started → doing; pending, not started → todo; complete, completed,
-  finished → done. Nothing else is guessed. Ask and steps errors name the
-  field and position, received type (never input text), allowed shape and
-  one valid example. Pi returns the error for correction in the same turn.
-  A final prose question adjacent to 2–4 list items, before or after them,
-  may send one hidden `lyrica-ask-nudge` follow-up (`display: false`,
-  `deliverAs: "followUp"`, `triggerTurn: true`). Only a thread offered ask,
-  without an open question or any ask call in that run, gets it. Context
-  assembly removes the nudge at the next turn. No text is logged.
-  The question-card and checklist evals record the first relevant call,
-  first validation and one correction, stopping at success or the second
-  attempt without applying calls. Scripted fake runs always execute; optional
-  model runs require `LYRICA_EVAL_BASE_URL` and `LYRICA_EVAL_MODEL`, optional
-  `LYRICA_EVAL_API_KEY`. `LYRICA_EVAL_KIND=local` uses local endpoint request
-  compatibility; otherwise the endpoint is cloud. Misses are model evidence.
+  `normalizeThreadArguments` (core) runs in the tool's `prepareArguments`,
+  before Pi validates, and in `cleanAsk` when a stored call is read back.
+  It accepts only: `options` or `steps` as a JSON string of an array; a
+  `recommended` naming exactly one option's label; a bare-string step as
+  `{ text, state: "todo" }`; and step state aliases (ignoring case:
+  in_progress, in progress, active, started → doing; pending, not started →
+  todo; complete, completed, finished → done). Any other malformed `ask` or
+  `steps` call gets an error naming the field and position, the received
+  type (never the text), what is allowed, and one valid example.
+  When a reply ends with a question next to 2–4 list items (before or after
+  it), the thread can ask, no question is open and the run made no `ask`
+  call, the extension sends one hidden follow-up (`lyrica-ask-nudge`,
+  `display: false`, `deliverAs: "followUp"`) asking her to use a card if the
+  choice blocks her. Context assembly drops it at the next turn.
   Ask once on the card, recommend the first option, continue reversible work
   on that option, and end the turn before an irreversible step. Answers
   arrive in later turns. Routine and wake-up turns may ask in their thread.

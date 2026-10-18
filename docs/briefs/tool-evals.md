@@ -1,6 +1,6 @@
 # Brief: Question cards and checklists on every model
 
-**Status:** implemented; awaiting review. **Branch:** the build is on a new `feature/tool-evals` from `main`, made after this brief merges. **Built by:**
+**Status:** built; in PR review. **Branch:** `feature/tool-evals` (Codex), opened from `claude/agent-loop-reliability-661bmo`. **Built by:**
 Codex on the test machine; the Agent loop thread (Opus) owns review and the PR.
 **Read first:** AGENTS.md, PRINCIPLES.md, docs/briefs/question-card.md,
 docs/briefs/truthful-continuation.md, docs/contracts.md (Child threads, the
@@ -143,59 +143,11 @@ handoff.
 
 ## Handoff
 
-- **Done:** shared core normalization and specific ask/steps errors, Pi
-  preparation before schema validation, and normalized reconstruction of
-  encrypted question calls. The extension sends the fixed hidden
-  `lyrica-ask-nudge` follow-up once per agent run for either final prose
-  question shape, suppresses it after any ask call or an open question, and
-  drops earlier nudges at the next user message or turn-context marker.
-  No new controls, tools, prompt descriptions or definition ceilings.
-- **Evals:** question-card and checklist each cover three positive and three
-  negative synthetic requests. A shared harness records raw first calls,
-  validation, tool-call position and response position, and one correction.
-  It stops before a valid call executes or after two invalid attempts.
-  Optional endpoints use presets/columns through `setColumnTask` and support
-  `LYRICA_EVAL_KIND=local`; the remaining `profile` callback is the user's
-  name/pronouns profile, not a model profile. No Images or welcome-page
-  changes, model-profile routes or database migrations were needed.
-- **Docs:** contracts and delegation describe accepted repairs, specific
-  errors, hidden follow-up lifetime and the evals. Principles 1 and 3 remain
-  the reason for the change. No UX change: the follow-up is hidden and the
-  existing question-card and checklist controls retain their homes.
-- **Validation:** typecheck passes. Focused tests run separately under
-  `/tmp/lyrica-tests.lock`, with forks and at most two workers: core thread
-  arguments, core questions, extension Pi sessions, threads and context.
-  `npm run evals` uses the same lock and worker limit; 14 pass and five
-  optional real-model checks skip. No `LYRICA_EVAL_*` variables were set;
-  only fake models and made-up data were used. No paid, plan or local model
-  host endpoint was called. The full test suite was deliberately not run.
-- **Next:** review, the user's full-suite run, commit and push. Changes are
-  left in the working tree; this run cannot write `.git` and does not push.
-  Real-model evals remain explicitly out of scope. No open design questions.
-
-### Regression follow-up
-
-Principles 1 and 2: correctable tool feedback and request-only context.
-The daemon checklist test expected Pi's old `steps.0.state` error path.
-`shipped` is still refused, as required above; the test now checks the
-specific `steps[0].state` error, its allowed values and no echoed value.
-No accepted or refused input changed.
-
-The nudge filter made `context_with_system` return a replacement transcript
-even when nothing changed. The extension now returns nothing when there is
-no selected work and no expired nudge. The selected-work test retains its
-original assertions and also checks that old nudges disappear, current-run
-nudges remain, input history is untouched and prompt options contain neither
-selected work nor the nudge. No copying into prompt options was observed.
-
-Presets audit: the eval harness already uses `setColumnTask`, the welcome
-Backend card reads presets/columns, and this feature touches no Images UI,
-model-profile routes or migrations. No further preset adaptation was needed.
-
-Validation: typecheck passes; 39 tests in daemon steps, extension extension,
-Pi session, threads and context, and core thread arguments pass under the
-shared lock with forks and two workers. Then `npm run evals` passes 14 tests
-with five optional real-model checks skipped under the same lock and worker
-limit. Real-model environment variables were removed for the eval run;
-only fakes were used. The full suite, review, commit and push remain for
-the user and owning thread; no commit or push was attempted.
+- **Done:** the normalizer and specific errors for `ask` and `steps`, the
+  hidden follow-up for a prose question, and both evals, with tests and
+  docs. Built by Codex on the test machine with fake models only; the
+  daemon checklist test now expects the specific `steps[0].state` error.
+  Typecheck, the touched tests and `npm run evals` (14 passed, 5 optional
+  real-model checks skipped) pass.
+- **Next:** PR review. Running the evals on real models waits on the user:
+  LM Studio needs their go, and cloud models spend quota.
