@@ -1909,6 +1909,78 @@ test("New project in the sidebar creates a pinned project and opens it", async (
   await expect(side.locator(".eyebrow").first()).toContainText("Pinned");
 });
 
+test("Project settings → Files and images: the project folder one folder at a time, with Upload, New folder, Open, Rename, Move to, Delete and the Images tab", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const side = page.locator(".side");
+  await side.getByRole("button", { name: "New project" }).click();
+  await side.getByRole("group", { name: "New project in" }).getByRole("button", { name: "General" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "New project" })).toBeVisible();
+  const threadId = decodeURIComponent(location_of(page).split("/t/general/")[1]!.split("/")[0]!);
+  const upload = (name: string, b64: string) => page.evaluate(async ([path, b64]) => {
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/octet-stream" }, body: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)) });
+    if (!r.ok) throw new Error(`${path}: ${r.status}`);
+    return ((await r.json()) as { path: string }).path;
+  }, [`/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/uploads?name=${encodeURIComponent(name)}`, b64] as const);
+  await upload("plan.md", Buffer.from("# The plan\n\nWater the trays.\n").toString("base64"));
+  await upload("tray.png", "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNJjFAAAiOQZ3YJ5p9QAAAABJRU5ErkJggg==");
+
+  await page.goto(`/#/u/${encodeURIComponent(userId)}/p/general/${encodeURIComponent(threadId)}/files`);
+  const section = page.getByRole("region", { name: "Files and images" });
+  await expect(section.getByRole("button", { name: "Files", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const rows = section.locator(".pfile-row");
+  const row = (name: string) => rows.filter({ has: page.getByText(name, { exact: true }) });
+  await expect(row("uploads")).toContainText("Folder");
+  // New folder names its row in place.
+  await section.getByRole("button", { name: "New folder" }).click();
+  await section.getByLabel("Folder name").fill("notes");
+  await section.getByLabel("Folder name").press("Enter");
+  await expect(row("notes")).toBeVisible();
+  // Open goes into a folder; the crumbs come back out.
+  await row("uploads").getByRole("button", { name: "Open" }).click();
+  await expect(section.getByRole("navigation", { name: "Folder" })).toHaveText("Project folder/uploads");
+  await expect(row("plan.md")).toContainText("B");
+  await expect(row("plan.md").getByRole("link", { name: "Open" })).toHaveAttribute("href", /\/files\/%2Fworkspace%2Fuploads%2Fplan\.md$/);
+  // Upload puts files in the folder shown.
+  await section.locator('input[type="file"]').setInputFiles({ name: "seeds.txt", mimeType: "text/plain", buffer: Buffer.from("Basil, chard") });
+  await expect(row("seeds.txt")).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-files-${page.viewportSize()!.width}.png` });
+  // Rename edits the name in place.
+  await row("seeds.txt").getByRole("button", { name: "Actions for seeds.txt" }).click();
+  await page.getByRole("menuitem", { name: "Rename…" }).click();
+  await section.getByLabel("New name").fill("sowing.txt");
+  await section.getByLabel("New name").press("Enter");
+  await expect(row("sowing.txt")).toBeVisible();
+  // Move to… opens a drawer with every other folder.
+  await row("plan.md").getByRole("button", { name: "Actions for plan.md" }).click();
+  await page.getByRole("menuitem", { name: "Move to…" }).click();
+  const drawer = page.getByRole("complementary", { name: "Move plan.md" });
+  await expect(drawer.getByLabel("Folder").locator("option")).toHaveText(["Project folder", "notes"]);
+  await drawer.getByLabel("Folder").selectOption({ label: "notes" });
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-files-move-${page.viewportSize()!.width}.png` });
+  await drawer.getByRole("button", { name: "Move" }).click();
+  await expect(drawer).toHaveCount(0);
+  await expect(row("plan.md")).toHaveCount(0);
+  await section.getByRole("navigation", { name: "Folder" }).getByRole("button", { name: "Project folder" }).click();
+  await row("notes").getByRole("button", { name: "Open" }).click();
+  await expect(row("plan.md")).toBeVisible();
+  // Delete… is confirmed by a dialog named after the file.
+  await row("plan.md").getByRole("button", { name: "Actions for plan.md" }).click();
+  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete plan.md?" });
+  await expect(dialog).toContainText("for every thread of the project");
+  await dialog.getByRole("button", { name: "Delete" }).click();
+  await expect(section.getByText("Empty")).toBeVisible();
+  // Images: the folder's images as a grid, each opening large.
+  await section.getByRole("button", { name: "Images", exact: true }).click();
+  await expect(section.locator(".pfiles-grid img")).toHaveCount(1);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-images-${page.viewportSize()!.width}.png` });
+  await section.getByRole("button", { name: /^Open .*\.png$/ }).click();
+  await expect(page.locator("dialog.lightbox")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await noHorizontalScroll(page);
+});
+
 test("the split view: a thread from its card opens in the panel, links inside it grow the breadcrumb, Open as a page and Close panel; Open beside, View thread and the Threads list open beside at 1180 px up, and below it they navigate", async ({ page, baseURL }) => {
   test.skip(phone(page), "the panel starts at 1180 px");
   await enter(page, baseURL!);

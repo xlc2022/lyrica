@@ -221,7 +221,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   messages and `tool_end.image`, and an owner-only `…/file?path=` route.
   Messages render that part inline as described below. Settings manages
   portraits separately from the Files panel.
-- **Project settings page** (`…/p/<pool>/<project>/general` or `/memory`),
+- **Project settings page** (`…/p/<pool>/<project>/general`, `/memory` or `/files`),
   sections at the left. **General**: Goal, the Paused and **Watching
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
   threads** (Model, Thinking and Fallback the project's threads start with;
@@ -241,8 +241,16 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   repository taken off here leaves the
   project's running threads at once, and their open views show it gone. **Memory**: the
   Instructions kept on the project page (2,000 characters, counted under
-  the box), and a link to that page in the memory browser. Files and
-  images come with the Files panel.
+  the box), and a link to that page in the memory browser. **Files and images**
+  (`ProjectFiles.tsx`): the project folder (the project chat's `/workspace`)
+  through the Files panel's routes on the project chat, one folder at a time
+  with crumbs, Files | Images, Upload… (to the folder shown, or by dropping
+  files on the section), New folder, and per row Open (a folder in the list,
+  a file in the chat's Files panel) and a ⋯: Download, Rename… in place, Move
+  to… (a drawer listing up to 500 folders, found folder by folder; `rename`
+  moves) and Delete… with its dialog. Images is the panel's grid with its
+  filter. It reloads when any thread finishes a tool call or a turn, and on
+  focus.
 - **Thread settings drawer:** a model per task (each option says cloud or local first; **Watching threads**, under
   Titles, only in a project chat), local-only, the internet and
   Local services (localhost) switches (each following the user's default until
