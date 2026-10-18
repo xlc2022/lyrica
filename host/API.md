@@ -229,6 +229,12 @@ seconds of audio.
     the host's estimate (`null` for voices, and where it can't tell), and
     `stretch` is the YaRN factor, or `null`. Lyrica plans her context by
     `contextLength`.
+  - A GGUF's companions are never models of their own: a vision projector
+    (`mmproj` in its name) and an MTP draft (`mtp-…`, or anything in an
+    `MTP` folder). A model finds them beside it or in its repository's
+    folder one or two levels up: the projector F16 or BF16 first, the MTP
+    file whose name is closest to its own. `capabilities.vision` is true
+    while it runs with its projector (`vision` below).
   - `state`: `unloaded`, `loading` or `loaded`; `gpus` lists where it is
     loaded.
   - `vram`: bytes measured on each GPU, per placement it has been loaded
@@ -279,13 +285,17 @@ embeddings and dictation receive neither parser.
   `{ "model": "<id>", "settings": { ... }, "contextLength": 32768,
   "maxContextLength": 262144, "trainedContextLength": 262144,
   "kvBytes": 4294967296, "recommended": { ... } | null,
-  "stretchUntested": false }`: the context served, its maximum (the trained
+  "stretchUntested": false, "extras": { "vision": true, "mtp": "file" } }`:
+  the context served, its maximum (the trained
   length times the stretch), the trained length (null when the host couldn't
   read it), the KV cache at the served context by the host's estimate, what
   the model's card recommends, and whether a stretch on this server is
   untested: true for any vLLM model until the pinned image carries the fix
   for vllm#58870 (vLLM 0.30 misreads the original context on Qwen3.5-style
-  M-RoPE). A model never set has `{ "placement": { "mode": "auto" } }`.
+  M-RoPE). `extras` says what `vision` and `mtp` can turn off: a vision
+  projector, and an MTP file (`"file"`) or the model's own MTP layers
+  (`"built-in"`, from `<arch>.nextn_predict_layers`), else `null`. A model
+  never set has `{ "placement": { "mode": "auto" } }`.
 - `PUT /host/v1/models/settings` `{ "model": "<id>", "settings": { ... },
   "anyway": true }` saves them, whole, and answers with the model's entry. A
   stretch above the factor the card documents is refused
@@ -323,8 +333,8 @@ embeddings and dictation receive neither parser.
 - `stretch`: `{ "type": "yarn", "factor": 4, "originalContext": 262144 }`,
   off unless set. The factor is 1 to 8 (whole for llama.cpp; 1 is no
   stretch and is not saved); the original context defaults to the trained
-  length. Chat models only, and only one
-  whose trained length the host read. llama.cpp gets `rope-scaling = yarn`,
+  length. Chat models only; one whose trained length the host couldn't
+  read needs `originalContext`, which its maximum then multiplies. llama.cpp gets `rope-scaling = yarn`,
   `rope-scale` and `yarn-orig-ctx`; vLLM gets `--hf-overrides` with the
   model's own `rope_parameters` (or `rope_scaling`) and the YaRN fields
   merged in, and `VLLM_ALLOW_LONG_MAX_MODEL_LEN=1` for that server only.
@@ -335,7 +345,12 @@ embeddings and dictation receive neither parser.
 - llama.cpp only: `kvCacheType` (`f16`, `q8_0`, `q4_0`), `flashAttention`
   (`auto`, `on`, `off`), `gpuLayers` (0 to 999), `parallel` (requests
   served at once, 1 to 64). A `q8_0` or `q4_0` KV cache needs
-  `flashAttention` set to `on`.
+  `flashAttention` set to `on`. `vision: false` loads it without its
+  projector (less memory, no images). `mtp: false` turns off drafting with
+  MTP, which is on when the model has an MTP file or layers: llama.cpp gets
+  `spec-type = draft-mtp`, `spec-draft-n-max` (`draftMax`, 1 to 6, 2 by
+  default) and, for a file, `model-draft`. The fit check counts the
+  projector and the MTP file while they are used.
 - vLLM only: `memoryShare` (0.05 to 0.95 of each of its GPUs; by default
   what the model needs, in steps of 5%, so several vLLM models can share a
   GPU), `maxSeqs` (1 to 1024), `dtype` (`auto`, `bfloat16`, `float16`).
@@ -391,7 +406,9 @@ Only the repository's name and revision leave the host.
 
 ### Pause, resume, restart
 
-- `POST /host/v1/pause`: answers at once with `{ "state": "pausing" }`.
+- `POST /host/v1/pause`: answers at once with `{ "state": "pausing" }`
+  (pause, resume and restart answer only the state; Lyrica reads the status
+  after).
   Queued and new requests get `paused` at once. The running jobs and any
   load under way finish, then every model is unloaded (vLLM's servers are
   stopped) and the state is `paused`: nothing of the host's stays in VRAM.
@@ -402,6 +419,11 @@ Only the repository's name and revision leave the host.
   another, never interleaved.
 - `POST /host/v1/restart`: fails queued requests with `restarting`, unloads
   everything, asks each server to reset, and loads pinned models again.
+- After an unload, a server's process can take seconds to let go of its
+  memory. Until a GPU has freed half of what the model held (30 s at most),
+  a request that wouldn't fit there waits for it rather than failing with
+  `too_big`, and a load that unloaded something to make room plans again
+  once the memory is back.
 
 ### Usage
 

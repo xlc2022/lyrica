@@ -110,7 +110,9 @@ The password is set at the machine, either by `install.sh` or on the
 dashboard. Until it is set, the dashboard opens only at the machine. Five
 wrong tries in 15 minutes from one address, or 20 in all, lock the login
 until the window passes. The dashboard refuses requests whose Host or
-Origin isn't the host's own.
+Origin isn't the host's own; only its page itself opens from a link
+elsewhere, such as Lyrica's **Dashboard** button, and what the page then
+asks for is same-origin.
 
 ## The models folder
 
