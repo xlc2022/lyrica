@@ -351,3 +351,23 @@ describe("user step 10 (spend share)", () => {
     }
   });
 });
+
+
+describe("pool step 8 (question pointers)", () => {
+  it("expands every released pool schema, keeps old readers and stores no question text", () => {
+    for (let version = 1; version < 8; version++) {
+      const db = scratchDb();
+      const previous = STEPS.pool.filter(s => s.version <= version);
+      migrate(db, "pool", {}, previous);
+      SEED.pool(db);
+      migrate(db, "pool");
+      expect(() => checkReadable(db, "pool", previous)).not.toThrow();
+      expect((db.prepare("PRAGMA table_info(questions)").all() as { name: string }[]).map(r => r.name)).toEqual(["thread", "n", "asked", "closed", "answer"]);
+      db.prepare("INSERT INTO questions (thread, n, asked) VALUES ('web/a', 3, '2026-01-01')").run();
+      expect(() => db.prepare("INSERT INTO questions (thread, n, asked) VALUES ('web/a', 4, '2026-01-01')").run()).toThrow();
+      db.prepare("DELETE FROM threads WHERE id = 'web/a'").run();
+      expect(db.prepare("SELECT * FROM questions").all()).toEqual([]);
+      db.close();
+    }
+  });
+});

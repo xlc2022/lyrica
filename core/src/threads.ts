@@ -6,6 +6,28 @@ import type { PoolView } from "./store/memory.ts";
 /** What a parent's message to its child starts with, so the child's thread can show it as hers. Only lyricad writes it. */
 export const fromParent = (parentThreadId: string) => `[From t:${parentThreadId}]\n\n`;
 export const FROM_PARENT = /^\[From t:([^\]\s]+)\]\n\n/;
+/** Only lyricad writes an answer mark; the label remains a user's message. */
+export const ANSWER = /^\[Answer to q:/;
+export const answerMark = (n: number) => `[Answer to q:${n}]\n\n`;
+export interface Ask { question: string; options: { label: string; consequence: string }[]; recommended: number; context?: string }
+export const ASK_LIMITS = { question: 300, context: 1200, minOptions: 2, maxOptions: 4, label: 40, consequence: 200 };
+/** Structural validation, shared by the tool and encrypted-log readers. */
+export function cleanAsk(input: unknown): Ask {
+  const a = input as Partial<Ask> | null;
+  const str = (v: unknown, max: number, name: string): string => {
+    if (typeof v !== "string" || !v.trim() || v.trim().length > max) throw new Error(`${name} has 1 to ${max} characters`);
+    return v.trim();
+  };
+  const question = str(a?.question, ASK_LIMITS.question, "question");
+  if (!Array.isArray(a?.options) || a.options.length < 2 || a.options.length > 4) throw new Error("ask needs 2 to 4 options");
+  const options = a.options.map(o => ({ label: str(o?.label, ASK_LIMITS.label, "label"), consequence: str(o?.consequence, ASK_LIMITS.consequence, "consequence") }));
+  if (new Set(options.map(o => o.label.toLowerCase())).size !== options.length) throw new Error("option labels must be unique ignoring case");
+  if (!Number.isInteger(a.recommended) || a.recommended! < 0 || a.recommended! >= options.length) throw new Error("recommended must be an option index");
+  if (a.context !== undefined && (typeof a.context !== "string" || a.context.trim().length > ASK_LIMITS.context)) throw new Error("context has at most 1200 characters");
+  return { question, options, recommended: a.recommended!, ...(a.context !== undefined ? { context: a.context.trim() } : {}) };
+}
+export const ASK_GUIDELINE = "Ask on a card (threads ask) only for a fork that changes the person's goal, an output they will notice, or a step no one can undo. Ask once, without repeating it in prose. Put the recommended option first. Keep working on it where the step can be undone; otherwise end the turn. The answer arrives in a later turn.";
+
 /** The mark lyricad puts on what it shows the project chat about its threads (daemon/src/watch.ts). */
 export const WATCHING_MARK = "[Watching threads]\n\n";
 export const WATCHING = /^\[Watching threads\]\n\n/;
@@ -102,7 +124,7 @@ export const PROJECT_CHAT_GUIDELINES = [
 export const PROJECT_THREAD_GUIDELINES = [
   "Post an update to the project chat (threads message to: \"parent\") at milestones, not after every step. Always end with a message to the parent: the result, or what blocked you.",
   "Use question: true in a message to the parent when you need an answer; plain progress updates do not wake it.",
-  "Set needsYou only when the person must decide something before you can go on.",
+  "Use threads ask when the person must decide something; needsYou remains available for status updates.",
   "Save lasting decisions about the project with remember.",
   "When the work is delivered, resolve this thread (threads resolve).",
   "You may message another thread of this project (threads message with its id) when its work affects yours, and read its latest messages (threads read).",

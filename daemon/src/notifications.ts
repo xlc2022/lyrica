@@ -8,7 +8,7 @@ import { readUpdates } from "./updates.ts";
 
 const POOLS: Pool[] = ["general", "private"];
 const DETAIL = 160;
-const TYPE_ORDER: Api.NotificationType[] = ["permission", "share", "update", "approval", "suggestion", "sleep", "rollback"];
+const TYPE_ORDER: Api.NotificationType[] = ["question", "permission", "share", "update", "approval", "suggestion", "sleep", "rollback"];
 /** A failed probation is told for this long; Administration → Updates keeps it after. */
 const ROLLBACK_DAYS = 7;
 
@@ -79,10 +79,25 @@ function collect(d: Lyricad, user: User, show: Api.Display): Api.Notification[] 
         actions: [{ label: "Allow", method: "POST", path, body: { allow: true } }, { label: "Deny", method: "POST", path, body: { allow: false }, danger: true }],
       });
     }
+    // Question text is read from the encrypted tool call; the table holds only pointers.
+    for (const pool of pools) for (const th of o[pool].listThreads({ includeHidden: true })) {
+      if (!shownThread(pool, th.id)) continue;
+      const q = o[pool].openQuestion(th.id);
+      if (!q) continue;
+      const ask = o[pool].readAsk(th.id, q.n);
+      if (!ask) continue;
+      const order = [ask.recommended, ...ask.options.map((_, i) => i).filter(i => i !== ask.recommended)];
+      out.push({ id: `question:${pool}/${th.id}/${q.n}`, type: "question", title: ask.question,
+        detail: ask.options[ask.recommended]!.consequence, scope: pool, decision: true,
+        thread: { pool, id: th.id }, at: q.asked,
+        actions: order.map(option => ({ label: ask.options[option]!.label, method: "POST", path: `${t(pool, th.id)}/questions/${q.n}/answer`, body: { option } })),
+      });
+    }
     // A child thread posted an update, or waits on the user.
     for (const c of s.children.updates(user.id)) {
       const th = o[c.pool].getThread(c.thread);
       if (!th || !shownThread(c.pool, c.thread)) continue;
+      if (o[c.pool].openQuestion(c.thread)) continue;
       const title = th.title || "A child thread";
       const last = o[c.pool].lastEntry(c.thread);
       out.push({

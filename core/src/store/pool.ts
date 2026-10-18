@@ -6,7 +6,7 @@ import type { Db } from "../db.ts";
 import { render, toStored, type UserId } from "../mentions.ts";
 import type { Profile } from "../profile.ts";
 import type { Interface, Pool } from "../types.ts";
-import { FROM_PARENT, ROUTINE, WAKEUP, WATCHING, type ThreadStep } from "../threads.ts";
+import { cleanAsk, type Ask, FROM_PARENT, ROUTINE, WAKEUP, WATCHING, type ThreadStep } from "../threads.ts";
 import { citationsIn, ftsQuery, indexText, kindOf, queryWords, searchWords, snippet, stripCitations, type Kind } from "./refs.ts";
 
 /** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
@@ -246,7 +246,10 @@ export interface SleepMaterial {
   flagged: string[];
 }
 
+export interface Question { n: number; asked: string; closed?: string; answer?: number | "words" | "withdrawn" }
+
 export interface StoreContext {
+  questionChange?: <T>(db: Db, thread: string, fn: () => T) => T;
   db: Db;
   pool: Pool;
   /** The user whose pool this is. `{user}` in written text means them. */
@@ -398,6 +401,30 @@ export class PoolReader {
     const row = this.db.prepare(`SELECT * FROM entries WHERE thread = ? ${filter} ORDER BY n DESC LIMIT 1`)
       .get(threadId, ...(roles ?? [])) as EntryRow | undefined;
     return row && toEntry(row);
+  }
+
+  questions(thread: string): Question[] {
+    return (this.db.prepare("SELECT n, asked, closed, answer FROM questions WHERE thread = ? ORDER BY n").all(thread) as { n: number; asked: string; closed: string | null; answer: string | null }[])
+      .map(r => ({ n: r.n, asked: r.asked, ...(r.closed ? { closed: r.closed, answer: /^\d+$/.test(r.answer ?? "") ? Number(r.answer) : r.answer as "words" | "withdrawn" } : {}) }));
+  }
+  openQuestion(thread: string): Question | undefined {
+    return this.db.prepare("SELECT n, asked FROM questions WHERE thread = ? AND closed IS NULL").get(thread) as Question | undefined;
+  }
+  /** Read question words only through this thread's existing encrypted reader. */
+  readAsk(thread: string, n: number): Ask | undefined {
+    const entry = this.entryPage(thread, { before: n + 1, limit: 1 }).entries.find(e => e.n === n);
+    const parts = (entry?.data as { message?: { content?: unknown } } | undefined)?.message?.content;
+    if (!Array.isArray(parts)) return undefined;
+    const call = parts.find(p => p.type === "toolCall" && p.name === "threads" && p.arguments?.action === "ask");
+    if (!call) return undefined;
+    try { return cleanAsk(call.arguments); } catch { return undefined; }
+  }
+  questionCall(thread: string, id: string): number | undefined {
+    const rows = this.db.prepare("SELECT n, data FROM entries WHERE thread = ? AND role = 'assistant' ORDER BY n DESC").all(thread) as { n: number; data: string }[];
+    return rows.find(r => {
+      const parts = (json(r.data) as { message?: { content?: unknown } }).message?.content;
+      return Array.isArray(parts) && parts.some(p => p.type === "toolCall" && p.id === id && p.name === "threads" && p.arguments?.action === "ask");
+    })?.n;
   }
 
   /** A thread's checklist (`threads steps`); empty when it has none. */
@@ -1054,6 +1081,24 @@ export class PoolStore extends PoolReader {
     else this.db.prepare("INSERT INTO drafts (thread, text, updated_at) VALUES (?, ?, ?) ON CONFLICT (thread) DO UPDATE SET text = excluded.text, updated_at = excluded.updated_at").run(threadId, text, now());
   }
 
+  /** Changes a question and its project waiting flag together. */
+  private questionChange<T>(thread: string, fn: () => T): T {
+    return this.c.questionChange ? this.c.questionChange(this.db, thread, fn) : this.tx(fn);
+  }
+  askQuestion(thread: string, n: number): void {
+    this.mustThread(thread);
+    if (!this.readAsk(thread, n)) throw new Error("ask needs its stored tool call");
+    this.questionChange(thread, () => {
+      this.db.prepare("UPDATE questions SET closed = ?, answer = 'withdrawn' WHERE thread = ? AND closed IS NULL").run(now(), thread);
+      this.db.prepare("INSERT INTO questions (thread, n, asked) VALUES (?, ?, ?)").run(thread, n, now());
+    });
+  }
+  closeQuestion(thread: string, answer: number | "words" | "withdrawn", n?: number): boolean {
+    if (!this.openQuestion(thread) && n === undefined) return false;
+    return this.questionChange(thread, () => !!this.db.prepare(`UPDATE questions SET closed = ?, answer = ? WHERE thread = ? AND closed IS NULL ${n === undefined ? "" : "AND n = ?"}`)
+      .run(now(), String(answer), thread, ...(n === undefined ? [] : [n])).changes);
+  }
+
   /** Replaces a thread's checklist; none clears it. Forgetting the thread takes it too. */
   setSteps(threadId: string, steps: ThreadStep[]): void {
     this.mustThread(threadId);
@@ -1089,7 +1134,7 @@ export class PoolStore extends PoolReader {
   truncateThread(threadId: string, fromN: number, author: Author): { removed: number; pins: number; subagents: string[] } {
     this.checkAuthor(author);
     this.mustThread(threadId);
-    return this.tx(() => {
+    return this.questionChange(threadId, () => {
       const subagents = this.subagentsSince(threadId, fromN);
       for (const id of subagents) this.forgetThread(id, author);
       const rows = this.db.prepare("SELECT n, pinned FROM entries WHERE thread = ? AND n >= ? ORDER BY n").all(threadId, fromN) as { n: number; pinned: number }[];
@@ -1104,6 +1149,7 @@ export class PoolStore extends PoolReader {
       for (const { src } of candidates) if (this.cameFrom(src).every((d) => goneSet.has(d))) this.remove(src, author, true);
       this.db.prepare("UPDATE pages SET flagged = 1 WHERE 'p:' || slug IN (SELECT src FROM citations WHERE dst IN (SELECT value FROM json_each(?)))").run(gone);
       this.db.prepare("DELETE FROM search WHERE kind = 'entry' AND id IN (SELECT value FROM json_each(?))").run(gone);
+      this.db.prepare("DELETE FROM questions WHERE thread = ? AND n >= ?").run(threadId, fromN);
       this.db.prepare("DELETE FROM entries WHERE thread = ? AND n >= ?").run(threadId, fromN);
       this.db.prepare("UPDATE threads SET cut = max(cut, ?) WHERE id = ?").run(rows.at(-1)!.n, threadId);
       this.optimize();

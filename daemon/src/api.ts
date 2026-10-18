@@ -792,6 +792,7 @@ export interface McpToken { token: string }
 // --- Threads ---
 
 export interface ThreadSummary {
+  question?: { n: number; asked: string };
   pool: Pool;
   id: string;
   interface: Interface;
@@ -972,7 +973,7 @@ export interface AcceptShare { pool: Pool }
 // her items from the night, and, for administrators, persona changes to approve.
 // Not yet in it: downloads, clean-up items, image models to review, host problems.
 
-export type NotificationType = "share" | "permission" | "update" | "sleep" | "suggestion" | "approval" | "rollback";
+export type NotificationType = "question" | "share" | "permission" | "update" | "sleep" | "suggestion" | "approval" | "rollback";
 /** An action on an item: a request the UI sends as it is. `opens`: the answer is a ThreadSummary to go to. */
 export interface NotificationAction { label: string; method: "POST" | "DELETE"; path: string; body?: unknown; danger?: boolean; opens?: boolean }
 export interface Notification {
@@ -1229,11 +1230,14 @@ export interface Reaction { emoji: string; you: boolean; her: boolean }
  */
 export interface Reactions { reactions: Reaction[] }
 
+/** POST …/threads/:pool/:threadId/questions/:n/answer → 204; 404 unknown, 409 closed, 400 invalid option. */
+export interface AnswerQuestion { option: number }
+export interface QuestionState { n: number; asked: string; closed?: string; answer?: number | "words" | "withdrawn" }
 /**
  * GET /api/u/:userId/threads/:pool/:threadId/messages?before=<n>&limit=<k> → MessagePage
  * Newest page by default, oldest first within the page. Tool results are folded into their calls.
  */
-export interface MessagePage { messages: Message[]; hasMore: boolean }
+export interface MessagePage { messages: Message[]; hasMore: boolean; questions?: QuestionState[] }
 
 /**
  * POST /api/u/:userId/threads/:pool/:threadId/messages → SendResponse.

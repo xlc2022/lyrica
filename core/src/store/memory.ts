@@ -66,7 +66,16 @@ export class Memory {
   }
 
   private context(userId: UserId, pool: Pool, mode: "thread" | "owner", readonly = false) {
-    return { db: this.open(userId, pool, readonly), pool, owner: userId, profiles: () => this.profiles(), mode };
+    return { db: this.open(userId, pool, readonly), pool, owner: userId, profiles: () => this.profiles(), mode, questionChange: <T>(db: Db, thread: string, fn: () => T): T => {
+      // Attach only for this short synchronous change. The pool connection never
+      // exposes user.db to callers; both waiting flags commit in one transaction.
+      db.prepare(`ATTACH DATABASE ? AS question_user KEY "x'${this.keyring.userKey(userId).toString("hex")}'"`).run(join(this.users.userDir(userId), "user.db"));
+      try { return db.transaction(() => {
+        const result = fn();
+        db.prepare("UPDATE question_user.child_threads SET needs_you = EXISTS (SELECT 1 FROM main.questions WHERE thread = ? AND closed IS NULL) WHERE pool = ? AND thread = ?").run(thread, pool, thread);
+        return result;
+      })(); } finally { db.exec("DETACH DATABASE question_user"); }
+    } };
   }
 
   private open(userId: UserId, pool: Pool, readonly: boolean): Db {

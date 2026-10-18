@@ -304,6 +304,29 @@ export class ChildThreads implements ThreadsHost {
     return this.o.wakeups().cancel(from);
   }
 
+  async asked(from: ThreadContext): Promise<void> {
+    this.questionsChanged(from.user.id, from.pool, from.threadId);
+    const t = from.view.own.getThread(from.threadId);
+    if (t?.parent && from.view.own.getThread(t.parent)?.project) {
+      const q = from.view.own.openQuestion(from.threadId)!;
+      const ask = from.view.own.readAsk(from.threadId, q.n)!;
+      await this.message(from, "parent", ask.question, { needsYou: true });
+    }
+  }
+
+  questionsChanged(userId: string, pool: Pool, thread: string): void {
+    const parent = this.parentOf(userId, pool, thread);
+    if (parent) this.o.host().changed(userId, pool, parent, thread);
+    this.o.host().peek(userId, pool, thread)?.publish({ type: "settings" });
+  }
+
+  questionClosed(userId: string, pool: Pool, thread: string, answer: "words" | "withdrawn"): void {
+    const view = this.o.memory.openThreadView(userId, pool);
+    let changed = false;
+    try { changed = view.own.closeQuestion(thread, answer); } finally { view.close(); }
+    if (changed) this.questionsChanged(userId, pool, thread);
+  }
+
   /** Her `threads steps` changed this thread's checklist: its open views and its parent's card hear of it. */
   stepsChanged(from: ThreadContext): void {
     const host = this.o.host();
@@ -459,6 +482,7 @@ export class ChildThreads implements ThreadsHost {
   setResolved(userId: string, pool: Pool, thread: string, resolved: boolean): void {
     const row = this.row(userId, pool, thread);
     if (!row) throw new Error(`[t:${thread}] isn't a thread of a project`);
+    if (resolved) this.questionClosed(userId, pool, thread, "withdrawn");
     this.db(userId, (db) => db.prepare(`UPDATE child_threads SET resolved_at = ?${resolved ? ", needs_you = 0" : ""} WHERE pool = ? AND thread = ?`)
       .run(resolved ? new Date().toISOString() : null, pool, thread));
     this.o.host().changed(userId, pool, row.parent, thread);
@@ -466,6 +490,7 @@ export class ChildThreads implements ThreadsHost {
 
   /** The user wrote in the thread: it no longer waits on them, and a resolved thread reopens. */
   userWrote(userId: string, pool: Pool, thread: string): void {
+    this.questionClosed(userId, pool, thread, "words");
     this.noticed.delete(`${userId}/${pool}/${thread}`);
     this.rounds.delete(`${userId}/${pool}/${thread}`);
     for (const r of this.rows(userId)) if (r.pool === pool && r.parent === thread) this.rounds.delete(`${userId}/${pool}/${r.thread}`);

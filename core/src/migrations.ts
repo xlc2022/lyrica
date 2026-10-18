@@ -297,6 +297,14 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Pull requests a thread opened, watched until CI and reviews land (docs/briefs/ci-wakes.md). Adds a table only.
     version: 7,
     run(db) { db.exec(WATCHES_SCHEMA); },
+  }, {
+    // Principles 1 and 6: question pointers only; all words stay in entries. Expand only.
+    version: 8,
+    run(db) { db.exec(`CREATE TABLE questions (
+      thread TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+      n INTEGER NOT NULL, asked TEXT NOT NULL, closed TEXT, answer TEXT,
+      PRIMARY KEY (thread, n)
+    ); CREATE UNIQUE INDEX questions_open ON questions(thread) WHERE closed IS NULL`); },
   }],
 };
 
