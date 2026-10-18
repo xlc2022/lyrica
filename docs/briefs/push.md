@@ -1,6 +1,6 @@
 # Brief: Push notifications
 
-**Status:** Built in four runs; in review (PR #325).
+**Status:** Merged as #325 (98c5604). Handoff notes below are history.
 
 **Branch:** `feature/push`. **Built by:** Codex on the test machine.
 **Read first:** AGENTS.md, PRINCIPLES.md (2, 8, 10), DESIGN.md (Settings,
