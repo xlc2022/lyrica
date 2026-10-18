@@ -453,6 +453,11 @@ type Scope = "mine" | "shared";
 type Placement = { mode: "auto" } | { mode: "gpus"; gpus: number[]; split?: number[]; parallel?: "tensor" | "pipeline" };
 type Stretch = { type: "yarn"; factor: number; originalContext?: number };
 /** The host's settings that size the model's memory: Reset in the Memory group takes them back to the host's defaults. */
+const VISION_TIP = "The vision projector: off saves its memory, and the model no longer sees images.";
+const MTP_TIPS = {
+  file: "Multi-token prediction with the model's MTP file: faster answers for a little more memory.",
+  "built-in": "Multi-token prediction with the model's own MTP layers: faster answers.",
+} as const;
 const MEMORY_KEYS = ["contextLength", "stretch", "kvCacheType", "gpuLayers", "flashAttention", "vision", "mtp", "draftMax"];
 const MAX_STRETCH = 8;
 
@@ -735,13 +740,13 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
         </SRow>
         <label className="check"><input type="checkbox" checked={draft.flashAttention === "on"} onChange={(e) => set("flashAttention", e.target.checked ? "on" : undefined)} /> Flash attention</label>
         {sv.extras?.vision && (
-          <label className="check" title="The vision projector: off saves its memory, and the model no longer sees images.">
-            <input type="checkbox" checked={draft.vision !== false} onChange={(e) => set("vision", e.target.checked ? undefined : false)} /> Vision
+          <label className="check" title={VISION_TIP}>
+            <input type="checkbox" checked={draft.vision !== false} onChange={(e) => set("vision", e.target.checked ? undefined : false)} /> Vision<span className="sr-only">. {VISION_TIP}</span>
           </label>
         )}
         {sv.extras?.mtp && <>
-          <label className="check" title={sv.extras.mtp === "file" ? "Multi-token prediction with the model's MTP file: faster answers for a little more memory." : "Multi-token prediction with the model's own MTP layers: faster answers."}>
-            <input type="checkbox" checked={draft.mtp !== false} onChange={(e) => set("mtp", e.target.checked ? undefined : false)} /> MTP
+          <label className="check" title={MTP_TIPS[sv.extras.mtp]}>
+            <input type="checkbox" checked={draft.mtp !== false} onChange={(e) => set("mtp", e.target.checked ? undefined : false)} /> MTP<span className="sr-only">. {MTP_TIPS[sv.extras.mtp]}</span>
           </label>
           {draft.mtp !== false && (
             <SRow label="Draft tokens" title="Tokens MTP guesses ahead. Try 1 to 6." unit="of 6">
