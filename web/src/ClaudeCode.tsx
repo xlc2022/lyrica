@@ -26,7 +26,7 @@ export function ClaudeCodeSection({ ctx }: { ctx: ShellContext }) {
           <label className="field grow" title="Run claude setup-token on your own computer and paste the token it prints."><span>Token</span>
             <input className="mono" name="claude-code-token" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} />
           </label>
-          <button className="primary" disabled={busy || !token.trim()}>Save token</button>
+          <button disabled={busy || !token.trim()}>Save token</button>
         </form>
       )}
       {s && !s.installed && (

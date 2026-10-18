@@ -38,7 +38,7 @@ export function CodexSection({ ctx }: { ctx: ShellContext }) {
         </>
       ) : s?.installed ? (
         <div className="row">
-          <button type="button" className="primary" disabled={busy} onClick={() => void run(async () => { status.set(await post<CodexStatus>(u(ctx.user.id, "codex", "sign-in"), {})); })}>Sign in</button>
+          <button type="button" disabled={busy} onClick={() => void run(async () => { status.set(await post<CodexStatus>(u(ctx.user.id, "codex", "sign-in"), {})); })}>Sign in</button>
           <span className="muted">What you ask it for goes to OpenAI.</span>
         </div>
       ) : s && (
