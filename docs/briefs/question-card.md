@@ -1,6 +1,6 @@
 # Brief: Question card
 
-**Status:** Approved to build; not started.
+**Status:** Built in three runs; ready for review and the operator’s full-suite run.
 
 **Branch:** `feature/question-card`. **Built by:** Codex on the test machine.
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md, docs/delegation.md
@@ -156,4 +156,41 @@ ask({ question, options: { label, consequence }[], recommended, context? })
 
 ## Handoff notes
 
-(None yet.)
+Run 1 (`1515302`) built the tool, encrypted question pointers (pool step 8),
+answer route and marker guards, notifications and core/daemon coverage.
+Run 2 (`2f84679`) built conversation and project cards, sidebar/pending state,
+Notifications actions and web unit coverage, with contracts, UX and web docs.
+Main is merged at `c17203a`; model configuration uses presets and columns,
+including the Backend card, with no model-profile routes introduced here.
+No user.db migration was added by this feature.
+
+Run 3 completes e2e fixtures and browser coverage, DESIGN, delegation,
+daemon and web documentation, and this handoff. Principles 1 and 6 remain
+the reason for the change. The existing controls follow UX §6’s question,
+project-thread and Notifications rows; §3’s option-button exception and §8’s
+phone targets apply. No new production control was added in run 3. The
+`threads` definition ceilings are 3900 plain, 2900 ordinary child, 4650
+project chat and 3600 project thread (serialized characters, strict upper
+bounds), with no additional model-facing tool.
+
+Validation: build and typecheck pass. The locked focused Vitest run passed
+44 tests across core questions and migrations, daemon questions, extension
+threads, web questions and welcome cards. All six browser checks pass at
+both widths. They exercise real
+lyricad and only local fake model endpoints: taps in chat, Notifications and
+project cards; collapsed cards across reload; typed answers; one project
+wake; replacement and Resolve; duplicate-answer 409 and forged-marker 400;
+and private Notifications without bulk answers. Screenshots in ignored
+`shots/` show open, answered, Notifications and project-card states at 1280
+and 390 px; overflow checks and phone button measurements pass.
+
+Local execution uses UNTRACKED `web/playwright.local.config.ts`, ports
+7351–7353 and the supplied Chromium executable. Never commit that file or
+`shots/`. Run browser coverage from `web/` with
+`SCREENSHOTS=../shots flock /tmp/lyrica-tests.lock npx playwright test -c playwright.local.config.ts -g 'question cards|private question Notifications' --project=phone --project=desktop`.
+
+Next: the operator runs the full suite, commits and pushes the tracked
+changes, then sends the head to PR and UI review. Run 3 leaves changes in
+the tree because `.git` is read-only. Nothing was pushed. Push notifications,
+card free-text inputs, multiple open questions and subagent questions remain
+out of scope. No open design questions.

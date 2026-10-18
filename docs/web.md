@@ -1173,6 +1173,12 @@ turns animations off.
   and `/speech/down` to make it fail). Chromium runs with a fake microphone.
   The desktop project listens on 7342, `lyricad`'s own loopback port for
   `tailscale serve`, so e2e can't run on a machine where `lyricad` runs.
+- Question-card e2e checks use the fake model's `ask:`, `ask twice:` and
+  `start ask:` commands with the real daemon. At both widths they cover
+  option taps, persisted collapsed cards, answers in words, Notifications,
+  project-card answers and withdrawal on replacement and Resolve. They
+  check phone target sizes and horizontal overflow. `SCREENSHOTS=<dir>`
+  saves open, answered, Notifications and project-card views in that folder.
 - For development, `npx tsx web/e2e/serve.ts 7340 7350` starts the same
   throwaway `lyricad` (passphrase `correct horse`, login `ada` / `pw`), and
   `npm run dev -w @lyrica/web` serves the UI with `/api` passed to it.

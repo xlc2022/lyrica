@@ -334,6 +334,15 @@ checks it reaches her, and with a real model which she picks. Code:
 - `stop({ id })`: stops one of the thread's children (in a project chat,
   one of its threads) as Pause does: the running turn is aborted and the
   child is idle. The project's threads can't stop each other.
+- `ask({ question, options, recommended, context? })`: one question card for
+  the user, in hosted plain chats, project chats and project threads, never
+  ordinary children or subagents. Two to four unique options each have a
+  label and consequence; one is recommended. `ASK_LIMITS` and `cleanAsk`
+  enforce the bounds before anything is stored. Ask only for a fork that
+  changes the goal, a visible output or an irreversible step; ask once on
+  the card, recommend the first option, keep working where reversible and
+  stop where not. The answer arrives as an ordinary user message in a later
+  turn. Replacing an open question, Stop or Resolve withdraws it.
 - `compact({ summary })`: compacts the thread she's in with her summary
   (daemon.md, "Compacting herself"). Child threads have it too.
 
@@ -454,9 +463,11 @@ child's messages sees its updates.
   (`message({ id, text })`, at most 3 per turn), marked with the sender's
   `[From t:<sender>]` line, and `list` shows it the project's other threads.
   A thread outside the project is refused.
-- `message({ to: "parent", text, needsYou: true })` marks the thread
-  **waiting on the user**, and the update is a notice with status `waiting`.
-  The user's next message in the thread clears it.
+- `ask({ question, options, recommended, context? })` asks the user on a
+  question card and marks the thread **waiting on the user**, waking the
+  project chat once. It replaces `message({ to: "parent", needsYou: true })`
+  for asking the user; that older flag still works. A tap or typed answer
+  clears `needs_you` immediately, rather than waiting for her next update.
 - **States:** working, waiting (an approval, or `needsYou`), queued, idle,
   resolved. `resolve` (her tool; a thread resolves only itself, the project
   chat any of its threads), the API, and the nightly tick for a thread idle
