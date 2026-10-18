@@ -221,9 +221,15 @@ UNIFIED=
 RENDER_GID=$(getent group render 2>/dev/null | cut -d: -f3 || true)
 [[ $WANT_LAN == 1 ]] && FILES+=:compose.lan.yaml
 [[ -n $TS_HOSTNAME ]] && FILES+=:compose.tailscale.yaml
-# The updater installs a tree without .git, and names its commit.
-VERSION=${LYRICA_HOST_VERSION:-$(git describe --always --dirty 2>/dev/null || echo dev)}
-COMMIT=${LYRICA_HOST_COMMIT:-$(git rev-parse HEAD 2>/dev/null || true)}
+# The updater installs a tree without .git, and names its commit. Run again
+# by hand in that tree, it keeps the release .env records.
+if git rev-parse HEAD >/dev/null 2>&1; then
+  VERSION=$(git describe --always --dirty 2>/dev/null || echo dev) COMMIT=$(git rev-parse HEAD)
+else
+  VERSION=$(env_value HOST_VERSION) COMMIT=$(env_value HOST_COMMIT)
+fi
+VERSION=${LYRICA_HOST_VERSION:-${VERSION:-dev}}
+COMMIT=${LYRICA_HOST_COMMIT:-$COMMIT}
 LAN_BIND=$LAN
 [[ $LAN == *:* ]] && LAN_BIND="[$LAN]"
 

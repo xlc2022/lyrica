@@ -53,7 +53,8 @@ commit before from its own tree the same way. Root never runs code from your
 checkout, only reads its `.env`, whose settings (the models folder, the
 addresses) it trusts as you chose them at install. The last 3 trees are kept, and the running
 one is the installed folder from then on: change a setting by running
-`install.sh` there, or `git pull && host/install.sh` in your checkout to go
+`sudo ./install.sh` there (the tree is root's; it keeps the release `.env`
+records), or `git pull && host/install.sh` in your checkout to go
 back to it. The host resumes unless it was paused before. Its progress is in
 `/var/lib/lyrica-host-update/status/state.json` and the host's status; by
 hand: `sudo lyrica-host-update --tag update/<name>`.
