@@ -602,9 +602,9 @@ endpoints:
 
 A signed-in ChatGPT plan shows one image model, **ChatGPT Images**, under
 Cloud on Models, Image models. OpenAI doesn't let the plan's sign-in make
-images, so ChatGPT Images runs your own Codex: under Settings, **Claude Code and
-Codex**, choose **Sign in** in the Codex card, open the page it shows, sign in to ChatGPT and enter
-the code. Images then come out of your plan's Codex limits.
+images, so ChatGPT Images runs your own Codex: under Settings, **Claude
+Code and Codex**, choose **Sign in** in the Codex card, open the page it
+shows, sign in to ChatGPT and enter the code. Images then come out of your plan's Codex limits.
 For a key, open Image models, then **Other cloud models** at the foot of
 the Cloud group, and tick **Generate** and **Edit** for each model that
 supports them (`gpt-image-1`, for example). Only the endpoint's owner, or
@@ -1029,10 +1029,11 @@ apply as written.
     `/workspace/repos`, and with internet on `gh pr list` works there.
 12. Set the SearXNG address under Administration, Web search: it says
     Reachable, and `web_search` answers in a thread.
-13. Save a token under Settings, Claude Code, turn the switch on in a test
-    thread, and ask her to use it.
-14. With a ChatGPT plan endpoint signed in, sign in under Settings, Codex,
-    and ask a thread for an image with ChatGPT Images first in its list.
+13. Save a token under Settings, Claude Code and Codex, turn the switch on
+    in a test thread, and ask her to use it.
+14. With a ChatGPT plan endpoint signed in, sign in to the Codex card under
+    Settings, Claude Code and Codex, and ask a thread for an image with
+    ChatGPT Images first in its list.
 
 Report what fails, with the journal lines, in the Operator docs thread; the
 guide gets corrected from the real run.
