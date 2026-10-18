@@ -258,7 +258,7 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
   }, {
     // Principles 2 and 6: pushed decision IDs only, in encrypted user.db. Expand only.
     version: 11,
-    run(db) { db.exec("CREATE TABLE push_sent (id TEXT PRIMARY KEY, at INTEGER NOT NULL)"); },
+    run(db) { db.exec("CREATE TABLE IF NOT EXISTS push_sent (id TEXT PRIMARY KEY, at INTEGER NOT NULL)"); },
   }],
   pool: [{
     version: 1, contract: true,

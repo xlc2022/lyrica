@@ -203,6 +203,19 @@ supplied sandbox Chromium executable. Never commit it or the screenshots.
 Reproduce from `web/` after building:
 `SCREENSHOTS=../shots flock /tmp/lyrica-tests.lock npx playwright test -c playwright.local.config.ts -g 'Push settings:' --project=phone --project=desktop`.
 
+Run 4 fixes the four older-user.db regressions under the expand-then-contract
+rule (principles 2 and 6): user step 11 creates `push_sent` with `IF NOT
+EXISTS`, preserving any existing delivery IDs. The SSH-target, interrupted
+model migration, shared model choices and stored workspace modes fixtures
+all retained that table while resetting the schema version; none needed a
+fixture change. Migration tests cover upgrades from user schemas 1–10,
+previous-reader compatibility and rerunning the additive step with a saved
+delivery record. The requested machines, models, workspace and migrations
+files pass under the shared lock: 85 passed, four existing skips. Preset
+integration was already current: Images reads model configuration and the
+Backend card reads preset columns; push remains step 11. No schema contract
+or UI change is needed for this fix.
+
 Next: the operator runs the full suite, commits and pushes; PR review and
 UI review verify the head, then CI and merge follow the normal workflow.
 After merge, tell Operator docs to add an ntfy setup note: Settings → Push,

@@ -353,6 +353,36 @@ describe("user step 10 (spend share)", () => {
 });
 
 
+describe("user step 11 (push delivery IDs)", () => {
+  it("expands every released user schema without changing old rows or reader compatibility", () => {
+    for (let version = 1; version < 11; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter(s => s.version <= version);
+      migrate(db, "user", {}, previous);
+      SEED.user(db);
+      migrate(db, "user");
+      expect(db.prepare("SELECT * FROM push_sent").all()).toEqual([]);
+      expect(db.prepare("SELECT value FROM settings WHERE key = 'k'").get()).toEqual({ value: "v" });
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      db.close();
+    }
+  });
+
+  it("keeps existing delivery records when the additive step runs again", () => {
+    const db = scratchDb();
+    migrate(db, "user", {}, STEPS.user.filter(s => s.version < 11));
+    // An older-schema fixture can retain this independent, newer table.
+    STEPS.user.find(s => s.version === 11)!.run(db, {});
+    db.prepare("INSERT INTO push_sent (id, at) VALUES ('question:test', 123)").run();
+    migrate(db, "user");
+    expect(db.prepare("SELECT * FROM push_sent").all()).toEqual([{ id: "question:test", at: 123 }]);
+    expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
+    expect(() => checkReadable(db, "user", STEPS.user.filter(s => s.version < 11))).not.toThrow();
+    db.close();
+  });
+});
+
 describe("pool step 8 (question pointers)", () => {
   it("expands every released pool schema, keeps old readers and stores no question text", () => {
     for (let version = 1; version < 8; version++) {
