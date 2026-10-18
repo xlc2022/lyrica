@@ -84,9 +84,9 @@ and DESIGN.md's Direct paragraph for HTTP/2 with HTTP/1.1 fallback.
 `npm run typecheck` passed; all 10 tests in `daemon/test/web-access.test.ts`
 passed with `flock /tmp/lyrica-tests.lock npx vitest run --pool=forks
 --maxWorkers=2 daemon/test/web-access.test.ts`. No preset, UI or schema
-changes were needed. Part B is completed below; Part C remains unbuilt.
+changes were needed. Parts B and C are completed below.
 
-**Done (step 2, left in the tree for the operator):** Part B, serving
+**Done (step 2, committed):** Part B, serving
 principles 2 and 8. Added `UserEvent` and the text-free per-user SSE route,
 with hello, session/key checks, keep-alive and listener cleanup.
 `UserEvents` coalesces per user over 250 ms; successful user-path mutations,
@@ -96,15 +96,22 @@ coalescing, cross-session API changes, turn start/end independently of HTTP
 mutations, Sleep, user isolation, text-free payloads and logout/Lock closure.
 No preset, UI, schema, paid API or plan changes. Validation: `npm run
 typecheck` and the new test file under the shared lock passed (2 tests).
-Part C remains the next step; the shell and docs/web.md are unchanged.
+Part C is completed below.
 
-**Next**, one Codex run each, in order (original step numbers retained):
+**Done (step 3, left in the tree for the operator):** Part C, serving
+principles 2 and 8. `web/src/Shell.tsx` opens one user EventSource and
+reloads Me/display settings, threads, groups, Notifications and Sleep on
+`hello` and `changed`, including after reconnect. EventSource handles normal
+reconnects; terminal HTTP errors retry with the same 1–30 second backoff as
+the thread stream, and a Me reload checks for logout or Lock. Cleanup closes
+the stream and cancels its retry when the user changes or the shell unmounts.
+The 30-second timer now reloads only Models (and its existing Clean up
+refresh); focus reloads all shell state and Models. Updated docs/web.md's
+stream, sidebar and Sleep descriptions. No new controls (existing homes in
+docs/ux.md §6), preset/profile, schema, daemon, paid API or plan changes.
+Validation: `npm run typecheck` passed. No test files were touched, so no
+test commands or full suite were run.
 
-3. Part C: in `web/src/Shell.tsx`, open the user stream once
-   (`EventSource`, reconnecting as `web/src/stream.ts` does) and on `hello`
-   or `changed` reload `me`, `threads`, `groups`, `notes` and `sleep`;
-   keep the 30 s timer for `models` only, and keep focus. Update
-   docs/web.md's sidebar paragraph ("every 30 seconds and on focus").
-
-Run `npm run typecheck` and only the test files touched, one at a time.
-Message text never goes into the user stream, a log or a fixture.
+**Next:** All three implementation steps are complete. The operator commits
+and pushes this step, runs the full suite, and routes the PR/head to the
+required reviewers. No commit or push was attempted in step 3.
