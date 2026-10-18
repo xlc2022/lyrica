@@ -2,8 +2,8 @@
 // Codex runs in Lyrica's sandbox with only its home, which is in the user's encrypted home workspace; prompts go over stdin, never argv or logs.
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, posix, relative } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { join, posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { HostRefused } from "./host.ts";
 import { cleanPng, type GeneratedImage, type ImageInput, type ImageRequest } from "./images.ts";
@@ -18,6 +18,8 @@ export interface CodexBox {
   home: string;
   inner: string;
   installed: boolean;
+  /** For the journal: exit codes, event types and counts, never text Codex wrote. */
+  log?: (line: string) => void;
   start(args: string[], cwd?: string): Promise<ChildProcess & { stdin: Writable; stdout: Readable; stderr: Readable }>;
 }
 
@@ -29,8 +31,9 @@ export interface CodexBox {
  */
 export const CODEX_DISABLED = ["shell_tool", "unified_exec", "view_image", "browser_use", "computer_use", "in_app_browser", "apps", "plugins"];
 
-interface Run { code: number | null; out: string }
-async function run(box: CodexBox, args: string[], input: string, signal?: AbortSignal, timeoutMs = 600_000, cwd?: string): Promise<Run> {
+interface Run { code: number | null; out: string; stopped?: boolean }
+/** Runs Codex; `enough`, checked every second, stops it early (`stopped`) once it has what was asked for. */
+async function run(box: CodexBox, args: string[], input: string, signal?: AbortSignal, timeoutMs = 600_000, cwd?: string, enough?: () => boolean): Promise<Run> {
   let child: Awaited<ReturnType<CodexBox["start"]>>;
   try { child = await box.start(args, cwd); } catch { return { code: -1, out: "" }; }
   return new Promise((done, fail) => {
@@ -40,14 +43,17 @@ async function run(box: CodexBox, args: string[], input: string, signal?: AbortS
     let aborted = false;
     const stop = () => { aborted = true; child.kill("SIGKILL"); };
     const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+    let stopped = false;
+    const watch = enough && setInterval(() => { if (!stopped && enough()) { stopped = true; child.kill("SIGTERM"); } }, 1000);
     signal?.addEventListener("abort", stop, { once: true });
     if (signal?.aborted) stop();
     child.on("error", () => {});
     child.on("close", (code) => {
       clearTimeout(timer);
+      if (watch) clearInterval(watch);
       signal?.removeEventListener("abort", stop);
       if (aborted) fail(signal!.reason ?? new Error("aborted"));
-      else done({ code, out: Buffer.concat(out).toString() });
+      else done({ code, out: Buffer.concat(out).toString(), stopped });
     });
     child.stdin.on("error", () => {});
     child.stdin.end(input);
@@ -133,6 +139,27 @@ function savedPaths(out: string): string[] {
   return [...new Set(paths)];
 }
 
+/** Every image file under `dir`, newest last. */
+function imageFiles(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  const files = (readdirSync(dir, { recursive: true, withFileTypes: true }) as import("node:fs").Dirent[])
+    .filter((e) => e.isFile() && /\.(png|jpe?g|webp)$/i.test(e.name)).map((e) => join(e.parentPath, e.name));
+  return files.sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs);
+}
+
+/** What a run's events were, by type only: "thread.started, item.completed:image_generation, …". */
+function eventShape(out: string): string {
+  const types: string[] = [];
+  for (const line of out.split("\n")) {
+    try {
+      const e = JSON.parse(line) as { type?: unknown; item?: { type?: unknown } };
+      const t = typeof e.type === "string" ? e.type + (typeof e.item?.type === "string" ? `:${e.item.type}` : "") : undefined;
+      if (t && /^[\w.:-]{1,60}$/.test(t) && types.at(-1) !== t) types.push(t);
+    } catch { /* not an event */ }
+  }
+  return types.slice(0, 20).join(", ") || "none";
+}
+
 /** A fixed line for a failed run: Codex's own output can contain the prompt. */
 function failure(out: string): HostRefused {
   if (/not logged in|log ?in again|sign in again|401|unauthori[sz]ed|refresh token/i.test(out)) return new HostRefused("invalid", "Codex is signed out: sign in under Settings → Claude Code and Codex.");
@@ -170,7 +197,11 @@ export async function codexImage(box: CodexBox, r: ImageRequest, signal?: AbortS
       const id = randomUUID();
       const call = join(box.home, "calls", id), inner = posix.join(box.inner, "calls", id);
       mkdirSync(call, { recursive: true, mode: 0o700 });
-      const saved: string[] = [];
+      // Codex saves under generated_images/<session>/, by a name that varies between
+      // versions. Calls here run one at a time, so everything there is this call's:
+      // it starts empty and is removed after, with the call's inputs.
+      const generated = join(box.home, "generated_images");
+      rmSync(generated, { recursive: true, force: true });
       try {
         const inputs = [...(r.action === "edit" ? [r.image] : []), ...(r.references ?? [])].map((i, k) => {
           const name = `input-${k}.${ext(i)}`;
@@ -182,22 +213,30 @@ export async function codexImage(box: CodexBox, r: ImageRequest, signal?: AbortS
           "--sandbox", "danger-full-access", "-c", 'approval_policy="never"', "--enable", "image_generation",
           ...disabled.flatMap((f) => ["--disable", f]), "--cd", inner,
           ...inputs.flatMap((f) => ["--image", f]), "-"];
-        const { code, out } = await run(box, args, instructions(r, r.action === "edit" ? inputs.length - 1 : inputs.length), signal, undefined, inner);
+        // One image per run: once a saved image stops growing, Codex is stopped, so a second
+        // image-tool call can't spend more of the user's plan.
+        let size = -1;
+        const enough = () => {
+          const last = imageFiles(generated).at(-1);
+          const now = last ? statSync(last).size : -1;
+          const settled = now > 0 && now === size;
+          size = now;
+          return settled;
+        };
+        const { code, out, stopped } = await run(box, args, instructions(r, r.action === "edit" ? inputs.length - 1 : inputs.length), signal, undefined, inner, enough);
         signal?.throwIfAborted();
-        // Only files inside Codex's home count, mapped back to the host: a path elsewhere is never read.
-        saved.push(...savedPaths(out).map((p) => posix.relative(box.inner, posix.resolve(inner, p)))
-          .filter((p) => p && !p.startsWith("..")).map((p) => join(box.home, p)).filter((p) => existsSync(p)));
-        if (code !== 0 && !saved.length) throw failure(out);
-        if (!saved.length) throw new HostRefused("invalid", "Codex returned no image.");
-        images.push(cleanPng(readFileSync(saved[saved.length - 1]!)));
+        // A saved_path Codex reports, mapped back to the host and only inside its home; else the newest image it saved.
+        const reported = savedPaths(out).map((p) => posix.relative(box.inner, posix.resolve(inner, p)))
+          .filter((p) => p && !p.startsWith("..")).map((p) => join(box.home, p)).filter((p) => existsSync(p));
+        const found = imageFiles(generated);
+        const file = reported.at(-1) ?? found.at(-1);
+        box.log?.(`codex exec: ${stopped ? "stopped after its image" : `exit ${code}`}, ${found.length} image file${found.length === 1 ? "" : "s"} saved, events: ${eventShape(out)}`);
+        if (code !== 0 && !file) throw failure(out);
+        if (!file) throw new HostRefused("invalid", "Codex returned no image.");
+        images.push(cleanPng(readFileSync(file)));
       } finally {
         rmSync(call, { recursive: true, force: true });
-        for (const p of saved) {
-          rmSync(p, { force: true });
-          const dir = dirname(p);
-          const under = relative(join(box.home, "generated_images"), dir);
-          if (under && !under.startsWith("..")) rmSync(dir, { recursive: true, force: true });
-        }
+        rmSync(generated, { recursive: true, force: true });
       }
     }
     return images;
