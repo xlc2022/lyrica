@@ -7,10 +7,10 @@ import { HttpError } from "../src/api.ts";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Settings Push", () => {
-  it("makes the privacy explanation available to hover, keyboard and screen readers", () => {
+  it("makes the privacy explanation available to hover and screen readers", () => {
     const html = renderToStaticMarkup(createElement(PushSection, { userId: "user" }));
     expect(html).toContain(`title="${PUSH_DESCRIPTION.replaceAll("'", "&#x27;")}"`);
-    expect(html).toContain('tabindex="0"');
+    expect(html).not.toContain("tabindex");
     expect(html).toContain('aria-describedby="push-description"');
     expect(html).toContain('id="push-description" class="sr-only"');
   });
