@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { PRONOUN_PRESETS, type Persona, type Profile } from "@lyrica/core";
 import { describe, expect, it } from "vitest";
-import { createLyricaExtension, DEFAULT_BUDGETS, toolGuidance, type Budgets, UNLOGGED_NOTICE, type ThreadContext } from "../src/index.ts";
+import { CONTINUATION_GUIDELINES, createLyricaExtension, DEFAULT_BUDGETS, toolGuidance, type Budgets, UNLOGGED_NOTICE, type ThreadContext } from "../src/index.ts";
 import { withMemory } from "./helpers.ts";
 
 const persona: Persona = {
@@ -153,7 +153,8 @@ describe("extension", () => {
       toolSnippets: { recall: "search memory", hidden: "secret" },
       toolGuidelines: { recall: ["Recall first"], hidden: ["Not shown"] },
       promptGuidelines: ["Recall first", "Be kind"],
-    })).toBe("- recall: search memory\n\nGuidelines:\n- Recall first\n- Be kind");
-    expect(toolGuidance({ cwd: "/", selectedTools: [] })).toBe("");
+    })).toBe(`- recall: search memory\n\nGuidelines:\n${CONTINUATION_GUIDELINES.map((r) => `- ${r}`).join("\n")}\n- Recall first\n- Be kind`);
+    // The turn boundary still applies when no tools are offered.
+    expect(toolGuidance({ cwd: "/", selectedTools: [] })).toBe(`Guidelines:\n${CONTINUATION_GUIDELINES.map((r) => `- ${r}`).join("\n")}`);
   });
 });
