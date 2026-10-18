@@ -96,6 +96,26 @@ silent.
 
 Principle 1.
 
+## Follow-up: image errors and the LM Studio 400
+
+The user saw a 413 when editing an image, and repeated 400s whenever an
+LM Studio endpoint answered chat.
+
+- The 413 is the model host's `too_big`: the edit recipe doesn't fit the
+  GPU. The image tool said only `image endpoint answered 413`; it now passes
+  the host's own message whole, so Lyrica can say how much memory the recipe
+  needs. A cloud endpoint's error is named by its code, type and parameter
+  only, since its prose may quote the prompt.
+- The LM Studio 400 seen on 10/14 was `invalid_union_discriminator` on the
+  tools list, fixed in #309. On the current build every tool goes to a local
+  endpoint as an object, the request after a tool call is well formed
+  (assistant `tool_calls`, `tool` results, replayed `reasoning_content`),
+  and LM Studio's error text, whether answered or sent mid-stream, reaches
+  the conversation whole. A check against LM Studio itself waits on the
+  user.
+
+Principles 1 and 2.
+
 ## Out of scope
 
 Trimming the `delegate` schema further, inline rename (Side panels
@@ -105,5 +125,6 @@ recipes, #305).
 ## Handoff
 
 - **Done:** all of Change (#309), smaller tool definitions (#314), live
-  tool calls, with tests and docs.
-- **Next:** PR review and UI review of live tool calls.
+  tool calls (#315), image error messages, with tests and docs.
+- **Next:** review of image error messages; an LM Studio chat check on the
+  current build when the user allows it.
