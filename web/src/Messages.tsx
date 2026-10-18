@@ -489,7 +489,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
   let body: React.ReactNode;
   switch (part.type) {
     case "thinking":
-      label = "Thought";
+      label = open ? "Hide reasoning" : "Show reasoning";
       body = <p className="thought">{part.text}</p>;
       break;
     case "recall":

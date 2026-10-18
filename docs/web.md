@@ -801,7 +801,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   failed tool call's message) the title shows as plain text.
   The user's sit in a tinted block.
 - Thinking, recalls, saved notes and tool calls are one-line markers that
-  expand when tapped. An expanded tool call stays open when the turn ends
+  expand when tapped. Thinking's reads Show reasoning, and Hide reasoning
+  while open. An expanded tool call stays open when the turn ends
   and the stored copy replaces the live one. A reply made only of markers
   (`isMarker` on every part: thinking, recall, remember, and tools other
   than delegate, propose_plan, image and a threads look) renders bare, with
