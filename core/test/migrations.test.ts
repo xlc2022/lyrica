@@ -401,3 +401,23 @@ describe("pool step 8 (question pointers)", () => {
     }
   });
 });
+
+describe("self step 3 and user step 12 (endpoints.paused_at)", () => {
+  it("adds paused_at to an endpoints table that passed step 1 before step 1 added it, keeping its rows", () => {
+    for (const [kind, step] of [["self", 3], ["user", 12]] as const) {
+      for (let version = 1; version < step; version++) {
+        const db = scratchDb();
+        const previous = STEPS[kind].filter((s) => s.version <= version);
+        migrate(db, kind, {}, previous);
+        // What step 1 made before it added paused_at.
+        db.exec("ALTER TABLE endpoints DROP COLUMN paused_at");
+        db.prepare("INSERT INTO endpoints (id, name, kind, api, base_url, created_at) VALUES ('e1', 'lan', 'local', 'openai-compatible', 'http://10.0.0.5:1234', '2026-01-01')").run();
+        migrate(db, kind);
+        expect(db.prepare("SELECT name, base_url, paused_at FROM endpoints").all(), `${kind} v${version}`).toEqual([{ name: "lan", base_url: "http://10.0.0.5:1234", paused_at: null }]);
+        expect(schemaOf(db)).toEqual({ version: SCHEMA[kind], minReader: MIN_READER[kind] });
+        expect(() => checkReadable(db, kind, previous)).not.toThrow();
+        db.close();
+      }
+    }
+  });
+});

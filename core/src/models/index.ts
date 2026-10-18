@@ -405,7 +405,7 @@ async function localWarning(ep: Endpoint): Promise<string | undefined> {
   return warnings.length ? `${ep.name} is declared local, but ${warnings.join(", and ")}, outside loopback, private and tailnet addresses` : undefined;
 }
 
-interface EndpointRow { id: string; name: string; kind: "cloud" | "local"; api: string; base_url: string; api_key: string | null; down_since: string | null; addresses: string | null; pin: string | null; paused_at?: string | null }
+interface EndpointRow { id: string; name: string; kind: "cloud" | "local"; api: string; base_url: string; api_key: string | null; down_since: string | null; addresses: string | null; pin: string | null; paused_at: string | null }
 interface OfferingRow { id: string; endpoint: string; model: string; found: string; hand: string; manual: number; missing_since: string | null }
 interface GroupRow { id: string; name: string; members: string }
 interface PresetRow { id: string; name: string; scope: PresetScope; builtin: "local" | "cloud" | null; entries: string; updated_at: string }
@@ -497,7 +497,7 @@ export class Models {
   addEndpoint(actor: User, input: { name: string; kind: "cloud" | "local"; baseUrl: string; apiKey?: string }, opts: { shared?: boolean } = {}): Endpoint {
     checkName(input.name);
     if (input.kind !== "cloud" && input.kind !== "local") throw new Error("an endpoint is either cloud or local");
-    const baseUrl = checkUrl(input.baseUrl);
+    const baseUrl = checkUrl(input.baseUrl, input.kind);
     const id = randomUUID();
     this.place(actor, !!opts.shared, (db) => {
       if (db.prepare("SELECT 1 FROM endpoints WHERE name = ?").get(input.name)) throw new Error(`endpoint ${input.name} already exists`);
@@ -510,11 +510,12 @@ export class Models {
   /** Renames an endpoint, changes its URL or key, or pauses or resumes it. Its IDs, and its models' IDs, never change. A null key removes it. */
   editEndpoint(actor: User, id: string, change: { name?: string; baseUrl?: string; apiKey?: string | null; paused?: boolean }): Endpoint {
     if (change.name !== undefined) checkName(change.name);
-    const api = this.endpoint(actor.id, id)?.api;
+    const ep = this.endpoint(actor.id, id);
+    const api = ep?.api;
     if (change.paused !== undefined && api === "host") throw new Error("a model host pauses itself: use its Pause");
     if ((change.baseUrl !== undefined || change.apiKey !== undefined) && api === "host") throw new Error("a model host has addresses and a pinned key, not a URL or an API key");
     if ((change.baseUrl !== undefined || change.apiKey !== undefined) && isPlan(api)) throw new Error(`a ${PLAN_NAMES[api]} plan signs in with ${PLAN_NAMES[api]}; it has no URL or API key to change`);
-    const baseUrl = change.baseUrl === undefined ? undefined : checkUrl(change.baseUrl);
+    const baseUrl = change.baseUrl === undefined ? undefined : checkUrl(change.baseUrl, ep?.kind ?? "local");
     this.write(actor, id, (db) => {
       const current = db.prepare("SELECT * FROM endpoints WHERE id = ?").get(id) as EndpointRow;
       if (change.name !== undefined && change.name !== current.name && db.prepare("SELECT 1 FROM endpoints WHERE name = ?").get(change.name)) {
@@ -2909,10 +2910,20 @@ function hostVoices(voices: unknown): Voice[] {
   return (Array.isArray(voices) ? voices : []).flatMap((v) => { try { return checkVoices([v]); } catch { return []; } }).slice(0, 200);
 }
 
-function checkUrl(baseUrl: string): string {
-  const url = new URL(baseUrl);
+/**
+ * A base URL as it is stored. One without a scheme gets http:// for a local
+ * endpoint and https:// for a cloud one; one with no path gets /v1, the
+ * OpenAI-compatible root, so "10.0.0.5:1234" saves as http://10.0.0.5:1234/v1.
+ * A path that is given is kept as written.
+ */
+function checkUrl(baseUrl: string, kind: "cloud" | "local"): string {
+  let raw = baseUrl.trim();
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) raw = `${kind === "cloud" ? "https" : "http"}://${raw}`;
+  let url: URL;
+  try { url = new URL(raw); } catch { throw new Error("the base URL isn't a valid URL"); }
   if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("the base URL must be http or https");
-  return baseUrl.replace(/\/+$/, "");
+  raw = raw.replace(/^([a-z][a-z0-9+.-]*:\/\/[^/?#]*)\/*(?=[?#]|$)/i, "$1/v1");
+  return raw.replace(/\/+$/, "");
 }
 
 const clean = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));

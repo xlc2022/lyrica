@@ -376,7 +376,7 @@ interface CleanupItem { endpoint?; offering?; group?; label; usedIn: Use[]; othe
 
 class Models {                                              // new Models(keyring, users)
   // Endpoints and IDs
-  addEndpoint(actor, { name, kind, baseUrl, apiKey? }, { shared? }): Endpoint   // shared: administrators only
+  addEndpoint(actor, { name, kind, baseUrl, apiKey? }, { shared? }): Endpoint   // shared: administrators only; baseUrl: no scheme → http:// (local) or https:// (cloud), no path → /v1
   editEndpoint(actor, id, { name?, baseUrl?, apiKey?: string | null }): Endpoint   // never touches an ID; not a host's URL or key
   removeEndpoint(actor, id)                                 // each model leaves a tombstone; for a host, this is unpairing
   endpoints(userId) / endpoint(userId, id) / offerings(userId, endpointId) / offering(userId, offeringId)

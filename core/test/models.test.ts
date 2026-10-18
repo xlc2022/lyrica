@@ -61,6 +61,20 @@ describe("endpoints", () => {
     expect(models.editEndpoint(ada, gpu.id, { apiKey: null }).apiKey).toBeUndefined();
   });
 
+  it("fills in a base URL given as a bare address, and refuses one that isn't a URL", async () => {
+    const { models, ada, gpu } = await withModels();
+    const url = (baseUrl: string) => models.editEndpoint(ada, gpu.id, { baseUrl }).baseUrl;
+    expect(url("10.0.0.5:1234")).toBe("http://10.0.0.5:1234/v1");
+    expect(url("http://10.0.0.5:1234/")).toBe("http://10.0.0.5:1234/v1");
+    expect(url("localhost:1234")).toBe("http://localhost:1234/v1");
+    expect(url("http://10.0.0.5:1234/api/v1")).toBe("http://10.0.0.5:1234/api/v1");
+    expect(url("http://10.0.0.5:1234?key=k")).toBe("http://10.0.0.5:1234/v1?key=k");
+    expect(() => url("10.0.0.5:99999")).toThrow("the base URL isn't a valid URL");
+    expect(() => url("ftp://10.0.0.5")).toThrow("the base URL must be http or https");
+    const cloud = models.addEndpoint(ada, { name: "openai", kind: "cloud", baseUrl: "api.openai.com" });
+    expect(cloud.baseUrl).toBe("https://api.openai.com/v1");
+  });
+
   it("skips a paused endpoint until it is resumed, and keeps it paused across edits", async () => {
     const { models, ada, gpu, localRef } = await withModels();
     models.setColumnTask(ada.id, "private", "chat", localRef);
