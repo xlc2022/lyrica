@@ -199,8 +199,9 @@ read it for anything not covered here.
    port 7340 for Direct, whatever `port` is, so the machine can be set up
    from another one), `caddyPackage`, and `sandboxPackages`, the tools her
    commands see (NixOS has no `/usr` to share, so the module builds one
-   directory from that list, which includes git, gh, tea, Node 22 and
-   Claude Code by default; add to it to give her more). Claude Code is
+   directory from that list, which includes git, gh, tea, Node 22,
+   Claude Code and Codex by default; add to it to give her more). Codex
+   is the version nixpkgs has, not the one install.sh pins. Claude Code is
    unfree, but the module allows that one package alone, so your system
    configuration needs no `allowUnfree` line. The module refuses to build
    while `security.allowUserNamespaces` is off; it is on by default.
@@ -981,8 +982,9 @@ refused. To replace the destination, enter the full URL and token again;
   rebuild brings them. An install without
   `/usr/local/bin/chromium-headless-shell` gets headless Chromium and IBM
   Plex for her screenshots on this run; on NixOS the next rebuild brings
-  them. An existing install gets Claude Code on its next `install.sh` run,
-  and NixOS on the next rebuild. The home page header (her name, then
+  them. An existing install gets Claude Code and Codex on its next
+  `install.sh` run (Update on Administration, Updates doesn't install
+  them), and NixOS on the next rebuild. The home page header (her name, then
   "0.1.0 · <build>") shows the git commit that is running.
 
 ## Checklist for the first install on your machine
@@ -1029,6 +1031,8 @@ apply as written.
     Reachable, and `web_search` answers in a thread.
 13. Save a token under Settings, Claude Code, turn the switch on in a test
     thread, and ask her to use it.
+14. With a ChatGPT plan endpoint signed in, sign in under Settings, Codex,
+    and ask a thread for an image with ChatGPT Images first in its list.
 
 Report what fails, with the journal lines, in the Operator docs thread; the
 guide gets corrected from the real run.
