@@ -28,7 +28,7 @@ export type Task =
   | "title" | "watching" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
   | "image.create" | "image.edit" | "image.upscale" | "speech.transcribe" | "speech.speak";
 /** The tasks a thread can choose models for. Compaction isn't one: Pi compacts with the thread's chat model. */
-export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title", "watching", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
+export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title", "watching", "image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
 
 /** One model on one endpoint, by its permanent offering ID, or a model group, which expands into its members in order. */
@@ -1001,6 +1001,8 @@ export interface TaskModel {
   /** `<endpoint>/<model>`, kept readable after the model is gone. */
   label?: string;
   modelId?: string;
+  /** What to call it: a recipe's or plan image model's name, else its model ID. */
+  name?: string;
   kind?: "cloud" | "local";
   endpointName?: string;
   /** "thread" when overridden here, "preset" or "column" when following one of those, "none" when nothing is set. */

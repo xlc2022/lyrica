@@ -1330,10 +1330,30 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .list[data-selecting] .rvrow > .actions { visibility: hidden; }
 .rvrow .meta { overflow-wrap: anywhere; }
 .models .selbar.review-bar { position: sticky; bottom: 12px; margin: 0; max-width: 900px; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.08); }
-dialog.add-part { width: min(560px, calc(100vw - 32px)); }
-.add-part .seg { justify-self: start; flex-wrap: wrap; }
+.add-part .seg { justify-self: start; align-self: start; flex-wrap: wrap; }
 .add-part .seg button { padding: 0 12px; }
-.field.strength input { width: 100%; max-width: 320px; accent-color: var(--accent); }
+.add-part .choice-file { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.field.strength { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.field.strength input { width: 88px; font-family: var(--mono); }
+/* The groups by architecture, each ending with the parts that fit it. */
+.arch-groups { display: grid; gap: 12px; max-width: 900px; min-width: 0; }
+.arch-group { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--panel); min-width: 0; }
+.arch-group > header { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 10px 14px; background: var(--tool); }
+.arch-group > header h3 { margin: 0; font-size: 14px; }
+.arch-group > .list { border: 0; border-radius: 0; max-width: none; }
+.arch-group > .list > li { border-top: 1px solid var(--line); }
+.arch-parts { border-top: 1px solid var(--line); }
+.arch-parts summary { padding: 9px 14px; cursor: pointer; font-size: 13px; color: var(--muted); min-height: var(--tap); display: flex; align-items: center; gap: 4px; }
+.arch-partlist { list-style: none; margin: 0; padding: 0 14px 12px 28px; display: grid; gap: 2px; font-size: 13px; }
+.arch-partlist li { display: flex; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.arch-partlist .role { width: 100px; flex: none; color: var(--muted); }
+.arch-partlist code { overflow-wrap: anywhere; min-width: 0; }
+.copyfoot { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); }
+.copyfoot .field { margin: 0; }
+.copyfoot .link.danger { margin-left: auto; color: var(--danger); }
+/* Change, Remove and Delete model… are plain underlined links at the right of their line. */
+.partrow .actions button.link, .copyfoot button.link { text-decoration: underline; text-underline-offset: 2px; min-height: var(--tap); padding: 0 2px; font-size: 13px; }
+.cloud-image-controls .checks { display: flex; flex-wrap: wrap; gap: 16px; }
 .head .cap a.nowrap { white-space: nowrap; }
 @media (max-width: 760px) {
   .partrow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "role actions" "file size"; }
@@ -1466,3 +1486,5 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
 /* The ✕ is a 24 px circle on every pointer (the composer's coarse rule would make it 44); on touch its hit area grows to --tap through ::after (docs/ux.md §8). */
 .composer .attachments button { position: absolute; top: -6px; right: -6px; width: 24px; min-height: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--fg); }
 @media (pointer: coarse) { .attachments button::after { content: ""; position: absolute; width: var(--tap); height: var(--tap); top: 50%; left: 50%; transform: translate(-50%, -50%); } }
+.more-cloud li { display: grid; gap: 4px; padding-block: 6px; }
+.more-cloud .cloud-image-controls { padding: 0; }

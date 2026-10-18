@@ -3207,7 +3207,7 @@ async function fakeImages(page: Page) {
   return { asked, zi, qi, offering: { id: "off-z", modelId: `recipe/${zi}`, label: `box/recipe/${zi}`, manual: false, status: "listed", recipe: "Z-Image Turbo", image: true } };
 }
 
-test("Image models: a recipe opens to its parts with Change, Add a part and Delete; Parts lists the files; To review selects and ignores; Download image model scans and downloads", async ({ page, baseURL }) => {
+test("Image models: groups by architecture with Role and Where; a recipe opens to its parts with Change, Add part and Delete model…; Parts lists the files; To review selects and ignores; Download image model scans and downloads", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const images = await fakeImages(page);
   const started = await fakeHost(page, [], [images.offering]);
@@ -3218,16 +3218,28 @@ test("Image models: a recipe opens to its parts with Change, Add a part and Dele
   await expect(page.getByRole("navigation", { name: "Models pages" }).getByRole("link", { name: "Image models" })).toHaveAttribute("aria-current", "page");
 
   // A recipe: its facts, then its copy on the host as a block of parts.
-  const list = page.getByRole("list", { name: "Image models" });
-  await expect(list.getByRole("button", { name: /Z-Image Turbo/ })).toContainText("Z-Image · create · fast and quality · 1 copy · box");
-  await expect(list.getByText("Qwen-Image")).toHaveCount(0);
+  const list = page.getByRole("list", { name: "Z-Image models" });
+  await expect(page.getByRole("region", { name: "Z-Image", exact: true }).locator("header")).toContainText("Z-Image1 model");
+  await expect(list.getByRole("button", { name: /Z-Image Turbo/ })).toContainText("Z-Image · generate · fast and quality · 1 copy · box");
+  await expect(page.locator(".arch-groups").getByText("Qwen-Image")).toHaveCount(0);
+  // The parts that fit Z-Image, collapsed under its models.
+  await expect(page.getByRole("region", { name: "Z-Image", exact: true }).locator("summary")).toContainText("Parts for Z-Image");
+  // Role and Where narrow the list.
+  await page.getByRole("group", { name: "Role" }).getByRole("button", { name: "Upscale" }).click();
+  await expect(page.locator(".arch-groups")).toContainText("No image models match.");
+  await page.getByRole("group", { name: "Role" }).getByRole("button", { name: "Generate" }).click();
+  await expect(list.getByRole("button", { name: /Z-Image Turbo/ })).toBeVisible();
+  await page.getByRole("group", { name: "Where" }).getByRole("button", { name: "Cloud" }).click();
+  await expect(list).toHaveCount(0);
+  await page.getByRole("group", { name: "Where" }).getByRole("button", { name: "All" }).click();
+  await page.getByRole("group", { name: "Role" }).getByRole("button", { name: "All" }).click();
   await list.getByRole("button", { name: /Z-Image Turbo/ }).click();
   const block = page.getByRole("region", { name: "Z-Image Turbo on box" });
   await expect(block.locator(".copyhead")).toContainText("template z-image · 8 steps · CFG 1 · 1024×1024");
   await expect(block.locator(".partrow").nth(1)).toContainText("Text encoderQwen3");
   await expect(block.locator(".partrow").nth(0)).toContainText("BF16 · downloaded by Lyrica");
   await noHorizontalScroll(page);
-  if (phone(page)) for (const b of [block.getByRole("button", { name: "Change the VAE" }), block.getByRole("button", { name: "Add a part" })]) {
+  if (phone(page)) for (const b of [block.getByRole("button", { name: "Change the VAE" }), block.getByRole("button", { name: "Add part" })]) {
     expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }
 
@@ -3238,7 +3250,7 @@ test("Image models: a recipe opens to its parts with Change, Add a part and Dele
     await useFor.getByRole("button", { name: label!, exact: true }).click();
     await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "useFor", useFor: tag } });
     await expect(useFor.getByRole("button", { name: label!, exact: true })).toHaveAttribute("aria-pressed", "true");
-    await expect(list.locator(".lrow-main .meta")).toContainText(`create · ${facts} ·`);
+    await expect(list.locator(".lrow-main .meta")).toContainText(`generate · ${facts} ·`);
   }
   await page.reload();
   await list.getByRole("button", { name: /Z-Image Turbo/ }).click();
@@ -3253,20 +3265,27 @@ test("Image models: a recipe opens to its parts with Change, Add a part and Dele
   await vae.selectOption("comfy/vae/ae_fp32.safetensors");
   await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "swap", role: "vae", slot: null, file: "comfy/vae/ae_fp32.safetensors" } });
 
-  // Add a part: a LoRA goes into a copy named after it, unless the box is unticked.
-  await block.getByRole("button", { name: "Add a part" }).click();
-  const dialog = page.getByRole("dialog", { name: "Add a part to Z-Image Turbo" });
-  await expect(dialog.getByRole("group", { name: "Part" }).getByRole("button")).toHaveText(["LoRA"]);
-  await expect(dialog.getByRole("radio", { name: "comfy/loras/pixel-art.safetensors" })).toBeChecked();
-  await expect(dialog.getByLabel("Save as a new model, keeping Z-Image Turbo as it is")).toBeChecked();
-  await dialog.getByRole("button", { name: "Add" }).click();
+  // Add part, a drawer: a LoRA goes into a copy named after it, unless the box is unticked.
+  await block.getByRole("button", { name: "Add part" }).click();
+  const drawer = page.getByRole("complementary", { name: "Add part to Z-Image Turbo" });
+  await expect(drawer.getByRole("group", { name: "Part" }).getByRole("button")).toHaveText(["LoRA"]);
+  await expect(drawer.getByRole("radio", { name: /pixel-art\.safetensors/ })).toBeChecked();
+  await expect(drawer.getByRole("radio", { name: /pixel-art\.safetensors/ })).toHaveAccessibleName(/Not used by any model/);
+  await expect(drawer.getByLabel("Save as a new model, keeping Z-Image Turbo as it is")).toBeChecked();
+  // Strength clamps to 1.5 when the field is left.
+  await drawer.getByLabel("Strength").fill("3");
+  await drawer.getByLabel("Strength").blur();
+  await expect(drawer.getByLabel("Strength")).toHaveValue("1.5");
+  await drawer.getByLabel("Strength").fill("1");
+  await noHorizontalScroll(page);
+  await drawer.getByRole("button", { name: "Add" }).click();
   await expect.poll(() => post("recipes/00000000-0000-4000-8000-000000000003")).toEqual([{ do: "change", change: { op: "addLora", file: "comfy/loras/pixel-art.safetensors", strength: 1 } }]);
   expect(post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "copy", name: "Z-Image Turbo + pixel art" });
   // The page opens the new model's row; this made-up host never makes it, so open Z-Image Turbo again.
   await list.getByRole("button", { name: /Z-Image Turbo/ }).click();
 
-  // Delete: what goes and what it frees, and that no list uses it.
-  await block.getByRole("button", { name: "Delete" }).click();
+  // Delete model…: what goes and what it frees, and that no list uses it.
+  await block.getByRole("button", { name: "Delete model…" }).click();
   const del = page.getByRole("dialog", { name: "Delete Z-Image Turbo from box?" });
   await expect(del).toContainText("Deletes z_image_turbo_bf16.safetensors, qwen_3_4b.safetensors, ae.safetensors, which frees 20.6 GB.");
   await expect(del).toContainText("Nothing of yours uses it.");
@@ -3448,21 +3467,29 @@ test("image providers run 2: cloud switches and refusal links", async ({ page, b
   const fake = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;
   const ep = await api("POST", "/endpoints", { name: "image-switches", kind: "cloud", baseUrl: `${fake}/cloud/v1`, apiKey: "fake-key" }) as { id: string };
   const model = await api("POST", `/endpoints/${ep.id}/models`, { modelId: "art-model", tools: true }) as { id: string };
+  // Hosts and endpoints has no image switches: they are on Image models, where the keyed endpoint's other models wait under Cloud.
   await page.goto(`/#/u/${userId}/models/hosts`);
   const row = page.locator(`[data-endpoint="${ep.id}"]`);
   await row.getByRole("button", { name: /^\d+ models?$/ }).click();
-  const controls = row.locator(`[data-offering="${model.id}"]`);
-  await expect(controls.getByRole("checkbox", { name: "Image generation" })).not.toBeChecked();
-  await controls.getByRole("checkbox", { name: "Image generation" }).click();
-  await expect(controls.getByRole("checkbox", { name: "Image generation" })).toBeChecked();
-  await controls.getByRole("checkbox", { name: "Image editing" }).click();
-  await expect(controls.getByRole("checkbox", { name: "Image editing" })).toBeChecked();
-  await controls.getByRole("button", { name: "Fast", exact: true }).click();
-  await expect(controls.getByRole("button", { name: "Fast", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(row.getByRole("checkbox")).toHaveCount(0);
+  await page.goto(`/#/u/${userId}/models/images`);
+  const cloud = page.getByRole("region", { name: "Cloud", exact: true });
+  await cloud.getByText("Other cloud models").click();
+  const controls = cloud.locator(`[data-entry="${model.id}"]`);
+  await expect(controls.getByRole("checkbox", { name: "Generate" })).not.toBeChecked();
+  await controls.getByRole("checkbox", { name: "Generate" }).click();
+  // Switched on, it is one of the group's models, closed; it opens to the same switches.
+  const imageRow = cloud.locator(`li.img-row[data-entry="${model.id}"]`);
+  await imageRow.getByRole("button").first().click();
+  await expect(imageRow.getByRole("checkbox", { name: "Generate" })).toBeChecked();
+  await imageRow.getByRole("checkbox", { name: "Edit" }).click();
+  await expect(imageRow.getByRole("checkbox", { name: "Edit" })).toBeChecked();
+  await imageRow.getByRole("button", { name: "Fast", exact: true }).click();
+  await expect(imageRow.getByRole("button", { name: "Fast", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(imageRow.locator(".lrow-main .meta")).toHaveText("generate · edit");
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/image-switches-${page.viewportSize()!.width}.png` });
-  await page.goto(`/#/u/${userId}/models/images`);
-  const imageRow = page.locator(`[data-entry="${model.id}"]`);
+  await page.reload();
   await imageRow.getByRole("button").first().click();
   await expect(imageRow.getByRole("button", { name: "Fast", exact: true })).toHaveAttribute("aria-pressed", "true");
   await imageRow.getByRole("button", { name: "Quality", exact: true }).click();

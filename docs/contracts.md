@@ -425,6 +425,7 @@ class Models {                                              // new Models(keyrin
   // Create passes imageTier to resolution: recipes and cloud offerings skip a useFor tag of only the other tier.
   // Edit passes imageMask: the ChatGPT plan is skipped for masks before any input is sent.
   // CLOUD_IMAGE_PROVIDERS selects by endpoint.api: openai-compatible (key, any marked model) or chatgpt (plan Responses image_generation).
+  // A chatgpt plan's only image offering is PLAN_IMAGE_MODEL ("chatgpt-images", recipe "ChatGPT Images"), sent through planImageDriver's model.
   // Each adapter declares create/edit/mask/references/sizes/count and low/high tier mappings; upscale is host-only.
   // Content refusal throws HostRefused("image_refusal", fixed message) and stops fallback. Limits/outages fall back.
   // Cloud useFor/image/edit are offerings.hand JSON in self.db (shared) or user.db (personal); no schema step.
@@ -575,6 +576,11 @@ class Models {                                              // new Models(keyrin
   itself follows another task). It is a thread task (`THREAD_TASKS` in
   daemon/src/api.ts) for project chats only: the project chat can choose
   its own, and `PATCH …/settings` choosing it for any other thread is 400.
+- **Images in a thread.** `image.create`, `image.edit` and `image.upscale`
+  are thread tasks too: a thread can choose its own model for each, as for
+  the text tasks, and a private or local-only thread only local ones.
+  `TaskModel.name` is what to call the model (a recipe's name, else its
+  model ID).
 - **Speech.** `speech.transcribe` and `speech.speak` have lists of their
   own (neither follows chat) and take models with the `transcribe` or
   `speak` capability, reported by a host or set by hand. `transcribe` and

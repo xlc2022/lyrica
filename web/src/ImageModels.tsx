@@ -1,11 +1,12 @@
 import { ModelLabel, modelName } from "./ModelLabel.tsx";
 import { CloudImageControls } from "./CloudImageControls.tsx";
-// The Models area's Image models tab (docs/ux.md §6, "Image models, recipes and parts"): a row per recipe, opening to
-// its copy on each host as a block of parts, and a row per image model on a plain endpoint; Parts, every image model
-// file by type; To review, the recipes the hosts proposed; and Download image model. Each host's library is GET
+// The Models area's Image models tab (docs/ux.md §6, "Image models, recipes and parts"): every image model, local and
+// cloud, in a group per architecture, each group ending with the parts that fit it. A recipe's row opens to its copy on
+// each host as a block of parts; a plain endpoint's model opens to its switches. Parts, every image model file by type;
+// To review, the recipes the hosts proposed; and Download image model. Each host's library is GET
 // …/hosts/:id/images, and every change a RecipeAction (POST …/hosts/:id/recipes/:recipeId), which on a shared host is
 // for administrators. The pure parts are in src/images.ts.
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { get, post, u, type DeleteCopy, type GroupInfo, type HubTokenInfo, type ModelsPage, type ModelUse, type OfferingInfo, type RecipeAction } from "./api.ts";
 import { fileChoices, size } from "./downloads.ts";
 import { GatedNote, HostField, LinkFields, linkProblem, managedHosts, RepoField, Size, startDownload, tokenFor, useLookup, wayBack } from "./Downloads.tsx";
@@ -49,9 +50,17 @@ function useLibraries(ctx: MCtx, only?: (ep: Endpoint) => boolean) {
 const proposalsOf = (libs: HostLibrary[]): RecipeCopy[] => libs.flatMap((l) => l.recipes.filter((r) => r.state === "proposed")
   .sort((a, b) => a.name.localeCompare(b.name)).map((recipe) => ({ hostId: l.hostId, host: l.host, recipe })));
 
-/** The image models on plain endpoints: no parts, so one line each. */
+/** The image models on plain endpoints and plans: no parts, so one line each. */
 const plainModels = (p?: ModelsPage) => (p?.endpoints ?? []).filter((ep) => ep.api !== "host")
-  .flatMap((ep) => ep.models.filter((m) => (m.image || m.edit) && m.status !== "gone").map((m) => ({ ep, m })));
+  .flatMap((ep) => ep.models.filter((m) => (m.image || m.edit || m.upscale) && m.status !== "gone").map((m) => ({ ep, m })));
+
+type Does = "create" | "edit" | "upscale";
+const ROLES: ["all" | Does, string][] = [["all", "All"], ["create", "Generate"], ["edit", "Edit"], ["upscale", "Upscale"]];
+const WHERE: ["all" | "local" | "cloud", string][] = [["all", "All"], ["local", "Local"], ["cloud", "Cloud"]];
+/** A plain model's group: cloud models by themselves, since their architecture isn't known; a local one's under Other. */
+const CLOUD = "\u0000cloud", OTHER = "\u0000other";
+const groupWord = (a: string) => (a === CLOUD ? "Cloud" : a === OTHER ? "Other" : archWord(a));
+const plainDoes = (m: OfferingInfo, d: Does) => (d === "create" ? !!m.image : d === "edit" ? !!m.edit : !!m.upscale);
 
 /** The architectures the hosts report, for the chips. */
 const archesOf = (libs: HostLibrary[]) => [...new Set(libs.flatMap((l) => [...l.recipes.filter((r) => r.state !== "ignored").map((r) => r.arch), ...l.parts.flatMap((p) => (p.arch ? [p.arch] : []))]))]
@@ -96,6 +105,8 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
   const [view, setView] = useState<"models" | "parts">("models");
   const [q, setQ] = useState("");
   const [arch, setArch] = useState("");
+  const [does, setDoes] = useState<"all" | Does>("all");
+  const [where, setWhere] = useState<"all" | "local" | "cloud">("all");
   const [type, setType] = useState<PartType>();
   const [open, setOpen] = useState<string>();
   const [scrollTo, setScrollTo] = useState<string>();
@@ -125,13 +136,25 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
   }, [scrollTo]);
 
   const needle = q.trim().toLowerCase();
-  const shownRows = rows.filter((r) => (!arch || r.copies.some((c) => c.recipe.arch === arch))
+  // Recipes run on hosts, so they are local.
+  const shownRows = rows.filter((r) => where !== "cloud" && (does === "all" || r.copies.some((c) => c.recipe.does.includes(does)))
     && (!needle || `${r.name} ${r.copies.flatMap((c) => recipeFiles(c.recipe)).join(" ")}`.toLowerCase().includes(needle)));
-  const shownPlain = arch ? [] : plain.filter(({ m }) => !needle || m.modelId.toLowerCase().includes(needle));
+  const shownPlain = plain.filter(({ ep, m }) => (where === "all" || ep.kind === where) && (does === "all" || plainDoes(m, does))
+    && (!needle || `${modelName(m)} ${m.modelId}`.toLowerCase().includes(needle)));
+  // A group per architecture, by name; then Other and Cloud.
+  const byArch = new Map<string, { rows: ImageRow[]; plain: typeof plain }>();
+  const into = (a: string) => byArch.get(a) ?? byArch.set(a, { rows: [], plain: [] }).get(a)!;
+  for (const r of shownRows) into(r.copies[0]!.recipe.arch).rows.push(r);
+  for (const x of shownPlain) into(x.ep.kind === "cloud" ? CLOUD : OTHER).plain.push(x);
+  // Keyed endpoints' other models can be switched on from the Cloud group, so it shows while there are some.
+  const more = moreCloud(p);
+  if (more.length && where !== "local" && does === "all" && !needle) into(CLOUD);
+  const rank = (a: string) => (a === CLOUD ? 2 : a === OTHER ? 1 : 0);
+  const archGroups = [...byArch].sort(([a], [b]) => rank(a) - rank(b) || groupWord(a).localeCompare(groupWord(b)));
   /** Opens a row from a link elsewhere on the tab, clearing the filters if they hide it. */
   const reveal = (key: string) => {
     setView("models");
-    if (!shownRows.some((r) => r.key === key)) { setQ(""); setArch(""); }
+    if (!shownRows.some((r) => r.key === key)) { setQ(""); setDoes("all"); setWhere("all"); }
     setOpen(key);
     setScrollTo(key);
   };
@@ -187,7 +210,14 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
   const t = type ?? types.find(([x]) => counts.get(x))?.[0] ?? "checkpoint";
   return (
     <Frame ctx={ctx} tab="images" title="Image models" facts={facts}
-      actions={<button type="button" className="primary" onClick={() => go({ page: "models", userId, tab: "images", add: "image" })}>Download model</button>}>
+      actions={<>
+        {view === "models" && (
+          <div className="seg" role="group" aria-label="Role">
+            {ROLES.map(([x, label]) => <button key={x} type="button" aria-pressed={does === x} onClick={() => setDoes(x)}>{label}</button>)}
+          </div>
+        )}
+        <button type="button" className="primary" onClick={() => go({ page: "models", userId, tab: "images", add: "image" })}>Download model</button>
+      </>}>
       <ErrorText error={ctx.models.error || libs.error || groups.error || error} />
       {reads.map((r) => r.error && <ErrorText key={r.ep.id} error={r.error} />)}
       {libs.data && <>
@@ -198,23 +228,40 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
               <button type="button" aria-pressed={view === "parts"} onClick={() => setView("parts")}>Parts</button>
             </div>
             <input type="search" aria-label="Search image models" placeholder="Search by name or file" value={q} onChange={(e) => setQ(e.target.value)} />
+            {view === "models" && (
+              <div className="seg" role="group" aria-label="Where">
+                {WHERE.map(([x, label]) => <button key={x} type="button" aria-pressed={where === x} onClick={() => setWhere(x)}>{label}</button>)}
+              </div>
+            )}
           </div>
-          <ArchChips arches={arches} arch={arch} setArch={setArch} />
-          {view === "parts" && (
+          {view === "parts" && <>
+            <ArchChips arches={arches} arch={arch} setArch={setArch} />
             <div className="chip-row" role="group" aria-label="Type">
               {types.map(([x, label]) => <Fragment key={x}>{chip(<>{label} <span className="num">{counts.get(x)}</span></>, t === x, () => setType(x))}</Fragment>)}
             </div>
-          )}
+          </>}
         </div>
         {view === "models" ? (
-          <ul className="list library" aria-label="Image models">
-            {shownRows.map((r) => (
-              <RecipeRow key={r.key} L={L} row={r} groups={groups.data ?? []} offeringOf={offeringOf} open={open === r.key} reveal={reveal}
-                onToggle={() => setOpen(open === r.key ? undefined : r.key)} />
+          <div className="arch-groups">
+            {archGroups.map(([a, g], i) => (
+              <section key={a} className="arch-group" aria-labelledby={`arch-${i}`}>
+                <header>
+                  <h3 id={`arch-${i}`}>{groupWord(a)}</h3>
+                  <span className="cap">{plural(g.rows.length + g.plain.length, "model", "models")}</span>
+                </header>
+                <ul className="list library" aria-label={`${groupWord(a)} models`}>
+                  {g.rows.map((r) => (
+                    <RecipeRow key={r.key} L={L} row={r} groups={groups.data ?? []} offeringOf={offeringOf} open={open === r.key} reveal={reveal}
+                      onToggle={() => setOpen(open === r.key ? undefined : r.key)} />
+                  ))}
+                  {g.plain.map(({ ep, m }) => <PlainRow ctx={ctx} key={m.id} ep={ep} m={m} open={open === m.id} onToggle={() => setOpen(open === m.id ? undefined : m.id)} />)}
+                </ul>
+                {a !== CLOUD && a !== OTHER && <ArchParts arch={a} libs={all} />}
+                {a === CLOUD && more.length > 0 && <MoreCloud ctx={ctx} models={more} />}
+              </section>
             ))}
-            {shownPlain.map(({ ep, m }) => <PlainRow ctx={ctx} key={m.id} ep={ep} m={m} open={open === m.id} onToggle={() => setOpen(open === m.id ? undefined : m.id)} />)}
-            {!shownRows.length && !shownPlain.length && <li className="empty">{rows.length + plain.length ? "No image models match." : "No image models yet."}</li>}
-          </ul>
+            {!archGroups.length && <p className="empty">{rows.length + plain.length ? "No image models match." : "No image models yet."}</p>}
+          </div>
         ) : (
           <Parts libs={all} type={t} arch={arch} needle={needle} reviewHref={href({ page: "models", userId, tab: "images", add: "review" })} reveal={reveal} />
         )}
@@ -241,7 +288,7 @@ function RecipeRow({ L, row, groups, offeringOf, open, reveal, onToggle }: {
   const tiers = new Set(row.copies.filter((c) => c.recipe.does.includes("create")).map((c) => c.recipe.useFor ?? "both"));
   const facts = [
     archWord(row.copies[0]!.recipe.arch),
-    ...new Set(row.copies.flatMap((c) => c.recipe.does)),
+    ...new Set(row.copies.flatMap((c) => c.recipe.does.map((d) => (d === "create" ? "generate" : d)))),
     tiers.size === 0 ? null : tiers.size === 1 && !tiers.has("both") ? [...tiers][0] : "fast and quality",
     group ? <>group of <span className="num">{group.members.length}</span></> : plural(row.copies.length, "copy", "copies"),
     base ? `built on ${base}` : null,
@@ -268,28 +315,72 @@ function RecipeRow({ L, row, groups, offeringOf, open, reveal, onToggle }: {
   );
 }
 
-/** An image model on a plain endpoint: nothing to manage, so one line. */
+const PLAN_NOTE = "Runs on the ChatGPT plan's own image tool, on its limits. Masked edits go to the next model in the list.";
+
+/** An image model on a plain endpoint or a plan: no parts, so its switches. */
 function PlainRow({ ctx, ep, m, open, onToggle }: { ctx: MCtx; ep: Endpoint; m: OfferingInfo; open: boolean; onToggle: () => void }) {
+  const plan = ep.api === "chatgpt";
   return (
     <li className={`lrow img-row${open ? " open" : ""}`} data-entry={m.id}>
       <button type="button" className="lrow-main" aria-expanded={open} onClick={onToggle}>
-        <span className="name"><ModelLabel model={modelName(m)} endpoint={ep.name} /></span>
-        <span className="meta">{[ep.kind, m.image ? "create" : "", m.edit ? "edit" : ""].filter(Boolean).join(" · ")}</span>
+        <span className="name">
+          <ModelLabel model={modelName(m)} endpoint={ep.name} />
+          <span className={`kind ${ep.kind}`} title={plan ? PLAN_NOTE : undefined}>{ep.kind}</span>
+          {plan && <span className="sr-only"> {PLAN_NOTE}</span>}
+        </span>
+        <span className="meta">{[plan ? "ChatGPT plan" : "", m.image ? "generate" : "", m.edit ? (plan ? "edit without masks" : "edit") : "", m.upscale ? "upscale" : ""].filter(Boolean).join(" · ")}</span>
         <Icon name="right" className="lchev" />
       </button>
       {open && (
         <div className="ldetail">
-          <p className="meta">Runs on {ep.name}.</p>
-          {ep.kind === "cloud" && <CloudImageControls ctx={ctx} ep={ep} m={m} />}
+          {ep.kind === "cloud" ? <CloudImageControls ctx={ctx} ep={ep} m={m} /> : <p className="meta">Runs on {ep.name}.</p>}
         </div>
       )}
     </li>
   );
 }
 
+/** Models on keyed endpoints with an image provider that don't make or edit images yet: what Generate and Edit can switch on. */
+const moreCloud = (p?: ModelsPage) => (p?.endpoints ?? []).filter((ep) => ep.kind === "cloud" && ep.api === "openai-compatible" && ep.hasApiKey)
+  .flatMap((ep) => ep.models.filter((m) => m.status !== "gone" && !m.image && !m.edit && !m.upscale && !m.embedding && !m.transcribe && !m.speak).map((m) => ({ ep, m })));
+
+/** The Cloud group's last line: the keyed endpoints' other models, collapsed, each with Generate and Edit. */
+function MoreCloud({ ctx, models }: { ctx: MCtx; models: { ep: Endpoint; m: OfferingInfo }[] }) {
+  return (
+    <details className="arch-parts">
+      <summary>Other cloud models · <span className="num">{models.length}</span></summary>
+      <ul className="arch-partlist more-cloud">
+        {models.map(({ ep, m }) => (
+          <li key={m.id} data-entry={m.id}>
+            <ModelLabel model={modelName(m)} endpoint={ep.name} />
+            <CloudImageControls ctx={ctx} ep={ep} m={m} />
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+/** The parts that fit an architecture, on every host, collapsed under its models: one line per file. */
+function ArchParts({ arch, libs }: { arch: string; libs: HostLibrary[] }) {
+  const seen = new Map<string, HostPart>();
+  for (const l of libs) for (const x of l.parts) if (x.arch === arch && x.role !== "checkpoint" && x.role !== "diffusion") seen.set(`${x.role} ${fileName(x.file)}`, x);
+  const list = [...seen.values()].sort((a, b) => ROLE_WORD[a.role].localeCompare(ROLE_WORD[b.role]) || fileName(a.file).localeCompare(fileName(b.file)));
+  if (!list.length) return null;
+  return (
+    <details className="arch-parts">
+      <summary>Parts for {archWord(arch)} · <span className="num">{list.length}</span></summary>
+      <ul className="arch-partlist">
+        {list.map((x) => <li key={`${x.role} ${x.file}`}><span className="role">{ROLE_WORD[x.role]}</span><code className="raw">{fileName(x.file)}</code></li>)}
+      </ul>
+    </details>
+  );
+}
+
 /**
- * A recipe on one host: its template and defaults, what can be done with it (Add a part and Delete, or for a proposal
- * Use this recipe or Download the missing parts, and Ignore), and a row per part. `details` leaves the actions out.
+ * A recipe on one host: its template and defaults, a row per part with Change or Remove at its right, then Add part,
+ * Use for and Delete model…; a proposal has Use this recipe or Download the missing parts, and Ignore, instead.
+ * `details` leaves the actions out.
  */
 function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean }) {
   const r = c.recipe;
@@ -310,15 +401,23 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
       others.length ? `also used by ${others.join(", ")}` : "", instead ? `used instead of the checkpoint's own ${roleWord(instead)}` : "",
     ].filter(Boolean).join(" · ");
   };
-  const actions = !editable ? null : proposed ? <>
+  const actions = !editable || !proposed ? null : <>
     {miss.count
       ? <button type="button" className="sm primary" disabled={L.busy || !miss.known} onClick={() => L.act(c, { do: "download-parts" })}><span>Download the missing parts (<Size text={size(miss.bytes)} />)</span></button>
       : <button type="button" className="sm primary" disabled={L.busy} onClick={() => L.act(c, { do: "confirm" })}>Use this recipe</button>}
     <button type="button" className="sm" disabled={L.busy} onClick={() => L.act(c, { do: "ignore" })}>Ignore</button>
-  </> : <>
-    <button type="button" className="sm" disabled={L.busy} onClick={() => L.onAddPart?.(c)}>Add a part</button>
-    {mainPart?.downloaded && <button type="button" className="sm danger" disabled={L.busy} onClick={() => L.onDelete?.(c)}>Delete</button>}
   </>;
+  const useFor = !details && r.does.includes("create") && (
+    <div className="field">
+      <span>Use for</span>
+      <div className="seg" role="group" aria-label="Use for">
+        {(["fast", "quality", "both"] as const).map((t) => <button key={t} type="button" aria-pressed={(r.useFor ?? "both") === t}
+          disabled={!editable || L.busy} onClick={() => { if (t !== (r.useFor ?? "both")) change({ op: "useFor", useFor: t }); }}>
+          {t === "fast" ? "Fast" : t === "quality" ? "Quality" : "Both"}
+        </button>)}
+      </div>
+    </div>
+  );
   const where = mainPart?.downloaded ? `${her()}'s downloads` : "the shared folder";
   return (
     <section className="copyblock" aria-label={`${r.name} on ${c.host}`} data-recipe={r.id}>
@@ -332,18 +431,7 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
           ? `${her()} found the ${roleWord(main?.role ?? "diffusion")} in ${where}. It needs these parts before it can run.`
           : `${her()} found these files in ${where} and matched them. Nothing runs until you confirm.`}</p>
       )}
-      {!details && r.does.includes("create") && (
-        <div className="field">
-          <span>Use for</span>
-          <div className="seg" role="group" aria-label="Use for">
-            {(["fast", "quality", "both"] as const).map((t) => <button key={t} type="button" aria-pressed={(r.useFor ?? "both") === t}
-              disabled={!editable || L.busy} onClick={() => { if (t !== (r.useFor ?? "both")) change({ op: "useFor", useFor: t }); }}>
-              {t === "fast" ? "Fast" : t === "quality" ? "Quality" : "Both"}
-            </button>)}
-          </div>
-        </div>
-      )}
-      <ul className="partrows">
+      <ul className="partrows" aria-label={`Parts of ${r.name}`}>
         {r.parts.map((x, i) => x.file ? (
           <PartRow key={i} role={x.role} small={x.slot ? slotWord(x.slot) : undefined} file={x.file} cap={facts(x.file, x.added ? x.role : undefined)} bytes={partOf(x.file)?.size}>
             {editable && (x.role === "text_encoder" || x.role === "vae") && (changing === i ? (
@@ -361,10 +449,10 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
                 <option value={DOWNLOAD_ANOTHER}>Download another…</option>
               </select>
             ) : (
-              <button type="button" className="sm" aria-label={`Change the ${roleWord(x.role)}`} disabled={L.busy} onClick={() => setChanging(i)}>Change</button>
+              <button type="button" className="link" aria-label={`Change the ${roleWord(x.role)}`} disabled={L.busy} onClick={() => setChanging(i)}>Change</button>
             ))}
             {editable && x.added && (
-              <button type="button" className="sm" aria-label={`Remove the ${roleWord(x.role)}`} disabled={L.busy} onClick={() => change({ op: "removePart", role: x.role, slot: x.slot })}>Remove</button>
+              <button type="button" className="link" aria-label={`Remove the ${roleWord(x.role)}`} disabled={L.busy} onClick={() => change({ op: "removePart", role: x.role, slot: x.slot })}>Remove</button>
             )}
           </PartRow>
         ) : (
@@ -372,10 +460,17 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
         ))}
         {r.loras.map((l) => (
           <PartRow key={l.file} role="lora" small={`strength ${l.strength}`} file={l.file} cap={facts(l.file)} bytes={partOf(l.file)?.size}>
-            {editable && <button type="button" className="sm" aria-label={`Remove the LoRA ${fileName(l.file)}`} disabled={L.busy} onClick={() => change({ op: "removeLora", file: l.file })}>Remove</button>}
+            {editable && <button type="button" className="link" aria-label={`Remove the LoRA ${fileName(l.file)}`} disabled={L.busy} onClick={() => change({ op: "removeLora", file: l.file })}>Remove</button>}
           </PartRow>
         ))}
       </ul>
+      {!details && (editable && !proposed || useFor) && (
+        <div className="copyfoot">
+          {editable && !proposed && <button type="button" className="sm" disabled={L.busy} onClick={() => L.onAddPart?.(c)}>Add part</button>}
+          {useFor}
+          {editable && !proposed && mainPart?.downloaded && <button type="button" className="link danger" disabled={L.busy} onClick={() => L.onDelete?.(c)}>Delete model…</button>}
+        </div>
+      )}
     </section>
   );
 }
@@ -424,7 +519,10 @@ function Parts({ libs, type, arch, needle, reviewHref, reveal }: {
   );
 }
 
-/** Add a part: a LoRA (with its strength, into a copy by default), or a VAE or text encoder for a checkpoint. */
+/**
+ * Add part, a side drawer: a LoRA (with its strength, into a new model by default), or a VAE or text encoder for a
+ * checkpoint, from the files on its host that fit its architecture.
+ */
 function AddPart({ L, c, onAdd, onCancel }: {
   L: Lib; c: RecipeCopy; onAdd: (a: { role: Role; file: string; slot: string | null; strength: number; asNew: boolean }) => void; onCancel: () => void;
 }) {
@@ -432,42 +530,65 @@ function AddPart({ L, c, onAdd, onCancel }: {
   const roles = addableRoles(r);
   const [role, setRole] = useState<Role>(roles[0]!);
   const [file, setFile] = useState<string>();
-  const [strength, setStrength] = useState(1);
+  const [strength, setStrength] = useState("1");
   const [asNew, setAsNew] = useState(true);
+  const ref = useRef<HTMLElement>(null);
+  // Focus moves in once, when the drawer opens; Escape closes it.
+  const cancel = useRef(onCancel);
+  cancel.current = onCancel;
+  useEffect(() => {
+    ref.current?.focus();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && cancel.current();
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, []);
   const used = new Set([...r.parts.map((x) => x.file), ...r.loras.map((l) => l.file)]);
   const files = (L.libOf(c.hostId)?.parts ?? []).filter((x) => x.role === role && x.arch === r.arch && !used.has(x.file));
   const chosen = files.find((x) => x.file === file) ?? files[0];
-  return (
-    <Dialog labelledBy="add-part-title" className="add-part" onCancel={onCancel}
-      onSubmit={() => chosen && onAdd({ role, file: chosen.file, slot: chosen.slot, strength, asNew })}>
-      <h2 id="add-part-title">Add a part to {r.name}</h2>
-      <div className="seg" role="group" aria-label="Part">
-        {roles.map((x) => <button key={x} type="button" aria-pressed={role === x} onClick={() => setRole(x)}>{ROLE_WORD[x]}</button>)}
+  const lora = role === "lora";
+  // The field clamps to 0 to 1.5 when it is left.
+  const clamp = (t: string) => { const n = Number(t); return Number.isFinite(n) && t.trim() ? Math.min(1.5, Math.max(0, n)) : 1; };
+  const usedBy = (x: HostPart) => {
+    const names = x.usedBy.map((id) => nameOf(L, c.hostId, id)).filter(Boolean);
+    return names.length ? `Used by ${names.join(", ")}` : "Not used by any model";
+  };
+  return (<>
+    <aside ref={ref} tabIndex={-1} className="drawer add-part" aria-labelledby="add-part-title">
+      <div className="drawer-head">
+        <h2 id="add-part-title">Add part to {r.name}</h2>
+        <button type="button" onClick={onCancel}>Close</button>
       </div>
-      {files.length ? (
-        <div className="choices" role="radiogroup" aria-label="File">
-          {files.map((x) => (
-            <label key={x.file} className="choice">
-              <input type="radio" name="part" checked={chosen?.file === x.file} onChange={() => setFile(x.file)} />
-              <code className="raw">{x.file}</code>
-              <span className="muted"><Size text={size(x.size)} /></span>
-            </label>
-          ))}
+      <form className="drawer-body" onSubmit={(e) => { e.preventDefault(); if (chosen) onAdd({ role, file: chosen.file, slot: chosen.slot, strength: clamp(strength), asNew: lora && asNew }); }}>
+        <div className="seg" role="group" aria-label="Part">
+          {roles.map((x) => <button key={x} type="button" aria-pressed={role === x} onClick={() => { setRole(x); setFile(undefined); }}>{ROLE_WORD[x]}</button>)}
         </div>
-      ) : <p className="muted">No {roleWord(role)} for {archWord(r.arch)} on {c.host} yet.</p>}
-      <p className="meta"><a href={href({ page: "models", userId: L.ctx.user.id, tab: "images", add: "image" })}>Download another…</a></p>
-      {role === "lora" && files.length > 0 && <>
-        <label className="field strength"><span>Strength <span className="num">{strength.toFixed(2)}</span></span>
-          <input type="range" min={0} max={1.5} step={0.05} value={strength} onChange={(e) => setStrength(Number(e.target.value))} />
-        </label>
-        <label className="check"><input type="checkbox" checked={asNew} onChange={(e) => setAsNew(e.target.checked)} /> Save as a new model, keeping {r.name} as it is</label>
-      </>}
-      <div className="dlg-actions">
-        <button type="button" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="primary" disabled={L.busy || !chosen}>Add</button>
-      </div>
-    </Dialog>
-  );
+        {files.length ? (
+          <div className="choices" role="radiogroup" aria-label={`${ROLE_WORD[role]} files for ${r.name}`}>
+            {files.map((x) => (
+              <label key={x.file} className="choice">
+                <input type="radio" name="part" checked={chosen?.file === x.file} onChange={() => setFile(x.file)} />
+                <span className="choice-file"><code className="raw">{fileName(x.file)}</code><span className="cap">{usedBy(x)}</span></span>
+                <span className="muted"><Size text={size(x.size)} /></span>
+              </label>
+            ))}
+          </div>
+        ) : <p className="muted">No {roleWord(role)} for {archWord(r.arch)} on {c.host} yet.</p>}
+        <p><a className="link" href={href({ page: "models", userId: L.ctx.user.id, tab: "images", add: "image" })}>Download another…</a></p>
+        {lora ? files.length > 0 && <>
+          <label className="field strength"><span>Strength</span>
+            <input type="number" min={0} max={1.5} step={0.05} value={strength} onChange={(e) => setStrength(e.target.value)} onBlur={() => setStrength(String(clamp(strength)))} />
+            <span className="muted">of <span className="num">1.5</span></span>
+          </label>
+          <label className="check"><input type="checkbox" checked={asNew} onChange={(e) => setAsNew(e.target.checked)} /> Save as a new model, keeping {r.name} as it is</label>
+        </> : <p className="meta">Replaces the {roleWord(role)} this model uses now.</p>}
+        <div className="drawer-foot row">
+          <button type="button" onClick={onCancel}>Cancel</button>
+          <button type="submit" className="primary" disabled={L.busy || !chosen}>{lora ? "Add" : "Replace"}</button>
+        </div>
+      </form>
+    </aside>
+    <div className="scrim drawer-scrim" aria-hidden="true" onClick={onCancel} />
+  </>);
 }
 
 /** Delete a recipe: what goes and what it frees, what stays and why, and which lists skip it from now on. */

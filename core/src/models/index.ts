@@ -1,5 +1,5 @@
-import { CLOUD_IMAGE_PROVIDERS, imageAt, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
-export { CLOUD_IMAGE_PROVIDERS, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
+import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, planImageDriver, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
+export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, planImageDriver, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import type { Db } from "../db.ts";
@@ -170,7 +170,7 @@ export interface Offering extends Capabilities {
   /** The host downloaded it itself, so it can be deleted. */
   downloaded?: boolean;
   size?: number;
-  /** An image model on a host: a confirmed recipe's name. */
+  /** An image model's name: a host's confirmed recipe, or a ChatGPT plan's image tool. */
   recipe?: string;
   /** "Not this model": kept out of the entry its name would put it in. */
   separate?: boolean;
@@ -700,8 +700,7 @@ export class Models {
    * would skip and the user couldn't remove. Groups stay: other copies may fit.
    */
   private dropFromLists(userId: string, offeringId: string, tasks: Task[]): void {
-    const prune = (raw: string): string | undefined => {
-      const table = JSON.parse(raw) as Profiles;
+    this.editLists(userId, (table) => {
       let changed = false;
       for (const task of tasks) {
         const e = table[task];
@@ -710,7 +709,15 @@ export class Models {
         if (kept.length) table[task] = kept; else delete table[task];
         changed = true;
       }
-      return changed ? JSON.stringify(table) : undefined;
+      return changed;
+    });
+  }
+
+  /** Changes this user's presets and columns in one transaction; `edit` changes a table in place and says whether it did. */
+  private editLists(userId: string, edit: (table: Profiles) => boolean): void {
+    const prune = (raw: string): string | undefined => {
+      const table = JSON.parse(raw) as Profiles;
+      return edit(table) ? JSON.stringify(table) : undefined;
     };
     this.withUser(userId, (db) => {
       db.transaction(() => {
@@ -740,25 +747,47 @@ export class Models {
     try {
       if (ep.signedOut) throw new Error(`${ep.name} is signed out; sign in again`);
       found = ep.api === "host" ? await this.hostModels(ep) : isPlan(ep.api) ? this.planCatalog(ep.api) : await discoverModels(ep.baseUrl, ep.apiKey);
+      // A ChatGPT plan's image tool is one model of its own, not a switch on each chat model.
+      if (ep.api === "chatgpt") found = [...found, PLAN_IMAGE];
     } catch (err) {
       this.seen(ep, false, actor.id);
       throw err;
     }
     this.seen(ep, true, actor.id);
     const now = new Date().toISOString();
+    let planImage: string | undefined;
     this.write(actor, endpointId, (db) => {
       db.transaction(() => {
         const have = new Map((db.prepare("SELECT id, model FROM offerings WHERE endpoint = ?").all(endpointId) as { id: string; model: string }[]).map((r) => [r.model, r.id]));
         for (const m of found) {
           const id = have.get(m.modelId);
           if (id) db.prepare("UPDATE offerings SET found = ?, missing_since = NULL WHERE id = ?").run(JSON.stringify(factsOf(m)), id);
-          else db.prepare("INSERT INTO offerings (id, endpoint, model, found, manual, created_at) VALUES (?, ?, ?, ?, 0, ?)").run(randomUUID(), endpointId, m.modelId, JSON.stringify(factsOf(m)), now);
+          else {
+            const added = randomUUID();
+            db.prepare("INSERT INTO offerings (id, endpoint, model, found, manual, created_at) VALUES (?, ?, ?, ?, 0, ?)").run(added, endpointId, m.modelId, JSON.stringify(factsOf(m)), now);
+            if (m.modelId === PLAN_IMAGE_MODEL) planImage = added;
+          }
         }
         const listed = new Set(found.map((m) => m.modelId));
         const missing = db.prepare("UPDATE offerings SET missing_since = ? WHERE id = ? AND missing_since IS NULL AND manual = 0");
         for (const [model, id] of have) if (!listed.has(model)) missing.run(now, id);
       })();
     });
+    // Image lists that named one of the plan's chat models move to its image model, once.
+    if (planImage) {
+      const to = planImage, before = new Set(this.offerings(actor.id, endpointId).filter((o) => o.id !== to).map((o) => o.id));
+      this.editLists(actor.id, (table) => {
+        let changed = false;
+        for (const task of ["image.create", "image.edit"] as const) {
+          const e = table[task];
+          if (!isList(e) || !e.some((r) => "offeringId" in r && before.has(r.offeringId))) continue;
+          const seen = new Set<string>();
+          table[task] = e.map((r) => ("offeringId" in r && before.has(r.offeringId) ? { offeringId: to } : r)).filter((r) => !("offeringId" in r) || (!seen.has(r.offeringId) && !!seen.add(r.offeringId)));
+          changed = true;
+        }
+        return changed;
+      });
+    }
     return this.offerings(actor.id, endpointId);
   }
 
@@ -2223,8 +2252,11 @@ export class Models {
         ? this.planImageToken ? await this.planImageToken(ctx.userId, ep.id, opts.signal) : this.planCredential(ctx.userId, ep.id)?.access
         : ep.apiKey;
       opts.signal?.throwIfAborted();
+      // ChatGPT Images goes through the plan's newest GPT model, whose image tool picks the image model.
+      const modelId = r.offering.modelId === PLAN_IMAGE_MODEL ? planImageDriver(this.offerings(ctx.userId, ep.id).filter((o) => o.status === "listed").map((o) => o.modelId)) : r.offering.modelId;
+      if (!modelId) throw new HostRefused("unavailable", `${ep.name} lists no model to make images with.`);
       const images = await imageAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: ep.api === "host" ? hostOrigin(ep.addresses![0]!) : ep.baseUrl,
-        host: ep.api === "host", api: ep.api, modelId: r.offering.modelId, apiKey }, request, opts.signal);
+        host: ep.api === "host", api: ep.api, modelId, apiKey }, request, opts.signal);
       return { images, resolution: r };
     });
   }
@@ -2561,6 +2593,11 @@ export class Models {
     });
     const own = this.withUser(userId, (db) => read(db, false));
     const shared = read(this.self(), true);
+    // A plan's chat models don't make images, whatever an older switch set: its image model does.
+    const plans = new Set([...own.endpoints, ...shared.endpoints].filter((e) => isPlan(e.api)).map((e) => e.id));
+    for (const o of [...own.offerings, ...shared.offerings]) {
+      if (plans.has(o.endpointId) && o.modelId !== PLAN_IMAGE_MODEL) { delete o.image; delete o.edit; delete o.upscale; delete o.useFor; }
+    }
     return {
       endpoints: new Map([...own.endpoints, ...shared.endpoints].map((e) => [e.id, e])),
       offerings: new Map([...own.offerings, ...shared.offerings].map((o) => [o.id, o])),
@@ -2783,7 +2820,7 @@ function checkCredential(c: PlanCredential): PlanCredential {
 const DROPPABLE: [Task, (o: Offering) => boolean][] = [
   ["image.create", (o) => !!o.image], ["image.edit", (o) => !!o.edit], ["image.upscale", (o) => !!o.upscale], ["speech.transcribe", (o) => !!o.transcribe],
 ];
-/** What to call a model: a host recipe by its name, anything else by its model ID. */
+/** What to call a model: an image model (a host recipe, or a plan's image tool) by its name, anything else by its model ID. */
 export const modelName = (o: { modelId: string; recipe?: string }) => o.recipe ?? o.modelId;
 const labelOf = (ep: Endpoint, o: Offering) => `${ep.shared ? SHARED : ""}${ep.name}/${modelName(o)}`;
 

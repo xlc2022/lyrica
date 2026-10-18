@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CloudModelForbidden } from "../src/index.ts";
+import { CloudModelForbidden, PLAN_IMAGE_MODEL, planImageDriver } from "../src/index.ts";
 import { cleanPng } from "../src/models/images.ts";
 
 import { fakeImages as setup } from "./fake-images.ts";
@@ -7,6 +7,18 @@ import { fakeImages as setup } from "./fake-images.ts";
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS1sAAAAASUVORK5CYII=", "base64");
 const input = { bytes: png, type: "image/png" as const };
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+const PLAN = { name: "chatgpt", plan: "chatgpt" as const, credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } };
+const PLAN_MODELS = [{ modelId: "gpt-5.4-mini", vision: true }, { modelId: "gpt-6.1-sol", vision: true }, { modelId: "gpt-5.5", vision: true }];
+const imagesOf = (s: Awaited<ReturnType<typeof setup>>, endpointId: string) => ({ offeringId: s.models.offerings(s.ada.id, endpointId).find((o) => o.modelId === PLAN_IMAGE_MODEL)!.id });
+
+/** A signed-in ChatGPT plan, discovered: its chat models and its one image model, ChatGPT Images. */
+async function planImages(s: Awaited<ReturnType<typeof setup>>) {
+  s.models.setPlanCatalog(() => PLAN_MODELS);
+  const ep = s.models.addPlan(s.ada, PLAN);
+  await s.models.discover(s.ada, ep.id);
+  return { ep, ref: imagesOf(s, ep.id) };
+}
 
 describe("image calls through the router (principles 1 and 2)", () => {
   it("creates, edits and upscales confirmed host recipes, keeping defaults and never naming parts", async () => {
@@ -90,8 +102,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
   });
   it("uses the plan token and Responses image tool for create and maskless edits, never in restricted threads", async () => {
     const s = await setup();
-    const ep = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
-    const ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "plan-model", image: true, edit: true }).id };
+    const { ref } = await planImages(s);
     for (const task of ["image.create", "image.edit"] as const) s.models.setColumnTask(s.ada.id, "general", task, [ref, s.ref]);
     const calls: { url: string; body: any }[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, opts: RequestInit) => {
@@ -103,7 +114,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
     for (const tier of ["fast", "quality"] as const) {
       const out = await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier, count: 2, size: { width: 1024, height: 1024 }, references: [input] });
       expect(out.images).toHaveLength(2);
-      expect(calls.at(-1)!.body).toMatchObject({ model: "plan-model", store: false, tools: [{ type: "image_generation", quality: tier === "fast" ? "low" : "high", size: "1024x1024", output_format: "png" }] });
+      expect(calls.at(-1)!.body).toMatchObject({ model: "gpt-6.1-sol", store: false, tools: [{ type: "image_generation", quality: tier === "fast" ? "low" : "high", size: "1024x1024", output_format: "png" }] });
       expect(calls.at(-1)!.body.input[0].content[1]).toEqual({ type: "input_image", image_url: `data:image/png;base64,${png.toString("base64")}` });
     }
     await s.models.image(s.ctx(), { action: "edit", prompt: "Add flowers", image: input });
@@ -122,8 +133,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
   });
   it("drops a model from image lists when its image switch goes off, keeping the rest of the list", async () => {
     const s = await setup();
-    const ep = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
-    const ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "plan-model", image: true, edit: true }).id };
+    const { ref } = await planImages(s);
     s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.ref]);
     s.models.setColumnTask(s.ada.id, "general", "image.edit", [ref]);
     const preset = s.models.addPreset(s.ada.id, { name: "Plan images", scope: "general" }, "general");
@@ -133,10 +143,40 @@ describe("image calls through the router (principles 1 and 2)", () => {
     s.models.setCapabilities(s.ada, ref.offeringId, { edit: false });
     expect(s.models.preset(s.ada.id, preset.id)!.entries["image.edit"]).toBeUndefined();
   });
+  it("gives a ChatGPT plan one image model, ChatGPT Images, in place of switches on its chat models", async () => {
+    const s = await setup();
+    s.models.setPlanCatalog(() => PLAN_MODELS);
+    const ep = s.models.addPlan(s.ada, PLAN);
+    // An older release put the image switch on a chat model; it no longer makes images.
+    const chat = s.models.addModel(s.ada, ep.id, { modelId: "gpt-6.1-sol", image: true, edit: true });
+    expect(s.models.offering(s.ada.id, chat.id)!.offering).not.toHaveProperty("image");
+    await s.models.discover(s.ada, ep.id);
+    const images = s.models.offering(s.ada.id, imagesOf(s, ep.id).offeringId)!.offering;
+    expect(images).toMatchObject({ recipe: "ChatGPT Images", image: true, edit: true });
+    expect(s.models.label(s.ada.id, images.id)).toBe("chatgpt/ChatGPT Images");
+    expect(planImageDriver(["gpt-5.4-mini", "gpt-6-sol", "gpt-6.1-sol", "gpt-6.1-sol-pro", "gpt-realtime-2.1", "gpt-5.3-codex"])).toBe("gpt-6.1-sol");
+  });
+  it("moves image lists that named a plan's chat model to ChatGPT Images when it is first found", async () => {
+    const s = await setup();
+    s.models.setPlanCatalog(() => PLAN_MODELS);
+    const ep = s.models.addPlan(s.ada, PLAN);
+    const chat = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "gpt-6.1-sol" }).id };
+    const preset = s.models.addPreset(s.ada.id, { name: "Plan images", scope: "general" }, "general");
+    // Lists an older release saved while the chat model's switch was on.
+    (s.models as unknown as { editLists: (u: string, f: (t: Record<string, unknown>) => boolean) => void })
+      .editLists(s.ada.id, (t) => { t["image.create"] = [chat, s.ref, chat]; t["image.edit"] = [chat]; return true; });
+    await s.models.discover(s.ada, ep.id);
+    const images = imagesOf(s, ep.id);
+    expect(s.models.preset(s.ada.id, preset.id)!.entries["image.create"]).toEqual([images, s.ref]);
+    expect(s.models.preset(s.ada.id, preset.id)!.entries["image.edit"]).toEqual([images]);
+    // Only the first time: a later discovery leaves the lists as the user set them.
+    s.models.setColumnTask(s.ada.id, "general", "image.edit", [s.ref]);
+    await s.models.discover(s.ada, ep.id);
+    expect(s.models.column(s.ada.id, "general").entries["image.edit"]).toEqual([s.ref]);
+  });
   it("streams plan image calls and reads the image from the finished output item", async () => {
     const s = await setup();
-    const ep = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
-    const ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "plan-model", image: true }).id };
+    const { ref } = await planImages(s);
     s.models.setColumnTask(s.ada.id, "general", "image.create", [ref]);
     let sent: any;
     vi.stubGlobal("fetch", vi.fn(async (_url: string, opts: RequestInit) => {
@@ -150,15 +190,15 @@ describe("image calls through the router (principles 1 and 2)", () => {
     }));
     const out = await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "quality", size: { width: 896, height: 1184 } });
     expect(out.images).toHaveLength(1);
-    expect(sent.body).toMatchObject({ stream: true, tools: [{ size: "1024x1536" }] });
+    // The plan's newest GPT carries the request; its image tool picks the image model.
+    expect(sent.body).toMatchObject({ model: "gpt-6.1-sol", stream: true, tools: [{ size: "1024x1536" }] });
     expect(sent.headers).toMatchObject({ accept: "text/event-stream" });
   });
   it.each(["key", "plan"] as const)("stops on a %s content refusal without echoing provider text or trying the fallback", async kind => {
     const s = await setup();
     let ref = s.ref;
     if (kind === "plan") {
-      const ep = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
-      ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "plan-model", image: true }).id };
+      ref = (await planImages(s)).ref;
     }
     s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.workstation.ref]);
     const preset = s.models.addPreset(s.ada.id, { name: "Image fallbacks", scope: "general" }, "general");
@@ -172,8 +212,7 @@ describe("image calls through the router (principles 1 and 2)", () => {
   });
   it.each([429, 503])("falls back from a plan's HTTP %s to the keyed offering", async status => {
     const s = await setup();
-    const ep = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
-    const ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "plan-model", image: true }).id };
+    const { ref } = await planImages(s);
     s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.ref]);
     vi.stubGlobal("fetch", vi.fn(async (url: string) => new URL(url).pathname.endsWith("/responses")
       ? Response.json({ error: { message: "SECRET provider prompt" } }, { status })
@@ -181,14 +220,11 @@ describe("image calls through the router (principles 1 and 2)", () => {
     expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "fast" })).resolution.ref).toEqual(s.ref);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
-  it("skips Grok image offerings without sending to the unsupported plan", async () => {
+  it("never makes a Grok plan's model an image model, so no image call reaches the unsupported plan", async () => {
     const s = await setup();
     const ep = s.models.addPlan(s.ada, { name: "grok", plan: "grok", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
     const ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "grok-model", image: true }).id };
-    s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.ref]);
-    expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "fast" })).resolution.ref).toEqual(s.ref);
-    expect(s.heard).toHaveLength(1);
-    expect(s.heard[0]!.path).toBe("/v1/images/generations");
+    expect(() => s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.ref])).toThrow("grok/grok-model can't do image.create");
   });
   it("removes PNG text and EXIF metadata from provider output", () => {
     const chunk = (tag: string) => { const b = Buffer.alloc(18); b.writeUInt32BE(6); b.write(tag, 4); b.write("secret", 8); return b; };

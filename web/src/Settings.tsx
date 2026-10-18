@@ -22,12 +22,15 @@ export const TASK_LABELS: Record<ThreadTask, string> = {
   "subagent.strong": "Strong subagents",
   title: "Titles",
   watching: "Watching threads",
+  "image.create": "Images",
+  "image.edit": "Image edits",
+  "image.upscale": "Image upscaling",
   "speech.transcribe": "Dictation",
   "speech.speak": "Read aloud",
 };
-/** Speech tasks offer only models that transcribe or speak. */
-/** Whether a model can do a thread task: the speech tasks need their capability; every other one is text. */
-const fits = (task: ThreadTask, m: EndpointInfo["models"][number]) => (task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : isChatModel(m));
+/** Whether a model can do a thread task: the image and speech tasks need their capability; every other one is text. */
+const fits = (task: ThreadTask, m: EndpointInfo["models"][number]) => (task === "image.create" ? !!m.image : task === "image.edit" ? !!m.edit : task === "image.upscale" ? !!m.upscale
+  : task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : isChatModel(m));
 
 
 const refKey = (m?: { offeringId: string }) => m?.offeringId ?? "";
@@ -249,7 +252,7 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
   const first = value.list?.[0];
   const current = value.source === "thread" ? refKey(value.model ?? (first && "offeringId" in first ? first : undefined)) : "";
   const fromPreset = (value.source === "preset" || value.source === "column") && value.model
-    ? `${value.kind ? `${value.kind} · ` : ""}${value.modelId ? `${value.modelId} · ${value.endpointName}` : named(value)}` : "nothing set";
+    ? `${value.kind ? `${value.kind} · ` : ""}${value.modelId ? `${value.name ?? value.modelId} · ${value.endpointName}` : named(value)}` : "nothing set";
   // Picking a cloud Dictation model is the consent to send this thread's voice to the cloud, so it asks first.
   const [cloudPick, setCloudPick] = useState<{ id: string; name: string }>();
   return (<>

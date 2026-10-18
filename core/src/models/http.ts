@@ -37,7 +37,7 @@ export interface DiscoveredModel {
   /** The host downloaded it itself (only those can be deleted). */
   downloaded?: boolean;
   size?: number;
-  /** An image model: a confirmed recipe, by its name. */
+  /** An image model, by its name: a confirmed recipe, or a ChatGPT plan's image tool. */
   recipe?: string;
   /** A host recipe's create tiers; absent means both. */
   useFor?: "fast" | "quality" | "both";

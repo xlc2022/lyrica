@@ -244,7 +244,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the box), and a link to that page in the memory browser. Files and
   images come with the Files panel.
 - **Thread settings drawer:** a model per task (each option says cloud or local first; **Watching threads**, under
-  Titles, only in a project chat), local-only, the internet and
+  Titles, only in a project chat; then **Images**, **Image edits** and
+  **Image upscaling**, offering the models that do each, recipes by name), local-only, the internet and
   Local services (localhost) switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
   read-write), **Machines** (the sandbox, always, then each granted machine
@@ -458,21 +459,30 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Image models (`src/ImageModels.tsx`, its pure parts in `src/images.ts`)
   reads each model host's library (`GET …/hosts/:id/images`: recipes, and
   parts by role) and the plain endpoints' image models from the Models page.
-  Cloud model blocks and Hosts and endpoints' cloud model lists share
-  `CloudImageControls.tsx`: Image generation and Image editing switches
-  with tooltips, and Use for (Fast | Quality | Both) while generation is on.
+  Cloud model rows and the Cloud group's collapsed **Other cloud models**
+  (a keyed endpoint's other models) share `CloudImageControls.tsx`:
+  **Generate** and **Edit** checkboxes, and Use for (Fast | Quality | Both)
+  while Generate is on. Hosts and endpoints has no image switches; its
+  Image pill links to Image models.
   Each change PATCHes the offering's capabilities and reloads the Models
   page; controls are disabled for a shared endpoint's non-administrator.
   These use ux §3's controls, §4's names and §6's model blocks.
   The facts line counts models, parts, hosts and the groups holding them,
   then links "<n> to review" when a host the user manages proposed
-  anything. **Models** | **Parts**, a search (name or file) and the
-  architecture chips filter in the page. Models is a row per recipe name
-  across the hosts, confirmed copies first; a name only proposed or ignored
-  is left out. A row opens to a block per host (template and defaults, a
-  segmented **Use for** (**Fast** | **Quality** | **Both**, default Both),
-  row per part with precision, "downloaded by Lyrica" or "shared folder",
-  the other recipes using it and its size). Part filenames and facts wrap
+  anything. **Models** | **Parts** and a search (name or file) filter in the
+  page; for Models, **Role** in the header (All, Generate, Edit, Upscale) and
+  **Where** (All, Local, Cloud), for Parts the architecture and type chips.
+  Models groups every image model by architecture (the first copy's), then
+  Other (local plain endpoints) and Cloud; each architecture's group ends
+  with a collapsed "Parts for <architecture>" from every host's library.
+  Recipes are a row per recipe name across the hosts, confirmed copies
+  first; a name only proposed or ignored is left out. A row opens to a
+  block per host (template and defaults, a row per part with precision, "downloaded by Lyrica" or "shared folder",
+  the other recipes using it, its size and an underlined **Change** or
+  **Remove** at the right, then **Add part**, a segmented **Use for**
+  (**Fast** | **Quality** | **Both**, default Both) and **Delete model…**).
+  A ChatGPT plan's one row is ChatGPT Images, its kind's tooltip saying it
+  runs on the plan's image tool. Part filenames and facts wrap
   within their column on a phone. Every change is a recipe action
   (`POST …/hosts/:id/recipes/:recipeId`, models.md "Image models"):
   **Use for** saves at once (`change { op: "useFor", useFor }`), disabled
@@ -482,10 +492,13 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Change** for a text encoder or VAE (`swap`, or Download another… to the
   download page), **Remove** for an added part or LoRA, **Use this recipe**
   (`confirm`), **Download the missing parts** (`download-parts`),
-  **Ignore**, and the two dialogs. **Add a part** adds a VAE or text encoder to a checkpoint
+  **Ignore**, the **Add part** side drawer and the delete dialog. **Add part**
+  lists the host's files of the part's kind and architecture, with what
+  uses each, and adds a VAE or text encoder to a checkpoint
   (`addPart`) or a LoRA with its strength (`addLora`), by default into a
   copy named "<name> + <LoRA>" (`copy` first) so the recipe stays as it is.
-  **Delete** (shown when Lyrica downloaded the recipe's main file) works
+  Its Strength is a number from 0 to 1.5, clamped when the field is left.
+  **Delete model…** (shown when Lyrica downloaded the recipe's main file) works
   out from the parts' `downloaded` and `usedBy` what goes and what stays
   (an ignored recipe keeps nothing, as on the host), names the lists that skip it from a first `delete-copy` without confirm on
   its offering (`recipe/<id>`), then sends `delete`; a file the host kept
