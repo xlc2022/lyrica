@@ -2157,9 +2157,13 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   const upload = (name: string, b64: string) => page.evaluate(async ([path, b64]) => {
     const r = await fetch(path, { method: "POST", headers: { "content-type": "application/octet-stream" }, body: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)) });
     if (!r.ok) throw new Error(`${path}: ${r.status}`);
+    return ((await r.json()) as { path: string }).path;
   }, [`/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/uploads?name=${encodeURIComponent(name)}`, b64] as const);
   await upload("plan.md", Buffer.from("# The plan\n\nWater the trays.\n").toString("base64"));
-  await upload("tray.png", "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNJjFAAAiOQZ3YJ5p9QAAAABJRU5ErkJggg==");
+  // An uploaded image gets a random name with its extension (docs/workspace.md), so the test reads the name back.
+  const trayPath = await upload("tray.png", "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNJjFAAAiOQZ3YJ5p9QAAAABJRU5ErkJggg==");
+  expect(trayPath).toMatch(/^\/workspace\/uploads\/[0-9a-f]{12}\.png$/);
+  const tray = trayPath.slice("/workspace/uploads/".length);
 
   await page.getByRole("link", { name: "Files and images" }).click();
   // Beside the conversation from 1180 px; the page on its own on a phone.
@@ -2170,8 +2174,8 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await expect(panel.locator(".fview pre")).toContainText("Water the trays.");
   // The panel is narrow, so the file took the tree's place.
   await panel.locator(".fback").click();
-  await panel.getByLabel("Search files").fill("tray");
-  await expect(panel.getByRole("button", { name: "uploads/tray.png" })).toBeVisible();
+  await panel.getByLabel("Search files").fill(tray.slice(0, 6));
+  await expect(panel.getByRole("button", { name: `uploads/${tray}` })).toBeVisible();
   await expect(panel.getByRole("button", { name: /plan\.md/ })).toHaveCount(0);
   await panel.getByLabel("Search files").fill("");
 
@@ -2205,9 +2209,9 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   if (phone(page)) { await page.goBack(); await page.getByRole("heading", { level: 1, name: "hello files" }).waitFor(); }
   else await page.locator(".fview .fback").click(); // the panel column is narrow, so the file took the tree's place
   // An image she writes from the thread folder shows in the message and opens large.
-  await page.getByLabel("Message", { exact: true }).fill("![the tray](/workspace/uploads/tray.png)");
+  await page.getByLabel("Message", { exact: true }).fill(`![the tray](${trayPath})`);
   // An image named in the draft shows above the box with its ✕, a 44 px target on a phone (docs/ux.md §6, The message box).
-  const remove = page.getByRole("list", { name: "Attached images" }).getByRole("button", { name: "Remove tray.png" });
+  const remove = page.getByRole("list", { name: "Attached images" }).getByRole("button", { name: `Remove ${tray}` });
   await expect(remove).toBeVisible();
   if (phone(page)) expect(await hitHeight(remove)).toBeGreaterThanOrEqual(44);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/attachments-${page.viewportSize()!.width}.png` });
@@ -2240,7 +2244,7 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await expect(panel.getByRole("button", { name: "plan.md" })).toBeVisible();
 
   await panel.getByRole("tab", { name: "Images" }).click();
-  await expect(panel.locator(".igrid").getByRole("button", { name: "tray.png" })).toBeVisible();
+  await expect(panel.locator(".igrid").getByRole("button", { name: tray })).toBeVisible();
   await panel.getByRole("group", { name: "Show" }).getByRole("button", { name: "Made by Lyrica" }).click();
   await expect(panel.getByText("No images yet")).toBeVisible();
   await noHorizontalScroll(page);
