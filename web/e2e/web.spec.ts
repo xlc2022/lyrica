@@ -81,6 +81,19 @@ async function openSettings(page: Page) {
   return drawer;
 }
 
+/** From a project chat, opens its settings page: Project in the header shows the overview (the Threads page on a phone,
+ *  the panel from 1180 px) with the Project settings link inside; from the panel, Open as a page (docs/ux.md §6). */
+async function openProjectSettings(page: Page) {
+  await page.locator(".head-actions").getByRole("button", { name: "Project", exact: true }).click();
+  if (phone(page)) {
+    await page.getByRole("link", { name: "Project settings" }).click();
+  } else {
+    await page.getByRole("complementary", { name: "Threads" }).getByRole("link", { name: "Project settings" }).click();
+    await page.getByRole("complementary", { name: /Project settings$/ }).getByRole("link", { name: "Open as a page" }).click();
+  }
+  await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
+}
+
 /** Flips the Private checkbox in the sidebar's Sort menu (the sidebar is open already on a phone). */
 async function togglePrivate(page: Page) {
   const sorting = page.locator(".showing");
@@ -1736,15 +1749,16 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await expect(resolvedRow).toContainText("1");
   await resolvedRow.click();
   await page.locator(".side .resolved-row + ul .thread").click();
-  await expect(page.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
-  await expect(page.getByLabel("Message", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Reopen" }).click();
-  await expect(page.getByLabel("Message", { exact: true })).toBeVisible();
+  // With the project chat open, the row opens Alpha beside it from 1180 px, and as the page below (docs/ux.md §6).
+  const alphaView = phone(page) ? page : page.getByRole("complementary");
+  await expect(alphaView.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
+  await expect(alphaView.getByLabel("Message", { exact: true })).toHaveCount(0);
+  await alphaView.getByRole("button", { name: "Reopen" }).click();
+  await expect(alphaView.getByLabel("Message", { exact: true })).toBeVisible();
 
   // The project settings page: Goal and Paused save together; Memory keeps the instructions.
-  await page.getByText("Child thread of").getByRole("link").click();
-  await page.getByRole("link", { name: "Project settings" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
+  if (phone(page)) await page.getByText("Child thread of").getByRole("link").click();
+  await openProjectSettings(page);
   await page.getByLabel("Goal").fill("Ship the garden plan.");
   await page.getByRole("checkbox", { name: "Paused" }).check();
   await page.getByRole("button", { name: "Save" }).click();
@@ -2092,7 +2106,7 @@ test("watching threads: writing in a project's thread leads to a look, shown as 
   await expect(page.locator("main .threads-card")).toHaveCount(0);
   await expect(page.locator("main .msg.user").filter({ hasText: "[Watching threads]" })).toHaveCount(0);
   // The switch, on by default, saves off.
-  await page.getByRole("link", { name: "Project settings" }).first().click();
+  await openProjectSettings(page);
   const watch = page.getByRole("checkbox", { name: "Watching threads" });
   await expect(watch).toBeChecked();
   await watch.uncheck();
@@ -3636,7 +3650,7 @@ test("project welcome and fold in", async ({ page, baseURL }) => {
   expect(await overview()).toHaveLength(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   await api("POST", `${u}/threads/general/${encodeURIComponent(p.id)}/messages`, { text: "draft: Grow seedlings | Keep a planting journal" });
-  // The header may carry the same link; the draft's is the last.
+  // The draft card's own link (the header has none since the overview took it).
   await expect(page.getByRole("link", { name: "Project settings", exact: true }).last()).toBeVisible();
   await page.getByRole("link", { name: "Project settings", exact: true }).last().click();
   const goal = page.getByRole("textbox", { name: "Goal", exact: true });
