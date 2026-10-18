@@ -140,6 +140,15 @@ Each user has two pools of memory.
   - **Settings** (the user's own) and **Administration** (administrators) are pages
     with a list of sections on the left. Notifications is the first section
     of Settings.
+  - **Push**, after Appearance in Settings, sends fixed phrases or counts for
+    visible Notifications decisions, excluding sleep items (principles 6 and 2).
+    URL and optional token stay in encrypted user settings; the saved view
+    shows only the host, masked path and whether a token is set. Include a
+    link is off by default; when enabled it reveals the saved browser origin
+    and opens `/notifications`, through sign-in if needed. Send a test shows
+    its result inline; the last failure stays until success, and Turn off
+    clears the destination. lyricad batches for 30 seconds,
+    sends at most once a minute, and remembers delivered IDs across restarts.
   - **Notifications:** one page for everything waiting for the user: sleep
     items, persona suggestions and approvals, permission requests, child
     thread updates, threads shared with them, image models to review,

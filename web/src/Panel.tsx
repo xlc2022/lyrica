@@ -8,6 +8,7 @@ import {
   type Pool, type Presets, type ProposalDraft, type Pronouns, type SleepTime, type Theme, type UserCard,
   type NameSetting,
 } from "./api.ts";
+import { PushSection } from "./Push.tsx";
 import { RoutinesSection } from "./Routines.tsx";
 import { ClaudeCodeSection } from "./ClaudeCode.tsx";
 import { GitAccountsSection } from "./Git.tsx";
@@ -36,6 +37,7 @@ type SectionDef = { key: string; label: string; body: (ctx: ShellContext, rest: 
 const SETTINGS: SectionDef[] = [
   { key: "profile", label: "Profile", body: (ctx) => <ProfileSection ctx={ctx} /> },
   { key: "appearance", label: "Appearance", body: (ctx) => <AppearanceSection ctx={ctx} /> },
+  { key: "push", label: "Push", body: (ctx) => <PushSection key={ctx.user.id} userId={ctx.user.id} /> },
   { key: "unlock", label: "Unlock and lock", body: (ctx) => <UnlockSection ctx={ctx} /> },
   { key: "password", label: "Password", body: (ctx) => <PasswordSection ctx={ctx} /> },
   { key: "personas", label: "Your personas", body: (ctx) => <LinksSection ctx={ctx} /> },

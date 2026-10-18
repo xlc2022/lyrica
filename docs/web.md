@@ -595,7 +595,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   monogram), Appearance (theme; the **Checklists** switch, which saves
   `Display.checklists` at once and reloads the thread list: off, the API
   sends no steps, so no card or header shows one; then Read aloud while
-  agent writes under Speech), Unlock and lock (saved credentials, stay
+  agent writes under Speech), **Push** (`src/Push.tsx`: URL, optional masked Token,
+  Include a link and Save; saved host/masked path and token presence only,
+  with fresh credentials required to replace settings; Send a test shows Sent
+  or receiver status and reason inline, refreshes the last failure, and Turn
+  off clears the destination; the heading tooltip and hidden description
+  explain what leaves the server), Unlock and lock (saved credentials, stay
   unlocked after logout, and `lyricad`'s warning when the two contradict),
   Password, Your personas (linking a separate persona needs both passwords),
   Persona suggestions (edit, send on to the administrators, or drop),
@@ -1173,6 +1178,13 @@ turns animations off.
   and `/speech/down` to make it fail). Chromium runs with a fake microphone.
   The desktop project listens on 7342, `lyricad`'s own loopback port for
   `tailscale serve`, so e2e can't run on a machine where `lyricad` runs.
+- Push e2e checks cover Save, masked saved credentials across reload, Send a
+  test, inline receiver failure and recovery, and Turn off at both widths.
+  Browser API interception supplies the Push contract and forwards test
+  POSTs only to a local fake receiver; daemon tests separately cover the real
+  routes, validation, encrypted storage and sender. Phone targets and
+  horizontal overflow are checked. `SCREENSHOTS=<dir>` saves
+  `push-settings-1280.png` and `push-settings-390.png` with the failure line.
 - Question-card e2e checks use the fake model's `ask:`, `ask twice:` and
   `start ask:` commands with the real daemon. At both widths they cover
   option taps, persisted collapsed cards, answers in words, Notifications,
