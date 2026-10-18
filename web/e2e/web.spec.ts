@@ -3037,13 +3037,13 @@ test("Downloads History: the queue shows progress with Cancel and how each ended
   await expect(page.getByRole("alert").filter({ hasText: "That isn't a repository. Use owner/name, or paste the page's link." })).toHaveText("That isn't a repository. Use owner/name, or paste the page's link.");
   await page.getByLabel("Repository").fill("https://huggingface.co/a/m-GGUF/tree/main");
   await page.getByRole("button", { name: "Look up" }).click();
-  const files = page.getByRole("radiogroup", { name: "File to download" });
-  await expect(files.getByRole("radio")).toHaveCount(2);
+  const files = page.getByRole("group", { name: "Files to download" });
+  await expect(files.getByRole("checkbox")).toHaveCount(2);
   await expect(files.locator(".choice").nth(1)).toContainText("already on this host");
-  await expect(files.getByRole("radio").nth(1)).toBeDisabled();
+  await expect(files.getByRole("checkbox").nth(1)).toBeDisabled();
   await page.getByRole("button", { name: "Download", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Choose a file." })).toHaveText("Choose a file.");
-  await files.getByRole("radio").first().check();
+  await files.getByRole("checkbox").first().check();
   await noHorizontalScroll(page);
   await shot("text");
   await page.getByRole("button", { name: "Download", exact: true }).click();
