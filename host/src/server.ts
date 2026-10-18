@@ -17,12 +17,17 @@ import type { Downloads } from "./downloads.ts";
 import type { Images } from "./images.ts";
 import type { Runtime } from "./runtime.ts";
 import { StateFile } from "./state.ts";
+import { Updates } from "./updates.ts";
 
 export interface HostOptions {
   dataDir: string;
   /** This host's name, shown to Lyrica and on the dashboard. */
   name: string;
   version: string;
+  /** The commit this host runs, as install.sh recorded it. */
+  commit?: string;
+  /** The updater's inbox and status folders (README.md, "Updates"). */
+  updateDir?: string;
   /** Host names and addresses the dashboard may be reached by over TLS. */
   names: string[];
   /** The host's Tailscale device name: `<name>.<tailnet>.ts.net` is ours too. */
@@ -67,6 +72,7 @@ export class Host {
   refusePeer: (address: string) => Promise<boolean> = async () => false;
   downloads: Downloads | null = null;
   images: Images | null = null;
+  readonly updates: Updates;
   private readonly limit: LoginLimit;
   private readonly isOurs: (name: string) => boolean;
 
@@ -77,6 +83,7 @@ export class Host {
     const now = opts.now ?? Date.now;
     this.identity = loadIdentity(opts.dataDir, opts.name);
     this.state = new StateFile(opts.dataDir);
+    this.updates = new Updates(opts.updateDir ?? "/update");
     this.codes = new PairingCodes(now);
     this.sessions = new Sessions(now);
     this.limit = new LoginLimit(now);
@@ -194,6 +201,13 @@ export class Host {
     }
 
     if (pathname === "/host/v1/status" && method === "GET") return sendJson(res, 200, await this.status());
+    if (pathname === "/host/v1/update" && method === "POST") {
+      const body = await readJson(req);
+      onlyFields(body, ["tag"]);
+      const update = this.updates.request(body.tag);
+      this.opts.log("update requested", { tag: String(body.tag) });
+      return sendJson(res, 202, { update });
+    }
     // /v1 carries prompts: only a paired Lyrica server may use it.
     if (pathname.startsWith("/v1/") && access !== "client") throw refused("Only a paired Lyrica server can use /v1.");
     if (this.runtime && (await this.runtime.route(req, res, pathname, method))) return;
@@ -211,6 +225,8 @@ export class Host {
     return {
       name: this.opts.name,
       version: this.opts.version,
+      ...(this.opts.commit ? { commit: this.opts.commit } : {}),
+      update: this.updates.status(),
       fingerprint: this.identity.fingerprint,
       state: this.runtime?.scheduler.runState ?? (this.state.get().paused ? "paused" : "running"),
       backend: this.runtime?.scheduler.gpuBackend ?? null,

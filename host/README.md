@@ -29,8 +29,28 @@ host/install.sh
 - builds and starts the stack;
 - offers to set a dashboard password.
 
-To upgrade, or to change a setting, run it again: `git pull && host/install.sh`.
+To change a setting, run it again. To upgrade, press **Update** in Lyrica's
+Models page (see Updates below), or `git pull && host/install.sh`.
 Options: `host/install.sh --help`.
+
+### Updates
+
+Lyrica updates a host to the release she runs herself. On systemd machines
+other than NixOS, `install.sh` installs the updater: a copy of `update.sh` at
+`/usr/local/sbin/lyrica-host-update` (an update never replaces it) and
+`lyrica-host-update.path`, which runs it as root when host-api writes a
+request into `/var/lib/lyrica-host-update/inbox/`. host-api keeps no route
+out: the updater fetches `main` and the `update/*` tags into its own
+repository there with a read-only deploy key, `/etc/lyrica-host/deploy-key`,
+which `install.sh` prints the first time: add it to the repository as a
+deploy key. Then the updater refuses a tag that isn't annotated or isn't on
+`main`, or a checkout with local changes; pauses the host (running jobs
+finish, up to 10 minutes, or nothing changes); checks the release out as the
+checkout's owner; runs `install.sh --yes`; and waits up to 5 minutes for
+host-api to answer with the new commit. If it doesn't, it checks the old
+commit out and runs `install.sh` again. The host resumes unless it was
+paused before. Its progress is in `/var/lib/lyrica-host-update/status/state.json`
+and the host's status; by hand: `sudo lyrica-host-update --tag update/<name>`.
 
 ### On NixOS
 
@@ -64,7 +84,8 @@ through the container toolkit's CDI devices: `install.sh` sees the CDI spec
 and adds `compose.cdi.yaml`. With `gpu = "amd"`, `amdgpu` loads at boot;
 ROCm and Vulkan come inside the images. In a VM, pass the whole GPU through
 (on Proxmox, a PCI device with All Functions and PCI-Express on a q35
-machine). Upgrading is the same `git pull && host/install.sh`.
+machine). Upgrading is `git pull && host/install.sh`: Lyrica shows the
+host's version but can't update it, since the configuration names the checkout.
 
 ### AMD GPUs
 

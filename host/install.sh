@@ -222,6 +222,7 @@ RENDER_GID=$(getent group render 2>/dev/null | cut -d: -f3 || true)
 [[ $WANT_LAN == 1 ]] && FILES+=:compose.lan.yaml
 [[ -n $TS_HOSTNAME ]] && FILES+=:compose.tailscale.yaml
 VERSION=$(git describe --always --dirty 2>/dev/null || echo dev)
+COMMIT=$(git rev-parse HEAD 2>/dev/null || true)
 LAN_BIND=$LAN
 [[ $LAN == *:* ]] && LAN_BIND="[$LAN]"
 
@@ -252,6 +253,7 @@ COMFY_GPU=${COMFY_GPU:-0}
 RENDER_GID=${RENDER_GID:-}
 COMPOSE_FILE=$FILES
 HOST_VERSION=$VERSION
+HOST_COMMIT=$COMMIT
 TS_HOSTNAME=$TS_HOSTNAME
 TS_AUTHKEY=$TS_AUTHKEY
 EOF
@@ -280,6 +282,55 @@ elif [[ -d /run/systemd/system ]]; then
   "${SUDO[@]}" systemctl enable --now lyrica-host-egress.service >/dev/null
 else
   say "No systemd here: run host/egress.sh apply after every reboot or Docker restart."
+fi
+
+# Updates from Lyrica (README.md, "Updates"): host-api may write a request into
+# inbox/ and read status/; the updater runs as root, outside it, from a copy in
+# /usr/local/sbin that an update never replaces. It fetches with a read-only
+# deploy key, into its own repository.
+UPDATER=/var/lib/lyrica-host-update
+"${SUDO[@]}" mkdir -p "$UPDATER/inbox" "$UPDATER/status"
+"${SUDO[@]}" chown 10001:10001 "$UPDATER/inbox"
+"${SUDO[@]}" chmod 0700 "$UPDATER/inbox"
+"${SUDO[@]}" chmod 0755 "$UPDATER" "$UPDATER/status"
+updater_status() { # available, then the reason when it isn't
+  local json
+  if [[ $1 == true ]]; then json='{"available":true}'; else json=$(jq -cn --arg r "$2" '{available:false, reason:$r}' 2>/dev/null || printf '{"available":false}'); fi
+  if [[ -f $UPDATER/status/state.json ]] && command -v jq >/dev/null; then
+    json=$("${SUDO[@]}" jq -c --argjson a "$json" 'del(.available, .reason) + $a' "$UPDATER/status/state.json")
+  fi
+  printf '%s\n' "$json" | "${SUDO[@]}" tee "$UPDATER/status/state.json" >/dev/null
+  "${SUDO[@]}" chmod 0644 "$UPDATER/status/state.json"
+}
+REPO_URL=${LYRICA_REPO:-git@github.com:xlc2022/lyrica.git}
+GITHUB_HOST_KEY="github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+NEW_DEPLOY_KEY=0
+if [[ -e /etc/NIXOS ]]; then
+  updater_status false "Update this host from its NixOS configuration."
+elif [[ ! -d /run/systemd/system ]]; then
+  updater_status false "This host has no systemd: update it with git pull and install.sh."
+elif ! command -v jq >/dev/null || ! command -v git >/dev/null || ! command -v ssh >/dev/null; then
+  updater_status false "Install jq, git and ssh on the host, then run install.sh again."
+else
+  "${SUDO[@]}" mkdir -p /etc/lyrica-host
+  if ! "${SUDO[@]}" test -f /etc/lyrica-host/deploy-key; then
+    "${SUDO[@]}" ssh-keygen -q -t ed25519 -N "" -C "lyrica-host-update@$(hostname)" -f /etc/lyrica-host/deploy-key
+    NEW_DEPLOY_KEY=1
+  fi
+  "${SUDO[@]}" chmod 0600 /etc/lyrica-host/deploy-key
+  printf '%s\n' "$GITHUB_HOST_KEY" | "${SUDO[@]}" tee /etc/lyrica-host/known_hosts >/dev/null
+  if ! "${SUDO[@]}" test -d "$UPDATER/repo.git"; then
+    "${SUDO[@]}" git init -q --bare "$UPDATER/repo.git"
+    "${SUDO[@]}" git --git-dir="$UPDATER/repo.git" remote add origin "$REPO_URL"
+  fi
+  # The checkout's owner fetches from it.
+  "${SUDO[@]}" chmod -R a+rX "$UPDATER/repo.git"
+  "${SUDO[@]}" install -m 0755 update.sh /usr/local/sbin/lyrica-host-update
+  sed "s#@HOST_DIR@#$PWD#g" lyrica-host-update.service | "${SUDO[@]}" tee /etc/systemd/system/lyrica-host-update.service >/dev/null
+  "${SUDO[@]}" install -m 0644 lyrica-host-update.path /etc/systemd/system/lyrica-host-update.path
+  "${SUDO[@]}" systemctl daemon-reload
+  "${SUDO[@]}" systemctl enable --now lyrica-host-update.path >/dev/null
+  updater_status true
 fi
 
 mkdir -p "$MODELS/lyrica"
@@ -338,3 +389,8 @@ say "  Dashboard here:   http://127.0.0.1:7236"
 [[ -n $TS_HOSTNAME ]] && say "  Over Tailscale:   https://$TS_HOSTNAME.<your tailnet>.ts.net"
 say "  Key fingerprint:  $FINGERPRINT"
 say "To pair, open the dashboard, choose Pair with Lyrica, and paste the code into Lyrica's Add model host."
+if [[ $NEW_DEPLOY_KEY == 1 ]]; then
+  say ""
+  say "For updates from Lyrica's Models page, add this as a read-only deploy key of $REPO_URL:"
+  "${SUDO[@]}" cat /etc/lyrica-host/deploy-key.pub
+fi

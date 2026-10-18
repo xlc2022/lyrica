@@ -1,0 +1,12 @@
+# Installed by host/install.sh: starts lyrica-host-update.service when host-api
+# writes a request into the one folder of the updater's it can write. See
+# host/README.md, "Updates".
+[Unit]
+Description=Lyrica model host: update requests
+
+[Path]
+PathExists=/var/lib/lyrica-host-update/inbox/request.json
+Unit=lyrica-host-update.service
+
+[Install]
+WantedBy=multi-user.target

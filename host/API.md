@@ -95,6 +95,8 @@ seconds of audio.
 {
   "name": "lyrica-blackwell",
   "version": "0.1.0",
+  "commit": "<the commit it runs>",
+  "update": { "available": true, "state": "idle" },
   "fingerprint": "<host key fingerprint>",
   "state": "running",
   "backend": "cuda",
@@ -127,6 +129,8 @@ seconds of audio.
 
 - `state`: `running`, `pausing` (finishing the current job), `paused` or
   `restarting`.
+- `commit`: the commit `install.sh` installed (absent on a host installed
+  before updates). `update`: its updater, as `POST /host/v1/update` says.
 - `backend`: how the model servers reach the GPUs: `cuda`, `rocm`, `vulkan`,
   or `null` with no GPU. `servers`: what this host runs. A Vulkan host (AMD
   GPUs that ROCm doesn't support) runs `llamacpp` only, so vLLM models and
@@ -419,6 +423,17 @@ Only the repository's name and revision leave the host.
   another, never interleaved.
 - `POST /host/v1/restart`: fails queued requests with `restarting`, unloads
   everything, asks each server to reset, and loads pinned models again.
+- `POST /host/v1/update` with `{ "tag": "update/<name>" }`: asks the
+  host's updater (README.md, "Updates") for that release, and answers `202`
+  with `{ "update": … }`. `409 unavailable` when the host has no updater
+  (NixOS, no systemd, or an install from before updates), with the reason;
+  `409 updating` while one runs. `update` is `{ available, reason?, state,
+  since?, tag?, error?, last? }`: `state` is `idle`, `requested`, `fetching`,
+  `draining`, `building`, `rolling-back` or `failed`; `error` names the
+  failed step (`fetch`, `drain`, `probation`, or a refusal such as `not on
+  main`); `last` is the last update, `{ tag, commit, at, ok }`. While it
+  updates the host pauses, restarts and, unless it was paused before,
+  resumes.
 - After an unload, a server's process can take seconds to let go of its
   memory. Until a GPU has freed half of what the model held (30 s at most),
   a request that wouldn't fit there waits for it rather than failing with

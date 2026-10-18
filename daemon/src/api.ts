@@ -321,6 +321,10 @@ export interface HostAddresses { addresses: string[] }
 /** A host's status, as it reports it (host/API.md, GET /host/v1/status). */
 export interface HostStatus {
   name: string; version: string; fingerprint: string;
+  /** The commit the host runs, as its installer recorded it; absent on a host from before updates. */
+  commit?: string;
+  /** Its updater: absent on a host from before updates. */
+  update?: HostUpdate;
   state: "running" | "pausing" | "paused" | "restarting";
   gpus: {
     index: number; name: string; vendor: string; role: "vllm" | "shared";
@@ -333,6 +337,20 @@ export interface HostStatus {
 }
 /** GET /api/u/:userId/hosts/:endpointId/status → HostStatus */
 /** POST /api/u/:userId/hosts/:endpointId/pause|resume|restart → HostStatus. A shared host needs an administrator. */
+/** POST /api/u/:userId/hosts/:endpointId/update → HostStatus. Asks the host to update to the release Lyrica runs (409 when she runs none). A shared host needs an administrator. */
+
+/** A model host's updater (host/API.md, "POST /host/v1/update"). */
+export interface HostUpdate {
+  available: boolean;
+  /** Why not, in words for the person. */
+  reason?: string;
+  state: "idle" | "requested" | "fetching" | "draining" | "building" | "rolling-back" | "failed";
+  since?: string;
+  tag?: string;
+  /** The step that failed: fetch, drain, probation, … */
+  error?: string;
+  last?: { tag: string; commit: string; at: string; ok: boolean };
+}
 
 /** How a model answers. Unset values aren't sent, so the server's default applies. */
 export interface AnswerSettings {
@@ -452,6 +470,8 @@ export interface ModelsPage {
   notice: string[];
   /** How many items Clean up lists. */
   cleanup: number;
+  /** The release Lyrica runs, when she runs one: a host whose commit differs can update to it. */
+  release?: { tag: string; commit: string };
 }
 
 /** PATCH /api/u/:userId/offerings/:offeringId → OfferingInfo. Sets capabilities by hand; null clears one. */

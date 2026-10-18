@@ -1215,14 +1215,18 @@ export class Models {
     try {
       const status = await this.hostCall(ep, "GET", "/host/v1/status", undefined, undefined, budgetMs);
       this.unpaired.delete(ep.id);
-      const state = (status as { state?: string }).state === "running" ? "up" : "down";
+      // Updating counts as down: it pauses and restarts on its way.
+      const state = (status as { state?: string }).state === "running" && !updating(status) ? "up" : "down";
       if (state === "up") this.awayStatus.delete(ep.id); else this.awayStatus.set(ep.id, status);
       this.seen(ep, state === "up", userId);
       const w = await warning;
       return { state, status, ...(w ? { warning: w } : {}) };
     } catch (e) {
-      this.awayStatus.delete(ep.id);
       this.seen(ep, false, userId);
+      // A host restarts while it updates: the page keeps showing the update.
+      const prior = this.awayStatus.get(ep.id);
+      if (prior && updating(prior)) return { state: "down", status: prior };
+      this.awayStatus.delete(ep.id);
       return { state: "down", error: (e as Error).message, ...unpaired() };
     }
   }
@@ -1242,6 +1246,23 @@ export class Models {
       this.awayStatus.set(ep.id, status);
       this.reportDown(ep.id);
     }
+    return status;
+  }
+
+  /**
+   * Asks a model host to update itself to a release, Lyrica's own running one
+   * (host/README.md, "Updates"). The host's updater checks the tag again; the
+   * host pauses while it updates and reports its progress in its status.
+   */
+  async hostUpdate(actor: User, id: string, tag: string): Promise<unknown> {
+    const ep = this.needHost(actor.id, id);
+    if (ep.shared && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can manage a shared model host");
+    if (!/^update\/[A-Za-z0-9._-]{1,64}$/.test(tag)) throw new Error("a host updates to an update/… tag");
+    await this.hostCall(ep, "POST", "/host/v1/update", { tag });
+    const status = await this.hostCall(ep, "GET", "/host/v1/status");
+    // It pauses and restarts as it updates: chats go elsewhere meanwhile.
+    this.awayStatus.set(ep.id, status);
+    this.reportDown(ep.id);
     return status;
   }
 
@@ -2814,3 +2835,8 @@ const toCall = (r: CallRow): CallRecord => ({
   ...(typeof r.audio_seconds === "number" ? { audioSeconds: r.audio_seconds } : {}),
   ...(r.gen_ms !== null ? { pace: speeds({ ...(r.read_tokens != null ? { readTokens: r.read_tokens } : {}), promptTokens: r.prompt_tokens ?? 0, outputTokens: r.output_tokens ?? 0, window: r.window ?? 0, ttftMs: r.ttft_ms ?? 0, genMs: r.gen_ms, processed: r.processed ?? 0 }) } : {}),
 });
+
+/** A host status whose updater is at work (host/API.md, "POST /host/v1/update"). */
+function updating(status: unknown): boolean {
+  return ["requested", "fetching", "draining", "building", "rolling-back"].includes((status as { update?: { state?: string } }).update?.state ?? "");
+}
