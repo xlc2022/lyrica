@@ -17,17 +17,35 @@ export interface ImageTools {
   now?: () => Date;
 }
 
-const path = Type.String();
-const references = Type.Optional(Type.Array(path, { maxItems: 16 }));
-const count = Type.Optional(Type.Integer({ minimum: 1, maximum: 4 }));
-export const imageParameters = Type.Union([
-  Type.Object({ action: Type.Literal("create"), prompt: Type.String(), tier: Type.Union([Type.Literal("fast"), Type.Literal("quality")]),
-    size: Type.Optional(Type.Object({ width: Type.Integer(), height: Type.Integer() })),
-    aspectRatio: Type.Optional(Type.String({ description: "Width:height (16:9); omit for recipe defaults." })), count, references }),
-  Type.Object({ action: Type.Literal("edit"), image: path, instruction: Type.String(), mask: Type.Optional(path), references, count }),
-  Type.Object({ action: Type.Literal("upscale"), image: path, scale: Type.Optional(Type.Number({ minimum: 1, maximum: 4 })),
-    maxSize: Type.Optional(Type.Integer({ minimum: 256, maximum: 8192 })) }),
-]);
+const path = (description: string) => Type.Optional(Type.String({ description }));
+/**
+ * One object with `action` and optional fields, checked per action in
+ * `executeImage`. A top-level union has no `"type": "object"`: LM Studio
+ * refuses such a tool, and smaller models' chat templates show it no fields.
+ */
+export const imageParameters = Type.Object({
+  action: Type.Union([Type.Literal("create"), Type.Literal("edit"), Type.Literal("upscale")]),
+  prompt: Type.Optional(Type.String({ description: "For create: what to draw." })),
+  tier: Type.Optional(Type.Union([Type.Literal("fast"), Type.Literal("quality")], { description: "For create: fast or quality." })),
+  image: path("For edit and upscale: the image's path."),
+  instruction: Type.Optional(Type.String({ description: "For edit: what to change." })),
+  mask: path("For edit: a mask image's path."),
+  references: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For create and edit: reference images' paths." })),
+  count: Type.Optional(Type.Integer({ minimum: 1, maximum: 4, description: "For create and edit: how many images." })),
+  size: Type.Optional(Type.Object({ width: Type.Integer(), height: Type.Integer() }, { description: "For create: exact pixels." })),
+  aspectRatio: Type.Optional(Type.String({ description: "For create: width:height (16:9); omit for recipe defaults." })),
+  scale: Type.Optional(Type.Number({ minimum: 1, maximum: 4, description: "For upscale: the factor." })),
+  maxSize: Type.Optional(Type.Integer({ minimum: 256, maximum: 8192, description: "For upscale: the longest side's limit." })),
+});
+export type ImageArgs = Static<typeof imageParameters>;
+
+const NEEDS = { create: ["prompt", "tier"], edit: ["image", "instruction"], upscale: ["image"] } as const;
+
+/** The fields an action needs, named in the error a model reads. */
+function needs(p: ImageArgs): void {
+  const missing = NEEDS[p.action].filter(k => p[k] === undefined || p[k] === "");
+  if (missing.length) throw new Error(`${p.action} needs ${missing.join(" and ")}: ${NEEDS[p.action].join(", ")} are required, the rest optional.`);
+}
 
 /** Around one megapixel, rounded to the host's 16-pixel grid and bounded by its size limits. */
 export function ratioSize(ratio: string): { width: number; height: number } {
@@ -87,9 +105,21 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
   };
 }
 
+/**
+ * A failed call says which model (and recipe) it reached and what came back,
+ * so she can report it; an Offline error already lists what it tried.
+ */
+function withModel(err: unknown, action: string, r: Resolution | undefined, signal?: AbortSignal): unknown {
+  if (!r || signal?.aborted || !(err instanceof Error) || err.name === "Offline") return err;
+  const recipe = r.offering.recipe ? `, recipe "${r.offering.recipe}"` : "";
+  const code = err instanceof HostRefused ? ` [${err.code}]` : "";
+  return new Error(`Image ${action} failed with ${r.label}${recipe}${code}: ${err.message}`, { cause: err });
+}
+
 /** Shared by Pi and explicit refusal retries; no model-facing arguments are added. */
-export async function executeImage(o: ImageTools, id: string, p: Static<typeof imageParameters>, signal?: AbortSignal, ctx?: ExtensionContext) {
+export async function executeImage(o: ImageTools, id: string, p: ImageArgs, signal?: AbortSignal, ctx?: ExtensionContext) {
   if (!o.enabled()) throw new Error("Images are off in this thread.");
+  needs(p);
   let portrait = false;
   const read = async (path: string) => {
     const result = await o.files.read(path); portrait ||= result.portrait;
@@ -97,15 +127,15 @@ export async function executeImage(o: ImageTools, id: string, p: Static<typeof i
   };
   let request: ImageRequest;
   if (p.action === "upscale") {
-    request = { action: p.action, image: await read(p.image), ...(p.scale === undefined ? {} : { scale: p.scale }), ...(p.maxSize === undefined ? {} : { maxSize: p.maxSize }) };
+    request = { action: p.action, image: await read(p.image!), ...(p.scale === undefined ? {} : { scale: p.scale }), ...(p.maxSize === undefined ? {} : { maxSize: p.maxSize }) };
   } else {
     const refs = p.references ? await Promise.all(p.references.map(read)) : undefined;
     const common = { ...(p.count === undefined ? {} : { count: p.count }), ...(refs ? { references: refs } : {}) };
     if (p.action === "create") {
       if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
       const size = p.size ?? (p.aspectRatio ? ratioSize(p.aspectRatio) : undefined);
-      request = { action: p.action, prompt: p.prompt, tier: p.tier, ...(size ? { size } : {}), ...common };
-    } else request = { action: p.action, prompt: p.instruction, image: await read(p.image), ...(p.mask ? { mask: await read(p.mask) } : {}), ...common };
+      request = { action: p.action, prompt: p.prompt!, tier: p.tier!, ...(size ? { size } : {}), ...common };
+    } else request = { action: p.action, prompt: p.instruction!, image: await read(p.image!), ...(p.mask ? { mask: await read(p.mask) } : {}), ...common };
   }
   const call = o.call();
   let attempted: Resolution | undefined;
@@ -120,7 +150,7 @@ export async function executeImage(o: ImageTools, id: string, p: Static<typeof i
     if (!o.enabled()) throw new Error("Images are off in this thread.");
     if (r.endpoint.kind === "cloud" && isRestricted(o.call())) throw new CloudModelForbidden("This thread uses local models only.");
   } }); } catch (err) {
-    if (!(err instanceof HostRefused) || err.code !== "image_refusal" || !attempted) throw err;
+    if (!(err instanceof HostRefused) || err.code !== "image_refusal" || !attempted) throw withModel(err, p.action, attempted, signal);
     return { content: [{ type: "text" as const, text: "Image generation was refused (image_refusal)." }], isError: true,
       details: { imageRefusal: { code: "image_refusal" as const, offeringId: attempted.offering.id, endpointId: attempted.endpoint.id } } };
   }

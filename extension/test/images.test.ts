@@ -7,7 +7,7 @@ import { createAgentSession, DefaultResourceLoader, SessionManager, type Extensi
 import { ThreadImages, Workspace, type CallContext } from "@lyrica/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeImages, png } from "../../core/test/fake-images.ts";
-import { createImageExtension, ratioSize, type ApprovalRequest } from "../src/index.ts";
+import { createImageExtension, imageParameters, ratioSize, type ApprovalRequest } from "../src/index.ts";
 
 const dirs: string[] = [];
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -198,6 +198,20 @@ describe("image tool results (principles 1 and 4)", () => {
       else expect(seen).toEqual(expect.arrayContaining([expect.objectContaining({ role: "toolResult", toolName: "image",
         content: expect.arrayContaining([{ type: "image", data: png.toString("base64"), mimeType: "image/png" }]) })]));
     } finally { session.dispose(); }
+  });
+  it("is one object schema, and names the fields an action is missing", async () => {
+    // LM Studio refuses a tool whose parameters aren't `"type": "object"`; a top-level anyOf also shows small models no fields.
+    expect(imageParameters).toMatchObject({ type: "object", properties: { action: expect.anything(), prompt: expect.anything(), image: expect.anything() } });
+    expect(imageParameters).not.toHaveProperty("anyOf");
+    const s = await setup();
+    await expect(s.run({ action: "create" })).rejects.toThrow("create needs prompt and tier");
+    await expect(s.run({ action: "edit", image: "/photos-of-me/portrait.png" })).rejects.toThrow("edit needs instruction");
+    expect(s.heard).toHaveLength(0);
+  });
+  it("says which model a failed call reached and what it answered", async () => {
+    const s = await setup();
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: { message: "bad size" } }, { status: 400 })));
+    await expect(s.run({ action: "create", prompt: "A garden", tier: "fast" })).rejects.toThrow(/^Image create failed with openai\/gpt-image-1 \[invalid\]: .+/);
   });
   it("uses recipe defaults with no size, converts ratios, and refuses conflicting size and ratio", async () => {
     expect(ratioSize("16:9")).toEqual({ width: 1360, height: 768 });

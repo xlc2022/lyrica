@@ -76,7 +76,7 @@ async function setup(real: boolean, queued = false) {
   const host: ThreadsHost = {
     limits: DEFAULT_THREADS_LIMITS,
     start: async () => { started = true; return { id: CHILD, link: "#/synthetic-check", queued }; },
-    message: async () => {},
+    message: async () => "started" as const,
     list: () => started ? [{ id: CHILD, title: "Check status", status: queued ? "idle" : "working", state: queued ? "queued" : "working", updatedAt: new Date().toISOString() }] : [],
   };
   const synthetic: ExtensionFactory = (pi) => {

@@ -24,8 +24,7 @@ export async function imageRetryOptions(models: Models, workspace: Workspace, vi
   const ctx = models.callContext(userId, pool, threadId);
   const settings = workspace.settings(userId);
   const files = workspace.imageFiles({ userId, pool, threadId });
-  const paths = [...("references" in args ? args.references ?? [] : []),
-    ...("image" in args ? [args.image] : []), ...("mask" in args && args.mask ? [args.mask] : [])];
+  const paths = [...args.references ?? [], ...(args.image ? [args.image] : []), ...(args.mask ? [args.mask] : [])];
   let portrait = false, readable = true;
   for (const path of paths) {
     try { const read = await files.read(path); portrait ||= read.portrait; }

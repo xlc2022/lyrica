@@ -433,7 +433,7 @@ export class Lyricad implements Drainable {
       threads: (u, p, project) => ({
         open: children.projectThreads(u, p, project).filter((t) => t.state !== "resolved").map((t) => t.id), lines: children.projectLines(u, p, project),
       }),
-      tell: (u, p, project, thread, text) => children.tellFromProject(u, p, project, thread, text),
+      tell: async (u, p, project, thread, text) => { await children.tellFromProject(u, p, project, thread, text); },
       store: (u, p, project, content, details) => children.storeLook(u, p, project, content, details),
     });
     // A project's thread whose turn ended with an error, or that waits for an approval, is a trigger for a look.
