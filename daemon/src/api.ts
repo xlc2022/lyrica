@@ -433,7 +433,7 @@ export interface HostStarter {
   loras: { file: string; strength: number }[];
   defaults: Record<string, string | number>;
 }
-/** POST /api/u/:userId/hosts/:endpointId/starters/:starterId/install → { recipe, downloads }: downloads what is missing, with the user's hub token, and confirms the recipe. */
+// POST /api/u/:userId/hosts/:endpointId/starters/:starterId/install → { recipe, downloads }: downloads what is missing, with the user's hub token, and confirms the recipe.
 /** POST /api/u/:userId/hosts/:endpointId/manage → the host's answer. Loading, pinning, GPU settings, placements, scan, usage only. */
 export interface HostManage { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; path: string; body?: unknown }
 /** GET /api/u/:userId/hosts/:endpointId/dashboard → { url } */
