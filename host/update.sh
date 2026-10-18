@@ -93,8 +93,8 @@ GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes 
 [ "$(rgit cat-file -t "refs/tags/$TAG" 2>/dev/null)" = tag ] || fail "not an annotated update tag"
 COMMIT=$(rgit rev-parse "$TAG^{commit}")
 rgit merge-base --is-ancestor "$COMMIT" main || fail "not on main"
-OLD=$(host_commit)
-[[ $OLD =~ ^[0-9a-f]{40}$ ]] || OLD=$(sed -n 's/^HOST_COMMIT=\([0-9a-f]\{40\}\)$/\1/p' "$HOST_DIR/.env" | tail -n 1)
+# The commit to go back to, from the installed folder's settings: root's to choose, not host-api's.
+OLD=$(sed -n 's/^HOST_COMMIT=\([0-9a-f]\{40\}\)$/\1/p' "$HOST_DIR/.env" | tail -n 1)
 if [ "$COMMIT" = "$OLD" ]; then set_state idle; say "${COMMIT:0:12} is already running"; exit 0; fi
 say "updating to ${COMMIT:0:12} ($TAG) from ${OLD:0:12}"
 
@@ -142,8 +142,9 @@ switch() { # commit, version: install it from its tree; true once host-api answe
   done
   printf '%s\n' "$dir" >"$UPDATE/current"
 }
-prune() { # keeps the newest $KEEP trees, and the running one
+prune() { # keeps the newest $KEEP trees, and the running one; drops half-unpacked ones
   local keep running d
+  rm -rf -- "$RELEASES"/.new.*
   running=$(dirname "$(cat "$UPDATE/current")")
   keep=$(ls -1td "$RELEASES"/*/ 2>/dev/null | head -n "$KEEP" || true)
   for d in "$RELEASES"/*/; do

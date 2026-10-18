@@ -50,7 +50,8 @@ tree, `/opt/lyrica-host/<commit>`; carries `.env` over from the installed
 folder; runs that tree's `install.sh --yes`; and waits up to 5 minutes for
 host-api to answer with the new commit. If it doesn't, it installs the
 commit before from its own tree the same way. Root never runs code from your
-checkout, only reads its `.env`. The last 3 trees are kept, and the running
+checkout, only reads its `.env`, whose settings (the models folder, the
+addresses) it trusts as you chose them at install. The last 3 trees are kept, and the running
 one is the installed folder from then on: change a setting by running
 `install.sh` there, or `git pull && host/install.sh` in your checkout to go
 back to it. The host resumes unless it was paused before. Its progress is in

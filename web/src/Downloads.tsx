@@ -343,10 +343,10 @@ export async function startDownload(userId: string, hostId: string, body: { sour
   }
 }
 
-/** Download text model: a host, then a file from Hugging Face or ModelScope, or a link. A started download goes to Downloads. */
 /** What a vision projector or MTP file does, for its pill's tooltip. */
 const COMPANION_TIPS = { vision: "Lets the model see images", mtp: "Multi-token prediction: faster answers" } as const;
 
+/** Download text model: a host, then a file from Hugging Face or ModelScope, or a link. A started download goes to Downloads. */
 export function DownloadText({ ctx }: { ctx: MCtx }) {
   const userId = ctx.user.id;
   const hosts = managedHosts(ctx).filter((h) => h.status);
