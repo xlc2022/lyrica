@@ -147,7 +147,7 @@ Each user has two pools of memory.
     link is off by default; when enabled it reveals the saved browser origin
     and opens `/notifications`, through sign-in if needed. Send a test shows
     its result inline; the last failure stays until success, and Turn off
-    clears the destination. The existing daemon batches for 30 seconds,
+    clears the destination. lyricad batches for 30 seconds,
     sends at most once a minute, and remembers delivered IDs across restarts.
   - **Notifications:** one page for everything waiting for the user: sleep
     items, persona suggestions and approvals, permission requests, child

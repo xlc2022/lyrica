@@ -798,7 +798,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       } catch { throw new HttpError(400, "Push requires an allowed HTTP or HTTPS destination and a valid origin."); }
       const db = s().users.openUserDb(user.id);
       try { new PushStore(db).save({ url: body.url, token: body.token, link: body.link, origin: origin.origin }); } finally { db.close(); }
-      await d.push.check(user, true);
+      void d.push.check(user, true).catch(() => d.log("push check failed"));
       return pushInfo(d, user);
     }),
     route("DELETE", `${u}/push`, r => {

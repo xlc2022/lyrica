@@ -532,9 +532,10 @@ things are".
 Principles 6, 2 and 8: decision requests reach the user with no conversation
 text, through the existing daemon and no new dependency. `push.ts` diffs all
 pages from `notifications()` using the saved display, selecting
-`decision && type !== "sleep"`. The tick catches every type; question,
-permission and share changes also trigger checks. Locked users send nothing;
-key availability and saving a destination check existing unsent asks.
+`decision && type !== "sleep"`. The tick catches every type; a permission
+request also triggers a check. Locked users send nothing;
+key availability and saving a destination check existing unsent asks;
+Save doesn't wait for that push, whose failure shows on the next GET.
 
 Ordinary asks batch for 30 seconds, at least 60 seconds between automatic
 attempts. `push_sent` in encrypted user.db (expand-only step 11, after project

@@ -1,6 +1,6 @@
 # Brief: Push notifications
 
-**Status:** Built in three runs; ready for review and the operator’s full-suite run.
+**Status:** Built in four runs; in review (PR #325).
 
 **Branch:** `feature/push`. **Built by:** Codex on the test machine.
 **Read first:** AGENTS.md, PRINCIPLES.md (2, 8, 10), DESIGN.md (Settings,
@@ -203,7 +203,7 @@ supplied sandbox Chromium executable. Never commit it or the screenshots.
 Reproduce from `web/` after building:
 `SCREENSHOTS=../shots flock /tmp/lyrica-tests.lock npx playwright test -c playwright.local.config.ts -g 'Push settings:' --project=phone --project=desktop`.
 
-Run 4 fixes the four older-user.db regressions under the expand-then-contract
+Run 4 (`2fd2f6a`) fixes the four older-user.db regressions under the expand-then-contract
 rule (principles 2 and 6): user step 11 creates `push_sent` with `IF NOT
 EXISTS`, preserving any existing delivery IDs. The SSH-target, interrupted
 model migration, shared model choices and stored workspace modes fixtures
@@ -215,6 +215,10 @@ files pass under the shared lock: 85 passed, four existing skips. Preset
 integration was already current: Images reads model configuration and the
 Backend card reads preset columns; push remains step 11. No schema contract
 or UI change is needed for this fix.
+
+Review (`3d269f1`, `2ec0a25` and the next push): UI review's three fixes (check label,
+no focusable heading, names in use); Save no longer waits for the first-enable
+push; the share route tick is gone, since the tick and window catch shares.
 
 Next: the operator runs the full suite, commits and pushes; PR review and
 UI review verify the head, then CI and merge follow the normal workflow.

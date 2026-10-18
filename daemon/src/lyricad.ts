@@ -774,7 +774,6 @@ export class Lyricad implements Drainable {
       if (method !== "GET" && method !== "HEAD") checkOrigin(req);
       const r: Request = makeRequest(req, res, routeName, found.params, url, trust, via);
       const body = await found.route.handler(r);
-      if (method !== "GET" && (routeName.includes("/shares") || routeName.endsWith("/share"))) this.push.tick();
       if (res.headersSent) return; // a stream, or a handler that answered itself
       sendJson(res, 200, body);
     } catch (err) {

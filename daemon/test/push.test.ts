@@ -158,7 +158,9 @@ it("first enable sends existing decisions once, survives a real restart, and cat
   share(); share();
   const path = `/api/u/${s.rt.ada.id}/push`;
   expect((await s.ada.put(path, { ...settings, url: "https://8.8.8.8/topic" })).status).toBe(200);
-  expect(send).toHaveBeenCalledTimes(1);
+  // Save doesn't wait for the first-enable push; it lands just after.
+  await expect.poll(() => send.mock.calls.length).toBe(1);
+  await new Promise(r => setImmediate(r));
   expect(send.mock.calls[0]?.[2]).toBe("2 things are waiting.");
   await s.d.push.check(s.rt.ada, true, Date.now() + 60_000);
   expect(send).toHaveBeenCalledTimes(1);
