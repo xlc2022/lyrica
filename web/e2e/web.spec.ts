@@ -3965,6 +3965,8 @@ test("question cards answer in chat and Notifications and close on words", async
   const herbs = page.locator(".question-card").filter({ hasText: "What about the herbs?" });
   await expect(herbs.getByRole("button").first()).toBeEnabled();
   await send(page, "Use pots for the herbs.");
+  // The streamed turn and its stored copy can both show for a moment after a send.
+  await expect(herbs).toHaveCount(1);
   await expect(herbs).toContainText("Answered in words.");
   expect(await page.evaluate(async base => (await fetch(`${base}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "[Answer to q:1]" }) })).status, base)).toBe(400);
 });
