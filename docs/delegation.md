@@ -347,6 +347,17 @@ checks it reaches her, and with a real model which she picks. Code:
 - `compact({ summary })`: compacts the thread she's in with her summary
   (daemon.md, "Compacting herself"). Child threads have it too.
 
+For `ask` and `steps`, unambiguous slips (an array sent as a JSON string,
+the recommended option named by label, near-synonyms for a step's state)
+are accepted, and any other mistake gets an error saying exactly what to
+fix, so a weaker model can correct the call in the same turn (contracts.md).
+A reply that ends with a question and 2 to 4 listed options, with no card,
+gets one hidden follow-up asking her to put it on a card if the choice
+blocks her. `evals/question-card.eval.ts` and `evals/checklist.eval.ts`
+show how well a given model uses both, with a fake model by default or a
+real one through `LYRICA_EVAL_*` (`LYRICA_EVAL_KIND=local` for a local
+server).
+
 The tool also has `later`, `routine` and `steps` (below), and `suggest`,
 `resolve` and `reopen` in projects. Each thread is sent only the actions it
 can use, with their fields, so a definition resent with every reply carries

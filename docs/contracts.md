@@ -22,7 +22,7 @@ host/        the model host: a Docker Compose stack for a GPU machine
 web/         web chat, control panel, memory browser, sleep sidebar
 persona/     seed, imported into self.db on first run
 bin/         launchers and admin commands
-evals/       continuity scenarios, run with `npm run evals`
+evals/       continuity and tool-use scenarios, run with `npm run evals`
 ```
 
 ## Vocabulary
@@ -811,6 +811,20 @@ One model-facing tool: `delegate({ action?, ... })`.
   of 1–300 characters, optional context up to 1200, 2–4 options with labels
   of 1–40 and consequences of 1–200 characters, case-insensitively unique
   labels, and an integer recommended index in range. Strings are trimmed.
+  `normalizeThreadArguments` (core) runs in the tool's `prepareArguments`,
+  before Pi validates, and in `cleanAsk` when a stored call is read back.
+  It accepts only: `options` or `steps` as a JSON string of an array; a
+  `recommended` naming exactly one option's label; a bare-string step as
+  `{ text, state: "todo" }`; and step state aliases (ignoring case:
+  in_progress, in progress, active, started → doing; pending, not started →
+  todo; complete, completed, finished → done). Any other malformed `ask` or
+  `steps` call gets an error naming the field and position, the received
+  type (never the text), what is allowed, and one valid example.
+  When a reply ends with a question next to 2–4 list items (before or after
+  it), the thread can ask, no question is open and the run made no `ask`
+  call, the extension sends one hidden follow-up (`lyrica-ask-nudge`,
+  `display: false`, `deliverAs: "followUp"`) asking her to use a card if the
+  choice blocks her. Context assembly drops it at the next turn.
   Ask once on the card, recommend the first option, continue reversible work
   on that option, and end the turn before an irreversible step. Answers
   arrive in later turns. Routine and wake-up turns may ask in their thread.

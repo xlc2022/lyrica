@@ -132,3 +132,21 @@ describe("threads definition", () => {
     expect(defs.projectThread!.size).toBeLessThan(3600);
   });
 });
+
+describe("prose question shape", () => {
+  it("ignores ordinary questions and lists followed by unrelated prose", async () => {
+    const { proseQuestion } = await import("../src/threads.ts");
+    for (const text of ["Any thoughts?", "- One\n- Two\n\nThe work is done.\n\nHow was your day?", "Which?\n- One", "Which?\n- One\n- Two\n- Three\n- Four\n- Five"]) expect(proseQuestion(text)).toBe(false);
+    for (const mark of ["-", "*", "1.", "1)", "A)"]) expect(proseQuestion(`Which?\n${mark} One\n${mark} Two`)).toBe(true);
+  });
+});
+
+describe("hidden nudge context", () => {
+  it("expires at a new turn marker even without a typed message", async () => {
+    const { dropAskNudges } = await import("../src/context.ts");
+    const nudge = { role: "custom", customType: "lyrica-ask-nudge" };
+    const turn = { role: "custom", customType: "lyrica-turn" };
+    expect(dropAskNudges([turn, nudge])).toEqual([turn, nudge]);
+    expect(dropAskNudges([turn, nudge, turn])).toEqual([turn, turn]);
+  });
+});

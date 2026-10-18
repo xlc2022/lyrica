@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
-import { createAgentSession, DefaultResourceLoader, SessionManager } from "@earendil-works/pi-coding-agent";
-import { PRONOUN_PRESETS, type Persona, type Profile } from "@lyrica/core";
+import { createAgentSession, DefaultResourceLoader, SessionManager, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { DEFAULT_THREADS_LIMITS, PRONOUN_PRESETS, type Persona, type Profile } from "@lyrica/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { createLyricaExtension, recordEntries, type ThreadContext } from "../src/index.ts";
+import { createLyricaExtension, createThreadsExtension, ASK_NUDGE, recordEntries, type ThreadContext } from "../src/index.ts";
 import { withMemory } from "./helpers.ts";
 
 // Runs the extension inside a real Pi session against pi-ai's fake model, and
@@ -23,7 +23,7 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 type Step = (ctx: { messages: unknown[] }) => ReturnType<typeof fauxAssistantMessage> | Promise<ReturnType<typeof fauxAssistantMessage>>;
 
 /** A Pi session for the thread, run by pi-ai's fake model, with its entries recorded in the pool. */
-async function session(thread: ThreadContext, steps?: Step[]) {
+async function session(thread: ThreadContext, steps?: Step[], extra: ExtensionFactory[] = []) {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-pi-"));
   dirs.push(dir);
   const seen: { system: string; turn: string }[] = [];
@@ -44,7 +44,7 @@ async function session(thread: ThreadContext, steps?: Step[]) {
   });
   const loader = new DefaultResourceLoader({
     cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
-    extensionFactories: [(pi) => pi.registerProvider(faux.provider), lyrica],
+    extensionFactories: [(pi) => pi.registerProvider(faux.provider), lyrica, ...extra],
   });
   await loader.reload();
   const { session } = await createAgentSession({
@@ -177,4 +177,56 @@ describe("in a Pi session", () => {
     expect(seen[0]!.turn).toContain(`[${hit!.id}] (note) Ada's cat Miso hates the vacuum cleaner`);
     expect(second.view.own.loadEntries(second.threadId).length).toBeGreaterThanOrEqual(2);
   });
+});
+
+
+describe("question and checklist recovery", () => {
+  const host = { limits: DEFAULT_THREADS_LIMITS, start: async () => ({ id: "unused", link: "unused" }), message: async () => "started" as const, list: () => [], stepsChanged: () => {} };
+  it("rebuilds a card from stringified options and corrects a bad state in the same turn", async () => {
+    const t = (await withMemory()).thread().context;
+    const options = [{ label: "Keep", consequence: "Keeps it." }, { label: "Remove", consequence: "Removes it." }];
+    const { session: s } = await session(t, [
+      () => fauxAssistantMessage([fauxToolCall("threads", { action: "ask", question: "Which?", options: JSON.stringify(options), recommended: "keep" })]),
+      () => fauxAssistantMessage([fauxToolCall("threads", { action: "steps", steps: [{ text: "Check", state: "invalid-secret" }] })]),
+      ctx => { const text = JSON.stringify(ctx.messages); expect(text).toContain("steps[0].state"); expect(text).toContain("todo, doing, done"); return fauxAssistantMessage([fauxToolCall("threads", { action: "steps", steps: [{ text: "Check", state: "doing" }] })]); },
+      () => fauxAssistantMessage("Which route?\n- Keep\n- Remove"),
+    ], [createThreadsExtension(t, host)]);
+    try {
+      await s.prompt("Prepare the work.");
+      const q = t.view.own.openQuestion(t.threadId)!;
+      expect(t.view.own.readAsk(t.threadId, q.n)).toMatchObject({ options, recommended: 0 });
+      expect(t.view.own.steps(t.threadId)).toEqual([{ text: "Check", state: "doing" }]);
+      expect(t.view.own.loadEntries(t.threadId).some((e: any) => e.customType === "lyrica-ask-nudge")).toBe(false);
+    } finally { s.dispose(); }
+  });
+
+  for (const reply of ["Which route?\n\n- Keep\n- Remove", "- Keep\n- Remove\n\nWhich route?"]) {
+    it(`sends one hidden follow-up for ${JSON.stringify(reply)} and drops it next turn`, async () => {
+      const t = (await withMemory()).thread().context;
+      const { session: s } = await session(t, [
+        () => fauxAssistantMessage(reply),
+        ctx => { expect(JSON.stringify(ctx.messages)).toContain(ASK_NUDGE); return fauxAssistantMessage(reply); },
+        ctx => { expect(JSON.stringify(ctx.messages)).not.toContain(ASK_NUDGE); return fauxAssistantMessage("Done."); },
+      ], [createThreadsExtension(t, host)]);
+      try {
+        await s.prompt("Choose a route.");
+        const nudges = () => t.view.own.loadEntries(t.threadId).filter((e: any) => e.customType === "lyrica-ask-nudge");
+        expect(nudges()).toHaveLength(1);
+        expect(nudges()[0]).toMatchObject({ display: false });
+        await s.prompt("Keep it.");
+        expect(nudges()).toHaveLength(1);
+      } finally { s.dispose(); }
+    });
+  }
+  for (const reply of ["Any thoughts?", "- One\n- Two\n\nThe report is ready.\n\nHow was your day?"]) {
+    it("does not nudge an ordinary reply", async () => {
+      const t = (await withMemory()).thread().context;
+      const { session: s } = await session(t, [() => fauxAssistantMessage(reply)], [createThreadsExtension(t, host)]);
+      try {
+        await s.prompt("Tell me about it.");
+        expect(t.view.own.loadEntries(t.threadId).some((e: any) => e.customType === "lyrica-ask-nudge")).toBe(false);
+      } finally { s.dispose(); }
+    });
+  }
+
 });

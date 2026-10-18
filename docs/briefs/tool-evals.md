@@ -1,6 +1,6 @@
 # Brief: Question cards and checklists on every model
 
-**Status:** brief in review. **Branch:** the build is on a new `feature/tool-evals` from `main`, made after this brief merges. **Built by:**
+**Status:** built; in PR review. **Branch:** `feature/tool-evals` (Codex), opened from `claude/agent-loop-reliability-661bmo`. **Built by:**
 Codex on the test machine; the Agent loop thread (Opus) owns review and the PR.
 **Read first:** AGENTS.md, PRINCIPLES.md, docs/briefs/question-card.md,
 docs/briefs/truthful-continuation.md, docs/contracts.md (Child threads, the
@@ -143,6 +143,11 @@ handoff.
 
 ## Handoff
 
-- **Done:** brief.
-- **Next:** PR review of the brief, then the Codex build on the test
-  machine, queued after push notifications.
+- **Done:** the normalizer and specific errors for `ask` and `steps`, the
+  hidden follow-up for a prose question, and both evals, with tests and
+  docs. Built by Codex on the test machine with fake models only; the
+  daemon checklist test now expects the specific `steps[0].state` error.
+  Typecheck, the touched tests and `npm run evals` (14 passed, 5 optional
+  real-model checks skipped) pass.
+- **Next:** PR review. Running the evals on real models waits on the user:
+  LM Studio needs their go, and cloud models spend quota.
