@@ -212,7 +212,7 @@ export interface OfferingInfo extends Capabilities {
   id: string;
   /** The endpoint's own model ID. */
   modelId: string;
-  /** `<endpoint>/<model>`, with `shared.` before a shared endpoint's name. */
+  /** `<endpoint>/<model>`, with `shared.` before a shared endpoint's name; a host recipe by its name. */
   label: string;
   manual: boolean;
   /** missing: the endpoint stopped listing it; gone: missing for 30 days, so fallbacks skip it. */

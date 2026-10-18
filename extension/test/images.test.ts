@@ -174,11 +174,11 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(s.models.recentCalls(s.ada.id)).toHaveLength(2);
     expect(JSON.stringify(s.models.recentCalls(s.ada.id))).not.toMatch(/garden|flowers/);
   });
-  it("names the host and recipe that made the image", async () => {
+  it("names the host and recipe that made the image, by the recipe's name", async () => {
     const s = await setup();
     s.context({ localOnly: true });
     const out = await s.run({ action: "create", prompt: "A garden", tier: "quality" });
-    expect(out.content).toContainEqual({ type: "text", text: expect.stringContaining("Made with recipe/art on workstation.") });
+    expect(out.content).toContainEqual({ type: "text", text: expect.stringContaining("Made with Art on workstation.") });
   });
   it.each(["image", "refusal"] as const)("Pi passes the %s result back to the model, with no disk session", async kind => {
     const s = await setup();
