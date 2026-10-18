@@ -396,8 +396,9 @@ second pairing. Then:
   report the new commit within 5 minutes; a host paused before stays
   paused. From the first update on, the host runs from that tree, so its
   settings are in `/opt/lyrica-host/<commit>/host/.env`, carried to each
-  new tree: change one by running `install.sh` there. By hand, `git pull
-  && host/install.sh` in your checkout installs from the checkout again.
+  new tree. To change a setting, run `git pull && host/install.sh` in your
+  checkout: it installs from the checkout again, and the next Update
+  carries its `.env` along.
   Either way the `data` volume keeps the host's key, so pairing survives.
   Details are in [host/README.md](../../host/README.md#updates).
 - **Hosts installed before the updater** need `git pull &&
