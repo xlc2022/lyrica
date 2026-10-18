@@ -449,6 +449,8 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   `saved_path` or else the newest image under `generated_images/` (0.146.0
   reports none, saving `<session>/exec-<id>.png`); a user's calls run one at
   a time, so that folder is emptied before each call and removed after it.
+  Codex is stopped once a saved image stops growing, so one call spends
+  at most one image of the user's plan.
   The journal gets one line a call: the exit code, how many image files
   Codex saved and its event types, never text. The isolation is structural, not the prompt: Codex runs in
   Lyrica's sandbox (`Workspace.codexBox`, `codexSandbox`) holding only its

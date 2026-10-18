@@ -31,6 +31,13 @@ case "$1 $2" in
       # As Codex 0.146.0 does: generated_images/<session>/exec-<id>.png, and no saved_path in its events.
       mkdir -p "$CODEX_HOME/generated_images/s1"
       base64 -d > "$CODEX_HOME/generated_images/s1/exec-1.png" <<< "${png.toString("base64")}"
+      if [ -f "$bin/twice" ]; then
+        # A second image a few seconds later, in a session of its own: Lyrica stops Codex first.
+        sleep 5 >/dev/null 2>&1 & wait $!
+        mkdir -p "$CODEX_HOME/generated_images/s2"
+        base64 -d > "$CODEX_HOME/generated_images/s2/exec-2.png" <<< "${png.toString("base64")}"
+        echo second >> "$bin/log"
+      fi
       echo '{"type":"item.completed","item":{"type":"agent_message","text":"SECRET done"}}'
     else
       mkdir -p "$CODEX_HOME/generated_images/t1"
@@ -111,6 +118,20 @@ describe("ChatGPT Images through the user's own Codex (principles 1 and 2)", () 
     const [made] = await codexImage({ ...box, log: (l) => lines.push(l) }, { action: "create", prompt: "A garden", tier: "fast" });
     expect(made).toMatchObject({ type: "image/png", width: 1, height: 1 });
     expect(lines).toEqual(["codex exec: exit 0, 1 image file saved, events: thread.started, item.completed:agent_message"]);
+    expect(existsSync(join(home, "generated_images"))).toBe(false);
+  });
+
+  it("stops Codex once it has saved one image, so a second can't spend the plan", async () => {
+    writeFileSync(join(home, "auth.json"), "{}");
+    writeFileSync(join(bin, "unreported"), "");
+    writeFileSync(join(bin, "twice"), "");
+    const lines: string[] = [];
+    const started = Date.now();
+    const made = await codexImage({ ...box, log: (l) => lines.push(l) }, { action: "create", prompt: "A garden", tier: "fast" });
+    expect(made).toHaveLength(1);
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(readFileSync(join(bin, "log"), "utf8")).not.toContain("second");
+    expect(lines[0]).toMatch(/^codex exec: stopped after its image, 1 image file saved/);
     expect(existsSync(join(home, "generated_images"))).toBe(false);
   });
 
