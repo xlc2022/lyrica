@@ -864,6 +864,31 @@ Machines, which takes a new token too; or `ssh remove <name>`, then
 same as the command. `lyrica admin ssh list` shows Proxmox machines with
 the SSH ones, and `ssh remove <name>` takes one away.
 
+## Get pushes on your phone
+
+She can push a short note to an [ntfy](https://ntfy.sh) topic when
+something waits on you: a question, a permission, a share, a persona change
+or a thread. Pushes say only that, such as "A question is waiting." or
+"3 things are waiting.", never message text. Each user sets their own.
+
+1. Install the ntfy app on your phone and subscribe to a topic name nobody
+   could guess. On ntfy.sh the topic is the only secret.
+2. In Lyrica, **Settings → Push** (after Appearance), enter the topic's
+   **URL**, such as `https://ntfy.sh/<topic>`. For a private ntfy server
+   that needs a login, put an access token in **Token**; it is sent as a
+   Bearer token.
+3. Leave **Include a link** off unless you want tapping the push to open
+   Notifications. It gives the receiver this server's address.
+4. **Save**, then **Send a test**. It shows **Sent**, or the receiver's
+   status and reason. A failed push shows "Last push failed at" with the
+   time and status until the next one succeeds.
+
+Other users need a public HTTPS host. An administrator may also use an
+ntfy server on your own network (private addresses or the tailnet), over
+HTTP too. Loopback, link-local, this machine and the front door are always
+refused. To replace the destination, enter the full URL and token again;
+**Turn off** removes it.
+
 ## Day to day
 
 - **Logs:** `journalctl -u lyricad`, `journalctl -u lyrica-caddy` and
