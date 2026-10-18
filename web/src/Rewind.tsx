@@ -1,8 +1,10 @@
-// Each message's menu: pin, branch, regenerate, edit and delete. Deleting waits a few seconds, so it can be undone.
-import { useCallback, useEffect, useRef, useState } from "react";
+// Each message's actions: the row of icon buttons under it (copy, regenerate, edit, branch) and its ⋯ menu (pin, remember,
+// regenerate with another model, delete). Deleting waits a few seconds, so it can be undone.
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ModelRef, Pins, Pool, RemovalPlan, RewindRequest, ThreadSettings } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
+import { isChatModel } from "./ModelLabel.tsx";
 import { useMentionText } from "./mentions.ts";
 import { useDismiss } from "./ui.tsx";
 
@@ -24,8 +26,60 @@ export interface Rewinder {
   startThread?(n: number): void;
 }
 
-/** `onRemember`: Remember this, a note from the message's first line (docs/ux.md §6). */
-export function MessageMenu({ n, role, rewinder, onEdit, onRemember }: { n: number; role: "user" | "assistant"; rewinder: Rewinder; onEdit?: () => void; onRemember?: () => void }) {
+/**
+ * A message's actions (docs/ux.md §6, "A message's actions"): a quiet row of icon buttons under the message, each named
+ * by its tooltip. Hers: Copy, Regenerate, Branch, Read aloud, React, ⋯. The user's: Copy, Edit, Branch, React, ⋯. The
+ * rare actions stay behind ⋯ (`MessageMenu`). `text` is what Copy puts on the clipboard; `readAloud` and `react` are
+ * the buttons the conversation supplies, since it holds their state.
+ */
+export function MessageActions({ n, role, rewinder, text, onEdit, onRemember, readAloud, react }: {
+  n: number; role: "user" | "assistant"; rewinder: Rewinder; text: string; onEdit?: () => void; onRemember?: () => void;
+  readAloud?: ReactNode; react?: ReactNode;
+}) {
+  const { busy } = rewinder;
+  return (
+    <div className="msg-actions" role="group" aria-label="Message actions">
+      <CopyIconButton text={text} />
+      {role === "assistant" && (
+        <button type="button" className="icon-btn quiet" aria-label="Regenerate" title="Regenerate" disabled={busy}
+          onClick={() => rewinder.rewind(n, { action: "regenerate" }, n)}><Icon name="refresh" /></button>
+      )}
+      {role === "user" && onEdit && <button type="button" className="icon-btn quiet" aria-label="Edit" title="Edit" disabled={busy} onClick={onEdit}><Icon name="edit" /></button>}
+      <button type="button" className="icon-btn quiet" aria-label="Branch" title="Branch" onClick={() => rewinder.branch(n)}><Icon name="branch" /></button>
+      {readAloud}
+      {react}
+      <MessageMenu n={n} role={role} rewinder={rewinder} onRemember={onRemember} />
+    </div>
+  );
+}
+
+/** Copy as an icon button: the icon becomes a check and the name Copied for 2 s, or Copy failed where the browser refuses (docs/ux.md §2). */
+function CopyIconButton({ text }: { text: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const copy = async () => {
+    let result: "copied" | "failed" = "copied";
+    try { await navigator.clipboard.writeText(text); } catch { result = "failed"; }
+    clearTimeout(timer.current);
+    setState(result);
+    timer.current = setTimeout(() => setState("idle"), 2000);
+  };
+  const label = state === "idle" ? "Copy" : state === "copied" ? "Copied" : "Copy failed";
+  return (
+    <button type="button" className="icon-btn quiet" data-state={state} aria-label={label} title={label} onClick={() => void copy()}>
+      <Icon name={state === "copied" ? "check" : state === "failed" ? "close" : "copy"} />
+    </button>
+  );
+}
+
+/**
+ * The rare actions behind a message's ⋯ (More actions): Pin or Unpin, Remember this, Regenerate with… (the chat models
+ * the thread may use), Start a thread in a project chat, and Delete. Branch, Regenerate and Edit are buttons in the row;
+ * a marker that opens to a message written elsewhere (`FromThread`, the look and scheduled markers) uses this menu alone,
+ * with Branch in it, since it has no row. `onRemember`: Remember this, a note from the message's first line (docs/ux.md §6).
+ */
+export function MessageMenu({ n, role, rewinder, onRemember, branch }: { n: number; role: "user" | "assistant"; rewinder: Rewinder; onRemember?: () => void; /** Branch as a menu item, for a marker without the row. */ branch?: boolean }) {
   const [open, setOpen] = useState(false);
   const [models, setModels] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -33,11 +87,11 @@ export function MessageMenu({ n, role, rewinder, onEdit, onRemember }: { n: numb
   useDismiss(ref, open, close);
   const { busy, lastTurn } = rewinder;
   const act = (fn: () => void) => () => { close(); fn(); };
-  const regenerate = (model?: ModelRef) => rewinder.rewind(n, { action: "regenerate", ...(model ? { model } : {}) }, n);
+  const regenerate = (model: ModelRef) => rewinder.rewind(n, { action: "regenerate", model }, n);
   const inLastTurn = lastTurn !== undefined && n >= lastTurn;
   return (
     <span className="msg-menu" ref={ref}>
-      <button type="button" className="icon-btn" aria-label="Message actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button type="button" className="icon-btn quiet" aria-label="More actions" title="More actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
         <Icon name="more" />
       </button>
       {open && (
@@ -46,19 +100,17 @@ export function MessageMenu({ n, role, rewinder, onEdit, onRemember }: { n: numb
             ? <button type="button" role="menuitem" onClick={act(() => rewinder.pin(n, false))}>Unpin</button>
             : <button type="button" role="menuitem" onClick={act(() => rewinder.pin(n, true))}>Pin</button>}
           {onRemember && <button type="button" role="menuitem" onClick={act(onRemember)}>Remember this</button>}
-          <button type="button" role="menuitem" onClick={act(() => rewinder.branch(n))}>Branch from here</button>
+          {branch && <button type="button" role="menuitem" onClick={act(() => rewinder.branch(n))}>Branch from here</button>}
           {rewinder.startThread && <button type="button" role="menuitem" disabled={busy} onClick={act(() => rewinder.startThread!(n))}>Start a thread</button>}
-          {role === "assistant" && <button type="button" role="menuitem" disabled={busy} onClick={act(() => regenerate())}>Regenerate</button>}
           {role === "assistant" && (
             <button type="button" role="menuitem" disabled={busy} aria-expanded={models} onClick={() => setModels(!models)}>Regenerate with…</button>
           )}
-          {models && rewinder.settings?.allowed.flatMap((ep) => ep.models.map((m) => (
+          {models && rewinder.settings?.allowed.flatMap((ep) => ep.models.filter(isChatModel).map((m) => (
             <button key={m.id} type="button" role="menuitem" className="sub-item" disabled={busy}
               onClick={act(() => regenerate({ offeringId: m.id }))}>
               {m.modelId} <span className="muted">· {ep.name}</span>
             </button>
           )))}
-          {role === "user" && onEdit && <button type="button" role="menuitem" disabled={busy} onClick={act(onEdit)}>Edit</button>}
           {/* The last turn has Delete; earlier messages, Delete from here. */}
           {inLastTurn
             ? <button type="button" role="menuitem" className="danger" disabled={busy} onClick={act(() => rewinder.rewind(lastTurn, { action: "delete" }, lastTurn))}>Delete</button>

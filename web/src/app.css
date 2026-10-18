@@ -635,26 +635,21 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .sub-work > button { justify-self: start; }
 .transcript { display: grid; gap: 10px; border-left: 2px solid var(--line); padding-left: 10px; max-height: 60vh; overflow-y: auto; }
 .sub-composer { display: block; }
-/* A message's menu: branch, regenerate, edit, delete. */
+/* A message's ⋯ menu (pin, remember, regenerate with another model, delete); its row is .msg-actions below. */
 .msg-menu { position: relative; display: inline-flex; margin-left: 6px; vertical-align: middle; }
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; min-height: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--fg); }
 .icon-btn:hover:not(:disabled), .icon-btn[aria-expanded="true"] { border-color: var(--accent); }
 .msg-menu .menu { right: auto; width: max-content; min-width: 200px; max-width: min(340px, calc(100vw - 32px)); max-height: 60vh; overflow-y: auto; text-transform: none; letter-spacing: normal; font-size: 14px; font-weight: 400; }
 .msg-menu .menu .sub-item { padding-left: 24px; }
-/* Her actions end with ⋯, so its menu opens leftwards and stays on a phone's screen. */
-.turn .msg-menu .menu { left: auto; right: 0; }
 .edit-box { display: grid; gap: 6px; }
 .edit-box textarea { width: 100%; font: 15px/1.5 var(--ui); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; background: var(--panel); color: var(--fg); }
 
-/* Voice (DESIGN.md "Voice"): the mic in the message box's row, and Read aloud in her message's actions. */
+/* Voice (DESIGN.md "Voice"): the mic in the message box's row; Read aloud sits in her message's action row (.msg-actions). */
 .mic { display: inline-flex; align-items: center; gap: 2px; }
 .mic .elapsed { font: 12px/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); padding-right: 4px; }
 .composer .mic[data-state="recording"] button.icon { color: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 .composer .mic[data-state="transcribing"] button.icon { color: var(--muted); opacity: 1; animation: pulse 1.4s ease-in-out infinite; }
 .composer[data-mic="recording"] textarea::placeholder { color: var(--accent); }
-.who .read-aloud { margin-left: 6px; vertical-align: middle; }
-.who .read-aloud[data-reading="true"] { color: var(--accent); border-color: var(--accent); }
-.who .read-aloud[data-reading="true"] .ic { animation: pulse 1.4s ease-in-out infinite; }
 /* The thread list's sections (Today, a group…), each a label and its rows. */
 .threads > li, .threads-in { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
 /* Search results: a group per thread, its row as the list draws it, then its hits of up to two lines (who and time in mono, on the first). */
@@ -993,7 +988,6 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .react-anchor { position: relative; display: inline-flex; margin-left: 6px; vertical-align: middle; }
 .who .react-btn + .msg-menu { margin-left: 2px; }
 .react-anchor .quick { position: absolute; z-index: 12; top: 50%; transform: translateY(-50%); left: calc(100% + 6px); display: flex; gap: 2px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; box-shadow: 0 8px 30px rgb(0 0 0 / 0.15); }
-.turn .react-anchor .full { left: auto; right: 0; }
 .react-anchor .quick button { width: 36px; height: 36px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; font-size: 20px; line-height: 1; }
 .react-anchor .quick button:hover, .react-anchor .quick button:focus-visible { background: var(--tool); }
 .react-anchor .quick button[aria-pressed="true"] { background: var(--user-block); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -1410,3 +1404,45 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
   .welcome-starters > button, .welcome-starters .machine-add, .welcome-starters .machine-add > button { width: 100%; }
   dialog.recent-work { width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; border-radius: 0; }
 }
+
+/* A message's actions (docs/ux.md §6, "A message's actions"): a quiet row of icon buttons under the message, each named by
+   its tooltip, borderless at rest and bordered on hover, as the message box's icons are. Shown on hover or focus where a
+   pointer hovers, always on touch. The user's row sits at the right, under their block. */
+.msg-actions { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; min-width: 0; }
+.msg-actions .icon-btn, .msg-actions .msg-menu .icon-btn, .msg-actions .react-btn { border-color: transparent; background: transparent; color: var(--muted); }
+.msg-actions .icon-btn:hover:not(:disabled), .msg-actions .icon-btn[aria-expanded="true"], .msg-actions .icon-btn:focus-visible { color: var(--fg); border-color: var(--line); background: var(--panel); }
+.msg-actions .icon-btn[data-state="copied"] { color: var(--ok); }
+.msg-actions .icon-btn[data-state="failed"] { color: var(--danger); }
+.msg-actions .msg-menu { margin-left: 0; }
+.msg-actions .read-aloud { margin-left: 0; }
+.msg-actions .read-aloud[data-reading="true"] { color: var(--accent); }
+.msg-actions .read-aloud[data-reading="true"] .ic { animation: pulse 1.4s ease-in-out infinite; }
+.msg.user .msg-actions { justify-content: flex-end; }
+/* The user's row ends at the right edge, so its menus and pickers open leftwards and stay on screen. */
+.msg.user .msg-actions .menu, .msg.user .msg-actions .full { left: auto; right: 0; }
+.msg.user .msg-actions .quick { left: auto; right: calc(100% + 6px); }
+/* On a phone the ⋯ sits past the middle of either row, so every message menu opens leftwards; the full picker stays the bottom sheet above. */
+@media (max-width: 760px) {
+  .msg-actions .menu { left: auto; right: 0; }
+  .msg.user .msg-actions .quick { right: 0; }
+}
+@media (max-width: 700px) { .msg.user .msg-actions .full { left: 0; } }
+@media (hover: hover) {
+  .msg-actions { opacity: 0; transition: opacity 0.12s; }
+  .msg:hover .msg-actions, .turn:hover .msg-actions, .msg-actions:focus-within, .msg-actions:has([aria-expanded="true"]) { opacity: 1; }
+}
+@media (pointer: coarse) { .msg-actions .icon-btn { width: var(--tap); height: var(--tap); } }
+/* A run of tool calls (docs/ux.md §6, Lyrica's inner workings): one marker that opens to a box which scrolls. */
+.turn.quiet { gap: 6px; }
+.marker.tool-run > button .num { color: var(--fg); font-size: 12px; }
+.marker.tool-run > button .ic { width: 14px; height: 14px; flex: none; transition: transform 0.15s; }
+.marker.tool-run > button[aria-expanded="true"] .ic { transform: rotate(180deg); }
+.marker.tool-run .run-body { max-height: 320px; overflow-y: auto; gap: 6px; }
+.marker.tool-run .run-body .marker > button { background: var(--panel); }
+/* An uploaded image in the person's message: its thumbnail where the path was. */
+.msg.user .body .inline-img { margin: 6px 0 2px; max-width: min(100%, 320px); }
+/* Images attached to a draft: thumbnails above the box, each with Remove. */
+.attachments { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.attachments li { position: relative; }
+.attachments img { display: block; height: 72px; max-width: 160px; object-fit: cover; border: 1px solid var(--line); border-radius: 8px; background: var(--tool); }
+.attachments button { position: absolute; top: -6px; right: -6px; width: 24px; min-height: 24px; height: 24px; border-radius: 50%; background: var(--panel); }

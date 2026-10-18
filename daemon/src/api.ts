@@ -1342,7 +1342,8 @@ export interface PermissionAnswer {
 
 /**
  * POST /api/u/:userId/threads/:pool/:threadId/uploads?name=<file name> → UploadResponse.
- * The body is the file's bytes (any content type), up to the size limit.
+ * The body is the file's bytes (any content type), up to the size limit. Saved under `uploads/`; an image gets a
+ * random name with its extension (docs/workspace.md), so `path` is the name to use, not the one given.
  */
 export interface UploadResponse { path: string }
 

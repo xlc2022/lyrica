@@ -7,7 +7,8 @@
 // starts a child thread with that title (then says "Started it."), "suggest: <a>, <b>"
 // proposes threads with those titles (then says "Suggested."), "steps: done <a>;
 // doing <b>; todo <c>" sets the thread's checklist (then says "Checklist set."), "plan: <plan>"
-// calls propose_plan with that plan (then says "On it."), "reply: <markdown>"
+// calls propose_plan with that plan (then says "On it."), "recall: <n>" calls
+// recall n times in a row before the echo, "reply: <markdown>"
 // answers with that markdown as written (the echo's "You said: " would put a
 // fence mid-line, where it is not a fence), a look at a project's
 // threads (the `watching` call) tells the first thread it wasn't about "Heads up:
@@ -110,6 +111,18 @@ function fakeModel() {
       const send = (delta: unknown, finish: string | null = null) => res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`);
       res.writeHead(200, { "content-type": "text/event-stream" });
       const command = /run: (.+)/.exec(said)?.[1];
+      // "recall: <n>": n recall calls in a row (a run of tool calls), then the usual echo.
+      const recalls = Number(/^recall: (\d+)/.exec(said)?.[1] ?? 0);
+      if (recalls) {
+        const since = chat.messages.length - 1 - chat.messages.map((m) => m.role).lastIndexOf("user");
+        const done = since ? chat.messages.slice(-since).filter((m) => m.role === "tool").length : 0;
+        if (done < recalls) {
+          send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}_${done}`, type: "function", function: { name: "recall", arguments: JSON.stringify({ query: `thing ${done + 1}` }) } }] });
+          send({}, "tool_calls");
+          res.write(`data: ${JSON.stringify({ ...base, choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}\n\n`);
+          return res.end("data: [DONE]\n\n");
+        }
+      }
       const plan = /plan: (.+)/.exec(said)?.[1];
       const child = /^start(?: long)?: (.+)/.exec(said)?.[1];
       // "start long: <title>" gives the child a task of many lines, for the collapsed message's Show more.

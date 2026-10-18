@@ -323,7 +323,11 @@ takes is `lyrica@pve!agent=<that secret>`.
   subagent works in its parent's folder. The gocryptfs password is the hex
   `home` subkey, passed on stdin.
 - A file uploaded in the web UI goes into the thread's `uploads/` folder in the
-  home workspace. `Workspace.saveUpload` writes it from inside a sandbox, so a
+  home workspace, apart from the `images/` folder her image tool writes.
+  An image keeps its extension but gets a random 12-hex-digit name
+  (`uploads/7f3a9c2e4b1d.png`), so a phone's `IMG_1234.jpg` or a telling
+  filename never reaches her context or the thread; other files keep their
+  name. `Workspace.saveUpload` writes it from inside a sandbox, so a
   symlink she left in `uploads/` can't point it anywhere else.
 - **The Files panel** (`core/src/workspace/files.ts`, `Workspace.files(t)`)
   lists, searches, reads, uploads, renames, deletes and zips in the thread's

@@ -37,14 +37,24 @@ export function useFileLinks(userId: string, pool: Pool, threadId: string): File
   }), [userId, pool, threadId]);
 }
 
-/** Plain text with each path under the thread's folder as a link. */
-export function PathText({ text, files }: { text: string; files: FileLinks }) {
+/** An image the web UI shows inline, by its extension (an SVG stays a link: `…/files/content` serves it as text). */
+export const isImagePath = (p: string) => /\.(png|jpe?g|gif|webp|avif|bmp)$/i.test(p);
+
+/**
+ * Plain text with each path under the thread's folder as a link. With `large`, an image's path shows as its
+ * thumbnail instead, opening large (docs/ux.md §6, an uploaded image in the person's message); the line break after
+ * the path goes with it, since an upload puts the path on a line of its own.
+ */
+export function PathText({ text, files, large }: { text: string; files: FileLinks; large?: (path: string) => void }) {
   const out: ReactNode[] = [];
   let last = 0;
   for (const m of text.matchAll(PATH)) {
     if (m.index > last) out.push(text.slice(last, m.index));
-    out.push(<a key={m.index} className="fpath" href={files.href(m[0])}>{m[0]}</a>);
     last = m.index + m[0].length;
+    if (large && isImagePath(m[0])) {
+      out.push(<InlineImage key={m.index} src={m[0]} alt={basename(m[0])} label={basename(m[0])} files={files} large={large} />);
+      if (text[last] === "\n") last++;
+    } else out.push(<a key={m.index} className="fpath" href={files.href(m[0])}>{m[0]}</a>);
   }
   if (last < text.length) out.push(text.slice(last));
   return <>{out.map((n, i) => <Fragment key={i}>{n}</Fragment>)}</>;

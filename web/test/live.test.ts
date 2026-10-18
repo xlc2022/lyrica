@@ -182,6 +182,13 @@ describe("stored user messages replacing live copies", () => {
     expect(storedUserItems(live.items, [message(8, text)])).toEqual(new Set([0]));
   });
 
+  it("replaces the message a regenerate sent again once the stored copy arrives at or after the rewind point", () => {
+    // The stream's `rewound` dispatches the re-sent text with afterN just before the rewind point (stream.ts).
+    const live = run([{ type: "rewound", from: 8 }, { type: "sent", text, afterN: 7 }, { type: "turn_start" }, { type: "text", delta: "Again." }]);
+    expect(storedUserItems(live.items, [message(7, text)])).toEqual(new Set());
+    expect(storedUserItems(live.items, [message(8, text)])).toEqual(new Set([0]));
+  });
+
   it("matches repeated sends once each in order, without hiding an unstored repeat", () => {
     const live = run([{ type: "sent", text, afterN: 7 }, { type: "sent", text, afterN: 7 }]);
     expect(storedUserItems(live.items, [message(7, text), message(8, text)])).toEqual(new Set([0]));

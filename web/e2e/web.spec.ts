@@ -317,7 +317,7 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await expect(page.getByText("You said: first question")).toBeVisible();
   await send(page, "second question");
   await expect(page.getByText("You said: second question")).toBeVisible();
-  const menu = (i: number) => page.getByRole("button", { name: "Message actions" }).nth(i);
+  const menu = (i: number) => page.getByRole("button", { name: "More actions" }).nth(i);
 
   // Regenerate with another model: her first reply and what followed are replaced, after the Undo delay.
   await menu(1).click();
@@ -329,9 +329,8 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await expect(page.getByText("from the fake local-model")).toBeVisible();
   await expect(page.getByText("second question")).toHaveCount(0);
 
-  // Edit the question: it is sent again, as edited.
-  await menu(0).click();
-  await page.getByRole("menuitem", { name: "Edit" }).click();
+  // Edit the question (a button in its row): it is sent again, as edited.
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
   await page.getByLabel("Edit your message").fill("an edited question");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByText("You said: an edited question")).toBeVisible();
@@ -344,9 +343,8 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(page.getByText("You said: an edited question")).toBeVisible();
 
-  // Branch from her reply: the branch opens, with the conversation so far.
-  await menu(1).click();
-  await page.getByRole("menuitem", { name: "Branch from here" }).click();
+  // Branch from her reply (a button in its row): the branch opens, with the conversation so far.
+  await page.getByRole("button", { name: "Branch", exact: true }).nth(1).click();
   await expect(page.getByRole("heading", { level: 1, name: /\(branch\)$/ })).toBeVisible();
   await expect(page.getByText("Branched from")).toBeVisible();
   await expect(page.getByText("You said: an edited question")).toBeVisible();
@@ -355,6 +353,35 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await page.keyboard.press("1");
   await expect(page.locator(".mode-picker > button")).toContainText("Ask");
   await noHorizontalScroll(page);
+});
+
+test("a run of tool calls folds into one marker that opens to a scrolling box, and a message's actions sit under it", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "recall: 4");
+  await expect(page.getByText("You said: recall: 4")).toBeVisible();
+  const run = page.locator(".marker.tool-run");
+  await expect(run).toHaveCount(1);
+  await expect(run).toContainText("4 tool calls");
+  await expect(run).not.toContainText("running");
+  // The calls' own markers stay out of the conversation until the run opens; her reply keeps its name line, the run has none.
+  await expect(page.locator(".marker", { hasText: "recall" })).toHaveCount(0);
+  await expect(page.locator(".turn.quiet")).toHaveCount(0);
+  await run.getByRole("button", { name: /tool calls/ }).click();
+  const calls = run.locator(".run-body .marker");
+  await expect(calls).toHaveCount(4);
+  await expect(calls.first()).toContainText("recall");
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/tool-run-${page.viewportSize()!.width}.png` });
+  // The action rows: the person's (Copy, Edit, Branch, React, More actions) and hers (Copy, Regenerate, Branch, Read aloud, React, More actions).
+  const rows = page.getByRole("group", { name: "Message actions" });
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first().getByRole("button")).toHaveText(["", "", "", "", ""]);
+  await expect(rows.first().getByRole("button", { name: "Edit", exact: true })).toBeVisible();
+  await expect(rows.last().getByRole("button", { name: "Regenerate", exact: true })).toBeVisible();
+  await expect(rows.last().getByRole("button", { name: "Read aloud" })).toBeVisible();
+  await rows.last().getByRole("button", { name: "Copy", exact: true }).hover();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/message-actions-${page.viewportSize()!.width}.png` });
 });
 
 test("a code block in her reply shows its language and Copy, which copies its text and reads Copied, then Copy failed where the clipboard refuses", async ({ page, baseURL, context }) => {
@@ -366,7 +393,7 @@ test("a code block in her reply shows its language and Copy, which copies its te
   const code = `const wide = [${Array.from({ length: 24 }, (_, i) => `"item-${i}"`).join(", ")}];\nconsole.log(wide.length);`;
   await send(page, ["reply: Try this:", "", `${fence}ts`, code, fence, "", "Then `npm test` again."].join("\n"));
   // Her stored copy has replaced the live one once its menu is there.
-  await expect(page.locator("section.turn").getByRole("button", { name: "Message actions" })).toBeVisible();
+  await expect(page.locator("section.turn").getByRole("button", { name: "More actions" })).toBeAttached();
   const block = page.locator(".code-block");
   await expect(block).toHaveCount(1);
   await expect(block.locator(".code-lang")).toHaveText("ts");
@@ -423,7 +450,7 @@ test("a pinned message shows in the header's Pinned popover, and unpinning remov
   await newThread(page, "General");
   await send(page, "the gate code is 4417");
   await expect(page.getByText("You said: the gate code is 4417")).toBeVisible();
-  const menu = (i: number) => page.getByRole("button", { name: "Message actions" }).nth(i);
+  const menu = (i: number) => page.getByRole("button", { name: "More actions" }).nth(i);
 
   await menu(0).click();
   await page.getByRole("menuitem", { name: "Pin", exact: true }).click();
@@ -479,7 +506,7 @@ test("removing turns that did things asks first, with what goes", async ({ page,
   await newThread(page, "General");
   await send(page, "the shed key is under the pot");
   await expect(page.getByText("You said: the shed key is under the pot")).toBeVisible();
-  const menu = (i: number) => page.getByRole("button", { name: "Message actions" }).nth(i);
+  const menu = (i: number) => page.getByRole("button", { name: "More actions" }).nth(i);
   await menu(0).click();
   await page.getByRole("menuitem", { name: "Pin", exact: true }).click();
   await expect(page.locator(".msg.user .who").getByText("Pinned")).toBeVisible();
@@ -864,13 +891,13 @@ test("each message shows when it was sent in mono after its name, her reply once
   await expect(mine).toHaveText(/^[^·]+ · \d\d:\d\d$/);
   await expect(hers).toHaveText(/^Lyrica · cloud-model · \d\d:\d\d$/);
 
-  // Nothing wraps on a phone: the time and the ⋯ button are on the same row, today's time and another day's, the widest.
+  // Nothing wraps on a phone: the name and the time are on one row, today's time and another day's, the widest.
   const oneLine = async () => {
     if (!phone(page)) return;
     for (const who of [mine, hers]) {
-      const [time, menu, line] = await Promise.all([who.locator("time").boundingBox(), who.getByRole("button", { name: "Message actions" }).boundingBox(), who.boundingBox()]);
-      expect(Math.abs(time!.y - menu!.y)).toBeLessThan(menu!.height / 2);
-      expect(line!.height).toBeLessThan(menu!.height + 8);
+      const [time, line] = await Promise.all([who.locator("time").boundingBox(), who.boundingBox()]);
+      expect(Math.abs(time!.y - line!.y)).toBeLessThan(time!.height);
+      expect(line!.height).toBeLessThan(time!.height * 2);
     }
   };
   await oneLine();
@@ -1675,7 +1702,7 @@ test("a project: New project, suggested threads start into cards, the Threads po
   if (split) { await expect(fact).toHaveAttribute("aria-pressed", "true"); await fact.click(); await expect(pop).toHaveCount(0); } else await page.keyboard.press("Escape");
 
   // Start a thread from a message's menu; the sidebar nests the project's threads with their state.
-  await page.locator(".msg.user").first().getByRole("button", { name: "Message actions" }).click();
+  await page.locator(".msg.user").first().getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "Start a thread" }).click();
   await expect(page.locator(".tcard")).toHaveCount(3);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();

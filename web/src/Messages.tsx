@@ -15,9 +15,10 @@ import type { useThread } from "./stream.ts";
 import { FoldCard, stateWord, SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
 import { ChecklistButton, StepLine } from "./Checklist.tsx";
 import { findThread } from "./Thread.tsx";
-import { EditBox, MessageMenu, type Rewinder } from "./Rewind.tsx";
+import { EditBox, MessageActions, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { ErrorText, fullTime, Prose, useAction, useDismiss, wakeTime } from "./ui.tsx";
 import { basename, InlineImage, Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
+import type { ReactNode } from "react";
 import { foldLooks, raisedIn, toldIn, type Told } from "./looks.ts";
 import { her } from "./name.ts";
 import { ReactButton, ReactionChips } from "./Reactions.tsx";
@@ -81,13 +82,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
       <ErrorText error={error} />
       {loaded && !project && !messages.length && !live.items.length && <p className="muted empty">Say hello.</p>}
       {!shownMessages.length && project?.overview.threads.map(t => <ThreadCard key={t.id} t={t} userId={ctx.user.id} env={project} />)}
-      {shownMessages.map((m) => (
-        <StoredMessage key={m.id} m={m} env={env} you={ctx.user.displayName} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)}
-          cards={cards.get(m.n)} />
-      ))}
-      {hideFrom === undefined && live.items.map((item, i) => !storedUsers.has(i) && (
-        <LiveMessage key={`live-${i}`} item={item} env={env} you={ctx.user.displayName} streaming={live.busy && i === live.items.length - 1} />
-      ))}
+      {conversationNodes(shownMessages, hideFrom === undefined ? live.items.filter((_, i) => !storedUsers.has(i)) : [], live.busy, env, ctx.user.displayName, looks, cards)}
       {live.busy && !live.items.some((x) => x.role === "assistant") && <p className="thinking-dots" role="status">{her()} is thinking…</p>}
       {live.permissions.filter((p) => !p.subagent || !shown.has(p.subagent.threadId) || p.subagent.threadId === threadId)
         .map((p) => <PermissionPrompt key={p.requestId} base={base} p={p} env={env} />)}
@@ -138,7 +133,94 @@ interface Env {
   large: (path: string, files: FileLinks) => void;
 }
 
-function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: Env; you: string; cards?: ThreadSummary[]; told?: Told[]; folded?: boolean }) {
+/** Her messages that hold only markers, waiting to be drawn together once the run ends. */
+interface Quiet { key: string; n?: number; parts: MessagePart[]; streaming: boolean }
+
+/** A part that is one of her inner workings (docs/ux.md §6): a marker, never text, an image or a card. */
+function isMarker(p: MessagePart): boolean {
+  if (p.type === "thinking" || p.type === "recall" || p.type === "remember") return true;
+  if (p.type !== "tool") return false;
+  if (p.name === "delegate" || p.name === "propose_plan" || p.name === "image") return false;
+  if (p.name === "threads") return (p.args as { action?: string } | null)?.action === "steps";
+  return true;
+}
+
+/**
+ * The conversation's nodes, in order: stored messages, then the live ones. Her messages that are only markers get no
+ * header line; a run of three or more such markers, up to her next text, image or card or the person's next message,
+ * folds into one ToolRun marker (docs/ux.md §6, Lyrica's inner workings). Along the way, the images her image parts
+ * showed since the person's last message are collected, so her prose doesn't show the same image again.
+ */
+function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boolean, env: Env, you: string,
+  looks: { told: Map<string, Told[]>; folded: Set<string> }, cards: Map<number, ThreadSummary[]>): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let quiet: Quiet[] = [];
+  let shown = new Set<string>();
+  const flush = () => {
+    if (!quiet.length) return;
+    const markers = quiet.reduce((a, q) => a + q.parts.length, 0);
+    if (markers >= 3) nodes.push(<ToolRun key={`run-${quiet[0]!.key}`} runs={quiet} env={env} />);
+    else for (const q of quiet) nodes.push(<section key={q.key} className="turn quiet" id={q.n !== undefined ? `m-${q.n}` : undefined}><Parts parts={q.parts} env={env} bare streaming={q.streaming} /></section>);
+    quiet = [];
+  };
+  type E = { key: string; stored?: Message; live?: LiveItem; streaming: boolean };
+  const entries: E[] = [
+    ...stored.map((m): E => ({ key: m.id, stored: m, streaming: false })),
+    ...liveItems.map((item, i): E => ({ key: `live-${i}`, live: item, streaming: busy && i === liveItems.length - 1 })),
+  ];
+  for (const e of entries) {
+    const m = e.stored;
+    const hers = m ? (m.role === "assistant" && !m.error && !cards.has(m.n) ? m.parts : undefined) : e.live?.role === "assistant" ? e.live.parts : undefined;
+    if (hers && hers.length && hers.every(isMarker)) { quiet.push({ key: e.key, n: m?.n, parts: hers, streaming: e.streaming }); continue; }
+    flush();
+    const user = m ? m.role === "user" : e.live?.role === "user";
+    if (user) shown = new Set();
+    for (const p of hers ?? []) if (p.type === "image") for (const path of p.paths) shown.add(path);
+    const seen = new Set(shown);
+    if (m) nodes.push(<StoredMessage key={m.id} m={m} env={env} you={you} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)} cards={cards.get(m.n)} shown={seen} />);
+    else if (e.live) nodes.push(<LiveMessage key={e.key} item={e.live} env={env} you={you} streaming={e.streaming} shown={seen} />);
+  }
+  flush();
+  return nodes;
+}
+
+/**
+ * A run of her tool calls as one marker (docs/ux.md §6): "<n> tool calls", running while the turn goes on, which opens
+ * to a box that scrolls, every marker in it opening as before. Open state follows the first call's ID, so it survives
+ * the stored copy replacing the live one.
+ */
+function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
+  const parts = runs.flatMap((r) => r.parts);
+  const first = parts.find((p) => p.type === "tool");
+  const key = `run:${first?.type === "tool" ? first.toolCallId : runs[0]!.key}`;
+  const open = env.openTools.has(key);
+  const tools = parts.filter((p) => p.type === "tool");
+  const streaming = runs.at(-1)!.streaming;
+  const running = streaming || tools.some((p) => p.type === "tool" && p.result === undefined);
+  const failed = tools.some((p) => p.type === "tool" && p.isError);
+  const body = useRef<HTMLDivElement>(null);
+  // While she works, an open box follows the newest call.
+  useEffect(() => { if (open && streaming && body.current) body.current.scrollTop = body.current.scrollHeight; }, [open, streaming, parts.length]);
+  const n = tools.length || parts.length;
+  const word = tools.length ? (n === 1 ? "tool call" : "tool calls") : (n === 1 ? "step" : "steps");
+  return (
+    <div className="marker tool-run" data-type="toolrun" id={runs[0]!.n !== undefined ? `m-${runs[0]!.n}` : undefined}>
+      <button type="button" aria-expanded={open} onClick={() => env.toggleTool(key)}>
+        <span className="num">{n}</span> {word}
+        {running ? <span className="state" data-state="running">running</span> : failed ? <span className="state" data-state="failed">failed</span> : null}
+        <Icon name="down" />
+      </button>
+      {open && (
+        <div ref={body} className="marker-body run-body">
+          {runs.map((r) => r.parts.map((p, i) => (p.type === "text" || p.type === "image" ? null : <Marker key={`${r.key}-${i}`} part={p} env={env} />)))}
+          {streaming && <span className="writing-dots" aria-hidden="true"><i /><i /><i /></span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StoredMessage({ m, env, you, cards, told, folded, shown }: { m: Message; env: Env; you: string; cards?: ThreadSummary[]; told?: Told[]; folded?: boolean; shown?: ReadonlySet<string> }) {
   const after = cards?.map((t) => <ThreadCard key={t.id} t={t} userId={env.userId} env={env.project!} />);
   if (m.role === "user") {
     if (m.from?.kind === "parent" || m.from?.kind === "thread") return <><FromThread text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} from={m.from} env={env} n={m.n} />{after}</>;
@@ -156,7 +238,7 @@ function StoredMessage({ m, env, you, cards, told, folded }: { m: Message; env: 
   }
   return (
     <>
-      <Parts parts={m.parts} env={env} model={m.model} n={m.n} at={m.createdAt} folded={folded} reactions={m.reactions} />
+      <Parts parts={m.parts} env={env} model={m.model} n={m.n} at={m.createdAt} folded={folded} reactions={m.reactions} shown={shown} />
       {m.error && <p className="error turn-error">{m.error}</p>}
       {after}
     </>
@@ -191,14 +273,14 @@ function LookMarker({ text, told, env, n }: { text: string; told: Told[]; env: E
             </div>
           ))}
           {raised && <div className="prose small"><HerProse text={`Raised with you: ${raised}`} env={env} /></div>}
-          {env.rewinder && n !== undefined && <div className="row"><MessageMenu n={n} role="user" rewinder={env.rewinder} /></div>}
+          {env.rewinder && n !== undefined && <div className="row"><MessageMenu n={n} role="user" rewinder={env.rewinder} branch /></div>}
         </div>
       )}
     </div>
   );
 }
 
-function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; you: string; streaming: boolean }) {
+function LiveMessage({ item, env, you, streaming, shown }: { item: LiveItem; env: Env; you: string; streaming: boolean; shown?: ReadonlySet<string> }) {
   if (item.role === "user") {
     if (item.text.startsWith(WATCHING_MARK)) { const text = item.text.slice(WATCHING_MARK.length); return <LookMarker text={text} told={toldIn(text, env.pool)} env={env} />; }
     const parent = FROM_PARENT.exec(item.text);
@@ -215,7 +297,7 @@ function LiveMessage({ item, env, you, streaming }: { item: LiveItem; env: Env; 
     return <LookMarker text={text} told={item.told ? item.told.map((t) => ({ threads: [{ pool: env.pool, id: t.threadId }], text: t.text })) : toldIn(text, env.pool)} env={env} />;
   }
   if (item.role === "notice") return <Notice text={item.text} status={item.status} threads={item.threads} env={env} />;
-  return <Parts parts={item.parts} env={env} model={item.model} streaming={streaming} />;
+  return <Parts parts={item.parts} env={env} model={item.model} streaming={streaming} shown={shown} />;
 }
 
 /** A message in the person's place; `hers` when Lyrica wrote it (a subagent's task), so the threads she mentions show by title. Its paths are links. */
@@ -232,13 +314,15 @@ function UserMessage({ text, you, n, at, rewinder, env, hers, reactions }: { tex
           {at && <SentAt at={at} />}
         </span>
         {menu && rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
-        {menu && <ReactButton n={n} reactions={reactions} reactor={rewinder} />}
-        {menu && <MessageMenu n={n} role="user" rewinder={rewinder} onEdit={() => setEditing(true)} onRemember={() => setRemembering(true)} />}
       </div>
       {editing && menu
         ? <EditBox text={text} onCancel={() => setEditing(false)} onSend={(t) => { setEditing(false); rewinder.rewind(n, { action: "edit", text: t }, n); }} />
-        : hers ? <div className="body prose"><HerProse text={text} env={env} /></div> : <div className="body"><PathText text={text} files={files} /></div>}
+        : hers ? <div className="body prose"><HerProse text={text} env={env} /></div> : <div className="body"><PathText text={text} files={files} large={(p) => env.large(p, files)} /></div>}
       {n !== undefined && <ReactionChips n={n} reactions={reactions} reactor={rewinder} her={her()} />}
+      {menu && !editing && (
+        <MessageActions n={n} role="user" rewinder={rewinder} text={text} onEdit={() => setEditing(true)} onRemember={() => setRemembering(true)}
+          react={<ReactButton n={n} reactions={reactions} reactor={rewinder} />} />
+      )}
       {remembering && n !== undefined && <RememberBox text={text} n={n} env={env} onClose={() => setRemembering(false)} />}
     </div>
   );
@@ -285,8 +369,12 @@ function Sep() {
   return <span className="sep"> · </span>;
 }
 
-/** Her message: prose for text, one-line markers for everything else. */
-function Parts({ parts, env, model, streaming, n, at, folded, reactions }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number; at?: string; folded?: boolean; reactions?: Reaction[] }) {
+/**
+ * Her message: prose for text, one-line markers for everything else. `bare`: only markers, drawn without a header line
+ * (the run they belong to is her inner workings). `shown`: image paths her image parts already showed this turn, so her
+ * prose keeps them as links.
+ */
+function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, shown }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number; at?: string; folded?: boolean; reactions?: Reaction[]; bare?: boolean; shown?: ReadonlySet<string> }) {
   const [remembering, setRemembering] = useState(false);
   const out: React.ReactNode[] = [];
   let prose: string[] = [];
@@ -295,7 +383,7 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions }: { par
     out.push(
       <div key={`p${key}`} className="msg her">
         <div className="body prose">
-          <HerProse text={prose.join("")} env={env} />
+          <HerProse text={prose.join("")} env={env} skipImages={shown} />
         </div>
       </div>,
     );
@@ -317,6 +405,7 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions }: { par
   );
   // A turn with nothing to show (a project chat's thread start, whose card stands under the message) takes no room.
   if (!out.length && !streaming) return null;
+  if (bare) return <>{out}</>;
   // In a subagent's thread, the replies are the subagent's own work.
   const who = env.subagent ? "Subagent" : her();
   return (
@@ -327,17 +416,18 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions }: { par
           {at && <SentAt at={at} />}
         </span>
         {env.rewinder && n !== undefined && env.rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
-        {env.rewinder && n !== undefined && (
-          <ReadAloudButton url={`${env.base}/messages/${n}/speech`} also={n === env.lastHers ? `${env.base}/messages/live/speech` : undefined} speech={env.speech} onError={env.onError} />
-        )}
-        {env.rewinder && n === undefined && streaming && env.speech?.readAloudLive && (
-          <ReadAloudButton url={`${env.base}/messages/live/speech`} speech={env.speech} onError={env.onError} />
-        )}
-        {env.rewinder && n !== undefined && <ReactButton n={n} reactions={reactions} reactor={env.rewinder} />}
-        {env.rewinder && n !== undefined && <MessageMenu n={n} role="assistant" rewinder={env.rewinder} onRemember={() => setRemembering(true)} />}
       </div>
       {out}
       {n !== undefined && <ReactionChips n={n} reactions={reactions} reactor={env.rewinder} her={who} />}
+      {env.rewinder && n !== undefined && (
+        <MessageActions n={n} role="assistant" rewinder={env.rewinder} text={parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} onRemember={() => setRemembering(true)}
+          readAloud={<ReadAloudButton url={`${env.base}/messages/${n}/speech`} also={n === env.lastHers ? `${env.base}/messages/live/speech` : undefined} speech={env.speech} onError={env.onError} />}
+          react={<ReactButton n={n} reactions={reactions} reactor={env.rewinder} />} />
+      )}
+      {/* With Read aloud while agent writes on, the reply she is writing has the one button in its row. */}
+      {env.rewinder && n === undefined && streaming && env.speech?.readAloudLive && (
+        <div className="msg-actions" role="group" aria-label="Message actions"><ReadAloudButton url={`${env.base}/messages/live/speech`} speech={env.speech} onError={env.onError} /></div>
+      )}
       {remembering && n !== undefined && <RememberBox text={parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} n={n} env={env} onClose={() => setRemembering(false)} />}
     </section>
   );
@@ -522,7 +612,7 @@ function FromThread({ text, from, env, n }: { text: string; from: { kind: "paren
           <div className="who">
             {her()}<span className="muted"> · from <a href={href({ page: "thread", userId: env.userId, pool: env.pool, threadId: from.threadId })}>{name}</a></span>
             {/* Branch and delete, as any message; it isn't hers to edit. */}
-            {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
+            {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} branch />}
           </div>
           <div ref={body} className="body prose" data-clamped={more ? undefined : ""}><HerProse text={text} env={env} elsewhere /></div>
           {long && <button type="button" className="link show-more" onClick={() => setMore(!more)}>{more ? "Show less" : "Show more"}</button>}
@@ -547,7 +637,7 @@ export function ScheduledMarker({ text, setAt, dueAt, schedule, env, n }: { text
         <>
           <div className="who">
             {her()}
-            {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} />}
+            {env.rewinder && n !== undefined && <MessageMenu n={n} role="user" rewinder={env.rewinder} branch />}
           </div>
           <div className="body prose"><HerProse text={text} env={env} /></div>
         </>
@@ -662,11 +752,11 @@ function Notice({ text, status, threads, env }: { text: string; status?: string;
  * Her text, with each thread she mentions shown by its current title, this thread's paths as links and its images
  * shown. `elsewhere`: the text was written in another thread, whose /workspace is not this one's, so paths stay text.
  */
-function HerProse({ text, env, elsewhere }: { text: string; env: Pick<Env, "userId" | "pool" | "threadId" | "large">; elsewhere?: boolean }) {
+function HerProse({ text, env, elsewhere, skipImages }: { text: string; env: Pick<Env, "userId" | "pool" | "threadId" | "large">; elsewhere?: boolean; /** Images shown already this turn, kept as links. */ skipImages?: ReadonlySet<string> }) {
   const files = useFileLinks(env.userId, env.pool, env.threadId);
   const { large } = env;
   const onLarge = useCallback((path: string) => large(path, files), [large, files]);
-  return <Prose text={useThreadMentions(text, env.userId, env.pool)} files={elsewhere ? undefined : files} onLarge={onLarge} copyCode />;
+  return <Prose text={useThreadMentions(text, env.userId, env.pool)} files={elsewhere ? undefined : files} onLarge={onLarge} copyCode skipImages={skipImages} />;
 }
 
 /**

@@ -136,6 +136,8 @@ export interface MachineProbe {
 }
 
 const DRAFT_MS = 60 * 60_000;
+/** An upload that gets a random name instead of its own: the image types the web UI shows inline. */
+const UPLOAD_IMAGE = /^\.(png|jpe?g|gif|webp|avif|bmp|heic)$/i;
 
 /** account@host or account@host:port, with [v6] in brackets. */
 export function parseMachineAddress(address: string): { username: string; host: string; port: number } {
@@ -1083,12 +1085,16 @@ export class Workspace {
   /**
    * Saves an uploaded file into the thread's uploads/ folder, from inside a
    * sandbox. The name is cleaned, and a name already taken gets a suffix
-   * ("image-2.jpg"), so nothing is overwritten. Returns the path she sees.
+   * ("plan-2.md"), so nothing is overwritten. An image gets a random name
+   * instead (`uploads/3f9c2e4b1d7a.png`): pasted screenshots all arrive as
+   * image.png, and the thread's own images in images/ are named the same way
+   * (docs/briefs/chat-view.md). Returns the path she sees.
    */
   async saveUpload(t: WorkspaceThread, name: string, bytes: Buffer): Promise<string> {
     const clean = cleanUploadName(name);
     const dot = clean.lastIndexOf(".");
-    const [stem, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, ""];
+    const [given, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, ""];
+    const stem = UPLOAD_IMAGE.test(ext) ? randomBytes(6).toString("hex") : given;
     // noclobber makes taking the name atomic: a file that appears meanwhile is never overwritten.
     const script = 'mkdir -p uploads && n="$1$2" && i=2 && until (set -C; cat > "uploads/$n") 2>/dev/null; do ' +
       '[ "$i" -gt 999 ] && exit 1; n="$1-$i$2"; i=$((i+1)); done && printf %s "$n"';
