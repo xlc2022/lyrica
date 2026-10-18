@@ -326,8 +326,8 @@ takes is `lyrica@pve!agent=<that secret>`.
   docs/models.md, "Image canvases"): its sign-in and anything it writes,
   encrypted like the rest. It is the only folder in Codex's own sandbox
   (`Workspace.codexBox`). Each image call's inputs go in `calls/<id>` there,
-  removed after the call with the images Codex saved under
-  `generated_images/`. No thread sees it.
+  removed after the call with `generated_images/`, where Codex saves
+  images, whether the call worked or not. No thread sees it.
 - A file uploaded in the web UI goes into the thread's `uploads/` folder in the
   home workspace, apart from the `images/` folder her image tool writes.
   An image keeps its extension but gets a random 12-hex-digit name

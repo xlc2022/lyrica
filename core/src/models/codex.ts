@@ -2,8 +2,8 @@
 // Codex runs in Lyrica's sandbox with only its home, which is in the user's encrypted home workspace; prompts go over stdin, never argv or logs.
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, posix, relative } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { join, posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { HostRefused } from "./host.ts";
 import { cleanPng, type GeneratedImage, type ImageInput, type ImageRequest } from "./images.ts";
@@ -18,6 +18,8 @@ export interface CodexBox {
   home: string;
   inner: string;
   installed: boolean;
+  /** For the journal: exit codes, event types and counts, never text Codex wrote. */
+  log?: (line: string) => void;
   start(args: string[], cwd?: string): Promise<ChildProcess & { stdin: Writable; stdout: Readable; stderr: Readable }>;
 }
 
@@ -133,6 +135,27 @@ function savedPaths(out: string): string[] {
   return [...new Set(paths)];
 }
 
+/** Every image file under `dir`, newest last. */
+function imageFiles(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  const files = (readdirSync(dir, { recursive: true, withFileTypes: true }) as import("node:fs").Dirent[])
+    .filter((e) => e.isFile() && /\.(png|jpe?g|webp)$/i.test(e.name)).map((e) => join(e.parentPath, e.name));
+  return files.sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs);
+}
+
+/** What a run's events were, by type only: "thread.started, item.completed:image_generation, …". */
+function eventShape(out: string): string {
+  const types: string[] = [];
+  for (const line of out.split("\n")) {
+    try {
+      const e = JSON.parse(line) as { type?: unknown; item?: { type?: unknown } };
+      const t = typeof e.type === "string" ? e.type + (typeof e.item?.type === "string" ? `:${e.item.type}` : "") : undefined;
+      if (t && /^[\w.:-]{1,60}$/.test(t) && types.at(-1) !== t) types.push(t);
+    } catch { /* not an event */ }
+  }
+  return types.slice(0, 20).join(", ") || "none";
+}
+
 /** A fixed line for a failed run: Codex's own output can contain the prompt. */
 function failure(out: string): HostRefused {
   if (/not logged in|log ?in again|sign in again|401|unauthori[sz]ed|refresh token/i.test(out)) return new HostRefused("invalid", "Codex is signed out: sign in under Settings → Claude Code and Codex.");
@@ -170,7 +193,11 @@ export async function codexImage(box: CodexBox, r: ImageRequest, signal?: AbortS
       const id = randomUUID();
       const call = join(box.home, "calls", id), inner = posix.join(box.inner, "calls", id);
       mkdirSync(call, { recursive: true, mode: 0o700 });
-      const saved: string[] = [];
+      // Codex saves under generated_images/<session>/, by a name that varies between
+      // versions. Calls here run one at a time, so everything there is this call's:
+      // it starts empty and is removed after, with the call's inputs.
+      const generated = join(box.home, "generated_images");
+      rmSync(generated, { recursive: true, force: true });
       try {
         const inputs = [...(r.action === "edit" ? [r.image] : []), ...(r.references ?? [])].map((i, k) => {
           const name = `input-${k}.${ext(i)}`;
@@ -184,20 +211,18 @@ export async function codexImage(box: CodexBox, r: ImageRequest, signal?: AbortS
           ...inputs.flatMap((f) => ["--image", f]), "-"];
         const { code, out } = await run(box, args, instructions(r, r.action === "edit" ? inputs.length - 1 : inputs.length), signal, undefined, inner);
         signal?.throwIfAborted();
-        // Only files inside Codex's home count, mapped back to the host: a path elsewhere is never read.
-        saved.push(...savedPaths(out).map((p) => posix.relative(box.inner, posix.resolve(inner, p)))
-          .filter((p) => p && !p.startsWith("..")).map((p) => join(box.home, p)).filter((p) => existsSync(p)));
-        if (code !== 0 && !saved.length) throw failure(out);
-        if (!saved.length) throw new HostRefused("invalid", "Codex returned no image.");
-        images.push(cleanPng(readFileSync(saved[saved.length - 1]!)));
+        // A saved_path Codex reports, mapped back to the host and only inside its home; else the newest image it saved.
+        const reported = savedPaths(out).map((p) => posix.relative(box.inner, posix.resolve(inner, p)))
+          .filter((p) => p && !p.startsWith("..")).map((p) => join(box.home, p)).filter((p) => existsSync(p));
+        const found = imageFiles(generated);
+        const file = reported.at(-1) ?? found.at(-1);
+        box.log?.(`codex exec: exit ${code}, ${found.length} image file${found.length === 1 ? "" : "s"} saved, events: ${eventShape(out)}`);
+        if (code !== 0 && !file) throw failure(out);
+        if (!file) throw new HostRefused("invalid", "Codex returned no image.");
+        images.push(cleanPng(readFileSync(file)));
       } finally {
         rmSync(call, { recursive: true, force: true });
-        for (const p of saved) {
-          rmSync(p, { force: true });
-          const dir = dirname(p);
-          const under = relative(join(box.home, "generated_images"), dir);
-          if (under && !under.startsWith("..")) rmSync(dir, { recursive: true, force: true });
-        }
+        rmSync(generated, { recursive: true, force: true });
       }
     }
     return images;

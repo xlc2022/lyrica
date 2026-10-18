@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -26,10 +26,17 @@ case "$1 $2" in
     cat > "$bin/stdin"
     ls "$PWD" > "$bin/inputs"
     [ ! -f "$bin/fail" ] || { echo "$(cat "$bin/fail"): SECRET prompt text" >&2; exit 1; }
-    mkdir -p "$CODEX_HOME/generated_images/t1"
-    base64 -d > "$CODEX_HOME/generated_images/t1/ig_1.png" <<< "${png.toString("base64")}"
     echo '{"type":"thread.started"}'
-    echo '{"type":"item.completed","item":{"type":"image_generation","saved_path":"'"$CODEX_HOME"'/generated_images/t1/ig_1.png"}}'
+    if [ -f "$bin/unreported" ]; then
+      # As Codex 0.146.0 does: generated_images/<session>/exec-<id>.png, and no saved_path in its events.
+      mkdir -p "$CODEX_HOME/generated_images/s1"
+      base64 -d > "$CODEX_HOME/generated_images/s1/exec-1.png" <<< "${png.toString("base64")}"
+      echo '{"type":"item.completed","item":{"type":"agent_message","text":"SECRET done"}}'
+    else
+      mkdir -p "$CODEX_HOME/generated_images/t1"
+      base64 -d > "$CODEX_HOME/generated_images/t1/ig_1.png" <<< "${png.toString("base64")}"
+      echo '{"type":"item.completed","item":{"type":"image_generation","saved_path":"'"$CODEX_HOME"'/generated_images/t1/ig_1.png"}}'
+    fi
     echo end >> "$bin/log"
     ;;
 esac
@@ -92,6 +99,19 @@ describe("ChatGPT Images through the user's own Codex (principles 1 and 2)", () 
     writeFileSync(join(home, "auth.json"), "{}");
     await Promise.all([1, 2].map(() => codexImage(box, { action: "create", prompt: "A garden", tier: "fast" })));
     expect(readFileSync(join(bin, "log"), "utf8").split("\n").filter(Boolean)).toEqual(["start", "end", "start", "end"]);
+  });
+
+  it("finds an image Codex saved without reporting it, logs no text, and leaves generated_images empty", async () => {
+    writeFileSync(join(home, "auth.json"), "{}");
+    writeFileSync(join(bin, "unreported"), "");
+    // A leftover from an earlier call is never taken for this one's.
+    mkdirSync(join(home, "generated_images", "old"), { recursive: true });
+    writeFileSync(join(home, "generated_images", "old", "stale.txt"), "x");
+    const lines: string[] = [];
+    const [made] = await codexImage({ ...box, log: (l) => lines.push(l) }, { action: "create", prompt: "A garden", tier: "fast" });
+    expect(made).toMatchObject({ type: "image/png", width: 1, height: 1 });
+    expect(lines).toEqual(["codex exec: exit 0, 1 image file saved, events: thread.started, item.completed:agent_message"]);
+    expect(existsSync(join(home, "generated_images"))).toBe(false);
   });
 
   it("answers with fixed lines, never Codex's own output, and refuses what it can't do", async () => {

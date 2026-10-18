@@ -445,8 +445,12 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   each passed when the installed Codex's `codex features list` has it, since
   nixpkgs' version isn't pinned; a Codex that can't list them is refused),
   the instructions and prompt on stdin (never argv), an edit's image and any
-  references as `--image` files, and the PNG read from the event's
-  `saved_path`. The isolation is structural, not the prompt: Codex runs in
+  references as `--image` files, and the image read from an event's
+  `saved_path` or else the newest image under `generated_images/` (0.146.0
+  reports none, saving `<session>/exec-<id>.png`); a user's calls run one at
+  a time, so that folder is emptied before each call and removed after it.
+  The journal gets one line a call: the exit code, how many image files
+  Codex saved and its event types, never text. The isolation is structural, not the prompt: Codex runs in
   Lyrica's sandbox (`Workspace.codexBox`, `codexSandbox`) holding only its
   home, at `/workspace`, with the internet on and the machine's services
   off, so it never sees another folder, user or the daemon's state. Its own
