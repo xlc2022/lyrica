@@ -1531,6 +1531,7 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
   .question-options button { flex: auto; width: 100%; }
   .nquestion .actions { flex-direction: column; align-items: stretch; }
   .nquestion .actions button { width: 100%; min-height: var(--tap); }
+  .nquestion .actions a.btn { width: 100%; justify-content: center; min-height: var(--tap); }
 }
 
 .nquestion .actions { grid-column: 2 / -1; }
