@@ -2,11 +2,12 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
-  CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS,
+  ASK_GUIDELINE, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS,
   type ChildInfo, type StartRequest, type ThreadsLimits,
 } from "@lyrica/core";
 import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
 import type { ThreadContext } from "./index.ts";
+import { syncEntries } from "./record.ts";
 import { formatEntry } from "./memory.ts";
 
 // Child threads: streams of work Lyrica starts under the thread she's in. Each
@@ -22,6 +23,8 @@ export type Delivery = "started" | "running" | "queued" | "saved" | "wakes" | "u
 
 export interface ThreadsHost {
   readonly limits: ThreadsLimits;
+  asked?(from: ThreadContext): Promise<void>;
+  questionsChanged?(userId: string, pool: ThreadContext["pool"], thread: string): void;
   draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
   /**
    * Creates a child of `parent`, with its settings or narrower ones, and
@@ -56,7 +59,7 @@ export const READ_DEFAULT = 10;
 export const READ_MAX = 30;
 
 const Params = Type.Object({
-  action: StringEnum(["start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"] as const),
+  action: StringEnum(["ask", "start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"] as const),
   goal: Type.Optional(Type.String({ maxLength: 2000 })),
   instructions: Type.Optional(Type.String({ maxLength: 2000 })),
   ids: Type.Optional(Type.Array(Type.String(), { maxItems: 10, description: "For fold: existing thread IDs to suggest bringing into this project. The person applies the card." })),
@@ -84,7 +87,10 @@ const Params = Type.Object({
   last: Type.Optional(Type.Number({ description: `For read: how many of its latest messages, ${READ_DEFAULT} by default, at most ${READ_MAX}.` })),
   to: Type.Optional(Type.Literal("parent", { description: "For message from a child thread: to its parent." })),
   text: Type.Optional(Type.String({ description: "For message: what to say." })),
-  question: Type.Optional(Type.Boolean({ description: "For message to the parent: a question that needs an answer; wakes an idle parent." })),
+  question: Type.Optional(Type.Union([Type.String(), Type.Boolean()], { description: "For ask: the question; for message: true wakes the parent." })),
+  options: Type.Optional(Type.Array(Type.Object({ label: Type.String(), consequence: Type.String() }), { description: "For ask: 2–4 unique labels and their consequences." })),
+  recommended: Type.Optional(Type.Integer({ description: "For ask: the recommended option's index." })),
+  context: Type.Optional(Type.String({ description: "For ask: brief context, if needed." })),
   needsYou: Type.Optional(Type.Boolean({ description: "For message to the parent from a project's thread: the person must decide something before you can go on." })),
   threads: Type.Optional(Type.Array(Type.Object({ title: Type.String(), task: Type.String() }), { description: "For suggest: the threads you propose, each with a title and its task." })),
   summary: Type.Optional(Type.String({ description: "For compact: what the next stretch needs: what you're doing, decisions, open questions, paths and names." })),
@@ -96,7 +102,7 @@ type Field = keyof typeof Params.properties;
 const FIELD_ACTIONS: Record<Exclude<Field, "action">, string[]> = {
   goal: ["draft"], instructions: ["draft"], ids: ["fold"], threads: ["suggest"],
   title: ["start"], task: ["start"], folders: ["start"], readOnly: ["start"], internet: ["start"],
-  id: ["message", "read", "stop", "resolve", "reopen"], text: ["message"], to: ["message"], question: ["message"], needsYou: ["message"], last: ["read"],
+  id: ["message", "read", "stop", "resolve", "reopen"], text: ["message"], to: ["message"], question: ["message", "ask"], options: ["ask"], recommended: ["ask"], context: ["ask"], needsYou: ["message"], last: ["read"],
   minutes: ["later"], cancel: ["later"], note: ["later", "routine"],
   routineAction: ["routine"], routineId: ["routine"], schedule: ["routine"], newThread: ["routine"],
   steps: ["steps"], summary: ["compact"],
@@ -167,6 +173,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           ? "Send your parent thread a short update (message to: \"parent\")."
           : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message, list, read or stop one."
             + (inProjectChat() ? " In this project chat, also suggest threads (a card the person starts them from), fold in existing threads, draft Goal and Instructions for Project settings, and resolve or reopen one." : ""),
+      host && (!child || projectThread()) ? "ask: one question on a card for the person." : "",
       host?.later ? "later: a wake-up that starts a turn here with your note." : "",
       host ? "routine: this thread's routines, at most 10 including paused ones." : "",
       steps ? "steps: this thread's checklist, shown on its card." : "",
@@ -178,10 +185,11 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         : child ? ["message"]
         : ["start", "message", "list", "read", ...(host.stop ? ["stop"] : []),
           ...(inProjectChat() ? ["suggest", "fold", ...(host.draft ? ["draft"] : []), ...(host.resolve ? ["resolve", "reopen"] : [])] : [])]),
+      ...(host && (!child || projectThread()) ? ["ask"] : []),
       ...(host?.later ? ["later"] : []), ...(host ? ["routine"] : []), ...(steps ? ["steps"] : []), ...(meter ? ["compact"] : []),
     ];
     // to and question are a child's, needsYou a project thread's; a child outside a project messages only its parent.
-    const drop: Field[] = [...(child ? [] : ["to", "question"] as const), ...(projectThread() ? [] : ["needsYou"] as const), ...(child && !projectThread() ? ["id"] as const : [])];
+    const drop: Field[] = [...(child ? [] : ["to"] as const), ...(projectThread() ? [] : ["needsYou"] as const), ...(child && !projectThread() ? ["id"] as const : [])];
 
     pi.registerTool({
       name: "threads",
@@ -190,6 +198,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       promptSnippet: [!host ? "" : child ? "post an update to the parent thread" : "start, message and list child threads", host?.later ? "set a wake-up for this thread" : "", host ? "manage this thread's routines" : "", steps ? "keep this thread's checklist" : "", meter ? "compact this thread with your own summary" : ""].filter(Boolean).join("; "),
       promptGuidelines: [
         ...(!host ? [] : projectThread() ? PROJECT_THREAD_GUIDELINES : child ? [] : inProjectChat() ? PROJECT_CHAT_GUIDELINES : CHILD_THREAD_GUIDELINES),
+        ...(host && (!child || projectThread()) ? [ASK_GUIDELINE] : []),
         ...(host?.later ? [WAKEUP_GUIDELINE] : []), ...(host ? [ROUTINE_GUIDELINE] : []), ...(steps ? [STEPS_GUIDELINE] : []), ...(host || meter ? [MENTION_GUIDELINE] : []), ...(meter ? COMPACT_GUIDELINES : []),
       ],
       parameters: paramsFor(actions, drop),
@@ -200,6 +209,16 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           return { ...text(r.text), ...(r.isError ? { isError: true } : {}) };
         }
         if (!host) throw new Error("child threads aren't available here");
+        if (p.action === "ask") {
+          if (child && !projectThread()) throw new Error("a child asks its parent with message question: true");
+          cleanAsk(p);
+          syncEntries(ctx.sessionManager, store, thread.threadId);
+          const n = store.questionCall(thread.threadId, _id);
+          if (n === undefined) throw new Error("ask needs its stored tool call");
+          store.askQuestion(thread.threadId, n);
+          await host.asked?.(thread);
+          return text("The question is on a card. Carry on with the recommended option if that step can be undone; otherwise end the turn. The answer arrives in a later turn.");
+        }
         if (p.action === "routine") {
           try {
             if (p.routineAction === "list") {
@@ -247,6 +266,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         }
         const inProject = projectThread();
         if (p.action === "message") {
+          if (p.question !== undefined && typeof p.question !== "boolean") throw new Error("message question must be true or false");
           if (!p.text?.trim()) throw new Error("message needs text");
           if (child && p.to === "parent") {
             if (p.needsYou && !inProject) throw new Error("needsYou is for a project's thread");

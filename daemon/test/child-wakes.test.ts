@@ -29,7 +29,7 @@ async function setup() {
   let childWakeTurn = false;
   const host = {
     busy: (_u: string, _p: Pool, t: string) => busy.has(t),
-    changed: () => {}, delivered: () => {},
+    changed: () => {}, delivered: () => {}, peek: () => undefined,
     get: (_u: string, _p: Pool, t: string) => ({
       get childWakeTurn() { return childWakeTurn; },
       appendParent: (text: string) => { replies.push(text); },
@@ -50,6 +50,26 @@ async function setup() {
 }
 
 describe("child wake guards", () => {
+  it("a question wakes its project chat once, and resolving withdraws it and clears waiting immediately", async () => {
+    const s = await setup();
+    const store = s.from.view.own;
+    const args = { action: "ask", question: "Which flowers?", options: [{ label: "Tulips", consequence: "Plant bulbs." }, { label: "Roses", consequence: "Plant shrubs." }], recommended: 0 };
+    const n = store.nextEntryN(s.child.id);
+    store.appendEntry(s.child.id, { piId: "question", role: "assistant", text: "", data: { type: "message", message: { content: [{ type: "toolCall", id: "q", name: "threads", arguments: args }] } } });
+    store.askQuestion(s.child.id, n);
+    await s.children.asked(s.from);
+    await s.flush();
+    expect(s.wakes).toEqual([s.parent.id]);
+    expect(s.notices).toHaveLength(1);
+    const db = s.users.openUserDb(s.user.id);
+    expect(db.prepare("SELECT needs_you FROM child_threads WHERE thread = ?").get(s.child.id)).toEqual({ needs_you: 1 });
+    s.children.setResolved(s.user.id, "general", s.child.id, true);
+    expect(store.openQuestion(s.child.id)).toBeUndefined();
+    expect(store.questions(s.child.id)[0]).toMatchObject({ n, answer: "withdrawn" });
+    expect(db.prepare("SELECT needs_you FROM child_threads WHERE thread = ?").get(s.child.id)).toEqual({ needs_you: 0 });
+    db.close();
+  });
+
   it("needsYou waits while paused, then wakes on resume", async () => {
     const s = await setup();
     s.pause(true);

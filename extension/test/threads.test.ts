@@ -116,19 +116,19 @@ describe("threads definition", () => {
       return [kind, { actions: params.properties.action!.enum, fields: Object.keys(params.properties), size: JSON.stringify({ name: tool.name, description: tool.description, parameters: tool.parameters }).length }];
     }));
     const always = ["later", "routine", "steps", "compact"];
-    expect(defs.plain!.actions).toEqual(["start", "message", "list", "read", "stop", ...always]);
+    expect(defs.plain!.actions).toEqual(["start", "message", "list", "read", "stop", "ask", ...always]);
     expect(defs.child!.actions).toEqual(["message", ...always]);
-    expect(defs.projectChat!.actions).toEqual(["start", "message", "list", "read", "stop", "suggest", "fold", "draft", "resolve", "reopen", ...always]);
-    expect(defs.projectThread!.actions).toEqual(["message", "list", "read", "resolve", ...always]);
+    expect(defs.projectChat!.actions).toEqual(["start", "message", "list", "read", "stop", "suggest", "fold", "draft", "resolve", "reopen", "ask", ...always]);
+    expect(defs.projectThread!.actions).toEqual(["message", "list", "read", "resolve", "ask", ...always]);
     expect(defs.plain!.fields).not.toContain("to");
     expect(defs.child!.fields).toEqual(expect.arrayContaining(["to", "question", "text"]));
     expect(defs.child!.fields).not.toContain("id");
     expect(defs.projectThread!.fields).toEqual(expect.arrayContaining(["needsYou", "id"]));
     for (const field of ["task", "ids", "goal"]) expect(defs.projectThread!.fields).not.toContain(field);
     // Ceilings a little above today's sizes: growing past one is a choice, made here.
-    expect(defs.plain!.size).toBeLessThan(3600);
+    expect(defs.plain!.size).toBeLessThan(3900);
     expect(defs.child!.size).toBeLessThan(2900);
-    expect(defs.projectChat!.size).toBeLessThan(4300);
-    expect(defs.projectThread!.size).toBeLessThan(3400);
+    expect(defs.projectChat!.size).toBeLessThan(4650);
+    expect(defs.projectThread!.size).toBeLessThan(3600);
   });
 });

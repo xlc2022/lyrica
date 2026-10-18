@@ -1514,3 +1514,25 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .more-cloud .cloud-image-controls { padding: 0; }
 .dl-parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
 .dl-parts code { overflow-wrap: anywhere; }
+
+/* Question cards: UX §6, the recommended answer is the card's primary action. */
+.question-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin: 12px 0; min-width: 0; overflow-wrap: anywhere; }
+.question-title { font-size: 15px; font-weight: 600; }
+.question-card p { margin: 8px 0; }
+.question-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.question-options button { flex: 1 1 180px; height: auto; min-height: var(--tap); white-space: normal; text-align: left; padding: 10px 12px; }
+.question-options button { display: flex; flex-direction: column; align-items: stretch; }
+.question-options button > span { display: block; }
+.question-consequence { font-size: 13px; font-weight: 400; margin-top: 4px; }
+.question-recommended { display: block; font-size: 12px; font-weight: 400; }
+.question-result { display: flex; align-items: center; gap: 8px; }
+@media (max-width: 760px) {
+  .question-options { flex-direction: column; }
+  .question-options button { flex: auto; width: 100%; }
+  .nquestion .actions { flex-direction: column; align-items: stretch; }
+  .nquestion .actions button { width: 100%; min-height: var(--tap); }
+  .nquestion .actions a.btn { width: 100%; justify-content: center; min-height: var(--tap); }
+}
+
+.nquestion .actions { grid-column: 2 / -1; }
+.nquestion .actions button { height: auto; white-space: normal; overflow-wrap: anywhere; flex-direction: column; gap: 2px; }

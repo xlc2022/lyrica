@@ -803,6 +803,53 @@ One model-facing tool: `delegate({ action?, ... })`.
   or, to a parent, `wakes` or `update`. `HostedThread.childWakeTurn` marks
   the child-started turn whose replies count as rounds.
   Pending child wakes also wait while `ThreadHost.draining` is true.
+- **Question cards** (principles 1 and 6): `threads({ action: "ask",
+  question, options: { label, consequence }[], recommended, context? })` is
+  offered in every hosted thread except an ordinary child, which asks its
+  parent with `message({ question: true })`. Subagents have no `threads` tool.
+  `ASK_LIMITS` and pure `cleanAsk` (`core/src/threads.ts`) enforce a question
+  of 1–300 characters, optional context up to 1200, 2–4 options with labels
+  of 1–40 and consequences of 1–200 characters, case-insensitively unique
+  labels, and an integer recommended index in range. Strings are trimmed.
+  Ask once on the card, recommend the first option, continue reversible work
+  on that option, and end the turn before an irreversible step. Answers
+  arrive in later turns. Routine and wake-up turns may ask in their thread.
+  Pool step 8 adds `questions(thread, n, asked, closed, answer)`: only a
+  pointer to the tool call's entry and its times and outcome. Words are read
+  from the encrypted log with `PoolReader.readAsk`; `questions` lists the
+  states and `openQuestion` returns the open one. `PoolStore.askQuestion`
+  withdraws a previous question; `closeQuestion` records an option index,
+  `"words"` or `"withdrawn"`. At most one question is open per thread.
+  A question change briefly attaches encrypted user.db to the pool
+  connection: its pointer and `child_threads.needs_you` change in the same
+  transaction. A project's ask sends its existing waiting notice and wakes
+  the project chat; answering or withdrawal updates the parent's card at
+  once. Resolve, the person's Stop and a parent's `threads stop` withdraw a
+  question (`HostedThread.stop(true)`); lock, project pause, disposing an
+  idle session and restarting the daemon preserve it. `needs_you` moves
+  only when a question opens or closes, so a status message's `needsYou`
+  survives an edit or rewind. Removing its tool call removes the
+  pointer with the turn.
+  `ThreadSummary.question?: { n: number; asked: string }` carries only the
+  open pointer. `MessagePage.questions?: QuestionState[]` carries the saved
+  states (`n`, `asked`, optional `closed` and `answer`), including closed
+  ones, so a log card can show its outcome. A new ask or close publishes
+  settings/child refreshes to open views.
+  `POST /api/u/:userId/threads/:pool/:id/questions/:n/answer { option }`
+  returns 204, 404 for an unknown question or one in another thread, 409
+  once closed, and 400 for an option out of range. It sends the chosen
+  `<label>` as a user message prefixed `[Answer to q:<n>]` and starts a
+  turn normally. `ANSWER`, beside `FROM_PARENT` and `WATCHING`, guards that
+  prefix: only lyricad writes it, and typed/API messages starting with it
+  are refused with 400 or `MarkedText` by `HostedThread.send`. The reader
+  strips the mark for display; `Message.from.kind` remains `user`. A typed
+  message closes an open question as `"words"` and keeps the text unchanged.
+  `NotificationType` gains `question`, with id
+  `question:<pool>/<thread>/<n>` and `decision: true`. Title is the question,
+  detail the recommended option's consequence. Its actions POST to that
+  answer route with `{ option }`, recommended first, then the others in
+  order; its `thread` supplies Open thread. There is no bulk question action.
+  Display filters apply as to other decisions, including the private pool.
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
   in Plan mode itself.

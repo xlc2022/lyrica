@@ -1098,6 +1098,18 @@ project page and the web part are built. Recent calls can be filtered by project
   (logged threads only), and the project chat can stop a thread's turn.
   When a thread working on a task stops with an error or finishes without
   posting an update, the project chat is told, as for any child thread.
+- **Question cards** (principles 1 and 6). Hosted plain chats, project chats
+  and project threads ask the user with `threads ask`: one question, two to
+  four options with consequences and one recommendation, plus optional
+  context. Ordinary children ask their parent instead; subagents keep
+  `ask_parent`. A card can be answered in the conversation, on its project
+  thread card or in Notifications. A tap sends the chosen label as an
+  ordinary user message with lyricad's answer mark; typing closes the card
+  as answered in words. Replacement, Stop and Resolve withdraw it. Each
+  thread has one open question; closing it clears Waiting on you at once.
+  Only pointers and closing state live in pool.db's `questions`; all words
+  stay in the encrypted thread log. She asks once, recommends first, keeps
+  working on reversible steps and stops before an irreversible one.
 - **States:** Working; **Waiting on you** (an approval, an update that asks
   the user something, or a failed turn); Queued (started past the at-once limit,
   which stays 2 per user; it waits its turn instead of being refused); Idle;

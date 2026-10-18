@@ -109,7 +109,7 @@ export function toReactions(raw: StoredReaction[] | undefined, userId: string): 
 }
 
 /** `opts.userId`: whose view it is, so reactions show as `you` and `her`; without it they are left out. */
-export function toMessages(threadId: string, pool: Pool, entries: { n: number; data: unknown; createdAt: string; pinned?: boolean; reactions?: StoredReaction[] }[], runThreads?: RunThreads, subagent?: SubagentThread, opts: { parent?: string; userId?: string } = {}): Message[] {
+export function toMessages(threadId: string, pool: Pool, entries: { n: number; data: unknown; createdAt: string; pinned?: boolean; reactions?: StoredReaction[] }[], runThreads?: RunThreads, subagent?: SubagentThread, opts: { parent?: string; userId?: string; userName?: string } = {}): Message[] {
   const out: Message[] = [];
   const calls = new Map<string, { part: Extract<MessagePart, { type: "tool" }>; owner: Message }>();
   let pendingRecall: string[] = [];
@@ -165,6 +165,11 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
     const base = { id: `e:${threadId}#${n}`, n, createdAt, ...(pinned ? { pinned: true } : {}), ...(reactions?.length ? { reactions } : {}) };
     if (m.role === "user") {
       if (textOf(m.content) === OPENING) continue; // a thread started from a sleep item: she speaks first
+      const answer = /^\[Answer to q:\d+\]\n\n/.exec(textOf(m.content));
+      if (answer) {
+        out.push({ ...base, role: "user", from: { kind: "user", userId: opts.userId ?? "", name: opts.userName ?? "" }, parts: [{ type: "text", text: textOf(m.content).slice(answer[0].length) }] });
+        continue;
+      }
       // Only a child thread has a parent's messages, or in a project a sibling's; lyricad refuses the mark on anything else.
       const marked = opts.parent ? FROM_PARENT.exec(textOf(m.content)) : null;
       if (marked) {

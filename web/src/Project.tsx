@@ -6,6 +6,7 @@ import {
   del, get, patch, post, put, threadPath, u,
   type CommandRule, type AllowedPaths, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type PermissionMode, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
 } from "./api.ts";
+import { ProjectQuestion } from "./Question.tsx";
 import { FoldConfirm, foldLosses, foldLossNames } from "./FoldConfirm.tsx";
 import { ChecklistButton, StepLine } from "./Checklist.tsx";
 import { Icon } from "./icons.tsx";
@@ -21,8 +22,8 @@ import { ConfirmDialog, Dialog, ErrorText, Prose, shortTime, Switch, useAction, 
 import { modelName } from "./ModelLabel.tsx";
 
 /** A project thread's state, in the sidebar's words. */
-export function stateWord(t: Pick<ThreadSummary, "state" | "needsYou">): string {
-  if (t.needsYou) return "Waiting on you";
+export function stateWord(t: Pick<ThreadSummary, "state" | "needsYou" | "question">): string {
+  if (t.needsYou || t.question) return "Waiting on you";
   switch (t.state) {
     case "waiting": return "Waiting for approval";
     case "working": return "Working";
@@ -195,8 +196,9 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
         </span>
       </div>
       {t.steps && t.state !== "resolved" && <StepLine steps={t.steps} />}
-      {line && <p className="tcard-line">{t.needsYou ? <><span className="muted">Waits on you: </span>{line}</> : line}</p>}
+      {!t.question && line && <p className="tcard-line">{t.needsYou ? <><span className="muted">Waits on you: </span>{line}</> : line}</p>}
       {!line && t.state === "waiting" && !t.needsYou && <p className="tcard-line muted">Waiting for an approval in the thread.</p>}
+      {t.question && <ProjectQuestion key={t.question.n} base={base} n={t.question.n} onChange={env.onChange} />}
       <div className="row"><a className="sm" href={open_} ref={viewRef}>View thread</a></div>
       <ErrorText error={error} />
     </div>

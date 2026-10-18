@@ -455,6 +455,28 @@ Each active thread is one Pi session from `openThreadSession`, with
   their parent's `delegate` cards. Memory search honours the same pool filters; `?all=1` ignores
   them in both.
 
+## Question cards
+
+Principles 1 and 6: a decision stays beside the work and its answer becomes
+an ordinary message. Hosted `threads ask` stores the call in the encrypted
+thread log and a pointer in pool step 8's `questions` table (thread, entry
+number, asked time, closed time and answer only). There is one open question
+per thread; `ThreadSummary.question` exposes its entry number and asked time.
+`MessagePage.questions` supplies card states alongside the messages.
+
+`POST …/threads/:pool/:id/questions/:n/answer { option }` posts the chosen
+label with lyricad's `[Answer to q:<n>]` mark and starts a turn. It returns
+204, 404 for a missing question or another thread's, 409 when closed, and
+400 for an invalid option. The reader shows it as a user message, without
+the mark. Both the messages route and hosted `MarkedText` refuse user text
+starting with `[Answer to q:`. A typed message closes the question as
+`words`, keeping the text unchanged. Replacement, the person's Stop, a
+parent's `threads stop` and Resolve close it as `withdrawn`; lock and
+project pause keep it. Closing and clearing a project's `needs_you` happen
+in one transaction, and only a question opening or closing moves it; settings events refresh cards, the sidebar and Notifications.
+An ask in a project thread wakes its project chat through the existing
+coalesced parent wake, and the parent card can answer without navigation.
+
 ## Share with and Notifications
 
 `core/src/shares.ts`, `daemon/src/notifications.ts`; DESIGN.md "Where
@@ -483,8 +505,8 @@ things are".
   recipient acts. Only the recipient can accept or decline.
 - **Notifications.** `GET …/notifications?type=&scope=&sort=&offset=&limit=`
   is one list over what waits for the user, built from where each thing
-  lives: shares, permission requests in hosted threads, child thread updates
-  and threads waiting on them, her items from the night, her persona
+  lives: shares, question cards, permission requests in hosted threads,
+  child thread updates and threads waiting on them, her items from the night, her persona
   suggestions, and, for administrators, persona changes to approve and an
   update that failed its probation and rolled back (`rollback`, for seven
   days after it, leading to Administration → Updates). Each
@@ -496,6 +518,11 @@ things are".
   follows the display: a pool switched off, or a hidden thread while Show
   hidden is off, adds nothing, not even to the count, so nothing on screen
   says hidden content exists.
+  Questions have type `question`, ID `question:<pool>/<thread>/<n>`, and
+  count as decisions. Their title and recommended consequence are read
+  from the encrypted log through the thread reader. Actions answer each
+  option (recommended first); Open thread follows them in the UI. Private
+  questions follow the Private filter. Questions have no bulk action.
   `POST …/threads/:pool/:threadId/seen` marks a child thread's updates seen
   without opening it. The list has no downloads, clean-up items, image
   models to review or host problems.

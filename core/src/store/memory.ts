@@ -66,7 +66,20 @@ export class Memory {
   }
 
   private context(userId: UserId, pool: Pool, mode: "thread" | "owner", readonly = false) {
-    return { db: this.open(userId, pool, readonly), pool, owner: userId, profiles: () => this.profiles(), mode };
+    return { db: this.open(userId, pool, readonly), pool, owner: userId, profiles: () => this.profiles(), mode, questionChange: <T>(db: Db, thread: string, fn: () => T): T => {
+      // Attach only for this short synchronous change. The pool connection never
+      // exposes user.db to callers; both waiting flags commit in one transaction.
+      db.prepare(`ATTACH DATABASE ? AS question_user KEY "x'${this.keyring.userKey(userId).toString("hex")}'"`).run(join(this.users.userDir(userId), "user.db"));
+      try { return db.transaction(() => {
+        // Only a question opening or closing moves the flag: needsYou from a plain message stays.
+        const open = () => (db.prepare("SELECT EXISTS (SELECT 1 FROM main.questions WHERE thread = ? AND closed IS NULL) AS o").get(thread) as { o: number }).o;
+        const before = open();
+        const result = fn();
+        const after = open();
+        if (after !== before) db.prepare("UPDATE question_user.child_threads SET needs_you = ? WHERE pool = ? AND thread = ?").run(after, pool, thread);
+        return result;
+      })(); } finally { db.exec("DETACH DATABASE question_user"); }
+    } };
   }
 
   private open(userId: UserId, pool: Pool, readonly: boolean): Db {

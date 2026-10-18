@@ -5,11 +5,13 @@
 // actions on each row.
 import { useMemo, useState } from "react";
 import { get, request, u, type Notification, type NotificationAction, type NotificationPage, type NotificationType, type Pool, type ThreadSummary } from "./api.ts";
+import { Icon } from "./icons.tsx";
 import { go, href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
 import { ErrorText, shortTime, useAction, useLoad } from "./ui.tsx";
 
 const TYPES: Record<NotificationType, { glyph: string; label: string }> = {
+  question: { glyph: "?", label: "Question" },
   permission: { glyph: "?", label: "Approval" },
   share: { glyph: "⇄", label: "Shared with you" },
   update: { glyph: "↻", label: "Thread update" },
@@ -38,7 +40,8 @@ function useAct(ctx: ShellContext, reload: () => void) {
     }
     reload();
     ctx.refreshNotifications();
-    if (opened) { ctx.refreshThreads(); go({ page: "thread", userId: ctx.user.id, pool: opened.pool, threadId: opened.id }); }
+    ctx.refreshThreads();
+    if (opened) { go({ page: "thread", userId: ctx.user.id, pool: opened.pool, threadId: opened.id }); }
   });
   return [act, busy, error] as const;
 }
@@ -63,17 +66,18 @@ function Row({ n, ctx, picked, onPick, act, busy }: {
 }) {
   const t = TYPES[n.type];
   return (
-    <li className={`nrow${onPick ? "" : " nopick"}`}>
+    <li className={`nrow${onPick ? "" : " nopick"}${n.type === "question" ? " nquestion" : ""}`}>
       {onPick && <input type="checkbox" className="npick" checked={!!picked} onChange={(e) => onPick(e.target.checked)} aria-label={`Select ${n.title}`} />}
-      <span className="ico" aria-hidden="true">{t.glyph}</span>
+      <span className="ico" aria-hidden="true">{n.type === "question" ? <Icon name="bell" /> : t.glyph}</span>
       <div className="main-col">
         <span className="name">{n.title}</span>
         {n.detail && <span className="meta">{numFirst(n.detail)}</span>}
         <span className="nkind">{t.label} · <span className={`k${n.scope === "private" ? " private" : ""}`}>{n.scope}</span> · <span className="when">{shortTime(n.at)}</span></span>
       </div>
       <div className="actions">
-        <Where n={n} userId={ctx.user.id} />
-        {n.actions.map((a) => <button key={a.label} type="button" className={`sm${a.danger ? " danger" : ""}`} disabled={busy} onClick={() => act([a])}>{a.label}</button>)}
+        {n.type !== "question" && <Where n={n} userId={ctx.user.id} />}
+        {n.actions.map((a, i) => <button key={a.label} type="button" className={`sm${n.type === "question" && i === 0 ? " primary" : ""}${a.danger ? " danger" : ""}`} disabled={busy} onClick={() => act([a])}>{a.label}{n.type === "question" && i === 0 && <span className="question-recommended">Recommended</span>}</button>)}
+        {n.type === "question" && <Where n={n} userId={ctx.user.id} />}
       </div>
     </li>
   );
@@ -94,6 +98,12 @@ export function NotificationsCard({ ctx }: { ctx: ShellContext }) {
   );
 }
 
+/** Questions never share a decision, even when their option labels happen to match. */
+export function sharedActions(selected: Notification[]): NotificationAction[] {
+  return selected.length && !selected.some(n => n.type === "question")
+    ? selected[0]!.actions.filter(a => selected.every(n => n.actions.some(x => x.label === a.label))) : [];
+}
+
 /** The Notifications page: the whole list. */
 export function NotificationsPage({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
@@ -109,7 +119,7 @@ export function NotificationsPage({ ctx }: { ctx: ShellContext }) {
   const total = page.data?.total ?? 0;
   const sel = useMemo(() => items.filter((n) => picked.has(n.id)), [items, picked]);
   // Bulk: the actions every selected row has, each with the count; none when they share none.
-  const shared = sel.length ? sel[0]!.actions.filter((a) => sel.every((n) => n.actions.some((x) => x.label === a.label))) : [];
+  const shared = sharedActions(sel);
   const bulk = (label: string) => act(sel.map((n) => n.actions.find((x) => x.label === label)).filter((a): a is NotificationAction => !!a)).then(() => setPicked(new Set()));
   const chips: [typeof type, string][] = [["all", `All ${page.data ? total : ""}`.trim()], ["decision", "Needs a decision"], ...(page.data?.types ?? []).map((t): [NotificationType, string] => [t, TYPES[t].label])];
   const groups = sort === "type" || sort === "scope"

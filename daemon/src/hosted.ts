@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
-  recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
+  ANSWER, answerMark, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
@@ -351,12 +351,18 @@ export class HostedThread {
    * watcher with `watching`, and only a wake-up with `wakeup` (its mark);
    * anyone else's text can't carry the line that marks it.
    */
-  async send(text: string, opts: { fromParent?: string; fromThread?: string; watching?: boolean; wakeup?: string; routine?: string; recentThreadIds?: string[]; recentWorkSource?: string } = {}): Promise<{ queued: boolean }> {
+  async send(text: string, opts: { answer?: number; fromParent?: string; fromThread?: string; watching?: boolean; wakeup?: string; routine?: string; recentThreadIds?: string[]; recentWorkSource?: string } = {}): Promise<{ queued: boolean }> {
     if (!text.trim()) throw new Error("the message is empty");
+    if (opts.answer !== undefined) return this.post(`${answerMark(opts.answer)}${text}`);
+    if (ANSWER.test(text)) throw new MarkedText("a message can’t start with [Answer to q:");
     if (FROM_PARENT.test(text)) throw new MarkedText("a message can't start with a [From t:…] line");
     if (WATCHING.test(text)) throw new MarkedText("a message can't start with a [Watching threads] line");
     if (WAKEUP.test(text)) throw new MarkedText("a message can't start with a [Wake-up, …] line");
     if (ROUTINE.test(text)) throw new MarkedText("a message can’t start with a [Routine, …] line");
+    if (!opts.fromParent && !opts.fromThread && !opts.watching && !opts.wakeup && !opts.routine) {
+      const view = this.o.memory.openThreadView(this.userId, this.pool);
+      try { if (view.own.closeQuestion(this.threadId, "words")) this.o.threads?.questionsChanged?.(this.userId, this.pool, this.threadId); } finally { view.close(); }
+    }
     if (opts.recentThreadIds) {
       if (this.working || this.recentWorkIds) throw new Busy("recent work needs an idle project chat");
       this.recentWorkIds = opts.recentThreadIds;
@@ -725,9 +731,16 @@ export class HostedThread {
   /**
    * Stop: aborts the running turn, denies waiting permission requests and
    * drops the person's queued messages (the views give them back). Marked
-   * messages no turn took are kept in the stored thread.
+   * messages no turn took are kept in the stored thread. Only the person's
+   * Stop and a parent's `threads stop` withdraw an open question; lock and
+   * pause keep it for the person to answer.
    */
-  async stop(): Promise<void> {
+  async stop(withdrawQuestion = false): Promise<void> {
+    if (withdrawQuestion) {
+      const view = this.o.memory.openThreadView(this.userId, this.pool);
+      try { if (view.own.closeQuestion(this.threadId, "withdrawn")) this.o.threads?.questionsChanged?.(this.userId, this.pool, this.threadId); } finally { view.close(); }
+    }
+
     this.unhold();
     this.imageRetryAbort?.abort();
     for (const p of [...this.pending.values()]) p.done(false, "stopped");

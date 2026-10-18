@@ -1,7 +1,7 @@
 import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
 import {
-  CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
+  ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled, modelName,
@@ -1105,8 +1105,9 @@ export function apiRoutes(d: Lyricad): Route[] {
         if (!before && s().prefs.get(user.id, poolOf(r), thread.id).unread) s().prefs.setUnread(user.id, poolOf(r), thread.id, false);
         const page = o[poolOf(r)].entryPage(thread.id, { before: before ? Number(before) : undefined, limit });
         const names = thread.subagent ? { userName: (id: string) => s().users.get(id)?.profile.displayName ?? "a user" } : undefined;
+        const questions = o[poolOf(r)].questions(thread.id);
         return { messages: toMessages(thread.id, poolOf(r), page.entries,
-          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, { ...(thread.child && thread.parent ? { parent: thread.parent } : {}), userId: user.id }), hasMore: page.hasMore };
+          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, { ...(thread.child && thread.parent ? { parent: thread.parent } : {}), userId: user.id, userName: user.profile.displayName }), hasMore: page.hasMore, ...(questions.length ? { questions } : {}) };
       });
     }),
     route("GET", `${t}/image-calls/:toolCallId`, async (r): Promise<Api.ImageRetryOptions> => {
@@ -1138,6 +1139,31 @@ export function apiRoutes(d: Lyricad): Route[] {
       await s().host.get(user.id, pool, thread.id).retryImage(retry.args, offeringId, retry.options.userMessage?.n);
       return { ok: true };
     }),
+    route("POST", `${t}/questions/:n/answer`, async (r) => {
+      const user = d.userFor(r);
+      d.refuseWhileDraining();
+      const pool = poolOf(r);
+      const option = (await r.json<Api.AnswerQuestion>())?.option;
+      const thread = owner(d, user, o => threadOf(o, r));
+      const project = owner(d, user, o => o[pool].projectOf(thread.id));
+      if (project && project !== thread.id && s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden");
+      const n = Number(r.params.n);
+      const label = owner(d, user, o => {
+        const store = o[pool];
+        const q = store.questions(thread.id).find(q => q.n === n);
+        if (!q) throw new HttpError(404, "no such question");
+        if (q.closed) throw new HttpError(409, "this question is closed");
+        const ask = store.readAsk(thread.id, n);
+        if (!ask) throw new HttpError(404, "no such question");
+        if (!Number.isInteger(option) || option < 0 || option >= ask.options.length) throw new HttpError(400, "option is out of range");
+        if (!store.closeQuestion(thread.id, option, n)) throw new HttpError(409, "this question is closed");
+        return ask.options[option]!.label;
+      });
+      s().children.userWrote(user.id, pool, thread.id);
+      await s().host.get(user.id, pool, thread.id).send(label, { answer: n });
+      r.res.writeHead(204); r.res.end();
+      return undefined;
+    }),
     route("POST", `${t}/messages`, async (r) => {
       const user = d.userFor(r);
       d.refuseWhileDraining();
@@ -1145,7 +1171,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, (o) => threadOf(o, r));
       // What was sent is no longer a draft; a refused send keeps it.
       const sent = (x: Api.SendResponse) => { owner(d, user, (o) => o[poolOf(r)].setDraft(thread.id, "")); return x; };
-      if (thread.subagent) return sent(await toSubagent(d, user, poolOf(r), thread, String(text ?? "")));
+      if (thread.subagent) return sent(await toSubagent(d, user, poolOf(r), thread, unmarked(String(text ?? ""))));
       if (String(text ?? "").trim() === "/sleep") return sent({ queued: false, sleep: await startSleep(d, user, poolOf(r), confirm === true) });
       const project = owner(d, user, (o) => o[poolOf(r)].projectOf(thread.id));
       if (project && project !== thread.id && s().children.stopped(user.id, poolOf(r), project)) throw new HttpError(409, "this project is paused or hidden; resume it to write in its threads");
@@ -1351,7 +1377,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${t}/stop`, async (r) => {
       const user = d.userFor(r);
       const thread = owner(d, user, (o) => threadOf(o, r));
-      await s().host.get(user.id, poolOf(r), thread.id).stop();
+      await s().host.get(user.id, poolOf(r), thread.id).stop(true);
       // In a subagent's thread, Stop also stops the subagent's work.
       if (thread.subagent) s().delegation.stopThread(user.id, poolOf(r), thread.id);
       return { ok: true };
@@ -2328,6 +2354,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
   const inProject = th.child && th.parent ? look.project(pool, th.parent, store) : undefined;
   const mine = inProject?.find((x) => x.id === th.id);
   const settings = th.project ? d.services!.projects.settings(user.id, pool, th.id) : undefined;
+  const question = store.openQuestion(th.id);
   return {
     pool, id: th.id, interface: th.interface, subagent: th.subagent, child: th.child, hidden: th.hidden, unlogged: th.unlogged, createdAt: th.createdAt,
     updatedAt: store.lastEntry(th.id)?.createdAt ?? th.createdAt,
@@ -2343,6 +2370,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
     ...(mine ? { state: mine.state, ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
+    ...(question ? { question: { n: question.n, asked: question.asked } } : {}),
     ...wakeAt(d.services!.wakeups.list(user.id, pool, th.id)),
     ...(look.checklists() ? stepsOf(store.steps(th.id)) : {}),
   };
@@ -2661,6 +2689,7 @@ function react(d: Lyricad, user: User, r: Request, on: boolean): Api.Reactions {
 
 /** A user's text can't carry the line that marks a parent's message to its child thread. */
 function unmarked(text: string): string {
+  if (ANSWER.test(text)) throw new HttpError(400, "a message can’t start with [Answer to q:");
   if (FROM_PARENT.test(text)) throw new HttpError(400, "a message can't start with a [From t:…] line");
   if (WATCHING.test(text)) throw new HttpError(400, "a message can't start with a [Watching threads] line");
   if (WAKEUP.test(text)) throw new HttpError(400, "a message can't start with a [Wake-up, …] line");

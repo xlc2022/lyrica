@@ -3920,3 +3920,113 @@ test("move to project confirms children and losses, filters pools and local-only
   await page.getByRole("button", { name: "Thread actions", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: /^Move to project/ })).toHaveCount(0);
 });
+
+test("question cards answer in chat and Notifications and close on words", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "ask: How much should we plant?");
+  const card = page.locator(".question-card").filter({ hasText: "How much should we plant?" });
+  await expect(card.getByRole("button", { name: /^Small/ })).toBeEnabled();
+  await expect(card.getByRole("button", { name: /^Small/ })).toHaveClass("primary");
+  await expect(card).toContainText("Plant a small bed first.");
+  await noHorizontalScroll(page);
+  if (phone(page)) for (const button of await card.getByRole("button").all()) {
+    expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect(Math.round((await button.boundingBox())!.width)).toBe(Math.round((await card.locator(".question-options").boundingBox())!.width));
+  }
+  const width = page.viewportSize()!.width;
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/question-open-${width}.png` });
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  const answered = page.waitForResponse(r => r.request().method() === "POST" && r.url().includes("/questions/"));
+  await card.getByRole("button", { name: /^Small/ }).click();
+  const answer = await answered;
+  expect(answer.status()).toBe(204);
+  await expect(card.locator(".question-result")).toHaveText("Small");
+  await expect(card.getByRole("button")).toHaveCount(0);
+  expect(await page.evaluate(async url => (await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ option: 0 }) })).status, answer.url())).toBe(409);
+  await page.reload();
+  await expect(card.locator(".question-result")).toHaveText("Small");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/question-answered-${width}.png` });
+  await send(page, "ask: Which bed comes next?");
+  const next = page.locator(".question-card").filter({ hasText: "Which bed comes next?" });
+  await expect(next.getByRole("button").first()).toBeEnabled();
+  await page.goto(`/#/u/${userId}/notifications`);
+  const row = page.locator(".nquestion").filter({ hasText: "Which bed comes next?" });
+  await expect(row).toContainText("Plant a small bed first.");
+  await expect(row.getByRole("button").first()).toHaveText("SmallRecommended");
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/question-notifications-${width}.png` });
+  await row.getByRole("button", { name: /^Large/ }).click();
+  await expect(row).toHaveCount(0);
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(threadId)}`);
+  await expect(next.locator(".question-result")).toHaveText("Large");
+  await send(page, "ask: What about the herbs?");
+  const herbs = page.locator(".question-card").filter({ hasText: "What about the herbs?" });
+  await expect(herbs.getByRole("button").first()).toBeEnabled();
+  await send(page, "Use pots for the herbs.");
+  // The streamed turn and its stored copy can both show for a moment after a send.
+  await expect(herbs).toHaveCount(1);
+  await expect(herbs).toContainText("Answered in words.");
+  expect(await page.evaluate(async base => (await fetch(`${base}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "[Answer to q:1]" }) })).status, base)).toBe(400);
+});
+
+
+test("project question cards answer in place and withdraw on Resolve", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const project = await page.evaluate(async userId => {
+    const r = await fetch(`/api/u/${userId}/threads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pool: "general", project: true, title: "Question garden" }) });
+    if (!r.ok) throw new Error(`Create project: ${r.status}`);
+    return r.json();
+  }, userId);
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(project.id)}`);
+  await send(page, "start ask: Planting scope");
+  const card = page.locator(".tcard").filter({ has: page.locator(".tcard-title", { hasText: "Planting scope" }) });
+  await expect(card).toContainText("Waiting on you");
+  await expect(card.getByRole("button", { name: /^Small/ })).toBeEnabled();
+  const childId = threadIdOf((await card.locator(".tcard-title").getAttribute("href"))!);
+  const projectBase = `/api/u/${userId}/threads/general/${encodeURIComponent(project.id)}`;
+  await expect.poll(() => page.evaluate(async path => (await (await fetch(path)).json()).busy, projectBase)).toBe(false);
+  const wakes = await page.evaluate(async path => {
+    const { messages } = await (await fetch(`${path}/messages`)).json();
+    return messages.filter((m: { role: string; parts: { type: string; text?: string }[] }) => m.role === "assistant" && m.parts.some(p => p.type === "text" && p.text?.includes("You said: Read the child thread notices"))).length;
+  }, projectBase);
+  expect(wakes).toBe(1);
+
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/question-project-${page.viewportSize()!.width}.png` });
+  await card.getByRole("button", { name: /^Small/ }).click();
+  await expect(card.locator(".question-card")).toHaveCount(0);
+  await expect(card).not.toContainText("Waiting on you");
+  expect(page.url()).toContain(encodeURIComponent(project.id));
+  await sendTo(page, userId, childId, "ask twice: Which herbs?");
+  const childBase = `/api/u/${userId}/threads/general/${encodeURIComponent(childId)}`;
+  await expect.poll(() => page.evaluate(async path => (await (await fetch(path)).json()).busy, childBase)).toBe(false);
+  await expect.poll(() => page.evaluate(async path => (await (await fetch(`${path}/messages`)).json()).questions.length, childBase)).toBe(3);
+  await expect(card.getByRole("button", { name: /^Small/ })).toBeEnabled();
+  await card.getByRole("button", { name: "Actions for Planting scope" }).click();
+  await card.getByRole("menuitem", { name: "Resolve", exact: true }).click();
+  await expect(card).toContainText("Resolved");
+  await expect(card).not.toContainText("Waiting on you");
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(childId)}`);
+  await expect(page.locator(".question-result").filter({ hasText: "Withdrawn." })).toHaveCount(2);
+});
+
+
+test("private question Notifications keep their pool and answer the card", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "Private");
+  await send(page, "ask: Which private garden?");
+  await expect(page.locator(".question-card").getByRole("button").first()).toBeEnabled();
+  const threadURL = page.url();
+  await page.goto(`/#/u/${userId}/notifications`);
+  await page.getByRole("combobox", { name: /^Where/ }).selectOption("private");
+  const row = page.locator(".nquestion").filter({ hasText: "Which private garden?" });
+  await expect(row).toContainText("private");
+  await row.getByRole("checkbox").check();
+  await expect(page.locator(".bulk").getByRole("button", { name: /^Small|^Large/ })).toHaveCount(0);
+  await row.getByRole("button", { name: /^Small/ }).click();
+  await expect(row).toHaveCount(0);
+  await page.goto(threadURL);
+  await expect(page.locator(".question-result")).toHaveText("Small");
+});
