@@ -1,6 +1,6 @@
 # Brief: Question card
 
-**Status:** Built in three runs; ready for review and the operator’s full-suite run.
+**Status:** Merged as #322 (bc2f89b). Handoff notes below are history.
 
 **Branch:** `feature/question-card`. **Built by:** Codex on the test machine.
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md, docs/delegation.md
@@ -189,6 +189,7 @@ Local execution uses UNTRACKED `web/playwright.local.config.ts`, ports
 `shots/`. Run browser coverage from `web/` with
 `SCREENSHOTS=../shots flock /tmp/lyrica-tests.lock npx playwright test -c playwright.local.config.ts -g 'question cards|private question Notifications' --project=phone --project=desktop`.
 
-Status: pushed at `ede795c`, main merged, and sent to PR and UI review.
+Merged as #322 after review fixes: only Stop and Resolve withdraw a
+question, and `needs_you` moves only when a question opens or closes.
 Push notifications, card free-text inputs, multiple open questions and
 subagent questions remain out of scope. No open design questions.

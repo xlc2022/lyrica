@@ -1,5 +1,7 @@
 # Brief: Side panels and files
 
+**Status:** Merged as #310 (c5335bc). Handoff notes below are history.
+
 **Thread:** Side panels and files. **Branch:** `claude/side-panels-files-o6wo5i`.
 **Depends on:** the thread panel (`thread-panel.md`), the memory browser
 (`memory-browser.md`), the Files panel.
@@ -58,6 +60,6 @@ reads one message as a memory; `PATCH`/`DELETE` on an `e:` id answer 405.
 Done: all seven items, their docs (ux.md §6, web.md, memory.md,
 contracts.md), unit tests for the Recent layer and the live reducer's tool
 count, e2e steps for the beside click, both renames and the file row
-buttons, and the mockup (v34). Next: review by UI review and PR review.
+buttons, and the mockup (v34). Merged as #310.
 Open question: whether the Files tree should also reload on a timer while a
 tool call runs for a long time; today it waits for the call to end.
