@@ -97,7 +97,10 @@ function updateFailure(step: string | undefined): string {
   if (step === "fetch") return "it couldn't fetch the release; check that its deploy key is added";
   if (step === "drain") return "jobs were still running after 10 minutes, so nothing changed";
   if (step === "probation") return "the new version didn't start, so it went back to the one before";
-  return `${step ?? "an unknown step"}; nothing changed`;
+  if (step === "the checkout has local changes") return "the host's copy of the code has local changes, so nothing changed";
+  if (step?.startsWith("no deploy repository")) return "the host's updater isn't set up; run install.sh on the host again";
+  if (step?.startsWith("not ")) return "the host refused the release, so nothing changed";
+  return "something went wrong on the host, so nothing changed";
 }
 /** Update in a host's ⋯: when Lyrica runs a release, the host has an updater and runs another commit. */
 const updateOffer = (p: ModelsPage | undefined, s: HostStatus | undefined) =>
@@ -1108,7 +1111,8 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
         <div className="addrs">
           <span className="muted">{ep.shared ? "Shared with every user" : "Only you"}{revoked ? "" : " · paired"} · ID</span><code>{ep.id}</code>
           <span className="muted">· addresses</span>{(ep.addresses ?? []).map((a) => <code key={a}>{a}</code>)}
-          {status && <><span className="muted" title={status.update && !status.update.available ? status.update.reason : undefined}>· version</span><code>{status.version}</code></>}
+          {status && <><span className="muted" title={status.update && !status.update.available ? status.update.reason : undefined}>· version</span><code>{status.version}</code>
+            {status.update && !status.update.available && status.update.reason && <span className="sr-only">. {status.update.reason}</span>}</>}
           {editable && offer && <span className="muted">· update available</span>}
           {editable && <button type="button" className="link sm" onClick={() => setAddresses((ep.addresses ?? []).join(" "))}>Edit</button>}
         </div>
