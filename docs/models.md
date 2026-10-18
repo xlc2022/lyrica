@@ -38,8 +38,10 @@ and `-`, at most 40 characters.
   or plan (`paused_at` on `endpoints`): the router skips it ("is paused")
   until it resumes. A model host pauses itself instead (`hostControl`).
 - **Labels.** People and Lyrica name a model as `<endpoint>/<model>`, with
-  `shared.` before a shared endpoint's name, so the two never collide.
-  `find(userId, idOrLabel)` takes either form. A saved workflow's models are
+  `shared.` before a shared endpoint's name, so the two never collide. A host
+  recipe's `<model>` is its name (`modelName`), never its `recipe/<id>`;
+  every picker, list and "Made with" names it the same way.
+  `find(userId, idOrLabel)` takes either form, and a recipe by name or ID. A saved workflow's models are
   stored by offering ID (`workflowSpec`), so renaming breaks nothing.
 - **Shared** endpoints live in `self.db`. Only an administrator can add,
   change or remove them. Every user can use them. A user's **own**
@@ -52,7 +54,10 @@ and `-`, at most 40 characters.
   and thinking levels. OpenRouter reports the context, tools, thinking and
   modalities; llama-server reports the context
   (`meta.n_ctx`); LM Studio and KoboldCpp report neither. Anything can be
-  set by hand (`setCapabilities`), which wins over discovery.
+  set by hand (`setCapabilities`), which wins over discovery. Switching off
+  image, edit, upscale or transcribe takes the model out of that task's lists
+  in the user's presets and columns (a group stays), so no list keeps an
+  entry the router would skip.
 - `probe(userId, endpointId)` is `up` when `/v1/models` answers within 5
   seconds. For a local endpoint it also warns, without blocking, when the
   host resolves outside the owner's own network: loopback, RFC 1918, `fd00::/8`, or
@@ -416,10 +421,13 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   models use the nearest supported canvas shape; other models receive the
   requested dimensions.
 - **ChatGPT plan:** its own `/responses` endpoint, plan token and built-in
-  `image_generation` tool, with storage off. The selected offering is the
+  `image_generation` tool, with storage off and the answer streamed, as
+  chat's client always streams; the image comes from the finished
+  `image_generation_call` item. Sizes map to the nearest of the three GPT
+  Image canvases. The selected offering is the
   Responses model; the underlying image model is unreported. Fast asks for
   low quality, quality for high. Inputs are in-memory data URLs. Count uses
-  one request per image (up to four); sizes and references are supported.
+  one request per image (up to four); references are supported.
   Maskless edits are supported; masked edits skip the plan before sending
   and continue down the list. The daemon installs `setPlanImageToken`
   with extension's `planImageToken`, sharing Pi's serialized refresh and

@@ -5,6 +5,7 @@ import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { useMentionText } from "./mentions.ts";
 import { useDismiss } from "./ui.tsx";
+import { modelName } from "./ModelLabel.tsx";
 
 /** What a thread lets its messages do. Absent in a subagent's thread. */
 export interface Rewinder {
@@ -55,7 +56,7 @@ export function MessageMenu({ n, role, rewinder, onEdit, onRemember }: { n: numb
           {models && rewinder.settings?.allowed.flatMap((ep) => ep.models.map((m) => (
             <button key={m.id} type="button" role="menuitem" className="sub-item" disabled={busy}
               onClick={act(() => regenerate({ offeringId: m.id }))}>
-              {m.modelId} <span className="muted">· {ep.name}</span>
+              {modelName(m)} <span className="muted">· {ep.name}</span>
             </button>
           )))}
           {role === "user" && onEdit && <button type="button" role="menuitem" disabled={busy} onClick={act(onEdit)}>Edit</button>}

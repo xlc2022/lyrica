@@ -3,7 +3,7 @@
 // up and Recent calls, with its sections listed at the left (the frame and what the tabs share are in ModelsFrame.tsx).
 // The shell polls GET …/models/cleanup for the sidebar's count; GET …/models/page, which probes every
 // endpoint, is shared by Shell and polled every 30 s; opening Models and Hosts tab changes reload it.
-import { ModelLabel } from "./ModelLabel.tsx";
+import { ModelLabel, modelName } from "./ModelLabel.tsx";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, u,
@@ -207,7 +207,7 @@ function firstChat(p: ModelsPage, col: ColumnState): FirstChat {
   if ("groupId" in ref) return { groupId: ref.groupId };
   for (const ep of p.endpoints) {
     const m = ep.models.find((o) => o.id === ref.offeringId);
-    if (m) return { model: m.modelId, endpoint: ep.name, kind: ep.kind };
+    if (m) return { model: modelName(m), endpoint: ep.name, kind: ep.kind };
   }
   return undefined;
 }
@@ -226,7 +226,7 @@ export function BackendCard({ ctx }: { ctx: ShellContext }) {
       const group = groups.data?.find((g) => g.id === groupId);
       c = group?.members.flatMap((id) => (p?.endpoints ?? []).flatMap((ep) => {
         const m = ep.models.find((m) => m.id === id);
-        return m ? [{ model: m.modelId, endpoint: ep.name, kind: ep.kind }] : [];
+        return m ? [{ model: modelName(m), endpoint: ep.name, kind: ep.kind }] : [];
       }))[0];
     }
     return <>{c && "model" in c ? <><span className={`badge kind ${c.kind}`}>{c.kind}</span> <ModelLabel model={c.model} endpoint={c.endpoint} /></> : "No model"} · {col.preset?.name ?? "Custom"}</>;
@@ -447,7 +447,7 @@ const refKey = (r: ModelRef) => ("offeringId" in r ? r.offeringId : `g:${r.group
 function RefLabel({ refx, all, groups }: { refx: ModelRef; all: Map<string, Copy>; groups: GroupInfo[] }) {
   if ("groupId" in refx) return <>{groups.find((g) => g.id === refx.groupId)?.name ?? "A group"}</>;
   const c = all.get(refx.offeringId);
-  return c ? <><ModelLabel model={c.m.modelId} endpoint={c.ep.name} />{c.m.status === "gone" && <span className="pill bad">gone</span>}</> : <>A model that no longer exists</>;
+  return c ? <><ModelLabel model={modelName(c.m)} endpoint={c.ep.name} />{c.m.status === "gone" && <span className="pill bad">gone</span>}</> : <>A model that no longer exists</>;
 }
 
 /** "A", "A and B", "A, B and C". */
@@ -758,7 +758,7 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
                             <div className="members">
                               {ms.map((c) => (
                                 <span key={c.m.id}>
-                                  <span className={`dot${answers(p, c) ? " up" : " away"}`} aria-hidden="true" /> <ModelLabel model={c.m.modelId} endpoint={c.ep.name} />
+                                  <span className={`dot${answers(p, c) ? " up" : " away"}`} aria-hidden="true" /> <ModelLabel model={modelName(c.m)} endpoint={c.ep.name} />
                                 </span>
                               ))}
                             </div>
@@ -767,7 +767,7 @@ function TaskDrawer({ ctx, p, all, groups, column, task, onClose }: {
                         <div className="octl">
                           <button type="button" className="icon sm" aria-label="Move up" disabled={busy || i === 0} onClick={() => move(i, -1)}><Icon name="up" /></button>
                           <button type="button" className="icon sm" aria-label="Move down" disabled={busy || i === list.length - 1} onClick={() => move(i, 1)}><Icon name="arrow-down" /></button>
-                          <button type="button" className="icon sm" aria-label="Remove" disabled={busy || list.length === 1} onClick={() => void saveList(list.filter((_, j) => j !== i))}><Icon name="close" /></button>
+                          <button type="button" className="icon sm" aria-label="Remove" disabled={busy || (task === "chat" && list.length === 1)} onClick={() => void saveList(list.filter((_, j) => j !== i))}><Icon name="close" /></button>
                         </div>
                       </li>
                     </Fragment>
@@ -795,7 +795,7 @@ function Picker({ p, groups, column, task, list, q, setQ, busy, onAdd, onCancel 
   const needle = q.trim().toLowerCase();
   const eps = p.endpoints.filter((ep) => kindOk(ep.kind)).map((ep) => ({
     ep,
-    models: ep.models.filter((m) => suits(task, m) && !taken.has(m.id) && (!needle || `${m.modelId} ${ep.name}`.toLowerCase().includes(needle))),
+    models: ep.models.filter((m) => suits(task, m) && !taken.has(m.id) && (!needle || `${modelName(m)} ${m.modelId} ${ep.name}`.toLowerCase().includes(needle))),
   })).filter((x) => x.models.length);
   const all = copies(p);
   const gs = groups.filter((g) => !taken.has(`g:${g.id}`) && g.members.some((id) => { const c = all.get(id); return !!c && kindOk(c.ep.kind) && suits(task, c.m); }));
@@ -816,7 +816,7 @@ function Picker({ p, groups, column, task, list, q, setQ, busy, onAdd, onCancel 
             {models.map((m) => (
               <div key={m.id} className="pick-row" data-offering={m.id}>
                 <div className="main-col">
-                  <span className="name"><ModelLabel model={m.modelId} endpoint={ep.name} /></span>
+                  <span className="name"><ModelLabel model={modelName(m)} endpoint={ep.name} /></span>
                   <span className="meta muted">
                     {[
                       m.contextWindow ? <><span className="num">{contextWord(m.contextWindow)}</span> context</> : null,
