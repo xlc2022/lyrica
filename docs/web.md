@@ -944,7 +944,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   pasting. Each shows its progress, and its path in the thread goes into the
   draft on a line of its own. An image path in the draft shows as a
   thumbnail above the box (`.attachments`, the thumbnail route) with an ✕,
-  Remove <name>, that takes its line out; the server names an uploaded
+  Remove <name>, a 24 px circle whose hit area is 44 px on touch, that takes
+  its line out; the server names an uploaded
   image at random (docs/workspace.md), so the person's message shows the
   picture, not a telling filename.
 - **The message box** (`src/Composer.tsx`, `src/Modes.tsx`): a bordered box

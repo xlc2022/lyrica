@@ -2206,6 +2206,11 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   else await page.locator(".fview .fback").click(); // the panel column is narrow, so the file took the tree's place
   // An image she writes from the thread folder shows in the message and opens large.
   await page.getByLabel("Message", { exact: true }).fill("![the tray](/workspace/uploads/tray.png)");
+  // An image named in the draft shows above the box with its ✕, a 44 px target on a phone (docs/ux.md §6, The message box).
+  const remove = page.getByRole("list", { name: "Attached images" }).getByRole("button", { name: "Remove tray.png" });
+  await expect(remove).toBeVisible();
+  if (phone(page)) expect(await hitHeight(remove)).toBeGreaterThanOrEqual(44);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/attachments-${page.viewportSize()!.width}.png` });
   await page.getByRole("button", { name: "Send" }).click();
   const thumb = page.getByRole("button", { name: "the tray, open large" });
   await expect(thumb).toBeVisible();

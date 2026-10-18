@@ -1445,4 +1445,6 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
 .attachments { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
 .attachments li { position: relative; }
 .attachments img { display: block; height: 72px; max-width: 160px; object-fit: cover; border: 1px solid var(--line); border-radius: 8px; background: var(--tool); }
-.attachments button { position: absolute; top: -6px; right: -6px; width: 24px; min-height: 24px; height: 24px; border-radius: 50%; background: var(--panel); }
+/* The ✕ is a 24 px circle on every pointer (the composer's coarse rule would make it 44); on touch its hit area grows to --tap through ::after (docs/ux.md §8). */
+.composer .attachments button { position: absolute; top: -6px; right: -6px; width: 24px; min-height: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--fg); }
+@media (pointer: coarse) { .attachments button::after { content: ""; position: absolute; width: var(--tap); height: var(--tap); top: 50%; left: 50%; transform: translate(-50%, -50%); } }
