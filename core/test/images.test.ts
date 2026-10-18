@@ -120,6 +120,39 @@ describe("image calls through the router (principles 1 and 2)", () => {
     }));
     expect((await s.models.image(s.ctx(), { action: "edit", prompt: "Add flowers", image: input, mask: input })).resolution.ref).toEqual(s.ref);
   });
+  it("drops a model from image lists when its image switch goes off, keeping the rest of the list", async () => {
+    const s = await setup();
+    const ep = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
+    const ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "plan-model", image: true, edit: true }).id };
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.ref]);
+    s.models.setColumnTask(s.ada.id, "general", "image.edit", [ref]);
+    const preset = s.models.addPreset(s.ada.id, { name: "Plan images", scope: "general" }, "general");
+    s.models.setCapabilities(s.ada, ref.offeringId, { image: false });
+    expect(s.models.preset(s.ada.id, preset.id)!.entries["image.create"]).toEqual([s.ref]);
+    expect(s.models.preset(s.ada.id, preset.id)!.entries["image.edit"]).toEqual([ref]);
+    s.models.setCapabilities(s.ada, ref.offeringId, { edit: false });
+    expect(s.models.preset(s.ada.id, preset.id)!.entries["image.edit"]).toBeUndefined();
+  });
+  it("streams plan image calls and reads the image from the finished output item", async () => {
+    const s = await setup();
+    const ep = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-plan", refresh: "fake-refresh", expires: Date.now() + 3600000 } });
+    const ref = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "plan-model", image: true }).id };
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [ref]);
+    let sent: any;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, opts: RequestInit) => {
+      sent = { body: JSON.parse(String(opts.body)), headers: opts.headers };
+      const events = [
+        { type: "response.created", response: { output: [] } },
+        { type: "response.output_item.done", item: { type: "image_generation_call", status: "completed", result: png.toString("base64") } },
+        { type: "response.completed", response: { output: [{ type: "image_generation_call", status: "completed" }] } },
+      ];
+      return new Response(events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+    }));
+    const out = await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "quality", size: { width: 896, height: 1184 } });
+    expect(out.images).toHaveLength(1);
+    expect(sent.body).toMatchObject({ stream: true, tools: [{ size: "1024x1536" }] });
+    expect(sent.headers).toMatchObject({ accept: "text/event-stream" });
+  });
   it.each(["key", "plan"] as const)("stops on a %s content refusal without echoing provider text or trying the fallback", async kind => {
     const s = await setup();
     let ref = s.ref;

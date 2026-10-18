@@ -65,12 +65,40 @@ async function answer(t: Target, path: string, body: string | FormData, headers:
     throw new HostRefused(err?.code ?? (res.status >= 500 || res.status === 429 ? "unavailable" : "invalid"), `image endpoint answered ${res.status}`);
   }
   let out: any;
-  try { out = await res.json(); }
+  try { out = (res.headers.get("content-type") ?? "").includes("text/event-stream") ? await finalResponse(res) : await res.json(); }
   catch { throw new HostRefused("invalid", "The image endpoint returned an invalid response."); }
   if (isRefusal(out?.error?.code) || isRefusal(out?.error?.type)) throw imageRefusal();
   return out;
 }
+/**
+ * A streamed Responses answer as one response: the plan's endpoint answers
+ * requests that aren't streamed with 400, as chat's own client never sends one.
+ * Finished output items are kept in case the completed event leaves results out.
+ */
+async function finalResponse(res: Response): Promise<any> {
+  const items: any[] = [];
+  let final: any, failed: any;
+  const text = await res.text();
+  for (const block of text.split(/\r?\n\r?\n/)) {
+    const data = block.split(/\r?\n/).filter(l => l.startsWith("data:")).map(l => l.slice(5).trimStart()).join("\n");
+    if (!data || data === "[DONE]") continue;
+    const e = JSON.parse(data);
+    if (e.type === "response.output_item.done" && e.item) items.push(e.item);
+    else if (e.type === "response.completed" || e.type === "response.incomplete") final = e.response;
+    else if (e.type === "response.failed") failed = e.response ?? {};
+    else if (e.type === "error") failed = { error: e.error ?? { code: e.code } };
+  }
+  if (failed) return { ...failed, error: failed.error ?? { code: "failed" } };
+  if (!final) throw new Error("the stream ended early");
+  return { ...final, output: final.output?.some((i: any) => i.type === "image_generation_call" && i.result) ? final.output : items };
+}
 const base64 = (i: ImageInput) => Buffer.from(i.bytes).toString("base64");
+
+/** The three canvases every GPT Image model takes: the nearest aspect ratio. */
+function canvas(size: { width: number; height: number }): string {
+  const ratio = size.width / size.height;
+  return ratio > 1.2 ? "1536x1024" : ratio < 1 / 1.2 ? "1024x1536" : "1024x1024";
+}
 
 async function openai(t: Target, r: ImageRequest, signal?: AbortSignal): Promise<GeneratedImage[]> {
   if (!t.apiKey) throw new HostRefused("invalid", "a cloud image endpoint needs an API key");
@@ -79,11 +107,7 @@ async function openai(t: Target, r: ImageRequest, signal?: AbortSignal): Promise
   if (r.action === "create") {
     fields.quality = QUALITY[r.tier];
     if (r.size) {
-      // GPT Image 1 models offer three canvas shapes; use the nearest aspect ratio.
-      const ratio = r.size.width / r.size.height;
-      fields.size = t.modelId.startsWith("gpt-image-1")
-        ? ratio > 1.2 ? "1536x1024" : ratio < 1 / 1.2 ? "1024x1536" : "1024x1024"
-        : `${r.size.width}x${r.size.height}`;
+      fields.size = t.modelId.startsWith("gpt-image-1") ? canvas(r.size) : `${r.size.width}x${r.size.height}`;
     }
   }
   const inputs = [...(r.action === "edit" ? [r.image] : []), ...(r.references ?? [])];
@@ -112,16 +136,15 @@ async function chatgpt(t: Target, r: ImageRequest, signal?: AbortSignal): Promis
   if (r.action === "upscale" || (r.action === "edit" && r.mask)) throw new HostRefused("unsupported", "The ChatGPT image tool does not support this request.");
   const inputs = [...(r.action === "edit" ? [r.image] : []), ...(r.references ?? [])];
   const tool = { type: "image_generation", action: r.action === "edit" ? "edit" : "generate",
-    output_format: "png", ...(r.action === "create" ? { quality: QUALITY[r.tier],
-      ...(r.size ? { size: `${r.size.width}x${r.size.height}` } : {}) } : {}) };
+    output_format: "png", ...(r.action === "create" ? { quality: QUALITY[r.tier], ...(r.size ? { size: canvas(r.size) } : {}) } : {}) };
   // Responses has no n option. Each requested image uses the plan's own limits.
   const images: GeneratedImage[] = [];
   for (let n = 0; n < (r.count ?? 1); n++) {
     signal?.throwIfAborted();
-    const out = await answer(t, "/responses", JSON.stringify({ model: t.modelId, store: false,
+    const out = await answer(t, "/responses", JSON.stringify({ model: t.modelId, store: false, stream: true,
       input: [{ role: "user", content: [{ type: "input_text", text: r.prompt },
         ...inputs.map(i => ({ type: "input_image", image_url: `data:${i.type};base64,${base64(i)}` }))] }],
-      tools: [tool], tool_choice: { type: "image_generation" } }), { authorization: `Bearer ${t.apiKey}`, "content-type": "application/json" }, signal);
+      tools: [tool], tool_choice: { type: "image_generation" } }), { authorization: `Bearer ${t.apiKey}`, "content-type": "application/json", accept: "text/event-stream" }, signal);
     if (isRefusal(out.error?.code) || out.output?.some((i: any) => i.content?.some((c: any) => c.type === "refusal"))
       || out.incomplete_details?.reason === "content_filter") throw imageRefusal();
     if (out.error) throw new HostRefused(out.error.code === "rate_limit_exceeded" ? "unavailable" : "invalid", "The image response failed.");

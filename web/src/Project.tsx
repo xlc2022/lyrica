@@ -17,6 +17,7 @@ import { McpServers } from "./Mcp.tsx";
 import { Folders, Machines, TaskSelect } from "./Settings.tsx";
 import { Main, PageHead, useWide, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, Dialog, ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
+import { modelName } from "./ModelLabel.tsx";
 
 /** A project thread's state, in the sidebar's words. */
 export function stateWord(t: Pick<ThreadSummary, "state" | "needsYou">): string {
@@ -348,7 +349,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
             <option value="">This chat's model</option>
             {settings.allowed.map((ep) => (
               <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
-                {ep.models.map((m) => <option key={m.id} value={m.id}>{ep.kind} · {m.modelId} · {ep.name}</option>)}
+                {ep.models.map((m) => <option key={m.id} value={m.id}>{ep.kind} · {modelName(m)} · {ep.name}</option>)}
               </optgroup>
             ))}
             {model && !settings.allowed.some((ep) => ep.models.some((m) => m.id === model)) && <option value={model}>{model} (not available)</option>}
