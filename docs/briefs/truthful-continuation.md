@@ -41,7 +41,8 @@ Run typecheck, tests and evals sequentially. Report skipped model-dependent
 checks explicitly. Open a PR with rationale and rejected controller noted;
 inspect failing CI logs before fixes, and leave merging to review.
 
-Implementation is in `extension/src/index.ts`; the focused eval is
+Implementation is in `extension/src/index.ts`: her own prompt passes the
+rules to `toolGuidance`, and subagent prompts (`delegate/tool.ts`) don't get them; the focused eval is
 `evals/truthful-continuation.eval.ts`. Context boundary fixtures allow for the
 added prompt characters and Pi's reserve; all compaction assertions remain.
 Local checks passed sequentially: typecheck; tests (1,090 passed, 50 skipped);
@@ -52,4 +53,5 @@ both causes were checked before correcting the environment and fixtures.
 Dependencies installed with `npm ci --ignore-scripts`; the packaged native
 SQLite and Argon2 bindings were available. No dependency files changed.
 
-Next: PR review and CI. No operator setup, runtime, persona or UI change.
+Merged as #304. A follow-up kept the rules out of subagent prompts, which
+also use `toolGuidance`. No operator setup, runtime, persona or UI change.
