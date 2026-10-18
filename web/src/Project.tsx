@@ -129,7 +129,7 @@ export function ThreadsPage({ ctx, pool, threadId }: { ctx: ShellContext; pool: 
                 const state = t.needsYou ? "needsYou" : t.state ?? "idle";
                 return (
                   <a key={t.id} className="picker-item thread-item" href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })}>
-                    {state === "idle" || state === "queued" ? <span /> : <span className="status" data-state={state} aria-hidden="true" />}
+                    <span className="status" data-state={state} aria-hidden="true" />
                     <span className="title">{t.title || "New thread"}</span>
                     <span className="tstate" data-state={state}>{stateWord(t)}</span>
                     <span className="when">{shortTime(t.updatedAt)}</span>

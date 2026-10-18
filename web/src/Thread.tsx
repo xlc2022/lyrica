@@ -294,7 +294,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         {!s?.subagent && (
           <div className="head-actions">
             {/* Project opens the overview (the threads list, with Project settings inside it) beside the chat; the chat keeps its drawer for folders, network, local-only and the other task models. */}
-            {s?.project && <button type="button" className="link project-link" aria-label="Project" aria-pressed={wide ? onOverview : undefined} onClick={openOverview}><Icon name="project" /><span className="long">Project</span></button>}
+            {s?.project && <button type="button" className="sm" aria-label="Project" aria-pressed={wide ? onOverview : undefined} onClick={openOverview}><Icon name="project" /><span className="long">Project</span></button>}
             {/* The Files panel (docs/ux.md §6): beside the conversation from the split width, the page on its own below it. */}
             <a className="sm" href={href({ page: "files", userId, pool, threadId })} aria-label="Files and images"><Icon name="panel" /><span className="long">Files</span></a>
             <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls={drawerId} onClick={() => setDrawer(!drawer)}>

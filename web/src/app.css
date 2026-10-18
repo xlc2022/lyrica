@@ -488,7 +488,8 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .mem { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }
 .mem-pane { border-right: 1px solid var(--line); overflow-y: auto; padding: 12px 14px; display: grid; gap: 10px; align-content: start; min-width: 0; background: var(--panel); position: relative; }
 .mem-pane input[type="search"] { width: 100%; min-height: 34px; }
-.mem-pane .seg { justify-self: start; }
+/* A grid track in a scrolling pane can shrink an overflow-hidden item to nothing once the list below it overflows; the control keeps its height, and wraps where it can't fit. */
+.mem-pane .seg { justify-self: start; min-height: 34px; flex-wrap: wrap; max-width: 100%; }
 .mem-pane .seg button { padding: 0 10px; }
 .mem-filters { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13px; }
 .mem-filters select { min-height: 30px; font-size: 13px; padding: 2px 8px; }
@@ -737,14 +738,13 @@ form.drawer-body { flex: 1; }
 .threads .num, .picker-ep .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 /* The header: Threads popover and tokens; Project is a link (docs/ux.md §3) before the Settings button. */
 .tfacts .tokens { white-space: nowrap; }
-.head-actions .project-link { font-size: 13px; padding: 0 6px; }
-.head-actions .project-link .ic { width: 15px; height: 15px; }
 .threads-pop .picker-ep, .threads-list .picker-ep { display: flex; gap: 6px; align-items: baseline; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; font-weight: 600; }
 .threads-pop .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
 .threads-pop .thread-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status[data-state="working"] { background: var(--info); animation: pulse 1.4s ease-in-out infinite; }
 .status[data-state="waiting"], .status[data-state="needsYou"] { background: var(--warn); }
 .status[data-state="resolved"] { background: var(--ok); }
+.status[data-state="idle"], .status[data-state="queued"] { background: var(--muted); }
 .threads-pop .tokens { margin: 0; padding: 2px 6px 4px; color: var(--muted); }
 /* A project's threads as a panel page, opened by the Threads fact from the split width (docs/briefs/thread-panel.md item 1): the popover's groups; rows carry state as a dot and a word and the time in mono (docs/ux.md §5). */
 .threads-list .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
@@ -880,6 +880,7 @@ form.drawer-body { flex: 1; }
 /* ---- The Files panel (docs/ux.md §6): a thread's folder and its grants beside the conversation, or the page on its own. ---- */
 .files-page { display: flex; flex-direction: column; min-height: 0; container: files / inline-size; }
 .files-page.drop { box-shadow: inset 0 0 0 2px var(--accent); }
+.files-page > .error { padding: 6px 16px; }
 .files-page .head .seg button[role="tab"] { padding: 0 12px; }
 .head-actions a.sm { min-height: 30px; padding: 0 9px; font-size: 13px; border-radius: 7px; border: 1px solid var(--edge); background: var(--panel); color: var(--fg); display: inline-flex; align-items: center; gap: 6px; }
 .head-actions a.sm:hover { border-color: color-mix(in oklab, var(--fg) 25%, var(--line)); text-decoration: none; }
@@ -1425,4 +1426,4 @@ dialog.add-part { width: min(560px, calc(100vw - 32px)); }
 @media (hover: none) { .frow-acts { visibility: visible; } .ftree .frow-acts button { width: 36px; min-height: 36px; } }
 .frow > .rename { margin: 2px 6px 2px 0; }
 /* Project in a project chat's header: pressed while the overview shows beside the chat. */
-.head-actions .project-link[aria-pressed="true"] { color: var(--fg); font-weight: 600; }
+.head-actions .sm[aria-pressed="true"] { background: var(--tool); }
