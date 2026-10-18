@@ -714,19 +714,19 @@ export class Models {
   }
 
   /** Changes this user's presets and columns in one transaction; `edit` changes a table in place and says whether it did. */
-  private editLists(userId: string, edit: (table: Profiles) => boolean): void {
-    const prune = (raw: string): string | undefined => {
+  private editLists(userId: string, edit: (table: Profiles, scope: PresetScope) => boolean): void {
+    const prune = (raw: string, scope: PresetScope): string | undefined => {
       const table = JSON.parse(raw) as Profiles;
-      return edit(table) ? JSON.stringify(table) : undefined;
+      return edit(table, scope) ? JSON.stringify(table) : undefined;
     };
     this.withUser(userId, (db) => {
       db.transaction(() => {
-        for (const r of db.prepare("SELECT id, entries FROM model_presets").all() as { id: string; entries: string }[]) {
-          const next = prune(r.entries);
+        for (const r of db.prepare("SELECT id, scope, entries FROM model_presets").all() as { id: string; scope: PresetScope; entries: string }[]) {
+          const next = prune(r.entries, r.scope);
           if (next) db.prepare("UPDATE model_presets SET entries = ?, updated_at = ? WHERE id = ?").run(next, new Date().toISOString(), r.id);
         }
-        for (const r of db.prepare("SELECT column, entries FROM model_columns").all() as { column: string; entries: string }[]) {
-          const next = prune(r.entries);
+        for (const r of db.prepare("SELECT column, entries FROM model_columns").all() as { column: Column; entries: string }[]) {
+          const next = prune(r.entries, r.column);
           if (next) db.prepare("UPDATE model_columns SET entries = ? WHERE column = ?").run(next, r.column);
         }
         syncLegacy(db);
@@ -773,11 +773,18 @@ export class Models {
         for (const [model, id] of have) if (!listed.has(model)) missing.run(now, id);
       })();
     });
-    // Image lists that named one of the plan's chat models move to its image model, once.
+    // Once, when it is first found: image lists that named one of the plan's chat
+    // models move to its image model, and an empty Image edits list that may use
+    // cloud models gets it.
     if (planImage) {
       const to = planImage, before = new Set(this.offerings(actor.id, endpointId).filter((o) => o.id !== to).map((o) => o.id));
-      this.editLists(actor.id, (table) => {
+      this.editLists(actor.id, (table, scope) => {
         let changed = false;
+        const edit = table["image.edit"];
+        if (scope === "general" && (edit === undefined || (isList(edit) && !edit.length))) {
+          table["image.edit"] = [{ offeringId: to }];
+          changed = true;
+        }
         for (const task of ["image.create", "image.edit"] as const) {
           const e = table[task];
           if (!isList(e) || !e.some((r) => "offeringId" in r && before.has(r.offeringId))) continue;

@@ -39,7 +39,9 @@ set every image model. Principle 8: no new page and no new control kinds.
    image tool picks its own image model. Its row has Generate and Edit
    checkboxes and Use for. The request goes through the plan's newest GPT
    model. Image task lists that named a plan chat model move to ChatGPT
-   Images the first time it is found.
+   Images the first time it is found. At that time, an empty Image edits list in a
+   general preset or the general column gets it too (the owner chose this,
+   2026-10-18).
 7. **Hosts and endpoints** loses the Image generation and Image editing
    switches. Keyed endpoints keep Generate and Edit, now only on Image models.
 8. **Thread settings** gains Images, Image edits and Image upscaling, under
@@ -63,7 +65,7 @@ loop thread); reorganizing download folders (the owner said not needed).
 
 ## Handoff
 
-Done: the brief; built in PR #318, starters included.
-Next: PR review and UI review; after merge, one ChatGPT plan
-generation and one edit on the owner's install (the owner said yes, 14:00Z
-2026-10-18).
+Done: built and merged in #318 (a8087f3), starters included; empty Image
+edits lists filled in a follow-up PR.
+Next: nothing here. The 400 and 413 image tool errors went back to the
+coordinator; they are not this brief's.
