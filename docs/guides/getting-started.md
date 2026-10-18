@@ -584,8 +584,8 @@ encrypted thread folder, with no prompt metadata.
 **Use for** sets each image model to **Fast**, **Quality** or **Both** (the
 default), and a request skips models set only for the other one. It is
 saved at once. Hosts keep their recipe defaults for both; OpenAI uses low
-or high quality. Set it for a host recipe in **Models → Image models**, and
-for a cloud model in its endpoint's model list or its block on Image models.
+or high quality. Set it in **Models → Image models**: on a host recipe, or
+for a key's model under **Other cloud models**.
 
 To make images in the cloud, add an endpoint under Models, Hosts and
 endpoints:
@@ -620,8 +620,8 @@ When a model refuses, the image says it declined, and nothing falls back.
 **Edit message** puts the request back in the composer while it is still
 the last message, **Resend** asks the same model again, and **Try**
 followed by a model name appears when an eligible model on another
-endpoint follows it in the list. A retry checks portrait consent again and doesn't change your
-task lists.
+endpoint follows it in the list. A retry checks portrait consent again and
+doesn't change your task lists.
 
 Add reference photos and choose their cloud setting in **Settings → Portrait
 photos**. Ask once a day is the default; **Send today** allows them through

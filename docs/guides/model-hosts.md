@@ -451,8 +451,9 @@ workstation"). Note what goes wrong against each.
 7. Pause while something else uses the GPU: `nvidia-smi` shows nothing of
    the host's, then Resume brings the pinned models back.
 8. A download of a gated repository with a token, and one from a link.
-9. An image: install the Z-Image Turbo starter recipe, make an image, edit
-   and upscale. The ComfyUI workflow templates have never run, so expect
+9. An image: install the Z-Image Turbo starter recipe (Image models,
+   **Download image model**, which opens on Starter recipes; missing parts
+   download after you confirm), make an image, edit and upscale. The ComfyUI workflow templates have never run, so expect
    node or input names in `host/workflows/` to need fixing.
 
 Report what fails, with the `host-api` log lines, in the Operator docs
