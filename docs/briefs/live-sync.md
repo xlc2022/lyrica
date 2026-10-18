@@ -71,16 +71,23 @@ still reloads everything.
 sockets and sessions so `closeAllConnections` and `closeIdleConnections`
 work as node:http's do; `checkOrigin` reads `:authority` when there is no
 `Host`; `listenExternal` in `daemon/src/lyricad.ts` and `web/access.ts` use
-the `Listener` type. Typecheck passes; no test yet.
+the `Listener` type.
 
-**Next**, one Codex run each, in order, committing after each:
+**Done (step 1, left uncommitted for the operator):** Part A's test and docs,
+serving principles 8 (streams share one connection) and 2 (same-origin
+boundary). `daemon/test/web-access.test.ts` enables Direct on a free
+loopback port and uses an HTTP/2 client trusting the panel's PEM. It verifies
+`h2` negotiation, `/api/state` 200, same-origin `/api/login` 200 with
+`:authority` and no `Host`, and a mismatched origin 403. No model or plan
+endpoint is called. Updated docs/daemon.md's Web access and origin check,
+and DESIGN.md's Direct paragraph for HTTP/2 with HTTP/1.1 fallback.
+`npm run typecheck` passed; all 10 tests in `daemon/test/web-access.test.ts`
+passed with `flock /tmp/lyrica-tests.lock npx vitest run --pool=forks
+--maxWorkers=2 daemon/test/web-access.test.ts`. No preset, UI or schema
+changes were needed. Parts B and C remain unbuilt.
 
-1. Part A's test in `daemon/test/web-access.test.ts`: with Direct on, an
-   `node:http2` client (`ca` the panel's PEM) gets `/api/state` 200 and a
-   same-origin `POST /api/login` gets past the origin check (not 403).
-   Then update docs/daemon.md (Web access: Direct and the external proxy's
-   HTTPS speak HTTP/2 with HTTP/1.1 fallback) and DESIGN.md's Direct
-   paragraph in one line.
+**Next**, one Codex run each, in order (original step numbers retained):
+
 2. Part B: a small `UserEvents` emitter (`daemon/src/user-events.ts`,
    coalescing per user, 250 ms), fed from `Lyricad.handle` after a
    successful non-GET under `/api/u/:userId/`, from `onEvent` in

@@ -173,7 +173,7 @@ name/id and error class; stderr is discarded.
   still runs Argon2 (against a dummy key), so the time taken doesn't reveal
   which names exist.
 - Every POST, PUT, PATCH and DELETE needs an `Origin` whose host matches the
-  `Host` header; user routes also need the cookie. There are no CORS headers.
+  `Host` header (or HTTP/2 `:authority`); user routes also need the cookie. There are no CORS headers.
 - Every response carries `Content-Security-Policy: default-src 'self'`
   with inline styles allowed (the emoji picker styles its shadow root;
   scripts stay `'self'`), `frame-ancestors 'none'`, `X-Frame-Options: DENY`
@@ -905,6 +905,10 @@ under `web.access`, so the DNS credentials are encrypted with the rest of it.
 Secret credentials are never sent back by the API (only whether they're set)
 and never logged; a Caddy error that quotes one has it replaced with
 `[hidden]`. Changes run one at a time.
+
+Direct and the external proxy's HTTPS listener speak HTTP/2 with HTTP/1.1
+fallback, so multiple tabs' streams can share one connection (principle 8).
+Plain-HTTP listeners stay HTTP/1.1.
 
 - **Off**: only `127.0.0.1` and the Unix socket.
 - **Direct**, the mode she starts in: `lyricad` itself serves HTTPS on port
