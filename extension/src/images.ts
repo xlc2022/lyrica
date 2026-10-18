@@ -106,14 +106,13 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
 }
 
 /**
- * A failed call says which model (and recipe) it reached and what came back,
+ * A failed call says which model (a host's recipe by name) it reached and what came back,
  * so she can report it; an Offline error already lists what it tried.
  */
 function withModel(err: unknown, action: string, r: Resolution | undefined, signal?: AbortSignal): unknown {
   if (!r || signal?.aborted || !(err instanceof Error) || err.name === "Offline") return err;
-  const recipe = r.offering.recipe ? `, recipe "${r.offering.recipe}"` : "";
   const code = err instanceof HostRefused ? ` [${err.code}]` : "";
-  return new Error(`Image ${action} failed with ${r.label}${recipe}${code}: ${err.message}`, { cause: err });
+  return new Error(`Image ${action} failed with ${r.label}${code}: ${err.message}`, { cause: err });
 }
 
 /** Shared by Pi and explicit refusal retries; no model-facing arguments are added. */

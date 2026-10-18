@@ -76,7 +76,7 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
   results through `Workspace.imageFiles` and returns Pi image content. Its
   parameters are one object with `action`, never a top-level union, which
   LM Studio refuses and small models can't read; a failed call names the
-  model and recipe it reached. The
+  model or recipe it reached. The
   workspace's Images switch and Plan mode gate it. See
   [docs/workspace.md](../docs/workspace.md#images-and-portrait-photos).
   Exact layouts and diagrams use HTML/SVG and the sandbox's offline Chromium

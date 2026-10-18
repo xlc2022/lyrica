@@ -939,8 +939,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     tool parameters that aren't `"type": "object"`, and small models' chat
     templates show a top-level union no fields. The tool checks an action's
     required fields and names any missing. A failed call's error names the
-    model label, recipe and error code it reached:
-    `Image <action> failed with <label>, recipe "<name>" [<code>]: <message>`.
+    model label (a host recipe by its name) and error code it reached:
+    `Image <action> failed with <label> [<code>]: <message>`.
     Inputs name workspace paths or `/photos-of-me/<file>`. `ImageTools` supplies
     `models`, fresh `call()`, `threadId`, `files: ThreadImages`, user `settings()`,
     `enabled()`, optional `approve(ApprovalRequest)` and injectable `now()`.

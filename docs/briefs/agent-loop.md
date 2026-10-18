@@ -41,7 +41,7 @@ The user tried Lyrica working on her own code and in plain chats:
 ## Change
 
 - `image`: one object schema with `action`, per-action required fields
-  checked in the tool; failures name the model label, recipe and error code.
+  checked in the tool; failures name the model label (a recipe by name) and error code.
 - `tool-stream.ts`, around local servers' and hosts' streams: every tool's
   parameters sent as an object; a reply with more than 32 tool calls ends
   with an error and none run.
