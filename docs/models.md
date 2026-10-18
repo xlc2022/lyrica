@@ -432,29 +432,37 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   `/images/edits`. Fast asks for low quality, quality for high. GPT Image 1
   models use the nearest supported canvas shape; other models receive the
   requested dimensions.
-- **ChatGPT plan:** its own `/responses` endpoint, plan token and built-in
-  `image_generation` tool, with storage off and the answer streamed, as
-  chat's client always streams; the image comes from the finished
-  `image_generation_call` item. Sizes map to the nearest of the three GPT
-  Image canvases. A ChatGPT plan has one image model, **ChatGPT Images**
+- **ChatGPT plan:** its one image model, **ChatGPT Images**
   (`PLAN_IMAGE_MODEL`, `chatgpt-images`, named by its `recipe` field), which
   discovery adds to the plan's catalogue; its chat models never make
   images, whatever an older switch set (the catalogue drops their `image`,
-  `edit`, `upscale` and `useFor`). Its requests go through the plan's newest
-  GPT by version number, leaving out pro, mini, nano, chat, codex,
-  realtime and spark models (`planImageDriver`); the image tool picks the image model,
-  which is unreported. The first time discovery finds it, image task lists
-  in the user's presets and columns that named one of the plan's chat
-  models name ChatGPT Images instead, and an empty Image edits list in a
-  general preset or the general column gets it (private ones never do). The Models page and every image call
-  discover a signed-in plan that lacks it (`planImages`), which reads no network. Fast asks for
-  low quality, quality for high. Inputs are in-memory data URLs. Count uses
-  one request per image (up to four); references are supported.
-  Maskless edits are supported; masked edits skip the plan before sending
-  and continue down the list. The daemon installs `setPlanImageToken`
-  with extension's `planImageToken`, sharing Pi's serialized refresh and
-  encrypted credential persistence with chat. Refresh outages use the retryable
-  `unavailable` code; a refused refresh signs the plan out.
+  `edit`, `upscale` and `useFor`). OpenAI refuses images over the plan's
+  "Sign in with ChatGPT" token, so ChatGPT Images runs the user's own
+  unmodified Codex (`codex.ts`, the owner's choice; docs/briefs/codex-images.md):
+  one `codex exec` per image with `--json --ephemeral --ignore-user-config
+  --sandbox read-only`, approvals off and `image_generation` on, the
+  instructions and prompt on stdin (never argv), an edit's image and any
+  references as `--image` files, and the PNG read from the event's
+  `saved_path`. Codex's home (`CODEX_HOME`, also its `HOME`) is `codex/` in
+  the user's encrypted home workspace (`Workspace.codexDir`), so its sign-in
+  and every file it writes stay encrypted; each call's inputs and saved
+  images are removed after it, and Codex gets no other environment. Codex
+  picks the image model. Size becomes square, portrait or landscape and the
+  tier a quality word in the instructions. A failed run is a fixed line:
+  signed out (`invalid`, naming Settings → Codex), its usage limit
+  (`unavailable`), a refusal (`image_refusal`), else `unavailable`. Codex's
+  sign-in is its own device sign-in (`codexSignIn`, `codex login
+  --device-auth`), from Settings → **Codex** (`/api/u/:userId/codex`). The
+  daemon installs the runner with `setCodexImages`. `codex` is on the
+  daemon's path: nixpkgs' `codex` on NixOS, a pinned `@openai/codex` in
+  `/usr/local` from `install.sh`. The first time discovery finds ChatGPT
+  Images, image task lists in the user's presets and columns that named one
+  of the plan's chat models name it instead, and an empty Image edits list
+  in a general preset or the general column gets it (private ones never
+  do). The Models page and every image call discover a signed-in plan that
+  lacks it (`planImages`), which reads no network. Count runs Codex once per
+  image (up to four). Maskless edits are supported; masked edits skip it
+  before anything is sent and continue down the list.
 
 Grok images are unsupported; upscale remains host-only. Returned PNGs lose
 text, EXIF and other metadata. Provider errors use fixed messages and codes,

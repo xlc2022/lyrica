@@ -9,7 +9,11 @@ export type ImageRequest =
   | (Common & { action: "edit"; prompt: string; image: ImageInput; mask?: ImageInput })
   | { action: "upscale"; image: ImageInput; scale?: number; maxSize?: number };
 export interface GeneratedImage { bytes: Uint8Array; type: "image/png"; width: number; height: number; seed?: number }
-export interface Target { fetch: typeof fetch; baseUrl: string; host: boolean; modelId: string; apiKey?: string; api?: string }
+export interface Target {
+  fetch: typeof fetch; baseUrl: string; host: boolean; modelId: string; apiKey?: string; api?: string;
+  /** For a ChatGPT plan: the user's Codex, which makes its images (codex.ts). */
+  codex?: (r: ImageRequest, signal?: AbortSignal) => Promise<GeneratedImage[]>;
+}
 
 export function validateImageRequest(r: ImageRequest): void {
   if (r.action !== "upscale") {
@@ -67,7 +71,7 @@ async function answer(t: Target, path: string, body: string | FormData, headers:
     throw new HostRefused(err?.code ?? (res.status >= 500 || res.status === 429 ? "unavailable" : "invalid"), `image endpoint answered ${res.status}${said}`);
   }
   let out: any;
-  try { out = (res.headers.get("content-type") ?? "").includes("text/event-stream") ? await finalResponse(res) : await res.json(); }
+  try { out = await res.json(); }
   catch { throw new HostRefused("invalid", "The image endpoint returned an invalid response."); }
   if (isRefusal(out?.error?.code) || isRefusal(out?.error?.type)) throw imageRefusal();
   return out;
@@ -79,28 +83,6 @@ function cloudFields(e: any): string {
   return parts.length ? ` (${parts.join(", ")})` : "";
 }
 
-/**
- * A streamed Responses answer as one response: the plan's endpoint answers
- * requests that aren't streamed with 400, as chat's own client never sends one.
- * Finished output items are kept in case the completed event leaves results out.
- */
-async function finalResponse(res: Response): Promise<any> {
-  const items: any[] = [];
-  let final: any, failed: any;
-  const text = await res.text();
-  for (const block of text.split(/\r?\n\r?\n/)) {
-    const data = block.split(/\r?\n/).filter(l => l.startsWith("data:")).map(l => l.slice(5).trimStart()).join("\n");
-    if (!data || data === "[DONE]") continue;
-    const e = JSON.parse(data);
-    if (e.type === "response.output_item.done" && e.item) items.push(e.item);
-    else if (e.type === "response.completed" || e.type === "response.incomplete") final = e.response;
-    else if (e.type === "response.failed") failed = e.response ?? {};
-    else if (e.type === "error") failed = { error: e.error ?? { code: e.code } };
-  }
-  if (failed) return { ...failed, error: failed.error ?? { code: "failed" } };
-  if (!final) throw new Error("the stream ended early");
-  return { ...final, output: final.output?.some((i: any) => i.type === "image_generation_call" && i.result) ? final.output : items };
-}
 const base64 = (i: ImageInput) => Buffer.from(i.bytes).toString("base64");
 
 /** The three canvases every GPT Image model takes: the nearest aspect ratio. */
@@ -140,45 +122,11 @@ async function openai(t: Target, r: ImageRequest, signal?: AbortSignal): Promise
 const isRefusal = (code: unknown) => ["content_policy_violation", "content_filter", "moderation_blocked", "image_refusal"].includes(String(code));
 const imageRefusal = () => new HostRefused("image_refusal", "Image generation was refused (image_refusal).");
 
-async function chatgpt(t: Target, r: ImageRequest, signal?: AbortSignal): Promise<GeneratedImage[]> {
-  if (!t.apiKey) throw new HostRefused("invalid", "The ChatGPT plan is signed out.");
-  if (r.action === "upscale" || (r.action === "edit" && r.mask)) throw new HostRefused("unsupported", "The ChatGPT image tool does not support this request.");
-  const inputs = [...(r.action === "edit" ? [r.image] : []), ...(r.references ?? [])];
-  const tool = { type: "image_generation", action: r.action === "edit" ? "edit" : "generate",
-    output_format: "png", ...(r.action === "create" ? { quality: QUALITY[r.tier], ...(r.size ? { size: canvas(r.size) } : {}) } : {}) };
-  // Responses has no n option. Each requested image uses the plan's own limits.
-  const images: GeneratedImage[] = [];
-  for (let n = 0; n < (r.count ?? 1); n++) {
-    signal?.throwIfAborted();
-    const out = await answer(t, "/responses", JSON.stringify({ model: t.modelId, store: false, stream: true,
-      input: [{ role: "user", content: [{ type: "input_text", text: r.prompt },
-        ...inputs.map(i => ({ type: "input_image", image_url: `data:${i.type};base64,${base64(i)}` }))] }],
-      tools: [tool], tool_choice: { type: "image_generation" } }), { authorization: `Bearer ${t.apiKey}`, "content-type": "application/json", accept: "text/event-stream" }, signal);
-    if (isRefusal(out.error?.code) || out.output?.some((i: any) => i.content?.some((c: any) => c.type === "refusal"))
-      || out.incomplete_details?.reason === "content_filter") throw imageRefusal();
-    if (out.error) throw new HostRefused(out.error.code === "rate_limit_exceeded" ? "unavailable" : "invalid", "The image response failed.");
-    const calls = out.output?.filter((i: any) => i.type === "image_generation_call" && i.status === "completed" && typeof i.result === "string");
-    if (!calls?.length) throw new HostRefused("invalid", "The image response returned no image.");
-    images.push(...calls.map((i: any) => cleanPng(Buffer.from(i.result, "base64"))));
-  }
-  return images;
-}
 
-/** A ChatGPT plan's one image model: the plan's image tool, which picks its own image model (docs/models.md, "Subscription plans"). */
+/** A ChatGPT plan's one image model, made by the user's own Codex, which picks its image model (docs/models.md, "Image canvases"). */
 export const PLAN_IMAGE_MODEL = "chatgpt-images";
 export const PLAN_IMAGE: { modelId: string; recipe: string; image: true; edit: true; vision: true } = { modelId: PLAN_IMAGE_MODEL, recipe: "ChatGPT Images", image: true, edit: true, vision: true };
 
-/**
- * The plan model a ChatGPT Images request goes through: the newest GPT by its
- * version number, leaving out pro, mini, nano, chat, codex, realtime and
- * spark models; at equal versions the shorter ID. Undefined when the plan lists none.
- */
-export function planImageDriver(modelIds: string[]): string | undefined {
-  const version = (id: string) => /^gpt-(\d+)(?:\.(\d+))?(?:-[a-z]+)?$/.exec(id);
-  return modelIds.filter((id) => version(id) && !/-(pro|mini|nano|chat|codex|realtime|spark)\b/.test(id))
-    .map((id) => { const m = version(id)!; return { id, v: Number(m[1]) * 1000 + Number(m[2] ?? 0) }; })
-    .sort((a, b) => b.v - a.v || a.id.length - b.id.length || a.id.localeCompare(b.id))[0]?.id;
-}
 
 export interface CloudImageProvider {
   run: (t: Target, r: ImageRequest, signal?: AbortSignal) => Promise<GeneratedImage[]>;
@@ -188,7 +136,7 @@ export interface CloudImageProvider {
 /** Selected by endpoint API, never by the model's name. */
 export const CLOUD_IMAGE_PROVIDERS: Readonly<Record<string, CloudImageProvider>> = {
   "openai-compatible": { run: openai, create: true, edit: true, mask: true, references: true, sizes: true, count: 4, quality: QUALITY },
-  chatgpt: { run: chatgpt, create: true, edit: true, mask: false, references: true, sizes: true, count: 4, quality: QUALITY },
+  chatgpt: { run: (t, r, signal) => t.codex ? t.codex(r, signal) : Promise.reject(new HostRefused("unavailable", "Codex isn't set up on this server.")), create: true, edit: true, mask: false, references: true, sizes: true, count: 4, quality: QUALITY },
 };
 
 export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal): Promise<GeneratedImage[]> {

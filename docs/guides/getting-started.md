@@ -319,7 +319,8 @@ What `install.sh` does, in order:
    `/usr/local/lib/lyrica-chromium`, so her sandboxes can take
    screenshots. It installs Anthropic's Claude Code
    (`@anthropic-ai/claude-code`, at the version the script pins) with npm
-   into `/usr/local`; if that fails it only prints a warning. When
+   into `/usr/local`, and OpenAI's Codex (`@openai/codex`, also pinned) for
+   ChatGPT Images; if either fails it only prints a warning. When
    Tailscale's binaries are missing it adds Tailscale's apt repository
    and installs `tailscale`; the package turns on the host's own
    `tailscaled`,
@@ -599,7 +600,10 @@ endpoints:
   it `openai-images`.
 
 A signed-in ChatGPT plan shows one image model, **ChatGPT Images**, under
-Cloud on Models, Image models; it makes and edits images from the start.
+Cloud on Models, Image models. OpenAI doesn't let the plan's sign-in make
+images, so ChatGPT Images runs your own Codex: under Settings, **Codex**,
+choose **Sign in**, open the page it shows, sign in to ChatGPT and enter
+the code. Images then come out of your plan's Codex limits.
 For a key, open Image models, then **Other cloud models** at the foot of
 the Cloud group, and tick **Generate** and **Edit** for each model that
 supports them (`gpt-image-1`, for example). Only the endpoint's owner, or

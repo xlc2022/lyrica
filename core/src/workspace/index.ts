@@ -433,6 +433,19 @@ export class Workspace {
   }
 
   /**
+   * Codex's home for ChatGPT Images (docs/models.md, "Image canvases"): its
+   * sign-in and anything it writes, `codex/` in the user's encrypted home
+   * workspace. Throws while that isn't mounted.
+   */
+  codexDir(userId: string): string {
+    const home = this.homeDir(userId);
+    if (!isMounted(home)) throw new Locked("the home workspace is not mounted");
+    const dir = join(home, "codex");
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return dir;
+  }
+
+  /**
    * Where the thread's Claude Code keeps its settings and transcripts on the
    * host: in the home workspace, under claude/ and never in a thread's
    * folder, so its children and read-only subagents, which see that folder,

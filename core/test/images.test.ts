@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CloudModelForbidden, PLAN_IMAGE_MODEL, planImageDriver } from "../src/index.ts";
+import { CloudModelForbidden, HostRefused, PLAN_IMAGE_MODEL, type ImageRequest } from "../src/index.ts";
 import { cleanPng, imageAt } from "../src/models/images.ts";
 
 import { fakeImages as setup } from "./fake-images.ts";
@@ -18,6 +18,13 @@ async function planImages(s: Awaited<ReturnType<typeof setup>>) {
   const ep = s.models.addPlan(s.ada, PLAN);
   await s.models.discover(s.ada, ep.id);
   return { ep, ref: imagesOf(s, ep.id) };
+}
+
+/** Stands in for the user's Codex: records what it was asked and answers with `answer`. */
+function codex(s: Awaited<ReturnType<typeof setup>>, answer: (r: ImageRequest) => unknown = () => [{ bytes: png, type: "image/png", width: 1, height: 1 }]) {
+  const asked: { userId: string; request: ImageRequest }[] = [];
+  s.models.setCodexImages(async (userId, request) => { asked.push({ userId, request }); const out = answer(request); if (out instanceof Error) throw out; return out as never; });
+  return asked;
 }
 
 describe("image calls through the router (principles 1 and 2)", () => {
@@ -100,36 +107,28 @@ describe("image calls through the router (principles 1 and 2)", () => {
     } finally { db.close(); }
     expect(() => s.models.setCapabilities(s.ada, fast.offeringId, { useFor: "slow" as "fast" })).toThrow(/useFor/);
   });
-  it("uses the plan token and Responses image tool for create and maskless edits, never in restricted threads", async () => {
+  it("makes ChatGPT Images with the user's own Codex for create and maskless edits, never in restricted threads", async () => {
     const s = await setup();
     const { ref } = await planImages(s);
     for (const task of ["image.create", "image.edit"] as const) s.models.setColumnTask(s.ada.id, "general", task, [ref, s.ref]);
-    const calls: { url: string; body: any }[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (url: string, opts: RequestInit) => {
-      expect(url).toBe("https://api.openai.com/v1/responses");
-      expect(opts.headers).toMatchObject({ authorization: "Bearer fake-plan" });
-      calls.push({ url, body: JSON.parse(String(opts.body)) });
-      return Response.json({ output: [{ type: "image_generation_call", status: "completed", result: png.toString("base64") }] });
-    }));
-    for (const tier of ["fast", "quality"] as const) {
-      const out = await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier, count: 2, size: { width: 1024, height: 1024 }, references: [input] });
-      expect(out.images).toHaveLength(2);
-      expect(calls.at(-1)!.body).toMatchObject({ model: "gpt-6.1-sol", store: false, tools: [{ type: "image_generation", quality: tier === "fast" ? "low" : "high", size: "1024x1024", output_format: "png" }] });
-      expect(calls.at(-1)!.body.input[0].content[1]).toEqual({ type: "input_image", image_url: `data:image/png;base64,${png.toString("base64")}` });
-    }
+    const asked = codex(s);
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("nothing goes over the plan's sign-in"); }));
+    const out = await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "quality", size: { width: 1024, height: 1024 }, references: [input] });
+    expect(out.images).toHaveLength(1);
+    expect(out.resolution.ref).toEqual(ref);
     await s.models.image(s.ctx(), { action: "edit", prompt: "Add flowers", image: input });
-    expect(calls.at(-1)!.body.tools[0].action).toBe("edit");
+    expect(asked.map((a) => [a.userId, a.request.action])).toEqual([[s.ada.id, "create"], [s.ada.id, "edit"]]);
     for (const ctx of [s.ctx({ pool: "private" }), s.ctx({ localOnly: true })]) {
       await expect(s.models.image({ ...ctx, overrides: { "image.create": [ref] } }, { action: "create", prompt: "A garden", tier: "fast" })).rejects.toThrow(CloudModelForbidden);
-      await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "fast" });
     }
-    expect(calls).toHaveLength(5);
-    // Masked edits fall down the list without sending anything to the plan.
+    expect(asked).toHaveLength(2);
+    // Masked edits fall down the list without reaching Codex.
     vi.stubGlobal("fetch", vi.fn(async (_url: string, opts: RequestInit) => {
       expect(opts.headers).toMatchObject({ authorization: "Bearer fake-key" });
       return Response.json({ data: [{ b64_json: png.toString("base64") }] });
     }));
     expect((await s.models.image(s.ctx(), { action: "edit", prompt: "Add flowers", image: input, mask: input })).resolution.ref).toEqual(s.ref);
+    expect(asked).toHaveLength(2);
   });
   it("drops a model from image lists when its image switch goes off, keeping the rest of the list", async () => {
     const s = await setup();
@@ -154,7 +153,6 @@ describe("image calls through the router (principles 1 and 2)", () => {
     const images = s.models.offering(s.ada.id, imagesOf(s, ep.id).offeringId)!.offering;
     expect(images).toMatchObject({ recipe: "ChatGPT Images", image: true, edit: true });
     expect(s.models.label(s.ada.id, images.id)).toBe("chatgpt/ChatGPT Images");
-    expect(planImageDriver(["gpt-5.4-mini", "gpt-6-sol", "gpt-6.1-sol", "gpt-6.1-sol-pro", "gpt-realtime-2.1", "gpt-5.3-codex"])).toBe("gpt-6.1-sol");
   });
   it("moves image lists that named a plan's chat model to ChatGPT Images when it is first found", async () => {
     const s = await setup();
@@ -204,34 +202,10 @@ describe("image calls through the router (principles 1 and 2)", () => {
     const chat = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "gpt-6.1-sol" }).id };
     (s.models as unknown as { editLists: (u: string, f: (t: Record<string, unknown>) => boolean) => void })
       .editLists(s.ada.id, (t) => { t["image.create"] = [chat]; return true; });
-    let sent: any;
-    vi.stubGlobal("fetch", vi.fn(async (_url: string, opts: RequestInit) => {
-      sent = JSON.parse(String(opts.body));
-      return Response.json({ output: [{ type: "image_generation_call", status: "completed", result: png.toString("base64") }] });
-    }));
+    const asked = codex(s);
     const out = await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "fast" });
     expect(out.resolution.ref).toEqual(imagesOf(s, ep.id));
-    expect(sent.model).toBe("gpt-6.1-sol");
-  });
-  it("streams plan image calls and reads the image from the finished output item", async () => {
-    const s = await setup();
-    const { ref } = await planImages(s);
-    s.models.setColumnTask(s.ada.id, "general", "image.create", [ref]);
-    let sent: any;
-    vi.stubGlobal("fetch", vi.fn(async (_url: string, opts: RequestInit) => {
-      sent = { body: JSON.parse(String(opts.body)), headers: opts.headers };
-      const events = [
-        { type: "response.created", response: { output: [] } },
-        { type: "response.output_item.done", item: { type: "image_generation_call", status: "completed", result: png.toString("base64") } },
-        { type: "response.completed", response: { output: [{ type: "image_generation_call", status: "completed" }] } },
-      ];
-      return new Response(events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
-    }));
-    const out = await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "quality", size: { width: 896, height: 1184 } });
-    expect(out.images).toHaveLength(1);
-    // The plan's newest GPT carries the request; its image tool picks the image model.
-    expect(sent.body).toMatchObject({ model: "gpt-6.1-sol", stream: true, tools: [{ size: "1024x1536" }] });
-    expect(sent.headers).toMatchObject({ accept: "text/event-stream" });
+    expect(asked).toHaveLength(1);
   });
   it.each(["key", "plan"] as const)("stops on a %s content refusal without echoing provider text or trying the fallback", async kind => {
     const s = await setup();
@@ -242,22 +216,21 @@ describe("image calls through the router (principles 1 and 2)", () => {
     s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.workstation.ref]);
     const preset = s.models.addPreset(s.ada.id, { name: "Image fallbacks", scope: "general" }, "general");
     expect(s.models.resolve("image.create", s.ctx({ preset: preset.id })).ref).toEqual(ref);
-    vi.stubGlobal("fetch", vi.fn(async () => kind === "key"
-      ? Response.json({ error: { code: "content_policy_violation", message: "SECRET provider prompt" } }, { status: 400 })
-      : Response.json({ output: [{ type: "message", content: [{ type: "refusal", refusal: "SECRET provider prompt" }] }] })));
+    const asked = codex(s, () => new HostRefused("image_refusal", "Image generation was refused (image_refusal)."));
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: { code: "content_policy_violation", message: "SECRET provider prompt" } }, { status: 400 })));
     await expect(s.models.image(s.ctx({ preset: preset.id }), { action: "create", prompt: "A garden", tier: "fast" })).rejects.toMatchObject({ code: "image_refusal", message: "Image generation was refused (image_refusal)." });
     expect(s.workstation.server.images).toEqual([]);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(kind === "key" ? vi.mocked(fetch).mock.calls.length : asked.length).toBe(1);
   });
-  it.each([429, 503])("falls back from a plan's HTTP %s to the keyed offering", async status => {
+  it("falls back to the keyed offering when Codex can't make the image", async () => {
     const s = await setup();
     const { ref } = await planImages(s);
     s.models.setColumnTask(s.ada.id, "general", "image.create", [ref, s.ref]);
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => new URL(url).pathname.endsWith("/responses")
-      ? Response.json({ error: { message: "SECRET provider prompt" } }, { status })
-      : Response.json({ data: [{ b64_json: png.toString("base64") }] })));
+    const asked = codex(s, () => new HostRefused("unavailable", "Codex reached its usage limit."));
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ data: [{ b64_json: png.toString("base64") }] })));
     expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "fast" })).resolution.ref).toEqual(s.ref);
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(asked).toHaveLength(1);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
   it("never makes a Grok plan's model an image model, so no image call reaches the unsupported plan", async () => {
     const s = await setup();

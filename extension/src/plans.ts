@@ -104,23 +104,6 @@ export class PlanCredentials implements CredentialStore {
   }
 }
 
-/** Image requests use the same serialized refresh and encrypted store as chat. */
-export async function planImageToken(models: Models, userId: string, endpointId: string, signal?: AbortSignal): Promise<string> {
-  const store = new PlanCredentials(models, userId, new Set([endpointId]));
-  let credential: Credential | undefined;
-  try { credential = await store.modify(endpointId, async current => {
-    if (!current || current.type !== "oauth") throw new Error("The ChatGPT plan is signed out.");
-    if (current.expires > Date.now()) return current;
-    return { ...await PROVIDERS.chatgpt().auth.oauth!.refresh(current, signal ?? new AbortController().signal), type: "oauth" };
-  }); } catch {
-    signal?.throwIfAborted();
-    const signedOut = models.endpoint(userId, endpointId)?.signedOut;
-    throw new HostRefused(signedOut ? "invalid" : "unavailable", signedOut
-      ? "The ChatGPT plan is signed out." : "The ChatGPT plan could not refresh its sign-in.");
-  }
-  if (!credential || credential.type !== "oauth") throw new HostRefused("invalid", "The ChatGPT plan is signed out.");
-  return credential.access;
-}
 
 /**
  * A sign-in under way. ChatGPT: open `url`, approve, and hand `finish` the

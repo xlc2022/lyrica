@@ -87,6 +87,17 @@ if [ "$(/usr/local/bin/claude --version 2>/dev/null | cut -d' ' -f1)" != "$CLAUD
     || say "installing Claude Code failed: threads can't use it until it's installed."
 fi
 
+# --- Codex ---
+# OpenAI's `codex` program, which makes ChatGPT Images with the user's own
+# Codex sign-in (docs/models.md, "Image canvases"), in /usr/local, on the
+# daemon's path. An update leaves it as it is.
+CODEX_VERSION=0.163.0
+if [ "$(/usr/local/bin/codex --version 2>/dev/null | awk '{print $NF}')" != "$CODEX_VERSION" ]; then
+  say "Installing Codex..."
+  npm install -g --prefix /usr/local --no-audit --no-fund --loglevel=error "@openai/codex@$CODEX_VERSION" >/dev/null \
+    || say "installing Codex failed: ChatGPT Images can't work until it's installed."
+fi
+
 # --- Tailscale ---
 # Her own tailscaled (lyrica-tailscaled.service, below) runs the package's
 # binaries. Installed from Tailscale's repository only when they're missing; a

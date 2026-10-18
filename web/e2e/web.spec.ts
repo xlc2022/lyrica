@@ -156,6 +156,33 @@ test("unlock, log in, start a thread, and see a streamed reply that survives a r
   await noHorizontalScroll(page);
 });
 
+test("Settings → Codex shows Codex's own sign-in and then Signed in", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const base = `/api/u/${userId}/codex`;
+  // The real route needs the mounted home (FUSE); fake Codex's state here.
+  let state: { installed: boolean; signedIn: boolean; signIn?: { url: string; code: string } } = { installed: true, signedIn: false };
+  await page.route(`**${base}`, async (route) => {
+    if (route.request().method() === "DELETE") state = { installed: true, signedIn: false };
+    await route.fulfill({ json: state });
+  });
+  await page.route(`**${base}/sign-in`, async (route) => {
+    state = { installed: true, signedIn: false, signIn: { url: "https://auth.openai.com/codex/device", code: "ABCD-12345" } };
+    await route.fulfill({ json: state });
+  });
+  await page.goto(`/#/u/${userId}/settings/codex`);
+  const section = page.getByRole("region", { name: "Codex" });
+  await expect(section.getByText("ChatGPT Images runs your own Codex, on your ChatGPT plan. What you ask it for goes to OpenAI.")).toBeVisible();
+  await section.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(section.getByRole("link", { name: "https://auth.openai.com/codex/device" })).toHaveAttribute("target", "_blank");
+  await expect(section.locator("code")).toHaveText("ABCD-12345");
+  state = { installed: true, signedIn: true };
+  await expect(section.getByText("Signed in")).toBeVisible({ timeout: 10_000 });
+  await section.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).last().click();
+  await expect(section.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+  await noHorizontalScroll(page);
+});
+
 test("Portrait photos uploads, downloads, confirms deletion, and saves the cloud setting across reloads", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const base = `/api/u/${userId}/photos-of-me`;

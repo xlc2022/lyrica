@@ -424,8 +424,8 @@ class Models {                                              // new Models(keyrin
   // GeneratedImage { bytes: Uint8Array; type: "image/png"; width; height; seed? }; no prompt metadata
   // Create passes imageTier to resolution: recipes and cloud offerings skip a useFor tag of only the other tier.
   // Edit passes imageMask: the ChatGPT plan is skipped for masks before any input is sent.
-  // CLOUD_IMAGE_PROVIDERS selects by endpoint.api: openai-compatible (key, any marked model) or chatgpt (plan Responses image_generation).
-  // A chatgpt plan's only image offering is PLAN_IMAGE_MODEL ("chatgpt-images", recipe "ChatGPT Images"), sent through planImageDriver's model.
+  // CLOUD_IMAGE_PROVIDERS selects by endpoint.api: openai-compatible (key, any marked model) or chatgpt (the user's own Codex, setCodexImages).
+  // A chatgpt plan's only image offering is PLAN_IMAGE_MODEL ("chatgpt-images", recipe "ChatGPT Images"), made by codexImage.
   // Each adapter declares create/edit/mask/references/sizes/count and low/high tier mappings; upscale is host-only.
   // Content refusal throws HostRefused("image_refusal", fixed message) and stops fallback. Limits/outages fall back.
   // Cloud useFor/image/edit are offerings.hand JSON in self.db (shared) or user.db (personal); no schema step.
@@ -516,9 +516,9 @@ class Models {                                              // new Models(keyrin
   `planCredential(userId, id)`, `planAccount(userId, id)` (explicit email or
   account ID only; never tokens), `setPlanCredential(userId, id, credential |
   null)` (null signs it out), `setPlanCatalog(list)` (discovery, from Pi's
-  catalogue; set by `lyricad`), `setPlanImageToken(resolve)` (async token
-  resolver, installed by lyricad using extension's `planImageToken` and the
-  same serialized Pi refresh as chat), `reportPlanLimit(id)` (skipped for an
+  catalogue; set by `lyricad`), `setCodexImages(run)` (ChatGPT Images'
+  runner, installed by lyricad: `codexImage` in the user's
+  `Workspace.codexDir`), `reportPlanLimit(id)` (skipped for an
   hour) and `installationId()` (self.db). The
   sign-in is kept in the plan's `api_key` column as JSON; its tokens never leave
   core except into Pi's credential store (`PlanCredentials`, extension);
@@ -1850,6 +1850,12 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   granted server with Pi's `registerMcpServer`, exposure `deferred`, and
   loads Pi's MCP and `tool_search` extensions with no `mcp.json`, no log
   and Lyrica's transport.
+- **Codex API:** `lyricad`'s `/api/u/:userId/codex` (`GET`; `DELETE`
+  signs out) and `POST …/codex/sign-in` (starts Codex's device sign-in,
+  replacing one under way; `409` when `codex` isn't installed), each
+  answering `CodexStatus { installed, signedIn, signIn? { url, code } }`.
+  Core exports `codexImage(home, request, signal)`, `codexInstalled()`,
+  `codexSignedIn(home)`, `codexSignIn(home)` and `codexSignOut(home)`.
 - **Claude Code API:** `lyricad`'s `/api/u/:userId/claude-code` (`GET`;
   `PUT { token }`; `DELETE`), each answering `ClaudeCodeStatus { token,
   installed }`: whether a token is saved, never the token. Thread settings
