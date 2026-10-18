@@ -532,8 +532,8 @@ things are".
 Principles 6, 2 and 8: decision requests reach the user with no conversation
 text, through the existing daemon and no new dependency. `push.ts` diffs all
 pages from `notifications()` using the saved display, selecting
-`decision && type !== "sleep"`. The tick catches every type; a permission
-request also triggers a check. Locked users send nothing;
+`decision && type !== "sleep"`. The tick catches every type; permission
+and settings events also trigger a check. Locked users send nothing;
 key availability and saving a destination check existing unsent asks;
 Save doesn't wait for that push, whose failure shows on the next GET.
 

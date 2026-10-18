@@ -1938,8 +1938,7 @@ before deleting them, in one transaction; forgetting removes their totals.
 Principles 6 and 2: decision requests reach the user without sending their
 words. `daemon/src/push.ts` reuses `notifications()` with the saved display,
 including every page, and selects `decision && type !== "sleep"`. The tick
-catches every type; question/settings events, permission requests and share
-mutations also trigger a diff. Locked users are skipped; key availability
+catches every type; permission and settings events also trigger a check. Locked users are skipped; key availability
 and saving a URL trigger an immediate batch of unsent decisions.
 
 `core/src/push.ts` exports `PushSettings { url: string; token?: string;
