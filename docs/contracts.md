@@ -1229,7 +1229,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - child threads: `ThreadSummary.child`, `status` and `unseen`;
     `Message.from: { kind: "parent", threadId }` in a child thread only; a
     user's send or edit starting with the parent's mark is `400`;
-    `ForgetThread` / `DELETE …?children=1`; `ThreadHost.status`,
+    `ForgetThread` / `DELETE …?children=1` (the live sessions stop side by
+    side, then the store forgets every doomed thread in one owner view and
+    `PoolStore.forgetThread`'s `optimize: false` leaves the search index
+    merge to the last one); `ThreadHost.status`,
     `delivered`, `HostedThread.waiting`, `send(text, { fromParent })` and
     `settled()`; a `received` thread event (`text`) when a message from
     another thread or a look reaches the running turn, or is kept in the
@@ -1422,7 +1425,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `GET …/memory/search` without `q` lists one layer when `kinds` names
     exactly one (newest first, `limit` and `before` paging by `updatedAt`),
     takes `about=` to filter notes by a tag, and its hits carry `title`,
-    `about` and `updatedAt`. `MemoryDetail.links: Record<ref, MemoryLink>`
+    `about` and `updatedAt`; `kinds=entry` is the Recent layer
+    ([briefs/side-panels.md](briefs/side-panels.md)), the logged
+    messages written since sleep's watermark (`PoolStore.recentEntries`),
+    a person's and hers only. `GET …/memory/:pool/e:<thread>#<n>` reads one
+    such message as a `MemoryDetail` of kind `entry` (origin `user` or
+    `lyrica`, `cameFrom` its thread, no revisions); PATCH, archive, restore
+    and DELETE answer 405 for it, since a message changes only in its
+    thread. `MemoryDetail.links: Record<ref, MemoryLink>`
     gives every memory and thread the text and the lineage cite its kind,
     pool, title, a snippet of its first words and its date; `usedIn` is
     `MemoryUse[]` (`{ id, sentence? }`), the sentence of each memory that

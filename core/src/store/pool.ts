@@ -6,7 +6,7 @@ import type { Db } from "../db.ts";
 import { render, toStored, type UserId } from "../mentions.ts";
 import type { Profile } from "../profile.ts";
 import type { Interface, Pool } from "../types.ts";
-import { WATCHING, type ThreadStep } from "../threads.ts";
+import { FROM_PARENT, ROUTINE, WAKEUP, WATCHING, type ThreadStep } from "../threads.ts";
 import { citationsIn, ftsQuery, indexText, kindOf, queryWords, searchWords, snippet, stripCitations, type Kind } from "./refs.ts";
 
 /** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
@@ -497,6 +497,11 @@ export class PoolReader {
         const r = this.db.prepare("SELECT * FROM wake WHERE id = 1").get() as { text: string; updated_at: string } | undefined;
         return r && { id, kind: "wake", text: r.text, createdAt: r.updated_at, updatedAt: r.updated_at };
       }
+      case "entry": {
+        // A logged message read as a memory of its own: what recall found before sleep consolidated it. Never one written unlogged.
+        const [e] = this.entryWindow(id, 0);
+        return e && !e.unlogged ? { id, kind: "entry", text: e.text, origin: e.role === "user" ? "user" : "lyrica", createdAt: e.createdAt, updatedAt: e.createdAt } : undefined;
+      }
       default:
         return undefined;
     }
@@ -519,6 +524,34 @@ export class PoolReader {
     return rows
       .filter((r) => json<string[]>(r.folders).map(norm).some((f) => wanted.some((p) => p === f || p.startsWith(`${f}/`))))
       .map((r) => this.get(`p:${r.slug}`)!);
+  }
+
+  /**
+   * Logged messages sleep hasn't consolidated yet (written after its watermark), newest first: the
+   * memory browser's Recent layer. `before` is a `createdAt` to page from. Only what a person or she
+   * said, never a tool's result or one of her looks at other threads.
+   */
+  recentEntries(opts: { limit: number; before?: string }): Item[] {
+    const limit = Math.max(1, opts.limit);
+    const stmt = this.db.prepare(`SELECT thread, n, text, created_at FROM entries WHERE unlogged = 0 AND role IN ('user', 'assistant') AND text != ''
+      AND created_at > @since AND (@before IS NULL OR created_at < @before) ORDER BY created_at DESC, n DESC LIMIT @limit`);
+    const since = this.watermark() ?? "";
+    let before = opts.before ?? null;
+    const out: Item[] = [];
+    // A message from another thread (a parent's or sibling's), a watch, a wake-up or a routine is hers or the daemon's, not a person's: left out.
+    const marked = [FROM_PARENT, WATCHING, WAKEUP, ROUTINE];
+    for (;;) {
+      const batch = limit * 2;
+      const rows = stmt.all({ since, before, limit: batch }) as { thread: string; n: number; text: string; created_at: string }[];
+      for (const r of rows) {
+        if (marked.some((m) => m.test(r.text))) continue;
+        const item = this.get(entryId(r.thread, r.n));
+        if (item) out.push(item);
+        if (out.length === limit) return out;
+      }
+      if (rows.length < batch) return out;
+      before = rows[rows.length - 1]!.created_at;
+    }
   }
 
   listJournal(limit = 20): Item[] {
@@ -1176,14 +1209,17 @@ export class PoolStore extends PoolReader {
    * otherwise they are kept as threads of their own, with the settings they
    * have (a kept child thread is no longer a child). A project forgotten with
    * `children` also takes its page and the notes that came only from it.
+   * The search index is merged once at the end (`optimize`); a caller
+   * forgetting several threads passes `optimize: false` for all but the last,
+   * since each merge reads the whole index.
    */
-  forgetThread(threadId: string, author: Author, opts: { children?: boolean; keepMemories?: boolean } = {}): void {
+  forgetThread(threadId: string, author: Author, opts: { children?: boolean; keepMemories?: boolean; optimize?: boolean } = {}): void {
     this.checkAuthor(author);
     const thread = this.mustThread(threadId);
     const keep = !!opts.keepMemories;
     if (thread.project && opts.children && !keep) this.forgetProjectMemory(threadId, author);
-    for (const sub of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(sub.id, author, { keepMemories: keep });
-    if (opts.children) for (const child of this.listThreads({ includeHidden: true, parent: threadId, children: true })) this.forgetThread(child.id, author, opts);
+    for (const sub of this.listThreads({ includeHidden: true, parent: threadId })) this.forgetThread(sub.id, author, { keepMemories: keep, optimize: false });
+    if (opts.children) for (const child of this.listThreads({ includeHidden: true, parent: threadId, children: true })) this.forgetThread(child.id, author, { ...opts, optimize: false });
     this.tx(() => {
       // A kept daughter is a thread of its own: a kept child thread is no longer a child, so it may start its own.
       this.db.prepare("UPDATE threads SET parent = NULL, child = 0 WHERE parent = ? AND subagent = 0").run(threadId);
@@ -1202,7 +1238,7 @@ export class PoolStore extends PoolReader {
       this.db.prepare("DELETE FROM entries WHERE thread = ?").run(threadId);
       this.db.prepare("DELETE FROM wakeups WHERE thread = ?").run(threadId);
       this.db.prepare("DELETE FROM threads WHERE id = ?").run(threadId);
-      this.optimize();
+      if (opts.optimize !== false) this.optimize();
     });
   }
 

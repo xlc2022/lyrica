@@ -7,7 +7,7 @@ import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
 import { ScheduleText } from "./Routines.tsx";
 import { Icon } from "./icons.tsx";
-import { go, href, idHref } from "./route.ts";
+import { go, href, idHref, recalledHref } from "./route.ts";
 import { RowMenu } from "./Machines.tsx";
 import { ask, EDIT_MESSAGE_EVENT, type EditMessageRequest, EDIT_IMAGE_EVENT, type EditImageRequest } from "./links.ts";
 import type { ShellContext } from "./Shell.tsx";
@@ -485,7 +485,8 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       label = part.type === "recall"
         ? `Recalled ${part.ids.length} ${part.ids.length === 1 ? "memory" : "memories"}`
         : `Remembered ${part.ids.length === 1 ? "a note" : `${part.ids.length} notes`}`;
-      body = <ul>{part.ids.map((id) => <li key={id}><a href={idHref(env.userId, env.pool, id)}>{id}</a></li>)}</ul>;
+      // Each recalled memory opens in the browser (the panel beside the thread from 1180 px up); a message is read there as short-term memory.
+      body = <ul>{part.ids.map((id) => <li key={id}><a href={recalledHref(env.userId, env.pool, id)}>{id}</a></li>)}</ul>;
       break;
     case "tool": {
       const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";

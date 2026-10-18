@@ -81,6 +81,19 @@ async function openSettings(page: Page) {
   return drawer;
 }
 
+/** From a project chat, opens its settings page: Project in the header shows the overview (the Threads page on a phone,
+ *  the panel from 1180 px) with the Project settings link inside; from the panel, Open as a page (docs/ux.md §6). */
+async function openProjectSettings(page: Page) {
+  await page.locator(".head-actions").getByRole("button", { name: "Project", exact: true }).click();
+  if (phone(page)) {
+    await page.getByRole("link", { name: "Project settings" }).click();
+  } else {
+    await page.getByRole("complementary", { name: "Threads" }).getByRole("link", { name: "Project settings" }).click();
+    await page.getByRole("complementary", { name: /Project settings$/ }).getByRole("link", { name: "Open as a page" }).click();
+  }
+  await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
+}
+
 /** Flips the Private checkbox in the sidebar's Sort menu (the sidebar is open already on a phone). */
 async function togglePrivate(page: Page) {
   const sorting = page.locator(".showing");
@@ -1736,15 +1749,16 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await expect(resolvedRow).toContainText("1");
   await resolvedRow.click();
   await page.locator(".side .resolved-row + ul .thread").click();
-  await expect(page.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
-  await expect(page.getByLabel("Message", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Reopen" }).click();
-  await expect(page.getByLabel("Message", { exact: true })).toBeVisible();
+  // With the project chat open, the row opens Alpha beside it from 1180 px, and as the page below (docs/ux.md §6).
+  const alphaView = phone(page) ? page : page.getByRole("complementary");
+  await expect(alphaView.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
+  await expect(alphaView.getByLabel("Message", { exact: true })).toHaveCount(0);
+  await alphaView.getByRole("button", { name: "Reopen" }).click();
+  await expect(alphaView.getByLabel("Message", { exact: true })).toBeVisible();
 
   // The project settings page: Goal and Paused save together; Memory keeps the instructions.
-  await page.getByText("Child thread of").getByRole("link").click();
-  await page.getByRole("link", { name: "Project settings" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
+  if (phone(page)) await page.getByText("Child thread of").getByRole("link").click();
+  await openProjectSettings(page);
   await page.getByLabel("Goal").fill("Ship the garden plan.");
   await page.getByRole("checkbox", { name: "Paused" }).check();
   await page.getByRole("button", { name: "Save" }).click();
@@ -1931,9 +1945,15 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await expect(beta.getByRole("navigation", { name: "Opened from" })).toContainText("Alpha");
   await beta.getByRole("navigation", { name: "Opened from" }).getByRole("link", { name: "Alpha" }).click();
   await expect(page.getByRole("complementary", { name: "Alpha" })).toBeVisible();
-  // From the chat's header, Project settings opens in the panel afresh; Open as a page is the page on its own.
-  await page.getByRole("link", { name: "Project settings" }).click();
-  const settings = page.getByRole("complementary", { name: "Project settings" });
+  // From the chat's header, Project opens the project's overview beside the chat, pressed while it shows; Project settings inside it opens one crumb deeper; Open as a page is the page on its own.
+  const projectButton = page.locator(".head-actions").getByRole("button", { name: "Project", exact: true });
+  await expect(projectButton).toHaveAttribute("aria-pressed", "false");
+  await projectButton.click();
+  await expect(page.getByRole("complementary", { name: "Threads" }).getByRole("heading", { level: 1, name: "Threads" })).toBeFocused();
+  await expect(projectButton).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("complementary", { name: "Threads" }).getByRole("link", { name: "Project settings" }).click();
+  const settings = page.getByRole("complementary", { name: /Project settings$/ }); // its trail starts afresh after a reload
+  await expect(projectButton).toHaveAttribute("aria-pressed", "false");
   await expect(settings.getByLabel("Goal")).toBeVisible();
   await settings.getByLabel("Goal").fill("A split view.");
   await settings.getByRole("button", { name: "Save" }).click();
@@ -1954,21 +1974,21 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await expect(divider).toHaveAttribute("aria-valuenow", "520");
   const dragged = (await settings.boundingBox())!;
   expect(Math.round(dragged.width)).toBe(520);
-  await page.getByRole("complementary", { name: "Project settings" }).getByRole("link", { name: "Open as a page" }).click();
-  await expect(page.getByRole("complementary", { name: "Project settings" })).toHaveCount(0);
+  await settings.getByRole("link", { name: "Open as a page" }).click();
+  await expect(settings).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
   expect(page.url()).toContain("/p/general/");
   await page.goBack();
-  await expect(page.getByRole("complementary", { name: "Project settings" })).toBeVisible();
+  await expect(settings).toBeVisible();
   // Below 1180 px the same address shows the panel's page on its own.
   const size = page.viewportSize()!;
   await page.setViewportSize({ width: 1000, height: size.height });
-  await expect(page.getByRole("complementary", { name: "Project settings" })).toHaveCount(0);
+  await expect(settings).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
   await page.setViewportSize(size);
-  await expect(page.getByRole("complementary", { name: "Project settings" })).toBeVisible();
+  await expect(settings).toBeVisible();
   await page.getByRole("button", { name: "Close panel" }).click();
-  await expect(page.getByRole("complementary", { name: "Project settings" })).toHaveCount(0);
+  await expect(settings).toHaveCount(0);
   // The Threads fact in the chat's facts line toggles the project's threads list in the panel, pressed while it shows.
   const fact = page.locator(".tfacts").getByRole("button", { name: /^Threads/ });
   await expect(fact).toHaveAttribute("aria-pressed", "false");
@@ -1992,9 +2012,29 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await page.getByRole("menu", { name: "Beta menu" }).getByRole("menuitem", { name: "Open beside" }).click();
   const betaBeside = page.getByRole("complementary", { name: "Beta" });
   await expect(betaBeside.getByRole("heading", { level: 1, name: "Beta" })).toBeFocused();
-  await page.locator(".side li:has(> .trow a[aria-current=\"page\"]) .children a.thread").filter({ has: page.locator(".title", { hasText: /^Alpha$/ }) }).click({ modifiers: ["Shift"] });
+  const alphaRow = page.locator(".side li:has(> .trow a[aria-current=\"page\"]) .children a.thread").filter({ has: page.locator(".title", { hasText: /^Alpha$/ }) });
+  await alphaRow.click({ modifiers: ["Shift"] });
   const alphaBeside = page.getByRole("complementary", { name: "Alpha" });
   await expect(alphaBeside.getByRole("heading", { level: 1, name: "Alpha" })).toBeFocused();
+  // With the parent open, a plain click on a child row opens it beside too, replacing what the panel shows; the chat stays.
+  const chatTitle = (await page.locator("main h1").innerText()).trim();
+  await betaRow.click();
+  await expect(page.getByRole("complementary", { name: "Beta" }).getByRole("heading", { level: 1, name: "Beta" })).toBeFocused();
+  await expect(page.locator("main h1")).toHaveText(chatTitle);
+  await alphaRow.click();
+  await expect(alphaBeside.getByRole("heading", { level: 1, name: "Alpha" })).toBeFocused();
+  // A double-click on a row's title renames it in place; so does one on the chat's title.
+  await betaRow.locator(".title").dblclick();
+  const rowField = page.locator(".side .children a.thread").getByRole("textbox", { name: "Title" });
+  await rowField.fill("Beta two");
+  await rowField.press("Enter");
+  await expect(page.locator(".side .children a.thread .title", { hasText: /^Beta two$/ })).toBeVisible();
+  await page.locator("main h1").dblclick();
+  const titleField = page.locator("main h1").getByRole("textbox", { name: "Title" });
+  await titleField.fill("Split project");
+  await titleField.press("Enter");
+  await expect(page.locator("main").getByRole("heading", { level: 1, name: "Split project" })).toBeVisible();
+  await expect(page.locator(".side a.thread.project .title", { hasText: /^Split project$/ })).toBeVisible();
   await page.getByRole("button", { name: "Close panel" }).click();
   // View thread at a card's foot opens the thread beside the chat; so does a double-click on the card's empty space.
   const alphaCard = page.locator(".tcard").filter({ has: page.getByRole("link", { name: "Alpha", exact: true }) });
@@ -2016,11 +2056,12 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await alphaCard.getByRole("link", { name: "View thread" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
   expect(page.url()).not.toContain("/panel/");
-  await betaRow.click({ button: "right" });
-  await expect(page.getByRole("menu", { name: "Beta menu" }).getByRole("menuitem", { name: "Open beside" })).toHaveCount(0);
+  const betaTwo = page.locator(".side li:has(> .children a[aria-current=\"page\"]) .children a.thread").filter({ has: page.locator(".title", { hasText: /^Beta two$/ }) });
+  await betaTwo.click({ button: "right" });
+  await expect(page.getByRole("menu", { name: "Beta two menu" }).getByRole("menuitem", { name: "Open beside" })).toHaveCount(0);
   await page.keyboard.press("Escape");
-  await betaRow.click({ modifiers: ["Shift"] });
-  await expect(page.getByRole("heading", { level: 1, name: "Beta" })).toBeVisible();
+  await betaTwo.click({ modifiers: ["Shift"] });
+  await expect(page.getByRole("heading", { level: 1, name: "Beta two" })).toBeVisible();
   expect(page.url()).not.toContain("/panel/");
   await page.setViewportSize(size);
   await noHorizontalScroll(page);
@@ -2065,7 +2106,7 @@ test("watching threads: writing in a project's thread leads to a look, shown as 
   await expect(page.locator("main .threads-card")).toHaveCount(0);
   await expect(page.locator("main .msg.user").filter({ hasText: "[Watching threads]" })).toHaveCount(0);
   // The switch, on by default, saves off.
-  await page.getByRole("link", { name: "Project settings" }).first().click();
+  await openProjectSettings(page);
   const watch = page.getByRole("checkbox", { name: "Watching threads" });
   await expect(watch).toBeChecked();
   await watch.uncheck();
@@ -2169,24 +2210,24 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   // Beside the conversation from 1180 px; the page on its own on a phone.
   const panel = phone(page) ? page.locator(".files-page") : page.getByRole("complementary");
   await expect(panel.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
-  await panel.getByRole("button", { name: "uploads" }).click();
-  await panel.getByRole("button", { name: "plan.md" }).click();
+  await panel.getByRole("button", { name: "uploads", exact: true }).click();
+  await panel.getByRole("button", { name: "plan.md", exact: true }).click();
   await expect(panel.locator(".fview pre")).toContainText("Water the trays.");
   // The panel is narrow, so the file took the tree's place.
   await panel.locator(".fback").click();
   await panel.getByLabel("Search files").fill(tray.slice(0, 6));
-  await expect(panel.getByRole("button", { name: `uploads/${tray}` })).toBeVisible();
+  await expect(panel.getByRole("button", { name: `uploads/${tray}`, exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: /plan\.md/ })).toHaveCount(0);
   await panel.getByLabel("Search files").fill("");
 
   // The menu on a file: Attach puts its path in the message box.
   const open = async (name: string) => {
     // Back on the Files page (a phone), the tree starts afresh with uploads folded.
-    const uploads = panel.getByRole("button", { name: "uploads" });
+    const uploads = panel.getByRole("button", { name: "uploads", exact: true });
     await expect(uploads).toBeVisible();
     if ((await uploads.getAttribute("aria-expanded")) === "false") await uploads.click();
-    if (phone(page)) { await panel.getByRole("button", { name }).click(); await panel.getByRole("button", { name: "File actions" }).click(); }
-    else await panel.getByRole("button", { name }).click({ button: "right" });
+    if (phone(page)) { await panel.getByRole("button", { name, exact: true }).click(); await panel.getByRole("button", { name: "File actions" }).click(); }
+    else await panel.getByRole("button", { name, exact: true }).click({ button: "right" });
     return page.getByRole("menu", { name: "File actions" });
   };
   let menu = await open("plan.md");
@@ -2224,27 +2265,48 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await expect(page.locator("dialog.lightbox")).toBeHidden();
   if (phone(page)) await page.getByRole("link", { name: "Files and images" }).click();
   // A new folder under uploads, renamed, then deleted with the note.
-  await expect(panel.getByRole("button", { name: "uploads" })).toBeVisible();
-  await panel.getByRole("button", { name: "uploads" }).click({ button: "right" });
+  await expect(panel.getByRole("button", { name: "uploads", exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "uploads", exact: true }).click({ button: "right" });
   menu = page.getByRole("menu", { name: "File actions" });
   await menu.getByRole("menuitem", { name: "New folder…" }).click();
   await menu.getByLabel("Folder name").fill("drafts");
   await menu.getByRole("button", { name: "Add" }).click();
-  await expect(panel.getByRole("button", { name: "drafts" })).toBeVisible();
-  await panel.getByRole("button", { name: "drafts" }).click({ button: "right" });
+  await expect(panel.getByRole("button", { name: "drafts", exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "drafts", exact: true }).click({ button: "right" });
   await menu.getByRole("menuitem", { name: "Rename…" }).click();
   await menu.getByLabel("New name").fill("sketches");
   await menu.getByRole("button", { name: "Rename" }).click();
-  await expect(panel.getByRole("button", { name: "sketches" })).toBeVisible();
-  await panel.getByRole("button", { name: "sketches" }).click({ button: "right" });
+  await expect(panel.getByRole("button", { name: "sketches", exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "sketches", exact: true }).click({ button: "right" });
   await menu.getByRole("menuitem", { name: "Delete…" }).click();
   await expect(page.getByRole("dialog")).toContainText("deleted for good");
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
-  await expect(panel.getByRole("button", { name: "sketches" })).toHaveCount(0);
-  await expect(panel.getByRole("button", { name: "plan.md" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "sketches", exact: true })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "plan.md", exact: true })).toBeVisible();
+  // Rename and Delete at the right of a row in a writable folder: shown on hover (always on a phone), the name edited in place.
+  await panel.getByRole("button", { name: "plan.md", exact: true }).hover();
+  await panel.getByRole("button", { name: "Rename plan.md" }).click();
+  const newName = panel.getByRole("textbox", { name: "New name" });
+  await expect(newName).toHaveValue("plan.md");
+  await newName.fill("notes.md");
+  await newName.press("Enter");
+  await expect(panel.getByRole("button", { name: "notes.md", exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "notes.md", exact: true }).hover();
+  await panel.getByRole("button", { name: "Delete notes.md" }).click();
+  await expect(page.getByRole("dialog")).toContainText("notes.md is deleted for good");
+  await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+  await expect(panel.getByRole("button", { name: "notes.md", exact: true })).toHaveCount(0);
+  // Beside the thread, the tree follows what she writes: a command's file shows once the call ends, with nothing reopened.
+  if (!phone(page)) {
+    await send(page, "run: echo made > /workspace/uploads/made.txt");
+    const allow = page.getByRole("group", { name: "Allow bash?" });
+    if (await allow.isVisible({ timeout: 3000 }).catch(() => false)) await allow.getByRole("button", { name: "Allow" }).click();
+    await expect(page.getByText("The command finished.")).toBeVisible();
+    await expect(panel.getByRole("button", { name: "made.txt", exact: true })).toBeVisible();
+  }
 
   await panel.getByRole("tab", { name: "Images" }).click();
-  await expect(panel.locator(".igrid").getByRole("button", { name: tray })).toBeVisible();
+  await expect(panel.locator(".igrid").getByRole("button", { name: tray, exact: true })).toBeVisible();
   await panel.getByRole("group", { name: "Show" }).getByRole("button", { name: "Made by Lyrica" }).click();
   await expect(panel.getByText("No images yet")).toBeVisible();
   await noHorizontalScroll(page);
@@ -3599,7 +3661,7 @@ test("project welcome and fold in", async ({ page, baseURL }) => {
   expect(await overview()).toHaveLength(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   await api("POST", `${u}/threads/general/${encodeURIComponent(p.id)}/messages`, { text: "draft: Grow seedlings | Keep a planting journal" });
-  // The header may carry the same link; the draft's is the last.
+  // The draft card's own link (the header has none since the overview took it).
   await expect(page.getByRole("link", { name: "Project settings", exact: true }).last()).toBeVisible();
   await page.getByRole("link", { name: "Project settings", exact: true }).last().click();
   const goal = page.getByRole("textbox", { name: "Goal", exact: true });

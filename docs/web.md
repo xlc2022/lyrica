@@ -101,6 +101,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
 - **Hidden pools:** with Show general or Show private off, a thread or
   memory from that pool shows "General is hidden" or "Private is hidden"
   instead, and memory search leaves the pool out.
+- **Renaming in place** (`InlineRename` in `src/ui.tsx`): a double-click on
+  a thread's or project's title, in its sidebar row or the thread header's
+  h1, swaps the title for a field in the same place with the title
+  selected; Enter or blur saves through `PATCH …/threads/:pool/:id`
+  (`{ title }`) and reloads the list, Escape or an unchanged name puts the
+  title back. Clicks inside the field never reach the row's link.
 - **Thread:** a header with the title; under it the pool word, the model
   badge (cloud or local, model and endpoint; it opens the model picker), the
   thread's group as a link that changes it, the folders as words with the
@@ -151,18 +157,25 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   This chat first, then thread links by descending tokens, and **Recent
   calls** linking to the project's filter. On a phone Tokens opens in place
   at the foot of the Threads popover. The header has a **Project**
-  link to the project settings page before the Settings button, which
-  opens the thread's drawer as in any thread. The
+  button before Files and the Settings button (which opens the thread's
+  drawer as in any thread): from 1180 px up it toggles the project's
+  overview beside the chat, the same `ThreadsPage` the Threads fact shows,
+  pressed while it shows (`aria-pressed`); below 1180 px it opens that
+  page. The overview's header holds one link, **Project settings**, to the
+  project settings page (one crumb deeper in the panel). The
   `child` stream event reloads the overview (`GET …/overview`) and the
   thread list, so cards and state words follow. A resolved project thread
   has a **Reopen** link where its message box was.
 - **The panel** (`Shell.tsx`, docs/ux.md §6): from 1180 px up, a link in a
   conversation to a thread or a project's settings (a thread card or its
-  **View thread**, a mention, the Threads fact, the header's Project link) opens it in a third column
+  **View thread**, a mention, the Threads fact, the header's Project button) opens it in a third column
   instead of navigating, and the address gains `/panel/<its path>`; so do
   **Open beside** (B) in a child row's sidebar menu and Shift+click or
   Shift+Enter on such a row (`showInPanel`, with the breadcrumb starting
-  there). The sidebar's other rows navigate as before, and so does any other
+  there). With the open thread the row's parent (`ThreadLink`'s
+  `besideOnClick`: the project chat, or the thread the child was started
+  from), a plain click on a child row opens it beside too, replacing what
+  the panel shows. The sidebar's other rows navigate as before, and so does any other
   modified click. The column
   is 360 to 520 px (420 to start), dragged on its divider (a `separator`
   that the arrow keys move too), the width kept in `localStorage`
@@ -192,7 +205,16 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   upload or her call that wrote it, through the same channel), downloads (one file by its address, several as `…/files/zip`), copies
   paths, renames and deletes (a confirm dialog), uploads and makes folders;
   dropping files on the panel uploads them to the folder last opened. After a
-  change the folders it touched are reloaded. The grid shows each image's
+  change the folders it touched are reloaded. A row in a writable folder
+  has **Rename** and **Delete** icon buttons at its right (`.frow-acts`,
+  shown on hover or focus-within, always where nothing can hover): Rename
+  edits the name in place (`InlineRename`), Delete opens the menu straight
+  at its confirm (`MenuAt.sub`). The tree follows the thread: the shell
+  counts each open thread's finished tool calls and turns
+  (`ShellContext.activity`, from the stream's `tool_end` and `turn_end`),
+  and the panel reloads every folder it has listed when that count moves,
+  and again when the window regains focus (the page on its own, below
+  1180 px, has no stream and relies on focus). The grid shows each image's
   thumbnail (`…/files/thumb`, docs/daemon.md "Files"), or the image itself
   where the server makes none.
   The image tool also supplies `ImagePart` path/model/tier metadata on
@@ -262,10 +284,17 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   word differences (`wordDiff`, computed in the browser) and Restore, and
   Edit in place with a `[[` popover of pages and people (a page shows as
   `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Forget… on a
-  selection, and Add a memory. `…/memory/<pool>/<id>` is a memory on the
+  selection, and Add a memory. The **Recent** layer (`kinds=entry`) lists
+  the logged messages written since sleep last consolidated
+  (`PoolStore.recentEntries`), newest first and paged by `before`; one
+  opens as a memory of kind `entry` (`GET …/memory/<pool>/e:…`), read-only
+  (no Edit or ⋯; the API answers 405 to a change), with its thread under
+  Came from. `…/memory/<pool>/<id>` is a memory on the
   page; `…/t/<pool>/<thread>/panel/memory/<pool>/<id>` is the same memory in
   the panel beside a conversation, where recall markers and citations open
-  it; the panel is named Memory, and a memory followed from it adds its title
+  it (a recall marker's `e:` entry opens the message as a memory,
+  `recalledHref`; a citation of a message in her prose opens its thread,
+  `idHref`); the panel is named Memory, and a memory followed from it adds its title
   to the breadcrumbs. The lineage names the memory being read as itself, never
   as gone. Mention tokens show as current names; the editor shows them as
   `[[Name]]` or `[[Name:obj]]` and saves them back as tokens. Nothing of a

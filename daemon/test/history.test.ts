@@ -104,6 +104,36 @@ describe("server-side history", () => {
     expect((await s.ada.get<HistoryPage<MemoryHit>>(`${path}?pool=private`)).body).toMatchObject({ entries: [], total: 0 });
   });
 
+  it("lists logged messages sleep hasn't consolidated as the Recent layer, reads one as a memory with its thread under Came from, and refuses to change it", async () => {
+    const s = await setup();
+    const view = s.d.services!.memory.openThreadView(s.rt.ada.id, "general");
+    let said = "", quiet = "";
+    try {
+      const t = view.own.createThread({ interface: "web", title: "Trays" });
+      said = view.own.appendEntry(t.id, { piId: "a1", role: "user", data: {}, text: "Water the trays on Sunday." }, "2026-10-13T10:00:00.000Z");
+      view.own.appendEntry(t.id, { piId: "a2", role: "assistant", data: {}, text: "Noted: Sunday." }, "2026-10-13T10:00:01.000Z");
+      view.own.appendEntry(t.id, { piId: "a3", role: "toolResult", data: {}, text: "ok" }, "2026-10-13T10:00:02.000Z");
+      // A parent's message to this thread is stored as a user turn, but it is hers, not a person's: not in Recent.
+      view.own.appendEntry(t.id, { piId: "a4", role: "user", data: {}, text: "[From t:general/web%2Fp1]\n\nMind the seedlings too." }, "2026-10-13T10:00:03.000Z");
+      const u = view.own.createThread({ interface: "web", title: "Quiet", unlogged: true });
+      quiet = view.own.appendEntry(u.id, { piId: "u1", role: "user", data: {}, text: "Not for the index." }, "2026-10-13T11:00:00.000Z");
+    } finally { view.close(); }
+    const recent = (await s.ada.get<MemoryHit[]>(`${s.u}/memory/search?kinds=entry`)).body;
+    // Newest first; what a person or she said, never a tool's result or an unlogged thread's words.
+    expect(recent.map((h) => [h.kind, h.snippet])).toEqual([["entry", "Noted: Sunday."], ["entry", "Water the trays on Sunday."]]);
+    expect(recent[0]!.origin).toBe("lyrica");
+    expect(recent[1]!.origin).toBe("user");
+    const paged = (await s.ada.get<MemoryHit[]>(`${s.u}/memory/search?kinds=entry&before=${encodeURIComponent(recent[0]!.updatedAt!)}`)).body;
+    expect(paged.map((h) => h.id)).toEqual([said]);
+    const detail = (await s.ada.get<MemoryDetail>(`${s.u}/memory/general/${encodeURIComponent(said)}`)).body;
+    expect(detail.item).toMatchObject({ kind: "entry", text: "Water the trays on Sunday.", pool: "general" });
+    expect(detail.cameFrom).toEqual([`t:${said.slice(2, said.lastIndexOf("#"))}`]);
+    expect(detail.links[detail.cameFrom[0]!]).toMatchObject({ kind: "thread", title: "Trays" });
+    expect(detail.revisions).toEqual([]);
+    expect((await s.ada.get(`${s.u}/memory/general/${encodeURIComponent(quiet)}`)).status).toBe(404);
+    expect((await s.ada.patch(`${s.u}/memory/general/${encodeURIComponent(said)}`, { text: "changed" })).status).toBe(405);
+  });
+
   it("returns the current and earlier revision in details, searches and pages all versions, and restores an older result", async () => {
     const s = await setup();
     const view = s.d.services!.memory.openThreadView(s.rt.ada.id, "private");

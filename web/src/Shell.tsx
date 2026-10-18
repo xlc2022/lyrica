@@ -20,7 +20,7 @@ import { Flyout, useCanHover, useFlyout } from "./flyout.tsx";
 import { ProjectPage, ThreadsPage, stateWord } from "./Project.tsx";
 import { SearchGroups, searchable, useMessageSearch } from "./Search.tsx";
 import { ask, JUMP_EVENT, JUMP_KEY, keep, type JumpRequest } from "./links.ts";
-import { ErrorText, hidden, menuArrows, shortTime, Toast, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
+import { ErrorText, hidden, InlineRename, menuArrows, shortTime, Toast, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
 
 export interface ShellContext {
   user: UserCard;
@@ -49,6 +49,9 @@ export interface ShellContext {
   refreshState: () => void;
   /** Says what an action did in a toast at the foot of the screen ("Pinned to the top"), gone after a few seconds. */
   toast: (text: string) => void;
+  /** Per thread (`<pool>/<id>`), a count bumped when its open stream finished a tool call or a turn: the Files panel beside it reloads its folders. */
+  activity: Record<string, number>;
+  noteActivity: (key: string) => void;
 }
 
 export function Shell({ user, users, route, build, onAuthChange, refreshState }: {
@@ -64,6 +67,8 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   // Numbered, so the same words said again start their few seconds again.
   const [toast, setToast] = useState<{ text: string; n: number }>();
   const closeToast = useCallback(() => setToast(undefined), []);
+  const [activity, setActivity] = useState<Record<string, number>>({});
+  const noteActivity = useCallback((key: string) => setActivity((a) => ({ ...a, [key]: (a[key] ?? 0) + 1 })), []);
   const wide = useWide();
   // Below the split width the panel's address is the page itself (docs/ux.md §6).
   const shown: Route = route.page === "thread" && route.panel && !wide ? panelRoute(route.userId, route.panel) : route;
@@ -91,7 +96,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   const ctx: ShellContext = {
     user: me.data.user, me: me.data, setMe: me.set, build, refreshThreads: threads.reload,
     groups: groups.data ?? [], refreshGroups: groups.reload, waiting: notes.waiting, refreshNotifications: notes.reload, sleep, cleanup, models, threads: threads.data ?? [], openSide: () => setSideOpen(true),
-    refreshState, toast: (text) => setToast((t) => ({ text, n: (t?.n ?? 0) + 1 })),
+    refreshState, toast: (text) => setToast((t) => ({ text, n: (t?.n ?? 0) + 1 })), activity, noteActivity,
   };
 
   const panel = wide && route.page === "thread" ? route.panel : undefined;
@@ -264,8 +269,16 @@ function PanelColumn({ route, panel, trail, threads, children }: { route: Route 
   const crumbs = trail.crumbs.map((p, i) => ({ label: label(p, i), href: href(panelRoute(route.userId, p)) }));
   const ctx: PanelContext = { crumbs, expand: href(panelRoute(route.userId, panel)), close };
   const current = href(panelRoute("", panel));
-  // Focus lands on the page's heading each time the panel shows something else.
-  useEffect(() => { const h = ref.current?.querySelector("h1"); if (h) { h.tabIndex = -1; h.focus(); } }, [current]);
+  // Focus lands on the page's heading each time the panel shows something else, unless the user is typing in a field
+  // outside the panel (renaming a sidebar row that opened it, say): a field being edited keeps its focus.
+  useEffect(() => {
+    const h = ref.current?.querySelector("h1");
+    if (!h) return;
+    h.tabIndex = -1;
+    const a = document.activeElement;
+    if (a && !ref.current!.contains(a) && a.matches("input, textarea, [contenteditable]")) return;
+    h.focus();
+  }, [current]);
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key !== "Escape" || e.defaultPrevented) return;
     if ((e.target as Element).closest("dialog, [role='menu'], .drawer, .picker, [aria-expanded='true']")) return;
@@ -410,6 +423,8 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
   const wide = useWide();
   const root = wide && route.page === "thread" ? route : undefined;
   const openBeside = root ? (t: ThreadSummary) => showInPanel(root, trail, { page: "thread", pool: t.pool, threadId: t.id }) : undefined;
+  // A double-click on a row's title renames it in place (docs/ux.md §6), as the menu's Rename… does.
+  const rename = (t: ThreadSummary, title: string) => run(async () => { await patch(threadPath(user.id, t.pool, t.id), { title }); ctx.refreshThreads(); });
   const setDisplay = (change: DisplayChange) => run(async () => {
     ctx.setMe(await patch<Me>(u(user.id, "me", "display"), change));
     ctx.refreshThreads();
@@ -516,7 +531,7 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
           <li key={s.label} className="group-rows">
             {(shown.length > 1 || sort === "groups" || s.label === "Pinned") && <span className="eyebrow">{s.label}{s.count !== undefined && <span className="num">{s.count}</span>}</span>}
             <ul className="threads-in">
-              {s.threads.map((t) => <ThreadRow key={`${t.pool}/${t.id}`} t={t} userId={user.id} current={current} menu={menu.handlers} openBeside={openBeside} />)}
+              {s.threads.map((t) => <ThreadRow key={`${t.pool}/${t.id}`} t={t} userId={user.id} current={current} menu={menu.handlers} openBeside={openBeside} onRename={rename} />)}
             </ul>
           </li>
         ))}
@@ -687,10 +702,11 @@ function NewRow({ shown, onShow, icon, label, onCreate }: { shown: boolean; onSh
 
 export type MenuHandlers = ReturnType<ReturnType<typeof useThreadMenu>["handlers"]>;
 
-function ThreadRow({ t, userId, current, menu, openBeside }: {
+function ThreadRow({ t, userId, current, menu, openBeside, onRename }: {
   t: ThreadSummary; userId: string; current: string; menu: (t: ThreadSummary) => MenuHandlers;
   /** Open a child row in the panel beside the open thread; absent below 1180 px or with no thread open. */
   openBeside?: (t: ThreadSummary) => void;
+  onRename?: (t: ThreadSummary, title: string) => Promise<unknown>;
 }) {
   const key = `${t.pool}/${t.id}`;
   // A project's threads show by default, pinned ones first (pinned from their cards); resolved ones fold under one Resolved row.
@@ -705,17 +721,17 @@ function ThreadRow({ t, userId, current, menu, openBeside }: {
         {t.children.length > 0
           ? <button type="button" className="chev" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} ${t.project ? "the project's threads" : "child threads"}`} onClick={() => setOpen(!open)}><Icon name="right" /></button>
           : <span className="chev" />}
-        <ThreadLink t={t} userId={userId} on={current === key} menu={menu} />
+        <ThreadLink t={t} userId={userId} on={current === key} menu={menu} onRename={onRename} />
       </div>
       {open && (
         <ul className="children">
-          {active.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} menu={menu} child openBeside={openBeside} /></li>)}
+          {active.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} menu={menu} child openBeside={openBeside} besideOnClick={current === key} onRename={onRename} /></li>)}
           {resolved.length > 0 && (
             <li>
               <button type="button" className="resolved-row" aria-expanded={resolvedOpen} onClick={() => setResolvedOpen(!resolvedOpen)}>
                 <Icon name="right" className="chev-ic" />Resolved <span className="num">{resolved.length}</span>
               </button>
-              {resolvedOpen && <ul className="children">{resolved.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} menu={menu} child openBeside={openBeside} /></li>)}</ul>}
+              {resolvedOpen && <ul className="children">{resolved.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} menu={menu} child openBeside={openBeside} besideOnClick={current === key} onRename={onRename} /></li>)}</ul>}
             </li>
           )}
         </ul>
@@ -724,11 +740,16 @@ function ThreadRow({ t, userId, current, menu, openBeside }: {
   );
 }
 
-export function ThreadLink({ t, userId, on, menu, child, openBeside }: {
+export function ThreadLink({ t, userId, on, menu, child, openBeside, besideOnClick, onRename }: {
   t: ThreadSummary; userId: string; on: boolean; menu: (t: ThreadSummary) => MenuHandlers; child?: boolean;
   /** Open this row in the panel beside the open thread (Open beside); absent below 1180 px or with no thread open. */
   openBeside?: (t: ThreadSummary) => void;
+  /** The open thread is this row's parent: a plain click opens the row beside it too, replacing what the panel shows. */
+  besideOnClick?: boolean;
+  /** A double-click on the title renames the thread in place; absent where it can't be renamed. */
+  onRename?: (t: ThreadSummary, title: string) => Promise<unknown>;
 }) {
+  const [renaming, setRenaming] = useState(false);
   // A project's thread: its state as a word, then its unseen updates. Otherwise at most two badges,
   // most pressing first (ux.md §5): waiting on her, then new updates, then hidden.
   const inProject = t.state !== undefined;
@@ -747,14 +768,26 @@ export function ThreadLink({ t, userId, on, menu, child, openBeside }: {
     if (openBeside) openBeside(t); else go({ page: "thread", userId, pool: t.pool, threadId: t.id });
     return true;
   };
+  // With its parent open, a plain click opens a child beside it rather than leaving the parent (docs/ux.md §6).
+  const click = (e: React.MouseEvent) => {
+    if (shiftTo(e)) return;
+    handlers.onClick(e);
+    if (e.defaultPrevented || !besideOnClick || !openBeside || e.button !== 0 || e.metaKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault();
+    openBeside(t);
+  };
+  const title = t.title || (t.project ? "New project" : "New thread");
   return (
     <a className={`thread${t.unread ? " unread" : ""}${t.project ? " project" : ""}${child && inProject ? " dotted" : ""}`} href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined} {...handlers}
-      onClick={(e) => { if (!shiftTo(e)) handlers.onClick(e); }} onKeyDown={(e) => { if (e.key === "Enter") shiftTo(e); }}>
+      onClick={click} onKeyDown={(e) => { if (e.key === "Enter") shiftTo(e); }}
+      onDoubleClick={onRename && !renaming ? (e) => { e.preventDefault(); getSelection()?.removeAllRanges(); setRenaming(true); } : undefined}>
       {t.project ? <span className={`project-mark ${t.pool}`} data-waiting={waiting || undefined}><Icon name="project" />{waiting && <span className="sr-only">a thread waits on you</span>}</span>
         : (!child || inProject) && (t.pool === "private"
           ? <PoolLock />
           : <span className="pool-dot" aria-hidden="true" />)}
-      <span className="title">{t.title || (t.project ? "New project" : "New thread")}</span>
+      {renaming && onRename
+        ? <InlineRename className="title" value={t.title ?? ""} label="Title" onSave={(name) => onRename(t, name)} onDone={() => setRenaming(false)} />
+        : <span className="title">{title}</span>}
       <span className="when">
         {t.busy && !inProject && <span className="busy" title="Working" />}
         {badges}
