@@ -731,9 +731,11 @@ export class HostedThread {
   /**
    * Stop: aborts the running turn, denies waiting permission requests and
    * drops the person's queued messages (the views give them back). Marked
-   * messages no turn took are kept in the stored thread.
+   * messages no turn took are kept in the stored thread. Only the person's
+   * Stop and a parent's `threads stop` withdraw an open question; lock and
+   * pause keep it for the person to answer.
    */
-  async stop(withdrawQuestion = true): Promise<void> {
+  async stop(withdrawQuestion = false): Promise<void> {
     if (withdrawQuestion) {
       const view = this.o.memory.openThreadView(this.userId, this.pool);
       try { if (view.own.closeQuestion(this.threadId, "withdrawn")) this.o.threads?.questionsChanged?.(this.userId, this.pool, this.threadId); } finally { view.close(); }
@@ -1186,7 +1188,7 @@ export class HostedThread {
   /** Stops the turn and disposes the session. Streams are told to reset. */
   async close(): Promise<void> {
     this.closing = true;
-    await this.stop(false).catch(() => {});
+    await this.stop().catch(() => {});
     this.closed = true;
     this.unhold();
     this.stopIdle();

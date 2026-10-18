@@ -88,6 +88,9 @@ describe("question answers", () => {
     await expect(s.d.services!.host.get(s.rt.ada.id, "general", decodeURIComponent(s.path.split('/').at(-1)!)).send("[Answer to q:1]\n\nSmall")).rejects.toThrow("Answer to q:");
     await expect.poll(() => s.d.services!.host.busy(s.rt.ada.id, "general", decodeURIComponent(s.path.split('/').at(-1)!))).toBe(false);
     const third = await s.question();
+    // Lock and project pause stop the thread without withdrawing its question.
+    await s.d.services!.host.get(s.rt.ada.id, "general", decodeURIComponent(s.path.split('/').at(-1)!)).stop();
+    expect((await s.ada.get<ThreadSummary>(s.path)).body.question?.n).toBe(third);
     await s.ada.post(`${s.path}/stop`, {});
     expect((await s.ada.post(`${s.path}/questions/${third}/answer`, { option: 0 })).status).toBe(409);
     s.stream.close();

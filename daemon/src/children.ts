@@ -287,7 +287,7 @@ export class ChildThreads implements ThreadsHost {
     this.tasked.delete(`${userId}/${from.pool}/${id}`);
     const host = this.o.host();
     if (!host.busy(userId, from.pool, id)) return false;
-    await host.get(userId, from.pool, id).stop();
+    await host.get(userId, from.pool, id).stop(true);
     this.turn(userId, from.pool, id, false);
     return true;
   }

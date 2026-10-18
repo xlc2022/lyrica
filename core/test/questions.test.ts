@@ -40,6 +40,10 @@ describe("question cards", () => {
     expect(db.prepare("SELECT needs_you FROM child_threads").get()).toEqual({ needs_you: 0 });
     expect(view.own.closeQuestion(child.id, 0, second)).toBe(false);
     expect(view.own.readAsk(child.id, second)).toEqual(ask);
+    // A rewind that closes no question leaves a status message's needsYou alone.
+    db.prepare("UPDATE child_threads SET needs_you = 1").run();
+    view.own.truncateThread(child.id, second, "lyrica");
+    expect(db.prepare("SELECT needs_you FROM child_threads").get()).toEqual({ needs_you: 1 });
     db.close(); view.close();
   });
 });

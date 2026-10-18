@@ -124,7 +124,7 @@ export const PROJECT_CHAT_GUIDELINES = [
 export const PROJECT_THREAD_GUIDELINES = [
   "Post an update to the project chat (threads message to: \"parent\") at milestones, not after every step. Always end with a message to the parent: the result, or what blocked you.",
   "Use question: true in a message to the parent when you need an answer; plain progress updates do not wake it.",
-  "Use threads ask when the person must decide something; needsYou remains available for status updates.",
+  "Use threads ask when the person must decide something.",
   "Save lasting decisions about the project with remember.",
   "When the work is delivered, resolve this thread (threads resolve).",
   "You may message another thread of this project (threads message with its id) when its work affects yours, and read its latest messages (threads read).",

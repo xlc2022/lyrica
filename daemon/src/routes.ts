@@ -1377,7 +1377,7 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("POST", `${t}/stop`, async (r) => {
       const user = d.userFor(r);
       const thread = owner(d, user, (o) => threadOf(o, r));
-      await s().host.get(user.id, poolOf(r), thread.id).stop();
+      await s().host.get(user.id, poolOf(r), thread.id).stop(true);
       // In a subagent's thread, Stop also stops the subagent's work.
       if (thread.subagent) s().delegation.stopThread(user.id, poolOf(r), thread.id);
       return { ok: true };
