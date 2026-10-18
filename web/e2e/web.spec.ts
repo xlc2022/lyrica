@@ -2202,7 +2202,7 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   // The panel is narrow, so the file took the tree's place.
   await panel.locator(".fback").click();
   await panel.getByLabel("Search files").fill(tray.slice(0, 6));
-  await expect(panel.getByRole("button", { name: `uploads/${tray}` })).toBeVisible();
+  await expect(panel.getByRole("button", { name: `uploads/${tray}`, exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: /plan\.md/ })).toHaveCount(0);
   await panel.getByLabel("Search files").fill("");
 
@@ -2292,7 +2292,7 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   }
 
   await panel.getByRole("tab", { name: "Images" }).click();
-  await expect(panel.locator(".igrid").getByRole("button", { name: tray })).toBeVisible();
+  await expect(panel.locator(".igrid").getByRole("button", { name: tray, exact: true })).toBeVisible();
   await panel.getByRole("group", { name: "Show" }).getByRole("button", { name: "Made by Lyrica" }).click();
   await expect(panel.getByText("No images yet")).toBeVisible();
   await noHorizontalScroll(page);
