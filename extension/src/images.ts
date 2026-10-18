@@ -3,6 +3,7 @@ import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-codi
 import { CloudModelForbidden, HostRefused, isRestricted, modelName, type CallContext, type ImageRequest, type Models, type Resolution,
   type ThreadImages, type WorkspaceSettings } from "@lyrica/core";
 import { Type, type Static } from "typebox";
+import { StringEnum } from "@earendil-works/pi-ai";
 import type { ApprovalRequest } from "./workspace.ts";
 
 export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality" }
@@ -24,9 +25,9 @@ const path = (description: string) => Type.Optional(Type.String({ description })
  * refuses such a tool, and smaller models' chat templates show it no fields.
  */
 export const imageParameters = Type.Object({
-  action: Type.Union([Type.Literal("create"), Type.Literal("edit"), Type.Literal("upscale")]),
+  action: StringEnum(["create", "edit", "upscale"] as const),
   prompt: Type.Optional(Type.String({ description: "For create: what to draw." })),
-  tier: Type.Optional(Type.Union([Type.Literal("fast"), Type.Literal("quality")], { description: "For create: fast or quality." })),
+  tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality." })),
   image: path("For edit and upscale: the image's path."),
   instruction: Type.Optional(Type.String({ description: "For edit: what to change." })),
   mask: path("For edit: a mask image's path."),

@@ -75,7 +75,7 @@ describe("a thread's checklist", () => {
     replies.push(steps([{ text: "Plan", state: "done" }]), { text: "Fine." });
     const ends = toolEnds(await say("carry on"));
     expect(JSON.stringify(asked.at(-2)!.messages)).not.toContain("keep this thread's checklist");
-    expect(ends[0]).toMatchObject({ isError: true, result: expect.stringContaining("checklists are off") });
+    expect(ends[0]).toMatchObject({ isError: true, result: expect.stringContaining("action: must be equal to one of the allowed values") });
     expect((await ada.patch(`/api/u/${rt.ada.id}/me/display`, { checklists: "no" })).status).toBe(400);
   });
 

@@ -755,7 +755,12 @@ One model-facing tool: `delegate({ action?, ... })`.
   tells the parent's card; `ThreadSummary.steps` and `ChildInfo.steps`
   carry it. It is offered only while `ThreadsHost.checklistsOn` is true
   (`Display.checklists`, default on; changing it reloads the user's
-  sessions). Its results
+  sessions). Each thread is sent only the actions it can use and their
+  fields (`paramsFor`): `start` and `stop` where it can start children,
+  `suggest`, `fold`, `draft` and `reopen` only in a project chat, `list`,
+  `read` and `resolve` in a project's thread, and only `message` (with `to`
+  and `question`) in another child; `needsYou` only in a project's thread.
+  Any other action fails Pi's validation. Its results
   and guidance mention threads as `[t:<id>]`. A child thread is
   `createThread({ parent, child: true })`, hosted like any thread, with the
   parent's pool, models (`models.inheritContext`) and workspace
@@ -917,6 +922,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   naming the limit, stopping the request; none of its calls run. Tool calls
   show only once a reply ends, so without it a model repeating one call
   streams hundreds unseen.
+- **Tool definitions are resent with every reply** (principle 8): a
+  model-facing choice of strings is Pi's `StringEnum` (`"enum"`), not a union
+  of literals, which is shorter and accepted by every provider; a tool's
+  description says what each action is for once, and its parameters say how
+  to call it.
 - **Tools** (budget: 30; see principle 8):
   - `read`, `write`, `edit` and `bash` (Workspace thread; see
     [workspace.md](workspace.md));

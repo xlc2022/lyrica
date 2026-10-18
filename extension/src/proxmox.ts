@@ -1,6 +1,7 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { PROXMOX_ACTIONS, type ProxmoxAction } from "@lyrica/core";
 import { Type } from "typebox";
+import { StringEnum } from "@earendil-works/pi-ai";
 
 /** The proxmox tool: a schema and one call into core/workspace. Asking is the workspace extension's, as for bash on a machine; `check` throws if the call isn't what was approved. */
 export function proxmoxTool(run: (machine: string, action: ProxmoxAction, vm?: string) => Promise<string>, check: (id: string, input: Record<string, unknown>) => void): ToolDefinition {
@@ -13,7 +14,7 @@ export function proxmoxTool(run: (machine: string, action: ProxmoxAction, vm?: s
     promptGuidelines: ["Prefer proxmox shutdown to stop: stop cuts the power, like pulling the plug."],
     parameters: Type.Object({
       machine: Type.String({ description: "One of your Proxmox machines, by name." }),
-      action: Type.Union(PROXMOX_ACTIONS.map((a) => Type.Literal(a))),
+      action: StringEnum(PROXMOX_ACTIONS),
       vm: Type.Optional(Type.String({ description: "The VM or container, by number or name. Every action but list needs one." })),
     }),
     async execute(id, p: { machine: string; action: ProxmoxAction; vm?: string }) {

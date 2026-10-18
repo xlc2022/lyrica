@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { LIVE_STATUSES, type Role, type SubagentRecord } from "@lyrica/core";
 import { Type, type Static } from "typebox";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { setToolsOff } from "../gate.ts";
 import { toolGuidance, WORK_GUIDELINES, type ThreadContext } from "../index.ts";
 import { syncEntries } from "../record.ts";
@@ -10,7 +11,7 @@ import { DELEGATE_MESSAGE, outcome, Stopped, type Delegation, type Deliver, type
 
 const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as const, text: t }], details });
 
-const Tier = Type.Union([Type.Literal("cheap"), Type.Literal("strong")]);
+const Tier = StringEnum(["cheap", "strong"] as const);
 // She picks a tier, never a model. Only a saved workflow, which a user writes, may name one.
 const Step = Type.Object({
   task: Type.String({ description: "What to do, with everything the subagent needs: it sees none of this conversation." }),
@@ -20,7 +21,7 @@ const Step = Type.Object({
 });
 
 const Params = Type.Object({
-  action: Type.Optional(Type.Union([Type.Literal("run"), Type.Literal("status"), Type.Literal("wait"), Type.Literal("stop"), Type.Literal("message")], { description: "run (the default) starts work; the others act on a run ID." })),
+  action: Type.Optional(StringEnum(["run", "status", "wait", "stop", "message"] as const, { description: "run (the default) starts work; the others act on a run ID." })),
   ...Step.properties,
   task: Type.Optional(Step.properties.task),
   tasks: Type.Optional(Type.Array(Step, { minItems: 1, description: "Several tasks at once; the results come back together." })),

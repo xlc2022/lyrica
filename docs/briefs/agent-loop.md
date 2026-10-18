@@ -1,7 +1,7 @@
 # Brief: Agent loop reliability
 
-**Status:** in PR review. **Branch:** `claude/agent-loop-reliability-661bmo`
-(stacked on #306). **Model:** Opus.
+**Status:** merged as #309; the tool-definition follow-up below is in PR
+review. **Branch:** `claude/agent-loop-reliability-661bmo`. **Model:** Opus.
 
 **Read first:** AGENTS.md, docs/delegation.md ("Child threads"),
 docs/contracts.md (threads, turn tool limits, the `image` tool), docs/models.md.
@@ -57,16 +57,36 @@ The user tried Lyrica working on her own code and in plain chats:
 Principles 1 (long work doesn't swallow a conversation), 2 (structural
 guards, not prompts, for the runaway and the schema) and 8 (tokens).
 
+## Follow-up: smaller tool definitions
+
+The user asked for the trim after #309. Measured as each tool's
+`{ name, description, parameters }` JSON, the `threads` tool was the same
+5,000-odd characters in every thread, though an ordinary child can use only
+`message` and its own wake-ups, routines, checklist and compacting.
+
+- `threads` sends each thread only its actions and their fields
+  (`paramsFor`), and its description says what each action is for once:
+  5,152 to 3,305 characters in a plain thread, 5,043 to 2,593 in a child,
+  5,373 to 4,035 in a project chat. A test holds each under a ceiling.
+- Every model-facing string choice is `StringEnum` (`"enum"`), not a union
+  of `const`s: about 23 characters saved per choice, about 600 across
+  `delegate`, `image`, `models`, `download_model`, `model_files` and
+  `proxmox`.
+- A plain thread's tool definitions drop by about 2,300 characters (of about
+  17,500). The guidance in her prompt is unchanged.
+
+Principle 8.
+
 ## Out of scope
 
 Showing tool calls while a reply streams (a UI change for UI review),
-trimming the `threads` and `delegate` schemas, inline rename (Side panels
+trimming the `delegate` schema further, inline rename (Side panels
 and files), image recipes and the cloud image 400 (Image settings and
 recipes, #305).
 
 ## Handoff
 
-- **Done:** all of Change, with tests and docs.
-- **Next:** PR review; merge after #306.
-- **Open:** whether to trim the largest tool schemas; whether the views
-  should show tool calls as they stream.
+- **Done:** all of Change (#309) and the tool-definition follow-up, with
+  tests and docs.
+- **Next:** PR review of the follow-up.
+- **Open:** whether the views should show tool calls as they stream.

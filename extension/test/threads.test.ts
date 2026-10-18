@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_THREADS_LIMITS, ROUTINE_GUIDELINE } from "@lyrica/core";
 import { createThreadsExtension, type ThreadsHost } from "../src/threads.ts";
+import { ContextMeter } from "../src/context.ts";
 import { withMemory } from "./helpers.ts";
 
 async function setup(child = false) {
@@ -88,5 +89,46 @@ describe("threads routine", () => {
     await s.call({ routineAction: "add", schedule: { kind: "daily", time: "09:00" }, note: "Own note.", id: other.threadId });
     expect(s.view.own.routines(s.context.threadId)).toHaveLength(1);
     expect(other.view.own.routines(other.threadId)).toHaveLength(1);
+  });
+});
+
+describe("threads definition", () => {
+  // Principle 8: the definition is resent with every reply, so each thread gets only the actions it can use.
+  it("sends each kind of thread only its actions and their fields, within a size ceiling", async () => {
+    const s = await withMemory();
+    const t = s.thread();
+    const own = t.view.own;
+    const project = own.createThread({ interface: "web", project: true, title: "Homelab" });
+    const kinds = {
+      plain: t.threadId,
+      child: own.createThread({ interface: "cli", parent: t.threadId, child: true }).id,
+      projectChat: project.id,
+      projectThread: own.createThread({ interface: "web", parent: project.id, child: true, title: "DNS" }).id,
+    };
+    const host: ThreadsHost = {
+      limits: DEFAULT_THREADS_LIMITS, start: async () => { throw new Error("unused"); }, message: async () => "started" as const, list: () => [],
+      later: () => ({ dueAt: "" }), cancelLater: () => 0, stop: async () => true, resolve: () => {}, draft: () => {}, stepsChanged: () => {}, checklistsOn: () => true,
+    };
+    const defs = Object.fromEntries(Object.entries(kinds).map(([kind, threadId]) => {
+      let tool!: Parameters<ExtensionAPI["registerTool"]>[0];
+      createThreadsExtension({ ...t.context, threadId }, host, new ContextMeter())({ on: () => {}, registerTool: (v: typeof tool) => { tool = v; } } as unknown as ExtensionAPI);
+      const params = tool.parameters as unknown as { properties: Record<string, { enum?: string[] }> };
+      return [kind, { actions: params.properties.action!.enum, fields: Object.keys(params.properties), size: JSON.stringify({ name: tool.name, description: tool.description, parameters: tool.parameters }).length }];
+    }));
+    const always = ["later", "routine", "steps", "compact"];
+    expect(defs.plain!.actions).toEqual(["start", "message", "list", "read", "stop", ...always]);
+    expect(defs.child!.actions).toEqual(["message", ...always]);
+    expect(defs.projectChat!.actions).toEqual(["start", "message", "list", "read", "stop", "suggest", "fold", "draft", "resolve", "reopen", ...always]);
+    expect(defs.projectThread!.actions).toEqual(["message", "list", "read", "resolve", ...always]);
+    expect(defs.plain!.fields).not.toContain("to");
+    expect(defs.child!.fields).toEqual(expect.arrayContaining(["to", "question", "text"]));
+    expect(defs.child!.fields).not.toContain("id");
+    expect(defs.projectThread!.fields).toEqual(expect.arrayContaining(["needsYou", "id"]));
+    for (const field of ["task", "ids", "goal"]) expect(defs.projectThread!.fields).not.toContain(field);
+    // Ceilings a little above today's sizes: growing past one is a choice, made here.
+    expect(defs.plain!.size).toBeLessThan(3600);
+    expect(defs.child!.size).toBeLessThan(2900);
+    expect(defs.projectChat!.size).toBeLessThan(4300);
+    expect(defs.projectThread!.size).toBeLessThan(3400);
   });
 });
