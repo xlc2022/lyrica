@@ -1,5 +1,7 @@
 # Brief: Project settings: Files and images
 
+**Status:** Merged as #317 (6901774). Handoff notes below are history.
+
 **Thread:** Project files and images. **Branch:**
 `claude/project-files-images-q3gsot`. **Model:** Opus.
 
@@ -60,4 +62,4 @@ and mixes the folder with the chat's other grants. The owner asked
 
 ## Handoff notes
 
-- 2026-10-18: built as in scope; PR open for review.
+- 2026-10-18: built as in scope; merged as #317.

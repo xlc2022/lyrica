@@ -1,7 +1,7 @@
 # Brief: truthful continuation
 
 **Issue:** #302. **Branch:** `lyrica/truthful-continuation`.
-**Status:** approved implementation; review and CI before merge.
+**Status:** Merged as #304 (5b1acbe).
 
 ## Goal and principles
 
