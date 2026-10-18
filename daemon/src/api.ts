@@ -2036,7 +2036,7 @@ export interface ClaudeCodeStatus { token: boolean; installed: boolean }
 export interface ClaudeCodeTokenInput { token: string }
 
 /**
- * Settings → Codex, which makes ChatGPT Images: whether `codex` is installed,
+ * Settings → Claude Code and Codex: Codex, which makes ChatGPT Images: whether `codex` is installed,
  * whether the user's Codex is signed in, and a sign-in under way (Codex's own
  * device sign-in: open `url`, enter `code`). GET and DELETE (sign out)
  * /api/u/:userId/codex; POST …/codex/sign-in starts one.

@@ -156,7 +156,7 @@ test("unlock, log in, start a thread, and see a streamed reply that survives a r
   await noHorizontalScroll(page);
 });
 
-test("Settings → Codex shows Codex's own sign-in and then Signed in", async ({ page, baseURL }) => {
+test("Settings → Claude Code and Codex shows Codex's own sign-in and then Signed in", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const base = `/api/u/${userId}/codex`;
   // The real route needs the mounted home (FUSE); fake Codex's state here.
@@ -170,6 +170,9 @@ test("Settings → Codex shows Codex's own sign-in and then Signed in", async ({
     await route.fulfill({ json: state });
   });
   await page.goto(`/#/u/${userId}/settings/codex`);
+  // settings/codex opens the section Codex shares with Claude Code.
+  await expect(page.getByRole("link", { name: "Claude Code and Codex" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("region", { name: "Claude Code" })).toBeVisible();
   const section = page.getByRole("region", { name: "Codex" });
   await expect(section.getByText("What you ask it for goes to OpenAI.")).toBeVisible();
   await section.getByRole("button", { name: "Sign in", exact: true }).click();

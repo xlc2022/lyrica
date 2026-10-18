@@ -718,7 +718,7 @@ it adds no tool.
   whether it is there.
 - **Signing in:** the user runs `claude setup-token` on their own
   computer, Anthropic's own sign-in, and pastes the token it prints into
-  Settings → **Claude Code**. It is kept in their `user.db` (`settings`,
+  Settings → **Claude Code and Codex**. It is kept in their `user.db` (`settings`,
   `claude_code.token`), never shown back, with **Remove**.
 - **Per thread:** a **Claude Code** switch in the thread drawer, off by
   default (`thread_workspaces.claude_code`, user step 4). Children and

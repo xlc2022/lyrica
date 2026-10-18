@@ -33,7 +33,8 @@ export const PRESETS: Record<string, Pronouns> = {
   "they/them": { subj: "they", obj: "them", poss: "their", possPro: "theirs", refl: "themself" },
 };
 /** `rest` is what follows the section's key in the hash (settings/machines/new → "new"), for a section with pages of its own. */
-type SectionDef = { key: string; label: string; body: (ctx: ShellContext, rest: string) => React.ReactNode };
+/** `aliases`: older keys that open the same section. */
+type SectionDef = { key: string; label: string; aliases?: string[]; body: (ctx: ShellContext, rest: string) => React.ReactNode };
 
 const SETTINGS: SectionDef[] = [
   { key: "profile", label: "Profile", body: (ctx) => <ProfileSection ctx={ctx} /> },
@@ -48,8 +49,7 @@ const SETTINGS: SectionDef[] = [
   { key: "machines", label: "Machines", body: (ctx, rest) => <MachinesSection ctx={ctx} rest={rest} /> },
   { key: "git", label: "Git accounts", body: (ctx) => <GitAccountsSection ctx={ctx} /> },
   { key: "mcp", label: "MCP servers", body: (ctx) => <McpServersSection ctx={ctx} /> },
-  { key: "claude-code", label: "Claude Code", body: (ctx) => <ClaudeCodeSection ctx={ctx} /> },
-  { key: "codex", label: "Codex", body: (ctx) => <CodexSection ctx={ctx} /> },
+  { key: "claude-code", label: "Claude Code and Codex", aliases: ["codex"], body: (ctx) => <><ClaudeCodeSection ctx={ctx} /><CodexSection ctx={ctx} /></> },
   { key: "routines", label: "Routines", body: (ctx) => <RoutinesSection ctx={ctx} /> },
   { key: "portraits", label: "Portrait photos", body: (ctx) => <PortraitPhotosSection key={ctx.user.id} userId={ctx.user.id} /> },
 ];
@@ -81,7 +81,7 @@ export function AdminPage({ ctx, section }: { ctx: ShellContext; section?: strin
 
 function Sections({ ctx, page, title, sections, current }: { ctx: ShellContext; page: "settings" | "admin"; title: string; sections: SectionDef[]; current?: string }) {
   const [key, ...rest] = (current ?? "").split("/");
-  const cur = sections.find((s) => s.key === key) ?? sections[0]!;
+  const cur = sections.find((s) => s.key === key || s.aliases?.includes(key!)) ?? sections[0]!;
   return (
     <main className="main">
       <PageHead ctx={ctx} title={title} />

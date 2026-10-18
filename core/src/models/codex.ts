@@ -23,8 +23,9 @@ export interface CodexBox {
 
 /**
  * Codex's own tools an image call never needs, turned off whatever its
- * defaults (`codex features list`; read it again when the pinned version
- * moves). The sandbox is the fence; this only keeps Codex to the image tool.
+ * defaults. Only the ones the installed Codex lists are passed, since
+ * versions differ (nixpkgs' isn't pinned) and a missing one doesn't exist
+ * there. The sandbox is the fence; this only keeps Codex to the image tool.
  */
 export const CODEX_DISABLED = ["shell_tool", "unified_exec", "view_image", "browser_use", "computer_use", "in_app_browser", "apps", "plugins"];
 
@@ -51,6 +52,22 @@ async function run(box: CodexBox, args: string[], input: string, signal?: AbortS
     child.stdin.on("error", () => {});
     child.stdin.end(input);
   });
+}
+
+/** The features this Codex knows (`codex features list`), once per home; none when it can't say, which refuses the call. */
+const featureLists = new Map<string, Promise<Set<string>>>();
+function features(box: CodexBox): Promise<Set<string>> {
+  let f = featureLists.get(box.home);
+  if (!f) {
+    f = run(box, ["features", "list"], "", undefined, 30_000).then(({ code, out }) => {
+      const names = new Set(out.split("\n").map((l) => /^([a-z0-9_]+)\s/.exec(l)?.[1]).filter((n): n is string => !!n));
+      if (code !== 0 || !names.has("image_generation")) throw new HostRefused("unavailable", "Codex couldn't list its tools.");
+      return names;
+    });
+    f.catch(() => featureLists.delete(box.home));
+    featureLists.set(box.home, f);
+  }
+  return f;
 }
 
 /** Whether Codex has a sign-in in this home. */
@@ -118,7 +135,7 @@ function savedPaths(out: string): string[] {
 
 /** A fixed line for a failed run: Codex's own output can contain the prompt. */
 function failure(out: string): HostRefused {
-  if (/not logged in|log ?in again|sign in again|401|unauthori[sz]ed|refresh token/i.test(out)) return new HostRefused("invalid", "Codex is signed out: sign in under Settings → Codex.");
+  if (/not logged in|log ?in again|sign in again|401|unauthori[sz]ed|refresh token/i.test(out)) return new HostRefused("invalid", "Codex is signed out: sign in under Settings → Claude Code and Codex.");
   if (/usage limit|rate limit|429/i.test(out)) return new HostRefused("unavailable", "Codex reached its usage limit.");
   if (/content[_ ]policy|moderation|safety system|refus/i.test(out)) return new HostRefused("image_refusal", "Image generation was refused (image_refusal).");
   return new HostRefused("unavailable", "Codex couldn't make the image.");
@@ -144,7 +161,9 @@ export async function codexImage(box: CodexBox, r: ImageRequest, signal?: AbortS
   if (r.action === "upscale" || (r.action === "edit" && r.mask)) throw new HostRefused("unsupported", "Codex can't do this request.");
   if (!box.installed) throw new HostRefused("unavailable", "Codex isn't installed on this server.");
   return queued(box.home, async () => {
-    if (!(await codexSignedIn(box))) throw new HostRefused("invalid", "Codex is signed out: sign in under Settings → Codex.");
+    if (!(await codexSignedIn(box))) throw new HostRefused("invalid", "Codex is signed out: sign in under Settings → Claude Code and Codex.");
+    const known = await features(box);
+    const disabled = CODEX_DISABLED.filter((f) => known.has(f));
     const images: GeneratedImage[] = [];
     for (let n = 0; n < (r.count ?? 1); n++) {
       signal?.throwIfAborted();
@@ -161,7 +180,7 @@ export async function codexImage(box: CodexBox, r: ImageRequest, signal?: AbortS
         // Codex's own sandbox can't start inside Lyrica's, which is the fence.
         const args = ["exec", "--json", "--color", "never", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
           "--sandbox", "danger-full-access", "-c", 'approval_policy="never"', "--enable", "image_generation",
-          ...CODEX_DISABLED.flatMap((f) => ["--disable", f]), "--cd", inner,
+          ...disabled.flatMap((f) => ["--disable", f]), "--cd", inner,
           ...inputs.flatMap((f) => ["--image", f]), "-"];
         const { code, out } = await run(box, args, instructions(r, r.action === "edit" ? inputs.length - 1 : inputs.length), signal, undefined, inner);
         signal?.throwIfAborted();

@@ -1,4 +1,4 @@
-// Settings → Codex (docs/ux.md §6): the user's own Codex, which makes ChatGPT Images. Codex's device sign-in, shown as its link and code.
+// Settings → Claude Code and Codex, its second card (docs/ux.md §6): the user's own Codex, which makes ChatGPT Images. Codex's device sign-in, shown as its link and code.
 import { useEffect } from "react";
 import { del, get, post, u, type CodexStatus } from "./api.ts";
 import type { ShellContext } from "./Shell.tsx";
@@ -38,7 +38,7 @@ export function CodexSection({ ctx }: { ctx: ShellContext }) {
         </>
       ) : s?.installed ? (
         <div className="row">
-          <button type="button" className="primary" disabled={busy} onClick={() => void run(async () => { status.set(await post<CodexStatus>(u(ctx.user.id, "codex", "sign-in"), {})); })}>Sign in</button>
+          <button type="button" disabled={busy} onClick={() => void run(async () => { status.set(await post<CodexStatus>(u(ctx.user.id, "codex", "sign-in"), {})); })}>Sign in</button>
           <span className="muted">What you ask it for goes to OpenAI.</span>
         </div>
       ) : s && (

@@ -315,7 +315,7 @@ function RecipeRow({ L, row, groups, offeringOf, open, reveal, onToggle }: {
   );
 }
 
-const PLAN_NOTE = "Runs your own Codex (Settings → Codex), on your ChatGPT plan's limits. Masked edits go to the next model in the list.";
+const PLAN_NOTE = "Runs your own Codex (Settings → Claude Code and Codex), on your ChatGPT plan's limits. Masked edits go to the next model in the list.";
 
 /** An image model on a plain endpoint or a plan: no parts, so its switches. */
 function PlainRow({ ctx, ep, m, open, onToggle }: { ctx: MCtx; ep: Endpoint; m: OfferingInfo; open: boolean; onToggle: () => void }) {

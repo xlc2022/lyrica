@@ -441,8 +441,9 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   unmodified Codex (`codex.ts`, the owner's choice; docs/briefs/codex-images.md):
   one `codex exec` per image with `--json --ephemeral --ignore-user-config`,
   approvals off, `image_generation` on and every other Codex tool off
-  (`CODEX_DISABLED`: its shell, browser, computer use, apps and plugins;
-  checked against `codex features list` when the pinned version moves),
+  (`CODEX_DISABLED`: its shell, browser, computer use, apps and plugins,
+  each passed when the installed Codex's `codex features list` has it, since
+  nixpkgs' version isn't pinned; a Codex that can't list them is refused),
   the instructions and prompt on stdin (never argv), an edit's image and any
   references as `--image` files, and the PNG read from the event's
   `saved_path`. The isolation is structural, not the prompt: Codex runs in
@@ -457,10 +458,10 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   user's calls run one at a time, since they share one sign-in. Codex
   picks the image model. Size becomes square, portrait or landscape and the
   tier a quality word in the instructions. A failed run is a fixed line:
-  signed out (`invalid`, naming Settings → Codex), its usage limit
+  signed out (`invalid`, naming Settings → Claude Code and Codex), its usage limit
   (`unavailable`), a refusal (`image_refusal`), else `unavailable`. Codex's
   sign-in is its own device sign-in (`codexSignIn`, `codex login
-  --device-auth`), from Settings → **Codex** (`/api/u/:userId/codex`). The
+  --device-auth`), from the Codex card in Settings → **Claude Code and Codex** (`/api/u/:userId/codex`). The
   daemon installs the runner with `setCodexImages`. `codex` is among the
   sandbox's tools: nixpkgs' `codex` in `nix/sandbox-tools.nix` on NixOS
   (whatever version nixpkgs has), a pinned `@openai/codex` in `/usr/local`
