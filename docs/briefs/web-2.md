@@ -681,7 +681,7 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   building it: core read the host's `{ recipes }` and `{ parts }` answers
   as bare lists, so a real host's library failed; fixed apart, in core's
   `listIn`. The e2e answers for a made-up host's library in the browser
-  (`fakeImages`). Next: Starter recipes once lyricad passes them. Known
+  (`fakeImages`). Starter recipes came later (image-settings.md, #318). Known
   gap: **Delete** needs the main file to be Lyrica's, so a LoRA Lyrica
   downloaded into a recipe whose main file is in the shared folder can't
   be freed from here.

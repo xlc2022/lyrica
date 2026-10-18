@@ -510,8 +510,15 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Details, Ignore); it selects as Files does (`useSelection` and
   `useLongPress` in `src/ui.tsx`, which Files uses too), and the bar sends
   the action to each selected recipe in turn. **Download image model**
-  (`…/models/images/download`) shares the text page's host field, lookup,
-  token handling and link fields: a Hugging Face repository's files as
+  (`…/models/images/download`) starts on **Starter recipes**: the host's
+  starters (`GET …/starters`) as radios, each with its parts and the size
+  left to download or "every part is on this host", and "added" once the
+  host made a recipe from it. **Add model** makes it (`POST
+  …/starters/:id/install`), first asking in a dialog, "Download the missing
+  parts?", which names each missing file and its size, when anything is
+  missing; nothing downloads before Download there. It then opens Downloads,
+  or Image models when nothing was missing. The page shares the text page's
+  host field, lookup, token handling and link fields: a Hugging Face repository's files as
   checkboxes (`POST …/downloads` with `files`), a link, or **Scan now**,
   which asks the host to read its models folder (`POST …/manage` with
   `/host/v1/scan`) and shows what it proposed as To review's rows. Its

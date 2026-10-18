@@ -980,6 +980,29 @@ export class Models {
     return { recipes, parts: byRole };
   }
 
+  /** The starter recipes a host ships, each part marked `present` when it is already on the host (host/API.md). */
+  async starters(userId: string, hostId: string): Promise<unknown[]> {
+    return listIn<unknown>(await this.hostCall(this.needHost(userId, hostId), "GET", "/host/v1/starters"), "starters") ?? [];
+  }
+
+  /**
+   * Makes a starter recipe on a host: it downloads the parts not there yet,
+   * with the user's hub token when one is saved, and confirms the recipe,
+   * which becomes an offering. Again, it gives back the same recipe. A
+   * shared host needs an administrator.
+   */
+  async installStarter(actor: User, hostId: string, starterId: string): Promise<unknown> {
+    const ep = this.manageable(actor, hostId);
+    const all = listIn<{ id?: string; parts?: { source?: string; present?: boolean }[] }>(await this.hostCall(ep, "GET", "/host/v1/starters"), "starters") ?? [];
+    const starter = all.find((s) => s.id === starterId);
+    if (!starter) throw new Error(`${ep.name} has no starter ${starterId}`);
+    const hubs = new Set((starter.parts ?? []).filter((p) => !p.present).map((p) => p.source));
+    const hub = hubs.has("huggingface") ? "huggingface" : hubs.has("modelscope") ? "modelscope" : undefined;
+    const result = await this.hostCall(ep, "POST", `/host/v1/starters/${encodeURIComponent(starterId)}/install`, undefined, hub ? this.hubHeader(actor.id, hub) : undefined);
+    await this.discover(actor, hostId).catch(() => {});
+    return result;
+  }
+
   /**
    * Changes a host's image library: confirm or ignore a proposal, download
    * its missing parts, change it (swap a part within its role and slot, add

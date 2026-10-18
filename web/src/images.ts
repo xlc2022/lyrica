@@ -23,6 +23,8 @@ export interface HostRecipe {
   defaults: Record<string, unknown>;
   /** The recipe this one was copied from. */
   base: string | null;
+  /** The starter recipe it was made from. */
+  starter?: string | null;
 }
 
 /** One host's image library, as GET …/hosts/:id/images gives it (its parts flattened from by-role). */

@@ -128,6 +128,20 @@ describe("hub tokens and downloads", () => {
     expect(s.big.tokens).toEqual(["hf_sharedtoken9999", "hf_lisecrettoken5678"]);
   });
 
+  it("lists a host's starters and makes one, sending the hub token only when parts are missing", async () => {
+    const s = await setup();
+    const part = (path: string, present: boolean) => ({ role: "diffusion", source: "huggingface", repo: "Comfy-Org/z", path, sha256: "00", size: 10, present });
+    s.big.starters.push({ id: "z-image-turbo", name: "Z-Image Turbo", template: "z-image", parts: [part("z.safetensors", false), part("ae.safetensors", true)], loras: [], defaults: {} },
+      { id: "sdxl", name: "SDXL", template: "sdxl", parts: [part("sdxl.safetensors", true)], loras: [], defaults: {} });
+    expect((await s.models.starters(s.ada.id, s.bigEp.id)).map((x) => (x as { id: string }).id)).toEqual(["z-image-turbo", "sdxl"]);
+    s.models.setHubToken(s.ada, "huggingface", "hf_adatoken1234");
+    const made = await s.models.installStarter(s.ada, s.bigEp.id, "z-image-turbo") as { downloads: { path: string }[] };
+    expect(made.downloads.map((x) => x.path)).toEqual(["lyrica/huggingface/Comfy-Org/z/z.safetensors"]);
+    await s.models.installStarter(s.ada, s.bigEp.id, "sdxl");
+    expect(s.big.tokens).toEqual(["hf_adatoken1234", undefined]);
+    await expect(s.models.installStarter(s.ada, s.bigEp.id, "nope")).rejects.toThrow(/no starter nope/);
+  });
+
   it("deletes every shard of a split copy, and says what's left when one is in use", async () => {
     const s = await setup();
     const shard = (n: number) => `lyrica/huggingface/Qwen/Qwen3-32B-GGUF/Qwen3-32B-Q4_K_M-0000${n}-of-00003.gguf`;

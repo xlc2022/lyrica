@@ -45,6 +45,10 @@ set every image model. Principle 8: no new page and no new control kinds.
 8. **Thread settings** gains Images, Image edits and Image upscaling, under
    the text models, the same words as the Tasks table. Each works like the
    rows above it, and recipes show by name.
+9. **Starter recipes** (added by the owner, 2026-10-18): Download image
+   model starts on the host's starter recipes. Picking one and **Add model**
+   makes it; when parts are missing a dialog names them and their size, and
+   nothing downloads until the user confirms.
 
 Defaults picked: the Cloud group is last; masked edits on ChatGPT Images fall
 through to the next model in the list, as before; the plan's driver model is
@@ -59,7 +63,7 @@ loop thread); reorganizing download folders (the owner said not needed).
 
 ## Handoff
 
-Done: the brief.
-Next: build, then PR review and UI review; after merge, one ChatGPT plan
+Done: the brief; built in PR #318, starters included.
+Next: PR review and UI review; after merge, one ChatGPT plan
 generation and one edit on the owner's install (the owner said yes, 14:00Z
 2026-10-18).

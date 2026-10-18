@@ -3204,10 +3204,22 @@ async function fakeImages(page: Page) {
     return route.fulfill(json(body.do === "copy" ? { ...recipes[0], id: "00000000-0000-4000-8000-000000000003", name: body.name } : body.do === "delete" ? { deleted: [], kept: [] } : { models: 0, parts: 6, proposals: 1 }));
   });
   await page.route(/\/api\/u\/[^/]+\/offerings\/off-z\/delete-copy$/, (route) => route.fulfill(json({ usedIn: [] })));
+  // Starter recipes: Z-Image Turbo's parts are all here; FLUX.1 schnell's model isn't.
+  const sp = (path: string, size: number, present: boolean) => ({ role: "diffusion", source: "huggingface", repo: "Comfy-Org/x", path, sha256: "00", size: size * GB, present });
+  const starters = [
+    { id: "z-image-turbo", name: "Z-Image Turbo", template: "z-image", parts: [sp("split_files/z_image_turbo_bf16.safetensors", 12.3, true)], loras: [], defaults: {} },
+    { id: "flux-schnell", name: "FLUX.1 schnell", template: "flux", parts: [sp("flux1-schnell.safetensors", 11.9, false), { ...sp("ae.safetensors", 0.3, true), role: "vae" }], loras: [], defaults: {} },
+  ];
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/starters(\/[^/]+\/install)?$/, (route) => {
+    const path = new URL(route.request().url()).pathname.replace(/^.*\/ep-box\//, "");
+    if (route.request().method() === "GET") return route.fulfill(json({ starters }));
+    asked.push({ path, body: route.request().postDataJSON() });
+    return route.fulfill(json({ recipe: { ...recipes[0], id: "00000000-0000-4000-8000-000000000004", name: "FLUX.1 schnell" }, downloads: [] }));
+  });
   return { asked, zi, qi, offering: { id: "off-z", modelId: `recipe/${zi}`, label: `box/recipe/${zi}`, manual: false, status: "listed", recipe: "Z-Image Turbo", image: true } };
 }
 
-test("Image models: groups by architecture with Role and Where; a recipe opens to its parts with Change, Add part and Delete model…; Parts lists the files; To review selects and ignores; Download image model scans and downloads", async ({ page, baseURL }) => {
+test("Image models: groups by architecture with Role and Where; a recipe opens to its parts with Change, Add part and Delete model…; Parts lists the files; To review selects and ignores; Download image model makes a starter after asking, scans and downloads", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const images = await fakeImages(page);
   const started = await fakeHost(page, [], [images.offering]);
@@ -3334,6 +3346,27 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await page.getByRole("button", { name: "Download model" }).click();
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/images/download$`));
   await expect(page.getByRole("heading", { level: 1, name: "Download image model" })).toBeVisible();
+  // Starter recipes come first: what each needs, and a dialog before anything missing downloads.
+  const startersList = page.getByRole("radiogroup", { name: "Starter recipes" });
+  await expect(page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Starter recipes" })).toHaveAttribute("aria-pressed", "true");
+  await expect(startersList.getByRole("radio", { name: /Z-Image Turbo/ })).toHaveAccessibleName(/every part is on this host/);
+  await expect(startersList.getByRole("radio", { name: /FLUX\.1 schnell/ })).toHaveAccessibleName(/2 parts · 11\.9 GB to download/);
+  await page.getByRole("button", { name: "Add model" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Choose a starter recipe." })).toBeVisible();
+  await startersList.getByRole("radio", { name: /FLUX\.1 schnell/ }).check();
+  await noHorizontalScroll(page);
+  await page.getByRole("button", { name: "Add model" }).click();
+  const ask = page.getByRole("dialog", { name: "Download the missing parts?" });
+  await expect(ask).toContainText("FLUX.1 schnell needs this part, which isn't on box yet.");
+  await expect(ask).toContainText("flux1-schnell.safetensors");
+  await expect(ask).not.toContainText("ae.safetensors");
+  await ask.getByRole("button", { name: "Cancel" }).click();
+  expect(post("starters/flux-schnell/install")).toEqual([]);
+  await page.getByRole("button", { name: "Add model" }).click();
+  await ask.getByRole("button", { name: /^Download/ }).click();
+  await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/downloads$`));
+  expect(post("starters/flux-schnell/install")).toHaveLength(1);
+  await page.goto(`/#/u/${userId}/models/images/download`);
   await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Scan folder" }).click();
   await page.getByRole("button", { name: "Scan now" }).click();
   await expect(page.getByRole("list", { name: "Found" }).locator("li.rvrow")).toContainText("Qwen-Image");

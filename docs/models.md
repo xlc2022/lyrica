@@ -551,7 +551,11 @@ proposals and missing parts) and parts by role, as the host reports them.
 Confirm, ignore, download missing parts (with the hub token for the hub
 they come from), change (swap a part within its role
 and slot, LoRAs, defaults, rename, or `useFor`), copy or delete; the host keeps every part
-another recipe uses. Only confirmed recipes become offerings (`recipe/<id>`,
+another recipe uses. **Starter recipes** (`starters`, `installStarter`):
+the host's own, from `GET /host/v1/starters`, each part marked `present`;
+making one posts `…/starters/<id>/install` with the hub token when a part
+is missing, and the host downloads those and confirms the recipe. A shared
+host needs an administrator. Only confirmed recipes become offerings (`recipe/<id>`,
 with `image` or `edit`), so a proposal never resolves; a recipe deleted here
 leaves a tombstone. The tag is `fast`, `quality` or `both`, stored as an
 optional field in the host's `recipes.json`; absent reads as both. The daemon

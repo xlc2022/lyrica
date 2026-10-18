@@ -7,7 +7,7 @@ import { CloudImageControls } from "./CloudImageControls.tsx";
 // …/hosts/:id/images, and every change a RecipeAction (POST …/hosts/:id/recipes/:recipeId), which on a shared host is
 // for administrators. The pure parts are in src/images.ts.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { get, post, u, type DeleteCopy, type GroupInfo, type HubTokenInfo, type ModelsPage, type ModelUse, type OfferingInfo, type RecipeAction } from "./api.ts";
+import { get, post, u, type DeleteCopy, type GroupInfo, type HostStarter, type HubTokenInfo, type ModelsPage, type ModelUse, type OfferingInfo, type RecipeAction } from "./api.ts";
 import { fileChoices, size } from "./downloads.ts";
 import { GatedNote, HostField, LinkFields, linkProblem, managedHosts, RepoField, Size, startDownload, tokenFor, useLookup, wayBack } from "./Downloads.tsx";
 import { Icon } from "./icons.tsx";
@@ -754,18 +754,50 @@ export function ImageReview({ ctx }: { ctx: MCtx }) {
   );
 }
 
-/* ---- Download image model: files from Hugging Face, a link, or a scan of the host's models folder ---- */
+/* ---- Download image model: a starter recipe, files from Hugging Face, a link, or a scan of the host's models folder ---- */
 
-type ImageSource = "huggingface" | "url" | "scan";
-const SOURCES: [ImageSource, string][] = [["huggingface", "Hugging Face"], ["url", "Link"], ["scan", "Scan folder"]];
+type ImageSource = "starters" | "huggingface" | "url" | "scan";
+const SOURCES: [ImageSource, string][] = [["starters", "Starter recipes"], ["huggingface", "Hugging Face"], ["url", "Link"], ["scan", "Scan folder"]];
+
+/** A starter's parts not on the host yet, and their bytes. */
+const toFetch = (s: HostStarter) => { const parts = s.parts.filter((p) => !p.present); return { parts, bytes: parts.reduce((n, p) => n + (p.size ?? 0), 0) }; };
+
+/** Starter recipes: the host's own, each with its parts and what is left to download; one is picked. */
+function Starters({ list, added, picked, setPicked }: { list: HostStarter[]; added: Set<string>; picked?: string; setPicked: (id: string) => void }) {
+  if (!list.length) return <p className="muted">This host ships no starter recipes.</p>;
+  return (
+    <div className="choices" role="radiogroup" aria-label="Starter recipes">
+      {list.map((s) => {
+        const f = toFetch(s);
+        return (
+          <label key={s.id} className="choice">
+            <input type="radio" name="starter" checked={picked === s.id} onChange={() => setPicked(s.id)} />
+            <span className="choice-file">
+              <span className="choice-name">{s.name}{added.has(s.id) && <span className="pill">added</span>}</span>
+              <span className="cap">{plural(s.parts.length, "part", "parts")} · {f.parts.length ? <><Size text={size(f.bytes)} /> to download</> : "every part is on this host"}</span>
+            </span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
 
 export function DownloadImage({ ctx }: { ctx: MCtx }) {
   const userId = ctx.user.id;
   const hosts = managedHosts(ctx).filter((h) => h.status);
   const [hostId, setHostId] = useState<string>();
   const host = hosts.find((h) => h.ep.id === hostId) ?? hosts[0];
-  const [source, setSource] = useState<ImageSource>("huggingface");
+  const [source, setSource] = useState<ImageSource>("starters");
   const look = useLookup(userId, host?.ep.id, source === "huggingface" ? "huggingface" : "url");
+  const starterHost = host?.ep;
+  // The host's starters, and which it has made a recipe from already.
+  const starters = useLoad(() => (starterHost ? Promise.all([
+    get<{ starters: HostStarter[] }>(u(userId, "hosts", starterHost.id, "starters")).then((x) => x.starters),
+    readLibrary(userId, starterHost).then((l) => new Set(l.recipes.filter((r) => r.starter && r.state !== "ignored").map((r) => r.starter!))),
+  ] as const) : Promise.resolve(undefined)), [userId, starterHost?.id]);
+  const [starter, setStarter] = useState<string>();
+  const [confirming, setConfirming] = useState<HostStarter>();
   const tokens = useLoad(() => get<HubTokenInfo[]>(u(userId, "hub-tokens")), [userId]);
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
   const [token, setToken] = useState("");
@@ -779,14 +811,29 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
   const [back] = useState(() => wayBack(href({ page: "models", userId, tab: "images" })));
   const found = look.found;
   useEffect(() => { setPicked(new Set()); setProblem(""); }, [found, look.repo]);
-  useEffect(() => { setScanned(undefined); }, [host?.ep.id]);
+  useEffect(() => { setScanned(undefined); setStarter(undefined); }, [host?.ep.id]);
   const saved = tokenFor(tokens.data, "huggingface");
   const files = found?.files.filter((f) => f.allowed) ?? [];
   const refused = useMemo(() => (found ? fileChoices(found).refused : []), [found]);
   const paused = host?.status?.state === "paused" || host?.status?.state === "pausing";
 
+  /** Makes the starter's recipe on the host; its missing parts download, and the Downloads tab shows them. */
+  const install = (s: HostStarter) => void run(async () => {
+    setConfirming(undefined);
+    await post(u(userId, "hosts", host!.ep.id, "starters", s.id, "install"), {});
+    ctx.models.reload();
+    go({ page: "models", userId, tab: toFetch(s).parts.length ? "downloads" : "images" });
+  });
   const download = () => {
     if (!host) return;
+    if (source === "starters") {
+      const s = starters.data?.[0].find((x) => x.id === starter);
+      if (!s) { setProblem("Choose a starter recipe."); return; }
+      setProblem("");
+      // Parts not on the host yet download only once the user says so.
+      if (toFetch(s).parts.length) setConfirming(s); else install(s);
+      return;
+    }
     let body: Parameters<typeof startDownload>[2];
     if (source === "url") {
       const why = linkProblem(link, sha);
@@ -857,6 +904,10 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
               {refused.map((line) => <p key={line} className="meta">{line}</p>)}
             </>}
           </>}
+          {source === "starters" && <>
+            <ErrorText error={starters.error} />
+            {starters.data && <Starters list={starters.data[0]} added={starters.data[1]} picked={starter} setPicked={(id) => { setStarter(id); setProblem(""); }} />}
+          </>}
           {source === "url" && <LinkFields link={link} setLink={(t) => { setLink(t); setProblem(""); }} sha={sha} setSha={setSha} />}
           {source === "scan" && <>
             <div className="row"><button type="button" disabled={busy} onClick={() => void scan()}>Scan now</button></div>
@@ -871,11 +922,33 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
           </>}
           <ErrorText error={problem || (source === "huggingface" ? look.error : "") || error} />
           <div className="row">
-            {source !== "scan" && <button type="button" className="primary" disabled={busy || look.busy} onClick={download}>Download</button>}
+            {source !== "scan" && <button type="button" className="primary" disabled={busy || look.busy} onClick={download}>{source === "starters" ? "Add model" : "Download"}</button>}
             <a className="link" href={back}>{source === "scan" ? "Back" : "Cancel"}</a>
           </div>
         </div>
       )}
+      {confirming && <DownloadParts host={host!.ep.name} s={confirming} busy={busy} onConfirm={() => install(confirming)} onCancel={() => setConfirming(undefined)} />}
     </Frame>
+  );
+}
+
+/** Asks before a starter's missing parts download: which files, how big, and where. */
+function DownloadParts({ host, s, busy, onConfirm, onCancel }: { host: string; s: HostStarter; busy: boolean; onConfirm: () => void; onCancel: () => void }) {
+  const f = toFetch(s);
+  const one = f.parts.length === 1;
+  return (
+    <Dialog labelledBy="download-parts-title" onCancel={onCancel} onSubmit={onConfirm}>
+      <h2 id="download-parts-title">Download the missing parts?</h2>
+      <p>{s.name} needs {one ? "this part" : <>these <span className="num">{f.parts.length}</span> parts</>}, which {one ? "isn't" : "aren't"} on {host} yet. The model is ready when {one ? "it finishes" : "they finish"}.</p>
+      <ul className="dl-parts">
+        {f.parts.map((p) => (
+          <li key={p.path}><span className="muted">{ROLE_WORD[p.role as Role] ?? p.role}</span> <code className="raw">{fileName(p.path)}</code>{p.size ? <> <span className="muted"><Size text={size(p.size)} /></span></> : null}</li>
+        ))}
+      </ul>
+      <div className="dlg-actions">
+        <button type="button" onClick={onCancel}>Cancel</button>
+        <button type="submit" className="primary" disabled={busy} autoFocus><span>Download (<Size text={size(f.bytes)} />)</span></button>
+      </div>
+    </Dialog>
   );
 }

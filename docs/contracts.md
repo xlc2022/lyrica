@@ -1384,7 +1384,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       (again, same addresses); `PUT …/addresses`; `GET …/status`; `POST
       …/pause|resume|restart`; `GET …/dashboard` (→ `{ url }`); `POST …/manage`;
       `GET …/hub/files`; `POST`/`GET …/downloads`, `DELETE …/downloads/:id`;
-      `GET …/images`; `POST …/recipes/:recipeId` (including
+      `GET …/images`; `GET …/starters` (→ `{ starters: HostStarter[] }`);
+      `POST …/starters/:starterId/install` (→ `{ recipe, downloads }`);
+      `POST …/recipes/:recipeId` (including
       `{ do: "change", change: { op: "useFor", useFor: "fast" | "quality" | "both" } }`,
       saves on the host and refreshes discovery). Unpair is `DELETE
       endpoints/:id`. Types: `HostInput`, `HostRepair`, `HostAddresses`,
