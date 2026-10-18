@@ -49,6 +49,13 @@ export interface TextModel {
   kvPerToken: number | null;
   /** A vision projector next to a GGUF model, relative like `id`. */
   mmproj: string | null;
+  /** A GGUF model's MTP draft file (`mtp-…`, beside it or in an `MTP` folder), relative like `id`. */
+  mtp?: string | null;
+  /** The GGUF carries its own MTP layers, so llama.cpp can draft with no second file. */
+  builtInMtp?: boolean;
+  /** The sizes of the projector and the MTP file, counted when they're used. */
+  mmprojSize?: number;
+  mtpSize?: number;
   /** A vLLM model whose config asks for remote code: never loaded. */
   remoteCode: boolean;
   /** A speech model's ONNX file, relative to its folder. */
@@ -58,6 +65,66 @@ export interface TextModel {
 }
 
 const SHARD = /-(\d{5})-of-(\d{5})\.gguf$/;
+
+/**
+ * A GGUF that only helps another model, never a model of its own: a vision
+ * projector (`mmproj` in its name), or an MTP draft (`mtp-…`, or anything in
+ * an `MTP` folder). `path` is relative, with `/`.
+ */
+export function isCompanion(path: string): boolean {
+  const parts = path.split("/");
+  const name = parts[parts.length - 1]!.toLowerCase();
+  return name.includes("mmproj") || /^mtp[-_.]/.test(name) || parts.slice(0, -1).some((p) => p.toLowerCase() === "mtp");
+}
+
+const ggufs = (dir: string): string[] => {
+  try {
+    return readdirSync(dir).filter((e) => e.toLowerCase().endsWith(".gguf")).sort();
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * A model's companions, found beside it or, for a model in a quant's folder,
+ * in its repository's folder one or two levels up: the vision projector
+ * (F16 or BF16 first), and the MTP draft whose name is closest to the model's.
+ */
+function companions(root: string, path: string): { mmproj: string | null; mtp: string | null } {
+  const stem = basename(path).toLowerCase().replace(SHARD, "").replace(/\.gguf$/, "");
+  const rel = (p: string) => relative(root, p).split("\\").join("/");
+  let mmproj: string | null = null, mtp: string | null = null;
+  for (let dir = dirname(path), up = 0; up <= 2 && !relative(root, dir).startsWith(".."); dir = dirname(dir), up++) {
+    const here = ggufs(dir);
+    const proj = here.filter((e) => e.toLowerCase().includes("mmproj"));
+    const best = proj.find((e) => /bf16|f16/i.test(e)) ?? proj[0];
+    if (!mmproj && best) mmproj = rel(join(dir, best));
+    const drafts = [...here.filter((e) => /^mtp[-_.]/i.test(e)).map((e) => join(dir, e)),
+      ...readdirSafe(dir).filter((e) => e.toLowerCase() === "mtp").flatMap((d) => ggufs(join(dir, d)).map((e) => join(dir, d, e)))];
+    if (!mtp && drafts.length) {
+      const score = (p: string) => common(basename(p).toLowerCase().replace(/^mtp[-_.]/, "").replace(/\.gguf$/, ""), stem);
+      mtp = rel(drafts.sort((a, b) => score(b) - score(a))[0]!);
+    }
+    if (dir === root) break;
+  }
+  return { mmproj, mtp };
+}
+
+function readdirSafe(dir: string): string[] {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
+}
+
+/** How many characters two names share, from the start and from the end (a quant's suffix). */
+function common(a: string, b: string): number {
+  let head = 0, tail = 0;
+  while (head < a.length && a[head] === b[head]) head++;
+  while (tail < a.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  return head + tail;
+}
 
 function str(v: GgufValue | undefined): string | null {
   return typeof v === "string" && v ? v : null;
@@ -102,7 +169,8 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
     const prefix = basename(path).slice(0, -shard[0].length);
     for (const s of siblings) if (s !== basename(path) && s.startsWith(prefix) && SHARD.test(s)) size += statSync(join(dirname(path), s)).size;
   }
-  const mmproj = siblings.find((s) => s.toLowerCase().startsWith("mmproj") && s.endsWith(".gguf"));
+  const { mmproj, mtp } = embedding ? { mmproj: null, mtp: null } : companions(root, path);
+  const builtInMtp = Number(meta[`${arch}.nextn_predict_layers`] ?? 0) > 0;
   const context = meta[`${arch}.context_length`];
   return {
     id: relative(root, path).split("\\").join("/"),
@@ -118,7 +186,7 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
       baseModels,
       sourceRepo: str(meta["general.source.huggingface.repository"]) ?? str(meta["general.source.url"]),
     },
-    capabilities: { ...templateCapabilities(embedding ? null : str(meta["tokenizer.chat_template"])), vision: !!mmproj && !embedding, embedding },
+    capabilities: { ...templateCapabilities(embedding ? null : str(meta["tokenizer.chat_template"])), vision: !!mmproj, embedding },
     contextLength: context === undefined || context === null ? null : Number(context),
     kvPerToken: kvElements(
       ggufKvLayers(meta, arch),
@@ -127,7 +195,11 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
       Number(meta[`${arch}.attention.head_count_kv`] ?? meta[`${arch}.attention.head_count`]),
       meta[`${arch}.attention.key_length`] === undefined ? undefined : Number(meta[`${arch}.attention.key_length`]),
     ),
-    mmproj: mmproj ? relative(root, join(dirname(path), mmproj)).split("\\").join("/") : null,
+    mmproj,
+    mtp,
+    ...(builtInMtp ? { builtInMtp } : {}),
+    ...(mmproj ? { mmprojSize: statSync(join(root, mmproj)).size } : {}),
+    ...(mtp ? { mtpSize: statSync(join(root, mtp)).size } : {}),
     remoteCode: false,
   };
 }
@@ -306,7 +378,7 @@ export function scanTextModels(root: string): TextModel[] {
         continue;
       }
       if (st.isDirectory()) walk(path, depth + 1);
-      else if ((st.isFile() || (st.isSymbolicLink() && existsSync(path) && statSync(path).isFile())) && e.endsWith(".gguf") && !e.toLowerCase().startsWith("mmproj")) {
+      else if ((st.isFile() || (st.isSymbolicLink() && existsSync(path) && statSync(path).isFile())) && e.endsWith(".gguf") && !isCompanion(relative(root, path).split("\\").join("/"))) {
         const shard = e.match(SHARD);
         if (shard && shard[1] !== "00001") continue;
         // Split GGUF: only once every part is here.

@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFile
 import { join } from "node:path";
 import { HostError } from "./http.ts";
 import type { TextModel } from "./library.ts";
-import { contextOf, type ModelSettings, type Option } from "./placement.ts";
+import { contextOf, usesMtp, usesVision, type ModelSettings, type Option } from "./placement.ts";
 
 export interface Backend {
   /** Loads the model on the placement's GPUs with its settings, and resolves when it answers. */
@@ -115,7 +115,12 @@ export class LlamaCpp implements Backend {
       if (s.batchSize) lines.push(`batch-size = ${s.batchSize}`);
       if (s.chatTemplate) lines.push(`chat-template-file = ${this.templates.write(s.chatTemplate)}`);
       if (model.kind === "embedding") lines.push("embeddings = true");
-      if (model.mmproj) lines.push(`mmproj = ${this.o.models}/${model.mmproj}`);
+      if (usesVision(model, s)) lines.push(`mmproj = ${this.o.models}/${model.mmproj}`);
+      // Multi-token prediction: llama.cpp drafts with the model's MTP layers, or with its MTP file.
+      if (usesMtp(model, s)) {
+        if (model.mtp) lines.push(`model-draft = ${this.o.models}/${model.mtp}`);
+        lines.push("spec-type = draft-mtp", `spec-draft-n-max = ${s.draftMax ?? 2}`);
+      }
       lines.push("");
     }
     writeAtomic(this.presetPath, lines.join("\n"));

@@ -46,11 +46,13 @@ describe("stretch, as it is saved", () => {
     expect(validate(vllm, { placement: auto, contextLength: 81920, stretch: { type: "yarn", factor: 2.5, originalContext: 32768 } }, gpus, all).stretch?.factor).toBe(2.5);
   });
 
-  it("refuses a stretch on an embedding model, and on one whose trained length the host couldn't read", () => {
+  it("refuses a stretch on an embedding model, and on one whose trained length is unknown unless the original context is given", () => {
     const embed = textModel("embed", 1, { kind: "embedding" });
     expect(() => validate(embed, { placement: auto, stretch: { type: "yarn", factor: 2 } }, gpus, all)).toThrow("Only chat models can be stretched.");
     const unknown = textModel("unknown", 1, { contextLength: null });
-    expect(() => validate(unknown, { placement: auto, stretch: { type: "yarn", factor: 2 } }, gpus, all)).toThrow("nothing to stretch from");
+    expect(() => validate(unknown, { placement: auto, stretch: { type: "yarn", factor: 2 } }, gpus, all)).toThrow("give the original context to stretch from");
+    const given = validate(unknown, { placement: auto, contextLength: 65536, stretch: { type: "yarn", factor: 2, originalContext: 32768 } }, gpus, all);
+    expect(contextOf(unknown, given)).toBe(65536);
   });
 
   it("refuses a stretched context whose KV cache doesn't fit, with the memory reason", () => {
