@@ -59,11 +59,14 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
     for (const item of t.live.items) if (item.role === "notice" && item.threads?.[0] && (item.status === "update" || item.status === "waiting")) out.set(item.threads[0].id, afterHead(item.text));
     return out;
   }, [t.messages, t.live.items]);
-  const projectEnv: ProjectEnv | undefined = isProject && overview.data ? { overview: overview.data, lastUpdates, onChange: () => { overview.reload(); refreshThreads(); }, toast: ctx.toast } : undefined;
+  const projectEnv: ProjectEnv | undefined = isProject && overview.data ? { overview: overview.data, lastUpdates, onChange: () => { overview.reload(); refreshThreads(); ctx.refreshNotifications(); }, toast: ctx.toast } : undefined;
 
   // A new title, or a finished turn, may change the sidebar.
   useEffect(() => { if (t.live.title) { summary.reload(); refreshThreads(); } }, [t.live.title, summary.reload, refreshThreads]);
-  useEffect(() => { if (t.live.reload) refreshThreads(); }, [t.live.reload, refreshThreads]);
+  const { refreshNotifications } = ctx;
+  useEffect(() => {
+    if (t.live.reload || t.live.settings || t.live.children) { refreshThreads(); refreshNotifications(); }
+  }, [t.live.reload, t.live.settings, t.live.children, refreshThreads, refreshNotifications]);
   // A finished tool call or turn may have written the thread's folder: the Files panel beside the thread reloads.
   const { noteActivity } = ctx;
   useEffect(() => { if (t.live.reload || t.live.tools) noteActivity(`${pool}/${threadId}`); }, [t.live.reload, t.live.tools, noteActivity, pool, threadId]);
@@ -316,7 +319,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         <p className="subnote">{s?.subagent ? "Subagent of" : s?.child ? "Child thread of" : "Branched from"} <a href={`#/u/${encodeURIComponent(userId)}/t/${pool}/${encodeURIComponent(parent.id)}`}>{parent.title || "the parent thread"}</a></p>
       )}
       <div className="scroll" ref={scroller}>
-        <PendingBar scroller={scroller} deps={[t.messages, t.live.permissions]} />
+        <PendingBar scroller={scroller} deps={[t.messages, t.questions, t.live.permissions, overview.data]} />
         <ErrorText error={summary.error || t.loadError} />
         {settings.error && <ErrorText error={`This thread's settings didn't load: ${settings.error}`} />}
         <ErrorText error={overview.error} />

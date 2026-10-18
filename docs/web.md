@@ -1079,12 +1079,29 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   for the model the select shows (the thread's pick, else the column's),
   when it speaks and the thread may use it; Escape closes the voice
   drawer first, and focus goes back to the link.
+- **Question cards** (`src/Question.tsx`, principles 1 and 6; ux §6): a
+  `threads ask` call shows its question, optional muted context and each
+  option's label and consequence. Only the recommended option is primary,
+  marked **Recommended**; on phones options stack full width at `--tap`
+  height. A tap posts `{ option }` to `…/questions/:n/answer`; while it
+  saves every option is disabled. The closed card keeps the question and a
+  check with the chosen label, **Answered in words.**, or **Withdrawn.**
+  `MessagePage.questions` supplies state, joined by the call's entry number;
+  the settings event reloads the page even while a turn is running. An open
+  card participates in the pending bar; the sidebar shows Waiting on you.
+  A project's thread card reads the question from that thread's messages
+  (paging back to the call if needed) and offers the same answers without
+  leaving the project chat. Question changes refresh the thread list and
+  Notifications. Notifications' **Question** rows count under Needs a
+  decision, with the recommended consequence as detail, recommended-first
+  answer buttons and then Open thread. Private questions follow the Private
+  filter. A selection containing a question offers no bulk action.
 - **The plan card:** a `propose_plan` request shows "Plan", its step count
   when it has numbered or bulleted steps, the plan as prose, a primary
   "Go ahead in…" whose menu offers Ask, Accept edits or Auto, Keep planning,
   and the time left. Its tool marker stays hidden until it is answered.
 - **Waiting for an answer:** when the latest card waiting for her answer (a
-  plan or an approval) has scrolled out of view, a thin accent bar across the
+  plan, an approval or a question) has scrolled out of view, a thin accent bar across the
   top of the conversation says "Plan waiting for your answer" (or
   "Approval…") and scrolls to it.
 
@@ -1141,7 +1158,8 @@ turns animations off.
 - `web/test/` has unit tests for the stream reducer (`live.test.ts`), memory
   links and word diffs, mentions, which paths become links, which code
   blocks get Copy and what it copies (`codeblock.test.ts`), a checklist's
-  count and current step (`checklist.test.ts`), the welcome cards' empty states,
+  count and current step (`checklist.test.ts`), question card states and
+  notification options (`question.test.ts`), the welcome cards' empty states,
   hidden sleep pools and backend presets (`cards.test.ts`), routine facts and paused
   schedules (`routines.test.ts`), the recorder's context
   fallback and clip limit (`voice.test.ts`), and a text model group's warn

@@ -1,6 +1,6 @@
 // A thread's stored messages plus its live event stream.
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { get, threadPath, type Message, type MessagePage, type Pool, type ThreadEvent } from "./api.ts";
+import { get, threadPath, type Message, type MessagePage, type Pool, type QuestionState, type ThreadEvent } from "./api.ts";
 import { initialLive, liveReducer } from "./live.ts";
 
 // Every event the stream sends, each listened for by name: a new ThreadEvent type fails the typecheck until it's here.
@@ -13,6 +13,7 @@ const LISTENED: Record<ThreadEvent["type"], true> = {
 const EVENT_TYPES = Object.keys(LISTENED) as ThreadEvent["type"][];
 
 export function useThread(userId: string, pool: Pool, threadId: string) {
+  const [questions, setQuestions] = useState<QuestionState[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -30,6 +31,7 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
     get<MessagePage>(`${base}/messages`).then((page) => {
       if (!current) return;
       setMessages((old) => mergeByN(old, page.messages));
+      setQuestions(page.questions ?? []);
       if (!loaded) setHasMore(page.hasMore);
       setLoaded(true);
       setLoadError("");
@@ -37,7 +39,7 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
     }, (e: Error) => current && setLoadError(e.message));
     return () => { current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base, live.reload]);
+  }, [base, live.reload, live.settings]);
 
   const loadOlder = useCallback(async () => {
     const first = messages[0];
@@ -106,7 +108,7 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
     return () => { stopped = true; es?.close(); clearTimeout(retry); };
   }, [base, threadId]);
 
-  return { messages, hasMore, loaded, loadError, loadOlder, loadUntil, live, dispatch, connected, willResend };
+  return { messages, questions, hasMore, loaded, loadError, loadOlder, loadUntil, live, dispatch, connected, willResend };
 }
 
 function mergeByN(a: Message[], b: Message[]): Message[] {

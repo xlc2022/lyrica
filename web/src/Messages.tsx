@@ -1,7 +1,8 @@
 // The conversation: stored messages, then what's streaming now.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { get, post, threadPath, u, type GoAhead, type ImagePart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
+import { get, post, threadPath, u, type GoAhead, type ImagePart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
+import { QuestionCard } from "./Question.tsx";
 import { storedUserItems, type LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
@@ -58,7 +59,15 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   // The image open large, held here: the message it was opened from may be replaced by its stored copy meanwhile.
   const [large, setLarge] = useState<{ path: string; url: string }>();
   const openLarge = useCallback((path: string, files: FileLinks) => setLarge({ path, url: files.url(path) }), []);
+  const questions = new Map<string, QuestionState>();
+  for (const m of messages) for (const p of m.parts) {
+    if (p.type === "tool" && p.name === "threads" && (p.args as { action?: string })?.action === "ask") {
+      const q = thread.questions.find(q => q.n === m.n);
+      if (q) questions.set(p.toolCallId, q);
+    }
+  }
   const env: Env = {
+    questions, questionChanged: () => { thread.dispatch({ type: "refresh" }); ctx.refreshThreads(); ctx.refreshNotifications(); },
     busy: live.busy, settingsVersion: live.settings, lastUser: messages.findLast(m => m.role === "user")?.n, userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
     permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
     lastHers: messages.findLast((m) => m.role === "assistant")?.n, large: openLarge, threads: ctx.threads,
@@ -104,6 +113,8 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
 }
 
 interface Env {
+  questions: Map<string, QuestionState>;
+  questionChanged: () => void;
   busy: boolean;
   settingsVersion: number;
   lastUser?: number;
@@ -466,6 +477,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
   if (part.type === "tool" && part.name === "propose_plan" && part.result === undefined) return null;
   if (part.type === "tool" && part.name === "threads") {
     const action = (part.args as { action?: string } | null)?.action;
+    if (action === "ask" && !part.isError) return <QuestionCard args={part.args} state={env.questions.get(part.toolCallId)} base={env.base} onChange={env.questionChanged} />;
     if (action === "fold") return <FoldCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} />;
     if (action === "draft") return <a href={href({ page: "project", userId: env.userId, pool: env.pool, threadId: env.threadId })}>Project settings</a>;
     if (action === "suggest") return <SuggestedCard part={part} userId={env.userId} pool={env.pool} projectId={env.threadId} env={env.project} />;
