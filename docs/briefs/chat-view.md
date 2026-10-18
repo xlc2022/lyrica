@@ -1,6 +1,6 @@
 # Chat view polish
 
-**Status:** Building on `claude/chat-view-polish-j6doy7`.
+**Status:** Merged as #308 (56b5185). Handoff notes below are history.
 
 ## Goal
 
@@ -77,6 +77,5 @@ exists; UI review and PR review have verified.
 ## Handoff
 
 - Done: mockup (lyrica-app v33), the build, unit tests, e2e at 1280 and
-  390, docs (ux.md, web.md, workspace.md, api.ts). Pull request open.
-- Next: UI review and PR review verify; merge.
+  390, docs (ux.md, web.md, workspace.md, api.ts). Merged as #308.
 - Open questions: none.
