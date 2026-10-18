@@ -40,8 +40,8 @@ ask({ question, options: { label, consequence }[], recommended, context? })
   on with the recommended option if that step can be undone, and otherwise
   end the turn. The answer arrives in a later turn.
 - Principle 8: `ask`'s fields and description stay to one short line each.
-  The size check in `extension/test/threads.test.ts` (the per-kind `size`
-  snapshot) is updated, and the increase is named in the PR.
+  The size ceilings in `extension/test/threads.test.ts` are raised only as
+  far as needed, and the PR names the new numbers.
 - Routine and wake-up turns run in the thread itself, so they may ask too.
 
 **B. State.** The thread is waiting on the user while its question is open.
