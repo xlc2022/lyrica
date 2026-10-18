@@ -616,8 +616,10 @@ One model-facing tool: `delegate({ action?, ... })`.
   never a model; only saved workflows, which users write, may name one.
   `folders` narrows granted host folders only, not sandbox repository paths;
   an invalid folder returns that distinction and advises omitting `folders`
-  to read the parent's checkouts. Scouts share those clones read-only and
-  receive no forge credentials; this does not change repository inheritance.
+  to read the parent's checkouts. Read-only roles, narrowed runs and writers
+  in a worktree share those clones read-only with no forge credentials; an
+  unnarrowed writer keeps the parent's repositories. This does not change
+  repository inheritance.
 - The other actions are `status`, `wait`, `stop` and `message`, each on a
   run ID, and only on runs the calling thread started. `message({ id,
   message, thread? })` joins a working subagent's turn, answers its open

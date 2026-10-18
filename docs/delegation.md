@@ -62,8 +62,10 @@ Any of them can add `background: true`, `folders`, `readOnly: true` or
 
 `folders` narrows granted **host folders**, not paths inside the sandbox such
 as `/workspace/repos/<name>`. Omit it when a scout needs to read the parent's
-repository checkouts: subagents share those clones, read-only for scouts or
-narrowed runs, without forge credentials. An invalid folder is refused with
+repository checkouts. Read-only roles, narrowed runs (folders, read-only or
+no internet) and writers in a worktree share those clones read-only, with no
+forge credentials; an unnarrowed writer keeps the parent's repositories and
+their credentials. An invalid folder is refused with
 this distinction and the omitted-`folders` alternative; it is never turned
 into a host grant.
 
