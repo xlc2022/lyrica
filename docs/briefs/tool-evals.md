@@ -1,6 +1,6 @@
 # Brief: Question cards and checklists on every model
 
-**Status:** brief in review. **Branch:** `feature/tool-evals`. **Built by:**
+**Status:** brief in review. **Branch:** the build is on a new `feature/tool-evals` from `main`, made after this brief merges. **Built by:**
 Codex on the test machine; the Agent loop thread (Opus) owns review and the PR.
 **Read first:** AGENTS.md, PRINCIPLES.md, docs/briefs/question-card.md,
 docs/briefs/truthful-continuation.md, docs/contracts.md (Child threads, the
@@ -39,7 +39,7 @@ the allowed values.
     `complete`, `completed` or `finished` becomes `done` (ignoring case);
   - a `recommended` that is a string equal, ignoring case, to exactly one
     option's label becomes that option's index;
-  - a step given as a bare string becomes a `todo` step.
+  - a step given as a bare string becomes `{ text: <string>, state: "todo" }`.
   Nothing else is guessed. A missing consequence, for example, stays an error.
 - **Specific errors**, thrown from `prepareArguments` before Pi's
   validation, or from `cleanAsk`/`cleanSteps`. Each one names the field and
@@ -55,21 +55,41 @@ the allowed values.
 
 ### 2. A question asked in prose instead of on a card
 
-When a turn would end with a reply whose last paragraph is a question, the
-reply lists 2 to 4 options (lines starting `-`, `*`, `1.`, `1)` or `A)`),
-the thread can ask, no question is open, and the turn made no `ask` call,
-the daemon queues one follow-up through Pi's `agent.followUp`. Its text is
-fixed: "Your reply ends with a question offering options. If the person must
-choose before you can go on, put it on a card with threads ask, and don't
-repeat it in prose; otherwise carry on." This happens at most once a turn.
-The check is structural, on the reply's shape, and never reads the reply
-into a log.
+A reply has the prose-question shape when it ends in either of these:
+- a paragraph that is a question, followed only by its 2 to 4 list items;
+- 2 to 4 list items followed only by a closing question.
 
-#304 rejected a controller that keeps taking turns. This is different: it
-adds at most one follow-up, only when that shape appears and the tool to fix
-it exists. If review finds a follow-up too costly on cloud
-models, the alternative is to do it on local endpoints only, which costs no
-quota.
+List items are lines starting `-`, `*`, `1.`, `1)` or `A)`. A list in the
+middle of a reply that ends with an unrelated question doesn't count.
+
+The extension checks the shape on the `turn_end` whose assistant message has
+no tool calls, and only when all of these hold:
+- the thread can ask;
+- no question is open;
+- the turn made no `ask` call;
+- it hasn't sent this follow-up already in this turn.
+
+It then sends one follow-up the way delegate results are sent
+(`extension/src/delegate/tool.ts`):
+`pi.sendMessage({ customType: "lyrica-ask-nudge", content, display: false },
+{ deliverAs: "followUp", triggerTurn: true })`. Its text is fixed: "Your reply
+ends with a question offering options. If the person must choose before you
+can go on, put it on a card with threads ask, and don't repeat it in prose;
+otherwise carry on."
+
+- `display: false`, so the person's conversation never shows it as if
+  someone had typed it. No docs/ux.md change.
+- It is synced into the thread's entries like any custom message, and
+  context assembly drops `lyrica-ask-nudge` messages from earlier turns, so it
+  costs nothing after the turn that used it.
+- The check reads the reply's shape only and logs nothing of its text.
+
+It runs on every model: approval was for every model, and it fires at most
+once a turn, only on that shape, and only before the person has been asked.
+It differs from the controller #304 rejected because it adds at most one
+follow-up, and only when the tool that fixes the problem exists. (If the
+extra call ever matters on cloud models, it could be limited to local
+endpoints, which spend no quota.)
 
 ### 3. Evals that run against any model
 
@@ -101,9 +121,10 @@ llama.cpp model gets the same request shape as in use (`objectTools`,
 - extension: a fake model sends `ask` with options as a JSON string and gets
   a card; sends a bad state and gets the specific error, then a corrected call
   succeeds in the same turn.
-- daemon: a turn ending in a prose question with options gets exactly one
-  follow-up and none on the next turn. One that ends in a question without
-  options, or that already asked, gets none.
+- extension: a turn ending in each of the two prose-question shapes gets
+  exactly one hidden follow-up, and the next turn gets none and no longer
+  carries it. A list mid-reply followed by an unrelated question, a question
+  without options, or a turn that already asked gets none.
 
 ## Out of scope
 
