@@ -1301,7 +1301,7 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
   .dl button.sm, .acct button.sm, .acct-form .seg button, .dl-form .seg button, .dl-form a.link, .models .section-head button.link { min-height: 44px; }
   .dl-end button.link { display: inline-flex; min-height: 44px; }
 }
-/* Image models: a recipe's copy on a host as a block of parts; Parts; To review and its selection bar; Add a part. */
+/* Image models: a recipe's copy on a host as a block of parts; Parts; To review and its selection bar; Add part. */
 .list > li.img-row { grid-template-columns: minmax(0, 1fr); }
 .img-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
 .img-filters input[type="search"] { flex: 1 1 220px; max-width: 420px; }

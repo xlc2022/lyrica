@@ -556,7 +556,7 @@ function AddPart({ L, c, onAdd, onCancel }: {
     <aside ref={ref} tabIndex={-1} className="drawer add-part" aria-labelledby="add-part-title">
       <div className="drawer-head">
         <h2 id="add-part-title">Add part to {r.name}</h2>
-        <button type="button" onClick={onCancel}>Close</button>
+        <button type="button" className="icon sm" aria-label="Close" onClick={onCancel}><Icon name="close" /></button>
       </div>
       <form className="drawer-body" onSubmit={(e) => { e.preventDefault(); if (chosen) onAdd({ role, file: chosen.file, slot: chosen.slot, strength: clamp(strength), asNew: lora && asNew }); }}>
         <div className="seg" role="group" aria-label="Part">
@@ -582,7 +582,6 @@ function AddPart({ L, c, onAdd, onCancel }: {
           <label className="check"><input type="checkbox" checked={asNew} onChange={(e) => setAsNew(e.target.checked)} /> Save as a new model, keeping {r.name} as it is</label>
         </> : <p className="meta">Replaces the {roleWord(role)} this model uses now.</p>}
         <div className="drawer-foot row">
-          <button type="button" onClick={onCancel}>Cancel</button>
           <button type="submit" className="primary" disabled={L.busy || !chosen}>{lora ? "Add" : "Replace"}</button>
         </div>
       </form>

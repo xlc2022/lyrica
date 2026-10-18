@@ -2263,9 +2263,23 @@ export class Models {
     return undefined;
   }
 
+  /**
+   * A signed-in ChatGPT plan that has no image model yet (it was added
+   * before plans had one) is discovered, which reads no network for a plan
+   * and moves its image lists over. The Models page and every image call do this.
+   */
+  async planImages(userId: string): Promise<void> {
+    const actor = this.users.get(userId);
+    if (!actor) return;
+    for (const e of this.endpoints(userId)) {
+      if (e.api === "chatgpt" && !e.signedOut && !this.offerings(userId, e.id).some((o) => o.modelId === PLAN_IMAGE_MODEL)) await this.discover(actor, e.id).catch(() => {});
+    }
+  }
+
   /** Images stay in memory; the caller stores results and records the call. */
   async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void> } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution }> {
     validateImageRequest(request);
+    await this.planImages(ctx.userId);
     return this.callWithFallback(`image.${request.action}`, ctx, request.action === "create" ? { imageTier: request.tier } : request.action === "edit" ? { imageMask: !!request.mask } : {}, async (r) => {
       opts.signal?.throwIfAborted();
       await opts.beforeSend?.(r);

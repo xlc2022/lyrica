@@ -174,6 +174,22 @@ describe("image calls through the router (principles 1 and 2)", () => {
     await s.models.discover(s.ada, ep.id);
     expect(s.models.column(s.ada.id, "general").entries["image.edit"]).toEqual([s.ref]);
   });
+  it("makes an image through ChatGPT Images for a plan added before it, without the Models page opening first", async () => {
+    const s = await setup();
+    s.models.setPlanCatalog(() => PLAN_MODELS);
+    const ep = s.models.addPlan(s.ada, PLAN);
+    const chat = { offeringId: s.models.addModel(s.ada, ep.id, { modelId: "gpt-6.1-sol" }).id };
+    (s.models as unknown as { editLists: (u: string, f: (t: Record<string, unknown>) => boolean) => void })
+      .editLists(s.ada.id, (t) => { t["image.create"] = [chat]; return true; });
+    let sent: any;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, opts: RequestInit) => {
+      sent = JSON.parse(String(opts.body));
+      return Response.json({ output: [{ type: "image_generation_call", status: "completed", result: png.toString("base64") }] });
+    }));
+    const out = await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "fast" });
+    expect(out.resolution.ref).toEqual(imagesOf(s, ep.id));
+    expect(sent.model).toBe("gpt-6.1-sol");
+  });
   it("streams plan image calls and reads the image from the finished output item", async () => {
     const s = await setup();
     const { ref } = await planImages(s);

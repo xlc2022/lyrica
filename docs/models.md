@@ -439,12 +439,12 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   discovery adds to the plan's catalogue; its chat models never make
   images, whatever an older switch set (the catalogue drops their `image`,
   `edit`, `upscale` and `useFor`). Its requests go through the plan's newest
-  GPT by version number, leaving out pro, mini, nano, chat, codex and
-  realtime models (`planImageDriver`); the image tool picks the image model,
+  GPT by version number, leaving out pro, mini, nano, chat, codex,
+  realtime and spark models (`planImageDriver`); the image tool picks the image model,
   which is unreported. The first time discovery finds it, image task lists
   in the user's presets and columns that named one of the plan's chat
-  models name ChatGPT Images instead. The Models page discovers a signed-in
-  plan that lacks it, which reads no network. Fast asks for
+  models name ChatGPT Images instead. The Models page and every image call
+  discover a signed-in plan that lacks it (`planImages`), which reads no network. Fast asks for
   low quality, quality for high. Inputs are in-memory data URLs. Count uses
   one request per image (up to four); references are supported.
   Maskless edits are supported; masked edits skip the plan before sending

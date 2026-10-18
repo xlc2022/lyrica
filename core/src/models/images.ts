@@ -161,8 +161,8 @@ export const PLAN_IMAGE: { modelId: string; recipe: string; image: true; edit: t
 
 /**
  * The plan model a ChatGPT Images request goes through: the newest GPT by its
- * version number, leaving out pro, mini, nano, chat, codex and realtime
- * models; at equal versions the shorter ID. Undefined when the plan lists none.
+ * version number, leaving out pro, mini, nano, chat, codex, realtime and
+ * spark models; at equal versions the shorter ID. Undefined when the plan lists none.
  */
 export function planImageDriver(modelIds: string[]): string | undefined {
   const version = (id: string) => /^gpt-(\d+)(?:\.(\d+))?(?:-[a-z]+)?$/.exec(id);

@@ -1,7 +1,7 @@
 import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
 import {
-  CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
+  CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled, modelName,
@@ -447,10 +447,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const m = s().models;
       const pools = shownPools(display(d, user.id));
       const release = runningRelease(d);
-      // A ChatGPT plan signed in before it had an image model finds it here; discovery reads no network for a plan.
-      for (const e of m.endpoints(user.id)) {
-        if (e.api === "chatgpt" && !e.signedOut && !m.offerings(user.id, e.id).some((o) => o.modelId === PLAN_IMAGE_MODEL)) await m.discover(user, e.id).catch(() => {});
-      }
+      // A ChatGPT plan signed in before it had an image model finds it here, as at an image call.
+      await m.planImages(user.id);
       const eps = m.endpoints(user.id);
       // One look per endpoint, within 3 s, so a host that's off doesn't hold the page.
       const looks = await Promise.all(eps.map(async (e) => ({ e, look: await m.pageStatus(user.id, e.id).catch((err: Error) => ({ state: "down" as const, error: err.message, status: undefined, warning: undefined, unpaired: undefined })) })));
