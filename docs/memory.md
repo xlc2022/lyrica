@@ -416,9 +416,16 @@ like a notebook: a browse pane and the memory being read, laid out like the
 Files panel.
 
 - **Browsing.** A search box, a segmented control of the layers (Pages,
-  Notes, WAKE, Journal), a pool select and **User introduced**. Without a
+  Notes, WAKE, Journal, Recent), a pool select and **User introduced**. Without a
   search the list is one layer, newest first, paged with More; a search
-  replaces the list with hits across layers. The Notes layer shows the pool's
+  replaces the list with hits across layers. **Recent** is short-term
+  memory: the logged messages (a person's and hers, never a tool's result
+  or an unlogged thread's) written since sleep last finished consolidating,
+  the ones automatic recall can still find before they become notes and
+  pages. A message read there is a memory of kind `entry`: its text, who
+  said it as its origin, its thread under Came from and the notes citing it
+  under Used in; it can't be edited, archived or deleted here, only in its
+  thread. The Notes layer shows the pool's
   `about` words as tags above its list, and a tapped tag filters it. The
   **Show general** and **Show private** display filters apply here too: a
   hidden pool is left out of the lists, the facts and the lineage. The header
@@ -450,7 +457,8 @@ Files panel.
   several list rows and **Forget…** removes them as a topic.
 - **From a conversation.** A recall marker or a citation in her text opens
   the memory in the panel beside the thread (the Memory page at that memory
-  below the split width). **Remember this** in a message's menu opens a
+  below the split width). A recall marker's message opens as a Recent
+  memory, so what she recalled reads in place rather than only its thread. **Remember this** in a message's menu opens a
   labelled field under the message whose **Remember** button writes a
   one-line user-introduced note citing the message.
 - **Privacy.** Titles, snippets and citing sentences come only from pools

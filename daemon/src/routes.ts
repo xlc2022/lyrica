@@ -2,7 +2,7 @@ import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
 import {
   CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
-  citationsIn, firstLine, GIT_KINDS, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
+  citationsIn, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled,
 } from "@lyrica/core";
@@ -1014,12 +1014,13 @@ export function apiRoutes(d: Lyricad): Route[] {
       });
       // A project's page and the notes that came only from it go before its threads do, while they still say where the notes came from.
       if (all && !keep) owner(d, user, (o) => { if (o[pool].getThread(threadId)?.project) o[pool].forgetProjectMemory(threadId, author(user)); });
-      for (const id of doomed) {
-        await s().delegation.forget(user.id, pool, id);
-        await s().host.forget(user.id, pool, id);
-        owner(d, user, (o) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user), { children: all, keepMemories: keep }); });
-        s().models.forgetThread(user.id, pool, id);
-      }
+      // The live sessions stop side by side, then the store drops every thread in one owner view and merges its search index once at the end:
+      // a project with many threads used to take seconds, stopping each in turn and merging the whole index after each one.
+      await Promise.all(doomed.map(async (id) => { await s().delegation.forget(user.id, pool, id); await s().host.forget(user.id, pool, id); }));
+      owner(d, user, (o) => {
+        doomed.forEach((id, i) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user), { children: all, keepMemories: keep, optimize: i === doomed.length - 1 }); });
+      });
+      for (const id of doomed) s().models.forgetThread(user.id, pool, id);
       forgetThreadFiles(s(), user.id, pool, doomed);
       s().children.forget(user.id, pool, doomed);
       s().wakeups.forget(user.id, pool, doomed);
@@ -1621,7 +1622,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const about = r.query.get("about")?.trim() || undefined;
       const before = r.query.get("before") || undefined;
       const limit = Math.min(100, Number(r.query.get("limit") ?? 30) || 30);
-      const layer = !q && kinds?.length === 1 && ["note", "page", "wake", "journal"].includes(kinds[0]!) ? kinds[0] as "note" | "page" | "wake" | "journal" : undefined;
+      const layer = !q && kinds?.length === 1 && ["note", "page", "wake", "journal", "entry"].includes(kinds[0]!) ? kinds[0] as "note" | "page" | "wake" | "journal" | "entry" : undefined;
       const toHit = (pool: Pool, h: Hit, item: Item | undefined): Api.MemoryHit => ({
         pool, id: h.id, kind: h.kind, snippet: h.snippet, score: h.score,
         ...(h.origin ? { origin: h.origin } : {}), ...(h.supersededBy ? { supersededBy: h.supersededBy } : {}),
@@ -1631,6 +1632,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       return owner(d, user, (o) => {
         const hits = pools.flatMap((pool): Api.MemoryHit[] => {
           const store = o[pool];
+          // The Recent layer: logged messages sleep hasn't consolidated yet, the browser's short-term memory.
+          if (layer === "entry") return store.recentEntries({ limit, before }).map((i) => listed(pool, i));
           if (layer) return store.listMemories(layer, { limit, before, about, origin }).map((i) => listed(pool, i));
           if (!q) return store.userIntroduced().map((id) => store.get(id)).filter((x): x is Item => !!x).filter((i) => !about || i.about?.includes(about)).map((i) => listed(pool, i));
           return store.search(q, { kinds, limit: limit * 2, includeArchived: true })
@@ -1966,6 +1969,8 @@ function threadOf(o: OwnerView, r: Request): Thread {
 function memoryId(o: OwnerView, r: Request): string {
   const id = r.params.id!;
   if (!o[poolOf(r)].get(id)) throw new HttpError(404, `no such memory: ${id}`);
+  // A message is read here as short-term memory; it is changed in its thread.
+  if (kindOf(id) === "entry") throw new HttpError(405, "a message can only be changed in its thread");
   return id;
 }
 
@@ -2764,7 +2769,8 @@ function memoryDetail(d: Lyricad, o: OwnerView, pool: Pool, id: string, show: Ap
     return { id: src, ...(sentence ? { sentence } : {}) };
   });
   const other: Api.MemoryUse[] = pool === "general" ? o.private.usedIn(`general/${id}`).map((x) => ({ id: `private/${x}` })) : [];
-  const cameFrom = store.cameFrom(id);
+  // A message came from its thread: the thread is its one source, so the browser can open it there.
+  const cameFrom = item.kind === "entry" ? [`t:${id.slice(2, id.lastIndexOf("#"))}`] : store.cameFrom(id);
   const links: Record<string, Api.MemoryLink> = {};
   for (const ref of new Set([...citationsIn(item.text, pool), ...cameFrom, ...own.map((x) => x.id)])) {
     const link = linkFor(o, pool, ref, show);

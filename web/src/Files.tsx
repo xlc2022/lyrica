@@ -11,7 +11,7 @@ import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { go } from "./route.ts";
 import { Crumbs, Main, PanelButtons, type ShellContext } from "./Shell.tsx";
-import { ConfirmDialog, ErrorText, menuArrows, useLongPress, useSelection } from "./ui.tsx";
+import { ConfirmDialog, ErrorText, InlineRename, menuArrows, useLongPress, useSelection } from "./ui.tsx";
 
 /** Text this large is shown in the panel; anything bigger, or of another kind, is offered as a download. */
 const TEXT_LIMIT = 512 * 1024;
@@ -26,7 +26,8 @@ type Target =
   | { kind: "selection"; paths: string[] }
   | { kind: "space"; dir: string };
 
-interface MenuAt { x: number; y: number; target: Target }
+/** `sub`: the menu opens straight into one of its steps (a row's Delete button opens its confirm). */
+interface MenuAt { x: number; y: number; target: Target; sub?: "delete" }
 
 const parent = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
 const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
@@ -48,6 +49,8 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const [open, setOpen] = useState<Set<string>>(() => new Set([WORKDIR]));
   const [current, setCurrent] = useState<FileEntry>();
   const [menu, setMenu] = useState<MenuAt>();
+  /** The row renamed in place from its Rename button. */
+  const [renaming, setRenaming] = useState<string>();
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<{ q: string; entries: FileEntry[]; more: boolean }>();
   const [filter, setFilter] = useState<Filter>("all");
@@ -67,6 +70,19 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     return l;
   }, [base]);
   useEffect(() => { load(WORKDIR).catch(fail); }, [load]);
+  // The tree follows the thread: every folder shown reloads when the thread's open stream finishes a tool call or a turn
+  // (the shell counts them per thread), and when the window comes back into focus, so a file she wrote shows without reopening the panel.
+  const shownDirs = useRef<string[]>([]);
+  shownDirs.current = Object.keys(listings);
+  const activity = ctx.activity[`${pool}/${threadId}`] ?? 0;
+  const reloadShown = useCallback(() => { Promise.all(shownDirs.current.map(load)).catch(fail); if (tab === "images") void loadImagesRef.current(); }, [load, tab]);
+  const loadImagesRef = useRef<() => Promise<unknown>>(() => Promise.resolve());
+  useEffect(() => { if (activity) reloadShown(); }, [activity, reloadShown]);
+  useEffect(() => {
+    const on = () => { if (document.visibilityState === "visible") reloadShown(); };
+    addEventListener("focus", on);
+    return () => removeEventListener("focus", on);
+  }, [reloadShown]);
   // A linked file: its folders open and it is shown; a folder is only opened.
   useEffect(() => {
     if (!path) return;
@@ -85,6 +101,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     return () => { live = false; };
   }, [path, load]); // eslint-disable-line react-hooks/exhaustive-deps
   const loadImages = useCallback(() => get<ImageEntry[]>(`${base}/images`).then(setImages, fail), [base]);
+  loadImagesRef.current = loadImages;
   useEffect(() => { if (tab === "images") void loadImages(); }, [tab, loadImages]);
 
   // A search runs under every root; the thread's folder first.
@@ -196,19 +213,37 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   };
   const askUpload = (dir: string) => { uploadTo.current = dir; picker.current?.click(); };
 
-  // What the tree shows: the search's hits, or the roots with their open folders.
+  // What the tree shows: the search's hits, or the roots with their open folders. A row in a writable folder carries
+  // Rename and Delete at its right (docs/ux.md §6), shown on hover or focus (always on a touch screen); the menu has the rest.
   const row = (e: FileEntry, depth: number) => {
     const isDir = e.kind === "folder";
     const selected = sel.has(e.path);
+    const target: Target = isDir ? { kind: "folder", path: e.path, root: false } : { kind: "file", entry: e };
+    const name = hits ? shown(e.path) : e.name;
+    if (renaming === e.path) {
+      return (
+        <div key={e.path} className="frow" style={{ paddingLeft: 6 + depth * 14 }}>
+          <InlineRename className="fname" value={e.name} label="New name" onSave={(n) => n.includes("/") ? Promise.reject(new Error("A name can't contain /")).catch(fail) : rename(e.path, n).catch(fail)} onDone={() => setRenaming(undefined)} />
+        </div>
+      );
+    }
     return (
-      <button key={e.path} type="button" className={selected ? "sel" : undefined} style={{ paddingLeft: 6 + depth * 14 }}
-        aria-current={!isDir && current?.path === e.path ? "true" : undefined} aria-expanded={isDir ? open.has(e.path) : undefined} aria-pressed={selected || undefined}
-        onClick={(ev) => { if (pick(ev, e)) return; if (isDir) toggle(e.path); else view(e); }}
-        {...press(isDir ? { kind: "folder", path: e.path, root: false } : { kind: "file", entry: e })}>
-        {isDir ? <Icon name={open.has(e.path) ? "down" : "right"} /> : <Icon name={/\.(png|jpe?g|gif|webp)$/i.test(e.name) ? "image" : "file"} className="dim" />}
-        {isDir && <Icon name="folder" className="dim" />}
-        <span className="fname">{hits ? shown(e.path) : e.name}</span>
-      </button>
+      <div key={e.path} className="frow">
+        <button type="button" className={selected ? "sel" : undefined} style={{ paddingLeft: 6 + depth * 14 }}
+          aria-current={!isDir && current?.path === e.path ? "true" : undefined} aria-expanded={isDir ? open.has(e.path) : undefined} aria-pressed={selected || undefined}
+          onClick={(ev) => { if (pick(ev, e)) return; if (isDir) toggle(e.path); else view(e); }}
+          {...press(target)}>
+          {isDir ? <Icon name={open.has(e.path) ? "down" : "right"} /> : <Icon name={/\.(png|jpe?g|gif|webp)$/i.test(e.name) ? "image" : "file"} className="dim" />}
+          {isDir && <Icon name="folder" className="dim" />}
+          <span className="fname">{name}</span>
+        </button>
+        {writable(e.path) && (
+          <span className="frow-acts">
+            <button type="button" className="icon" aria-label={`Rename ${name}`} title="Rename" onClick={() => setRenaming(e.path)}><Icon name="edit" /></button>
+            <button type="button" className="icon" aria-label={`Delete ${name}`} title="Delete" onClick={(ev) => { const r = ev.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.bottom, target, sub: "delete" }); }}><Icon name="trash" /></button>
+          </span>
+        )}
+      </div>
     );
   };
   const folder = (dir: string, depth: number): ReactNode => {
@@ -378,7 +413,7 @@ function FileMenu({ at, writable, shownName, onClose, onAttach, onDownload, onCo
   onUpload: (dir: string) => void; onMkdir: (dir: string, name: string) => Promise<unknown>; onRename: (path: string, name: string) => Promise<unknown>; onDelete: (paths: string[]) => Promise<unknown>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [sub, setSub] = useState<"" | "rename" | "newfolder" | "delete">("");
+  const [sub, setSub] = useState<"" | "rename" | "newfolder" | "delete">(at.sub ?? "");
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
   const t = at.target;

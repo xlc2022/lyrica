@@ -19,8 +19,12 @@ import { go, href, idHref, parse, type Route } from "./route.ts";
 import { Main, PageHead, usePanel, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
 
-type Layer = "page" | "note" | "wake" | "journal";
-const LAYERS: { layer: Layer; label: string }[] = [{ layer: "page", label: "Pages" }, { layer: "note", label: "Notes" }, { layer: "wake", label: "WAKE" }, { layer: "journal", label: "Journal" }];
+type Layer = "page" | "note" | "wake" | "journal" | "entry";
+/** The layers; Recent is what sleep hasn't consolidated yet, the messages recall finds before they become notes and pages. */
+const LAYERS: { layer: Layer; label: string; tip?: string }[] = [
+  { layer: "page", label: "Pages" }, { layer: "note", label: "Notes" }, { layer: "wake", label: "WAKE" }, { layer: "journal", label: "Journal" },
+  { layer: "entry", label: "Recent", tip: "Messages she hasn't slept on yet. Sleep turns them into notes and pages." },
+];
 const PAGE_SIZE = 40;
 const LINEAGE_PREVIEW = 4;
 
@@ -176,7 +180,7 @@ function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContex
     <section className="mem-pane" aria-label="Browse memory" onClick={(e) => { if ((e.target as Element).closest("a")) onPick(); }}>
       <input type="search" aria-label="Search memory" placeholder="Search memory" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="seg" role="group" aria-label="Layer">
-        {LAYERS.map((l) => <button key={l.layer} type="button" aria-pressed={!query && layer === l.layer} onClick={() => { setQ(""); onBrowse({ layer: l.layer }); }}>{l.label}</button>)}
+        {LAYERS.map((l) => <button key={l.layer} type="button" aria-pressed={!query && layer === l.layer} title={l.tip} onClick={() => { setQ(""); onBrowse({ layer: l.layer }); }}>{l.label}</button>)}
       </div>
       <div className="mem-filters">
         <select aria-label="Pool" value={pool} onChange={(e) => setPool(e.target.value as "" | Pool)}>
@@ -201,7 +205,7 @@ function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContex
             <span className="s"><span className={`kind ${h.pool}`}>{h.pool}</span>{line(h)}</span>
           </a>
         ))}
-        {hits.data && !rows.length && <p className="muted empty">{query ? "Nothing found." : layer === "wake" ? "She hasn't woken yet." : layer === "journal" ? "No journal yet." : layer === "page" ? "No pages yet." : "No notes yet."}</p>}
+        {hits.data && !rows.length && <p className="muted empty">{query ? "Nothing found." : layer === "wake" ? "She hasn't woken yet." : layer === "journal" ? "No journal yet." : layer === "page" ? "No pages yet." : layer === "entry" ? "Nothing since she last slept." : "No notes yet."}</p>}
         {canPage && <div className="more-row"><button type="button" className="sm" disabled={busy} onClick={page}>More</button></div>}
       </div>
       {sel.length > 0 && (
@@ -239,6 +243,8 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
   const path = u(userId, "memory", item.pool, item.id);
   const act = (fn: () => Promise<MemoryDetail>) => run(async () => d.set(await fn()));
   const canDelete = item.kind === "note" || item.kind === "page";
+  // A message is read here as short-term memory; it is changed in its thread (Came from), never here.
+  const canEdit = item.kind !== "entry";
   const cameFrom: MemoryUse[] = d.data.cameFrom.map((ref) => ({ id: ref, sentence: sentenceCiting(item.text, ref) }));
 
   return (
@@ -264,13 +270,13 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
         : (
           <>
             <div className="prose"><MemoryProse text={item.text} pool={item.pool} userId={userId} links={links} users={users} display={display} /></div>
-            <div className="row">
+            {canEdit && <div className="row">
               <button type="button" className="sm" onClick={() => setEditing(true)}>Edit</button>
               <MoreMenu>
                 <button type="button" role="menuitem" disabled={busy} onClick={() => act(() => post<MemoryDetail>(`${path}/archive`, { archived: !item.archived }))}>{item.archived ? "Unarchive" : "Archive"}</button>
                 {canDelete && <button type="button" role="menuitem" className="danger" disabled={busy} onClick={() => setDeleting(true)}>Delete…</button>}
               </MoreMenu>
-            </div>
+            </div>}
           </>
         )}
       <Lineage title="Came from" uses={cameFrom} mark={undefined} ctx={ctx} pool={item.pool} links={links} users={users} ownText expanded={expanded === "Came from"} onToggle={() => setExpanded(expanded === "Came from" ? null : "Came from")} />

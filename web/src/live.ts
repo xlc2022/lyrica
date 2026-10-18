@@ -22,6 +22,8 @@ export interface Live {
   title?: string;
   /** Bumped when stored messages must be reloaded (turn end, reset). */
   reload: number;
+  /** Bumped at each finished tool call: the Files panel beside the thread reloads its folders, since a call may have written one. */
+  tools: number;
   /** How many of `items` are stored and go once the reload arrives. */
   ended: number;
   /** Bumped, per subagent thread, when its stored work changes, so an open transcript reloads. */
@@ -41,7 +43,7 @@ export interface Live {
   context?: ContextInfo | null;
 }
 
-export const initialLive: Live = { busy: false, queued: [], permissions: [], items: [], errors: [], reload: 0, ended: 0, subagents: {}, settings: 0, children: 0 };
+export const initialLive: Live = { busy: false, queued: [], permissions: [], items: [], errors: [], reload: 0, tools: 0, ended: 0, subagents: {}, settings: 0, children: 0 };
 
 /** A subagent's events that mean its thread has new stored messages. */
 const STORED: string[] = ["started", "usage", "question", "note", "finished", "stopped", "interrupted"];
@@ -86,7 +88,7 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "tool_start":
       return withParts(s, (parts) => [...parts, { type: "tool", toolCallId: e.toolCallId, name: e.name, args: e.args }]);
     case "tool_end":
-      return withParts(s, (parts) => parts.flatMap((p) =>
+      return withParts({ ...s, tools: s.tools + 1 }, (parts) => parts.flatMap((p) =>
         p.type === "tool" && p.toolCallId === e.toolCallId
           ? [{ ...p, result: e.result, isError: e.isError, ...(e.imageRefusal && { imageRefusal: e.imageRefusal }), ...(e.threads && { threads: e.threads }) }, ...(e.image ? [e.image] : [])]
           : [p]));

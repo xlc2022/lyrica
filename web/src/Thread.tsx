@@ -4,7 +4,7 @@ import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo,
 import { Icon } from "./icons.tsx";
 import { hasConsequences, jumpTo, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { JUMP_EVENT, JUMP_KEY, SHOW_EVENT, SHOW_KEY, take, type JumpRequest, type ShowRequest } from "./links.ts";
-import { go, href } from "./route.ts";
+import { go, href, parse } from "./route.ts";
 import { ProjectWelcome, ThreadsFact, useOverview, type ProjectEnv } from "./Project.tsx";
 import { useThread } from "./stream.ts";
 import { Conversation, MessageBox } from "./Messages.tsx";
@@ -14,9 +14,9 @@ import { TokensFact } from "./Usage.tsx";
 import { RoutinesFact } from "./Routines.tsx";
 import { ChecklistButton } from "./Checklist.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
-import { Crumbs, Main, PanelButtons, usePanel, type ShellContext } from "./Shell.tsx";
+import { Crumbs, Main, PanelButtons, usePanel, useWide, type ShellContext } from "./Shell.tsx";
 import { ThreadMenu, type MenuAt } from "./ThreadMenu.tsx";
-import { ErrorText, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
+import { ErrorText, InlineRename, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
 import { stopReading } from "./Voice.tsx";
 import { Tombstone } from "./Tombstone.tsx";
 
@@ -64,6 +64,17 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   // A new title, or a finished turn, may change the sidebar.
   useEffect(() => { if (t.live.title) { summary.reload(); refreshThreads(); } }, [t.live.title, summary.reload, refreshThreads]);
   useEffect(() => { if (t.live.reload) refreshThreads(); }, [t.live.reload, refreshThreads]);
+  // A finished tool call or turn may have written the thread's folder: the Files panel beside the thread reloads.
+  const { noteActivity } = ctx;
+  useEffect(() => { if (t.live.reload || t.live.tools) noteActivity(`${pool}/${threadId}`); }, [t.live.reload, t.live.tools, noteActivity, pool, threadId]);
+  // A double-click on the title renames the thread in place (docs/ux.md §6).
+  const [renaming, setRenaming] = useState(false);
+  const renameTo = (name: string) => patch<ThreadSummary>(base, { title: name }).then((x) => { summary.set(x); refreshThreads(); }, (e: Error) => setSendError(e.message));
+  // Project (a project chat's header) toggles the project's overview beside the chat from the split width, and opens the page below it.
+  const wide = useWide();
+  const here = parse(location.hash);
+  const onOverview = wide && here.page === "thread" && here.panel?.page === "threads" && here.panel.pool === pool && here.panel.threadId === threadId;
+  const openOverview = () => go(!wide ? { page: "threads", userId, pool, threadId } : onOverview ? { page: "thread", userId, pool, threadId } : { page: "thread", userId, pool, threadId, panel: { page: "threads", pool, threadId } });
   // A child thread's update changes its badge in the sidebar.
   const updates = t.live.items.filter((x) => x.role === "notice").length;
   useEffect(() => { if (updates) refreshThreads(); }, [updates, refreshThreads]);
@@ -257,7 +268,9 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         <button type="button" className="menu-btn icon" aria-label="Show threads" onClick={ctx.openSide}><Icon name="menu" /></button>
         <div className="head-title">
           <Crumbs />
-          <h1>{title}</h1>
+          <h1 onDoubleClick={s && !s.subagent && !renaming ? (e) => { e.preventDefault(); getSelection()?.removeAllRanges(); setRenaming(true); } : undefined}>
+            {renaming ? <InlineRename value={s?.title ?? ""} label="Title" onSave={renameTo} onDone={() => setRenaming(false)} /> : title}
+          </h1>
           <div className="tfacts">
             <span className={`k ${pool}`}>{pool}</span>
             {settings.data && <ModelBadge base={base} settings={settings.data} onChange={settings.set} readOnly={!!s?.subagent} />}
@@ -280,8 +293,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         </div>
         {!s?.subagent && (
           <div className="head-actions">
-            {/* A project chat keeps its drawer (folders, network, local-only, the other task models); the page holds the project's own settings. */}
-            {s?.project && <a className="link project-link" href={href({ page: "project", userId, pool, threadId })} aria-label="Project settings"><Icon name="project" /><span className="long">Project</span></a>}
+            {/* Project opens the overview (the threads list, with Project settings inside it) beside the chat; the chat keeps its drawer for folders, network, local-only and the other task models. */}
+            {s?.project && <button type="button" className="link project-link" aria-label="Project" aria-pressed={wide ? onOverview : undefined} onClick={openOverview}><Icon name="project" /><span className="long">Project</span></button>}
             {/* The Files panel (docs/ux.md §6): beside the conversation from the split width, the page on its own below it. */}
             <a className="sm" href={href({ page: "files", userId, pool, threadId })} aria-label="Files and images"><Icon name="panel" /><span className="long">Files</span></a>
             <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls={drawerId} onClick={() => setDrawer(!drawer)}>

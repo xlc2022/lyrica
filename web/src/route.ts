@@ -151,6 +151,18 @@ export function idHref(userId: string, pool: Pool, id: string): string {
   return thread ? href({ page: "thread", userId, pool: p, threadId: thread }) : href({ page: "memory", userId, pool: p, id: bare });
 }
 
+/**
+ * Where a recalled ID leads (a recall marker's list): a message is read in the memory browser as
+ * short-term memory, with its thread under Came from; a whole thread opens itself. Citations in
+ * her prose keep `idHref`, which opens a message's thread.
+ */
+export function recalledHref(userId: string, pool: Pool, id: string): string {
+  const [, other, bare = id] = /^(?:(general|private)\/)?(.*)$/s.exec(id) ?? [];
+  const p = (other as Pool | undefined) ?? pool;
+  const thread = /^t:(.+)$/.exec(bare)?.[1];
+  return thread ? href({ page: "thread", userId, pool: p, threadId: thread }) : href({ page: "memory", userId, pool: p, id: bare });
+}
+
 export const go = (r: Route) => { location.hash = href(r); };
 
 /** The route at the current address; an address that moved is replaced by its new one (settings/endpoints, settings/profiles). */
