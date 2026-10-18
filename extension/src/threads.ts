@@ -2,7 +2,7 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
-  ASK_GUIDELINE, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS,
+  ASK_GUIDELINE, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS,
   type ChildInfo, type StartRequest, type ThreadsLimits,
 } from "@lyrica/core";
 import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
@@ -146,6 +146,20 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
   const projectThread = () => child && project() === self.parent;
   const steps = !!host?.stepsChanged && host.checklistsOn?.(thread) !== false;
   return (pi) => {
+    let asked = false;
+    let nudged = false;
+    pi.on("agent_start", () => { asked = false; nudged = false; });
+    pi.on("message_end", (e) => {
+      if (e.message.role === "assistant" && e.message.content.some(c => c.type === "toolCall" && c.name === "threads" && c.arguments.action === "ask")) asked = true;
+    });
+    pi.on("turn_end", (e) => {
+      if (!host || (child && !projectThread()) || asked || nudged || store.openQuestion(thread.threadId)) return;
+      if (e.message.role !== "assistant" || e.message.content.some(c => c.type === "toolCall")) return;
+      const reply = e.message.content.filter(c => c.type === "text").map(c => c.text).join("\n");
+      if (!proseQuestion(reply)) return;
+      nudged = true;
+      pi.sendMessage({ customType: "lyrica-ask-nudge", content: ASK_NUDGE, display: false }, { deliverAs: "followUp", triggerTurn: true });
+    });
     let started = 0;
     let siblings = 0;
     pi.on("before_agent_start", (event) => {
@@ -202,6 +216,14 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         ...(host?.later ? [WAKEUP_GUIDELINE] : []), ...(host ? [ROUTINE_GUIDELINE] : []), ...(steps ? [STEPS_GUIDELINE] : []), ...(host || meter ? [MENTION_GUIDELINE] : []), ...(meter ? COMPACT_GUIDELINES : []),
       ],
       parameters: paramsFor(actions, drop),
+      prepareArguments(input) {
+        const a = input as { action?: string } | null;
+        if (a?.action !== "ask" && a?.action !== "steps") return input as Params;
+        const normalized = normalizeThreadArguments(input);
+        if (a.action === "ask") cleanAsk(normalized);
+        else cleanSteps(normalized.steps);
+        return normalized as Params;
+      },
       async execute(_id, p: Params, _signal, _update, ctx) {
         if (p.action === "compact") {
           if (!meter) throw new Error("this thread can't compact");
@@ -358,4 +380,29 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       },
     });
   };
+}
+
+export const ASK_NUDGE = "Your reply ends with a question offering options. If the person must choose before you can go on, put it on a card with threads ask, and don't repeat it in prose; otherwise carry on.";
+
+/** Only the final question paragraph and its adjacent list count. */
+export function proseQuestion(text: string): boolean {
+  const lines = text.trim().split(/\r?\n/);
+  const item = (s: string) => /^\s*(?:[-*]|\d+[.)]|[A-Z]\))\s+\S/.test(s);
+  let end = lines.length - 1;
+  if (item(lines[end]!)) {
+    let count = 0;
+    while (end >= 0 && (item(lines[end]!) || !lines[end]!.trim())) { if (item(lines[end]!)) count++; end--; }
+    if (count < 2 || count > 4 || end < 0) return false;
+    const paragraph: string[] = [];
+    while (end >= 0 && lines[end]!.trim()) paragraph.unshift(lines[end--]!);
+    return paragraph.join(" ").trim().endsWith("?") && !paragraph.some(item);
+  }
+  // A closing question paragraph must immediately follow the list.
+  const paragraph: string[] = [];
+  while (end >= 0 && lines[end]!.trim() && !item(lines[end]!)) paragraph.unshift(lines[end--]!);
+  if (!paragraph.join(" ").trim().endsWith("?")) return false;
+  while (end >= 0 && !lines[end]!.trim()) end--;
+  let count = 0;
+  while (end >= 0 && item(lines[end]!)) { count++; end--; }
+  return count >= 2 && count <= 4;
 }
