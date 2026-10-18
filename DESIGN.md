@@ -1579,8 +1579,8 @@ Details in [docs/sleep.md](docs/sleep.md).
 
 - The Lyrica Pi extension holds everything that makes her Lyrica: persona,
   context assembly, memory tools and sleep.
-- **Truthful continuation** is operational tool guidance, not a controller or
-  persona rule: actionable work runs before the final reply, which ends the
+- **Truthful continuation** is operational guidance in her own prompt (not
+  subagents'), not a controller or persona rule: actionable work runs before the final reply, which ends the
   turn. A background claim names a successfully started or queued mechanism
   and distinguishes queued from running; otherwise she reports her stopping
   point and that she is idle. Recurring routines require the user's request.

@@ -153,8 +153,9 @@ describe("extension", () => {
       toolSnippets: { recall: "search memory", hidden: "secret" },
       toolGuidelines: { recall: ["Recall first"], hidden: ["Not shown"] },
       promptGuidelines: ["Recall first", "Be kind"],
-    })).toBe(`- recall: search memory\n\nGuidelines:\n${CONTINUATION_GUIDELINES.map((r) => `- ${r}`).join("\n")}\n- Recall first\n- Be kind`);
-    // The turn boundary still applies when no tools are offered.
-    expect(toolGuidance({ cwd: "/", selectedTools: [] })).toBe(`Guidelines:\n${CONTINUATION_GUIDELINES.map((r) => `- ${r}`).join("\n")}`);
+    })).toBe("- recall: search memory\n\nGuidelines:\n- Recall first\n- Be kind");
+    expect(toolGuidance({ cwd: "/", selectedTools: [] })).toBe("");
+    // Her own prompt adds the turn boundary, even with no tools; a subagent's (no rules given) doesn't.
+    expect(toolGuidance({ cwd: "/", selectedTools: [] }, CONTINUATION_GUIDELINES)).toBe(`Guidelines:\n${CONTINUATION_GUIDELINES.map((r) => `- ${r}`).join("\n")}`);
   });
 });

@@ -11,7 +11,8 @@ The Lyrica Pi extension. `createLyricaExtension(thread, options)` returns a Pi
     page index and "who you're talking with" become `sections`.
   - Pi's default tool list and rules are dropped along with the preamble, so
     `toolGuidance` rebuilds them into a `tools` section from each tool's own
-    snippet and guidelines. It also supplies operational continuation rules:
+    snippet and guidelines. Her own prompt (never a subagent's) also gets
+    operational continuation rules:
     act before the final reply, which ends the turn; after failed delegation
     use direct tools if available; name a successfully started or queued
     background mechanism and distinguish queued from running. Otherwise

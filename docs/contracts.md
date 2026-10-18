@@ -867,7 +867,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     rules. The extension therefore rebuilds them from each tool's own snippets
     and guidelines (`toolGuidance`) into a `tools` section. Any tool
     registered with a snippet and guidelines appears there automatically.
-    `toolGuidance` also supplies operational continuation rules: act before
+    For her own prompt only (never a subagent's), `toolGuidance` is also
+    given operational continuation rules: act before
     the final reply (which ends the turn), fall back to available direct tools
     after failed delegation, name a successfully started or queued background
     mechanism and its actual status, or report the stopping point and idle.
