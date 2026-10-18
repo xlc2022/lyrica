@@ -314,7 +314,9 @@ checks it reaches her, and with a real model which she picks. Code:
   three rounds (`MAX_WAKE_ROUNDS`) until the person writes in either thread;
   past that it is saved without starting the child, which sees it on its
   next turn. Pending wake metadata lives in memory; notices stay encrypted
-  in the thread.
+  in the thread. A message saved while every slot was taken is kept in the
+  thread, but after a restart its thread isn't woken for it: it sees the
+  message on its next turn.
 
   `message` returns what happened, and the tool tells her: the thread
   started a turn, took the message into its running turn, waits for a slot
