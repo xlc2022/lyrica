@@ -24,7 +24,7 @@ and mixes the folder with the chat's other grants. The owner asked
 1. **Files and images**, the third section of the Project settings page
    (`…/p/<pool>/<project>/files`), after Memory.
 2. A row of controls under the heading: **Files | Images** (a segmented
-   control), then **Upload** and **New folder**.
+   control), then **Upload…** and, on Files, **New folder**.
 3. **Files:** the project folder one folder at a time, with the folder's
    path above the list as crumbs (**Project folder** first). Folders first.
    Each row: an icon, the name in mono, and its facts muted (a folder says

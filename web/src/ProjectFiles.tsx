@@ -113,7 +113,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
           {(["files", "images"] as const).map((k) => <button key={k} type="button" aria-pressed={tab === k} onClick={() => setTab(k)}>{k === "files" ? "Files" : "Images"}</button>)}
         </div>
         <span className="spacer" />
-        <button type="button" className="sm" disabled={busy} onClick={() => picker.current?.click()} title={tab === "images" ? `To ${relative(dir)}` : undefined}>Upload</button>
+        <button type="button" className="sm" disabled={busy} onClick={() => picker.current?.click()} title={tab === "images" ? `To ${relative(dir)}` : undefined}>Upload…</button>
         {tab === "files" && <button type="button" className="sm" disabled={busy || adding} onClick={() => setAdding(true)}>New folder</button>}
       </div>
       <ErrorText error={loadError || error} />

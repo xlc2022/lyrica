@@ -244,7 +244,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the box), and a link to that page in the memory browser. **Files and images**
   (`ProjectFiles.tsx`): the project folder (the project chat's `/workspace`)
   through the Files panel's routes on the project chat, one folder at a time
-  with crumbs, Files | Images, Upload (to the folder shown, or by dropping
+  with crumbs, Files | Images, Upload… (to the folder shown, or by dropping
   files on the section), New folder, and per row Open (a folder in the list,
   a file in the chat's Files panel) and a ⋯: Download, Rename… in place, Move
   to… (a drawer listing up to 500 folders, found folder by folder; `rename`
