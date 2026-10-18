@@ -824,8 +824,11 @@ One model-facing tool: `delegate({ action?, ... })`.
   connection: its pointer and `child_threads.needs_you` change in the same
   transaction. A project's ask sends its existing waiting notice and wakes
   the project chat; answering or withdrawal updates the parent's card at
-  once. Resolve and Stop withdraw a question; disposing an idle session or
-  restarting the daemon preserves it. Removing its tool call removes the
+  once. Resolve, the person's Stop and a parent's `threads stop` withdraw a
+  question (`HostedThread.stop(true)`); lock, project pause, disposing an
+  idle session and restarting the daemon preserve it. `needs_you` moves
+  only when a question opens or closes, so a status message's `needsYou`
+  survives an edit or rewind. Removing its tool call removes the
   pointer with the turn.
   `ThreadSummary.question?: { n: number; asked: string }` carries only the
   open pointer. `MessagePage.questions?: QuestionState[]` carries the saved

@@ -470,9 +470,10 @@ label with lyricad's `[Answer to q:<n>]` mark and starts a turn. It returns
 400 for an invalid option. The reader shows it as a user message, without
 the mark. Both the messages route and hosted `MarkedText` refuse user text
 starting with `[Answer to q:`. A typed message closes the question as
-`words`, keeping the text unchanged. Replacement, Stop and Resolve close it
-as `withdrawn`. Closing and clearing a project's `needs_you` happen in one
-transaction; settings events refresh cards, the sidebar and Notifications.
+`words`, keeping the text unchanged. Replacement, the person's Stop, a
+parent's `threads stop` and Resolve close it as `withdrawn`; lock and
+project pause keep it. Closing and clearing a project's `needs_you` happen
+in one transaction, and only a question opening or closing moves it; settings events refresh cards, the sidebar and Notifications.
 An ask in a project thread wakes its project chat through the existing
 coalesced parent wake, and the parent card can answer without navigation.
 

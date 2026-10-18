@@ -342,7 +342,8 @@ checks it reaches her, and with a real model which she picks. Code:
   changes the goal, a visible output or an irreversible step; ask once on
   the card, recommend the first option, keep working where reversible and
   stop where not. The answer arrives as an ordinary user message in a later
-  turn. Replacing an open question, Stop or Resolve withdraws it.
+  turn. Replacing an open question, Stop (the person's or a parent's) or
+  Resolve withdraws it; lock and project pause keep it.
 - `compact({ summary })`: compacts the thread she's in with her summary
   (daemon.md, "Compacting herself"). Child threads have it too.
 
