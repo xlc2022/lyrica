@@ -38,8 +38,9 @@ and `-`, at most 40 characters.
   choices name offerings (`ModelRef` is `{ offeringId }`). Renaming an
   endpoint, or changing its URL or key (`editEndpoint`), keeps every ID.
 - **Paused.** `editEndpoint { paused }` pauses or resumes a plain endpoint
-  or plan (`paused_at` on `endpoints`): the router skips it ("is paused")
-  until it resumes. A model host pauses itself instead (`hostControl`).
+  or plan (`paused_at` on `endpoints`, added by expand-only self step 3 and
+  user step 12 to databases made before it): the router skips it ("is
+  paused") until it resumes. A model host pauses itself instead (`hostControl`).
 - **Labels.** People and Lyrica name a model as `<endpoint>/<model>`, with
   `shared.` before a shared endpoint's name, so the two never collide. A host
   recipe's `<model>` is its name (`modelName`), never its `recipe/<id>`;

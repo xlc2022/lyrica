@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { SELF_SCHEMA, THREAD_SHARES_SCHEMA, USER_SCHEMA, type Db } from "./db.ts";
 import { DELEGATION_SCHEMA } from "./delegation.ts";
 import { IDENTITY_SCHEMA } from "./models/host.ts";
-import { addNotice, ENDPOINT_SCHEMA, MIXED_PRESET, migrate as moveModels, MODEL_CHOICE_SCHEMA, PRESET_SCHEMA, REDIRECT_SCHEMA, upgradeCalls } from "./models/schema.ts";
+import { addNotice, ENDPOINT_SCHEMA, MIXED_PRESET, migrate as moveModels, MODEL_CHOICE_SCHEMA, PRESET_SCHEMA, REDIRECT_SCHEMA, upgradeCalls, upgradeEndpoints } from "./models/schema.ts";
 import { PREFS_SCHEMA } from "./prefs.ts";
 import { POOL_SCHEMA, POOL_UPGRADES, ROUTINES_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
 import { CHANGES_SCHEMA } from "./workspace/changes.ts";
@@ -180,6 +180,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Share with (DESIGN.md, "Where things are"): a thread in transit between two users. Expands only.
     version: 2,
     run(db) { db.exec(THREAD_SHARES_SCHEMA); },
+  }, {
+    // Principle 1: endpoints.paused_at for a database past step 1 before that step added it, so editing a shared endpoint works. Adds a column only.
+    version: 3,
+    run(db) { upgradeEndpoints(db); },
   }],
   user: [{
     version: 1, contract: true,
@@ -259,6 +263,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principles 2 and 6: pushed decision IDs only, in encrypted user.db. Expand only.
     version: 11,
     run(db) { db.exec("CREATE TABLE IF NOT EXISTS push_sent (id TEXT PRIMARY KEY, at INTEGER NOT NULL)"); },
+  }, {
+    // Principle 1: endpoints.paused_at for a database past step 1 before that step added it, so editing an endpoint works. Adds a column only.
+    version: 12,
+    run(db) { upgradeEndpoints(db); },
   }],
   pool: [{
     version: 1, contract: true,

@@ -405,7 +405,7 @@ async function localWarning(ep: Endpoint): Promise<string | undefined> {
   return warnings.length ? `${ep.name} is declared local, but ${warnings.join(", and ")}, outside loopback, private and tailnet addresses` : undefined;
 }
 
-interface EndpointRow { id: string; name: string; kind: "cloud" | "local"; api: string; base_url: string; api_key: string | null; down_since: string | null; addresses: string | null; pin: string | null; paused_at?: string | null }
+interface EndpointRow { id: string; name: string; kind: "cloud" | "local"; api: string; base_url: string; api_key: string | null; down_since: string | null; addresses: string | null; pin: string | null; paused_at: string | null }
 interface OfferingRow { id: string; endpoint: string; model: string; found: string; hand: string; manual: number; missing_since: string | null }
 interface GroupRow { id: string; name: string; members: string }
 interface PresetRow { id: string; name: string; scope: PresetScope; builtin: "local" | "cloud" | null; entries: string; updated_at: string }
