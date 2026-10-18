@@ -3495,6 +3495,17 @@ test("image providers run 2: cloud switches and refusal links", async ({ page, b
   await imageRow.getByRole("button", { name: "Quality", exact: true }).click();
   await expect(imageRow.getByRole("button", { name: "Quality", exact: true })).toHaveAttribute("aria-pressed", "true");
   await noHorizontalScroll(page);
+  // A thread picks its own image models in Thread settings, from the models that do each.
+  await page.goto(`/#/u/${userId}`);
+  await newThread(page, "General");
+  await send(page, "A quiet pond");
+  await expect(page.getByText("You said: A quiet pond")).toBeVisible();
+  const settings = await openSettings(page);
+  const imagesSelect = settings.getByRole("combobox", { name: /^Images( |$)/ });
+  await expect(imagesSelect.locator("option", { hasText: "cloud · art-model · image-switches" })).toHaveCount(1);
+  await expect(settings.getByRole("combobox", { name: /^Image upscaling/ }).locator("option", { hasText: "art-model" })).toHaveCount(0);
+  await imagesSelect.selectOption({ label: "cloud · art-model · image-switches" });
+  await expect(imagesSelect).toHaveValue(model.id);
   await api("DELETE", `/endpoints/${ep.id}`);
 
   await page.goto(`/#/u/${userId}`);

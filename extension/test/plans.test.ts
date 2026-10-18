@@ -41,7 +41,8 @@ describe("a ChatGPT plan", () => {
       expect(runtime.getProvider(s.plan.id)).toBeUndefined();
     }
     const general = await modelRuntimeFor(s.models, s.ctx());
-    expect(general.getModels(s.plan.id).map((m) => m.id).sort()).toEqual(s.offerings.map((o) => o.modelId).sort());
+    // Its chat models; ChatGPT Images is the image tool, called from core, not a chat model.
+    expect(general.getModels(s.plan.id).map((m) => m.id).sort()).toEqual(s.offerings.map((o) => o.modelId).filter((id) => id !== "chatgpt-images").sort());
 
     const bo = await s.users.createUser("bo", "pw", profile("Bo"), { admin: false });
     await s.users.authenticate("bo", "pw");
