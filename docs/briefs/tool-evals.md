@@ -172,3 +172,30 @@ handoff.
 - **Next:** review, the user's full-suite run, commit and push. Changes are
   left in the working tree; this run cannot write `.git` and does not push.
   Real-model evals remain explicitly out of scope. No open design questions.
+
+### Regression follow-up
+
+Principles 1 and 2: correctable tool feedback and request-only context.
+The daemon checklist test expected Pi's old `steps.0.state` error path.
+`shipped` is still refused, as required above; the test now checks the
+specific `steps[0].state` error, its allowed values and no echoed value.
+No accepted or refused input changed.
+
+The nudge filter made `context_with_system` return a replacement transcript
+even when nothing changed. The extension now returns nothing when there is
+no selected work and no expired nudge. The selected-work test retains its
+original assertions and also checks that old nudges disappear, current-run
+nudges remain, input history is untouched and prompt options contain neither
+selected work nor the nudge. No copying into prompt options was observed.
+
+Presets audit: the eval harness already uses `setColumnTask`, the welcome
+Backend card reads presets/columns, and this feature touches no Images UI,
+model-profile routes or migrations. No further preset adaptation was needed.
+
+Validation: typecheck passes; 39 tests in daemon steps, extension extension,
+Pi session, threads and context, and core thread arguments pass under the
+shared lock with forks and two workers. Then `npm run evals` passes 14 tests
+with five optional real-model checks skipped under the same lock and worker
+limit. Real-model environment variables were removed for the eval run;
+only fakes were used. The full suite, review, commit and push remain for
+the user and owning thread; no commit or push was attempted.

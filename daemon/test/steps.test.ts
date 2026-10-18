@@ -54,7 +54,8 @@ describe("a thread's checklist", () => {
       steps([{ text: "Ship", state: "shipped" }]), { text: "Hm." });
     const refused = toolEnds(await say("more"));
     expect(refused[0]).toMatchObject({ isError: true, result: expect.stringContaining(`at most ${STEPS_LIMITS.steps} steps`) });
-    expect(refused[1]).toMatchObject({ isError: true, result: expect.stringContaining("steps.0.state") });
+    expect(refused[1]).toMatchObject({ isError: true, result: expect.stringContaining("steps[0].state received string; must be one of todo, doing, done") });
+    expect(refused[1]!.result).not.toContain("shipped");
     expect((await summary()).steps).toHaveLength(3);
 
     replies.push(steps([]), { text: "Done." });

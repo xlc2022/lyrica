@@ -75,7 +75,9 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
     pi.on("context_with_system", event => {
       const messages = dropAskNudges(event.messages);
       const recentWork = opts.recentWork?.();
-      return recentWork ? { messages: [...messages, { role: "system" as const, content: `Selected recent work for this turn:\n\n${recentWork}`, timestamp: Date.now() }] } : { messages };
+      if (recentWork) return { messages: [...messages, { role: "system" as const, content: `Selected recent work for this turn:\n\n${recentWork}`, timestamp: Date.now() }] };
+      // Leave Pi's request alone unless an earlier turn's nudge was removed.
+      return messages.length !== event.messages.length ? { messages } : undefined;
     });
     pi.on("before_agent_start", async (event, ctx) => {
       const persona = opts.persona();

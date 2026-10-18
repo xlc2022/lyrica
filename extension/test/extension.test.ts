@@ -42,6 +42,14 @@ describe("extension", () => {
     expect(JSON.stringify((await turn("Set up the project")).options)).not.toContain("SELECTED-WORK");
     selected = undefined;
     expect(turn.request(messages)).toBeUndefined();
+    const nudge = { role: "custom", customType: "lyrica-ask-nudge", content: "NUDGE", timestamp: 2 };
+    const next = { role: "user", content: "Next request", timestamp: 3 };
+    const history = [...messages, nudge, next];
+    expect(turn.request(history)).toEqual({ messages: [...messages, next] });
+    expect(history).toEqual([...messages, nudge, next]);
+    // A nudge in the current run remains available for its one follow-up.
+    expect(turn.request([...messages, nudge])).toBeUndefined();
+    expect(JSON.stringify((await turn("Next request")).options)).not.toMatch(/SELECTED-WORK|NUDGE/);
   });
 
   it("edits Pi's prompt options instead of replacing the prompt, routed per turn", async () => {
