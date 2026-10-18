@@ -128,6 +128,12 @@ detected one is private), and the models folder. Then it:
 5. Offers to set a dashboard password.
 6. Prints the dashboard addresses and the host's **key fingerprint**. Keep
    the fingerprint: you check it against what Lyrica shows after pairing.
+7. On a systemd machine other than NixOS, installs the updater (see
+   Upgrade below). The first time, it makes a key and prints it from
+   `/etc/lyrica-host/deploy-key.pub`: add it to the GitHub repository as a
+   read-only deploy key (Settings → Deploy keys). The updater needs `jq`,
+   `git` and `ssh`; without them the host reports it unavailable and says
+   which to install.
 
 Options, for a second run or a non-interactive one (`host/install.sh --help`):
 
@@ -144,11 +150,12 @@ Options, for a second run or a non-interactive one (`host/install.sh --help`):
 
 Running the script again keeps `.env`'s values as defaults, rebuilds, and
 restarts the stack in place, also on a machine with many network
-interfaces (Docker's, for one). That is how you change a setting or
-upgrade (`git pull && host/install.sh`).
+interfaces (Docker's, for one). That is how you change a setting.
 
 ## The dashboard
 
+- From Lyrica: **Dashboard** on the host's card in Models opens it in a
+  new tab.
 - At the machine: `http://127.0.0.1:7236`, no login.
 - From the LAN: `https://<LAN address>:7236`, with the password. The
   certificate is the host's own, so the browser warns; check its
@@ -207,8 +214,10 @@ Three ways a model gets into the library:
 - **Download from Lyrica**: in Models, Text models, **Download model**
   opens Download text model. Name a repository on Hugging Face or
   ModelScope, or paste its link, pick a host and a GGUF file (or the whole
-  repository when it has none), and it starts on that host; a link to one
-  `.gguf` or `.safetensors` file, with an optional SHA-256, works too.
+  repository when it has none), and it starts on that host. Ticking a
+  GGUF model also ticks its vision projector and MTP file, marked
+  **Vision** and **MTP**. A link to one `.gguf` or `.safetensors` file,
+  with an optional SHA-256, works too.
   Models, **Downloads** shows every host's queue, with Cancel, Clear
   finished and Add to the group. Its **Accounts** section holds hub
   tokens: a user's own, or a shared one an administrator adds, sent to the
@@ -378,11 +387,29 @@ second pairing. Then:
   servers log nothing at all, so `docker logs` on them fails. To see what
   holds the GPU, `nvidia-smi --query-compute-apps=pid,process_name,used_memory
   --format=csv`.
-- **Upgrade:** `git pull && host/install.sh` in the checkout. It rebuilds
-  the images and restarts the stack; `.env` keeps the settings, and the
-  `data` volume keeps the host's key, so pairing survives. A host
+- **Upgrade:** **Update** in the host's ⋯ on Models (an administrator, for
+  a shared host) moves it to the release Lyrica runs. It shows when
+  Lyrica runs a release (Administration → Updates), the host has the
+  updater, and the host runs another commit. The host pauses (running
+  jobs finish first), installs the release into a root-owned tree,
+  `/opt/lyrica-host/<commit>`, and is rolled back if host-api doesn't
+  report the new commit within 5 minutes; a host paused before stays
+  paused. From the first update on, the host runs from that tree, so its
+  settings are in `/opt/lyrica-host/<commit>/host/.env`, carried to each
+  new tree: change one by running `install.sh` there. By hand, `git pull
+  && host/install.sh` in your checkout installs from the checkout again.
+  Either way the `data` volume keeps the host's key, so pairing survives.
+  Details are in [host/README.md](../../host/README.md#updates).
+- **Hosts installed before the updater** need `git pull &&
+  host/install.sh` once more: it installs the updater, prints the deploy
+  key to add, and brings the host-api image that opens from Lyrica's
+  Dashboard button, recognises a model's vision projector and MTP file,
+  and waits for a model's memory to free before loading the next. A host
   installed before the image server got its `/triton` scratch space needs
-  this once, or image jobs fail with an `ImportError` (seen on NVIDIA).
+  this too, or image jobs fail with an `ImportError` (seen on NVIDIA).
+- **On NixOS** the updater isn't installed: upgrade with `git pull &&
+  host/install.sh` in the `checkout` folder. Lyrica shows the host's
+  version but has no Update.
 - **Restarting host-api alone** (a re-run of `install.sh` that leaves
   llama.cpp running) loses track of the models llama.cpp still holds:
   their memory counts as other programs', so a model may be refused as too
