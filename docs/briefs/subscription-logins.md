@@ -38,6 +38,8 @@ and the provider, so this is wiring, not a client of our own (principle 3).
 - **Codex CLI login: not used.** Pi's older `openai-codex` provider
   borrows the Codex CLI's own client and calls
   `chatgpt.com/backend-api/codex`. The official sign-in above replaces it.
+  (ChatGPT Images instead runs the unmodified `codex` program with the
+  user's own Codex sign-in: codex-images.md.)
 - **Claude plan: forbidden.** Anthropic's Claude Code legal page
   (code.claude.com/docs/en/legal-and-compliance) says subscription OAuth
   "is designed to support ordinary use of Claude Code and other native

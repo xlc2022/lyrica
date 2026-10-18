@@ -1,5 +1,6 @@
-import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, planImageDriver, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
-export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, planImageDriver, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
+import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
+export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
+export { CODEX_DISABLED, codexImage, codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn } from "./codex.ts";
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import type { Db } from "../db.ts";
@@ -484,7 +485,7 @@ export class Models {
   private readonly discovered = new Set<string>();
   /** Plans that reached their usage limit, until when they're skipped. */
   private readonly limited = new Map<string, number>();
-  private planImageToken?: (userId: string, endpointId: string, signal?: AbortSignal) => Promise<string>;
+  private codexImages?: (userId: string, request: ImageRequest, signal?: AbortSignal) => Promise<GeneratedImage[]>;
 
   /** The models each plan offers (setPlanCatalog). */
   private planCatalog: (kind: PlanKind) => DiscoveredModel[] = () => [];
@@ -537,9 +538,9 @@ export class Models {
 
   // --- Subscription plans ---
 
-  /** Pi owns refresh; the daemon installs its resolver for image calls. */
-  setPlanImageToken(resolve: (userId: string, endpointId: string, signal?: AbortSignal) => Promise<string>): void {
-    this.planImageToken = resolve;
+  /** ChatGPT Images runs the user's own Codex; the daemon installs the runner, which knows where their encrypted home is. */
+  setCodexImages(run: (userId: string, request: ImageRequest, signal?: AbortSignal) => Promise<GeneratedImage[]>): void {
+    this.codexImages = run;
   }
 
   /** Throws when a name can't name an endpoint, so a sign-in isn't started for one that would be refused after it. */
@@ -2292,15 +2293,10 @@ export class Models {
       await opts.beforeSend?.(r);
       opts.signal?.throwIfAborted();
       const ep = r.endpoint;
-      const apiKey = ep.api === "chatgpt"
-        ? this.planImageToken ? await this.planImageToken(ctx.userId, ep.id, opts.signal) : this.planCredential(ctx.userId, ep.id)?.access
-        : ep.apiKey;
-      opts.signal?.throwIfAborted();
-      // ChatGPT Images goes through the plan's newest GPT model, whose image tool picks the image model.
-      const modelId = r.offering.modelId === PLAN_IMAGE_MODEL ? planImageDriver(this.offerings(ctx.userId, ep.id).filter((o) => o.status === "listed").map((o) => o.modelId)) : r.offering.modelId;
-      if (!modelId) throw new HostRefused("unavailable", `${ep.name} lists no model to make images with.`);
+      // ChatGPT Images is made by the user's own Codex, not over the plan's sign-in, which OpenAI refuses for images.
+      const codex = ep.api === "chatgpt" && this.codexImages ? this.codexImages.bind(this, ctx.userId) : undefined;
       const images = await imageAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: ep.api === "host" ? hostOrigin(ep.addresses![0]!) : ep.baseUrl,
-        host: ep.api === "host", api: ep.api, modelId, apiKey }, request, opts.signal);
+        host: ep.api === "host", api: ep.api, modelId: r.offering.modelId, apiKey: ep.api === "chatgpt" ? undefined : ep.apiKey, codex }, request, opts.signal);
       return { images, resolution: r };
     });
   }

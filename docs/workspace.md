@@ -322,6 +322,12 @@ takes is `lyrica@pve!agent=<that secret>`.
   `users/<id>/home`, with one folder per thread under `threads/`. A
   subagent works in its parent's folder. The gocryptfs password is the hex
   `home` subkey, passed on stdin.
+- `codex/` there is Codex's home for ChatGPT Images (`Workspace.codexDir`,
+  docs/models.md, "Image canvases"): its sign-in and anything it writes,
+  encrypted like the rest. It is the only folder in Codex's own sandbox
+  (`Workspace.codexBox`). Each image call's inputs go in `calls/<id>` there,
+  removed after the call with the images Codex saved under
+  `generated_images/`. No thread sees it.
 - A file uploaded in the web UI goes into the thread's `uploads/` folder in the
   home workspace, apart from the `images/` folder her image tool writes.
   An image keeps its extension but gets a random 12-hex-digit name

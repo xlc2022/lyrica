@@ -3,8 +3,9 @@
 # nftables, bash, coreutils and util-linux must stay: lyricad and its
 # self-test use them. imagemagick makes the Files panel's thumbnails; git,
 # gh and tea are for threads with repositories (docs/workspace.md, "Git
-# accounts and repositories"), nodejs_22 for her own code, and claude-code
-# for threads with Claude Code on (docs/workspace.md, "Claude Code").
+# accounts and repositories"), nodejs_22 for her own code, claude-code
+# for threads with Claude Code on (docs/workspace.md, "Claude Code"), and
+# codex for ChatGPT Images, in a sandbox of its own (docs/models.md).
 # chromium and the fonts render HTML/SVG diagrams offline (principle 1),
 # and take screenshots of her web UI (web/e2e/shot.ts).
 pkgs:
@@ -22,5 +23,5 @@ with pkgs; [
   getent git gh tea nodejs_22 openssh curl cacert jq ripgrep python3 imagemagick
   chromium ibm-plex dejavu_fonts
   bubblewrap passt nftables
-  unfree.claude-code
+  unfree.claude-code codex
 ]

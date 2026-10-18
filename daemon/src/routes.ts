@@ -7,6 +7,7 @@ import {
   citationsIn, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled, modelName,
+  codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
@@ -710,6 +711,25 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("DELETE", `${u}/claude-code`, (r): Api.ClaudeCodeStatus => {
       s().workspace.settings(d.userFor(r).id).setClaudeCodeToken(null);
       return { token: false, installed: claudeCodeInstalled() };
+    }),
+
+    // --- Codex, which makes ChatGPT Images (docs/models.md, "Image canvases") ---
+    route("GET", `${u}/codex`, async (r): Promise<Api.CodexStatus> => codexStatus(s().workspace.codexBox(d.userFor(r).id), d.userFor(r).id)),
+    route("POST", `${u}/codex/sign-in`, async (r): Promise<Api.CodexStatus> => {
+      const user = d.userFor(r), box = s().workspace.codexBox(user.id);
+      if (!box.installed) throw new HttpError(409, "Codex isn't installed on this server");
+      codexSignIns.get(user.id)?.cancel();
+      const signIn = await codexSignIn(box);
+      codexSignIns.set(user.id, signIn);
+      void signIn.done.finally(() => { if (codexSignIns.get(user.id) === signIn) codexSignIns.delete(user.id); });
+      return codexStatus(box, user.id);
+    }),
+    route("DELETE", `${u}/codex`, async (r): Promise<Api.CodexStatus> => {
+      const user = d.userFor(r), box = s().workspace.codexBox(user.id);
+      codexSignIns.get(user.id)?.cancel();
+      codexSignIns.delete(user.id);
+      await codexSignOut(box);
+      return codexStatus(box, user.id);
     }),
 
     // --- Git accounts (docs/workspace.md, "Git accounts and repositories") ---
@@ -2097,6 +2117,14 @@ function links(d: Lyricad, user: User): Api.UserCard[] {
 
 /** Sign-ins under way, by ID: each belongs to the user who started it and lasts SIGN_IN_MS. Held in memory only. */
 const SIGN_IN_MS = 10 * 60_000;
+/** Each user's Codex sign-in under way; it ends when Codex's own device sign-in does. */
+const codexSignIns = new Map<string, CodexSignIn>();
+async function codexStatus(box: CodexBox, userId: string): Promise<Api.CodexStatus> {
+  // While a sign-in is under way, Codex isn't signed in yet; the page asks every few seconds, so don't start Codex to say so.
+  const p = codexSignIns.get(userId);
+  if (p) return { installed: box.installed, signedIn: false, signIn: { url: p.url, code: p.code } };
+  return { installed: box.installed, signedIn: await codexSignedIn(box) };
+}
 const signIns = new Map<string, { userId: string; plan: PlanKind; signIn: PlanSignIn; name?: string; endpointId?: string; timer: NodeJS.Timeout }>();
 function dropSignIn(id: string): void {
   const p = signIns.get(id);

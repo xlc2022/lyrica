@@ -14,7 +14,8 @@ import { FileChanges, type NewChange } from "./changes.ts";
 import { cleanUploadName, ThreadFiles } from "./files.ts";
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import type { ExecutionTarget } from "./ops.ts";
-import { Sandbox, WORKDIR, type Credentials } from "./sandbox.ts";
+import { Sandbox, sandboxHas, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
+import type { CodexBox } from "../models/codex.ts";
 import { authorizedKeysLine, machineSetup } from "./machines.ts";
 import {
   certFingerprint, ownAddress, ownNode, parseProxmoxAddress, proxmoxAction, proxmoxHttps, proxmoxSetup, thisComputer, tokenId,
@@ -430,6 +431,37 @@ export class Workspace {
     // Where it is mounted, in the folder the thread works in (its project's, for a project's thread).
     mkdirSync(join(this.threadDir(t), "repos"), { recursive: true, mode: 0o700 });
     return dir;
+  }
+
+  /**
+   * Codex's home for ChatGPT Images (docs/models.md, "Image canvases"): its
+   * sign-in and anything it writes, `codex/` in the user's encrypted home
+   * workspace. Throws while that isn't mounted.
+   */
+  codexDir(userId: string): string {
+    const home = this.homeDir(userId);
+    if (!isMounted(home)) throw new Locked("the home workspace is not mounted");
+    const dir = join(home, "codex");
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return dir;
+  }
+
+  /**
+   * Where Codex runs (docs/models.md, "Image canvases"): a sandbox of its own
+   * holding only `codexDir`, at /workspace, and the internet, never the
+   * machine's services or another folder. Throws while the home isn't
+   * mounted, and refuses to start while networked sandboxes are refused.
+   */
+  codexBox(userId: string): CodexBox {
+    const home = this.codexDir(userId);
+    const spec = codexSandbox(home, { ...this.door(), bwrap: this.opts.bwrap, pasta: this.opts.pasta });
+    return {
+      home, inner: WORKDIR, installed: sandboxHas("codex"),
+      start: async (args, cwd) => {
+        if (this.networkRefused) throw new Error(`Codex needs the network: ${this.networkRefused}`);
+        return new Sandbox(spec).start(["env", `CODEX_HOME=${WORKDIR}`, "codex", ...args], cwd);
+      },
+    };
   }
 
   /**
@@ -1120,3 +1152,8 @@ function gitFailure(stderr: string): GitAccountState["kind"] | undefined {
 const lastLine = (text: string): string => text.trim().split("\n").at(-1)?.replace(/^fatal: /, "").slice(0, 300) || "git failed";
 
 export { inOwnNetwork } from "../models/http.ts";
+
+/** Codex's sandbox: its home and the internet, nothing else of the machine's. */
+export function codexSandbox(home: string, o: Pick<SandboxSpec, "exclude" | "front" | "frontHosts" | "bwrap" | "pasta">): SandboxSpec {
+  return { ...o, workdir: home, grants: [], network: { internet: true, services: false, hosts: [] } };
+}

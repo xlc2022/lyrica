@@ -37,8 +37,8 @@ set every image model. Principle 8: no new page and no new control kinds.
 6. **ChatGPT Images.** A signed-in ChatGPT plan offers one image model,
    ChatGPT Images, instead of an image switch on each chat model: the plan's
    image tool picks its own image model. Its row has Generate and Edit
-   checkboxes and Use for. The request goes through the plan's newest GPT
-   model. Image task lists that named a plan chat model move to ChatGPT
+   checkboxes and Use for. (How it makes images is now codex-images.md: the
+   user's own Codex.) Image task lists that named a plan chat model move to ChatGPT
    Images the first time it is found. At that time, an empty Image edits list in a
    general preset or the general column gets it too (the owner chose this,
    2026-10-18).

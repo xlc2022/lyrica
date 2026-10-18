@@ -2034,6 +2034,14 @@ export interface ClaudeCodeStatus { token: boolean; installed: boolean }
 
 /** Saves the token `claude setup-token` printed. */
 export interface ClaudeCodeTokenInput { token: string }
+
+/**
+ * Settings → Codex, which makes ChatGPT Images: whether `codex` is installed,
+ * whether the user's Codex is signed in, and a sign-in under way (Codex's own
+ * device sign-in: open `url`, enter `code`). GET and DELETE (sign out)
+ * /api/u/:userId/codex; POST …/codex/sign-in starts one.
+ */
+export interface CodexStatus { installed: boolean; signedIn: boolean; signIn?: { url: string; code: string } }
 // --- Image files and portrait photos ---
 /** GET /api/u/:userId/threads/:pool/:threadId/file?path=… → sniffed file bytes, no-store; thread folder only. */
 /** GET /api/u/:userId/photos-of-me → PortraitPhoto[]; POST raw image bytes → UploadResponse; GET …/:name → sniffed portrait bytes, no-store; DELETE …/:name → Ok. */

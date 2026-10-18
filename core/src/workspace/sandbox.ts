@@ -120,11 +120,13 @@ const CLAUDE_DIR = "/run/lyrica/claude";
 // The claude wrapper for a run with Claude Code (claude.sh), in the same folder.
 const CLAUDE = readFileSync(new URL("./claude.sh", import.meta.url), "utf8");
 
-/** Whether the `claude` program is among the sandbox's tools: in LYRICA_SANDBOX_TOOLS on NixOS, else in the host's /usr. */
-export function claudeCodeInstalled(): boolean {
+/** Whether a program is among the sandbox's tools: in LYRICA_SANDBOX_TOOLS on NixOS, else in the host's /usr. */
+export function sandboxHas(program: string): boolean {
   const dirs = tools() ? [`${tools()}/bin`] : PATH.split(":");
-  return dirs.some((d) => existsSync(`${d}/claude`));
+  return dirs.some((d) => existsSync(`${d}/${program}`));
 }
+/** Whether the `claude` program is among the sandbox's tools. */
+export const claudeCodeInstalled = (): boolean => sandboxHas("claude");
 const inStore = (p: string) => /^\/nix\/store\/[0-9a-z]{32}-[^/]+$/.test(p);
 let closure: { file: string; paths: string[] } | undefined;
 function nixSystem(dir: string): string[] {
