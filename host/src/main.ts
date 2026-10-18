@@ -36,6 +36,8 @@ const host = new Host({
   dataDir: env.DATA_DIR || "/data",
   name,
   version: env.HOST_VERSION || "dev",
+  commit: env.HOST_COMMIT || undefined,
+  updateDir: env.UPDATE_DIR || "/update",
   names: [name, ...(env.HOST_NAMES ?? "").split(",")].map((n) => n.trim()).filter(Boolean),
   tailnetName: env.TAILNET_NAME || undefined,
   localPeers: env.LOCAL_PEERS ? env.LOCAL_PEERS.split(",") : defaultGateway(),

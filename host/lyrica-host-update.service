@@ -1,0 +1,14 @@
+# Installed by host/install.sh: one update per request, as root, outside
+# host-api (which has no route out). Started by lyrica-host-update.path, or by
+# hand: lyrica-host-update --tag update/<name>. See host/README.md, "Updates".
+[Unit]
+Description=Lyrica model host: updater (fetch, pause, switch, install, probation)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lyrica-host-update --request
+TimeoutStartSec=infinity
+Nice=10
+PrivateTmp=yes

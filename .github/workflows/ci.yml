@@ -194,14 +194,16 @@ jobs:
         run: docker compose logs
         working-directory: host
       # The runner is kept between jobs: leave nothing for the next run, not
-      # the stack and its volumes, the egress unit and rules, or the Docker
-      # setting from the DNS step (setup.sh leaves no daemon.json).
+      # the stack and its volumes, the egress and updater units and rules, the
+      # updater's folders and deploy key, or the Docker setting from the DNS
+      # step (setup.sh leaves no daemon.json).
       - if: always()
         working-directory: host
         run: |
           docker compose down -v --remove-orphans || true
-          sudo systemctl disable --now lyrica-host-egress.service || true
-          sudo rm -f /etc/systemd/system/lyrica-host-egress.service
+          sudo systemctl disable --now lyrica-host-egress.service lyrica-host-update.path || true
+          sudo rm -f /etc/systemd/system/lyrica-host-egress.service /etc/systemd/system/lyrica-host-update.path /etc/systemd/system/lyrica-host-update.service /usr/local/sbin/lyrica-host-update
+          sudo rm -rf /var/lib/lyrica-host-update /etc/lyrica-host /opt/lyrica-host
           sudo systemctl daemon-reload
           sudo ./egress.sh remove || true
           sudo rm -f /etc/docker/daemon.json

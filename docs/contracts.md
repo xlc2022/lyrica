@@ -442,6 +442,7 @@ class Models {                                              // new Models(keyrin
   pairHost(actor, { name, addresses, code }, { shared?, endpointId? }): Promise<Endpoint>   // endpointId: pair again, IDs kept
   setHostAddresses(actor, id, addresses): Endpoint / fetchFor(endpoint): typeof fetch | undefined   // undefined for a plain endpoint
   hostStatus(userId, id) / hostControl(actor, id, "pause" | "resume" | "restart")   // hostControl answers the whole status after
+  hostUpdate(actor, id, tag): Promise<HostStatus>   // tag: Lyrica's running update/… tag; a shared host needs an administrator
   // editEndpoint(actor, id, { name?, baseUrl?, apiKey?, paused? }): paused pauses a plain endpoint or plan (Endpoint.pausedAt); the router skips it
   // Speech: the only way audio reaches a model
   transcribe(ctx, wav, { language?, signal? }): Promise<{ text; resolution; audioSeconds? }>   // in voiceContext(ctx); CloudModelForbidden, NoModel, Offline

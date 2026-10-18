@@ -121,7 +121,12 @@ administrator pairs or manages them; a personal host lives in its user's
 - `hostStatus` returns the host's status (GPUs, placements, loaded and
   pinned models, VRAM, queue) to anyone who can use it; `hostControl`
   pauses, resumes or restarts it and answers the whole status after, since
-  the host's own answer is only its state.
+  the host's own answer is only its state. `hostUpdate` asks a host to
+  update to the release Lyrica runs (its `update/…` tag; the daemon passes
+  it, and refuses while she runs none); the host's own updater checks it
+  again (host/README.md, "Updates"). A host whose updater is at work counts
+  as down, and while it restarts the page keeps its last status, so it reads
+  Updating rather than Unreachable.
 - `pageStatus` is an endpoint's state for the Models page: one seen down in
   the last 30 seconds isn't asked again, and nothing waits more than 3
   seconds, so a host that's off doesn't hold the page — which matters because

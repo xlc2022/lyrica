@@ -1866,6 +1866,14 @@ from Monika's runbooks.
   issue linked to the tag.
 - **Updates are manual.** An administrator presses **Update** in
   Administration. She can say an update is ready; she can't press it.
+- **Model hosts follow her release.** A host's **Update** on the Models page
+  asks it for the release she runs, never another. Its updater runs as root
+  outside host-api, which keeps no route out, and makes the same tag checks
+  with its own read-only deploy key; it pauses the host so running jobs
+  finish, installs the release from a root-owned tree of its own (never from
+  a person's checkout), and goes back to the commit before if host-api
+  doesn't come up on the new one within 5 minutes (host/README.md,
+  "Updates"). A NixOS host is updated from its configuration.
 - **Git accounts and repositories** (decided 2026-10-12 from
   `/mnt/project-files/repositories/proposal.md`; replaces the
   administrator-named checkout). A **Git account** is a row in Settings

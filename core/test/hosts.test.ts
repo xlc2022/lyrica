@@ -124,6 +124,18 @@ describe("calling a host", () => {
   });
 });
 
+describe("host updates", () => {
+  it("asks the host for Lyrica's release, and keeps showing it updating while it restarts", async () => {
+    const s = await setup();
+    const ep = await s.models.pairHost(s.ada, { name: "blackwell", addresses: [s.host.address], code: s.host.newCode() });
+    await expect(s.models.hostUpdate(s.ada, ep.id, "../x")).rejects.toThrow("update/");
+    expect(await s.models.hostUpdate(s.ada, ep.id, "update/2026-10-18")).toMatchObject({ update: { state: "requested" } });
+    expect(s.host.updates).toEqual(["update/2026-10-18"]);
+    await s.host.stop();
+    expect(await s.models.pageStatus(s.ada.id, ep.id)).toMatchObject({ state: "down", status: { update: { state: "requested" } } });
+  });
+});
+
 describe("shared and personal hosts", () => {
   it("keeps a personal host to its user, and lets only administrators manage a shared one", async () => {
     const s = await setup();

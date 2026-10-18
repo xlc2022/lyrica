@@ -69,6 +69,7 @@ export function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string;
   const since = ep.downSince ? duration(Date.now() - Date.parse(ep.downSince)) : undefined;
   if (ep.api === "host" && host && "status" in host) {
     const s = host.status.state;
+    if (hostUpdating(host.status)) return { dot: "info", word: "Updating" };
     if (s === "running") return { dot: "up", word: "Online" };
     if (s === "restarting") return { dot: "info", word: "Restarting" };
     return { dot: "away", word: s === "pausing" ? "Pausing" : "Paused" };
@@ -89,8 +90,23 @@ function StateWord({ ep, host }: { ep: Endpoint; host?: Host }) {
   );
 }
 
+/** The host's updater is at work: it pauses, restarts and comes back on Lyrica's release. */
+const hostUpdating = (s: HostStatus) => !!s.update && ["requested", "fetching", "draining", "building", "rolling-back"].includes(s.update.state);
+/** Why a host's update failed, from the updater's step (host/API.md, "POST /host/v1/update"). */
+function updateFailure(step: string | undefined): string {
+  if (step === "fetch") return "it couldn't fetch the release; check that its deploy key is added";
+  if (step === "drain") return "jobs were still running after 10 minutes, so nothing changed";
+  if (step === "probation") return "the new version didn't start, so it went back to the one before";
+  if (step?.startsWith("no ")) return "the host's updater isn't set up; run install.sh on the host again";
+  if (step?.startsWith("not ")) return "the host refused the release, so nothing changed";
+  return "something went wrong on the host, so nothing changed";
+}
+/** Update in a host's ⋯: when Lyrica runs a release, the host has an updater and runs another commit. */
+const updateOffer = (p: ModelsPage | undefined, s: HostStatus | undefined) =>
+  !!p?.release && !!s?.update?.available && !hostUpdating(s) && s.commit !== p.release.commit ? p.release : undefined;
+
 const loadedNothing = (h?: Host) => !!h && "status" in h && h.status.gpus.every((g) => !g.models.length);
-const paused = (h?: Host) => !!h && "status" in h && (h.status.state === "paused" || h.status.state === "pausing");
+const paused = (h?: Host) => !!h && "status" in h && !hostUpdating(h.status) && (h.status.state === "paused" || h.status.state === "pausing");
 /** The host has revoked this server: pairing again is the fix. */
 const unpaired = (h?: Host) => !!h && "error" in h && !!h.unpaired;
 
@@ -316,7 +332,7 @@ function PauseButton({ ctx, ep, host }: { ctx: MCtx; ep: Endpoint; host?: Host }
   const empty = !isPaused && loadedNothing(host);
   return (
     <>
-      <button type="button" className="sm" disabled={busy || empty || host.status.state === "restarting"} title={empty ? "Nothing is loaded" : undefined}
+      <button type="button" className="sm" disabled={busy || empty || host.status.state === "restarting" || hostUpdating(host.status)} title={empty ? "Nothing is loaded" : undefined}
         onClick={() => void run(() => control(ctx, ep.id, isPaused ? "resume" : "pause"))}>{isPaused ? "Resume" : "Pause"}</button>
       {error && <ErrorText error={error} />}
     </>
@@ -1068,6 +1084,14 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
     setAddresses(undefined); ctx.models.reload();
   });
   const pair = () => run(async () => { await post(u(userId, "hosts", ep.id, "pair"), { code: (code ?? "").trim() }); setCode(undefined); ctx.models.reload(); });
+  const offer = updateOffer(ctx.models.page, status);
+  const update = () => run(async () => {
+    const next = await post<HostStatus>(u(userId, "hosts", ep.id, "update"));
+    const p = ctx.models.page;
+    if (p) ctx.models.set({ ...p, hosts: p.hosts.map((h) => (h.endpointId === ep.id ? { endpointId: ep.id, status: next } : h)) });
+  });
+  const menu = revoked ? actions.items : [actions.items[0]!, ...(offer ? [{ label: "Update", onPick: () => void update() }] : []), { label: "Pair again…", onPick: () => setCode("") }, ...actions.items.slice(1)];
+  const failed = status?.update?.state === "failed" ? status.update : undefined;
   return (
     <article className="card host" data-endpoint={ep.id} aria-labelledby={id}>
       <div className="host-top">
@@ -1079,13 +1103,16 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
             : <PauseButton ctx={ctx} ep={ep} host={host} />)}
           {editable && <DashboardButton ctx={ctx} ep={ep} />}
           <button type="button" className="link sm" aria-expanded={open} onClick={() => setOpen(!open)}>{plural(ep.models.length, "model", "models")}</button>
-          {editable && <RowMenu label={`Actions for ${ep.name}`} items={revoked ? actions.items : [actions.items[0]!, { label: "Pair again…", onPick: () => setCode("") }, ...actions.items.slice(1)]} />}
+          {editable && <RowMenu label={`Actions for ${ep.name}`} items={menu} />}
         </div>
       </div>
       {addresses === undefined ? (
         <div className="addrs">
           <span className="muted">{ep.shared ? "Shared with every user" : "Only you"}{revoked ? "" : " · paired"} · ID</span><code>{ep.id}</code>
           <span className="muted">· addresses</span>{(ep.addresses ?? []).map((a) => <code key={a}>{a}</code>)}
+          {status && <><span className="muted" title={status.update && !status.update.available ? status.update.reason : undefined}>· version</span><code>{status.version}</code>
+            {status.update && !status.update.available && status.update.reason && <span className="sr-only">. {status.update.reason}</span>}</>}
+          {editable && offer && <span className="muted">· update available</span>}
           {editable && <button type="button" className="link sm" onClick={() => setAddresses((ep.addresses ?? []).join(" "))}>Edit</button>}
         </div>
       ) : (
@@ -1103,6 +1130,7 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
         </form>
       )}
       <ErrorText error={error} />
+      {failed && <p className="warn-text" role="note">The update to <code>{failed.tag}</code> failed: {updateFailure(failed.error)}.</p>}
       {actions.forms}
       {status?.gpus.map((g) => <GpuBlock key={g.index} g={g} />)}
       {open && <ModelList ctx={ctx} ep={ep} onVoice={onVoice} />}

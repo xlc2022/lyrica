@@ -28,6 +28,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   let code: string | undefined;
   let tries = 0;
   let paused = false;
+  const updates: string[] = [];
   let badProof = false;
   let lieAboutKey = false;
   const pinned = new Map<string, string>();
@@ -87,7 +88,11 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
           contextLength: m.contextLength ?? null, state: "unloaded", gpu: null, pinned: false, vram: null,
         })) });
       }
-      const status = () => ({ name: opts.name ?? "fake-host", version: "0.1.0", fingerprint: identity.fingerprint, state: paused ? "paused" : "running", gpus: [], downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: 1 } });
+      const status = () => ({
+        name: opts.name ?? "fake-host", version: "0.1.0", fingerprint: identity.fingerprint, state: paused ? "paused" : "running", gpus: [], downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: 1 },
+        update: { available: true, state: updates.length ? "requested" : "idle" },
+      });
+      if (req.method === "POST" && url.pathname === "/host/v1/update") { updates.push(JSON.parse(raw).tag); return json(res, 202, { update: status().update }); }
       if (req.method === "GET" && url.pathname === "/host/v1/status") return json(res, 200, status());
       if (req.method === "POST" && url.pathname === "/host/v1/pause") { paused = true; return json(res, 200, status()); }
       if (req.method === "POST" && url.pathname === "/host/v1/resume") { paused = false; return json(res, 200, status()); }
@@ -219,6 +224,8 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
       return `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}-${code.slice(12)}`.toLowerCase();
     },
     pause(on = true) { paused = on; },
+    /** The update tags Lyrica asked for. */
+    updates,
     speech,
     /** The speech server is off: requests answer `code` (model_unavailable, or unavailable for an older host). */
     speechOff(code: string | false = "model_unavailable") { speechDown = code; },

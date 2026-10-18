@@ -57,6 +57,7 @@ services:
       TAILNET_NAME: ${TS_HOSTNAME:-}
       MODELS_HOST_PATH: ${MODELS_DIR:?run install.sh}
       HOST_VERSION: ${HOST_VERSION:-dev}
+      HOST_COMMIT: ${HOST_COMMIT:-}
       GPU_VENDOR: ${GPU_VENDOR:-none}
       GPU_BACKEND: ${GPU_BACKEND:-}
       LLAMA_UNIFIED_MEMORY: ${LLAMA_UNIFIED_MEMORY:-}
@@ -66,6 +67,9 @@ services:
       - serving:/serving
       - vllm-status:/vllm-status:ro
       - ${MODELS_DIR}:/models:ro
+      # Updates (README.md, "Updates"): a request goes in, the updater's state comes out.
+      - /var/lib/lyrica-host-update/inbox:/update/inbox
+      - /var/lib/lyrica-host-update/status:/update/status:ro
     healthcheck:
       test: ["CMD", "node", "-e", "require('fs').accessSync('/serving/llamacpp.ini')"]
       interval: 2s
