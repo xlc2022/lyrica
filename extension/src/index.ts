@@ -89,7 +89,7 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       // Edit Pi's prompt options rather than replacing the prompt: Pi keeps the
       // prefix stable and appends only what changed, so it stays cacheable.
       const options = event.systemPromptOptions;
-      const tools = toolGuidance(options, CONTINUATION_GUIDELINES);
+      const tools = toolGuidance(options, [...CONTINUATION_GUIDELINES, ...WORK_GUIDELINES]);
       options.customPrompt = customPrompt;
       options.sections = { ...(tools ? { tools } : {}), ...options.sections, ...sections };
 
@@ -115,6 +115,12 @@ export const CONTINUATION_GUIDELINES = [
   "Claim background work only after a tool successfully starts or queues it, and name the mechanism (such as the child thread or delegate run ID). Report queued as queued, not running; use the returned status, not your intention.",
   "If nothing has successfully started or been queued to continue, state the stopping point or blocker and that you are idle; do not imply you will keep working after the final reply.",
   "Create recurring routines only when the user asks for recurring work; never add an unsolicited routine to make a continuation promise true.",
+];
+
+/** How to spend tokens on tool work, hers and her subagents': each reply resends the whole context. */
+export const WORK_GUIDELINES = [
+  "Make independent tool calls together in one reply (several reads, searches or checks at once), not one per reply: every reply resends your whole context.",
+  "A file you've read stays in your context; read it again only after it changes. In a large file read the part you need, and send long command output to a file, then read what matters.",
 ];
 
 /**

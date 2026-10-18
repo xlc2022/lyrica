@@ -372,6 +372,11 @@ releases the hold. These reach the Thought marker both live and in stored
 messages. An ordinary reply that writes a literal `<think>` tag, such as
 code about the tags, is parsed too: an accepted trade-off.
 
+The same streams pass two tool guards (`extension/src/tool-stream.ts`):
+every tool's parameters go out as `"type": "object"`, which LM Studio
+requires, and a reply streaming more than 32 tool calls ends with an error
+and none of them run, since tool calls show only once a reply ends.
+
 ## Image calls
 
 `image(ctx, request, { signal?, beforeSend? })` creates, edits or upscales through the

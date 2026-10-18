@@ -330,8 +330,8 @@ describe("child threads", () => {
     expect((await ada.patch(`${childPath(id)}/settings`, { webSearch: false })).status).toBe(200);
   });
 
-  it("hold the limits: a message that wakes an idle child counts, and so do another parent's children", async () => {
-    const { ada, u, parent, child, say, list, thread } = await setup({ threads: { concurrency: 1, perRequest: 3 } });
+  it("hold the limits: a message to an idle child waits for a slot, and another parent's children count", async () => {
+    const { ada, u, model, parent, child, say, list, thread } = await setup({ threads: { concurrency: 1, perRequest: 3 } });
     parent.push(start("A", "job a"), { text: "Started." });
     child.push({ text: "a done" });
     const a = toolEnd(await say("start a"))!.threads![0]!.id;
@@ -351,12 +351,14 @@ describe("child threads", () => {
     ostream.close();
     await until(list, (l) => l.find((t) => t.id === other.id)!.children[0]?.status === "working");
 
-    // So this parent can neither start a child nor wake its idle one.
+    // So this parent can't start a child, and a message to its idle one is saved until the slot frees.
     parent.push(start("C", "job c"), { text: "Not now." });
     expect(toolEnd(await say("start c"))).toMatchObject({ isError: true, result: expect.stringMatching(/working already/) });
-    parent.push({ tools: [{ name: "threads", args: { action: "message", id: a, text: "one more thing" } }] }, { text: "Not now." });
-    expect(toolEnd(await say("tell a one more thing"))).toMatchObject({ isError: true, result: expect.stringMatching(/working already/) });
+    parent.push({ tools: [{ name: "threads", args: { action: "message", id: a, text: "one more thing" } }] }, { text: "Saved." });
+    expect(toolEnd(await say("tell a one more thing"))).toMatchObject({ isError: false, result: expect.stringMatching(/starts when one finishes/) });
+    const before = model.requests.filter(isChild).length;
     release();
+    await until(async () => model.requests.filter(isChild).slice(before).map(said).join("\n"), (t) => t.includes("one more thing"));
   });
 
   it("only a parent's message carries the parent's mark; each update shows, even two the same", async () => {

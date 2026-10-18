@@ -53,7 +53,7 @@ async function setup(real: boolean) {
   const host: ThreadsHost = {
     limits: DEFAULT_THREADS_LIMITS,
     start: async () => ({ id: `web/new${made++}`, link: "#/new" }),
-    message: async () => {},
+    message: async () => "started" as const,
     list: () => [{ id: dns.id, title: "Move DNS to the router", status: "working", state: "working", updatedAt: new Date().toISOString() }],
     resolve: () => {},
   };

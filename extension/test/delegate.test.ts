@@ -135,6 +135,32 @@ describe("delegate", () => {
     expect(() => ws.inheritSettings(p, worker!.thread, { hosts: ["10.0.0.6"] })).toThrow("isn't in the parent thread's hosts");
   });
 
+  it("explains checkout folder rejection and keeps scouts in the parent's read-only clones", async () => {
+    let ws!: Workspace;
+    const s = await setup({ workspace: (m) => (ws = new Workspace(m.keyring, m.users, { excludePorts: [] })) });
+    const parent = s.thread();
+    const settings = ws.settings(s.ada.id);
+    settings.addGitAccount({ name: "bot", kind: "github", host: "github.com", account: "test-bot", token: "test-token", pool: "general", offNetwork: true });
+    settings.setThread(parent.threadId, "general", { grants: [], repositories: [{ name: "example/project", account: "bot" }] });
+    const opened: WorkspaceThread[] = [];
+    const forThread = ws.forThread.bind(ws);
+    ws.forThread = (t) => { opened.push(t); return forThread(t); };
+
+    const rejected = await s.run(parent, { task: "read the checkout", role: "scout", folders: ["/workspace/repos/project"] });
+    expect(rejected.status).toBe("failed");
+    expect(rejected.result).toContain("folders narrows granted host folders, not repository checkout paths");
+    expect(rejected.result).toContain("Omit folders to read the parent's repository checkouts");
+    expect(opened).toHaveLength(0);
+
+    const scout = await s.run(parent, { task: "read the checkout", role: "scout" });
+    expect(scout.status).toBe("finished");
+    const child = s.delegation.status(parent).find((r) => r.status === "finished")!;
+    // The shared clone mount is independent of repository grants: no forge credentials for a scout.
+    expect(opened).toEqual([expect.objectContaining({ threadId: child.thread, reposOf: parent.threadId, reposReadOnly: true })]);
+    expect(settings.effective(child.thread)).toMatchObject({ grants: [], repositories: [] });
+    expect(ws.credentialsFor({ userId: s.ada.id, pool: "general", threadId: child.thread }).forge).toEqual([]);
+  });
+
   it("gives an offline researcher neither web_search nor web_fetch", async () => {
     let ws!: Workspace;
     const s = await setup({ searxng: () => "http://127.0.0.1:9", workspace: (m) => (ws = new Workspace(m.keyring, m.users, { excludePorts: [] })) });
@@ -673,6 +699,8 @@ describe("talking with subagents", () => {
       p.dispose();
     }
     const tool = JSON.stringify(s.cloud.requests[0]!.tools!.find((t) => t.function.name === "delegate"));
+    expect(tool).toContain("Only these granted host folders");
+    expect(tool).toContain("omit folders to read the parent's checkouts; scouts see them read-only");
     expect(tool).toContain('"message"');
     expect(tool).not.toContain('"steer"');
     expect(tool).not.toContain('"answer"');

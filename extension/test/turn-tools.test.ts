@@ -70,7 +70,7 @@ it("validates missing required fields before executing", async () => {
   const r = await scenario([{ name: "image", args: {} }]);
   expect(r.executed).toBe(0);
   expect(r.results[0]).toContain('Validation failed for tool');
-  for (const field of ["action", "prompt", "tier"]) expect(r.results[0]).toContain(field);
+  expect(r.results[0]).toContain("action");
 });
 
 

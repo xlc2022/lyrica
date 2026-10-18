@@ -833,7 +833,8 @@ export class Delegation {
     if (!narrowing.folders) return from;
     return narrowing.folders.map((path) => {
       const outer = from.find((g) => path === g.path || path.startsWith(`${g.path}/`));
-      if (!outer) throw new Error(`${path} isn't one of this thread's folders`);
+      // Checkout mounts are separate from host grants; never reinterpret their sandbox paths as grants.
+      if (!outer) throw new Error(`${path} isn't one of this thread's folders: folders narrows granted host folders, not repository checkout paths. Omit folders to read the parent's repository checkouts; scouts see them read-only.`);
       return { path, writable: outer.writable };
     });
   }

@@ -4,6 +4,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { PlanCredentials, planProvider } from "./plans.ts";
 import { acceptedSettings, DEFAULT_CONTEXT, replyCap, isPlan, CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
 import { streamWithInlineThinking } from "./inline-thinking.ts";
+import { capToolCalls, objectTools } from "./tool-stream.ts";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
@@ -82,8 +83,13 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
     runtime.registerProvider(endpoint.id, {
       name: `${endpoint.name} (${endpoint.kind})`, baseUrl: endpoint.baseUrl, api: "openai-completions",
       models: list.map((m) => piModel(endpoint, m)),
-      streamSimple: (model, context, options) =>
-        streamWithInlineThinking(model as Model<"openai-completions">, context, options, startsMidThought(list.find((m) => m.modelId === model.id), options?.reasoning)),
+      streamSimple: (model, context, options) => {
+        // Its own signal, so a runaway reply can stop the request; the caller's still stops it.
+        const stop = new AbortController();
+        const signal = options?.signal ? AbortSignal.any([options.signal, stop.signal]) : stop.signal;
+        const midThought = startsMidThought(list.find((m) => m.modelId === model.id), options?.reasoning);
+        return capToolCalls(streamWithInlineThinking(model as Model<"openai-completions">, objectTools(context), { ...options, signal }, midThought), () => stop.abort());
+      },
     });
     // A runtime key is used literally; a key in the provider config would be read as `$ENV` or `!command`.
     await runtime.setRuntimeApiKey(endpoint.id, endpoint.apiKey ?? "none");

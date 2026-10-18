@@ -12,6 +12,13 @@ import { formatEntry } from "./memory.ts";
 // is a thread like any other, hosted by lyricad, which supplies `ThreadsHost`.
 // The same tool compacts the thread she's in, with her own summary.
 
+/**
+ * What became of a message: it started the thread's turn, joined its running
+ * turn, waits for a free slot, or was only saved (a woken parent past its
+ * rounds); to a parent, it wakes the parent or is an update it reads later.
+ */
+export type Delivery = "started" | "running" | "queued" | "saved" | "wakes" | "update";
+
 export interface ThreadsHost {
   readonly limits: ThreadsLimits;
   draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
@@ -26,7 +33,7 @@ export interface ThreadsHost {
    * (`to: "parent"`, with `needsYou` when the person must decide), or in a
    * project from one of its threads to another.
    */
-  message(from: ThreadContext, to: string, text: string, opts?: { needsYou?: boolean; question?: boolean }): Promise<void>;
+  message(from: ThreadContext, to: string, text: string, opts?: { needsYou?: boolean; question?: boolean }): Promise<Delivery>;
   /** This thread's children; in a project's thread, the project's other threads. */
   list(parent: ThreadContext): ChildInfo[];
   /** Resolves a project's thread (`id`, or the calling thread itself), or reopens one. */
@@ -84,6 +91,14 @@ const Params = Type.Object({
 type Params = Static<typeof Params>;
 
 const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as const, text: t }], details });
+
+/** What she is told became of a message, so she says no more than happened. */
+function sentTo(id: string, d: Delivery): string {
+  if (d === "running") return `Sent to [t:${id}]; it takes it into the turn it is running.`;
+  if (d === "queued") return `Saved in [t:${id}]; as many threads as the limit allows are working, so it starts when one finishes.`;
+  if (d === "saved") return `Saved in [t:${id}] without starting it: you've answered it several times since the person last wrote. It sees this when the person writes in it, or you message it from a turn of your own.`;
+  return `Sent to [t:${id}]; it starts a turn.`;
+}
 
 /**
  * The `threads` tool. In a thread Lyrica can start children from, it
@@ -205,8 +220,9 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           if (!p.text?.trim()) throw new Error("message needs text");
           if (child && p.to === "parent") {
             if (p.needsYou && !inProject) throw new Error("needsYou is for a project's thread");
-            await host.message(thread, "parent", p.text, { needsYou: !!p.needsYou, question: !!p.question });
-            return text(p.needsYou ? "Sent to the project chat; it shows you're waiting on the person." : "Sent to the parent thread.");
+            const d = await host.message(thread, "parent", p.text, { needsYou: !!p.needsYou, question: !!p.question });
+            return text(p.needsYou ? "Sent to the project chat; it shows you're waiting on the person." : d === "wakes" ? "Sent to the parent thread; it wakes to answer."
+              : "Sent to the parent thread as an update: it reads it on its next turn, or when you end your turn. To get an answer before you go on, send it with question: true.");
           }
           if (child && !inProject) throw new Error("a child thread messages only its parent: to: \"parent\"");
           if (!p.id) throw new Error("message needs the thread's id or title");
@@ -215,11 +231,11 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
             // Counted before sending, so calls made at once can't all slip under the limit.
             if (siblings >= host.limits.siblingMessages) throw new Error(`one turn can message the project's other threads at most ${host.limits.siblingMessages} times`);
             siblings++;
-            try { await host.message(thread, id, p.text); } catch (err) { siblings--; throw err; }
-            return text(`Sent to [t:${id}].`, { threads: [id] });
+            let d: Delivery;
+            try { d = await host.message(thread, id, p.text); } catch (err) { siblings--; throw err; }
+            return text(sentTo(id, d), { threads: [id] });
           }
-          await host.message(thread, id, p.text);
-          return text(`Sent to [t:${id}].`, { threads: [id] });
+          return text(sentTo(id, await host.message(thread, id, p.text)), { threads: [id] });
         }
         if (p.action === "list") {
           if (child && !inProject) throw new Error("a child thread can't list child threads; it can delegate, and message its parent");
