@@ -344,6 +344,9 @@ export async function startDownload(userId: string, hostId: string, body: { sour
 }
 
 /** Download text model: a host, then a file from Hugging Face or ModelScope, or a link. A started download goes to Downloads. */
+/** What a vision projector or MTP file does, for its pill's tooltip. */
+const COMPANION_TIPS = { vision: "Lets the model see images", mtp: "Multi-token prediction: faster answers" } as const;
+
 export function DownloadText({ ctx }: { ctx: MCtx }) {
   const userId = ctx.user.id;
   const hosts = managedHosts(ctx).filter((h) => h.status);
@@ -444,7 +447,7 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
                         <span className="choice-name">
                           <span className="mono">{c.label}</span>
                           {c.parts && <span className="meta"><span className="num">{c.parts}</span> files</span>}
-                          {c.kind && <span className="pill" title={c.kind === "vision" ? "Lets the model see images" : "Multi-token prediction: faster answers"}>{c.kind === "vision" ? "Vision" : "MTP"}</span>}
+                          {c.kind && <span className="pill" title={COMPANION_TIPS[c.kind]}>{c.kind === "vision" ? "Vision" : "MTP"}<span className="sr-only">. {COMPANION_TIPS[c.kind]}</span></span>}
                           {c.present ? <span className="pill">already on this host</span> : !c.fits && <span className="pill warn">not enough space</span>}
                         </span>
                         <span className="muted"><Size text={size(c.size)} /></span>
