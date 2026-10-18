@@ -1,6 +1,6 @@
 # Brief: Question cards and checklists on every model
 
-**Status:** built; in PR review. **Branch:** `feature/tool-evals` (Codex), opened from `claude/agent-loop-reliability-661bmo`. **Built by:**
+**Status:** Merged as #326 (8183255). Handoff notes below are history. **Branch:** `feature/tool-evals` (Codex), opened from `claude/agent-loop-reliability-661bmo`. **Built by:**
 Codex on the test machine; the Agent loop thread (Opus) owns review and the PR.
 **Read first:** AGENTS.md, PRINCIPLES.md, docs/briefs/question-card.md,
 docs/briefs/truthful-continuation.md, docs/contracts.md (Child threads, the
@@ -149,5 +149,12 @@ handoff.
   daemon checklist test now expects the specific `steps[0].state` error.
   Typecheck, the touched tests and `npm run evals` (14 passed, 5 optional
   real-model checks skipped) pass.
-- **Next:** PR review. Running the evals on real models waits on the user:
-  LM Studio needs their go, and cloud models spend quota.
+- **LM Studio run (2026-10-18, test machine, qwen3.8-flash-next, 28c010b):**
+  question card: 2 of 3 forks asked with a valid card the first time, and
+  none needed a correction. The third ("publish publicly or keep private,
+  ask before publishing") got a plain reply with no card and no
+  prose-question shape. No plain question got a card. Checklist: the job
+  that was reported made a valid `steps` call the first time, and no quick
+  question got a checklist. All requests returned 200.
+- **Next:** cloud models wait on the user's yes, because they spend quota.
+  No code change follows from this run.
