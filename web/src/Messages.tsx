@@ -17,7 +17,7 @@ import { FoldCard, stateWord, SuggestedCard, ThreadCard, type ProjectEnv } from 
 import { ChecklistButton, StepLine } from "./Checklist.tsx";
 import { findThread } from "./Thread.tsx";
 import { EditBox, MessageActions, MessageMenu, type Rewinder } from "./Rewind.tsx";
-import { ErrorText, fullTime, Prose, useAction, useDismiss, wakeTime } from "./ui.tsx";
+import { ConfirmDialog, ErrorText, fullTime, Prose, useAction, useDismiss, wakeTime } from "./ui.tsx";
 import { basename, InlineImage, Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
 import type { ReactNode } from "react";
 import { foldLooks, raisedIn, toldIn, type Told } from "./looks.ts";
@@ -444,15 +444,30 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
   );
 }
 
+/** Where a made image was, once it is no longer in the thread's files. */
+const GONE = "No longer in Files";
+
 /** Principle 1: made images stay in the conversation, with their facts and rare actions (ux §3 and §6). */
 function MessageImages({ part, env }: { part: ImagePart; env: Env }) {
   const links = useFileLinks(env.userId, env.pool, env.threadId);
   const files: FileLinks = { ...links, url: (path) => `${env.base}/file?path=${encodeURIComponent(path)}` };
+  const [deleting, setDeleting] = useState<string>();
+  // Deleted here, or no longer loading (deleted in Files): its place says so, without the image's actions.
+  const [deleted, setDeleted] = useState<ReadonlySet<string>>(new Set());
   return (
     <div className="message-images">
-      {part.paths.map((path) => (
+      {deleting && (
+        <ConfirmDialog title={`Delete ${basename(deleting)}?`} danger confirm="Delete" sentence={`${basename(deleting)} is deleted for good. This can't be undone.`}
+          onCancel={() => setDeleting(undefined)}
+          onConfirm={() => {
+            const path = deleting;
+            setDeleting(undefined);
+            void post(`${env.base}/files/delete`, { paths: [path] }).then(() => setDeleted((d) => new Set(d).add(path)), (e: Error) => env.onError(e.message));
+          }} />
+      )}
+      {part.paths.map((path) => deleted.has(path) ? <p key={path} className="message-image-gone muted">{GONE}</p> : (
         <div key={path} className="message-image">
-          <InlineImage src={path} alt={basename(path)} label={basename(path)} files={files} large={(p) => env.large(p, files)} />
+          <InlineImage src={path} alt={basename(path)} label={basename(path)} files={files} large={(p) => env.large(p, files)} onGone={() => setDeleted((d) => new Set(d).add(path))} />
           <div className="image-facts">
             <span className="cap">Made with {part.model}{part.tier && <> · {part.tier}</>}</span>
             <RowMenu label={`Image actions for ${basename(path)}`} items={[
@@ -460,6 +475,7 @@ function MessageImages({ part, env }: { part: ImagePart; env: Env }) {
               { label: "Copy path", onPick: () => { void navigator.clipboard.writeText(path).catch((e: Error) => env.onError(e.message)); } },
               { label: "Show in Files", onPick: () => go({ page: "files", userId: env.userId, pool: env.pool, threadId: env.threadId, path }) },
               { label: "Edit…", onPick: () => { ask<EditImageRequest>(EDIT_IMAGE_EVENT, { base: env.base, path }); } },
+              { label: "Delete…", danger: true, onPick: () => setDeleting(path) },
             ]} />
           </div>
         </div>
