@@ -32,7 +32,7 @@ interface MenuAt { x: number; y: number; target: Target; sub?: "delete" }
 const parent = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
 const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 const under = (p: string, dir: string) => p === dir || p.startsWith(`${dir}/`);
-const kb = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
+export const kb = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 /** A path as the panel names it: inside the thread's folder without the prefix, elsewhere as it is. */
 
 /** `path`: a file to show on arrival (a link in the conversation), with its folders opened in the tree. */

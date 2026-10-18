@@ -14,6 +14,7 @@ import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { go, href, parse } from "./route.ts";
 import { Repositories } from "./Git.tsx";
 import { McpServers } from "./Mcp.tsx";
+import { FilesSection } from "./ProjectFiles.tsx";
 import { Folders, Machines, TaskSelect } from "./Settings.tsx";
 import { Main, PageHead, useWide, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, Dialog, ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
@@ -244,7 +245,7 @@ export function SuggestedCard({ part, userId, pool, projectId, env }: { part: Ex
 
 // ---- The Project settings page ----
 
-const SECTIONS = [{ key: "general", label: "General" }, { key: "memory", label: "Memory" }];
+const SECTIONS = [{ key: "general", label: "General" }, { key: "memory", label: "Memory" }, { key: "files", label: "Files and images" }];
 const THINKING: ThinkingLevel[] = ["off", "low", "medium", "high"];
 const refOf = (m?: ModelRef | ModelRef[]) => { const one = Array.isArray(m) ? m[0] : m; return one && "offeringId" in one ? one.offeringId : ""; };
 
@@ -272,7 +273,8 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
         <div className="content">
           <ErrorText error={summary.error || settings.error} />
           {s && !s.project && <p>This thread isn't a project. Make it one from its menu in the sidebar.</p>}
-          {s?.project && settings.data && (cur.key === "memory"
+          {s?.project && cur.key === "files" && <FilesSection ctx={ctx} pool={pool} threadId={threadId} />}
+          {s?.project && settings.data && cur.key !== "files" && (cur.key === "memory"
             ? <MemorySection base={base} summary={s} pool={pool} userId={userId} onSummary={(x) => { summary.set(x); ctx.refreshThreads(); }} />
             : <GeneralSection ctx={ctx} base={base} summary={s} settings={settings.data} onSummary={(x) => { summary.set(x); ctx.refreshThreads(); }} onSettings={settings.set} />)}
         </div>
