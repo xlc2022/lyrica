@@ -1,5 +1,5 @@
 // The model badge and its picker, and the thread settings drawer.
-import { ModelLabel } from "./ModelLabel.tsx";
+import { isChatModel, ModelLabel, modelName } from "./ModelLabel.tsx";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   del, get, patch, u, THREAD_TASKS,
@@ -26,7 +26,8 @@ export const TASK_LABELS: Record<ThreadTask, string> = {
   "speech.speak": "Read aloud",
 };
 /** Speech tasks offer only models that transcribe or speak. */
-const fits = (task: ThreadTask, m: EndpointInfo["models"][number]) => (task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : true);
+/** Whether a model can do a thread task: the speech tasks need their capability; every other one is text. */
+const fits = (task: ThreadTask, m: EndpointInfo["models"][number]) => (task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : isChatModel(m));
 
 
 const refKey = (m?: { offeringId: string }) => m?.offeringId ?? "";
@@ -78,12 +79,12 @@ function ModelPicker({ base, settings, task, onChange }: {
       {settings.allowed.map((ep) => (
         <div key={ep.id} className="picker-group">
           <div className="picker-ep"><span className={`k ${ep.kind}`}>{ep.kind}</span> {ep.name}</div>
-          {ep.models.map((m) => {
+          {ep.models.filter((m) => fits(task, m)).map((m) => {
             const ref_ = { offeringId: m.id };
             const on = current.source === "thread" && refKey(current.model) === refKey(ref_);
             return (
               <button key={m.id} type="button" className="picker-item" aria-pressed={on} disabled={busy} onClick={() => choose(ref_)}>
-                <ModelLabel model={m.modelId} endpoint={ep.name} />{on && <Icon name="check" />}
+                <ModelLabel model={modelName(m)} endpoint={ep.name} />{on && <Icon name="check" />}
               </button>
             );
           })}
@@ -258,13 +259,13 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
         const id = e.target.value;
         const ep = allowed.find((x) => x.models.some((m) => m.id === id));
         const m = ep?.models.find((x) => x.id === id);
-        if (task === "speech.transcribe" && ep?.kind === "cloud" && m) setCloudPick({ id, name: `${m.modelId} on ${ep.name}` });
+        if (task === "speech.transcribe" && ep?.kind === "cloud" && m) setCloudPick({ id, name: `${modelName(m)} on ${ep.name}` });
         else onChange(id ? { offeringId: id } : null);
       }}>
         <option value="">Preset ({fromPreset})</option>
         {allowed.filter((ep) => ep.models.some((m) => fits(task, m))).map((ep) => (
           <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
-            {ep.models.filter((m) => fits(task, m)).map((m) => <option key={m.id} value={m.id}>{ep.kind} · {m.modelId} · {ep.name}</option>)}
+            {ep.models.filter((m) => fits(task, m)).map((m) => <option key={m.id} value={m.id}>{ep.kind} · {modelName(m)} · {ep.name}</option>)}
           </optgroup>
         ))}
         {/* A thread choice that is no longer allowed still shows, so the select says what's set. */}

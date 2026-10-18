@@ -363,10 +363,14 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     its latest messages and stop its turn. A child's question, `needsYou`,
     final report when its turn ends idle, or a daemon failure/didn't-start
     note wakes an idle parent for one turn. Progress updates only append.
-    Pending and running wakes coalesce, share the child concurrency limit,
-    and wait while the project is paused or hidden. A parent woken by a
-    child only appends its reply to that child, so their messages can't keep
-    each other taking turns. Every child is told always to end with a
+    Pending and running wakes coalesce and wait while the project is paused
+    or hidden; a parent's wake takes no child slot, so a parent and a child
+    can't wait on each other. A parent woken by a child answers it with a
+    turn in that child for up to three rounds; past that, until the person
+    writes in either, the reply is only saved, so two threads can't keep
+    each other going. A message to an idle child while the at-once limit is
+    full is saved, and the child wakes when a slot frees. Her tool says which
+    of these happened. Every child is told always to end with a
     message to the parent: the result, or what blocked it.
   - It keeps going in the background and stays until it is forgotten.
     Forgetting a parent asks whether to forget its child threads too, ticked
@@ -1579,6 +1583,11 @@ Details in [docs/sleep.md](docs/sleep.md).
 
 - The Lyrica Pi extension holds everything that makes her Lyrica: persona,
   context assembly, memory tools and sleep.
+- **Truthful continuation** is operational guidance in her own prompt (not
+  subagents'), not a controller or persona rule: actionable work runs before the final reply, which ends the
+  turn. A background claim names a successfully started or queued mechanism
+  and distinguishes queued from running; otherwise she reports her stopping
+  point and that she is idle. Recurring routines require the user's request.
 - **`lyricad`** is one Node process. It embeds Pi through Pi's SDK: each
   active thread is a Pi session object inside `lyricad`, not a separate `pi`
   process. All interfaces go through it, with the same extension, and it is the

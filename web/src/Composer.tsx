@@ -4,11 +4,12 @@
 // quiet row with "+", the mic (dictation goes in at the caret) and the
 // thread's mode (Shift+Tab cycles). The unsent text is kept on lyricad, one
 // draft per thread, never in the browser.
-import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { draft as loadDraft, saveDraft, upload, type ThreadSettings, type ThreadSettingsChange } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { ATTACH_EVENT, ATTACH_KEY, EDIT_IMAGE_EVENT, EDIT_MESSAGE_EVENT, type EditMessageRequest, take, type AttachRequest, type EditImageRequest } from "./links.ts";
+import { basename, findPaths, isImagePath, Thumb, type FileLinks } from "./paths.tsx";
 import { ModePicker, nextMode, ToolsMenu, type GrantedMachine } from "./Modes.tsx";
 import { MicButton, stopReading, useDictation } from "./Voice.tsx";
 
@@ -180,6 +181,14 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
     el.style.height = `${el.scrollHeight + 2}px`;
   }, [draft]);
 
+  // Images named in the draft (an upload puts its path on a line of its own) show as thumbnails above the box, each
+  // with an ✕ that takes its line out (docs/ux.md §6, The message box).
+  const images = useMemo(() => [...new Set(findPaths(draft).map((p) => p.path).filter(isImagePath))], [draft]);
+  const links = useMemo((): FileLinks => ({
+    href: () => "", url: (p) => `${base}/files/content?path=${encodeURIComponent(p)}`, thumb: (p) => `${base}/files/thumb?path=${encodeURIComponent(p)}`,
+  }), [base]);
+  const detach = (path: string) => setDraft((d) => d.split("\n").filter((line) => line.trim() !== path).join("\n"));
+
   const attach = (files: Iterable<File>) => {
     for (const file of files) {
       const id = nextId.current++;
@@ -223,6 +232,16 @@ export function Composer({ base, busy, restored, onSend, onStop, settings, machi
       onDrop={(e) => { e.preventDefault(); setDragging(false); attach(e.dataTransfer.files); }}
     >
       <div className="composer-wrap">
+        {images.length > 0 && (
+          <ul className="attachments" aria-label="Attached images">
+            {images.map((p) => (
+              <li key={p}>
+                <Thumb path={p} alt={basename(p)} files={links} />
+                <button type="button" className="icon sm" aria-label={`Remove ${basename(p)}`} title="Remove" onClick={() => detach(p)}><Icon name="close" /></button>
+              </li>
+            ))}
+          </ul>
+        )}
         {uploads.length > 0 && (
           <ul className="uploads" aria-label="Uploads">
             {uploads.map((x) => (

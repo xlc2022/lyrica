@@ -39,7 +39,7 @@ afterAll(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, fo
 const host: ThreadsHost = {
   limits: DEFAULT_THREADS_LIMITS,
   start: async () => ({ id: "web/child", link: "#/child" }),
-  message: async () => {},
+  message: async () => "started" as const,
   list: () => [],
 };
 

@@ -212,7 +212,7 @@ export interface OfferingInfo extends Capabilities {
   id: string;
   /** The endpoint's own model ID. */
   modelId: string;
-  /** `<endpoint>/<model>`, with `shared.` before a shared endpoint's name. */
+  /** `<endpoint>/<model>`, with `shared.` before a shared endpoint's name; a host recipe by its name. */
   label: string;
   manual: boolean;
   /** missing: the endpoint stopped listing it; gone: missing for 30 days, so fallbacks skip it. */
@@ -1342,7 +1342,8 @@ export interface PermissionAnswer {
 
 /**
  * POST /api/u/:userId/threads/:pool/:threadId/uploads?name=<file name> → UploadResponse.
- * The body is the file's bytes (any content type), up to the size limit.
+ * The body is the file's bytes (any content type), up to the size limit. Saved under `uploads/`; an image gets a
+ * random name with its extension (docs/workspace.md), so `path` is the name to use, not the one given.
  */
 export interface UploadResponse { path: string }
 

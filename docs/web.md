@@ -736,7 +736,12 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   server makes none) and opens large, from `…/files/content`, in the
   Images tab's dialog; the conversation holds which image is open, so the
   stored copy replacing a live message doesn't close it (an SVG stays a link, since `…/files/content` serves it as text, never as a page); a remote image is never loaded and shows as a link with its
-  alt text. A fenced code block has a strip along its top edge with the
+  alt text. An image her image tool already shows in the same turn (an
+  image part before her text, up to the next user message) is rendered as
+  its path link, not a second thumbnail (`conversationNodes` tracks the
+  paths shown; `Prose skipImages`). In the person's message an image path
+  on its own line, as an upload puts it, shows as the same thumbnail
+  (`PathText large`, `paths.tsx`). A fenced code block has a strip along its top edge with the
   fence's language and **Copy**, which writes the block's text to the
   clipboard (`navigator.clipboard`, `CodeBlock.tsx`) and reads **Copied**, or
   **Copy failed** where the browser refuses, for 2 s; inline code, tool
@@ -764,7 +769,16 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   The user's sit in a tinted block.
 - Thinking, recalls, saved notes and tool calls are one-line markers that
   expand when tapped. An expanded tool call stays open when the turn ends
-  and the stored copy replaces the live one.
+  and the stored copy replaces the live one. A reply made only of markers
+  (`isMarker` on every part: thinking, recall, remember, and tools other
+  than delegate, propose_plan, image and a threads look) renders bare, with
+  no header line or action row (`.turn.quiet`); consecutive ones are
+  grouped, and three or more markers fold into one **<n> tool calls**
+  marker (`ToolRun`, "steps" when none is a tool call) that opens to a
+  320 px box which scrolls (`.run-body`), each call its own marker inside,
+  following the newest while the turn streams. Its open state is keyed by
+  the first call's ID, so it survives the stored copy replacing the live
+  one.
 - In a project chat, a look at its threads (a message with `from.kind ===
   "watching"`) is the marker **Checked the other threads**, with "· told 2"
   (the count in mono) when it messaged threads. A look made by one model
@@ -836,16 +850,25 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   the stored messages, and so does every `hello` that finds the thread idle:
   a turn may have ended between fetching the messages and opening the stream,
   such as a child thread opened as its first turn ends.
-- **Each message has a menu** (a bordered ⋯ icon button by the sender's
-  name; `src/Rewind.tsx`): Pin or Unpin; Remember this (a labelled field
-  under the message, prefilled with its first line, whose Remember button
-  writes a user-introduced note in the thread's pool citing the message;
-  `RememberBox` in `src/Messages.tsx`);
-  Branch from here; on her replies Regenerate and
-  Regenerate with… (the models the thread may use); on the user's messages
-  Edit, which turns the message into a box (Save, Cancel) whose text is sent
-  in its place; Delete on the messages of the last turn, and Delete from
-  here on earlier ones, both in danger text. Removing turns hides them at
+- **Each message has an action row** under it (`MessageActions` in
+  `src/Rewind.tsx`, after the reaction chips; docs/ux.md §6, A message's
+  actions): quiet icon buttons, Copy (the message's text; Copied or Copy
+  failed for two seconds), on her replies Regenerate (`rewind` with
+  `action: "regenerate"`), on the user's Edit, which turns the message into
+  a box (Save, Cancel) whose text is sent in its place, then Branch, Read
+  aloud (hers), React and the ⋯ (More actions, `MessageMenu`): Pin or
+  Unpin; Remember this (a labelled field under the message, prefilled with
+  its first line, whose Remember button writes a user-introduced note in the
+  thread's pool citing the message; `RememberBox` in `src/Messages.tsx`);
+  Start a thread in a project chat; on her replies Regenerate with… (the
+  thread's chat models, `isChatModel` in `ModelLabel.tsx`, the same filter
+  lyricad uses, so image, speech and embedding offerings stay out); Delete
+  on the messages of the last turn, and Delete from here on earlier ones,
+  both in danger text. A marker's ⋯ (a look, a received message, a routine)
+  has Branch from here instead of a row. The row is right-aligned under the
+  user's message and its menus open leftwards; on a pointer device it
+  appears on hover or focus (`.msg-actions`), on touch it is always shown
+  with 44 px buttons. Removing turns hides them at
   once and waits five seconds with an Undo toast before the request goes
   (leaving the thread sends it at once): Delete, and Regenerate or Edit
   before the last turn. On the last turn, Regenerate and Edit go at once.
@@ -856,12 +879,15 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   undos with a checkbox each, kept files with a badge saying why, and the
   commands behind "N commands ▾"; Remove goes on with what's ticked, Cancel
   leaves everything. A `rewound`
-  event drops the removed messages from every open view. A new branch opens,
+  event drops the removed messages from every open view; when it carries
+  `resend`, the live copy of the message sent again is given `afterN` from
+  the rewind point (`stream.ts`), so the stored copy replaces it instead of
+  showing beside it. A new branch opens,
   under "Branched from" its parent, and its settings can be changed within
   its parent's.
 - **A message's header line** (`.who.sent` in `Messages.tsx`) reads the
   sender's name, for hers the model, then the time it was sent, then the
-  "pinned" badge and the actions (Read aloud, React, ⋯). The name, model
+  "pinned" badge; the actions are the row under the message. The name, model
   and time sit together in `.who-head`, without the line's gap, joined by
   dots (`Sep`) with the same air on both sides. The time is a
   `<time>` in mono, muted like the model: `wakeTime`'s HH:MM today and the
@@ -873,11 +899,11 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   go) has none until its stored copy replaces it. Markers keep their own
   lines and show no time; there are no day dividers. The line never wraps:
   the name and model are the one part that shrinks (`min-width: 0`, an
-  ellipsis, the model whole in its `title`), while the time and the actions
-  keep their size, so on a phone a long model name loses its tail.
+  ellipsis, the model whole in its `title`), while the time keeps its size,
+  so on a phone a long model name loses its tail.
 - **Reactions** (`src/Reactions.tsx`; the picker styles its shadow root
   inline, so lyricad's CSP allows inline styles, scripts stay `'self'`): a React button (a face with a plus)
-  beside each message's ⋯ opens a quick row (🙏 👍 ❤️ 🎉 👀 🚀, tooltips
+  in each message's action row, before its ⋯, opens a quick row (🙏 👍 ❤️ 🎉 👀 🚀, tooltips
   "React with tada") whose last button, More emoji, opens the full picker
   with search and categories (`emoji-picker-element`, loaded only then; its
   data is served with the UI, never from a CDN, and kept by the browser).
@@ -945,7 +971,12 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   its message menu.
 - Files attach from the "+" menu, by dragging onto the composer, or by
   pasting. Each shows its progress, and its path in the thread goes into the
-  draft.
+  draft on a line of its own. An image path in the draft shows as a
+  thumbnail above the box (`.attachments`, the thumbnail route) with an ✕,
+  Remove <name>, a 24 px circle whose hit area is 44 px on touch, that takes
+  its line out; the server names an uploaded
+  image at random (docs/workspace.md), so the person's message shows the
+  picture, not a telling filename.
 - **The message box** (`src/Composer.tsx`, `src/Modes.tsx`): a bordered box
   holding the text and, at the right of it, Send as a borderless up-arrow
   icon, accent once there is text, or Stop as a square while she works and
@@ -984,8 +1015,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   is disabled and its tooltip is lyricad's reason. "Allow the microphone in
   your browser" and lyricad's refusals show in the conversation's error line
   above the box, never as a toast or in the placeholder.
-- **Read aloud** is a bordered speaker icon button in her message's actions,
-  before ⋯, that plays lyricad's PCM stream for that message
+- **Read aloud** is the speaker icon in her message's action row,
+  before React and ⋯, that plays lyricad's PCM stream for that message
   (`…/messages/:n/speech`) through Web Audio as it arrives; the AudioContext
   is made in the press, which iPhone requires. While it plays the button is
   **Stop reading**, a square in accent. Only one thing plays at a time: Stop

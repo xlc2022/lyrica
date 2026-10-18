@@ -11,7 +11,7 @@ async function setup(child = false) {
     const c = t.view.own.createThread({ interface: "cli", parent: t.threadId, child: true });
     t.context.threadId = c.id;
   }
-  const host: ThreadsHost = { limits: DEFAULT_THREADS_LIMITS, start: async () => { throw new Error("unused"); }, message: async () => {}, list: () => [] };
+  const host: ThreadsHost = { limits: DEFAULT_THREADS_LIMITS, start: async () => { throw new Error("unused"); }, message: async () => "started" as const, list: () => [] };
   const toolFor = (context = t.context) => {
     let tool!: Parameters<ExtensionAPI["registerTool"]>[0];
     createThreadsExtension(context, host)({ on: () => {}, registerTool: (value: typeof tool) => { tool = value; } } as unknown as ExtensionAPI);

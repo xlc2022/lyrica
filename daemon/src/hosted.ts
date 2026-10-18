@@ -496,13 +496,16 @@ export class HostedThread {
   /** A turn runs, or a message waits for a model to answer. */
   get working(): boolean { return this.busy || !!this.held; }
 
-  /** Child notices are already delivered; wake once without inventing a user message. */
-  async wakeChild(): Promise<void> {
+  /**
+   * Child notices are already delivered; wake once without inventing a user message.
+   * With `note`, a child woken for messages saved while no slot was free: not a child-woken turn.
+   */
+  async wakeChild(note?: string): Promise<void> {
     if (this.busy || this.closed) return;
     this.busy = true;
     try { await this.open(); }
     catch (err) { this.busy = false; throw err; }
-    this.running = this.run(CHILD_WAKE, { childWake: true });
+    this.running = this.run(CHILD_WAKE, { childWake: !note, wake: note ?? "Read the child thread notices and respond to the result or question." });
   }
 
   private readonly parentReplies: string[] = [];
@@ -527,12 +530,12 @@ export class HostedThread {
     } finally { view.close(); }
   }
 
-  private async run(text: string, opts: { childWake?: boolean; person?: boolean } = {}): Promise<void> {
+  private async run(text: string, opts: { childWake?: boolean; wake?: string; person?: boolean } = {}): Promise<void> {
     this.stopIdle();
     let aborted = false;
     // Whether the person's own text is part of this turn: a child's wake or a marked message isn't.
     let theirs = !!opts.person;
-    let childWake = !!opts.childWake;
+    let childWake = !!opts.childWake, wake = opts.wake;
     this.o.onTurn?.(this.userId, this.pool, this.threadId, true);
     try {
       for (let next: string | undefined = text; next !== undefined && !this.closed;) {
@@ -557,9 +560,11 @@ export class HostedThread {
         opened.meter.pending = undefined;
         this.failed = false;
         const entry = (next === OPENING ? opened.view.own.loadEntries(this.threadId).at(-1) : undefined) as { message?: { role?: string; content?: unknown } } | undefined;
-        if (childWake) {
+        if (wake) {
           childWake = false;
-          await opened.session.sendCustomMessage({ customType: CHILD_WAKE, content: "Read the child thread notices and respond to the result or question.", display: false }, { triggerTurn: true });
+          const content = wake;
+          wake = undefined;
+          await opened.session.sendCustomMessage({ customType: CHILD_WAKE, content, display: false }, { triggerTurn: true });
         } else if (next === OPENING && entry?.message?.role === "user" && textOf(entry.message.content) === OPENING) {
           await this.answerOpening(opened.session);
         } else {

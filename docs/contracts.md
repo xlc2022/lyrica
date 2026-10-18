@@ -614,6 +614,12 @@ One model-facing tool: `delegate({ action?, ... })`.
   or `tasks: [...]` (parallel), `chain: [...]`, `loop`, `council`, or
   `workflow: name`. Any of these can be `background: true`. She picks a tier,
   never a model; only saved workflows, which users write, may name one.
+  `folders` narrows granted host folders only, not sandbox repository paths;
+  an invalid folder returns that distinction and advises omitting `folders`
+  to read the parent's checkouts. Read-only roles, narrowed runs and writers
+  in a worktree share those clones read-only with no forge credentials; an
+  unnarrowed writer keeps the parent's repositories. This does not change
+  repository inheritance.
 - The other actions are `status`, `wait`, `stop` and `message`, each on a
   run ID, and only on runs the calling thread started. `message({ id,
   message, thread? })` joins a working subagent's turn, answers its open
@@ -776,8 +782,11 @@ One model-facing tool: `delegate({ action?, ... })`.
   user writes there. A reply from a child-triggered parent to its source
   child goes through `HostedThread.appendParent`, saved after the child's
   current turn without a turn or steer; the next turn reads it.
-  `HostedThread.childWakeTurn` limits reply suppression to the child-started
-  turn; a subsequent user turn can message and start the child normally.
+  `message` returns a `Delivery`: `started`, `running`, `queued` (an idle
+  thread past the at-once limit: saved, woken when a slot frees), `saved`
+  (a child-woken parent past `MAX_WAKE_ROUNDS` replies to its source child),
+  or, to a parent, `wakes` or `update`. `HostedThread.childWakeTurn` marks
+  the child-started turn whose replies count as rounds.
   Pending child wakes also wait while `ThreadHost.draining` is true.
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
@@ -867,6 +876,16 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     rules. The extension therefore rebuilds them from each tool's own snippets
     and guidelines (`toolGuidance`) into a `tools` section. Any tool
     registered with a snippet and guidelines appears there automatically.
+    For her own prompt only (never a subagent's), `toolGuidance` is also
+    given operational continuation rules: act before
+    the final reply (which ends the turn), fall back to available direct tools
+    after failed delegation, name a successfully started or queued background
+    mechanism and its actual status, or report the stopping point and idle.
+    Recurring routines are created only at the user's request. These are
+    conduct guidance, not a runtime continuation guarantee. Both her prompt
+    and subagents' get `WORK_GUIDELINES` (independent tool calls together in
+    one reply; no re-reading a file that hasn't changed; long output to a
+    file).
   - It returns content that changes every turn, namely recall hits and the
     time, as the result's `message`. That way it sits in the transcript, not
     in the prefix.
@@ -884,8 +903,17 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `lyrica-tool-limit` message shows “Turn stopped after 100 tool calls.”
   or “Turn stopped after 25 calls in a row to <tool>.” (count and tool in mono, under the heading Tool limit) in the thread, live and after reload. Counters reset on the next agent run.
   Pi validates tool schemas before execution and returns validation errors
-  naming missing fields, including an empty `image` call. These limits
-  serve principles 1 and 2: real runaway turns stop structurally.
+  naming missing fields. These limits serve principles 1 and 2: real
+  runaway turns stop structurally.
+- **Tool guards for OpenAI-compatible endpoints** (`extension/src/tool-stream.ts`,
+  wrapped around every local server's and model host's stream in
+  `modelRuntimeFor`): `objectTools` sends every tool's parameters with
+  `"type": "object"` (an MCP server's schema may lack it, and LM Studio then
+  refuses the whole request with a 400). `capToolCalls` ends a reply that
+  streams more than `MAX_REPLY_TOOL_CALLS` (32) tool calls with an error
+  naming the limit, stopping the request; none of its calls run. Tool calls
+  show only once a reply ends, so without it a model repeating one call
+  streams hundreds unseen.
 - **Tools** (budget: 30; see principle 8):
   - `read`, `write`, `edit` and `bash` (Workspace thread; see
     [workspace.md](workspace.md));
@@ -906,6 +934,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `size: { width, height }` or `aspectRatio` (`width:height`), `count` and
     `references`; edit takes `image`, `instruction`, optional `mask`, `count`
     and `references`; upscale takes `image`, optional `scale` and `maxSize`.
+    The parameters are one object (`action` plus every field, optional, each
+    described with the actions it is for), not a union: LM Studio refuses
+    tool parameters that aren't `"type": "object"`, and small models' chat
+    templates show a top-level union no fields. The tool checks an action's
+    required fields and names any missing. A failed call's error names the
+    model label (a host recipe by its name) and error code it reached:
+    `Image <action> failed with <label> [<code>]: <message>`.
     Inputs name workspace paths or `/photos-of-me/<file>`. `ImageTools` supplies
     `models`, fresh `call()`, `threadId`, `files: ThreadImages`, user `settings()`,
     `enabled()`, optional `approve(ApprovalRequest)` and injectable `now()`.

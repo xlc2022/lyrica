@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil
 import { LIVE_STATUSES, type Role, type SubagentRecord } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { setToolsOff } from "../gate.ts";
-import { toolGuidance, type ThreadContext } from "../index.ts";
+import { toolGuidance, WORK_GUIDELINES, type ThreadContext } from "../index.ts";
 import { syncEntries } from "../record.ts";
 import { registerMemoryTools } from "../tools.ts";
 import { subagentPrompt } from "./roles.ts";
@@ -33,7 +33,7 @@ const Params = Type.Object({
   workflow: Type.Optional(Type.String({ description: "A saved workflow's name." })),
   input: Type.Optional(Type.String({ description: "The workflow's input, for {input} in its steps." })),
   background: Type.Optional(Type.Boolean({ description: "Return a run ID at once; the result arrives as a message later." })),
-  folders: Type.Optional(Type.Array(Type.String(), { description: "Only these of this thread's folders." })),
+  folders: Type.Optional(Type.Array(Type.String(), { description: "Only these granted host folders. Not repository checkout paths: omit folders to read the parent's checkouts; scouts see them read-only." })),
   readOnly: Type.Optional(Type.Boolean({ description: "The subagents may read the folders but not change them." })),
   internet: Type.Optional(Type.Literal(false, { description: "false cuts the subagents off from the internet." })),
   id: Type.Optional(Type.String({ description: "The run ID, for status, wait, stop and message." })),
@@ -215,7 +215,7 @@ export function createSubagentExtension(thread: ThreadContext, role: Role, hooks
     });
     pi.on("before_agent_start", (event) => {
       const o = event.systemPromptOptions;
-      const tools = toolGuidance(o);
+      const tools = toolGuidance(o, WORK_GUIDELINES);
       o.customPrompt = subagentPrompt(role, name);
       o.sections = { ...(tools ? { tools } : {}), ...o.sections };
     });

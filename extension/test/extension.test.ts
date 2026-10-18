@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { PRONOUN_PRESETS, type Persona, type Profile } from "@lyrica/core";
 import { describe, expect, it } from "vitest";
-import { createLyricaExtension, DEFAULT_BUDGETS, toolGuidance, type Budgets, UNLOGGED_NOTICE, type ThreadContext } from "../src/index.ts";
+import { CONTINUATION_GUIDELINES, WORK_GUIDELINES, createLyricaExtension, DEFAULT_BUDGETS, toolGuidance, type Budgets, UNLOGGED_NOTICE, type ThreadContext } from "../src/index.ts";
 import { withMemory } from "./helpers.ts";
 
 const persona: Persona = {
@@ -155,5 +155,8 @@ describe("extension", () => {
       promptGuidelines: ["Recall first", "Be kind"],
     })).toBe("- recall: search memory\n\nGuidelines:\n- Recall first\n- Be kind");
     expect(toolGuidance({ cwd: "/", selectedTools: [] })).toBe("");
+    // Her own prompt adds the turn boundary, even with no tools; a subagent's (no rules given) doesn't.
+    expect(toolGuidance({ cwd: "/", selectedTools: [] }, CONTINUATION_GUIDELINES)).toBe(`Guidelines:\n${CONTINUATION_GUIDELINES.map((r) => `- ${r}`).join("\n")}`);
+    expect(toolGuidance({ cwd: "/", selectedTools: [] }, WORK_GUIDELINES)).toContain("together in one reply");
   });
 });

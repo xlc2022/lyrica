@@ -2,7 +2,7 @@ import { Memory, Models, Users, Workspace, type Pool } from "@lyrica/core";
 import type { Delegation, ThreadContext } from "@lyrica/extension";
 import { afterEach, describe, expect, it } from "vitest";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
-import { ChildThreads } from "../src/children.ts";
+import { ChildThreads, MAX_WAKE_ROUNDS } from "../src/children.ts";
 import type { ThreadHost } from "../src/hosted.ts";
 
 const close: (() => void)[] = [];
@@ -34,7 +34,7 @@ async function setup() {
       get childWakeTurn() { return childWakeTurn; },
       appendParent: (text: string) => { replies.push(text); },
       send: async (text: string) => { busy.add(t); sends.push(text); return { queued: false }; },
-      wakeChild: async () => { childWakeTurn = true; busy.add(t); wakes.push(t); },
+      wakeChild: async (note?: string) => { childWakeTurn = !note; busy.add(t); wakes.push(t); },
     }),
   } as unknown as ThreadHost;
   let paused = false;
@@ -46,7 +46,7 @@ async function setup() {
   const flush = async () => { await new Promise<void>(r => setImmediate(r)); };
   const end = () => { busy.delete(parent.id); children.turn(user.id, "general", parent.id, false); children.ended(user.id, "general", parent.id, "done"); };
   const parentFrom = { ...from, threadId: parent.id } as ThreadContext;
-  return { children, parentFrom, users, user, parent, child, from, busy, wakes, notices, replies, sends, host, flush, end, userTurn: () => { childWakeTurn = false; }, pause: (p: boolean) => { paused = p; } };
+  return { children, parentFrom, users, user, parent, child, from, busy, wakes, notices, replies, sends, host, flush, end, pause: (p: boolean) => { paused = p; } };
 }
 
 describe("child wake guards", () => {
@@ -63,17 +63,29 @@ describe("child wake guards", () => {
     expect(s.wakes).toEqual([s.parent.id]);
   });
 
-  it("waits for the concurrency slot and coalesces pending questions", async () => {
+  it("wakes the parent without a child's slot, and coalesces pending questions", async () => {
     const s = await setup();
+    // The one slot is taken by the asking child itself: waiting for it would leave both waiting.
     s.busy.add(s.child.id);
-    await s.children.message(s.from, "parent", "First?", { question: true });
-    await s.children.message(s.from, "parent", "Second?", { question: true });
-    expect(s.wakes).toEqual([]);
-    s.busy.delete(s.child.id);
-    s.children.turn(s.user.id, "general", s.child.id, false);
-    s.children.ended(s.user.id, "general", s.child.id, "done");
+    expect(await s.children.message(s.from, "parent", "First?", { question: true })).toBe("wakes");
+    expect(await s.children.message(s.from, "parent", "Second?", { question: true })).toBe("wakes");
     await s.flush();
     expect(s.wakes).toEqual([s.parent.id]);
+    expect(await s.children.message(s.from, "parent", "Halfway there.")).toBe("update");
+  });
+
+  it("saves a message to an idle thread past the limit, and wakes it when a slot frees", async () => {
+    const s = await setup();
+    const other = s.parentFrom.view.own.createThread({ interface: "web", parent: s.parent.id, child: true });
+    s.children.adopt(s.user.id, "general", other.id, s.parent.id, undefined);
+    s.busy.add(other.id);
+    expect(await s.children.message(s.parentFrom, s.child.id, "Plant the tulips.")).toBe("queued");
+    expect(s.replies).toEqual(["Plant the tulips."]);
+    expect(s.sends).toEqual([]);
+    s.busy.delete(other.id);
+    s.children.turn(s.user.id, "general", other.id, false);
+    await s.flush();
+    expect(s.wakes).toEqual([s.child.id]);
   });
 
   it("wakes on a final report, including a user-started child's turn", async () => {
@@ -117,17 +129,23 @@ describe("child wake guards", () => {
     expect(s.notices).toHaveLength(1);
   });
 
-  it("suppresses a woken parent's reply, but a subsequent user turn can start the child", async () => {
+  it("a woken parent's answer starts the child, for a few rounds until the person writes", async () => {
     const s = await setup();
-    s.children.limits.concurrency = 2;
-    await s.children.message(s.from, "parent", "Which flowers?", { question: true });
-    await s.flush();
-    await s.children.message(s.parentFrom, s.child.id, "Use tulips.");
-    expect(s.replies).toEqual(["Use tulips."]);
-    expect(s.sends).toEqual([]);
-    s.userTurn();
-    await s.children.message(s.parentFrom, s.child.id, "Continue the work.");
-    expect(s.sends).toEqual(["Continue the work."]);
+    const round = async (n: number) => {
+      await s.children.message(s.from, "parent", `Question ${n}?`, { question: true });
+      await s.flush();
+      const d = await s.children.message(s.parentFrom, s.child.id, `Answer ${n}.`);
+      s.busy.delete(s.child.id);
+      s.children.turn(s.user.id, "general", s.child.id, false);
+      s.end();
+      return d;
+    };
+    for (let n = 1; n <= MAX_WAKE_ROUNDS; n++) expect(await round(n)).toBe("started");
+    expect(await round(MAX_WAKE_ROUNDS + 1)).toBe("saved");
+    expect(s.replies).toEqual([`Answer ${MAX_WAKE_ROUNDS + 1}.`]);
+    s.children.userWrote(s.user.id, "general", s.parent.id);
+    expect(await round(MAX_WAKE_ROUNDS + 2)).toBe("started");
+    expect(s.sends).toHaveLength(MAX_WAKE_ROUNDS + 1);
   });
 
   it("waits while the daemon drains, then starts one pending wake", async () => {
