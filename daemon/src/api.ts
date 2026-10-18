@@ -427,6 +427,8 @@ export interface ServingSettings {
   kvBytes: number | null;
   recommended: { native: number | null; stretched?: number; factor?: number; originalContext?: number; source: { hub: Hub; repo: string; revision: string; at: string } } | null;
   stretchUntested: boolean;
+  /** What the drawer's Vision and MTP switches can turn off: a vision projector, and an MTP file or the model's own MTP layers. */
+  extras?: { vision: boolean; mtp: "file" | "built-in" | null };
 }
 /**
  * GET /api/u/:userId/offerings/:offeringId/serving → ServingSettings. PUT { settings, anyway? } → the host's model entry; a placement that

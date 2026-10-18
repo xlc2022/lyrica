@@ -250,6 +250,8 @@ export interface ServingEntry {
   recommended: Recommended | null;
   /** vLLM's stretch is untested (vllm#58870). */
   stretchUntested: boolean;
+  /** A vision projector, and an MTP file or the model's own MTP layers, that settings can turn off. */
+  extras?: { vision: boolean; mtp: "file" | "built-in" | null };
 }
 
 /** What a model's card recommends for its context (DESIGN, "Model settings"). */

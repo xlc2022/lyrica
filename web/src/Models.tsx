@@ -410,9 +410,11 @@ const suits = (task: Task, m: OfferingInfo) => {
     case "edit": return !!m.edit;
     case "transcribe": return !!m.transcribe;
     case "speak": return !!m.speak?.voices.length;
-    default: return !m.embedding && !m.image && !m.edit && !m.transcribe && !m.speak;
+    default: return !m.embedding && !m.image && !m.edit && !m.transcribe && !m.speak && !m.recipe && !companion(m.modelId);
   }
 };
+/** A vision projector or MTP draft a host listed before it knew them as companions (host/API.md): never a model to pick. */
+const companion = (id: string) => /(^|\/)(mtp\/|mtp[-_.][^/]*$|[^/]*mmproj[^/]*$)/i.test(id);
 
 /** A task's entry as lyricad reads it: a text task with none follows Chat. */
 function entryOf(table: Table, task: Task): Entry | undefined {

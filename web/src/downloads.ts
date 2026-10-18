@@ -25,6 +25,32 @@ export function size(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 2 ** 20))} MB`;
 }
 
+/** A download's speed: "42 MB/s", or "1.2 GB/s" from a gigabyte a second. */
+export function speed(bytesPerSecond: number): string {
+  if (bytesPerSecond >= 2 ** 30) return `${(bytesPerSecond / 2 ** 30).toFixed(1)} GB/s`;
+  return `${Math.max(0, Math.round(bytesPerSecond / 2 ** 20))} MB/s`;
+}
+
+/**
+ * Each running download's speed, from two looks at it: what arrived since the last look over the time between them,
+ * smoothed so one slow poll doesn't jump the number. `seen` carries the last look per download, and is updated.
+ */
+export function speeds(downloads: Pick<HostDownload, "id" | "state" | "received">[], seen: Map<string, { received: number; at: number; rate?: number }>, at: number): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const d of downloads) {
+    if (d.state !== "downloading") { seen.delete(d.id); continue; }
+    const last = seen.get(d.id);
+    let rate = last?.rate;
+    if (last && at > last.at && d.received >= last.received) {
+      const now = ((d.received - last.received) * 1000) / (at - last.at);
+      rate = rate === undefined ? now : rate * 0.5 + now * 0.5;
+    }
+    seen.set(d.id, { received: d.received, at, ...(rate !== undefined ? { rate } : {}) });
+    if (rate !== undefined) out.set(d.id, rate);
+  }
+  return out;
+}
+
 const PHASE = { queued: "Queued", downloading: "Downloading", verifying: "Checking the checksum" } as const;
 
 /** How a finished download ended: its dot (§5's colours; none is grey) and word, and what follows the word, muted. */
@@ -75,8 +101,41 @@ export function fileLink(text: string): boolean {
   } catch { return false; }
 }
 
-/** One thing to download from a repository: a GGUF file (its shards together), or the whole repository. */
-export interface FileChoice { key: string; label: string; files: string[]; size: number; present: boolean; fits: boolean; parts?: number }
+/**
+ * One thing to download from a repository: a GGUF file (its shards together), or the whole repository. `kind`: a
+ * file that only helps a model, a vision projector or an MTP draft, which the host keeps beside the model.
+ */
+export interface FileChoice { key: string; label: string; files: string[]; size: number; present: boolean; fits: boolean; parts?: number; kind?: "vision" | "mtp" }
+
+/** A vision projector (`mmproj` in its name) or an MTP draft (`mtp-…`, or in an `MTP` folder), as the host tells them (host/API.md). */
+export function companionKind(path: string): "vision" | "mtp" | undefined {
+  const parts = path.split("/");
+  const name = parts[parts.length - 1]!.toLowerCase();
+  if (name.includes("mmproj")) return "vision";
+  if (/^mtp[-_.]/.test(name) || parts.slice(0, -1).some((p) => p.toLowerCase() === "mtp")) return "mtp";
+  return undefined;
+}
+
+/** How many characters two names share, from the start and from the end. */
+function shared(a: string, b: string): number {
+  let head = 0, tail = 0;
+  while (head < a.length && a[head] === b[head]) head++;
+  while (tail < a.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  return head + tail;
+}
+
+/**
+ * What goes with a model when it is ticked: its vision projector (F16 or BF16 first) and the MTP draft whose name is
+ * closest to the model's, as the host pairs them. Those already on the host or too big for it are left out.
+ */
+export function companionsOf(choices: FileChoice[], modelKey: string): string[] {
+  const stem = (k: string) => (k.split("/").pop() ?? k).toLowerCase().replace(/\.gguf$/, "").replace(/^mtp[-_.]/, "");
+  const usable = (c: FileChoice) => !c.present && c.fits;
+  const vision = choices.filter((c) => c.kind === "vision");
+  const projector = vision.find((c) => /bf16|f16/i.test(c.key)) ?? vision[0];
+  const drafts = choices.filter((c) => c.kind === "mtp").sort((a, b) => shared(stem(b.key), stem(modelKey)) - shared(stem(a.key), stem(modelKey)));
+  return [projector, drafts[0]].filter((c): c is FileChoice => !!c && usable(c)).map((c) => c.key);
+}
 
 const SHARD = /^(.*)-(\d{5})-of-(\d{5})\.gguf$/i;
 
@@ -98,11 +157,14 @@ export function fileChoices(list: HubFiles): { choices: FileChoice[]; refused: s
     for (const [key, files] of byModel) {
       const total = files.reduce((n, f) => n + f.size, 0);
       const split = files.length > 1 || SHARD.test(files[0]!.path);
+      const kind = companionKind(files[0]!.path);
       choices.push({
         key, label: split ? `${key}.gguf` : key, files: files.map((f) => f.path).sort(), size: total,
-        present: files.every((f) => f.present), fits: split ? total <= list.free : files[0]!.fits, ...(split ? { parts: files.length } : {}),
+        present: files.every((f) => f.present), fits: split ? total <= list.free : files[0]!.fits, ...(split ? { parts: files.length } : {}), ...(kind ? { kind } : {}),
       });
     }
+    // Models first, then what goes with them.
+    choices.sort((a, b) => (a.kind ? 1 : 0) - (b.kind ? 1 : 0));
   } else if (allowed.length) {
     const total = allowed.reduce((n, f) => n + f.size, 0);
     choices.push({ key: "*", label: "Whole repository", files: allowed.map((f) => f.path), size: total, present: allowed.every((f) => f.present), fits: total <= list.free });
