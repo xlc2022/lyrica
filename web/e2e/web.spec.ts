@@ -1,5 +1,6 @@
 // The web UI against a real lyricad (e2e/serve.ts) and a fake model server,
 // at phone and desktop sizes. Tests run in order on one lyricad per size.
+import { createServer } from "node:http";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const PASSPHRASE = "correct horse";
@@ -4029,4 +4030,92 @@ test("private question Notifications keep their pool and answer the card", async
   await expect(row).toHaveCount(0);
   await page.goto(threadURL);
   await expect(page.locator(".question-result")).toHaveText("Small");
+});
+
+
+// Principles 6 and 2: exercise the browser contract with a local receiver only.
+// Sender, validation and encrypted persistence are covered by daemon/test/push.test.ts.
+test("Push settings: save, test, failure and turn off", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  let status = 204;
+  const bodies: string[] = [];
+  const receiver = createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    bodies.push(body);
+    res.writeHead(status); res.end();
+  });
+  await new Promise<void>(resolve => receiver.listen(0, "127.0.0.1", resolve));
+  const address = receiver.address() as { port: number };
+  const destination = `http://127.0.0.1:${address.port}/fake-topic`;
+  let info: import("../src/api.ts").PushInfo = { host: "", path: "", set: false, token: false, link: false };
+  let saved: unknown;
+  await page.route(`**/api/u/${userId}/push{,/test}`, async route => {
+    const request = route.request();
+    if (request.url().endsWith("/test")) {
+      const response = await fetch(destination, { method: "POST", body: "Test from Lyrica." });
+      if (response.ok) {
+        delete info.lastFailure;
+        return route.fulfill({ status: 204 });
+      }
+      info.lastFailure = { at: "2026-10-18T14:02:00Z", status: response.status };
+      return route.fulfill({ status: 502, json: { status: response.status, reason: "Receiver refused the push." } });
+    }
+    if (request.method() === "PUT") {
+      saved = request.postDataJSON();
+      const data = saved as { url: string; token: string; link: boolean };
+      expect(data.url).toBe(destination);
+      info = { host: new URL(destination).host, path: "/•••", set: true, token: !!data.token, link: data.link };
+    }
+    if (request.method() === "DELETE") {
+      info = { host: "", path: "", set: false, token: false, link: false };
+      return route.fulfill({ status: 204 });
+    }
+    return route.fulfill({ json: info });
+  });
+  try {
+    await page.goto(`/#/u/${userId}/settings/push`);
+    const section = page.getByRole("region", { name: "Push", exact: true });
+    const url = section.getByLabel("URL", { exact: true });
+    const token = section.getByLabel("Token");
+    await expect(section.getByLabel("Include a link")).not.toBeChecked();
+    await expect(token).toHaveAttribute("type", "password");
+    await url.fill(destination);
+    await token.fill("fake-push-token");
+    await section.getByLabel("Include a link").check();
+    await section.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(url).toHaveValue("");
+    expect(saved).toEqual({ url: destination, token: "fake-push-token", link: true, origin: baseURL });
+    await expect(url).toHaveAttribute("placeholder", `${new URL(destination).host}/•••`);
+    await expect(token).toHaveValue("");
+    await expect(token).toHaveAttribute("placeholder", "Set");
+    await page.reload();
+    await section.getByRole("button", { name: "Send a test" }).click();
+    await expect(section.getByRole("status")).toHaveText("Sent");
+    expect(bodies).toEqual(["Test from Lyrica."]);
+    status = 403;
+    await section.getByRole("button", { name: "Send a test" }).click();
+    await expect(section.getByText("403: Receiver refused the push.", { exact: true })).toBeVisible();
+    const failure = section.getByRole("status").filter({ hasText: "Last push failed" });
+    await expect(failure).toContainText("403");
+    await expect(failure.locator("time.num")).toHaveAttribute("datetime", "2026-10-18T14:02:00Z");
+    await noHorizontalScroll(page);
+    if (phone(page)) for (const name of ["Send a test", "Turn off"]) {
+      expect(await hitHeight(section.getByRole("button", { name }))).toBeGreaterThanOrEqual(44);
+    }
+    await section.scrollIntoViewIfNeeded();
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/push-settings-${page.viewportSize()!.width}.png` });
+    status = 204;
+    await section.getByRole("button", { name: "Send a test" }).click();
+    await expect(failure).toHaveCount(0);
+    await expect(section.getByRole("status")).toHaveText("Sent");
+    await section.getByRole("button", { name: "Turn off" }).click();
+    await expect(section.getByRole("button", { name: "Send a test" })).toHaveCount(0);
+    await page.reload();
+    await expect(url).toHaveAttribute("placeholder", "https://ntfy.sh/<topic>");
+    await expect(section.getByLabel("Include a link")).not.toBeChecked();
+    await noHorizontalScroll(page);
+  } finally {
+    await new Promise<void>(resolve => receiver.close(() => resolve()));
+  }
 });

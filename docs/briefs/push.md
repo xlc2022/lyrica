@@ -1,6 +1,6 @@
 # Brief: Push notifications
 
-**Status:** Approved to build; not started.
+**Status:** Built in three runs; ready for review and the operator’s full-suite run.
 
 **Branch:** `feature/push`. **Built by:** Codex on the test machine.
 **Read first:** AGENTS.md, PRINCIPLES.md (2, 8, 10), DESIGN.md (Settings,
@@ -166,4 +166,47 @@ its row to docs/ux.md.
 
 ## Handoff notes
 
-(None yet.)
+Run 1 (`19b7926`) built core storage, sender, decision diff, routes, landing
+redirect, core/daemon tests and contracts. Main merged at `ef31914`; run 2
+(`b3e2ee8`) built Settings → Push and web unit tests, updating UX and web
+docs. Run 3 adds the browser check at 1280 and 390 px, DESIGN Settings and
+daemon documentation, web test documentation and this handoff. Principles
+6, 2 and 8 are the reason for the feature. No production controls or model
+tools were added in run 3. Existing controls follow UX §6’s Push row,
+§3’s button styles, §4’s tooltip explanation, §7’s form and §8’s phone rules.
+
+Main’s named presets and columns are retained: Images uses current model
+configuration and the welcome Backend card has preset coverage. No model
+profile API is introduced. `push_sent` is user.db step 11, after project
+drafts (9) and usage totals (10), with migration coverage from every prior
+released user schema.
+
+Validation: build, typecheck and diff whitespace checks pass. Under the
+shared `/tmp/lyrica-tests.lock`, the focused core/daemon/web push and welcome
+card run passes 22 tests across four files. The two Playwright Push checks
+pass (phone and desktop): Save captures origin, masks credentials and clears
+inputs; reload keeps the saved view; a local fake receiver accepts a test,
+then refuses it with 403; the failure line appears with a mono time; success
+clears it; Turn off persists across reload. Phone action targets reach 44 px
+and neither width overflows. The browser test intercepts the Push API
+contract, forwarding test POSTs only to a loopback fake receiver; real daemon
+routes, encrypted persistence, privacy, DNS validation and restart behavior
+are exercised by `daemon/test/push.test.ts`, rather than bypassing production
+loopback restrictions. No real push service, paid API, plan endpoint or
+LM Studio was called. The full suite is left to the operator as requested.
+
+Screenshots were saved and visually checked at
+`shots/push-settings-1280.png` and `shots/push-settings-390.png`; both show
+the Push section and failure line. `shots/` is ignored and untracked.
+UNTRACKED `web/playwright.local.config.ts` uses ports 7351–7353 and the
+supplied sandbox Chromium executable. Never commit it or the screenshots.
+Reproduce from `web/` after building:
+`SCREENSHOTS=../shots flock /tmp/lyrica-tests.lock npx playwright test -c playwright.local.config.ts -g 'Push settings:' --project=phone --project=desktop`.
+
+Next: the operator runs the full suite, commits and pushes; PR review and
+UI review verify the head, then CI and merge follow the normal workflow.
+After merge, tell Operator docs to add an ntfy setup note: Settings → Push,
+URL and optional token, Send a test, opt-in link revealing the install origin,
+and destination restrictions described in docs/daemon.md and contracts.md.
+This is a pending handoff, not a message already delivered. Web Push, email,
+quiet hours and per-type choices remain out of scope. No open design questions.

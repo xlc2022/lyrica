@@ -1178,6 +1178,13 @@ turns animations off.
   and `/speech/down` to make it fail). Chromium runs with a fake microphone.
   The desktop project listens on 7342, `lyricad`'s own loopback port for
   `tailscale serve`, so e2e can't run on a machine where `lyricad` runs.
+- Push e2e checks cover Save, masked saved credentials across reload, Send a
+  test, inline receiver failure and recovery, and Turn off at both widths.
+  Browser API interception supplies the Push contract and forwards test
+  POSTs only to a local fake receiver; daemon tests separately cover the real
+  routes, validation, encrypted storage and sender. Phone targets and
+  horizontal overflow are checked. `SCREENSHOTS=<dir>` saves
+  `push-settings-1280.png` and `push-settings-390.png` with the failure line.
 - Question-card e2e checks use the fake model's `ask:`, `ask twice:` and
   `start ask:` commands with the real daemon. At both widths they cover
   option taps, persisted collapsed cards, answers in words, Notifications,

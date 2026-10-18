@@ -527,6 +527,34 @@ things are".
   without opening it. The list has no downloads, clean-up items, image
   models to review or host problems.
 
+## Push notifications
+
+Principles 6, 2 and 8: decision requests reach the user with no conversation
+text, through the existing daemon and no new dependency. `push.ts` diffs all
+pages from `notifications()` using the saved display, selecting
+`decision && type !== "sleep"`. The tick catches every type; question,
+permission and share changes also trigger checks. Locked users send nothing;
+key availability and saving a destination check existing unsent asks.
+
+Ordinary asks batch for 30 seconds, at least 60 seconds between automatic
+attempts. `push_sent` in encrypted user.db (expand-only step 11, after project
+drafts and usage totals) survives restart; cleared IDs and rows over 30 days
+old are pruned. Each send rechecks DNS, pins the connection to a checked
+address, times out at ten seconds and retries twice. HTTPS is required,
+except administrators may use HTTP on their own network. Loopback,
+link-local, this machine and the configured front door are refused.
+
+`GET/PUT/DELETE …/push` reads masked settings, saves a replacement, or turns
+push off. `POST …/push/test` sends `Test from Lyrica.` and returns 204 or
+502 with fixed reason and receiver status. Success clears the saved failure;
+logs contain only host and status. Payloads use the exported `PUSH_PHRASES`
+or a count, never notification titles, questions or details. The optional
+Bearer token and destination stay encrypted; an opt-in Click header uses
+the saved browser origin plus `/notifications`, never a user ID. See
+[contracts.md](contracts.md#push-notifications) for exact shapes and limits.
+`daemon/test/push.test.ts` covers batching, privacy, restart, lock, destination
+checks and the routes with fakes; the transport test uses a local receiver.
+
 ## The event stream
 
 `GET …/threads/:pool/:threadId/events` is one SSE stream per thread. It
