@@ -595,7 +595,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   monogram), Appearance (theme; the **Checklists** switch, which saves
   `Display.checklists` at once and reloads the thread list: off, the API
   sends no steps, so no card or header shows one; then Read aloud while
-  agent writes under Speech), Unlock and lock (saved credentials, stay
+  agent writes under Speech), **Push** (`src/Push.tsx`: URL, optional masked Token,
+  Include a link and Save; saved host/masked path and token presence only,
+  with fresh credentials required to replace settings; Send a test shows Sent
+  or receiver status and reason inline, refreshes the last failure, and Turn
+  off clears the destination; the heading tooltip and hidden description
+  explain what leaves the server), Unlock and lock (saved credentials, stay
   unlocked after logout, and `lyricad`'s warning when the two contradict),
   Password, Your personas (linking a separate persona needs both passwords),
   Persona suggestions (edit, send on to the administrators, or drop),
