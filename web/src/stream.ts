@@ -83,7 +83,8 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
             // A reaction, hers or from another tab, lands on the stored message at once.
             if (e.type === "reactions") setMessages((old) => old.map((x) => (x.n === e.n ? { ...x, reactions: e.reactions.length ? e.reactions : undefined } : x)));
             dispatch(e);
-            if (e.type === "rewound" && e.resend && resending.current !== undefined) dispatch({ type: "sent", text: resending.current });
+            // The re-sent message is stored at or after the rewind point, so its stored copy replaces this one as a send's does.
+            if (e.type === "rewound" && e.resend && resending.current !== undefined) dispatch({ type: "sent", text: resending.current, afterN: e.from - 1 });
             if (e.type === "rewound") resending.current = undefined;
             // In a subagent's own thread, its work is stored as it goes: show it.
             if (e.type === "delegation" && e.event.threadId === threadId && e.event.type !== "output" && e.event.type !== "tool_call") dispatch({ type: "refresh" });

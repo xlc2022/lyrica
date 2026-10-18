@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import Markdown, { type Components } from "react-markdown";
 import { CodeBlock } from "./CodeBlock.tsx";
 import { Icon } from "./icons.tsx";
-import { InlineImage, isUnderWorkdir, Lightbox, rehypePaths, type FileLinks } from "./paths.tsx";
+import { basename, InlineImage, isUnderWorkdir, Lightbox, rehypePaths, type FileLinks } from "./paths.tsx";
 import type { Display, Pool } from "./api.ts";
 
 /** Whether the display filters hide a pool. Hiding only changes what's shown. */
@@ -151,10 +151,12 @@ export function fullTime(iso: string): string {
  * Links open in a new tab, except Lyrica's own (a mentioned thread, a file of the thread). A remote image is never
  * loaded, only linked by its alt text; one from the thread's folder shows in the message and opens large (docs/ux.md §6).
  */
-function markdown(files: FileLinks | undefined, large: (path: string) => void): Components {
+function markdown(files: FileLinks | undefined, large: (path: string) => void, skip?: ReadonlySet<string>): Components {
   return {
     a: ({ node: _, ...props }) => (props.href?.startsWith("#/") ? <a {...props} /> : <a {...props} target="_blank" rel="noopener noreferrer" />),
     img: ({ src, alt }) => (typeof src !== "string" || !src ? <>{alt}</>
+      // An image already shown in this turn (an image part's) stays a link to it, so it isn't shown twice.
+      : files && skip?.has(src) ? <a className="fpath" href={files.href(src)}>{alt || basename(src)}</a>
       : files && isUnderWorkdir(src) ? <InlineImage src={src} alt={alt ?? ""} files={files} large={large} />
       : <a href={src} target="_blank" rel="noopener noreferrer">{alt || src}</a>),
   };
@@ -167,10 +169,10 @@ const PLAIN = markdown(undefined, () => {});
  * lightbox whose state lived here. `a` draws the links instead (a memory's titled citations). `copyCode` gives each
  * fenced block its language and Copy (a message's prose, docs/ux.md §6); the other pages' code blocks stay as they are.
  */
-export function Prose({ text, files, onLarge, a, copyCode }: { text: string; files?: FileLinks; onLarge?: (path: string) => void; a?: Components["a"]; copyCode?: boolean }) {
+export function Prose({ text, files, onLarge, a, copyCode, skipImages }: { text: string; files?: FileLinks; onLarge?: (path: string) => void; a?: Components["a"]; copyCode?: boolean; /** Images of the thread's shown already, kept as links. */ skipImages?: ReadonlySet<string> }) {
   const [large, setLarge] = useState<string>();
   const open = onLarge ?? setLarge;
-  const components = useMemo(() => ({ ...(files ? markdown(files, open) : PLAIN), ...(a ? { a } : {}), ...(copyCode ? { pre: CodeBlock } : {}) }), [files, open, a, copyCode]);
+  const components = useMemo(() => ({ ...(files ? markdown(files, open, skipImages) : PLAIN), ...(a ? { a } : {}), ...(copyCode ? { pre: CodeBlock } : {}) }), [files, open, a, copyCode, skipImages]);
   const plugins = useMemo(() => (files ? [rehypePaths(files)] : []), [files]);
   return (
     <>

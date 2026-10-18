@@ -417,6 +417,8 @@ describe.skipIf(!homeRunnable)("the home workspace", () => {
     try {
       await workspace.mountHome(ada.id);
       expect(await workspace.saveUpload(thread, "letter.txt", Buffer.from("Dear Ada, a secret plan"))).toBe("/workspace/uploads/letter.txt");
+      // An image upload gets a random name, so pasted screenshots (all "image.png") never collide (docs/briefs/chat-view.md).
+      expect(await workspace.saveUpload(thread, "image.png", Buffer.from("not really a png"))).toMatch(/^\/workspace\/uploads\/[0-9a-f]{12}\.png$/);
       const ops = workspace.targetFor(thread).ops();
       expect((await ops.read.readFile("/workspace/uploads/letter.txt")).toString()).toBe("Dear Ada, a secret plan");
 

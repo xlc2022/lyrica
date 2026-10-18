@@ -1,5 +1,5 @@
 // The model badge and its picker, and the thread settings drawer.
-import { ModelLabel, modelName } from "./ModelLabel.tsx";
+import { isChatModel, ModelLabel, modelName } from "./ModelLabel.tsx";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   del, get, patch, u, THREAD_TASKS,
@@ -26,7 +26,8 @@ export const TASK_LABELS: Record<ThreadTask, string> = {
   "speech.speak": "Read aloud",
 };
 /** Speech tasks offer only models that transcribe or speak. */
-const fits = (task: ThreadTask, m: EndpointInfo["models"][number]) => (task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : true);
+/** Whether a model can do a thread task: the speech tasks need their capability; every other one is text. */
+const fits = (task: ThreadTask, m: EndpointInfo["models"][number]) => (task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : isChatModel(m));
 
 
 const refKey = (m?: { offeringId: string }) => m?.offeringId ?? "";
@@ -78,7 +79,7 @@ function ModelPicker({ base, settings, task, onChange }: {
       {settings.allowed.map((ep) => (
         <div key={ep.id} className="picker-group">
           <div className="picker-ep"><span className={`k ${ep.kind}`}>{ep.kind}</span> {ep.name}</div>
-          {ep.models.map((m) => {
+          {ep.models.filter((m) => fits(task, m)).map((m) => {
             const ref_ = { offeringId: m.id };
             const on = current.source === "thread" && refKey(current.model) === refKey(ref_);
             return (
