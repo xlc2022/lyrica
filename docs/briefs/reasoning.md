@@ -3,12 +3,12 @@
 **Thread:** Reasoning fix build (Codex codes on lunasa, Claude assesses). **Branch:** `feature/reasoning`. **Model:** Opus.
 
 **Read first:** AGENTS.md, docs/models.md (thinking levels), docs/contracts.md
-(the thinking switch), docs/web.md (the Thought marker), PRINCIPLES.md 1 and 3.
+(the thinking switch), docs/web.md (the reasoning marker), PRINCIPLES.md 1 and 3.
 
 ## Goal
 
 A model's reasoning never shows up in the visible reply, whatever the model,
-host or API. It goes in the collapsed Thought marker, both while it streams
+host or API. It goes in the collapsed reasoning marker, both while it streams
 and in the stored message (principle 1: experience before infrastructure).
 
 ## What exists
@@ -17,7 +17,7 @@ and in the stored message (principle 1: experience before infrastructure).
   daemon forwards them as `text` and `thinking` events
   (`daemon/src/hosted.ts:828-833`). Stored messages keep Pi's `thinking`
   blocks as `thinking` parts (`daemon/src/messages.ts:178`). The web app
-  shows them as a collapsed Thought marker (`web/src/Messages.tsx:347-377`).
+  shows them as a collapsed reasoning marker (`web/src/Messages.tsx:347-377`).
 - Pi handles provider reasoning fields and thinking blocks. Lyrica's
   extension wrapper handles inline and split `<think>` tags, and a missing
   opening tag when thinking was requested for the call.
@@ -52,7 +52,7 @@ and in the stored message (principle 1: experience before infrastructure).
 
 ## Out of scope
 
-The vLLM parsers (lunasa install's host PR), opening the Thought marker
+The vLLM parsers (lunasa install's host PR), opening the reasoning marker
 while thinking streams (a UI change for UI review to propose), and whether
 reasoning is replayed into later context.
 
@@ -88,7 +88,7 @@ reasoning is replayed into later context.
   replies from `core/test/fake-openai.ts`, including live plain text and a
   closing-only tag with thinking requested.
 - **Done:** item 5. `docs/models.md` describes how provider reasoning and
-  inline tags reach the Thought marker live and stored. `docs/contracts.md`
+  inline tags reach the reasoning marker live and stored. `docs/contracts.md`
   was checked: stream and thinking-switch contracts remain current.
   `docs/web.md` needs no change because the marker did not change.
 - **Done:** item 3. `templateCapabilities` in `host/src/library.ts` offers
