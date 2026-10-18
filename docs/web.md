@@ -651,11 +651,16 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the server first (`POST …/mcp-servers/probe`, then `POST
   …/mcp-servers`); a private server off network asks first (**Add
   anyway**, or **Save anyway** for a changed URL).
-  **Claude Code** (`src/ClaudeCode.tsx`), after MCP servers: a Token field
-  and **Save token** (`PUT …/claude-code`), or once saved Signed in and
+  **Claude Code and Codex**, after MCP servers (`settings/codex` opens it
+  too), two cards. Claude Code (`src/ClaudeCode.tsx`): a Token field and
+  **Save token** (`PUT …/claude-code`), or once saved Signed in and
   **Remove** (`DELETE`), confirmed in place; Not installed when the server
-  lacks the program. The token is never sent back.
-  **Routines** (`src/Routines.tsx`), after Claude Code: every routine of
+  lacks the program. The token is never sent back. Codex
+  (`src/Codex.tsx`, `GET …/codex`): **Sign in** (`POST …/codex/sign-in`)
+  shows the Sign-in page link and Code with Waiting for Codex, polling
+  every 3 seconds until Signed in, then **Sign out** (`DELETE …/codex`),
+  confirmed in place; Not installed when the server lacks Codex.
+  **Routines** (`src/Routines.tsx`), after Claude Code and Codex: every routine of
   the user across both pools (`GET …/routines`), sorted by pool and thread, its
   thread linked, schedule from `describe()`, next time in mono or Paused,
   **Pause** or **Resume** (`PATCH …/threads/:pool/:threadId/routines/:id`

@@ -36,7 +36,7 @@ program, signed in with the user's own Codex login, as ordinary Codex use.
 Defaults picked: ChatGPT Images still appears on a signed-in ChatGPT plan,
 which is where its lists and checkboxes already are; Codex picks its own
 model; a call without a Codex sign-in fails with a fixed line naming
-Settings → Codex.
+Settings → Claude Code and Codex.
 
 Later (owner, 2026-10-18): the Codex sign-in shares one Settings section
 with Claude Code, **Claude Code and Codex**; the disabled tools are those
