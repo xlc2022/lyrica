@@ -379,7 +379,7 @@ tags and split tags into thinking blocks. For an `opensThinking` model that
 always thinks, or has its switch on, it holds the reply's start until the
 first tag, so a reply that opens mid-thought with only `</think>` is
 recognised; every other reply streams live. A server's own reasoning stream
-releases the hold. These reach the Thought marker both live and in stored
+releases the hold. These reach the reasoning marker both live and in stored
 messages. An ordinary reply that writes a literal `<think>` tag, such as
 code about the tags, is parsed too: an accepted trade-off.
 

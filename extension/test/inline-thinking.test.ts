@@ -91,7 +91,7 @@ describe("inline thinking in the Pi runtime", () => {
     expect(startsMidThought({ reasoning: ["medium"] } as never, "high")).toBe(false);
   });
 
-  it("puts an R1-style reply with only </think> in the Thought marker, with no thinking requested", async () => {
+  it("puts an R1-style reply with only </think> in the reasoning marker, with no thinking requested", async () => {
     const s = await setup();
     s.local.reply({ deltas: ["Consider", " the tide.</th", "ink>\n Ada sails."].map((content) => ({ content })) });
     const result = await collect(streamWithInlineThinking(s.model as never, normalizeContext(context), { apiKey: "none" }, true));
