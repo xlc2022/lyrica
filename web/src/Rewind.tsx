@@ -7,6 +7,7 @@ import { her } from "./name.ts";
 import { isChatModel } from "./ModelLabel.tsx";
 import { useMentionText } from "./mentions.ts";
 import { useDismiss } from "./ui.tsx";
+import { modelName } from "./ModelLabel.tsx";
 
 /** What a thread lets its messages do. Absent in a subagent's thread. */
 export interface Rewinder {
@@ -108,7 +109,7 @@ export function MessageMenu({ n, role, rewinder, onRemember, branch }: { n: numb
           {models && rewinder.settings?.allowed.flatMap((ep) => ep.models.filter(isChatModel).map((m) => (
             <button key={m.id} type="button" role="menuitem" className="sub-item" disabled={busy}
               onClick={act(() => regenerate({ offeringId: m.id }))}>
-              {m.modelId} <span className="muted">· {ep.name}</span>
+              {modelName(m)} <span className="muted">· {ep.name}</span>
             </button>
           )))}
           {/* The last turn has Delete; earlier messages, Delete from here. */}

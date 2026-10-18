@@ -1,6 +1,6 @@
 // Principles 1, 2 and 8: one image tool, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, HostRefused, isRestricted, type CallContext, type ImageRequest, type Models, type Resolution,
+import { CloudModelForbidden, HostRefused, isRestricted, modelName, type CallContext, type ImageRequest, type Models, type Resolution,
   type ThreadImages, type WorkspaceSettings } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import type { ApprovalRequest } from "./workspace.ts";
@@ -126,10 +126,8 @@ export async function executeImage(o: ImageTools, id: string, p: Static<typeof i
   }
   signal?.throwIfAborted();
   const paths = o.files.save(out.images, portrait);
-  // A host's image model is a recipe: its name, never its ID (docs/ux.md §6, "An image the agent made").
-  const modelName = out.resolution.offering.recipe ?? out.resolution.offering.modelId;
-  const part: ImagePart = { type: "image", paths, model: modelName, ...(p.action === "create" ? { tier: p.tier } : {}) };
+  const part: ImagePart = { type: "image", paths, model: out.resolution.label, ...(p.action === "create" ? { tier: p.tier } : {}) };
   o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: `image.${p.action}`, resolution: out.resolution });
-  return { content: [{ type: "text" as const, text: `Made with ${modelName} on ${out.resolution.endpoint.name}. Saved ${paths.join(", ")}.` },
+  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}. Saved ${paths.join(", ")}.` },
     ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };
 }

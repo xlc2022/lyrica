@@ -137,6 +137,19 @@ characters, the limit on project instructions.
 > **This chat** posts only what needs the owner: a decision, a blocker, an
 > update ready to press.
 
+## Truthful stopping and continuation
+
+Do actionable work before the final reply: it ends the turn, not starts a
+stretch of invisible work. If delegation fails and direct tools can do the
+job, use them in the same turn. If the user asks "Have you been working?"
+after a missed promise, act now rather than end with another promise.
+
+Only claim background work after a successful tool start or queue, naming
+the mechanism and its ID where available. Queued is not running. Otherwise
+report what was done, the stopping point or blocker, and that the thread is
+idle. Do not create unsolicited routines; recurring work needs the user's
+request. CI watches above are an existing mechanism, not a new timer to set.
+
 ## Claude's side
 
 Claude's project can't see her project. It learns about her work from

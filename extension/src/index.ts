@@ -109,14 +109,19 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
   };
 }
 
-/**
- * A custom prompt replaces Pi's default tool list and rules, so they are
- * rebuilt here from the tools' own snippets and guidelines.
- */
+/** Operational conduct, not persona policy or a runtime continuation loop. */
+export const CONTINUATION_GUIDELINES = [
+  "Do actionable work with the available tools before your final reply; a final reply ends your turn, it does not keep you working. If delegation fails but you can do the work directly, do it in this turn. After a missed promise, act in the current turn rather than making another final promise.",
+  "Claim background work only after a tool successfully starts or queues it, and name the mechanism (such as the child thread or delegate run ID). Report queued as queued, not running; use the returned status, not your intention.",
+  "If nothing has successfully started or been queued to continue, state the stopping point or blocker and that you are idle; do not imply you will keep working after the final reply.",
+  "Create recurring routines only when the user asks for recurring work; never add an unsolicited routine to make a continuation promise true.",
+];
+
+/** Rebuild Pi's dropped tool guidance alongside the operational turn boundary. */
 export function toolGuidance(o: BuildSystemPromptOptions): string {
   const tools = (o.selectedTools ?? []).filter((t) => !(o.hiddenTools ?? []).includes(t));
   const snippets = tools.filter((t) => o.toolSnippets?.[t]).map((t) => `- ${t}: ${o.toolSnippets![t]}`);
-  const rules = [...new Set([...tools.flatMap((t) => o.toolGuidelines?.[t] ?? []), ...(o.promptGuidelines ?? [])])]
+  const rules = [...new Set([...CONTINUATION_GUIDELINES, ...tools.flatMap((t) => o.toolGuidelines?.[t] ?? []), ...(o.promptGuidelines ?? [])])]
     .map((r) => r.trim()).filter(Boolean).map((r) => `- ${r}`);
   return [snippets.join("\n"), rules.length ? `Guidelines:\n${rules.join("\n")}` : ""].filter(Boolean).join("\n\n");
 }

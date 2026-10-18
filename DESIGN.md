@@ -1579,6 +1579,11 @@ Details in [docs/sleep.md](docs/sleep.md).
 
 - The Lyrica Pi extension holds everything that makes her Lyrica: persona,
   context assembly, memory tools and sleep.
+- **Truthful continuation** is operational tool guidance, not a controller or
+  persona rule: actionable work runs before the final reply, which ends the
+  turn. A background claim names a successfully started or queued mechanism
+  and distinguishes queued from running; otherwise she reports her stopping
+  point and that she is idle. Recurring routines require the user's request.
 - **`lyricad`** is one Node process. It embeds Pi through Pi's SDK: each
   active thread is a Pi session object inside `lyricad`, not a separate `pi`
   process. All interfaces go through it, with the same extension, and it is the

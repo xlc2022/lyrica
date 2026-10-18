@@ -867,6 +867,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     rules. The extension therefore rebuilds them from each tool's own snippets
     and guidelines (`toolGuidance`) into a `tools` section. Any tool
     registered with a snippet and guidelines appears there automatically.
+    `toolGuidance` also supplies operational continuation rules: act before
+    the final reply (which ends the turn), fall back to available direct tools
+    after failed delegation, name a successfully started or queued background
+    mechanism and its actual status, or report the stopping point and idle.
+    Recurring routines are created only at the user's request. These are
+    conduct guidance, not a runtime continuation guarantee.
   - It returns content that changes every turn, namely recall hits and the
     time, as the result's `message`. That way it sits in the transcript, not
     in the prefix.
