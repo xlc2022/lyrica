@@ -38,7 +38,7 @@ export function PushSection({ userId }: { userId: string }) {
   const info = saved.data;
   const clearDraft = () => { setUrl(""); setToken(""); setLink(undefined); setResult(""); };
   return <section className="card" aria-labelledby="h-push" aria-describedby="push-description">
-    <h2 id="h-push" title={PUSH_DESCRIPTION} tabIndex={0}>Push</h2>
+    <h2 id="h-push" title={PUSH_DESCRIPTION}>Push</h2>
     <p id="push-description" className="sr-only">{PUSH_DESCRIPTION}</p>
     <ErrorText error={saved.error || error} />
     {info && <>
@@ -52,7 +52,7 @@ export function PushSection({ userId }: { userId: string }) {
         <label className="field"><span>Token <span className="muted">(optional)</span></span>
           <input className="mono" type="password" autoComplete="new-password" placeholder={info.token ? "Set" : ""} value={token} onChange={(e) => setToken(e.target.value)} disabled={busy} />
         </label>
-        <label><input type="checkbox" checked={link ?? info.link} disabled={busy} onChange={(e) => setLink(e.target.checked)} /> Include a link</label>
+        <label className="check"><input type="checkbox" checked={link ?? info.link} disabled={busy} onChange={(e) => setLink(e.target.checked)} /> Include a link</label>
         <div className="row"><button className="primary" disabled={busy || !url.trim()}>Save</button></div>
       </form>
       {info.set && <div className="row wrap">
