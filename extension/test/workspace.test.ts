@@ -6,7 +6,7 @@ import { createAgentSession, DefaultResourceLoader, SessionManager, type AgentSe
 import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServer, ThreadRepository, ThreadWorkspace, ToolOps } from "@lyrica/core";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import { createMcpServersExtension, createModelsExtension, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
+import { createDownloadsExtension, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { Users, Workspace } from "@lyrica/core";
@@ -290,6 +290,42 @@ describe("workspace tools in a Pi session", () => {
     // Not a copy she may manage: refused, naming the ones she may.
     const other = await run("ask", [fauxToolCall("models", { action: "lookup", offering: "nope" }, { id: "4" })], { extensions: [createModelsExtension(host)] });
     expect(other.results[0]).toContain("o1 (M on blackwell)");
+  });
+
+  it("lists a repository's files without asking, and downloads a model with its projector and MTP file only once allowed", async () => {
+    const GB = 2 ** 30;
+    const listing = { repo: "org/M-GGUF", gated: false, free: 40 * GB, files: [
+      { path: "M-Q4_K_M.gguf", size: 5 * GB, allowed: true, present: false, fits: true },
+      { path: "M-Q8_0-00001-of-00002.gguf", size: 5 * GB, allowed: true, present: false, fits: true },
+      { path: "M-Q8_0-00002-of-00002.gguf", size: 5 * GB, allowed: true, present: false, fits: true },
+      { path: "mmproj-F32.gguf", size: GB, allowed: true, present: false, fits: true },
+      { path: "mmproj-F16.gguf", size: GB / 2, allowed: true, present: false, fits: true },
+      { path: "MTP/mtp-M-Q4_K_M.gguf", size: GB / 4, allowed: true, present: false, fits: true },
+      { path: "MTP/mtp-M-Q8_0.gguf", size: GB / 2, allowed: true, present: false, fits: true },
+    ] };
+    expect(filesFor(listing, ["M-Q8_0-00002-of-00002.gguf"])).toEqual(["M-Q8_0-00001-of-00002.gguf", "M-Q8_0-00002-of-00002.gguf", "mmproj-F16.gguf", "MTP/mtp-M-Q8_0.gguf"]);
+    expect(filesFor(listing, ["M-Q4_K_M.gguf"], false)).toEqual(["M-Q4_K_M.gguf"]);
+    let hosts = [{ id: "h1", name: "blackwell" }, { id: "h2", name: "laptop" }];
+    const started: [string, string, string[]][] = [];
+    const host: DownloadsHost = { hosts: () => hosts, files: async () => listing, start: async (id, _s, repo, files) => { started.push([id, repo, files]); } };
+    const asked: string[] = [];
+    let allow = false;
+    const approve = async (r: ApprovalRequest) => { asked.push(r.tool); return allow; };
+    // Two hosts and none named: she asks which.
+    const which = await run("auto", [fauxToolCall("model_files", { repo: "org/M-GGUF" }, { id: "1" })], { extensions: [createDownloadsExtension(host)], approve });
+    expect(which.results[0]).toContain("Ask which host to download to: blackwell, laptop.");
+    const listed = await run("auto", [fauxToolCall("model_files", { host: "Blackwell", repo: "https://huggingface.co/org/M-GGUF" }, { id: "2" })], { extensions: [createDownloadsExtension(host)], approve });
+    expect(JSON.parse(listed.results[0]!.slice("model_files: ".length)).files).toContainEqual({ path: "mmproj-F16.gguf", sizeGB: 0.5, kind: "vision" });
+    expect(asked).toEqual([]);
+    // A download always asks, even in auto; refused, nothing starts.
+    hosts = [hosts[0]!];
+    const call = fauxToolCall("download_model", { repo: "org/M-GGUF", files: ["M-Q4_K_M.gguf"] }, { id: "3" });
+    await run("auto", [call], { extensions: [createDownloadsExtension(host)], approve });
+    expect(asked).toEqual(["download_model"]);
+    expect(started).toEqual([]);
+    allow = true;
+    await run("auto", [call], { extensions: [createDownloadsExtension(host)], approve });
+    expect(started).toEqual([["h1", "org/M-GGUF", ["M-Q4_K_M.gguf", "mmproj-F16.gguf", "MTP/mtp-M-Q4_K_M.gguf"]]]);
   });
 
   it("removes a switched-off tool from the session and refuses a call to it", async () => {

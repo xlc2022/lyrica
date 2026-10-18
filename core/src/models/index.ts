@@ -987,6 +987,19 @@ export class Models {
   }
 
   /**
+   * The hosts a thread's download tools may download to: the ones the user
+   * can manage, and none at all for a private or local-only thread, since a
+   * download is an outside call.
+   */
+  downloadHosts(actor: User, ctx: CallContext): { id: string; name: string }[] {
+    if (isRestricted(ctx)) return [];
+    const admin = !!this.users.get(actor.id)?.admin;
+    return this.allowed(ctx)
+      .filter(({ endpoint }) => endpoint.api === "host" && (!endpoint.shared || admin))
+      .map(({ endpoint }) => ({ id: endpoint.id, name: endpoint.name }));
+  }
+
+  /**
    * The host text models a thread's `models` tool may name: on hosts the
    * user can manage, and none at all for a private or local-only thread,
    * since a lookup is an outside call.

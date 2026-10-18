@@ -16,6 +16,7 @@ export * from "./images.ts";
 export * from "./mcp.ts";
 export * from "./memory.ts";
 export * from "./models-tool.ts";
+export * from "./downloads-tool.ts";
 export * from "./react.ts";
 export * from "./record.ts";
 export * from "./routing.ts";
