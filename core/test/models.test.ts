@@ -61,6 +61,17 @@ describe("endpoints", () => {
     expect(models.editEndpoint(ada, gpu.id, { apiKey: null }).apiKey).toBeUndefined();
   });
 
+  it("skips a paused endpoint until it is resumed, and keeps it paused across edits", async () => {
+    const { models, ada, gpu, localRef } = await withModels();
+    models.setColumnTask(ada.id, "private", "chat", localRef);
+    const priv = { userId: ada.id, pool: "private" as const, localOnly: true };
+    expect(models.editEndpoint(ada, gpu.id, { paused: true }).pausedAt).toEqual(expect.any(String));
+    expect(models.editEndpoint(ada, gpu.id, { name: "gpu2" }).pausedAt).toEqual(expect.any(String));
+    expect(() => models.resolveModel("chat", priv)).toThrow(/paused/);
+    expect(models.editEndpoint(ada, gpu.id, { paused: false }).pausedAt).toBeUndefined();
+    expect(models.resolveModel("chat", priv)).toEqual(localRef);
+  });
+
   it("probe reports up and down, and an endpoint down for 14 days is stale", async () => {
     const { models, ada, gpu, keyring, users } = await withModels();
     expect(await models.probe(ada.id, gpu.id)).toEqual({ state: "up" });

@@ -115,6 +115,8 @@ export interface Endpoint {
   stale: boolean;
   /** A plan whose sign-in lapsed (its refresh was refused). Fallbacks skip it until it signs in again. */
   signedOut?: boolean;
+  /** When a plain endpoint or plan was paused by hand. Fallbacks skip it until it is resumed; a host pauses itself instead. */
+  pausedAt?: string;
 }
 
 /** The subscription plans a user can sign in with (docs/models.md, "Subscription plans"). */
@@ -400,7 +402,7 @@ async function localWarning(ep: Endpoint): Promise<string | undefined> {
   return warnings.length ? `${ep.name} is declared local, but ${warnings.join(", and ")}, outside loopback, private and tailnet addresses` : undefined;
 }
 
-interface EndpointRow { id: string; name: string; kind: "cloud" | "local"; api: string; base_url: string; api_key: string | null; down_since: string | null; addresses: string | null; pin: string | null }
+interface EndpointRow { id: string; name: string; kind: "cloud" | "local"; api: string; base_url: string; api_key: string | null; down_since: string | null; addresses: string | null; pin: string | null; paused_at?: string | null }
 interface OfferingRow { id: string; endpoint: string; model: string; found: string; hand: string; manual: number; missing_since: string | null }
 interface GroupRow { id: string; name: string; members: string }
 interface PresetRow { id: string; name: string; scope: PresetScope; builtin: "local" | "cloud" | null; entries: string; updated_at: string }
@@ -417,6 +419,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
     unencrypted: r.kind === "local" && url.protocol === "http:" && !nearby(url.hostname),
     ...(r.down_since ? { downSince: r.down_since } : {}),
     stale: !!r.down_since && now - Date.parse(r.down_since) >= STALE_DAYS * DAY,
+    ...(r.paused_at ? { pausedAt: r.paused_at } : {}),
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
@@ -473,6 +476,8 @@ export class Models {
   private readonly fetches = new Map<string, typeof fetch>();
   /** The address each host last answered on, for its dashboard link. */
   private readonly reached = new Map<string, string>();
+  /** Each host's last status that wasn't running (paused, pausing, restarting): the page keeps showing it, with Resume, while the router skips the host. */
+  private readonly awayStatus = new Map<string, unknown>();
   /** Finished downloads already read as offerings, by host and download ID. */
   private readonly discovered = new Set<string>();
   /** Plans that reached their usage limit, until when they're skipped. */
@@ -499,10 +504,11 @@ export class Models {
     return this.endpoint(actor.id, id)!;
   }
 
-  /** Renames an endpoint or changes its URL or key. Its IDs, and its models' IDs, never change. A null key removes it. */
-  editEndpoint(actor: User, id: string, change: { name?: string; baseUrl?: string; apiKey?: string | null }): Endpoint {
+  /** Renames an endpoint, changes its URL or key, or pauses or resumes it. Its IDs, and its models' IDs, never change. A null key removes it. */
+  editEndpoint(actor: User, id: string, change: { name?: string; baseUrl?: string; apiKey?: string | null; paused?: boolean }): Endpoint {
     if (change.name !== undefined) checkName(change.name);
     const api = this.endpoint(actor.id, id)?.api;
+    if (change.paused !== undefined && api === "host") throw new Error("a model host pauses itself: use its Pause");
     if ((change.baseUrl !== undefined || change.apiKey !== undefined) && api === "host") throw new Error("a model host has addresses and a pinned key, not a URL or an API key");
     if ((change.baseUrl !== undefined || change.apiKey !== undefined) && isPlan(api)) throw new Error(`a ${PLAN_NAMES[api]} plan signs in with ${PLAN_NAMES[api]}; it has no URL or API key to change`);
     const baseUrl = change.baseUrl === undefined ? undefined : checkUrl(change.baseUrl);
@@ -511,8 +517,9 @@ export class Models {
       if (change.name !== undefined && change.name !== current.name && db.prepare("SELECT 1 FROM endpoints WHERE name = ?").get(change.name)) {
         throw new Error(`endpoint ${change.name} already exists`);
       }
-      db.prepare("UPDATE endpoints SET name = ?, base_url = ?, api_key = ? WHERE id = ?").run(
-        change.name ?? current.name, baseUrl ?? current.base_url, change.apiKey === undefined ? current.api_key : change.apiKey || null, id);
+      db.prepare("UPDATE endpoints SET name = ?, base_url = ?, api_key = ?, paused_at = ? WHERE id = ?").run(
+        change.name ?? current.name, baseUrl ?? current.base_url, change.apiKey === undefined ? current.api_key : change.apiKey || null,
+        change.paused === undefined ? current.paused_at ?? null : change.paused ? new Date().toISOString() : null, id);
     });
     this.health.delete(id);
     return this.endpoint(actor.id, id)!;
@@ -1175,7 +1182,10 @@ export class Models {
     if (!ep) throw new Error(`no endpoint ${endpointId}`);
     const unpaired = () => (this.unpaired.has(ep.id) ? { unpaired: true as const } : {});
     const h = this.health.get(ep.id);
-    if (h && !h.up && Date.now() - h.at < HEALTH_MS) return { state: "down", error: `${ep.name} is down`, ...unpaired() };
+    if (h && !h.up && Date.now() - h.at < HEALTH_MS) {
+      const status = this.awayStatus.get(ep.id);
+      return status ? { state: "down", status } : { state: "down", error: `${ep.name} is down`, ...unpaired() };
+    }
     // A cloud endpoint that would be probed over the network keeps its last answer, up or down, for CLOUD_PAGE_PROBE_MS.
     if (h && ep.kind === "cloud" && !isPlan(ep.api) && Date.now() - h.at < CLOUD_PAGE_PROBE_MS) {
       return h.up ? { state: "up", ...unpaired() } : { state: "down", error: `${ep.name} is down`, ...unpaired() };
@@ -1191,22 +1201,32 @@ export class Models {
       const status = await this.hostCall(ep, "GET", "/host/v1/status", undefined, undefined, budgetMs);
       this.unpaired.delete(ep.id);
       const state = (status as { state?: string }).state === "running" ? "up" : "down";
+      if (state === "up") this.awayStatus.delete(ep.id); else this.awayStatus.set(ep.id, status);
       this.seen(ep, state === "up", userId);
       const w = await warning;
       return { state, status, ...(w ? { warning: w } : {}) };
     } catch (e) {
+      this.awayStatus.delete(ep.id);
       this.seen(ep, false, userId);
       return { state: "down", error: (e as Error).message, ...unpaired() };
     }
   }
 
-  /** Pauses, resumes or restarts a host. A shared host needs an administrator. */
+  /** Pauses, resumes or restarts a host, and answers its whole status after. A shared host needs an administrator. */
   async hostControl(actor: User, id: string, action: "pause" | "resume" | "restart"): Promise<unknown> {
     const ep = this.needHost(actor.id, id);
     if (ep.shared && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can manage a shared model host");
     if (!["pause", "resume", "restart"].includes(action)) throw new Error("a host can be paused, resumed or restarted");
-    const status = await this.hostCall(ep, "POST", `/host/v1/${action}`);
-    if (action === "pause") this.reportDown(ep.id); else this.health.delete(ep.id);
+    await this.hostCall(ep, "POST", `/host/v1/${action}`);
+    // The host answers only its state; the page needs its GPUs and models too.
+    const status = await this.hostCall(ep, "GET", "/host/v1/status");
+    if ((status as { state?: string }).state === "running") {
+      this.awayStatus.delete(ep.id);
+      this.health.delete(ep.id);
+    } else {
+      this.awayStatus.set(ep.id, status);
+      this.reportDown(ep.id);
+    }
     return status;
   }
 
@@ -2373,6 +2393,7 @@ export class Models {
   private away(ep: Endpoint, opts: ResolveOptions, o: Offering): string | undefined {
     if (ep.stale) return `${ep.name} hasn't answered for ${STALE_DAYS} days`;
     if (ep.signedOut) return `${ep.name} is signed out`;
+    if (ep.pausedAt) return `${ep.name} is paused`;
     if ((this.limited.get(ep.id) ?? 0) > Date.now()) return `${ep.name} has reached its plan's limit`;
     const m = this.modelDown.get(o.id);
     if (m !== undefined && Date.now() - m < HEALTH_MS) return `${ep.name} couldn't run it`;

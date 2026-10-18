@@ -146,7 +146,7 @@ export class Host {
       const url = new URL(req.url ?? "/", "http://host");
       const access = this.access(req, via);
       if (access !== "client" && access !== "unpaired") {
-        const problem = browserCheck(req, via === "local" ? "http" : "https", via === "local" ? (n) => LOCAL_NAMES.has(n) : this.isOurs);
+        const problem = browserCheck(req, via === "local" ? "http" : "https", via === "local" ? (n) => LOCAL_NAMES.has(n) : this.isOurs, !!STATIC[url.pathname]);
         if (problem) throw refused(problem);
       }
       await this.route(req, res, url, via, access);

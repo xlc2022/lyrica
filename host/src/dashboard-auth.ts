@@ -112,13 +112,17 @@ function hostname(value: string): string | null {
 /**
  * The browser checks: the Host header must name this host, and a request
  * from a page must come from one of this host's own origins. A page elsewhere
- * (or a DNS-rebinding name) can't drive the dashboard.
+ * (or a DNS-rebinding name) can't drive the dashboard. `page`: the request is
+ * for the dashboard page itself, which a link from elsewhere (Lyrica's
+ * Dashboard button) may open: it holds nothing, and what it then asks for is
+ * same-origin.
  */
-export function browserCheck(req: IncomingMessage, scheme: "http" | "https", isOurs: (name: string) => boolean): string | null {
+export function browserCheck(req: IncomingMessage, scheme: "http" | "https", isOurs: (name: string) => boolean, page = false): string | null {
   const host = hostname(req.headers.host ?? "");
   if (!host || !isOurs(host)) return "Unknown Host header.";
   const site = req.headers["sec-fetch-site"];
-  if (site === "cross-site" || site === "same-site") return "Cross-site requests aren't accepted.";
+  const opening = page && (req.method === "GET" || req.method === "HEAD") && req.headers["sec-fetch-mode"] === "navigate";
+  if ((site === "cross-site" || site === "same-site") && !opening) return "Cross-site requests aren't accepted.";
   const origin = req.headers.origin;
   if (origin === undefined) {
     // Browsers send Origin on every non-GET request; tools like curl send neither.

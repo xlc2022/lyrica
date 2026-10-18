@@ -107,7 +107,9 @@ describe("calling a host", () => {
     s.models.setColumnTask(s.ada.id, "private", "chat", [{ offeringId: o!.id }, s.localRef]);
     const priv = { userId: s.ada.id, pool: "private" as const, localOnly: true };
     expect((await s.models.resolveLive("chat", priv)).ref).toEqual({ offeringId: o!.id });
-    await s.models.hostControl(s.ada, ep.id, "pause");
+    // The page gets the whole status back, and keeps showing it paused (so it can offer Resume) while the router skips the host.
+    expect(await s.models.hostControl(s.ada, ep.id, "pause")).toMatchObject({ state: "paused", gpus: expect.any(Array) });
+    expect(await s.models.pageStatus(s.ada.id, ep.id)).toMatchObject({ state: "down", status: { state: "paused" } });
     const r = await s.models.resolveLive("chat", priv);
     expect(r.ref).toEqual(s.localRef);
     expect(r.skipped[0]).toEqual({ label: `blackwell/${o!.modelId}`, reason: "blackwell is down" });

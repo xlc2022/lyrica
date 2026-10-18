@@ -73,6 +73,7 @@ export function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string;
     if (s === "restarting") return { dot: "info", word: "Restarting" };
     return { dot: "away", word: s === "pausing" ? "Pausing" : "Paused" };
   }
+  if (ep.pausedAt) return { dot: "away", word: "Paused" };
   if (unpaired(host)) return { dot: "down", word: "Unpaired" };
   if (ep.signedOut) return { dot: "down", word: "Signed out" };
   if (ep.state === "up") return { dot: "up", word: ep.api === "host" ? "Online" : "Up" };
@@ -135,7 +136,7 @@ function Overview({ ctx }: { ctx: MCtx }) {
                   <span className={`dot ${stateOf(ep).dot}`} aria-hidden="true" />
                   <div className="main-col">
                     <span className="name">{ep.name} <Kind kind={ep.kind} /></span>
-                    <span className="meta">{ep.state === "up" ? plural(ep.models.length, "model", "models") : <StateWord ep={ep} />}</span>
+                    <span className="meta">{ep.state === "up" && !ep.pausedAt ? plural(ep.models.length, "model", "models") : <StateWord ep={ep} />}</span>
                   </div>
                 </li>
               ))}
@@ -154,13 +155,13 @@ function Overview({ ctx }: { ctx: MCtx }) {
 /** One line when a host is paused or an endpoint is stale, with what fixes it. */
 function Banner({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
   const [run, busy, error] = useAction();
-  const host = p.endpoints.find((ep) => ep.api === "host" && paused(hostOf(p, ep.id)));
+  const host = p.endpoints.find((ep) => ep.pausedAt || (ep.api === "host" && paused(hostOf(p, ep.id))));
   if (host) {
     return (
       <div className="banner" role="status">
         <span className="dot away" aria-hidden="true" />
         <span><b>{host.name} is paused.</b> Its tasks use a fallback until you resume it.</span>
-        {canEdit(ctx, host) && <button type="button" className="sm" disabled={busy} onClick={() => void run(() => control(ctx, host.id, "resume"))}>Resume</button>}
+        {canEdit(ctx, host) && <button type="button" className="sm" disabled={busy} onClick={() => void run(() => host.api === "host" ? control(ctx, host.id, "resume") : pauseEndpoint(ctx, host.id, false))}>Resume</button>}
         <ErrorText error={error} />
       </div>
     );
@@ -182,6 +183,12 @@ async function control(ctx: MCtx, endpointId: string, action: "pause" | "resume"
   const status = await post<HostStatus>(u(ctx.user.id, "hosts", endpointId, action));
   const p = ctx.models.page;
   if (p) ctx.models.set({ ...p, hosts: p.hosts.map((h) => (h.endpointId === endpointId ? { endpointId, status } : h)) });
+}
+
+/** Pauses or resumes a plain endpoint or plan: fallbacks skip it while it's paused. */
+async function pauseEndpoint(ctx: MCtx, endpointId: string, pause: boolean) {
+  await patch(u(ctx.user.id, "endpoints", endpointId), { paused: pause });
+  ctx.models.reload();
 }
 
 /** A column's effective table: the followed preset's, or its own Custom one. */
@@ -242,11 +249,11 @@ export function BackendCard({ ctx }: { ctx: ShellContext }) {
 
 function Tiles({ ctx, p }: { ctx: MCtx; p: ModelsPage }) {
   const userId = ctx.user.id;
-  const up = p.endpoints.filter((e) => e.state === "up");
-  const down = p.endpoints.filter((e) => e.state !== "up");
+  const up = p.endpoints.filter((e) => e.state === "up" && !e.pausedAt);
+  const down = p.endpoints.filter((e) => e.state !== "up" || e.pausedAt);
   const first = down[0];
   const reach = !first ? { dot: "up", word: "All reachable" }
-    : paused(hostOf(p, first.id)) ? { dot: "away", word: `${first.name} paused` }
+    : first.pausedAt || paused(hostOf(p, first.id)) ? { dot: "away", word: `${first.name} paused` }
     : unpaired(hostOf(p, first.id)) ? { dot: "down", word: `${first.name} unpaired` } : { dot: "down", word: `${first.name} unreachable` };
   const generalCol = p.presets.columns.general, privateCol = p.presets.columns.private;
   const general = firstChat(p, generalCol);
@@ -302,6 +309,17 @@ function PauseButton({ ctx, ep, host }: { ctx: MCtx; ep: Endpoint; host?: Host }
     <>
       <button type="button" className="sm" disabled={busy || empty || host.status.state === "restarting"} title={empty ? "Nothing is loaded" : undefined}
         onClick={() => void run(() => control(ctx, ep.id, isPaused ? "resume" : "pause"))}>{isPaused ? "Resume" : "Pause"}</button>
+      {error && <ErrorText error={error} />}
+    </>
+  );
+}
+
+/** Pause or Resume for a plain endpoint or plan. */
+function EndpointPauseButton({ ctx, ep }: { ctx: MCtx; ep: Endpoint }) {
+  const [run, busy, error] = useAction();
+  return (
+    <>
+      <button type="button" className="sm" disabled={busy} onClick={() => void run(() => pauseEndpoint(ctx, ep.id, !ep.pausedAt))}>{ep.pausedAt ? "Resume" : "Pause"}</button>
       {error && <ErrorText error={error} />}
     </>
   );
@@ -404,7 +422,7 @@ function copies(p: ModelsPage): Map<string, Copy> {
   for (const ep of p.endpoints) for (const m of ep.models) out.set(m.id, { m, ep });
   return out;
 }
-const answers = (p: ModelsPage, c: Copy) => c.ep.state === "up" && !c.ep.stale && c.m.status !== "gone" && !paused(hostOf(p, c.ep.id));
+const answers = (p: ModelsPage, c: Copy) => c.ep.state === "up" && !c.ep.stale && c.m.status !== "gone" && !c.ep.pausedAt && !paused(hostOf(p, c.ep.id));
 
 /** A list entry's models: an offering, or a group's members. A private table's groups hold only local members, so none are skipped here. */
 function membersOf(ref: ModelRef, all: Map<string, Copy>, groups: GroupInfo[]): Copy[] {
@@ -1117,6 +1135,7 @@ function EndpointRow({ ctx, ep, others, onEdit, onVoice }: { ctx: MCtx; ep: Endp
       <div className="actions">
         <StateWord ep={ep} />
         <button type="button" className="link sm" aria-expanded={open} onClick={() => setOpen(!open)}>{plural(ep.models.length, "model", "models")}</button>
+        {editable && <EndpointPauseButton ctx={ctx} ep={ep} />}
         {editable && <button type="button" className="sm" onClick={() => onEdit()}>Edit</button>}
         {editable && <RowMenu label={`Actions for ${ep.name}`} items={actions.items} />}
       </div>

@@ -266,6 +266,8 @@ export interface EndpointInfo {
   downSince?: string;
   /** A plan whose sign-in lapsed: Sign in again. Fallbacks skip it. */
   signedOut?: boolean;
+  /** When a plain endpoint or plan was paused by hand. Fallbacks skip it until it is resumed. */
+  pausedAt?: string;
   models: OfferingInfo[];
 }
 
@@ -273,7 +275,8 @@ export interface EndpointInfo {
 /** POST /api/u/:userId/endpoints → EndpointInfo. `shared` needs an administrator. */
 export interface EndpointInput { name: string; kind: "cloud" | "local"; baseUrl: string; apiKey?: string; shared?: boolean }
 /** PATCH /api/u/:userId/endpoints/:endpointId → EndpointInfo. Keeps every ID. `apiKey: null` removes the key. */
-export interface EndpointChange { name?: string; baseUrl?: string; apiKey?: string | null }
+/** `paused` pauses or resumes a plain endpoint or plan: fallbacks skip it while paused. A host pauses itself (…/hosts/:endpointId/pause). */
+export interface EndpointChange { name?: string; baseUrl?: string; apiKey?: string | null; paused?: boolean }
 /** DELETE /api/u/:userId/endpoints/:endpointId → Ok. Its models leave tombstones. */
 /** POST /api/u/:userId/endpoints/:endpointId/discover → EndpointInfo. Re-reads /v1/models; models no longer listed are marked missing. */
 /** POST /api/u/:userId/endpoints/:endpointId/models → OfferingInfo. Adds a model by hand. */

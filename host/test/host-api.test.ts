@@ -210,6 +210,14 @@ describe("dashboard", () => {
     expect((await call({ port: tls, path: "/dashboard/me", headers: { host: "rebound.example:7236" } })).status).toBe(403);
   });
 
+  it("opens the dashboard page from a link elsewhere, and nothing else", async () => {
+    const { local: lp } = await host();
+    const opening = { "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate" };
+    expect((await local(lp, "/", { headers: opening })).status).toBe(200);
+    expect((await local(lp, "/dashboard/clients", { headers: opening })).status).toBe(403);
+    expect((await local(lp, "/", { headers: { "sec-fetch-site": "cross-site", "sec-fetch-mode": "cors" } })).status).toBe(403);
+  });
+
   it("accepts the host's own tailnet name and no other", async () => {
     const { tls } = await host({ tailnetName: "test-host" });
     expect((await call({ port: tls, path: "/dashboard/me", headers: { host: "test-host.tail1234.ts.net" } })).status).toBe(200);
