@@ -171,8 +171,9 @@ test("Settings → Codex shows Codex's own sign-in and then Signed in", async ({
   });
   await page.goto(`/#/u/${userId}/settings/codex`);
   const section = page.getByRole("region", { name: "Codex" });
-  await expect(section.getByText("ChatGPT Images runs your own Codex, on your ChatGPT plan. What you ask it for goes to OpenAI.")).toBeVisible();
+  await expect(section.getByText("What you ask it for goes to OpenAI.")).toBeVisible();
   await section.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(section.getByRole("status")).toHaveText("Waiting for Codex");
   await expect(section.getByRole("link", { name: "https://auth.openai.com/codex/device" })).toHaveAttribute("target", "_blank");
   await expect(section.locator("code")).toHaveText("ABCD-12345");
   state = { installed: true, signedIn: true };

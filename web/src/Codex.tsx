@@ -4,6 +4,9 @@ import { del, get, post, u, type CodexStatus } from "./api.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { Confirm, ErrorText, useAction, useLoad } from "./ui.tsx";
 
+const CODEX_DESCRIPTION = "ChatGPT Images runs your own Codex, on your ChatGPT plan.";
+const NOT_INSTALLED = "ChatGPT Images can't work until Codex is installed on this server.";
+
 export function CodexSection({ ctx }: { ctx: ShellContext }) {
   const path = u(ctx.user.id, "codex");
   const status = useLoad(() => get<CodexStatus>(path), [path]);
@@ -17,9 +20,9 @@ export function CodexSection({ ctx }: { ctx: ShellContext }) {
     return () => clearInterval(timer);
   }, [waiting, path]);
   return (
-    <section className="card" aria-labelledby="h-codex">
-      <div className="section-head"><h2 id="h-codex">Codex</h2></div>
-      <p className="muted">ChatGPT Images runs your own Codex, on your ChatGPT plan. What you ask it for goes to OpenAI.</p>
+    <section className="card" aria-labelledby="h-codex" aria-describedby="codex-description">
+      <div className="section-head"><h2 id="h-codex" title={CODEX_DESCRIPTION}>Codex</h2></div>
+      <p id="codex-description" className="sr-only">{CODEX_DESCRIPTION}</p>
       <ErrorText error={status.error || error} />
       {s?.signedIn ? (
         <div className="row">
@@ -31,15 +34,16 @@ export function CodexSection({ ctx }: { ctx: ShellContext }) {
         <>
           <p className="field"><span>Sign-in page</span><a href={s.signIn.url} target="_blank" rel="noopener noreferrer">{s.signIn.url}</a></p>
           <p className="field"><span>Code</span><code className="mono">{s.signIn.code}</code></p>
-          <p className="muted">Open the page, sign in to ChatGPT and enter the code. This page updates when Codex confirms.</p>
+          <span className="state-word" role="status"><span className="dot info" aria-hidden="true" />Waiting for Codex</span>
         </>
       ) : s?.installed ? (
         <div className="row">
           <button type="button" className="primary" disabled={busy} onClick={() => void run(async () => { status.set(await post<CodexStatus>(u(ctx.user.id, "codex", "sign-in"), {})); })}>Sign in</button>
+          <span className="muted">What you ask it for goes to OpenAI.</span>
         </div>
       ) : s && (
-        <span className="state-word" title="ChatGPT Images can't work until Codex is installed on this server.">
-          <span className="dot away" aria-hidden="true" />Not installed
+        <span className="state-word" title={NOT_INSTALLED}>
+          <span className="dot away" aria-hidden="true" />Not installed<span className="sr-only">. {NOT_INSTALLED}</span>
         </span>
       )}
     </section>
