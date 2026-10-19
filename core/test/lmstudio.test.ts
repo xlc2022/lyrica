@@ -8,7 +8,7 @@ afterEach(() => { for (const s of servers.splice(0)) s.close(); });
 
 /** A fake LM Studio: its OpenAI-compatible list, and its own REST API's models, load and unload. */
 async function fakeLmStudio(o: { context?: number; max: number; refuseAbove?: number; vision?: boolean }) {
-  let loaded: number | undefined = o.context;
+  let loaded: number | undefined = o.context, vision = o.vision;
   const calls: string[] = [];
   const server = createServer((req, res) => {
     let body = "";
@@ -17,7 +17,7 @@ async function fakeLmStudio(o: { context?: number; max: number; refuseAbove?: nu
       const json = (status: number, v: unknown) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(v)); };
       if (req.method === "GET" && req.url === "/v1/models") return json(200, { object: "list", data: [{ id: "qwen-flash", object: "model" }] });
       if (req.method === "GET" && req.url === "/api/v1/models") {
-        return json(200, { models: [{ type: "llm", key: "qwen-flash", max_context_length: o.max, capabilities: { vision: o.vision ?? false, trained_for_tool_use: true }, loaded_instances: loaded ? [{ id: "qwen-flash", config: { context_length: loaded } }] : [] }] });
+        return json(200, { models: [{ type: "llm", key: "qwen-flash", max_context_length: o.max, capabilities: { vision: vision ?? false, trained_for_tool_use: true }, loaded_instances: loaded ? [{ id: "qwen-flash", config: { context_length: loaded } }] : [] }] });
       }
       const b = JSON.parse(body || "{}") as { instance_id?: string; model?: string; context_length?: number };
       if (req.method === "POST" && req.url === "/api/v1/models/unload") { calls.push(`unload ${b.instance_id}`); loaded = undefined; return json(200, { instance_id: b.instance_id }); }
@@ -32,7 +32,7 @@ async function fakeLmStudio(o: { context?: number; max: number; refuseAbove?: nu
   });
   servers.push(server);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  return { baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, calls, loadInStudio: (n: number | undefined) => { loaded = n; } };
+  return { baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, calls, loadInStudio: (n: number | undefined) => { loaded = n; }, setVision: (v: boolean) => { vision = v; } };
 }
 
 describe("LM Studio context", () => {
@@ -82,6 +82,35 @@ describe("LM Studio context", () => {
     const blind = await fakeLmStudio({ max: 131072 });
     const [b] = await s.models.discover(s.ada, s.models.addEndpoint(s.ada, { name: "studio-2", kind: "local", baseUrl: blind.baseUrl }).id);
     expect(s.models.offering(s.ada.id, b!.id)!.offering.vision).toBe(false);
+  });
+
+  it("catches up a model stored as blind once a request or a restart's re-read sees its vision", async () => {
+    const s = await withModels();
+    const studio = await fakeLmStudio({ max: 131072 });
+    const ep = s.models.addEndpoint(s.ada, { name: "studio", kind: "local", baseUrl: studio.baseUrl });
+    const [o] = await s.models.discover(s.ada, ep.id);
+    expect(s.models.offering(s.ada.id, o!.id)!.offering.vision).toBe(false);
+    studio.setVision(true);
+    // Before a request, even with the model unloaded.
+    await s.models.refreshServed(s.ada.id, o!.id);
+    expect(s.models.offering(s.ada.id, o!.id)!.offering.vision).toBe(true);
+
+    // Once per run, the first unlock reads every local endpoint, shared ones as an administrator.
+    const shared = await fakeLmStudio({ max: 131072 });
+    const sh = s.models.addEndpoint(s.ada, { name: "shared-studio", kind: "local", baseUrl: shared.baseUrl }, { shared: true });
+    const [so] = await s.models.discover(s.ada, sh.id);
+    studio.setVision(false);
+    shared.setVision(true);
+    const sam = await s.users.createUser("sam", "pw", profile("Sam"), { admin: false });
+    await s.users.authenticate("sam", "pw");
+    await s.models.rereadLocal(sam);
+    expect(s.models.offering(s.ada.id, so!.id)!.offering.vision).toBe(true);
+    await s.models.rereadLocal(s.ada);
+    expect(s.models.offering(s.ada.id, o!.id)!.offering.vision).toBe(false);
+    // Not again in the same run.
+    shared.setVision(false);
+    await s.models.rereadLocal(s.ada);
+    expect(s.models.offering(s.ada.id, so!.id)!.offering.vision).toBe(true);
   });
 
   it("passes LM Studio's refusal on and loads the model again as it was", async () => {

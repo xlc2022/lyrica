@@ -54,6 +54,13 @@ and `-`, at most 40 characters.
   endpoint stops listing keeps its offering, marked `missing`, and gets it
   back if it returns. Models can be added by hand (`addModel`) and are never
   marked missing.
+- An endpoint is read when it is added or edited, on Refresh, and after a
+  model reload. Local endpoints (servers and hosts) are also read once per
+  daemon run, in the background, the first time a user's key is unlocked
+  (`rereadLocal`), so an offering stored before discovery learned to read
+  something gets it after the next restart. A shared one is read as an
+  administrator; one that doesn't answer is tried at the next user's unlock.
+  Cloud and plan endpoints aren't re-read.
 - **Capabilities:** context window, tools, vision, embedding, image, edit, upscale
   and thinking levels. OpenRouter reports the context, tools, thinking and
   modalities; llama-server reports the context
@@ -763,10 +770,10 @@ never sent with a chat request.
   or the context LM Studio has it loaded with), else by hand, else
   discovered, else assumed (`DEFAULT_CONTEXT`, 131,072, which current models
   offer at least). Compaction and group fitting use that context window.
-- LM Studio's loaded context is read again before each turn on that model
-  and when its Settings open (`refreshServed`), so a load made in LM Studio
-  itself applies from the next request; an unloaded model keeps the last
-  context it was loaded with.
+- LM Studio's loaded context and vision are read again before each turn on
+  that model and when its Settings open (`refreshServed`), so a load made in
+  LM Studio itself applies from the next request; an unloaded model keeps
+  the last context it was loaded with.
 - Every request to the offering carries the values that are set, added to
   Pi's request payload; unset values are never sent. The repeat penalty is
   `repeat_penalty` for plain local servers (llama.cpp) and

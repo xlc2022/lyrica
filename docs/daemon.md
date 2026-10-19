@@ -127,7 +127,9 @@ name/id and error class; stderr is discarded.
 ## Logging in
 
 - `POST /api/login` checks the password, unlocks the user's key and mounts
-  their home workspace. It sets `__Host-lyrica`, a random 256-bit session ID,
+  their home workspace. The first unlock of a user's key in a run, here or
+  from a saved key, also re-reads their local endpoints in the background
+  (docs/models.md, `rereadLocal`). It sets `__Host-lyrica`, a random 256-bit session ID,
   `Secure; HttpOnly; SameSite=Strict`, for 30 days. Sessions live in memory
   only; a restart logs everyone out.
 - **A session ID is never reused for someone new.** Every login gets a fresh
