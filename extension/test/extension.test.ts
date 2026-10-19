@@ -95,7 +95,7 @@ describe("extension", () => {
     expect(active).toContain("remember");
     const turn = result.message.content as string;
     expect(turn).toMatch(/<recall>[\s\S]*Ada's sourdough starter is called Gerald/);
-    expect(turn).toMatch(/\(note, added by Ada\) Rye flour/);
+    expect(turn).toMatch(/\(note, \d{4}-\d{2}-\d{2}, added by Ada\) Rye flour/);
     expect(turn).toContain("You last talked");
     expect(JSON.stringify(options.sections)).not.toContain("Gerald");
     expect(threadId).not.toBe(past.id);

@@ -30,6 +30,8 @@ export interface MemoryContext {
   hide?: (id: string) => boolean;
   /** In a project chat: its threads, one line each, from lyricad. */
   projectThreads?: () => string | undefined;
+  /** Her name, left out of automatic recall: nearly everything mentions it. */
+  name?: string;
 }
 
 export const UNLOGGED_NOTICE =
@@ -37,6 +39,8 @@ export const UNLOGGED_NOTICE =
   "You can still read what you already remember. Don't promise to remember anything from it.";
 
 const RECALL_HITS = 5;
+/** In a message of three words or more, an automatic recall hit holds two of them, so one shared word doesn't bring up an unrelated conversation. */
+const RECALL_WORDS = 2;
 
 /** The page about the person she's talking with. A user can write it; sleep keeps it up. */
 export const ABOUT_USER_PAGE = "p:about-user";
@@ -47,7 +51,7 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
   const index = own.pageIndex().map((p) => `- [${p.id}] ${p.title}: ${p.summary}`).join("\n");
   const stores = [{ prefix: "", store: own }, ...view.reads.map((store) => ({ prefix: `${store.pool}/`, store }))];
   const folderPages = stores.flatMap(({ prefix, store }) => store.forFolders(ctx.folders).map((p) => ({ ...p, id: prefix + p.id })));
-  const hits = prompt.trim() ? search(view, prompt, { current: true, limit: RECALL_HITS, excludeThread: ctx.threadId, fromThread: ctx.threadId }, ctx.hide) : [];
+  const hits = prompt.trim() ? search(view, prompt, { current: true, limit: RECALL_HITS, minWords: RECALL_WORDS, skip: ctx.name ? [ctx.name] : undefined, excludeThread: ctx.threadId, fromThread: ctx.threadId }, ctx.hide) : [];
   const item = own.itemForThread(ctx.threadId);
   return {
     notice: own.getThread(ctx.threadId)?.unlogged ? UNLOGGED_NOTICE : undefined,
@@ -79,9 +83,9 @@ export function search(view: PoolView, query: string, opts: SearchOptions, hide?
   return searchView(view, query, { ...opts, limit: limit * 4 }).filter((h) => !hide(h.id)).slice(0, limit);
 }
 
-/** One recall hit: `[id] (kind, added by Sam) snippet`. */
+/** One recall hit: `[id] (kind, 2026-10-12, added by Sam) snippet`. */
 export function formatHit(h: Hit, user: MemoryContext["user"]): string {
-  const labels = [h.kind, authorLabel(h.author, user), h.supersededBy && `superseded by ${h.supersededBy}`].filter(Boolean);
+  const labels = [h.kind, h.at?.slice(0, 10), authorLabel(h.author, user), h.supersededBy && `superseded by ${h.supersededBy}`].filter(Boolean);
   return `[${h.id}] (${labels.join(", ")}) ${h.snippet}`;
 }
 

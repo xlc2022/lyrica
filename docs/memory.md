@@ -195,13 +195,19 @@ The cheapest mechanism comes first:
    which new entries were pinned, as a sign they matter.
 2. **Automatic recall on every user turn.** Search notes, pages and past
    threads in the pool using the user's message, and inject up to five hits as
-   short snippets with their IDs (at most 4,000 characters).
+   short snippets with their IDs and dates (at most 4,000 characters). The
+   search leaves out her own name, which nearly everything mentions, and when
+   the message has three words or more (after stopwords), a hit must hold at
+   least two of them (each as a word or a word's start; a user's name counts
+   once, written or as a mention). One shared word in a longer message
+   doesn't bring up an unrelated conversation. Her instructions say that recall and WAKE are background:
+   she raises other work only when the message is about it.
 3. **Deliberate lookup** through tools. `recall(query)` searches.
    `read_memory(id)` opens a page, a note, or a window of a past thread around an
    entry.
 
-Search is FTS5 (BM25). A query is its words, minus common stopwords, OR'd
-together; a user's name in it adds that user's token as one more alternative.
+Search is FTS5 (BM25). A query is its words, minus common stopwords and
+greetings, OR'd together; a user's name in it adds that user's token as one more alternative.
 Indexed: notes, pages, the journal, and logged thread entries (what was said,
 tool calls, and the first 2,000 characters of each tool result). Not indexed:
 entries written unlogged, copied entries (exports and forks, `copyEntries`),

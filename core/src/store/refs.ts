@@ -65,7 +65,7 @@ const userWord = (id: UserId) => `lyricau${id.replaceAll("-", "")}`;
 
 const STOP = new Set(("a an and are as at be but by can do did does for from had has have how i if in is it its me my no not of on or " +
   "our so that the their them then there these they this to too us was we were what when where which who why will with would " +
-  "you your yes ok just about like really very").split(" "));
+  "you your yes ok just about like really very hi hello hey thanks thank please").split(" "));
 
 /**
  * An FTS5 query for free text: every word, OR'd. A user's name found in the
@@ -78,6 +78,39 @@ export function ftsQuery(query: string, profiles: Map<UserId, Profile>): string 
   const terms = [...words.map((w) => `"${w}"`), ...users];
   return terms.length ? terms.join(" OR ") : undefined;
 }
+
+/** The query without `skip`'s words (a name of one or more words), as whole words, in any case. */
+export function withoutWords(query: string, skip: string[]): string {
+  const drop = new Set(skip.flatMap((w) => fold(w).match(WORD) ?? []));
+  return query.replace(/[\p{L}\p{N}][\p{L}\p{N}\p{M}]*/gu, (w) => (drop.has(fold(w)) ? " " : w));
+}
+
+/**
+ * The query's terms for `holdsEnough`: each word on its own, and a user's
+ * name together with that user's mention token, so a name counts once
+ * whichever way the text holds it.
+ */
+export function queryTerms(query: string, profiles: Map<UserId, Profile>): string[][] {
+  const users = queryTokens(query, profiles).map((m) => ({ words: fold(m.name).match(WORD) ?? [], token: userWord(m.userId) }));
+  const named = new Set(users.flatMap((u) => u.words));
+  const words = [...new Set(fold(query).match(WORD) ?? [])].filter((w) => !STOP.has(w) && !named.has(w));
+  return [...words.map((w) => [w]), ...users.map((u) => [...u.words, u.token])];
+}
+
+/**
+ * Whether `text` holds at least `min` of the terms, as a word or the start
+ * of one ("drink" counts in "drinks"). A query of `min` terms or fewer needs
+ * only one, as the index already found.
+ */
+export function holdsEnough(text: string, terms: string[][], min = 1): boolean {
+  if (terms.length <= min) return true;
+  const has = [...new Set(fold(indexText(text)).match(WORD) ?? [])];
+  return terms.filter((t) => t.some((w) => has.some((h) => h.startsWith(w)))).length >= min;
+}
+
+/** Lower case without diacritics, as the index's tokenizer folds words. */
+const fold = (t: string) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+const WORD = /[\p{L}\p{N}]+/gu;
 
 /**
  * The words of a search in the sidebar, lower case. A word keeps its

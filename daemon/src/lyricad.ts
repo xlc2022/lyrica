@@ -457,7 +457,7 @@ export class Lyricad implements Drainable {
     const wakeups: Wakeups = new Wakeups({ memory, host: () => host, children, log: this.log });
     forge = new ForgeWatcher({ memory, workspace, wakeups, log: this.log });
     host = new ThreadHost({
-      users, memory, models, workspace, persona, delegation, cwd, log: this.log, searxng: () => searxngAddress(keyring.self()),
+      users, memory, models, workspace, persona, delegation, cwd, log: this.log, searxng: () => searxngAddress(keyring.self()), name: () => selfName(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       threads: children, onTurn: (u, p, t, working, byPerson) => {
         children.turn(u, p, t, working);
