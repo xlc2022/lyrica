@@ -150,7 +150,10 @@ characters, the limit on project instructions.
 For a coding job, delegate to `coder`, or use `threads` action `code` with
 `on`, a short `task` and `done` when the user works alongside her. Coder is
 the default for a write step in a repository thread. Both use the `code`
-model task and project memory plus notes tagged `working`; permissions,
+model task and project memory plus notes tagged `working`. Thread settings →
+Behaviour → **Code mode** turns it on in a conversation; Project settings →
+General → New threads sets it for new work, with Save. Choose **Coding**
+in Models → Tasks to change its preset or column default; permissions,
 review requirements and the private/cloud boundary stay in force.
 
 ## Truthful stopping and continuation

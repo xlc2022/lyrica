@@ -199,12 +199,29 @@ coder and its repository default, project defaults, repository/PR context,
 and scripted evals. Code calls also contribute to usage totals through
 pruning. Root TypeScript and the focused fake-only suites pass; the eval
 has four scripted checks passing and its real-model check skipped.
-Part 2 changes remain in the tree, uncommitted and unpushed.
+Part 2 is committed in the branch history.
 
-Part 3 remains: web controls and task labels, e2e at both widths, web/UX
-docs and final handoff. Full typecheck currently stops on the missing code
-labels in web/src/ModelsFrame.tsx and web/src/Settings.tsx. No real model,
-paid API or plan endpoint was used, and no full test suite was run.
+Part 3 implements the Thread settings Behaviour switch and the project’s
+New threads switch, Coding task labels in thread settings and Models, and
+the header’s active Coding model picker. It uses the existing preset and
+column APIs; Images and the welcome Backend card already use presets after
+main’s merge. No core, daemon, extension or migration change is needed.
+Principles 1, 6 and 8 apply. UX §6 gives both switches and the Coding model
+their homes; §3 uses the existing Switch and model pickers; §4 keeps the
+brief’s hint in a tooltip. Updated web, UX and workspace docs and her own
+project handoff; the contracts, memory, delegation and DESIGN changes are
+already in parts 1 and 2.
+
+Validation for part 3: `npm run typecheck`, `npm run build` and the focused
+Playwright code-mode scenario pass (2 tests: 1280 and 390 px, under
+`flock /tmp/lyrica-tests.lock`). It checks switch persistence and off/on,
+unchanged Mode, the active header model, saved project defaults and the
+Coding task’s default/drawer. Six screenshots are in untracked `shots/`; `web/playwright.local.config.ts` stays untracked and
+must never be committed (ports 7351–7353 and the specified Nix Chromium).
+No real model, LM Studio, paid API or plan endpoint was used. No full test
+suite was run. Changes are left uncommitted and unpushed for the user.
+Review still needs PR review and UI review on the eventual head, plus CI;
+the user will run the full suite, commit and push.
 
 Validation for part 1: targeted store, models, workspace and migration suites
 under `/tmp/lyrica-tests.lock`: 112 passed, 4 existing sandbox-dependent

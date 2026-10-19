@@ -485,6 +485,7 @@ values are always visible next to the model badge:
 | **Folders** | The thread's grants, each read-only or read-write. |
 | **Machines** | The SSH accounts and Proxmox nodes the thread may use (Machines). |
 | **Repositories** | The repositories the thread clones, each with the Git account it uses (Git accounts and repositories). |
+| **Code mode** | Focuses the persona, memory and tools on coding and selects the Coding task; editable under Behaviour, and for new project threads under General → New threads. |
 | **Mode** | Ask, Accept edits, Plan or Auto (see Approval). |
 | **Web search, Images** | Switches for `web_search` and `web_fetch`, and for `image`. On unless turned off. |
 | **Claude Code** | Whether her sandbox runs can use Claude Code on the user's Claude plan (Claude Code). Off unless turned on; shown only in a general thread that isn't local-only, once a token is saved and the program is installed. |

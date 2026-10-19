@@ -32,7 +32,7 @@ const TABS: { tab: ModelsTab; label: string }[] = [
 ];
 
 export const TASK_WORD: Record<Task, string> = {
-  chat: "Chat", "subagent.cheap": "Cheap subagents", "subagent.strong": "Strong subagents", compaction: "Compaction",
+  chat: "Chat", code: "Coding", "subagent.cheap": "Cheap subagents", "subagent.strong": "Strong subagents", compaction: "Compaction",
   title: "Titles", watching: "Watching threads", embedding: "Embeddings", "sleep.consolidate": "Sleep: consolidate", "sleep.dream": "Sleep: dream", "sleep.wake": "Sleep: wake",
   "image.create": "Images", "image.edit": "Image edits", "image.upscale": "Image upscaling", "speech.transcribe": "Dictation", "speech.speak": "Read aloud",
 };

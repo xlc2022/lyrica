@@ -4172,3 +4172,57 @@ test("Push settings: save, test, failure and turn off", async ({ page, baseURL }
     await new Promise<void>(resolve => receiver.close(() => resolve()));
   }
 });
+
+test("Code mode: thread switch, Coding model and project defaults", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const api = (method: string, path: string, data?: unknown) => page.evaluate(async ({ method, path, data }) => {
+    const r = await fetch(path, { method, headers: { "content-type": "application/json" }, body: data === undefined ? undefined : JSON.stringify(data) });
+    if (!r.ok) throw new Error(`${method} ${path}: ${r.status}`);
+    return r.json();
+  }, { method, path: `/api/u/${userId}${path}`, data });
+  const thread = await api("POST", "/threads", { pool: "general", title: "Code fixture", project: true });
+  const path = `/threads/general/${encodeURIComponent(thread.id)}`;
+  const address = `/#/u/${userId}/t/general/${encodeURIComponent(thread.id)}`;
+  const endpoints = await api("GET", "/endpoints");
+  const local = endpoints.find((ep: { name: string }) => ep.name === "gpu").models[0].id;
+  // Different Chat and Coding choices make the header's active task observable.
+  await api("PATCH", `${path}/settings`, { models: { code: { offeringId: local } } });
+  await page.goto(address);
+  let drawer = await openSettings(page);
+  const mode = await drawer.getByRole("combobox", { name: "Mode", exact: true }).inputValue();
+  await expect(drawer.getByRole("checkbox", { name: "Code mode", exact: true })).not.toBeChecked();
+  await drawer.getByRole("checkbox", { name: "Code mode", exact: true }).click();
+  await expect.poll(async () => (await api("GET", `${path}/settings`)).code).toBe(true);
+  await expect(drawer.getByRole("combobox", { name: "Mode", exact: true })).toHaveValue(mode);
+  await expect(drawer.getByRole("combobox", { name: "Coding", exact: true })).toHaveValue(local);
+  await drawer.getByRole("checkbox", { name: "Code mode", exact: true }).scrollIntoViewIfNeeded();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/code-mode-thread-${page.viewportSize()!.width}.png` });
+  await drawer.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Model:/ })).toContainText("local-model");
+  await page.reload();
+  drawer = await openSettings(page);
+  await expect(drawer.getByRole("checkbox", { name: "Code mode", exact: true })).toBeChecked();
+  await drawer.getByRole("checkbox", { name: "Code mode", exact: true }).click();
+  await expect.poll(async () => (await api("GET", `${path}/settings`)).code).toBe(false);
+  await drawer.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Model:/ })).toContainText("cloud-model");
+
+  await openProjectSettings(page);
+  await page.getByRole("checkbox", { name: "Code mode", exact: true }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(async () => (await api("GET", path)).projectSettings.threadsCode).toBe(true);
+  await page.reload();
+  await expect(page.getByRole("checkbox", { name: "Code mode", exact: true })).toBeChecked();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/code-mode-project-${page.viewportSize()!.width}.png`, fullPage: true });
+
+  await page.goto(`/#/u/${userId}/models/tasks`);
+  const coding = page.locator('tr[data-task="code"]');
+  await expect(coding.getByRole("cell", { name: "Coding", exact: true })).toContainText("Coding");
+  await expect(coding.locator('[data-col="General threads"]')).toContainText("= Strong subagents");
+  await coding.locator('[data-col="General threads"]').click();
+  await expect(page.getByRole("complementary", { name: "Edit Coding" })).toBeVisible();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/code-mode-models-${page.viewportSize()!.width}.png` });
+});

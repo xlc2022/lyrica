@@ -256,7 +256,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   moves) and Delete… with its dialog. Images is the panel's grid with its
   filter. It reloads when any thread finishes a tool call or a turn, and on
   focus.
-- **Thread settings drawer:** a model per task (each option says cloud or local first; **Watching threads**, under
+- **Thread settings drawer:** a preset and a model per task, including **Coding** (each option says cloud or local first; **Watching threads**, under
   Titles, only in a project chat; then **Images**, **Image edits** and
   **Image upscaling**, offering the models that do each, recipes by name), local-only, the internet and
   Local services (localhost) switches (each following the user's default until
@@ -273,9 +273,15 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   an ✕; **+ Add server** opens a search of the pool's other servers, "No
   general MCP server yet" when there's none, with an **MCP servers** link at
   its foot; a change applies at once), the mode, the
-  Web search and Images switches, the Claude Code switch (only where
+  **Code mode** (Behaviour, saved at once), Web search and Images switches, the Claude Code switch (only where
   `claudeCodeOffered`, or while on), "Do not log", rename, hide, and forget. `lyricad` validates every
-  change and its reason is shown.
+  change and its reason is shown. Code mode selects the Coding model in the
+  header and its picker; turning it off restores Chat. Its tooltip says
+  "Focus on the code: a coding model, a short persona, and only this
+  project's memory and your working preferences." Project settings →
+  General → New threads has the same switch, applied with Save. Models →
+  Tasks has a Coding row under Conversation, initially Same as Strong
+  subagents, editable in presets and columns like the other tasks.
 - **Subagents live inline**, not in the sidebar: see the `delegate` card
   under Chat. Opening a subagent's thread by link shows the same thing as
   its card: a link to its parent, its transcript and a message box, never
