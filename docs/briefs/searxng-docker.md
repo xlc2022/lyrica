@@ -1,6 +1,6 @@
 # Brief: SearXNG in Docker from install.sh
 
-**Status:** The install.sh part merged as #342 (57d7e30). The NixOS part is in review. **Branch:** `claude/project-thread-ol9r4b`.
+**Status:** Merged: install.sh as #342 (57d7e30), NixOS as #346 (67c770c). **Branch:** `claude/project-thread-ol9r4b`.
 **Read first:** AGENTS.md, PRINCIPLES.md (1, 2, 8), DESIGN.md (Switches in
 the message box), docs/contracts.md (Web search), docs/daemon.md
 (Deployment) and docs/guides/searxng.md.
