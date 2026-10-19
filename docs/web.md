@@ -378,8 +378,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   or **Pair again…** in their place while Unpaired, opening Pairing code
   and **Pair** in the card (otherwise Pair again… is in the ⋯), Dashboard (`GET …/dashboard`, a new tab; administrators on a shared host), "N models"
   opening its model list (a speaking model's **Settings** there), the facts
-  line (shared or only you, paired unless Unpaired, ID and addresses in mono, **Edit** for
-  the addresses, `PUT …/addresses`), per GPU its card, used/total in mono,
+  line (shared or only you, paired unless Unpaired, ID and addresses in mono, "version" and the
+  version, "update available" while it runs another commit than Lyrica's
+  release, **Edit** for the addresses, `PUT …/addresses`), **Update** in the
+  ⋯ while an update is available (`POST …/update`), the state Updating while
+  it updates, with Pause disabled, a warn line after a failed update, per GPU its card, used/total in mono,
   a bar of pinned, loaded-on-demand and vLLM-share segments, the loaded
   models and the queue when nonzero. A plain endpoint row: name, kind,
   ChatGPT plan or Grok plan versus API key, and cloud Text, Vision and Image
