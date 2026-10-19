@@ -566,6 +566,8 @@ export class ChildThreads implements ThreadsHost {
     const key = `${userId}/${pool}/${thread}`;
     if (!resolved) { this.cleanupAfterTurn.delete(key); return Promise.resolve(); }
     // A thread resolving itself mid-turn keeps its worktree until the turn ends.
+    const work = this.o.workspace.settings(userId).threadWork(thread);
+    if (!work?.worktrees.length || work.cleaned) return Promise.resolve();
     if (this.o.host().status(userId, pool, thread) !== "idle") { this.cleanupAfterTurn.add(key); return Promise.resolve(); }
     return this.cleanupWorktrees(userId, pool, thread);
   }
