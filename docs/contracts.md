@@ -433,6 +433,7 @@ class Models {                                              // new Models(keyrin
   callWithFallback(task, ctx, need, call: (r) => Promise<T>, { probeMs? }?): Promise<T>   // the next model on isUnreachable; Offline when none answers
   resolveModel(task, ctx, need?): { offeringId }             // resolve(…).ref
   allowed(ctx): { endpoint; offerings }[]                   // local endpoints only when restricted
+  textModels(ctx): { id; label; local }[]                   // allowed listed chat models, for her to name
   nextImageModel(ctx, action, need, afterEndpoint, noCloud?): Resolution | undefined // current task list; no probes; next eligible endpoint
   // Images (memory only; caller stores and records results)
   image(ctx, request: ImageRequest, { signal?, beforeSend?: (resolution) => Promise<void> }?): Promise<{ images: GeneratedImage[]; resolution }>
@@ -653,8 +654,12 @@ write-capable step in a repository thread selects coder; otherwise worker.
 Custom roles override built-ins by name.
 - The default action runs work: `task` with an optional `role` and `tier`;
   or `tasks: [...]` (parallel), `chain: [...]`, `loop`, `council`, or
-  `workflow: name`. Any of these can be `background: true`. She picks a tier,
-  never a model; only saved workflows, which users write, may name one.
+  `workflow: name`. Any of these can be `background: true`, and a run can
+  set `workers` (1 to 8) when the person asked for more or fewer at once.
+  She picks a tier; a step's `model` is only one the person or a saved
+  workflow named, resolved by `Models.find`, else `matchModel` over
+  `Models.textModels(ctx)`; a name that fits no one model fails with the
+  closest. `action: "models"` lists those models, each local or cloud.
   `folders` narrows granted host folders only, not sandbox repository paths;
   an invalid folder returns that distinction and advises omitting `folders`
   to read the parent's checkouts. Read-only roles, narrowed runs and writers
@@ -1747,6 +1752,11 @@ override wins in code mode; its Chat override does not apply. Thread model
 selection continues to use `preset`, never a profile choice.
 `threads({ action: "code", on, task?, done? })` changes the next turn and,
 when `task` or `done` is given, replaces the pool.db task text, emitting `settings`; subagents are refused.
+`threads({ action: "model", model })` sets the thread's own Chat model (and
+its `code` model in code mode) to the one chat model the name fits, as a
+step's `model` resolves, from the next turn, emitting `settings` so the
+header's model picker and Thread settings follow; a name that fits none or
+several is refused with the closest; subagents are refused.
 Project settings carry optional `threadsCode`, stored in encrypted user
 settings (`project.code.<pool>/<id>`), removed on forget. New child and
 routine threads apply it beside `threadsModel`; unset inherits the parent.

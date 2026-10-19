@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import {
-  DEFAULT_THREADS_LIMITS, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
+  DEFAULT_THREADS_LIMITS, matchModel, unmatched, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
 } from "@lyrica/core";
 import type { Delegation, Delivery, ThreadContext, ThreadsHost } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
@@ -84,6 +84,24 @@ export class ChildThreads implements ThreadsHost {
     if (from.view.own.getThread(from.threadId)?.subagent) throw new Error("a subagent can't change code mode");
     this.o.workspace.settings(from.user.id).setThread(from.threadId, from.pool, { code: on });
     this.o.host().peek(from.user.id, from.pool, from.threadId)?.publish({ type: "settings" });
+  }
+
+  model(from: ThreadContext, name: string): string {
+    if (from.view.own.getThread(from.threadId)?.subagent) throw new Error("a subagent can't change its model");
+    const { models, workspace } = this.o;
+    const userId = from.user.id;
+    const call = models.callContext(userId, from.pool, from.threadId);
+    const list = models.textModels(call);
+    const found = models.find(userId, name);
+    const m = found && "offeringId" in found ? list.find((x) => x.id === found.offeringId) : undefined;
+    const match = m ? { model: m } : matchModel(name, list);
+    if ("closest" in match) throw new Error(unmatched(name, match));
+    const ref = { offeringId: match.model.id };
+    models.setThreadModel(userId, from.pool, from.threadId, "chat", ref);
+    // In code mode the thread runs on its Coding model, so that changes too.
+    if (workspace.settings(userId).effective(from.threadId).code) models.setThreadModel(userId, from.pool, from.threadId, "code", ref);
+    this.o.host().reload(userId, from.pool, from.threadId);
+    return match.model.label;
   }
 
   async start(parent: ThreadContext, req: StartRequest): Promise<{ id: string; link: string; queued?: boolean }> {

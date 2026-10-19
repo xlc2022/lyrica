@@ -24,6 +24,8 @@ export type Delivery = "started" | "running" | "queued" | "saved" | "wakes" | "u
 export interface ThreadsHost {
   readonly limits: ThreadsLimits;
   code?(from: ThreadContext, on: boolean): void;
+  /** Switches this thread to a model the person named, from the next turn; returns its label, or throws with the closest. */
+  model?(from: ThreadContext, name: string): string;
   asked?(from: ThreadContext): Promise<void>;
   questionsChanged?(userId: string, pool: ThreadContext["pool"], thread: string): void;
   draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
@@ -57,11 +59,16 @@ export interface ThreadsHost {
 
 /** Messages `threads read` returns by default, and at most. */
 export const READ_DEFAULT = 10;
+const MODEL_PARAM = "For model: the model the person named, in their words.";
+const MODEL_ACTION = "model: switch this thread to a model the person asked for, from your next turn.";
+/** The text the model action adds to the tool's definition, for tests that size a window around it. */
+export const THREAD_MODEL_TEXT = [MODEL_PARAM, MODEL_ACTION, "model"];
 export const READ_MAX = 30;
 
 const Params = Type.Object({
-  action: StringEnum(["code", "ask", "start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"] as const),
+  action: StringEnum(["code", "model", "ask", "start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"] as const),
   on: Type.Optional(Type.Boolean()),
+  model: Type.Optional(Type.String({ description: MODEL_PARAM })),
   done: Type.Optional(Type.String({ maxLength: 1200 })),
   goal: Type.Optional(Type.String({ maxLength: 2000 })),
   instructions: Type.Optional(Type.String({ maxLength: 2000 })),
@@ -104,7 +111,7 @@ type Field = keyof typeof Params.properties;
 
 /** The actions each field serves: a thread is sent only the fields of the actions it has. */
 const FIELD_ACTIONS: Record<Exclude<Field, "action">, string[]> = {
-  on: ["code"], done: ["code"],
+  on: ["code"], done: ["code"], model: ["model"],
   goal: ["draft"], instructions: ["draft"], ids: ["fold"], threads: ["suggest"],
   title: ["start"], task: ["start", "code"], folders: ["start"], readOnly: ["start"], internet: ["start"], code: ["start"],
   id: ["message", "read", "stop", "resolve", "reopen"], text: ["message"], to: ["message"], question: ["message", "ask"], options: ["ask"], recommended: ["ask"], context: ["ask"], needsYou: ["message"], last: ["read"],
@@ -192,6 +199,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           ? "Send your parent thread a short update (message to: \"parent\")."
           : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message, list, read or stop one."
             + (inProjectChat() ? " In this project chat, also suggest threads (a card the person starts them from), fold in existing threads, draft Goal and Instructions for Project settings, and resolve or reopen one." : ""),
+      host?.model ? MODEL_ACTION : "",
       host && (!child || projectThread()) ? "ask: one question on a card for the person." : "",
       host?.later ? "later: a wake-up that starts a turn here with your note." : "",
       host ? "routine: this thread's routines, at most 10 including paused ones." : "",
@@ -200,7 +208,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
     ].filter(Boolean).join(" ");
 
     const actions = [
-      ...(host?.code ? ["code"] : []),
+      ...(host?.code ? ["code"] : []), ...(host?.model ? ["model"] : []),
       ...(!host ? [] : projectThread() ? ["message", "list", "read", ...(host.resolve ? ["resolve"] : [])]
         : child ? ["message"]
         : ["start", "message", "list", "read", ...(host.stop ? ["stop"] : []),
@@ -244,6 +252,11 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           host.code(thread, p.on);
           if (p.task !== undefined || p.done !== undefined) store.setCodeTask(thread.threadId, p.task ?? "", p.done ?? "");
           return text(`Code mode ${p.on ? "on" : "off"} from the next turn.`);
+        }
+        if (p.action === "model") {
+          if (!host.model) throw new Error("switching models is unavailable here");
+          if (!p.model) throw new Error("model needs the model's name");
+          return text(`This thread runs on ${host.model(thread, p.model)} from your next turn.`);
         }
         if (p.action === "ask") {
           if (child && !projectThread()) throw new Error("a child asks its parent with message question: true");
