@@ -146,7 +146,8 @@ describe("projects", () => {
     const first = s.requests.find(c => said(c).includes("Build the racing sim in the repository") && said(c).includes("Code task"));
     expect(first).toBeDefined();
     // Its check output stays out of the repository (a project code thread once committed its screenshot).
-    expect(said(first!)).toContain("check output in your scratch folder (/workspace), never in the repository");
+    expect(said(first!)).toContain("check output in your scratch folder (/workspace, outside worktrees/), never in a repository");
+    expect(said(first!)).toContain("run git status in each repository or worktree you changed");
     expect(s.d.services!.models.recentCalls(s.rt.ada.id, { threadId: child, limit: 10 }).some(c => c.task === "code")).toBe(true);
   });
 
