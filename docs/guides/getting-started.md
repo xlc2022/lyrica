@@ -197,7 +197,9 @@ read it for anything not covered here.
    The options of `services.lyrica` are `port` (7340), `tailscale` (on: her
    own `tailscaled`, from `tailscalePackage`), `openFirewall` (on: opens
    port 7340 for Direct, whatever `port` is, so the machine can be set up
-   from another one), `caddyPackage`, and `sandboxPackages`, the tools her
+   from another one), `searxng` (on: a SearXNG for her web search on
+   127.0.0.1:8888, whose address fills in under Administration, Web
+   search; [searxng.md](searxng.md)), `caddyPackage`, and `sandboxPackages`, the tools her
    commands see (NixOS has no `/usr` to share, so the module builds one
    directory from that list, which includes git, gh, tea, Node 22,
    Claude Code and Codex by default; add to it to give her more). Codex
@@ -666,9 +668,10 @@ thread can narrow or widen its own from the thread settings drawer.
 
 ## Give her web search
 
-Her `web_search` asks one SearXNG. On Debian or Ubuntu, `install.sh` asks
-whether to run one in Docker on the same machine, and with a yes it fills
-in the address under Administration, **Web search** for you. Otherwise host
+Her `web_search` asks one SearXNG. On NixOS the module runs one unless
+`services.lyrica.searxng = false`. On Debian or Ubuntu, `install.sh` asks
+whether to run one in Docker on the same machine. Either way the address
+fills in under Administration, **Web search** for you. Otherwise host
 one and give its address there. It says **Reachable** once a test search
 works: [searxng.md](searxng.md). Every thread with the Web search switch on can
 then search, private ones included (the engines see the query, never who
@@ -1029,8 +1032,9 @@ apply as written.
     `lyrica-rollback` do the same from a terminal.
 11. Add a Git account and give a thread a repository: it is cloned into
     `/workspace/repos`, and with internet on `gh pr list` works there.
-12. Say yes to SearXNG when `install.sh` asks (Docker installed first), or
-    set the address under Administration, Web search yourself: it says
+12. Say yes to SearXNG when `install.sh` asks (Docker installed first; on
+    NixOS the module runs it), or set the address under Administration,
+    Web search yourself: it says
     Reachable, and `web_search` answers in a thread.
 13. Save a token under Settings, Claude Code and Codex, turn the switch on
     in a test thread, and ask her to use it.

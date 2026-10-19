@@ -1190,7 +1190,12 @@ system with the module on. Only x86_64-linux.
   same deploy check), `ip_nonlocal_bind`, and `/etc/lyrica/caddy.json`.
   With `tailscale` on (the default) it also declares `lyrica-tailscaled`
   from `tailscalePackage` (`pkgs.tailscale`). lyricad starts without
-  `self.db`, setting up. `lyrica` on the system path is the same wrapper as
+  `self.db`, setting up. With `searxng` on (the default) it declares
+  NixOS's `services.searx` in uWSGI with request logging off, on
+  `127.0.0.1:8888` with install.sh's settings, a
+  `lyrica-searxng-secret` oneshot that makes its secret once, and
+  `searxng-address` in her state folder (a tmpfiles rule, removed when off).
+  `lyrica` on the system path is the same wrapper as
   install.sh's, so the first-run step is `lyrica admin setup-code` as root:
   nothing prints the code or the fingerprint at `nixos-rebuild`. The wrapper
   runs the profile below. The updater, its units, the `lyrica-build` user
@@ -1244,4 +1249,5 @@ system with the module on. Only x86_64-linux.
   lyricad and Caddy run, the `lyrica` profile exists, `lyrica-update.path`
   is active, her tailscaled answers `lyrica` on its socket, `NoNewPrivs` is `0`, `fusermount3` is setuid, Caddy's
   admin socket exists, a sandbox and `pasta` start as `lyrica`, the
-  self-test hasn't refused network, lyricad answers on port 7340.
+  self-test hasn't refused network, lyricad answers on port 7340, and with
+  `searxng` on, SearXNG answers `/healthz`.

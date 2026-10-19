@@ -6,8 +6,9 @@ return. Her `web_search` tool asks one SearXNG for the whole server, so the
 engines see your SearXNG asking, never who in Lyrica asked; they still see
 the query text.
 
-On Debian or Ubuntu, `install.sh` can run one for you in Docker on the
-same machine ("Set up by install.sh" below). Otherwise you host it, then
+On NixOS, Lyrica's module runs one by default ("Set up by the NixOS
+module" below). On Debian or Ubuntu, `install.sh` can run one for you in
+Docker on the same machine ("Set up by install.sh" below). Otherwise you host it, then
 give her its address. SearXNG's own documentation (docs.searxng.org) is the
 reference.
 
@@ -43,7 +44,18 @@ then delete `/etc/lyrica/searxng`, `/etc/lyrica/searxng.env`,
 `/var/cache/lyrica-searxng` and `/var/lib/lyrica/searxng-address`, and
 clear the address in Administration.
 
-On NixOS, `install.sh` doesn't run; use the module in "NixOS" below.
+## Set up by the NixOS module
+
+With `services.lyrica.enable`, `services.lyrica.searxng` is on unless you
+set it to `false`. It turns on NixOS's own `services.searx` (no Docker),
+in uWSGI with request logging off, since its built-in server logs every
+query. It listens on `127.0.0.1:8888` with the same settings as
+install.sh's: JSON on, limiter off. `lyrica-searxng-secret.service` makes
+its `secret_key` once, in `/var/lib/lyrica-searxng/env`. The address goes
+to `/var/lib/lyrica/searxng-address` and fills in under Administration in
+the same way. More `services.searx.settings` merge in, engines for example.
+With it off, the address file is removed, and you host one yourself as
+below.
 
 ## Where to run it
 
@@ -74,7 +86,10 @@ Put `settings.yml` (below) in `./config/`, then `docker compose up -d`.
 SearXNG's own compose file also runs Valkey, which only the limiter needs;
 a private instance can leave it out.
 
-### NixOS
+### NixOS, by hand
+
+Only for a SearXNG on another NixOS machine, or with
+`services.lyrica.searxng = false`:
 
 ```nix
 services.searx = {
