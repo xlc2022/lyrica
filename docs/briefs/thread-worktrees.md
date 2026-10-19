@@ -75,9 +75,11 @@ keeps #375's rule that the project chat changes nothing. The split
 guidance in `PROJECT_CHAT_GUIDELINES` gains a third step: scaffold, parts,
 merge. The project chat doesn't get a merge tool of its own.
 
-**D. Cleanup.** When a part thread is resolved, deleted or forgotten, its
-worktree is removed with `removeWorktrees` (kept if it holds uncommitted
-changes, and the note says where), and its branch is kept. The merge thread
+**D. Cleanup.** When a part thread is resolved, its worktree is removed with
+`removeWorktrees` (kept if it holds uncommitted changes, and the note says
+where; deferred to the end of the turn if it resolved itself mid-turn), and
+its branch is kept. Deleting or forgetting a thread removes its worktrees
+even with uncommitted changes, keeping the branches. The merge thread
 deletes a branch after merging it.
 
 **E. Outside a project** (the owner's rule, 2026-10-19). A plain thread
@@ -127,7 +129,7 @@ metadata never confuses two `/workspace` paths. Placement and base ownership
 survive restarts in encrypted workspace settings; no schema migration.
 
 Coverage also includes queued base holders and reopening, fallback reasons,
-non-code children staying in their parent's folder, dirty checkout retention
-when forgetting files, and a real-sandbox check of unique git paths and mounts.
+non-code children staying in their parent's folder, dirty worktrees removed
+when forgetting files, writing in a resolved base thread refused before sending, and a real-sandbox check of unique git paths and mounts.
 The coordinator eval's real-model scenario now checks scaffold, parts, merge;
 it is not run against a real endpoint in this build.

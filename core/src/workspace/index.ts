@@ -508,15 +508,16 @@ export class Workspace {
   }
 
   /** Serialize cleanup with reopening, so a new turn cannot lose its checkout to an earlier resolve. */
-  removeThreadWorktrees(t: WorkspaceThread): Promise<string> {
+  removeThreadWorktrees(t: WorkspaceThread, force = false): Promise<string> {
     const key = `${t.userId}/${t.threadId}`;
     const active = this.worktreeCleanup.get(key);
-    if (active) return active;
+    if (active && !force) return active;
     const ws = this.settings(t.userId);
     const work = ws.threadWork(t.threadId);
-    if (!work?.worktrees.length || work.cleaned) return Promise.resolve("");
+    if (!work?.worktrees.length || (work.cleaned && !force)) return active ?? Promise.resolve("");
     const job = (async () => {
-      const note = await removeWorktrees(this.targetFor(t), work.worktrees);
+      await active;
+      const note = await removeWorktrees(this.targetFor(t), work.worktrees, force);
       ws.setThreadWork(t.threadId, { ...work, cleaned: true });
       return note;
     })().finally(() => this.worktreeCleanup.delete(key));

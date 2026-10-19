@@ -43,7 +43,7 @@ export async function makeWorktrees(target: ExecutionTarget, grants: Grant[], ru
       all.push(mine);
       for (const repo of repos) {
         const wt = { repo, path: posix.join(placement?.directory ?? posix.join(base, `${runId}-${i}`), posix.basename(repo)), branch: placement?.branch ?? `lyrica/${runId}-${i}` };
-        if (placement?.reuse && (await sh(target, `test -e ${quote(wt.path)}`)).ok) { mine.push(wt); continue; }
+        if (placement?.reuse && (await sh(target, `test -e ${quote(`${wt.path}/.git`)}`)).ok) { mine.push(wt); continue; }
         const existing = placement?.reuse && (await sh(target, `git -C ${quote(repo)} show-ref --verify --quiet ${quote(`refs/heads/${wt.branch}`)}`, signal)).ok;
         const checkout = existing ? `${quote(wt.path)} ${quote(wt.branch)}` : `-b ${quote(wt.branch)} ${quote(wt.path)}`;
         const r = await sh(target, `mkdir -p ${quote(posix.dirname(wt.path))} && git -c core.hooksPath=/dev/null -C ${quote(repo)} worktree add -q ${checkout}`, signal);
@@ -66,12 +66,12 @@ export function worktreeGrants(grants: Grant[], mine: Worktree[], readOriginal =
 
 /**
  * Removes a writer's worktrees, keeping their branches. One with changes that
- * weren't committed is kept, and the note says where.
+ * weren't committed is kept, and the note says where, unless `force`.
  */
-export async function removeWorktrees(target: ExecutionTarget, mine: Worktree[]): Promise<string> {
+export async function removeWorktrees(target: ExecutionTarget, mine: Worktree[], force = false): Promise<string> {
   const lines: string[] = [];
   for (const w of mine) {
-    const r = await sh(target, `git -c core.hooksPath=/dev/null -C ${quote(w.repo)} worktree remove ${quote(w.path)} && rmdir ${quote(posix.dirname(w.path))}`);
+    const r = await sh(target, `git -c core.hooksPath=/dev/null -C ${quote(w.repo)} worktree remove${force ? " --force" : ""} ${quote(w.path)} && rmdir ${quote(posix.dirname(w.path))}`);
     lines.push(r.ok || !(await sh(target, `test -e ${quote(w.path)}`)).ok
       ? `${w.repo}: its commits are on branch ${w.branch}.`
       : `${w.repo}: its commits are on branch ${w.branch}; its worktree ${w.path} was kept, because it has changes that weren't committed.`);

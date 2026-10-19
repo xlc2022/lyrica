@@ -117,9 +117,11 @@ function forgetRunWorktrees(runDir: string, allowed: string[]): void {
 
 function removeThreadFolder(dir: string, allowed: string[]): boolean {
   const runs = join(dir, "worktrees");
-  // Thread worktrees left by removeWorktrees contain changes or could not be checked. Keep them, even after forgetting.
-  if (existsSync(runs) && readdirSync(runs).some((name) => existsSync(join(runs, name, ".git")))) return false;
-  if (existsSync(runs)) for (const w of readdirSync(runs)) forgetRunWorktrees(join(runs, w), allowed);
+  // A run's folder holds one worktree per repository; a code thread's own worktrees sit there directly. Either way the branches keep the commits.
+  if (existsSync(runs)) for (const w of readdirSync(runs)) {
+    if (existsSync(join(runs, w, ".git"))) forgetWorktree(join(runs, w), allowed);
+    else forgetRunWorktrees(join(runs, w), allowed);
+  }
   rmSync(dir, { recursive: true, force: true });
   return true;
 }
@@ -139,9 +141,10 @@ export function forgetWorktree(path: string, allowed: string[]): boolean {
     const repo = admin && /^(\/.+)\/\.git\/worktrees\/[^/]+$/.exec(admin)?.[1];
     if (!admin || !repo || !allowed.some((a) => repo === a || repo.startsWith(`${a.replace(/\/+$/, "")}/`))) return false;
     if (realpathSync(admin) !== admin || !lstatSync(admin).isDirectory()) return false;
-    // …/worktrees/<run>-<i>/<repository>/.git, as the sandbox saw it.
+    // …/worktrees/<run>-<i>/<repository>/.git, or a code thread's /thread-workspaces/<thread>/worktrees/<repository>/.git, as the sandbox saw it.
     const back = readFileSync(join(admin, "gitdir"), "utf8").trim();
-    if (!back.endsWith(`/worktrees/${basename(dirname(path))}/${basename(path)}/.git`)) return false;
+    const own = basename(dirname(path)) === "worktrees" ? `/${basename(dirname(dirname(path)))}/worktrees/${basename(path)}/.git` : undefined;
+    if (!back.endsWith(`/worktrees/${basename(dirname(path))}/${basename(path)}/.git`) && !(own && back.endsWith(own))) return false;
     rmSync(admin, { recursive: true, force: true });
     return true;
   } catch {

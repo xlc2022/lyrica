@@ -51,6 +51,7 @@ export class ChildThreads implements ThreadsHost {
   readonly limits: ThreadsLimits;
   private readonly bases = new Map<string, string>();
   private readonly cleaning = new Map<string, Promise<void>>();
+  private readonly cleanupAfterTurn = new Set<string>();
   private readonly recovered = new Set<string>();
   /** Starts under way, per user, with their thread once made: until its turn runs, each counts against the limit. */
   private readonly starting = new Map<string, Set<{ pool?: Pool; thread?: string }>>();
@@ -197,7 +198,7 @@ export class ChildThreads implements ThreadsHost {
       if (chosen?.thinking) this.o.models.setThinking(userId, child.id, chosen.thinking);
       if (chosen?.fallback !== undefined) this.o.models.setThreadFallback(userId, child.id, chosen.fallback);
     } catch (err) {
-      await this.cleanupWorktrees(userId, parent.pool, child.id);
+      await this.cleanupWorktrees(userId, parent.pool, child.id, true);
       own.forgetThread(child.id, "lyrica");
       throw err;
     }
@@ -217,7 +218,7 @@ export class ChildThreads implements ThreadsHost {
       this.tasked.delete(`${userId}/${parent.pool}/${child.id}`);
       // It never started: nothing is left of it.
       await this.o.host().forget(userId, parent.pool, child.id);
-      await this.cleanupWorktrees(userId, parent.pool, child.id);
+      await this.cleanupWorktrees(userId, parent.pool, child.id, true);
       this.forget(userId, parent.pool, [child.id]);
       own.forgetThread(child.id, "lyrica");
       this.o.models.forgetThread(userId, parent.pool, child.id);
@@ -562,7 +563,18 @@ export class ChildThreads implements ThreadsHost {
     this.db(userId, (db) => db.prepare(`UPDATE child_threads SET resolved_at = ?${resolved ? ", needs_you = 0" : ""} WHERE pool = ? AND thread = ?`)
       .run(resolved ? new Date().toISOString() : null, pool, thread));
     this.o.host().changed(userId, pool, row.parent, thread);
-    return resolved ? this.cleanupWorktrees(userId, pool, thread) : Promise.resolve();
+    const key = `${userId}/${pool}/${thread}`;
+    if (!resolved) { this.cleanupAfterTurn.delete(key); return Promise.resolve(); }
+    // A thread resolving itself mid-turn keeps its worktree until the turn ends.
+    if (this.o.host().status(userId, pool, thread) !== "idle") { this.cleanupAfterTurn.add(key); return Promise.resolve(); }
+    return this.cleanupWorktrees(userId, pool, thread);
+  }
+
+  /** Why the user can't write in this thread now: it is a resolved base thread, and another thread holds the base checkout. Checked before anything is sent. */
+  baseHeld(userId: string, pool: Pool, thread: string): string | undefined {
+    const row = this.row(userId, pool, thread);
+    if (!row?.resolved_at || !this.o.workspace.settings(userId).threadWork(thread)?.base) return undefined;
+    try { this.checkBase(userId, pool, row.parent, thread); return undefined; } catch (err) { return (err as Error).message; }
   }
 
   /** The user wrote in the thread: it no longer waits on them, and a resolved thread reopens. */
@@ -573,7 +585,6 @@ export class ChildThreads implements ThreadsHost {
     for (const r of this.rows(userId)) if (r.pool === pool && r.parent === thread) this.rounds.delete(`${userId}/${pool}/${r.thread}`);
     const row = this.row(userId, pool, thread);
     if (!row || (!row.needs_you && !row.resolved_at)) return;
-    if (row.resolved_at && this.o.workspace.settings(userId).threadWork(thread)?.base) this.checkBase(userId, pool, row.parent, thread);
     this.db(userId, (db) => db.prepare("UPDATE child_threads SET needs_you = 0, resolved_at = NULL WHERE pool = ? AND thread = ?").run(pool, thread));
     this.o.host().changed(userId, pool, row.parent, thread);
   }
@@ -671,6 +682,11 @@ export class ChildThreads implements ThreadsHost {
     } catch { /* locked meanwhile; recover() catches it up */ }
     if (!working) {
       this.routineThreads.delete(`${userId}/${pool}/${thread}`);
+      if (this.cleanupAfterTurn.delete(`${userId}/${pool}/${thread}`)) {
+        let resolved = false;
+        try { resolved = !!this.row(userId, pool, thread)?.resolved_at; } catch { /* locked */ }
+        if (resolved) void this.cleanupWorktrees(userId, pool, thread);
+      }
       this.wakeWaiting(userId);
       void this.startQueued(userId);
     }
@@ -757,18 +773,23 @@ export class ChildThreads implements ThreadsHost {
     finally { view.close(); }
   }
 
-  /** Shared with explicit resolution and forgetting, before the thread's files disappear. */
-  cleanupWorktrees(userId: string, pool: Pool, thread: string): Promise<void> {
+  /**
+   * Removes a thread's worktrees, keeping their branches: on resolve, keeping one with changes that weren't committed;
+   * when the thread is forgotten (`forget`), all of them, saying nothing, since its parent may be going too.
+   */
+  cleanupWorktrees(userId: string, pool: Pool, thread: string, forget = false): Promise<void> {
     const key = `${userId}/${pool}/${thread}`;
+    this.cleanupAfterTurn.delete(key);
     const active = this.cleaning.get(key);
-    if (active) return active;
+    if (active && !forget) return active;
     const ws = this.o.workspace.settings(userId);
     const work = ws.threadWork(thread);
-    if (!work?.worktrees.length || work.cleaned) return Promise.resolve();
-    const row = this.row(userId, pool, thread);
+    if (!work?.worktrees.length || (work.cleaned && !forget)) return active ?? Promise.resolve();
+    const row = forget ? undefined : this.row(userId, pool, thread);
     const job = (async () => {
+      await active;
       try {
-        const note = await this.o.workspace.removeThreadWorktrees({ userId, pool, threadId: thread });
+        const note = await this.o.workspace.removeThreadWorktrees({ userId, pool, threadId: thread }, forget);
         if (row) this.deliver(userId, pool, row.parent, `Worktrees for [t:${thread}]:\n${note}`, thread);
       } catch {
         if (row) this.deliver(userId, pool, row.parent, `Worktrees for [t:${thread}] were kept: cleanup could not run.\n${work.worktrees.map((w) => w.path).join("\n")}`, thread);

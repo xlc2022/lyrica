@@ -1115,8 +1115,9 @@ project page and the web part are built. Recent calls can be filtered by project
   thread. The project chat stays read-only. Only one open base thread per
   project is allowed, enforced in `children.ts`. Part grants keep the original
   checkout read-only and `.git` writable; their own folder holds the writable
-  worktree. Resolving or forgetting removes clean worktrees, keeping branches;
-  dirty worktrees stay with a note of their path. Failures to make a worktree
+  worktree. Resolving removes clean worktrees, keeping branches; dirty
+  worktrees stay with a note of their path. Deleting a thread removes its
+  worktrees, dirty or not, keeping branches. Failures to make a worktree
   leave that folder as granted, with a reason in the prompt and card. Forge
   clones keep their existing behavior. Outside projects, the plain thread
   codes in place and keeps the base; requested `code: true` children get

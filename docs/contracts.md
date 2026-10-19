@@ -906,7 +906,8 @@ Custom roles override built-ins by name.
   in Plan mode itself.
 - **Thread worktrees:** `StartRequest.base?: boolean` keeps a project child's
   original checkout. `children.ts` refuses a second open base holder (queued
-  starts count), naming it, and guards reopening too. Resolved queued threads
+  starts count), naming it, and guards reopening too: `ChildThreads.baseHeld`
+  lets the message and answer routes refuse (409) before anything is sent. Resolved queued threads
   do not start until reopened. Code children, including those requested outside projects, use
   shared `makeWorktrees`, `worktreeGrants`, `removeWorktrees` in
   `core/src/workspace/worktree.ts`. `ThreadWorkspace.threadWork?: ThreadWork`
@@ -924,8 +925,9 @@ Custom roles override built-ins by name.
   and ancestor narrowing. `prepareWorktrees` restores resolved parts on their
   saved branches before tools run (from current HEAD if a merged branch was
   deleted), waiting for `Workspace.removeThreadWorktrees` if an earlier cleanup
-  is still running. Resolution and forgetting run shared
-  cleanup before files disappear; dirty checkouts and their folders stay.
+  is still running. Resolution runs cleanup (deferred to the end of a running
+  turn) and keeps dirty checkouts; forgetting runs it with `force`, removing
+  dirty ones too, silently.
   `ProjectThreadInfo.worktreeReason` and `ThreadSummary.worktreeReason` expose
   fallback reasons in the project chat's card. The coordinator starts a base
   merge thread after the parts; it gets no merge tool of its own. Outside a
@@ -1335,7 +1337,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   (younger than 60 s are left), and the
   worktrees of subagent runs that aren't live (`DelegationStore.liveRuns`)
   and haven't changed in 30 days. `forgetWorktree(path, allowed)` removes a
-  worktree's git record only when it is in a folder the user may grant,
+  worktree's git record (a run's, or a code thread's own) only when it is in a folder the user may grant,
   reached with no symlinks, and names that worktree back. Logs counts only.
   `forgetThreadFiles(services, userId, pool, threads)` does the same for
   threads just forgotten, at once and with no age limit, and drops their

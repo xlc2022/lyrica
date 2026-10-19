@@ -321,8 +321,12 @@ takes is `lyrica@pve!agent=<that secret>`.
   a plain thread keeps the base and works in place; requested `code: true`
   children get their own worktrees and branches. The plain thread merges
   those branches itself, starting a merge thread only if the user asks.
-  Resolving or forgetting a part removes its worktree and keeps its branch;
-  uncommitted work is kept and the parent gets its path. Reopening
+  Resolving a part removes its worktree and keeps its branch; uncommitted
+  work is kept and the parent gets its path. A part that resolves itself
+  mid-turn keeps its worktree until the turn ends. Deleting a thread removes
+  its worktrees even with uncommitted work, keeping the branches. Writing in
+  a resolved base thread while another holds the base is refused before
+  anything is sent. Reopening
   restores a removed checkout on its saved branch before tools run, creating
   that branch from current HEAD if the merge thread already deleted it.
 - The lists live in `self.db` (`workspace_paths`, keyed by user ID), and only
@@ -398,8 +402,8 @@ takes is `lyrica@pve!agent=<that secret>`.
   repository) goes too, so git no longer counts its branch as checked out:
   only in a folder the user may grant, and only a record that names that
   worktree back. (`git worktree prune` can't do it: the records name the
-  sandbox's paths.) Thread worktrees kept by cleanup, and their containing
-  folders, are preserved even after forgetting. It logs counts only.
+  sandbox's paths.) A live code thread's own worktrees are left alone; a
+  forgotten thread's go with its folder. It logs counts only.
 - **Granted host paths outside the home workspace are ordinary files.** Their
   protection is whatever the host gives them.
 

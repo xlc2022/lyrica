@@ -751,6 +751,13 @@ describe("code thread worktrees", () => {
     await s.idle(b);
     expect((await s.ada.post(`${s.childPath(a)}/reopen`)).status).not.toBe(200);
     expect(s.ws.threadWork(b)?.base).toBe(true);
+    // Writing in the resolved scaffold is refused before anything is sent, and the draft stays.
+    await s.ada.put(`${s.childPath(a)}/draft`, { text: "one more stub" });
+    const asked = s.model.requests.length;
+    expect((await s.ada.post(`${s.childPath(a)}/messages`, { text: "one more stub" })).status).toBe(409);
+    expect(s.model.requests.length).toBe(asked);
+    expect((await s.ada.get<{ text: string }>(`${s.childPath(a)}/draft`)).body.text).toBe("one more stub");
+    expect(s.d.services!.children.projectThreads(s.rt.ada.id, "general", s.thread.id).find((t) => t.id === a)?.state).toBe("resolved");
     // A resolved queued scaffold must not run later alongside its replacement base holder.
     s.d.services!.children.limits.concurrency = 1;
     s.d.services!.children.resume(s.rt.ada.id);
@@ -760,7 +767,7 @@ describe("code thread worktrees", () => {
     finally { db.close(); }
   });
 
-  it("keeps dirty worktrees and reports where, including when the thread is forgotten", async () => {
+  it("keeps a dirty worktree on resolve and reports where, and removes it when the thread is deleted", async () => {
     const s = await projectRepo();
     const id = (await s.make("Track")).threads![0]!.id;
     await s.idle(id);
@@ -770,7 +777,8 @@ describe("code thread worktrees", () => {
     expect(existsSync(w.path)).toBe(true);
     expect(JSON.stringify(await s.messages(s.path))).toContain("was kept");
     await s.ada.del(s.childPath(id));
-    expect(existsSync(w.path)).toBe(true);
+    expect(existsSync(w.path)).toBe(false);
+    expect(s.git("worktree", "list")).not.toContain(w.path);
     expect(s.git("branch", "--list", w.branch)).toContain(w.branch);
   });
 

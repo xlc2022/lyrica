@@ -1086,7 +1086,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       // The live sessions stop side by side, then the store drops every thread in one owner view and merges its search index once at the end:
       // a project with many threads used to take seconds, stopping each in turn and merging the whole index after each one.
       await Promise.all(doomed.map(async (id) => { await s().delegation.forget(user.id, pool, id); await s().host.forget(user.id, pool, id); }));
-      for (const id of doomed) await s().children.cleanupWorktrees(user.id, pool, id);
+      for (const id of doomed) await s().children.cleanupWorktrees(user.id, pool, id, true);
       owner(d, user, (o) => {
         doomed.forEach((id, i) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user), { children: all, keepMemories: keep, optimize: i === doomed.length - 1 }); });
       });
@@ -1206,6 +1206,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, o => threadOf(o, r));
       const project = owner(d, user, o => o[pool].projectOf(thread.id));
       if (project && project !== thread.id && s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden");
+      const held = s().children.baseHeld(user.id, pool, thread.id);
+      if (held) throw new HttpError(409, held);
       const n = Number(r.params.n);
       const label = owner(d, user, o => {
         const store = o[pool];
@@ -1245,6 +1247,8 @@ export function apiRoutes(d: Lyricad): Route[] {
           }
         } finally { view.close(); }
       }
+      const held = thread.child ? s().children.baseHeld(user.id, poolOf(r), thread.id) : undefined;
+      if (held) throw new HttpError(409, held);
       const result = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")), { recentThreadIds });
       // The user wrote: the thread no longer waits on them, and a resolved one reopens.
       if (thread.child) s().children.userWrote(user.id, poolOf(r), thread.id);
