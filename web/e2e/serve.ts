@@ -104,10 +104,15 @@ function fakeModel() {
       }
       if (req.method !== "POST" || rest !== "/chat/completions") { res.writeHead(404); return res.end(); }
       const chat = JSON.parse(body) as Chat;
-      const last = chat.messages.at(-1);
       // Her extension adds context (the time) as separate user messages; skip those.
       const text = (m: Chat["messages"][number]) => typeof m.content === "string" ? m.content
         : Array.isArray(m.content) ? m.content.map((p: { text?: string }) => p.text ?? "").join("") : "";
+      // A child's notice can join a running turn right after a tool result (an earlier child finishing while
+      // "start: Beta" runs). The fake finishes what it was doing, rather than answer the notice instead.
+      let end = chat.messages.length;
+      while (end > 0 && chat.messages[end - 1]!.role === "user" && text(chat.messages[end - 1]!).startsWith("Child thread [t:")) end--;
+      if (end < chat.messages.length && chat.messages[end - 1]?.role === "tool") chat.messages = chat.messages.slice(0, end);
+      const last = chat.messages.at(-1);
       const said = [...chat.messages].reverse().filter((m) => m.role === "user").map(text).find((t) => !t.startsWith("<")) ?? "";
       const base = { id: "chatcmpl-1", object: "chat.completion.chunk", created: 0, model: chat.model };
       const send = (delta: unknown, finish: string | null = null) => res.write(`data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`);
