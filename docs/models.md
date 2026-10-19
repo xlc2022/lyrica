@@ -719,7 +719,9 @@ null)` saves the most context a thread plans for (`thread_choices.context`,
 user.db step 13). `callContext` returns it as `contextLimit`, and
 `inheritContext` gives it to child threads and branches. The thread's model
 runtime gives each model the smaller of its window and the limit, so
-compaction, the context meter and the reply cap follow it.
+compaction, the context meter and the reply cap follow it. The window is
+read again before every request, so a copy's new window (set by hand, or
+served after a load) reaches an open thread at once, even mid-turn.
 
 **LM Studio.** On a local endpoint that isn't a host, discovery also asks
 LM Studio's own API (`GET /api/v1/models` beside `/v1`). When it answers, a
@@ -788,7 +790,9 @@ xAI provider instead (below).
   own model. A stored preset may still name a `compaction` list; it's
   accepted and unused, and the pickers don't offer it.
 - `openThreadSession` sets Pi's compaction per model: a reserve of 8% of the
-  window (1,024 to 16,384 tokens), so Pi compacts on its own once used plus
+  window (1,024 to 16,384 tokens, and at least 5,120 on a window of 20,480 or
+  more, since pi-ai keeps 4,096 spare when it sizes a reply and a reply must
+  get at least 1,024), so Pi compacts on its own once used plus
   reserve reaches the window, and Lyrica's two lines start 17 and 2 points
   before that edge (at most 75% and 90%); and a kept tail of a quarter of the window (at
   most 20,000). A caller's own compaction settings win.

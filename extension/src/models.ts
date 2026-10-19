@@ -15,8 +15,10 @@ const LOCAL_COMPAT = { supportsDeveloperRole: false, supportsStore: false, suppo
 // A model that thinks gets `reasoning_effort` (OpenAI-compatible endpoints) at the thread's level.
 // A host model with an on/off thinking switch (one level) thinks through the chat template's switch instead.
 // A thread's context limit narrows the window it plans by (compaction, the meter, the reply cap).
+const windowOf = (m: Offering, limit?: number) => Math.min(m.contextWindow ?? DEFAULT_CONTEXT, limit ?? Infinity);
+
 function piModel(ep: Endpoint, m: Offering, limit?: number): ProviderModelConfig {
-  const contextWindow = Math.min(m.contextWindow ?? DEFAULT_CONTEXT, limit ?? Infinity);
+  const contextWindow = windowOf(m, limit);
   const reasoning = !!m.reasoning?.length;
   const toggle = ep.api === "host" && m.reasoning?.length === 1;
   const compat = ep.api === "host" ? { ...LOCAL_COMPAT, ...(toggle ? { thinkingFormat: "qwen-chat-template" as const } : { supportsReasoningEffort: reasoning }) }
@@ -62,6 +64,13 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
     const f = fetches.get(model.provider);
     if (f) prepared.options.fetch = f;
     const found = offerings.get(`${model.provider}\u0000${model.id}`);
+    // The window follows the copy as it is now (a context set by hand, or a load at another one), even mid-turn:
+    // the session plans by this same model object, so compaction, the meter and the reply cap follow it.
+    const now = found && models.offering(ctx.userId, found.offering.id)?.offering;
+    if (now) {
+      const contextWindow = windowOf(now, ctx.contextLimit);
+      if (model.contextWindow !== contextWindow) Object.assign(model, { contextWindow, maxTokens: replyCap(contextWindow) });
+    }
     if (found) {
       const values = models.offeringSettings(ctx.userId, found.offering.id).values;
       if (Object.keys(values).length) {

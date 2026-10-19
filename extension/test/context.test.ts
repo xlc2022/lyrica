@@ -35,7 +35,10 @@ describe("the context breakdown", () => {
   });
 
   it("puts Pi's own compaction past the 90% line, and keeps a quarter of the window", () => {
-    expect(reserveFor(32_768) / 32_768).toBeCloseTo(0.08, 2);
+    expect(reserveFor(131_072) / 131_072).toBeCloseTo(0.08, 2);
+    // At least 5,120 from 20k up: pi-ai keeps 4,096 spare when it sizes a reply, so a reply always gets 1,024.
+    expect(reserveFor(32_768)).toBe(5120);
+    expect(reserveFor(16_384)).toBe(1311);
     expect(reserveFor(1_000_000)).toBe(16_384);
     expect(keepRecentFor(8192)).toBe(2048);
   });
@@ -43,8 +46,8 @@ describe("the context breakdown", () => {
 
 describe("her context lines", () => {
   it("are numbers only, and the 75% and 90% lines appear at those points and not before", () => {
-    expect(statusLine(measured(21_000).report()!)).toBe("Context 64% of 32k · 9.1k free · 38 tok/s · 2.1k tok/s prompt");
-    const line = (pct: number) => prepareLine(measured(Math.round((pct / 100) * 32_768)).report()!);
+    expect(statusLine(measured(21_000).report()!)).toBe("Context 64% of 32k · 6.6k free · 38 tok/s · 2.1k tok/s prompt");
+    const line = (pct: number) => prepareLine(measured(Math.round((pct / 100) * 131_072), 131_072).report()!);
     expect(line(74)).toBeUndefined();
     expect(line(75)).toMatch(/^Your context is filling up\. Finish the current step, save what matters with remember, then call threads with action "compact" and a summary/);
     expect(line(89)).toMatch(/filling up/);
@@ -56,7 +59,9 @@ describe("her context lines", () => {
   });
 
   it("follow Pi's edge on small windows, so she hears before Pi compacts", () => {
-    expect(linesFor(32_768)).toEqual({ prepare: 75, compact: 90 });
+    expect(linesFor(131_072)).toEqual({ prepare: 75, compact: 90 });
+    // 32k: the 5,120 floor puts Pi's edge at 84.4%.
+    expect(linesFor(32_768)).toEqual({ prepare: 67.4, compact: 82.4 });
     expect(linesFor(1_000_000)).toEqual({ prepare: 75, compact: 90 });
     // 8k: the 1,024 floor puts Pi's edge at 87.5%.
     expect(linesFor(8192)).toEqual({ prepare: 70.5, compact: 85.5 });
