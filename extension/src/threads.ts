@@ -6,6 +6,7 @@ import {
   type ChildInfo, type StartRequest, type ThreadsLimits,
 } from "@lyrica/core";
 import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
+import { CODE_NUDGE } from "./code.ts";
 import type { ThreadContext } from "./index.ts";
 import { syncEntries } from "./record.ts";
 import { formatEntry } from "./memory.ts";
@@ -24,6 +25,8 @@ export type Delivery = "started" | "running" | "queued" | "saved" | "wakes" | "u
 export interface ThreadsHost {
   readonly limits: ThreadsLimits;
   code?(from: ThreadContext, on: boolean): void;
+  /** Whether code mode is on in this thread now. */
+  codeOn?(from: ThreadContext): boolean;
   /** Switches this thread to a model the person named, from the next turn; returns its label, or throws with the closest. */
   model?(from: ThreadContext, name: string): string;
   asked?(from: ThreadContext): Promise<void>;
@@ -160,6 +163,14 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
   return (pi) => {
     let asked = false;
     let nudged = false;
+    // She once coded a whole change with code mode off, guidance or not: the first edit says so, once a session.
+    let codeNudged = false;
+    pi.on("tool_result", (e) => {
+      if (codeNudged || !host?.code || !host.codeOn || inProjectChat() || e.isError || (e.toolName !== "edit" && e.toolName !== "write")) return;
+      if (host.codeOn(thread)) return;
+      codeNudged = true;
+      return { content: [...e.content, { type: "text" as const, text: CODE_NUDGE }] };
+    });
     pi.on("agent_start", () => { asked = false; nudged = false; });
     pi.on("message_end", (e) => {
       if (e.message.role === "assistant" && e.message.content.some(c => c.type === "toolCall" && c.name === "threads" && c.arguments.action === "ask")) asked = true;
