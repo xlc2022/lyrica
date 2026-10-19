@@ -8,9 +8,9 @@ the query text.
 
 On NixOS, Lyrica's module runs one by default ("Set up by the NixOS
 module" below). On Debian or Ubuntu, `install.sh` can run one for you in
-Docker on the same machine ("Set up by install.sh" below). Otherwise you host it, then
-give her its address. SearXNG's own documentation (docs.searxng.org) is the
-reference.
+Docker on the same machine ("Set up by install.sh" below). Otherwise you
+host it, then give her its address. SearXNG's own documentation
+(docs.searxng.org) is the reference.
 
 ## Set up by install.sh
 
