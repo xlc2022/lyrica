@@ -1,7 +1,7 @@
 # services.lyrica: lyricad, her own tailscaled and the built-in Caddy on NixOS,
 # declaring what daemon/deploy/install.sh does on Debian. The units mirror
-# daemon/deploy/lyricad.service, lyrica-tailscaled.service and
-# lyrica-caddy.service; keep them in step.
+# daemon/deploy/lyricad.service, lyrica-tailscaled.service,
+# lyrica-caddy.service and lyrica-searxng.service; keep them in step.
 # See docs/daemon.md, "On NixOS".
 { config, lib, pkgs, ... }:
 
@@ -10,6 +10,8 @@ let
   state = "/var/lib/lyrica";
   # Direct web access's port, whatever `port` is: DIRECT_PORT in daemon/src/web/access.ts.
   directPort = 7340;
+  # SearXNG's port on 127.0.0.1, as SEARXNG_PORT in daemon/deploy/install.sh.
+  searxngPort = 8888;
 
   # The DNS plugins, read from the same table install.sh builds from.
   providers = builtins.readFile ../daemon/src/web/providers.ts;
@@ -98,6 +100,19 @@ in {
       '';
     };
 
+    searxng = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        A SearXNG for her web search: NixOS's services.searx, in uWSGI with
+        request logging off (its built-in server would log every query), on
+        127.0.0.1:8888 with JSON on and the limiter off, its secret made on
+        first boot. lyricad stores http://127.0.0.1:8888 as Administration →
+        Web search's address while none is set, as on Debian with install.sh.
+        Further services.searx.settings merge in.
+      '';
+    };
+
     sandboxPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
       default = import ./sandbox-tools.nix pkgs;
@@ -144,9 +159,36 @@ in {
       "d /var/lib/lyrica-update 0755 root root -"
       "d /var/lib/lyrica-snapshots 0700 root root -"
       "d /opt/lyrica 0755 root root -"
+      # The address lyricad offers Administration → Web search (core/src/web.ts, adoptLocalSearxng).
+      (if cfg.searxng then "f+ ${state}/searxng-address 0600 lyrica lyrica - http://127.0.0.1:${toString searxngPort}"
+       else "r ${state}/searxng-address")
     ];
 
     networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ directPort ];
+
+    # As daemon/deploy/searxng-settings.yml and lyrica-searxng.service on Debian.
+    services.searx = lib.mkIf cfg.searxng {
+      enable = true;
+      environmentFile = "/var/lib/lyrica-searxng/env";
+      configureUwsgi = true;
+      uwsgiConfig = { http = "127.0.0.1:${toString searxngPort}"; disable-logging = true; };
+      settings = {
+        server = { bind_address = "127.0.0.1"; port = searxngPort; secret_key = "$SEARX_SECRET_KEY"; limiter = false; image_proxy = false; };
+        search = { formats = [ "html" "json" ]; safe_search = 0; default_lang = "auto"; };
+        outgoing = { request_timeout = 3.0; max_request_timeout = 8.0; };
+      };
+    };
+    # Its secret_key, made once.
+    systemd.services.lyrica-searxng-secret = lib.mkIf cfg.searxng {
+      description = "SearXNG's secret for Lyrica's web search";
+      before = [ "searx-init.service" ];
+      requiredBy = [ "searx-init.service" ];
+      serviceConfig = { Type = "oneshot"; RemainAfterExit = true; StateDirectory = "lyrica-searxng"; StateDirectoryMode = "0700"; UMask = "0077"; };
+      script = ''
+        f=/var/lib/lyrica-searxng/env
+        [ -s "$f" ] || echo "SEARX_SECRET_KEY=$(${pkgs.openssl}/bin/openssl rand -hex 32)" >"$f"
+      '';
+    };
 
     systemd.services.lyrica-tailscaled = lib.mkIf cfg.tailscale {
       description = "Tailscale for Lyrica (her own device, userspace networking)";

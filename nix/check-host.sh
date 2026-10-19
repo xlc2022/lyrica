@@ -34,4 +34,7 @@ if journalctl -u lyricad _SYSTEMD_INVOCATION_ID="$run" --no-pager | grep -q "net
 fi
 ok "the self-test hasn't refused network (it runs at unlock)"
 "$tools/bin/curl" -fsS -o /dev/null http://127.0.0.1:7340/ && ok "lyricad answers on 127.0.0.1:7340" || bad "nothing answers on 127.0.0.1:7340"
+if [ -f /var/lib/lyrica/searxng-address ]; then
+  "$tools/bin/curl" -fsS -o /dev/null "$(cat /var/lib/lyrica/searxng-address)/healthz" && ok "SearXNG answers for her web search" || bad "SearXNG doesn't answer: journalctl -u uwsgi -u searx-init"
+fi
 echo "All checks passed."

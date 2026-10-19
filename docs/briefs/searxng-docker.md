@@ -1,6 +1,6 @@
 # Brief: SearXNG in Docker from install.sh
 
-**Status:** In review. **Branch:** `claude/project-thread-ol9r4b`.
+**Status:** Merged: install.sh as #342 (57d7e30), NixOS as #346 (67c770c). **Branch:** `claude/project-thread-ol9r4b`.
 **Read first:** AGENTS.md, PRINCIPLES.md (1, 2, 8), DESIGN.md (Switches in
 the message box), docs/contracts.md (Web search), docs/daemon.md
 (Deployment) and docs/guides/searxng.md.
@@ -44,11 +44,16 @@ runs it in Docker on the same machine and the address fills itself in.
 - **Docs:** guides/searxng.md, getting-started.md, daemon.md, contracts.md,
   workspace.md, DESIGN.md, README.
 
-## Out of scope
+- **NixOS (follow-up PR).** The operator chose on by default:
+  `services.lyrica.searxng` (default true) turns on NixOS's
+  `services.searx` in uWSGI with `disable-logging` (its built-in server
+  logs every query), on 127.0.0.1:8888 with the same settings. A
+  `lyrica-searxng-secret` oneshot makes the secret once in
+  `/var/lib/lyrica-searxng/env`. A tmpfiles rule writes the same
+  `searxng-address` (and removes it when the option is off), and
+  `nix/check-host.sh` checks `/healthz`.
 
-- NixOS. `install.sh` doesn't run there; the guide's `services.searx`
-  module is the native route. A `lyrica.searxng.enable` option in
-  `nix/module.nix` that sets the same address could come later.
+## Out of scope
 - Starting and stopping with lyricad. The unit runs on its own from boot,
   so lyricad.service is unchanged and installs without SearXNG see no
   stale-units report.
@@ -56,6 +61,10 @@ runs it in Docker on the same machine and the address fills itself in.
   with its existing field and status.
 
 ## Handoff
+
+NixOS part: the module evaluates, and the generated uWSGI vassal, run by
+hand in the sandbox, answered `format=json` on 127.0.0.1:8888 and logged
+no query. It hasn't run as a NixOS system (no KVM for a VM test).
 
 Built and tested in the cloud sandbox: the pinned image runs with the
 template settings and answers `format=json` (engines unreachable there,
