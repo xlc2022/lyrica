@@ -218,7 +218,7 @@ nothing else. No code path gives a general view a private handle.
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal`. Every write (notes, pages and edits, WAKE, journal, sleep items, project instructions) passes text, title, summary and tags through `removeSecrets` (core/src/secrets.ts) first; matches become `[secret removed]` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `journalHistory({ limit, offset, q })` → `{ entries, total }`, `userIntroduced` |
-| Search | `search(query, { kinds, limit })`, returning `{ id, kind, snippet, score }`; `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
+| Search | `search(query, { kinds, limit, current, excludeThread, fromThread, skip, minWords })`, returning `{ id, kind, snippet, score, at }` (`at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, as a word or a word's start, a user's name counting once); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
 | Lineage | `cameFrom`, `usedIn`, `revisions`, `revisionHistory(id, { limit, offset, q })` → `{ entries, total }` (newest first), `isTombstoned(entryId)`, `editedSince(since)` |
 | Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `sleepRunHistory({ limit, offset, q })` → `{ entries, total }`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` |
 | Sleep items | `addItem`, `listItems`, `getItem`, `startItem(id, threadId)`, `dismissItem`, `itemForThread` |
@@ -428,7 +428,7 @@ class Models {                                              // new Models(keyrin
   // CLOUD_IMAGE_PROVIDERS selects by endpoint.api: openai-compatible (key, any marked model) or chatgpt (the user's own Codex, setCodexImages).
   // A chatgpt plan's only image offering is PLAN_IMAGE_MODEL ("chatgpt-images", recipe "ChatGPT Images"), made by codexImage.
   // Each adapter declares create/edit/mask/references/sizes/count and low/high tier mappings; upscale is host-only.
-  // Content refusal throws HostRefused("image_refusal", fixed message) and stops fallback. Limits/outages fall back.
+  // Content refusal throws HostRefused("image_refusal", fixed message; codexImage quotes Codex's declining reply) and stops fallback. Limits/outages fall back.
   // Cloud useFor/image/edit are offerings.hand JSON in self.db (shared) or user.db (personal); no schema step.
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Thinking and call records
@@ -938,7 +938,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `hide(id)`: memories this thread must not see, in recall and
     `read_memory` alike. The wake phase hides the journal and sleep's own
     threads;
-  - `sleep`: the `/sleep` command, where the host offers it (the bench).
+  - `sleep`: the `/sleep` command, where the host offers it (the bench);
+  - `name()`: her name for this deployment, read every turn. Automatic
+    recall leaves it out of the query (`skip`) and asks for two shared
+    words (`minWords: 2`); `lyricad` passes `selfName`.
 - Memory sections include `opening`: the sleep item a thread was started
   from. It comes from `itemForThread`, so no other thread ever has it.
 - Memory sections include `pinned` (`pinnedOf(store, threadId)`: the
@@ -1049,9 +1052,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     of that server-local day; a policy change clears it. No viewer means denial.
     Outputs save in the encrypted thread folder and return Pi image content
     (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>”.
-    A content refusal returns `isError: true` with fixed text and details
+    A content refusal returns `isError: true` with the refusal's message
+    (fixed, or Codex's quoted reply) and details
     `{ imageRefusal: { code: "image_refusal", offeringId, endpointId } }`;
-    stored tool markers and live `tool_end` carry `imageRefusal`.
+    stored tool markers and live `tool_end` carry `imageRefusal`. Later
+    image calls in the same turn throw `REFUSED_THIS_TURN` before resolving
+    a model; explicit retries (`executeImage`) are not affected.
     `GET …/threads/:pool/:threadId/image-calls/:toolCallId` returns
     `{ canEdit, userMessage?: { n, text }, next?: { offeringId, label } }`
     for a stored refusal, under the current routing and portrait policy.

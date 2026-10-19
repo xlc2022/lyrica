@@ -77,3 +77,18 @@ describe("pinned messages", () => {
     expect(material.threads.find((t) => t.id === secret.threadId)?.pinned).toEqual([id]);
   });
 });
+
+describe("automatic recall", () => {
+  it("leaves out her name, needs two shared words, and dates each hit", async () => {
+    const m = await withMemory();
+    const old = m.thread();
+    say(old.view.own, old.threadId, "assistant", "The default branch of the test repo is still lyrica-relay-test.");
+    say(old.view.own, old.threadId, "user", "Does a body matter for a mind like yours?");
+    const { view, threadId } = m.thread();
+    const ctx = { threadId, user: { id: m.user.id, profile: m.user.profile }, folders: [], name: "Lyrica" };
+    const recall = (await memorySections(view, "Hi Lyrica, do you have a body?", ctx)).recall ?? "";
+    expect(recall).not.toContain("lyrica-relay-test");
+    expect(recall).toMatch(/\(entry, \d{4}-\d{2}-\d{2}\) Does a body matter/);
+    expect((await memorySections(view, "which branch should the test use for the body?", ctx)).recall).toContain("lyrica-relay-test");
+  });
+});

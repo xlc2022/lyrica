@@ -49,10 +49,11 @@ images; the 400 and 413 image tool errors (with the coordinator).
 
 ## Handoff
 
-Done: the brief and the build (items 1 to 5), tested against a stand-in
-`codex`.
-Next: PR review and UI review; then one generation and one edit on lunasa
-with the owner's yes, which also checks what the stand-in can't: the shape
-of Codex's `saved_path` event, that `--ephemeral` still saves the image, and
-that Codex starts in Lyrica's sandbox with its other tools off. Do not
-spend quota without the owner's yes.
+Done: the build (#328, #330, #335), and one generation and one edit on
+lunasa with the owner's yes (one image each, folders clean after). A later
+test with a small chat model found Codex declining with a reply in words,
+reported as a sign-in problem, and the model rewording and retrying twice
+more; now a declining Codex is an `image_refusal` that quotes its reply,
+no more image calls run in that turn, and Codex's memories, goals and
+databases don't outlast a call.
+Next: nothing planned. Do not spend quota without the owner's yes.

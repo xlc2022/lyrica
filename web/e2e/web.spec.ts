@@ -295,7 +295,7 @@ test("the portrait permission card names the resolved model and offers only dail
   expect(answers).toEqual([{ allow: true }, { allow: false }]);
 });
 
-test("an image tool result shows inline, opens large, and starts an edit with Images enabled", async ({ page, baseURL }) => {
+test("an image tool result shows inline, opens large, starts an edit with Images enabled, and deletes after asking", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");
   await send(page, "An imaginary garden");
@@ -355,6 +355,23 @@ test("an image tool result shows inline, opens large, and starts an edit with Im
   await expect(page.getByLabel("Message", { exact: true })).toBeFocused();
   await page.getByRole("button", { name: "Attach or switch tools" }).click();
   await expect(tools.getByRole("checkbox", { name: "Images", exact: true })).toBeChecked();
+  await page.getByRole("button", { name: "Attach or switch tools" }).click();
+  // Delete… asks first; Cancel keeps it, Delete removes the file and leaves a line in its place.
+  let deleted: unknown;
+  await page.route(`**${base}/files/delete`, async (route) => { deleted = route.request().postDataJSON(); await route.fulfill({ json: { ok: true } }); });
+  await page.getByRole("button", { name: "Image actions for garden.png" }).click();
+  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  const confirm = page.getByRole("dialog", { name: "Delete garden.png?" });
+  await expect(confirm.getByText("garden.png is deleted for good. This can't be undone.")).toBeVisible();
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(image).toBeVisible();
+  expect(deleted).toBeUndefined();
+  await page.getByRole("button", { name: "Image actions for garden.png" }).click();
+  await page.getByRole("menuitem", { name: "Delete…" }).click();
+  await page.getByRole("dialog", { name: "Delete garden.png?" }).getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.getByText("No longer in Files")).toBeVisible();
+  await expect(image).toBeHidden();
+  expect(deleted).toEqual({ paths: [path] });
   await noHorizontalScroll(page);
 });
 

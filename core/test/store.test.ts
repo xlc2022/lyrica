@@ -136,6 +136,26 @@ describe("notes", () => {
     expect(own.search("what does Al drink?").map((h) => h.id)).toContain(tea);
   });
 
+  it("automatic recall leaves out her name and needs more than one shared word", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const s = said(own, "branches");
+    const [branch, body, tea] = own.addNotes([
+      { text: "The test repo's default branch is still lyrica-relay-test", source: s.entry },
+      { text: "{user} asked whether Lyrica has a body", source: s.entry },
+      { text: "{user} drinks green tea in the morning", source: s.entry },
+    ], { author: "lyrica", thread: s.thread });
+    const auto = { minWords: 2, skip: ["Lyrica"] };
+    // Before: her name alone brought up the branch.
+    expect(own.search("Hi Lyrica, do you have a body?").map((h) => h.id)).toContain(branch);
+    expect(own.search("Hi Lyrica, do you have a body?", auto).map((h) => h.id)).toEqual([body]);
+    // One shared word out of several isn't enough; a name counts once, by its mention token.
+    expect(own.search("what test should we run in the morning", auto)).toEqual([]);
+    expect(own.search("what does Al drink these days?", auto).map((h) => h.id)).toEqual([tea]);
+    expect(own.search("Lyrica", auto)).toEqual([]);
+    expect(own.search("tea", auto)[0]!.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
   it("supersedes without losing the old note", async () => {
     const { memory, ada } = await setup();
     const { own } = memory.openThreadView(ada.id, "general");

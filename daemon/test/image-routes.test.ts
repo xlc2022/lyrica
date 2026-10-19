@@ -285,7 +285,7 @@ describe("image routes (principles 1 and 2)", () => {
         call: () => ({ userId: user.id, pool: "general", localOnly: false }),
         files: services.workspace.imageFiles({ userId: user.id, pool: "private", threadId: thread.id }),
         settings: () => services.workspace.settings(user.id), enabled: () => true, approve,
-      })({ registerTool: (t: ToolDefinition) => { tool = t; } } as unknown as ExtensionAPI);
+      })({ on: () => {}, registerTool: (t: ToolDefinition) => { tool = t; } } as unknown as ExtensionAPI);
       const run = (args: unknown) => tool.execute("portrait", args, undefined, undefined, { hasUI: false } as ExtensionToolContext);
       await expect(run({ action: "create", prompt: "A garden", tier: "quality", references: [path] })).rejects.toThrow(/aren't allowed/);
       await expect(run({ action: "edit", instruction: "Add flowers", image: path })).rejects.toThrow(/aren't allowed/);

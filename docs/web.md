@@ -792,9 +792,13 @@ local/cloud chip and preset, then each model host's state as a dot and word.
 - An image part, stored or delivered on `tool_end`, shows each path as a
   thumbnail up to 320 px tall with an 8 px radius and the filename as its
   accessible name. The facts line reads "Made with <model>" and, when given,
-  "· fast" or "· quality". Its ⋯ holds Download, Copy path, Show in Files
-  and Edit…. Edit… fills the composer with "Edit <path>: " and enables
-  Images. Full images use the thread's authenticated `…/file?path=` route;
+  "· fast" or "· quality". Its ⋯ holds Download, Copy path, Show in Files,
+  Edit… and Delete…. Edit… fills the composer with "Edit <path>: " and enables
+  Images. Delete… asks in a dialog ("Delete <name>?", Cancel and Delete),
+  then deletes the file (`POST …/files/delete`); its place, and that of an
+  image that fails to load and whose file the server then answers 404 for
+  (a failed load alone, offline say, leaves it as it is), reads "No longer
+  in Files", without the facts line. Full images use the thread's authenticated `…/file?path=` route;
   thumbnails use the existing thumbnail route and fall back to that file.
   The shared Lightbox has a filename header, Download and Copy path behind
   ⋯, and Close. Image tool markers read Making an image with its tier,
