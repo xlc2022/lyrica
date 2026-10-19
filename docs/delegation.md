@@ -184,8 +184,9 @@ uses the full step's task and optional `done` (1,200 characters). Its short
 task summary (300 characters) and progress are retained in encrypted
 pool.db for continuation; the full task stays in the subagent's conversation. It gets no
 persona. `recall({ everywhere: true })` widens one search in its view.
-Every thread's prompt names coder first and advises using it for coding
-jobs, or enabling code mode when working together. The parent's prompt lists
+Every thread's prompt names coder first and advises using it for one coding
+change, a child thread started with `code: true` for a larger build, or
+enabling code mode when working together. The parent's prompt lists
 the roles and saved workflows, after a line (`SHARED_SANDBOX`) saying that
 subagents and child threads have her sandbox's tools and her network or
 less, so a brief asks for the result rather than a way to verify it.
@@ -288,13 +289,14 @@ checks it reaches her, and with a real model which she picks. Code:
 `extension/src/threads.ts` (the tool) and `daemon/src/children.ts` (hosting).
 
 **The tool**, `threads({ action, ... })`:
-- `start({ title, task, folders?, readOnly?, internet? })` creates the child
+- `start({ title, task, folders?, readOnly?, internet?, code? })` creates the child
   (`createThread({ parent, child: true })`) and sends it the task, then
   returns its ID at once, as `[t:<id>]`, which she mentions it by. It gets the parent's model context
   (`models.inheritContext`: pool, local-only, preset, thinking, models) and
   workspace (`inheritSettings`, narrowed by `folders`, `readOnly` and
   `internet: false`; any of those also leaves it no machines); the workspace refuses anything wider, and a folder the
-  parent doesn't have is refused. It inherits "Do not log" from the store.
+  parent doesn't have is refused. `code: true` turns on its code mode, with
+  the first 300 characters of the task as its Code task. It inherits "Do not log" from the store.
   If the child's first turn can't start, the child is forgotten.
 - `message({ id, text })` to one of the thread's children, named by its ID
   or its current title (`pickThread`; a title two children share is

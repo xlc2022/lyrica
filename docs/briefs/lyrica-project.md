@@ -147,7 +147,8 @@ characters, the limit on project instructions.
 
 ## Coding context
 
-For a coding job, delegate to `coder`, or use `threads` action `code` with
+For one coding change, delegate to `coder`; for a larger build, start a
+child thread with `code: true`; or use `threads` action `code` with
 `on`, a short `task` and `done` when the user works alongside her. Coder is
 the default for a write step in a repository thread. Both use the `code`
 model task and project memory plus notes tagged `working`. Thread settings →

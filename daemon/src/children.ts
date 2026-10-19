@@ -130,6 +130,11 @@ export class ChildThreads implements ThreadsHost {
       this.o.models.setThreadModel(userId, parent.pool, child.id, "speech.transcribe");
       const chosen = project ? this.o.project?.(userId, parent.pool, parent.threadId) : undefined;
       if (chosen?.code !== undefined) ws.setThread(child.id, parent.pool, { code: chosen.code });
+      // Asked for by her start: the child codes from its first turn, with its task as the Code task.
+      if (req.code) {
+        ws.setThread(child.id, parent.pool, { code: true });
+        own.setCodeTask(child.id, req.task.slice(0, 300));
+      }
       if (chosen?.model) this.o.models.setThreadModel(userId, parent.pool, child.id, "chat", chosen.model);
       if (chosen?.thinking) this.o.models.setThinking(userId, child.id, chosen.thinking);
       if (chosen?.fallback !== undefined) this.o.models.setThreadFallback(userId, child.id, chosen.fallback);

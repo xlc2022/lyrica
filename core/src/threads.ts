@@ -123,7 +123,7 @@ const stepsNote = (steps: ThreadStep[]) => {
   return `${done} of ${steps.length} steps done${now ? `, ${now.state === "doing" ? "now" : "next"}: ${JSON.stringify(now.text)}` : ""}`;
 };
 
-export interface StartRequest { title: string; task: string; folders?: string[]; readOnly?: boolean; internet?: false }
+export interface StartRequest { title: string; task: string; folders?: string[]; readOnly?: boolean; internet?: false; code?: boolean }
 
 export interface Suggestion { title: string; task: string }
 
