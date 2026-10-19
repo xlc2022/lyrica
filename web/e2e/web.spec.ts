@@ -2683,7 +2683,9 @@ test("no horizontal scrolling and big enough tap targets on a phone", async ({ p
   await noHorizontalScroll(page);
   for (const hash of ["memory", "settings/network", "admin/users"]) {
     await page.goto(`/#/u/${userId}/${hash}`);
-    await page.waitForLoadState("networkidle");
+    // Not networkidle: the shell's user stream stays open for as long as the page does.
+    await expect(page.locator("header.head h1")).toBeVisible();
+    await expect(page.locator(".loading")).toHaveCount(0);
     await noHorizontalScroll(page);
   }
 });

@@ -61,7 +61,9 @@ try {
       const page = await context.newPage();
       for (const name of pages) {
         await page.goto(name.startsWith("#") ? `/${name}` : `/#/u/${user.id}/${name}`);
-        await page.waitForLoadState("networkidle");
+        // Not networkidle: the shell's user stream stays open for as long as the page does.
+        await page.waitForFunction(() => !document.querySelector(".loading"));
+        await page.waitForTimeout(500);
         const file = join(out, `${name.replace(/^#?\/*|\/$/g, "").replace(/[^\w.-]+/g, "-") || "home"}-${size.name}-${theme}.png`);
         await page.screenshot({ path: file, fullPage: full });
         console.log(file);
