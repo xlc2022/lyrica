@@ -217,6 +217,42 @@ describe("a night's sleep", () => {
     p.close();
   });
 
+  it("keeps out of the private page about the user what general's page already says, and tidies it when general's changes", async () => {
+    const s = await setup();
+    const g = s.view("general");
+    const p = s.view("private");
+    const homelab = s.talk(g, "I run a homelab.", "{user} runs a homelab");
+    s.script({ consolidate: [call("write_page", { slug: "about-user", title: "About {user}", summary: "who {user} is", text: `{user} runs a homelab [${homelab.note}].` })] });
+    await s.sleep.run(s.ada.id, "general", "manual");
+
+    // The private page repeats the homelab beside something private.
+    const secret = s.talk(p, "I'm seeing Dr. Okafor.", "{user} sees Dr. Okafor");
+    const prompts: string[] = [];
+    s.script({
+      consolidate: [
+        (c) => { prompts.push(said(c)); return call("write_page", { slug: "about-user", title: "About {user}", summary: "who {user} is", text: `{user} runs a homelab [general/${homelab.note}]. {user} sees Dr. Okafor [${secret.note}].` }); },
+      ],
+    });
+    await s.sleep.run(s.ada.id, "private", "manual");
+    expect(prompts[0]).toContain("General memory's page about Ada [general/p:about-user]");
+    expect(prompts[0]).toContain("Ada runs a homelab");
+    expect(prompts[0]).toContain("Drop anything it already says");
+
+    // General's page changes; private sleep runs with nothing else new, and drops the repeat.
+    const owner = s.memory.openOwnerView(s.ada.id);
+    owner.general.edit("p:about-user", { text: `${g.own.get("p:about-user", { raw: true })!.text} {user} likes jazz.` }, `user:${s.ada.id}`);
+    owner.close();
+    s.script({ consolidate: [call("write_page", { slug: "about-user", title: "About {user}", summary: "who {user} is", text: `{user} sees Dr. Okafor [${secret.note}].` })] });
+    expect((await s.sleep.run(s.ada.id, "private", "manual")).status).toBe("complete");
+    expect(p.own.get("p:about-user")!.text).toBe(`Ada sees Dr. Okafor [${secret.note}].`);
+    // Nothing is left to tidy, so the next night has nothing to do.
+    expect((await s.sleep.run(s.ada.id, "private", "manual")).skipReason).toBe("no-activity");
+    // General never sees the private page.
+    expect(g.own.get("p:about-user")!.text).not.toContain("Okafor");
+    g.close();
+    p.close();
+  });
+
   it("skips when the endpoint is offline without moving the watermark, and resumes a partial run", async () => {
     const s = await setup();
     const v = s.view();

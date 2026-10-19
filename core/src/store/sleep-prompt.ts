@@ -2,7 +2,7 @@
 // functions over a pool view, used by the extension's sleep sessions.
 
 import type { PoolView } from "./memory.ts";
-import { projectSlug, type SleepItem, type SleepMaterial, type SleepPhase } from "./pool.ts";
+import { projectSlug, type Item, type SleepItem, type SleepMaterial, type SleepPhase } from "./pool.ts";
 
 /** Private pages citing general memory that has since been deleted: the private pool rewrites them. */
 export function danglingPages(view: PoolView): string[] {
@@ -12,9 +12,29 @@ export function danglingPages(view: PoolView): string[] {
     .filter((id) => view.own.cameFrom(id).some((c) => c.startsWith("general/") && /^general\/[np]:/.test(c) && !general.get(c.slice(8))));
 }
 
+/**
+ * In a private pool, general memory's page about the user: every private
+ * thread loads it after the private one, so private sleep keeps out of its
+ * own page what this one already says.
+ */
+export function generalAbout(view: PoolView): Item | undefined {
+  if (view.pool !== "private") return undefined;
+  const page = view.reads.find((r) => r.pool === "general")?.get("p:about-user");
+  return page && !page.archived && page.text.trim() ? page : undefined;
+}
+
+/** A private page about the user that general's page, changed since the last sleep, may now repeat. */
+export function aboutToTidy(view: PoolView): boolean {
+  const general = generalAbout(view);
+  const own = view.own.get("p:about-user");
+  return !!general && !!own && !own.archived && general.updatedAt > (view.own.watermark() ?? "");
+}
+
 export const emptySleepMaterial = (): SleepMaterial => ({ threads: [], notes: [], edited: [], flagged: [] });
 
 const NOTES_SHOWN = 150;
+/** How much of general's page about the user private consolidation is shown; read_memory has the rest. */
+const GENERAL_ABOUT_SHOWN = 4000;
 
 export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: string; material: SleepMaterial; runId: string }): string {
   const { view, user, material: m } = c;
@@ -29,10 +49,16 @@ export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: s
     const edited = m.edited.map((e) => `- [${e.id}] on ${e.at.slice(0, 10)}`);
     const projects = projectLines(view, m);
     const about = view.own.get("p:about-user");
+    const general = generalAbout(view);
     const aboutLine = !about ? `There is no page about ${user} yet: create p:about-user.`
       : view.own.revisions("p:about-user").some((r) => r.author.startsWith("user:"))
         ? `p:about-user has words ${user} wrote: keep them exactly, and add around them.`
         : "p:about-user exists: keep it current.";
+    const generalText = general && (general.text.length > GENERAL_ABOUT_SHOWN
+      ? `${general.text.slice(0, GENERAL_ABOUT_SHOWN)}…\n(The rest: read_memory general/p:about-user.)` : general.text);
+    const aboutStep = general
+      ? `3. Keep p:about-user, the private page about ${user}. Every private conversation also loads general memory's page about them (below), so yours holds only what that one doesn't say: what's private, and detail it lacks. Drop anything it already says, and cite [general/p:about-user] where you build on it. Where the two disagree, keep yours and raise a question. If nothing is left, write one line pointing to [general/p:about-user]. ${aboutLine}`
+      : `3. Keep p:about-user, the page about ${user}: who they are, what they prefer, dislike and care about, citing notes. ${aboutLine}`;
     return [
       `It's night, and you're asleep. This is consolidation, the first part of sleep for your ${view.pool} memory. Nobody is waiting for a reply: work with your tools, then end with a line or two on what you did.${privateNote}`,
       section("Notes since you last slept", notes),
@@ -40,11 +66,12 @@ export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: s
       section(`Memories ${user} changed or added (authoritative)`, edited),
       section("Pages to rewrite (something they cited was deleted)", m.flagged.map((id) => `- [${id}]`)),
       section("Projects with something new", projects),
+      generalText ? `General memory's page about ${user} [general/p:about-user]:\n${generalText}` : "",
       [
         "What to do:",
         "1. Skim the conversations. If something important was never noted, note it with remember, citing the entry it came from ([e:…]). Keep this light.",
         "2. Create or update pages with write_page, one subject each, citing the notes behind each claim ([n:…]). Pages describing a folder list it in folders.",
-        `3. Keep p:about-user, the page about ${user}: who they are, what they prefer, dislike and care about, citing notes. ${aboutLine}`,
+        aboutStep,
         `4. What ${user} wrote or edited is authoritative: build on it, and never change their words. If newer conversation contradicts it, raise a question instead.`,
         "5. When two things contradict each other, raise a question rather than guessing.",
         "6. Rewrite the pages listed above without the deleted source.",
