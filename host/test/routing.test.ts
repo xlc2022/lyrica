@@ -159,7 +159,7 @@ describe("routing /v1 to the model servers", () => {
     await s.host.runtime!.scheduler.loadNow(scanTextModels(modelsFolder()).find((m) => m.id === id)!);
 
     // llama.cpp got a preset for the model on GPU 0, at its trained 40960 tokens: with none saved, the largest that fits.
-    expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).toContain(`[${id}]\nmodel = /models/${id}\ndevice = CUDA0\nsplit-mode = none\nc = 40960\nn-gpu-layers = 999\nflash-attn = auto`);
+    expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).toContain(`[${id}]\nmodel = /models/${id}\ndevice = CUDA0\nsplit-mode = none\nc = 40960\nn-gpu-layers = 999\nflash-attn = auto\nparallel = 1\nkv-unified = true`);
     const status = await call({ port: s.tls, path: "/host/v1/status", identity: s.me, pinned });
     expect(status.body.gpus[0].models[0]).toMatchObject({ id, state: "loaded", busy: false });
 
@@ -288,7 +288,9 @@ describe("the vLLM backend", () => {
     const vllm = new Vllm({ url: "http://127.0.0.1:1/{port}", serving, models: "/models", statusPath });
     const started = Date.now();
     const loading = vllm.load(model, at, { placement: { mode: "auto" } });
-    const { attempt } = JSON.parse(readFileSync(join(serving, "vllm.json"), "utf8")).servers.m;
+    const { attempt, maxNumSeqs } = JSON.parse(readFileSync(join(serving, "vllm.json"), "utf8")).servers.m;
+    // Served at 4096 tokens, it takes one request at a time.
+    expect(maxNumSeqs).toBe(1);
     writeFileSync(statusPath, JSON.stringify({ failed: { m: { attempt, exitCode: 1, crashes: 1 } } }));
     await expect(loading).rejects.toThrow("vLLM couldn't start m");
     expect(Date.now() - started).toBeLessThan(10_000);

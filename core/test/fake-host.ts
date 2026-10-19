@@ -89,7 +89,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
             tools: m.tools ?? false, vision: false, embedding: m.kind === "embedding", reasoning: m.reasoning ?? null, ...(m.opensThinking ? { opensThinking: true } : {}),
             ...(m.kind === "transcribe" ? { transcribe: true } : {}), ...(m.kind === "speak" ? { speak: { voices: m.voices ?? [] } } : {}),
           },
-          contextLength: m.contextLength ?? null, sampling: m.sampling ?? null, state: "unloaded", gpu: null, pinned: false, vram: null,
+          contextLength: m.contextLength ?? null, parallel: m.kind === "chat" || !m.kind ? 1 : null, sampling: m.sampling ?? null, state: "unloaded", gpu: null, pinned: false, vram: null,
         })) });
       }
       const status = () => ({

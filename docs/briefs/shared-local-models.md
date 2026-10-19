@@ -34,11 +34,17 @@ person always hears where things stand.
 3. **Stop holds the project** (docs/delegation.md, Watching threads). Stop in
    a project chat stops its runs and holds looks until the person writes in
    the project again.
+4. **Model hosts serve by the same limit** (host/API.md, "Placement and
+   serving settings"). A chat model's llama.cpp `parallel` or vLLM
+   `--max-num-seqs` defaults to the tiers above, with one cache shared by
+   its requests (llama.cpp's `kv-unified`), and the host's model list
+   reports it as `parallel`, read into the offering. Image jobs already
+   take turns with chat models in the host's queue for GPU memory, which
+   counts each chat model's whole cache, so they need no change.
 
 ## Out of scope
 
-- A host's own slots (llama.cpp's parallel, vLLM's `--max-num-seqs`), and
-  ComfyUI image jobs queueing against chat work on the same GPU: a
-  follow-up PR from this thread. LM Studio's `parallel` is read here.
+- Slots of a llama-server or vLLM run outside a model host aren't read:
+  the tiers apply by the window alone.
 - Showing the waiting thread in the interface. The checklist and the turn
   stay as they are while a request waits.
