@@ -340,6 +340,7 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
   digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host; useFor inherited from Capabilities
   opensThinking?;                                            // a host's chat template writes <think> itself
+  lmStudio?;                                                 // LM Studio listed it on its own API at the last discovery
 }
 type ModelRef = { offeringId: string } | { groupId: string };
 interface Group { id; name; shared; members: string[] }      // offering IDs, in order, one per endpoint
@@ -356,6 +357,7 @@ interface CallContext {
   overrides?: Partial<Record<Task, ModelRef[]>>;   // the thread's own lists, which beat the preset
   thinking?: ThinkingLevel;
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
+  contextLimit?: number;                    // the most context the thread plans for, below its model's window; inherited by children
 }
 interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean }        // what the call needs from a model
 interface Resolution { ref: { offeringId }; endpoint; offering; label; profile: string;   // the preset's name, or "Custom"
@@ -408,7 +410,7 @@ class Models {                                              // new Models(keyrin
   setLocalOnly(userId, pool, threadId, on) / forgetThread(userId, pool, threadId)
   callContext(userId, pool, threadId): CallContext
   childContext(parent, childThreadId, { tier } | { model }): CallContext   // a child under its parent's rules
-  inheritContext(parent, childThreadId, { chat? }): CallContext          // a branch: the parent's local-only, preset, thinking and lists
+  inheritContext(parent, childThreadId, { chat? }): CallContext          // a branch: the parent's local-only, preset, thinking, context limit and lists
   resolve(task, ctx, need?, { evenIfDown?, except? }?): Resolution   // throws CloudModelForbidden, NoModel or Offline
   resolveLive(task, ctx, need?, { probeMs?, probeLast? }): Promise<Resolution>   // probes first when there is a fallback; asks again before Offline
   callWithFallback(task, ctx, need, call: (r) => Promise<T>, { probeMs? }?): Promise<T>   // the next model on isUnreachable; Offline when none answers
@@ -471,6 +473,10 @@ class Models {                                              // new Models(keyrin
   lookupRecommended(actor, offeringId, repo?)               // reads the card through the host's fetch service; administrator (shared) or owner
   // setServingSettings(…, { anyway: true }) saves a stretch above the card's factor (host code above_recommended otherwise)
   hostCopies(actor, ctx): { offering, name, host }[]       // host chat models the actor can manage; [] for a private or local-only ctx
+  localCopies(actor, ctx): { offering, name, host }[]      // LM Studio chat models on local endpoints the actor can manage; [] likewise
+  localContext(userId, offeringId): { served?, max? } | null   // an LM Studio model's loaded context and maximum; null if not LM Studio
+  loadLocalContext(actor, offeringId, contextLength)        // LM Studio: unload, load with context_length, discover; restores on refusal
+  setContextLimit(userId, threadId, tokens | null)          // a thread's own context limit (thread_choices.context); ≥ 1024
   downloadHosts(actor, ctx): { id, name }[]                 // hosts her model_files and download_model reach; [] for a private or local-only ctx
   hostDashboard(userId, hostId): string                     // a direct link, at the address that last answered
 }

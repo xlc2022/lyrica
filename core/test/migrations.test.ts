@@ -421,3 +421,22 @@ describe("self step 3 and user step 12 (endpoints.paused_at)", () => {
     }
   });
 });
+
+describe("user step 13 (a thread's context limit)", () => {
+  it("adds thread_choices.context to every released user schema, keeping its rows and old readers", () => {
+    for (let version = 1; version < 13; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter((s) => s.version <= version);
+      migrate(db, "user", {}, previous);
+      // What older schemas made before thread_choices had the column.
+      if ((db.prepare("PRAGMA table_info(thread_choices)").all() as { name: string }[]).some((c) => c.name === "context")) db.exec("ALTER TABLE thread_choices DROP COLUMN context");
+      db.prepare("INSERT INTO thread_choices (thread, thinking) VALUES ('web/a', 'high')").run();
+      migrate(db, "user");
+      expect(db.prepare("SELECT thinking, context FROM thread_choices").all(), `v${version}`).toEqual([{ thinking: "high", context: null }]);
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      db.close();
+    }
+  });
+});
+
