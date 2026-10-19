@@ -7,7 +7,9 @@ import { afterEach } from "vitest";
 import type { EndpointInfo, ThreadEvent } from "../src/api.ts";
 import { Lyricad, type LyricadOptions } from "../src/lyricad.ts";
 
-const ARGON2 = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
+export const ARGON2 = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
+/** One SQLCipher round for the self.db passphrase: lyricad must open it with the same count. */
+export const KDF_ITER = 1;
 const SEED = fileURLToPath(new URL("../../persona", import.meta.url));
 
 const cleanup: (() => Promise<void> | void)[] = [];
@@ -17,7 +19,7 @@ afterEach(async () => { for (const c of cleanup.splice(0).reverse()) await c(); 
 export async function runtime() {
   const home = mkdtempSync(join(tmpdir(), "lyricad-"));
   cleanup.push(() => rmSync(home, { recursive: true, force: true }));
-  const keyring = new Keyring(home, ARGON2);
+  const keyring = new Keyring(home, ARGON2, KDF_ITER);
   await keyring.initSelf("passphrase");
   new PersonaStore(keyring.self()).importSeed(SEED);
   const users = new Users(keyring);
@@ -33,7 +35,7 @@ export async function runtime() {
 export async function daemon(rt: Awaited<ReturnType<typeof runtime>>, opts: Partial<LyricadOptions> = {}) {
   const logs: string[] = [];
   const d = new Lyricad({
-    home: rt.home, port: 0, argon2: ARGON2, selfTest: false, webDir: join(rt.home, "no-web"),
+    home: rt.home, port: 0, argon2: ARGON2, kdfIter: KDF_ITER, selfTest: false, webDir: join(rt.home, "no-web"),
     credentials: new SystemdCredentials(rt.sealed, async (id, secret, out) => { rt.secrets.set(id, Buffer.from(secret)); writeFileSync(out, "sealed"); }, async (id) => {
       const secret = rt.secrets.get(id);
       if (!secret) throw new Error("bad sealed credential");

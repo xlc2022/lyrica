@@ -20,11 +20,15 @@ export function beforeVersions(db: Db, ...schemas: string[]): void {
   db.pragma("foreign_keys = ON");
 }
 
-/** A fresh, unlocked keyring in a temp dir, with cheap Argon2 settings. */
+/** Cheap key derivation for tests: Argon2 for user keys, and one SQLCipher round for the self.db passphrase. */
+export const ARGON2 = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
+export const KDF_ITER = 1;
+
+/** A fresh, unlocked keyring in a temp dir, with cheap key derivation. */
 export async function freshKeyring(): Promise<Keyring> {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-"));
   dirs.push(dir);
-  const keyring = new Keyring(dir, { memoryCost: 1024, timeCost: 1, parallelism: 1 });
+  const keyring = new Keyring(dir, ARGON2, KDF_ITER);
   await keyring.initSelf("passphrase");
   return keyring;
 }

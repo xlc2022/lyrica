@@ -44,7 +44,8 @@ export class Keyring {
   /** Where "save credentials" keeps the self.db passphrase and users' keys. lyricad sets it. */
   credentials: CredentialStore | undefined;
 
-  constructor(readonly home: string, private readonly argon2: Argon2Params = DEFAULT_ARGON2) {}
+  /** kdfIter: SQLCipher's rounds for the self.db passphrase. Only tests set it, to skip 256,000 rounds of PBKDF2 per open. */
+  constructor(readonly home: string, private readonly argon2: Argon2Params = DEFAULT_ARGON2, private readonly kdfIter?: number) {}
 
   get selfPath(): string { return join(this.home, "self.db"); }
   selfExists(): boolean { return existsSync(this.selfPath); }
@@ -68,7 +69,7 @@ export class Keyring {
     this.selfDb = undefined;
     let db: Db;
     try {
-      db = openEncrypted(this.selfPath, { passphrase });
+      db = openEncrypted(this.selfPath, { passphrase, kdfIter: this.kdfIter });
     } catch {
       throw new WrongPassword();
     }
@@ -142,7 +143,7 @@ export class Keyring {
   /** Saves the self.db passphrase after checking it, so lyricad can start unlocked. */
   async saveSelfPassphrase(passphrase: string): Promise<void> {
     try {
-      openEncrypted(this.selfPath, { passphrase }, { readonly: true }).close();
+      openEncrypted(this.selfPath, { passphrase, kdfIter: this.kdfIter }, { readonly: true }).close();
     } catch {
       throw new WrongPassword();
     }
@@ -159,13 +160,13 @@ export class Keyring {
   async changeSelfPassphrase(current: string, next: string): Promise<{ savedCopyRemoved?: true }> {
     if (!next) throw new Error("passphrase must not be empty");
     try {
-      openEncrypted(this.selfPath, { passphrase: current }, { readonly: true }).close();
+      openEncrypted(this.selfPath, { passphrase: current, kdfIter: this.kdfIter }, { readonly: true }).close();
     } catch {
       throw new WrongPassword();
     }
     this.self().pragma(`rekey = '${next.replaceAll("'", "''")}'`);
     try {
-      openEncrypted(this.selfPath, { passphrase: next }, { readonly: true }).close();
+      openEncrypted(this.selfPath, { passphrase: next, kdfIter: this.kdfIter }, { readonly: true }).close();
     } catch {
       throw new Error("self.db didn't reopen with the new passphrase");
     }

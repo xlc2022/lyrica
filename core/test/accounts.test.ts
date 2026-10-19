@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AuthError, Forbidden, Keyring, PRONOUN_PRESETS, Users, WrongPassword } from "../src/index.ts";
-import { freshKeyring, profile } from "./helpers.ts";
+import { ARGON2, freshKeyring, KDF_ITER, profile } from "./helpers.ts";
 
 describe("users and keys", () => {
   it("refuses a wrong password and leaves the user locked", async () => {
@@ -15,7 +15,7 @@ describe("users and keys", () => {
 
   it("refuses a wrong self.db passphrase", async () => {
     const keyring = await freshKeyring();
-    const again = new Keyring(keyring.home);
+    const again = new Keyring(keyring.home, ARGON2, KDF_ITER);
     await expect(again.unlockSelf("not it")).rejects.toBeInstanceOf(WrongPassword);
     await again.unlockSelf("passphrase");
   });

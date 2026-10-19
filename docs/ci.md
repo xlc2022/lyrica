@@ -57,8 +57,10 @@ minutes on a private repository are billed past the plan's allowance.
   - host-stack: `host/` only.
 
   A change under `.github/`, or a diff that can't be read, runs all three.
-  The e2e tests run the phone, desktop and setup projects side by side,
-  each against its own lyricad. A weekly cron job clears Docker images and
+  The e2e tests run seven Playwright projects side by side, each against
+  its own lyricad: each `web/e2e/web-*.spec.ts` file (chat, projects,
+  admin) at phone and at desktop size, and the setup page. The slowest
+  project sets the step's time. A weekly cron job clears Docker images and
   build cache unused for a week.
 - The host image jobs first check for room (`.github/runner/make-room.sh`):
   45 GB free for the ROCm build, 40 for ComfyUI's CUDA build, 30 for the

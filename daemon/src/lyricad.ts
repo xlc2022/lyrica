@@ -68,6 +68,8 @@ export interface LyricadOptions {
   /** Where saved credentials live. Defaults to systemd credentials under `<home>/credentials`. */
   credentials?: CredentialStore;
   argon2?: Argon2Params;
+  /** Tests only: SQLCipher's rounds for the self.db passphrase (Keyring). Default SQLCipher's 256,000. */
+  kdfIter?: number;
   /** Run Workspace's network self-test when unlocking. Default true. */
   selfTest?: boolean;
   bwrap?: string;
@@ -192,7 +194,7 @@ export class Lyricad implements Drainable {
   readonly updatePaths: UpdatePaths;
 
   constructor(readonly opts: LyricadOptions) {
-    this.keyring = new Keyring(opts.home, opts.argon2);
+    this.keyring = new Keyring(opts.home, opts.argon2, opts.kdfIter);
     this.keyring.credentials = opts.credentials ?? new SystemdCredentials(join(opts.home, "credentials"), undefined, undefined, (line) => this.log(line));
     this.limiter = new RateLimiter(opts.rateLimit);
     // An expired session's users are logged out like any others: keys go for those who chose that.

@@ -32,7 +32,7 @@ const keyId = (spki: Buffer) => createHash("sha1").update(spki).digest();
 
 function certificate(o: { subject: string; spki: Buffer; issuer: string; issuerKey: KeyObject; issuerId: Buffer; extensions: Buffer[] }): string {
   const serial = randomBytes(16);
-  serial[0]! &= 0x7f;
+  serial[0] = (serial[0]! & 0x7f) | 0x40; // positive, with no leading zero byte (DER wants the shortest form)
   const now = Date.now();
   const tbs = seq(
     der(0xa0, der(0x02, Buffer.from([2]))),
