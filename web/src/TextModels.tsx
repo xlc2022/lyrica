@@ -72,7 +72,7 @@ interface Lib {
 export function TextModels({ ctx }: { ctx: MCtx }) {
   const userId = ctx.user.id;
   const p = ctx.models.page;
-  const lib = useLoad(() => wholeLibrary(userId), [userId]);
+  const lib = useLoad(() => wholeLibrary(userId), [userId, ctx.changed]);
   const groups = useLoad(() => get<GroupInfo[]>(u(userId, "groups")), [userId]);
   const suggestions = useLoad(() => get<GroupSuggestion[]>(u(userId, "groups", "suggestions")), [userId]);
   const [f, setF] = useState<Filters>(NO_FILTERS);
@@ -482,8 +482,8 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   const ep = ctx.models.page?.endpoints.find((x) => x.id === copy.endpointId);
   const onHost = ep?.api === "host";
   const own = canEdit(ctx, copy);
-  const settings = useLoad(() => get<OfferingSettings>(u(userId, "offerings", id, "settings")), [userId, id]);
-  const serving = useLoad(() => (onHost ? get<ServingSettings>(u(userId, "offerings", id, "serving")) : Promise.resolve(undefined)), [userId, id, onHost]);
+  const settings = useLoad(() => get<OfferingSettings>(u(userId, "offerings", id, "settings")), [userId, id, ctx.changed]);
+  const serving = useLoad(() => (onHost ? get<ServingSettings>(u(userId, "offerings", id, "serving")) : Promise.resolve(undefined)), [userId, id, onHost, ctx.changed]);
   const [tab, setTab] = useState<"sampling" | "serving">("sampling");
   const [scope, setScope] = useState<Scope>("mine");
   const [texts, setTexts] = useState<Record<Scope, Partial<Record<SKey, string>>>>({ mine: {}, shared: {} });

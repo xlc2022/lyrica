@@ -839,7 +839,7 @@ export class HostedThread {
       },
       window: (offering) => models.offering(this.userId, offering)?.offering.contextWindow,
       localContext: (offering) => models.localContext(this.userId, local(offering)),
-      loadLocal: async (offering, contextLength) => { await models.loadLocalContext(actor(), local(offering), contextLength); this.reload(); },
+      loadLocal: async (offering, contextLength) => { await models.loadLocalContext(actor(), local(offering), contextLength); this.reload(); this.publish({ type: "settings" }); },
       // Saved with the thread's choices; the session reopens with it once this turn ends.
       limit: (tokens) => { models.setContextLimit(this.userId, this.threadId, tokens); this.reload(); this.publish({ type: "settings" }); },
       serving: (offering) => models.servingSettings(this.userId, mine(offering)),
@@ -849,7 +849,8 @@ export class HostedThread {
         await models.setServingSettings(actor(), mine(offering), settings, { anyway });
         // Loaded and idle: reload now. In use or not loaded: it applies at the next load.
         const reloaded = await models.reloadModel(actor(), offering).then(() => true, () => false);
-        this.reload();
+        // The thread plans by the new window next turn, and her Models page reads it again (live sync).
+        this.reload(); this.publish({ type: "settings" });
         return { reloaded };
       },
     };

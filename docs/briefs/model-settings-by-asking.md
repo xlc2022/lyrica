@@ -1,6 +1,6 @@
 # Brief: Changing model settings by asking
 
-**Status:** Part 1 in review. **Branch:** `claude/agent-loop-reliability-661bmo`.
+**Status:** Part 1 in review (#339); Part 2 built, in review after it. **Branch:** `claude/agent-loop-reliability-661bmo`.
 **Built by:** the Agent loop thread (Opus).
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md "Models and endpoints"
 (Model settings, saved per copy), docs/briefs/context-stretch.md,
@@ -69,7 +69,7 @@ One loaded copy of a model serves every thread and user. So:
 - **Lowering** it, or setting it to what is already served, applies to this
   thread alone: "use at most N tokens here". There's no card and no reload.
   It is saved with the thread's other choices (`thread_choices.context`,
-  user.db step 12, expand only), and child threads and branches inherit it
+  user.db step 13, expand only), and child threads and branches inherit it
   (`inheritContext`). The thread plans by the smaller of the copy's window
   and this limit, so compaction, the context meter and the reply cap follow
   it, and the session reopens with it at the next turn. Asking for the copy's
@@ -103,16 +103,16 @@ model's loaded instances with their context, and loads one with
 - No `models` tool in private, local-only or subagent threads (a lookup is an
   outside call). Its copies come from `hostCopies`, extended to LM Studio
   models on endpoints the user may manage.
-- A size that doesn't fit is refused before the card: over the maximum, or
-  (on a host) over what `neverFits` allows with the GPUs empty, with the
-  host's reason.
+- A size over the model's maximum is refused before the card. Whether it
+  fits is checked on Allow, by the host's save (`neverFits`) or LM Studio's
+  load, and a refusal comes back with its reason and nothing changed.
 
 ### 2.5 The Models page updates itself
 
-When the tool applies a change, lyricad marks the user's lists changed
-(`UserEvents.changed`, from live sync, #336), and the Models page and an open
-model's settings reload on `changed`, as the shell does. This waits for #336
-to merge.
+When the tool applies a change, the thread publishes a `settings` event,
+which marks the user's lists changed (live sync, #336). The shell counts
+`changed` events in `ShellContext.changed`, and the Models page, the text
+library and an open copy's settings reload on it.
 
 ## Later (not in this brief)
 
@@ -127,7 +127,7 @@ card where it affects others: sampling, the thread's preset, web search.
 - extension: `propose` with no offering uses the thread's model; lowering
   sets the thread's limit with no card; raising shows the card.
 - core: the thread limit round-trips, is inherited, and caps the window
-  the session plans by; user.db migrates from step 11.
+  the session plans by; user.db migrates from every earlier step to 13.
 - LM Studio, against a fake server: discovery reads the loaded context, and
   Allow unloads and loads with `context_length`.
 
@@ -139,6 +139,14 @@ docs/contracts.md for Part 2, and this brief's handoff.
 
 ## Handoff
 
-- **Part 1:** built on `claude/agent-loop-reliability-661bmo`.
-- **Part 2:** next, on the same branch after Part 1 merges, then rebased onto
-  #336 for 2.5.
+- **Part 1** (host default context): #339.
+- **Part 2:** built on the same branch after #339: the tool
+  (extension/src/models-tool.ts), `localCopies`, `localContext`,
+  `loadLocalContext` and the discovery change (core/src/models), the thread
+  limit (user.db step 13, `contextLimit`), the wiring in
+  daemon/src/hosted.ts, and `ShellContext.changed`. It was tested against a
+  fake LM Studio only. A check against a real LM Studio (load at a new
+  context, then a chat) waits on the user's go.
+- **Open:** LM Studio's REST API was written from its documented
+  `/api/v1` shape. If a real server answers differently, discovery falls
+  back to today's behaviour and the tool says the server isn't LM Studio.

@@ -667,15 +667,49 @@ that she should ask which. lyricad registers both only when
 `downloadHosts` lists a host the user can manage, and never in a private or
 local-only thread or a subagent: the repository's name leaves the host.
 
-**The `models` tool** (extension/src/models-tool.ts): `lookup { offering,
-repo? }` returns the recommended settings and the KV estimate as numbers;
-`propose { offering, contextLength, stretch, originalContext? }` shows a
-card ("Serve Qwen3.8-27B with 1,010,000 tokens of context? It reloads, and
-its KV cache grows to 17 GB.", with "Qwen documents 4." when the factor is
-above the card's) and, on Allow, saves the settings and reloads the model
-if it is idle. lyricad registers it only when `hostCopies` lists a model:
-host chat models the user can manage, and none in a private or local-only
-thread, since a lookup is an outside call. Never in a subagent.
+**The `models` tool** (extension/src/models-tool.ts). `offering` is
+optional: left out, it is the model the thread talks to now (the session's
+model, else the router's first pick for chat).
+
+- `lookup { offering?, repo? }` returns a host model's recommended settings
+  and the KV estimate as numbers.
+- `propose { offering?, contextLength, stretch?, originalContext? }` on the
+  thread's own model, unstretched, at or under the context it is served
+  with, sets the thread's own limit with no card (`setContextLimit`, below),
+  or clears it at the full window.
+- Otherwise `propose` changes the copy for every thread. It refuses a
+  length over the model's maximum, then shows a card ("Serve Qwen3.8-27B
+  with 1,010,000 tokens of context for every thread? It reloads, and its KV
+  cache grows to 17 GB.", with "Qwen documents 4." when the factor is above
+  the card's). On Allow it saves a host model's settings and reloads it if
+  it is idle, or loads an LM Studio model again with the new context
+  (`loadLocalContext`), and clears the thread's limit. The host's fit check
+  runs on save, and LM Studio's on load. A refusal comes back as the result,
+  with nothing changed.
+- lyricad registers the tool only when `hostCopies` or `localCopies` lists a
+  model: chat models on hosts or local endpoints the user can manage (a
+  shared one only as an administrator). It is never in a private or
+  local-only thread, since a lookup is an outside call, and never in a
+  subagent.
+- After a change, the thread reopens with the new window at the end of its
+  turn, and a `settings` event tells the user's tabs (live sync), so the
+  Models page reads the copy again.
+
+**A thread's context limit.** `setContextLimit(userId, threadId, tokens |
+null)` saves the most context a thread plans for (`thread_choices.context`,
+user.db step 13). `callContext` returns it as `contextLimit`, and
+`inheritContext` gives it to child threads and branches. The thread's model
+runtime gives each model the smaller of its window and the limit, so
+compaction, the context meter and the reply cap follow it.
+
+**LM Studio.** On a local endpoint that isn't a host, discovery also asks
+LM Studio's own API (`GET /api/v1/models` beside `/v1`). When it answers, a
+loaded model's `context_length` becomes its served context, which wins over
+one set by hand, and `max_context_length` fills a missing window.
+`localContext` reads both. `loadLocalContext(actor, offeringId, tokens)`
+unloads the model's instances and loads it with `context_length`. If LM
+Studio refuses, it loads the model again as it was and throws LM Studio's
+message. It then discovers again. A shared endpoint needs an administrator.
 
 `hostDashboard` (a shared host's only for an administrator) gives a link to the host's dashboard, at the address
 it last answered on, and the dashboard keeps its own password away from the

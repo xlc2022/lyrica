@@ -43,8 +43,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   loading older messages as needed, and marks it a moment, as the Pinned
   popover does; only the thread and the message number wait in session
   storage for a thread not yet open), **Notifications** with the count of decisions waiting (read with
-  the thread list, groups, Me/display settings and Sleep on the user stream's
-  `hello` and `changed` events, and on focus; the stream reconnects automatically,
+  the thread list, groups, Me/display settings, Sleep and the Models area
+  (its page, the text library and an open copy's settings, through
+  `ShellContext.changed`) on the user stream's `hello` and `changed`
+  events, and on focus; the stream reconnects automatically,
   with a fresh connection after a terminal HTTP error), Memory, the Sort menu, the thread list, the **status panel** (`src/SideStatus.tsx`: above the user row, its own divider line; up to two most-used local endpoints side by side and up to two cloud ones on their own lines — each a dot and name (docs/ux.md §5), a short state word when it isn't simply online ("Blackwell · paused"), plus "· checked 20 s ago" in mono for the cloud ones, ticking as time passes; each item's tooltip holds the whole line; ranked by `GET …/models/page`'s `endpointUses` counts; nothing is drawn with no endpoints), and the user. The **Sort
   menu** ("Sort: By date ▾") has the sorts By date (sections Today, Yesterday,
   Previous 7 days, Previous 30 days, Older), Last activity, Start date, Title and My groups (one
@@ -852,8 +854,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   primary, Not today secondary, and there is no thread-wide Allow. Answers
   use the existing permission route with `{ allow }`, including for subagents.
   Her `models` tool's proposal is worded as its question ("Serve
-  Qwen3.8-27B with 1,010,000 tokens of context? It reloads, and its KV cache
-  grows to 17 GB."), the numbers in mono.
+  Qwen3.8-27B with 1,010,000 tokens of context for every thread? It reloads,
+  and its KV cache grows to 17 GB."), the numbers in mono.
   A call on a machine (`machine` on the request) leads with the machine's
   name in mono, says the folder the command runs in, and shows the command,
   path or Proxmox action and VM in mono; a suspect command (`suspect`,
