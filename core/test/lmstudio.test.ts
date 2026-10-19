@@ -7,7 +7,7 @@ const servers: Server[] = [];
 afterEach(() => { for (const s of servers.splice(0)) s.close(); });
 
 /** A fake LM Studio: its OpenAI-compatible list, and its own REST API's models, load and unload. */
-async function fakeLmStudio(o: { context?: number; max: number; refuseAbove?: number }) {
+async function fakeLmStudio(o: { context?: number; max: number; refuseAbove?: number; vision?: boolean }) {
   let loaded: number | undefined = o.context;
   const calls: string[] = [];
   const server = createServer((req, res) => {
@@ -17,7 +17,7 @@ async function fakeLmStudio(o: { context?: number; max: number; refuseAbove?: nu
       const json = (status: number, v: unknown) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(v)); };
       if (req.method === "GET" && req.url === "/v1/models") return json(200, { object: "list", data: [{ id: "qwen-flash", object: "model" }] });
       if (req.method === "GET" && req.url === "/api/v1/models") {
-        return json(200, { models: [{ type: "llm", key: "qwen-flash", max_context_length: o.max, loaded_instances: loaded ? [{ id: "qwen-flash", config: { context_length: loaded } }] : [] }] });
+        return json(200, { models: [{ type: "llm", key: "qwen-flash", max_context_length: o.max, capabilities: { vision: o.vision ?? false, trained_for_tool_use: true }, loaded_instances: loaded ? [{ id: "qwen-flash", config: { context_length: loaded } }] : [] }] });
       }
       const b = JSON.parse(body || "{}") as { instance_id?: string; model?: string; context_length?: number };
       if (req.method === "POST" && req.url === "/api/v1/models/unload") { calls.push(`unload ${b.instance_id}`); loaded = undefined; return json(200, { instance_id: b.instance_id }); }
@@ -59,6 +59,16 @@ describe("LM Studio context", () => {
     const [o] = await s.models.discover(s.ada, ep.id);
     expect(s.models.offering(s.ada.id, o!.id)!.offering.contextWindow).toBeUndefined();
     expect(await s.models.localContext(s.ada.id, o!.id)).toEqual({ max: 131072 });
+  });
+
+  it("takes vision from LM Studio's own API", async () => {
+    const s = await withModels();
+    const sees = await fakeLmStudio({ max: 131072, vision: true });
+    const [o] = await s.models.discover(s.ada, s.models.addEndpoint(s.ada, { name: "studio", kind: "local", baseUrl: sees.baseUrl }).id);
+    expect(s.models.offering(s.ada.id, o!.id)!.offering.vision).toBe(true);
+    const blind = await fakeLmStudio({ max: 131072 });
+    const [b] = await s.models.discover(s.ada, s.models.addEndpoint(s.ada, { name: "studio-2", kind: "local", baseUrl: blind.baseUrl }).id);
+    expect(s.models.offering(s.ada.id, b!.id)!.offering.vision).toBe(false);
   });
 
   it("passes LM Studio's refusal on and loads the model again as it was", async () => {

@@ -759,7 +759,8 @@ export class Models {
       if (lm) found = found.map((m) => {
         const l = lmStudioModel(lm, m.modelId);
         const served = l?.instances[0]?.context;
-        return { ...m, ...(served ? { servedContext: served } : {}), ...(l ? { lmStudio: true } : {}) };
+        // Its OpenAI-compatible list says nothing about images; its own API says whether the model has a vision projector.
+        return { ...m, ...(served ? { servedContext: served } : {}), ...(l ? { lmStudio: true } : {}), ...(m.vision === undefined && l?.vision !== undefined ? { vision: l.vision } : {}) };
       });
       // A ChatGPT plan's image tool is one model of its own, not a switch on each chat model.
       if (ep.api === "chatgpt") found = [...found, PLAN_IMAGE];

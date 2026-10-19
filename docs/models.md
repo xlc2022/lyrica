@@ -57,7 +57,8 @@ and `-`, at most 40 characters.
 - **Capabilities:** context window, tools, vision, embedding, image, edit, upscale
   and thinking levels. OpenRouter reports the context, tools, thinking and
   modalities; llama-server reports the context
-  (`meta.n_ctx`); LM Studio and KoboldCpp report neither. Anything can be
+  (`meta.n_ctx`); LM Studio reports the context and vision on its own API
+  (below); KoboldCpp reports neither. Anything can be
   set by hand (`setCapabilities`), which wins over discovery. Switching off
   image, edit, upscale or transcribe takes the model out of that task's lists
   in the user's presets and columns (a group stays), so no list keeps an
@@ -726,6 +727,8 @@ LM Studio's own API (`GET /api/v1/models` beside `/v1`). When it answers, a
 loaded model's `context_length` becomes its served context, which wins over
 one set by hand. A model that isn't loaded keeps the hand-set or default
 window, since LM Studio loads it on demand at its own default context.
+Its `capabilities.vision` becomes the model's vision, since `/v1/models`
+doesn't say.
 `localContext` reads the loaded context and `max_context_length`, the most
 `propose` allows. `loadLocalContext(actor, offeringId, tokens)`
 unloads the model's instances and loads it with `context_length`. If LM
