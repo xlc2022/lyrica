@@ -226,8 +226,12 @@ seconds of audio.
     `model.onnx` where there are several), its vocabulary in `config.json`
     or `tokenizer.json`, and `voices/*.bin`, one raw float32 array per
     voice: Kokoro's ONNX export. Its `contextLength` is `null`.
-  - `contextLength` is the context it is served with (its setting, else
-    32768, never more than the trained length times the stretch).
+  - `contextLength` is the context it is served with: its setting, else,
+    for a chat model, the largest that fits its GPUs once the host's other
+    unpinned models are unloaded (in steps of 1024, from 4096), never more than the
+    trained length times the stretch; 32768 when nothing fits or the
+    trained length is unknown. A model keeps the context it loaded with
+    while it stays loaded.
     `maxContextLength` is the trained length alone, `null` when the host
     couldn't read it. `kvBytes` is the KV cache at the served context, by
     the host's estimate (`null` for voices, and where it can't tell), and
@@ -332,7 +336,8 @@ embeddings and dictation receive neither parser.
     or eight) or `"pipeline"`; by default tensor where the GPUs match, else
     pipeline.
 - `contextLength`: 512 up to what the model was trained for, times its
-  stretch; 32768 by default. Over it: "This model was trained for 262144
+  stretch. Unset by default: the host then serves a chat model at the
+  largest context that fits (see `contextLength` under Models). Over it: "This model was trained for 262144
   tokens; with a stretch of 4 it serves 1048576 at most."
 - `stretch`: `{ "type": "yarn", "factor": 4, "originalContext": 262144 }`,
   off unless set. The factor is 1 to 8 (whole for llama.cpp; 1 is no

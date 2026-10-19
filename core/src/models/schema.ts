@@ -128,7 +128,8 @@ CREATE TABLE IF NOT EXISTS local_only_threads (
 );
 -- A thread's own profile (cloud or custom, general threads only, kept one
 -- release for rollback) and its own preset, thinking setting and Fallback
--- switch (null follows the user's default). voice_cloud, the old Voice to
+-- switch (null follows the user's default), and the most context it plans
+-- for (null: the model's whole window). voice_cloud, the old Voice to
 -- cloud switch, is no longer read; a later release drops it.
 CREATE TABLE IF NOT EXISTS thread_choices (
   thread      TEXT PRIMARY KEY,
@@ -136,7 +137,8 @@ CREATE TABLE IF NOT EXISTS thread_choices (
   preset      TEXT,
   thinking    TEXT,
   voice_cloud INTEGER,
-  fallback    INTEGER
+  fallback    INTEGER,
+  context     INTEGER
 );
 -- Which model answered each call, and why a fallback was used. Never prompt text.
 CREATE TABLE IF NOT EXISTS model_calls (

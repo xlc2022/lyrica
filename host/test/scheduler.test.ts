@@ -71,13 +71,14 @@ describe("the GPU queue", () => {
       await load(model, at);
     };
     await expect(scheduler.reload(m)).rejects.toMatchObject({ code: "model_unavailable" });
-    expect(contexts).toEqual([16384, undefined]);
+    // Restored with no saved context: served at the largest that fits, its trained 32768.
+    expect(contexts).toEqual([16384, 32768]);
     expect(scheduler.placement(m.id)?.state).toBe("loaded");
     expect(scheduler.settings(m)).toEqual({ placement: { mode: "auto" } });
     expect(new StateFile(dir).get().models[m.id]).toEqual(state.get().models[m.id]);
     await scheduler.unloadNow(m.id);
     await scheduler.loadNow(m);
-    expect(contexts).toEqual([16384, undefined, undefined]);
+    expect(contexts).toEqual([16384, 32768, 32768]);
   });
 
   it("reports the replacement error when restoring also fails", async () => {
@@ -179,7 +180,7 @@ describe("the GPU queue", () => {
     await scheduler.start([]);
     await scheduler.loadNow(textModel("m", 10));
     // Weights, a KV cache for its 8k context, and the server's buffers, measured on GPU 0.
-    expect(state.get().vram["m@0"]).toEqual({ 0: Math.round(10 * GIB * 1.05) + GIB / 2 + GIB / 2 });
+    expect(state.get().vram["m@0~8192"]).toEqual({ 0: Math.round(10 * GIB * 1.05) + GIB / 2 + GIB / 2 });
   });
 
   it("remeasures first-use buffers so an idle model can be evicted for images", async () => {
@@ -187,11 +188,11 @@ describe("the GPU queue", () => {
     await scheduler.start([]);
     const chat = textModel("chat", 17);
     await scheduler.loadNow(chat);
-    const initial = state.get().vram["chat@0"]![0]!;
+    const initial = state.get().vram["chat@0~8192"]![0]!;
     await scheduler.run(chat, "chat", async () => {
       gpus.loaded.get("chat")![0] = initial + 1.9 * GIB;
     });
-    expect(state.get().vram["chat@0"]![0]).toBe(initial + 1.9 * GIB);
+    expect(state.get().vram["chat@0~8192"]![0]).toBe(initial + 1.9 * GIB);
     // 21.7 GB fits with the real 1 GB baseline and 0.5 GB reserve,
     // but not if the chat server's 1.9 GB growth is treated as another program.
     const image = textModel("image", 21.2 / 1.1, { kind: "image", contextLength: 0 });
@@ -206,7 +207,7 @@ describe("the GPU queue", () => {
     await scheduler.start([]);
     const m = textModel("m", 10);
     await scheduler.loadNow(m);
-    const initial = state.get().vram["m@0"]![0]!;
+    const initial = state.get().vram["m@0~8192"]![0]!;
     const serve = () => scheduler.run(m, "chat", async () => {
       gpus.loaded.get("m")![0] = initial + GIB;
     });
@@ -214,7 +215,7 @@ describe("the GPU queue", () => {
     await scheduler.unloadNow("m");
     await scheduler.loadNow(m);
     await serve();
-    expect(state.get().vram["m@0"]![0]).toBe(initial + GIB);
+    expect(state.get().vram["m@0~8192"]![0]).toBe(initial + GIB);
   });
 
   it("does not attribute another model's request growth to the first model", async () => {
@@ -224,13 +225,13 @@ describe("the GPU queue", () => {
     const b = textModel("b", 4);
     await scheduler.loadNow(a);
     await scheduler.loadNow(b);
-    const initial = state.get().vram["a@0"]![0]!;
+    const initial = state.get().vram["a@0~8192"]![0]!;
     await scheduler.run(a, "chat", async () => {
       await scheduler.run(b, "chat", async () => {
         gpus.loaded.get("b")![0]! += GIB;
       });
     });
-    expect(state.get().vram["a@0"]![0]).toBe(initial);
+    expect(state.get().vram["a@0~8192"]![0]).toBe(initial);
   });
 
   it("measures again after a model's settings change", async () => {
@@ -238,9 +239,31 @@ describe("the GPU queue", () => {
     await scheduler.start([]);
     const m = textModel("m", 10);
     await scheduler.loadNow(m);
-    expect(state.get().vram["m@0"]).toBeDefined();
+    // With no context saved, the measurement names the automatic one.
+    expect(state.get().vram["m@0~8192"]).toBeDefined();
     scheduler.saveSettings(m, { placement: { mode: "auto" }, contextLength: 16384 });
-    expect(state.get().vram["m@0"]).toBeUndefined();
+    expect(Object.keys(state.get().vram)).toEqual([]);
+  });
+
+  it("measures again when the automatic context moves, and sizes it around a pinned model", async () => {
+    const { scheduler, state } = setup([24]);
+    await scheduler.start([]);
+    // 256 KB of f16 KV cache a token: 1 GB per 4096 tokens.
+    const chat = textModel("chat", 4, { contextLength: 131072, kvPerToken: 2 * 64 * 8 * 128 });
+    const contexts = () => Object.keys(state.get().vram).map((k) => Number(k.split("~")[1])).sort((a, b) => b - a);
+    await scheduler.loadNow(chat);
+    await scheduler.unloadNow("chat");
+    // Keeping 4 GB free moves the automatic context, so it is measured again under its own name.
+    await scheduler.setGpu(0, { ...scheduler.gpuSettings(0), keepFree: 4 * 1024 ** 3 });
+    await scheduler.loadNow(chat);
+    await scheduler.unloadNow("chat");
+    // A pinned model is never unloaded, so the automatic context leaves room for it, and both load.
+    await scheduler.pin(textModel("pinned", 8, { contextLength: 4096 }), true);
+    await scheduler.loadNow(chat);
+    expect([scheduler.placement("pinned")?.state, scheduler.placement("chat")?.state]).toEqual(["loaded", "loaded"]);
+    const [alone, keepFree, besidePin] = contexts().filter((c) => c > 4096);
+    expect(alone).toBeGreaterThan(keepFree!);
+    expect(keepFree).toBeGreaterThan(besidePin!);
   });
 
   it("on Auto, uses a GPU with room before unloading anything from a bigger one", async () => {

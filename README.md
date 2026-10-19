@@ -20,7 +20,7 @@ cloud model is outside our control.
 - [docs/guides/ci-runners.md](docs/guides/ci-runners.md) sets up a machine
   that runs the checks.
 - [docs/guides/searxng.md](docs/guides/searxng.md) sets up the SearXNG her
-  web search uses.
+  web search uses, or has `install.sh` run it in Docker.
 
 She isn't deployed yet. The first run is the web setup page, with
 `lyrica admin init` on the server as the other way.

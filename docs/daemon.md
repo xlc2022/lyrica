@@ -1054,6 +1054,17 @@ same ("On NixOS" below).
   when a pin changes.
 - It sets `net.ipv4.ip_nonlocal_bind=1` (in `/etc/sysctl.d`), so Caddy binds
   its addresses even before they're up: Tailscale at boot, a DHCP change.
+- It asks first whether to run SearXNG for her web search (`LYRICA_SEARXNG=yes`
+  or `no` answers ahead; no terminal means no; already set up means yes).
+  With a yes and Docker on the PATH (it never installs Docker), it writes
+  `/etc/lyrica/searxng/settings.yml` once from `daemon/deploy/searxng-settings.yml`,
+  pulls the pinned `searxng/searxng` image, installs and starts
+  `lyrica-searxng.service` (Docker, published on `127.0.0.1:8888` only) and
+  writes `http://127.0.0.1:8888` to `searxng-address` in her state folder.
+  On unlock, lyricad stores that as the SearXNG address while none is set,
+  once per address (`adoptLocalSearxng`). The updater's stale-units check
+  leaves this unit out, since not every install has it
+  ([guides/searxng.md](guides/searxng.md)).
 - It installs `lyricad.service`, `lyrica-tailscaled.service` and
   `lyrica-caddy.service` and starts them. Without `self.db` it ends by
   printing the setup page's addresses, the certificate's fingerprint and the

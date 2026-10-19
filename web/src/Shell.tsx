@@ -42,6 +42,8 @@ export interface ShellContext {
   cleanup: { count: number; reload: () => void };
   /** GET …/models/page, polled by the shell so the sidebar's status panel shows everywhere; the Models area reads it from here too. */
   models: ModelsState;
+  /** Counts what the user stream says changed: a page's loads that depend on it read again (a model's settings after she changes them). */
+  changed: number;
   /** The thread list, for naming threads elsewhere (Recent calls, Clean up). */
   threads: ThreadSummary[];
   openSide: () => void;
@@ -87,6 +89,9 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   const refreshShell = useCallback(() => {
     me.reload(); threads.reload(); groups.reload(); notes.reload(); sleep.reload();
   }, [me.reload, threads.reload, groups.reload, notes.reload, sleep.reload]);
+  // The Models area too, so a setting she changed in a thread shows without a refresh.
+  const [changed, setChanged] = useState(0);
+  const onChanged = useCallback(() => { refreshShell(); models.reload(); setChanged((n) => n + 1); }, [refreshShell, models.reload]);
   useEffect(() => {
     let es: EventSource | undefined;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -94,8 +99,8 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
     let stopped = false;
     const open = () => {
       es = new EventSource(u(user.id, "events"));
-      es.addEventListener("hello", () => { delay = 1000; refreshShell(); });
-      es.addEventListener("changed", refreshShell);
+      es.addEventListener("hello", () => { delay = 1000; onChanged(); });
+      es.addEventListener("changed", onChanged);
       // EventSource retries ordinary disconnects. Recreate it if an HTTP error makes it give up,
       // and use Me's authenticated GET to surface logout or Lock through the usual auth handler.
       es.onerror = () => {
@@ -107,7 +112,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
     };
     open();
     return () => { stopped = true; es?.close(); clearTimeout(retry); };
-  }, [user.id, refreshShell, me.reload]);
+  }, [user.id, onChanged, me.reload]);
   // Endpoint status comes from probes, so only Models keeps a timer. Focus still refreshes everything.
   useEffect(() => {
     const tick = () => { if (document.visibilityState === "visible") models.reload(); };
@@ -121,7 +126,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   if (!me.data) return <div className="loading">{me.error ? <ErrorText error={me.error} /> : "Loading…"}</div>;
   const ctx: ShellContext = {
     user: me.data.user, me: me.data, setMe: me.set, build, refreshThreads: threads.reload,
-    groups: groups.data ?? [], refreshGroups: groups.reload, waiting: notes.waiting, refreshNotifications: notes.reload, sleep, cleanup, models, threads: threads.data ?? [], openSide: () => setSideOpen(true),
+    groups: groups.data ?? [], refreshGroups: groups.reload, waiting: notes.waiting, refreshNotifications: notes.reload, sleep, cleanup, models, changed, threads: threads.data ?? [], openSide: () => setSideOpen(true),
     refreshState, toast: (text) => setToast((t) => ({ text, n: (t?.n ?? 0) + 1 })), activity, noteActivity,
   };
 

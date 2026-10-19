@@ -1,4 +1,6 @@
+import { writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
+import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ThreadSettings, WebSearch } from "../src/api.ts";
@@ -70,5 +72,39 @@ describe("web search", () => {
     expect((await ada.put<WebSearch>(url, { searxng: `http://other@${host}` })).body).toMatchObject({ searxng: `http://other@${host}`, auth: false });
     expect((await ada.put<WebSearch>(url, { searxng: "" })).body).toEqual({ searxng: null, auth: false, state: "unset" });
     expect(logs.join("\n")).not.toContain("s3cret-pw");
+  });
+
+  it("takes the SearXNG install.sh runs here while none is set, and never again once an administrator clears it", async () => {
+    const rt = await runtime();
+    const local = `http://${await searxng()}`;
+    writeFileSync(join(rt.home, "searxng-address"), `${local}\n`);
+    const first = await daemon(rt);
+    await browser(first.base).post("/api/unlock", { passphrase: "passphrase" });
+    let ada = await login(first.base, "ada", "pw");
+    const url = `/api/u/${rt.ada.id}/admin/web-search`;
+    expect((await ada.get<WebSearch>(url)).body).toEqual({ searxng: local, auth: false, state: "reachable" });
+    await ada.put(url, { searxng: "" });
+    await first.stop();
+
+    const second = await daemon(rt);
+    await browser(second.base).post("/api/unlock", { passphrase: "passphrase" });
+    ada = await login(second.base, "ada", "pw");
+    expect((await ada.get<WebSearch>(url)).body).toEqual({ searxng: null, auth: false, state: "unset" });
+    await second.stop();
+
+    // A new address is a new offer; an address an administrator set stays whatever install.sh offers.
+    const other = `http://${await searxng()}`;
+    writeFileSync(join(rt.home, "searxng-address"), other);
+    const third = await daemon(rt);
+    await browser(third.base).post("/api/unlock", { passphrase: "passphrase" });
+    ada = await login(third.base, "ada", "pw");
+    expect((await ada.get<WebSearch>(url)).body.searxng).toBe(other);
+    await ada.put(url, { searxng: local });
+    await third.stop();
+    writeFileSync(join(rt.home, "searxng-address"), `http://${await searxng()}`);
+    const fourth = await daemon(rt);
+    await browser(fourth.base).post("/api/unlock", { passphrase: "passphrase" });
+    ada = await login(fourth.base, "ada", "pw");
+    expect((await ada.get<WebSearch>(url)).body.searxng).toBe(local);
   });
 });

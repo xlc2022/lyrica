@@ -16,3 +16,14 @@ export function groupWarnings(copies: Pick<LibraryCopy, "kind" | "capabilities">
   if (differ((c) => !!c.capabilities.vision)) lines.push("Only some copies can see images: calls with images skip the others.");
   return lines;
 }
+
+/** JSON with object keys sorted, so two settings objects compare by value. */
+export const canon = (v: unknown) => JSON.stringify(v, (_, x: unknown) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
+
+/**
+ * A copy's serving draft when its saved settings load or change: a fresh copy
+ * of them unless the user has edited the draft since it was seeded from `from`.
+ */
+export function reseedDraft(draft: Record<string, unknown> | undefined, from: Record<string, unknown> | undefined, next: Record<string, unknown>): Record<string, unknown> {
+  return !draft || (from !== undefined && canon(draft) === canon(from)) ? structuredClone(next) : draft;
+}

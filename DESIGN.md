@@ -618,10 +618,17 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     keeps the result with the model, filled at download or by **Look up**
     in the library. Recommended values show as placeholders. The lookup
     carries a repository name and revision, never thread text.
-  - Lyrica has a `models` tool in general threads: `lookup` returns a
-    model's recommended settings and the host's fit estimate; `propose`
-    asks the copy's administrator or owner on a card, and applies on Allow.
-    Private and local-only threads have no `models` tool. She also has
+  - Lyrica has a `models` tool in general threads. `lookup` returns a
+    model's recommended settings and the host's fit estimate. `propose`
+    sets a context length, on the thread's own model when none is named.
+    At or under what that model is served with, it limits this thread and
+    its children, with no card. Above it, or for another model, it asks the
+    copy's administrator or owner on a card, since one loaded copy serves
+    every thread, and applies on Allow: on a host it saves and reloads, and
+    on LM Studio it loads the model again with the new context. The Models
+    page shows the change at once (live sync). Private and local-only
+    threads have no `models` tool. See
+    [docs/briefs/model-settings-by-asking.md](docs/briefs/model-settings-by-asking.md). She also has
     `model_files` and `download_model` there, for a user who manages a
     host: she downloads a model when asked, asking which host when there
     are several, and the permission card asks before anything downloads.
@@ -629,8 +636,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     [docs/briefs/context-stretch.md](docs/briefs/context-stretch.md).
   - The context length is the window Lyrica plans for, used by compaction
     and when a group skips a member too small for the conversation. For
-    other endpoints it is discovered where the endpoint reports it, or set
-    by hand.
+    other endpoints it is discovered where the endpoint reports it (on LM
+    Studio, a loaded model's context), or set by hand. A thread's own
+    context limit, when set, narrows it for that thread.
 - **Visibility.** The current model and endpoint, with a clear cloud or local
   badge, are always visible in a thread. Choosing an endpoint, public or
   custom, is easy.
@@ -796,7 +804,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       - **chosen GPUs**: one, or several for a model too big for one GPU,
         with how it splits (llama.cpp's split by ratio; vLLM's tensor
         parallel across matching GPUs, else pipeline parallel);
-      - its own **context length** (32k by default), and for vLLM its
+      - its own **context length** (by default the largest that fits its
+        GPUs, up to what the model supports), and for vLLM its
         **memory share**, so one large GPU holds several vLLM models side
         by side.
     - **Each GPU says what it may run** (llama.cpp, vLLM, images) and how
@@ -1682,7 +1691,8 @@ Details in [docs/sleep.md](docs/sleep.md).
   settings: **Web search** (`web_search` and `web_fetch`), **Internet for
   commands** (the sandbox's internet switch) and **Images** (the `image`
   tool). Search goes to one SearXNG an administrator sets for the server
-  (Administration → Web search), in every thread, private and local-only
+  (Administration → Web search; on Debian or Ubuntu, install.sh can run
+  one in Docker on 127.0.0.1 and fill it in), in every thread, private and local-only
   included; without one, the switch gives `web_fetch` alone, which runs in
   the thread's sandbox under its network switches. SearXNG hides who is
   asking from the search engines it uses, but forwards the query text to

@@ -559,7 +559,8 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   address is set, in every thread, private and local-only included.
   SearXNG hides who is asking from the search engines it uses, but forwards
   the query text to them, so a private thread's query leaves her network as
-  an anonymous query. Setting one up: [guides/searxng.md](guides/searxng.md).
+  an anonymous query. Setting one up, or letting `install.sh` run one in
+  Docker and fill in the address: [guides/searxng.md](guides/searxng.md).
 - `web_fetch` runs `curl` in the thread's sandbox, the URL one argument,
   so the internet switch and allowed hosts above decide what it can reach:
   a private thread with internet off reads only its allowed hosts. It

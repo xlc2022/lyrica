@@ -254,11 +254,12 @@ export class Runtime {
    */
   servingEntry(m: TextModel) {
     const settings = this.scheduler.settings(m);
-    const sized = m.kind === "image" || m.kind === "speak" ? null : sizes(m, settings);
+    const served = this.scheduler.served(m);
+    const sized = m.kind === "image" || m.kind === "speak" ? null : sizes(m, served);
     return {
       model: m.id,
       settings,
-      contextLength: contextOf(m, settings),
+      contextLength: contextOf(m, served),
       maxContextLength: maxContextOf(m, settings),
       trainedContextLength: m.contextLength,
       kvBytes: sized && m.kvPerToken !== null ? sized.kv : null,
@@ -287,7 +288,7 @@ export class Runtime {
       // A projector left out by its setting takes the model's sight with it.
       capabilities: { ...m.capabilities, ...(m.mmproj ? { vision: usesVision(m, this.scheduler.settings(m)) } : {}) },
       // The context it is served with; maxContextLength is what it was trained for.
-      contextLength: m.kind === "image" || m.kind === "speak" ? null : contextOf(m, this.scheduler.settings(m)),
+      contextLength: m.kind === "image" || m.kind === "speak" ? null : contextOf(m, this.scheduler.served(m)),
       maxContextLength: m.contextLength,
       kvBytes: this.servingEntry(m).kvBytes,
       stretch: this.scheduler.settings(m).stretch?.factor ?? null,
