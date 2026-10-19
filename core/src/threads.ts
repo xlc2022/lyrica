@@ -226,8 +226,8 @@ export function projectSection(own: PoolView["own"], threadId: string, projectTh
 export const ROUTINE = /^\[Routine, ([^\]\n]+)\]\n\n/;
 
 /** Recent-work selection stays in one pool; local-only text needs a local-only project. */
-export function recentWorkAllowed(thread: { project?: boolean; child?: boolean; subagent?: boolean; unlogged?: boolean }, localOnly: boolean, projectLocalOnly: boolean): boolean {
-  return !thread.project && !thread.child && !thread.subagent && !thread.unlogged && (!localOnly || projectLocalOnly);
+export function recentWorkAllowed(thread: { interface?: string; project?: boolean; child?: boolean; subagent?: boolean; unlogged?: boolean }, localOnly: boolean, projectLocalOnly: boolean): boolean {
+  return thread.interface !== "sleep" && !thread.project && !thread.child && !thread.subagent && !thread.unlogged && (!localOnly || projectLocalOnly);
 }
 
 /** Bounded welcome context: at most ten selected threads, ten messages each, 16,000 characters total. */

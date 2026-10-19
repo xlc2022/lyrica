@@ -28,6 +28,9 @@ export interface SleepLimits {
 
 export const DEFAULT_SLEEP_LIMITS: SleepLimits = { turns: 40, tokens: 600_000, timeoutMs: 20 * 60_000, retries: 2, retryDelayMs: 2000 };
 
+/** How long a phase's thread is kept. What sleep wrote stays; the transcript would keep copies of memories deleted since. */
+export const SLEEP_THREAD_AGE_MS = 36 * 3600_000;
+
 export interface SleepOptions {
   users: Users;
   memory: Memory;
@@ -126,6 +129,30 @@ export class Sleep {
     } finally {
       view.close();
     }
+  }
+
+  /**
+   * Forgets phase threads older than SLEEP_THREAD_AGE_MS, in every pool whose
+   * key is here. Their memories are kept, and each leaves a thread tombstone,
+   * so an item whose source was one still leads somewhere. Returns how many went.
+   */
+  prune(now = new Date()): number {
+    const before = new Date(now.getTime() - SLEEP_THREAD_AGE_MS).toISOString();
+    let n = 0;
+    for (const u of this.o.users.all()) {
+      if (!this.o.hasKey(u.id)) continue;
+      for (const pool of ["general", "private"] as const) {
+        const view = this.o.memory.openThreadView(u.id, pool);
+        try {
+          const old = view.own.listThreads({ includeHidden: true }).filter((t) => t.interface === "sleep" && t.createdAt < before);
+          old.forEach((t, i) => view.own.forgetThread(t.id, "sleep", { keepMemories: true, optimize: i === old.length - 1 }));
+          n += old.length;
+        } finally {
+          view.close();
+        }
+      }
+    }
+    return n;
   }
 
   /** Users with a sleep run going now: what an update's drain waits for. */

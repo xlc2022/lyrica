@@ -184,6 +184,8 @@ export class Lyricad implements Drainable {
   private readonly nightly: NodeJS.Timeout;
   /** The day the scheduled sleep last ran, so it runs once a night. */
   private sleptOn = "";
+  /** When sleep's old phase threads were last forgotten: once an hour. */
+  private prunedAt = 0;
   /** The scheduled sleep came due during an update's drain: it runs at undrain. */
   private sleepDue = false;
   private drainingNow = false;
@@ -599,6 +601,13 @@ export class Lyricad implements Drainable {
       this.services.wakeups.tick(now);
       this.services.routines.tick(now);
       this.services.forge.tick(now);
+      if (now.getTime() - this.prunedAt >= 3600_000) {
+        this.prunedAt = now.getTime();
+        try {
+          const n = this.services.sleep.prune(now);
+          if (n) this.log(`sleep: ${n} old phase threads forgotten`);
+        } catch (err) { this.log(`forgetting old sleep threads failed: ${(err as Error).name}`); }
+      }
     }
     const pad = (n: number) => String(n).padStart(2, "0");
     if (`${pad(now.getHours())}:${pad(now.getMinutes())}` !== this.sleepTime() || this.sleptOn === now.toDateString()) return;

@@ -112,6 +112,35 @@ describe("a night's sleep", () => {
     v.close();
   });
 
+  it("forgets its phase threads after 36 hours, keeping what they wrote, and recall never finds a deleted note in them", async () => {
+    const s = await setup();
+    const v = s.view();
+    const { note } = s.talk(v, "My bike is a garnet tourer.", "{user} rides a garnet tourer");
+    s.script({
+      consolidate: [call("read_memory", { id: note! }), call("raise", { text: "Ask about the tourer" })],
+    });
+    const run = await s.sleep.run(s.ada.id, "general", "scheduled");
+    expect(run.status).toBe("complete");
+    const threads = Object.values(run.phases).map((p) => p!.thread);
+    // The note's text is in consolidate's transcript, but deleted, nothing finds it there.
+    expect(JSON.stringify(v.own.loadEntries(threads[0]!))).toContain("garnet");
+    v.own.delete(note!, "lyrica");
+    expect(v.own.search("garnet tourer", { limit: 10 }).filter((h) => h.id.startsWith("e:sleep/"))).toEqual([]);
+
+    const later = (h: number) => new Date(Date.now() + h * 3600_000);
+    expect(s.sleep.prune(later(35))).toBe(0);
+    expect(s.sleep.prune(later(37))).toBe(3);
+    for (const t of threads) {
+      expect(v.own.getThread(t)).toBeUndefined();
+      expect(v.own.getThreadTombstone(t)).toBeDefined();
+    }
+    // What sleep wrote stays: the journal, WAKE and the question.
+    expect(v.own.listJournal()).toHaveLength(1);
+    expect(v.own.getWake()).toBeDefined();
+    expect(v.own.listItems().map((i) => i.text)).toEqual(["Ask about the tourer"]);
+    v.close();
+  });
+
   it("keeps dreams out of WAKE and items out of every thread but one started from it", async () => {
     const s = await setup();
     const v = s.view();
