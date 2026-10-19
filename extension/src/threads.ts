@@ -71,6 +71,7 @@ const Params = Type.Object({
   folders: Type.Optional(Type.Array(Type.String(), { description: "For start: only these of this thread's folders." })),
   readOnly: Type.Optional(Type.Boolean({ description: "For start: it may read the folders but not change them." })),
   internet: Type.Optional(Type.Literal(false, { description: "For start: false cuts it off from the internet." })),
+  code: Type.Optional(Type.Boolean({ description: "For start: true starts it in code mode." })),
   id: Type.Optional(Type.String({ description: "For message, read, stop, resolve and reopen: the thread, by its ID ([t:…]) or its current title." })),
   minutes: Type.Optional(Type.Number({ description: `For later: how many minutes from now to wake this thread, 1 to ${WAKEUP_LIMITS.maxMinutes}.` })),
   note: Type.Optional(Type.String({ description: "For later or routine add: the note to yourself the wake-up starts with: what to check and what to do then." })),
@@ -105,7 +106,7 @@ type Field = keyof typeof Params.properties;
 const FIELD_ACTIONS: Record<Exclude<Field, "action">, string[]> = {
   on: ["code"], done: ["code"],
   goal: ["draft"], instructions: ["draft"], ids: ["fold"], threads: ["suggest"],
-  title: ["start"], task: ["start", "code"], folders: ["start"], readOnly: ["start"], internet: ["start"],
+  title: ["start"], task: ["start", "code"], folders: ["start"], readOnly: ["start"], internet: ["start"], code: ["start"],
   id: ["message", "read", "stop", "resolve", "reopen"], text: ["message"], to: ["message"], question: ["message", "ask"], options: ["ask"], recommended: ["ask"], context: ["ask"], needsYou: ["message"], last: ["read"],
   minutes: ["later"], cancel: ["later"], note: ["later", "routine"],
   routineAction: ["routine"], routineId: ["routine"], schedule: ["routine"], newThread: ["routine"],
@@ -382,7 +383,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         started++;
         let made: { id: string; link: string; queued?: boolean };
         try {
-          made = await host.start(thread, { title: p.title.trim(), task: p.task, folders: p.folders, readOnly: p.readOnly, internet: p.internet });
+          made = await host.start(thread, { title: p.title.trim(), task: p.task, folders: p.folders, readOnly: p.readOnly, internet: p.internet, code: p.code });
         } catch (err) {
           started--;
           throw err;

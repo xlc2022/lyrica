@@ -761,7 +761,7 @@ Custom roles override built-ins by name.
 - **Child threads** (`createThreadsExtension(thread, host?: ThreadsHost, meter?)`,
   never in a subagent's thread): one model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,
-  `readOnly`, `internet`), `message` (to a child, by ID or current title
+  `readOnly`, `internet`, and `code: true` to start it in code mode), `message` (to a child, by ID or current title
   (`pickThread`; a title two threads share is refused), or `to: "parent"`
   from a child), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
   `last`: the latest messages of a listed, logged thread (`PoolReader.latestEntries`), `READ_DEFAULT`

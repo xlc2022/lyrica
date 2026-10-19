@@ -115,6 +115,18 @@ describe("projects", () => {
     expect(s.d.services!.workspace.settings(s.rt.ada.id).thread(next).code).toBe(false);
   });
 
+  it("starts a child in code mode, with the Coding model and its task as the Code task, when she asks", async () => {
+    const s = await setup();
+    s.script("chat").push({ tools: [{ name: "threads", args: { action: "start", title: "Racing sim", task: "Build the racing sim in the repository", code: true } }] }, { text: "Started." });
+    const { events } = await s.say("Build a racing sim");
+    const child = ends(events).flatMap(e => e.threads ?? [])[0]!.id;
+    await until(() => s.messages(s.threadPath(child)), rows => rows.some(m => m.role === "assistant"));
+    expect((await s.ada.get<ThreadSettings>(`${s.threadPath(child)}/settings`)).body.code).toBe(true);
+    const first = s.requests.find(c => said(c).includes("Build the racing sim in the repository") && said(c).includes("Code task"));
+    expect(first).toBeDefined();
+    expect(s.d.services!.models.recentCalls(s.rt.ada.id, { threadId: child, limit: 10 }).some(c => c.task === "code")).toBe(true);
+  });
+
   it("folds work and its children without losing checklists, wake-ups or child state", async () => {
     const { ada, d, rt, u, project, path, threadPath, overview } = await setup();
     const view = d.services!.memory.openThreadView(rt.ada.id, "general");

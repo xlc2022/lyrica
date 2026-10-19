@@ -126,9 +126,9 @@ describe("threads definition", () => {
     expect(defs.projectThread!.fields).toEqual(expect.arrayContaining(["needsYou", "id"]));
     for (const field of ["task", "ids", "goal"]) expect(defs.projectThread!.fields).not.toContain(field);
     // Ceilings a little above today's sizes: growing past one is a choice, made here.
-    expect(defs.plain!.size).toBeLessThan(3900);
+    expect(defs.plain!.size).toBeLessThan(4000);
     expect(defs.child!.size).toBeLessThan(2900);
-    expect(defs.projectChat!.size).toBeLessThan(4650);
+    expect(defs.projectChat!.size).toBeLessThan(4750);
     expect(defs.projectThread!.size).toBeLessThan(3600);
   });
 });
