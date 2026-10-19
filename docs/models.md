@@ -15,6 +15,9 @@ general thread is outside this.
 
 An endpoint is a name, a kind (`cloud` or `local`, declared by whoever adds
 it, never inferred), an OpenAI-compatible base URL and an optional API key.
+A base URL without a scheme gets `http://` (local) or `https://` (cloud),
+and one without a path gets `/v1`, so `10.0.0.5:1234` saves as
+`http://10.0.0.5:1234/v1`; a given path is kept.
 
 The Hosts and endpoints page distinguishes a plan from a keyed service:
 ChatGPT plan or Grok plan versus API key pills. A cloud row also shows Text,
@@ -35,8 +38,9 @@ and `-`, at most 40 characters.
   choices name offerings (`ModelRef` is `{ offeringId }`). Renaming an
   endpoint, or changing its URL or key (`editEndpoint`), keeps every ID.
 - **Paused.** `editEndpoint { paused }` pauses or resumes a plain endpoint
-  or plan (`paused_at` on `endpoints`): the router skips it ("is paused")
-  until it resumes. A model host pauses itself instead (`hostControl`).
+  or plan (`paused_at` on `endpoints`, added by expand-only self step 3 and
+  user step 12 to databases made before it): the router skips it ("is
+  paused") until it resumes. A model host pauses itself instead (`hostControl`).
 - **Labels.** People and Lyrica name a model as `<endpoint>/<model>`, with
   `shared.` before a shared endpoint's name, so the two never collide. A host
   recipe's `<model>` is its name (`modelName`), never its `recipe/<id>`;
@@ -445,8 +449,14 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   each passed when the installed Codex's `codex features list` has it, since
   nixpkgs' version isn't pinned; a Codex that can't list them is refused),
   the instructions and prompt on stdin (never argv), an edit's image and any
-  references as `--image` files, and the PNG read from the event's
-  `saved_path`. The isolation is structural, not the prompt: Codex runs in
+  references as `--image` files, and the image read from an event's
+  `saved_path` or else the newest image under `generated_images/` (0.146.0
+  reports none, saving `<session>/exec-<id>.png`); a user's calls run one at
+  a time, so that folder is emptied before each call and removed after it.
+  Codex is stopped once a saved image stops growing, so one call spends
+  at most one image of the user's plan.
+  The journal gets one line a call: the exit code, how many image files
+  Codex saved and its event types, never text. The isolation is structural, not the prompt: Codex runs in
   Lyrica's sandbox (`Workspace.codexBox`, `codexSandbox`) holding only its
   home, at `/workspace`, with the internet on and the machine's services
   off, so it never sees another folder, user or the daemon's state. Its own

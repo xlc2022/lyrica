@@ -569,7 +569,8 @@ the Private column too, unless a thread picks its own model, so its
 - **A model host** (a GPU machine of your own running the host stack):
   [model-hosts.md](model-hosts.md).
 - **llama-server, LM Studio, KoboldCpp** on your network are plain local
-  endpoints. Start llama-server and KoboldCpp with `--jinja` (KoboldCpp also
+  endpoints. A bare address and port such as `192.168.1.50:1234` is enough
+  as the Base URL: Lyrica adds `http://` and `/v1`. Start llama-server and KoboldCpp with `--jinja` (KoboldCpp also
   `--jinja_tools`) for tool calling, and enter a context window by hand
   where the server doesn't report one (`endpoints model … --context`).
 

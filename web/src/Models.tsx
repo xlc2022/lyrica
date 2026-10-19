@@ -1188,7 +1188,8 @@ function EndpointRow({ ctx, ep, others, onEdit, onVoice }: { ctx: MCtx; ep: Endp
 /** Plain HTTP to somewhere other than this machine or the tailnet, as the server marks `unencrypted`. */
 function plainHttp(url: string): boolean {
   let host: string;
-  try { const x = new URL(url.trim()); if (x.protocol !== "http:") return false; host = x.hostname.replace(/^\[|\]$/g, ""); } catch { return false; }
+  // The server adds http:// to a local endpoint's address that has no scheme.
+  try { const x = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(url.trim()) ? url.trim() : `http://${url.trim()}`); if (x.protocol !== "http:") return false; host = x.hostname.replace(/^\[|\]$/g, ""); } catch { return false; }
   if (host === "localhost" || host.endsWith(".localhost") || host === "::1" || /^127\./.test(host) || host.endsWith(".ts.net")) return false;
   const m = /^100\.(\d+)\./.exec(host);
   if (m && Number(m[1]) >= 64 && Number(m[1]) <= 127) return false;
