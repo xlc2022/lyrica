@@ -30,9 +30,10 @@ without cutting her off from what the user has told her about how to work.
 
 - Stored as a `thread_workspaces` column (`code`, user.db step 14, or
   the next free one if main takes it first; expand-only) and returned in `ThreadSettings`.
-- Inherited like the other switches: a child thread, routine thread or
-  branch of a code-mode thread starts in code mode. Unlike the narrowing
-  switches, a child may turn it off.
+- Inherited like the other switches: `code` joins the copy of a parent's
+  `thread_workspaces` row (core/src/workspace/settings.ts), so a child
+  thread, routine thread or branch of a code-mode thread starts in code
+  mode. Unlike the narrowing switches, it stays editable in the child.
 - Three ways on and off, all the same setting:
   - **Thread settings** → Behaviour: a Switch **Code mode** with the hint
     "Focus on the code: a coding model, a short persona, and only this
@@ -40,7 +41,8 @@ without cutting her off from what the user has told her about how to work.
   - **By asking her:** a `threads` action `code({ on, task?, done? })`.
     She uses it when the user asks for code mode, or turns it off when
     they ask. It applies from her next turn, emits a `settings` event, and
-    is refused in a subagent.
+    is refused in a subagent (follow the pattern at
+    extension/src/threads.ts:141).
   - **A project** may set it for its new threads (Project settings →
     General, beside the threads model), applied in children.ts with
     `threadsModel`.
@@ -49,9 +51,18 @@ without cutting her off from what the user has told her about how to work.
 
 **B. What changes in a code-mode turn.**
 
-1. **Model.** A new task `code` ("Coding" in Models), added to
-   `LATER_TASKS` as `{ same: "subagent.strong" }`. A code-mode thread's
-   chat calls use the `code` list. A thread's own model choice still wins.
+1. **Model.** A new task `code` ("Coding" in Models).
+   - Its default `{ same: "subagent.strong" }` goes in `NEW_PROFILE`, and
+     the task in `LATER_TASKS` so existing presets get it
+     (core/src/models/index.ts). Add it to `TASKS` and `TASK_NAMES`
+     (core/src/types.ts), the daemon's `Task` union and `THREAD_TASKS`
+     (daemon/src/api.ts), and the web labels (Settings.tsx, ModelsFrame.tsx,
+     Models.tsx; reword the chat task's "Writing, judgment, code" hint).
+   - A code-mode thread's chat calls use the `code` list. A per-thread
+     `code` choice in `thread_models` wins, as for any task; the thread's
+     `chat` choice does not apply while code mode is on.
+   - The thread's context limit (`thread_choices.context`, #343) applies
+     to the code model as it does to chat.
 2. **Persona.** SOUL.md only. STYLE, REGISTER and topic routing are left
    out, so she keeps who she is but not her conversational register.
 3. **Memory sections.**
@@ -59,13 +70,23 @@ without cutting her off from what the user has told her about how to work.
      sleep, the page), folder pages and pinned items.
    - Left out: WAKE, the about-user page and the page index.
    - Recall is filtered to project items (`inProject`) plus **working
-     preferences**: notes whose `about` includes `working` (D). Add a
-     `SearchOptions.only` filter that reuses `inProject`; don't copy it.
-     Outside a project, recall is preferences only.
+     preferences**: notes whose `about` has the whole word `working` (D),
+     matched as `listMemories` matches `about`. The `working` rule applies
+     to notes only; entries and pages pass only through `inProject`.
+   - Add a `SearchOptions.only` filter that reuses `inProject`; don't
+     copy it. It filters **before** the `limit * 4` cut in
+     `PoolStore.search` (core/src/store/pool.ts): in the SQL, or by
+     widening the candidate rows until `limit` hits survive. Otherwise
+     unrelated notes can outrank and crowd out every project one.
+   - With `only`, an empty `projectThreads()` means nothing is in the
+     project, so only `working` notes pass. That also covers outside a
+     project, and the other pool a private view reads through
+     `searchView` (core/src/store/memory.ts).
    - `remember`, `recall` and `read_memory` stay. Recall's filter applies
      to her `recall` calls too, unless she passes `everywhere: true` for a
      single search.
-4. **Tools off:** `models`, `downloads`, `image` and `react`, via
+4. **Tools off:** `models`, `download_model`, `model_files`, `image`
+   and `react`, via
    `setToolsOff(…, "code", …)`. Everything else is unchanged.
 5. **Guidelines:** a short code-mode block in the prompt: read before
    editing, run the repository's checks after each change, read a failing
@@ -76,16 +97,20 @@ without cutting her off from what the user has told her about how to work.
 
 - `code({ on: true, task, done })` takes two short fields (300 and 1200
   characters): what she is about to do, and what has been done so far
-  (decisions, branch, open PR). They are kept on the thread as the **Code
-  task** section, shown in the stable prompt while code mode is on, and
-  replaced by the next `code` call.
+  (decisions, branch, open PR). They are thread text, so they live in the
+  pool database, encrypted with it like the checklist: a new table
+  `code_tasks (thread, task, done, at)`, pool.db step 9, or the next free
+  one if main takes it first (expand-only). They show as the **Code task**
+  section in the stable prompt while code mode is on, and the next `code`
+  call replaces them.
 - When the user turns code mode on from Thread settings, her next turn's
   guidelines ask her to set the task with `code` first, so the section is
   never empty for long.
-- The section also lists, with no model call: each of the thread's
-  repositories with its branch, the commits on it since the base branch
-  (subject lines only, at most 10), and an open pull request with its
-  check state if the forge watcher knows one.
+- The per-turn section (beside recall and time, not the cached stable
+  prompt) lists, with no model call: each of the thread's repositories
+  with its branch, the commits on it since the base branch (subject lines
+  only, at most 10), and an open pull request with its check state if
+  the forge watcher knows one. It runs only in code mode, once per turn.
 
 **D. Working preferences.**
 
@@ -100,8 +125,13 @@ without cutting her off from what the user has told her about how to work.
 - tier `strong` but model from the `code` task; tools read, write, edit,
   bash, recall, read_memory; writes; thinking high.
 - Unlike other subagents, it starts with code mode's memory sections:
-  the project section and recall filtered as in B3. It still gets no
-  persona beyond its role prompt.
+  the project section and recall filtered as in B3. They come through the
+  `openThreadView` the subagent already gets (extension/src/delegate/runs.ts),
+  so no new boundary is needed; don't build one. It still gets no persona
+  beyond its role prompt.
+- `coder` is the default role for a step that writes in a thread with a
+  repository; `worker` stays the default otherwise. A small model that
+  leaves the role out of a coding step still gets the coding shape.
 - Its task is the delegate step's `task` plus an optional `done`, shown as
   the Code task section. Its role prompt is the B5 guidelines.
 - A custom role named `coder` overrides it, as for other built-ins.
@@ -129,13 +159,17 @@ without cutting her off from what the user has told her about how to work.
   image and react. Turning it off restores all of them.
 - Recall in code mode returns a project note and a `working` note, and
   not an unrelated note with the same words; `everywhere: true` returns
-  it.
+  it. A project note ranked below `4 × limit` unrelated hits is still
+  returned. Outside a project only `working` notes come back.
+- Code-task text is in pool.db, never in user.db or on disk in plain text;
+  the pool migration has a test from every released pool schema.
 - `threads code` turns it on and off, is refused in a subagent, and never
   changes Mode. The setting migrates from every released user schema.
 - A child thread of a code-mode thread starts in code mode; a project
   with code mode for new threads starts them in it.
 - A `coder` subagent gets the project section and the filtered recall,
-  and the `code` model list.
+  and the `code` model list. A delegate write step with no role, in a
+  thread with a repository, runs as `coder`.
 - The eval also asks a plain (non-code-mode) thread to fix the fixture's
   failing test. The scripted check asserts `coder` and the guideline line
   are in the prompt; the real-model check, run against a local model when
