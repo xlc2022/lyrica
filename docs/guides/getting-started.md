@@ -283,6 +283,9 @@ commit that is running, as on Debian.
    apt-get install -y git curl ca-certificates
    ```
 
+   For the SearXNG the script offers (below), install Docker first; the
+   script never installs it.
+
 5. **Node.js 22.6 or later**, installed before the script runs (it checks
    and stops otherwise). The SSH helper that machines use runs with
    Node's type stripping, which arrived in 22.6; an older 22 fails every
@@ -296,7 +299,8 @@ commit that is running, as on Debian.
 
 6. **Internet access** during the install: npm, `proxy.golang.org` for the
    Caddy build, Playwright's download servers for headless Chromium, and
-   `pkgs.tailscale.com` when Tailscale isn't installed yet. Updates later
+   `pkgs.tailscale.com` when Tailscale isn't installed yet, and Docker Hub
+   for the SearXNG image when you say yes to it. Updates later
    fetch from GitHub over SSH with a deploy key.
 7. As root, from a git checkout of the repository outside `/opt/lyrica`:
 
@@ -309,7 +313,9 @@ commit that is running, as on Debian.
 A release is exactly one commit, so the script refuses a checkout with
 uncommitted changes. It builds the web UI itself.
 
-What `install.sh` does, in order:
+What `install.sh` does, in order. It first asks "Run SearXNG in Docker on
+this machine for her web search? [Y/n]" (`LYRICA_SEARXNG=yes` or `no`
+answers ahead; without a terminal the answer is no), then:
 
 1. Installs the packages her sandboxes need: bubblewrap, gocryptfs, FUSE,
    passt, nftables, ImageMagick (the Files panel's thumbnails are made in
@@ -352,9 +358,11 @@ What `install.sh` does, in order:
 7. Installs, enables and starts `lyrica-caddy.service`,
    `lyrica-tailscaled.service` and `lyricad.service`, enables and
    starts `lyrica-update.path`, and enables `lyrica-probation.service`,
-   which resumes an update's probation after a reboot. On an upgrade it restarts `lyricad`. On a
-   fresh install `lyricad` starts setting up, and the script ends by printing
-   a one-time setup code, the addresses to open and the certificate's
+   which resumes an update's probation after a reboot. With a yes to
+   SearXNG it also starts `lyrica-searxng.service` on `127.0.0.1:8888`
+   ([searxng.md](searxng.md#set-up-by-installsh)). On an upgrade it
+   restarts `lyricad`. On a fresh install `lyricad` starts setting up,
+   and the script ends by printing a one-time setup code, the addresses to open and the certificate's
    fingerprint (see "First run").
 
 Running it again later installs the checkout's commit as a new release
@@ -673,9 +681,9 @@ Her `web_search` asks one SearXNG. On NixOS the module runs one unless
 whether to run one in Docker on the same machine. Either way the address
 fills in under Administration, **Web search** for you. Otherwise host
 one and give its address there. It says **Reachable** once a test search
-works: [searxng.md](searxng.md). Every thread with the Web search switch on can
-then search, private ones included (the engines see the query, never who
-asked). `web_fetch` reads a page with `curl` inside the thread's sandbox,
+works: [searxng.md](searxng.md). Every thread with the Web search switch
+on can then search, private ones included (the engines see the query,
+never who asked). `web_fetch` reads a page with `curl` inside the thread's sandbox,
 so its network switches decide what it reaches.
 
 ## Give her repositories
