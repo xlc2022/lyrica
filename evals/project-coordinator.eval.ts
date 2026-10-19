@@ -14,7 +14,9 @@ import { withModels } from "../core/test/helpers.ts";
 //
 // She answers a quick question herself, starts one thread per task for a
 // message with several, routes a follow-up to the thread already on it, and
-// saves "run two at a time" as a project note.
+// saves "run two at a time" as a project note. In a coding project she splits
+// a build with separable parts into code threads that own different files,
+// keeps a small fix to one thread, and checks the reported result herself.
 //
 // Scripted (always): her prompt in a project chat carries the coordinator's
 // guidance and her project section. With a real model (LYRICA_EVAL_BASE_URL,
@@ -25,9 +27,12 @@ import { withModels } from "../core/test/helpers.ts";
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-interface Done { tool: string; action?: string; to?: string }
+interface Done { tool: string; action?: string; to?: string; code?: boolean; task?: string }
 
-async function setup(real: boolean) {
+const HOMELAB = { title: "Homelab", goal: "Move the homelab to the new rack", dns: true };
+const RACING = { title: "Racing sim", goal: "A browser racing sim in the git repository at /srv/race", dns: false };
+
+async function setup(real: boolean, about = HOMELAB) {
   const m = await withModels();
   let ref = m.cloudRef;
   if (real) {
@@ -46,7 +51,7 @@ async function setup(real: boolean) {
 
   // One project, with a thread already on DNS.
   const setupView = memory.openThreadView(m.ada.id, "general");
-  const project = setupView.own.createThread({ interface: "web", project: true, title: "Homelab", goal: "Move the homelab to the new rack" });
+  const project = setupView.own.createThread({ interface: "web", project: true, title: about.title, goal: about.goal });
   const dns = setupView.own.createThread({ interface: "web", parent: project.id, child: true, title: "Move DNS to the router" });
   setupView.close();
   let made = 0;
@@ -54,7 +59,7 @@ async function setup(real: boolean) {
     limits: DEFAULT_THREADS_LIMITS,
     start: async () => ({ id: `web/new${made++}`, link: "#/new" }),
     message: async () => "started" as const,
-    list: () => [{ id: dns.id, title: "Move DNS to the router", status: "working", state: "working", updatedAt: new Date().toISOString() }],
+    list: () => (about.dns ? [{ id: dns.id, title: "Move DNS to the router", status: "working", state: "working", updatedAt: new Date().toISOString() }] : []),
     resolve: () => {},
   };
 
@@ -66,15 +71,18 @@ async function setup(real: boolean) {
     const { session, dispose } = await openThreadSession({
       thread, models: m.models, cwd,
       extensions: [
-        createLyricaExtension(thread, { persona: () => persona.read(), profile: () => m.users.get(m.ada.id)!.profile, projectThreads: () => `- [t:${dns.id}] "Move DNS to the router": working` }),
+        createLyricaExtension(thread, { persona: () => persona.read(), profile: () => m.users.get(m.ada.id)!.profile, projectThreads: () => (about.dns ? `- [t:${dns.id}] "Move DNS to the router": working` : "") }),
         createThreadsExtension(thread, host),
       ],
     });
     const done: Done[] = [];
     session.subscribe((e) => {
       if (e.type === "tool_execution_start") {
-        const a = e.args as { action?: string; id?: string } | undefined;
-        done.push({ tool: e.toolName, ...(a?.action ? { action: a.action } : {}), ...(a?.id ? { to: a.id } : {}) });
+        const a = e.args as { action?: string; id?: string; code?: boolean; task?: string } | undefined;
+        done.push({
+          tool: e.toolName, ...(a?.action ? { action: a.action } : {}), ...(a?.id ? { to: a.id } : {}),
+          ...(a?.code ? { code: true } : {}), ...(a?.task ? { task: a.task } : {}),
+        });
       }
     });
     try {
@@ -113,5 +121,26 @@ describe("a project chat", () => {
     expect(follow).toEqual(expect.arrayContaining([expect.objectContaining({ tool: "threads", action: "message" })]));
     expect(follow.filter((d) => d.action === "start")).toEqual([]);
     expect(rule.map((d) => d.tool)).toContain("remember");
+  }, 300_000);
+
+  it.skipIf(!process.env.LYRICA_EVAL_BASE_URL || !process.env.LYRICA_EVAL_MODEL)("with a real model, she splits a build into code threads that own different files, and checks the result", async () => {
+    const m = await setup(true, RACING);
+    const build = await m.turn("Build the racing sim: car physics with unit tests, a three.js renderer with a chase camera, and a closed track with checkpoints and a lap timer. Each part is a real chunk of work.");
+    const small = await m.turn("Also, the README says 'teh car'. Fix that typo.");
+    const report = await m.turn("Update from child thread [t:web/new0]:\nPhysics and tests are done and committed. npm test passes.\n\n"
+      + "Update from child thread [t:web/new1]:\nRenderer and chase camera are done and committed.\n\n"
+      + "Update from child thread [t:web/new2]:\nTrack, checkpoints and lap timer are done and committed.");
+    console.log(`parallel code threads, ${process.env.LYRICA_EVAL_MODEL}:\n${JSON.stringify({ build, small, report }, null, 1)}`);
+    const starts = build.filter((d) => d.tool === "threads" && d.action === "start");
+    expect(starts.length).toBeGreaterThanOrEqual(2);
+    expect(starts.every((d) => d.code)).toBe(true);
+    // Each brief names the files its part owns, and no source file is in two briefs.
+    const files = starts.map((d) => new Set((d.task ?? "").match(/[\w./-]+\.(?:js|ts|mjs|html|css)\b/g) ?? []));
+    expect(files.every((f) => f.size > 0)).toBe(true);
+    const seen = new Set<string>();
+    for (const f of files) for (const name of f) { expect(seen.has(name)).toBe(false); seen.add(name); }
+    expect(small.filter((d) => d.tool === "threads" && d.action === "start").length).toBeLessThanOrEqual(1);
+    // Before telling the person it's done, she looks for herself.
+    expect(report.some((d) => d.tool === "bash" || d.tool === "read" || (d.tool === "threads" && d.action === "read"))).toBe(true);
   }, 300_000);
 });
