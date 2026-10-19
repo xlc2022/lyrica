@@ -47,7 +47,9 @@ becomes understanding (principle 5), and where she wakes up continuous
      them, asks rather than overwriting, and never edits or deletes them.
    - **Maintain `p:about-user`** in this pool: who the user is, what they
      prefer, dislike and care about, citing notes. Create it if missing. Never
-     overwrite text the user wrote. Add around it, or ask.
+     overwrite text the user wrote. Add around it, or ask. In private, it
+     holds only what the general page doesn't say: private sleep is shown
+     the general page and drops repeats (added after this brief merged).
 4. **Dream.** Free reflection, written to the journal and marked as
    reflection, so nothing in it becomes a fact by itself.
    - A persona proposal goes through

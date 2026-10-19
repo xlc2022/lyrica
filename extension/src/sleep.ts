@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { AgentSessionEvent, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import {
-  citationsIn, CORE_LIMIT, danglingPages, emptySleepMaterial, kindOf, NoModel, CloudModelForbidden, projectSlug, sleepInstruction,
+  aboutToTidy, citationsIn, CORE_LIMIT, danglingPages, emptySleepMaterial, kindOf, NoModel, CloudModelForbidden, projectSlug, sleepInstruction,
   type CallContext, type Memory, type ModelRef, type Models, type PersonaProposals, type PersonaStore, type Pool, type PoolView,
   type SkipReason, type SleepItem, type SleepMaterial, type SleepPhase, type SleepRunRecord, type Users,
 } from "@lyrica/core";
@@ -221,7 +221,8 @@ export class Sleep {
     const until = new Date().toISOString();
     const material = view.own.sleepMaterial(view.own.watermark(), until);
     material.flagged.push(...danglingPages(view));
-    const any = material.threads.length || material.notes.length || material.edited.length || material.flagged.length;
+    // In private, general's page about the user changing is reason enough to sleep: it may now repeat the private one.
+    const any = material.threads.length || material.notes.length || material.edited.length || material.flagged.length || aboutToTidy(view);
     return any ? { phases: [...PHASES], until, material } : undefined;
   }
 

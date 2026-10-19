@@ -184,7 +184,8 @@ The cheapest mechanism comes first:
    page means no section. Sleep creates and keeps it, citing notes. A user can
    also write it in the memory browser (a page with the short name
    `about-user`); what they write is authoritative, and sleep only adds
-   around it.
+   around it. Private sleep keeps out of the private page what the general
+   one already says ([sleep.md](sleep.md#memory-pools)).
    Also always in context: the thread's **pinned messages**, word for word,
    oldest first (`pins(threadId)`, a `pinned` section of about 2,000
    tokens). They're read from the store, not from what Pi keeps, so
