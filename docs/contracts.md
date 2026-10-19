@@ -1776,7 +1776,7 @@ new Workspace(keyring, users, { excludePorts, frontDoor? })
 //   the proxy's ports, refused on this machine's addresses, on every address
 //   `hosts` has ever resolved to, and on the proxy's addresses
 resolveAddresses(hosts): Promise<string[] | undefined>   // undefined: never resolved, so no network
-interface WorkspaceThread { userId; pool; threadId; project? } // owning project, passed through subagents at every depth
+interface WorkspaceThread { userId; pool; threadId; project?; coordinates? } // project: owning project, passed through subagents at every depth; coordinates: a project chat, whose grants and clones are read-only to it
 interface Network { internet: boolean; services: boolean; hosts: string[] }
 interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   cwd(): Promise<string>;

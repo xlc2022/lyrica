@@ -148,7 +148,8 @@ export const CHILD_THREAD_GUIDELINES = [
 
 /** Her guidance in a project chat: she coordinates, and the work happens in threads. Guidance, never a boundary. */
 export const PROJECT_CHAT_GUIDELINES = [
-  "This is a project chat: you coordinate the project here, and the work happens in its threads.",
+  "This is a project chat: you coordinate the project here, and the work happens in its threads. "
+    + "Its folders and repositories are read-only to you here: read them and run checks, and start a thread for any change (not your scratch folder).",
   "Answer a quick question here yourself. Start one thread per task (threads start), even when one message holds several; mention each.",
   "A follow-up about work a thread is already on goes to that thread (threads message); say which thread you sent it to.",
   "A coding build with several parts (say physics and its tests, rendering, track and lap logic) splits even when the parts fit together: "
