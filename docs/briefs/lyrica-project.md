@@ -167,7 +167,10 @@ thread per project is allowed. A thread's report names the check that
 tests the request as asked and what it showed; with that evidence a light
 look is enough, and otherwise check fully before reporting it done. A
 project thread changes and commits only the files its brief gives it, and
-keeps screenshots, logs and other check output in its scratch folder. Coder is
+keeps screenshots, logs and other check output in its scratch folder
+outside worktrees/. Before reporting done it runs git status in each
+repository or worktree it changed and commits what belongs to the work or
+says what is left uncommitted. Coder is
 the default for a write step in a repository thread. Both use the `code`
 model task and project memory plus notes tagged `working`. Thread settings →
 Behaviour → **Code mode** turns it on in a conversation; Project settings →
