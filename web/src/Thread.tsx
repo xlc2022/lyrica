@@ -301,7 +301,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             {/* The Files panel (docs/ux.md §6): beside the conversation from the split width, the page on its own below it. */}
             <a className="sm" href={href({ page: "files", userId, pool, threadId })} aria-label="Files and images"><Icon name="panel" /><span className="long">Files</span></a>
             <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls={drawerId} onClick={() => setDrawer(!drawer)}>
-              <Icon name="gear" /><span className="long">Settings</span>
+              <Icon name="gear" /><span className="long">{s?.project ? "Settings (this thread)" : "Settings"}</span>
             </button>
             {/* Its pointerdown stays here, so a press while the menu is open closes it rather than closing and reopening. */}
             {listed && (

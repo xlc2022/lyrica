@@ -890,6 +890,8 @@ form.drawer-body { flex: 1; }
   .thread-head .tfacts { flex-basis: 100%; order: 3; }
   .thread-head .crumbs { flex-basis: 100%; margin-bottom: -6px; }
   .head-actions .long { display: none; }
+  /* The overview's Project settings keeps its words in the panel, so it isn't mistaken for the chat's own Settings. */
+  .head-actions .long.keep { display: inline; }
   .tfacts .folder { display: none; }
   .drawer { width: 100%; }
   .page-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content 1fr; }

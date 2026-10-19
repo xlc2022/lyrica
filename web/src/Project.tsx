@@ -118,7 +118,7 @@ export function ThreadsPage({ ctx, pool, threadId }: { ctx: ShellContext; pool: 
       <PageHead ctx={ctx} title="Threads">
         <div className="head-actions">
           {/* The project's settings page, from its overview (docs/ux.md §6): in the panel it opens one crumb deeper. */}
-          <a className="sm" title="Project settings" href={href({ page: "project", userId, pool, threadId })} aria-label="Project settings"><Icon name="gear" /><span className="long">Project settings</span></a>
+          <a className="sm" title="Project settings" href={href({ page: "project", userId, pool, threadId })} aria-label="Project settings"><Icon name="gear" /><span className="long keep">Project settings</span></a>
         </div>
       </PageHead>
       <div className="page-body">
