@@ -86,6 +86,10 @@ export class ChildThreads implements ThreadsHost {
     this.o.host().peek(from.user.id, from.pool, from.threadId)?.publish({ type: "settings" });
   }
 
+  codeOn(from: ThreadContext): boolean {
+    return this.o.workspace.settings(from.user.id).effective(from.threadId).code;
+  }
+
   model(from: ThreadContext, name: string): string {
     if (from.view.own.getThread(from.threadId)?.subagent) throw new Error("a subagent can't change its model");
     const { models, workspace } = this.o;

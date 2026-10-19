@@ -6,7 +6,7 @@ import { createAgentSession, DefaultResourceLoader, SessionManager, type AgentSe
 import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServer, ThreadRepository, ThreadWorkspace, ToolOps } from "@lyrica/core";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import { createDownloadsExtension, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
+import { BASH_TIMEOUT_S, createDownloadsExtension, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { Users, Workspace } from "@lyrica/core";
@@ -16,6 +16,9 @@ import { Users, Workspace } from "@lyrica/core";
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+
+/** Each command's time limit, as the bash tool passed it. */
+const timeouts: (number | undefined)[] = [];
 
 /** A sandbox, or with `machine` a machine whose commands are recorded as "<machine>: <command>". */
 function fakeTarget(files: Map<string, string>, commands: string[], machine?: string, secrets: string[] = []): ExecutionTarget {
@@ -29,7 +32,7 @@ function fakeTarget(files: Map<string, string>, commands: string[], machine?: st
     read: { readFile: read, access: async (p) => { await read(p); }, detectImageMimeType: async () => null },
     write: { writeFile: write, mkdir: async () => {} },
     edit: { readFile: read, writeFile: write, access: async (p) => { await read(p); } },
-    bash: { exec: async (command, _cwd, { onData }) => { commands.push(machine ? `${machine}: ${command}` : command); onData(Buffer.from("ran\n")); return { exitCode: 0 }; } },
+    bash: { exec: async (command, _cwd, { onData, timeout }) => { timeouts.push(timeout); commands.push(machine ? `${machine}: ${command}` : command); onData(Buffer.from("ran\n")); return { exitCode: 0 }; } },
   };
   return { name: machine ? `ssh:${machine}` : "sandbox", cwd: async () => "/workspace", ops: () => ops, folders: () => [], secrets: () => secrets };
 }
@@ -140,10 +143,13 @@ describe("workspace tools in a Pi session", () => {
       fauxToolCall("edit", { path: "notes.txt", edits: [{ oldText: "two", newText: "three" }] }, { id: "2" }),
       fauxToolCall("write", { path: "new.md", content: "hello" }, { id: "3" }),
       fauxToolCall("bash", { command: "ls" }, { id: "4" }),
+      fauxToolCall("bash", { command: "npm test", timeout: 1800 }, { id: "5" }),
     ]);
     expect(files.get("/workspace/notes.txt")).toBe("one\nthree\n");
     expect(files.get("/workspace/new.md")).toBe("hello");
-    expect(commands).toEqual(["ls"]);
+    expect(commands).toEqual(["ls", "npm test"]);
+    // A command she gives no limit gets the default, so a test that hangs can't hold the thread.
+    expect(timeouts.splice(0)).toEqual([BASH_TIMEOUT_S, 1800]);
     expect(system).toContain("/srv/music (read-only)");
     expect(system).toContain("Internet for commands: off.");
     expect(system).toContain("Hosts you may reach: nas.lan:8080.");

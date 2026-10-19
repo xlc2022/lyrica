@@ -15,6 +15,9 @@ Lyrica uses Pi's standard `read`, `write`, `edit` and `bash` tools. Pi lets each
 tool's file and process operations be swapped for another backend
 (`createReadTool(cwd, { operations })` and so on). Lyrica's versions send every
 operation to an **execution target**. Nothing runs inside `lyricad`'s process.
+A `bash` call with no `timeout` gets `BASH_TIMEOUT_S` (600 seconds), so a
+command that never ends (a test whose browser never closes) can't hold the
+thread; she gives a longer one for a long build.
 
 That matters because `lyricad` holds the unlocked keys in memory and owns the
 database files. A command that could see either one could read everything.

@@ -83,6 +83,10 @@ export type GoAhead = (typeof GO_AHEAD)[number];
 const LABELS: Record<PermissionMode, string> = { ask: "Ask", acceptEdits: "Accept edits", auto: "Auto", plan: "Plan" };
 
 type Create = (cwd: string, options: { operations: never }) => ToolDefinition;
+
+/** A command's time limit when she sets none, in seconds: a test that hangs (a browser that never closes) can't hold the thread forever. */
+export const BASH_TIMEOUT_S = 600;
+const BASH_TIMEOUT = Type.Optional(Type.Number({ description: `Timeout in seconds, ${BASH_TIMEOUT_S} if left out. Give a longer one for a long build or test run.` }));
 const TOOLS: Record<keyof ToolOps, Create> = {
   read: createReadToolDefinition as unknown as Create,
   write: createWriteToolDefinition as unknown as Create,
@@ -170,9 +174,10 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const template = create(WORKDIR, { operations: undefined as never });
       pi.registerTool({
         ...template,
-        parameters: Type.Object({ ...(template.parameters as ReturnType<typeof Type.Object>).properties, machine: MACHINE }) as typeof template.parameters,
+        parameters: Type.Object({ ...(template.parameters as ReturnType<typeof Type.Object>).properties, ...(name === "bash" ? { timeout: BASH_TIMEOUT } : {}), machine: MACHINE }) as typeof template.parameters,
         async execute(id, params, signal, onUpdate, ctx) {
           const { machine: named, ...rest } = params as Record<string, unknown>;
+          if (name === "bash") rest.timeout ??= BASH_TIMEOUT_S;
           // An empty machine is the sandbox, as in tool_call.
           const machine = (named as string | undefined) || undefined;
           const target = tools.target(machine);
