@@ -259,7 +259,7 @@ describe("delegate", () => {
     expect(s.delegation.models(s.thread("general", { localOnly: true })).map((m) => m.label)).toEqual(["gpu/qwen3.8-27b"]);
   });
 
-  it("stops a subagent whose model goes quiet, not one that keeps working, and not while it waits for approval", async () => {
+  it("stops a subagent whose model goes quiet, not one that keeps working, waits for approval or runs a silent command", async () => {
     const scratch = tempDir();
     const target: ExecutionTarget = { name: "sandbox", cwd: async () => scratch, ops: () => ({ bash: createLocalBashOperations() } as unknown as ToolOps), folders: () => [] };
     let answer = gate();
@@ -276,6 +276,7 @@ describe("delegate", () => {
       const task = told(r);
       if (task === "quiet") { await hush.opened; return { text: "too late" }; }
       if (task === "ask") return r.messages.at(-1)!.role === "tool" ? { text: "asked and done" } : { tools: [{ name: "bash", args: { command: "echo ok" } }] };
+      if (task === "build") return r.messages.at(-1)!.role === "tool" ? { text: "built" } : { tools: [{ name: "bash", args: { command: "sleep 1" } }] };
       // Busy: a tool call every 150 ms, five times, for longer than idleMs in all.
       const calls = r.messages.filter((m) => m.role === "tool").length;
       await sleep(150);
@@ -298,6 +299,11 @@ describe("delegate", () => {
     await pending.checkpoint();
     expect(pending.status).toBe("finished");
     expect(pending.result).toContain("asked and done");
+
+    // A command that prints nothing for longer than idleMs, as a build or test run can.
+    const build = await s.run(parent, { task: "build", role: "worker" });
+    expect(build.status).toBe("finished");
+    expect(build.result).toContain("built");
     answer = gate();
   });
 

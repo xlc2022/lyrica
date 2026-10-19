@@ -238,13 +238,15 @@ the thread's scratch folder (`/workspace`).
   subagent holds a slot only while it works on a turn, so a loop or a paused
   subagent never blocks the rest. A run started with `workers` (1 to 8, set
   only when the person asks for more or fewer) has slots of its own instead,
-  at most `runsPerRequest`;
+  at most `runsPerRequest`, outside the thread's: two such runs in one
+  thread can each have that many working;
 - `runsPerRequest`: subagents one message to the parent may start, default 8,
   counting the ones its subagents start;
 - `timeoutMs`: per stretch of work, default 90 minutes, however busy;
 - `idleMs`: how long a subagent may go with no sign of work (a streamed
-  token, a tool call or result), default 5 minutes. A pending approval
-  doesn't count. Neither limit counts time waiting for a slot. A subagent
+  token, a tool call or result), default 5 minutes. A pending approval or
+  a tool call still running (a build that prints nothing) doesn't count;
+  the tool's own timeout and `timeoutMs` bound those. Neither limit counts time waiting for a slot. A subagent
   past either is stopped, with the reason in its result;
 - `notes`: notes per stretch of work, default 3.
 

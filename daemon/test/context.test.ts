@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import { CODING_GUIDELINE, CONTINUATION_GUIDELINES, WORK_GUIDELINES } from "@lyrica/extension";
+import { CODING_GUIDELINE, CONTINUATION_GUIDELINES, MODEL_CHOICE_TEXT, THREAD_MODEL_TEXT, WORK_GUIDELINES } from "@lyrica/extension";
 import type { CallInfo, EndpointInfo, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
@@ -28,7 +28,7 @@ async function setup(pool: "general" | "private" = "general", window = 16_384) {
 // Keep these boundary scenarios at the same headroom as before the new
 // operational guidance. The fake endpoint estimates one token per four chars;
 // allow for JSON/bullet formatting and Pi's 8% reserve at the window's edge.
-const guidanceTokens = Math.ceil((JSON.stringify([...CONTINUATION_GUIDELINES, ...WORK_GUIDELINES, CODING_GUIDELINE]).length + 96) / (4 * 0.92));
+const guidanceTokens = Math.ceil((JSON.stringify([...CONTINUATION_GUIDELINES, ...WORK_GUIDELINES, CODING_GUIDELINE, ...MODEL_CHOICE_TEXT, ...THREAD_MODEL_TEXT]).length + 96) / (4 * 0.92));
 
 /** A long message with a word to find it by. */
 const long = (mark: string) => `${mark} ${"the quick brown fox jumps over the lazy dog ".repeat(200)}`;
@@ -78,7 +78,7 @@ describe("her context", () => {
 
   it("is compacted by Pi at the window's edge when she doesn't, with a marker", async () => {
     // Principle 8: the window follows the seed persona and tool definitions; a turn must land between Pi's reserve and the window.
-    const { ada, path, stream, turn } = await setup("general", 12_800 + guidanceTokens);
+    const { ada, path, stream, turn } = await setup("general", 12_500 + guidanceTokens);
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));

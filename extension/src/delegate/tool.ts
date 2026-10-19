@@ -14,13 +14,19 @@ import { DELEGATE_MESSAGE, outcome, Stopped, type Delegation, type Deliver, type
 const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as const, text: t }], details });
 
 const Tier = StringEnum(["cheap", "strong"] as const);
+const CHECK_IN = " Check on it with status: writers commit to their own branches, not the main checkout.";
+const STEP_MODEL = "Only a model the person named, in their words.";
+const WORKERS = "Subagents at once, only when the person asked; default 2.";
+const MODELS_GUIDELINE = "Give a step a model only when the person named one, in their words; if it fits none, ask which they meant. Set workers only when they ask for more or fewer than 2 at once.";
+/** The text checking on runs, naming models and setting workers adds to every thread's tool definitions, for tests that size a window around them. */
+export const MODEL_CHOICE_TEXT = [CHECK_IN, STEP_MODEL, WORKERS, MODELS_GUIDELINE, "models", "models lists the models a step may name; "];
 // She picks a tier; a model only when the person named one (a saved workflow, which a user writes, may name one too).
 const Step = Type.Object({
   task: Type.String({ description: "What to do, with everything the subagent needs: it sees none of this conversation." }),
   done: Type.Optional(Type.String({ maxLength: 1200, description: "Progress and decisions so far, for the coder’s Code task section." })),
   role: Type.Optional(Type.String({ description: "A role; coder for writing in a repository, worker otherwise." })),
   tier: Type.Optional(Tier),
-  model: Type.Optional(Type.String({ description: "Only a model the person named, in their words." })),
+  model: Type.Optional(Type.String({ description: STEP_MODEL })),
   fork: Type.Optional(Type.Boolean({ description: "Start the subagent from a copy of this conversation, not just its task." })),
 });
 
@@ -38,7 +44,7 @@ const Params = Type.Object({
   workflow: Type.Optional(Type.String({ description: "A saved workflow's name." })),
   input: Type.Optional(Type.String({ description: "The workflow's input, for {input} in its steps." })),
   background: Type.Optional(Type.Boolean({ description: "Return a run ID at once; the result arrives as a message later." })),
-  workers: Type.Optional(Type.Integer({ minimum: 1, maximum: 8, description: "Subagents at once, only when the person asked; default 2." })),
+  workers: Type.Optional(Type.Integer({ minimum: 1, maximum: 8, description: WORKERS })),
   folders: Type.Optional(Type.Array(Type.String(), { description: "Only these granted host folders. Not repository checkout paths: omit folders to read the parent's checkouts; scouts see them read-only." })),
   readOnly: Type.Optional(Type.Boolean({ description: "The subagents may read the folders but not change them." })),
   internet: Type.Optional(Type.Literal(false, { description: "false cuts the subagents off from the internet." })),
@@ -130,8 +136,8 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
       promptGuidelines: [
         "Pick a delegate tier by the work, never a model: cheap for searching, reading, summarizing and checking; strong for writing, judgment, and changing code or files. A role brings its own tier.",
         "A subagent sees none of this conversation, so put everything it needs into its task. Only when it truly needs the whole conversation (trying approaches side by side, say) use fork: true; it costs the whole conversation again for each fork.",
-        "Use background: true for long work, and carry on; its result arrives as a message on a later turn. Check on it with status: writers commit to their own branches, not the main checkout.",
-        "Give a step a model only when the person named one, in their words; if it fits none, ask which they meant. Set workers only when they ask for more or fewer than 2 at once.",
+        `Use background: true for long work, and carry on; its result arrives as a message on a later turn.${CHECK_IN}`,
+        MODELS_GUIDELINE,
         "Talk to a subagent with delegate action message: it joins the work in progress, answers its question, or continues one that has ended with everything it knew. Ask the person you're talking with first if a question is theirs to decide.",
       ],
       parameters: Params,

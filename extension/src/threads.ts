@@ -59,12 +59,16 @@ export interface ThreadsHost {
 
 /** Messages `threads read` returns by default, and at most. */
 export const READ_DEFAULT = 10;
+const MODEL_PARAM = "For model: the model the person named, in their words.";
+const MODEL_ACTION = "model: switch this thread to a model the person asked for, from your next turn.";
+/** The text the model action adds to the tool's definition, for tests that size a window around it. */
+export const THREAD_MODEL_TEXT = [MODEL_PARAM, MODEL_ACTION, "model"];
 export const READ_MAX = 30;
 
 const Params = Type.Object({
   action: StringEnum(["code", "model", "ask", "start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"] as const),
   on: Type.Optional(Type.Boolean()),
-  model: Type.Optional(Type.String({ description: "For model: the model the person named, in their words." })),
+  model: Type.Optional(Type.String({ description: MODEL_PARAM })),
   done: Type.Optional(Type.String({ maxLength: 1200 })),
   goal: Type.Optional(Type.String({ maxLength: 2000 })),
   instructions: Type.Optional(Type.String({ maxLength: 2000 })),
@@ -195,7 +199,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           ? "Send your parent thread a short update (message to: \"parent\")."
           : "Child threads: start one on a stream of work of its own, which works in the background and which the person can open and steer; message, list, read or stop one."
             + (inProjectChat() ? " In this project chat, also suggest threads (a card the person starts them from), fold in existing threads, draft Goal and Instructions for Project settings, and resolve or reopen one." : ""),
-      host?.model ? "model: switch this thread to a model the person asked for, from your next turn." : "",
+      host?.model ? MODEL_ACTION : "",
       host && (!child || projectThread()) ? "ask: one question on a card for the person." : "",
       host?.later ? "later: a wake-up that starts a turn here with your note." : "",
       host ? "routine: this thread's routines, at most 10 including paused ones." : "",

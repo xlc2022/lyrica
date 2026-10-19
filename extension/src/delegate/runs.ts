@@ -157,9 +157,10 @@ export class Subagent {
   question?: string;
   /** Notes sent in this stretch of work. */
   notes = 0;
-  /** When it last showed any sign of work, and how many of its tool calls wait for approval. */
+  /** When it last showed any sign of work, how many of its tool calls wait for approval, and the ones running. */
   active = Date.now();
   approving = 0;
+  readonly tools = new Set<string>();
   readonly usage: Usage;
   private stopped?: { reason: StopReason; message: string };
   /** Messages that arrived between its turns; they go next, in order. */
@@ -178,6 +179,9 @@ export class Subagent {
     this.usage = { ...usage };
     session.subscribe((e) => {
       this.active = Date.now();
+      // A build or test run can print nothing for a long while; its own timeout and timeoutMs bound it.
+      if (e.type === "tool_execution_start") this.tools.add(e.toolCallId);
+      else if (e.type === "tool_execution_end") this.tools.delete(e.toolCallId);
       // What it was told is stored at once (Pi saves it just after this event), so a subagent cut off by a restart can be continued with it.
       if (e.type === "message_end" && e.message.role !== "assistant") {
         setImmediate(() => { try { syncEntries(session.sessionManager, ctx.view.own, ctx.threadId); } catch { /* closed meanwhile */ } });
@@ -216,8 +220,9 @@ export class Subagent {
     const { timeoutMs, idleMs } = this.d.limits;
     const timer = setTimeout(() => this.stop("timeout", `timed out after ${Math.round(timeoutMs / 60_000)} min`), timeoutMs);
     this.active = Date.now();
+    this.tools.clear();
     const idle = setInterval(() => {
-      if (this.approving) this.active = Date.now();
+      if (this.approving || this.tools.size) this.active = Date.now();
       else if (Date.now() - this.active >= idleMs) this.stop("timeout", `stopped after ${Math.round(idleMs / 1000)} s with no sign of work from its model`);
     }, Math.min(idleMs / 4, 30_000));
     try {
