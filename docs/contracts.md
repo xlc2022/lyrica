@@ -1299,6 +1299,15 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
   [daemon.md](daemon.md). The web UI imports its types from there:
   - auth;
+  - `GET /api/u/:userId/events` → SSE `UserEvent`: `{ type: "hello" }`
+    on every connection, then `{ type: "changed" }`, coalesced per user
+    at most once per 250 ms. Successful mutations under that user's path
+    (except `PUT …/draft`),
+    thread list events (`turn_start`, `turn_end`, `title`, `settings`,
+    `permission`, `permission_end`, `child`) and Sleep events trigger it.
+    No text, IDs or replay; clients re-read existing routes. Requires the
+    addressed user's session and key; checks each event and every 25 seconds,
+    ending on logout or Lock;
   - threads (list, create, hide, forget); the user's own view of them:
     `Display.sort` (`ThreadSort`), `ThreadSummary.group` and `unread`,
     `ThreadChange.group` and `unread`, `ThreadGroup` with `GET`/`POST

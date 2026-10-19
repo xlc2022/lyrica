@@ -3,8 +3,8 @@
 The browser interface to `lyricad`, in `web/`: React and TypeScript, built
 with Vite into `web/dist`, which `lyricad` serves under its Content Security
 Policy. It talks to the API in `daemon/src/api.ts` with `fetch` and one
-`EventSource` per open thread, and imports only its types (and
-`THREAD_TASKS`). It also imports `core/src/mentions.ts`, a pure function, to
+`EventSource` per open thread plus one for the signed-in user, and imports
+only its types (and `THREAD_TASKS`). It also imports `core/src/mentions.ts`, a pure function, to
 render mention tokens.
 
 ## Pages
@@ -43,7 +43,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   loading older messages as needed, and marks it a moment, as the Pinned
   popover does; only the thread and the message number wait in session
   storage for a thread not yet open), **Notifications** with the count of decisions waiting (read with
-  the thread list, every 30 seconds and on focus), Memory, the Sort menu, the thread list, the **status panel** (`src/SideStatus.tsx`: above the user row, its own divider line; up to two most-used local endpoints side by side and up to two cloud ones on their own lines — each a dot and name (docs/ux.md §5), a short state word when it isn't simply online ("Blackwell · paused"), plus "· checked 20 s ago" in mono for the cloud ones, ticking as time passes; each item's tooltip holds the whole line; ranked by `GET …/models/page`'s `endpointUses` counts; nothing is drawn with no endpoints), and the user. The **Sort
+  the thread list, groups, Me/display settings and Sleep on the user stream's
+  `hello` and `changed` events, and on focus; the stream reconnects automatically,
+  with a fresh connection after a terminal HTTP error), Memory, the Sort menu, the thread list, the **status panel** (`src/SideStatus.tsx`: above the user row, its own divider line; up to two most-used local endpoints side by side and up to two cloud ones on their own lines — each a dot and name (docs/ux.md §5), a short state word when it isn't simply online ("Blackwell · paused"), plus "· checked 20 s ago" in mono for the cloud ones, ticking as time passes; each item's tooltip holds the whole line; ranked by `GET …/models/page`'s `endpointUses` counts; nothing is drawn with no endpoints), and the user. The **Sort
   menu** ("Sort: By date ▾") has the sorts By date (sections Today, Yesterday,
   Previous 7 days, Previous 30 days, Older), Last activity, Start date, Title and My groups (one
   section per group with its count, then Not in a group, and a New group
@@ -311,7 +313,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
 - **Sleep** (`src/Sleep.tsx`; [sleep.md](sleep.md) "Sleep in the UI";
   docs/ux.md §6 "What she did at night"): `#/u/<user>/sleep`, from the
   sidebar's Sleep link, whose badge counts her new items (`GET …/sleep`,
-  reread every 30 s, on focus and after each action; while the page is open
+  reread on user-stream events, on focus and after each action; while the page is open
   `GET …/sleep/events` reloads it as a run starts, changes phase or ends,
   and a `thread` event opens the thread a manual run leaves). Items first,
   newest first, with **Start a chat** (`POST …/items/<id>/chat`, then the
@@ -794,7 +796,7 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   thumbnails use the existing thumbnail route and fall back to that file.
   The shared Lightbox has a filename header, Download and Copy path behind
   ⋯, and Close. Image tool markers read Making an image with its tier,
-  Editing an image or Upscaling an image, with the running dot; expanding
+  Editing an image or Upscaling an image, then the word running, done or failed; expanding
   a failed marker shows the result's reason. The API currently sends no
   image step progress, so there is no step count or progress bar.
 - A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current

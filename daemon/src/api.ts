@@ -2091,3 +2091,6 @@ export interface PushInfo {
   lastFailure?: { at: string; status: number };
 }
 export type { PushSettings } from "@lyrica/core";
+
+/** GET /api/u/:userId/events: text-free list invalidation; hello on every connection. */
+export type UserEvent = { type: "hello" } | { type: "changed" };

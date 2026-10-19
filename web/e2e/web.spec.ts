@@ -324,7 +324,10 @@ test("an image tool result shows inline, opens large, and starts an edit with Im
   await expect(image.getByRole("img", { name: "garden.png" })).toHaveAttribute("src", `${base}/file?path=${encodeURIComponent(path)}`);
   await expect(page.getByText("Made with box/Z-Image · fast", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Making an image · fast\b/ })).toBeVisible();
-  await page.getByRole("button", { name: "Editing an image" }).click();
+  const editing = page.getByRole("button", { name: /^Editing an image\b/ });
+  // The state word follows the label a plain space apart, not the pill's wider flex gap.
+  await expect(editing).toHaveText("Editing an image failed");
+  await editing.click();
   await expect(page.locator(".tool-error")).toHaveText("The image host is offline.");
   await expect(page.getByRole("button", { name: "Upscaling an image" })).toBeVisible();
   await image.click();
@@ -2683,7 +2686,9 @@ test("no horizontal scrolling and big enough tap targets on a phone", async ({ p
   await noHorizontalScroll(page);
   for (const hash of ["memory", "settings/network", "admin/users"]) {
     await page.goto(`/#/u/${userId}/${hash}`);
-    await page.waitForLoadState("networkidle");
+    // Not networkidle: the shell's user stream stays open for as long as the page does.
+    await expect(page.locator("header.head h1")).toBeVisible();
+    await expect(page.locator(".loading")).toHaveCount(0);
     await noHorizontalScroll(page);
   }
 });

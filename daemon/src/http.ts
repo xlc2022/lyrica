@@ -1,5 +1,8 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createSecureServer, type Http2Session } from "node:http2";
+import type { Server as NetServer } from "node:net";
+import type { TLSSocket } from "node:tls";
 import { extname, join, normalize, sep } from "node:path";
 import { AuthError, CloudModelForbidden, Forbidden, GitAccountProblem, HostRefused, McpServerProblem, Locked, MigrationFailed, NoModel, Offline, PairingFailed, SchemaTooNew, WrongPassword } from "@lyrica/core";
 import { COOKIE } from "./auth.ts";
@@ -123,14 +126,48 @@ function clientIp(req: IncomingMessage, trust: TrustForwarded): string {
 /** An address as a client socket reports it, without the IPv4-mapped prefix. */
 export const plainAddress = (a: string | undefined): string => (a ?? "").replace(/^::ffff:/, "");
 
-/** A state-changing request must come from a page on this host. */
+/** A state-changing request must come from a page on this host. HTTP/2 names the host in `:authority`. */
 export function checkOrigin(req: IncomingMessage): void {
   const origin = req.headers.origin;
   let host: string | undefined;
   try {
     host = origin ? new URL(origin).host : undefined;
   } catch { /* refused below */ }
-  if (!host || host !== req.headers.host) throw new HttpError(403, "cross-origin requests are refused");
+  if (!host || host !== (req.headers.host ?? req.headers[":authority"])) throw new HttpError(403, "cross-origin requests are refused");
+}
+
+/** A listener lyricad can close, whatever protocol it speaks. */
+export type Listener = NetServer & { closeAllConnections(): void; closeIdleConnections(): void };
+
+/**
+ * lyricad's own HTTPS: HTTP/2, with HTTP/1.1 for clients that don't offer it.
+ * Over HTTP/1.1 a browser opens about six connections per site across all its
+ * tabs, and every open thread holds one for its stream; HTTP/2 carries them
+ * all on one. The compatibility API gives handlers the same request and
+ * response calls as node:http's.
+ */
+export function secureServer(tls: { key: string; cert: string }, handler: (req: IncomingMessage, res: ServerResponse) => void): Listener {
+  // Each socket's HTTP/1.1 requests still open, so an idle keep-alive socket can be closed as node:http does.
+  const open = new Map<TLSSocket, number>();
+  const sessions = new Set<Http2Session>();
+  const server = createSecureServer({ key: tls.key, cert: tls.cert, minVersion: "TLSv1.2", allowHTTP1: true }, (req, res) => {
+    if (req.httpVersionMajor === 1) {
+      const socket = req.socket as TLSSocket;
+      open.set(socket, (open.get(socket) ?? 0) + 1);
+      res.once("close", () => { if (open.has(socket)) open.set(socket, open.get(socket)! - 1); });
+    }
+    handler(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+  });
+  server.on("secureConnection", (s: TLSSocket) => { open.set(s, 0); s.once("close", () => open.delete(s)); });
+  server.on("session", (s) => { sessions.add(s); s.once("close", () => sessions.delete(s)); });
+  return Object.assign(server, {
+    closeAllConnections: () => { for (const s of open.keys()) s.destroy(); },
+    // HTTP/2 sessions finish their open requests and take no more.
+    closeIdleConnections: () => {
+      for (const s of sessions) s.close();
+      for (const [s, n] of open) if (!n && s.alpnProtocol !== "h2") s.destroy();
+    },
+  });
 }
 
 /** Headers on every response: a strict CSP, no framing, no sniffing, no referrer. No CORS headers, ever. */

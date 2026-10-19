@@ -1751,7 +1751,7 @@ Details in [docs/sleep.md](docs/sleep.md).
       `Secure`). It is what a headless host is
       set up through, and it stays on until an administrator turns it off
       or another mode replaces it, so finishing setup without a tailnet
-      never locks anyone out. Plain HTTP still never crosses the LAN.
+      never locks anyone out. Its HTTPS and the external proxy's HTTPS speak HTTP/2 with HTTP/1.1 fallback. Plain HTTP still never crosses the LAN.
     - **Tailnet** (2026-10-11), the default once the setup page has joined
       one: her tailscaled's `tailscale serve` terminates HTTPS for `<her
       name>.<tailnet>.ts.net` with a certificate from Tailscale (the
