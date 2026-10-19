@@ -44,16 +44,18 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<Thread
   // Any model will do to open with, even one whose machine is down: each turn picks again (prepare).
   const task = o.task?.() ?? "chat";
   const { ref: chat, model } = piModelFor(runtime, o.models, task, thread.call, o.models.resolve(task, thread.call, {}, { evenIfDown: true }));
-  // Pi's compaction reserve and kept tail follow each model's window, and her two lines follow that edge (linesFor).
-  const modelOverrides = Object.fromEntries(o.models.allowed(thread.call).flatMap(({ endpoint, offerings }) => offerings.flatMap((off) => {
-    const w = runtime.getModel(endpoint.id, off.modelId)?.contextWindow;
-    // A caller's own compaction settings win: per-model overrides would outrank them in Pi.
-    const set = o.settings?.compaction;
-    return w ? [[`${endpoint.id}/${off.modelId}`, {
-      ...(set?.reserveTokens === undefined ? { reserveTokens: reserveFor(w) } : {}), ...(set?.keepRecentTokens === undefined ? { keepRecentTokens: keepRecentFor(w) } : {}),
-    }] as const] : [];
-  })));
-  const settingsManager = SettingsManager.inMemory({ ...o.settings, compaction: { ...o.settings?.compaction, modelOverrides: { ...modelOverrides, ...o.settings?.compaction?.modelOverrides } } });
+  // Pi's compaction reserve and kept tail follow the window of the model as it is when compaction runs
+  // (prepareRequest keeps it current), and her two lines follow that edge (linesFor).
+  const settingsManager = SettingsManager.inMemory(o.settings ?? {});
+  const set = o.settings?.compaction;
+  const sm = settingsManager as unknown as { getCompactionTokenSetting(field: "reserveTokens" | "keepRecentTokens", model?: { provider: string; id: string; contextWindow?: number }): number };
+  const setting = sm.getCompactionTokenSetting.bind(settingsManager);
+  sm.getCompactionTokenSetting = (field, model) => {
+    // A caller's own compaction settings win.
+    const theirs = set?.[field] !== undefined || (model && set?.modelOverrides?.[`${model.provider}/${model.id}`]?.[field] !== undefined);
+    if (theirs || !model?.contextWindow) return setting(field, model);
+    return (field === "reserveTokens" ? reserveFor : keepRecentFor)(model.contextWindow);
+  };
   const loader = new DefaultResourceLoader({
     cwd: o.cwd, agentDir: o.cwd, settingsManager,
     noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true, noThemes: true,
