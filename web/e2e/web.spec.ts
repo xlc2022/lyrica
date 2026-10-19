@@ -1862,10 +1862,13 @@ test("hovering New project opens its flyout beside the item, and it flips at the
   test.skip(phone(page), "flyouts are for devices that can hover");
   await enter(page, baseURL!);
   const list = page.locator(".threads");
-  // Earlier tests may fill the list: scroll to its end so the strip under the last row is in view.
-  await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-  const box = (await list.boundingBox())!;
-  await list.click({ button: "right", position: { x: 40, y: box.height - 6 } });
+  // A right-click on the list itself, at the foot of the sidebar. Earlier tests fill the list, and a real
+  // click at a point can land on a row if the list reloads in between (live sync reloads it on any change).
+  // Playwright's dispatchEvent drops the point for a contextmenu event, so the event is made here.
+  await list.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.bottom - 6 }));
+  });
   const menu = page.getByRole("menu", { name: "Thread list menu" });
   const item = menu.getByRole("menuitem", { name: "New project" });
   await expect(item).toBeVisible();
