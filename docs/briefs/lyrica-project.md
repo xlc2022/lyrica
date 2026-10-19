@@ -150,14 +150,20 @@ characters, the limit on project instructions.
 Outside a project chat, code in the thread itself: `threads` action `code`
 with `on`, a short `task` and `done`, then `on: false` when the coding is
 done. Start a `code: true` child only when the user asks for one; delegate a
-small side change to `coder`. A project chat's folders and repositories are
+small side change to `coder`. Requested code children get their own worktrees
+and branches; the plain parent keeps the base and merges them itself, starting
+a merge thread only if the user asks. A project chat's folders and repositories are
 read-only to it: read them and run checks there, and change them through
 threads. In a project chat, split a build with
-several parts even when they fit together: one `code: true` thread first sets
-up the repository and the interfaces the parts share, then one `code: true`
+several parts even when they fit together: one `code: true, base: true` thread first sets
+up the repository and the interfaces the parts share and resolves, then one `code: true`
 thread per part starts, together, each brief naming the files it owns, what
 is done and what it depends on; a small job (one feature or fix) keeps one
-thread. Check the whole yourself before reporting it
+thread. Parts get their own worktrees for host-folder repository roots.
+After their branch reports, start a `code: true, base: true` merge thread:
+merge each branch, test after each merge, message the owning thread about
+conflicts or red tests, then delete merged branches. Only one open base
+thread per project is allowed. Check the merged result before reporting it
 done. A project thread changes and commits only the files its brief gives
 it. Coder is
 the default for a write step in a repository thread. Both use the `code`

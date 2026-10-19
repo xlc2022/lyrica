@@ -1086,6 +1086,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       // The live sessions stop side by side, then the store drops every thread in one owner view and merges its search index once at the end:
       // a project with many threads used to take seconds, stopping each in turn and merging the whole index after each one.
       await Promise.all(doomed.map(async (id) => { await s().delegation.forget(user.id, pool, id); await s().host.forget(user.id, pool, id); }));
+      for (const id of doomed) await s().children.cleanupWorktrees(user.id, pool, id, true);
       owner(d, user, (o) => {
         doomed.forEach((id, i) => { if (o[pool].getThread(id)) o[pool].forgetThread(id, author(user), { children: all, keepMemories: keep, optimize: i === doomed.length - 1 }); });
       });
@@ -1205,6 +1206,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, o => threadOf(o, r));
       const project = owner(d, user, o => o[pool].projectOf(thread.id));
       if (project && project !== thread.id && s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden");
+      const held = s().children.baseHeld(user.id, pool, thread.id);
+      if (held) throw new HttpError(409, held);
       const n = Number(r.params.n);
       const label = owner(d, user, o => {
         const store = o[pool];
@@ -1244,6 +1247,8 @@ export function apiRoutes(d: Lyricad): Route[] {
           }
         } finally { view.close(); }
       }
+      const held = thread.child ? s().children.baseHeld(user.id, poolOf(r), thread.id) : undefined;
+      if (held) throw new HttpError(409, held);
       const result = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")), { recentThreadIds });
       // The user wrote: the thread no longer waits on them, and a resolved one reopens.
       if (thread.child) s().children.userWrote(user.id, poolOf(r), thread.id);
@@ -2457,7 +2462,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
       commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, threadsCode: settings.code, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
-    ...(mine ? { state: mine.state, ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
+    ...(mine ? { state: mine.state, ...(mine.worktreeReason ? { worktreeReason: mine.worktreeReason } : {}), ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
     ...(question ? { question: { n: question.n, asked: question.asked } } : {}),
     ...wakeAt(d.services!.wakeups.list(user.id, pool, th.id)),
     ...(look.checklists() ? stepsOf(store.steps(th.id)) : {}),
@@ -2495,14 +2500,15 @@ function pinThread(d: Lyricad, user: User, r: Request, pinned: boolean): Api.Thr
 }
 
 /** Resolves or reopens a project's thread. */
-function resolveThread(d: Lyricad, user: User, r: Request, resolved: boolean): Api.ThreadSummary {
+async function resolveThread(d: Lyricad, user: User, r: Request, resolved: boolean): Promise<Api.ThreadSummary> {
   const pool = poolOf(r);
-  return owner(d, user, (o) => {
+  const id = owner(d, user, (o) => {
     const thread = threadOf(o, r);
     if (!thread.child || !thread.parent || !o[pool].getThread(thread.parent)?.project) throw new HttpError(400, "only a project's thread is resolved or reopened");
-    d.services!.children.setResolved(user.id, pool, thread.id, resolved);
-    return summary(d, user, pool, o[pool], thread, []);
+    return thread.id;
   });
+  await d.services!.children.setResolved(user.id, pool, id, resolved);
+  return owner(d, user, (o) => summary(d, user, pool, o[pool], threadOf(o, r), []));
 }
 
 /** The threads a `threads suggest` call proposed, from the project chat's stored entries. */

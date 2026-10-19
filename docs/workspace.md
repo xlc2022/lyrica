@@ -303,7 +303,32 @@ takes is `lyrica@pve!agent=<that secret>`.
   - A general thread can't take a folder that overlaps a private one.
   - A private thread may also take general folders, read-only, the same way
     private memory reads general memory.
-  - One thread's grants don't nest inside each other.
+  - Grants do not nest, except a writable `.git` inside a read-only checkout for worktree commits.
+- **Code child threads** get their own folder and, for each writable host
+  folder at the top of a git repository, a worktree under
+  `threads/<child>/worktrees/<repo>` in the encrypted home. The sandbox sees
+  it at `/thread-workspaces/<child>/worktrees/<repo>`, on `lyrica/<parent slug>/<thread slug>`
+  (slugs use IDs, never conversation titles). `/thread-workspaces/<child>` aliases only that child’s
+  `/workspace`, so shared git metadata records a unique path per thread. The original checkout is read-only; its `.git` is
+  writable for commits. Machines, MCP servers and Claude Code are removed
+  from an isolated child so they cannot bypass the folder boundary. Forge
+  clones stay per-thread, outside this mechanism. An unavailable sandbox,
+  a non-repository folder or a mid-merge repository leaves that folder as
+  granted, with a reason in the prompt and the project chat's thread card.
+  `threads start` with `base: true` keeps the original checkout for scaffold
+  and merge work; `children.ts` refuses another open base thread in the same
+  project, naming its holder. Resolving releases it. Outside projects,
+  a plain thread keeps the base and works in place; requested `code: true`
+  children get their own worktrees and branches. The plain thread merges
+  those branches itself, starting a merge thread only if the user asks.
+  Resolving a part removes its worktree and keeps its branch; uncommitted
+  work is kept and the parent gets its path. A part that resolves itself
+  mid-turn keeps its worktree until the turn ends. Deleting a thread removes
+  its worktrees even with uncommitted work, keeping the branches. Writing in
+  a resolved base thread while another holds the base is refused before
+  anything is sent. Reopening
+  restores a removed checkout on its saved branch before tools run, creating
+  that branch from current HEAD if the merge thread already deleted it.
 - The lists live in `self.db` (`workspace_paths`, keyed by user ID), and only
   an administrator can change them, so no user can widen their own.
   `lyrica admin grants add|remove --user <u> --pool <pool> <path>` signs in as
@@ -332,7 +357,8 @@ takes is `lyrica@pve!agent=<that secret>`.
   it.
 - On disk: `users/<id>/home.crypt` holds the ciphertext, mounted at
   `users/<id>/home`, with one folder per thread under `threads/`. A
-  subagent works in its parent's folder. The gocryptfs password is the hex
+  subagent works in its parent's folder; ordinary child threads share their
+  parent's too, while code children have their own. The gocryptfs password is the hex
   `home` subkey, passed on stdin.
 - `codex/` there is Codex's home for ChatGPT Images (`Workspace.codexDir`,
   docs/models.md, "Image canvases"): its sign-in and anything it writes,
@@ -376,7 +402,8 @@ takes is `lyrica@pve!agent=<that secret>`.
   repository) goes too, so git no longer counts its branch as checked out:
   only in a folder the user may grant, and only a record that names that
   worktree back. (`git worktree prune` can't do it: the records name the
-  sandbox's paths.) It logs counts only.
+  sandbox's paths.) A live code thread's own worktrees are left alone; a
+  forgotten thread's go with its folder. It logs counts only.
 - **Granted host paths outside the home workspace are ordinary files.** Their
   protection is whatever the host gives them.
 

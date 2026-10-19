@@ -45,15 +45,14 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
     try { id = decodeURIComponent(name); } catch { continue; }
     // A thread made since the list was read may have a new folder already.
     if (!exists(id) && statSync(dir).mtimeMs < now.getTime() - 60_000) {
-      removeThreadFolder(dir, allowed);
-      counts.folders++;
+      if (removeThreadFolder(dir, allowed)) counts.folders++;
       continue;
     }
     const worktrees = join(dir, "worktrees");
     if (!existsSync(worktrees)) continue;
     for (const w of readdirSync(worktrees)) {
       const run = /^(.+)-\d+$/.exec(w)?.[1];
-      if (!run || live.has(run)) continue;
+      if (existsSync(join(worktrees, w, ".git")) || !run || live.has(run)) continue;
       if (statSync(join(worktrees, w)).mtime > old) continue;
       forgetRun(join(worktrees, w));
       rmSync(join(worktrees, w), { recursive: true, force: true });
@@ -99,7 +98,7 @@ export function forgetFiles(home: string, changes: FileChanges, pool: Pool, thre
     const name = encodeURIComponent(id);
     if (!name || name === "." || name === "..") continue;
     const dir = join(home, "threads", name);
-    if (existsSync(dir)) { removeThreadFolder(dir, allowed); n++; }
+    if (existsSync(dir) && removeThreadFolder(dir, allowed)) n++;
     const claude = join(home, "claude", name);
     if (existsSync(claude)) { rmSync(claude, { recursive: true, force: true }); n++; }
   }
@@ -116,10 +115,15 @@ function forgetRunWorktrees(runDir: string, allowed: string[]): void {
   try { for (const repo of readdirSync(runDir)) forgetWorktree(join(runDir, repo), allowed); } catch { /* not a folder */ }
 }
 
-function removeThreadFolder(dir: string, allowed: string[]): void {
+function removeThreadFolder(dir: string, allowed: string[]): boolean {
   const runs = join(dir, "worktrees");
-  if (existsSync(runs)) for (const w of readdirSync(runs)) forgetRunWorktrees(join(runs, w), allowed);
+  // A run's folder holds one worktree per repository; a code thread's own worktrees sit there directly. Either way the branches keep the commits.
+  if (existsSync(runs)) for (const w of readdirSync(runs)) {
+    if (existsSync(join(runs, w, ".git"))) forgetWorktree(join(runs, w), allowed);
+    else forgetRunWorktrees(join(runs, w), allowed);
+  }
   rmSync(dir, { recursive: true, force: true });
+  return true;
 }
 
 /**
@@ -137,9 +141,10 @@ export function forgetWorktree(path: string, allowed: string[]): boolean {
     const repo = admin && /^(\/.+)\/\.git\/worktrees\/[^/]+$/.exec(admin)?.[1];
     if (!admin || !repo || !allowed.some((a) => repo === a || repo.startsWith(`${a.replace(/\/+$/, "")}/`))) return false;
     if (realpathSync(admin) !== admin || !lstatSync(admin).isDirectory()) return false;
-    // …/worktrees/<run>-<i>/<repository>/.git, as the sandbox saw it.
+    // …/worktrees/<run>-<i>/<repository>/.git, or a code thread's /thread-workspaces/<thread>/worktrees/<repository>/.git, as the sandbox saw it.
     const back = readFileSync(join(admin, "gitdir"), "utf8").trim();
-    if (!back.endsWith(`/worktrees/${basename(dirname(path))}/${basename(path)}/.git`)) return false;
+    const own = basename(dirname(path)) === "worktrees" ? `/${basename(dirname(dirname(path)))}/worktrees/${basename(path)}/.git` : undefined;
+    if (!back.endsWith(`/worktrees/${basename(dirname(path))}/${basename(path)}/.git`) && !(own && back.endsWith(own))) return false;
     rmSync(admin, { recursive: true, force: true });
     return true;
   } catch {

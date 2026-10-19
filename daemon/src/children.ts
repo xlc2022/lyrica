@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import {
-  DEFAULT_THREADS_LIMITS, matchModel, unmatched, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
+  makeWorktrees, worktreeGrants, removeWorktrees, DEFAULT_THREADS_LIMITS, matchModel, unmatched, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
 } from "@lyrica/core";
 import type { Delegation, Delivery, ThreadContext, ThreadsHost } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
@@ -26,7 +26,7 @@ interface Row {
 }
 
 /** A project's thread for the project chat and the sidebar. */
-export interface ProjectThreadInfo extends ChildInfo { state: ThreadState; anchor?: number; unseen: number; resolvedAt?: string }
+export interface ProjectThreadInfo extends ChildInfo { worktreeReason?: string; state: ThreadState; anchor?: number; unseen: number; resolvedAt?: string }
 
 export interface ChildOptions {
   users: Users;
@@ -49,6 +49,9 @@ export interface ChildOptions {
 
 export class ChildThreads implements ThreadsHost {
   readonly limits: ThreadsLimits;
+  private readonly bases = new Map<string, string>();
+  private readonly cleaning = new Map<string, Promise<void>>();
+  private readonly cleanupAfterTurn = new Set<string>();
   private readonly recovered = new Set<string>();
   /** Starts under way, per user, with their thread once made: until its turn runs, each counts against the limit. */
   private readonly starting = new Map<string, Set<{ pool?: Pool; thread?: string }>>();
@@ -113,6 +116,8 @@ export class ChildThreads implements ThreadsHost {
     const own = parent.view.own;
     const project = !!own.getThread(parent.threadId)?.project;
     if (project && this.o.paused?.(userId, parent.pool, parent.threadId)) throw new Error("this project is paused; nothing new starts until the person resumes it");
+    const baseKey = `${userId}/${parent.pool}/${parent.threadId}`;
+    if (project && req.base) this.checkBase(userId, parent.pool, parent.threadId);
     // In a project, past the limit the thread waits its turn; elsewhere the start is refused.
     const queued = project && this.workingCount(userId) >= this.limits.concurrency;
     if (!project) this.mayStartTurn(userId);
@@ -121,6 +126,7 @@ export class ChildThreads implements ThreadsHost {
     const mine = this.starting.get(userId) ?? new Set();
     this.starting.set(userId, mine);
     if (!queued) mine.add(slot);
+    if (project && req.base) this.bases.set(baseKey, req.title);
     try {
       const made = await this.create(parent, req, project, queued, slot);
       // Held until the thread's turn begins (`turn`), so a start right after this one still counts it.
@@ -129,6 +135,8 @@ export class ChildThreads implements ThreadsHost {
     } catch (err) {
       mine.delete(slot);
       throw err;
+    } finally {
+      if (project && req.base) this.bases.delete(baseKey);
     }
   }
 
@@ -147,6 +155,35 @@ export class ChildThreads implements ThreadsHost {
       // Machines are reached through bash, which no folder, read-only or network narrowing covers: a narrowed child gets none.
       const noMachines = !!req.readOnly || !!req.folders || req.internet === false;
       ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: [], mcpServers: [], claudeCode: false } : {}) });
+      if (req.code || (project && this.o.project?.(userId, parent.pool, parent.threadId)?.code)) {
+        ws.setThreadWork(child.id, { ...(req.base ? { base: true } : {}), worktrees: [] });
+        if (!req.base) {
+          const ref = { userId, pool: parent.pool, threadId: child.id, ...(project ? { project: parent.threadId } : {}) };
+          const worktrees: import("@lyrica/core").Worktree[] = [];
+          try {
+            const target = this.o.workspace.targetFor(ref);
+            const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50) || "thread";
+            // Git metadata is outside the encrypted home: identifiers only, never conversation titles.
+            const branch = `lyrica/${slug(parent.threadId)}/${slug(child.id)}`;
+            // Process each grant separately: an ordinary folder must not prevent isolating a git repository.
+            const reasons: string[] = [];
+            for (const grant of grants.filter((g) => g.writable)) {
+              try {
+                const made = await makeWorktrees(target, [grant], child.id, 1, undefined, { branch, directory: `${await (target.worktreeRoot?.() ?? target.cwd())}/worktrees` });
+                if (typeof made === "string") reasons.push(made); else worktrees.push(...made.flat());
+              } catch (err) { reasons.push((err as Error).message); }
+            }
+            if (!grants.some((g) => g.writable)) reasons.push("this thread has no writable host folders");
+            ws.setThread(child.id, parent.pool, { grants: worktreeGrants(grants, worktrees, true), ...(worktrees.length ? { machines: [], mcpServers: [], claudeCode: false } : {}) });
+            ws.setThreadWork(child.id, { worktrees, ...(reasons.length ? { reason: reasons.join("; ") } : {}) });
+          } catch (err) {
+            if (worktrees.length) await removeWorktrees(this.o.workspace.targetFor(ref), worktrees);
+            ws.setThreadWork(child.id, { worktrees: [], reason: (err as Error).message });
+          }
+        }
+      } else if (project && req.base) {
+        ws.setThreadWork(child.id, { base: true, worktrees: [] });
+      }
       this.o.models.inheritContext(this.o.models.callContext(userId, parent.pool, parent.threadId), child.id);
       // A cloud Dictation pick is consent for the thread it was made in: a new thread starts without it.
       this.o.models.setThreadModel(userId, parent.pool, child.id, "speech.transcribe");
@@ -161,6 +198,7 @@ export class ChildThreads implements ThreadsHost {
       if (chosen?.thinking) this.o.models.setThinking(userId, child.id, chosen.thinking);
       if (chosen?.fallback !== undefined) this.o.models.setThreadFallback(userId, child.id, chosen.fallback);
     } catch (err) {
+      await this.cleanupWorktrees(userId, parent.pool, child.id, true);
       own.forgetThread(child.id, "lyrica");
       throw err;
     }
@@ -180,6 +218,7 @@ export class ChildThreads implements ThreadsHost {
       this.tasked.delete(`${userId}/${parent.pool}/${child.id}`);
       // It never started: nothing is left of it.
       await this.o.host().forget(userId, parent.pool, child.id);
+      await this.cleanupWorktrees(userId, parent.pool, child.id, true);
       this.forget(userId, parent.pool, [child.id]);
       own.forgetThread(child.id, "lyrica");
       this.o.models.forgetThread(userId, parent.pool, child.id);
@@ -482,8 +521,10 @@ export class ChildThreads implements ThreadsHost {
       return this.rows(userId).filter((r) => r.pool === pool && r.parent === project && view.own.getThread(r.thread)).map((r) => {
         const t = view.own.getThread(r.thread)!;
         const status = this.o.host().status(userId, pool, r.thread);
+        const reason = this.o.workspace.settings(userId).threadWork(r.thread)?.reason;
         return {
           id: r.thread, ...(t.title ? { title: t.title } : {}), status, state: stateOf(r, status), ...(r.needs_you ? { needsYou: true } : {}),
+          ...(reason ? { worktreeReason: reason } : {}),
           updatedAt: view.own.lastEntry(r.thread)?.createdAt ?? t.createdAt, unseen: r.unseen, ...(on ? stepsOf(view.own.steps(r.thread)) : {}),
           ...(r.anchor !== null ? { anchor: r.anchor } : {}), ...(r.resolved_at ? { resolvedAt: r.resolved_at } : {}),
         };
@@ -504,23 +545,38 @@ export class ChildThreads implements ThreadsHost {
   }
 
   /** Resolves or reopens a project's thread, from her tool. A thread resolves only itself; the project chat any of its threads. */
-  resolve(from: ThreadContext, id: string | undefined, resolved: boolean): void {
+  resolve(from: ThreadContext, id: string | undefined, resolved: boolean): Promise<void> {
     const userId = from.user.id;
     const target = id ?? from.threadId;
     const row = this.row(userId, from.pool, target);
     if (!row || !from.view.own.getThread(row.parent)?.project) throw new Error(`[t:${target}] isn't a thread of a project`);
     if (id !== undefined && row.parent !== from.threadId) throw new Error(`[t:${target}] isn't a thread of this project`);
-    this.setResolved(userId, from.pool, target, resolved);
+    return this.setResolved(userId, from.pool, target, resolved);
   }
 
   /** Resolved (or reopened). Resolving clears waiting on the user; the parent's open views see the change. */
-  setResolved(userId: string, pool: Pool, thread: string, resolved: boolean): void {
+  setResolved(userId: string, pool: Pool, thread: string, resolved: boolean): Promise<void> {
     const row = this.row(userId, pool, thread);
     if (!row) throw new Error(`[t:${thread}] isn't a thread of a project`);
+    if (!resolved && this.o.workspace.settings(userId).threadWork(thread)?.base) this.checkBase(userId, pool, row.parent, thread);
     if (resolved) this.questionClosed(userId, pool, thread, "withdrawn");
     this.db(userId, (db) => db.prepare(`UPDATE child_threads SET resolved_at = ?${resolved ? ", needs_you = 0" : ""} WHERE pool = ? AND thread = ?`)
       .run(resolved ? new Date().toISOString() : null, pool, thread));
     this.o.host().changed(userId, pool, row.parent, thread);
+    const key = `${userId}/${pool}/${thread}`;
+    if (!resolved) { this.cleanupAfterTurn.delete(key); return Promise.resolve(); }
+    // A thread resolving itself mid-turn keeps its worktree until the turn ends.
+    const work = this.o.workspace.settings(userId).threadWork(thread);
+    if (!work?.worktrees.length || work.cleaned) return Promise.resolve();
+    if (this.o.host().status(userId, pool, thread) !== "idle") { this.cleanupAfterTurn.add(key); return Promise.resolve(); }
+    return this.cleanupWorktrees(userId, pool, thread);
+  }
+
+  /** Why the user can't write in this thread now: it is a resolved base thread, and another thread holds the base checkout. Checked before anything is sent. */
+  baseHeld(userId: string, pool: Pool, thread: string): string | undefined {
+    const row = this.row(userId, pool, thread);
+    if (!row?.resolved_at || !this.o.workspace.settings(userId).threadWork(thread)?.base) return undefined;
+    try { this.checkBase(userId, pool, row.parent, thread); return undefined; } catch (err) { return (err as Error).message; }
   }
 
   /** The user wrote in the thread: it no longer waits on them, and a resolved thread reopens. */
@@ -628,6 +684,11 @@ export class ChildThreads implements ThreadsHost {
     } catch { /* locked meanwhile; recover() catches it up */ }
     if (!working) {
       this.routineThreads.delete(`${userId}/${pool}/${thread}`);
+      if (this.cleanupAfterTurn.delete(`${userId}/${pool}/${thread}`)) {
+        let resolved = false;
+        try { resolved = !!this.row(userId, pool, thread)?.resolved_at; } catch { /* locked */ }
+        if (resolved) void this.cleanupWorktrees(userId, pool, thread);
+      }
       this.wakeWaiting(userId);
       void this.startQueued(userId);
     }
@@ -669,7 +730,7 @@ export class ChildThreads implements ThreadsHost {
     let next: Row | undefined;
     try {
       if (this.workingCount(userId) >= this.limits.concurrency) return;
-      next = this.rows(userId).find((r) => r.queued && this.queue.has(`${userId}/${r.pool}/${r.thread}`) && !this.o.paused?.(userId, r.pool, r.parent));
+      next = this.rows(userId).find((r) => r.queued && !r.resolved_at && this.queue.has(`${userId}/${r.pool}/${r.thread}`) && !this.o.paused?.(userId, r.pool, r.parent));
     } catch { return; /* locked */ }
     if (!next) return;
     const key = `${userId}/${next.pool}/${next.thread}`;
@@ -702,6 +763,42 @@ export class ChildThreads implements ThreadsHost {
     this.idle(userId, working, "was stopped when the user locked Lyrica");
     for (const [key, w] of this.parentWakes) if (w.userId === userId) this.parentWakes.delete(key);
     this.locking.delete(userId);
+  }
+
+  private checkBase(userId: string, pool: Pool, project: string, except?: string): void {
+    const pending = this.bases.get(`${userId}/${pool}/${project}`);
+    if (pending) throw new Error(`the base checkout is held by ${JSON.stringify(pending)}`);
+    const holder = this.rows(userId).find((r) => r.pool === pool && r.parent === project && r.thread !== except && !r.resolved_at && this.o.workspace.settings(userId).threadWork(r.thread)?.base);
+    if (!holder) return;
+    const view = this.o.memory.openThreadView(userId, pool);
+    try { throw new Error(`the base checkout is held by ${JSON.stringify(view.own.getThread(holder.thread)?.title ?? holder.thread)} [t:${holder.thread}]; resolve it first`); }
+    finally { view.close(); }
+  }
+
+  /**
+   * Removes a thread's worktrees, keeping their branches: on resolve, keeping one with changes that weren't committed;
+   * when the thread is forgotten (`forget`), all of them, saying nothing, since its parent may be going too.
+   */
+  cleanupWorktrees(userId: string, pool: Pool, thread: string, forget = false): Promise<void> {
+    const key = `${userId}/${pool}/${thread}`;
+    this.cleanupAfterTurn.delete(key);
+    const active = this.cleaning.get(key);
+    if (active && !forget) return active;
+    const ws = this.o.workspace.settings(userId);
+    const work = ws.threadWork(thread);
+    if (!work?.worktrees.length || (work.cleaned && !forget)) return active ?? Promise.resolve();
+    const row = forget ? undefined : this.row(userId, pool, thread);
+    const job = (async () => {
+      await active;
+      try {
+        const note = await this.o.workspace.removeThreadWorktrees({ userId, pool, threadId: thread }, forget);
+        if (row) this.deliver(userId, pool, row.parent, `Worktrees for [t:${thread}]:\n${note}`, thread);
+      } catch {
+        if (row) this.deliver(userId, pool, row.parent, `Worktrees for [t:${thread}] were kept: cleanup could not run.\n${work.worktrees.map((w) => w.path).join("\n")}`, thread);
+      }
+    })().finally(() => this.cleaning.delete(key));
+    this.cleaning.set(key, job);
+    return job;
   }
 
   /** Drops the records of forgotten threads, and of the children they kept, which are threads of their own now. */

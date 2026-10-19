@@ -33,6 +33,8 @@ export interface ExecutionTarget {
   readonly name: string;
   /** The directory relative paths resolve against, as the target sees it. */
   cwd(): Promise<string>;
+  /** A unique alias of this thread’s own folder, so git worktree records differ across sandboxes. */
+  worktreeRoot?(): Promise<string>;
   ops(): ToolOps;
   /** Host folders, or `<ssh name>:<path>`, for pages about them. */
   folders(): string[];
