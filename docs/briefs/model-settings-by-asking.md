@@ -1,6 +1,6 @@
 # Brief: Changing model settings by asking
 
-**Status:** Part 1 merged (#339); Part 2 in review. **Branch:** `claude/agent-loop-reliability-661bmo`.
+**Status:** merged (Part 1 #339, Part 2 #343). **Branch:** `claude/agent-loop-reliability-661bmo`.
 **Built by:** the Agent loop thread (Opus).
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md "Models and endpoints"
 (Model settings, saved per copy), docs/briefs/context-stretch.md,
@@ -150,16 +150,15 @@ docs/contracts.md for Part 2, and this brief's handoff.
 ## Handoff
 
 - **Part 1** (host default context): merged as #339.
-- **Part 2:** built on the same branch after #339: the tool
-  (extension/src/models-tool.ts), `localCopies`, `localContext`,
-  `loadLocalContext` and the discovery change (core/src/models), the thread
-  limit (user.db step 13, `contextLimit`), the wiring in
-  daemon/src/hosted.ts, and `ShellContext.changed`. It was tested against a
-  fake LM Studio only. A check against a real LM Studio (load at a new
-  context, then a chat) waits on the user's go.
-- **Open:** LM Studio's REST API was written from its documented
-  `/api/v1` shape and tested only against the fake in
-  core/test/lmstudio.test.ts. Unchecked: whether a load naming only
-  `context_length` keeps the GPU offload and other load settings the
-  operator saved in LM Studio or resets them to its defaults. If a real server answers differently, discovery falls
+- **Part 2:** merged as #343: the tool (extension/src/models-tool.ts),
+  `localCopies`, `localContext`, `loadLocalContext` and the discovery
+  change (core/src/models), the thread limit (user.db step 13,
+  `contextLimit`), the wiring in daemon/src/hosted.ts, and
+  `ShellContext.changed`.
+- **Checked against a real LM Studio** (2026-10-19, one Qwen model):
+  `/api/v1/models` matches the shape the code reads. Unloading, then
+  loading with only `context_length` took about a minute and kept every
+  other saved load setting (batch sizes, parallel, flash attention, KV
+  offload, speculative decoding); loading back at the old context restored
+  the config exactly. A chat at the new context answered normally. If a real server answers differently, discovery falls
   back to today's behaviour and the tool says the server isn't LM Studio.
