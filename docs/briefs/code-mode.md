@@ -1,6 +1,6 @@
 # Brief: Code mode
 
-**Status:** Approved to build (the owner, 2026-10-19); brief in PR review.
+**Status:** Merged as #352 (a88fe05), 2026-10-19.
 
 **Branch:** `feature/code-mode`. **Built by:** Codex on the test machine
 (Opus for review fixes).
