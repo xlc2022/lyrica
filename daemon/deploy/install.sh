@@ -298,7 +298,7 @@ if [ -d /run/systemd/system ]; then
     systemctl restart lyrica-searxng
     ANSWERED=no
     for _ in $(seq 1 30); do
-      curl -fsS -o /dev/null "http://127.0.0.1:$SEARXNG_PORT/search?q=lyrica&format=json" 2>/dev/null && { ANSWERED=yes; break; }
+      curl -fsS -o /dev/null "http://127.0.0.1:$SEARXNG_PORT/healthz" 2>/dev/null && { ANSWERED=yes; break; }
       sleep 1
     done
     if [ "$ANSWERED" = yes ]; then say "SearXNG answers on 127.0.0.1:$SEARXNG_PORT."
