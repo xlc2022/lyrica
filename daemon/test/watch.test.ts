@@ -22,3 +22,20 @@ describe("watcher triggers", () => {
     w.close();
   });
 });
+
+describe("a person's Stop in a project chat", () => {
+  it("holds the project's looks until the person writes in it again", () => {
+    const wanted = vi.fn(() => true);
+    let last = "[Message from the project chat]";
+    const view = { own: { projectOf: () => "p", getThread: () => ({ unlogged: false, subagent: false }), lastEntry: () => ({ text: last }) }, close: () => {} };
+    const w = new Watcher({ memory: { openThreadView: () => view } as never, wanted, restricted: () => false, delayMs: 60_000 } as never);
+    w.stopped("u", "general", "p");
+    w.failed("u", "general", "p", "hud");
+    expect(wanted).not.toHaveBeenCalled();
+    // The person writes in one of the project's threads: looks may come again.
+    last = "Try the HUD again.";
+    w.turnEnded("u", "general", "hud");
+    expect(wanted).toHaveBeenCalled();
+    w.close();
+  });
+});

@@ -33,9 +33,11 @@ export interface Limits {
   idleMs: number;
   /** Notes (`ask_parent` with `wait: false`) a subagent may send per stretch of work. */
   notes: number;
+  /** Longest a foreground run holds its parent's turn, in milliseconds; after that it carries on in the background. */
+  foregroundMs: number;
 }
 // A local model working through a large task can take an hour; one that has stopped answering shows within minutes.
-export const DEFAULT_LIMITS: Limits = { depth: 1, concurrency: 2, runsPerRequest: 8, timeoutMs: 90 * 60_000, idleMs: 5 * 60_000, notes: 3 };
+export const DEFAULT_LIMITS: Limits = { depth: 1, concurrency: 2, runsPerRequest: 8, timeoutMs: 90 * 60_000, idleMs: 5 * 60_000, notes: 3, foregroundMs: 5 * 60_000 };
 
 export type DelegateWorkspace = Pick<Workspace, "inheritSettings" | "forThread" | "settings"> & Partial<Pick<Workspace, "imageFiles">>;
 
@@ -585,6 +587,17 @@ export class Delegation {
       }
     }
     return false;
+  }
+
+  /** Stops every run a thread started: Stop pressed in a project chat, whose runs all work in the background. */
+  stopRuns(userId: string, pool: Pool, threadId: string): number {
+    let n = 0;
+    for (const run of this.live.values()) {
+      if (run.parent.user.id !== userId || run.parent.pool !== pool || run.parent.threadId !== threadId || run.done) continue;
+      run.stop("stopped");
+      n++;
+    }
+    return n;
   }
 
   /** A note from a subagent that keeps working, delivered like a background result. False once it has sent its few for this stretch. */

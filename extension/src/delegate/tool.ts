@@ -157,13 +157,24 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
           const req = request(p);
           // A fork copies the stored conversation, so this turn's messages are stored first.
           syncEntries(ctx.sessionManager, thread.view.own, thread.threadId);
-          const run = delegation.start(thread, req, { background: !!p.background, budget: requestBudget, workers: p.workers });
-          if (p.background) return text(`Started run ${run.id} in the background. Its result will arrive as a message.`, { runId: run.id, status: run.status });
+          // A project chat never waits on a subagent: the person hears from it while the work runs.
+          const projectChat = !!thread.view.own.getThread(thread.threadId)?.project;
+          const run = delegation.start(thread, req, { background: !!p.background || projectChat, budget: requestBudget, workers: p.workers });
+          if (run.background) {
+            return text(`Started run ${run.id} in the background${p.background ? "" : ", as every run in a project chat is"}. Its result will arrive as a message.${p.background ? "" : " Tell the person what you started."}`, { runId: run.id, status: run.status });
+          }
           const stop = () => run.stop();
           signal?.addEventListener("abort", stop, { once: true });
+          let timer: NodeJS.Timeout | undefined;
           try {
-            await run.checkpoint();
+            // A foreground run that goes on carries on in the background, so the person isn't left with nothing.
+            const moved = await Promise.race([run.checkpoint().then(() => false), new Promise<boolean>((r) => { timer = setTimeout(() => r(true), delegation.limits.foregroundMs); })]);
+            if (moved && run.status === "running") {
+              run.notify = true;
+              return text(`Run ${run.id} is still working after ${Math.round(delegation.limits.foregroundMs / 60_000)} min, so it carries on in the background and its result will arrive as a message. Tell the person where things stand.`, { runId: run.id, status: run.status });
+            }
           } finally {
+            clearTimeout(timer);
             signal?.removeEventListener("abort", stop);
           }
           return report(run);

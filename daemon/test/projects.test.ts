@@ -29,7 +29,8 @@ async function setup(opts: Parameters<typeof daemon>[1] = {}) {
   const dm = await daemon(rt, opts);
   await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
   const ada = await login(dm.base, "ada", "pw");
-  const model = await fakeOpenAI({ label: "local", models: [{ id: "qwen3.8-27b" }] });
+  // Served at 1M, so the project's threads may share it four at a time (docs/models.md, Local servers).
+  const model = await fakeOpenAI({ label: "local", models: [{ id: "qwen3.8-27b", meta: { n_ctx: 1_048_576 } }] });
   await localModel(ada, rt.ada.id, model.baseUrl);
   const scripts = new Map<string, Script[]>();
   const script = (name: string) => { if (!scripts.has(name)) scripts.set(name, []); return scripts.get(name)!; };

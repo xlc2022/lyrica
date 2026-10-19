@@ -265,6 +265,8 @@ describe("delegate", () => {
     };
     s.cloud.respond(slow);
     s.local.respond(slow);
+    // Two requests share one local model only when it is served with 200k or more (model-share.ts).
+    s.models.setCapabilities(s.ada, s.localRef.offeringId, { contextWindow: 262_144 });
     const parent = s.thread();
     const tasks = [{ task: "a", model: "qwen 27b" }, { task: "b", model: "deepseek flash" }, { task: "c", model: "gpu/qwen3.8-27b" }].map((t) => ({ ...t, role: "scout" }));
     const run = s.delegation.start(parent, { tasks }, { background: false, budget: s.delegation.newBudget(), workers: 3 });
@@ -283,6 +285,39 @@ describe("delegate", () => {
     const local = await s.run(s.thread("general", { localOnly: true }), { task: "e", role: "scout", model: "openrouter/deepseek/deepseek-4.1-flash" });
     expect(local.status).toBe("failed");
     expect(s.delegation.models(s.thread("general", { localOnly: true })).map((m) => m.label)).toEqual(["gpu/qwen3.8-27b"]);
+  });
+
+  it("runs a project chat's subagents in the background, and moves a long foreground run there", async () => {
+    const s = await setup({ limits: { foregroundMs: 300 } });
+    const g = gate();
+    s.cloud.respond(async (r) => {
+      if (isSub(r)) { await g.opened; return { text: "reviewed: fine" }; }
+      const last = r.messages.at(-1)!;
+      if (last.role === "tool") return { text: "I've started a review." };
+      if (JSON.stringify(last).includes("reviewed: fine")) return { text: "The review says fine." };
+      return { tools: [{ name: "delegate", args: { task: "review the work" } }] };
+    });
+    // A project chat: background, though the call didn't ask for it.
+    const chat = s.thread("general", { project: true });
+    const c = await s.open(chat);
+    try {
+      await c.session.prompt("review it");
+      expect(JSON.stringify(c.session.messages.find((m) => m.role === "toolResult"))).toContain("as every run in a project chat is");
+      expect(s.delegation.status(chat)[0]).toMatchObject({ status: "running", background: true });
+    } finally {
+      c.dispose();
+    }
+    // Elsewhere: the turn waits foregroundMs, then the run carries on and its result arrives as a message.
+    const plain = s.thread();
+    const p = await s.open(plain);
+    try {
+      await p.session.prompt("review it");
+      expect(JSON.stringify(p.session.messages.find((m) => m.role === "toolResult"))).toContain("carries on in the background");
+      g.open();
+      await until(() => p.session.messages.some((m) => m.role === "custom" && JSON.stringify(m).includes("reviewed: fine")));
+    } finally {
+      p.dispose();
+    }
   });
 
   it("stops a subagent whose model goes quiet, not one that keeps working, waits for approval or runs a silent command", async () => {

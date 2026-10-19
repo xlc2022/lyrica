@@ -1438,6 +1438,11 @@ export function apiRoutes(d: Lyricad): Route[] {
       await s().host.get(user.id, poolOf(r), thread.id).stop(true);
       // In a subagent's thread, Stop also stops the subagent's work.
       if (thread.subagent) s().delegation.stopThread(user.id, poolOf(r), thread.id);
+      // In a project chat it stops the runs it started, and its project's looks wait for the person (docs/projects.md).
+      if (thread.project) {
+        s().delegation.stopRuns(user.id, poolOf(r), thread.id);
+        s().watcher.stopped(user.id, poolOf(r), thread.id);
+      }
       return { ok: true };
     }),
     route("POST", `${t}/permissions/:requestId`, async (r) => {
