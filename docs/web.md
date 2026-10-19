@@ -798,7 +798,7 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   thumbnails use the existing thumbnail route and fall back to that file.
   The shared Lightbox has a filename header, Download and Copy path behind
   ⋯, and Close. Image tool markers read Making an image with its tier,
-  Editing an image or Upscaling an image, with the running dot; expanding
+  Editing an image or Upscaling an image, then the word running, done or failed; expanding
   a failed marker shows the result's reason. The API currently sends no
   image step progress, so there is no step count or progress bar.
 - A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
