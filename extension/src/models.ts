@@ -103,12 +103,12 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
         if (endpoint.kind !== "local") return send();
         // A local server's cache is shared by everything it serves at once: wait for room (model-share.ts).
         const need = Math.min(model.contextWindow, requestTokens(context) + model.maxTokens);
-        const aborted = { type: "error" as const, reason: "aborted" as const, error: {
+        const failed = (reason: "aborted" | "error", message: string) => ({ type: "error" as const, reason, error: {
           role: "assistant" as const, content: [], api: model.api, provider: model.provider, model: model.id,
           usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-          stopReason: "aborted" as const, timestamp: Date.now() } };
+          stopReason: reason, errorMessage: message, timestamp: Date.now() } });
         const slots = models.offering(ctx.userId, offerings.get(`${endpoint.id}\u0000${model.id}`)?.offering.id ?? "")?.offering.parallel;
-        return sharedStream(shareModel(`${endpoint.baseUrl}\u0000${model.id}`, need, model.contextWindow, options?.signal, slots), send, () => aborted);
+        return sharedStream(shareModel(models, `${endpoint.baseUrl}\u0000${model.id}`, need, model.contextWindow, options?.signal, slots), send, failed);
       },
     });
     // A runtime key is used literally; a key in the provider config would be read as `$ENV` or `!command`.

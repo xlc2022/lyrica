@@ -73,6 +73,18 @@ export class Watcher {
   }
 
 
+  /** The person wrote in a thread: a Stop's hold on its project ends. Not at a turn's end, since the stopped turn itself ends after Stop. */
+  wrote(userId: string, pool: Pool, threadId: string): void {
+    if (!this.held.size) return;
+    try {
+      const view = this.o.memory.openThreadView(userId, pool);
+      try {
+        const project = view.own.projectOf(threadId);
+        if (project) this.held.delete(key(userId, pool, project));
+      } finally { view.close(); }
+    } catch { /* locked */ }
+  }
+
   /** A turn started in a thread: it may trigger a look for a failure or a wait again. */
   turnStarted(userId: string, pool: Pool, threadId: string): void {
     for (const w of ["failed", "waiting"]) this.fired.delete(`${userId}/${pool}/${threadId}/${w}`);
@@ -99,7 +111,6 @@ export class Watcher {
     } catch { return; /* locked */ }
     if (!theirs) return;
     this.run.delete(key(userId, pool, project));
-    this.held.delete(key(userId, pool, project));
     if (threadId !== project && logged) this.add(userId, pool, project, threadId, "said");
   }
 

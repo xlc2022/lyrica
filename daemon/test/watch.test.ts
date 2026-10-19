@@ -32,9 +32,14 @@ describe("a person's Stop in a project chat", () => {
     w.stopped("u", "general", "p");
     w.failed("u", "general", "p", "hud");
     expect(wanted).not.toHaveBeenCalled();
+    // The stopped turn was the person's, and it ends after Stop: still held.
+    last = "Build the HUD.";
+    w.turnEnded("u", "general", "p");
+    w.failed("u", "general", "p", "hud");
+    expect(wanted).not.toHaveBeenCalled();
     // The person writes in one of the project's threads: looks may come again.
-    last = "Try the HUD again.";
-    w.turnEnded("u", "general", "hud");
+    w.wrote("u", "general", "hud");
+    w.failed("u", "general", "p", "renderer");
     expect(wanted).toHaveBeenCalled();
     w.close();
   });

@@ -4,7 +4,7 @@ import { createAssistantMessageEventStream, type AssistantMessageEventStream } f
 // requests it serves at once (LM Studio's is unified), so threads that each
 // fit can overflow it together, and all of them fail. Requests to one local
 // model take turns by what they could fill, across every thread, subagent and
-// project chat in this daemon.
+// project chat in this daemon (one scope: its Models).
 
 /** Requests to one model at once, by the context it is served with (the operator's tiers), and never more than the server's own slots. */
 export function concurrentLimit(window: number, slots?: number): number {
@@ -12,13 +12,14 @@ export function concurrentLimit(window: number, slots?: number): number {
 }
 
 interface Share { used: number; running: number; queue: { need: number; window: number; slots?: number; go: () => void }[] }
-const shares = new Map<string, Share>();
+/** Each daemon's shares, by its Models: a daemon started again in the same process starts with none. */
+const scopes = new WeakMap<object, Map<string, Share>>();
 
 function fits(s: Share, need: number, window: number, slots?: number): boolean {
   return s.running === 0 || (s.running < concurrentLimit(window, slots) && s.used + need <= window);
 }
 
-function next(key: string, s: Share): void {
+function next(shares: Map<string, Share>, key: string, s: Share): void {
   // First come, first served: a big request at the head isn't overtaken for ever by small ones.
   while (s.queue.length && fits(s, s.queue[0]!.need, s.queue[0]!.window, s.queue[0]!.slots)) s.queue.shift()!.go();
   if (!s.running && !s.queue.length) shares.delete(key);
@@ -30,18 +31,23 @@ function next(key: string, s: Share): void {
  * that much until the returned release is called. One request alone always
  * runs. A request whose signal aborts while it waits leaves the queue.
  */
-export function shareModel(key: string, need: number, window: number, signal?: AbortSignal, slots?: number): Promise<() => void> {
+export function shareModel(scope: object, key: string, need: number, window: number, signal?: AbortSignal, slots?: number): Promise<() => void> {
+  let shares = scopes.get(scope);
+  if (!shares) scopes.set(scope, shares = new Map());
   const s = shares.get(key) ?? { used: 0, running: 0, queue: [] };
   shares.set(key, s);
   return new Promise((resolve, reject) => {
     const take = () => {
       s.used += need; s.running++;
       let done = false;
-      resolve(() => { if (done) return; done = true; s.used -= need; s.running--; next(key, s); });
+      const release = () => { if (done) return; done = true; signal?.removeEventListener("abort", release); s.used -= need; s.running--; next(shares, key, s); };
+      // An aborted request gives its share back at once, even if its stream never ends.
+      signal?.addEventListener("abort", release, { once: true });
+      resolve(release);
     };
     if (!s.queue.length && fits(s, need, window, slots)) return take();
     const entry = { need, window, slots, go: () => { signal?.removeEventListener("abort", leave); take(); } };
-    const leave = () => { s.queue.splice(s.queue.indexOf(entry), 1); next(key, s); reject(signal!.reason ?? new Error("aborted")); };
+    const leave = () => { const i = s.queue.indexOf(entry); if (i >= 0) s.queue.splice(i, 1); next(shares, key, s); reject(signal!.reason ?? new Error("aborted")); };
     if (signal?.aborted) return leave();
     signal?.addEventListener("abort", leave, { once: true });
     s.queue.push(entry);
@@ -49,31 +55,42 @@ export function shareModel(key: string, need: number, window: number, signal?: A
 }
 
 /** Requests running and waiting on `key`, for tests. */
-export function modelShare(key: string): { running: number; waiting: number; used: number } {
-  const s = shares.get(key);
+export function modelShare(scope: object, key: string): { running: number; waiting: number; used: number } {
+  const s = scopes.get(scope)?.get(key);
   return { running: s?.running ?? 0, waiting: s?.queue.length ?? 0, used: s?.used ?? 0 };
 }
 
+type Event = Parameters<AssistantMessageEventStream["push"]>[0];
+
 /**
  * The stream of a request that first waits for its share of the model, and
- * gives it back when the reply ends however it ends. Waiting that is aborted
- * ends the stream as an aborted reply.
+ * gives it back when the reply ends however it ends. A wait that is aborted
+ * ends as an aborted reply; a request that throws, or ends with no reply,
+ * ends as an error reply.
  */
-export function sharedStream(wait: Promise<() => void>, start: () => AssistantMessageEventStream, aborted: () => Parameters<AssistantMessageEventStream["push"]>[0]): AssistantMessageEventStream {
+export function sharedStream(wait: Promise<() => void>, start: () => AssistantMessageEventStream, failed: (reason: "aborted" | "error", message: string) => Event): AssistantMessageEventStream {
   const out = createAssistantMessageEventStream();
   void (async () => {
     let release: (() => void) | undefined;
     try {
       release = await wait;
     } catch {
-      out.push(aborted());
+      out.push(failed("aborted", "Stopped while waiting for the model."));
       out.end();
       return;
     }
+    let ended = false;
     try {
-      for await (const event of start()) out.push(event);
+      for await (const event of start()) {
+        out.push(event);
+        if (event.type === "done" || event.type === "error") ended = true;
+      }
+    } catch (err) {
+      if (!ended) out.push(failed("error", err instanceof Error ? err.message : String(err)));
+      ended = true;
     } finally {
       release();
+      if (!ended) out.push(failed("error", "The model's reply ended early."));
       out.end();
     }
   })();
