@@ -821,8 +821,27 @@ export class HostedThread {
       if (!copies().some((c) => c.offering === offering)) throw new Error("That isn't a host model you can manage here.");
       return offering;
     };
+    const ctx = () => models.callContext(this.userId, this.pool, this.threadId);
+    const localCopies = () => models.localCopies(actor(), ctx());
+    const local = (offering: string) => {
+      if (!localCopies().some((c) => c.offering === offering)) throw new Error("That isn't a model you can manage here.");
+      return offering;
+    };
     return {
       copies,
+      localCopies,
+      // The model the session talks to now, else the one the router would pick.
+      current: () => {
+        const m = this.opened?.session.model;
+        const found = m && models.allowed(ctx()).find(({ endpoint }) => endpoint.id === m.provider)?.offerings.find((o) => o.modelId === m.id);
+        if (found) return found.id;
+        try { return models.resolve("chat", ctx()).ref.offeringId; } catch { return undefined; }
+      },
+      window: (offering) => models.offering(this.userId, offering)?.offering.contextWindow,
+      localContext: (offering) => models.localContext(this.userId, local(offering)),
+      loadLocal: async (offering, contextLength) => { await models.loadLocalContext(actor(), local(offering), contextLength); this.reload(); },
+      // Saved with the thread's choices; the session reopens with it once this turn ends.
+      limit: (tokens) => { models.setContextLimit(this.userId, this.threadId, tokens); this.reload(); this.publish({ type: "settings" }); },
       serving: (offering) => models.servingSettings(this.userId, mine(offering)),
       lookup: (offering, repo) => models.lookupRecommended(actor(), mine(offering), repo),
       propose: async (p) => (await this.ask(p.toolCallId, "models", { action: "propose", name: p.name, contextLength: p.contextLength, stretch: p.stretch, kvBytes: p.kvBytes, documented: p.documented ?? null })).allowed,
@@ -830,6 +849,7 @@ export class HostedThread {
         await models.setServingSettings(actor(), mine(offering), settings, { anyway });
         // Loaded and idle: reload now. In use or not loaded: it applies at the next load.
         const reloaded = await models.reloadModel(actor(), offering).then(() => true, () => false);
+        this.reload();
         return { reloaded };
       },
     };
@@ -975,7 +995,7 @@ export class HostedThread {
           // Her reactions. Never a subagent's: the messages there are hers.
           ...(!thread.subagent ? [createReactExtension(ctx, { reacted: (n, reactions) => this.reacted(n, toReactions(reactions, this.userId) ?? []) })] : []),
           // The models tool: general threads only, for a user who can manage a host. Never a subagent's.
-          ...(!thread.subagent && models.hostCopies(user, call).length ? [createModelsExtension(this.modelsHost())] : []),
+          ...(!thread.subagent && (models.hostCopies(user, call).length || models.localCopies(user, call).length) ? [createModelsExtension(this.modelsHost())] : []),
           // Downloading models when asked: general threads only, for a user who can manage a host. Never a subagent's.
           ...(!thread.subagent && models.downloadHosts(user, call).length ? [createDownloadsExtension(this.downloadsHost())] : []),
         ],

@@ -1,5 +1,6 @@
-// The only HTTP Lyrica itself does to an endpoint: listing its models. Model
-// calls go through Pi's own OpenAI-compatible client.
+// The only HTTP Lyrica itself does to an endpoint: listing its models, and on
+// LM Studio loading one with a context length. Model calls go through Pi's own
+// OpenAI-compatible client.
 
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
@@ -97,3 +98,57 @@ export async function discoverModels(baseUrl: string, apiKey: string | undefined
     }];
   });
 }
+
+// LM Studio's own REST API, beside its OpenAI-compatible one at /v1.
+const lmStudioRoot = (baseUrl: string) => baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "");
+
+/** A model LM Studio has, with its loaded instances and the context each was loaded with. */
+export interface LmStudioModel { key: string; maxContext?: number; instances: { id: string; context?: number }[] }
+
+/** LM Studio's models (GET /api/v1/models), or null when the server doesn't answer like LM Studio. */
+export async function lmStudioModels(baseUrl: string, apiKey: string | undefined, timeoutMs = 5000, fetchImpl: typeof fetch = fetch): Promise<LmStudioModel[] | null> {
+  let body: { models?: unknown };
+  try {
+    const res = await fetchImpl(`${lmStudioRoot(baseUrl)}/api/v1/models`, { headers: headers(apiKey), signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) return null;
+    body = (await res.json()) as { models?: unknown };
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(body?.models)) return null;
+  const num = (v: unknown) => (typeof v === "number" && v > 0 ? Math.floor(v) : undefined);
+  return body.models.flatMap((m: Record<string, any>) => typeof m?.key !== "string" ? [] : [{
+    key: m.key, maxContext: num(m.max_context_length),
+    instances: (Array.isArray(m.loaded_instances) ? m.loaded_instances : []).filter((i: any) => typeof i?.id === "string")
+      .map((i: any) => ({ id: i.id as string, context: num(i.config?.context_length) })),
+  }]);
+}
+
+/** The LM Studio model an OpenAI-compatible model ID names: its key, or one of its loaded instances. */
+export const lmStudioModel = (models: LmStudioModel[], modelId: string) => models.find((m) => m.key === modelId || m.instances.some((i) => i.id === modelId));
+
+/**
+ * Loads a model in LM Studio with a context length, after unloading its
+ * instances. If LM Studio refuses (it checks the fit itself), the model is
+ * loaded again as it was and the refusal is thrown with LM Studio's words.
+ */
+export async function lmStudioLoad(baseUrl: string, apiKey: string | undefined, model: LmStudioModel, contextLength: number, fetchImpl: typeof fetch = fetch): Promise<void> {
+  const post = async (path: string, body: unknown) => {
+    const res = await fetchImpl(`${lmStudioRoot(baseUrl)}${path}`, {
+      method: "POST", headers: { ...headers(apiKey), "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(300_000),
+    });
+    if (res.ok) return;
+    const e = (await res.json().catch(() => null)) as { error?: string | { message?: string } } | null;
+    const said = typeof e?.error === "string" ? e.error : e?.error?.message;
+    throw new Error(`LM Studio answered ${res.status}${said ? `: ${said}` : ""}`);
+  };
+  for (const i of model.instances) await post("/api/v1/models/unload", { instance_id: i.id });
+  try {
+    await post("/api/v1/models/load", { model: model.key, context_length: contextLength });
+  } catch (err) {
+    const was = model.instances[0]?.context;
+    if (was) await post("/api/v1/models/load", { model: model.key, context_length: was }).catch(() => {});
+    throw err;
+  }
+}
+

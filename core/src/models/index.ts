@@ -8,7 +8,7 @@ import type { Keyring } from "../keyring.ts";
 import { TASK_NAMES, TASKS, THINKING_LEVELS, type CallContext, type Column, type ModelRef, type Pool, type PresetScope, type Task, type ThinkingLevel } from "../types.ts";
 import { selfName } from "../persona.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
-import { addressesOutside, discoverModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
+import { addressesOutside, discoverModels, lmStudioLoad, lmStudioModel, lmStudioModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
 import { hostError, hostFetch, HostRefused, hostOrigin, listIn, lyricaIdentity, pair } from "./host.ts";
 import { baseName } from "./identity.ts";
 import { copyIdentity } from "./library.ts";
@@ -749,6 +749,13 @@ export class Models {
     try {
       if (ep.signedOut) throw new Error(`${ep.name} is signed out; sign in again`);
       found = ep.api === "host" ? await this.hostModels(ep) : isPlan(ep.api) ? this.planCatalog(ep.api) : await discoverModels(ep.baseUrl, ep.apiKey);
+      // LM Studio says which models are loaded and with what context: plan by that, like a host's.
+      const lm = ep.kind === "local" && ep.api !== "host" && !isPlan(ep.api) ? await lmStudioModels(ep.baseUrl, ep.apiKey) : null;
+      if (lm) found = found.map((m) => {
+        const l = lmStudioModel(lm, m.modelId);
+        const served = l?.instances[0]?.context;
+        return { ...m, ...(m.contextWindow === undefined && l?.maxContext ? { contextWindow: l.maxContext } : {}), ...(served ? { servedContext: served } : {}) };
+      });
       // A ChatGPT plan's image tool is one model of its own, not a switch on each chat model.
       if (ep.api === "chatgpt") found = [...found, PLAN_IMAGE];
     } catch (err) {
@@ -1112,6 +1119,46 @@ export class Models {
       .flatMap(({ endpoint, offerings }) => offerings
         .filter((o) => o.status === "listed" && !o.recipe && !o.embedding && !o.transcribe && !o.speak && !o.image)
         .map((o) => ({ offering: o.id, name: o.identity?.basename ?? o.modelId.split("/").pop()!.replace(/\.gguf$/, ""), host: endpoint.name })));
+  }
+
+  /**
+   * Models on the user's own network that aren't on a model host, which a
+   * thread's `models` tool may reload with another context when the server
+   * is LM Studio: none for a private or local-only thread, like hostCopies.
+   */
+  localCopies(actor: User, ctx: CallContext): { offering: string; name: string; host: string }[] {
+    if (isRestricted(ctx)) return [];
+    const admin = !!this.users.get(actor.id)?.admin;
+    return this.allowed(ctx)
+      .filter(({ endpoint }) => endpoint.kind === "local" && endpoint.api !== "host" && !isPlan(endpoint.api) && (!endpoint.shared || admin))
+      .flatMap(({ endpoint, offerings }) => offerings
+        .filter((o) => o.status === "listed" && !o.embedding && !o.transcribe && !o.speak && !o.image)
+        .map((o) => ({ offering: o.id, name: o.modelId, host: endpoint.name })));
+  }
+
+  /** An LM Studio model's loaded context and its maximum; null when its server isn't LM Studio. */
+  async localContext(userId: string, offeringId: string): Promise<{ served?: number; max?: number } | null> {
+    const o = this.offering(userId, offeringId);
+    if (!o || o.endpoint.kind !== "local" || o.endpoint.api === "host" || isPlan(o.endpoint.api)) return null;
+    const lm = await lmStudioModels(o.endpoint.baseUrl, o.endpoint.apiKey);
+    const m = lm && lmStudioModel(lm, o.offering.modelId);
+    return m ? { ...(m.instances[0]?.context ? { served: m.instances[0].context } : {}), ...(m.maxContext ? { max: m.maxContext } : {}) } : null;
+  }
+
+  /**
+   * Loads an LM Studio model again with another context, for everyone using
+   * it, then reads the endpoint again so the offering plans by it. A shared
+   * endpoint needs an administrator; LM Studio's own refusal is the error.
+   */
+  async loadLocalContext(actor: User, offeringId: string, contextLength: number): Promise<void> {
+    const o = this.offering(actor.id, offeringId);
+    if (!o || o.endpoint.kind !== "local" || o.endpoint.api === "host" || isPlan(o.endpoint.api)) throw new NoModel(`no model ${offeringId} on LM Studio`);
+    if (o.endpoint.shared && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can reload a model on a shared endpoint");
+    const lm = await lmStudioModels(o.endpoint.baseUrl, o.endpoint.apiKey);
+    const m = lm && lmStudioModel(lm, o.offering.modelId);
+    if (!m) throw new Error(`${o.endpoint.name} isn't LM Studio, so its context can't be changed from here`);
+    await lmStudioLoad(o.endpoint.baseUrl, o.endpoint.apiKey, m, contextLength);
+    await this.discover(actor, o.endpoint.id).catch(() => {});
   }
 
   /** Applies a host model's saved settings now (Reload now). A shared host needs an administrator. */
@@ -1969,6 +2016,12 @@ export class Models {
     this.threadChoice(userId, threadId, "fallback", on === null ? null : on ? 1 : 0);
   }
 
+  /** The most context a thread plans for, below its model's window; null for the whole window. Child threads inherit it. */
+  setContextLimit(userId: string, threadId: string, tokens: number | null): void {
+    if (tokens !== null && (!Number.isInteger(tokens) || tokens < 1024)) throw new Error("a context limit is a whole number of tokens, 1024 or more");
+    this.threadChoice(userId, threadId, "context", tokens);
+  }
+
   threadFallback(userId: string, threadId: string): boolean | null {
     const v = this.withUser(userId, (db) => (db.prepare("SELECT fallback FROM thread_choices WHERE thread = ?").get(threadId) as { fallback: number | null } | undefined)?.fallback);
     return v === 1 ? true : v === 0 ? false : null;
@@ -2048,12 +2101,13 @@ export class Models {
     return this.withUser(userId, (db) => {
       const rows = db.prepare("SELECT task, entry FROM thread_models WHERE pool = ? AND thread = ?").all(pool, threadId) as { task: Task; entry: string }[];
       const localOnly = pool === "private" || !!db.prepare("SELECT 1 FROM local_only_threads WHERE thread = ?").get(threadId);
-      const choice = db.prepare("SELECT preset, thinking, fallback FROM thread_choices WHERE thread = ?").get(threadId) as { preset: string | null; thinking: string | null; fallback: number | null } | undefined;
+      const choice = db.prepare("SELECT preset, thinking, fallback, context FROM thread_choices WHERE thread = ?").get(threadId) as { preset: string | null; thinking: string | null; fallback: number | null; context: number | null } | undefined;
       const setting = (key: string) => (db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
       const thinking = (choice?.thinking ?? setting("thinking") ?? "off") as ThinkingLevel;
       const fallback = choice?.fallback !== null && choice?.fallback !== undefined ? choice.fallback === 1 : setting("fallback") !== "off";
       return {
         userId, pool, localOnly, ...(choice?.preset ? { preset: choice.preset } : {}), thinking: THINKING_LEVELS.includes(thinking) ? thinking : "off", fallback,
+        ...(choice?.context ? { contextLimit: choice.context } : {}),
         overrides: Object.fromEntries(rows.map((r) => [r.task, JSON.parse(r.entry) as ModelRef[]])),
       };
     });
@@ -2081,7 +2135,7 @@ export class Models {
 
   /**
    * Gives a child thread (a branch, a subagent) its parent's local-only
-   * switch, preset, thinking level, Fallback and model lists, the chat list too unless
+   * switch, preset, thinking level, Fallback, context limit and model lists, the chat list too unless
    * `chat: false`.
    */
   inheritContext(parent: CallContext, childThreadId: string, opts: { chat?: boolean } = {}): CallContext {
@@ -2092,6 +2146,7 @@ export class Models {
     if (parent.thinking) this.setThinking(userId, childThreadId, parent.thinking);
     // A child starts with its parent's Fallback, whatever the default becomes; a subagent can't change it.
     if (parent.fallback !== undefined) this.setThreadFallback(userId, childThreadId, parent.fallback);
+    if (parent.contextLimit) this.setContextLimit(userId, childThreadId, parent.contextLimit);
     for (const [task, r] of Object.entries(parent.overrides ?? {})) {
       if (task !== "chat" || opts.chat !== false) this.setThreadModel(userId, pool, childThreadId, task as Task, r);
     }
@@ -2717,7 +2772,7 @@ export class Models {
     this.withUser(userId, (db) => db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value));
   }
 
-  private threadChoice(userId: string, threadId: string, column: "preset" | "thinking" | "fallback", value: string | number | null): void {
+  private threadChoice(userId: string, threadId: string, column: "preset" | "thinking" | "fallback" | "context", value: string | number | null): void {
     this.withUser(userId, (db) => {
       db.prepare("INSERT OR IGNORE INTO thread_choices (thread) VALUES (?)").run(threadId);
       db.prepare(`UPDATE thread_choices SET ${column} = ? WHERE thread = ?`).run(value, threadId);

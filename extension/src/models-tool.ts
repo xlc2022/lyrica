@@ -5,9 +5,11 @@ import { StringEnum } from "@earendil-works/pi-ai";
 
 // The `models` tool (DESIGN.md, Model settings): she looks up a host model's
 // recommended context on its card and proposes a serving change, which the
-// copy's administrator or owner allows on a card. lyricad registers it only
-// in general threads, for users who can manage a host: a lookup is an
-// outside call, so private and local-only threads never have it.
+// copy's administrator or owner allows on a card. A context at or under what
+// the thread's own model is served with limits this thread alone, with no
+// card (docs/briefs/model-settings-by-asking.md). lyricad registers it only
+// in general threads, for users who can manage a host or a local endpoint: a
+// lookup is an outside call, so private and local-only threads never have it.
 
 /** A host copy she may look up and propose for. */
 export interface HostCopy { offering: string; name: string; host: string }
@@ -28,6 +30,18 @@ export interface ServingProposal {
 export interface ModelsHost {
   /** The copies she may name: host models whose host the person can manage. Empty in a thread that has become private or local-only. */
   copies(): HostCopy[];
+  /** Models on a local endpoint the person can manage that LM Studio may reload with another context. */
+  localCopies(): HostCopy[];
+  /** The model this thread is talking to now, which `offering` defaults to. */
+  current(): string | undefined;
+  /** The context window a model is served with, for one not on a host. */
+  window(offering: string): number | undefined;
+  /** An LM Studio model's loaded context and its maximum; null when its server isn't LM Studio. */
+  localContext(offering: string): Promise<{ served?: number; max?: number } | null>;
+  /** Loads an LM Studio model again with this context, for everyone using it. */
+  loadLocal(offering: string, contextLength: number): Promise<void>;
+  /** This thread's own context limit; null for its model's whole window. */
+  limit(tokens: number | null): void;
   serving(offering: string): Promise<ServingEntry>;
   lookup(offering: string, repo?: string): Promise<ServingEntry>;
   /** Shows the card; true when the person allowed it. */
@@ -63,8 +77,9 @@ export function createModelsExtension(host: ModelsHost): ExtensionFactory {
     pi.registerTool({
       name: "models",
       label: "Models",
-      description: "A model host's text models: `lookup` reads a model's recommended context and YaRN stretch from its card on Hugging Face or ModelScope, "
-        + "with the host's KV cache estimate; `propose` asks the person, on a card, to serve it with a context length and stretch, and applies it if they allow it.",
+      description: "Text models' context: `lookup` reads a host model's recommended context and YaRN stretch from its card on Hugging Face or ModelScope, "
+        + "with the host's KV cache estimate; `propose` sets a context length. At or under what this thread's own model is served with, it limits this thread "
+        + "and its children, with no card; above it, or for another model, it asks the person on a card to serve the model so for everyone, and applies it if they allow it.",
       promptSnippet: "look up a host model's recommended context, or propose serving it with a longer one",
       promptGuidelines: [
         "Look a model up before proposing, and propose only what its card recommends unless the person asked for more; a stretch costs a little quality on short prompts.",
@@ -73,35 +88,59 @@ export function createModelsExtension(host: ModelsHost): ExtensionFactory {
       annotations: { openWorldHint: true, readOnlyHint: false },
       parameters: Type.Object({
         action: StringEnum(["lookup", "propose"] as const),
-        offering: Type.String({ description: "The model's offering ID on its host." }),
+        offering: Type.Optional(Type.String({ description: "The model's offering ID; this thread's own model if left out." })),
         repo: Type.Optional(Type.String({ description: "lookup: the repository to read, owner/name or modelscope:owner/name, when the host doesn't know it." })),
         contextLength: Type.Optional(Type.Integer({ description: "propose: the context length to serve, in tokens." })),
         stretch: Type.Optional(Type.Number({ description: "propose: the YaRN factor, 1 for none." })),
         originalContext: Type.Optional(Type.Integer({ description: "propose: the context the stretch starts from; the trained length if left out." })),
       }),
       async execute(id, p) {
-        const copy = host.copies().find((c) => c.offering === p.offering);
-        if (!copy) {
-          const names = host.copies().map((c) => `${c.offering} (${c.name} on ${c.host})`).join(", ");
-          return text(names ? `${p.offering} isn't a host model you can manage here. These are: ${names}.` : "There is no host model you can manage here.", true);
-        }
+        const offering = p.offering ?? host.current();
+        if (!offering) return text("This thread has no model yet; name an offering.", true);
+        const copy = host.copies().find((c) => c.offering === offering);
+        const local = copy ? undefined : host.localCopies().find((c) => c.offering === offering);
+        const refuse = () => {
+          const names = [...host.copies(), ...host.localCopies()].map((c) => `${c.offering} (${c.name} on ${c.host})`).join(", ");
+          return text(names ? `${offering} isn't a model you can manage here. These are: ${names}.` : "There is no model you can manage here.", true);
+        };
         try {
-          if (p.action === "lookup") return text(JSON.stringify(lookupResult(await host.lookup(p.offering, p.repo))));
+          if (p.action === "lookup") return copy ? text(JSON.stringify(lookupResult(await host.lookup(offering, p.repo)))) : refuse();
           if (p.contextLength === undefined) return text("propose needs contextLength.", true);
-          const entry = await host.serving(p.offering);
           const factor = p.stretch ?? 1;
+          const entry = copy ? await host.serving(offering) : undefined;
+          const lm = local ? await host.localContext(offering) : null;
+          const served = entry?.contextLength ?? lm?.served ?? host.window(offering);
+          const own = offering === host.current();
+          // This thread's own model, not stretched: a size at or under what it's served with is this thread's alone.
+          if (own && factor <= 1 && served && p.contextLength <= served) {
+            host.limit(p.contextLength < served ? p.contextLength : null);
+            return text(JSON.stringify({ applied: true, scope: "thread", contextLength: p.contextLength, served }));
+          }
+          if (lm) {
+            if (factor > 1) return text("A stretch is for models on a model host.", true);
+            if (lm.max && p.contextLength > lm.max) return text(`${local!.name} supports ${lm.max} tokens at most.`, true);
+            const allowed = await host.propose({ toolCallId: id, offering, name: local!.name, contextLength: p.contextLength, stretch: null, kvBytes: null });
+            if (!allowed) return text("Not allowed. Ask what to do instead.");
+            await host.loadLocal(offering, p.contextLength);
+            if (own) host.limit(null);
+            return text(JSON.stringify({ applied: true, scope: "everyone", reloaded: true, contextLength: p.contextLength }));
+          }
+          if (!copy || !entry) return local ? text(`${local.name}'s server isn't LM Studio, so its context can't be changed from here.`, true) : refuse();
           const stretch = factor > 1 ? { factor, originalContext: p.originalContext ?? entry.trainedContextLength ?? 0 } : null;
+          const max = stretch ? (stretch.originalContext ? stretch.originalContext * factor : null) : entry.maxContextLength;
+          if (max && p.contextLength > max) return text(`${copy.name} serves ${max} tokens at most${stretch ? ` with a stretch of ${factor}` : ""}.`, true);
           const r = entry.recommended;
           const documented = stretch && r?.factor && stretch.factor > r.factor ? { factor: r.factor, by: r.source.repo.split("/")[0]! } : undefined;
           const allowed = await host.propose({
-            toolCallId: id, offering: p.offering, name: copy.name, contextLength: p.contextLength, stretch,
+            toolCallId: id, offering, name: copy.name, contextLength: p.contextLength, stretch,
             kvBytes: kvAt(entry, p.contextLength), ...(documented ? { documented } : {}),
           });
           if (!allowed) return text("Not allowed. Ask what to do instead.");
           const { stretch: _, ...rest } = entry.settings;
           const settings = { ...rest, contextLength: p.contextLength, ...(stretch ? { stretch: { type: "yarn", ...stretch } } : {}) };
-          const { reloaded } = await host.apply(p.offering, settings, !!documented);
-          return text(JSON.stringify({ applied: true, reloaded, contextLength: p.contextLength, stretch: stretch?.factor ?? 1 }));
+          const { reloaded } = await host.apply(offering, settings, !!documented);
+          if (own) host.limit(null);
+          return text(JSON.stringify({ applied: true, scope: "everyone", reloaded, contextLength: p.contextLength, stretch: stretch?.factor ?? 1 }));
         } catch (err) {
           return text((err as Error).message, true);
         }

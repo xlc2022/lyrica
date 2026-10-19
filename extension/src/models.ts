@@ -14,8 +14,9 @@ const LOCAL_COMPAT = { supportsDeveloperRole: false, supportsStore: false, suppo
 
 // A model that thinks gets `reasoning_effort` (OpenAI-compatible endpoints) at the thread's level.
 // A host model with an on/off thinking switch (one level) thinks through the chat template's switch instead.
-function piModel(ep: Endpoint, m: Offering): ProviderModelConfig {
-  const contextWindow = m.contextWindow ?? DEFAULT_CONTEXT;
+// A thread's context limit narrows the window it plans by (compaction, the meter, the reply cap).
+function piModel(ep: Endpoint, m: Offering, limit?: number): ProviderModelConfig {
+  const contextWindow = Math.min(m.contextWindow ?? DEFAULT_CONTEXT, limit ?? Infinity);
   const reasoning = !!m.reasoning?.length;
   const toggle = ep.api === "host" && m.reasoning?.length === 1;
   const compat = ep.api === "host" ? { ...LOCAL_COMPAT, ...(toggle ? { thinkingFormat: "qwen-chat-template" as const } : { supportsReasoningEffort: reasoning }) }
@@ -82,7 +83,7 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
     }
     runtime.registerProvider(endpoint.id, {
       name: `${endpoint.name} (${endpoint.kind})`, baseUrl: endpoint.baseUrl, api: "openai-completions",
-      models: list.map((m) => piModel(endpoint, m)),
+      models: list.map((m) => piModel(endpoint, m, ctx.contextLimit)),
       streamSimple: (model, context, options) => {
         // Its own signal, so a runaway reply can stop the request; the caller's still stops it.
         const stop = new AbortController();
