@@ -33,6 +33,7 @@ export const PASSPHRASE = "correct horse";
 /** The one model /long/v1 serves. */
 const LONG_MODEL = "a-very-long-model-name-70b-instruct-q4_k_m-20261012";
 const ARGON2 = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
+const KDF_ITER = 1;
 const [port = 7341, modelPort = 7351] = process.argv.slice(2, 4).map(Number);
 /** `setup`: no self.db, so lyricad starts setting up; its one-time code is copied to setupCodeFile(port) for setup.spec.ts. */
 const settingUp = process.argv[4] === "setup";
@@ -190,7 +191,7 @@ function fakeModel() {
 
 const home = mkdtempSync(join(tmpdir(), "lyrica-e2e-"));
 if (!settingUp) {
-  const keyring = new Keyring(home, ARGON2);
+  const keyring = new Keyring(home, ARGON2, KDF_ITER);
   await keyring.initSelf(PASSPHRASE);
   new PersonaStore(keyring.self()).importSeed(fileURLToPath(new URL("../../persona", import.meta.url)));
   await new Users(keyring).createUser("ada", "pw", { displayName: "Ada", pronouns: PRONOUN_PRESETS.she }, { admin: true });
@@ -202,7 +203,7 @@ await new Promise<void>((r) => model.listen(modelPort, "127.0.0.1", r));
 // An MCP server, "house", on the model port + 20: get_status reads, turn_on doesn't.
 const house = await testMcpServer({ port: modelPort + 20, instructions: "Home Assistant: lights and sensors." });
 const daemon = new Lyricad({
-  home, port, argon2: ARGON2, selfTest: false, socket: false, permissionMs: 60_000, watchMs: 1500,
+  home, port, argon2: ARGON2, kdfIter: KDF_ITER, selfTest: false, socket: false, permissionMs: 60_000, watchMs: 1500,
   // Two of these run side by side: her tailnet's loopback port picks a free one, not 7342.
   // Setting up: Direct would listen on this machine's addresses, so it gets none; Tailscale isn't there.
   web: settingUp ? { servePort: 0, addresses: () => [], directPort: 0 } : { servePort: 0 },

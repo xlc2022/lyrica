@@ -9,7 +9,7 @@ import { runtime } from "./helpers.ts";
 describe("the models page response", () => {
   it("counts each endpoint's calls over model_calls in the shown pools, not over the recent-calls preview", async () => {
     const rt = await runtime();
-    const d = new Lyricad({ home: rt.home, port: 0, selfTest: false, log: () => {}, argon2: { memoryCost: 1024, timeCost: 1, parallelism: 1 } });
+    const d = new Lyricad({ home: rt.home, port: 0, selfTest: false, log: () => {}, argon2: { memoryCost: 1024, timeCost: 1, parallelism: 1 }, kdfIter: 1 });
     await d.unlock("passphrase");
     try {
       await d.services!.users.authenticate("ada", "pw");

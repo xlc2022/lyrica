@@ -27,7 +27,7 @@ function homes() {
 describe("lyricad and the home workspace", () => {
   it("reads authenticated new-thread defaults for both pools without creating threads (principles 1 and 2)", async () => {
     const rt = await runtime();
-    const d = new Lyricad({ home: rt.home, port: 0, selfTest: false, log: () => {}, argon2: { memoryCost: 1024, timeCost: 1, parallelism: 1 } });
+    const d = new Lyricad({ home: rt.home, port: 0, selfTest: false, log: () => {}, argon2: { memoryCost: 1024, timeCost: 1, parallelism: 1 }, kdfIter: 1 });
     await d.unlock("passphrase");
     await d.services!.users.authenticate("ada", "pw");
     const cookie = d.sessions.login(undefined, rt.ada.id, () => false).id;

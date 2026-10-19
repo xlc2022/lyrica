@@ -19,7 +19,7 @@ afterEach(() => vi.restoreAllMocks());
 /** Real routes, sessions and encrypted databases; no listening sockets or model calls. */
 async function setup() {
   const rt = await runtime();
-  const d = new Lyricad({ home: rt.home, port: 0, selfTest: false, log: () => {}, argon2: { memoryCost: 1024, timeCost: 1, parallelism: 1 } });
+  const d = new Lyricad({ home: rt.home, port: 0, selfTest: false, log: () => {}, argon2: { memoryCost: 1024, timeCost: 1, parallelism: 1 }, kdfIter: 1 });
   await d.unlock("passphrase");
   await d.services!.users.authenticate("ada", "pw"); await d.services!.users.authenticate("sam", "pw2");
   const homes = new Map([rt.ada, rt.sam].map(u => [u.id, join(rt.home, `test-home-${u.id}`)]));

@@ -68,7 +68,7 @@ describe("the update socket", () => {
 
   it("fails its databases check when self.db is newer than this release, never only staying locked", async () => {
     const rt = await runtime();
-    const keyring = new Keyring(rt.home, { memoryCost: 1024, timeCost: 1, parallelism: 1 });
+    const keyring = new Keyring(rt.home, { memoryCost: 1024, timeCost: 1, parallelism: 1 }, 1);
     await keyring.unlockSelf("passphrase");
     keyring.self().prepare("UPDATE meta SET value = ? WHERE key = 'min_reader'").run(String(SCHEMA.self + 1));
     keyring.self().close();
