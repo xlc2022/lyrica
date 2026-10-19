@@ -79,9 +79,14 @@ describe("her context", () => {
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
+    expect(stream.events.filter((e) => e.event.type === "compacted")).toHaveLength(0);
+    const requestsBefore = model.requests.length;
     model.reply({ tools: [{ name: "threads", args: { action: "compact", summary: SUMMARY } }] }, { text: "Compacting now." });
     await turn("let's tidy up before the next part");
     const compacted = stream.events.find((e) => e.event.type === "compacted")?.event as Extract<ThreadEvent, { type: "compacted" }>;
+    expect(stream.events.filter((e) => e.event.type === "compacted")).toHaveLength(1);
+    // Her summary needs no extra model request, even if the final reply crosses Pi’s threshold.
+    expect(model.requests.length - requestsBefore).toBe(2);
     expect(compacted.summary).toBe(SUMMARY);
     expect(compacted.after).toBeLessThan(compacted.before);
 

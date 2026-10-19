@@ -228,3 +228,17 @@ under `/tmp/lyrica-tests.lock`: 112 passed, 4 existing sandbox-dependent
 checks skipped. Core source and these four test files typecheck with the
 repository's compiler flags and SQLite declaration. The full suite was not
 run. Part 1 is committed in the branch history.
+
+
+Compaction regression follow-up (principle 1): the larger ordinary-turn
+prompt crosses Pi’s automatic threshold on the reply after `threads compact`.
+It was a timing race, not a change to task resolution: Pi generated its own
+summary before the host ran the pending request. The context hook now defers
+threshold compaction while a request is pending; the host retains the same
+end-of-turn summary/notes path and Stop behavior. Overflow recovery remains
+unchanged. The daemon regression also checks there is one marker and no
+summary model call. Both context test files pass under the shared lock
+(14 tests), and repository typechecking passes. Preset integration was
+already present after main’s merge; this fix adds no routes or migrations.
+Changes remain uncommitted and unpushed; full-suite validation and review
+remain with the user.
