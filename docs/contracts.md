@@ -1033,8 +1033,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   keys sorted recursively; array order preserved) return an error telling
   the model it already has the result and should answer or try something
   different. A run of 25 calls to one tool, with any arguments, also stops
-  the turn. Calls beyond either limit in a batch are refused; after the
-  batch's results the loop ends, without another model call. A stored
+  the turn. Calls beyond either limit in a batch are refused. After the
+  batch's results her tools turn off and a hidden `lyrica-tool-limit-wrap-up`
+  message (`WRAP_UP`) asks for one reply on what she did, where things
+  stand and what's left, so the person never gets only the notice; if that
+  reply calls tools anyway the turn aborts. Her tools come back when the run
+  ends. A stored
   `lyrica-tool-limit` message shows “Turn stopped after 100 tool calls.”
   or “Turn stopped after 25 calls in a row to <tool>.” (count and tool in mono, under the heading Tool limit) in the thread, live and after reload. Counters reset on the next agent run.
   Pi validates tool schemas before execution and returns validation errors
@@ -1164,6 +1168,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   active only while no reason has it off, and comes back only if a reason
   took it away.
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
+  - A `bash` call with no `timeout` gets `BASH_TIMEOUT_S` (600 seconds),
+    and the tool's schema says so; she gives a longer one for a long build.
   - `ExecutionTarget.run?(argv, { signal?, timeoutMs? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
   - `ExecutionTarget.secrets?()` is the sandbox's tokens and placeholders
@@ -1758,6 +1764,9 @@ override wins in code mode; its Chat override does not apply. Thread model
 selection continues to use `preset`, never a profile choice.
 `threads({ action: "code", on, task?, done? })` changes the next turn and,
 when `task` or `done` is given, replaces the pool.db task text, emitting `settings`; subagents are refused.
+`ThreadsHost.codeOn(from)` reads the thread's effective `code` setting.
+Outside a project chat, her first successful `edit` or `write` of a session
+while code mode is off carries `CODE_NUDGE`, once.
 `threads({ action: "model", model })` sets the thread's own Chat model (and
 its `code` model in code mode) to the one chat model the name fits, as a
 step's `model` resolves, from the next turn, emitting `settings` so the

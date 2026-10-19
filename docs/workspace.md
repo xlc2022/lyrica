@@ -15,6 +15,9 @@ Lyrica uses Pi's standard `read`, `write`, `edit` and `bash` tools. Pi lets each
 tool's file and process operations be swapped for another backend
 (`createReadTool(cwd, { operations })` and so on). Lyrica's versions send every
 operation to an **execution target**. Nothing runs inside `lyricad`'s process.
+A `bash` call with no `timeout` gets `BASH_TIMEOUT_S` (600 seconds), so a
+command that never ends (a test whose browser never closes) can't hold the
+thread; she gives a longer one for a long build.
 
 That matters because `lyricad` holds the unlocked keys in memory and owns the
 database files. A command that could see either one could read everything.
@@ -286,7 +289,9 @@ takes is `lyrica@pve!agent=<that secret>`.
 - **Each thread chooses its grants** from those lists, as read-only or
   read-write, much like choosing a working directory in Claude Code. A grant
   can be a listed folder or any folder inside one. The thread shows them next
-  to the model badge.
+  to the model badge. With a read-write grant, her prompt says to build and
+  save the work there (or in a repository), not as loose files in her own
+  folder.
 - The rules, checked when settings change and again before every sandbox run:
   - A listed folder must be a real directory, with no symlinks on its path,
     and must not overlap Lyrica's runtime directory (which holds the update

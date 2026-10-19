@@ -150,3 +150,22 @@ describe("hidden nudge context", () => {
     expect(dropAskNudges([turn, nudge, turn])).toEqual([turn, turn]);
   });
 });
+
+describe("code mode nudge", () => {
+  it("tells her once, on her first edit with code mode off, and never with it on", async () => {
+    const { CODE_NUDGE } = await import("../src/code.ts");
+    const s = await withMemory();
+    const t = s.thread();
+    let on = false;
+    const host: ThreadsHost = { limits: DEFAULT_THREADS_LIMITS, start: async () => { throw new Error("unused"); }, message: async () => "started" as const, list: () => [], code: () => {}, codeOn: () => on };
+    const handlers = new Map<string, (e: unknown) => unknown>();
+    createThreadsExtension(t.context, host)({ on: (name: string, h: (e: unknown) => unknown) => handlers.set(name, h), registerTool: () => {} } as unknown as ExtensionAPI);
+    const result = (toolName: string) => handlers.get("tool_result")!({ toolName, content: [{ type: "text", text: "ok" }], isError: false }) as { content: { text: string }[] } | undefined;
+    expect(result("read")).toBeUndefined();
+    on = true;
+    expect(result("edit")).toBeUndefined();
+    on = false;
+    expect(result("write")!.content.at(-1)!.text).toBe(CODE_NUDGE);
+    expect(result("edit")).toBeUndefined();
+  });
+});

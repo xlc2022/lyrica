@@ -83,6 +83,10 @@ export type GoAhead = (typeof GO_AHEAD)[number];
 const LABELS: Record<PermissionMode, string> = { ask: "Ask", acceptEdits: "Accept edits", auto: "Auto", plan: "Plan" };
 
 type Create = (cwd: string, options: { operations: never }) => ToolDefinition;
+
+/** A command's time limit when she sets none, in seconds: a test that hangs (a browser that never closes) can't hold the thread forever. */
+export const BASH_TIMEOUT_S = 600;
+const BASH_TIMEOUT = Type.Optional(Type.Number({ description: `Timeout in seconds, ${BASH_TIMEOUT_S} if left out. Give a longer one for a long build or test run.` }));
 const TOOLS: Record<keyof ToolOps, Create> = {
   read: createReadToolDefinition as unknown as Create,
   write: createWriteToolDefinition as unknown as Create,
@@ -170,9 +174,10 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const template = create(WORKDIR, { operations: undefined as never });
       pi.registerTool({
         ...template,
-        parameters: Type.Object({ ...(template.parameters as ReturnType<typeof Type.Object>).properties, machine: MACHINE }) as typeof template.parameters,
+        parameters: Type.Object({ ...(template.parameters as ReturnType<typeof Type.Object>).properties, ...(name === "bash" ? { timeout: BASH_TIMEOUT } : {}), machine: MACHINE }) as typeof template.parameters,
         async execute(id, params, signal, onUpdate, ctx) {
           const { machine: named, ...rest } = params as Record<string, unknown>;
+          if (name === "bash") rest.timeout ??= BASH_TIMEOUT_S;
           // An empty machine is the sandbox, as in tool_call.
           const machine = (named as string | undefined) || undefined;
           const target = tools.target(machine);
@@ -366,6 +371,7 @@ export function describe(tools: ThreadTools): string {
     `Your file and command tools run in a sandbox. ${WORKDIR} is this conversation's folder; uploads arrive in ${WORKDIR}/uploads.`,
     `A ${WORKDIR} path you write is a link the person can open, and an image under it that you write as markdown (![what it shows](${WORKDIR}/plot.png)) shows in your message.`,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
+    ...(s.grants.some((g) => g.writable) ? [BUILD_THERE] : []),
     network(tools.network()),
     ...[toolsLine()].filter(Boolean),
     ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
@@ -374,6 +380,9 @@ export function describe(tools: ThreadTools): string {
     ...fileNotes(tools.fileNotes?.()),
   ].join("\n");
 }
+
+/** With a read-write folder given, work for it goes there: a model once built a whole project in the sandbox's own folder instead. */
+export const BUILD_THERE = `Build, edit and save the work in a read-write folder you were given (or a repository in ${WORKDIR}/repos), never as loose files in ${WORKDIR}, which is for scratch and things to show the person.`;
 
 /** The one prompt line for a thread with Claude Code (docs/workspace.md, "Claude Code"). */
 export const CLAUDE_CODE_LINE = "Claude Code is in your sandbox: `claude -p \"<task>\"` with bash, in this folder or a clone, hands a coding or repository job to Anthropic's coding agent, which works here and reports back; `claude -c -p \"<more>\"` continues its last job. It spends the person's own Claude plan, so use it for jobs big or hard enough to need it, never for conversation.";
