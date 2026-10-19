@@ -340,6 +340,7 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
   digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host; useFor inherited from Capabilities
   opensThinking?;                                            // a host's chat template writes <think> itself
+  lmStudio?;                                                 // LM Studio listed it on its own API at the last discovery
 }
 type ModelRef = { offeringId: string } | { groupId: string };
 interface Group { id; name; shared; members: string[] }      // offering IDs, in order, one per endpoint
@@ -472,7 +473,7 @@ class Models {                                              // new Models(keyrin
   lookupRecommended(actor, offeringId, repo?)               // reads the card through the host's fetch service; administrator (shared) or owner
   // setServingSettings(…, { anyway: true }) saves a stretch above the card's factor (host code above_recommended otherwise)
   hostCopies(actor, ctx): { offering, name, host }[]       // host chat models the actor can manage; [] for a private or local-only ctx
-  localCopies(actor, ctx): { offering, name, host }[]      // chat models on local, non-host endpoints the actor can manage; [] likewise
+  localCopies(actor, ctx): { offering, name, host }[]      // LM Studio chat models on local endpoints the actor can manage; [] likewise
   localContext(userId, offeringId): { served?, max? } | null   // an LM Studio model's loaded context and maximum; null if not LM Studio
   loadLocalContext(actor, offeringId, contextLength)        // LM Studio: unload, load with context_length, discover; restores on refusal
   setContextLimit(userId, threadId, tokens | null)          // a thread's own context limit (thread_choices.context); ≥ 1024

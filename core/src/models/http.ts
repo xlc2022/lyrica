@@ -44,6 +44,8 @@ export interface DiscoveredModel {
   useFor?: "fast" | "quality" | "both";
   /** The context window a host serves the model with, which wins over one set by hand. */
   servedContext?: number;
+  /** LM Studio listed it on its own API, so its context can be changed by loading it again. */
+  lmStudio?: boolean;
 }
 
 /** A model's identity as a host reads it: GGUF metadata and the hub's model card. */

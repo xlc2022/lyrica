@@ -177,6 +177,8 @@ export interface Offering extends Capabilities {
   separate?: boolean;
   /** A host's chat template writes `<think>` itself, so a reply can start mid-thought. */
   opensThinking?: boolean;
+  /** An LM Studio model, as last discovered: the `models` tool may load it again with another context. */
+  lmStudio?: boolean;
 }
 
 /** Offerings from different endpoints declared the same model, in preferred order. */
@@ -426,7 +428,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; opensThinking?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; opensThinking?: boolean; lmStudio?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -443,6 +445,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.recipe ? { recipe: caps.recipe, useFor: caps.useFor ?? "both" } : {}),
     ...(caps.separate ? { separate: true } : {}),
     ...(caps.opensThinking ? { opensThinking: true } : {}),
+    ...(caps.lmStudio ? { lmStudio: true } : {}),
   };
 };
 const toGroup = (r: GroupRow, shared: boolean): Group => ({ id: r.id, name: r.name, shared, members: JSON.parse(r.members) });
@@ -754,7 +757,7 @@ export class Models {
       if (lm) found = found.map((m) => {
         const l = lmStudioModel(lm, m.modelId);
         const served = l?.instances[0]?.context;
-        return { ...m, ...(m.contextWindow === undefined && l?.maxContext ? { contextWindow: l.maxContext } : {}), ...(served ? { servedContext: served } : {}) };
+        return { ...m, ...(m.contextWindow === undefined && l?.maxContext ? { contextWindow: l.maxContext } : {}), ...(served ? { servedContext: served } : {}), ...(l ? { lmStudio: true } : {}) };
       });
       // A ChatGPT plan's image tool is one model of its own, not a switch on each chat model.
       if (ep.api === "chatgpt") found = [...found, PLAN_IMAGE];
@@ -1122,9 +1125,9 @@ export class Models {
   }
 
   /**
-   * Models on the user's own network that aren't on a model host, which a
-   * thread's `models` tool may reload with another context when the server
-   * is LM Studio: none for a private or local-only thread, like hostCopies.
+   * LM Studio models on the user's own network, which a thread's `models`
+   * tool may load again with another context: none for a private or
+   * local-only thread, like hostCopies.
    */
   localCopies(actor: User, ctx: CallContext): { offering: string; name: string; host: string }[] {
     if (isRestricted(ctx)) return [];
@@ -1132,7 +1135,7 @@ export class Models {
     return this.allowed(ctx)
       .filter(({ endpoint }) => endpoint.kind === "local" && endpoint.api !== "host" && !isPlan(endpoint.api) && (!endpoint.shared || admin))
       .flatMap(({ endpoint, offerings }) => offerings
-        .filter((o) => o.status === "listed" && !o.embedding && !o.transcribe && !o.speak && !o.image)
+        .filter((o) => o.status === "listed" && o.lmStudio && !o.embedding && !o.transcribe && !o.speak && !o.image)
         .map((o) => ({ offering: o.id, name: o.modelId, host: endpoint.name })));
   }
 

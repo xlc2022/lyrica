@@ -701,8 +701,10 @@ model, else the router's first pick for chat).
   runs on save, and LM Studio's on load. A refusal comes back as the result,
   with nothing changed.
 - lyricad registers the tool only when `hostCopies` or `localCopies` lists a
-  model: chat models on hosts or local endpoints the user can manage (a
-  shared one only as an administrator). It is never in a private or
+  model: chat models on hosts, or LM Studio models, on endpoints the user
+  can manage (a shared one only as an administrator). A local server that
+  isn't LM Studio adds nothing, so the tool's definition costs those
+  threads no tokens. It is never in a private or
   local-only thread, since a lookup is an outside call, and never in a
   subagent.
 - After a change, the thread reopens with the new window at the end of its

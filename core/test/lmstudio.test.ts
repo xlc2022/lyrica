@@ -64,6 +64,7 @@ describe("LM Studio context", () => {
   it("isn't offered for a local server that isn't LM Studio, and a shared one needs an administrator", async () => {
     const s = await withModels();
     expect(await s.models.localContext(s.ada.id, s.localRef.offeringId)).toBeNull();
+    expect(s.models.localCopies(s.ada, s.ctx())).toEqual([]);
     await expect(s.models.loadLocalContext(s.ada, s.localRef.offeringId, 65536)).rejects.toThrow("isn't LM Studio");
 
     const studio = await fakeLmStudio({ context: 4096, max: 131072 });

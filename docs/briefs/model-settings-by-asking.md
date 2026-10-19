@@ -1,6 +1,6 @@
 # Brief: Changing model settings by asking
 
-**Status:** Part 1 in review (#339); Part 2 built, in review after it. **Branch:** `claude/agent-loop-reliability-661bmo`.
+**Status:** Part 1 merged (#339); Part 2 in review. **Branch:** `claude/agent-loop-reliability-661bmo`.
 **Built by:** the Agent loop thread (Opus).
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md "Models and endpoints"
 (Model settings, saved per copy), docs/briefs/context-stretch.md,
@@ -145,7 +145,7 @@ docs/contracts.md for Part 2, and this brief's handoff.
 
 ## Handoff
 
-- **Part 1** (host default context): #339.
+- **Part 1** (host default context): merged as #339.
 - **Part 2:** built on the same branch after #339: the tool
   (extension/src/models-tool.ts), `localCopies`, `localContext`,
   `loadLocalContext` and the discovery change (core/src/models), the thread
