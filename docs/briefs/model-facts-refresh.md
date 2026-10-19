@@ -1,6 +1,6 @@
 # Brief: Re-read local models' details after a restart
 
-**Status:** Draft. The owner asked for the cause to be found and fixed
+**Status:** Built on this branch. The owner asked for the cause to be found and fixed
 (2026-10-19).
 
 **Branch:** `feature/model-facts-refresh`. **Built by:** the Agent loop
@@ -54,7 +54,7 @@ own thread is right from its next request even before A runs.
 
 ## Tests
 
-- In `core/test/models*.test.ts`: an offering stored without `vision` gets
+- In `core/test/lmstudio.test.ts` (beside the other LM Studio tests): an offering stored without `vision` gets
   `vision: true` after A's re-read against a fake LM Studio that reports
   `capabilities.vision: true`.
 - `refreshServed` sets `vision` from the same fake when it changed.

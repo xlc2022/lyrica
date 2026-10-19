@@ -1154,24 +1154,50 @@ export class Models {
   }
 
   /**
-   * Reads again the context LM Studio has a model loaded with, and keeps it
-   * when it changed, so a load made in LM Studio itself is planned by from
-   * the next request. An unloaded model keeps what it had. Nothing happens
-   * for other servers, or when LM Studio doesn't answer within `timeoutMs`.
+   * Reads again what LM Studio says of a model before a request: the context
+   * it is loaded with, and whether it has vision. Each is kept when it
+   * changed, so a load made in LM Studio itself is planned by from the next
+   * request, and a model stored before discovery read vision sees from then
+   * on. An unloaded model keeps its context. Nothing happens for other
+   * servers, or when LM Studio doesn't answer within `timeoutMs`.
    */
   async refreshServed(userId: string, offeringId: string, timeoutMs = 1500): Promise<void> {
     const o = this.offering(userId, offeringId);
     if (!o?.offering.lmStudio) return;
     const lm = await lmStudioModels(o.endpoint.baseUrl, o.endpoint.apiKey, timeoutMs);
-    const served = (lm && lmStudioModel(lm, o.offering.modelId))?.instances[0]?.context;
-    if (!served) return;
+    const m = lm && lmStudioModel(lm, o.offering.modelId);
+    if (!m) return;
+    const served = m.instances[0]?.context;
     const update = (db: Db) => {
       const row = db.prepare("SELECT found FROM offerings WHERE id = ?").get(offeringId) as { found: string } | undefined;
       const found = row && JSON.parse(row.found) as DiscoveredModel;
-      if (found && found.servedContext !== served) db.prepare("UPDATE offerings SET found = ? WHERE id = ?").run(JSON.stringify({ ...found, servedContext: served }), offeringId);
+      if (!found) return;
+      const next = { ...found, ...(served ? { servedContext: served } : {}), ...(m.vision !== undefined ? { vision: m.vision } : {}) };
+      if (next.servedContext !== found.servedContext || next.vision !== found.vision) db.prepare("UPDATE offerings SET found = ? WHERE id = ?").run(JSON.stringify(next), offeringId);
     };
     if (o.endpoint.shared) update(this.self());
     else this.withUser(userId, update);
+  }
+
+  /** Local endpoints read again since this daemon started (`rereadLocal`). */
+  private reread = new Set<string>();
+
+  /**
+   * Reads the user's local endpoints again, once per daemon run, so what
+   * discovery has learned to read since an offering was stored reaches it.
+   * A shared endpoint is read as an administrator. Cloud and plan endpoints
+   * aren't: their lists are long and rate limited. A server that doesn't
+   * answer is tried again at the next user's unlock.
+   */
+  async rereadLocal(actor: User): Promise<void> {
+    const admin = this.users.all().find((u) => u.admin);
+    for (const ep of this.endpoints(actor.id)) {
+      if (ep.kind !== "local" || isPlan(ep.api) || this.reread.has(ep.id)) continue;
+      const as = ep.shared ? admin : actor;
+      if (!as) continue;
+      this.reread.add(ep.id);
+      await this.discover(as, ep.id).catch(() => this.reread.delete(ep.id));
+    }
   }
 
   /**

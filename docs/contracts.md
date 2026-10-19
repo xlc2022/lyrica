@@ -473,7 +473,8 @@ class Models {                                              // new Models(keyrin
   offeringSettings(userId, offeringId): { values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
                                           dropped: (keyof AnswerSettings)[]; defaults: ModelDefaults;   // the sampling the model reports as its own
                                           contextWindow: { value; source: "host" | "hand" | "discovered" | "assumed" } }   // assumed: DEFAULT_CONTEXT, 131,072
-  refreshServed(userId, offeringId, timeoutMs = 1500): Promise<void>   // LM Studio's loaded context, read again (before each turn, on Settings)
+  refreshServed(userId, offeringId, timeoutMs = 1500): Promise<void>   // LM Studio's loaded context and vision, read again (before each turn, on Settings)
+  rereadLocal(actor): Promise<void>   // the user's local endpoints discovered again, once per daemon run (lyricad, on the first unlock); shared ones as an administrator
   setOfferingSettings(actor, offeringId, change, scope: "shared" | "mine" = "mine")   // null clears a value
   // Library, tokens, downloads, delete
   textLibrary(userId, { search?, kind?, endpointId?, capability?, groupsOnly?, offset?, limit? }): { total; entries: LibraryEntry[] }

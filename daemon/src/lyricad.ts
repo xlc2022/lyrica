@@ -534,6 +534,8 @@ export class Lyricad implements Drainable {
     if (this.mounted.has(userId)) return;
     const pushUser = this.services!.users.get(userId);
     if (pushUser) void this.push.check(pushUser, true).catch(() => this.log("push check failed"));
+    // Local endpoints read again once per run, in the background, so stored model details catch up with discovery.
+    if (pushUser) void this.services!.models.rereadLocal(pushUser).catch(() => {});
     this.services!.users.ensureRecoveryCopy(userId);
     try {
       await this.services!.workspace.mountHome(userId);
