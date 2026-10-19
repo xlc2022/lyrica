@@ -45,9 +45,15 @@ length times any stretch).
   `contextLength` unset, so the editor shows the automatic value as a
   placeholder. `contextLength` in the model list and serving entry is the
   value in effect.
+- Pinned models stay counted, since they are never unloaded; other
+  programs' memory stays counted too.
 - The value follows the GPUs: it is computed whenever settings are read, so
   changing a GPU's keep-free amount or its allowed servers changes it at the
-  next load.
+  next load. A load's VRAM measurement is kept under its automatic context,
+  so a new context is measured again.
+- The trade: an unconfigured chat model now claims its whole GPU, so two of
+  them on one GPU (the thread's model and a fast one) unload each other on
+  every switch. A saved, smaller context keeps both loaded.
 
 ## Part 2: asking Lyrica to change the context
 
@@ -69,7 +75,7 @@ One loaded copy of a model serves every thread and user. So:
 - **Lowering** it, or setting it to what is already served, applies to this
   thread alone: "use at most N tokens here". There's no card and no reload.
   It is saved with the thread's other choices (`thread_choices.context`,
-  user.db step 12, expand only), and child threads and branches inherit it
+  user.db step 13, expand only), and child threads and branches inherit it
   (`inheritContext`). The thread plans by the smaller of the copy's window
   and this limit, so compaction, the context meter and the reply cap follow
   it, and the session reopens with it at the next turn. Asking for the copy's
@@ -127,7 +133,7 @@ card where it affects others: sampling, the thread's preset, web search.
 - extension: `propose` with no offering uses the thread's model; lowering
   sets the thread's limit with no card; raising shows the card.
 - core: the thread limit round-trips, is inherited, and caps the window
-  the session plans by; user.db migrates from step 11.
+  the session plans by; user.db migrates from step 12.
 - LM Studio, against a fake server: discovery reads the loaded context, and
   Allow unloads and loads with `context_length`.
 
@@ -140,5 +146,5 @@ docs/contracts.md for Part 2, and this brief's handoff.
 ## Handoff
 
 - **Part 1:** built on `claude/agent-loop-reliability-661bmo`.
-- **Part 2:** next, on the same branch after Part 1 merges, then rebased onto
-  #336 for 2.5.
+- **Part 2:** next, on the same branch after Part 1 merges, with main (and
+  #336) merged in for 2.5.
