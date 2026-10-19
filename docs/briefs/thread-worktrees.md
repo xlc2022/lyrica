@@ -42,7 +42,7 @@ are for delegate worktrees.
 ## In scope
 
 **A. A worktree per part thread.** When a project chat starts a `code:
-true` thread, each writable grant that is the top of a git repository is
+true` thread (or a plain thread does, see E), each writable grant that is the top of a git repository is
 turned into a worktree for that thread:
 
 - Made in the child's own folder in the home workspace
@@ -81,8 +81,12 @@ worktree is removed with `removeWorktrees` (kept if it holds uncommitted
 changes, and the note says where), and its branch is kept. The merge thread
 deletes a branch after merging it.
 
-**E. Outside a project.** No change. A plain thread codes in place, and a
-code child it starts on request shares its parent's folder as today.
+**E. Outside a project** (the owner's rule, 2026-10-19). A plain thread
+codes in place. When the user asks it for `code: true` children, each child
+gets its own worktree and branch, as in A. The plain thread holds the base
+and merges their branches itself; it isn't read-only. It starts a merge
+thread only when the user asks for one. `CODING_GUIDELINE` says so in one
+line, and merge threads stay a project-only default.
 
 ## Docs
 
