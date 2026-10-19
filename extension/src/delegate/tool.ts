@@ -20,7 +20,7 @@ const Step = Type.Object({
   done: Type.Optional(Type.String({ maxLength: 1200, description: "Progress and decisions so far, for the coder’s Code task section." })),
   role: Type.Optional(Type.String({ description: "A role; coder for writing in a repository, worker otherwise." })),
   tier: Type.Optional(Tier),
-  model: Type.Optional(Type.String({ description: "Only a model the person named, in their words or as listed by action models; otherwise leave it out and pick a tier." })),
+  model: Type.Optional(Type.String({ description: "Only a model the person named, in their words." })),
   fork: Type.Optional(Type.Boolean({ description: "Start the subagent from a copy of this conversation, not just its task." })),
 });
 
@@ -38,7 +38,7 @@ const Params = Type.Object({
   workflow: Type.Optional(Type.String({ description: "A saved workflow's name." })),
   input: Type.Optional(Type.String({ description: "The workflow's input, for {input} in its steps." })),
   background: Type.Optional(Type.Boolean({ description: "Return a run ID at once; the result arrives as a message later." })),
-  workers: Type.Optional(Type.Integer({ minimum: 1, maximum: 8, description: "How many subagents of this run work at once, only when the person asked for more (or fewer) than the usual 2." })),
+  workers: Type.Optional(Type.Integer({ minimum: 1, maximum: 8, description: "Subagents at once, only when the person asked; default 2." })),
   folders: Type.Optional(Type.Array(Type.String(), { description: "Only these granted host folders. Not repository checkout paths: omit folders to read the parent's checkouts; scouts see them read-only." })),
   readOnly: Type.Optional(Type.Boolean({ description: "The subagents may read the folders but not change them." })),
   internet: Type.Optional(Type.Literal(false, { description: "false cuts the subagents off from the internet." })),
@@ -130,9 +130,8 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
       promptGuidelines: [
         "Pick a delegate tier by the work, never a model: cheap for searching, reading, summarizing and checking; strong for writing, judgment, and changing code or files. A role brings its own tier.",
         "A subagent sees none of this conversation, so put everything it needs into its task. Only when it truly needs the whole conversation (trying approaches side by side, say) use fork: true; it costs the whole conversation again for each fork.",
-        "Use background: true for long work, and carry on; its result arrives as a message on a later turn. To check on it, use status: writers in worktrees commit to their own branches, so the main checkout shows nothing until you merge them.",
-        "Pick a tier, not a model, unless the person names models (\"use qwen and gpt for this\"): then give each step its model in their words. If a name fits no one model, the error lists the closest; ask the person which they meant. A cloud model spends their quota, so use one only when they named it.",
-        "Up to 2 subagents of a run work at once. Set workers only when the person asks for more or fewer; with models named, as many as models is usually right.",
+        "Use background: true for long work, and carry on; its result arrives as a message on a later turn. Check on it with status: writers commit to their own branches, not the main checkout.",
+        "Give a step a model only when the person named one, in their words; if it fits none, ask which they meant. Set workers only when they ask for more or fewer than 2 at once.",
         "Talk to a subagent with delegate action message: it joins the work in progress, answers its question, or continues one that has ended with everything it knew. Ask the person you're talking with first if a question is theirs to decide.",
       ],
       parameters: Params,
