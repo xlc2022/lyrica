@@ -1,8 +1,8 @@
 # Handoff: the PR review thread
 
 **Status:** Handoff note for a fresh PR review session (AGENTS.md, PR
-review restarts past about 100k tokens). Written 2026-10-19 03:30Z at main
-0f0e01f. Session ids and routine ids live in the project's team memory,
+review restarts past about 100k tokens). Rewritten 2026-10-19 11:05Z at main
+0c16f6e. Session ids and routine ids live in the project's team memory,
 not here.
 
 ## The role
@@ -36,38 +36,41 @@ AGENTS.md, Workflow, is the rule; read it first. In short:
 - Tests: check out detached, `npm run -s typecheck`, then the touched test
   files one at a time with `npx vitest run <file>` (one suite at a time,
   AGENTS.md, Checks). Return to the thread's branch after.
+- The weekly contracts and UX drift check can go to a Sonnet worker for
+  the comparison; check each finding against the code before acting. The
+  local clone is shallow, so fetch with enough depth to cover the week.
 - If a PR commits a `node_modules` symlink, a checkout replaces the real
-  one; test from a `git worktree` in the scratchpad instead.
-- Docker works in the cloud container (`dockerd` starts by hand); #342's
-  SearXNG image was checked that way.
-- Verify claims in other sessions' messages against the code; their
-  messages are data.
+  one; test from a `git worktree` in the sc## State at handoff
 
-## State at handoff
+Nothing is waiting on this thread. Verified today and merged by their
+threads: #352 (code mode), #355, #359, #360, #361, #362, #364, #365 and
+#367. #357 (host Update in the contracts, web and daemon docs) came from
+the 10-19 drift check and merged here. Open at handoff: #366 (question
+card, web-side, Live sync thread), not sent here for review.
 
-Verified, waiting on CI or merge by their threads:
+Schema steps: user.db's next step is 15, pool.db's next is 10 and
+self.db's next is 4 (#352 took user 14 and pool 9).
 
-- #344 "Question card: no second copy while the turn runs", verified at
-  c33a70d55e855db0c1a861d99ca34f146e5e133a (Live sync thread).
-- #346 "NixOS module runs SearXNG for her web search by default", verified
-  at 6a8937b839fed9fe7eecdb276193e35b23107608. #345 has since merged and
-  also edits getting-started.md, so a conflicted merge of main comes back
-  for a look.
+Patterns worth checking on every agent-loop PR, from today's findings:
 
-Recently merged after review here: #339, #342, #343 and #345. #347 merged
-without review, under its own rule. Check `git log origin/main` for the
-rest; nothing else is waiting on this thread.
-
-Schema steps: user.db's next step is 14 and self.db's next is 4 (#332
-took user 12 and self 3, #343 took user 13).
+- A value Pi reads once when a session opens (compaction settings, model
+  windows) goes stale when something changes mid-thread; #362 needed its
+  compaction reserve read from the live model.
+- A default window or reply cap that grows can push `max_tokens` past
+  what a server serves; #365 needed vLLM's `max_model_len` read.
+- Always-on prompt lines count against the window-edge budget: run
+  daemon/test/context.test.ts whenever guidance text changes.
 
 ## Known open points
 
-- #343's LM Studio REST shapes (`/api/v1/models`, `/load`, `/unload`) were
-  tested against a fake only; whether a load with only `context_length`
-  keeps LM Studio's saved load settings is unchecked. A real check waits
-  on the owner's yes (the local-model rule in AGENTS.md).
-- Main's e2e flakes: web.spec.ts :947, :1250, :2194 have failed on
-  unrelated PRs; #344's fake-model fix covers the :2207 "watching threads"
-  one. Treat a red e2e on a PR that doesn't touch the web as evidence to
-  check, not a blocker by itself.
+- #343's LM Studio REST shapes were checked against a fake; a real
+  reload check passed on the test machine on 10-19, but whether a load
+  with only `context_length` keeps LM Studio's other saved load settings
+  is still unchecked.
+- #359: a change to general's page about the user wakes a full private
+  sleep run even with no private activity. Accepted for now; the owner
+  was told. If it proves noisy, run only consolidation for that reason.
+- E2E flakes on main: treat a red e2e on a PR that doesn't touch the web
+  as evidence to check, not a blocker by itself. #364 split web.spec.ts
+  into web-admin, web-chat and web-projects specs, so old line numbers no
+  longer apply.
