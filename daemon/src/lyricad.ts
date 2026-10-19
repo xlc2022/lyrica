@@ -8,7 +8,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  bootstrap, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
+  adoptLocalSearxng, bootstrap, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
   SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
@@ -342,6 +342,21 @@ export class Lyricad implements Drainable {
     return admin;
   }
 
+  /**
+   * install.sh leaves `searxng-address` beside self.db when it runs SearXNG
+   * here (docs/guides/searxng.md): it becomes Administration's address while
+   * none is set.
+   */
+  private adoptSearxng(): void {
+    let address: string;
+    try { address = readFileSync(join(this.opts.home, "searxng-address"), "utf8").trim(); } catch { return; }
+    try {
+      if (adoptLocalSearxng(this.keyring.self(), address)) this.log("web search uses the SearXNG install.sh runs here");
+    } catch (err) {
+      this.log(`searxng-address isn't a SearXNG address: ${firstLine(err as Error)}`);
+    }
+  }
+
   /** Her name: from self.db once unlocked, else the copy beside it. */
   name(): string {
     if (this.services) return selfName(this.keyring.self());
@@ -398,6 +413,7 @@ export class Lyricad implements Drainable {
   /** Builds everything that needs self.db, runs the network self-test, and takes saved user keys. */
   private async unlocked(): Promise<void> {
     const { keyring } = this;
+    this.adoptSearxng();
     const users = new Users(keyring);
     const w = this.opts.web ?? {};
     const web: WebAccess = new WebAccess({

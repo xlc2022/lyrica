@@ -1301,6 +1301,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   comes without it and `auth` says one is stored; a `PUT` with the same
   user@host and no password keeps it, one with a password replaces it.
   `ThreadSettings.searchProvider` says whether one is set.
+  `adoptLocalSearxng(self, address)` stores the address install.sh leaves
+  in `<LYRICA_HOME>/searxng-address` while none is set, called by lyricad
+  on each unlock; `web.searxng.offered` records it, so each address is
+  offered once and a cleared or changed one stays.
   `HostOptions.searxng` and `DelegationOptions.searxng` give it to sessions.
 - **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
   [daemon.md](daemon.md). The web UI imports its types from there:

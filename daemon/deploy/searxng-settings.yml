@@ -1,0 +1,19 @@
+# The settings.yml install.sh writes to /etc/lyrica/searxng/ for the SearXNG
+# it runs (docs/guides/searxng.md), with @SECRET@ replaced by a random key.
+# install.sh writes it once; edit the copy there, then
+# systemctl restart lyrica-searxng.
+use_default_settings: true
+
+server:
+  secret_key: "@SECRET@"
+  limiter: false        # a private instance on 127.0.0.1 needs no bot protection
+  image_proxy: false
+
+search:
+  formats: [html, json] # json is what Lyrica asks for
+  safe_search: 0
+  default_lang: "auto"
+
+outgoing:
+  request_timeout: 3.0
+  max_request_timeout: 8.0

@@ -1,0 +1,22 @@
+# The SearXNG her web search uses, in Docker, on 127.0.0.1 only.
+# daemon/deploy/install.sh installs it as /etc/systemd/system/lyrica-searxng.service
+# when the operator says yes to SearXNG; /etc/lyrica/searxng.env holds the
+# pinned image and the port. See docs/guides/searxng.md.
+[Unit]
+Description=SearXNG for Lyrica's web search (Docker)
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+EnvironmentFile=/etc/lyrica/searxng.env
+ExecStartPre=-docker rm -f lyrica-searxng
+# GRANIAN_HOST: the image listens on :: by default, which fails where IPv6 is
+# off; only the published 127.0.0.1 port reaches it either way.
+ExecStart=docker run --rm --name lyrica-searxng --env GRANIAN_HOST=0.0.0.0 --publish 127.0.0.1:${SEARXNG_PORT}:8080 \
+  --volume /etc/lyrica/searxng:/etc/searxng --volume /var/cache/lyrica-searxng:/var/cache/searxng ${SEARXNG_IMAGE}
+ExecStop=docker stop lyrica-searxng
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

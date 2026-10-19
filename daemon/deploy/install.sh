@@ -7,7 +7,8 @@
 # /opt/lyrica/releases/<commit>, snapshots her databases and switches
 # /opt/lyrica/current to it, as an update does; Caddy is rebuilt only if a pin
 # changed. It also installs the updater (lyrica-update and its units), which
-# no update replaces. A first install ends with the setup page's addresses,
+# no update replaces. It asks whether to run SearXNG for her web search in
+# Docker (LYRICA_SEARXNG=yes or no answers ahead). A first install ends with the setup page's addresses,
 # certificate fingerprint and code. See docs/daemon.md, "Deployment" and "Updates".
 set -euo pipefail
 
@@ -18,6 +19,9 @@ GO_SHA256_amd64=3a467ed067f27cd55bf3a702f8e2bf12479f53c9d8ae0de548f48ebcb3c67796
 GO_SHA256_arm64=b5d2cb7bfe76d9cb10141eff26ad2c591c752bce8bf4dd9f24521bb6b5994dfb
 XCADDY_VERSION=v0.4.7
 CADDY_VERSION=v2.11.7
+# The SearXNG image, by tag and digest, and its port on 127.0.0.1.
+SEARXNG_IMAGE=docker.io/searxng/searxng:2026.10.16-8252c0bf6@sha256:3619192d55f19eaec4b01892bdf10f80c67e8592fafd14b26ca504e52229210f
+SEARXNG_PORT=8888
 
 PREFIX=/opt/lyrica
 STATE=/var/lib/lyrica
@@ -39,6 +43,30 @@ case "$SRC/" in "$PREFIX"/*) die "run it from a checkout outside $PREFIX, such a
 case " $ID ${ID_LIKE:-} " in *" debian "*|*" ubuntu "*) ;; *) die "this script is for Debian or Ubuntu" ;; esac
 ARCH=$(dpkg --print-architecture)
 case "$ARCH" in amd64) GO_SHA256=$GO_SHA256_amd64 ;; arm64) GO_SHA256=$GO_SHA256_arm64 ;; *) die "no pinned Go for $ARCH" ;; esac
+
+# --- Asked first, so the rest runs unattended ---
+# SearXNG for her web search (docs/guides/searxng.md). Once set up, every run
+# keeps it at this script's pin; nothing here installs Docker.
+if [ -f /etc/lyrica/searxng/settings.yml ]; then
+  SEARXNG=yes
+else
+  case "${LYRICA_SEARXNG:-}" in
+    yes|no) SEARXNG=$LYRICA_SEARXNG ;;
+    "")
+      if [ -t 0 ]; then
+        read -r -p "Run SearXNG in Docker on this machine for her web search? [Y/n] " answer
+        case "$answer" in [nN]*) SEARXNG=no ;; *) SEARXNG=yes ;; esac
+      else
+        SEARXNG=no
+        say "Not setting up SearXNG: there's no terminal to ask. LYRICA_SEARXNG=yes sets it up."
+      fi ;;
+    *) die "LYRICA_SEARXNG is yes or no" ;;
+  esac
+fi
+if [ "$SEARXNG" = yes ] && ! command -v docker >/dev/null; then
+  SEARXNG=no
+  say "Not setting up SearXNG: Docker isn't installed. Install Docker, then run this again to add it."
+fi
 
 # --- Packages ---
 say "Installing packages..."
@@ -235,6 +263,26 @@ sysctl -q -w net.ipv4.ip_nonlocal_bind=1 || say "Couldn't set net.ipv4.ip_nonloc
 printf '%s\n' '{"admin":{"listen":"unix//run/lyrica-caddy/admin.sock|0660"}}' >/etc/lyrica/caddy.json
 chmod 0644 /etc/lyrica/caddy.json
 
+# --- SearXNG (when asked for) ---
+# Runs as lyrica-searxng.service, published on 127.0.0.1 only. Its address
+# waits in $STATE/searxng-address, and lyricad stores it as Administration's
+# SearXNG address while none is set.
+if [ "$SEARXNG" = yes ]; then
+  install -d -m 0700 /etc/lyrica/searxng /var/cache/lyrica-searxng
+  if [ ! -f /etc/lyrica/searxng/settings.yml ]; then
+    umask 077
+    sed "s|@SECRET@|$(openssl rand -hex 32)|" "$SRC/daemon/deploy/searxng-settings.yml" >/etc/lyrica/searxng/settings.yml
+    umask 022
+  fi
+  printf 'SEARXNG_IMAGE=%s\nSEARXNG_PORT=%s\n' "$SEARXNG_IMAGE" "$SEARXNG_PORT" >/etc/lyrica/searxng.env
+  say "Fetching SearXNG..."
+  docker pull -q "$SEARXNG_IMAGE" >/dev/null || die "fetching the SearXNG image failed"
+  install -m 0644 "$SRC/daemon/deploy/lyrica-searxng.service" /etc/systemd/system/lyrica-searxng.service
+  printf 'http://127.0.0.1:%s\n' "$SEARXNG_PORT" >"$STATE/searxng-address"
+  chown lyrica:lyrica "$STATE/searxng-address"
+  chmod 0600 "$STATE/searxng-address"
+fi
+
 # --- Units ---
 for u in lyrica-caddy.service lyricad.service lyrica-tailscaled.service lyrica-update.service lyrica-update.path lyrica-rollback.service lyrica-probation.service; do
   install -m 0644 "$SRC/daemon/deploy/$u" "/etc/systemd/system/$u"
@@ -245,6 +293,17 @@ if [ -d /run/systemd/system ]; then
   systemctl enable --quiet lyrica-caddy lyrica-tailscaled lyricad lyrica-update.path lyrica-probation
   systemctl start lyrica-update.path
   if [ "$CADDY_CHANGED" = yes ]; then systemctl restart lyrica-caddy; else systemctl start lyrica-caddy; fi
+  if [ "$SEARXNG" = yes ]; then
+    systemctl enable --quiet lyrica-searxng
+    systemctl restart lyrica-searxng
+    ANSWERED=no
+    for _ in $(seq 1 30); do
+      curl -fsS -o /dev/null "http://127.0.0.1:$SEARXNG_PORT/search?q=lyrica&format=json" 2>/dev/null && { ANSWERED=yes; break; }
+      sleep 1
+    done
+    if [ "$ANSWERED" = yes ]; then say "SearXNG answers on 127.0.0.1:$SEARXNG_PORT."
+    else say "SearXNG hasn't answered yet (journalctl -u lyrica-searxng); Administration → Web search will say when it does."; fi
+  fi
   systemctl start lyrica-tailscaled || say "Her tailscaled didn't start (journalctl -u lyrica-tailscaled); Administration → Tailnet will say so."
   if [ -f "$STATE/self.db" ]; then
     systemctl restart lyricad
