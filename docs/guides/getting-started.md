@@ -210,6 +210,21 @@ read it for anything not covered here.
    while `security.allowUserNamespaces` is off; it is on by default.
    To run the model host on the same machine, add its module as well:
    [model-hosts.md](model-hosts.md).
+   On a machine with an NVIDIA card, a `btop` that shows the GPU helps
+   watch it. Add it to `configuration.nix` (or to an existing
+   `environment.systemPackages` list there):
+
+   ```nix
+   # cudaSupport adds the driver's library path, so btop finds libnvidia-ml.
+   environment.systemPackages = [ (pkgs.btop.override { cudaSupport = true; }) ];
+   ```
+
+   It needs the NVIDIA driver: the model host module's
+   `services.lyrica-host.gpu = "nvidia"` provides it, and without the host
+   use NixOS's usual `hardware.nvidia` with
+   `services.xserver.videoDrivers = [ "nvidia" ]`. In `btop`, **5** shows
+   or hides the GPU box. For AMD, nixpkgs' `btop` has `rocmSupport = true`
+   (untested).
 7. `sudo nixos-rebuild switch --flake /etc/nixos#lyrica`. The package
    builds lyricad, the CLI and the web UI, and `lyricad` starts setting
    up, as on Debian. Nothing prints the setup code at the rebuild: `lyrica admin setup-code`, as root, prints
