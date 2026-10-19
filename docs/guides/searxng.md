@@ -6,8 +6,44 @@ return. Her `web_search` tool asks one SearXNG for the whole server, so the
 engines see your SearXNG asking, never who in Lyrica asked; they still see
 the query text.
 
-Lyrica never installs or runs it. You host it, then give her its address.
-SearXNG's own documentation (docs.searxng.org) is the reference.
+On Debian or Ubuntu, `install.sh` can run one for you in Docker on the
+same machine ("Set up by install.sh" below). Otherwise you host it, then
+give her its address. SearXNG's own documentation (docs.searxng.org) is the
+reference.
+
+## Set up by install.sh
+
+`daemon/deploy/install.sh` asks first: "Run SearXNG in Docker on this
+machine for her web search? [Y/n]". Set `LYRICA_SEARXNG=yes` or
+`LYRICA_SEARXNG=no` to answer ahead; without a terminal and without it, the
+answer is no. It needs Docker already installed (`docker` on the PATH) and
+never installs Docker itself; without it, it says so and goes on. In a
+Proxmox LXC container, Docker needs the **nesting** feature (Options →
+Features).
+
+With a yes it:
+
+- writes `/etc/lyrica/searxng/settings.yml` once, from
+  `daemon/deploy/searxng-settings.yml` with a random `secret_key`: JSON
+  on, limiter off, the default engines (the settings in "Configure it"
+  below);
+- pulls the official image at the tag and digest the script pins and runs
+  it as `lyrica-searxng.service`, published on `127.0.0.1:8888` only,
+  started at boot (`/etc/lyrica/searxng.env` holds the image and port);
+- leaves `http://127.0.0.1:8888` in `/var/lib/lyrica/searxng-address`.
+  When lyricad unlocks with no address set, it stores that one in
+  **Administration → Web search**, once. If you clear or change the
+  address there later, it stays as you left it.
+
+Once set up, each run of `install.sh` keeps it without asking and moves it
+to the script's pinned image. To change its settings, edit
+`/etc/lyrica/searxng/settings.yml`, then `systemctl restart
+lyrica-searxng`. To remove it: `systemctl disable --now lyrica-searxng`,
+then delete `/etc/lyrica/searxng`, `/etc/lyrica/searxng.env`,
+`/var/cache/lyrica-searxng` and `/var/lib/lyrica/searxng-address`, and
+clear the address in Administration.
+
+On NixOS, `install.sh` doesn't run; use the module in "NixOS" below.
 
 ## Where to run it
 

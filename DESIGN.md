@@ -1691,7 +1691,8 @@ Details in [docs/sleep.md](docs/sleep.md).
   settings: **Web search** (`web_search` and `web_fetch`), **Internet for
   commands** (the sandbox's internet switch) and **Images** (the `image`
   tool). Search goes to one SearXNG an administrator sets for the server
-  (Administration → Web search), in every thread, private and local-only
+  (Administration → Web search; on Debian or Ubuntu, install.sh can run
+  one in Docker on 127.0.0.1 and fill it in), in every thread, private and local-only
   included; without one, the switch gives `web_fetch` alone, which runs in
   the thread's sandbox under its network switches. SearXNG hides who is
   asking from the search engines it uses, but forwards the query text to

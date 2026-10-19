@@ -9,8 +9,8 @@ it, is the other way. The reference for each piece is
 and [docs/workspace.md](../workspace.md) ("Host requirements"). Model hosts
 (the GPU machines that run her models) have their own guide,
 [model-hosts.md](model-hosts.md), and the machines that run the project's
-checks have [ci-runners.md](ci-runners.md). Her web search uses a SearXNG
-you host: [searxng.md](searxng.md).
+checks have [ci-runners.md](ci-runners.md). Her web search uses a SearXNG,
+which `install.sh` can run for you in Docker: [searxng.md](searxng.md).
 
 **What has and hasn't been exercised.** Neither way has run on a real
 host yet. CI builds the NixOS module and runs the sandbox tests with its
@@ -666,10 +666,11 @@ thread can narrow or widen its own from the thread settings drawer.
 
 ## Give her web search
 
-Her `web_search` asks one SearXNG that you host yourself; Lyrica never
-installs or runs it. Host one and give its address under Administration,
-**Web search**, which says **Reachable** once a test search works:
-[searxng.md](searxng.md). Every thread with the Web search switch on can
+Her `web_search` asks one SearXNG. On Debian or Ubuntu, `install.sh` asks
+whether to run one in Docker on the same machine, and with a yes it fills
+in the address under Administration, **Web search** for you. Otherwise host
+one and give its address there. It says **Reachable** once a test search
+works: [searxng.md](searxng.md). Every thread with the Web search switch on can
 then search, private ones included (the engines see the query, never who
 asked). `web_fetch` reads a page with `curl` inside the thread's sandbox,
 so its network switches decide what it reaches.
@@ -1028,7 +1029,8 @@ apply as written.
     `lyrica-rollback` do the same from a terminal.
 11. Add a Git account and give a thread a repository: it is cloned into
     `/workspace/repos`, and with internet on `gh pr list` works there.
-12. Set the SearXNG address under Administration, Web search: it says
+12. Say yes to SearXNG when `install.sh` asks (Docker installed first), or
+    set the address under Administration, Web search yourself: it says
     Reachable, and `web_search` answers in a thread.
 13. Save a token under Settings, Claude Code and Codex, turn the switch on
     in a test thread, and ask her to use it.

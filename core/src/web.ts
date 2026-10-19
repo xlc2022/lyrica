@@ -44,6 +44,24 @@ export function setSearxngAddress(self: Db, address: string | null): string | nu
   return a;
 }
 
+const OFFERED = "web.searxng.offered";
+
+/**
+ * The address of a SearXNG that install.sh runs on this machine: stored
+ * while none is set, once per address. An administrator who clears or
+ * changes it isn't overridden later. True when it was stored.
+ */
+export function adoptLocalSearxng(self: Db, address: string): boolean {
+  const a = checkSearxng(address);
+  if (!a) return false;
+  const offered = self.prepare("SELECT value FROM settings WHERE key = ?").get(OFFERED) as { value: string } | undefined;
+  if (offered?.value === a) return false;
+  self.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(OFFERED, a);
+  if (searxngAddress(self)) return false;
+  setSearxngAddress(self, a);
+  return true;
+}
+
 function checkSearxng(address: string | null): string | null {
   const a = String(address ?? "").trim();
   if (!a) return null;
