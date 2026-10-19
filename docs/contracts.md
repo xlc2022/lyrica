@@ -1731,8 +1731,8 @@ narrowed by ancestors and never changes permission mode.
 The daemon's `Task` and `THREAD_TASKS` include `code`. A thread's `code`
 override wins in code mode; its Chat override does not apply. Thread model
 selection continues to use `preset`, never a profile choice.
-`threads({ action: "code", on, task?, done? })` replaces pool.db task text
-and changes the next turn, emitting `settings`; subagents are refused.
+`threads({ action: "code", on, task?, done? })` changes the next turn and,
+when `task` or `done` is given, replaces the pool.db task text, emitting `settings`; subagents are refused.
 Project settings carry optional `threadsCode`, stored in encrypted user
 settings (`project.code.<pool>/<id>`), removed on forget. New child and
 routine threads apply it beside `threadsModel`; unset inherits the parent.

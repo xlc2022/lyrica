@@ -122,7 +122,7 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
     pi.registerTool({
       name: "delegate",
       label: "Delegate",
-      description: `Roles: ${delegation.roles(thread.user.id).map(r => `${r.name}: ${r.description}`).join("; ")}. ` + "Hand work to subagents: one task, several at once, a chain, a review loop, a council, or a saved workflow. "
+      description: "Hand work to subagents: one task, several at once, a chain, a review loop, a council, or a saved workflow. "
         + "Each works in its own thread under this one, with this thread's folders or fewer. Also: status, wait, stop and message on a run ID.",
       promptSnippet: "hand work to subagents, in the foreground or background",
       promptGuidelines: [
@@ -226,7 +226,7 @@ export function createSubagentExtension(thread: ThreadContext, role: Role, hooks
         const memory = await memorySections(thread.view, event.prompt, { ...who(), folders: [] });
         o.sections.project = memory.project ?? "";
         o.sections.code_task = codeTaskText(codingTask ?? thread.view.own.codeTask(thread.threadId));
-        return { message: { customType: "lyrica-coder-turn", content: memory.recall ? `<recall>\n${memory.recall}\n</recall>` : "", display: false } };
+        if (memory.recall) return { message: { customType: "lyrica-coder-turn", content: `<recall>\n${memory.recall}\n</recall>`, display: false } };
       }
     });
   };

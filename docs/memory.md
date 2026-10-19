@@ -221,7 +221,8 @@ Core search accepts `only: { project: true, about: "working" }` to retain
 project items or notes tagged with the whole `working` word. It reuses
 project membership and the memory browser's whole-tag matching. Filtering
 happens before the candidate cut, so unrelated high-ranked hits cannot
-crowd out project memory. Without project membership, including in the
+crowd out project memory. It scans candidates in doubling batches, at
+most 2,000 per search. Without project membership, including in the
 general pool read by a private view, only tagged notes pass. Omitting
 `only` leaves ordinary search unchanged.
 

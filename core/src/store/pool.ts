@@ -275,7 +275,9 @@ const GOAL_LIMIT = 2000;
 /** Well under the project section's budget, so the notes and threads after them always fit. */
 const INSTRUCTIONS_LIMIT = 2000;
 /** How much more a project's own memories weigh in recall from inside that project. A boost, never a filter. */
-export const PROJECT_BOOST = 1.5;
+export /** The most candidates a filtered (`only`) search scans per query. */
+const ONLY_SCAN = 2000;
+const PROJECT_BOOST = 1.5;
 
 /** The slug of a project's page: thread IDs hold '/', which slugs don't. */
 export const projectSlug = (projectId: string) => `project-${projectId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
@@ -759,12 +761,15 @@ export class PoolReader {
     const working = new Set(tagged?.all(about).map(r => (r as { id: string }).id));
     const rows: Row[] = [];
     // Filter before the candidate cut: unrelated high-ranked hits cannot crowd out eligible ones.
+    // Batches double, so a deep hit costs about log n queries, and the scan stops at ONLY_SCAN candidates.
     const batch = limit * 4;
-    for (let offset = 0; ; offset += batch) {
-      const candidates = queryRows.all(fts, batch, offset) as Row[];
+    for (let offset = 0, size = batch; ; ) {
+      const candidates = queryRows.all(fts, size, offset) as Row[];
       const project = opts.only?.project && threads.length ? this.inProject(candidates.map(r => r.id), threads) : undefined;
       rows.push(...candidates.filter(r => !opts.only || project?.has(r.id) || (r.kind === "note" && working.has(r.id))));
-      if (rows.length >= batch || candidates.length < batch || !opts.only) break;
+      offset += candidates.length;
+      if (rows.length >= batch || candidates.length < size || !opts.only || offset >= ONLY_SCAN) break;
+      size = Math.min(size * 2, ONLY_SCAN - offset);
     }
     rows.length = Math.min(rows.length, batch);
     const words = queryWords(query);

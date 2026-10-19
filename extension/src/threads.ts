@@ -241,7 +241,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           if (typeof p.on !== "boolean") throw new Error("code needs on: true or false");
           if ((p.task?.length ?? 0) > 300 || (p.done?.length ?? 0) > 1200) throw new Error("code task is at most 300 characters and done is at most 1200");
           host.code(thread, p.on);
-          store.setCodeTask(thread.threadId, p.task ?? "", p.done ?? "");
+          if (p.task !== undefined || p.done !== undefined) store.setCodeTask(thread.threadId, p.task ?? "", p.done ?? "");
           return text(`Code mode ${p.on ? "on" : "off"} from the next turn.`);
         }
         if (p.action === "ask") {

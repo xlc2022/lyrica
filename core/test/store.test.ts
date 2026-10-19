@@ -734,6 +734,16 @@ describe("code-mode core storage", () => {
     view.close();
   });
 
+  it("finds a working note ranked deep below unrelated hits", async () => {
+    const { memory, ada } = await setup();
+    const view = memory.openThreadView(ada.id, "general");
+    const other = said(view.own, "elsewhere");
+    view.own.addNotes(Array.from({ length: 600 }, () => ({ text: "zircon zircon zircon" })), { author: "lyrica", thread: other.thread });
+    const [deep] = view.own.addNotes([{ text: "zircon " + "padding ".repeat(80), about: ["working"] }], { author: "lyrica", thread: other.thread });
+    expect(view.own.search("zircon", { only: { project: true, about: "working" } }).map(h => h.id)).toEqual([deep]);
+    view.close();
+  });
+
   it("round trips and replaces code tasks in the encrypted pool, with limits and thread deletion", async () => {
     const { memory, ada } = await setup();
     let view = memory.openThreadView(ada.id, "general");

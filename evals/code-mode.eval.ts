@@ -84,7 +84,7 @@ describe("code mode scripted continuity", () => {
     const plain = await f.turn("Fix the fixture’s failing test");
     expect(plain.options.sections.delegation).toContain("- coder (strong): code changes in a repository: edit, test, fix");
     expect(plain.options.sections.delegation!.indexOf("- coder")).toBeLessThan(plain.options.sections.delegation!.indexOf("- worker"));
-    expect(f.tools.get("delegate").description).toContain("Roles: coder:");
+    expect(f.tools.get("delegate").description).not.toContain("Roles:");
     expect(off.text).not.toContain("Code task");
     expect(repoReads).toBe(1);
     t.view.close();
