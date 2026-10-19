@@ -126,16 +126,21 @@ describe("a project chat", () => {
   it.skipIf(!process.env.LYRICA_EVAL_BASE_URL || !process.env.LYRICA_EVAL_MODEL)("with a real model, she splits a build into code threads that own different files, and checks the result", async () => {
     const m = await setup(true, RACING);
     const build = await m.turn("Build the racing sim: car physics with unit tests, a three.js renderer with a chase camera, and a closed track with checkpoints and a lap timer. Each part is a real chunk of work.");
+    const starts = (done: Done[]) => done.filter((d) => d.tool === "threads" && d.action === "start");
+    // She may start one thread to set up the shared interfaces first; the parts start once it reports.
+    const scaffold = starts(build).length === 1
+      ? await m.turn("Update from child thread [t:web/new0]:\nScaffold committed: package.json, src/shared.js with the interfaces the parts use, and CONVENTIONS.md.")
+      : [];
     const small = await m.turn("Also, the README says 'teh car'. Fix that typo.");
-    const report = await m.turn("Update from child thread [t:web/new0]:\nPhysics and tests are done and committed. npm test passes.\n\n"
-      + "Update from child thread [t:web/new1]:\nRenderer and chase camera are done and committed.\n\n"
-      + "Update from child thread [t:web/new2]:\nTrack, checkpoints and lap timer are done and committed.");
-    console.log(`parallel code threads, ${process.env.LYRICA_EVAL_MODEL}:\n${JSON.stringify({ build, small, report }, null, 1)}`);
-    const starts = build.filter((d) => d.tool === "threads" && d.action === "start");
-    expect(starts.length).toBeGreaterThanOrEqual(2);
-    expect(starts.every((d) => d.code)).toBe(true);
-    // Each brief names the files its part owns, and no source file is in two briefs.
-    const files = starts.map((d) => new Set((d.task ?? "").match(/[\w./-]+\.(?:js|ts|mjs|html|css)\b/g) ?? []));
+    const report = await m.turn("Update from child thread [t:web/new1]:\nPhysics and tests are done and committed. npm test passes.\n\n"
+      + "Update from child thread [t:web/new2]:\nRenderer and chase camera are done and committed.\n\n"
+      + "Update from child thread [t:web/new3]:\nTrack, checkpoints and lap timer are done and committed.");
+    console.log(`parallel code threads, ${process.env.LYRICA_EVAL_MODEL}:\n${JSON.stringify({ build, scaffold, small, report }, null, 1)}`);
+    const parts = starts(build).length > 1 ? starts(build) : starts(scaffold);
+    expect(parts.length).toBeGreaterThanOrEqual(2);
+    expect([...starts(build), ...parts].every((d) => d.code)).toBe(true);
+    // Each brief names the files its part owns, and no source file but the shared one is in two briefs.
+    const files = parts.map((d) => new Set(((d.task ?? "").match(/[\w./-]+\.(?:js|ts|mjs|html|css)\b/g) ?? []).filter((n) => !n.endsWith("shared.js"))));
     expect(files.every((f) => f.size > 0)).toBe(true);
     const seen = new Set<string>();
     for (const f of files) for (const name of f) { expect(seen.has(name)).toBe(false); seen.add(name); }
