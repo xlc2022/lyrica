@@ -7,7 +7,7 @@ import { render, toStored, type UserId } from "../mentions.ts";
 import type { Profile } from "../profile.ts";
 import type { Interface, Pool } from "../types.ts";
 import { cleanAsk, type Ask, FROM_PARENT, ROUTINE, WAKEUP, WATCHING, type ThreadStep } from "../threads.ts";
-import { citationsIn, ftsQuery, indexText, kindOf, queryWords, searchWords, snippet, stripCitations, type Kind } from "./refs.ts";
+import { citationsIn, ftsQuery, holdsEnough, indexText, kindOf, queryTerms, queryWords, searchWords, snippet, stripCitations, withoutWords, type Kind } from "./refs.ts";
 
 /** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
 export type Author = "lyrica" | "sleep" | `user:${string}`;
@@ -166,6 +166,8 @@ export interface Hit {
   origin?: Origin;
   author?: string;
   supersededBy?: string;
+  /** When it was said (an entry) or last changed (a memory). */
+  at?: string;
 }
 
 /** A message `searchMessages` found, where it is now, with its stored text (never logged). */
@@ -187,6 +189,10 @@ export interface SearchOptions {
   /** The thread searching. In a project, what belongs to it (notes citing its threads, its page, its threads' entries) ranks higher. */
   fromThread?: string;
   includeArchived?: boolean;
+  /** Words left out of the query: automatic recall leaves out her name, which nearly everything mentions. */
+  skip?: string[];
+  /** A hit holds at least this many of the query's words, when the query has more than this many. */
+  minWords?: number;
 }
 
 export interface MemoryRevision {
@@ -732,18 +738,20 @@ export class PoolReader {
   // Search
 
   search(query: string, opts: SearchOptions = {}): Hit[] {
+    if (opts.skip?.length) query = withoutWords(query, opts.skip);
     const fts = ftsQuery(query, this.c.profiles());
     if (!fts) return [];
     const limit = opts.limit ?? 8;
     const rows = this.db.prepare("SELECT id, kind, bm25(search) AS rank FROM search WHERE search MATCH ? ORDER BY rank LIMIT ?")
       .all(fts, limit * 4) as { id: string; kind: Kind; rank: number }[];
     const words = queryWords(query);
+    const terms = opts.minWords ? queryTerms(query, this.c.profiles()) : [];
     const threads = opts.fromThread ? this.projectThreads(opts.fromThread) : [];
     const ours = threads.length ? this.inProject(rows.map((r) => r.id), threads) : undefined;
     const hits: Hit[] = [];
     for (const row of rows) {
       if (opts.kinds && !opts.kinds.includes(row.kind)) continue;
-      const hit = this.hit(row.id, row.kind, words, -row.rank * (ours?.has(row.id) ? PROJECT_BOOST : 1), opts);
+      const hit = this.hit(row.id, row.kind, words, terms, -row.rank * (ours?.has(row.id) ? PROJECT_BOOST : 1), opts);
       if (hit) hits.push(hit);
       if (!ours && hits.length >= limit) break;
     }
@@ -798,16 +806,18 @@ export class PoolReader {
     return ours;
   }
 
-  private hit(id: string, kind: Kind, words: string[], score: number, opts: SearchOptions): Hit | undefined {
+  private hit(id: string, kind: Kind, words: string[], terms: string[][], score: number, opts: SearchOptions): Hit | undefined {
     if (kind === "entry") {
       if (opts.excludeThread && id.startsWith(`e:${opts.excludeThread}#`)) return undefined;
       const [entry] = this.entryWindow(id, 0);
-      return entry && { id, kind, score, snippet: snippet(entry.text, words) };
+      if (!entry || !holdsEnough(entry.text, terms, opts.minWords)) return undefined;
+      return { id, kind, score, snippet: snippet(entry.text, words), at: entry.createdAt };
     }
     const item = this.get(id);
     if (!item || (item.archived && !opts.includeArchived) || (item.supersededBy && opts.current)) return undefined;
     const text = item.kind === "page" ? `${item.title}: ${item.summary}\n${item.text}` : item.text;
-    return { id, kind, score, snippet: snippet(text, words), origin: item.origin, author: item.author, supersededBy: item.supersededBy };
+    if (!holdsEnough(text, terms, opts.minWords)) return undefined;
+    return { id, kind, score, snippet: snippet(text, words), origin: item.origin, author: item.author, supersededBy: item.supersededBy, at: item.updatedAt };
   }
 
   // Lineage

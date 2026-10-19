@@ -59,6 +59,8 @@ export interface LyricaOptions {
   recentWork?: () => string | undefined;
   /** The user's reactions since her last turn, taken each turn: told to her in the turn message. */
   reactions?: () => UserReaction[];
+  /** Her name for this deployment, read every turn; automatic recall leaves it out. */
+  name?: () => string;
 }
 
 /** The Lyrica Pi extension for one thread. */
@@ -82,7 +84,7 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
     pi.on("before_agent_start", async (event, ctx) => {
       const persona = opts.persona();
       const topics = router.route([...persona.topics, SELF_PRIMER], event.prompt);
-      const memory = await memorySections(view, event.prompt, { ...who(), folders: opts.folders?.() ?? [], projectThreads: opts.projectThreads });
+      const memory = await memorySections(view, event.prompt, { ...who(), folders: opts.folders?.() ?? [], projectThreads: opts.projectThreads, name: opts.name?.() });
       // An unlogged thread isn't offered remember at all.
       if (opts.memoryTools !== "read") setToolsOff(pi, ctx, "unlogged", memory.notice ? ["remember"] : []);
       const { customPrompt, sections, turn, report } = assemble(

@@ -174,7 +174,7 @@ describe("in a Pi session", () => {
     } finally {
       s2.dispose();
     }
-    expect(seen[0]!.turn).toContain(`[${hit!.id}] (note) Ada's cat Miso hates the vacuum cleaner`);
+    expect(seen[0]!.turn).toMatch(new RegExp(`\\[${hit!.id}\\] \\(note, \\d{4}-\\d{2}-\\d{2}\\) Ada's cat Miso hates the vacuum cleaner`));
     expect(second.view.own.loadEntries(second.threadId).length).toBeGreaterThanOrEqual(2);
   });
 });

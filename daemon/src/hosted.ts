@@ -35,6 +35,8 @@ export interface HostOptions {
   threads?: ThreadsHost;
   /** How often a thread whose message waits for a model asks the machines again. Default HEALTH_MS. */
   offlineRetryMs?: number;
+  /** Her name for this deployment, which automatic recall leaves out. */
+  name?: () => string;
   /** A project chat's threads, one line each, for her project section. */
   projectThreads?: (userId: string, pool: Pool, project: string) => string | undefined;
   /** A turn started or ended in a thread; at the end, whether the person's own text was part of it (a child's wake isn't). */
@@ -951,6 +953,7 @@ export class HostedThread {
             persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter,
             recentWork: () => this.recentWork(view),
             reactions: () => this.unseenReactions.splice(0),
+            ...(this.o.name ? { name: this.o.name } : {}),
             ...(thread.project ? { projectThreads: () => this.o.projectThreads?.(this.userId, this.pool, this.threadId) } : {}),
           }),
           createWorkspaceExtension({

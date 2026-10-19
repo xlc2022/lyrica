@@ -50,6 +50,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
     promptGuidelines: [
       "Memories relevant to each message come up by themselves in <recall>. Use recall to look further before saying you don't remember.",
       "A memory marked \"added by\" a user is theirs: treat it as authoritative, and ask rather than contradict it.",
+      "<recall> and WAKE are background. Answer what the person said, and bring up other work or an earlier conversation only when their message is about it or they ask what's open. A hit's date is when it was said or changed: don't guess a different one.",
     ],
     parameters: Type.Object({
       query: Type.String({ description: "Words to look for." }),
