@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest, type Server } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { connect, type IncomingHttpHeaders } from "node:http2";
 import { createServer as createTcp, type AddressInfo } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -93,6 +94,48 @@ const builtin = (name = "lyrica.example.net") => ({
   mode: "builtin", name, builtin: { addresses: ["127.0.0.1"], provider: "cloudflare", credentials: { api_token: TOKEN }, staging: false },
 });
 const routes = (cfg: any) => cfg.apps.http.servers.lyrica.routes.map((r: any) => r.match[0].host[0]);
+
+describe("web access, Direct", () => {
+  it("serves HTTP/2 and checks mutation origins against :authority without Host", async () => {
+    const rt = await runtime();
+    const port = await freePort();
+    const { base } = await daemon(rt, {
+      web: { directPort: port, addresses: () => [{ address: "127.0.0.1", kind: "lan", interface: "lo" }], caddySocket: join(rt.home, "no-caddy.sock") },
+    });
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(base, "ada", "pw");
+    const panel = await ada.put<WebAccess>(`/api/u/${rt.ada.id}/admin/web-access`, { mode: "direct" });
+    expect(panel.status).toBe(200);
+    const origin = `https://127.0.0.1:${port}`;
+    const client = connect(origin, {
+      ca: panel.body.direct!.pem, servername: "",
+      checkServerIdentity: (_host, cert) => checkServerIdentity("127.0.0.1", cert),
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        client.once("connect", resolve);
+        client.once("error", reject);
+      });
+      expect(client.alpnProtocol).toBe("h2");
+      const request = (path: string, postOrigin?: string) => new Promise<number>((resolve, reject) => {
+        // No Host header: HTTP/2 supplies :authority instead.
+        const req = client.request({ ":path": path, ":authority": new URL(origin).host,
+          ...(postOrigin ? { ":method": "POST", origin: postOrigin, "content-type": "application/json" } : {}) });
+        let headers: IncomingHttpHeaders;
+        req.on("response", (h) => { headers = h; });
+        req.on("error", reject);
+        req.on("end", () => resolve(Number(headers[":status"])));
+        req.resume();
+        req.end(postOrigin ? JSON.stringify({ login: "ada", password: "pw" }) : undefined);
+      });
+      expect(await request("/api/state")).toBe(200);
+      expect(await request("/api/login", origin)).toBe(200);
+      expect(await request("/api/login", "https://other.example.net")).toBe(403);
+    } finally {
+      client.destroy();
+    }
+  });
+});
 
 describe("web access, built-in Caddy", () => {
   it("writes Caddy's config for the site, DNS provider and upstream, and never gives the token back", async () => {

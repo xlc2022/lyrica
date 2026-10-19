@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
 import { generateKeyPairSync, X509Certificate } from "node:crypto";
 import { chmodSync, closeSync, existsSync, openSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import type { Server } from "node:http";
 import { isIP } from "node:net";
 import { networkInterfaces } from "node:os";
 import { checkServerIdentity, connect as connectTls, type PeerCertificate } from "node:tls";
 import type { Db, FrontDoor } from "@lyrica/core";
 import type * as Api from "../api.ts";
+import type { Listener } from "../http.ts";
 import { adminOnly, CaddyAdmin, caddyConfig, type CaddyPaths, type CaddySite } from "./caddy.ts";
 import { provider, PROVIDERS } from "./providers.ts";
 import type { TailnetControl } from "../tailnet.ts";
@@ -67,7 +67,7 @@ const KEY = "web.access";
 /** How long a new name may take to get its certificate before the change is undone. */
 export const CERT_WAIT_MS = 90_000;
 
-export type OpenListener = (b: Bind) => Promise<Server>;
+export type OpenListener = (b: Bind) => Promise<Listener>;
 
 /**
  * The extra listener and its settings file: the external proxy's one socket,
@@ -77,7 +77,7 @@ export type OpenListener = (b: Bind) => Promise<Server>;
  */
 export class ExternalListener {
   private cfg: External | Direct | undefined;
-  private servers: Server[] = [];
+  private servers: Listener[] = [];
   private open: OpenListener;
 
   constructor(private readonly path: string, open: OpenListener) {
@@ -133,7 +133,7 @@ export class ExternalListener {
     const old = this.servers;
     const overlap = !!(prev && next && binds(next).some((b) => binds(prev).some((p) => p.address === b.address && p.port === b.port)));
     if (overlap) await Promise.all(old.map((s) => closeServer(s)));
-    const opened: Server[] = [];
+    const opened: Listener[] = [];
     if (next) {
       for (const b of binds(next)) {
         try {
@@ -176,7 +176,7 @@ export class ExternalListener {
 /** How long a replaced listener's open requests may take to finish. */
 const GRACE_MS = 5000;
 
-const plainOf = (s: Server): string => {
+const plainOf = (s: Listener): string => {
   const a = s.address();
   return a && typeof a === "object" ? a.address.replace(/^::ffff:/, "") : "";
 };
@@ -527,7 +527,7 @@ export class WebAccess {
 }
 
 /** Stops listening. Open requests get `graceMs` to finish (none by default). */
-function closeServer(s: Server, graceMs = 0): Promise<void> {
+function closeServer(s: Listener, graceMs = 0): Promise<void> {
   return new Promise((resolve) => {
     s.close(() => resolve());
     if (!graceMs) return s.closeAllConnections();

@@ -1,9 +1,9 @@
+import { UserEvents } from "./user-events.ts";
 import { Push } from "./push.ts";
 import { execFileSync } from "node:child_process";
 import { createHmac, randomBytes, timingSafeEqual, X509Certificate } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { createServer as createHttpsServer } from "node:https";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,9 +25,11 @@ import { ThreadHost } from "./hosted.ts";
 
 /** Model host refusals the web UI acts on, so their code goes with the message. */
 const HOST_CODES = ["need_repo", "above_recommended"];
+/** Changes no list in the shell shows, so they don't tell the user's other tabs: a draft saves after each pause in typing. */
+const UNLISTED = new Set(["/api/u/:userId/threads/:pool/:threadId/draft"]);
 import {
-  checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, readBody, sendJson, serveStatic, statusOf, Updating,
-  type Request, type Route, type TrustForwarded,
+  checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, readBody, secureServer, sendJson, serveStatic, statusOf, Updating,
+  type Listener, type Request, type Route, type TrustForwarded,
 } from "./http.ts";
 import { TailnetControl } from "./tailnet.ts";
 import { listenUpdateSocket, type Drainable, type UpdatePaths } from "./updates.ts";
@@ -159,6 +161,7 @@ export const BUILD: Pick<State, "version" | "build"> = (() => {
  * Unix socket. It starts locked unless the self.db passphrase was saved.
  */
 export class Lyricad implements Drainable {
+  readonly userEvents = new UserEvents();
   readonly push = new Push(this);
   readonly keyring: Keyring;
   readonly sessions: Sessions;
@@ -473,6 +476,7 @@ export class Lyricad implements Drainable {
         if (project) watcher.failed(u, p, project, t);
       },
       onEvent: (u, p, t, e) => {
+        if (["turn_start", "turn_end", "title", "settings", "permission", "permission_end", "child"].includes(e.type)) this.userEvents.changed(u);
         if (e.type === "permission" || e.type === "settings") queueMicrotask(() => this.push.tick());
         const k = `${u}/${p}/${t}`;
         if (e.type === "error" && host.busy(u, p, t)) erred.add(k);
@@ -487,6 +491,7 @@ export class Lyricad implements Drainable {
     });
     const proposals = new PersonaProposals(keyring.self(), users, persona);
     const sleep = new Sleep({ users, memory, models, persona, proposals, hasKey: (id) => keyring.hasUserKey(id), cwd, limits: this.opts.sleep, log: this.log });
+    sleep.events.on("event", (e) => this.userEvents.changed(e.userId));
     const prefs = new ThreadPrefs((id) => users.openUserDb(id));
     host.draining = this.drainingNow;
     const shares = new ThreadShares(keyring.self());
@@ -720,6 +725,7 @@ export class Lyricad implements Drainable {
       for (const id of this.mounted) await s.workspace.unmountHome(id).catch(() => {});
       for (const u of s.users.all()) this.keyring.lockUser(u.id);
     }
+    this.userEvents.close();
     this.mounted.clear();
     this.services = undefined;
     try { this.keyring.self().close(); } catch { /* already locked */ }
@@ -733,10 +739,10 @@ export class Lyricad implements Drainable {
    * own certificate, or plain HTTP on a Tailscale address. Direct: anyone may
    * connect, over HTTPS, and the client's own address is its address.
    */
-  private listenExternal(o: Bind): Promise<Server> {
+  private listenExternal(o: Bind): Promise<Listener> {
     const trust: TrustForwarded = o.direct ? () => false : (remote) => this.external.proxies().includes(plainAddress(remote));
     const handler = (req: IncomingMessage, res: ServerResponse) => void this.handle(req, res, trust);
-    const server: Server = o.tls ? createHttpsServer({ key: o.tls.key, cert: o.tls.cert, minVersion: "TLSv1.2" }, handler) : createServer(handler);
+    const server: Listener = o.tls ? secureServer(o.tls, handler) : createServer(handler);
     if (!o.direct) server.on("connection", (socket) => { if (!trust(socket.remoteAddress ?? "")) socket.destroy(); });
     return new Promise((resolve, reject) => {
       server.once("error", reject);
@@ -774,6 +780,7 @@ export class Lyricad implements Drainable {
       if (method !== "GET" && method !== "HEAD") checkOrigin(req);
       const r: Request = makeRequest(req, res, routeName, found.params, url, trust, via);
       const body = await found.route.handler(r);
+      if (method !== "GET" && method !== "HEAD" && found.params.userId && res.statusCode >= 200 && res.statusCode < 300 && !UNLISTED.has(routeName)) this.userEvents.changed(found.params.userId);
       if (res.headersSent) return; // a stream, or a handler that answered itself
       sendJson(res, 200, body);
     } catch (err) {
