@@ -9,7 +9,7 @@ import { runtime } from "./helpers.ts";
 describe("spend-share routes", () => {
   it("uses the same durable total in usage and overview, sorts thread shares, and filters calls by project and pool", async () => {
     const rt = await runtime();
-    const d = new Lyricad({ home: rt.home, port: 0, selfTest: false, log: () => {}, argon2: { memoryCost: 1024, timeCost: 1, parallelism: 1 } });
+    const d = new Lyricad({ home: rt.home, port: 0, selfTest: false, log: () => {}, argon2: { memoryCost: 1024, timeCost: 1, parallelism: 1 }, kdfIter: 1 });
     await d.unlock("passphrase");
     try {
       await d.services!.users.authenticate("ada", "pw");

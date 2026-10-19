@@ -6,7 +6,7 @@ import {
   checkReadable, Keyring, Memory, migrate, MigrationFailed, MIN_READER, openEncrypted, SCHEMA, schemaOf, SchemaTooNew, STEPS, Users, WorkspaceSettings,
   type Db, type DbKind, type MigrationStep,
 } from "../src/index.ts";
-import { freshKeyring, profile } from "./helpers.ts";
+import { ARGON2, freshKeyring, KDF_ITER, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -179,7 +179,7 @@ describe("pre-release databases", () => {
   it("come up to the first release's schema in place, keeping what they held", async () => {
     const home = mkdtempSync(join(tmpdir(), "lyrica-migrations-"));
     dirs.push(home);
-    const keyring = new Keyring(home, { memoryCost: 1024, timeCost: 1, parallelism: 1 });
+    const keyring = new Keyring(home, ARGON2, KDF_ITER);
     await keyring.initSelf("passphrase");
     const self = keyring.self();
     self.exec("DROP TABLE meta; PRAGMA user_version = 0");

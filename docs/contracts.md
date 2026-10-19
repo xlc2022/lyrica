@@ -45,6 +45,7 @@ IDs and citations:
 ## core/keyring
 
 ```ts
+new Keyring(home, argon2?, kdfIter?)                      // tests only pass cheap Argon2 and kdfIter 1
 unlockSelf(passphrase: string): Promise<void>            // self.db only
 unlockUser(userId: string, password: string): Promise<void>
 saveUserKey(userId) / forgetSavedKey(userId) / hasSavedKey(userId)   // "save credentials"
@@ -71,6 +72,10 @@ lockUser(userId: string): void
 - Each user has a random 256-bit data key, wrapped by Argon2id of their
   password. Changing the password rewraps the key. The data is never
   re-encrypted for a password change.
+- self.db's passphrase goes through SQLCipher's own key derivation (PBKDF2,
+  256,000 rounds). Tests set `kdfIter` (and `LyricadOptions.kdfIter`) to 1
+  so each open is quick; a self.db opens only with the count it was made
+  with. Nothing outside tests sets it.
 - Keys live only in daemon memory, or in systemd credentials when saved:
   sealed with `systemd-creds encrypt --user` (systemd 256 or later), the
   secret on stdin. At start lyricad runs

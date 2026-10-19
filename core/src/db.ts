@@ -3,7 +3,8 @@ import Database from "better-sqlite3-multiple-ciphers";
 
 export type Db = Database.Database;
 
-export type DbKey = { passphrase: string } | { raw: Buffer };
+/** kdfIter: SQLCipher's key-derivation rounds for a passphrase; tests set it low. A file opens only with the count it was made with. */
+export type DbKey = { passphrase: string; kdfIter?: number } | { raw: Buffer };
 
 /** Opens (or creates) a SQLCipher database. Throws if the key is wrong. A read-only open never creates or writes. */
 export function openEncrypted(path: string, key: DbKey, opts: { readonly?: boolean } = {}): Db {
@@ -15,6 +16,7 @@ export function openEncrypted(path: string, key: DbKey, opts: { readonly?: boole
       if (key.raw.length !== 32) throw new Error("database key must be 32 bytes");
       db.pragma(`key = "x'${key.raw.toString("hex")}'"`);
     } else {
+      if (key.kdfIter !== undefined) db.pragma(`kdf_iter = ${Math.max(1, Math.floor(key.kdfIter))}`);
       db.pragma(`key = '${key.passphrase.replaceAll("'", "''")}'`);
     }
     db.prepare("SELECT count(*) FROM sqlite_master").get();

@@ -1201,13 +1201,16 @@ turns animations off.
   fallback and clip limit (`voice.test.ts`), and a text model group's warn
   lines (`library.test.ts`), and flyout placement and hover intent (`flyout.test.ts`).
 - `npm run e2e -w @lyrica/web` runs Playwright (after a build). The upload
-  test needs `gocryptfs`, as `lyricad` does. Each project in
-  `playwright.config.ts` (phone 390×844 with touch, desktop 1280×800, and a
-  desktop one for first-run setup) gets its own real `lyricad` from
+  test needs `gocryptfs`, as `lyricad` does. The specs are
+  `web/e2e/web-chat.spec.ts`, `web-projects.spec.ts` and `web-admin.spec.ts`,
+  sharing `web/e2e/helpers.ts`, plus `setup.spec.ts`. Each runs its tests in
+  order. Each project in `playwright.config.ts` (every `web-*` spec at phone
+  390×844 with touch and at desktop 1280×800, and a desktop one for
+  first-run setup, on ports 7341 to 7347) gets its own real `lyricad` from
   `web/e2e/serve.ts`, on a temporary runtime with a fake model server, which
   also serves a fake speech endpoint (whisper and kokoro, under `/speech/v1`,
   and `/speech/down` to make it fail). Chromium runs with a fake microphone.
-  The desktop project listens on 7342, `lyricad`'s own loopback port for
+  The desktop-chat project listens on 7342, `lyricad`'s own loopback port for
   `tailscale serve`, so e2e can't run on a machine where `lyricad` runs.
 - Push e2e checks cover Save, masked saved credentials across reload, Send a
   test, inline receiver failure and recovery, and Turn off at both widths.

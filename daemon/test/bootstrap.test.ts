@@ -11,6 +11,7 @@ import { Lyricad, type LyricadOptions } from "../src/lyricad.ts";
 import { browser, login } from "./helpers.ts";
 
 const ARGON2 = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
+const KDF_ITER = 1;
 const SEED = fileURLToPath(new URL("../../persona", import.meta.url));
 const KEY = "tskey-auth-kQ4yS9cNTRL-7d1e5b0a9c2f4e6b8a1d3c5e7f9b0a2c";
 
@@ -89,7 +90,7 @@ async function fresh(opts: Partial<LyricadOptions> & { home?: string; secrets?: 
   const ts = fakeTailscale();
   const directPort = await freePort();
   const d = new Lyricad({
-    home, port: 0, argon2: ARGON2, selfTest: false, webDir: join(home, "no-web"),
+    home, port: 0, argon2: ARGON2, kdfIter: KDF_ITER, selfTest: false, webDir: join(home, "no-web"),
     credentials: new SystemdCredentials(sealed, async (id, secret, out) => { secrets.set(id, Buffer.from(secret)); writeFileSync(out, "sealed"); }, async (id) => Buffer.from(secrets.get(id) ?? []), (line) => logs.push(line)),
     web: { addresses: () => [{ address: "127.0.0.1", kind: "lan", interface: "eth0" }], directPort, caddySocket: join(home, "no-caddy.sock"), certWaitMs: 300 },
     tailnet: { binary: ts.bin, socket: join(home, "tailscaled.sock") },
@@ -171,7 +172,7 @@ describe("setting up", () => {
 
   it("makes the same self.db as lyrica admin init", async () => {
     const shape = (home: string, passphrase: string) => {
-      const k = new Keyring(home, ARGON2);
+      const k = new Keyring(home, ARGON2, KDF_ITER);
       return k.unlockSelf(passphrase).then(() => {
         const db = k.self();
         const out = {
@@ -187,7 +188,7 @@ describe("setting up", () => {
       });
     };
     const cli = tmp("lyrica-init-");
-    const k = new Keyring(cli, ARGON2);
+    const k = new Keyring(cli, ARGON2, KDF_ITER);
     await bootstrap(k, { passphrase: "passphrase", name: "Aria", seed: SEED, admin: { login: "ada", password: "pw", profile: { displayName: "Ada", pronouns: PRONOUN_PRESETS.she } } });
     k.closeSelf();
     // Then lyricad's first start, as after admin init.
