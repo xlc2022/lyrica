@@ -6,7 +6,7 @@
 area, so PR review).
 **Read first:** AGENTS.md, PRINCIPLES.md (1, 6, 8), DESIGN.md (Projects,
 Delegation), docs/contracts.md (core/workspace, Projects), docs/workspace.md
-(Grants), docs/delegation.md (Parallel writers), docs/projects.md.
+(Grants), docs/delegation.md (Parallel writers, Projects).
 
 ## Why
 
@@ -95,7 +95,7 @@ code child it starts on request shares its parent's folder as today.
   rule.
 - docs/delegation.md (Parallel writers): the same machinery serves
   threads.
-- docs/projects.md and DESIGN.md (Projects): scaffold, parts, merge.
+- docs/delegation.md (Projects) and DESIGN.md (Projects): scaffold, parts, merge.
 - docs/contracts.md: `StartRequest.base`, and the worktree in the child's
   settings.
 - docs/briefs/lyrica-project.md: the coding section.
