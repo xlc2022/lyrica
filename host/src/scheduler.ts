@@ -12,7 +12,7 @@ import type { Gpu, GpuMonitor } from "./gpus.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import {
-  CPU_OPTION, defaultGpu, neverFits, options, placementKey, serverOf, sizes, SERVER_NAMES, SERVERS,
+  autoContext, CPU_OPTION, defaultGpu, neverFits, options, placementKey, serverOf, sizes, SERVER_NAMES, SERVERS,
   type GpuSettings, type ModelSettings, type Option, type Server,
 } from "./placement.ts";
 import type { StateFile } from "./state.ts";
@@ -32,7 +32,10 @@ interface Loaded {
   option: Option;
   /** Bytes it takes on each of its GPUs: measured, else expected. */
   vram: Record<number, number>;
+  /** What it was loaded with: its saved settings, with the context in effect. */
   settings: ModelSettings;
+  /** It had no saved context, so `settings.contextLength` is the automatic one. */
+  auto: boolean;
   ready: boolean;
   active: number;
   lastUsed: number;
@@ -173,6 +176,22 @@ export class Scheduler {
     return this.o.state.get().models[model.id] ?? { placement: { mode: "auto" } };
   }
 
+  /**
+   * Its settings with the context it is served with: a chat model with none
+   * saved gets the largest that fits once Lyrica's own models are unloaded
+   * (autoContext), kept while it stays loaded.
+   */
+  served(model: TextModel): ModelSettings {
+    const s = this.settings(model);
+    if (s.contextLength !== undefined || model.kind !== "chat" || this.onCpu(model)) return s;
+    const l = this.loaded.get(model.id);
+    if (l?.auto) return { ...s, contextLength: l.settings.contextLength };
+    const others = this.gpusFor(serverOf(model)).map((g) => ({
+      ...g, used: Math.max(0, g.used - [...this.loaded.values()].filter((x) => x.model.id !== model.id).reduce((n, x) => n + (x.vram[g.index] ?? 0), 0)),
+    }));
+    return { ...s, contextLength: autoContext(model, s, others, (i) => this.gpuSettings(i)) };
+  }
+
   private pinned(id: string): boolean {
     return this.o.state.get().pins.includes(id);
   }
@@ -197,7 +216,7 @@ export class Scheduler {
   /** The ways this job's model may run. */
   private optionsFor(job: { model: TextModel; gpu?: number }): Option[] {
     if (this.onCpu(job.model)) return [CPU_OPTION];
-    const s = this.settings(job.model);
+    const s = this.served(job.model);
     const gpus = this.gpusFor(serverOf(job.model));
     if (job.gpu === undefined) return options(job.model, s, gpus, (i) => this.gpuSettings(i));
     // ComfyUI: its one GPU, which must allow images.
@@ -372,7 +391,7 @@ export class Scheduler {
   private plan(job: Pick<Job, "model" | "gpu">, held: Set<number>): Plan {
     const model = job.model;
     const opts = this.optionsFor(job);
-    const s = this.settings(model);
+    const s = this.served(model);
     if (!opts.length) {
       return new HostError(413, "too_big", job.gpu !== undefined ? `GPU ${job.gpu} doesn't allow images.` : `No GPU allows ${SERVER_NAMES[serverOf(model)]} for this model.`);
     }
@@ -441,10 +460,10 @@ export class Scheduler {
     job.reject(error);
   }
 
-  private async load(model: TextModel, o: Option, settings = this.settings(model)): Promise<void> {
+  private async load(model: TextModel, o: Option, settings = this.served(model), auto = this.settings(model).contextLength === undefined): Promise<void> {
     const before = Object.fromEntries((await this.readGpus()).map((g) => [g.index, g.used]));
     const key = `${model.id}@${placementKey(o)}`;
-    const entry: Loaded = { model, option: o, vram: { ...this.needOf(model, o) }, settings, ready: false, active: 0, lastUsed: this.now(), warmed: false };
+    const entry: Loaded = { model, option: o, vram: { ...this.needOf(model, o) }, settings, auto, ready: false, active: 0, lastUsed: this.now(), warmed: false };
     this.loaded.set(model.id, entry);
     this.memoryEpoch++;
     this.changing++;
@@ -555,9 +574,10 @@ export class Scheduler {
         for (const l of plan.evict) await this.unload(l);
         await this.load(model, plan.option);
       } catch (e) {
-        this.saveSettings(model, previous.settings);
+        const { contextLength: _, ...rest } = previous.settings;
+        this.saveSettings(model, previous.auto ? rest : previous.settings);
         // A failed restoration must not hide the replacement's load error.
-        await this.load(model, previous.option, previous.settings).catch((r) =>
+        await this.load(model, previous.option, previous.settings, previous.auto).catch((r) =>
           this.o.log("restore failed", { model: model.id, error: r instanceof Error ? r.name : "error", message: r instanceof Error ? r.message : "" }),
         );
         throw e;

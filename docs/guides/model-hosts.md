@@ -290,8 +290,11 @@ You can also ask Lyrica to do it: her `models` tool asks you on a card
 before it changes anything. The stretch raises the most the model may serve
 (the trained length times the factor; `originalContext`, the length YaRN
 scales from, defaults to the trained length); `contextLength` still picks
-what it serves, 32k unless set. The editor's hint shows what the model's
-card recommends; **Look up** on the model reads the card (it asks for the
+what it serves. Unset, a chat model gets the largest context that fits its
+GPUs, up to its trained length (32k when the host can't tell), so it may
+fill a GPU and be unloaded whenever another model needs the room; set a
+smaller context to keep both loaded. The editor's hint shows what the
+model's card recommends; **Look up** on the model reads the card (it asks for the
 repository when the host doesn't know it). A factor above the card's asks
 "<publisher> documents N. Save anyway?". Each model row shows "stretched
 ×N" and the size of its KV cache, which grows with the context length, so a

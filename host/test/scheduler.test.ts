@@ -71,13 +71,14 @@ describe("the GPU queue", () => {
       await load(model, at);
     };
     await expect(scheduler.reload(m)).rejects.toMatchObject({ code: "model_unavailable" });
-    expect(contexts).toEqual([16384, undefined]);
+    // Restored with no saved context: served at the largest that fits, its trained 32768.
+    expect(contexts).toEqual([16384, 32768]);
     expect(scheduler.placement(m.id)?.state).toBe("loaded");
     expect(scheduler.settings(m)).toEqual({ placement: { mode: "auto" } });
     expect(new StateFile(dir).get().models[m.id]).toEqual(state.get().models[m.id]);
     await scheduler.unloadNow(m.id);
     await scheduler.loadNow(m);
-    expect(contexts).toEqual([16384, undefined, undefined]);
+    expect(contexts).toEqual([16384, 32768, 32768]);
   });
 
   it("reports the replacement error when restoring also fails", async () => {

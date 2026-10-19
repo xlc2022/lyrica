@@ -150,8 +150,8 @@ describe("routing /v1 to the model servers", () => {
     expect(s.host.runtime!.scheduler.placement(id)).toBeNull();
     await s.host.runtime!.scheduler.loadNow(scanTextModels(modelsFolder()).find((m) => m.id === id)!);
 
-    // llama.cpp got a preset for the model on GPU 0.
-    expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).toContain(`[${id}]\nmodel = /models/${id}\ndevice = CUDA0\nsplit-mode = none\nc = 32768\nn-gpu-layers = 999\nflash-attn = auto`);
+    // llama.cpp got a preset for the model on GPU 0, at its trained 40960 tokens: with none saved, the largest that fits.
+    expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).toContain(`[${id}]\nmodel = /models/${id}\ndevice = CUDA0\nsplit-mode = none\nc = 40960\nn-gpu-layers = 999\nflash-attn = auto`);
     const status = await call({ port: s.tls, path: "/host/v1/status", identity: s.me, pinned });
     expect(status.body.gpus[0].models[0]).toMatchObject({ id, state: "loaded", busy: false });
 
