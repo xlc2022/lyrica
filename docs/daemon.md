@@ -1229,7 +1229,8 @@ system with the module on. Only x86_64-linux.
   `LYRICA_SANDBOX_CLOSURE` to the store paths of their closure, Node's and
   the CA bundle's (`closureInfo`). See docs/workspace.md.
 - **Options:** `enable`, `package`, `port` (7340), `tailscale` (on),
-  `tailscalePackage`, `openFirewall` (on), `caddyPackage`, `sandboxPackages`.
+  `tailscalePackage`, `openFirewall` (on), `searxng` (on), `caddyPackage`,
+  `sandboxPackages`.
 - **Releases** are generations of the profile `/nix/var/nix/profiles/lyrica`,
   which lyricad runs. An Update builds `git+file:///opt/lyrica/repo.git?rev=<commit>#lyrica`
   as root (Nix's own sandboxed builders do the building, not `lyrica-build`),

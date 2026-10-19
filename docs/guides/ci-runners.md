@@ -81,7 +81,10 @@ runner keeps its registration, and the firewall is applied again.
 
 - **A queued job** means every runner is busy or offline. One runner runs
   one job at a time; a newer push to a pull request cancels its older
-  runs, and every commit on `main` gets a full run.
+  runs. On `main` only the newest merge runs: a run still waiting for a
+  runner gives way to the next merge, and one already running finishes.
+  Each job runs only when the diff touches what it checks
+  ([docs/ci.md](../ci.md)).
 - **Out of disk:** the host image jobs check for room first (45 GB free
   for ROCm, 40 for ComfyUI's CUDA build, 30 for speech), clear Docker's
   cache if short, and fail naming the free space if that isn't enough.
