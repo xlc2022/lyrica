@@ -4185,8 +4185,10 @@ test("Code mode: thread switch, Coding model and project defaults", async ({ pag
   const address = `/#/u/${userId}/t/general/${encodeURIComponent(thread.id)}`;
   const endpoints = await api("GET", "/endpoints");
   const local = endpoints.find((ep: { name: string }) => ep.name === "gpu").models[0].id;
-  // Different Chat and Coding choices make the header's active task observable.
-  await api("PATCH", `${path}/settings`, { models: { code: { offeringId: local } } });
+  const cloud = endpoints.find((ep: { name: string }) => ep.name === "router").models.find((m: { modelId: string }) => m.modelId === "cloud-model").id;
+  // Different Chat and Coding choices make the header's active task observable. Both are the thread's own,
+  // since an earlier test points the General column's Chat at a local model.
+  await api("PATCH", `${path}/settings`, { models: { chat: { offeringId: cloud }, code: { offeringId: local } } });
   await page.goto(address);
   let drawer = await openSettings(page);
   const mode = await drawer.getByRole("combobox", { name: "Mode", exact: true }).inputValue();
