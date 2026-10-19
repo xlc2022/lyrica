@@ -195,7 +195,7 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
           )}
         </span>
       </div>
-      {t.worktreeReason && <p className="tcard-line muted">No worktree: {t.worktreeReason}</p>}
+      {t.worktreeReason && <p className="tcard-line muted" title={`No worktree: ${t.worktreeReason}`}>No worktree: {t.worktreeReason}</p>}
       {t.steps && t.state !== "resolved" && <StepLine steps={t.steps} />}
       {!t.question && line && <p className="tcard-line">{t.needsYou ? <><span className="muted">Waits on you: </span>{line}</> : line}</p>}
       {!line && t.state === "waiting" && !t.needsYou && <p className="tcard-line muted">Waiting for an approval in the thread.</p>}
