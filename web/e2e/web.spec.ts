@@ -3098,8 +3098,8 @@ test("Text models: a row per model with starred first; a row opens to its copies
   await expect(drawer.getByRole("group", { name: "Settings" })).toHaveCount(0);
   await expect(drawer.getByLabel("Context window")).toBeVisible();
   // An empty field shows what applies instead: the window planned by, and the longest reply it allows.
-  await expect(drawer.getByLabel("Context window")).toHaveAttribute("placeholder", /^\d+$/);
-  await expect(drawer.getByLabel("Maximum reply length")).toHaveAttribute("placeholder", /^\d+$/);
+  await expect(drawer.getByLabel("Context window")).toHaveAttribute("placeholder", /^[\d,]+$/);
+  await expect(drawer.getByLabel("Maximum reply length")).toHaveAttribute("placeholder", /^[\d,]+$/);
   const temperature = drawer.getByLabel("Temperature", { exact: true });
   await temperature.fill("0.4");
   const put = () => page.waitForResponse((r) => r.request().method() === "PUT" && r.url().endsWith("/settings"));

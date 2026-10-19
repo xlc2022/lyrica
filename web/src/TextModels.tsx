@@ -539,7 +539,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   const inherited = (k: SKey) => scope === "mine" && s?.sources[k] === "shared" ? "shared" : s && k in s.defaults ? "model's" : k === "maxTokens" ? "most" : undefined;
   const placeholder = (k: SKey) => {
     const from = inherited(k);
-    return from === "shared" ? textOf(s!.values[k]) : from === "model's" ? textOf((s!.defaults as Record<string, number>)[k]) : from === "most" ? String(cap) : undefined;
+    return from === "shared" ? textOf(s!.values[k]) : from === "model's" ? textOf((s!.defaults as Record<string, number>)[k]) : from === "most" ? cap.toLocaleString("en-US") : undefined;
   };
   const word = (k: SKey) => {
     if (s?.dropped.includes(k)) return "not sent";
@@ -664,7 +664,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
         <legend className="eyebrow">Context</legend>
         <SRow label="Context window" word={ctxShown ? "set by hand" : s?.contextWindow.source === "assumed" ? "assumed" : s?.contextWindow.source === "host" ? "loaded" : undefined} unit="tokens">
           <input type="number" min={512} step={1024} aria-label="Context window" value={ctxShown} onChange={(e) => setCtxText(e.target.value)}
-            placeholder={s && !hand ? String(s.contextWindow.value) : undefined} />
+            placeholder={s && !hand ? s.contextWindow.value.toLocaleString("en-US") : undefined} />
         </SRow>
       </fieldset>
     )}
