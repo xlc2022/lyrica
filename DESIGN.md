@@ -1495,7 +1495,8 @@ A thread's editable `code` preference selects the `code` model list instead
 of Chat, keeping its context limit, preset, permissions and grants. The
 `threads code` action changes the next turn and, when given a task or
 progress, replaces its encrypted Code task; turning off keeps it. Projects can choose code mode for new threads,
-and her `threads start` can with `code: true`.
+and her `threads start` can with `code: true`. Outside a project chat she codes in the thread with code mode
+and turns it off when done; a project chat splits a separable build into parallel `code: true` threads, one per part.
 Code turns omit models, downloads, images and reactions, add five coding
 guidelines, and read repository branches and up to ten commit subjects
 since the default base, plus cached open pull-request checks, once per turn.

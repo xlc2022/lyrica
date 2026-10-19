@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { DEFAULT_THREADS_LIMITS, type Persona } from "@lyrica/core";
+import { DEFAULT_THREADS_LIMITS, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, type Persona } from "@lyrica/core";
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync, rmSync } from "node:fs";
@@ -132,6 +132,30 @@ describe("code mode scripted continuity", () => {
     expect(prompt.text).toContain("Coder fixture");
     expect(prompt.text).not.toContain("SOUL-SENTINEL");
     t.view.close();
+  });
+
+  it("splits a larger build into code threads in a project chat, and codes in place elsewhere", async () => {
+    const s = await withMemory();
+    const host = { limits: DEFAULT_THREADS_LIMITS, start: async () => { throw new Error("unused"); }, message: async () => "saved" as const, list: () => [], code: () => {} };
+    const guidance = (context: typeof s.thread extends () => infer T ? T : never) => {
+      const f = fakePi();
+      createThreadsExtension((context as { context: Parameters<typeof createThreadsExtension>[0] }).context, host)(f.pi);
+      return (f.tools.get("threads").promptGuidelines as string[]).join("\n");
+    };
+    const chat = s.thread();
+    chat.view.own.setProject(chat.threadId);
+    const split = PROJECT_CHAT_GUIDELINES.find(g => g.includes("one code: true thread per part"))!;
+    expect(split).toContain("A small job keeps one thread");
+    expect(guidance(chat)).toContain(split);
+    const plain = s.thread();
+    expect(guidance(plain)).not.toContain(split);
+    expect(PROJECT_THREAD_GUIDELINES.join("\n")).toContain("only the files your brief gives you");
+    // Outside a project chat she codes in the thread itself and switches code mode back off when done.
+    expect(CODING_GUIDELINE).toContain("code in this thread");
+    expect(CODING_GUIDELINE).toContain("turn it off (on: false) when the coding is done");
+    expect(CODING_GUIDELINE).toContain("code: true thread only if the user asks for one");
+    chat.view.close();
+    plain.view.close();
   });
 
   it("has a repository fixture with a reproducible failing test", () => {

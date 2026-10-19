@@ -184,9 +184,14 @@ uses the full step's task and optional `done` (1,200 characters). Its short
 task summary (300 characters) and progress are retained in encrypted
 pool.db for continuation; the full task stays in the subagent's conversation. It gets no
 persona. `recall({ everywhere: true })` widens one search in its view.
-Every thread's prompt names coder first and advises using it for one coding
-change, a child thread started with `code: true` for a larger build, or
-enabling code mode when working together. The parent's prompt lists
+Every thread's prompt says that outside a project chat she codes in the
+thread itself: she turns on code mode with a task and turns it off when the
+coding is done. She starts a `code: true` child only when the user asks for
+one, and delegates a small side change to coder. A project chat splits a
+build with separable parts into one `code: true` thread per part, started
+together, each brief naming the files it owns; a small job gets one thread.
+She checks the whole herself before saying it's done. A project thread
+changes and commits only the files its brief gives it. The parent's prompt lists
 the roles and saved workflows, after a line (`SHARED_SANDBOX`) saying that
 subagents and child threads have her sandbox's tools and her network or
 less, so a brief asks for the result rather than a way to verify it.

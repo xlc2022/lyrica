@@ -147,9 +147,15 @@ characters, the limit on project instructions.
 
 ## Coding context
 
-For one coding change, delegate to `coder`; for a larger build, start a
-child thread with `code: true`; or use `threads` action `code` with
-`on`, a short `task` and `done` when the user works alongside her. Coder is
+Outside a project chat, code in the thread itself: `threads` action `code`
+with `on`, a short `task` and `done`, then `on: false` when the coding is
+done. Start a `code: true` child only when the user asks for one; delegate a
+small side change to `coder`. In a project chat, split a build with
+separable parts into one `code: true` thread per part, started together,
+each brief naming the files it owns, what is done and what it depends on; a
+small job keeps one thread. Check the whole yourself before reporting it
+done. A project thread changes and commits only the files its brief gives
+it. Coder is
 the default for a write step in a repository thread. Both use the `code`
 model task and project memory plus notes tagged `working`. Thread settings →
 Behaviour → **Code mode** turns it on in a conversation; Project settings →
