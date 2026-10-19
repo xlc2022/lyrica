@@ -185,7 +185,8 @@ tool in the subagent's thread only.
 Prompts are adapted from `pi-subagents` 0.76.1 (MIT, credited in
 `roles.ts`; coder uses the five code-mode guidelines). A task with no role
 gets coder when the thread has a repository and the run permits writes;
-otherwise it gets worker. Custom coder roles override the built-in too.
+otherwise it gets worker. A project chat's folders and clones are read-only
+to it, so to its subagents too, and a task there with no role gets worker. Custom coder roles override the built-in too.
 Coder receives the project section and recall restricted to project items
 or `working` notes, through its existing thread view. Its Code task section
 uses the full step's task and optional `done` (1,200 characters). Its short

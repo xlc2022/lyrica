@@ -1102,6 +1102,10 @@ project page and the web part are built. Recent calls can be filtered by project
   propose first, she suggests threads instead of starting them. How the user wants
   the project run ("two at a time", "only post when something is done") she
   saves as a project note and follows; it is guidance, not a hard limit.
+  The project chat's grants and repository clones are read-only to her
+  there: she reads them and runs checks, and the threads she starts make the
+  changes (decided 2026-10-19, after a run where she built a whole game in
+  the project chat despite her guidance).
 - **Threads hang off messages.** Each thread is anchored to the message in
   the project chat that started it: her reply, or a message the user picks with
   **Start a thread**. A branch of the project chat is a thread of the

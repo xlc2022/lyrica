@@ -789,7 +789,7 @@ export class HostedThread {
     try {
       await this.opening?.catch(() => {});
       this.dispose();
-      const tools = workspace.forThread({ userId: this.userId, pool: this.pool, threadId: this.threadId, project: view.own.projectOf(this.threadId) });
+      const tools = workspace.forThread({ userId: this.userId, pool: this.pool, threadId: this.threadId, project: view.own.projectOf(this.threadId), coordinates: !!view.own.getThread(this.threadId)?.project });
       this.emit({ type: "turn_start" });
       this.emit({ type: "message_start" });
       this.emit({ type: "tool_start", toolCallId: id, name: "image", args });
@@ -969,7 +969,8 @@ export class HostedThread {
       const thread = view.own.getThread(this.threadId);
       if (!thread) throw new Error("no such thread");
       const call = models.callContext(this.userId, this.pool, this.threadId);
-      const tools = workspace.forThread({ userId: this.userId, pool: this.pool, threadId: this.threadId, project: view.own.projectOf(this.threadId) });
+      // A project chat coordinates: its folders and clones are read-only to it, and its threads make the changes.
+      const tools = workspace.forThread({ userId: this.userId, pool: this.pool, threadId: this.threadId, project: view.own.projectOf(this.threadId), coordinates: !!thread.project });
       const ctx: ThreadContext = { user, pool: this.pool, interface: thread.interface, threadId: this.threadId, view, call };
       // delegate is offered where the depth limit allows; it attaches itself, so background results reach this session.
       const canDelegate = delegation.depth(ctx) < delegation.limits.depth;

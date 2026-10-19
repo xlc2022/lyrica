@@ -483,6 +483,35 @@ describe.skipIf(!homeRunnable)("a running child thread's folders", () => {
   });
 });
 
+describe.skipIf(!homeRunnable)("a project chat's folders", () => {
+  it("are read-only to it, and writable to the thread it starts", async () => {
+    const keyring = await freshKeyring();
+    const users = new Users(keyring);
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
+    const workspace = new Workspace(keyring, users, { excludePorts: [] });
+    workspace.allowedPaths.allow(ada, ada.id, "general", p("rw"));
+    const settings = workspace.settings(ada.id);
+    settings.setThread("chat", "general", { grants: [{ path: p("rw"), writable: true }] });
+    settings.inheritSettings("chat", "part", "general");
+    const chat = { userId: ada.id, pool: "general" as const, threadId: "chat", coordinates: true };
+    const part = { userId: ada.id, pool: "general" as const, threadId: "part" };
+    const file = p("rw", "project-chat.txt");
+    writeFileSync(file, "kept\n");
+    await workspace.mountHome(ada.id);
+    try {
+      expect(workspace.forThread(chat).settings().grants).toEqual([{ path: p("rw"), writable: false }]);
+      const ran = await sh(`cat ${file}; echo chat >> ${file}`, workspace.targetFor(chat) as Sandbox);
+      expect(ran.out).toContain("kept");
+      expect(ran.code).not.toBe(0);
+      expect((await sh(`echo part >> ${file}`, workspace.targetFor(part) as Sandbox)).code).toBe(0);
+      expect(readFileSync(file, "utf8")).toBe("kept\npart\n");
+    } finally {
+      await workspace.unmountHome(ada.id);
+    }
+  });
+});
+
 describe.skipIf(!homeRunnable)("a thread's clones", () => {
   it("are its own: a project's thread works in the project's folder but sees only its own repos/, and they go with its folder", async () => {
     const keyring = await freshKeyring();

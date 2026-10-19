@@ -150,7 +150,9 @@ characters, the limit on project instructions.
 Outside a project chat, code in the thread itself: `threads` action `code`
 with `on`, a short `task` and `done`, then `on: false` when the coding is
 done. Start a `code: true` child only when the user asks for one; delegate a
-small side change to `coder`. In a project chat, split a build with
+small side change to `coder`. A project chat's folders and repositories are
+read-only to it: read them and run checks there, and change them through
+threads. In a project chat, split a build with
 several parts even when they fit together: one `code: true` thread first sets
 up the repository and the interfaces the parts share, then one `code: true`
 thread per part starts, together, each brief naming the files it owns, what

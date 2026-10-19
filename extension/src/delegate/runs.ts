@@ -875,9 +875,21 @@ export class Delegation {
     return this.o.models.callContext(run.parent.user.id, run.parent.pool, run.parent.threadId);
   }
 
-  /** The parent's grants as they apply now, narrowed to `folders` if given. */
+  /**
+   * Whether the run's owner, past any subagents, is a project chat. Its folders and clones are read-only to it,
+   * so to the subagents it delegates to as well: a change goes through one of its threads.
+   */
+  private coordinates(run: Run): boolean {
+    const own = this.o.memory.openThreadView(run.parent.user.id, run.parent.pool).own;
+    let owner = run.parent.threadId;
+    while (own.getThread(owner)?.subagent && own.getThread(owner)?.parent) owner = own.getThread(owner)!.parent!;
+    return !!own.getThread(owner)?.project;
+  }
+
+  /** The parent's grants as they apply now, narrowed to `folders` if given; read-only under a project chat. */
   private grants(run: Run, narrowing: Narrowing): Grant[] {
-    const from = this.o.workspace!.settings(run.parent.user.id).effective(run.parent.threadId).grants;
+    let from = this.o.workspace!.settings(run.parent.user.id).effective(run.parent.threadId).grants;
+    if (this.coordinates(run)) from = from.map((g) => ({ ...g, writable: false }));
     if (!narrowing.folders) return from;
     return narrowing.folders.map((path) => {
       const outer = from.find((g) => path === g.path || path.startsWith(`${g.path}/`));
@@ -889,7 +901,7 @@ export class Delegation {
 
   /** A new subagent of the run, on a thread of its own: empty, or a fork of the parent's conversation. */
   private defaultRole(run: Run, narrowing: Narrowing): string {
-    return !narrowing.readOnly && this.o.workspace?.settings(run.parent.user.id).effective(run.parent.threadId).repositories.length ? "coder" : "worker";
+    return !narrowing.readOnly && !this.coordinates(run) && this.o.workspace?.settings(run.parent.user.id).effective(run.parent.threadId).repositories.length ? "coder" : "worker";
   }
 
   private spawn(run: Run, step: Step, narrowing: Narrowing, worktrees: Worktree[] = []): Promise<Subagent> {
@@ -949,6 +961,7 @@ export class Delegation {
         let owner = parent.threadId;
         while (view.own.getThread(owner)?.subagent && view.own.getThread(owner)?.parent) owner = view.own.getThread(owner)!.parent!;
         const p = { userId: parent.user.id, pool: parent.pool, threadId: parent.threadId, project: view.own.projectOf(owner) };
+        const coordinates = this.coordinates(run);
         let grants = this.grants(run, narrowing);
         if (role.readOnly || narrowing.readOnly) grants = grants.map((g) => ({ ...g, writable: false }));
         if (worktrees.length) grants = worktreeGrants(grants, worktrees);
@@ -963,7 +976,7 @@ export class Delegation {
         // Its settings follow its parent's as they are now (the stricter mode, switches off where theirs are); it can't leave Plan mode itself.
         // It works in its parent's clones, which the parent fetched at its turn's start; read-only when it gets
         // no repositories, so a narrowed or read-only subagent, or a writer in a worktree, can't change them.
-        const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines });
+        const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines || coordinates });
         extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }));
         if (workspace.imageFiles) extensions.push(createImageExtension({ models: this.o.models, threadId: child.id,
           call: () => this.o.models.callContext(parent.user.id, parent.pool, child.id),

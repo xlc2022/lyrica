@@ -57,7 +57,12 @@ export interface WorkspaceThread {
   reposOf?: string;
   /** A read-only subagent's: its parent's clones are mounted read-only, so it can't change their working trees or commits. */
   reposReadOnly?: boolean;
+  /** A project chat's: its folders and clones are read-only to it, so a change goes through one of its threads, which inherit them as given. */
+  coordinates?: boolean;
 }
+
+/** Grants as the thread itself sees them: read-only in a project chat. */
+const ownGrants = (t: WorkspaceThread, grants: Grant[]): Grant[] => (t.coordinates ? grants.map((g) => ({ ...g, writable: false })) : grants);
 
 export interface FrontDoor { ports: number[]; hosts: string[]; exclude: number[] }
 
@@ -272,7 +277,7 @@ export class Workspace {
     return {
       commandRules: () => t.project ? this.settings(t.userId).commandRules(t.pool, t.project) : [],
       target: (machine?: string) => this.targetFor(t, machine),
-      settings: () => this.settings(t.userId).effective(t.threadId),
+      settings: () => { const s = this.settings(t.userId).effective(t.threadId); return { ...s, grants: ownGrants(t, s.grants) }; },
       machines: () => this.machinesFor(t),
       /** The thread's repositories, where each is cloned and whether its token reaches the sandbox now. */
       repositories: () => this.repositoriesFor(t),
@@ -505,10 +510,10 @@ export class Workspace {
     const credentials = this.credentialsFor(t);
     return new Sandbox({
       workdir: this.threadDir(t),
-      grants: s.effective(t.threadId).grants,
+      grants: ownGrants(t, s.effective(t.threadId).grants),
       network: this.network(t),
       repos: this.reposDir(t),
-      reposReadOnly: t.reposReadOnly,
+      reposReadOnly: t.reposReadOnly || t.coordinates,
       credentials,
       ...credentials.anthropic ? { claudeDir: this.claudeDir(t) } : {},
       onPullCreate: this.opts.onPullCreate && ((pr) => this.opts.onPullCreate!(t, pr)),
