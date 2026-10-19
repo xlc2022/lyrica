@@ -1,6 +1,6 @@
 # Brief: Live sync across tabs and devices
 
-**Status:** In review on `claude/project-thread-kunoz9`. **Built by:** Codex
+**Status:** Merged in #336 (9a71844). **Built by:** Codex
 on the test machine and the Claude thread that wrote this brief.
 **Read first:** AGENTS.md, PRINCIPLES.md (2, 8), docs/daemon.md (The event
 stream, Web access), docs/web.md (the sidebar), docs/contracts.md (HTTP/SSE
@@ -73,7 +73,7 @@ reading `:authority`, the test in `daemon/test/web-access.test.ts`), part B
 and DESIGN.md updated. Codex built parts A's test, B and C on the test
 machine.
 
-**Next:** review. A known limit: a browser that opens lyricad's plain HTTP
+**Next:** nothing planned. A known limit: a browser that opens lyricad's plain HTTP
 on loopback directly (not through Caddy, Tailnet or Direct) still has
 HTTP/1.1's six connections, and each tab now holds two streams. Sharing one
 stream between tabs (a BroadcastChannel leader) would lift it if that use

@@ -162,7 +162,8 @@ request. CI watches above are an existing mechanism, not a new timer to set.
 
 Claude's project can't see her project. It learns about her work from
 GitHub: a routine in Claude's project checks for new PRs from her account
-and issues labelled `claude`, sends her PRs to its PR review thread and
+and issues labelled `claude`, sends all her PRs to its PR review thread (even docs-only or
+`web/`-only ones, which Claude's own PRs may merge without it) and
 the issues to the project chat. The project chat sets that routine up when
 her account exists.
 

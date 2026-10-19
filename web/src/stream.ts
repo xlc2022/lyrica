@@ -25,6 +25,11 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
   const willResend = useCallback((text: string | undefined) => { resending.current = text; }, []);
   const base = threadPath(userId, pool, threadId);
 
+  // A settings change reloads the stored messages only between turns: mid-turn the page would hold
+  // her message while its live copy still shows, so both would. The turn's end reloads them anyway.
+  const idleSettings = useRef(live.settings);
+  if (!live.busy) idleSettings.current = live.settings;
+
   // Stored messages: the newest page, merged with any older pages already shown.
   useEffect(() => {
     let current = true;
@@ -39,7 +44,7 @@ export function useThread(userId: string, pool: Pool, threadId: string) {
     }, (e: Error) => current && setLoadError(e.message));
     return () => { current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base, live.reload, live.settings]);
+  }, [base, live.reload, idleSettings.current]);
 
   const loadOlder = useCallback(async () => {
     const first = messages[0];

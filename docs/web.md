@@ -898,7 +898,10 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   and one request checks whether the login still holds. A `reset` reloads
   the stored messages, and so does every `hello` that finds the thread idle:
   a turn may have ended between fetching the messages and opening the stream,
-  such as a child thread opened as its first turn ends.
+  such as a child thread opened as its first turn ends. A `settings` event
+  (a question opening or closing) reloads them only between turns: mid-turn
+  the page would hold her message while its live copy still shows, and the
+  turn's end reloads them anyway.
 - **Each message has an action row** under it (`MessageActions` in
   `src/Rewind.tsx`, after the reaction chips; docs/ux.md §6, A message's
   actions): quiet icon buttons, Copy (the message's text; Copied or Copy

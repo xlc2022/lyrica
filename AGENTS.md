@@ -62,9 +62,11 @@ the work, with fixed roles:
 - **Feature thread:** builds one brief on its own `feature/*` branch and
   finishes with one pull request into `main`. Later work in the same area
   goes to the same thread.
-- **PR review:** reviews every pull request against its brief, this file and
-  the docs, and owns PRINCIPLES, DESIGN, the contracts and docs/ux.md,
-  recording settled decisions in docs PRs.
+- **PR review:** reviews each pull request that needs it (below) against
+  its brief, this file and the docs, and owns PRINCIPLES, DESIGN, the
+  contracts and docs/ux.md, recording settled decisions in docs PRs. Its
+  session starts fresh from a handoff note once its context passes about
+  100k tokens, since every turn re-reads that context.
 - **UI review:** judges every change a user sees against docs/ux.md and the
   mockups.
 - **Operator docs:** owns the guides in `docs/guides/`.
@@ -72,7 +74,15 @@ the work, with fixed roles:
 Review and merge:
 
 1. The building thread sends the pull request and its head commit to PR
-   review, and to UI review too if a user would see the change.
+   review, and to UI review too if a user would see the change. PR review
+   isn't needed when the pull request changes only docs and briefs (but not
+   PRINCIPLES.md, DESIGN.md, docs/contracts.md or docs/ux.md), or makes a
+   small change only in `web/` (UI review still judges it). When unsure,
+   it goes to PR review. Otherwise the building thread checks its
+   own docs against this file's "Docs never drift" rule and merges on green
+   CI and UI review's verified, if it needs one. Everything else goes to PR
+   review, including the daemon, `core/`, `host/`, `nix/`, `extension/`,
+   `persona/`, migrations, CI and her own pull requests.
 2. A reviewer sends findings back; the building thread fixes them and sends
    the new commit; the reviewer checks it. A reviewer says **verified**,
    naming the commit, only when the PR meets its brief and the docs.
