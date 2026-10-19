@@ -679,8 +679,8 @@ model, else the router's first pick for chat).
   or clears it at the full window.
 - Otherwise `propose` changes the copy for every thread. It refuses a
   length over the model's maximum, then shows a card ("Serve Qwen3.8-27B
-  with 1,010,000 tokens of context for every thread? It reloads, and its KV
-  cache grows to 17 GB.", with "Qwen documents 4." when the factor is above
+  on Blackwell with 1,010,000 tokens of context for every thread? It
+  reloads, and its KV cache grows to 17 GB.", with "Qwen documents 4." when the factor is above
   the card's). On Allow it saves a host model's settings and reloads it if
   it is idle, or loads an LM Studio model again with the new context
   (`loadLocalContext`), and clears the thread's limit. The host's fit check

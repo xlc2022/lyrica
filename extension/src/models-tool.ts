@@ -19,6 +19,8 @@ export interface ServingProposal {
   toolCallId: string;
   offering: string;
   name: string;
+  /** The host or endpoint it is reloaded on, which every user of it shares. */
+  host: string;
   contextLength: number;
   stretch: { factor: number; originalContext: number } | null;
   /** The KV cache at that context, by the host's estimate; null if unknown. */
@@ -119,7 +121,7 @@ export function createModelsExtension(host: ModelsHost): ExtensionFactory {
           if (lm) {
             if (factor > 1) return text("A stretch is for models on a model host.", true);
             if (lm.max && p.contextLength > lm.max) return text(`${local!.name} supports ${lm.max} tokens at most.`, true);
-            const allowed = await host.propose({ toolCallId: id, offering, name: local!.name, contextLength: p.contextLength, stretch: null, kvBytes: null });
+            const allowed = await host.propose({ toolCallId: id, offering, name: local!.name, host: local!.host, contextLength: p.contextLength, stretch: null, kvBytes: null });
             if (!allowed) return text("Not allowed. Ask what to do instead.");
             await host.loadLocal(offering, p.contextLength);
             if (own) host.limit(null);
@@ -132,7 +134,7 @@ export function createModelsExtension(host: ModelsHost): ExtensionFactory {
           const r = entry.recommended;
           const documented = stretch && r?.factor && stretch.factor > r.factor ? { factor: r.factor, by: r.source.repo.split("/")[0]! } : undefined;
           const allowed = await host.propose({
-            toolCallId: id, offering, name: copy.name, contextLength: p.contextLength, stretch,
+            toolCallId: id, offering, name: copy.name, host: copy.host, contextLength: p.contextLength, stretch,
             kvBytes: kvAt(entry, p.contextLength), ...(documented ? { documented } : {}),
           });
           if (!allowed) return text("Not allowed. Ask what to do instead.");

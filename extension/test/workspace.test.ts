@@ -280,7 +280,7 @@ describe("workspace tools in a Pi session", () => {
     const denied = await run("ask", calls, { extensions: [createModelsExtension(host)], approve: async (r) => { asked.push(r.tool); return true; } });
     // Numbers only, never the card's text.
     expect(JSON.parse(denied.results[0]!.slice("models: ".length))).toMatchObject({ recommended: { factor: 4, stretched: 1010000, repo: "Qwen/M" }, kvBytesAtRecommended: Math.round((2 * 1024 ** 3 / 32768) * 1010000) });
-    expect(cards).toEqual([{ toolCallId: "2", offering: "o1", name: "M", contextLength: 1010000, stretch: { factor: 4, originalContext: 262144 }, kvBytes: Math.round((2 * 1024 ** 3 / 32768) * 1010000) }]);
+    expect(cards).toEqual([{ toolCallId: "2", offering: "o1", name: "M", host: "blackwell", contextLength: 1010000, stretch: { factor: 4, originalContext: 262144 }, kvBytes: Math.round((2 * 1024 ** 3 / 32768) * 1010000) }]);
     expect(applied).toEqual([]);
     // Its own card is the question: the generic approval never asks.
     expect(asked).toEqual([]);
@@ -337,7 +337,7 @@ describe("workspace tools in a Pi session", () => {
       [fauxToolCall("models", { action: "propose", contextLength: 200000 }, { id: "2" })],
       [fauxToolCall("models", { action: "lookup" }, { id: "3" })],
     ] })).results;
-    expect(cards).toEqual([{ toolCallId: "1", offering: "l1", name: "qwen-flash", contextLength: 65536, stretch: null, kvBytes: null }]);
+    expect(cards).toEqual([{ toolCallId: "1", offering: "l1", name: "qwen-flash", host: "studio", contextLength: 65536, stretch: null, kvBytes: null }]);
     expect(loads).toEqual([["l1", 65536]]);
     expect(results[1]).toContain("qwen-flash supports 131072 tokens at most.");
     // The card on Hugging Face is read for host models only.

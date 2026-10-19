@@ -937,12 +937,12 @@ function DownloadPrompt({ p, answer, busy, left, error }: { p: PermissionRequest
 
 /** Her `models` tool's proposal: the change in one question, its numbers in mono. */
 function ServingPrompt({ p, answer, busy, left, error }: { p: PermissionRequest; answer: (allow: boolean) => void; busy: boolean; left: string; error: string }) {
-  const a = (p.args ?? {}) as { name?: string; contextLength?: number; kvBytes?: number | null; documented?: { factor: number; by: string } | null };
+  const a = (p.args ?? {}) as { name?: string; host?: string; contextLength?: number; kvBytes?: number | null; documented?: { factor: number; by: string } | null };
   const gb = (n: number) => { const g = n / 1024 ** 3; return g >= 10 ? String(Math.round(g)) : g.toFixed(1); };
   return (
     <div className="permission" role="group" data-pending="Approval" aria-label={`Serve ${a.name ?? "this model"} with a longer context for every thread?`}>
       <p>
-        Serve <b>{a.name}</b> with <span className="mono">{(a.contextLength ?? 0).toLocaleString("en-US")}</span> tokens of context for every thread? It reloads
+        Serve <b>{a.name}</b>{a.host && <> on <b>{a.host}</b></>} with <span className="mono">{(a.contextLength ?? 0).toLocaleString("en-US")}</span> tokens of context for every thread? It reloads
         {typeof a.kvBytes === "number" ? <>, and its KV cache grows to <span className="mono">{gb(a.kvBytes)}</span> GB.</> : "."}
         {a.documented && <> {a.documented.by} documents <span className="mono">{a.documented.factor}</span>.</>}
       </p>

@@ -69,7 +69,7 @@ unknown offering keeps listing the ones she may name.
 One loaded copy of a model serves every thread and user. So:
 
 - **Raising** the context above what the copy is served with changes it for
-  everyone. It reloads the model, and the card says so: "Serve **X** with
+  everyone. It reloads the model, and the card says so: "Serve **X** on **its host** with
   **N** tokens of context for every thread? It reloads…". A shared host or
   endpoint still needs an administrator. This is `propose` as now.
 - **Lowering** it, or setting it to what is already served, applies to this

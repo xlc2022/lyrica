@@ -854,7 +854,7 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   primary, Not today secondary, and there is no thread-wide Allow. Answers
   use the existing permission route with `{ allow }`, including for subagents.
   Her `models` tool's proposal is worded as its question ("Serve
-  Qwen3.8-27B with 1,010,000 tokens of context for every thread? It reloads,
+  Qwen3.8-27B on Blackwell with 1,010,000 tokens of context for every thread? It reloads,
   and its KV cache grows to 17 GB."), the numbers in mono.
   A call on a machine (`machine` on the request) leads with the machine's
   name in mono, says the folder the command runs in, and shows the command,
