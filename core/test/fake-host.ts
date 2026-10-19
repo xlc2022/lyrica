@@ -12,6 +12,8 @@ afterEach(async () => { await Promise.all(servers.splice(0).map((s) => new Promi
 export interface HostModel {
   id: string; kind?: "chat" | "embedding" | "transcribe" | "speak"; contextLength?: number; tools?: boolean; reasoning?: string[] | null; opensThinking?: boolean; sha256?: string | null;
   downloaded?: boolean; identity?: Record<string, unknown> | null;
+  /** The sampling its file recommends. */
+  sampling?: Record<string, number>;
   /** A speak model's voices. */
   voices?: { id: string; language: string }[];
 }
@@ -44,7 +46,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   /** More files in the download record (a split model's other shards), and files a running request holds. */
   const record: string[] = [];
   const busy = new Set<string>();
-  const models: HostModel[] = opts.models ?? [{ id: "lyrica/huggingface/Qwen/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf", kind: "chat", contextLength: 32768, tools: true, reasoning: ["off", "on"], opensThinking: true, sha256: "ab".repeat(32) }];
+  const models: HostModel[] = opts.models ?? [{ id: "lyrica/huggingface/Qwen/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf", kind: "chat", contextLength: 32768, tools: true, reasoning: ["off", "on"], opensThinking: true, sha256: "ab".repeat(32), sampling: { temperature: 0.7, topP: 0.8, topK: 20 } }];
   let requests = 0;
   /** Speech requests, by path; while `speechDown`, the speech server is off and they answer with that code. */
   const speech: string[] = [];
@@ -87,7 +89,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
             tools: m.tools ?? false, vision: false, embedding: m.kind === "embedding", reasoning: m.reasoning ?? null, ...(m.opensThinking ? { opensThinking: true } : {}),
             ...(m.kind === "transcribe" ? { transcribe: true } : {}), ...(m.kind === "speak" ? { speak: { voices: m.voices ?? [] } } : {}),
           },
-          contextLength: m.contextLength ?? null, state: "unloaded", gpu: null, pinned: false, vram: null,
+          contextLength: m.contextLength ?? null, sampling: m.sampling ?? null, state: "unloaded", gpu: null, pinned: false, vram: null,
         })) });
       }
       const status = () => ({

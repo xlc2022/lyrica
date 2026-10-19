@@ -96,7 +96,8 @@ export function ggufBytes(meta: Record<string, string | number | boolean>): Buff
     parts.push(str(k));
     if (typeof v === "string") parts.push(u32(8), str(v));
     else if (typeof v === "boolean") parts.push(u32(7), Buffer.from([v ? 1 : 0]));
-    else parts.push(u32(4), u32(v));
+    else if (Number.isInteger(v)) parts.push(u32(4), u32(v));
+    else { const b = Buffer.alloc(4); b.writeFloatLE(v); parts.push(u32(6), b); }
   }
   return Buffer.concat(parts);
 }

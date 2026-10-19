@@ -14,8 +14,22 @@ async function setup() {
 }
 
 describe("how a model answers", () => {
-  it("caps a reply at the smaller of 32,768 tokens and a quarter of the context, taking 32,768 as the context when it isn't known", () => {
-    expect([replyCap(262_144), replyCap(32_768), replyCap(undefined)]).toEqual([32_768, 8192, 8192]);
+  it("caps a reply at the smaller of 32,768 tokens and a quarter of the context, taking 131,072 as the context when it isn't known", () => {
+    expect([replyCap(262_144), replyCap(32_768), replyCap(undefined)]).toEqual([32_768, 8192, 32_768]);
+  });
+
+  it("reports the sampling a model gives as its own, and a window it assumes when nothing says", async () => {
+    const m = await withModels();
+    const server = await fakeOpenAI({ models: [
+      { id: "vendor/chat", context_length: 200_000, default_parameters: { temperature: 0.6, top_p: 0.95, frequency_penalty: null } },
+      { id: "bare" },
+      { id: "served-by-vllm", max_model_len: 32_768 },
+    ] });
+    const ep = m.models.addEndpoint(m.ada, { name: "router", kind: "cloud", baseUrl: server.baseUrl, apiKey: "k" });
+    const [bare, vllm, chat] = await m.models.discover(m.ada, ep.id);
+    expect(m.models.offeringSettings(m.ada.id, vllm!.id).contextWindow).toEqual({ value: 32_768, source: "discovered" });
+    expect(m.models.offeringSettings(m.ada.id, chat!.id)).toMatchObject({ values: {}, defaults: { temperature: 0.6, topP: 0.95 }, contextWindow: { value: 200_000, source: "discovered" } });
+    expect(m.models.offeringSettings(m.ada.id, bare!.id)).toMatchObject({ defaults: {}, contextWindow: { value: 131_072, source: "assumed" } });
   });
 
   it("layers a user's own values over the shared ones, for that user only, with each value's source", async () => {
@@ -26,6 +40,7 @@ describe("how a model answers", () => {
       values: { temperature: 0.2, topK: 40, stop: ["END"] },
       sources: { temperature: "yours", topK: "shared", stop: "yours" },
       dropped: [],
+      defaults: {},
       contextWindow: { value: 32768, source: "discovered" },
     });
     expect(s.models.offeringSettings(s.ada.id, s.qwen.id).values).toEqual({ temperature: 0.7, topK: 40 });

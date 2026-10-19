@@ -46,7 +46,25 @@ export interface DiscoveredModel {
   servedContext?: number;
   /** LM Studio listed it on its own API, so its context can be changed by loading it again. */
   lmStudio?: boolean;
+  /** The sampling the model or its provider uses when a request sets none, where the server says (a host's file, OpenRouter's `default_parameters`). */
+  defaults?: ModelDefaults;
 }
+
+/** Sampling a model reports as its own, under the settings' names. */
+export interface ModelDefaults { temperature?: number; topP?: number; topK?: number; minP?: number; repeatPenalty?: number; frequencyPenalty?: number; presencePenalty?: number }
+
+/** The finite numbers among `read`'s answers for each default, or undefined when there are none. */
+export function modelDefaults(read: (key: keyof ModelDefaults) => unknown): ModelDefaults | undefined {
+  const out: ModelDefaults = {};
+  for (const k of ["temperature", "topP", "topK", "minP", "repeatPenalty", "frequencyPenalty", "presencePenalty"] as const) {
+    const v = read(k);
+    if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+const OPENROUTER_DEFAULTS: Record<keyof ModelDefaults, string> = {
+  temperature: "temperature", topP: "top_p", topK: "top_k", minP: "min_p", repeatPenalty: "repetition_penalty", frequencyPenalty: "frequency_penalty", presencePenalty: "presence_penalty",
+};
 
 /** A model's identity as a host reads it: GGUF metadata and the hub's model card. */
 export interface ModelIdentity {
@@ -78,8 +96,9 @@ export async function probeUrl(baseUrl: string, apiKey: string | undefined, time
 /**
  * Reads GET /models. Capabilities are recorded only when the server says:
  * OpenRouter's `context_length`, `supported_parameters` (tools, reasoning)
- * and `architecture` modalities (vision, images), llama-server's
- * `meta.n_ctx`, LM Studio's `max_context_length`.
+ * and `architecture` modalities (vision, images), `default_parameters`
+ * (the sampling it uses when a request sets none), llama-server's
+ * `meta.n_ctx`, LM Studio's `max_context_length`, vLLM's `max_model_len`.
  */
 export async function discoverModels(baseUrl: string, apiKey: string | undefined, timeoutMs = 10_000): Promise<DiscoveredModel[]> {
   const body = (await getModels(baseUrl, apiKey, timeoutMs)) as { data?: unknown };
@@ -92,11 +111,12 @@ export async function discoverModels(baseUrl: string, apiKey: string | undefined
     const output = Array.isArray(m.architecture?.output_modalities) ? m.architecture.output_modalities : undefined;
     return [{
       modelId: m.id,
-      contextWindow: num(m.context_length) ?? num(m.meta?.n_ctx) ?? num(m.max_context_length),
+      contextWindow: num(m.context_length) ?? num(m.meta?.n_ctx) ?? num(m.max_context_length) ?? num(m.max_model_len),
       tools: params ? params.includes("tools") : undefined,
       reasoning: params?.includes("reasoning") || params?.includes("reasoning_effort") ? ["low", "medium", "high"] as ("low" | "medium" | "high")[] : undefined,
       vision: input ? input.includes("image") : undefined,
       image: output ? output.includes("image") : undefined,
+      defaults: m.default_parameters && typeof m.default_parameters === "object" ? modelDefaults((k) => m.default_parameters[OPENROUTER_DEFAULTS[k]]) : undefined,
     }];
   });
 }

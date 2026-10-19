@@ -193,6 +193,7 @@ seconds of audio.
     "capabilities": { "tools": true, "vision": false, "embedding": false, "reasoning": ["off", "on"] },
     "contextLength": 32768,
     "maxContextLength": 40960,
+    "sampling": { "temperature": 0.7, "topP": 0.8, "topK": 20 },
     "kvBytes": 4294967296,
     "stretch": null,
     "state": "unloaded",
@@ -237,6 +238,13 @@ seconds of audio.
     the host's estimate (`null` for voices, and where it can't tell), and
     `stretch` is the YaRN factor, or `null`. Lyrica plans her context by
     `contextLength`.
+  - `sampling` is what the model's publisher recommends, which its server
+    uses for a setting a request leaves out: a GGUF's `general.sampling.*`
+    (`temp`, `top_p`, `top_k`, `min_p`, `penalty_repeat`), or a safetensors
+    folder's `generation_config.json` (`temperature`, `top_p`, `top_k`,
+    `min_p`, `repetition_penalty`). Only the values present; `null` when
+    there are none. Lyrica shows them as the model's own and sends none of
+    them.
   - A GGUF's companions are never models of their own: a vision projector
     (`mmproj` in its name) and an MTP draft (`mtp-…`, or anything in an
     `MTP` folder). A model finds them beside it or in its repository's

@@ -477,7 +477,12 @@ export function apiRoutes(d: Lyricad): Route[] {
       s().models.setCapabilities(user, r.params.offeringId!, capabilities(c, true));
       return offeringInfo(d, user.id, r.params.offeringId!);
     }),
-    route("GET", `${u}/offerings/:offeringId/settings`, (r): Api.OfferingSettings => s().models.offeringSettings(d.userFor(r).id, r.params.offeringId!)),
+    route("GET", `${u}/offerings/:offeringId/settings`, async (r): Promise<Api.OfferingSettings> => {
+      const user = d.userFor(r);
+      // The context LM Studio has it loaded with now, not when the endpoint was last read.
+      await s().models.refreshServed(user.id, r.params.offeringId!).catch(() => {});
+      return s().models.offeringSettings(user.id, r.params.offeringId!);
+    }),
     route("PUT", `${u}/offerings/:offeringId/settings`, async (r): Promise<Api.OfferingSettings> => {
       const user = d.userFor(r);
       const c = await r.json<Api.OfferingSettingsChange | null>();

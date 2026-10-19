@@ -460,11 +460,14 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   only you" with **Rename** and **Ungroup** (confirmed). A copy's
   **Settings** opens a drawer: **Sampling** (`GET|PUT …/settings`; **Yours**
   | **Everyone's** for an administrator on a shared endpoint; a row per key
-  with its source word, the shared value as placeholder, a dropped key
+  with its source word; an empty field's placeholder is what applies instead:
+  the shared value ("shared"), else the model's own (`defaults`, "model's"),
+  else for Maximum reply length the cap; a dropped key
   disabled with "not sent", Maximum reply length "of <cap> tokens" (`replyCap`
-  of the context in effect, a quarter of 32,768 when unknown; clamped on leaving the
+  of the context in effect, at most 32,768; clamped on leaving the
   field and on save, and a saved value above it shown clamped), Reset; on a
-  plain endpoint **Context window**,
+  plain endpoint **Context window**, its placeholder the window planned by,
+  marked "loaded" (LM Studio) or "assumed" when nothing says,
   `PATCH …/offerings/:id`) and, on a model host, **Serving** (`GET|PUT
   …/serving`, the server read from the raw name: a `.gguf` is llama.cpp,
   else vLLM): Placement (Auto or Choose GPUs, Split ratio or Parallelism,
