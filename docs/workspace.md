@@ -289,7 +289,9 @@ takes is `lyrica@pve!agent=<that secret>`.
 - **Each thread chooses its grants** from those lists, as read-only or
   read-write, much like choosing a working directory in Claude Code. A grant
   can be a listed folder or any folder inside one. The thread shows them next
-  to the model badge.
+  to the model badge. With a read-write grant, her prompt says to build and
+  save the work there (or in a repository), not as loose files in her own
+  folder.
 - The rules, checked when settings change and again before every sandbox run:
   - A listed folder must be a real directory, with no symlinks on its path,
     and must not overlap Lyrica's runtime directory (which holds the update

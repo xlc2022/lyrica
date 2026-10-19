@@ -371,6 +371,7 @@ export function describe(tools: ThreadTools): string {
     `Your file and command tools run in a sandbox. ${WORKDIR} is this conversation's folder; uploads arrive in ${WORKDIR}/uploads.`,
     `A ${WORKDIR} path you write is a link the person can open, and an image under it that you write as markdown (![what it shows](${WORKDIR}/plot.png)) shows in your message.`,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
+    ...(s.grants.some((g) => g.writable) ? [BUILD_THERE] : []),
     network(tools.network()),
     ...[toolsLine()].filter(Boolean),
     ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
@@ -379,6 +380,9 @@ export function describe(tools: ThreadTools): string {
     ...fileNotes(tools.fileNotes?.()),
   ].join("\n");
 }
+
+/** With a read-write folder given, work for it goes there: a model once built a whole project in the sandbox's own folder instead. */
+export const BUILD_THERE = `Build, edit and save the work in a read-write folder you were given (or a repository in ${WORKDIR}/repos), never as loose files in ${WORKDIR}, which is for scratch and things to show the person.`;
 
 /** The one prompt line for a thread with Claude Code (docs/workspace.md, "Claude Code"). */
 export const CLAUDE_CODE_LINE = "Claude Code is in your sandbox: `claude -p \"<task>\"` with bash, in this folder or a clone, hands a coding or repository job to Anthropic's coding agent, which works here and reports back; `claude -c -p \"<more>\"` continues its last job. It spends the person's own Claude plan, so use it for jobs big or hard enough to need it, never for conversation.";
