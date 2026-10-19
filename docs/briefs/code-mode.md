@@ -28,8 +28,8 @@ without cutting her off from what the user has told her about how to work.
 
 **A. The switch.** A thread setting `code: boolean`, off by default.
 
-- Stored as a `thread_workspaces` column (`code`, the next free user.db
-  step, expand-only) and returned in `ThreadSettings`.
+- Stored as a `thread_workspaces` column (`code`, user.db step 14, or
+  the next free one if main takes it first; expand-only) and returned in `ThreadSettings`.
 - Inherited like the other switches: a child thread, routine thread or
   branch of a code-mode thread starts in code mode. Unlike the narrowing
   switches, a child may turn it off.
