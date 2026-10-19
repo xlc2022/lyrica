@@ -102,9 +102,11 @@ export function InlineImage({ src, alt, label, files, large, onGone }: { src: st
 }
 
 /** The thumbnail, or the image itself where the server makes none. */
-export function Thumb({ path, alt, files, onGone }: { path: string; alt: string; files: FileLinks; /** Neither the thumbnail nor the image loads. */ onGone?: () => void }) {
+export function Thumb({ path, alt, files, onGone }: { path: string; alt: string; files: FileLinks; /** Neither the thumbnail nor the image loads, and the server says the file isn't there. */ onGone?: () => void }) {
   const [full, setFull] = useState(false);
-  return <img src={full ? files.url(path) : files.thumb(path)} alt={alt} loading="lazy" onError={() => (full ? onGone?.() : setFull(true))} />;
+  // Both failing may only mean the network or the server is down: it's gone only when the server says so.
+  const gone = () => void fetch(files.url(path)).then((r) => { void r.body?.cancel(); if (r.status === 404) onGone?.(); }, () => {});
+  return <img src={full ? files.url(path) : files.thumb(path)} alt={alt} loading="lazy" onError={() => (full ? gone() : setFull(true))} />;
 }
 
 export const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
