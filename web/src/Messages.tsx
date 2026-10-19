@@ -217,8 +217,8 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
   return (
     <div className="marker tool-run" data-type="toolrun" id={runs[0]!.n !== undefined ? `m-${runs[0]!.n}` : undefined}>
       <button type="button" aria-expanded={open} onClick={() => env.toggleTool(key)}>
-        <span className="num">{n}</span> {word}
-        {running ? <span className="state" data-state="running">running</span> : failed ? <span className="state" data-state="failed">failed</span> : null}
+        {/* One run of text, so its words sit a space apart rather than the button's flex gap. */}
+        <span><span className="num">{n}</span> {word}{running ? <> <span className="state" data-state="running">running</span></> : failed ? <> <span className="state" data-state="failed">failed</span></> : null}</span>
         <Icon name="down" />
       </button>
       {open && (
@@ -273,7 +273,7 @@ function LookMarker({ text, told, env, n }: { text: string; told: Told[]; env: E
   return (
     <div className="marker look" data-type="watching" id={n !== undefined ? `m-${n}` : undefined}>
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
-        Checked the other threads{told.length > 0 && <> · told <span className="num">{told.length}</span></>}<Icon name="down" />
+        <span>Checked the other threads{told.length > 0 && <> · told <span className="num">{told.length}</span></>}</span><Icon name="down" />
       </button>
       {open && (
         <div className="marker-body">
@@ -509,7 +509,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       if (part.name === "image") {
         const args = (part.args ?? {}) as { action?: string; tier?: string };
         const making = args.action === "edit" ? "Editing an image" : args.action === "upscale" ? "Upscaling an image" : "Making an image";
-        label = <><span>{making}{args.action === "create" && args.tier && <> · {args.tier}</>}</span><span className="state" data-state={state}>{state}</span></>;
+        label = <><span>{making}{args.action === "create" && args.tier && <> · {args.tier}</>} <span className="state" data-state={state}>{state}</span></span></>;
       }
       body = (
         <>
