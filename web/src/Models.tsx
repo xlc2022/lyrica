@@ -397,8 +397,9 @@ type Table = Partial<Record<Task, Entry>>;
 const TASK_ROWS: { group: string; tasks: { task: Task; hint: string }[] }[] = [
   { group: "Conversation", tasks: [
     { task: "chat", hint: "The main conversation" },
+    { task: "code", hint: "Code changes: edit, test, fix" },
     { task: "subagent.cheap", hint: "Searching, reading, checking" },
-    { task: "subagent.strong", hint: "Writing, judgment, code" },
+    { task: "subagent.strong", hint: "Writing and judgment" },
     { task: "compaction", hint: "Summarising long threads" },
     { task: "title", hint: "Naming new threads" },
     { task: "watching", hint: "A project chat's look at its threads" },

@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { PoolView } from "@lyrica/core";
 import { Type } from "typebox";
-import { formatHit, formatRead, search, type MemoryContext } from "./memory.ts";
+import { codeMemoryThread, formatHit, formatRead, search, type MemoryContext } from "./memory.ts";
 import { syncEntries } from "./record.ts";
 
 // The Memory component's model-facing tools: remember, recall, read_memory.
@@ -20,6 +20,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
     promptGuidelines: [
       "Save notes liberally with remember, without asking: when in doubt, note it. Notes are cheap, and sleep consolidates them.",
       "Credentials never go in memory.",
+      "When the user states how they want code or work done, add working to the note’s about.",
       "One fact per note. Save several notes in one remember call rather than one long note.",
       "In notes, write {user} for the person you're talking with, never their name, and {user:obj}, {user:poss}, {user:poss-pro}, {user:refl} for their pronouns. There is no subject pronoun form: write {user} where \"she\" or \"they\" would go.",
       "To correct a note, save the corrected fact with supersedes set to the old note's ID.",
@@ -53,12 +54,13 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       "<recall> and WAKE are background. Answer what the person said, and bring up other work or an earlier conversation only when their message is about it or they ask what's open. A hit's date is when it was said or changed: don't guess a different one.",
     ],
     parameters: Type.Object({
+      everywhere: Type.Optional(Type.Boolean({ description: "Search all memory for this call, including outside code mode’s project and working preferences." })),
       query: Type.String({ description: "Words to look for." }),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })),
     }),
     async execute(_id, params) {
       const c = ctx();
-      const hits = search(view, params.query, { limit: params.limit ?? 8, excludeThread: c.threadId, fromThread: c.threadId }, c.hide);
+      const hits = search(view, params.query, { limit: params.limit ?? 8, excludeThread: c.threadId, fromThread: c.code ? codeMemoryThread(view, c.threadId) : c.threadId, ...(c.code && !params.everywhere ? { only: { project: true, about: "working" } } : {}) }, c.hide);
       return text(hits.length ? hits.map((h) => formatHit(h, c.user)).join("\n") : "Nothing found.");
     },
   });

@@ -222,6 +222,9 @@ export function registerContext(pi: ExtensionAPI, meter: ContextMeter): void {
   });
 
   pi.on("session_before_compact", (e) => {
+    // Principle 1: keep her requested summary when the final reply crosses
+    // Pi's threshold. The host runs it after the turn, preserving Stop.
+    if (e.reason === "threshold" && meter.pending) return { cancel: true };
     const summary = e.reason === "manual" ? meter.running?.summary : undefined;
     if (!summary) return undefined;
     const p = e.preparation;

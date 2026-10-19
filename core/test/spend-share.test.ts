@@ -24,6 +24,8 @@ describe("spend share", () => {
     call.run("general", "chat", localRef.offeringId, "Local", "local", 10, 30, 5);
     call.run("general", "work", "gone", "Cloud", "cloud", 20, null, 7);
     call.run("private", "work", localRef.offeringId, "Local", "local", 900, 900, 90);
+    // Code-mode turns contribute and survive pruning just like ordinary chat.
+    db.prepare("UPDATE model_calls SET task = 'code' WHERE pool = 'general' AND thread = 'work'").run();
     const run = db.prepare(`INSERT INTO subagent_runs (pool, thread, run, parent, role, model, offering, background, status, input_tokens, output_tokens, started_at)
       VALUES (?, ?, 'run', ?, 'worker', ?, ?, 0, 'done', ?, ?, '2026-01-01')`);
     run.run("general", "sub", "work", "Local", localRef.offeringId, 40, 8);

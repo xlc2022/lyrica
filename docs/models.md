@@ -316,6 +316,7 @@ preset, thinking level, Fallback switch and lists from `user.db`.
 
 `openThreadSession` returns `prepare()`, which `lyricad` runs before every
 turn (and delegation once for each subagent): it resolves the chat model
+(or `code` in code mode and for coder subagents)
 with `resolveLive`, switches the session to it, sets the thinking level,
 and records the call. A connection error during a turn, including a reply
 cut off mid-stream, marks that endpoint down, and when Pi retries, the chat
@@ -347,7 +348,7 @@ cloud calls and subagents have none. Subagents contribute their recorded
 input and output tokens down every depth, using the offering's kind when it
 still exists. Every lookup filters both pool and thread.
 
-Totals count her turns and her subagents' work; titles, images, speech and a project chat's looks at its threads carry no counts and aren't included.
+Totals count her turns, including `code` turns through pruning, and her subagents' work; titles, images, speech and a project chat's looks at its threads carry no counts and aren't included.
 Models Overview shows
 only the latest visible call under History; Show all beside its eyebrow
 opens Call history with server-side search and numbered pages.

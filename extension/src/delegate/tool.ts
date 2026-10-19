@@ -2,6 +2,8 @@ import type { ExtensionAPI, ExtensionContext, ExtensionFactory } from "@earendil
 import { LIVE_STATUSES, type Role, type SubagentRecord } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
+import { memorySections } from "../memory.ts";
+import { codeTaskText } from "../code.ts";
 import { setToolsOff } from "../gate.ts";
 import { toolGuidance, WORK_GUIDELINES, type ThreadContext } from "../index.ts";
 import { syncEntries } from "../record.ts";
@@ -15,7 +17,8 @@ const Tier = StringEnum(["cheap", "strong"] as const);
 // She picks a tier, never a model. Only a saved workflow, which a user writes, may name one.
 const Step = Type.Object({
   task: Type.String({ description: "What to do, with everything the subagent needs: it sees none of this conversation." }),
-  role: Type.Optional(Type.String({ description: "A role; worker if not given." })),
+  done: Type.Optional(Type.String({ maxLength: 1200, description: "Progress and decisions so far, for the coder’s Code task section." })),
+  role: Type.Optional(Type.String({ description: "A role; coder for writing in a repository, worker otherwise." })),
   tier: Type.Optional(Tier),
   fork: Type.Optional(Type.Boolean({ description: "Start the subagent from a copy of this conversation, not just its task." })),
 });
@@ -49,7 +52,7 @@ function request(p: Params): Request {
   const given = WORK.filter((k) => p[k] !== undefined);
   if (given.length !== 1) throw new Error(`give exactly one of ${WORK.join(", ")}`);
   const narrowing = { folders: p.folders, readOnly: p.readOnly, internet: p.internet };
-  if (p.task !== undefined) return { ...narrowing, task: p.task, role: p.role, tier: p.tier, ...(p.fork ? { fork: true } : {}) };
+  if (p.task !== undefined) return { ...narrowing, task: p.task, done: p.done, role: p.role, tier: p.tier, ...(p.fork ? { fork: true } : {}) };
   if (p.workflow !== undefined) return { ...narrowing, workflow: p.workflow, input: p.input };
   const k = given[0] as "tasks" | "chain" | "loop" | "council";
   return { ...narrowing, [k]: p[k] } as Request;
@@ -188,8 +191,8 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
  * A subagent's own extension: the preamble and its role's prompt, read-only
  * memory, ask_parent, and only the tools its role allows.
  */
-export function createSubagentExtension(thread: ThreadContext, role: Role, hooks: SubagentHooks, allowed: Set<string>, name = "Lyrica"): ExtensionFactory {
-  const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: thread.user.profile } });
+export function createSubagentExtension(thread: ThreadContext, role: Role, hooks: SubagentHooks, allowed: Set<string>, name = "Lyrica", codingTask?: { task: string; done: string }): ExtensionFactory {
+  const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: thread.user.profile }, code: role.name === "coder" });
   return (pi) => {
     registerMemoryTools(pi, thread.view, who, { readOnly: true });
     pi.registerTool({
@@ -214,11 +217,17 @@ export function createSubagentExtension(thread: ThreadContext, role: Role, hooks
     pi.on("session_start", (_event, ctx) => {
       setToolsOff(pi, ctx, "role", pi.getAllTools().map((t) => t.name).filter((n) => !allowed.has(n)));
     });
-    pi.on("before_agent_start", (event) => {
+    pi.on("before_agent_start", async (event) => {
       const o = event.systemPromptOptions;
       const tools = toolGuidance(o, WORK_GUIDELINES);
       o.customPrompt = subagentPrompt(role, name);
       o.sections = { ...(tools ? { tools } : {}), ...o.sections };
+      if (role.name === "coder") {
+        const memory = await memorySections(thread.view, event.prompt, { ...who(), folders: [] });
+        o.sections.project = memory.project ?? "";
+        o.sections.code_task = codeTaskText(codingTask ?? thread.view.own.codeTask(thread.threadId));
+        if (memory.recall) return { message: { customType: "lyrica-coder-turn", content: `<recall>\n${memory.recall}\n</recall>`, display: false } };
+      }
     });
   };
 }

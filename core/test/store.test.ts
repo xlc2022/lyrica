@@ -606,6 +606,7 @@ describe("on disk", () => {
     const { memory, users, ada } = await setup();
     const view = memory.openThreadView(ada.id, "private");
     const s = said(view.own, "MARKERTHREADTEXT");
+    view.own.setCodeTask(s.thread, "MARKERCODETASK", "MARKERCODEDONE");
     view.own.addNotes([{ text: "MARKERNOTETEXT", source: s.entry }], { author: "lyrica", thread: s.thread });
     view.own.putPage({ slug: "p", title: "MARKERPAGE", summary: "s", text: "t" }, "sleep");
     const general = memory.openThreadView(ada.id, "general");
@@ -698,5 +699,66 @@ describe("credentials stay out of memory", () => {
       }
       expect(owner.general.get(note!)?.about).toEqual(["[secret removed]"]);
     } finally { owner.close(); }
+  });
+});
+
+
+describe("code-mode core storage", () => {
+  it("filters before the candidate cut, keeping project items or whole working tags only", async () => {
+    const { memory, ada } = await setup();
+    const view = memory.openThreadView(ada.id, "general");
+    const { own } = view;
+    const project = own.createThread({ interface: "web", project: true });
+    const source = own.appendEntry(project.id, { piId: "a", role: "user", data: {}, text: "fixture instructions" });
+    const other = said(own, "elsewhere");
+    const [projectNote] = own.addNotes([{ text: "cobalt " + "details ".repeat(80), source }], { author: "lyrica", thread: project.id });
+    const [working, partial] = own.addNotes([
+      { text: "cobalt workflow", about: ["working"] },
+      { text: "cobalt", about: ["networking", "working-hard"] },
+      ...Array.from({ length: 24 }, () => ({ text: "cobalt" })),
+    ], { author: "lyrica", thread: other.thread });
+    expect(own.search("cobalt", { limit: 4, kinds: ["note"] }).map(h => h.id)).not.toContain(projectNote);
+    const only = { project: true, about: "working" };
+    const ids = own.search("cobalt", { limit: 2, only, fromThread: project.id }).map(h => h.id);
+    expect(new Set(ids)).toEqual(new Set([projectNote, working]));
+    expect(ids).not.toContain(partial);
+    own.putPage({ slug: projectSlug(project.id), title: "Cobalt", summary: "fixture", text: "cobalt" }, "sleep");
+    own.putPage({ slug: "working", title: "Cobalt", summary: "working", text: "cobalt" }, "sleep");
+    const entry = own.appendEntry(project.id, { piId: "b", role: "user", data: {}, text: "cobalt" });
+    expect(own.search("cobalt", { only, fromThread: project.id }).map(h => h.id)).toEqual(expect.arrayContaining([`p:${projectSlug(project.id)}`, entry]));
+    expect(own.search("cobalt", { only }).map(h => h.id)).toEqual([working]);
+    const priv = memory.openThreadView(ada.id, "private");
+    const privateProject = priv.own.createThread({ interface: "web", project: true });
+    expect(searchView(priv, "cobalt", { only, fromThread: privateProject.id }).map(h => h.id)).toEqual([`general/${working}`]);
+    priv.close();
+    view.close();
+  });
+
+  it("finds a working note ranked deep below unrelated hits", async () => {
+    const { memory, ada } = await setup();
+    const view = memory.openThreadView(ada.id, "general");
+    const other = said(view.own, "elsewhere");
+    view.own.addNotes(Array.from({ length: 600 }, () => ({ text: "zircon zircon zircon" })), { author: "lyrica", thread: other.thread });
+    const [deep] = view.own.addNotes([{ text: "zircon " + "padding ".repeat(80), about: ["working"] }], { author: "lyrica", thread: other.thread });
+    expect(view.own.search("zircon", { only: { project: true, about: "working" } }).map(h => h.id)).toEqual([deep]);
+    view.close();
+  });
+
+  it("round trips and replaces code tasks in the encrypted pool, with limits and thread deletion", async () => {
+    const { memory, ada } = await setup();
+    let view = memory.openThreadView(ada.id, "general");
+    const thread = view.own.createThread({ interface: "web" });
+    expect(view.own.codeTask(thread.id)).toBeUndefined();
+    view.own.setCodeTask(thread.id, "Fix fixture", "Read checks");
+    view.close();
+    view = memory.openThreadView(ada.id, "general");
+    expect(view.own.codeTask(thread.id)).toMatchObject({ task: "Fix fixture", done: "Read checks", at: expect.any(String) });
+    view.own.setCodeTask(thread.id, "Run checks");
+    expect(view.own.codeTask(thread.id)).toMatchObject({ task: "Run checks", done: "" });
+    expect(() => view.own.setCodeTask(thread.id, "x".repeat(301))).toThrow(/300/);
+    expect(() => view.own.setCodeTask(thread.id, "ok", "x".repeat(1201))).toThrow(/1200/);
+    view.own.forgetThread(thread.id, "lyrica");
+    expect(view.own.codeTask(thread.id)).toBeUndefined();
+    view.close();
   });
 });

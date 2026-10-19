@@ -657,3 +657,20 @@ describe.skipIf(!helperRunnable)("the ssh helper's sandbox", () => {
     expect(await run(helperSandbox("127.0.0.1", machine, { exclude: [machine] }), tcp("127.0.0.1", machine))).not.toContain("MACHINE");
   });
 });
+
+
+describe("code preference", () => {
+  it("starts off, copies to descendants, stays editable and never changes mode", async () => {
+    const { settings } = await setup();
+    expect(settings.thread("parent").code).toBe(false);
+    settings.setThread("parent", "general", { code: true, mode: "ask" });
+    expect(settings.inheritSettings("parent", "child", "general")).toMatchObject({ code: true, mode: "ask" });
+    expect(settings.inheritSettings("child", "grandchild", "general").code).toBe(true);
+    settings.setThread("child", "general", { code: false });
+    expect(settings.effective("child")).toMatchObject({ code: false, mode: "ask" });
+    expect(settings.effective("grandchild").code).toBe(true);
+    settings.setThread("parent", "general", { code: false });
+    settings.setThread("child", "general", { code: true });
+    expect(settings.effective("child")).toMatchObject({ code: true, mode: "ask" });
+  });
+});

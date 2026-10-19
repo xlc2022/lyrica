@@ -478,6 +478,7 @@ export class Lyricad implements Drainable {
     host = new ThreadHost({
       users, memory, models, workspace, persona, delegation, cwd, log: this.log, searxng: () => searxngAddress(keyring.self()), name: () => selfName(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
+      codePulls: (u, p, t) => forge.codePulls(u, p, t),
       threads: children, onTurn: (u, p, t, working, byPerson) => {
         children.turn(u, p, t, working);
         if (!working) routines.ended(u, p, t);

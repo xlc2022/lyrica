@@ -1018,7 +1018,7 @@ export function apiRoutes(d: Lyricad): Route[] {
           s().projects.pin(user.id, pool, thread.id, true);
         }
         const project = !!store.getThread(thread.id)!.project;
-        const settings = change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.commandRules !== undefined;
+        const settings = change.threadsCode !== undefined || change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.commandRules !== undefined;
         if ((change.goal !== undefined || change.instructions !== undefined || change.discardDraft !== undefined || settings) && !project) {
           throw new HttpError(400, "only a project has a goal, instructions and project settings");
         }
@@ -1042,6 +1042,7 @@ export function apiRoutes(d: Lyricad): Route[] {
           s().projects.set(user.id, pool, thread.id, {
             ...(change.paused !== undefined ? { paused: !!change.paused } : {}),
             ...(change.threadsModel !== undefined ? { model: change.threadsModel } : {}),
+            ...(change.threadsCode !== undefined ? { code: change.threadsCode } : {}),
             ...(change.threadsThinking !== undefined ? { thinking: change.threadsThinking } : {}),
             ...(change.threadsFallback !== undefined ? { fallback: change.threadsFallback } : {}),
             ...(change.watchThreads !== undefined ? { watch: !!change.watchThreads } : {}),
@@ -2443,7 +2444,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
     ...(settings ? { projectSettings: {
       ...(settings.draftGoal !== undefined ? { draftGoal: settings.draftGoal } : {}),
       ...(settings.draftInstructions !== undefined ? { draftInstructions: settings.draftInstructions } : {}),
-      commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
+      commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, threadsCode: settings.code, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
     ...(mine ? { state: mine.state, ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
@@ -2566,7 +2567,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     try {
       // evenIfDown: the drawer names what is set here; whether its machine answers now is speechState's and the status panel's to say.
       const r = models.resolve(task, task === "speech.transcribe" ? voiceContext(ctx) : ctx, {}, { evenIfDown: true });
-      if (task === "chat") thinkingLevels = ["off", ...(r.offering.reasoning ?? [])];
+      if (task === (applies.code ? "code" : "chat")) thinkingLevels = ["off", ...(r.offering.reasoning ?? [])];
       return {
         model: r.ref, ...list, kind: r.endpoint.kind, endpointName: r.endpoint.name, label: r.label, modelId: r.offering.modelId, name: modelName(r.offering),
         source: r.source,
@@ -2587,7 +2588,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     profile: effective?.name ?? "Custom", preset: ctx.preset ?? null, thinking: ctx.thinking ?? "off", thinkingLevels,
     ...(answered ? { answered } : {}),
     ...(threadId ? contextOf(d, user, pool, threadId, answered) ?? {} : {}),
-    localOnly: ctx.localOnly,
+    code: applies.code, localOnly: ctx.localOnly,
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
     grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mcpServers: applies.mcpServers, mode: applies.mode, webSearch: applies.webSearch,
@@ -2602,7 +2603,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   };
 }
 
-const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "webSearch", "images", "claudeCode", "machines", "repositories", "mcpServers"] as const;
+const WORKSPACE_KEYS = ["grants", "internet", "services", "hosts", "mode", "code", "webSearch", "images", "claudeCode", "machines", "repositories", "mcpServers"] as const;
 
 /** A thread's subagents and child threads, and theirs, hidden ones included. */
 function descendants(d: Lyricad, user: User, pool: Pool, threadId: string): string[] {
@@ -2653,7 +2654,7 @@ function changeSettings(d: Lyricad, user: User, pool: Pool, thread: Thread, chan
     owner(d, user, (o) => { if (o[pool].getThread(thread.parent!)?.unlogged) throw new Error("this thread's parent isn't logged, so it can't be logged either"); });
   }
 
-  for (const k of ["webSearch", "images", "claudeCode"] as const) if (change[k] !== undefined && typeof change[k] !== "boolean") throw new Error(`${k} is true or false`);
+  for (const k of ["code", "webSearch", "images", "claudeCode"] as const) if (change[k] !== undefined && typeof change[k] !== "boolean") throw new Error(`${k} is true or false`);
   // Claude Code sends what it reads to Anthropic, so a local-only thread can't have it (Workspace.claudeCodeFor checks again at every run).
   if (localOnly && (change.claudeCode ?? (pool === "general" && ws.thread(thread.id).claudeCode))) throw new CloudModelForbidden("Claude Code sends what it reads to Anthropic, so a local-only thread can't use it");
   if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");

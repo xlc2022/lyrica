@@ -458,18 +458,34 @@ it. Other storage tests use synthetic bitmap bytes in a stand-in home.
 
 ## Thread settings
 
+Core stores a `code` preference in `thread_workspaces` (user step 14), off
+by default. `inheritSettings` copies it at creation; a child can change it
+independently of its ancestors. It never changes Mode or grants.
+Thread settings GET/PATCH carry `code`. The `threads` action `code` takes
+`on`, optional `task` (300 characters) and `done` (1,200 characters); it
+emits `settings` and applies from the next turn. Subagents cannot call it.
+A project's `threadsCode` API choice applies to child and routine threads,
+with `threadsModel`; unset, they inherit their parent's code preference.
+The choice lives in encrypted user settings as `project.code.<pool>/<id>`,
+and forgetting the project removes it. No additional migration is needed.
+Code turns read branch and at most ten commit subjects since origin's
+default branch with fixed git argv in the sandbox; no fetch or model call
+is made. The forge watcher supplies its last known open PR check metadata,
+cleared on Lock. An unavailable checkout is reported without blocking chat.
+
 A workspace is not a separate kind of session. It's any thread that has
 folders granted. Every thread has the same settings panel, and the current
 values are always visible next to the model badge:
 
 | Setting | What it controls |
 |---|---|
-| **Models** | Which model handles each task: the main conversation, cheap and strong subagents, compaction and titles. This follows the user's cloud or local profile unless overridden (see DESIGN.md, "Models and endpoints"). |
+| **Models** | Which model handles each task: the main conversation, cheap and strong subagents, compaction and titles. This follows the thread's preset or the user's General / Private column unless overridden (see DESIGN.md, "Models and endpoints"). |
 | **Local-only** | Whether every model call stays on the custom endpoint. Always on in private threads. |
 | **Internet access for tools** | Whether `bash` and fetches inside the sandbox can reach the network. |
 | **Folders** | The thread's grants, each read-only or read-write. |
 | **Machines** | The SSH accounts and Proxmox nodes the thread may use (Machines). |
 | **Repositories** | The repositories the thread clones, each with the Git account it uses (Git accounts and repositories). |
+| **Code mode** | Focuses the persona, memory and tools on coding and selects the Coding task; editable under Behaviour, and for new project threads under General → New threads. |
 | **Mode** | Ask, Accept edits, Plan or Auto (see Approval). |
 | **Web search, Images** | Switches for `web_search` and `web_fetch`, and for `image`. On unless turned off. |
 | **Claude Code** | Whether her sandbox runs can use Claude Code on the user's Claude plan (Claude Code). Off unless turned on; shown only in a general thread that isn't local-only, once a token is saved and the program is installed. |

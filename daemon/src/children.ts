@@ -80,6 +80,12 @@ export class ChildThreads implements ThreadsHost {
     this.limits = { ...DEFAULT_THREADS_LIMITS, ...o.limits };
   }
 
+  code(from: ThreadContext, on: boolean): void {
+    if (from.view.own.getThread(from.threadId)?.subagent) throw new Error("a subagent can't change code mode");
+    this.o.workspace.settings(from.user.id).setThread(from.threadId, from.pool, { code: on });
+    this.o.host().peek(from.user.id, from.pool, from.threadId)?.publish({ type: "settings" });
+  }
+
   async start(parent: ThreadContext, req: StartRequest): Promise<{ id: string; link: string; queued?: boolean }> {
     const userId = parent.user.id;
     const own = parent.view.own;
@@ -123,6 +129,7 @@ export class ChildThreads implements ThreadsHost {
       // A cloud Dictation pick is consent for the thread it was made in: a new thread starts without it.
       this.o.models.setThreadModel(userId, parent.pool, child.id, "speech.transcribe");
       const chosen = project ? this.o.project?.(userId, parent.pool, parent.threadId) : undefined;
+      if (chosen?.code !== undefined) ws.setThread(child.id, parent.pool, { code: chosen.code });
       if (chosen?.model) this.o.models.setThreadModel(userId, parent.pool, child.id, "chat", chosen.model);
       if (chosen?.thinking) this.o.models.setThinking(userId, child.id, chosen.thinking);
       if (chosen?.fallback !== undefined) this.o.models.setThreadFallback(userId, child.id, chosen.fallback);
@@ -404,6 +411,7 @@ export class ChildThreads implements ThreadsHost {
         this.o.models.inheritContext(this.o.models.callContext(userId, pool, source), made.id);
         this.o.models.setThreadModel(userId, pool, made.id, "speech.transcribe");
         const chosen = project ? this.o.project?.(userId, pool, project) : undefined;
+        if (chosen?.code !== undefined) this.o.workspace.settings(userId).setThread(made.id, pool, { code: chosen.code });
         if (chosen?.model) this.o.models.setThreadModel(userId, pool, made.id, "chat", chosen.model);
         if (chosen?.thinking) this.o.models.setThinking(userId, made.id, chosen.thinking);
         if (chosen?.fallback !== undefined) this.o.models.setThreadFallback(userId, made.id, chosen.fallback);

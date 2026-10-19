@@ -271,6 +271,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principle 1: a thread's own context limit, asked for in plain words. Expand only.
     version: 13,
     run(db) { addColumns(db, [["thread_choices", "context", "INTEGER"]]); },
+  }, {
+    // Principles 1 and 6: code mode is an editable thread preference, off by default. Expand only.
+    version: 14,
+    run(db) { addColumns(db, [["thread_workspaces", "code", "INTEGER NOT NULL DEFAULT 0"]]); },
   }],
   pool: [{
     version: 1, contract: true,
@@ -321,6 +325,13 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
       n INTEGER NOT NULL, asked TEXT NOT NULL, closed TEXT, answer TEXT,
       PRIMARY KEY (thread, n)
     ); CREATE UNIQUE INDEX questions_open ON questions(thread) WHERE closed IS NULL`); },
+  }, {
+    // Principles 1 and 2: code-task words stay encrypted in their thread's pool. Expand only.
+    version: 9,
+    run(db) { db.exec(`CREATE TABLE code_tasks (
+      thread TEXT PRIMARY KEY REFERENCES threads(id) ON DELETE CASCADE,
+      task TEXT NOT NULL, done TEXT NOT NULL, at TEXT NOT NULL
+    )`); },
   }],
 };
 

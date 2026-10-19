@@ -16,7 +16,7 @@ import { go, href, parse } from "./route.ts";
 import { Repositories } from "./Git.tsx";
 import { McpServers } from "./Mcp.tsx";
 import { FilesSection } from "./ProjectFiles.tsx";
-import { Folders, Machines, TaskSelect } from "./Settings.tsx";
+import { CODE_MODE_HINT, Folders, Machines, TaskSelect } from "./Settings.tsx";
 import { Main, PageHead, useWide, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, Dialog, ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
 import { modelName } from "./ModelLabel.tsx";
@@ -285,7 +285,7 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   );
 }
 
-/** Goal, Paused and Watching threads; New threads (Model, Thinking, Fallback); This chat (Model, Mode, Group, Folders, Machines, Repositories, MCP servers); Commands; one Save. */
+/** Goal, Paused and Watching threads; New threads (Model, Code mode, Thinking, Fallback); This chat (Model, Mode, Group, Folders, Machines, Repositories, MCP servers); Commands; one Save. */
 export function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
 }) {
@@ -296,6 +296,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
   const [paused, setPaused] = useState(!!ps?.paused);
   const [watch, setWatch] = useState(ps?.watchThreads !== false);
   const [model, setModel] = useState(refOf(ps?.threadsModel));
+  const [code, setCode] = useState(ps?.threadsCode ?? settings.code);
   const [thinking, setThinking] = useState<ThinkingLevel | "">(ps?.threadsThinking ?? "");
   const [fallback, setFallback] = useState<"" | "on" | "off">(ps?.threadsFallback === undefined ? "" : ps.threadsFallback ? "on" : "off");
   const [chat, setChat] = useState<{ offeringId: string } | null | undefined>(undefined);
@@ -316,6 +317,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
       goal, paused, commandRules: rules.filter(r => r.prefix.trim()),
       ...(watch !== (ps?.watchThreads !== false) ? { watchThreads: watch } : {}),
       threadsModel: model ? { offeringId: model } : null,
+      ...(code !== (ps?.threadsCode ?? settings.code) ? { threadsCode: code } : {}),
       threadsThinking: thinking || null,
       threadsFallback: fallback ? fallback === "on" : null,
       ...(group !== (summary.group ?? "") ? { group: group || null } : {}),
@@ -364,6 +366,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
             {model && !settings.allowed.some((ep) => ep.models.some((m) => m.id === model)) && <option value={model}>{model} (not available)</option>}
           </select>
         </label>
+        <Switch label="Code mode" hint={CODE_MODE_HINT} checked={code} onChange={setCode} />
         <label className="field" title={newThreadsHint}>
           <span>Thinking</span>
           <select value={thinking} onChange={(e) => setThinking(e.target.value as ThinkingLevel | "")}>

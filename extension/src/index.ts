@@ -4,12 +4,15 @@ import { assemble, type Budgets, type Section } from "./assemble.ts";
 import { dropAskNudges, contextLines, registerContext, type ContextMeter } from "./context.ts";
 import { setToolsOff } from "./gate.ts";
 import { memorySections } from "./memory.ts";
+import { CODE_GUIDELINES, CODING_GUIDELINE, CODE_TOOLS_OFF, codeTaskText } from "./code.ts";
 import { SELF_PRIMER } from "./primer.ts";
 import { TopicRouter, type RoutedTopic } from "./routing.ts";
 import { reactionLines, type UserReaction } from "./react.ts";
 import { registerMemoryTools } from "./tools.ts";
 
 export * from "./assemble.ts";
+export * from "./code.ts";
+export * from "./code-repositories.ts";
 export * from "./context.ts";
 export * from "./gate.ts";
 export * from "./images.ts";
@@ -37,6 +40,8 @@ export interface ThreadContext {
 export interface LyricaOptions {
   /** Current persona; called every turn so approved changes apply at once. */
   persona: () => Persona;
+  code?: () => boolean;
+  codeRepositories?: () => Promise<string | undefined>;
   /** The user's current profile; called every turn so a rename applies at once. */
   profile: () => Profile;
   /** The thread's granted folders, read every turn. Workspace supplies them; defaults to none. */
@@ -68,7 +73,8 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
   // Only a view from openThreadView may reach a session: never the owner view, never a lookalike.
   if (!isThreadView(thread.view) || thread.view.pool !== thread.pool) throw new Error("the extension needs this thread's own view from openThreadView");
   const { view } = thread;
-  const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: opts.profile() }, hide: opts.hide });
+  let turnCode = opts.code?.() ?? false;
+  const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: opts.profile() }, hide: opts.hide, code: turnCode });
   return (pi) => {
     const router = new TopicRouter();
     registerMemoryTools(pi, view, who, { readOnly: opts.memoryTools === "read" });
@@ -82,8 +88,11 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       return messages.length !== event.messages.length ? { messages } : undefined;
     });
     pi.on("before_agent_start", async (event, ctx) => {
-      const persona = opts.persona();
-      const topics = router.route([...persona.topics, SELF_PRIMER], event.prompt);
+      const code = turnCode = opts.code?.() ?? false;
+      const fullPersona = opts.persona();
+      const persona = code ? { core: fullPersona.core.filter(f => /(^|\/)SOUL\.md$/.test(f.path)), topics: [] } : fullPersona;
+      const topics = code ? [] : router.route([...persona.topics, SELF_PRIMER], event.prompt);
+      setToolsOff(pi, ctx, "code", code ? CODE_TOOLS_OFF : []);
       const memory = await memorySections(view, event.prompt, { ...who(), folders: opts.folders?.() ?? [], projectThreads: opts.projectThreads, name: opts.name?.() });
       // An unlogged thread isn't offered remember at all.
       if (opts.memoryTools !== "read") setToolsOff(pi, ctx, "unlogged", memory.notice ? ["remember"] : []);
@@ -95,12 +104,19 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       // Edit Pi's prompt options rather than replacing the prompt: Pi keeps the
       // prefix stable and appends only what changed, so it stays cacheable.
       const options = event.systemPromptOptions;
-      const tools = toolGuidance(options, [...CONTINUATION_GUIDELINES, ...WORK_GUIDELINES]);
+      options.selectedTools = pi.getActiveTools();
+      const tools = toolGuidance(options, [...CONTINUATION_GUIDELINES, ...WORK_GUIDELINES, CODING_GUIDELINE, ...(code ? [CODE_GUIDELINES] : [])]);
       options.customPrompt = customPrompt;
       options.sections = { ...(tools ? { tools } : {}), ...options.sections, ...sections };
+      if (code) {
+        options.sections.code_task = codeTaskText(view.own.codeTask(thread.threadId));
+        report.push({ name: "project", text: options.sections.code_task, budget: 1600, truncated: false, place: "system" });
+      } else delete options.sections.code_task;
 
       // The user's reactions since her last turn, then her status line, from the last turn's measurement, and the line telling her to prepare or compact.
-      const told = [turn, reactionLines(opts.reactions?.() ?? [], thread.threadId, opts.profile().displayName)].filter(Boolean).join("\n\n");
+      const repositories = code ? await opts.codeRepositories?.() : undefined;
+      if (repositories) report.push({ name: "recall", text: repositories, budget: repositories.length, truncated: false, place: "turn" });
+      const told = [turn, repositories && `<repositories>\n${repositories}\n</repositories>`, reactionLines(opts.reactions?.() ?? [], thread.threadId, opts.profile().displayName)].filter(Boolean).join("\n\n");
       let full = told;
       if (opts.meter) {
         const defs = pi.getAllTools().filter((t) => pi.getActiveTools().includes(t.name)).map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));

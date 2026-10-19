@@ -101,3 +101,22 @@ describe("every request's reads", () => {
     expect(meter.takePace()).toMatchObject({ promptTokens: 47, readTokens: 82, outputTokens: 7, processed: 22 });
   });
 });
+
+
+describe("requested compaction at Pi’s threshold", () => {
+  it("waits for the host, without deferring overflow recovery or ordinary automatic compaction", async () => {
+    const { registerContext } = await import("../src/context.ts");
+    const handlers = new Map<string, (...args: any[]) => any>();
+    const meter = new ContextMeter();
+    registerContext({ on: (name: string, fn: (...args: any[]) => any) => handlers.set(name, fn) } as any, meter);
+    const compact = handlers.get("session_before_compact")!;
+    expect(compact({ reason: "threshold" })).toBeUndefined();
+    for (const pending of [{ summary: "Her summary" }, { notes: "Her notes" }]) {
+      meter.pending = pending;
+      expect(compact({ reason: "threshold" })).toEqual({ cancel: true });
+      expect(meter.pending).toBe(pending);
+      expect(compact({ reason: "overflow" })).toBeUndefined();
+      expect(compact({ reason: "manual" })).toBeUndefined();
+    }
+  });
+});

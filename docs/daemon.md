@@ -251,6 +251,9 @@ Each active thread is one Pi session from `openThreadSession`, with
   - The compaction is stored, and the stream gets a `compacted` event with the
     tokens before and (estimated) after and the summary. The message list
     shows it as a `notice` with a `compacted` part.
+  - If the final reply reaches Pi’s automatic threshold with a compaction
+    already requested, it waits for the host’s end-of-turn compaction, so
+    her summary (or notes) wins and Stop still drops the request.
   - Pi's automatic compaction at the window's edge stays on as the safety net,
     with Pi's own summary, which keeps the goal, progress and next steps. It
     shows the same marker.

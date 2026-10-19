@@ -23,6 +23,7 @@ export interface MemorySections {
 
 export interface MemoryContext {
   threadId: string;
+  code?: boolean;
   /** The person she's talking with, for "added by" labels. */
   user: { id: string; profile: Profile };
   folders: string[];
@@ -51,20 +52,20 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
   const index = own.pageIndex().map((p) => `- [${p.id}] ${p.title}: ${p.summary}`).join("\n");
   const stores = [{ prefix: "", store: own }, ...view.reads.map((store) => ({ prefix: `${store.pool}/`, store }))];
   const folderPages = stores.flatMap(({ prefix, store }) => store.forFolders(ctx.folders).map((p) => ({ ...p, id: prefix + p.id })));
-  const hits = prompt.trim() ? search(view, prompt, { current: true, limit: RECALL_HITS, minWords: RECALL_WORDS, skip: ctx.name ? [ctx.name] : undefined, excludeThread: ctx.threadId, fromThread: ctx.threadId }, ctx.hide) : [];
+  const hits = prompt.trim() ? search(view, prompt, { current: true, limit: RECALL_HITS, minWords: RECALL_WORDS, skip: ctx.name ? [ctx.name] : undefined, excludeThread: ctx.threadId, fromThread: ctx.code ? codeMemoryThread(view, ctx.threadId) : ctx.threadId, ...(ctx.code ? { only: { project: true, about: "working" } } : {}) }, ctx.hide) : [];
   const item = own.itemForThread(ctx.threadId);
   return {
     notice: own.getThread(ctx.threadId)?.unlogged ? UNLOGGED_NOTICE : undefined,
-    wake: own.getWake(),
+    wake: ctx.code ? undefined : own.getWake(),
     // The thread's own pool comes first; the about section's budget cuts whatever doesn't fit.
-    about: [own, ...view.reads].map((store) => store.get(ABOUT_USER_PAGE)).filter((p) => p && !p.archived)
+    about: ctx.code ? undefined : [own, ...view.reads].map((store) => store.get(ABOUT_USER_PAGE)).filter((p) => p && !p.archived)
       .map((p) => p!.text.trim()).filter(Boolean).join("\n\n") || undefined,
-    pageIndex: index || undefined,
+    pageIndex: ctx.code ? undefined : index || undefined,
     folders: folderPages.map((p) => `<page id="${p.id}" title="${p.title}">\n${p.text}\n</page>`).join("\n\n") || undefined,
     pinned: pinnedOf(own, ctx.threadId),
-    project: projectSection(own, ctx.threadId, ctx.projectThreads),
+    project: projectSection(own, ctx.code ? codeMemoryThread(view, ctx.threadId) : ctx.threadId, ctx.projectThreads),
     recall: hits.map((h) => formatHit(h, ctx.user)).join("\n") || undefined,
-    opening: item && `You're starting this conversation. Bring this up, in your own words: ${item.text}${item.source ? ` [${item.source}]` : ""}`,
+    opening: !ctx.code && item ? `You're starting this conversation. Bring this up, in your own words: ${item.text}${item.source ? ` [${item.source}]` : ""}` : undefined,
     lastTalk: own.lastUserMessage(),
   };
 }
@@ -117,4 +118,11 @@ export function formatRead(view: PoolView, id: string, ctx: Pick<MemoryContext, 
 export function formatEntry(e: StoredEntry): string {
   const text = lookPointer(e.text) ?? (e.text.length > 1500 ? `${e.text.slice(0, 1500)}…` : e.text);
   return `[${e.id}] ${e.role} (${e.createdAt.slice(0, 16).replace("T", " ")}): ${text || "(no text)"}`;
+}
+
+/** Subagents use their nearest ordinary ancestor’s project through their existing thread view. */
+export function codeMemoryThread(view: PoolView, threadId: string): string {
+  let thread = view.own.getThread(threadId);
+  while (thread?.subagent && thread.parent) thread = view.own.getThread(thread.parent);
+  return thread?.id ?? threadId;
 }

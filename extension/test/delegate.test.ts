@@ -68,6 +68,32 @@ async function setup(o: { limits?: Partial<Limits>; workspace?: (m: Awaited<Retu
 }
 
 describe("delegate", () => {
+  it("routes an implicit repository writer through code, with project memory and the inherited context limit", async () => {
+    let ws!: Workspace;
+    const s = await setup({ workspace: m => (ws = new Workspace(m.keyring, m.users, { excludePorts: [] })) });
+    const parent = s.thread();
+    parent.view.own.setProject(parent.threadId);
+    parent.view.own.setGoal(parent.threadId, "CODE-PROJECT");
+    const settings = ws.settings(s.ada.id);
+    settings.addGitAccount({ name: "forge", kind: "other", host: "forge.example", account: "ada", token: "fake", pool: "general", offNetwork: false });
+    settings.setThread(parent.threadId, "general", { repositories: [{ name: "garden/controller", account: "forge" }] });
+    s.models.setColumnTask(s.ada.id, "general", "code", s.localRef);
+    s.models.setThreadModel(s.ada.id, "general", parent.threadId, "chat", s.cloudRef);
+    s.models.setContextLimit(s.ada.id, parent.threadId, 8192);
+    s.local.respond(request => {
+      expect(JSON.stringify(request.messages)).toContain("CODE-PROJECT");
+      expect(JSON.stringify(request.messages)).toContain("Prior decisions");
+      return { text: "verified fixture" };
+    });
+    const run = await s.run(parent, { task: "Fix fixture", done: "Prior decisions" });
+    expect(run.status).toBe("finished");
+    expect(s.delegation.status(parent)[0]).toMatchObject({ role: "coder", model: "gpu/qwen3.8-27b" });
+    const child = parent.view.own.listThreads({ parent: parent.threadId })[0]!;
+    expect(s.models.callContext(s.ada.id, "general", child.id).contextLimit).toBe(8192);
+    expect(s.models.recentCalls(s.ada.id, { threadId: child.id })[0]).toMatchObject({ task: "code" });
+    expect(s.cloud.requests).toHaveLength(0);
+  });
+
   it("gives a subagent of a private or local-only thread only a local model", async () => {
     const s = await setup();
     s.local.respond(() => ({ text: "checked locally" }));

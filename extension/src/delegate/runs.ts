@@ -735,7 +735,7 @@ export class Delegation {
 
   private async parallel(run: Run, steps: Step[], narrowing: Narrowing): Promise<string> {
     if (!steps.length) throw new Error("tasks is empty");
-    const roles = steps.map((s) => this.role(run.parent.user.id, s.role, "worker"));
+    const roles = steps.map((s) => this.role(run.parent.user.id, s.role, this.defaultRole(run, narrowing)));
     const writes = roles.map((r) => !r.readOnly && !narrowing.readOnly);
     const writers = writes.filter(Boolean).length;
     let worktrees: Worktree[][] | undefined;
@@ -764,7 +764,7 @@ export class Delegation {
 
   private async loop(run: Run, spec: LoopSpec, narrowing: Narrowing): Promise<string> {
     const rounds = Math.max(1, Math.min(5, spec.rounds ?? 3));
-    const worker = await this.spawn(run, { task: spec.task, role: spec.worker ?? "worker" }, narrowing);
+    const worker = await this.spawn(run, { task: spec.task, role: spec.worker ?? this.defaultRole(run, narrowing) }, narrowing);
     let reviewer: Subagent | undefined;
     try {
       let work = await this.ask(worker, { text: spec.task });
@@ -840,10 +840,14 @@ export class Delegation {
   }
 
   /** A new subagent of the run, on a thread of its own: empty, or a fork of the parent's conversation. */
+  private defaultRole(run: Run, narrowing: Narrowing): string {
+    return !narrowing.readOnly && this.o.workspace?.settings(run.parent.user.id).effective(run.parent.threadId).repositories.length ? "coder" : "worker";
+  }
+
   private spawn(run: Run, step: Step, narrowing: Narrowing, worktrees: Worktree[] = []): Promise<Subagent> {
-    const role = this.role(run.parent.user.id, step.role, "worker");
+    const role = this.role(run.parent.user.id, step.role, this.defaultRole(run, narrowing));
     const pick: ModelPick = step.model ? { model: this.named(run.parent.user.id, step.model) } : { tier: step.tier ?? role.tier };
-    return this.open(run, role, pick, narrowing, undefined, step.task, worktrees, !!step.fork);
+    return this.open(run, role, pick, narrowing, undefined, step.task, worktrees, !!step.fork, step.done);
   }
 
   /**
@@ -852,7 +856,7 @@ export class Delegation {
    * (`earlier`). Each counts against the request's budget. A writer without
    * worktrees first waits until no other writer is in the parent's folders.
    */
-  private async open(run: Run, role: Role, pick: ModelPick, narrowing: Narrowing, earlier: SubagentRecord | undefined, task = "", worktrees: Worktree[] = [], fork = false): Promise<Subagent> {
+  private async open(run: Run, role: Role, pick: ModelPick, narrowing: Narrowing, earlier: SubagentRecord | undefined, task = "", worktrees: Worktree[] = [], fork = false, done = ""): Promise<Subagent> {
     const { parent } = run;
     const { models, workspace } = this.o;
     const writer = !!workspace && !role.readOnly && !narrowing.readOnly;
@@ -863,7 +867,7 @@ export class Delegation {
     // A subagent that started local-only (a fork of a local-only conversation, say) stays local-only.
     if (earlier && isRestricted(models.callContext(parent.user.id, parent.pool, earlier.thread))) parentCall = { ...parentCall, localOnly: true };
     // Refuse a model before anything is written.
-    if ("tier" in pick) models.resolveModel(`subagent.${pick.tier}`, parentCall);
+    if ("tier" in pick) models.resolveModel(role.name === "coder" ? "code" : `subagent.${pick.tier}`, parentCall);
     else if ("offeringId" in pick.model && !models.allowed(parentCall).some((a) => a.offerings.some((m) => "offeringId" in pick.model && m.id === pick.model.offeringId))) {
       throw new Error(`${models.label(parent.user.id, refId(pick.model)) ?? refId(pick.model)} isn't one of this thread's models`);
     }
@@ -879,7 +883,12 @@ export class Delegation {
       if (fork) forkConversation(view.own, parent.threadId, child.id);
       const parentThread = view.own.getThread(parent.threadId)!;
       if (parentThread.unlogged && !child.unlogged) throw new Error("its parent thread is no longer logged");
-      const call = models.childContext(parentCall, child.id, pick);
+      let call = role.name === "coder" ? models.inheritContext(parentCall, child.id) : models.childContext(parentCall, child.id, pick);
+      if (role.name === "coder") {
+        if ("model" in pick) models.setThreadModel(parent.user.id, parent.pool, child.id, "code", pick.model);
+        call = models.callContext(parent.user.id, parent.pool, child.id);
+        if (!earlier) view.own.setCodeTask(child.id, task.slice(0, 300), done);
+      }
       const ctx: ThreadContext = { user: parent.user, pool: parent.pool, interface: parent.interface, threadId: child.id, view, call };
       let sub: Subagent | undefined;
       const hooks: SubagentHooks = {
@@ -927,8 +936,8 @@ export class Delegation {
       // tool_search loads the MCP tools, which register after its role's tools are set, so the role doesn't turn them off.
       const allowed = new Set([...role.tools, "ask_parent", ...(nested ? ["delegate"] : []), ...(mcp ? ["tool_search"] : [])]);
       // First: it must run before the MCP extension registers anything, else the role gate turns loaded MCP tools off.
-      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica"));
-      const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions });
+      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica", !earlier && role.name === "coder" ? { task, done } : undefined));
+      const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions, task: () => role.name === "coder" ? "code" : "chat" });
       opened.session.setThinkingLevel(role.thinking);
       // Passes over a model whose machine is away, and records the call. The role keeps its own thinking level.
       const chat = await opened.prepare({ thinking: false }).catch((err) => { opened.dispose(); throw err; });

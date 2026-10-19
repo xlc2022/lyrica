@@ -16,8 +16,11 @@ import { go } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { Confirm, ConfirmDialog, ErrorText, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
 
+export const CODE_MODE_HINT = "Focus on the code: a coding model, a short persona, and only this project's memory and your working preferences.";
+
 export const TASK_LABELS: Record<ThreadTask, string> = {
   chat: "Main conversation",
+  code: "Coding",
   "subagent.cheap": "Cheap subagents",
   "subagent.strong": "Strong subagents",
   title: "Titles",
@@ -51,7 +54,8 @@ export function ModelBadge({ base, settings, onChange, readOnly }: {
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);
-  const chat = settings.models.chat;
+  const task = settings.code ? "code" : "chat";
+  const chat = settings.models[task];
   const label = (
     <>
       <span className={`k ${chat.kind ?? ""}`}>{chat.kind ?? "no model"}</span>
@@ -65,7 +69,7 @@ export function ModelBadge({ base, settings, onChange, readOnly }: {
       <button type="button" className="badge model" data-kind={chat.kind} aria-haspopup="dialog" aria-expanded={open}
         aria-label={`Model: ${chat.model ? (chat.modelId ? `${chat.modelId}, ${chat.kind}, ${chat.endpointName}` : named(chat)) : "none"}. Change`}
         onClick={() => setOpen(!open)}>{label}</button>
-      {open && <ModelPicker base={base} settings={settings} task="chat" onChange={(s) => { onChange(s); setOpen(false); }} />}
+      {open && <ModelPicker base={base} settings={settings} task={task} onChange={(s) => { onChange(s); setOpen(false); }} />}
     </span>
   );
 }
@@ -215,6 +219,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
               {MODE_ORDER.map((m) => <option key={m} value={m} title={MODES[m].description}>{MODES[m].label}</option>)}
             </select>
           </label>
+          <Switch label="Code mode" hint={CODE_MODE_HINT} checked={settings.code} onChange={(v) => change({ code: v })} />
           <Switch label="Web search" hint={settings.searchProvider ? undefined : "Search needs a SearXNG address in Administration"} checked={settings.webSearch} onChange={(v) => change({ webSearch: v })} />
           <Switch label="Images" checked={settings.images} onChange={(v) => change({ images: v })} />
           {(settings.claudeCodeOffered || settings.claudeCode) && (

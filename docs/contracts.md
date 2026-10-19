@@ -213,12 +213,13 @@ nothing else. No code path gives a general view a private handle.
 | Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `foldThread(projectId, threadId, childrenOnly?)` (existing children become project siblings, preserving entries, steps and wake-ups), `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children?, keepMemories? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared; `keepMemories` removes no notes or project page and leaves a text-free thread tombstone `t:<thread>` in each forgotten thread's place), `getThreadTombstone(id)` → `{ deletedAt } \| undefined`, `citingThread(id)` → the IDs of the notes and pages citing the thread or its entries, `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
 | Reactions | `react(threadId, n, emoji, by, on)` → `Reaction[]` (`{ emoji, by: string[] }`, `by` user IDs or `LYRICA_REACTS`); `entryPage` entries carry `reactions`. Pool schema step 2 (`entries.reactions`, JSON) |
+| Code tasks | `codeTask(threadId)` → `{ task, done, at }` or undefined; `setCodeTask(threadId, task, done = "")` replaces it (300 / 1,200 characters), with credential removal. Pool step 9 adds `code_tasks`, deleted with the thread; no task text enters user.db |
 | Drafts | `draft(threadId)` → `{ text, updatedAt }` or undefined, `setDraft(threadId, text)` (empty deletes it); one per thread, gone with the thread. Pool schema step 3 (`drafts`) |
 | Projects | `pageForProject(threadId)`, `projectNotes(threadId, since?)` |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal`. Every write (notes, pages and edits, WAKE, journal, sleep items, project instructions) passes text, title, summary and tags through `removeSecrets` (core/src/secrets.ts) first; matches become `[secret removed]` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `journalHistory({ limit, offset, q })` → `{ entries, total }`, `userIntroduced` |
-| Search | `search(query, { kinds, limit, current, excludeThread, fromThread, skip, minWords })`, returning `{ id, kind, snippet, score, at }` (`at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, as a word or a word's start, a user's name counting once); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
+| Search | `search(query, { kinds, limit, current, excludeThread, fromThread, only, skip, minWords })`, returning `{ id, kind, snippet, score, at }` (`at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, as a word or a word's start, a user's name counting once); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
 | Lineage | `cameFrom`, `usedIn`, `revisions`, `revisionHistory(id, { limit, offset, q })` → `{ entries, total }` (newest first), `isTombstoned(entryId)`, `editedSince(since)` |
 | Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `sleepRunHistory({ limit, offset, q })` → `{ entries, total }`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` |
 | Sleep items | `addItem`, `listItems`, `getItem`, `startItem(id, threadId)`, `dismissItem`, `itemForThread` |
@@ -312,12 +313,23 @@ gives the project chat for the chat or any of its threads, and
 `lyricad` anchors such a branch where its source hangs, or for a branch of
 the project chat where it branched (anchors live in `user.db`).
 
+`SearchOptions.only: { project?: boolean; about?: string }` keeps the union
+of project items (using `fromThread` and the same membership as the project
+boost) and notes with the whole `about` tag, as `listMemories` matches it.
+Filtering precedes the `limit * 4` candidate cut; batches widen past unrelated
+hits. `{ project: true, about: "working" }` supplies the code-mode filter.
+An empty project membership matches nothing, including in the other pool
+read through `searchView`; only matching notes then pass.
+
 ## core/models: the cloud boundary lives here
 
 ```ts
-type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "watching"
+type Task = "chat" | "code" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "watching"
           | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit" | "image.upscale"
           | "speech.transcribe" | "speech.speak";
+// code (Coding) defaults to { same: "subagent.strong" } in new tables and
+// populated saved presets missing it, subject to the one-level Same as rule.
+// A thread's code list wins; its chat override never supplies code's fallback.
 type ThinkingLevel = "off" | "low" | "medium" | "high";
 
 interface Endpoint {
@@ -625,6 +637,13 @@ delegation.stopAll(userId?)                            // Lock and shutdown
 ```
 
 One model-facing tool: `delegate({ action?, ... })`.
+The built-in coder comes first in its role list (strong, writes, high
+thinking; read/write/edit/bash/recall/read_memory). It uses the parent's
+`code` model list, preset and context limit, and project/filtered recall
+through its existing thread view, without persona. A step's optional
+`done` accompanies its task in the Code task section. Without a role, a
+write-capable step in a repository thread selects coder; otherwise worker.
+Custom roles override built-ins by name.
 - The default action runs work: `task` with an optional `role` and `tier`;
   or `tasks: [...]` (parallel), `chain: [...]`, `loop`, `council`, or
   `workflow: name`. Any of these can be `background: true`. She picks a tier,
@@ -912,6 +931,19 @@ Every run:
 
 ## extension
 
+Code-mode options are `code(): boolean` and optional
+`codeRepositories(): Promise<string | undefined>`, read once per turn.
+Code turns use SOUL only, no topic routing, WAKE, about-user, page index or
+sleep opening; project, folders and pins remain. `setToolsOff` with reason
+`code` removes `models`, `download_model`, `model_files`, `image`, `react`.
+Code task/progress is stable prompt text from pool.db; repository status
+is per-turn. The thread's model task callback selects `code` instead of
+`chat`, including initial open, prepare and retry, retaining context limits.
+Automatic recall and `recall` use `only: { project: true, about: "working" }`;
+`recall` accepts optional `everywhere: true` for one unrestricted search
+through the same thread view. Working preferences are tagged on remember
+and retained by consolidation.
+
 The extension is created with a `ThreadContext`:
 `{ user, pool, interface, threadId, view: PoolView, call: CallContext }`.
 
@@ -920,7 +952,7 @@ The extension is created with a `ThreadContext`:
 modelRuntimeFor(models, ctx): Promise<ModelRuntime>       // Pi runtime holding only models.allowed(ctx), sealed
 piModelFor(runtime, models, task, ctx, resolution?): { ref; model; resolution }
 prepareTurn({ session, runtime, models, call, pool, threadId, task?, thinking?, retry? }): Promise<Resolution>
-openThreadSession({ thread, models, cwd, extensions, settings? }): Promise<ThreadSession>
+openThreadSession({ thread, models, cwd, extensions, settings?, task?: () => Task }): Promise<ThreadSession>
 interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?: { thinking?; retry? }): Promise<Resolution>; dispose() }
 interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary } }   // LyricaOptions.meter
 ```
@@ -1691,6 +1723,22 @@ sleep.events                       // started, phase, finished: IDs only, never 
 
 ## core/workspace
 
+`ThreadWorkspace.code` is a core preference, off by default, stored by
+expand-only user step 14 (`thread_workspaces.code`). `inheritSettings`
+copies it to descendants; each child can edit it independently. It is not
+narrowed by ancestors and never changes permission mode.
+`ThreadSettings` returns `code: boolean`; PATCH accepts `code?: boolean`.
+The daemon's `Task` and `THREAD_TASKS` include `code`. A thread's `code`
+override wins in code mode; its Chat override does not apply. Thread model
+selection continues to use `preset`, never a profile choice.
+`threads({ action: "code", on, task?, done? })` changes the next turn and,
+when `task` or `done` is given, replaces the pool.db task text, emitting `settings`; subagents are refused.
+Project settings carry optional `threadsCode`, stored in encrypted user
+settings (`project.code.<pool>/<id>`), removed on forget. New child and
+routine threads apply it beside `threadsModel`; unset inherits the parent.
+The watcher exposes cached open PR checks via `codePulls`, without a new
+network call, and drops that cache on Lock.
+
 ```ts
 new Workspace(keyring, users, { excludePorts, frontDoor? })
 // excludePorts: lyricad's own ports, refused on every address; required, [] for none
@@ -1980,7 +2028,7 @@ missing thread is 404. Models sort by tokens descending. `threads` appears
 only for a project chat: the chat first, then descending tokens. The total
 is also `ProjectOverview.tokens`. User step 10 adds nullable
 `model_calls.read_tokens` and `call_totals` keyed by pool, thread, label,
-kind, with tokens, gpu_ms and calls. Pruning folds counted chat records
+kind, with tokens, gpu_ms and calls. Pruning folds counted chat and code records
 before deleting them, in one transaction; forgetting removes their totals.
 
 ## Push notifications

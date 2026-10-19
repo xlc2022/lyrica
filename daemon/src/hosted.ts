@@ -6,7 +6,7 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  formatEntry, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
+  codeRepositories, formatEntry, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -33,6 +33,7 @@ export interface HostOptions {
   searxng?: () => string | null;
   /** Child threads: every hosted thread gets the `threads` tool. */
   threads?: ThreadsHost;
+  codePulls?: (userId: string, pool: Pool, threadId: string) => string[];
   /** How often a thread whose message waits for a model asks the machines again. Default HEALTH_MS. */
   offlineRetryMs?: number;
   /** Her name for this deployment, which automatic recall leaves out. */
@@ -639,6 +640,12 @@ export class HostedThread {
     this.waitForModel();
   }
 
+  private turnTask: "chat" | "code" = "chat";
+
+  private chatTask(): "chat" | "code" {
+    return this.o.workspace.settings(this.userId).effective(this.threadId).code ? "code" : "chat";
+  }
+
   private waitForModel(ms = this.o.offlineRetryMs ?? HEALTH_MS): void {
     this.unhold();
     this.held = setTimeout(() => {
@@ -647,7 +654,7 @@ export class HostedThread {
       if (this.closed || this.busy || !waiting()) return;
       const send = () => { if (!this.closed && !this.busy && waiting()) void this.start(this.queued.length ? this.queued.splice(0).join("\n\n") : undefined).catch(() => {}); };
       // Anything but Offline (the list was changed to one that can't work, say) is said by the turn itself.
-      this.o.models.resolveLive("chat", this.o.models.callContext(this.userId, this.pool, this.threadId))
+      this.o.models.resolveLive(this.chatTask(), this.o.models.callContext(this.userId, this.pool, this.threadId))
         .then(send, (err) => (err instanceof Offline ? this.waitForModel() : send()));
     }, ms);
     this.held.unref();
@@ -670,7 +677,7 @@ export class HostedThread {
    */
   private async afterTurn(opened: Opened, aborted: boolean): Promise<void> {
     const pace = opened.meter.takePace();
-    if (pace) this.o.models.recordPace(this.userId, this.threadId, pace, "chat", this.pool);
+    if (pace) this.o.models.recordPace(this.userId, this.threadId, pace, this.turnTask, this.pool);
     const asked = opened.meter.pending;
     opened.meter.pending = undefined;
     // Stop means stop: a stopped turn's compaction is dropped.
@@ -968,9 +975,11 @@ export class HostedThread {
       const canDelegate = delegation.depth(ctx) < delegation.limits.depth;
       const meter = new ContextMeter();
       const { session, runtime, prepare, dispose } = await openThreadSession({
-        thread: ctx, models, cwd: this.o.cwd,
+        thread: ctx, models, cwd: this.o.cwd, task: () => tools.settings().code ? "code" : "chat",
         extensions: [
           createLyricaExtension(ctx, {
+            code: () => tools.settings().code,
+            codeRepositories: () => codeRepositories(tools.target(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }), this.o.codePulls?.(this.userId, this.pool, this.threadId)),
             persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter,
             recentWork: () => this.recentWork(view),
             reactions: () => this.unseenReactions.splice(0),
@@ -1022,7 +1031,7 @@ export class HostedThread {
         const text = reply.content.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("").trim();
         return text.replace(/^["'“]+|["'”.]+$/g, "").split("\n")[0]!.slice(0, 80) || undefined;
       };
-      return { session, view, meter, title, prepare: (opts?: { retry?: boolean }) => prepare(opts), dispose: () => { unsubscribe(); dispose(); view.close(); } };
+      return { session, view, meter, title, prepare: (opts?: { retry?: boolean }) => { this.turnTask = this.chatTask(); return prepare(opts); }, dispose: () => { unsubscribe(); dispose(); view.close(); } };
     } catch (err) {
       view.close();
       throw err;
@@ -1123,7 +1132,7 @@ export class HostedThread {
   private wentAway(endpointId: string): Offline | undefined {
     this.o.models.reportDown(endpointId);
     try {
-      this.o.models.resolve("chat", this.o.models.callContext(this.userId, this.pool, this.threadId));
+      this.o.models.resolve(this.chatTask(), this.o.models.callContext(this.userId, this.pool, this.threadId));
       return undefined;
     } catch (err) {
       return err instanceof Offline ? err : undefined;

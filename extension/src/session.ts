@@ -2,7 +2,7 @@ import {
   createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager,
   type AgentSession, type ExtensionFactory, type ModelRuntime,
 } from "@earendil-works/pi-coding-agent";
-import type { Models, Resolution } from "@lyrica/core";
+import type { Models, Resolution, Task } from "@lyrica/core";
 import { keepRecentFor, reserveFor } from "./context.ts";
 import type { ThreadContext } from "./index.ts";
 import { modelRuntimeFor, piModelFor, prepareTurn } from "./models.ts";
@@ -19,6 +19,7 @@ export interface ThreadSessionOptions {
   /** Lyrica herself (createLyricaExtension) or a subagent's worker, plus tools such as the workspace's. */
   extensions: ExtensionFactory[];
   settings?: Settings;
+  task?: () => Task;
 }
 
 /**
@@ -41,7 +42,8 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<Thread
   const { thread } = o;
   const runtime = await modelRuntimeFor(o.models, thread.call);
   // Any model will do to open with, even one whose machine is down: each turn picks again (prepare).
-  const { ref: chat, model } = piModelFor(runtime, o.models, "chat", thread.call, o.models.resolve("chat", thread.call, {}, { evenIfDown: true }));
+  const task = o.task?.() ?? "chat";
+  const { ref: chat, model } = piModelFor(runtime, o.models, task, thread.call, o.models.resolve(task, thread.call, {}, { evenIfDown: true }));
   // Pi's compaction reserve and kept tail follow each model's window, and her two lines follow that edge (linesFor).
   const modelOverrides = Object.fromEntries(o.models.allowed(thread.call).flatMap(({ endpoint, offerings }) => offerings.flatMap((off) => {
     const w = runtime.getModel(endpoint.id, off.modelId)?.contextWindow;
@@ -69,6 +71,6 @@ export async function openThreadSession(o: ThreadSessionOptions): Promise<Thread
   const answered = session.subscribe((e) => {
     if (e.type === "message_end" && e.message.role === "assistant" && e.message.stopReason !== "error" && session.model) o.models.reportUp(thread.user.id, session.model.provider);
   });
-  const prepare = (opts: { thinking?: boolean; retry?: boolean } = {}) => prepareTurn({ session, runtime, models: o.models, call: o.models.callContext(thread.user.id, thread.pool, thread.threadId), pool: thread.pool, threadId: thread.threadId, ...opts });
+  const prepare = (opts: { thinking?: boolean; retry?: boolean } = {}) => prepareTurn({ session, runtime, models: o.models, call: o.models.callContext(thread.user.id, thread.pool, thread.threadId), pool: thread.pool, threadId: thread.threadId, task: o.task?.() ?? "chat", ...opts });
   return { session, runtime, chat, prepare, dispose: () => { stop(); answered(); session.dispose(); } };
 }
