@@ -40,7 +40,9 @@ AGENTS.md, Workflow, is the rule; read it first. In short:
   the comparison; check each finding against the code before acting. The
   local clone is shallow, so fetch with enough depth to cover the week.
 - If a PR commits a `node_modules` symlink, a checkout replaces the real
-  one; test from a `git worktree` in the sc## State at handoff
+  one; test from a `git worktree` in the scratchpad instead.
+
+## State at handoff
 
 Nothing is waiting on this thread. Verified today and merged by their
 threads: #352 (code mode), #355, #359, #360, #361, #362, #364, #365 and
