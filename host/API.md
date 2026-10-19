@@ -193,6 +193,7 @@ seconds of audio.
     "capabilities": { "tools": true, "vision": false, "embedding": false, "reasoning": ["off", "on"] },
     "contextLength": 32768,
     "maxContextLength": 40960,
+    "parallel": 1,
     "sampling": { "temperature": 0.7, "topP": 0.8, "topK": 20 },
     "kvBytes": 4294967296,
     "stretch": null,
@@ -237,7 +238,9 @@ seconds of audio.
     couldn't read it. `kvBytes` is the KV cache at the served context, by
     the host's estimate (`null` for voices, and where it can't tell), and
     `stretch` is the YaRN factor, or `null`. Lyrica plans her context by
-    `contextLength`.
+    `contextLength`. `parallel` is how many requests a chat model serves at
+    once (see "Placement and serving settings"), `null` for other models; Lyrica sends it
+    no more at once.
   - `sampling` is what the model's publisher recommends, which its server
     uses for a setting a request leaves out: a GGUF's `general.sampling.*`
     (`temp`, `top_p`, `top_k`, `min_p`, `penalty_repeat`), or a safetensors
@@ -361,7 +364,7 @@ embeddings and dictation receive neither parser.
   `full_attention_interval` the same way.
 - llama.cpp only: `kvCacheType` (`f16`, `q8_0`, `q4_0`), `flashAttention`
   (`auto`, `on`, `off`), `gpuLayers` (0 to 999), `parallel` (requests
-  served at once, 1 to 64). A `q8_0` or `q4_0` KV cache needs
+  served at once, 1 to 64; see below). A `q8_0` or `q4_0` KV cache needs
   `flashAttention` set to `on`. `vision: false` loads it without its
   projector (less memory, no images). `mtp: false` turns off drafting with
   MTP, which is on when the model has an MTP file or layers: llama.cpp gets
@@ -370,11 +373,17 @@ embeddings and dictation receive neither parser.
   projector and the MTP file while they are used.
 - vLLM only: `memoryShare` (0.05 to 0.95 of each of its GPUs; by default
   what the model needs, in steps of 5%, so several vLLM models can share a
-  GPU), `maxSeqs` (1 to 1024), `dtype` (`auto`, `bfloat16`, `float16`).
+  GPU), `maxSeqs` (requests served at once, 1 to 1024; see below), `dtype`
+  (`auto`, `bfloat16`, `float16`).
   The weights and the KV cache for the context must fit in the share of
   each GPU (`too_big` otherwise, saying to lower the context length or
   raise the share). A vLLM server that exits while starting fails its load
   at once (`model_unavailable`), rather than after the load timeout.
+- Requests a chat model serves at once: `parallel` (llama.cpp) or
+  `maxSeqs` (vLLM), else by the context it is served with: 1 below 200k
+  tokens, 2 from 200k, 4 from 500k. They share one cache of the whole
+  context (llama.cpp gets `kv-unified = true`), and the model list reports
+  the number as `parallel`, which the daemon never exceeds.
 - Both: `batchSize` (32 to 65536: llama.cpp's batch size, vLLM's batched
   tokens), `chatTemplate` (a Jinja template, at most 64 kB, used instead of
   the model's own).

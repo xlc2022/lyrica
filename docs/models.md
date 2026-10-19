@@ -918,11 +918,15 @@ model is served with. It waits while the running requests plus its own
 wouldn't fit, or while the model already serves its limit: 1 below a
 200,000-token window, 2 from 200,000, 4 from 500,000, and never more than
 the server's own slots where it says (LM Studio's `parallel`, read with the
-loaded context into the offering's `parallel`). A request alone always
+loaded context, or a model host's `parallel` from its model list, into the
+offering's `parallel`). A model host serves a chat model with the same
+limit by default and one shared cache (host/API.md, "Placement and serving
+settings"). A request alone always
 runs, and requests start in the order they asked. A wait the turn aborts
 ends as an aborted reply. LM Studio's "Context size has been exceeded" is
 marked as an overflow, so Pi compacts and retries instead of failing. Image
-jobs on a host's GPU are outside this.
+jobs on a host take turns with its chat models in the host's own queue for
+GPU memory, which counts each chat model's whole cache.
 
 ## Child threads
 

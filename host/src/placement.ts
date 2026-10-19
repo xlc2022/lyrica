@@ -106,6 +106,20 @@ export function contextOf(model: TextModel, s: ModelSettings): number {
   return Math.min(s.contextLength ?? DEFAULT_CONTEXT, maxContextOf(model, s) ?? Infinity);
 }
 
+/**
+ * Requests a chat model serves at once, sharing one cache of its context:
+ * its setting (llama.cpp's parallel, vLLM's maxSeqs), else by its context:
+ * 1 below 200k, 2 from 200k, 4 from 500k, as Lyrica's daemon shares a local
+ * model (docs/models.md, Local servers). Null for other models.
+ */
+export function concurrentOf(model: TextModel, s: ModelSettings): number | null {
+  if (model.kind !== "chat") return null;
+  const set = model.server === "vllm" ? s.maxSeqs : s.parallel;
+  if (set) return set;
+  const context = contextOf(model, s);
+  return context >= 500_000 ? 4 : context >= 200_000 ? 2 : 1;
+}
+
 /** Bytes for the weights, and for the KV cache at the model's context. */
 export function sizes(model: TextModel, s: ModelSettings): { weights: number; kv: number } {
   if (model.kind === "image" || model.kind === "speak") return { weights: Math.round(model.size * 1.1), kv: 0 };

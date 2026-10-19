@@ -5,7 +5,7 @@ import type { RecordEntry } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import { scanTextModels, type TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
-import { SERVER_NAMES, SERVERS, contextOf, maxContextOf, serverOf, sizes, usesVision, validate, type Server } from "./placement.ts";
+import { SERVER_NAMES, SERVERS, concurrentOf, contextOf, maxContextOf, serverOf, sizes, usesVision, validate, type Server } from "./placement.ts";
 import { PRIORITIES, type Priority, type Scheduler } from "./scheduler.ts";
 import { NO_USAGE, type StateFile, type Usage } from "./state.ts";
 
@@ -290,6 +290,8 @@ export class Runtime {
       // The context it is served with; maxContextLength is what it was trained for.
       contextLength: m.kind === "image" || m.kind === "speak" ? null : contextOf(m, this.scheduler.served(m)),
       maxContextLength: m.contextLength,
+      // Requests it serves at once, sharing that context.
+      parallel: concurrentOf(m, this.scheduler.served(m)),
       // What its publisher recommends, which its server uses for a setting a request leaves out.
       sampling: m.sampling ?? null,
       kvBytes: this.servingEntry(m).kvBytes,

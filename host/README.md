@@ -276,6 +276,9 @@ revoked. A revoked server must pair again.
     KV-cache type, flash attention, GPU layers, parallel requests, batch
     size, a chat template, and for vLLM a memory share, so several vLLM
     models can share one GPU (each is its own server).
+  - A chat model serves 1 request at a time below a 200k context, 2 from
+    200k and 4 from 500k, sharing one cache of its context, unless its
+    parallel requests (llama.cpp) or max sequences (vLLM) say otherwise.
   - Settings apply at the next load, or now with Reload. A placement that
     can't work is refused when it's saved, with the reason.
 - **Each GPU** says which servers it may run (llama.cpp, vLLM, images,

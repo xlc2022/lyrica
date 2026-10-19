@@ -1,10 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { autoContext, defaultGpu, validate, type GpuSettings } from "../src/placement.ts";
+import { autoContext, concurrentOf, defaultGpu, validate, type GpuSettings } from "../src/placement.ts";
 import type { Gpu } from "../src/gpus.ts";
 import { GIB, textModel } from "./fakes.ts";
 
 const gpu = (index: number, gb: number, name = "RTX 3090"): Gpu => ({ index, name, vendor: "nvidia", total: gb * GIB, used: GIB });
 const all = (i: number): GpuSettings => (void i, defaultGpu());
+
+describe("requests a chat model serves at once", () => {
+  const auto = { placement: { mode: "auto" as const } };
+  const llama = textModel("llama", 20, { contextLength: 1_048_576 });
+  const vllm = textModel("vllm", 20, { server: "vllm", format: "safetensors", contextLength: 1_048_576 });
+
+  it("go by the context it is served with: 1 below 200k, 2 from 200k, 4 from 500k", () => {
+    expect(concurrentOf(llama, { ...auto, contextLength: 131_072 })).toBe(1);
+    expect(concurrentOf(llama, { ...auto, contextLength: 262_144 })).toBe(2);
+    expect(concurrentOf(vllm, { ...auto, contextLength: 524_288 })).toBe(4);
+  });
+
+  it("follow its own setting, and are null for other models", () => {
+    expect(concurrentOf(llama, { ...auto, contextLength: 131_072, parallel: 3 })).toBe(3);
+    expect(concurrentOf(vllm, { ...auto, contextLength: 131_072, maxSeqs: 8, parallel: 3 })).toBe(8);
+    expect(concurrentOf(textModel("embed", 1, { kind: "embedding" }), auto)).toBeNull();
+  });
+});
 
 describe("placements, as they are saved", () => {
   const gpus = [gpu(0, 24), gpu(1, 24), gpu(2, 96, "RTX PRO 6000")];

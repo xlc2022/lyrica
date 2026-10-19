@@ -1513,7 +1513,7 @@ export class Models {
   /** A host's text models, from its library (host/API.md "Models"). */
   private async hostModels(ep: Endpoint): Promise<DiscoveredModel[]> {
     const list = listIn<{
-      id: string; kind?: string; sha256?: string | null; contextLength?: number | null; size?: number; downloaded?: boolean; identity?: ModelIdentity | null; sampling?: Record<string, unknown> | null;
+      id: string; kind?: string; sha256?: string | null; contextLength?: number | null; parallel?: number | null; size?: number; downloaded?: boolean; identity?: ModelIdentity | null; sampling?: Record<string, unknown> | null;
       capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null; opensThinking?: boolean; transcribe?: boolean; speak?: { voices?: unknown } | null };
     }>(await this.hostCall(ep, "GET", "/host/v1/models"), "models");
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
@@ -1529,6 +1529,7 @@ export class Models {
       return {
         modelId: m.id,
         ...(m.contextLength ? { servedContext: m.contextLength } : {}),
+        ...(m.parallel ? { servedParallel: m.parallel } : {}),
         ...(m.capabilities?.tools !== undefined ? { tools: !!m.capabilities.tools } : {}),
         ...(m.capabilities?.vision !== undefined ? { vision: !!m.capabilities.vision } : {}),
         ...(m.capabilities?.embedding || m.kind === "embedding" ? { embedding: true } : {}),

@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFile
 import { join } from "node:path";
 import { HostError } from "./http.ts";
 import type { TextModel } from "./library.ts";
-import { contextOf, usesMtp, usesVision, type ModelSettings, type Option } from "./placement.ts";
+import { concurrentOf, contextOf, usesMtp, usesVision, type ModelSettings, type Option } from "./placement.ts";
 
 export interface Backend {
   /** Loads the model on the placement's GPUs with its settings, and resolves when it answers. */
@@ -111,7 +111,9 @@ export class LlamaCpp implements Backend {
       if (s.stretch) lines.push("rope-scaling = yarn", `rope-scale = ${s.stretch.factor}`, `yarn-orig-ctx = ${s.stretch.originalContext}`);
       lines.push(`n-gpu-layers = ${s.gpuLayers ?? 999}`, `flash-attn = ${s.flashAttention ?? "auto"}`);
       if (s.kvCacheType) lines.push(`cache-type-k = ${s.kvCacheType}`, `cache-type-v = ${s.kvCacheType}`);
-      if (s.parallel) lines.push(`parallel = ${s.parallel}`);
+      // One cache of the whole context, shared by the requests it serves at once, as the daemon plans.
+      const parallel = concurrentOf(model, s);
+      if (parallel) lines.push(`parallel = ${parallel}`, "kv-unified = true");
       if (s.batchSize) lines.push(`batch-size = ${s.batchSize}`);
       if (s.chatTemplate) lines.push(`chat-template-file = ${this.templates.write(s.chatTemplate)}`);
       if (model.kind === "embedding") lines.push("embeddings = true");
@@ -237,7 +239,7 @@ export class Vllm implements Backend {
         tensorParallel: at.parallel === "tensor" ? at.gpus.length : 1,
         pipelineParallel: at.parallel === "pipeline" ? at.gpus.length : 1,
         memoryShare: at.share, maxModelLen: contextOf(m, s),
-        maxNumSeqs: s.maxSeqs ?? null, maxNumBatchedTokens: s.batchSize ?? null, dtype: s.dtype ?? null,
+        maxNumSeqs: concurrentOf(m, s) ?? s.maxSeqs ?? null, maxNumBatchedTokens: s.batchSize ?? null, dtype: s.dtype ?? null,
         chatTemplate: s.chatTemplate ? this.templates.write(s.chatTemplate) : null,
         // The supervisor merges these into the model's own RoPE settings.
         ropeOverride: s.stretch ? { factor: s.stretch.factor, originalContext: s.stretch.originalContext } : null,
