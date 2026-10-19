@@ -188,8 +188,10 @@ Every thread's prompt says that outside a project chat she codes in the
 thread itself: she turns on code mode with a task and turns it off when the
 coding is done. She starts a `code: true` child only when the user asks for
 one, and delegates a small side change to coder. A project chat splits a
-build with separable parts into one `code: true` thread per part, started
-together, each brief naming the files it owns; a small job gets one thread.
+build with several parts even when they fit together: one `code: true`
+thread first sets up the repository and the shared interfaces, then one
+`code: true` thread per part starts, together, each brief naming the files
+it owns; a small job (one feature or fix) gets one thread.
 She checks the whole herself before saying it's done. A project thread
 changes and commits only the files its brief gives it. The parent's prompt lists
 the roles and saved workflows, after a line (`SHARED_SANDBOX`) saying that

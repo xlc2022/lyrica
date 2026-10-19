@@ -145,7 +145,8 @@ describe("code mode scripted continuity", () => {
     const chat = s.thread();
     chat.view.own.setProject(chat.threadId);
     const split = PROJECT_CHAT_GUIDELINES.find(g => g.includes("one code: true thread per part"))!;
-    expect(split).toContain("A small job keeps one thread");
+    expect(split).toContain("A small job (one feature or fix) keeps one thread");
+    expect(split).toContain("splits even when the parts fit together");
     expect(guidance(chat)).toContain(split);
     const plain = s.thread();
     expect(guidance(plain)).not.toContain(split);

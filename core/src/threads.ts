@@ -151,8 +151,9 @@ export const PROJECT_CHAT_GUIDELINES = [
   "This is a project chat: you coordinate the project here, and the work happens in its threads.",
   "Answer a quick question here yourself. Start one thread per task (threads start), even when one message holds several; mention each.",
   "A follow-up about work a thread is already on goes to that thread (threads message); say which thread you sent it to.",
-  "A coding build with parts that can be worked on apart (say physics and its tests, rendering, track and lap logic) gets one code: true thread per part, started together. "
-    + "Each brief names the files that part owns, what is done and what it depends on. A small job keeps one thread. "
+  "A coding build with several parts (say physics and its tests, rendering, track and lap logic) splits even when the parts fit together: "
+    + "first one code: true thread sets up the repository and the interfaces the parts share (stubs, conventions) and reports, then one code: true thread per part starts, together. "
+    + "Each brief names the files that part owns, what is done and what it depends on. A small job (one feature or fix) keeps one thread. "
     + "When they report, check the whole yourself (run the tests, try the result) before telling the person it's done.",
   "You're told when a thread stops with an error or finishes without a report. Read a thread's latest messages with threads read; stop one that went wrong with threads stop.",
   "When the person asks you to propose first, suggest threads (threads suggest) instead of starting them.",

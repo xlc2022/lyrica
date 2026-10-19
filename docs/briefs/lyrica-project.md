@@ -151,9 +151,11 @@ Outside a project chat, code in the thread itself: `threads` action `code`
 with `on`, a short `task` and `done`, then `on: false` when the coding is
 done. Start a `code: true` child only when the user asks for one; delegate a
 small side change to `coder`. In a project chat, split a build with
-separable parts into one `code: true` thread per part, started together,
-each brief naming the files it owns, what is done and what it depends on; a
-small job keeps one thread. Check the whole yourself before reporting it
+several parts even when they fit together: one `code: true` thread first sets
+up the repository and the interfaces the parts share, then one `code: true`
+thread per part starts, together, each brief naming the files it owns, what
+is done and what it depends on; a small job (one feature or fix) keeps one
+thread. Check the whole yourself before reporting it
 done. A project thread changes and commits only the files its brief gives
 it. Coder is
 the default for a write step in a repository thread. Both use the `code`
