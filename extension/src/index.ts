@@ -11,6 +11,7 @@ import { reactionLines, type UserReaction } from "./react.ts";
 import { registerMemoryTools } from "./tools.ts";
 
 export * from "./assemble.ts";
+export * from "./code.ts";
 export * from "./code-repositories.ts";
 export * from "./context.ts";
 export * from "./gate.ts";
