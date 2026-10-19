@@ -1,10 +1,11 @@
-import type { Api, Model } from "@earendil-works/pi-ai";
-import { ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import type { Api, Model, TranscriptContext } from "@earendil-works/pi-ai";
+import { estimateTokens, ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { PlanCredentials, planProvider } from "./plans.ts";
 import { acceptedSettings, DEFAULT_CONTEXT, replyCap, isPlan, CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
 import { streamWithInlineThinking } from "./inline-thinking.ts";
 import { capToolCalls, objectTools } from "./tool-stream.ts";
+import { markOverflow, sharedStream, shareModel } from "./model-share.ts";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
@@ -98,7 +99,16 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
         const stop = new AbortController();
         const signal = options?.signal ? AbortSignal.any([options.signal, stop.signal]) : stop.signal;
         const midThought = startsMidThought(list.find((m) => m.modelId === model.id), options?.reasoning);
-        return capToolCalls(streamWithInlineThinking(model as Model<"openai-completions">, objectTools(context), { ...options, signal }, midThought), () => stop.abort());
+        const send = () => markOverflow(capToolCalls(streamWithInlineThinking(model as Model<"openai-completions">, objectTools(context), { ...options, signal }, midThought), () => stop.abort()));
+        if (endpoint.kind !== "local") return send();
+        // A local server's cache is shared by everything it serves at once: wait for room (model-share.ts).
+        const need = Math.min(model.contextWindow, requestTokens(context) + model.maxTokens);
+        const failed = (reason: "aborted" | "error", message: string) => ({ type: "error" as const, reason, error: {
+          role: "assistant" as const, content: [], api: model.api, provider: model.provider, model: model.id,
+          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+          stopReason: reason, errorMessage: message, timestamp: Date.now() } });
+        const slots = models.offering(ctx.userId, offerings.get(`${endpoint.id}\u0000${model.id}`)?.offering.id ?? "")?.offering.parallel;
+        return sharedStream(shareModel(models, `${endpoint.baseUrl}\u0000${model.id}`, need, model.contextWindow, options?.signal, slots), send, failed);
       },
     });
     // A runtime key is used literally; a key in the provider config would be read as `$ENV` or `!command`.
@@ -113,6 +123,16 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
   const sealed = () => { throw new Error("Lyrica's model runtime takes no other providers"); };
   Object.assign(runtime, { registerProvider: sealed, registerNativeProvider: sealed, registerVirtualModel: sealed, login: sealed });
   return runtime;
+}
+
+/** About how many tokens a request's transcript takes: Pi's estimate per message, and its tool schemas. */
+function requestTokens(context: TranscriptContext): number {
+  let n = 0;
+  for (const m of context.messages) {
+    if (m.role === "system") n += Math.ceil(JSON.stringify(m).length / 4);
+    else n += estimateTokens(m as Parameters<typeof estimateTokens>[0]);
+  }
+  return n;
 }
 
 /** The Pi model for a task, resolved through the router. Throws CloudModelForbidden like resolveModel. */

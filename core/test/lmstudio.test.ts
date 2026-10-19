@@ -17,7 +17,7 @@ async function fakeLmStudio(o: { context?: number; max: number; refuseAbove?: nu
       const json = (status: number, v: unknown) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(v)); };
       if (req.method === "GET" && req.url === "/v1/models") return json(200, { object: "list", data: [{ id: "qwen-flash", object: "model" }] });
       if (req.method === "GET" && req.url === "/api/v1/models") {
-        return json(200, { models: [{ type: "llm", key: "qwen-flash", max_context_length: o.max, capabilities: { vision: vision ?? false, trained_for_tool_use: true }, loaded_instances: loaded ? [{ id: "qwen-flash", config: { context_length: loaded } }] : [] }] });
+        return json(200, { models: [{ type: "llm", key: "qwen-flash", max_context_length: o.max, capabilities: { vision: vision ?? false, trained_for_tool_use: true }, loaded_instances: loaded ? [{ id: "qwen-flash", config: { context_length: loaded, parallel: 4 } }] : [] }] });
       }
       const b = JSON.parse(body || "{}") as { instance_id?: string; model?: string; context_length?: number };
       if (req.method === "POST" && req.url === "/api/v1/models/unload") { calls.push(`unload ${b.instance_id}`); loaded = undefined; return json(200, { instance_id: b.instance_id }); }
@@ -41,7 +41,7 @@ describe("LM Studio context", () => {
     const s = await withModels();
     const ep = s.models.addEndpoint(s.ada, { name: "studio", kind: "local", baseUrl: studio.baseUrl });
     const [o] = await s.models.discover(s.ada, ep.id);
-    expect(s.models.offering(s.ada.id, o!.id)!.offering.contextWindow).toBe(4096);
+    expect(s.models.offering(s.ada.id, o!.id)!.offering).toMatchObject({ contextWindow: 4096, parallel: 4 });
     expect(await s.models.localContext(s.ada.id, o!.id)).toEqual({ served: 4096, max: 131072 });
     expect(s.models.localCopies(s.ada, s.ctx()).map((c) => c.name)).toContain("qwen-flash");
     // A private or local-only thread has none: the models tool isn't there.

@@ -626,7 +626,7 @@ and the parent thread gets a note. Only the owner of the parent thread gets
 there (the subagent's thread is in their pool), and a parent that's gone, or
 a subagent that can't take the message now, is `409` with the reason. Its
 stored messages carry `from`: Lyrica, or the user by their current name.
-Stop in a subagent's thread denies its waiting requests and stops its work. `…/roles` and `…/workflows` read and change the user's
+Stop in a subagent's thread denies its waiting requests and stops its work. Stop in a project chat also stops the runs it started and holds its project's looks until the user writes there again (docs/delegation.md, Watching threads). `…/roles` and `…/workflows` read and change the user's
 custom roles and saved workflows (`DelegationStore`, in `user.db`).
 
 Event IDs are `<epoch>-<n>`; the epoch changes with every start. A reconnect

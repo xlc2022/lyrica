@@ -101,7 +101,8 @@ function fakeModel() {
       const [, kind, rest] = /^\/(local|cloud|long)\/v1(\/.*)$/.exec(req.url ?? "") ?? [];
       if (req.method === "GET" && rest === "/models") {
         res.writeHead(200, { "content-type": "application/json" });
-        return res.end(JSON.stringify({ object: "list", data: [{ id: kind === "long" ? LONG_MODEL : `${kind}-model`, object: "model" }] }));
+        // Served at 1M, so threads share it four at a time as on a big server (docs/models.md, Local servers).
+        return res.end(JSON.stringify({ object: "list", data: [{ id: kind === "long" ? LONG_MODEL : `${kind}-model`, object: "model", meta: { n_ctx: 1_048_576 } }] }));
       }
       if (req.method !== "POST" || rest !== "/chat/completions") { res.writeHead(404); return res.end(); }
       const chat = JSON.parse(body) as Chat;

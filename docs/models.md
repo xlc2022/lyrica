@@ -770,7 +770,7 @@ never sent with a chat request.
   or the context LM Studio has it loaded with), else by hand, else
   discovered, else assumed (`DEFAULT_CONTEXT`, 131,072, which current models
   offer at least). Compaction and group fitting use that context window.
-- LM Studio's loaded context and vision are read again before each turn on
+- LM Studio's loaded context, parallel slots and vision are read again before each turn on
   that model and when its Settings open (`refreshServed`), so a load made in
   LM Studio itself applies from the next request; an unloaded model keeps
   the last context it was loaded with.
@@ -907,6 +907,22 @@ the three reports the context window through `/v1/models` except
 llama-server; LM Studio reports a loaded model's on its own API. Where none
 does, a window is assumed (131,072); enter the right one with
 `endpoints model … --context`.
+
+**A local model is shared** (`extension/src/model-share.ts`). A local
+server or host serves its requests from one context cache (LM Studio's is
+unified), so threads that each fit can overflow it together. Every request
+to a local model, from any thread, subagent or project chat in the daemon,
+first takes a share of that model, keyed by the endpoint's address and the
+model: its estimated transcript plus its reply cap, against the window the
+model is served with. It waits while the running requests plus its own
+wouldn't fit, or while the model already serves its limit: 1 below a
+200,000-token window, 2 from 200,000, 4 from 500,000, and never more than
+the server's own slots where it says (LM Studio's `parallel`, read with the
+loaded context into the offering's `parallel`). A request alone always
+runs, and requests start in the order they asked. A wait the turn aborts
+ends as an aborted reply. LM Studio's "Context size has been exceeded" is
+marked as an overflow, so Pi compacts and retries instead of failing. Image
+jobs on a host's GPU are outside this.
 
 ## Child threads
 

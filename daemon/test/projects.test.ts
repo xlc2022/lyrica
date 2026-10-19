@@ -29,7 +29,8 @@ async function setup(opts: Parameters<typeof daemon>[1] = {}) {
   const dm = await daemon(rt, opts);
   await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
   const ada = await login(dm.base, "ada", "pw");
-  const model = await fakeOpenAI({ label: "local", models: [{ id: "qwen3.8-27b" }] });
+  // Served at 1M, so the project's threads may share it four at a time (docs/models.md, Local servers).
+  const model = await fakeOpenAI({ label: "local", models: [{ id: "qwen3.8-27b", meta: { n_ctx: 1_048_576 } }] });
   await localModel(ada, rt.ada.id, model.baseUrl);
   const scripts = new Map<string, Script[]>();
   const script = (name: string) => { if (!scripts.has(name)) scripts.set(name, []); return scripts.get(name)!; };
@@ -408,6 +409,32 @@ describe("projects", () => {
     expect((await get(backups)).state).toBe("queued");
     expect((await messages(threadPath(backups))).some((m) => m.role === "assistant")).toBe(false);
     expect((await ada.post(`${threadPath(dns)}/messages`, { text: "hello?" })).status).toBe(409);
+  });
+
+  it("hold every look after the person stops the project chat, until they write in the project again", async () => {
+    const { d, ada, rt, project, path, script, requests, say, stream, threadPath, messages } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
+    const asked = () => requests.filter((c) => who(c) === "watching").length;
+    script("chat").push(start(["DNS", "dns: move DNS to the router"]), { text: "Started." });
+    script("dns").push({ text: "DNS moved." });
+    const { events } = await say("move DNS");
+    const dns = ends(events).flatMap((e) => e.threads ?? [])[0]!.id;
+    await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant"));
+    // A turn Ada started in the chat, stopped while it works; the stopped turn ends after Stop.
+    script("chat").push(() => new Promise<Reply>(() => {}));
+    const from = stream.events.length;
+    const chatCalls = requests.length;
+    await ada.post(`${path}/messages`, { text: "keep going" });
+    await until(async () => requests.length, (n) => n > chatCalls);
+    expect((await ada.post(`${path}/stop`)).status).toBe(200);
+    await stream.until((e) => e.type === "turn_end", from);
+    d.services!.watcher.failed(rt.ada.id, "general", project.id, dns);
+    await new Promise((r) => setTimeout(r, 400));
+    expect(asked()).toBe(0);
+    // Ada writes in DNS: looks come again.
+    script("dns").push({ text: "Rechecked." });
+    script("watching").push({ text: JSON.stringify({ tell: [] }) });
+    await ada.post(`${threadPath(dns)}/messages`, { text: "check it again" });
+    await until(async () => asked(), (n) => n === 1);
   });
 
   it("watch its threads: a look is one call to the Watching model that tells the thread it affects, with no turn of the project chat", async () => {

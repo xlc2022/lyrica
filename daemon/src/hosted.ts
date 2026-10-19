@@ -545,7 +545,7 @@ export class HostedThread {
     // Whether the person's own text is part of this turn: a child's wake or a marked message isn't.
     let theirs = !!opts.person;
     let childWake = !!opts.childWake, wake = opts.wake;
-    this.o.onTurn?.(this.userId, this.pool, this.threadId, true);
+    this.o.onTurn?.(this.userId, this.pool, this.threadId, true, theirs);
     try {
       for (let next: string | undefined = text; next !== undefined && !this.closed;) {
         this.childWakeTurn = childWake;

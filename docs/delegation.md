@@ -67,7 +67,10 @@ of:
 | `workflow: name` (with `input`) | A saved chain, loop or council, with `{input}` filled in. |
 
 Any of them can add `background: true`, `folders`, `readOnly: true` or
-`internet: false`.
+`internet: false`. A project chat's runs always go to the background, so
+the chat can tell the person what it started. Elsewhere a foreground run
+holds the turn for at most `foregroundMs`; one still working then carries on
+in the background, with its result delivered as a message.
 
 `folders` narrows granted **host folders**, not paths inside the sandbox such
 as `/workspace/repos/<name>`. Omit it when a scout needs to read the parent's
@@ -260,7 +263,9 @@ the thread's scratch folder (`/workspace`).
   a tool call still running (a build that prints nothing) doesn't count;
   the tool's own timeout and `timeoutMs` bound those. Neither limit counts time waiting for a slot. A subagent
   past either is stopped, with the reason in its result;
-- `notes`: notes per stretch of work, default 3.
+- `notes`: notes per stretch of work, default 3;
+- `foregroundMs`: how long a foreground run holds its parent's turn,
+  default 5 minutes.
 
 The journal gets one line when a subagent starts (run, thread, role and
 model), finishes or is stopped (with the reason), never its text.
@@ -583,7 +588,9 @@ A project chat's child threads are the project's threads
   user's messages and updates wait for one, so threads can't keep each
   other going; a failure or a wait still brings a look, which tells no
   thread but may raise. A look never tells a thread it was about unless
-  that thread asked something.
+  that thread asked something. Stop pressed in the project chat stops its
+  runs, drops a pending look and holds every look until the user writes in
+  the project again.
   Pending looks and the once-a-turn flags live in memory only.
 
 **Forgetting** a parent forgets its child threads too when asked (the

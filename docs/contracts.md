@@ -473,7 +473,7 @@ class Models {                                              // new Models(keyrin
   offeringSettings(userId, offeringId): { values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
                                           dropped: (keyof AnswerSettings)[]; defaults: ModelDefaults;   // the sampling the model reports as its own
                                           contextWindow: { value; source: "host" | "hand" | "discovered" | "assumed" } }   // assumed: DEFAULT_CONTEXT, 131,072
-  refreshServed(userId, offeringId, timeoutMs = 1500): Promise<void>   // LM Studio's loaded context and vision, read again (before each turn, on Settings)
+  refreshServed(userId, offeringId, timeoutMs = 1500): Promise<void>   // LM Studio's loaded context, parallel slots and vision, read again (before each turn, on Settings)
   rereadLocal(actor): Promise<void>   // the user's local endpoints discovered again, once per daemon run (lyricad, on the first unlock); shared ones as an administrator
   setOfferingSettings(actor, offeringId, change, scope: "shared" | "mine" = "mine")   // null clears a value
   // Library, tokens, downloads, delete
@@ -643,6 +643,7 @@ delegation.store                                       // roles and saved workfl
 delegation.forget(userId, pool, threadId)              // before forgetThread: stops its runs
 delegation.forgetSubagents(userId, pool, threads)      // before truncateThread: stops runs with a subagent among them
 delegation.stopAll(userId?)                            // Lock and shutdown
+delegation.stopRuns(userId, pool, threadId)            // Stop in a project chat: the runs it started
 ```
 
 One model-facing tool: `delegate({ action?, ... })`.
@@ -655,8 +656,10 @@ write-capable step in a repository thread selects coder; otherwise worker.
 Custom roles override built-ins by name.
 - The default action runs work: `task` with an optional `role` and `tier`;
   or `tasks: [...]` (parallel), `chain: [...]`, `loop`, `council`, or
-  `workflow: name`. Any of these can be `background: true`, and a run can
-  set `workers` (1 to 8) when the person asked for more or fewer at once.
+  `workflow: name`. Any of these can be `background: true` (always, in a
+  project chat), and a run can set `workers` (1 to 8) when the person asked
+  for more or fewer at once. A foreground run still working after
+  `limits.foregroundMs` carries on in the background.
   She picks a tier; a step's `model` is only one the person or a saved
   workflow named, resolved by `Models.find`, else `matchModel` over
   `Models.textModels(ctx)`; a name that fits no one model fails with the
@@ -1085,6 +1088,15 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   hundreds. Each call reaches the views as `tool_call` (`toolCallId`, `name`)
   as soon as the model starts writing it; the live view adds its marker then
   and fills in its arguments in place at `tool_start`.
+- **Shared local models** (`extension/src/model-share.ts`, around every
+  local endpoint's stream in `modelRuntimeFor`): `shareModel(scope, key, need,
+  window, signal?)` waits until a request fits beside the ones running on
+  that model (tokens and `concurrentLimit(window, slots?)`: 1 below 200k, 2
+  from 200k, 4 from 500k, at most the offering's `parallel`) and returns its
+  release, which an abort also calls; `scope` is the daemon's `Models`, so a
+  daemon started again in the same process holds nothing; `markOverflow` adds a known
+  overflow text to LM Studio's "Context size has been exceeded" so Pi
+  compacts and retries (docs/models.md, Local servers).
 - **Tool definitions are resent with every reply** (principle 8): a
   model-facing choice of strings is Pi's `StringEnum` (`"enum"`), not a union
   of literals, which is shorter and accepted by every provider; a tool's

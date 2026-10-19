@@ -59,7 +59,31 @@ export class Watcher {
   /** A failure or wait already counted in the thread's current turn, by `user/pool/thread/what`. */
   private readonly fired = new Set<string>();
 
+  /** Projects whose chat the person stopped, by `user/pool/project`: no look until they write in the project again. */
+  private readonly held = new Set<string>();
+
   constructor(private readonly o: WatchOptions) {}
+
+  /** The person pressed Stop in a project chat: nothing pending goes, and nothing wakes it until they write in the project. */
+  stopped(userId: string, pool: Pool, project: string): void {
+    const k = key(userId, pool, project);
+    this.held.add(k);
+    const p = this.pending.get(k);
+    if (p) { clearTimeout(p.timer); this.pending.delete(k); }
+  }
+
+
+  /** The person wrote in a thread: a Stop's hold on its project ends. Not at a turn's end, since the stopped turn itself ends after Stop. */
+  wrote(userId: string, pool: Pool, threadId: string): void {
+    if (!this.held.size) return;
+    try {
+      const view = this.o.memory.openThreadView(userId, pool);
+      try {
+        const project = view.own.projectOf(threadId);
+        if (project) this.held.delete(key(userId, pool, project));
+      } finally { view.close(); }
+    } catch { /* locked */ }
+  }
 
   /** A turn started in a thread: it may trigger a look for a failure or a wait again. */
   turnStarted(userId: string, pool: Pool, threadId: string): void {
@@ -107,6 +131,7 @@ export class Watcher {
 
   /** Lock or shutdown: nothing pending goes. */
   close(userId?: string): void {
+    for (const k of this.held) if (!userId || k.startsWith(`${userId}/`)) this.held.delete(k);
     for (const [k, p] of this.pending) if (!userId || k.startsWith(`${userId}/`)) { clearTimeout(p.timer); this.pending.delete(k); }
     for (const k of this.fired) if (!userId || k.startsWith(`${userId}/`)) this.fired.delete(k);
   }
@@ -129,7 +154,7 @@ export class Watcher {
     const k = key(userId, pool, project);
     // Threads can keep each other going with updates; failures and waits they can't cause that way.
     const capped = what === "said" || what === "update";
-    if ((capped && (this.run.get(k) ?? 0) >= WATCH_RUN) || !this.o.wanted(userId, pool, project) || !this.mayQuote(userId, pool, project, threadId)) return false;
+    if (this.held.has(k) || (capped && (this.run.get(k) ?? 0) >= WATCH_RUN) || !this.o.wanted(userId, pool, project) || !this.mayQuote(userId, pool, project, threadId)) return false;
     let p = this.pending.get(k);
     if (!p) {
       p = { timer: setTimeout(() => void this.look(userId, pool, project), this.o.delayMs ?? 30_000), threads: new Map() };
