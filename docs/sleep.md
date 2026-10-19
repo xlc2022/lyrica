@@ -37,7 +37,7 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
 | Phases are agentic sessions in her own voice | yes | **Keep.** This is the heart of it. A JSON extraction pipeline (v1's approach) loses the voice. |
 | WAKE as 400–800 words of first-person narrative | yes | **Keep.** It serves the thesis better than a terse status list. |
 | FACTS as one file | yes | **Change** to pages (one per subject, with citations), for lineage. |
-| Sleep saved as experience | yes | **Keep.** Sleep sessions are threads in a "sleep" area of the pool, so dreams can be recalled. |
+| Sleep saved as experience | yes | **Changed.** What sleep writes is kept: the dream in the journal, notes, pages and WAKE, so dreams can be recalled. The sessions themselves are threads in a "sleep" area of the pool, kept out of recall and forgotten after 36 hours, since a transcript would keep copies of memories deleted since. |
 | Trigger | manual | **Add** nightly at 04:00 for each pool with new activity, plus manual `/sleep`. A setting restores Monika's manual-only behavior. |
 | Phase order | WAKE, FACTS, dream | **Change** to consolidate, dream, wake. WAKE is written last so it can carry what consolidation found and the questions it raised. |
 | Dreams in conversation | only via recall | **Keep, and add items.** Dreams come up naturally through recall when a conversation touches them ("I dreamt about something like this last night"). What she'd like to raise becomes an item in the Sleep section, and the user can start a chat from it. She never opens a thread with it. |
@@ -190,7 +190,12 @@ restart in between loses the record.
   memory). It probes each phase's endpoint first. Each phase's model is
   `sleep.<phase>` through the router with the pool's context, set as that
   session's chat and compaction model, so private sleep is local-only.
-- **Phases** are threads (`interface: "sleep"`, titled `Sleep: <phase>`), each
+- **Phases** are threads (`interface: "sleep"`, titled `Sleep: <phase>`). Their
+  entries aren't indexed, so recall and search never find them, and recent
+  work for a project never lists them. `Sleep.prune` forgets each one 36 hours
+  after it was made (`SLEEP_THREAD_AGE_MS`), keeping what it wrote: each
+  leaves a thread tombstone, so an item whose source was one still leads
+  somewhere. Each is
   a Pi session through `openThreadSession` with `createLyricaExtension`
   (persona and her usual context, `memoryTools: "read"`) and the phase's own
   tools. Nothing else: no shell, web, `delegate` or `image`.

@@ -836,6 +836,8 @@ export class PoolReader {
   private hit(id: string, kind: Kind, words: string[], terms: string[][], score: number, opts: SearchOptions): Hit | undefined {
     if (kind === "entry") {
       if (opts.excludeThread && id.startsWith(`e:${opts.excludeThread}#`)) return undefined;
+      // Indexed before sleep's threads weren't.
+      if (id.startsWith("e:sleep/")) return undefined;
       const [entry] = this.entryWindow(id, 0);
       if (!entry || !holdsEnough(entry.text, terms, opts.minWords)) return undefined;
       return { id, kind, score, snippet: snippet(entry.text, words), at: entry.createdAt };
@@ -992,7 +994,8 @@ export class PoolStore extends PoolReader {
         .run(threadId, n, entry.piId, entry.role, JSON.stringify(entry.data), entry.text, thread.unlogged ? 1 : 0, at);
       const id = entryId(threadId, n);
       // A look only quotes other threads (daemon/src/watch.ts): recall finds the words where they were said.
-      if (!thread.unlogged && entry.text.trim() && !WATCHING.test(entry.text)) this.index(id, "entry", entry.role === "toolResult" ? entry.text.slice(0, TOOL_TEXT_LIMIT) : entry.text);
+      // Sleep's own threads aren't indexed: recall would find copies of memories deleted since (docs/sleep.md).
+      if (!thread.unlogged && thread.interface !== "sleep" && entry.text.trim() && !WATCHING.test(entry.text)) this.index(id, "entry", entry.role === "toolResult" ? entry.text.slice(0, TOOL_TEXT_LIMIT) : entry.text);
       return id;
     });
   }

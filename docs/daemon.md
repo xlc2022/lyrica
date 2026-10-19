@@ -853,6 +853,9 @@ drafted against: if the file has changed since, approving it needs
 Lock and shutdown stop a running sleep before the key goes; the run is
 recorded as partial and resumes next time.
 
+Once an hour, `lyricad` forgets sleep's phase threads older than 36 hours in
+every pool whose key is here (`Sleep.prune`), logging only how many went.
+
 ## Logs
 
 One line per request: method, route pattern (never the path, which holds

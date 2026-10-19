@@ -1704,11 +1704,13 @@ sleep.run(userId, pool, reason: "scheduled" | "manual"): Promise<SleepRun>  // q
 // skipReason: "no-key" | "endpoint-down" | "no-activity"
 sleep.check(userId, pool)          // what would stop a run now, without recording anything
 sleep.stop(userId)                 // Lock: the run is marked partial
+sleep.prune(now?): number          // forgets phase threads older than 36 hours, memories kept
 sleep.mode(userId) / setMode(userId, "scheduled" | "manual")   // user.db
 sleep.events                       // started, phase, finished: IDs only, never text
 ```
 
-- Each phase is a thread in the pool's `sleep` interface, opened through
+- Each phase is a thread in the pool's `sleep` interface, never indexed for
+  search, and forgotten with `keepMemories` 36 hours after it was made. It is opened through
   `openThreadSession` with that pool's `CallContext` and its
   `sleep.<phase>` model, so private sleep is local-only.
 - The pool's `sleep_runs` and `sleep_items` tables hold runs and items. A

@@ -1570,7 +1570,9 @@ Details in [docs/memory.md](docs/memory.md).
   only IDs, so sleep doesn't extract the same fact again from a thread that
   still exists. Forgetting a thread can keep its memories: the notes stay, and
   the thread leaves a text-free tombstone (its ID and deletion time) that the
-  notes' citations of it lead to.
+  notes' citations of it lead to. Sleep's own threads are never indexed and
+  are forgotten 36 hours after each run, so a deleted memory doesn't live on
+  in a sleep transcript.
 
 ## Sleep
 
