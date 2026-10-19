@@ -104,8 +104,8 @@ export async function discoverModels(baseUrl: string, apiKey: string | undefined
 // LM Studio's own REST API, beside its OpenAI-compatible one at /v1.
 const lmStudioRoot = (baseUrl: string) => baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "");
 
-/** A model LM Studio has, with its loaded instances and the context each was loaded with. */
-export interface LmStudioModel { key: string; maxContext?: number; instances: { id: string; context?: number }[] }
+/** A model LM Studio has, with its loaded instances and the context each was loaded with, and whether it reads images. */
+export interface LmStudioModel { key: string; maxContext?: number; vision?: boolean; instances: { id: string; context?: number }[] }
 
 /** LM Studio's models (GET /api/v1/models), or null when the server doesn't answer like LM Studio. */
 export async function lmStudioModels(baseUrl: string, apiKey: string | undefined, timeoutMs = 5000, fetchImpl: typeof fetch = fetch): Promise<LmStudioModel[] | null> {
@@ -121,6 +121,7 @@ export async function lmStudioModels(baseUrl: string, apiKey: string | undefined
   const num = (v: unknown) => (typeof v === "number" && v > 0 ? Math.floor(v) : undefined);
   return body.models.flatMap((m: Record<string, any>) => typeof m?.key !== "string" ? [] : [{
     key: m.key, maxContext: num(m.max_context_length),
+    ...(typeof m.capabilities?.vision === "boolean" ? { vision: m.capabilities.vision as boolean } : {}),
     instances: (Array.isArray(m.loaded_instances) ? m.loaded_instances : []).filter((i: any) => typeof i?.id === "string")
       .map((i: any) => ({ id: i.id as string, context: num(i.config?.context_length) })),
   }]);
