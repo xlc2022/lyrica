@@ -54,6 +54,15 @@ describe("the model runtime", () => {
     }
   });
 
+  it("plans by a thread's context limit where it is below the model's window", async () => {
+    const s = await setup();
+    const call = s.thread("general").call;
+    const window = async (limit?: number) => (await modelRuntimeFor(s.models, { ...call, ...(limit ? { contextLimit: limit } : {}) })).getModel(s.gpu.id, "qwen3.8-27b")!.contextWindow;
+    expect(await window()).toBe(32768);
+    expect(await window(16384)).toBe(16384);
+    expect(await window(65536)).toBe(32768);
+  });
+
   it("refuses a cloud model there, and nothing falls back", async () => {
     const s = await setup();
     const t = s.thread("private");

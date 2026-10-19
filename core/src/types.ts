@@ -44,4 +44,6 @@ export interface CallContext {
   thinking?: ThinkingLevel;
   /** Fallback: a later model in a task's list may answer when the first can't. Absent is on. */
   fallback?: boolean;
+  /** The most context the thread plans for, below its model's window. Absent is the whole window. */
+  contextLimit?: number;
 }

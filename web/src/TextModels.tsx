@@ -10,7 +10,7 @@ import {
   type OfferingInfo, type OfferingSettings, type ServingSettings, type TextLibrary,
 } from "./api.ts";
 import { Icon } from "./icons.tsx";
-import { groupWarnings, type LibraryCopy as Copy } from "./library.ts";
+import { canon, groupWarnings, reseedDraft, type LibraryCopy as Copy } from "./library.ts";
 import { RowMenu } from "./Machines.tsx";
 import { canEdit, Frame, gb, hostOf, Kind, plural, UsedIn, VoiceDrawer, type MCtx } from "./ModelsFrame.tsx";
 import { replyCap } from "../../core/src/models/settings.ts";
@@ -45,8 +45,6 @@ function matches(e: Entry, f: Filters): boolean {
 
 /** A context length as "128k" or "1,024k". */
 const tokensK = (n: number) => `${Math.round(n / 1024).toLocaleString("en-US")}k`;
-/** JSON with sorted keys, so a setting changed and changed back compares equal. */
-const canon = (v: unknown) => JSON.stringify(v, (_, x: unknown) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
 
 /** What a row and its detail need from the tab. */
 interface Lib {
@@ -72,7 +70,7 @@ interface Lib {
 export function TextModels({ ctx }: { ctx: MCtx }) {
   const userId = ctx.user.id;
   const p = ctx.models.page;
-  const lib = useLoad(() => wholeLibrary(userId), [userId]);
+  const lib = useLoad(() => wholeLibrary(userId), [userId, ctx.changed]);
   const groups = useLoad(() => get<GroupInfo[]>(u(userId, "groups")), [userId]);
   const suggestions = useLoad(() => get<GroupSuggestion[]>(u(userId, "groups", "suggestions")), [userId]);
   const [f, setF] = useState<Filters>(NO_FILTERS);
@@ -482,8 +480,8 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   const ep = ctx.models.page?.endpoints.find((x) => x.id === copy.endpointId);
   const onHost = ep?.api === "host";
   const own = canEdit(ctx, copy);
-  const settings = useLoad(() => get<OfferingSettings>(u(userId, "offerings", id, "settings")), [userId, id]);
-  const serving = useLoad(() => (onHost ? get<ServingSettings>(u(userId, "offerings", id, "serving")) : Promise.resolve(undefined)), [userId, id, onHost]);
+  const settings = useLoad(() => get<OfferingSettings>(u(userId, "offerings", id, "settings")), [userId, id, ctx.changed]);
+  const serving = useLoad(() => (onHost ? get<ServingSettings>(u(userId, "offerings", id, "serving")) : Promise.resolve(undefined)), [userId, id, onHost, ctx.changed]);
   const [tab, setTab] = useState<"sampling" | "serving">("sampling");
   const [scope, setScope] = useState<Scope>("mine");
   const [texts, setTexts] = useState<Record<Scope, Partial<Record<SKey, string>>>>({ mine: {}, shared: {} });
@@ -510,7 +508,13 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   const closeRepo = useCallback(() => setRepo(undefined), []);
   useDismiss(popRef, repo !== undefined, closeRepo);
   const sv = serving.data;
-  useEffect(() => { if (sv && !draft) setDraft(structuredClone(sv.settings)); }, [sv, draft]);
+  // A change from elsewhere (live sync) replaces an untouched draft, so Save never puts the old settings back.
+  const seededFrom = useRef<Record<string, unknown>>(undefined);
+  useEffect(() => {
+    if (!sv) return;
+    setDraft((d) => reseedDraft(d, seededFrom.current, sv.settings));
+    seededFrom.current = sv.settings;
+  }, [sv]);
 
   // Sampling: a field shows what was typed, else the value saved in this scope; the placeholder is what it inherits.
   const s = settings.data;

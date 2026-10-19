@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultGpu, validate, type GpuSettings } from "../src/placement.ts";
+import { autoContext, defaultGpu, validate, type GpuSettings } from "../src/placement.ts";
 import type { Gpu } from "../src/gpus.ts";
 import { GIB, textModel } from "./fakes.ts";
 
@@ -63,5 +63,27 @@ describe("placements, as they are saved", () => {
     expect(() => validate(vllm, { placement: { mode: "auto" }, gpuLayers: 40 }, gpus, all)).toThrow("gpuLayers is for llama.cpp models.");
     expect(() => validate(llama, { placement: { mode: "auto" }, memoryShare: 0.5 }, gpus, all)).toThrow("memoryShare is for vLLM models.");
     expect(() => validate(llama, { placement: { mode: "auto" }, rope: 2 }, gpus, all)).toThrow("Unknown setting: rope.");
+  });
+});
+
+describe("the context with none saved", () => {
+  // 20 GB of weights and 256 KB of f16 KV cache a token: 1 GB per 4096 tokens.
+  const llama = textModel("llama", 20, { contextLength: 131072, kvPerToken: 2 * 64 * 8 * 128 });
+  const auto = { placement: { mode: "auto" as const } };
+  const empty = (gb: number) => [{ ...gpu(0, gb), used: 0 }];
+
+  it("is the largest that fits, up to what the model was trained for", () => {
+    // 23.5 GB to give, less 21 GB of weights and 0.5 GB for the server: 2 GB of cache.
+    expect(autoContext(llama, auto, empty(24), all)).toBe(8192);
+    expect(autoContext(llama, auto, empty(96), all)).toBe(131072);
+    // A save with no context is checked at that one, so it passes where 32k wouldn't.
+    expect(() => validate(llama, auto, empty(24), all)).not.toThrow();
+    expect(() => validate(llama, { ...auto, contextLength: 32768 }, empty(24), all)).toThrow("lower the context length");
+  });
+
+  it("stays at 32k when nothing fits or the model's length is unknown", () => {
+    expect(autoContext(textModel("huge", 40, { contextLength: 131072 }), auto, empty(24), all)).toBe(32768);
+    expect(autoContext(textModel("small", 4, { contextLength: null }), auto, empty(24), all)).toBe(32768);
+    expect(autoContext(textModel("short", 4, { contextLength: 8192 }), auto, empty(24), all)).toBe(8192);
   });
 });

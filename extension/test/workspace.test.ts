@@ -267,6 +267,7 @@ describe("workspace tools in a Pi session", () => {
     let allow = false;
     const host: ModelsHost = {
       copies: () => [{ offering: "o1", name: "M", host: "blackwell" }],
+      localCopies: () => [], current: () => "other", window: () => undefined, localContext: async () => null, loadLocal: async () => {}, limit: () => {},
       serving: async () => entry, lookup: async () => entry,
       propose: async (p) => { cards.push(p); return allow; },
       apply: async (_o, settings, anyway) => { applied.push([settings, anyway]); return { reloaded: true }; },
@@ -279,7 +280,7 @@ describe("workspace tools in a Pi session", () => {
     const denied = await run("ask", calls, { extensions: [createModelsExtension(host)], approve: async (r) => { asked.push(r.tool); return true; } });
     // Numbers only, never the card's text.
     expect(JSON.parse(denied.results[0]!.slice("models: ".length))).toMatchObject({ recommended: { factor: 4, stretched: 1010000, repo: "Qwen/M" }, kvBytesAtRecommended: Math.round((2 * 1024 ** 3 / 32768) * 1010000) });
-    expect(cards).toEqual([{ toolCallId: "2", offering: "o1", name: "M", contextLength: 1010000, stretch: { factor: 4, originalContext: 262144 }, kvBytes: Math.round((2 * 1024 ** 3 / 32768) * 1010000) }]);
+    expect(cards).toEqual([{ toolCallId: "2", offering: "o1", name: "M", host: "blackwell", contextLength: 1010000, stretch: { factor: 4, originalContext: 262144 }, kvBytes: Math.round((2 * 1024 ** 3 / 32768) * 1010000) }]);
     expect(applied).toEqual([]);
     // Its own card is the question: the generic approval never asks.
     expect(asked).toEqual([]);
@@ -290,6 +291,57 @@ describe("workspace tools in a Pi session", () => {
     // Not a copy she may manage: refused, naming the ones she may.
     const other = await run("ask", [fauxToolCall("models", { action: "lookup", offering: "nope" }, { id: "4" })], { extensions: [createModelsExtension(host)] });
     expect(other.results[0]).toContain("o1 (M on blackwell)");
+  });
+
+  it("sets the thread's own model's context: at or under what it's served with for this thread alone, above it for everyone on a card", async () => {
+    const entry = {
+      model: "m.gguf", settings: { placement: { mode: "auto" } }, contextLength: 32768, maxContextLength: 262144, trainedContextLength: 262144,
+      kvBytes: 2 * 1024 ** 3, recommended: null, stretchUntested: false,
+    };
+    const cards: ServingProposal[] = [];
+    const limits: (number | null)[] = [];
+    const applied: Record<string, unknown>[] = [];
+    const host: ModelsHost = {
+      copies: () => [{ offering: "o1", name: "M", host: "blackwell" }],
+      localCopies: () => [], current: () => "o1", window: () => undefined, localContext: async () => null, loadLocal: async () => {},
+      limit: (t) => void limits.push(t),
+      serving: async () => entry, lookup: async () => entry,
+      propose: async (p) => { cards.push(p); return true; },
+      apply: async (_o, settings) => { applied.push(settings); return { reloaded: true }; },
+    };
+    // One call a step, so they run in order.
+    const results = (await run("ask", [], { extensions: [createModelsExtension(host)], steps: [16384, 32768, 300000, 131072].map((contextLength, i) => [
+      fauxToolCall("models", { action: "propose", contextLength }, { id: String(i + 1) }),
+    ]) })).results;
+    // No offering named: the thread's own model. Lowering limits this thread, with no card; its full window clears the limit.
+    expect(JSON.parse(results[0]!.slice("models: ".length))).toEqual({ applied: true, scope: "thread", contextLength: 16384, served: 32768 });
+    expect(results[2]).toContain("M serves 262144 tokens at most.");
+    // Raising is for everyone, on the card, and clears the thread's limit.
+    expect(cards.map((c) => [c.offering, c.contextLength])).toEqual([["o1", 131072]]);
+    expect(applied).toEqual([{ placement: { mode: "auto" }, contextLength: 131072 }]);
+    expect(limits).toEqual([16384, null, null]);
+    expect(JSON.parse(results[3]!.slice("models: ".length))).toMatchObject({ applied: true, scope: "everyone" });
+  });
+
+  it("reloads an LM Studio model with a longer context once allowed, within its maximum", async () => {
+    const cards: ServingProposal[] = [];
+    const loads: [string, number][] = [];
+    const host: ModelsHost = {
+      copies: () => [], localCopies: () => [{ offering: "l1", name: "qwen-flash", host: "studio" }], current: () => "l1", window: () => 4096,
+      localContext: async () => ({ served: 4096, max: 131072 }), loadLocal: async (o, c) => void loads.push([o, c]), limit: () => {},
+      serving: async () => { throw new Error("not a host"); }, lookup: async () => { throw new Error("not a host"); },
+      propose: async (p) => { cards.push(p); return true; }, apply: async () => ({ reloaded: false }),
+    };
+    const results = (await run("ask", [], { extensions: [createModelsExtension(host)], steps: [
+      [fauxToolCall("models", { action: "propose", contextLength: 65536 }, { id: "1" })],
+      [fauxToolCall("models", { action: "propose", contextLength: 200000 }, { id: "2" })],
+      [fauxToolCall("models", { action: "lookup" }, { id: "3" })],
+    ] })).results;
+    expect(cards).toEqual([{ toolCallId: "1", offering: "l1", name: "qwen-flash", host: "studio", contextLength: 65536, stretch: null, kvBytes: null, now: true }]);
+    expect(loads).toEqual([["l1", 65536]]);
+    expect(results[1]).toContain("qwen-flash supports 131072 tokens at most.");
+    // The card on Hugging Face is read for host models only.
+    expect(results[2]).toContain("isn't a model you can manage here");
   });
 
   it("lists a repository's files without asking, and downloads a model with its projector and MTP file only once allowed", async () => {

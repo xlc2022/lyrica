@@ -267,6 +267,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principle 1: endpoints.paused_at for a database past step 1 before that step added it, so editing an endpoint works. Adds a column only.
     version: 12,
     run(db) { upgradeEndpoints(db); },
+  }, {
+    // Principle 1: a thread's own context limit, asked for in plain words. Expand only.
+    version: 13,
+    run(db) { addColumns(db, [["thread_choices", "context", "INTEGER"]]); },
   }],
   pool: [{
     version: 1, contract: true,
