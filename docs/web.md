@@ -910,7 +910,10 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   such as a child thread opened as its first turn ends. A `settings` event
   (a question opening or closing) reloads them only between turns: mid-turn
   the page would hold her message while its live copy still shows, and the
-  turn's end reloads them anyway.
+  turn's end reloads them anyway. A view that opens mid-turn (the first send
+  from New thread) can still load a message the stream then shows too, so a
+  stored message that shares a tool call with a live one is hidden until the
+  turn's end replaces the live copy (`storedLiveCopies` in `src/live.ts`).
 - **Each message has an action row** under it (`MessageActions` in
   `src/Rewind.tsx`, after the reaction chips; docs/ux.md §6, A message's
   actions): quiet icon buttons, Copy (the message's text; Copied or Copy

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialLive, liveReducer, storedUserItems, type Live, type LiveAction } from "../src/live.ts";
+import { initialLive, liveReducer, storedLiveCopies, storedUserItems, type Live, type LiveAction } from "../src/live.ts";
 
 import type { Message } from "../src/api.ts";
 
@@ -217,5 +217,23 @@ describe("stored user messages replacing live copies", () => {
     expect(storedUserItems(live.items, [message(8, text), message(10, text)])).toEqual(new Set([0, 1]));
     expect(storedUserItems(live.items, [{ ...message(8, text), from: { kind: "parent", threadId: "web/parent" } }])).toEqual(new Set());
     expect(storedUserItems(live.items, [message(8, "another file")])).toEqual(new Set());
+  });
+});
+
+// Principle 1: a thread opened mid-turn shows her question card once, not its stored copy beside the live one.
+describe("stored messages the stream is also showing", () => {
+  const ask = (n: number, toolCallId: string): Message => ({
+    id: `e:web/test#${n}`, n, role: "assistant", parts: [{ type: "tool", toolCallId, name: "threads", args: { action: "ask" } }], createdAt: "2026-10-12T10:00:00Z",
+  });
+
+  it("leaves a stored message to the live copy that shares its tool call", () => {
+    const live = run([{ type: "turn_start" }, { type: "tool_call", toolCallId: "call_1", name: "threads" }]);
+    expect(storedLiveCopies(live.items, [ask(2, "call_1")])).toEqual(new Set([2]));
+    expect(storedLiveCopies(live.items, [ask(2, "call_0")])).toEqual(new Set());
+  });
+
+  it("hides nothing once the turn's end has replaced the live copy", () => {
+    const live = run([{ type: "turn_start" }, { type: "tool_call", toolCallId: "call_1", name: "threads" }, { type: "turn_end", aborted: false }, { type: "stored" }]);
+    expect(storedLiveCopies(live.items, [ask(2, "call_1")])).toEqual(new Set());
   });
 });

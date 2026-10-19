@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import { get, post, threadPath, u, type GoAhead, type ImagePart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import { QuestionCard } from "./Question.tsx";
-import { storedUserItems, type LiveItem } from "./live.ts";
+import { storedLiveCopies, storedUserItems, type LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
 import { ScheduleText } from "./Routines.tsx";
@@ -72,7 +72,8 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
     permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
     lastHers: messages.findLast((m) => m.role === "assistant")?.n, large: openLarge, threads: ctx.threads,
   };
-  const shownMessages = hideFrom === undefined ? messages : messages.filter((m) => m.n < hideFrom);
+  const liveCopies = hideFrom === undefined ? storedLiveCopies(live.items, messages) : new Set<number>();
+  const shownMessages = hideFrom === undefined && !liveCopies.size ? messages : messages.filter((m) => (hideFrom === undefined || m.n < hideFrom) && !liveCopies.has(m.n));
   // Anchors are entry numbers, including entries the API doesn't display. Use the first
   // message at or after the anchor (contracts.md), so a card stays put as later messages arrive.
   // Threads with no remaining anchor sit under the last message instead.
