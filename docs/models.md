@@ -510,8 +510,8 @@ The `image` tool reads workspace paths and `/photos-of-me/<file>`, enforces
 the user's portrait policy before each resolved attempt, and stores results in
 the encrypted thread folder. Its text result says “Made with <model> on
 <host or endpoint name>” for every provider, alongside the saved paths.
-After a refusal, the tool runs no more image calls until the user writes
-again (it resets on Pi's `agent_start`), answering each with
+After a refusal, the tool runs no more image calls for the rest of her turn
+(it resets on Pi's `agent_start`), answering each with
 `REFUSED_THIS_TURN`, so a model can't reword the prompt and spend more of
 a plan on what was just declined; the message's Resend and Try still work.
 The daemon's owner-checked file and portrait

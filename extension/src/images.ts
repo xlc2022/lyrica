@@ -92,11 +92,11 @@ async function allowPortrait(o: ImageTools, r: Resolution, id: string, ctx: Exte
 }
 
 /** What a refused call answers with; Resend and Try in the message still work. */
-export const REFUSED_THIS_TURN = "An image was refused earlier in this reply, so no more image calls run until the user writes again. Tell them what was refused and why.";
+export const REFUSED_THIS_TURN = "An image was refused earlier in this reply, so no more image calls run in this turn. Tell them what was refused and why.";
 
 export function createImageExtension(o: ImageTools): ExtensionFactory {
   return pi => {
-    // A refusal ends image calls until the user writes again: a reworded prompt would
+    // A refusal ends image calls for the rest of the agent run (her turn): a reworded prompt would
     // spend more of a plan on what was just declined.
     let refused = false;
     pi.on("agent_start", () => { refused = false; });

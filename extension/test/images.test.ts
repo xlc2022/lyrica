@@ -225,7 +225,7 @@ describe("image tool results (principles 1 and 4)", () => {
   });
 });
 
-it("runs no image call after a refusal until the user writes again, passing the refusal's reason on", async () => {
+it("runs no image call after a refusal for the rest of the turn, passing the refusal's reason on", async () => {
   const s = await setup();
   const fetch = vi.fn(async () => Response.json({ error: { code: "content_policy_violation" } }, { status: 400 }));
   vi.stubGlobal("fetch", fetch);
@@ -242,7 +242,7 @@ it("runs no image call after a refusal until the user writes again, passing the 
   try {
     await session.bindExtensions({}); await session.setModel(faux.getModel()); await session.prompt("Make a garden image.");
     const results = (seen as { role: string; content: { text?: string }[] }[]).filter(m => m.role === "toolResult").map(m => m.content[0]?.text);
-    expect(results).toEqual(["Image generation was refused (image_refusal).", expect.stringContaining("no more image calls run until the user writes again")]);
+    expect(results).toEqual(["Image generation was refused (image_refusal).", expect.stringContaining("no more image calls run in this turn")]);
     expect(fetch).toHaveBeenCalledTimes(1);
     await session.prompt("Try once more.");
     expect(fetch).toHaveBeenCalledTimes(2);
