@@ -849,6 +849,9 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
 - **Models** come from Pi's catalogue for that provider (`planCatalog`,
   given to core with `setPlanCatalog`), not `/v1/models`, with their
   context windows, vision and thinking; a ChatGPT plan adds ChatGPT Images.
+  A context window set by hand on a plan model replaces the catalogue's
+  from its next request (some plans allow more than they list, at a
+  higher rate).
 - A plan is up while signed in; nothing is probed. When its usage limit is
   reached (`isPlanLimit`), the turn ends with the provider's message and
   the router skips the plan for an hour (`reportPlanLimit`), so the next
