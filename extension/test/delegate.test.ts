@@ -46,9 +46,9 @@ async function setup(o: { limits?: Partial<Limits>; workspace?: (m: Awaited<Retu
   const workspace = o.workspace?.(m);
   const options = { users: m.users, memory, models: m.models, cwd, limits: o.limits, workspace, approve: o.approve, searxng: o.searxng };
   const delegation = new Delegation(options);
-  const thread = (pool: Pool = "general", t: { localOnly?: boolean; unlogged?: boolean } = {}): ThreadContext => {
+  const thread = (pool: Pool = "general", t: { localOnly?: boolean; unlogged?: boolean; project?: boolean } = {}): ThreadContext => {
     const view = memory.openThreadView(m.ada.id, pool);
-    const { id } = view.own.createThread({ interface: "cli", unlogged: t.unlogged });
+    const { id } = view.own.createThread({ interface: "cli", unlogged: t.unlogged, project: t.project });
     if (t.localOnly) m.models.setLocalOnly(m.ada.id, pool, id, true);
     return { user: m.ada, pool, interface: "cli", threadId: id, view, call: m.models.callContext(m.ada.id, pool, id) };
   };
@@ -68,12 +68,15 @@ async function setup(o: { limits?: Partial<Limits>; workspace?: (m: Awaited<Retu
 }
 
 describe("delegate", () => {
-  it("routes an implicit repository writer through code, with project memory and the inherited context limit", async () => {
+  it("routes an implicit repository writer in a project's thread through code, with project memory and the inherited context limit", async () => {
     let ws!: Workspace;
     const s = await setup({ workspace: m => (ws = new Workspace(m.keyring, m.users, { excludePorts: [] })) });
-    const parent = s.thread();
-    parent.view.own.setProject(parent.threadId);
-    parent.view.own.setGoal(parent.threadId, "CODE-PROJECT");
+    const chat = s.thread();
+    chat.view.own.setProject(chat.threadId);
+    chat.view.own.setGoal(chat.threadId, "CODE-PROJECT");
+    // The project chat's own clones are read-only to it; its threads make the changes.
+    const { id } = chat.view.own.createThread({ interface: "cli", parent: chat.threadId, child: true });
+    const parent: ThreadContext = { ...chat, threadId: id, call: s.models.callContext(s.ada.id, "general", id) };
     const settings = ws.settings(s.ada.id);
     settings.addGitAccount({ name: "forge", kind: "other", host: "forge.example", account: "ada", token: "fake", pool: "general", offNetwork: false });
     settings.setThread(parent.threadId, "general", { repositories: [{ name: "garden/controller", account: "forge" }] });
@@ -159,6 +162,29 @@ describe("delegate", () => {
     const p = { userId: s.ada.id, pool: "general" as const, threadId: parent.threadId };
     expect(() => ws.inheritSettings(p, worker!.thread, { internet: true })).toThrow("no internet");
     expect(() => ws.inheritSettings(p, worker!.thread, { hosts: ["10.0.0.6"] })).toThrow("isn't in the parent thread's hosts");
+  });
+
+  it("keeps a project chat's folders and clones read-only to the subagents it delegates to", async () => {
+    const host = tempDir();
+    mkdirSync(join(host, "a"));
+    let ws!: Workspace;
+    const s = await setup({ workspace: (m) => {
+      ws = new Workspace(m.keyring, m.users, { excludePorts: [] });
+      ws.allowedPaths.allow(m.ada, m.ada.id, "general", join(host, "a"));
+      return ws;
+    } });
+    const chat = s.thread("general", { project: true });
+    ws.settings(s.ada.id).setThread(chat.threadId, "general", { grants: [{ path: join(host, "a"), writable: true }], mode: "auto" });
+    const opened: WorkspaceThread[] = [];
+    const forThread = ws.forThread.bind(ws);
+    ws.forThread = (t) => { opened.push(t); return forThread(t); };
+
+    await s.run(chat, { task: "change it", role: "coder" });
+    await s.run(chat, { task: "change it too", role: "worker" });
+    for (const r of s.delegation.status(chat)) {
+      expect(ws.settings(s.ada.id).thread(r.thread)).toMatchObject({ grants: [{ path: join(host, "a"), writable: false }] });
+      expect(opened.find((t) => t.threadId === r.thread)).toMatchObject({ reposOf: chat.threadId, reposReadOnly: true });
+    }
   });
 
   it("explains checkout folder rejection and keeps scouts in the parent's read-only clones", async () => {

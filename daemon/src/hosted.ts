@@ -789,7 +789,7 @@ export class HostedThread {
     try {
       await this.opening?.catch(() => {});
       this.dispose();
-      const tools = workspace.forThread({ userId: this.userId, pool: this.pool, threadId: this.threadId, project: view.own.projectOf(this.threadId) });
+      const tools = workspace.forThread({ userId: this.userId, pool: this.pool, threadId: this.threadId, project: view.own.projectOf(this.threadId), coordinates: !!view.own.getThread(this.threadId)?.project });
       this.emit({ type: "turn_start" });
       this.emit({ type: "message_start" });
       this.emit({ type: "tool_start", toolCallId: id, name: "image", args });

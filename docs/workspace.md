@@ -317,9 +317,11 @@ takes is `lyrica@pve!agent=<that secret>`.
   account in Settings (Git accounts and repositories, below).
 - **A project chat's grants and clones are read-only to it.** It can read
   them and run checks, and the threads it starts get them as given, so a
-  change goes through a thread. Its own folder stays writable, and so do its
-  subagents' grants. lyricad sets `WorkspaceThread.coordinates` for a
-  project chat; `forThread(t).settings()` and its sandbox both apply it.
+  change goes through a thread. Subagents it delegates to get them
+  read-only too, and its default role there is `worker`, not `coder`. Its
+  own folder stays writable, and its machines and MCP servers stay usable.
+  lyricad sets `WorkspaceThread.coordinates` for a project chat;
+  `forThread(t).settings()` and its sandbox both apply it.
 
 ## The home workspace and uploads
 
