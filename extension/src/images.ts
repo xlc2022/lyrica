@@ -91,8 +91,15 @@ async function allowPortrait(o: ImageTools, r: Resolution, id: string, ctx: Exte
   }
 }
 
+/** What a refused call answers with; Resend and Try in the message still work. */
+export const REFUSED_THIS_TURN = "An image was refused earlier in this reply, so no more image calls run in this turn. Tell them what was refused and why.";
+
 export function createImageExtension(o: ImageTools): ExtensionFactory {
   return pi => {
+    // A refusal ends image calls for the rest of the agent run (her turn): a reworded prompt would
+    // spend more of a plan on what was just declined.
+    let refused = false;
+    pi.on("agent_start", () => { refused = false; });
     pi.registerTool({
       name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/.",
       promptSnippet: "create, edit or upscale images",
@@ -100,7 +107,10 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "Draw exact layouts and diagrams as HTML, SVG or Mermaid."],
       parameters: imageParameters,
       async execute(id, p, signal, _update, ctx) {
-        return executeImage(o, id, p, signal, ctx);
+        if (refused) throw new Error(REFUSED_THIS_TURN);
+        const result = await executeImage(o, id, p, signal, ctx);
+        if ("imageRefusal" in result.details) refused = true;
+        return result;
       },
     });
   };
@@ -151,7 +161,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
     if (r.endpoint.kind === "cloud" && isRestricted(o.call())) throw new CloudModelForbidden("This thread uses local models only.");
   } }); } catch (err) {
     if (!(err instanceof HostRefused) || err.code !== "image_refusal" || !attempted) throw withModel(err, p.action, attempted, signal);
-    return { content: [{ type: "text" as const, text: "Image generation was refused (image_refusal)." }], isError: true,
+    return { content: [{ type: "text" as const, text: err.message }], isError: true,
       details: { imageRefusal: { code: "image_refusal" as const, offeringId: attempted.offering.id, endpointId: attempted.endpoint.id } } };
   }
   signal?.throwIfAborted();

@@ -20,14 +20,20 @@ case "$1 $2" in
   "login status") [ -f "$CODEX_HOME/auth.json" ] ;;
   "login --device-auth") printf '\\e[1mOpen https://auth.openai.com/codex/device\\e[0m\\nEnter ABCD-12345\\n'; sleep 0.2; echo '{}' > "$CODEX_HOME/auth.json" ;;
   "logout ") rm -f "$CODEX_HOME/auth.json" ;;
-  "features list") for f in image_generation shell_tool unified_exec browser_use computer_use in_app_browser apps plugins memories; do echo "$f  stable  true"; done ;;
+  "features list") for f in image_generation shell_tool unified_exec browser_use computer_use in_app_browser apps plugins memories goals hooks; do echo "$f  stable  true"; done ;;
   exec*)
     echo start >> "$bin/log"; sleep 0.1
     cat > "$bin/stdin"
     ls "$PWD" > "$bin/inputs"
     [ ! -f "$bin/fail" ] || { echo "$(cat "$bin/fail"): SECRET prompt text" >&2; exit 1; }
     echo '{"type":"thread.started"}'
-    if [ -f "$bin/unreported" ]; then
+    # Codex opens its databases whatever --ephemeral says.
+    echo x > "$CODEX_HOME/memories_1.sqlite"; echo x > "$CODEX_HOME/logs_2.sqlite-wal"
+    if [ -f "$bin/declines" ]; then
+      echo '{"type":"item.completed","item":{"type":"agent_message","text":"I can'"'"'t make that image:\\n  it shows a real person."}}'
+    elif [ -f "$bin/silent" ]; then
+      :
+    elif [ -f "$bin/unreported" ]; then
       # As Codex 0.146.0 does: generated_images/<session>/exec-<id>.png, and no saved_path in its events.
       mkdir -p "$CODEX_HOME/generated_images/s1"
       base64 -d > "$CODEX_HOME/generated_images/s1/exec-1.png" <<< "${png.toString("base64")}"
@@ -97,6 +103,8 @@ describe("ChatGPT Images through the user's own Codex (principles 1 and 2)", () 
     expect(readFileSync(join(bin, "args"), "utf8")).toMatch(/--image\n.*input-0\.png\n--image\n.*input-1\.jpg/);
     expect(readdirSync(join(home, "calls"))).toEqual([]);
     expect(existsSync(join(home, "generated_images", "t1"))).toBe(false);
+    // Only the sign-in outlasts a call.
+    expect(readdirSync(home).sort()).toEqual(["auth.json", "calls"]);
   });
 
   it("runs in a sandbox of its own with only its home and the internet, one call at a time", async () => {
@@ -135,7 +143,7 @@ describe("ChatGPT Images through the user's own Codex (principles 1 and 2)", () 
     expect(existsSync(join(home, "generated_images"))).toBe(false);
   });
 
-  it("answers with fixed lines, never Codex's own output, and refuses what it can't do", async () => {
+  it("answers a failed run with a fixed line, never Codex's own output, and refuses what it can't do", async () => {
     await expect(codexImage(box, { action: "create", prompt: "A garden", tier: "fast" })).rejects.toMatchObject({ code: "invalid", message: "Codex is signed out: sign in under Settings → Claude Code and Codex." });
     writeFileSync(join(home, "auth.json"), "{}");
     // Codex gets none of the daemon's environment, so the stand-in reads its failure from a file.
@@ -144,5 +152,18 @@ describe("ChatGPT Images through the user's own Codex (principles 1 and 2)", () 
     writeFileSync(join(bin, "fail"), "boom");
     await expect(codexImage(box, { action: "create", prompt: "A garden", tier: "fast" })).rejects.toMatchObject({ message: "Codex couldn't make the image." });
     await expect(codexImage(box, { action: "edit", prompt: "x", image: { bytes: png, type: "image/png" }, mask: { bytes: png, type: "image/png" } })).rejects.toMatchObject({ code: "unsupported" });
+    rmSync(join(bin, "fail"));
+    writeFileSync(join(bin, "silent"), "");
+    await expect(codexImage(box, { action: "create", prompt: "A garden", tier: "fast" })).rejects.toMatchObject({ code: "unavailable", message: "Codex returned no image." });
+  });
+
+  it("passes on Codex's reason when it declines, as a refusal, and keeps it out of the journal", async () => {
+    writeFileSync(join(home, "auth.json"), "{}");
+    writeFileSync(join(bin, "declines"), "");
+    const lines: string[] = [];
+    await expect(codexImage({ ...box, log: (l) => lines.push(l) }, { action: "create", prompt: "A garden", tier: "fast" })).rejects.toMatchObject({
+      code: "image_refusal", message: `Codex made no image (image_refusal). It said: "I can't make that image: it shows a real person."` });
+    expect(lines).toEqual(["codex exec: exit 0, 0 image files saved, events: thread.started, item.completed:agent_message"]);
+    expect(readdirSync(home).sort()).toEqual(["auth.json", "calls"]);
   });
 });
