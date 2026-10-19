@@ -233,12 +233,12 @@ Each active thread is one Pi session from `openThreadSession`, with
     a turn with tool calls this reads a little high.
 - **Her status line.** Each turn's context message carries one line of
   numbers in `<context>`, such as
-  `Context 64% of 32k · 9.1k free · 38 tok/s · 2.1k tok/s prompt`. Free is
+  `Context 64% of 32k · 6.6k free · 38 tok/s · 2.1k tok/s prompt`. Free is
   what's left before Pi's own compaction. A second line tells her to finish
   the step, save what matters and compact with a summary, then to compact
   now. They follow Pi's edge (100% − reserve): "compact now" 2 points before
-  it, the first line 15 before that, at most 90% and 75%. From 32k up that is
-  75% and 90%; on 8k, 70.5% and 85.5%. The `threads` tool's guidelines say once what the line means.
+  it, the first line 15 before that, at most 90% and 75%. From about 64k up that is
+  75% and 90%; on 32k, 67.4% and 82.4%; on 8k, 70.5% and 85.5%. The `threads` tool's guidelines say once what the line means.
 - **Compacting herself.** `threads({ action: "compact", summary })` takes her
   summary. Every hosted thread but a subagent's has the tool, a child thread
   too.

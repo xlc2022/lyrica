@@ -7,6 +7,7 @@ import { deadUrl } from "../../core/test/fake-openai.ts";
 import { fakeHost } from "../../core/test/fake-host.ts";
 import { withModels } from "../../core/test/helpers.ts";
 import { createLyricaExtension, modelRuntimeFor, openThreadSession, piModelFor, toStoredEntry, type ThreadContext } from "../src/index.ts";
+import { keepRecentFor, reserveFor } from "../src/context.ts";
 
 const persona: Persona = { core: [{ path: "SOUL.md", text: "She is Lyrica." }], topics: [] };
 const dirs: string[] = [];
@@ -61,6 +62,20 @@ describe("the model runtime", () => {
     expect(await window()).toBe(32768);
     expect(await window(16384)).toBe(16384);
     expect(await window(65536)).toBe(32768);
+  });
+
+  it("sizes Pi's compaction by the model's window as it is when compaction runs", async () => {
+    const s = await setup();
+    const { session, dispose } = await s.open(s.thread("general"));
+    try {
+      const model = session.model!;
+      expect(session.settingsManager.getCompactionSettings(model)).toMatchObject({ reserveTokens: reserveFor(model.contextWindow), keepRecentTokens: keepRecentFor(model.contextWindow) });
+      // prepareRequest moves the window when the copy changes; the reserve and kept tail move with it.
+      model.contextWindow = 131_072;
+      expect(session.settingsManager.getCompactionSettings(model)).toMatchObject({ reserveTokens: reserveFor(131_072), keepRecentTokens: keepRecentFor(131_072) });
+    } finally {
+      dispose();
+    }
   });
 
   it("refuses a cloud model there, and nothing falls back", async () => {

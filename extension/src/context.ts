@@ -28,8 +28,14 @@ export interface ContextReport {
   pace?: Pace;
 }
 
-/** Pi's compaction reserve for a window: 8% (1,024 to 16,384 tokens). Pi compacts on its own once used + reserve reaches the window. */
-export const reserveFor = (window: number) => Math.min(16_384, Math.max(1024, Math.round(window * 0.08)));
+/**
+ * Pi's compaction reserve for a window: 8% (1,024 to 16,384 tokens), and at
+ * least 5,120 on a window of 20,480 or more. Pi compacts on its own once used
+ * + reserve reaches the window. pi-ai keeps 4,096 tokens spare under the
+ * window when it sizes a reply, so a smaller reserve let a reply be asked for
+ * a token or two just before compacting; 5,120 leaves it 1,024.
+ */
+export const reserveFor = (window: number) => Math.min(16_384, Math.max(1024, Math.round(window * 0.08), window >= 20_480 ? 5120 : 0));
 /** How much recent conversation Pi keeps when it compacts: a quarter of the window. */
 export const keepRecentFor = (window: number) => Math.min(20_000, Math.max(2000, Math.round(window * 0.25)));
 /** A summary shorter than this is taken as notes for Pi's own summary. */

@@ -22,7 +22,7 @@ async function setup(pool: "general" | "private" = "general", window = 16_384) {
     await ada.post(`${path}/messages`, { text });
     await stream.until((e) => e.type === "turn_end" && stream.events.filter((x) => x.event.type === "turn_end").length > ends, 0, 20_000);
   };
-  return { rt, ...dm, ada, model, thread, path, stream, turn };
+  return { rt, ...dm, ada, model, ref, thread, path, stream, turn };
 }
 
 // Keep these boundary scenarios at the same headroom as before the new
@@ -59,6 +59,20 @@ describe("her context", () => {
     // The text library shows each copy's median speed.
     const lib = (await ada.get<{ entries: { copies: { speed?: { tokPerSec?: number } }[] }[] }>(`/api/u/${rt.ada.id}/library/text`)).body;
     expect(lib.entries.flatMap((e) => e.copies).some((c) => c.speed?.tokPerSec !== undefined)).toBe(true);
+    stream.close();
+  });
+
+  it("follows a window changed while the thread is open, without reopening it", async () => {
+    const { rt, ada, model, ref, path, stream, turn } = await setup();
+    model.reply({ text: "First." }, { text: "Second." });
+    await turn("one");
+    // The user sets the copy's context by hand on the Models page, mid-conversation.
+    const offering = (await ada.get<ThreadSettings>(`${path}/settings`)).body;
+    await ada.patch(`/api/u/${rt.ada.id}/offerings/${ref.offeringId}`, { contextWindow: 65_536 });
+    await turn("two");
+    const windows = stream.events.filter((e) => e.event.type === "context").map((e) => (e.event as Extract<ThreadEvent, { type: "context" }>).context.window);
+    expect(offering.context?.window).toBe(16_384);
+    expect(windows.at(-1)).toBe(65_536);
     stream.close();
   });
 

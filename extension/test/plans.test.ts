@@ -49,6 +49,17 @@ describe("a ChatGPT plan", () => {
     expect(s.models.endpoint(bo.id, s.plan.id)).toBeUndefined();
   });
 
+  it("plans by a context window set by hand, past the one its catalogue lists", async () => {
+    const s = await setup();
+    const o = s.offerings.find((x) => x.modelId === "gpt-5")!;
+    const runtime = await modelRuntimeFor(s.models, s.ctx());
+    const model = runtime.getModel(s.plan.id, "gpt-5")!;
+    expect(model.contextWindow).toBe(o.contextWindow);
+    s.models.setCapabilities(s.ada, o.id, { contextWindow: 1_000_000 });
+    await (runtime as unknown as { prepareRequest(m: typeof model): Promise<unknown> }).prepareRequest(model);
+    expect(model.contextWindow).toBe(1_000_000);
+  });
+
   it("refuses a name an endpoint can't have, before a sign-in is started for it", async () => {
     const s = await setup();
     expect(() => s.models.checkEndpointName("My ChatGPT")).toThrow(/letters, digits/);
