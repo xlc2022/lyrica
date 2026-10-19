@@ -12,6 +12,7 @@ import { proxmoxTool } from "./proxmox.ts";
 
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
 export interface ThreadTools {
+  prepareWorktrees?(): Promise<void>;
   /** The owning project's rules, read fresh on every command. Without it, none. */
   commandRules?(): CommandRule[];
   /** Called on every tool call, so a change of grants applies at once: the sandbox, or one of the thread's machines. */
@@ -304,6 +305,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
     pi.on("user_bash", () => ({ operations: tools.target().ops().bash }));
 
     pi.on("before_agent_start", async (event, ctx) => {
+      await tools.prepareWorktrees?.();
       places = new Set();
       gate(ctx);
       // Each turn starts from the forge as it is now; what failed is said, and the turn goes on.
@@ -372,6 +374,11 @@ export function describe(tools: ThreadTools): string {
     `A ${WORKDIR} path you write is a link the person can open, and an image under it that you write as markdown (![what it shows](${WORKDIR}/plot.png)) shows in your message.`,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
     ...(s.grants.some((g) => g.writable) ? [BUILD_THERE] : []),
+    ...(s.threadWork ? [
+      ...(s.threadWork.base ? ["You hold the project's base checkout: scaffold or merge here, then resolve this thread to release it."] : []),
+      ...(s.threadWork.reason ? [`No worktree for some folders: ${s.threadWork.reason}. Those folders keep their listed grants.`] : []),
+      ...(s.threadWork.worktrees.length ? [`Work and commit only in these worktrees for their repositories, never in the original checkout:\n${s.threadWork.worktrees.map((w) => `${w.repo}: worktree ${w.path}, branch ${w.branch}`).join("\n")}`] : []),
+    ] : []),
     network(tools.network()),
     ...[toolsLine()].filter(Boolean),
     ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),

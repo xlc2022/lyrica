@@ -121,6 +121,8 @@ describe("threads definition", () => {
     expect(defs.projectChat!.actions).toEqual(["start", "message", "list", "read", "stop", "suggest", "fold", "draft", "resolve", "reopen", "ask", ...always]);
     expect(defs.projectThread!.actions).toEqual(["message", "list", "read", "resolve", "ask", ...always]);
     expect(defs.plain!.fields).not.toContain("to");
+    expect(defs.plain!.fields).not.toContain("base");
+    expect(defs.projectChat!.fields).toContain("base");
     expect(defs.child!.fields).toEqual(expect.arrayContaining(["to", "question", "text"]));
     expect(defs.child!.fields).not.toContain("id");
     expect(defs.projectThread!.fields).toEqual(expect.arrayContaining(["needsYou", "id"]));

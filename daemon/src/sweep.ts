@@ -45,15 +45,14 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
     try { id = decodeURIComponent(name); } catch { continue; }
     // A thread made since the list was read may have a new folder already.
     if (!exists(id) && statSync(dir).mtimeMs < now.getTime() - 60_000) {
-      removeThreadFolder(dir, allowed);
-      counts.folders++;
+      if (removeThreadFolder(dir, allowed)) counts.folders++;
       continue;
     }
     const worktrees = join(dir, "worktrees");
     if (!existsSync(worktrees)) continue;
     for (const w of readdirSync(worktrees)) {
       const run = /^(.+)-\d+$/.exec(w)?.[1];
-      if (!run || live.has(run)) continue;
+      if (existsSync(join(worktrees, w, ".git")) || !run || live.has(run)) continue;
       if (statSync(join(worktrees, w)).mtime > old) continue;
       forgetRun(join(worktrees, w));
       rmSync(join(worktrees, w), { recursive: true, force: true });
@@ -99,7 +98,7 @@ export function forgetFiles(home: string, changes: FileChanges, pool: Pool, thre
     const name = encodeURIComponent(id);
     if (!name || name === "." || name === "..") continue;
     const dir = join(home, "threads", name);
-    if (existsSync(dir)) { removeThreadFolder(dir, allowed); n++; }
+    if (existsSync(dir) && removeThreadFolder(dir, allowed)) n++;
     const claude = join(home, "claude", name);
     if (existsSync(claude)) { rmSync(claude, { recursive: true, force: true }); n++; }
   }
@@ -116,10 +115,13 @@ function forgetRunWorktrees(runDir: string, allowed: string[]): void {
   try { for (const repo of readdirSync(runDir)) forgetWorktree(join(runDir, repo), allowed); } catch { /* not a folder */ }
 }
 
-function removeThreadFolder(dir: string, allowed: string[]): void {
+function removeThreadFolder(dir: string, allowed: string[]): boolean {
   const runs = join(dir, "worktrees");
+  // Thread worktrees left by removeWorktrees contain changes or could not be checked. Keep them, even after forgetting.
+  if (existsSync(runs) && readdirSync(runs).some((name) => existsSync(join(runs, name, ".git")))) return false;
   if (existsSync(runs)) for (const w of readdirSync(runs)) forgetRunWorktrees(join(runs, w), allowed);
   rmSync(dir, { recursive: true, force: true });
+  return true;
 }
 
 /**

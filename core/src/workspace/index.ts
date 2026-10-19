@@ -1,3 +1,4 @@
+import { makeWorktrees, removeWorktrees } from "./worktree.ts";
 import { ensurePhotosDir, PortraitPhotos, ThreadImages } from "./images.ts";
 export * from "./images.ts";
 import { randomBytes } from "node:crypto";
@@ -31,6 +32,7 @@ import { AllowedPaths } from "./paths.ts";
 import { generateSshKey, SshTarget } from "./ssh.ts";
 import { sandboxedTransport, type SshTransport } from "./transport.ts";
 
+export * from "./worktree.ts";
 export * from "./changes.ts";
 export * from "./files.ts";
 export * from "./home.ts";
@@ -169,6 +171,7 @@ export async function resolveHost(host: string): Promise<{ addresses: string[]; 
  * unlocked; the folders each user may grant are in self.db.
  */
 export class Workspace {
+  private readonly worktreeCleanup = new Map<string, Promise<string>>();
   private readonly settingsByUser = new Map<string, WorkspaceSettings>();
   private readonly changesByUser = new Map<string, FileChanges>();
   private readonly sshTargets = new Map<string, SshTarget>();
@@ -275,6 +278,7 @@ export class Workspace {
    */
   forThread(t: WorkspaceThread) {
     return {
+      prepareWorktrees: () => this.prepareWorktrees(t),
       commandRules: () => t.project ? this.settings(t.userId).commandRules(t.pool, t.project) : [],
       target: (machine?: string) => this.targetFor(t, machine),
       settings: () => { const s = this.settings(t.userId).effective(t.threadId); return { ...s, grants: ownGrants(t, s.grants) }; },
@@ -340,7 +344,7 @@ export class Workspace {
     s.checkInherited(t.threadId, t.pool);
     const tw = s.effective(t.threadId);
     const box = new Sandbox({
-      workdir: this.threadDir(t), grants: tw.grants, network: { internet: false, services: false, hosts: [] },
+      workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), grants: tw.grants, network: { internet: false, services: false, hosts: [] },
       check: (g) => checkGrant(s.allowed(), t.pool, g), bwrap: this.opts.bwrap,
     });
     return new ThreadFiles(box, tw.grants, (kind, names) => s.noteFiles(t.threadId, kind, names));
@@ -497,6 +501,46 @@ export class Workspace {
     });
   }
 
+  private workdirAlias(t: WorkspaceThread): string | undefined {
+    const settings = this.settings(t.userId);
+    const id = settings.folderThread(t.threadId);
+    return settings.threadWork(id) ? `/thread-workspaces/${encodeURIComponent(id)}` : undefined;
+  }
+
+  /** Serialize cleanup with reopening, so a new turn cannot lose its checkout to an earlier resolve. */
+  removeThreadWorktrees(t: WorkspaceThread): Promise<string> {
+    const key = `${t.userId}/${t.threadId}`;
+    const active = this.worktreeCleanup.get(key);
+    if (active) return active;
+    const ws = this.settings(t.userId);
+    const work = ws.threadWork(t.threadId);
+    if (!work?.worktrees.length || work.cleaned) return Promise.resolve("");
+    const job = (async () => {
+      const note = await removeWorktrees(this.targetFor(t), work.worktrees);
+      ws.setThreadWork(t.threadId, { ...work, cleaned: true });
+      return note;
+    })().finally(() => this.worktreeCleanup.delete(key));
+    this.worktreeCleanup.set(key, job);
+    return job;
+  }
+
+  /** Reopening a resolved part restores its checkout on the saved branch before tools run. */
+  async prepareWorktrees(t: WorkspaceThread): Promise<void> {
+    await this.worktreeCleanup.get(`${t.userId}/${t.threadId}`);
+    const ws = this.settings(t.userId);
+    const work = ws.threadWork(t.threadId);
+    if (!work?.cleaned || !work.worktrees.length) return;
+    const grants = ws.effective(t.threadId).grants;
+    const target = this.targetFor(t);
+    for (const w of work.worktrees) {
+      if (!grants.some((g) => g.path === `${w.repo}/.git` && g.writable)) continue;
+      const made = await makeWorktrees(target, [{ path: w.repo, writable: true }], t.threadId, 1, undefined,
+        { branch: w.branch, directory: w.path.slice(0, w.path.lastIndexOf("/")), reuse: true });
+      if (typeof made === "string") throw new Error(made);
+    }
+    ws.setThreadWork(t.threadId, { ...work, cleaned: false });
+  }
+
   /** Where a call runs: the sandbox, or one of the thread's machines. */
   targetFor(t: WorkspaceThread, machine?: string): ExecutionTarget {
     const s = this.settings(t.userId);
@@ -510,6 +554,7 @@ export class Workspace {
     const credentials = this.credentialsFor(t);
     return new Sandbox({
       workdir: this.threadDir(t),
+      workdirAlias: this.workdirAlias(t),
       grants: ownGrants(t, s.effective(t.threadId).grants),
       network: this.network(t),
       repos: this.reposDir(t),

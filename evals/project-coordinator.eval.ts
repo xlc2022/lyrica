@@ -27,7 +27,7 @@ import { withModels } from "../core/test/helpers.ts";
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-interface Done { tool: string; action?: string; to?: string; code?: boolean; task?: string }
+interface Done { tool: string; action?: string; to?: string; code?: boolean; base?: boolean; task?: string }
 
 const HOMELAB = { title: "Homelab", goal: "Move the homelab to the new rack", dns: true };
 const RACING = { title: "Racing sim", goal: "A browser racing sim in the git repository at /srv/race", dns: false };
@@ -78,10 +78,10 @@ async function setup(real: boolean, about = HOMELAB) {
     const done: Done[] = [];
     session.subscribe((e) => {
       if (e.type === "tool_execution_start") {
-        const a = e.args as { action?: string; id?: string; code?: boolean; task?: string } | undefined;
+        const a = e.args as { action?: string; id?: string; code?: boolean; base?: boolean; task?: string } | undefined;
         done.push({
           tool: e.toolName, ...(a?.action ? { action: a.action } : {}), ...(a?.id ? { to: a.id } : {}),
-          ...(a?.code ? { code: true } : {}), ...(a?.task ? { task: a.task } : {}),
+          ...(a?.code ? { code: true } : {}), ...(a?.base ? { base: true } : {}), ...(a?.task ? { task: a.task } : {}),
         });
       }
     });
@@ -105,6 +105,7 @@ describe("a project chat", () => {
     const prompt = JSON.stringify(seen?.messages);
     expect(prompt).toContain("This is a project chat");
     expect(prompt).toContain("Start one thread per task");
+    expect(prompt).toContain("base: true merge thread");
     expect(prompt).toContain("Move the homelab to the new rack");
     expect(prompt).toContain("Move DNS to the router");
   });
@@ -123,18 +124,20 @@ describe("a project chat", () => {
     expect(rule.map((d) => d.tool)).toContain("remember");
   }, 300_000);
 
-  it.skipIf(!process.env.LYRICA_EVAL_BASE_URL || !process.env.LYRICA_EVAL_MODEL)("with a real model, she splits a build into code threads that own different files, and checks the result", async () => {
+  it.skipIf(!process.env.LYRICA_EVAL_BASE_URL || !process.env.LYRICA_EVAL_MODEL)("with a real model, she scaffolds, splits into code threads and starts a merge thread after the parts report", async () => {
     const m = await setup(true, RACING);
     const build = await m.turn("Build the racing sim: car physics with unit tests, a three.js renderer with a chase camera, and a closed track with checkpoints and a lap timer. Each part is a real chunk of work.");
     const starts = (done: Done[]) => done.filter((d) => d.tool === "threads" && d.action === "start");
-    // She may start one thread to set up the shared interfaces first; the parts start once it reports.
+    // The base scaffold reports and resolves before parts start; merging follows their branch reports.
     const scaffold = starts(build).length === 1
-      ? await m.turn("Update from child thread [t:web/new0]:\nScaffold committed: package.json, src/shared.js with the interfaces the parts use, and CONVENTIONS.md.")
+      ? await m.turn("Update from child thread [t:web/new0]:\nScaffold committed in the base checkout: package.json, src/shared.js with the interfaces the parts use, and CONVENTIONS.md. Scaffold thread resolved.")
       : [];
+    expect(starts(build)).toHaveLength(1);
+    expect(starts(build)[0]).toMatchObject({ code: true, base: true });
     const small = await m.turn("Also, the README says 'teh car'. Fix that typo.");
-    const report = await m.turn("Update from child thread [t:web/new1]:\nPhysics and tests are done and committed. npm test passes.\n\n"
-      + "Update from child thread [t:web/new2]:\nRenderer and chase camera are done and committed.\n\n"
-      + "Update from child thread [t:web/new3]:\nTrack, checkpoints and lap timer are done and committed.");
+    const report = await m.turn("Update from child thread [t:web/new1]:\nPhysics and tests are done on branch lyrica/race/physics. npm test passes. Thread resolved.\n\n"
+      + "Update from child thread [t:web/new2]:\nRenderer and chase camera are done on branch lyrica/race/renderer. Thread resolved.\n\n"
+      + "Update from child thread [t:web/new3]:\nTrack, checkpoints and lap timer are done on branch lyrica/race/track. Thread resolved.");
     console.log(`parallel code threads, ${process.env.LYRICA_EVAL_MODEL}:\n${JSON.stringify({ build, scaffold, small, report }, null, 1)}`);
     const parts = starts(build).length > 1 ? starts(build) : starts(scaffold);
     expect(parts.length).toBeGreaterThanOrEqual(2);
@@ -145,7 +148,10 @@ describe("a project chat", () => {
     const seen = new Set<string>();
     for (const f of files) for (const name of f) { expect(seen.has(name)).toBe(false); seen.add(name); }
     expect(small.filter((d) => d.tool === "threads" && d.action === "start").length).toBeLessThanOrEqual(1);
-    // Before telling the person it's done, she looks for herself.
-    expect(report.some((d) => d.tool === "bash" || d.tool === "read" || (d.tool === "threads" && d.action === "read"))).toBe(true);
+    // After the parts, a separate base thread merges; the project chat stays read-only.
+    expect(starts(report)).toHaveLength(1);
+    expect(starts(report)[0]).toMatchObject({ code: true, base: true });
+    expect(starts(report)[0]!.task).toMatch(/merge/i);
+    expect(starts(report)[0]!.task).toMatch(/test/i);
   }, 300_000);
 });

@@ -1,9 +1,8 @@
 # Brief: A worktree for each code thread in a project
 
-**Status:** Draft, waiting on the owner's go. The owner chose the merge
-thread (C) on 2026-10-19.
+**Status:** Built on feature/thread-worktrees, in review.
 
-**Branch:** `feature/thread-worktrees`. **Built by:** Opus (agent loop
+**Branch:** `feature/thread-worktrees`. **Built by:** Codex (agent loop
 area, so PR review).
 **Read first:** AGENTS.md, PRINCIPLES.md (1, 6, 8), DESIGN.md (Projects,
 Delegation), docs/contracts.md (core/workspace, Projects), docs/workspace.md
@@ -112,3 +111,17 @@ code child it starts on request shares its parent's folder as today.
 - Pushing branches or opening pull requests from part threads.
 - Delegate worktrees inside a part thread's worktree. They still work, but
   they nest under the thread's folder.
+
+## Build notes
+
+Built sections A–E. The shared helpers moved to
+`core/src/workspace/worktree.ts`. Project code threads use their own encrypted
+folder, with identifier-only branch slugs and a unique `/thread-workspaces/<child>` sandbox alias so shared git
+metadata never confuses two `/workspace` paths. Placement and base ownership
+survive restarts in encrypted workspace settings; no schema migration.
+
+Coverage also includes queued base holders and reopening, fallback reasons,
+ordinary children staying in their parent's folder, dirty checkout retention
+when forgetting files, and a real-sandbox check of unique git paths and mounts.
+The coordinator eval's real-model scenario now checks scaffold, parts, merge;
+it is not run against a real endpoint in this build.

@@ -1,8 +1,10 @@
-import { pickThread } from "@lyrica/core";
-import { mkdtempSync, realpathSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createLocalBashOperations } from "@earendil-works/pi-coding-agent";
+import { Sandbox, pickThread, type ExecutionTarget, type ToolOps } from "@lyrica/core";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
 import type { EndpointInfo, MachineProbe, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
@@ -625,4 +627,172 @@ it("a woken parent's reply reaches a busy child's next user turn without startin
   await until(() => messages(childPath(id)), m => m.some(x => x.role === "assistant" && x.parts.some(p => p.type === "text" && p.text === "Tulips it is.")));
   parentEnd.release();
   await until(() => messages(path), m => m.some(x => x.role === "assistant" && x.parts.some(p => p.type === "text" && p.text === "Answered.")));
+});
+
+
+// Git runs locally only in these fakes; model traffic uses setup's fake endpoint.
+describe("project code thread worktrees", () => {
+  const dirs: string[] = [];
+  afterEach(() => { vi.restoreAllMocks(); for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+  async function projectRepo(opts: Parameters<typeof setup>[0] = {}) {
+    const s = await setup(opts);
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-thread-worktrees-")));
+    dirs.push(root);
+    const repo = join(root, "repo");
+    mkdirSync(repo);
+    const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+    git("init", "-q");
+    writeFileSync(join(repo, "README.md"), "example repository\n");
+    git("add", ".");
+    git("-c", "user.name=Example", "-c", "user.email=example@example.invalid", "commit", "-qm", "initial");
+    await s.ada.post(`${s.u}/admin/users/${s.rt.ada.id}/paths`, { pool: "general", path: repo });
+    await s.ada.patch(s.path, { project: true });
+    expect((await s.ada.patch(`${s.path}/settings`, { grants: [{ path: repo, writable: true }] })).status).toBe(200);
+    const workspace = s.d.services!.workspace;
+    const ws = workspace.settings(s.rt.ada.id);
+    vi.spyOn(workspace, "targetFor").mockImplementation((t) => {
+      const cwd = join(root, "threads", encodeURIComponent(ws.folderThread(t.threadId)));
+      mkdirSync(cwd, { recursive: true });
+      return { name: "sandbox", cwd: async () => cwd, ops: () => ({ bash: createLocalBashOperations() } as unknown as ToolOps), folders: () => [] } satisfies ExecutionTarget;
+    });
+    const make = async (title: string, more = {}) => {
+      s.parent.push(start(title, `Build ${title}.`, { code: true, ...more }), { text: "Started." });
+      s.child.push({ text: "Ready." });
+      const result = toolEnd(await s.say(`Start ${title}.`));
+      await s.idleParent();
+      return result;
+    };
+    const idle = async (id: string) => { await expect.poll(() => s.d.services!.host.busy(s.rt.ada.id, "general", id)).toBe(false); };
+    const pair = async () => {
+      const services = s.d.services!;
+      const view = services.memory.openThreadView(s.rt.ada.id, "general");
+      try {
+        const ctx = { user: services.users.get(s.rt.ada.id)!, pool: "general" as const, interface: "web" as const,
+          threadId: s.thread.id, view, call: services.models.callContext(s.rt.ada.id, "general", s.thread.id) };
+        return await Promise.all([
+          services.children.start(ctx, { title: "Physics", task: "Build physics.", code: true }),
+          services.children.start(ctx, { title: "Renderer", task: "Build renderer.", code: true }),
+        ]);
+      } finally { view.close(); }
+    };
+    return { ...s, root, repo, git, ws, workspace, make, idle, pair };
+  }
+
+  it("isolates two project writers, narrows their grants, and restores a resolved checkout on its branch", async () => {
+    const s = await projectRepo();
+    const [{ id: a }, { id: b }] = await s.pair();
+    await s.idle(a); await s.idle(b);
+    const wa = s.ws.threadWork(a)!.worktrees[0]!;
+    const wb = s.ws.threadWork(b)!.worktrees[0]!;
+    expect(wa).toBeDefined(); expect(wb).toBeDefined();
+    expect(wa.path).not.toBe(wb.path);
+    expect(wa.branch).not.toBe(wb.branch);
+    expect(wa.branch).toMatch(/^lyrica\/[^/]+\/[^/]+$/);
+    expect(wa.branch).not.toContain("physics");
+    expect(wb.branch).not.toContain("renderer");
+    expect(wa.path).toBe(join(s.root, "threads", encodeURIComponent(a), "worktrees", "repo"));
+    writeFileSync(join(wa.path, "physics.ts"), "export const speed = 1;\n");
+    expect(existsSync(join(wb.path, "physics.ts"))).toBe(false);
+    expect(existsSync(join(s.repo, "physics.ts"))).toBe(false);
+    for (const id of [a, b]) {
+      const grants = s.ws.effective(id).grants;
+      expect(grants).toEqual([{ path: s.repo, writable: false }, { path: `${s.repo}/.git`, writable: true }]);
+      const box = new Sandbox({ workdir: s.root, grants, network: { internet: false, services: false, hosts: [] } });
+      expect(() => box.allow(join(s.repo, "README.md"), true)).toThrow(/read-only/);
+      expect(box.allow(join(s.repo, ".git", "index"), true)).toContain(".git/index");
+    }
+    expect(s.model.requests.filter(isChild).map(said).join("\n")).toContain(wa.path);
+    // Commit before resolving: the checkout goes, the branch stays.
+    execFileSync("git", ["-C", wa.path, "add", "."]);
+    execFileSync("git", ["-C", wa.path, "-c", "user.name=Example", "-c", "user.email=example@example.invalid", "commit", "-qm", "physics"]);
+    expect((await s.ada.post(`${s.childPath(a)}/resolve`)).status).toBe(200);
+    expect(existsSync(wa.path)).toBe(false);
+    expect(s.git("branch", "--list", wa.branch)).toContain(wa.branch);
+    expect((await s.ada.post(`${s.childPath(a)}/reopen`)).status).toBe(200);
+    await s.workspace.prepareWorktrees({ userId: s.rt.ada.id, pool: "general", threadId: a });
+    expect(existsSync(join(wa.path, "physics.ts"))).toBe(true);
+    await s.ada.post(`${s.childPath(a)}/resolve`);
+    s.git("merge", "--ff-only", wa.branch);
+    s.git("branch", "-d", wa.branch);
+    await s.ada.post(`${s.childPath(a)}/reopen`);
+    await s.workspace.prepareWorktrees({ userId: s.rt.ada.id, pool: "general", threadId: a });
+    expect(existsSync(join(wa.path, "physics.ts"))).toBe(true);
+    // A later narrowing still removes commit access.
+    s.ws.setThread(s.thread.id, "general", { grants: [{ path: s.repo, writable: false }] });
+    expect(s.ws.effective(a).grants.every((g) => !g.writable)).toBe(true);
+  });
+
+  it("allows only one open base thread, including queued starts and reopening", async () => {
+    const s = await projectRepo({ threads: { concurrency: 0 } });
+    const a = (await s.make("Scaffold", { base: true })).threads![0]!.id;
+    await s.idle(a);
+    expect(s.d.services!.children.projectThreads(s.rt.ada.id, "general", s.thread.id).find((t) => t.id === a)?.state).toBe("queued");
+    expect(s.ws.threadWork(a)).toMatchObject({ base: true, worktrees: [] });
+    expect(s.ws.effective(a).grants).toEqual([{ path: s.repo, writable: true }]);
+    const refused = await s.make("Another scaffold", { base: true });
+    expect(refused).toMatchObject({ isError: true, result: expect.stringContaining("Scaffold") });
+    await s.ada.post(`${s.childPath(a)}/resolve`);
+    const b = (await s.make("Merge", { base: true })).threads![0]!.id;
+    await s.idle(b);
+    expect((await s.ada.post(`${s.childPath(a)}/reopen`)).status).not.toBe(200);
+    expect(s.ws.threadWork(b)?.base).toBe(true);
+    // A resolved queued scaffold must not run later alongside its replacement base holder.
+    s.d.services!.children.limits.concurrency = 1;
+    s.d.services!.children.resume(s.rt.ada.id);
+    await expect.poll(() => s.model.requests.filter(isChild).map(said).join("\n")).toContain("Build Merge.");
+    const db = s.d.services!.users.openUserDb(s.rt.ada.id);
+    try { expect(db.prepare("SELECT queued FROM child_threads WHERE thread = ?").get(a)).toEqual({ queued: 1 }); }
+    finally { db.close(); }
+  });
+
+  it("keeps dirty worktrees and reports where, including when the thread is forgotten", async () => {
+    const s = await projectRepo();
+    const id = (await s.make("Track")).threads![0]!.id;
+    await s.idle(id);
+    const w = s.ws.threadWork(id)!.worktrees[0]!;
+    writeFileSync(join(w.path, "track.ts"), "export const laps = 2;\n");
+    await s.ada.post(`${s.childPath(id)}/resolve`);
+    expect(existsSync(w.path)).toBe(true);
+    expect(JSON.stringify(await s.messages(s.path))).toContain("was kept");
+    await s.ada.del(s.childPath(id));
+    expect(existsSync(w.path)).toBe(true);
+    expect(s.git("branch", "--list", w.branch)).toContain(w.branch);
+  });
+
+  it("starts with a visible reason when a writable folder is not a repository", async () => {
+    const s = await projectRepo();
+    const folder = join(s.root, "plain"); mkdirSync(folder);
+    await s.ada.post(`${s.u}/admin/users/${s.rt.ada.id}/paths`, { pool: "general", path: folder });
+    s.ws.setThread(s.thread.id, "general", { grants: [{ path: folder, writable: true }] });
+    const id = (await s.make("Plain folder")).threads![0]!.id;
+    await s.idle(id);
+    expect(s.ws.threadWork(id)?.reason).toContain("isn't the top");
+    expect((await s.ada.get<ThreadSummary>(s.childPath(id))).body.worktreeReason).toContain("isn't the top");
+    expect(s.model.requests.filter(isChild).map(said).join("\n")).toContain("No worktree");
+  });
+
+  it.each(["mid-merge", "no sandbox"])("starts with a reason when there is %s", async (why) => {
+    const s = await projectRepo();
+    if (why === "mid-merge") writeFileSync(join(s.repo, ".git", "MERGE_HEAD"), s.git("rev-parse", "HEAD"));
+    else {
+      const local = s.workspace.targetFor({ userId: s.rt.ada.id, pool: "general", threadId: s.thread.id });
+      vi.mocked(s.workspace.targetFor).mockReturnValue({ ...local, name: "ssh:example" });
+    }
+    const id = (await s.make("Fallback")).threads![0]!.id;
+    await s.idle(id);
+    expect(s.ws.threadWork(id)?.worktrees).toEqual([]);
+    expect(s.ws.threadWork(id)?.reason).toMatch(why === "mid-merge" ? /mid-merge/ : /need the sandbox/);
+    expect(s.ws.effective(id).grants).toEqual([{ path: s.repo, writable: true }]);
+  });
+
+  it("keeps an ordinary code child in its parent's folder", async () => {
+    const s = await setup();
+    s.parent.push(start("Small fix", "Fix the example.", { code: true }), { text: "Started." });
+    s.child.push({ text: "Done." });
+    const id = toolEnd(await s.say("Start a code child." )).threads![0]!.id;
+    const ws = s.d.services!.workspace.settings(s.rt.ada.id);
+    expect(ws.threadWork(id)).toBeUndefined();
+    expect(ws.folderThread(id)).toBe(s.thread.id);
+  });
+
 });

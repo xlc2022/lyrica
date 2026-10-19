@@ -773,7 +773,7 @@ Custom roles override built-ins by name.
 - **Child threads** (`createThreadsExtension(thread, host?: ThreadsHost, meter?)`,
   never in a subagent's thread): one model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,
-  `readOnly`, `internet`, and `code: true` to start it in code mode), `message` (to a child, by ID or current title
+  `readOnly`, `internet`, `base: true` for a project’s original checkout, and `code: true` to start it in code mode), `message` (to a child, by ID or current title
   (`pickThread`; a title two threads share is refused), or `to: "parent"`
   from a child), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
   `last`: the latest messages of a listed, logged thread (`PoolReader.latestEntries`), `READ_DEFAULT`
@@ -904,6 +904,31 @@ Custom roles override built-ins by name.
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
   in Plan mode itself.
+- **Thread worktrees:** `StartRequest.base?: boolean` keeps a project child's
+  original checkout. `children.ts` refuses a second open base holder (queued
+  starts count), naming it, and guards reopening too. Resolved queued threads
+  do not start until reopened. Project code parts use
+  shared `makeWorktrees`, `worktreeGrants`, `removeWorktrees` in
+  `core/src/workspace/worktree.ts`. `ThreadWorkspace.threadWork?: ThreadWork`
+  holds `{ base?, worktrees: { repo, path, branch }[], reason?, cleaned? }`,
+  saved only through `WorkspaceSettings.setThreadWork` in encrypted `settings`
+  keys `workspace.threadWork.<id>`; no schema change. It is internal placement,
+  never accepted from a settings request. `folderThread` stops at this child,
+  so its folder holds the uniquely named sandbox alias
+  `/thread-workspaces/<child>/worktrees/<repo>`; a subagent still shares
+  its parent's folder. `SandboxSpec.workdirAlias` mounts the same folder at
+  that unique path; `ExecutionTarget.worktreeRoot?()` returns it for placement
+  (otherwise `cwd()`). Git’s repository-wide records then distinguish threads.
+  Original checkouts are read-only with writable `.git`
+  grants, the one permitted grant nesting; most-specific grants govern access
+  and ancestor narrowing. `prepareWorktrees` restores resolved parts on their
+  saved branches before tools run (from current HEAD if a merged branch was
+  deleted), waiting for `Workspace.removeThreadWorktrees` if an earlier cleanup
+  is still running. Resolution and forgetting run shared
+  cleanup before files disappear; dirty checkouts and their folders stay.
+  `ProjectThreadInfo.worktreeReason` and `ThreadSummary.worktreeReason` expose
+  fallback reasons in the project chat's card. The coordinator starts a base
+  merge thread after the parts; it gets no merge tool of its own.
 - **Projects:** in a project chat, `threads.start` records the anchor (the
   first entry the calling turn writes; the card goes under the first
   message at or after it) and returns `queued` past the at-once limit
@@ -1832,7 +1857,7 @@ network(t): Network
 inheritSettings(parent, childThreadId, narrower?)  // subagents and child threads: same or stricter (folders, network, mode, webSearch, images, claudeCode), never wider
 claudeCodeFor(t): boolean                 // Claude Code for a run: general, not local-only along its chain (WorkspaceOptions.restricted; without it never), switch on, token saved, reaches api.anthropic.com
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
-// A project's threads, like any child thread, work in their project chat's folder (folderThread)
+// Project code threads have their own folder; other child threads share their parent's (folderThread).
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
 // MachineConfig { name, kind: "ssh" | "proxmox", host, port, username (Proxmox: token id), privateKey (Proxmox: the token),
 //   root (Proxmox: null), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,

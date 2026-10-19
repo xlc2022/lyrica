@@ -1,3 +1,4 @@
+import type { Worktree } from "./worktree.ts";
 import { randomBytes } from "node:crypto";
 import { commandRules as checkCommandRules, type CommandRule } from "./rules.ts";
 import { isAbsolute, posix } from "node:path";
@@ -37,7 +38,16 @@ export interface Network {
   hosts: string[];
 }
 
+export interface ThreadWork {
+  base?: boolean;
+  worktrees: Worktree[];
+  reason?: string;
+  cleaned?: boolean;
+}
+
 export interface ThreadWorkspace {
+  /** Internal project-thread placement, stored in encrypted settings, never accepted from a settings request. */
+  threadWork?: ThreadWork;
   grants: Grant[];
   /** Overrides of the user's per-pool defaults; null follows the default. */
   internet: boolean | null;
@@ -243,7 +253,7 @@ export const overlaps = (a: string, b: string): boolean => within(a, b) || withi
 /** `grants` as far as `outer` allows: each inside one of its folders, and read-only where that one is. */
 export function narrowGrants(grants: Grant[], outer: Grant[]): Grant[] {
   return grants.flatMap((g) => {
-    const from = outer.find((o) => within(g.path, o.path));
+    const from = [...outer].sort((a, b) => b.path.length - a.path.length).find((o) => within(g.path, o.path));
     return from ? [{ path: g.path, writable: g.writable && from.writable }] : [];
   });
 }
@@ -311,6 +321,16 @@ export class WorkspaceSettings {
 
   private setting(key: string): string | undefined {
     return (this.db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
+  }
+
+  threadWork(threadId: string): ThreadWork | undefined {
+    const value = this.setting(`workspace.threadWork.${threadId}`);
+    return value ? JSON.parse(value) : undefined;
+  }
+
+  setThreadWork(threadId: string, work: ThreadWork): void {
+    this.db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(`workspace.threadWork.${threadId}`, JSON.stringify(work));
   }
 
   /** Portrait photos sent by the image tool; ask once per server-local calendar day. */
@@ -390,11 +410,12 @@ export class WorkspaceSettings {
     const row = this.db.prepare("SELECT * FROM thread_workspaces WHERE thread_id = ?").get(threadId) as ThreadRow | undefined;
     // A thread from before modes were saved for every new thread: Auto, as it had then. New threads get the default from startThread.
     if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, claudeCode: false, code: false, machines: [], repositories: [], mcpServers: [], parent: null };
+    const threadWork = this.threadWork(threadId);
     const bool = (v: number | null) => (v === null ? null : v === 1);
     return {
       grants: JSON.parse(row.grants), internet: bool(row.internet), services: bool(row.services),
       hosts: row.hosts === null ? null : JSON.parse(row.hosts), mode: row.mode, webSearch: row.web_search === 1, images: row.images === 1,
-      claudeCode: row.claude_code === 1, code: row.code === 1, machines: JSON.parse(row.machines), repositories: JSON.parse(row.repositories), mcpServers: JSON.parse(row.mcp_servers), parent: row.parent,
+      claudeCode: row.claude_code === 1, code: row.code === 1, machines: JSON.parse(row.machines), repositories: JSON.parse(row.repositories), mcpServers: JSON.parse(row.mcp_servers), parent: row.parent, ...(threadWork ? { threadWork } : {}),
     };
   }
 
@@ -442,7 +463,7 @@ export class WorkspaceSettings {
     for (const g of next.grants) {
       checkGrant(allowed, pool, g);
       const outer = next.grants.find((o) => o !== g && within(g.path, o.path));
-      if (outer) throw new Error(`${g.path} is inside ${outer.path}; grant one or the other`);
+      if (outer && !(g.path === `${outer.path}/.git` && !outer.writable)) throw new Error(`${g.path} is inside ${outer.path}; grant one or the other`);
     }
     if (!PERMISSION_MODES.includes(next.mode)) throw new Error(`unknown permission mode: ${next.mode}`);
     if (next.claudeCode && pool !== "general") throw new Error("a private thread can't use Claude Code: it sends what it reads to Anthropic");
@@ -553,7 +574,7 @@ export class WorkspaceSettings {
   private checkNarrower(parentThreadId: string, pool: Pool, child: ThreadWorkspace): void {
     const parent = this.effective(parentThreadId);
     for (const g of child.grants) {
-      const from = parent.grants.find((p) => within(g.path, p.path));
+      const from = [...parent.grants].sort((a, b) => b.path.length - a.path.length).find((p) => within(g.path, p.path));
       if (!from) throw new Error(`${g.path} isn't in the parent thread's folders`);
       if (g.writable && !from.writable) throw new Error(`${g.path} is read-only in the parent thread`);
     }
@@ -615,9 +636,10 @@ export class WorkspaceSettings {
     return { added: rows.filter((r) => r.kind === "added").map((r) => r.path), removed: rows.filter((r) => r.kind === "removed").map((r) => r.path) };
   }
 
-  /** The thread whose folder in the home workspace this one works in: itself, or its first ancestor. */
+  /** The thread whose folder in the home workspace this one works in: itself for a project code thread, otherwise its nearest ancestor with its own folder. */
   folderThread(threadId: string): string {
     for (let id = threadId, i = 0; i < 100; i++) {
+      if (this.threadWork(id)) return id;
       const parent = this.thread(id).parent;
       if (!parent) return id;
       id = parent;

@@ -198,6 +198,20 @@ describe("the sweep of change records", () => {
     expect(readdirSync(join(home, "claude"))).toEqual([]);
   });
 
+  it("keeps a thread worktree left by cleanup when removing its forgotten thread's files", async () => {
+    const { home, ws, changes } = await setup();
+    const repo = join(ws, "repo"); mkdirSync(repo);
+    const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+    git("init", "-q");
+    git("-c", "user.name=Example", "-c", "user.email=example@example.invalid", "commit", "-q", "--allow-empty", "-m", "initial");
+    const tree = join(home, "threads", "web%2Ft", "worktrees", "repo");
+    git("worktree", "add", "-q", "-b", "lyrica/example/part", tree);
+    writeFileSync(join(tree, "unfinished.ts"), "export const unfinished = true;\n");
+    expect(forgetFiles(home, changes, "general", ["web/t"], [repo], () => false)).toBe(0);
+    expect(existsSync(join(tree, "unfinished.ts"))).toBe(true);
+    expect(git("worktree", "list")).toContain(tree);
+  });
+
   it("keeps a forgotten thread's folder while a thread in the other pool has the same id", async () => {
     const { home, changes } = await setup();
     mkdirSync(join(home, "threads/web%2Ft"), { recursive: true });
