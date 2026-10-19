@@ -36,7 +36,9 @@ subagent:
   word of it. A name that fits none, or several, fails the run with the
   closest few, for her to ask the person which they meant;
   `delegate({ action: "models" })` lists the chat models she may name, each
-  marked local or cloud. In a private or local-only thread it is always a
+  marked local or cloud, and vision where it has it. A subagent whose model
+  has no vision is told so on a tool result holding an image (contracts.md,
+  `registerVisionGuard`). In a private or local-only thread it is always a
   local model. A refused model fails the run before any thread is made;
 - gets its workspace from `inheritSettings`: the parent's folders (or the
   ones asked for), read-only for a read-only role or `readOnly: true`, and

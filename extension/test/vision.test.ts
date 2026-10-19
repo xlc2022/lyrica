@@ -31,5 +31,10 @@ describe("an image her model can't see", () => {
     const g = guard();
     expect(g.run(["text", "image"], [g.image])).toBeUndefined();
     expect(g.run(["text"], [{ type: "text", text: "plain" }])).toBeUndefined();
+    // A text file, or command output, that quotes Pi's note is just text.
+    expect(g.run(["text"], [{ type: "text", text: `const note = "${g.note.text}";` }])).toBeUndefined();
+    expect(g.run(["text"], [g.note], "bash")).toBeUndefined();
+    // Pi's note alone, on a read of an image, still fails it.
+    expect(g.run(["text"], [g.note])).toMatchObject({ isError: true });
   });
 });
