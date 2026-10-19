@@ -52,7 +52,7 @@ without cutting her off from what the user has told her about how to work.
 **B. What changes in a code-mode turn.**
 
 1. **Model.** A new task `code` ("Coding" in Models).
-   - Its default `{ same: "subagent.strong" }` goes in `NEW_PROFILE`, and
+   - Its default `{ same: "subagent.strong" }` goes in `NEW_PRESET`, and
      the task in `LATER_TASKS` so existing presets get it
      (core/src/models/index.ts). Add it to `TASKS` and `TASK_NAMES`
      (core/src/types.ts), the daemon's `Task` union and `THREAD_TASKS`
@@ -186,4 +186,22 @@ without cutting her off from what the user has told her about how to work.
 
 ## Handoff notes
 
-(None yet.)
+Part 1 implements core only: `code` routing defaults in presets/columns,
+`SearchOptions.only: { project?: boolean, about?: string }` (union,
+`fromThread` supplies the project), `ThreadWorkspace.code` with independent
+child edits, and `codeTask` / `setCodeTask` in the encrypted pool. User step
+14 and pool step 9 were free after merging main and are used unchanged.
+The router ignores a thread's chat override when resolving the code task.
+
+Parts 2 and 3 remain: daemon/extension settings and task wiring, prompt and
+recall integration, tools, working-preference guidance, coder role, project
+defaults, scripted evals, web controls and e2e. The daemon's separate Task
+union still needs code in part 2; root typecheck reports that boundary until
+then. Its extension workspace test fixture also needs the new code default.
+No real model, paid API or plan endpoint was used.
+
+Validation for part 1: targeted store, models, workspace and migration suites
+under `/tmp/lyrica-tests.lock`: 112 passed, 4 existing sandbox-dependent
+checks skipped. Core source and these four test files typecheck with the
+repository's compiler flags and SQLite declaration. The full suite was not
+run. Changes remain uncommitted and unpushed for the operator.

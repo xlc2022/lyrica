@@ -367,13 +367,14 @@ const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "image.
 /** Tasks with no list of their own follow chat, except these. */
 const OWN_LIST_ONLY: readonly Task[] = ["embedding", "image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak"];
 /** A new preset starts with these following other tasks. */
-const NEW_PROFILE: Partial<Record<Task, { same: Task }>> = {
+const NEW_PRESET: Partial<Record<Task, { same: Task }>> = {
+  code: { same: "subagent.strong" },
   title: { same: "subagent.cheap" }, compaction: { same: "subagent.cheap" }, watching: { same: "subagent.cheap" },
   "sleep.consolidate": { same: "subagent.strong" }, "sleep.dream": { same: "subagent.strong" }, "sleep.wake": { same: "subagent.strong" },
 };
 
-/** Tasks added after presets were first stored: a preset with no entry for one gets its NEW_PROFILE default when read. */
-const LATER_TASKS: readonly Task[] = ["watching"];
+/** Tasks added after presets were first stored: a preset with no entry for one gets its NEW_PRESET default when read. */
+const LATER_TASKS: readonly Task[] = ["watching", "code"];
 
 const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/i;
 /** A primary language tag: "en", "zh", "yue". */
@@ -1899,7 +1900,7 @@ export class Models {
     this.withUser(userId, (db) => {
       db.transaction(() => {
         const c = this.readColumn(db, column);
-        const current: Profiles = Object.keys(c.entries).length ? c.entries : { ...NEW_PROFILE };
+        const current: Profiles = Object.keys(c.entries).length ? c.entries : { ...NEW_PRESET };
         const stored = this.entryFor(userId, current, task, value, kind);
         const next: Profiles = { ...current };
         if (!stored) delete next[task]; else next[task] = stored;
@@ -1954,7 +1955,7 @@ export class Models {
     const table: Profiles = entries ? JSON.parse(entries) as Profiles : {};
     if (Object.keys(table).length) {
       for (const task of LATER_TASKS) {
-        const d = NEW_PROFILE[task]!;
+        const d = NEW_PRESET[task]!;
         const target = table[d.same];
         if (!(task in table) && (!target || isList(target))) table[task] = d;
       }
@@ -2584,15 +2585,15 @@ export class Models {
         if (!id) return [];
         return "groupId" in r ? (c.groups.has(id) ? [{ groupId: id }] : []) : [{ offeringId: id }];
       });
-      const of = (t: Task): { list: ModelRef[]; source: "thread" | "preset" | "column"; profile: string } | undefined => {
-        const own = live(ctx.overrides?.[t]);
+      const of = (t: Task, threadOverride = true): { list: ModelRef[]; source: "thread" | "preset" | "column"; profile: string } | undefined => {
+        const own = threadOverride ? live(ctx.overrides?.[t]) : undefined;
         if (own?.length) return { list: own, source: "thread", profile };
         let e = table[t];
         if (e && !isList(e)) e = table[e.same];
         const listed = live(isList(e) ? e : undefined);
         return listed?.length ? { list: listed, source: honored ? "preset" : "column", profile } : undefined;
       };
-      return of(task) ?? (OWN_LIST_ONLY.includes(task) ? undefined : of("chat"));
+      return of(task) ?? (OWN_LIST_ONLY.includes(task) ? undefined : of("chat", task !== "code"));
     });
   }
 

@@ -188,6 +188,8 @@ export interface SearchOptions {
   excludeThread?: string;
   /** The thread searching. In a project, what belongs to it (notes citing its threads, its page, its threads' entries) ranks higher. */
   fromThread?: string;
+  /** Keep only project items (fromThread) or notes with this whole about tag. Empty project membership matches nothing. */
+  only?: { project?: boolean; about?: string };
   includeArchived?: boolean;
   /** Words left out of the query: automatic recall leaves out her name, which nearly everything mentions. */
   skip?: string[];
@@ -437,6 +439,11 @@ export class PoolReader {
   steps(threadId: string): ThreadStep[] {
     const row = this.db.prepare("SELECT steps FROM thread_steps WHERE thread = ?").get(threadId) as { steps: string } | undefined;
     return row ? JSON.parse(row.steps) as ThreadStep[] : [];
+  }
+
+  /** The latest code task, encrypted with the thread's pool. */
+  codeTask(threadId: string): { task: string; done: string; at: string } | undefined {
+    return this.db.prepare("SELECT task, done, at FROM code_tasks WHERE thread = ?").get(threadId) as { task: string; done: string; at: string } | undefined;
   }
 
   /** A thread's wake-ups not yet fired, soonest first; or every thread's. */
@@ -742,11 +749,26 @@ export class PoolReader {
     const fts = ftsQuery(query, this.c.profiles());
     if (!fts) return [];
     const limit = opts.limit ?? 8;
-    const rows = this.db.prepare("SELECT id, kind, bm25(search) AS rank FROM search WHERE search MATCH ? ORDER BY rank LIMIT ?")
-      .all(fts, limit * 4) as { id: string; kind: Kind; rank: number }[];
+    if (limit <= 0) return [];
+    const threads = opts.fromThread ? this.projectThreads(opts.fromThread) : [];
+    type Row = { id: string; kind: Kind; rank: number };
+    const queryRows = this.db.prepare("SELECT id, kind, bm25(search) AS rank FROM search WHERE search MATCH ? ORDER BY rank LIMIT ? OFFSET ?");
+    const tagged = opts.only?.about === undefined ? undefined : this.db.prepare(`SELECT id FROM notes
+      WHERE (', ' || about || ', ') LIKE ('%, ' || ? || ', %') ESCAPE '\\'`);
+    const about = opts.only?.about?.replace(/[\\%_]/g, "\\$&");
+    const working = new Set(tagged?.all(about).map(r => (r as { id: string }).id));
+    const rows: Row[] = [];
+    // Filter before the candidate cut: unrelated high-ranked hits cannot crowd out eligible ones.
+    const batch = limit * 4;
+    for (let offset = 0; ; offset += batch) {
+      const candidates = queryRows.all(fts, batch, offset) as Row[];
+      const project = opts.only?.project && threads.length ? this.inProject(candidates.map(r => r.id), threads) : undefined;
+      rows.push(...candidates.filter(r => !opts.only || project?.has(r.id) || (r.kind === "note" && working.has(r.id))));
+      if (rows.length >= batch || candidates.length < batch || !opts.only) break;
+    }
+    rows.length = Math.min(rows.length, batch);
     const words = queryWords(query);
     const terms = opts.minWords ? queryTerms(query, this.c.profiles()) : [];
-    const threads = opts.fromThread ? this.projectThreads(opts.fromThread) : [];
     const ours = threads.length ? this.inProject(rows.map((r) => r.id), threads) : undefined;
     const hits: Hit[] = [];
     for (const row of rows) {
@@ -1107,6 +1129,15 @@ export class PoolStore extends PoolReader {
     if (!this.openQuestion(thread) && n === undefined) return false;
     return this.questionChange(thread, () => !!this.db.prepare(`UPDATE questions SET closed = ?, answer = ? WHERE thread = ? AND closed IS NULL ${n === undefined ? "" : "AND n = ?"}`)
       .run(now(), String(answer), thread, ...(n === undefined ? [] : [n])).changes);
+  }
+
+  /** Replaces the code task. Forgetting the thread removes it too. */
+  setCodeTask(threadId: string, task: string, done = ""): void {
+    this.mustThread(threadId);
+    if (task.length > 300 || done.length > 1200) throw new Error("code task exceeds 300 characters or done exceeds 1200 characters");
+    this.db.prepare(`INSERT INTO code_tasks (thread, task, done, at) VALUES (?, ?, ?, ?)
+      ON CONFLICT (thread) DO UPDATE SET task = excluded.task, done = excluded.done, at = excluded.at`)
+      .run(threadId, removeSecrets(task), removeSecrets(done), now());
   }
 
   /** Replaces a thread's checklist; none clears it. Forgetting the thread takes it too. */

@@ -440,3 +440,42 @@ describe("user step 13 (a thread's context limit)", () => {
   });
 });
 
+
+
+describe("code mode migrations", () => {
+  it("user step 14 expands every released schema with code off and keeps earlier readers", () => {
+    for (let version = 1; version < 14; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter(s => s.version <= version);
+      migrate(db, "user", {}, previous);
+      db.prepare("INSERT INTO thread_workspaces (thread_id, grants, mode) VALUES ('web/a', '[]', 'ask')").run();
+      migrate(db, "user");
+      const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+      expect(settings.thread("web/a")).toMatchObject({ code: false, mode: "ask" });
+      settings.setThread("web/a", "general", { code: true });
+      expect(settings.thread("web/a")).toMatchObject({ code: true, mode: "ask" });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      expect(tables(db)).not.toContain("code_tasks");
+      expect(schemaOf(db).minReader).toBe(1);
+      db.close();
+    }
+  });
+
+  it("pool step 9 expands every released schema with code tasks, preserves readers and cascades deletion", () => {
+    for (let version = 1; version < 9; version++) {
+      const db = scratchDb();
+      const previous = STEPS.pool.filter(s => s.version <= version);
+      migrate(db, "pool", {}, previous);
+      SEED.pool(db);
+      migrate(db, "pool");
+      expect(db.prepare("SELECT * FROM code_tasks").all()).toEqual([]);
+      db.prepare("INSERT INTO code_tasks (thread, task, done, at) VALUES ('web/a', 'Fix fixture', 'Read checks', '2026-10-19')").run();
+      expect(() => checkReadable(db, "pool", previous)).not.toThrow();
+      expect(schemaOf(db).minReader).toBe(1);
+      expect(db.prepare("SELECT title FROM threads WHERE id = 'web/a'").get()).toEqual({ title: "A test thread" });
+      db.prepare("DELETE FROM threads WHERE id = 'web/a'").run();
+      expect(db.prepare("SELECT * FROM code_tasks").all()).toEqual([]);
+      db.close();
+    }
+  });
+});

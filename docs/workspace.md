@@ -458,13 +458,17 @@ it. Other storage tests use synthetic bitmap bytes in a stand-in home.
 
 ## Thread settings
 
+Core stores a `code` preference in `thread_workspaces` (user step 14), off
+by default. `inheritSettings` copies it at creation; a child can change it
+independently of its ancestors. It never changes Mode or grants.
+
 A workspace is not a separate kind of session. It's any thread that has
 folders granted. Every thread has the same settings panel, and the current
 values are always visible next to the model badge:
 
 | Setting | What it controls |
 |---|---|
-| **Models** | Which model handles each task: the main conversation, cheap and strong subagents, compaction and titles. This follows the user's cloud or local profile unless overridden (see DESIGN.md, "Models and endpoints"). |
+| **Models** | Which model handles each task: the main conversation, cheap and strong subagents, compaction and titles. This follows the thread's preset or the user's General / Private column unless overridden (see DESIGN.md, "Models and endpoints"). |
 | **Local-only** | Whether every model call stays on the custom endpoint. Always on in private threads. |
 | **Internet access for tools** | Whether `bash` and fetches inside the sandbox can reach the network. |
 | **Folders** | The thread's grants, each read-only or read-write. |

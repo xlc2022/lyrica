@@ -49,6 +49,8 @@ export interface ThreadWorkspace {
   images: boolean;
   /** Claude Code on the user's Claude plan in its sandbox runs (docs/workspace.md, "Claude Code"). Off by default; never in a private thread. */
   claudeCode: boolean;
+  /** Coding preference: copied at creation, editable independently of ancestors. */
+  code: boolean;
   /** The machines it may work on besides the sandbox, by name, from its pool's machines. */
   machines: string[];
   /** The repositories it clones, each with the Git account of its pool that reaches it. */
@@ -387,12 +389,12 @@ export class WorkspaceSettings {
   thread(threadId: string): ThreadWorkspace {
     const row = this.db.prepare("SELECT * FROM thread_workspaces WHERE thread_id = ?").get(threadId) as ThreadRow | undefined;
     // A thread from before modes were saved for every new thread: Auto, as it had then. New threads get the default from startThread.
-    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, claudeCode: false, machines: [], repositories: [], mcpServers: [], parent: null };
+    if (!row) return { grants: [], internet: null, services: null, hosts: null, mode: "auto", webSearch: true, images: true, claudeCode: false, code: false, machines: [], repositories: [], mcpServers: [], parent: null };
     const bool = (v: number | null) => (v === null ? null : v === 1);
     return {
       grants: JSON.parse(row.grants), internet: bool(row.internet), services: bool(row.services),
       hosts: row.hosts === null ? null : JSON.parse(row.hosts), mode: row.mode, webSearch: row.web_search === 1, images: row.images === 1,
-      claudeCode: row.claude_code === 1, machines: JSON.parse(row.machines), repositories: JSON.parse(row.repositories), mcpServers: JSON.parse(row.mcp_servers), parent: row.parent,
+      claudeCode: row.claude_code === 1, code: row.code === 1, machines: JSON.parse(row.machines), repositories: JSON.parse(row.repositories), mcpServers: JSON.parse(row.mcp_servers), parent: row.parent,
     };
   }
 
@@ -485,12 +487,12 @@ export class WorkspaceSettings {
   private write(threadId: string, t: ThreadWorkspace): void {
     const int = (v: boolean | null) => (v === null ? null : v ? 1 : 0);
     // The upsert keeps the thread's allowed commands.
-    this.db.prepare(`INSERT INTO thread_workspaces (thread_id, grants, internet, services, hosts, mode, parent, web_search, images, claude_code, machines, repositories, mcp_servers)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (thread_id) DO UPDATE SET grants = excluded.grants, internet = excluded.internet,
+    this.db.prepare(`INSERT INTO thread_workspaces (thread_id, grants, internet, services, hosts, mode, parent, web_search, images, claude_code, code, machines, repositories, mcp_servers)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (thread_id) DO UPDATE SET grants = excluded.grants, internet = excluded.internet,
       services = excluded.services, hosts = excluded.hosts, mode = excluded.mode, parent = excluded.parent, web_search = excluded.web_search,
-      images = excluded.images, claude_code = excluded.claude_code, machines = excluded.machines, repositories = excluded.repositories, mcp_servers = excluded.mcp_servers`).run(threadId,
+      images = excluded.images, claude_code = excluded.claude_code, code = excluded.code, machines = excluded.machines, repositories = excluded.repositories, mcp_servers = excluded.mcp_servers`).run(threadId,
       JSON.stringify(t.grants), int(t.internet), int(t.services), t.hosts === null ? null : JSON.stringify(t.hosts), t.mode, t.parent, int(t.webSearch), int(t.images),
-      int(t.claudeCode), JSON.stringify(t.machines), JSON.stringify(t.repositories), JSON.stringify(t.mcpServers));
+      int(t.claudeCode), int(t.code), JSON.stringify(t.machines), JSON.stringify(t.repositories), JSON.stringify(t.mcpServers));
   }
 
   /**
@@ -504,7 +506,7 @@ export class WorkspaceSettings {
     const net = this.network(parentThreadId, pool);
     // Start from nothing, so a refused narrowing leaves the child with no access at all.
     this.write(childThreadId, {
-      grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, claudeCode: false, machines: [], repositories: [], mcpServers: [], parent: parentThreadId,
+      grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, claudeCode: false, code: false, machines: [], repositories: [], mcpServers: [], parent: parentThreadId,
     });
     return this.setThread(childThreadId, pool, {
       grants: narrower.grants ?? parent.grants,
@@ -515,6 +517,7 @@ export class WorkspaceSettings {
       webSearch: narrower.webSearch ?? parent.webSearch,
       images: narrower.images ?? parent.images,
       claudeCode: narrower.claudeCode ?? parent.claudeCode,
+      code: parent.code,
       machines: narrower.machines ?? parent.machines,
       repositories: narrower.repositories ?? parent.repositories,
       mcpServers: narrower.mcpServers ?? parent.mcpServers,
@@ -955,7 +958,7 @@ const mcpKey = (server: string) => `mcp:${server}`;
 
 interface ThreadRow {
   grants: string; internet: number | null; services: number | null; hosts: string | null;
-  mode: PermissionMode; parent: string | null; web_search: number; images: number; claude_code: number; machines: string; repositories: string; mcp_servers: string;
+  mode: PermissionMode; parent: string | null; web_search: number; images: number; claude_code: number; code: number; machines: string; repositories: string; mcp_servers: string;
 }
 
 export const sameRepository = (a: ThreadRepository, b: ThreadRepository): boolean => a.name === b.name && a.account === b.account;

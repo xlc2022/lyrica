@@ -1482,6 +1482,12 @@ Decided 2026-10-12 (docs/briefs/claude-code.md).
 
 ## Memory
 
+Core search can restrict recall to project items plus notes tagged `working`,
+using the existing project membership and whole-tag match. This filter runs
+before the candidate cut, including across the pools a thread may read
+(principles 1 and 2). The latest coding task and progress live with their
+thread in encrypted pool.db (`code_tasks`), and are deleted with it.
+
 Details in [docs/memory.md](docs/memory.md).
 
 - **Layers:** threads → notes (small facts she saves whenever she likes) →

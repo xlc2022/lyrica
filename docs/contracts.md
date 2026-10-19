@@ -213,12 +213,13 @@ nothing else. No code path gives a general view a private handle.
 | Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `foldThread(projectId, threadId, childrenOnly?)` (existing children become project siblings, preserving entries, steps and wake-ups), `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children?, keepMemories? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared; `keepMemories` removes no notes or project page and leaves a text-free thread tombstone `t:<thread>` in each forgotten thread's place), `getThreadTombstone(id)` → `{ deletedAt } \| undefined`, `citingThread(id)` → the IDs of the notes and pages citing the thread or its entries, `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
 | Reactions | `react(threadId, n, emoji, by, on)` → `Reaction[]` (`{ emoji, by: string[] }`, `by` user IDs or `LYRICA_REACTS`); `entryPage` entries carry `reactions`. Pool schema step 2 (`entries.reactions`, JSON) |
+| Code tasks | `codeTask(threadId)` → `{ task, done, at }` or undefined; `setCodeTask(threadId, task, done = "")` replaces it (300 / 1,200 characters), with credential removal. Pool step 9 adds `code_tasks`, deleted with the thread; no task text enters user.db |
 | Drafts | `draft(threadId)` → `{ text, updatedAt }` or undefined, `setDraft(threadId, text)` (empty deletes it); one per thread, gone with the thread. Pool schema step 3 (`drafts`) |
 | Projects | `pageForProject(threadId)`, `projectNotes(threadId, since?)` |
 | Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal`. Every write (notes, pages and edits, WAKE, journal, sleep items, project instructions) passes text, title, summary and tags through `removeSecrets` (core/src/secrets.ts) first; matches become `[secret removed]` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `journalHistory({ limit, offset, q })` → `{ entries, total }`, `userIntroduced` |
-| Search | `search(query, { kinds, limit, current, excludeThread, fromThread, skip, minWords })`, returning `{ id, kind, snippet, score, at }` (`at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, as a word or a word's start, a user's name counting once); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
+| Search | `search(query, { kinds, limit, current, excludeThread, fromThread, only, skip, minWords })`, returning `{ id, kind, snippet, score, at }` (`at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, as a word or a word's start, a user's name counting once); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
 | Lineage | `cameFrom`, `usedIn`, `revisions`, `revisionHistory(id, { limit, offset, q })` → `{ entries, total }` (newest first), `isTombstoned(entryId)`, `editedSince(since)` |
 | Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `sleepRunHistory({ limit, offset, q })` → `{ entries, total }`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` |
 | Sleep items | `addItem`, `listItems`, `getItem`, `startItem(id, threadId)`, `dismissItem`, `itemForThread` |
@@ -312,12 +313,23 @@ gives the project chat for the chat or any of its threads, and
 `lyricad` anchors such a branch where its source hangs, or for a branch of
 the project chat where it branched (anchors live in `user.db`).
 
+`SearchOptions.only: { project?: boolean; about?: string }` keeps the union
+of project items (using `fromThread` and the same membership as the project
+boost) and notes with the whole `about` tag, as `listMemories` matches it.
+Filtering precedes the `limit * 4` candidate cut; batches widen past unrelated
+hits. `{ project: true, about: "working" }` supplies the code-mode filter.
+An empty project membership matches nothing, including in the other pool
+read through `searchView`; only matching notes then pass.
+
 ## core/models: the cloud boundary lives here
 
 ```ts
-type Task = "chat" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "watching"
+type Task = "chat" | "code" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "watching"
           | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit" | "image.upscale"
           | "speech.transcribe" | "speech.speak";
+// code (Coding) defaults to { same: "subagent.strong" } in new tables and
+// populated saved presets missing it, subject to the one-level Same as rule.
+// A thread's code list wins; its chat override never supplies code's fallback.
 type ThinkingLevel = "off" | "low" | "medium" | "high";
 
 interface Endpoint {
@@ -1689,6 +1701,11 @@ sleep.events                       // started, phase, finished: IDs only, never 
   exists) or an unlogged project's.
 
 ## core/workspace
+
+`ThreadWorkspace.code` is a core preference, off by default, stored by
+expand-only user step 14 (`thread_workspaces.code`). `inheritSettings`
+copies it to descendants; each child can edit it independently. It is not
+narrowed by ancestors and never changes permission mode.
 
 ```ts
 new Workspace(keyring, users, { excludePorts, frontDoor? })

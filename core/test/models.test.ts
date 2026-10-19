@@ -238,7 +238,7 @@ describe("migrating to permanent IDs", () => {
     expect(models.offering(ada.id, deepseek.offeringId)!.offering).toMatchObject({ manual: true });
     expect(qwen).toMatchObject({ modelId: "qwen3.8-27b", contextWindow: 32768, tools: true });
     // Watching, a task added later, follows cheap subagents in a stored profile.
-    const later = { watching: { same: "subagent.cheap" } };
+    const later = { watching: { same: "subagent.cheap" }, code: { same: "subagent.strong" } };
     expect(models.preset(ada.id, "builtin.cloud")!.entries).toEqual({ chat: [deepseek], ...later });
     expect(models.preset(ada.id, "builtin.local")!.entries).toEqual({ chat: [{ offeringId: qwen!.id }], ...later });
     expect(models.callContext(ada.id, "private", "web/p").overrides).toEqual({ chat: [{ offeringId: qwen!.id }] });
@@ -510,3 +510,24 @@ describe("presets", () => {
   });
 });
 
+
+
+describe("coding task", () => {
+  it("defaults new and saved presets to strong subagents, with an independent thread override", async () => {
+    const { models, ada, localRef, cloudRef } = await withModels();
+    models.setColumnTask(ada.id, "private", "chat", localRef);
+    models.setColumnTask(ada.id, "private", "subagent.strong", localRef);
+    const preset = models.addPreset(ada.id, { name: "Coding setup", scope: "private" }, "private");
+    expect(preset.entries.code).toEqual({ same: "subagent.strong" });
+    const ctx = models.callContext(ada.id, "private", "web/code");
+    expect(models.resolveModel("code", ctx)).toEqual(models.resolveModel("subagent.strong", ctx));
+    models.setThreadModel(ada.id, "general", "web/code", "chat", cloudRef);
+    models.setColumnTask(ada.id, "general", "chat", localRef);
+    expect(models.resolveModel("code", models.callContext(ada.id, "general", "web/code"))).toEqual(localRef);
+    models.setColumnTask(ada.id, "general", "subagent.strong", localRef);
+    const general = models.callContext(ada.id, "general", "web/code");
+    expect(models.resolveModel("code", general)).toEqual(localRef);
+    models.setThreadModel(ada.id, "general", "web/code", "code", cloudRef);
+    expect(models.resolveModel("code", models.callContext(ada.id, "general", "web/code"))).toEqual(cloudRef);
+  });
+});

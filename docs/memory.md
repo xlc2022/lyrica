@@ -78,7 +78,8 @@ users.
 Tables in a pool database (`core/src/store/schema.ts`, one line of reason
 each): `threads`, `entries`, `notes`, `pages`, `wake`, `journal`,
 `revisions`, `citations`, `tombstones`, `sleep_runs`, `sleep_items`, and the
-FTS5 table `search`. That file is step 1; every later change is a numbered
+FTS5 table `search`, and `code_tasks` (the latest coding task and progress
+for a thread, pool step 9). That file is step 1; every later change is a numbered
 pool step in `core/src/migrations.ts` (step 2 adds `entries.reactions`, step 3
 the table `drafts`: the composer's unsent text, one row per thread; step 4 the
 table `wakeups`; step 5 `thread_steps` for checklists; step 6 `routines`
@@ -215,6 +216,19 @@ the per-turn context message, and
 calls to the memory tools themselves, so recall never finds its own echoes.
 Automatic recall leaves out superseded notes and the current thread.
 There are no embeddings.
+
+Core search accepts `only: { project: true, about: "working" }` to retain
+project items or notes tagged with the whole `working` word. It reuses
+project membership and the memory browser's whole-tag matching. Filtering
+happens before the candidate cut, so unrelated high-ranked hits cannot
+crowd out project memory. Without project membership, including in the
+general pool read by a private view, only tagged notes pass. Omitting
+`only` leaves ordinary search unchanged.
+
+`codeTask(threadId)` and `setCodeTask(threadId, task, done)` read and replace
+the latest task (300 characters) and progress (1,200 characters), with its
+time. These words stay in encrypted pool.db's `code_tasks`, never user.db,
+and disappear when their thread is forgotten.
 
 ## Writing
 
