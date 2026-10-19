@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 runtime/
 web/dist/
 web/test-results/

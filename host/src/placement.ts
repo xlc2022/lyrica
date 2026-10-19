@@ -76,6 +76,31 @@ export function maxContextOf(model: TextModel, s: ModelSettings): number | null 
   return base === null ? null : base * (s.stretch?.factor ?? 1);
 }
 
+/**
+ * The context for a chat model with no saved one: the largest that fits some
+ * way it may run with its GPUs as given, in steps of 1024 from 4096 up to its
+ * maximum. With no maximum, or when nothing fits, 32k (never past its maximum),
+ * so a load that can't work fails with the usual reason.
+ */
+export function autoContext(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings): number {
+  const max = maxContextOf(model, s);
+  const fallback = Math.min(DEFAULT_CONTEXT, max ?? Infinity);
+  if (max === null || model.kind !== "chat") return fallback;
+  const fits = (context: number) => {
+    const at = { ...s, contextLength: context };
+    return options(model, at, gpus, settings).some((o) => !neverFits(model, at, o, gpus, settings));
+  };
+  if (fits(max)) return max;
+  // Steps of 1024: lo fits, hi doesn't.
+  let lo = 4, hi = Math.ceil(max / 1024);
+  if (hi <= lo || !fits(lo * 1024)) return fallback;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (fits(mid * 1024)) lo = mid; else hi = mid;
+  }
+  return lo * 1024;
+}
+
 /** The context the model is served with: its setting, else 32k, never past its maximum. */
 export function contextOf(model: TextModel, s: ModelSettings): number {
   return Math.min(s.contextLength ?? DEFAULT_CONTEXT, maxContextOf(model, s) ?? Infinity);
@@ -300,10 +325,12 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
   }
 
   const s = body as unknown as ModelSettings;
-  const opts = options(model, s, gpus, settings);
+  // With no context saved, it is checked at the one it would be served with.
+  const at = s.contextLength === undefined && model.kind === "chat" ? { ...s, contextLength: autoContext(model, s, gpus, settings) } : s;
+  const opts = options(model, at, gpus, settings);
   if (!opts.length) throw invalid(`No GPU allows ${SERVER_NAMES[server]}.`);
   // Auto needs one way that can work; a chosen placement must work as chosen.
-  const reasons = opts.map((o) => neverFits(model, s, o, gpus, settings));
+  const reasons = opts.map((o) => neverFits(model, at, o, gpus, settings));
   if (reasons.every((r) => r !== null)) throw new HostError(400, "too_big", reasons.at(-1)!);
   return s;
 }
