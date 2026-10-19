@@ -7,6 +7,7 @@ import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServ
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { BASH_TIMEOUT_S, createDownloadsExtension, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
+import { BUILD_THERE, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { Users, Workspace } from "@lyrica/core";
@@ -728,5 +729,15 @@ describe("project command rules in the hook", () => {
     let asked = 0;
     await run("ask", [fauxToolCall("bash", { command: "ls", machine: "nas" })], { rules: [{ prefix: "ls", decision: "allow" }], machines: [{ name: "nas", kind: "ssh", limit: "ask", root: null }], approve: async () => { asked++; return false; } });
     expect(asked).toBe(1);
+  });
+});
+
+describe("where she builds", () => {
+  const prompt = (writable: boolean) => describePrompt({
+    settings: () => ({ grants: [{ path: "/srv/game", writable }] }), network: () => ({ internet: false, services: false, hosts: [] }),
+  } as unknown as ThreadTools);
+  it("points her at a read-write folder she was given, not her own", () => {
+    expect(prompt(true)).toContain(BUILD_THERE);
+    expect(prompt(false)).not.toContain(BUILD_THERE);
   });
 });

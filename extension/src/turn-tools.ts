@@ -1,10 +1,14 @@
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { setToolsOff } from "./gate.ts";
 
 // Principles 1 and 2: stop real tool loops in the runtime, independently of the prompt.
 export const MAX_TURN_TOOL_CALLS = 100;
 export const MAX_SAME_TOOL_RUN = 25;
 export const MAX_IDENTICAL_TOOL_CALLS = 3;
 export const TURN_TOOL_NOTICE = "lyrica-tool-limit";
+/** Told to her, unseen, once the limit stops her tools: the person gets a reply, never only the notice. */
+export const TURN_TOOL_WRAP_UP = "lyrica-tool-limit-wrap-up";
+export const WRAP_UP = "You reached this turn's tool limit, so your tools are off for the rest of this turn. Reply now in a few lines: what you did, where things stand, and what's left.";
 
 function normalized(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(normalized).join(",")}]`;
@@ -16,10 +20,13 @@ function normalized(value: unknown): string {
 export function createTurnToolsExtension(): ExtensionFactory {
   return pi => {
     let calls = 0, run = 0, last = "", stopped = false, notified = false, why = "";
+    let wrapped = false;
     const repeats = new Map<string, number>();
     const refused = new Map<string, string>();
+    // Back on as the run ends: the next prompt's first request is built before agent_start.
+    pi.on("agent_end", (_e, ctx) => { if (notified) setToolsOff(pi, ctx, "tool-limit", []); });
     pi.on("agent_start", () => {
-      calls = run = 0; last = why = ""; stopped = notified = false;
+      calls = run = 0; last = why = ""; stopped = notified = wrapped = false;
       repeats.clear(); refused.clear();
     });
     // This event precedes schema validation, so malformed and unknown calls count too.
@@ -39,13 +46,20 @@ export function createTurnToolsExtension(): ExtensionFactory {
       const reason = refused.get(e.toolCallId);
       if (reason) return { block: true, reason };
     });
-    pi.on("turn_end", (_e, ctx) => {
-      if (!stopped || notified) return;
+    pi.on("turn_end", (e, ctx) => {
+      if (!stopped) return;
+      // Her wrap-up came back with tool calls anyway: end there.
+      if (notified) {
+        if (!wrapped && e.message.role === "assistant" && e.message.content.some((c) => c.type === "toolCall")) { wrapped = true; ctx.abort(); }
+        return;
+      }
       notified = true;
-      // End after results are persisted, including a mixed or parallel tool batch.
-      ctx.abort();
-      return { entries: [{ type: "custom_message", customType: TURN_TOOL_NOTICE,
-        content: why, display: true }] };
+      // After results are persisted, one more reply with no tools, so the person hears where things stand.
+      setToolsOff(pi, ctx, "tool-limit", pi.getAllTools().map((t) => t.name));
+      return { entries: [
+        { type: "custom_message", customType: TURN_TOOL_NOTICE, content: why, display: true },
+        { type: "custom_message", customType: TURN_TOOL_WRAP_UP, content: WRAP_UP, display: false },
+      ] };
     });
   };
 }
