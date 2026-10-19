@@ -56,7 +56,8 @@ back each other up.
   without it you run `sudo host/egress.sh apply` after every boot and
   Docker restart.
 - A user in the `docker` group to run the script as: it runs `docker
-  compose` as you, and uses `sudo` only for the egress rules and the unit.
+  compose` as you, and uses `sudo` only for the egress rules, their unit
+  and the updater (its state folder, deploy key, script and units).
 - A **models folder**, `/srv/models` by default, on a disk with room for
   what you'll download. It must exist before the script runs, and you must
   be able to create its `lyrica/` subfolder:
