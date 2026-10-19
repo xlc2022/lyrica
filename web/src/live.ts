@@ -179,3 +179,13 @@ export function storedUserItems(items: LiveItem[], messages: Message[]): Set<num
   });
   return hidden;
 }
+
+/**
+ * Stored messages the live stream is showing too. A view that opens while a turn runs (the first send from
+ * New thread opens its thread mid-turn) can load her stored message and then stream it as well. A stored
+ * message that shares a tool call with a live one is left to the live copy until the turn's end replaces it.
+ */
+export function storedLiveCopies(items: LiveItem[], messages: Message[]): Set<number> {
+  const calls = new Set(items.flatMap((i) => i.role === "assistant" ? i.parts.flatMap((p) => p.type === "tool" ? [p.toolCallId] : []) : []));
+  return new Set(calls.size ? messages.filter((m) => m.role === "assistant" && m.parts.some((p) => p.type === "tool" && calls.has(p.toolCallId))).map((m) => m.n) : []);
+}
