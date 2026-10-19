@@ -1522,7 +1522,9 @@ Details in [docs/memory.md](docs/memory.md).
   with its own budget, so a stated dislike isn't forgotten in an unrelated
   conversation.
   - A private thread loads the private page first, then the general one if
-    there is room. A general thread loads only the general page.
+    there is room. A general thread loads only the general page. The private
+    page holds only what the general one doesn't say: private sleep drops
+    repeats.
   - Sleep keeps it up to date. Until Sleep exists, the user can write it in the
     memory browser. User edits are authoritative, as for any memory.
 - **Writes:** she saves notes without asking, one fact per note, and is told

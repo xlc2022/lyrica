@@ -114,6 +114,15 @@ model for consolidation and a stronger one for dreaming) in each preset or
 Custom column. Private sleep always uses the Private column, so its pickers
 list only local models.
 
+**About the user across pools.** Every private thread loads the private
+`p:about-user` and then the general one, so private sleep keeps out of its
+own page what the general page already says. Private consolidation is shown
+the general page and told to keep only what's private or adds detail, to
+drop repeats, and to raise a question where the two disagree. A change to
+the general page since the private pool's last sleep is reason enough for a
+private run, so a repeat it creates is tidied the same night. The general
+page is never changed from the private side.
+
 **Citations across pools.** A private page may cite general notes, but a general
 page can never cite private ones. If a general note is deleted, the private
 pool's next sleep notices the dangling citation and rewrites the page. General
@@ -182,12 +191,14 @@ restart in between loses the record.
   `stop(userId)` (Lock, shutdown) aborts the phase and marks the run partial.
 - **`core/src/store/sleep-prompt.ts`**: what each phase is told
   (`sleepInstruction`), built from the night's material, and the pages a
-  private pool must rewrite (`danglingPages`).
+  private pool must rewrite (`danglingPages`), and whether the private
+  page about the user needs tidying against the general one (`aboutToTidy`).
 - **A run.** It opens the pool with `openThreadView`, so general sleep never
   holds a private handle. It covers entries written after the watermark and
   before it started, in logged threads other than sleep's own, plus user
   edits and flagged pages (and, in private, pages citing deleted general
-  memory). It probes each phase's endpoint first. Each phase's model is
+  memory, and the general `p:about-user` if it changed since). It probes
+  each phase's endpoint first. Each phase's model is
   `sleep.<phase>` through the router with the pool's context, set as that
   session's chat and compaction model, so private sleep is local-only.
 - **Phases** are threads (`interface: "sleep"`, titled `Sleep: <phase>`). Their
