@@ -23,9 +23,11 @@ describe("how a model answers", () => {
     const server = await fakeOpenAI({ models: [
       { id: "vendor/chat", context_length: 200_000, default_parameters: { temperature: 0.6, top_p: 0.95, frequency_penalty: null } },
       { id: "bare" },
+      { id: "served-by-vllm", max_model_len: 32_768 },
     ] });
     const ep = m.models.addEndpoint(m.ada, { name: "router", kind: "cloud", baseUrl: server.baseUrl, apiKey: "k" });
-    const [bare, chat] = await m.models.discover(m.ada, ep.id);
+    const [bare, vllm, chat] = await m.models.discover(m.ada, ep.id);
+    expect(m.models.offeringSettings(m.ada.id, vllm!.id).contextWindow).toEqual({ value: 32_768, source: "discovered" });
     expect(m.models.offeringSettings(m.ada.id, chat!.id)).toMatchObject({ values: {}, defaults: { temperature: 0.6, topP: 0.95 }, contextWindow: { value: 200_000, source: "discovered" } });
     expect(m.models.offeringSettings(m.ada.id, bare!.id)).toMatchObject({ defaults: {}, contextWindow: { value: 131_072, source: "assumed" } });
   });

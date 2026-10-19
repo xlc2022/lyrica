@@ -98,7 +98,7 @@ export async function probeUrl(baseUrl: string, apiKey: string | undefined, time
  * OpenRouter's `context_length`, `supported_parameters` (tools, reasoning)
  * and `architecture` modalities (vision, images), `default_parameters`
  * (the sampling it uses when a request sets none), llama-server's
- * `meta.n_ctx`, LM Studio's `max_context_length`.
+ * `meta.n_ctx`, LM Studio's `max_context_length`, vLLM's `max_model_len`.
  */
 export async function discoverModels(baseUrl: string, apiKey: string | undefined, timeoutMs = 10_000): Promise<DiscoveredModel[]> {
   const body = (await getModels(baseUrl, apiKey, timeoutMs)) as { data?: unknown };
@@ -111,7 +111,7 @@ export async function discoverModels(baseUrl: string, apiKey: string | undefined
     const output = Array.isArray(m.architecture?.output_modalities) ? m.architecture.output_modalities : undefined;
     return [{
       modelId: m.id,
-      contextWindow: num(m.context_length) ?? num(m.meta?.n_ctx) ?? num(m.max_context_length),
+      contextWindow: num(m.context_length) ?? num(m.meta?.n_ctx) ?? num(m.max_context_length) ?? num(m.max_model_len),
       tools: params ? params.includes("tools") : undefined,
       reasoning: params?.includes("reasoning") || params?.includes("reasoning_effort") ? ["low", "medium", "high"] as ("low" | "medium" | "high")[] : undefined,
       vision: input ? input.includes("image") : undefined,

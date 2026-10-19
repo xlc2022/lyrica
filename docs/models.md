@@ -57,7 +57,7 @@ and `-`, at most 40 characters.
 - **Capabilities:** context window, tools, vision, embedding, image, edit, upscale
   and thinking levels. OpenRouter reports the context, tools, thinking and
   modalities; llama-server reports the context
-  (`meta.n_ctx`); LM Studio reports the context and vision on its own API
+  (`meta.n_ctx`); vLLM reports the context as `max_model_len`; LM Studio reports the context and vision on its own API
   (below); KoboldCpp reports neither. Anything can be
   set by hand (`setCapabilities`), which wins over discovery. Switching off
   image, edit, upscale or transcribe takes the model out of that task's lists
