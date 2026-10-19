@@ -105,6 +105,13 @@ without cutting her off from what the user has told her about how to work.
 - Its task is the delegate step's `task` plus an optional `done`, shown as
   the Code task section. Its role prompt is the B5 guidelines.
 - A custom role named `coder` overrides it, as for other built-ins.
+- **Every model knows it's there**, including small local ones. The
+  `delegate` tool's role list names `coder` first with a one-line use
+  ("code changes in a repository: edit, test, fix"), and the thread
+  guidelines gain one line, outside code mode as well: "For a coding job,
+  delegate to the `coder` role, or turn on code mode if the user is
+  working with you on it." Both are always in the prompt, not behind
+  `tool_search`.
 
 ## Out of scope
 
@@ -129,6 +136,11 @@ without cutting her off from what the user has told her about how to work.
   with code mode for new threads starts them in it.
 - A `coder` subagent gets the project section and the filtered recall,
   and the `code` model list.
+- The eval also asks a plain (non-code-mode) thread to fix the fixture's
+  failing test. The scripted check asserts `coder` and the guideline line
+  are in the prompt; the real-model check, run against a local model when
+  one is configured, records whether her first tool call delegates to
+  `coder` or turns on code mode.
 - A new eval, `evals/code-mode.eval.ts`: a fixture repository with a
   failing test. The scripted check asserts the prompt and tools above.
   The real-model check, when configured, records whether she runs the
