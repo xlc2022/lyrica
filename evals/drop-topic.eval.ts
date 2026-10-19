@@ -16,6 +16,10 @@ import { withModels } from "../core/test/helpers.ts";
 // journal's motif, after reading the journal with read_memory; a cloud model
 // given the same messages dropped it at once.
 //
+// Measured on the local 27B, 15 conversations each: 7 brought work back before
+// the guideline "agree in a few words without naming it", 1 after; every
+// failure was the first reply naming the project while agreeing to drop it.
+//
 // Scripted, it checks the request and the work-heavy sections both reach her.
 // With LYRICA_EVAL_BASE_URL and LYRICA_EVAL_MODEL (and LYRICA_EVAL_KIND=local
 // for a local server, LYRICA_EVAL_RUNS for repeats, 3 by default) a real

@@ -206,6 +206,7 @@ The cheapest mechanism comes first:
    what the person asks outranks what memory brings up, she raises other work
    only when the message is about it, and a topic the person asked to drop is
    left without naming it and stays dropped (and unread) until they bring it back.
+   `evals/drop-topic.eval.ts` checks this with a real model.
 3. **Deliberate lookup** through tools. `recall(query)` searches.
    `read_memory(id)` opens a page, a note, or a window of a past thread around an
    entry.
