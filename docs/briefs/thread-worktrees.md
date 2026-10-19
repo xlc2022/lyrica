@@ -1,6 +1,7 @@
 # Brief: A worktree for each code thread in a project
 
-**Status:** Draft, waiting on the owner's go and one choice (who merges).
+**Status:** Draft, waiting on the owner's go. The owner chose the merge
+thread (C) on 2026-10-19.
 
 **Branch:** `feature/thread-worktrees`. **Built by:** Opus (agent loop
 area, so PR review).
@@ -66,20 +67,14 @@ base at a time. A second `base: true` start while one is open is refused
 with the name of the thread that holds it. This guard is in `children.ts`,
 not in the guidance.
 
-**C. Merging the branches.** *(The owner's choice; the recommended
-option is below, and the alternative follows.)*
-
-- **Recommended: a merge thread.** When the part threads report, the
-  project chat starts one `code: true, base: true` thread to merge them.
-  It merges each branch in turn, runs the tests after each one, and on a
-  conflict or a red test sends the problem back to the owning thread
-  (`message`) instead of fixing that thread's files. This keeps #375's
-  rule that the project chat changes nothing. The split guidance in
-  `PROJECT_CHAT_GUIDELINES` gains a third step: scaffold, parts, merge.
-- Alternative: the project chat merges, as the Lunasa proposal suggests.
-  That needs a narrow exception to #375: a `git merge` tool for the chat
-  that touches only `lyrica/*` branches of its own repositories. It saves
-  one thread, but reopens the write path #375 just closed.
+**C. Merging the branches** (the owner chose this, 2026-10-19). When the
+part threads report, the project chat starts one `code: true, base: true`
+thread to merge them. That thread merges each branch in turn, runs the
+tests after each merge, and sends any conflict or red test back to the
+owning thread (`message`) rather than fixing that thread's files. This
+keeps #375's rule that the project chat changes nothing. The split
+guidance in `PROJECT_CHAT_GUIDELINES` gains a third step: scaffold, parts,
+merge. The project chat doesn't get a merge tool of its own.
 
 **D. Cleanup.** When a part thread is resolved, deleted or forgotten, its
 worktree is removed with `removeWorktrees` (kept if it holds uncommitted
