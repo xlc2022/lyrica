@@ -203,7 +203,9 @@ The cheapest mechanism comes first:
    least two of them (each as a word or a word's start; a user's name counts
    once, written or as a mention). One shared word in a longer message
    doesn't bring up an unrelated conversation. Her instructions say that recall and WAKE are background:
-   she raises other work only when the message is about it.
+   what the person asks outranks what memory brings up, she raises other work
+   only when the message is about it, and a topic the person asked to drop
+   stays dropped (and unread) until they bring it back.
 3. **Deliberate lookup** through tools. `recall(query)` searches.
    `read_memory(id)` opens a page, a note, or a window of a past thread around an
    entry.
