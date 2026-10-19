@@ -636,7 +636,7 @@ export class WorkspaceSettings {
     return { added: rows.filter((r) => r.kind === "added").map((r) => r.path), removed: rows.filter((r) => r.kind === "removed").map((r) => r.path) };
   }
 
-  /** The thread whose folder in the home workspace this one works in: itself for a project code thread, otherwise its nearest ancestor with its own folder. */
+  /** The thread whose folder in the home workspace this one works in: itself for a code child thread, otherwise its nearest ancestor with its own folder. */
   folderThread(threadId: string): string {
     for (let id = threadId, i = 0; i < 100; i++) {
       if (this.threadWork(id)) return id;

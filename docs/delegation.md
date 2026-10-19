@@ -218,10 +218,10 @@ and thinking level, and one with a built-in's name overrides it.
 ## Parallel writers
 
 The helpers `makeWorktrees`, `worktreeGrants` and `removeWorktrees` live in
-`core/src/workspace/worktree.ts` and serve both delegate writers and project
-code threads. Project parts use their own thread folder, checkout and branch;
-`base: true` keeps the original checkout for a single open scaffold or merge
-thread. Other threads and delegate writers retain the rules below.
+`core/src/workspace/worktree.ts` and serve both delegate writers and
+code child threads. Code children use their own thread folder, checkout and branch;
+In projects, `base: true` keeps the original checkout for a single open
+scaffold or merge thread. Other threads and delegate writers retain the rules below.
 
 Two delegate writers never share a folder. A writer takes its parent thread's folders
 for as long as it lives, so writers from any runs of that thread go one at a
@@ -516,6 +516,10 @@ Lock stops working children first, and tells their parents the same way; a
 parent mid-turn is stopped before the note, so the note is stored. Each
 update has its own ID, so two identical updates both show. Opening a
 child's messages sees its updates.
+
+Outside a project, a plain thread codes in place and keeps the base. Requested
+`code: true` children get their own worktrees and branches; the parent merges
+them itself and starts a merge thread only when the user asks.
 
 **Projects.** A build with several parts runs scaffold, parts, then merge:
 start one `code: true, base: true` scaffold thread and resolve it after it

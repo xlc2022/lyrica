@@ -104,6 +104,8 @@ line, and merge threads stay a project-only default.
   a project chat on a granted git repository each get their own worktree
   and branch. A write in one doesn't show in the other's checkout, and
   each sees the repository read-only.
+- Outside a project, requested code children get separate worktrees and
+  branches too; their parent retains its writable base and merges them itself.
 - A second `base: true` start is refused while the first is open.
 - Resolving a part thread removes its worktree and keeps its branch.
 - An eval in `evals/project-coordinator.eval.ts` checks that the merge
@@ -119,13 +121,13 @@ line, and merge threads stay a project-only default.
 ## Build notes
 
 Built sections A–E. The shared helpers moved to
-`core/src/workspace/worktree.ts`. Project code threads use their own encrypted
+`core/src/workspace/worktree.ts`. Code child threads use their own encrypted
 folder, with identifier-only branch slugs and a unique `/thread-workspaces/<child>` sandbox alias so shared git
 metadata never confuses two `/workspace` paths. Placement and base ownership
 survive restarts in encrypted workspace settings; no schema migration.
 
 Coverage also includes queued base holders and reopening, fallback reasons,
-ordinary children staying in their parent's folder, dirty checkout retention
+non-code children staying in their parent's folder, dirty checkout retention
 when forgetting files, and a real-sandbox check of unique git paths and mounts.
 The coordinator eval's real-model scenario now checks scaffold, parts, merge;
 it is not run against a real endpoint in this build.

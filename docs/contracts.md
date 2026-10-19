@@ -907,7 +907,7 @@ Custom roles override built-ins by name.
 - **Thread worktrees:** `StartRequest.base?: boolean` keeps a project child's
   original checkout. `children.ts` refuses a second open base holder (queued
   starts count), naming it, and guards reopening too. Resolved queued threads
-  do not start until reopened. Project code parts use
+  do not start until reopened. Code children, including those requested outside projects, use
   shared `makeWorktrees`, `worktreeGrants`, `removeWorktrees` in
   `core/src/workspace/worktree.ts`. `ThreadWorkspace.threadWork?: ThreadWork`
   holds `{ base?, worktrees: { repo, path, branch }[], reason?, cleaned? }`,
@@ -928,7 +928,9 @@ Custom roles override built-ins by name.
   cleanup before files disappear; dirty checkouts and their folders stay.
   `ProjectThreadInfo.worktreeReason` and `ThreadSummary.worktreeReason` expose
   fallback reasons in the project chat's card. The coordinator starts a base
-  merge thread after the parts; it gets no merge tool of its own.
+  merge thread after the parts; it gets no merge tool of its own. Outside a
+  project the plain parent keeps the base and merges its children’s branches
+  itself; it starts a merge thread only if the user asks.
 - **Projects:** in a project chat, `threads.start` records the anchor (the
   first entry the calling turn writes; the card goes under the first
   message at or after it) and returns `queued` past the at-once limit

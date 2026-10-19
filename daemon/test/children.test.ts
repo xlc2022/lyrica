@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createLocalBashOperations } from "@earendil-works/pi-coding-agent";
 import { Sandbox, pickThread, type ExecutionTarget, type ToolOps } from "@lyrica/core";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -631,10 +631,10 @@ it("a woken parent's reply reaches a busy child's next user turn without startin
 
 
 // Git runs locally only in these fakes; model traffic uses setup's fake endpoint.
-describe("project code thread worktrees", () => {
+describe("code thread worktrees", () => {
   const dirs: string[] = [];
   afterEach(() => { vi.restoreAllMocks(); for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
-  async function projectRepo(opts: Parameters<typeof setup>[0] = {}) {
+  async function projectRepo(opts: Parameters<typeof setup>[0] = {}, project = true) {
     const s = await setup(opts);
     const root = realpathSync(mkdtempSync(join(tmpdir(), "lyrica-thread-worktrees-")));
     dirs.push(root);
@@ -646,7 +646,7 @@ describe("project code thread worktrees", () => {
     git("add", ".");
     git("-c", "user.name=Example", "-c", "user.email=example@example.invalid", "commit", "-qm", "initial");
     await s.ada.post(`${s.u}/admin/users/${s.rt.ada.id}/paths`, { pool: "general", path: repo });
-    await s.ada.patch(s.path, { project: true });
+    await s.ada.patch(s.path, { project });
     expect((await s.ada.patch(`${s.path}/settings`, { grants: [{ path: repo, writable: true }] })).status).toBe(200);
     const workspace = s.d.services!.workspace;
     const ws = workspace.settings(s.rt.ada.id);
@@ -678,10 +678,15 @@ describe("project code thread worktrees", () => {
     return { ...s, root, repo, git, ws, workspace, make, idle, pair };
   }
 
-  it("isolates two project writers, narrows their grants, and restores a resolved checkout on its branch", async () => {
-    const s = await projectRepo();
+  it.each([true, false])("isolates two writers and restores a resolved checkout (project: %s)", async (project) => {
+    const s = await projectRepo({}, project);
+    expect(s.ws.folderThread(s.thread.id)).toBe(s.thread.id);
+    expect(s.ws.threadWork(s.thread.id)).toBeUndefined();
+    expect(s.ws.effective(s.thread.id).grants).toEqual([{ path: s.repo, writable: true }]);
     const [{ id: a }, { id: b }] = await s.pair();
     await s.idle(a); await s.idle(b);
+    expect(s.ws.effective(s.thread.id).grants).toEqual([{ path: s.repo, writable: true }]);
+    expect(s.ws.folderThread(s.thread.id)).toBe(s.thread.id);
     const wa = s.ws.threadWork(a)!.worktrees[0]!;
     const wb = s.ws.threadWork(b)!.worktrees[0]!;
     expect(wa).toBeDefined(); expect(wb).toBeDefined();
@@ -705,6 +710,15 @@ describe("project code thread worktrees", () => {
     // Commit before resolving: the checkout goes, the branch stays.
     execFileSync("git", ["-C", wa.path, "add", "."]);
     execFileSync("git", ["-C", wa.path, "-c", "user.name=Example", "-c", "user.email=example@example.invalid", "commit", "-qm", "physics"]);
+    if (!project) {
+      // Plain parents merge directly; Resolve/Reopen belongs to projects.
+      s.git("merge", "--ff-only", wa.branch);
+      expect(readFileSync(join(s.repo, "physics.ts"), "utf8")).toContain("speed = 1");
+      expect((await s.ada.del(s.childPath(a))).status).toBe(200);
+      expect(existsSync(wa.path)).toBe(false);
+      expect(s.git("branch", "--list", wa.branch)).toContain(wa.branch);
+      return;
+    }
     expect((await s.ada.post(`${s.childPath(a)}/resolve`)).status).toBe(200);
     expect(existsSync(wa.path)).toBe(false);
     expect(s.git("branch", "--list", wa.branch)).toContain(wa.branch);
@@ -713,6 +727,7 @@ describe("project code thread worktrees", () => {
     expect(existsSync(join(wa.path, "physics.ts"))).toBe(true);
     await s.ada.post(`${s.childPath(a)}/resolve`);
     s.git("merge", "--ff-only", wa.branch);
+    expect(readFileSync(join(s.repo, "physics.ts"), "utf8")).toContain("speed = 1");
     s.git("branch", "-d", wa.branch);
     await s.ada.post(`${s.childPath(a)}/reopen`);
     await s.workspace.prepareWorktrees({ userId: s.rt.ada.id, pool: "general", threadId: a });
@@ -785,11 +800,11 @@ describe("project code thread worktrees", () => {
     expect(s.ws.effective(id).grants).toEqual([{ path: s.repo, writable: true }]);
   });
 
-  it("keeps an ordinary code child in its parent's folder", async () => {
+  it("keeps a non-code child in its parent's folder", async () => {
     const s = await setup();
-    s.parent.push(start("Small fix", "Fix the example.", { code: true }), { text: "Started." });
+    s.parent.push(start("Research", "Read the example."), { text: "Started." });
     s.child.push({ text: "Done." });
-    const id = toolEnd(await s.say("Start a code child." )).threads![0]!.id;
+    const id = toolEnd(await s.say("Start a research child." )).threads![0]!.id;
     const ws = s.d.services!.workspace.settings(s.rt.ada.id);
     expect(ws.threadWork(id)).toBeUndefined();
     expect(ws.folderThread(id)).toBe(s.thread.id);

@@ -304,10 +304,10 @@ takes is `lyrica@pve!agent=<that secret>`.
   - A private thread may also take general folders, read-only, the same way
     private memory reads general memory.
   - Grants do not nest, except a writable `.git` inside a read-only checkout for worktree commits.
-- **Project code threads** get their own folder and, for each writable host
+- **Code child threads** get their own folder and, for each writable host
   folder at the top of a git repository, a worktree under
   `threads/<child>/worktrees/<repo>` in the encrypted home. The sandbox sees
-  it at `/thread-workspaces/<child>/worktrees/<repo>`, on `lyrica/<project slug>/<thread slug>`
+  it at `/thread-workspaces/<child>/worktrees/<repo>`, on `lyrica/<parent slug>/<thread slug>`
   (slugs use IDs, never conversation titles). `/thread-workspaces/<child>` aliases only that child’s
   `/workspace`, so shared git metadata records a unique path per thread. The original checkout is read-only; its `.git` is
   writable for commits. Machines, MCP servers and Claude Code are removed
@@ -318,9 +318,11 @@ takes is `lyrica@pve!agent=<that secret>`.
   `threads start` with `base: true` keeps the original checkout for scaffold
   and merge work; `children.ts` refuses another open base thread in the same
   project, naming its holder. Resolving releases it. Outside projects,
-  threads keep working in place and code children share their parent's folder.
+  a plain thread keeps the base and works in place; requested `code: true`
+  children get their own worktrees and branches. The plain thread merges
+  those branches itself, starting a merge thread only if the user asks.
   Resolving or forgetting a part removes its worktree and keeps its branch;
-  uncommitted work is kept and the project chat gets its path. Reopening
+  uncommitted work is kept and the parent gets its path. Reopening
   restores a removed checkout on its saved branch before tools run, creating
   that branch from current HEAD if the merge thread already deleted it.
 - The lists live in `self.db` (`workspace_paths`, keyed by user ID), and only
@@ -352,7 +354,7 @@ takes is `lyrica@pve!agent=<that secret>`.
 - On disk: `users/<id>/home.crypt` holds the ciphertext, mounted at
   `users/<id>/home`, with one folder per thread under `threads/`. A
   subagent works in its parent's folder; ordinary child threads share their
-  parent's too, while project code threads have their own. The gocryptfs password is the hex
+  parent's too, while code children have their own. The gocryptfs password is the hex
   `home` subkey, passed on stdin.
 - `codex/` there is Codex's home for ChatGPT Images (`Workspace.codexDir`,
   docs/models.md, "Image canvases"): its sign-in and anything it writes,

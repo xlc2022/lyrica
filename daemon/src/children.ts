@@ -154,10 +154,10 @@ export class ChildThreads implements ThreadsHost {
       // Machines are reached through bash, which no folder, read-only or network narrowing covers: a narrowed child gets none.
       const noMachines = !!req.readOnly || !!req.folders || req.internet === false;
       ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: [], mcpServers: [], claudeCode: false } : {}) });
-      if (project && (req.code || this.o.project?.(userId, parent.pool, parent.threadId)?.code)) {
+      if (req.code || (project && this.o.project?.(userId, parent.pool, parent.threadId)?.code)) {
         ws.setThreadWork(child.id, { ...(req.base ? { base: true } : {}), worktrees: [] });
         if (!req.base) {
-          const ref = { userId, pool: parent.pool, threadId: child.id, project: parent.threadId };
+          const ref = { userId, pool: parent.pool, threadId: child.id, ...(project ? { project: parent.threadId } : {}) };
           const worktrees: import("@lyrica/core").Worktree[] = [];
           try {
             const target = this.o.workspace.targetFor(ref);

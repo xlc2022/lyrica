@@ -1118,7 +1118,10 @@ project page and the web part are built. Recent calls can be filtered by project
   worktree. Resolving or forgetting removes clean worktrees, keeping branches;
   dirty worktrees stay with a note of their path. Failures to make a worktree
   leave that folder as granted, with a reason in the prompt and card. Forge
-  clones and threads outside projects keep their existing behavior. The
+  clones keep their existing behavior. Outside projects, the plain thread
+  codes in place and keeps the base; requested `code: true` children get
+  worktrees and branches too. The plain thread merges them itself, starting
+  a merge thread only if the user asks. The
   shared delegate helpers serve threads too; no process, tool or setting added.
 - **Threads hang off messages.** Each thread is anchored to the message in
   the project chat that started it: her reply, or a message the user picks with

@@ -796,7 +796,7 @@ export interface McpToken { token: string }
 // --- Threads ---
 
 export interface ThreadSummary {
-  /** Why a project code thread could not isolate one or more host folders. */
+  /** Why a code child thread could not isolate one or more host folders. */
   worktreeReason?: string;
   question?: { n: number; asked: string };
   pool: Pool;
