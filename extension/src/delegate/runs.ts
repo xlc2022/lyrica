@@ -865,7 +865,7 @@ export class Delegation {
   }
 
   /** The chat models this thread may name for its subagents, as it is now. */
-  models(parent: ThreadContext): { id: string; label: string; local: boolean }[] {
+  models(parent: ThreadContext): { id: string; label: string; local: boolean; vision: boolean }[] {
     const { models } = this.o;
     return models.textModels(models.callContext(parent.user.id, parent.pool, parent.threadId));
   }

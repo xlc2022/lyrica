@@ -2585,10 +2585,10 @@ export class Models {
   }
 
   /** The chat models a context may use, by label, for her to name: listed, and not image, speech or embedding models. */
-  textModels(ctx: CallContext): (Named & { local: boolean })[] {
+  textModels(ctx: CallContext): (Named & { local: boolean; vision: boolean })[] {
     return this.allowed(ctx).flatMap(({ endpoint, offerings }) => offerings
       .filter((o) => o.status === "listed" && o.tools !== false && !o.embedding && !o.image && !o.transcribe && !o.speak && !o.recipe)
-      .map((o) => ({ id: o.id, label: labelOf(endpoint, o), local: endpoint.kind === "local" })));
+      .map((o) => ({ id: o.id, label: labelOf(endpoint, o), local: endpoint.kind === "local", vision: !!o.vision })));
   }
 
   /** Every endpoint and model a context may use. For a restricted context, local endpoints only. */
