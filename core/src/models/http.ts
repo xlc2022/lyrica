@@ -46,6 +46,8 @@ export interface DiscoveredModel {
   servedContext?: number;
   /** LM Studio listed it on its own API, so its context can be changed by loading it again. */
   lmStudio?: boolean;
+  /** Requests the server runs at once for it (LM Studio's `parallel`), sharing its context cache. */
+  servedParallel?: number;
   /** The sampling the model or its provider uses when a request sets none, where the server says (a host's file, OpenRouter's `default_parameters`). */
   defaults?: ModelDefaults;
 }
@@ -125,7 +127,7 @@ export async function discoverModels(baseUrl: string, apiKey: string | undefined
 const lmStudioRoot = (baseUrl: string) => baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "");
 
 /** A model LM Studio has, with its loaded instances and the context each was loaded with, and whether it reads images. */
-export interface LmStudioModel { key: string; maxContext?: number; vision?: boolean; instances: { id: string; context?: number }[] }
+export interface LmStudioModel { key: string; maxContext?: number; vision?: boolean; instances: { id: string; context?: number; parallel?: number }[] }
 
 /** LM Studio's models (GET /api/v1/models), or null when the server doesn't answer like LM Studio. */
 export async function lmStudioModels(baseUrl: string, apiKey: string | undefined, timeoutMs = 5000, fetchImpl: typeof fetch = fetch): Promise<LmStudioModel[] | null> {
@@ -143,7 +145,7 @@ export async function lmStudioModels(baseUrl: string, apiKey: string | undefined
     key: m.key, maxContext: num(m.max_context_length),
     ...(typeof m.capabilities?.vision === "boolean" ? { vision: m.capabilities.vision as boolean } : {}),
     instances: (Array.isArray(m.loaded_instances) ? m.loaded_instances : []).filter((i: any) => typeof i?.id === "string")
-      .map((i: any) => ({ id: i.id as string, context: num(i.config?.context_length) })),
+      .map((i: any) => ({ id: i.id as string, context: num(i.config?.context_length), ...(num(i.config?.parallel) ? { parallel: num(i.config.parallel) } : {}) })),
   }]);
 }
 

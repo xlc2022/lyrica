@@ -4,7 +4,9 @@ import { concurrentLimit, markOverflow, modelShare, shareModel } from "../src/mo
 
 describe("a local model shared by threads", () => {
   it("runs as many at once as the operator's tiers allow", () => {
-    expect([131_072, 199_999, 200_000, 262_144, 499_999, 500_000, 1_048_576].map(concurrentLimit)).toEqual([1, 1, 2, 2, 2, 4, 4]);
+    expect([131_072, 199_999, 200_000, 262_144, 499_999, 500_000, 1_048_576].map((w) => concurrentLimit(w))).toEqual([1, 1, 2, 2, 2, 4, 4]);
+    // Never more than the server's own slots.
+    expect(concurrentLimit(1_048_576, 2)).toBe(2);
   });
 
   it("holds back a request that wouldn't fit beside the running ones, until one ends", async () => {

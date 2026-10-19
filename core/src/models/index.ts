@@ -181,6 +181,8 @@ export interface Offering extends Capabilities {
   opensThinking?: boolean;
   /** An LM Studio model, as last discovered: the `models` tool may load it again with another context. */
   lmStudio?: boolean;
+  /** Requests its server runs at once, sharing one context cache (LM Studio's `parallel`), when the server says. */
+  parallel?: number;
 }
 
 /** Offerings from different endpoints declared the same model, in preferred order. */
@@ -431,7 +433,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; opensThinking?: boolean; lmStudio?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; lmStudio?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -449,6 +451,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.separate ? { separate: true } : {}),
     ...(caps.opensThinking ? { opensThinking: true } : {}),
     ...(caps.lmStudio ? { lmStudio: true } : {}),
+    ...(caps.servedParallel ? { parallel: caps.servedParallel } : {}),
   };
 };
 const toGroup = (r: GroupRow, shared: boolean): Group => ({ id: r.id, name: r.name, shared, members: JSON.parse(r.members) });
@@ -761,8 +764,9 @@ export class Models {
       if (lm) found = found.map((m) => {
         const l = lmStudioModel(lm, m.modelId);
         const served = l?.instances[0]?.context;
+        const parallel = l?.instances[0]?.parallel;
         // Its OpenAI-compatible list says nothing about images; its own API says whether the model has a vision projector.
-        return { ...m, ...(served ? { servedContext: served } : {}), ...(l ? { lmStudio: true } : {}), ...(m.vision === undefined && l?.vision !== undefined ? { vision: l.vision } : {}) };
+        return { ...m, ...(served ? { servedContext: served } : {}), ...(parallel ? { servedParallel: parallel } : {}), ...(l ? { lmStudio: true } : {}), ...(m.vision === undefined && l?.vision !== undefined ? { vision: l.vision } : {}) };
       });
       // A ChatGPT plan's image tool is one model of its own, not a switch on each chat model.
       if (ep.api === "chatgpt") found = [...found, PLAN_IMAGE];
@@ -1168,12 +1172,13 @@ export class Models {
     const m = lm && lmStudioModel(lm, o.offering.modelId);
     if (!m) return;
     const served = m.instances[0]?.context;
+    const parallel = m.instances[0]?.parallel;
     const update = (db: Db) => {
       const row = db.prepare("SELECT found FROM offerings WHERE id = ?").get(offeringId) as { found: string } | undefined;
       const found = row && JSON.parse(row.found) as DiscoveredModel;
       if (!found) return;
-      const next = { ...found, ...(served ? { servedContext: served } : {}), ...(m.vision !== undefined ? { vision: m.vision } : {}) };
-      if (next.servedContext !== found.servedContext || next.vision !== found.vision) db.prepare("UPDATE offerings SET found = ? WHERE id = ?").run(JSON.stringify(next), offeringId);
+      const next = { ...found, ...(served ? { servedContext: served } : {}), ...(parallel ? { servedParallel: parallel } : {}), ...(m.vision !== undefined ? { vision: m.vision } : {}) };
+      if (next.servedContext !== found.servedContext || next.servedParallel !== found.servedParallel || next.vision !== found.vision) db.prepare("UPDATE offerings SET found = ? WHERE id = ?").run(JSON.stringify(next), offeringId);
     };
     if (o.endpoint.shared) update(this.self());
     else this.withUser(userId, update);

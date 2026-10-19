@@ -37,11 +37,8 @@ person always hears where things stand.
 
 ## Out of scope
 
-- Reading LM Studio's or a host's parallel-slot setting. The tiers and the
-  token fit already cover it, and a server queues requests beyond its own
-  slots.
-- Image jobs sharing a host's GPU with a loaded chat model. ComfyUI queues
-  its own jobs, and a GPU memory budget across chat and image work needs its
-  own design.
+- A host's own slots (llama.cpp's parallel, vLLM's `--max-num-seqs`), and
+  ComfyUI image jobs queueing against chat work on the same GPU: a
+  follow-up PR from this thread. LM Studio's `parallel` is read here.
 - Showing the waiting thread in the interface. The checklist and the turn
   stay as they are while a request waits.

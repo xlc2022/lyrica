@@ -473,7 +473,7 @@ class Models {                                              // new Models(keyrin
   offeringSettings(userId, offeringId): { values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
                                           dropped: (keyof AnswerSettings)[]; defaults: ModelDefaults;   // the sampling the model reports as its own
                                           contextWindow: { value; source: "host" | "hand" | "discovered" | "assumed" } }   // assumed: DEFAULT_CONTEXT, 131,072
-  refreshServed(userId, offeringId, timeoutMs = 1500): Promise<void>   // LM Studio's loaded context and vision, read again (before each turn, on Settings)
+  refreshServed(userId, offeringId, timeoutMs = 1500): Promise<void>   // LM Studio's loaded context, parallel slots and vision, read again (before each turn, on Settings)
   rereadLocal(actor): Promise<void>   // the user's local endpoints discovered again, once per daemon run (lyricad, on the first unlock); shared ones as an administrator
   setOfferingSettings(actor, offeringId, change, scope: "shared" | "mine" = "mine")   // null clears a value
   // Library, tokens, downloads, delete
@@ -1091,8 +1091,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Shared local models** (`extension/src/model-share.ts`, around every
   local endpoint's stream in `modelRuntimeFor`): `shareModel(key, need,
   window, signal?)` waits until a request fits beside the ones running on
-  that model (tokens and `concurrentLimit(window)`: 1 below 200k, 2 from
-  200k, 4 from 500k) and returns its release; `markOverflow` adds a known
+  that model (tokens and `concurrentLimit(window, slots?)`: 1 below 200k, 2
+  from 200k, 4 from 500k, at most the offering's `parallel`) and returns its release; `markOverflow` adds a known
   overflow text to LM Studio's "Context size has been exceeded" so Pi
   compacts and retries (docs/models.md, Local servers).
 - **Tool definitions are resent with every reply** (principle 8): a
