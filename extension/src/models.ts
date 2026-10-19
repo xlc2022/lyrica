@@ -139,6 +139,8 @@ export async function prepareTurn(o: {
   // Tools are asked for only when the thread has them, so a model without tools can still chat.
   const tools = o.session.getActiveToolNames().length > 0;
   const r = await o.models.resolveLive(task, o.call, { ...(tools ? { tools } : {}), ...(tokens ? { tokens } : {}) }, o.retry ? { probeMs: 1000 } : {});
+  // A model LM Studio loaded at another context since the endpoint was read plans by that from this turn.
+  if (!o.retry) await o.models.refreshServed(o.call.userId, r.ref.offeringId).catch(() => {});
   const { model } = piModelFor(o.runtime, o.models, task, o.call, r);
   const current = o.session.model;
   if (!current || current.provider !== model.provider || current.id !== model.id) await o.session.setModel(model);

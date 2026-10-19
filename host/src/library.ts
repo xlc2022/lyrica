@@ -62,7 +62,24 @@ export interface TextModel {
   onnx?: string;
   toolCallParser?: string;
   reasoningParser?: string;
+  /** The sampling its publisher recommends, which its server uses when a request sets none: a GGUF's `general.sampling.*`, a folder's generation_config.json. */
+  sampling?: Sampling;
 }
+
+export interface Sampling { temperature?: number; topP?: number; topK?: number; minP?: number; repeatPenalty?: number }
+
+/** Only the numbers present, under Lyrica's names; undefined when there are none. */
+function sampling(read: (key: keyof Sampling) => unknown): Sampling | undefined {
+  const out: Sampling = {};
+  for (const k of ["temperature", "topP", "topK", "minP", "repeatPenalty"] as const) {
+    const v = read(k);
+    // A GGUF holds float32, so 0.7 reads 0.699999988: six figures give back what was written.
+    if ((typeof v === "number" || typeof v === "bigint") && Number.isFinite(Number(v))) out[k] = Number(Number(v).toPrecision(6));
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+const GGUF_SAMPLING: Record<keyof Sampling, string> = { temperature: "temp", topP: "top_p", topK: "top_k", minP: "min_p", repeatPenalty: "penalty_repeat" };
+const CONFIG_SAMPLING: Record<keyof Sampling, string> = { temperature: "temperature", topP: "top_p", topK: "top_k", minP: "min_p", repeatPenalty: "repetition_penalty" };
 
 const SHARD = /-(\d{5})-of-(\d{5})\.gguf$/;
 
@@ -172,6 +189,7 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
   const { mmproj, mtp } = embedding ? { mmproj: null, mtp: null } : companions(root, path);
   const builtInMtp = Number(meta[`${arch}.nextn_predict_layers`] ?? 0) > 0;
   const context = meta[`${arch}.context_length`];
+  const recommended = embedding ? undefined : sampling((k) => meta[`general.sampling.${GGUF_SAMPLING[k]}`]);
   return {
     id: relative(root, path).split("\\").join("/"),
     kind: embedding ? "embedding" : "chat",
@@ -200,6 +218,7 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
     ...(builtInMtp ? { builtInMtp } : {}),
     ...(mmproj ? { mmprojSize: statSync(join(root, mmproj)).size } : {}),
     ...(mtp ? { mtpSize: statSync(join(root, mtp)).size } : {}),
+    ...(recommended ? { sampling: recommended } : {}),
     remoteCode: false,
   };
 }
@@ -261,6 +280,8 @@ function vllmModel(root: string, dir: string, files: string[]): TextModel | null
   const text = config.text_config ?? config;
   const parsers = familyParsers(text.model_type ?? config.model_type ?? config.architectures[0] ?? "", basename(dir));
   const caps = templateCapabilities(embedding ? null : template);
+  const generation = embedding ? null : readJson(join(dir, "generation_config.json"));
+  const recommended = generation ? sampling((k) => generation[CONFIG_SAMPLING[k]]) : undefined;
   return {
     id: relative(root, dir).split("\\").join("/"),
     kind: embedding ? "embedding" : "chat",
@@ -273,6 +294,7 @@ function vllmModel(root: string, dir: string, files: string[]): TextModel | null
     contextLength: typeof text.max_position_embeddings === "number" ? text.max_position_embeddings : null,
     kvPerToken: kvElements(configKvLayers(text), text.hidden_size, text.num_attention_heads, text.num_key_value_heads ?? text.num_attention_heads, text.head_dim),
     mmproj: null,
+    ...(recommended ? { sampling: recommended } : {}),
     remoteCode: !!config.auto_map,
   };
 }

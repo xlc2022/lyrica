@@ -290,6 +290,8 @@ export class Runtime {
       // The context it is served with; maxContextLength is what it was trained for.
       contextLength: m.kind === "image" || m.kind === "speak" ? null : contextOf(m, this.scheduler.served(m)),
       maxContextLength: m.contextLength,
+      // What its publisher recommends, which its server uses for a setting a request leaves out.
+      sampling: m.sampling ?? null,
       kvBytes: this.servingEntry(m).kvBytes,
       stretch: this.scheduler.settings(m).stretch?.factor ?? null,
       state: at?.state ?? "unloaded",

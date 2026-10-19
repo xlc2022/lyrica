@@ -755,8 +755,18 @@ never sent with a chat request.
   shared one's, for them alone.
 - `offeringSettings(userId, offeringId)` gives the values that apply to that
   user, each with its source (shared or yours; anything absent is the
-  server's default), and the context window with its source (the host's
-  serving settings, by hand, or discovered). Compaction and group fitting use that context window.
+  server's default), the sampling the model reports as its own
+  (`defaults`: a host model's file, `general.sampling.*` in a GGUF or
+  generation_config.json beside safetensors, and OpenRouter's
+  `default_parameters`), which its server uses where nothing is set, and the
+  context window with its source: what the server serves it with (a host,
+  or the context LM Studio has it loaded with), else by hand, else
+  discovered, else assumed (`DEFAULT_CONTEXT`, 131,072, which current models
+  offer at least). Compaction and group fitting use that context window.
+- LM Studio's loaded context is read again before each turn on that model
+  and when its Settings open (`refreshServed`), so a load made in LM Studio
+  itself applies from the next request; an unloaded model keeps the last
+  context it was loaded with.
 - Every request to the offering carries the values that are set, added to
   Pi's request payload; unset values are never sent. The repeat penalty is
   `repeat_penalty` for plain local servers (llama.cpp) and
@@ -887,7 +897,9 @@ llama-server with `--jinja`. Without them, KoboldCpp picks tools in extra
 grammar-constrained passes and llama-server falls back to a generic format.
 LM Studio uses a model's own tool format when its template has one. None of
 the three reports the context window through `/v1/models` except
-llama-server, so enter it with `endpoints model … --context`.
+llama-server; LM Studio reports a loaded model's on its own API. Where none
+does, a window is assumed (131,072); enter the right one with
+`endpoints model … --context`.
 
 ## Child threads
 

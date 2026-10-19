@@ -361,6 +361,8 @@ export interface AnswerSettings {
   /** A speech model's speed, 0.25 to 4. */
   speed?: number;
 }
+/** Sampling a model reports as its own, under the settings' names. */
+export interface ModelDefaults { temperature?: number; topP?: number; topK?: number; minP?: number; repeatPenalty?: number; frequencyPenalty?: number; presencePenalty?: number }
 /** GET /api/u/:userId/offerings/:offeringId/settings → OfferingSettings: each value with its source. */
 export interface OfferingSettings {
   values: AnswerSettings;
@@ -368,8 +370,10 @@ export interface OfferingSettings {
   sources: Partial<Record<keyof AnswerSettings, "shared" | "yours">>;
   /** Saved values this endpoint's API doesn't take (OpenAI's has no top-k, for one), so they aren't sent. */
   dropped: (keyof AnswerSettings)[];
-  /** The context window Lyrica plans by: a host's serving settings, else set by hand, else discovered. */
-  contextWindow?: { value: number; source: "host" | "hand" | "discovered" };
+  /** The sampling the model reports as its own (a host's file, OpenRouter), which applies where nothing is set. */
+  defaults: ModelDefaults;
+  /** The context window Lyrica plans by: what the server serves it with (a host, a loaded LM Studio model), else set by hand, else discovered, else assumed (131,072). */
+  contextWindow: { value: number; source: "host" | "hand" | "discovered" | "assumed" };
 }
 /**
  * PUT /api/u/:userId/offerings/:offeringId/settings → OfferingSettings.

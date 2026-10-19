@@ -34,6 +34,9 @@ function modelsFolder(): string {
       "qwen3.context_length": 40960,
       "tokenizer.ggml.model": "gpt2",
       "tokenizer.chat_template": "{% if tools %}...{% endif %}{% if enable_thinking %}<think>{% endif %}",
+      "general.sampling.temp": 0.7,
+      "general.sampling.top_p": 0.8,
+      "general.sampling.top_k": 20,
     }),
   );
   mkdirSync(join(dir, "shared"), { recursive: true });
@@ -43,6 +46,7 @@ function modelsFolder(): string {
   mkdirSync(join(dir, "vllm/Qwen3-32B"), { recursive: true });
   writeFileSync(join(dir, "vllm/Qwen3-32B/config.json"), JSON.stringify({ architectures: ["Qwen3ForCausalLM"], max_position_embeddings: 32768 }));
   writeFileSync(join(dir, "vllm/Qwen3-32B/model.safetensors"), Buffer.alloc(16));
+  writeFileSync(join(dir, "vllm/Qwen3-32B/generation_config.json"), JSON.stringify({ temperature: 0.6, top_p: 0.95, top_k: 20, repetition_penalty: 1.05, do_sample: true }));
   mkdirSync(join(dir, "vllm/remote"), { recursive: true });
   writeFileSync(join(dir, "vllm/remote/config.json"), JSON.stringify({ architectures: ["X"], auto_map: { AutoModel: "x.X" } }));
   writeFileSync(join(dir, "vllm/remote/model.safetensors"), Buffer.alloc(16));
@@ -68,6 +72,10 @@ describe("the models folder", () => {
     expect(qwen.identity).toEqual({ basename: "Qwen3", sizeLabel: "8B", finetune: null, baseModels: [{ name: "Qwen3 8B Base", organization: "Qwen", repoUrl: null }], sourceRepo: null });
     expect(qwen.capabilities).toEqual({ tools: true, vision: false, embedding: false, reasoning: ["off", "on"], opensThinking: true });
     expect(qwen.contextLength).toBe(40960);
+    // The sampling its publisher recommends, which its server uses when a request sets none.
+    expect(qwen.sampling).toEqual({ temperature: 0.7, topP: 0.8, topK: 20 });
+    expect(models[2]!.sampling).toEqual({ temperature: 0.6, topP: 0.95, topK: 20, repeatPenalty: 1.05 });
+    expect(models[1]!.sampling).toBeUndefined();
     expect(models[3]!.remoteCode).toBe(true);
   });
 

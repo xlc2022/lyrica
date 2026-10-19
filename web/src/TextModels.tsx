@@ -535,10 +535,16 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   const samplingChanged = changes("mine").length > 0 || changes("shared").length > 0 || ctxChanged;
   const resettable = SAMPLING.some((r) => shown(r.key) !== "");
   const reset = () => setTexts({ ...texts, [scope]: Object.fromEntries(SAMPLING.map((r) => [r.key, ""])) });
+  // An empty field shows what applies instead: the shared value, else the model's own (sent by nobody, used by its server), else the reply cap.
+  const inherited = (k: SKey) => scope === "mine" && s?.sources[k] === "shared" ? "shared" : s && k in s.defaults ? "model's" : k === "maxTokens" ? "most" : undefined;
+  const placeholder = (k: SKey) => {
+    const from = inherited(k);
+    return from === "shared" ? textOf(s!.values[k]) : from === "model's" ? textOf((s!.defaults as Record<string, number>)[k]) : from === "most" ? String(cap) : undefined;
+  };
   const word = (k: SKey) => {
     if (s?.dropped.includes(k)) return "not sent";
     if (shown(k)) return scope === "mine" ? "yours" : "everyone";
-    return scope === "mine" && s?.sources[k] === "shared" ? "shared" : undefined;
+    return inherited(k) === "most" ? undefined : inherited(k);
   };
 
   // Serving: the host's settings object, edited whole and saved whole.
@@ -645,7 +651,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
           <input type={key === "stop" ? "text" : "number"} step={step} aria-label={label} disabled={s?.dropped.includes(key)}
             {...(key === "maxTokens" ? { min: 1, max: cap, onBlur: clampMax } : {})}
             title={key === "stop" ? "Separate them with commas" : undefined}
-            placeholder={scope === "mine" && s?.sources[key] === "shared" ? textOf(s.values[key]) : undefined}
+            placeholder={placeholder(key)}
             value={shown(key)} onChange={(e) => setTexts({ ...texts, [scope]: { ...texts[scope], [key]: e.target.value } })} />
         </SRow>
       ))}
@@ -656,9 +662,9 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
     {ep && !onHost && (
       <fieldset className="sgroup" disabled={!s || busy || !own}>
         <legend className="eyebrow">Context</legend>
-        <SRow label="Context window" word={ctxShown ? "set by hand" : undefined} unit="tokens">
+        <SRow label="Context window" word={ctxShown ? "set by hand" : s?.contextWindow.source === "assumed" ? "assumed" : s?.contextWindow.source === "host" ? "loaded" : undefined} unit="tokens">
           <input type="number" min={512} step={1024} aria-label="Context window" value={ctxShown} onChange={(e) => setCtxText(e.target.value)}
-            placeholder={s?.contextWindow && !hand ? String(s.contextWindow.value) : undefined} />
+            placeholder={s && !hand ? String(s.contextWindow.value) : undefined} />
         </SRow>
       </fieldset>
     )}

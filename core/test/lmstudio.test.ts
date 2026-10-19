@@ -32,7 +32,7 @@ async function fakeLmStudio(o: { context?: number; max: number; refuseAbove?: nu
   });
   servers.push(server);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  return { baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, calls };
+  return { baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, calls, loadInStudio: (n: number | undefined) => { loaded = n; } };
 }
 
 describe("LM Studio context", () => {
@@ -50,6 +50,19 @@ describe("LM Studio context", () => {
     await s.models.loadLocalContext(s.ada, o!.id, 65536);
     expect(studio.calls).toEqual(["unload qwen-flash", "load qwen-flash 65536"]);
     expect(s.models.offering(s.ada.id, o!.id)!.offering.contextWindow).toBe(65536);
+  });
+
+  it("reads the loaded context again, so a load made in LM Studio itself is planned by, and keeps it once unloaded", async () => {
+    const studio = await fakeLmStudio({ context: 4096, max: 262144 });
+    const s = await withModels();
+    const ep = s.models.addEndpoint(s.ada, { name: "studio", kind: "local", baseUrl: studio.baseUrl });
+    const [o] = await s.models.discover(s.ada, ep.id);
+    studio.loadInStudio(262144);
+    await s.models.refreshServed(s.ada.id, o!.id);
+    expect(s.models.offeringSettings(s.ada.id, o!.id).contextWindow).toEqual({ value: 262144, source: "host" });
+    studio.loadInStudio(undefined);
+    await s.models.refreshServed(s.ada.id, o!.id);
+    expect(s.models.offering(s.ada.id, o!.id)!.offering.contextWindow).toBe(262144);
   });
 
   it("leaves an unloaded model's window to the hand setting, not its maximum", async () => {

@@ -8,18 +8,18 @@ import type { Keyring } from "../keyring.ts";
 import { TASK_NAMES, TASKS, THINKING_LEVELS, type CallContext, type Column, type ModelRef, type Pool, type PresetScope, type Task, type ThinkingLevel } from "../types.ts";
 import { selfName } from "../persona.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
-import { addressesOutside, discoverModels, lmStudioLoad, lmStudioModel, lmStudioModels, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
+import { addressesOutside, discoverModels, modelDefaults, lmStudioLoad, lmStudioModel, lmStudioModels, probeUrl, type DiscoveredModel, type ModelDefaults, type ModelIdentity } from "./http.ts";
 import { hostError, hostFetch, HostRefused, hostOrigin, listIn, lyricaIdentity, pair } from "./host.ts";
 import { baseName } from "./identity.ts";
 import { copyIdentity } from "./library.ts";
-import { acceptedSettings, ANSWER_SETTINGS, checkSettings, type AnswerSettings, type SettingSource } from "./settings.ts";
+import { acceptedSettings, ANSWER_SETTINGS, checkSettings, DEFAULT_CONTEXT, type AnswerSettings, type SettingSource } from "./settings.ts";
 import { collectRefs, isList, mapMembers, moveSettings, refId, rewrite, type Entry, type Use } from "./refs.ts";
 import { addNotice, MIXED_PRESET, NOTICE, syncLegacy } from "./schema.ts";
 import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, speakAt, transcribeAt, wavSeconds, type SpeechTarget } from "./speech.ts";
 
 export type SpeechTask = "speech.transcribe" | "speech.speak";
 
-export { addressesOutside, discoverModels, inOwnNetwork, probeUrl, type DiscoveredModel, type ModelIdentity } from "./http.ts";
+export { addressesOutside, discoverModels, inOwnNetwork, probeUrl, type DiscoveredModel, type ModelDefaults, type ModelIdentity } from "./http.ts";
 export { baseName } from "./identity.ts";
 export { acceptedSettings, ANSWER_SETTINGS, payloadFields, replyCap, DEFAULT_CONTEXT, type AnswerSettings, type SettingSource } from "./settings.ts";
 export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
@@ -1152,6 +1152,27 @@ export class Models {
   }
 
   /**
+   * Reads again the context LM Studio has a model loaded with, and keeps it
+   * when it changed, so a load made in LM Studio itself is planned by from
+   * the next request. An unloaded model keeps what it had. Nothing happens
+   * for other servers, or when LM Studio doesn't answer within `timeoutMs`.
+   */
+  async refreshServed(userId: string, offeringId: string, timeoutMs = 1500): Promise<void> {
+    const o = this.offering(userId, offeringId);
+    if (!o?.offering.lmStudio) return;
+    const lm = await lmStudioModels(o.endpoint.baseUrl, o.endpoint.apiKey, timeoutMs);
+    const served = (lm && lmStudioModel(lm, o.offering.modelId))?.instances[0]?.context;
+    if (!served) return;
+    const update = (db: Db) => {
+      const row = db.prepare("SELECT found FROM offerings WHERE id = ?").get(offeringId) as { found: string } | undefined;
+      const found = row && JSON.parse(row.found) as DiscoveredModel;
+      if (found && found.servedContext !== served) db.prepare("UPDATE offerings SET found = ? WHERE id = ?").run(JSON.stringify({ ...found, servedContext: served }), offeringId);
+    };
+    if (o.endpoint.shared) update(this.self());
+    else this.withUser(userId, update);
+  }
+
+  /**
    * Loads an LM Studio model again with another context, for everyone using
    * it, then reads the endpoint again so the offering plans by it. A shared
    * endpoint needs an administrator; LM Studio's own refusal is the error.
@@ -1220,7 +1241,10 @@ export class Models {
     values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
     /** Saved values this endpoint's API doesn't take, so they aren't sent. */
     dropped: (keyof AnswerSettings)[];
-    contextWindow?: { value: number; source: "host" | "hand" | "discovered" };
+    /** The sampling the model reports as its own, which applies where nothing is set; absent where it reports none. */
+    defaults: ModelDefaults;
+    /** "assumed" when nothing says how long the window is (DEFAULT_CONTEXT). */
+    contextWindow: { value: number; source: "host" | "hand" | "discovered" | "assumed" };
   } {
     const o = this.offering(userId, offeringId);
     if (!o) throw new NoModel(`no model ${offeringId}`);
@@ -1243,7 +1267,8 @@ export class Models {
     const accepted = acceptedSettings(o.endpoint);
     return {
       values, sources, dropped: ANSWER_SETTINGS.filter((k) => values[k] !== undefined && !accepted.includes(k)),
-      ...(served ? { contextWindow: { value: served, source: "host" as const } } : hand ? { contextWindow: { value: hand, source: "hand" as const } } : found ? { contextWindow: { value: found, source: "discovered" as const } } : {}),
+      defaults: (JSON.parse(raw.found).defaults as ModelDefaults | undefined) ?? {},
+      contextWindow: served ? { value: served, source: "host" } : hand ? { value: hand, source: "hand" } : found ? { value: found, source: "discovered" } : { value: DEFAULT_CONTEXT, source: "assumed" },
     };
   }
 
@@ -1455,7 +1480,7 @@ export class Models {
   /** A host's text models, from its library (host/API.md "Models"). */
   private async hostModels(ep: Endpoint): Promise<DiscoveredModel[]> {
     const list = listIn<{
-      id: string; kind?: string; sha256?: string | null; contextLength?: number | null; size?: number; downloaded?: boolean; identity?: ModelIdentity | null;
+      id: string; kind?: string; sha256?: string | null; contextLength?: number | null; size?: number; downloaded?: boolean; identity?: ModelIdentity | null; sampling?: Record<string, unknown> | null;
       capabilities?: { tools?: boolean; vision?: boolean; embedding?: boolean; reasoning?: string[] | null; opensThinking?: boolean; transcribe?: boolean; speak?: { voices?: unknown } | null };
     }>(await this.hostCall(ep, "GET", "/host/v1/models"), "models");
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
@@ -1482,6 +1507,7 @@ export class Models {
         ...(m.identity ? { identity: m.identity } : {}),
         ...(m.downloaded !== undefined ? { downloaded: !!m.downloaded } : {}),
         ...(m.size ? { size: m.size } : {}),
+        ...(m.sampling ? { defaults: modelDefaults((k) => m.sampling![k]) } : {}),
       } as DiscoveredModel;
     }), ...recipes];
   }
