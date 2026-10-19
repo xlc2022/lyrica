@@ -1194,7 +1194,8 @@ system with the module on. Only x86_64-linux.
   NixOS's `services.searx` in uWSGI with request logging off, on
   `127.0.0.1:8888` with install.sh's settings, a
   `lyrica-searxng-secret` oneshot that makes its secret once, and
-  `searxng-address` in her state folder (a tmpfiles rule, removed when off).
+  `searxng-address` in her state folder (a tmpfiles rule, removed when off; an address lyricad already stored
+  stays until an administrator clears it).
   `lyrica` on the system path is the same wrapper as
   install.sh's, so the first-run step is `lyrica admin setup-code` as root:
   nothing prints the code or the fingerprint at `nixos-rebuild`. The wrapper

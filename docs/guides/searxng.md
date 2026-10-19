@@ -54,8 +54,9 @@ install.sh's: JSON on, limiter off. `lyrica-searxng-secret.service` makes
 its `secret_key` once, in `/var/lib/lyrica-searxng/env`. The address goes
 to `/var/lib/lyrica/searxng-address` and fills in under Administration in
 the same way. More `services.searx.settings` merge in, engines for example.
-With it off, the address file is removed, and you host one yourself as
-below.
+Turning it off removes the address file, but not the address lyricad
+already stored: clear it in Administration, or give the address of a
+SearXNG you host yourself as below.
 
 ## Where to run it
 
