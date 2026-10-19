@@ -987,6 +987,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `name()`: her name for this deployment, read every turn. Automatic
     recall leaves it out of the query (`skip`) and asks for two shared
     words (`minWords: 2`); `lyricad` passes `selfName`.
+- Every thread's and subagent's session registers `registerVisionGuard`:
+  when its model has no vision, a tool result holding an image (or Pi's
+  "does not support images" note) gets `NO_VISION` appended, telling her she
+  saw nothing and must not describe it; a `read` of an image then fails.
+  `delegate({ action: "models" })` marks the models with vision, for a look
+  she hands on.
 - Memory sections include `opening`: the sleep item a thread was started
   from. It comes from `itemForThread`, so no other thread ever has it.
 - Memory sections include `pinned` (`pinnedOf(store, threadId)`: the

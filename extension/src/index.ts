@@ -9,6 +9,7 @@ import { SELF_PRIMER } from "./primer.ts";
 import { TopicRouter, type RoutedTopic } from "./routing.ts";
 import { reactionLines, type UserReaction } from "./react.ts";
 import { registerMemoryTools } from "./tools.ts";
+import { registerVisionGuard } from "./vision.ts";
 
 export * from "./assemble.ts";
 export * from "./code.ts";
@@ -25,6 +26,7 @@ export * from "./record.ts";
 export * from "./routing.ts";
 export * from "./sleep.ts";
 export * from "./threads.ts";
+export * from "./vision.ts";
 export * from "./web.ts";
 export * from "./workspace.ts";
 
@@ -78,6 +80,7 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
   return (pi) => {
     const router = new TopicRouter();
     registerMemoryTools(pi, view, who, { readOnly: opts.memoryTools === "read" });
+    registerVisionGuard(pi);
     if (opts.meter) registerContext(pi, opts.meter);
     if (opts.sleep) pi.registerCommand("sleep", { description: "Sleep now: consolidate, dream and wake, for this pool", handler: (_args, ctx) => opts.sleep!(ctx) });
     pi.on("context_with_system", event => {
