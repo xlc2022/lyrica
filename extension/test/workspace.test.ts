@@ -337,7 +337,7 @@ describe("workspace tools in a Pi session", () => {
       [fauxToolCall("models", { action: "propose", contextLength: 200000 }, { id: "2" })],
       [fauxToolCall("models", { action: "lookup" }, { id: "3" })],
     ] })).results;
-    expect(cards).toEqual([{ toolCallId: "1", offering: "l1", name: "qwen-flash", host: "studio", contextLength: 65536, stretch: null, kvBytes: null }]);
+    expect(cards).toEqual([{ toolCallId: "1", offering: "l1", name: "qwen-flash", host: "studio", contextLength: 65536, stretch: null, kvBytes: null, now: true }]);
     expect(loads).toEqual([["l1", 65536]]);
     expect(results[1]).toContain("qwen-flash supports 131072 tokens at most.");
     // The card on Hugging Face is read for host models only.

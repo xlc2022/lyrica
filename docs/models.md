@@ -695,7 +695,9 @@ model, else the router's first pick for chat).
   length over the model's maximum, then shows a card ("Serve Qwen3.8-27B
   on Blackwell with 1,010,000 tokens of context for every thread? It
   reloads, and its KV cache grows to 17 GB.", with "Qwen documents 4." when the factor is above
-  the card's). On Allow it saves a host model's settings and reloads it if
+  the card's). An LM Studio model's card says "It reloads now, and replies
+  in progress on it stop.", since LM Studio can't wait for it to be idle.
+  On Allow it saves a host model's settings and reloads it if
   it is idle, or loads an LM Studio model again with the new context
   (`loadLocalContext`), and clears the thread's limit. The host's fit check
   runs on save, and LM Studio's on load. A refusal comes back as the result,
@@ -721,8 +723,10 @@ compaction, the context meter and the reply cap follow it.
 **LM Studio.** On a local endpoint that isn't a host, discovery also asks
 LM Studio's own API (`GET /api/v1/models` beside `/v1`). When it answers, a
 loaded model's `context_length` becomes its served context, which wins over
-one set by hand, and `max_context_length` fills a missing window.
-`localContext` reads both. `loadLocalContext(actor, offeringId, tokens)`
+one set by hand. A model that isn't loaded keeps the hand-set or default
+window, since LM Studio loads it on demand at its own default context.
+`localContext` reads the loaded context and `max_context_length`, the most
+`propose` allows. `loadLocalContext(actor, offeringId, tokens)`
 unloads the model's instances and loads it with `context_length`. If LM
 Studio refuses, it loads the model again as it was and throws LM Studio's
 message. It then discovers again. A shared endpoint needs an administrator.

@@ -846,7 +846,7 @@ export class HostedThread {
       limit: (tokens) => { models.setContextLimit(this.userId, this.threadId, tokens); this.reload(); this.publish({ type: "settings" }); },
       serving: (offering) => models.servingSettings(this.userId, mine(offering)),
       lookup: (offering, repo) => models.lookupRecommended(actor(), mine(offering), repo),
-      propose: async (p) => (await this.ask(p.toolCallId, "models", { action: "propose", name: p.name, host: p.host, contextLength: p.contextLength, stretch: p.stretch, kvBytes: p.kvBytes, documented: p.documented ?? null })).allowed,
+      propose: async (p) => (await this.ask(p.toolCallId, "models", { action: "propose", name: p.name, host: p.host, contextLength: p.contextLength, stretch: p.stretch, kvBytes: p.kvBytes, documented: p.documented ?? null, ...(p.now ? { now: true } : {}) })).allowed,
       apply: async (offering, settings, anyway) => {
         await models.setServingSettings(actor(), mine(offering), settings, { anyway });
         // Loaded and idle: reload now. In use or not loaded: it applies at the next load.

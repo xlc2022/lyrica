@@ -27,6 +27,8 @@ export interface ServingProposal {
   kvBytes: number | null;
   /** The card's factor and who documents it, when the proposed one is above it. */
   documented?: { factor: number; by: string };
+  /** It reloads at once, not when idle (LM Studio), so replies in progress on it stop. */
+  now?: boolean;
 }
 
 export interface ModelsHost {
@@ -121,7 +123,7 @@ export function createModelsExtension(host: ModelsHost): ExtensionFactory {
           if (lm) {
             if (factor > 1) return text("A stretch is for models on a model host.", true);
             if (lm.max && p.contextLength > lm.max) return text(`${local!.name} supports ${lm.max} tokens at most.`, true);
-            const allowed = await host.propose({ toolCallId: id, offering, name: local!.name, host: local!.host, contextLength: p.contextLength, stretch: null, kvBytes: null });
+            const allowed = await host.propose({ toolCallId: id, offering, name: local!.name, host: local!.host, contextLength: p.contextLength, stretch: null, kvBytes: null, now: true });
             if (!allowed) return text("Not allowed. Ask what to do instead.");
             await host.loadLocal(offering, p.contextLength);
             if (own) host.limit(null);

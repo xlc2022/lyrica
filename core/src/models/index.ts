@@ -753,11 +753,12 @@ export class Models {
       if (ep.signedOut) throw new Error(`${ep.name} is signed out; sign in again`);
       found = ep.api === "host" ? await this.hostModels(ep) : isPlan(ep.api) ? this.planCatalog(ep.api) : await discoverModels(ep.baseUrl, ep.apiKey);
       // LM Studio says which models are loaded and with what context: plan by that, like a host's.
+      // An unloaded one keeps the hand-set or default window: LM Studio loads it on demand at its own default, not its maximum.
       const lm = ep.kind === "local" && ep.api !== "host" && !isPlan(ep.api) ? await lmStudioModels(ep.baseUrl, ep.apiKey) : null;
       if (lm) found = found.map((m) => {
         const l = lmStudioModel(lm, m.modelId);
         const served = l?.instances[0]?.context;
-        return { ...m, ...(m.contextWindow === undefined && l?.maxContext ? { contextWindow: l.maxContext } : {}), ...(served ? { servedContext: served } : {}), ...(l ? { lmStudio: true } : {}) };
+        return { ...m, ...(served ? { servedContext: served } : {}), ...(l ? { lmStudio: true } : {}) };
       });
       // A ChatGPT plan's image tool is one model of its own, not a switch on each chat model.
       if (ep.api === "chatgpt") found = [...found, PLAN_IMAGE];

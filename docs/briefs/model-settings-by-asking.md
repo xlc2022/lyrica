@@ -91,13 +91,17 @@ model's loaded instances with their context, and loads one with
 
 - Discovery on a local endpoint that answers `GET /api/v1/models` records a
   loaded model's context as its served context (like a host's), so Lyrica
-  plans by what is loaded rather than by `max_context_length`.
+  plans by what is loaded rather than by `max_context_length`. A model
+  that isn't loaded keeps the hand-set or default window, since LM Studio
+  loads it on demand at its own default context.
 - Raising a model's context through `propose` shows the same card. On Allow,
   lyricad unloads the model's instances, loads it with the new
   `context_length`, and discovers again. LM Studio refuses a load that
   won't fit, and its error comes back to her as the tool result.
 - The limit is the model's `max_context_length`. There's no KV estimate, so
-  the card leaves out the cache size.
+  the card leaves out the cache size. LM Studio reloads at once rather than
+  when idle, so the card ends "It reloads now, and replies in progress on
+  it stop."
 - `lookup` (the card on Hugging Face) stays host only.
 - The reason for loading rather than hand-setting a context window: a
   hand-set window above what LM Studio loaded would make every long request
@@ -154,5 +158,8 @@ docs/contracts.md for Part 2, and this brief's handoff.
   fake LM Studio only. A check against a real LM Studio (load at a new
   context, then a chat) waits on the user's go.
 - **Open:** LM Studio's REST API was written from its documented
-  `/api/v1` shape. If a real server answers differently, discovery falls
+  `/api/v1` shape and tested only against the fake in
+  core/test/lmstudio.test.ts. Unchecked: whether a load naming only
+  `context_length` keeps the GPU offload and other load settings the
+  operator saved in LM Studio or resets them to its defaults. If a real server answers differently, discovery falls
   back to today's behaviour and the tool says the server isn't LM Studio.

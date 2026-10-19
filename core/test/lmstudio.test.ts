@@ -52,6 +52,15 @@ describe("LM Studio context", () => {
     expect(s.models.offering(s.ada.id, o!.id)!.offering.contextWindow).toBe(65536);
   });
 
+  it("leaves an unloaded model's window to the hand setting, not its maximum", async () => {
+    const studio = await fakeLmStudio({ max: 131072 });
+    const s = await withModels();
+    const ep = s.models.addEndpoint(s.ada, { name: "studio", kind: "local", baseUrl: studio.baseUrl });
+    const [o] = await s.models.discover(s.ada, ep.id);
+    expect(s.models.offering(s.ada.id, o!.id)!.offering.contextWindow).toBeUndefined();
+    expect(await s.models.localContext(s.ada.id, o!.id)).toEqual({ max: 131072 });
+  });
+
   it("passes LM Studio's refusal on and loads the model again as it was", async () => {
     const studio = await fakeLmStudio({ context: 8192, max: 131072, refuseAbove: 32768 });
     const s = await withModels();

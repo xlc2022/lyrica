@@ -860,7 +860,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   use the existing permission route with `{ allow }`, including for subagents.
   Her `models` tool's proposal is worded as its question ("Serve
   Qwen3.8-27B on Blackwell with 1,010,000 tokens of context for every thread? It reloads,
-  and its KV cache grows to 17 GB."), the numbers in mono.
+  and its KV cache grows to 17 GB."; an LM Studio model's ends "It reloads
+  now, and replies in progress on it stop."), the numbers in mono.
   A call on a machine (`machine` on the request) leads with the machine's
   name in mono, says the folder the command runs in, and shows the command,
   path or Proxmox action and VM in mono; a suspect command (`suspect`,
