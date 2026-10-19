@@ -275,9 +275,9 @@ const GOAL_LIMIT = 2000;
 /** Well under the project section's budget, so the notes and threads after them always fit. */
 const INSTRUCTIONS_LIMIT = 2000;
 /** How much more a project's own memories weigh in recall from inside that project. A boost, never a filter. */
-export /** The most candidates a filtered (`only`) search scans per query. */
+export const PROJECT_BOOST = 1.5;
+/** The most candidates a filtered (`only`) search scans per query. */
 const ONLY_SCAN = 2000;
-const PROJECT_BOOST = 1.5;
 
 /** The slug of a project's page: thread IDs hold '/', which slugs don't. */
 export const projectSlug = (projectId: string) => `project-${projectId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
