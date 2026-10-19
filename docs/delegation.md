@@ -217,7 +217,13 @@ and thinking level, and one with a built-in's name overrides it.
 
 ## Parallel writers
 
-Two writers never share a folder. A writer takes its parent thread's folders
+The helpers `makeWorktrees`, `worktreeGrants` and `removeWorktrees` live in
+`core/src/workspace/worktree.ts` and serve both delegate writers and
+code child threads. Code children use their own thread folder, checkout and branch;
+In projects, `base: true` keeps the original checkout for a single open
+scaffold or merge thread. Other threads and delegate writers retain the rules below.
+
+Two delegate writers never share a folder. A writer takes its parent thread's folders
 for as long as it lives, so writers from any runs of that thread go one at a
 time. The exception is a run that starts more than one writer at once when
 every writable folder of the parent is the top of a git repository (sandbox
@@ -511,7 +517,22 @@ parent mid-turn is stopped before the note, so the note is stored. Each
 update has its own ID, so two identical updates both show. Opening a
 child's messages sees its updates.
 
-**Projects.** A project chat's child threads are the project's threads
+Outside a project, a plain thread codes in place and keeps the base. Requested
+`code: true` children get their own worktrees and branches; the parent merges
+them itself and starts a merge thread only when the user asks.
+
+**Projects.** A build with several parts runs scaffold, parts, then merge:
+start one `code: true, base: true` scaffold thread and resolve it after it
+reports, start `code: true` parts together in their own worktrees, then start
+one `code: true, base: true` merge thread once the parts report their branches.
+The merge thread merges each branch, tests after each merge, sends conflicts
+or red tests to the owning thread, and deletes merged branches. The project
+chat remains read-only and gets no merge tool. Only one base thread may be
+open in a project, enforced by `children.ts`, including queued starts and
+reopening. A resolved queued thread does not start until reopened. Resolving or forgetting a part calls the shared cleanup: its branch
+stays, and a worktree with uncommitted changes stays with its path reported.
+
+A project chat's child threads are the project's threads
 (`daemon/src/projects.ts` and `children.ts`; the rule is in DESIGN.md,
 "Projects"):
 - `start` there records the thread's **anchor**, the first entry the

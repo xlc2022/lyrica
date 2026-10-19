@@ -6,7 +6,7 @@ import { lookup } from "node:dns/promises";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { FilesRefused, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Grant, type Network } from "../src/index.ts";
+import { makeWorktrees, worktreeGrants, removeWorktrees, FilesRefused, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Worktree, type Grant, type Network } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 // Escaping the sandbox is the main failure. These tests must run as an
@@ -168,6 +168,41 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect(r.out).not.toContain("LYRICA_TEST_SECRET");
     expect(r.out).not.toContain("ALIVE");
     expect((await sh("ls /proc | grep -c '^[0-9]'")).out.trim()).toMatch(/^[1-5]$/);
+  });
+
+  it("isolates project worktrees with unique paths in shared git metadata", async () => {
+    const repo = p("project-repo"); mkdirSync(repo);
+    const git = (...args: string[]) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+    git("init", "-q");
+    git("-c", "user.name=Example", "-c", "user.email=example@example.invalid", "commit", "-q", "--allow-empty", "-m", "initial");
+    const initial = [{ path: repo, writable: true }];
+    const threads = ["part-a", "part-b"].map((id) => {
+      const workdir = p(id); mkdirSync(workdir);
+      const workdirAlias = `/thread-workspaces/${id}`;
+      return { workdir, workdirAlias, grants: initial, network: OFF, self: [] };
+    });
+    const worktrees: Worktree[][] = [];
+    for (const [i, spec] of threads.entries()) {
+      const target = new Sandbox(spec);
+      const made = await makeWorktrees(target, initial, `part-${i}`, 1, undefined,
+        { branch: `lyrica/project/part-${i}`, directory: `${await target.worktreeRoot()}/worktrees` });
+      expect(typeof made).not.toBe("string");
+      if (typeof made === "string") throw new Error(made);
+      worktrees.push(made[0]!);
+    }
+    const boxes = threads.map((spec, i) => new Sandbox({ ...spec, grants: worktreeGrants(initial, worktrees[i]!, true) }));
+    const a = worktrees[0]![0]!; const b = worktrees[1]![0]!;
+    await boxes[0]!.ops().write.writeFile(`${a.path}/physics.ts`, "export const speed = 1;\n");
+    expect((await sh(`test ! -e ${b.path}/physics.ts`, boxes[1])).code).toBe(0);
+    expect((await sh(`echo unsafe > ${repo}/unsafe.ts`, boxes[0])).code).not.toBe(0);
+    expect((await sh(`git -C ${a.path} add . && git -c user.name=Example -c user.email=example@example.invalid -C ${a.path} commit -qm physics`, boxes[0])).code).toBe(0);
+    expect(git("worktree", "list")).toContain(a.path);
+    expect(git("worktree", "list")).toContain(b.path);
+    await removeWorktrees(boxes[0]!, worktrees[0]!);
+    expect(existsSync(join(threads[0]!.workdir, "worktrees", "project-repo"))).toBe(false);
+    expect(git("branch", "--list", a.branch)).toContain(a.branch);
+    expect(existsSync(join(threads[1]!.workdir, "worktrees", "project-repo"))).toBe(true);
+    await removeWorktrees(boxes[1]!, worktrees[1]!);
   });
 
   it("can't write to a read-only grant", async () => {

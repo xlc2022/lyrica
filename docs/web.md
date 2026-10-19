@@ -1252,3 +1252,7 @@ Continue as project (C), beside Make project… with their distinct tooltips,
 asks in a dialog, then opens the new project's settings. Draft Goal and Instructions populate their
 fields without applying them; Save applies edits and Discard draft clears
 the drafts. Model settings use the current preset API.
+
+A project thread card shows a muted “No worktree: <reason>” line when a code
+thread could not isolate a granted host folder (docs/ux.md §6, existing thread
+card). This adds no control.

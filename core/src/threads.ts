@@ -123,7 +123,7 @@ const stepsNote = (steps: ThreadStep[]) => {
   return `${done} of ${steps.length} steps done${now ? `, ${now.state === "doing" ? "now" : "next"}: ${JSON.stringify(now.text)}` : ""}`;
 };
 
-export interface StartRequest { title: string; task: string; folders?: string[]; readOnly?: boolean; internet?: false; code?: boolean }
+export interface StartRequest { title: string; task: string; folders?: string[]; readOnly?: boolean; internet?: false; code?: boolean; base?: boolean }
 
 export interface Suggestion { title: string; task: string }
 
@@ -153,9 +153,9 @@ export const PROJECT_CHAT_GUIDELINES = [
   "Answer a quick question here yourself. Start one thread per task (threads start), even when one message holds several; mention each.",
   "A follow-up about work a thread is already on goes to that thread (threads message); say which thread you sent it to.",
   "A coding build with several parts (say physics and its tests, rendering, track and lap logic) splits even when the parts fit together: "
-    + "first one code: true thread sets up the repository and the interfaces the parts share (stubs, conventions) and reports, then one code: true thread per part starts, together. "
+    + "first one code: true, base: true thread sets up the repository and the interfaces the parts share (stubs, conventions) and reports and resolves, then one code: true thread per part starts, together, each in its own worktree. "
     + "Each brief names the files that part owns, what is done and what it depends on. A small job (one feature or fix) keeps one thread. "
-    + "When they report, check the whole yourself (run the tests, try the result) before telling the person it's done.",
+    + "When the parts report their branches, start one code: true, base: true merge thread. It merges each branch in turn, runs tests after each merge, and messages the owning thread about conflicts or red tests rather than fixing that thread's files. It deletes each branch after merging it. Only one base thread may be open; resolve the scaffold before starting the merge thread. A small job that works in the original checkout uses base: true too. Check the merged result before telling the person it's done.",
   "You're told when a thread stops with an error or finishes without a report. Read a thread's latest messages with threads read; stop one that went wrong with threads stop.",
   "When the person asks you to propose first, suggest threads (threads suggest) instead of starting them.",
   "When setting up from recent work supplied in this turn, draft Goal and Instructions with threads draft for the person to edit in Project settings; never apply them yourself. Suggest existing threads to bring in with threads fold and their ids; the person applies the Fold in card.",

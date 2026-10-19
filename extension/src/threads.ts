@@ -47,7 +47,7 @@ export interface ThreadsHost {
   /** This thread's children; in a project's thread, the project's other threads. */
   list(parent: ThreadContext): ChildInfo[];
   /** Resolves a project's thread (`id`, or the calling thread itself), or reopens one. */
-  resolve?(from: ThreadContext, id: string | undefined, resolved: boolean): void;
+  resolve?(from: ThreadContext, id: string | undefined, resolved: boolean): void | Promise<void>;
   /** Stops a child's running turn, as Pause does. False if it wasn't working. */
   stop?(from: ThreadContext, id: string): Promise<boolean>;
   /** A wake-up for this thread `minutes` from now (already clamped), with its note; refused past `WAKEUP_LIMITS`. */
@@ -78,6 +78,7 @@ const Params = Type.Object({
   ids: Type.Optional(Type.Array(Type.String(), { maxItems: 10, description: "For fold: existing thread IDs to suggest bringing into this project. The person applies the card." })),
   title: Type.Optional(Type.String({ description: "For start: the child thread's title." })),
   task: Type.Optional(Type.String({ description: "For start: what to work on, with everything it needs. It starts with your persona and memory, but none of this conversation." })),
+  base: Type.Optional(Type.Boolean()),
   folders: Type.Optional(Type.Array(Type.String(), { description: "For start: only these of this thread's folders." })),
   readOnly: Type.Optional(Type.Boolean({ description: "For start: it may read the folders but not change them." })),
   internet: Type.Optional(Type.Literal(false, { description: "For start: false cuts it off from the internet." })),
@@ -116,7 +117,7 @@ type Field = keyof typeof Params.properties;
 const FIELD_ACTIONS: Record<Exclude<Field, "action">, string[]> = {
   on: ["code"], done: ["code"], model: ["model"],
   goal: ["draft"], instructions: ["draft"], ids: ["fold"], threads: ["suggest"],
-  title: ["start"], task: ["start", "code"], folders: ["start"], readOnly: ["start"], internet: ["start"], code: ["start"],
+  title: ["start"], task: ["start", "code"], folders: ["start"], readOnly: ["start"], internet: ["start"], code: ["start"], base: ["start"],
   id: ["message", "read", "stop", "resolve", "reopen"], text: ["message"], to: ["message"], question: ["message", "ask"], options: ["ask"], recommended: ["ask"], context: ["ask"], needsYou: ["message"], last: ["read"],
   minutes: ["later"], cancel: ["later"], note: ["later", "routine"],
   routineAction: ["routine"], routineId: ["routine"], schedule: ["routine"], newThread: ["routine"],
@@ -228,7 +229,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       ...(host?.later ? ["later"] : []), ...(host ? ["routine"] : []), ...(steps ? ["steps"] : []), ...(meter ? ["compact"] : []),
     ];
     // to and question are a child's, needsYou a project thread's; a child outside a project messages only its parent.
-    const drop: Field[] = [...(child ? [] : ["to"] as const), ...(projectThread() ? [] : ["needsYou"] as const), ...(child && !projectThread() ? ["id"] as const : [])];
+    const drop: Field[] = [...(inProjectChat() ? [] : ["base"] as const), ...(child ? [] : ["to"] as const), ...(projectThread() ? [] : ["needsYou"] as const), ...(child && !projectThread() ? ["id"] as const : [])];
 
     pi.registerTool({
       name: "threads",
@@ -380,7 +381,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           }
           if (!inProject && !p.id) throw new Error(`${p.action} needs the thread's id or title`);
           const id = inProject ? undefined : pickThread(p.id!, host.list(thread));
-          host.resolve(thread, id, resolved);
+          await host.resolve(thread, id, resolved);
           return text(`${resolved ? "Resolved" : "Reopened"} ${id ? `[t:${id}]` : "this thread"}.`, id ? { threads: [id] } : undefined);
         }
         if (child) throw new Error("a child thread can't start child threads; it can delegate, and message its parent");
@@ -407,7 +408,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         started++;
         let made: { id: string; link: string; queued?: boolean };
         try {
-          made = await host.start(thread, { title: p.title.trim(), task: p.task, folders: p.folders, readOnly: p.readOnly, internet: p.internet, code: p.code });
+          made = await host.start(thread, { title: p.title.trim(), task: p.task, folders: p.folders, readOnly: p.readOnly, internet: p.internet, code: p.code, base: p.base });
         } catch (err) {
           started--;
           throw err;

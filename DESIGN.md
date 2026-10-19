@@ -1106,6 +1106,24 @@ project page and the web part are built. Recent calls can be filtered by project
   there: she reads them and runs checks, and the threads she starts make the
   changes (decided 2026-10-19, after a run where she built a whole game in
   the project chat despite her guidance).
+- **Code builds run scaffold, parts, merge** (principles 1, 6 and 8).
+  A `code: true, base: true` thread scaffolds the original checkout and
+  resolves; parallel `code: true` parts each get worktrees of their writable
+  host-folder repository roots, then a `code: true, base: true` merge thread
+  merges their branches and tests after each merge. Conflicts and red tests
+  go back to the owning thread; merged branches are deleted by the merge
+  thread. The project chat stays read-only. Only one open base thread per
+  project is allowed, enforced in `children.ts`. Part grants keep the original
+  checkout read-only and `.git` writable; their own folder holds the writable
+  worktree. Resolving removes clean worktrees, keeping branches; dirty
+  worktrees stay with a note of their path. Deleting a thread removes its
+  worktrees, dirty or not, keeping branches. Failures to make a worktree
+  leave that folder as granted, with a reason in the prompt and card. Forge
+  clones keep their existing behavior. Outside projects, the plain thread
+  codes in place and keeps the base; requested `code: true` children get
+  worktrees and branches too. The plain thread merges them itself, starting
+  a merge thread only if the user asks. The
+  shared delegate helpers serve threads too; no process, tool or setting added.
 - **Threads hang off messages.** Each thread is anchored to the message in
   the project chat that started it: her reply, or a message the user picks with
   **Start a thread**. A branch of the project chat is a thread of the
@@ -1501,7 +1519,7 @@ of Chat, keeping its context limit, preset, permissions and grants. The
 `threads code` action changes the next turn and, when given a task or
 progress, replaces its encrypted Code task; turning off keeps it. Projects can choose code mode for new threads,
 and her `threads start` can with `code: true`. Outside a project chat she codes in the thread with code mode
-and turns it off when done; a project chat splits a build with several parts into parallel `code: true` threads, one per part, after one thread sets up the shared interfaces.
+and turns it off when done; a project chat splits a build with several parts into parallel `code: true` threads, one per part, after one base thread sets up the shared interfaces; a separate base thread merges the parts and tests each merge.
 Code turns omit models, downloads, images and reactions, add five coding
 guidelines, and read repository branches and up to ten commit subjects
 since the default base, plus cached open pull-request checks, once per turn.

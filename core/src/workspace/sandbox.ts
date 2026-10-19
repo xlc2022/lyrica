@@ -15,6 +15,8 @@ export const WORKDIR = "/workspace";
 export interface SandboxSpec {
   /** Host path of the thread's folder in the home workspace. Mounted read-write at /workspace. None for the SSH helper. */
   workdir?: string;
+  /** An additional unique sandbox path for this same folder; git records worktree paths repository-wide. */
+  workdirAlias?: string;
   grants: Grant[];
   network: Network;
   /** Ports never reachable on any address, whatever the switches say: lyricad's own. */
@@ -277,6 +279,7 @@ export class Sandbox implements ExecutionTarget {
   }
 
   async cwd(): Promise<string> { return WORKDIR; }
+  async worktreeRoot(): Promise<string> { return this.spec.workdirAlias ?? WORKDIR; }
 
   folders(): string[] { return this.grants.map((g) => g.path); }
 
@@ -290,7 +293,7 @@ export class Sandbox implements ExecutionTarget {
   /** Refuses paths outside the thread's folder and grants (SandboxDenied). The mounts confine her regardless. */
   allow(path: string, write: boolean): string {
     const p = cleanPath(path);
-    if (within(p, WORKDIR)) return p;
+    if (within(p, WORKDIR) || (this.spec.workdirAlias && within(p, this.spec.workdirAlias))) return p;
     const grant = [...this.grants].reverse().find((g) => within(p, g.path));
     if (!grant) throw new SandboxDenied(`${p} is outside this thread's folders`);
     if (write && !grant.writable) throw new SandboxDenied(`${grant.path} is read-only in this thread`);
@@ -459,12 +462,13 @@ export class Sandbox implements ExecutionTarget {
       args.push(writable ? "--bind-fd" : "--ro-bind-fd", String(fds.length + 2), dest);
     };
     if (this.spec.workdir) mount(cleanPath(this.spec.workdir), true, WORKDIR);
+    if (this.spec.workdir && this.spec.workdirAlias) mount(cleanPath(this.spec.workdir), true, this.spec.workdirAlias);
     if (this.spec.workdir && this.spec.repos) mount(cleanPath(this.spec.repos), !this.spec.reposReadOnly, `${WORKDIR}/repos`);
     if (this.spec.claudeDir) mount(cleanPath(this.spec.claudeDir), true, CLAUDE_DIR);
     for (const g of this.grants) mount(g.path, g.writable, g.path, () => this.spec.check?.(g));
     for (const f of this.spec.files ?? []) args.push("--ro-bind", f, f);
 
-    const visible = (this.spec.workdir && within(cwd, WORKDIR)) || this.grants.some((g) => within(cwd, g.path));
+    const visible = (this.spec.workdir && (within(cwd, WORKDIR) || (this.spec.workdirAlias && within(cwd, this.spec.workdirAlias)))) || this.grants.some((g) => within(cwd, g.path));
     args.push("--chdir", visible ? cwd : this.spec.workdir ? WORKDIR : "/");
     return args;
   }
