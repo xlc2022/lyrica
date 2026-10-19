@@ -1509,7 +1509,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       openrouter/sign-in/:id`.
     - **Hosts:** `POST hosts` (pair, then discover); `POST hosts/:id/pair`
       (again, same addresses); `PUT …/addresses`; `GET …/status`; `POST
-      …/pause|resume|restart`; `GET …/dashboard` (→ `{ url }`); `POST …/manage`;
+      …/pause|resume|restart`; `POST …/update` (→ `HostStatus`, to the release
+      Lyrica runs, `409` when she runs none; administrators on a shared host);
+      `GET …/dashboard` (→ `{ url }`); `POST …/manage`;
       `GET …/hub/files`; `POST`/`GET …/downloads`, `DELETE …/downloads/:id`;
       `GET …/images`; `GET …/starters` (→ `{ starters: HostStarter[] }`);
       `POST …/starters/:starterId/install` (→ `{ recipe, downloads }`);
@@ -1517,7 +1519,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `{ do: "change", change: { op: "useFor", useFor: "fast" | "quality" | "both" } }`,
       saves on the host and refreshes discovery). Unpair is `DELETE
       endpoints/:id`. Types: `HostInput`, `HostRepair`, `HostAddresses`,
-      `HostStatus`, `HostManage`, `DownloadInput`, `RecipeAction`.
+      `HostStatus` (with `commit` and `update` when the host has an updater),
+      `HostUpdate` (`available`, `reason`, `state`, `tag`, `error`, `last`),
+      `HostManage`, `DownloadInput`, `RecipeAction`.
     - **Offerings:** `PATCH`/`DELETE offerings/:id`; `POST …/replace`; `GET
       …/same`; `GET`/`PUT …/settings`; `PUT …/star`; `PUT …/separate`; `POST
       …/delete-copy`; `GET`/`PUT …/serving`; `POST …/reload`; `POST
@@ -1542,7 +1546,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       host revoked this server), the presets and columns, the newest visible call,
       per-endpoint call counts over the shown pools (`endpointUses`, what ranks
       the sidebar's status panel),
-      the notice, the Clean up count); `GET models/cleanup`; `GET`/`DELETE
+      the notice, the Clean up count, and `release` (`{ tag, commit }`) when
+      Lyrica runs one); `GET models/cleanup`; `GET`/`DELETE
       models/notice`; `GET models/calls` (`?project=&pool=` filters both pool and project tree); `GET library/text`; `GET hub-tokens`,
       `PUT`/`DELETE hub-tokens/:hub` (`?shared=1`). Types: `ModelsPage`,
       `CleanupItem`, `ModelUse`, `ModelsNotice`, `CallInfo`, `TextLibrary`,

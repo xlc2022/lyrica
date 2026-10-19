@@ -794,7 +794,8 @@ users, so the UI renders current names and edits keep the tokens. It covers
 search, lineage, edit, restore, the four deletion levels and user-introduced
 notes and pages. The settings API covers profiles (with accent and monogram),
 display settings (in `user.db`), passwords, endpoints, model hosts (pair,
-pair again, addresses, status, pause, resume, restart, management,
+pair again, addresses, status, pause, resume, restart, update to her
+running release (409 when she runs none), management,
 downloads, the image library), the text library, hub tokens (last four
 characters only), the Models page overview (`GET …/models/page`, endpoints
 with live status, at most 3 seconds each, none asked again while it was seen
