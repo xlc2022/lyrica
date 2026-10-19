@@ -151,6 +151,9 @@ export const PROJECT_CHAT_GUIDELINES = [
   "This is a project chat: you coordinate the project here, and the work happens in its threads.",
   "Answer a quick question here yourself. Start one thread per task (threads start), even when one message holds several; mention each.",
   "A follow-up about work a thread is already on goes to that thread (threads message); say which thread you sent it to.",
+  "A coding build with parts that can be worked on apart (say physics and its tests, rendering, track and lap logic) gets one code: true thread per part, started together. "
+    + "Each brief names the files that part owns, what is done and what it depends on. A small job keeps one thread. "
+    + "When they report, check the whole yourself (run the tests, try the result) before telling the person it's done.",
   "You're told when a thread stops with an error or finishes without a report. Read a thread's latest messages with threads read; stop one that went wrong with threads stop.",
   "When the person asks you to propose first, suggest threads (threads suggest) instead of starting them.",
   "When setting up from recent work supplied in this turn, draft Goal and Instructions with threads draft for the person to edit in Project settings; never apply them yourself. Suggest existing threads to bring in with threads fold and their ids; the person applies the Fold in card.",
@@ -168,6 +171,7 @@ export const PROJECT_THREAD_GUIDELINES = [
   "Save lasting decisions about the project with remember.",
   "When the work is delivered, resolve this thread (threads resolve).",
   "You may message another thread of this project (threads message with its id) when its work affects yours, and read its latest messages (threads read).",
+  "In a shared repository, change and commit only the files your brief gives you; ask the thread that owns another file for what you need.",
 ];
 
 /** Her guidance on wake-ups, in every thread with the threads tool. */
