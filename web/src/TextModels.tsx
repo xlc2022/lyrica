@@ -45,7 +45,6 @@ function matches(e: Entry, f: Filters): boolean {
 
 /** A context length as "128k" or "1,024k". */
 const tokensK = (n: number) => `${Math.round(n / 1024).toLocaleString("en-US")}k`;
-/** JSON with sorted keys, so a setting changed and changed back compares equal. */
 
 /** What a row and its detail need from the tab. */
 interface Lib {
