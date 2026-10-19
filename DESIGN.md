@@ -947,7 +947,9 @@ it's off.
   Add endpoint suggests ChatGPT for the plan and OpenAI for api.openai.com;
   names remain editable and accept capital letters.
   Outages and limits fall down the list; content refusal stops with the fixed
-  `image_refusal` code, without provider text.
+  `image_refusal` code, without provider text, except that a Codex that
+  declines is quoted, since it is the user's own agent. No more image calls
+  run in that turn.
 - **Portrait photos.** Each user can keep reference photos of themselves in
   `photos-of-me/` in their encrypted home, outside sandbox grants, for edits
   and for putting them in new scenes. The authenticated API lists, uploads

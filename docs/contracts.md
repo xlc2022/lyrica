@@ -427,7 +427,7 @@ class Models {                                              // new Models(keyrin
   // CLOUD_IMAGE_PROVIDERS selects by endpoint.api: openai-compatible (key, any marked model) or chatgpt (the user's own Codex, setCodexImages).
   // A chatgpt plan's only image offering is PLAN_IMAGE_MODEL ("chatgpt-images", recipe "ChatGPT Images"), made by codexImage.
   // Each adapter declares create/edit/mask/references/sizes/count and low/high tier mappings; upscale is host-only.
-  // Content refusal throws HostRefused("image_refusal", fixed message) and stops fallback. Limits/outages fall back.
+  // Content refusal throws HostRefused("image_refusal", fixed message; codexImage quotes Codex's declining reply) and stops fallback. Limits/outages fall back.
   // Cloud useFor/image/edit are offerings.hand JSON in self.db (shared) or user.db (personal); no schema step.
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Thinking and call records
@@ -1044,9 +1044,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     of that server-local day; a policy change clears it. No viewer means denial.
     Outputs save in the encrypted thread folder and return Pi image content
     (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>”.
-    A content refusal returns `isError: true` with fixed text and details
+    A content refusal returns `isError: true` with the refusal's message
+    (fixed, or Codex's quoted reply) and details
     `{ imageRefusal: { code: "image_refusal", offeringId, endpointId } }`;
-    stored tool markers and live `tool_end` carry `imageRefusal`.
+    stored tool markers and live `tool_end` carry `imageRefusal`. Later
+    image calls in the same turn throw `REFUSED_THIS_TURN` before resolving
+    a model; explicit retries (`executeImage`) are not affected.
     `GET …/threads/:pool/:threadId/image-calls/:toolCallId` returns
     `{ canEdit, userMessage?: { n, text }, next?: { offeringId, label } }`
     for a stored refusal, under the current routing and portrait policy.

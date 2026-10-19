@@ -445,7 +445,8 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   unmodified Codex (`codex.ts`, the owner's choice; docs/briefs/codex-images.md):
   one `codex exec` per image with `--json --ephemeral --ignore-user-config`,
   approvals off, `image_generation` on and every other Codex tool off
-  (`CODEX_DISABLED`: its shell, browser, computer use, apps and plugins,
+  (`CODEX_DISABLED`: its shell, browser, computer use, apps, plugins,
+  memories and goals,
   each passed when the installed Codex's `codex features list` has it, since
   nixpkgs' version isn't pinned; a Codex that can't list them is refused),
   the instructions and prompt on stdin (never argv), an edit's image and any
@@ -455,7 +456,7 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   a time, so that folder is emptied before each call and removed after it.
   Codex is stopped once a saved image stops growing, so one call spends
   at most one image of the user's plan.
-  The journal gets one line a call: the exit code, how many image files
+  The journal gets one line a call: the exit code (or "stopped after its image"), how many image files
   Codex saved and its event types, never text. The isolation is structural, not the prompt: Codex runs in
   Lyrica's sandbox (`Workspace.codexBox`, `codexSandbox`) holding only its
   home, at `/workspace`, with the internet on and the machine's services
@@ -464,12 +465,19 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   `--sandbox danger-full-access` there. Codex's home (`CODEX_HOME`, also its
   `HOME`) is `codex/` in the user's encrypted home workspace
   (`Workspace.codexDir`), so its sign-in and every file it writes stay
-  encrypted; each call's inputs and saved images are removed after it, and a
+  encrypted; each call's inputs, saved images and the databases Codex opens
+  (`*.sqlite`, which can hold a prompt; only `auth.json` is kept) are
+  removed after it, and a
   user's calls run one at a time, since they share one sign-in. Codex
   picks the image model. Size becomes square, portrait or landscape and the
   tier a quality word in the instructions. A failed run is a fixed line:
   signed out (`invalid`, naming Settings → Claude Code and Codex), its usage limit
-  (`unavailable`), a refusal (`image_refusal`), else `unavailable`. Codex's
+  (`unavailable`), a refusal (`image_refusal`), else `unavailable`. A run
+  that finishes with a reply in words and no image is Codex declining: an
+  `image_refusal` that quotes its reply on one line, at most 300
+  characters ("Codex made no image (image_refusal). It said: …"), in the
+  tool result only, never the journal. One with neither is "Codex returned
+  no image." (`unavailable`). Codex's
   sign-in is its own device sign-in (`codexSignIn`, `codex login
   --device-auth`), from the Codex card in Settings → **Claude Code and Codex** (`/api/u/:userId/codex`). The
   daemon installs the runner with `setCodexImages`. `codex` is among the
@@ -486,7 +494,9 @@ declares create, edit, mask, references, sizes, count and tier mappings.
 
 Grok images are unsupported; upscale remains host-only. Returned PNGs lose
 text, EXIF and other metadata. Provider errors use fixed messages and codes,
-never provider prose. `image_refusal` identifies a content refusal and stops
+never provider prose; the one exception is Codex's reply when it declines,
+since Codex is the user's own agent and its reason is what they need.
+`image_refusal` identifies a content refusal and stops
 fallback; outages and limits still try the next eligible model. The tool
 keeps fixed `imageRefusal` details (code, offering ID and endpoint ID) for
 the message marker. `nextImageModel` reads the current task list without
@@ -500,6 +510,10 @@ The `image` tool reads workspace paths and `/photos-of-me/<file>`, enforces
 the user's portrait policy before each resolved attempt, and stores results in
 the encrypted thread folder. Its text result says “Made with <model> on
 <host or endpoint name>” for every provider, alongside the saved paths.
+After a refusal, the tool runs no more image calls until the user writes
+again (it resets on Pi's `agent_start`), answering each with
+`REFUSED_THIS_TURN`, so a model can't reword the prompt and spend more of
+a plan on what was just declined; the message's Resend and Try still work.
 The daemon's owner-checked file and portrait
 management API is documented in [daemon.md](daemon.md#images-and-portrait-photos);
 endpoint setup is in [the operator guide](guides/getting-started.md#image-models).

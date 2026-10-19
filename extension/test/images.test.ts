@@ -37,8 +37,10 @@ async function setup() {
     enabled: () => enabled, now: () => date, approve: async (r: ApprovalRequest) => { asked.push(r); return allowed; } };
   let tool!: ToolDefinition;
   const factory = createImageExtension(options);
-  factory({ registerTool: (t: ToolDefinition) => { tool = t; } } as unknown as ExtensionAPI);
-  const run = (args: unknown, id = "call") => tool.execute(id, args, undefined, undefined, noUI);
+  // Each run is a turn of its own: the user wrote again.
+  let turn = () => {};
+  factory({ on: (event: string, f: () => void) => { if (event === "agent_start") turn = f; }, registerTool: (t: ToolDefinition) => { tool = t; } } as unknown as ExtensionAPI);
+  const run = (args: unknown, id = "call") => { turn(); return tool.execute(id, args, undefined, undefined, noUI); };
   return { ...s, files, home, folder, settings, asked, run, factory, options, tool,
     tomorrow: () => { date = new Date(2026, 9, 13, 10); }, context: (c: Partial<CallContext>) => { context = c; },
     allow: (yes: boolean) => { allowed = yes; }, enable: (yes: boolean) => { enabled = yes; } };
@@ -89,7 +91,7 @@ describe("image tool: portrait photos (principle 2)", () => {
     s.allow(true); await s.run(create); await s.run(edit);
     // Another thread of the same user reuses the encrypted daily approval.
     let second!: ToolDefinition;
-    createImageExtension({ ...s.options, threadId: "web/b" })({ registerTool: (t: ToolDefinition) => { second = t; } } as unknown as ExtensionAPI);
+    createImageExtension({ ...s.options, threadId: "web/b" })({ on: () => {}, registerTool: (t: ToolDefinition) => { second = t; } } as unknown as ExtensionAPI);
     await second.execute("second", edit, undefined, undefined, noUI);
     expect(s.asked).toHaveLength(2);
     expect(s.asked[1]).toMatchObject({ tool: "image", input: { question: "Send photos of you to openai?", provider: "openai", model: "openai/gpt-image-1" } });
@@ -102,7 +104,7 @@ describe("image tool: portrait photos (principle 2)", () => {
     const approve = vi.fn(() => new Promise<boolean>(resolve => { answer = resolve; }));
     const tools: ToolDefinition[] = [];
     for (const threadId of ["web/a", "web/b"]) createImageExtension({ ...s.options, threadId, approve })({
-      registerTool: (t: ToolDefinition) => { tools.push(t); },
+      on: () => {}, registerTool: (t: ToolDefinition) => { tools.push(t); },
     } as unknown as ExtensionAPI);
     const runs = tools.map((t, n) => t.execute(`concurrent-${n}`, create, undefined, undefined, noUI));
     await vi.waitFor(() => expect(approve).toHaveBeenCalledTimes(1));
@@ -142,7 +144,7 @@ describe("image tool: portrait photos (principle 2)", () => {
   it("has no approval without a viewer and rechecks policy and local-only changes while asking", async () => {
     const s = await setup();
     let tool!: ToolDefinition;
-    const capture = { registerTool: (t: ToolDefinition) => { tool = t; } } as unknown as ExtensionAPI;
+    const capture = { on: () => {}, registerTool: (t: ToolDefinition) => { tool = t; } } as unknown as ExtensionAPI;
     createImageExtension({ ...s.options, approve: undefined })(capture);
     await expect(tool.execute("no-viewer", create, undefined, undefined, noUI)).rejects.toThrow(/wasn't approved/);
     createImageExtension({ ...s.options, approve: async () => { s.settings.setPhotoCloudPolicy("never"); return true; } })(capture);
@@ -221,6 +223,30 @@ describe("image tool results (principles 1 and 4)", () => {
     s.enable(true);
     await expect(s.run({ action: "create", prompt: "A garden", tier: "fast", size: { width: 1024, height: 1024 }, aspectRatio: "1:1" })).rejects.toThrow(/size or an aspect ratio/);
   });
+});
+
+it("runs no image call after a refusal until the user writes again, passing the refusal's reason on", async () => {
+  const s = await setup();
+  const fetch = vi.fn(async () => Response.json({ error: { code: "content_policy_violation" } }, { status: 400 }));
+  vi.stubGlobal("fetch", fetch);
+  const faux = fauxProvider({ provider: "faux", models: [{ id: "vision", input: ["text", "image"] }] });
+  const call = fauxToolCall("image", { action: "create", prompt: "A garden", tier: "quality" });
+  let seen: unknown[] = [];
+  faux.setResponses([fauxAssistantMessage([call]), fauxAssistantMessage([fauxToolCall("image", { action: "create", prompt: "A garden, reworded", tier: "quality" })]),
+    (ctx: { messages: unknown[] }) => { seen = ctx.messages; return fauxAssistantMessage("done"); },
+    fauxAssistantMessage([call]), fauxAssistantMessage("done")]);
+  const loader = new DefaultResourceLoader({ cwd: s.home, agentDir: s.home, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
+    extensionFactories: [pi => pi.registerProvider(faux.provider), s.factory] });
+  await loader.reload();
+  const { session } = await createAgentSession({ cwd: s.home, agentDir: s.home, resourceLoader: loader, sessionManager: SessionManager.inMemory(s.home), noTools: "builtin" });
+  try {
+    await session.bindExtensions({}); await session.setModel(faux.getModel()); await session.prompt("Make a garden image.");
+    const results = (seen as { role: string; content: { text?: string }[] }[]).filter(m => m.role === "toolResult").map(m => m.content[0]?.text);
+    expect(results).toEqual(["Image generation was refused (image_refusal).", expect.stringContaining("no more image calls run until the user writes again")]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await session.prompt("Try once more.");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  } finally { session.dispose(); }
 });
 
 it("keeps a content refusal as fixed metadata and stops before another endpoint", async () => {

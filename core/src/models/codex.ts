@@ -29,7 +29,7 @@ export interface CodexBox {
  * versions differ (nixpkgs' isn't pinned) and a missing one doesn't exist
  * there. The sandbox is the fence; this only keeps Codex to the image tool.
  */
-export const CODEX_DISABLED = ["shell_tool", "unified_exec", "view_image", "browser_use", "computer_use", "in_app_browser", "apps", "plugins"];
+export const CODEX_DISABLED = ["shell_tool", "unified_exec", "view_image", "browser_use", "computer_use", "in_app_browser", "apps", "plugins", "memories", "goals"];
 
 interface Run { code: number | null; out: string; stopped?: boolean }
 /** Runs Codex; `enough`, checked every second, stops it early (`stopped`) once it has what was asked for. */
@@ -139,6 +139,19 @@ function savedPaths(out: string): string[] {
   return [...new Set(paths)];
 }
 
+/** Codex's last reply in words, on one line and at most 300 characters. */
+function lastReply(out: string): string | undefined {
+  let text: string | undefined;
+  for (const line of out.split("\n")) {
+    try {
+      const e = JSON.parse(line) as { type?: unknown; item?: { type?: unknown; text?: unknown } };
+      if (e.type === "item.completed" && e.item?.type === "agent_message" && typeof e.item.text === "string") text = e.item.text;
+    } catch { /* not an event */ }
+  }
+  const one = text?.replace(/\s+/g, " ").trim();
+  return one ? (one.length > 300 ? `${one.slice(0, 299)}…` : one) : undefined;
+}
+
 /** Every image file under `dir`, newest last. */
 function imageFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
@@ -232,11 +245,18 @@ export async function codexImage(box: CodexBox, r: ImageRequest, signal?: AbortS
         const file = reported.at(-1) ?? found.at(-1);
         box.log?.(`codex exec: ${stopped ? "stopped after its image" : `exit ${code}`}, ${found.length} image file${found.length === 1 ? "" : "s"} saved, events: ${eventShape(out)}`);
         if (code !== 0 && !file) throw failure(out);
-        if (!file) throw new HostRefused("invalid", "Codex returned no image.");
+        // A finished run with words and no image is Codex declining; its reply says why. It goes
+        // only to the tool result, never the journal.
+        const reply = lastReply(out);
+        if (!file && reply) throw new HostRefused("image_refusal", `Codex made no image (image_refusal). It said: "${reply}"`);
+        if (!file) throw new HostRefused("unavailable", "Codex returned no image.");
         images.push(cleanPng(readFileSync(file)));
       } finally {
         rmSync(call, { recursive: true, force: true });
         rmSync(generated, { recursive: true, force: true });
+        // --ephemeral keeps no session, but Codex still opens its databases (state, logs,
+        // goals, memories), which can hold a prompt; only auth.json needs to outlast a call.
+        for (const f of readdirSync(box.home)) if (/\.sqlite(-wal|-shm|-journal)?$/.test(f)) rmSync(join(box.home, f), { force: true });
       }
     }
     return images;
