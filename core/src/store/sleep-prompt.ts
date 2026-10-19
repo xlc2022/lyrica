@@ -49,6 +49,7 @@ export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: s
         "5. When two things contradict each other, raise a question rather than guessing.",
         "6. Rewrite the pages listed above without the deleted source.",
         ...(projects.length ? [`7. Keep each project's page (the slug given above): what you know about the project, such as decisions, requirements, pitfalls, who to ask and what's open, citing its notes and conversations. Its instructions are ${user}'s and stay as they are; write only what you know.`] : []),
+        "Keep working in the about tags of notes you merge; add it to notes that plainly state a coding or workflow preference.",
         "Write {user} for the person, never their name, in notes and pages. Name a conversation by citing it ([t:…]), never by its title, which can change.",
       ].join("\n"),
     ].filter(Boolean).join("\n\n");

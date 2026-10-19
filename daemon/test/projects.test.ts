@@ -72,6 +72,49 @@ async function until<T>(fn: () => Promise<T>, ok: (t: T) => boolean, ms = 8000):
 }
 
 describe("projects", () => {
+  it("applies code mode through settings and threads code on the next turn, preserving Mode", async () => {
+    const s = await setup();
+    const settings = () => s.ada.get<ThreadSettings>(`${s.path}/settings`);
+    expect((await settings()).body.code).toBe(false);
+    await s.ada.patch(`${s.path}/settings`, { mode: "ask" });
+    s.script("chat").push(tool({ action: "code", on: true, task: "Fix addition", done: "Read the failure" }), { text: "Enabled." });
+    await s.say("Use code mode");
+    expect((await settings()).body).toMatchObject({ code: true, mode: "ask" });
+    s.script("chat").push({ text: "Checked." });
+    await s.say("Check the fixture");
+    const request = s.requests.filter(c => c.tools?.length).at(-1)!;
+    expect(said(request)).toContain("Code task");
+    expect(said(request)).toContain("Fix addition");
+    expect(request.tools!.map(t => t.function.name)).not.toContain("react");
+    expect(s.d.services!.models.recentCalls(s.rt.ada.id, { threadId: s.project.id, limit: 10 }).filter(c => c.task === "code")).toHaveLength(1);
+    await s.ada.patch(`${s.path}/settings`, { code: false });
+    expect((await settings()).body).toMatchObject({ code: false, mode: "ask" });
+    s.script("chat").push({ text: "Restored." });
+    await s.say("Continue normally");
+    const restored = s.requests.filter(c => c.tools?.length).at(-1)!;
+    expect(said(restored)).not.toContain("<code_task>");
+    expect(restored.tools!.map(t => t.function.name)).toContain("react");
+  });
+
+  it("uses the project code default for new and routine threads while children keep independent choices", async () => {
+    const s = await setup();
+    expect((await s.ada.patch(s.path, { threadsCode: true })).status).toBe(200);
+    expect((await s.get(s.project.id)).projectSettings?.threadsCode).toBe(true);
+    s.script("chat").push(start(["Fixture", "fixture: fix addition"]), { text: "Started." });
+    const { events } = await s.say("Fix the fixture");
+    const child = ends(events).flatMap(e => e.threads ?? [])[0]!.id;
+    await until(() => s.messages(s.threadPath(child)), rows => rows.some(m => m.role === "assistant"));
+    const settings = () => s.ada.get<ThreadSettings>(`${s.threadPath(child)}/settings`);
+    expect((await settings()).body.code).toBe(true);
+    await s.ada.patch(`${s.threadPath(child)}/settings`, { code: false });
+    expect((await settings()).body.code).toBe(false);
+    const made = await s.d.services!.children.routineThread(s.rt.ada.id, "general", s.project.id, "Routine fixture");
+    expect(s.d.services!.workspace.settings(s.rt.ada.id).thread(made).code).toBe(true);
+    await s.ada.patch(s.path, { threadsCode: false });
+    const next = await s.d.services!.children.routineThread(s.rt.ada.id, "general", s.project.id, "Next fixture");
+    expect(s.d.services!.workspace.settings(s.rt.ada.id).thread(next).code).toBe(false);
+  });
+
   it("folds work and its children without losing checklists, wake-ups or child state", async () => {
     const { ada, d, rt, u, project, path, threadPath, overview } = await setup();
     const view = d.services!.memory.openThreadView(rt.ada.id, "general");

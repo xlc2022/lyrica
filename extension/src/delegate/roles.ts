@@ -1,3 +1,4 @@
+import { CODE_GUIDELINES } from "../code.ts";
 import type { Role } from "@lyrica/core";
 
 // The built-in role prompts are adapted from pi-subagents 0.76.1 (agents/*.md),
@@ -19,6 +20,9 @@ export function subagentPrompt(role: Role, name = "Lyrica"): string {
 const READ = ["read", "bash", "recall", "read_memory"];
 
 export const BUILTIN_ROLES: readonly Role[] = [
+  { name: "coder", description: "code changes in a repository: edit, test, fix",
+    tier: "strong", tools: ["read", "write", "edit", "bash", "recall", "read_memory"],
+    readOnly: false, thinking: "high", prompt: CODE_GUIDELINES },
   {
     name: "scout",
     description: "Fast reconnaissance: finds the files, facts and context another agent needs.",

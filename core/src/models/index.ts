@@ -1760,7 +1760,7 @@ export class Models {
             SELECT pool, thread, label, kind,
               sum(coalesce(read_tokens, prompt_tokens, 0) + coalesce(output_tokens, 0)),
               sum(CASE WHEN kind = 'local' THEN coalesce(ttft_ms, 0) + coalesce(gen_ms, 0) ELSE 0 END), count(*)
-            FROM model_calls WHERE id <= ? AND task = 'chat' AND (prompt_tokens IS NOT NULL OR read_tokens IS NOT NULL OR output_tokens IS NOT NULL)
+            FROM model_calls WHERE id <= ? AND task IN ('chat', 'code') AND (prompt_tokens IS NOT NULL OR read_tokens IS NOT NULL OR output_tokens IS NOT NULL)
             GROUP BY pool, thread, label, kind
             ON CONFLICT (pool, thread, label, kind) DO UPDATE SET
               tokens = tokens + excluded.tokens, gpu_ms = gpu_ms + excluded.gpu_ms, calls = calls + excluded.calls`).run(cutoff);
@@ -2516,7 +2516,7 @@ export class Models {
       SELECT thread AS threadId, label, kind, sum(tokens) AS tokens, sum(gpu_ms) AS gpuMs FROM (
         SELECT thread, label, kind, coalesce(read_tokens, prompt_tokens, 0) + coalesce(output_tokens, 0) AS tokens,
           CASE WHEN kind = 'local' THEN coalesce(ttft_ms, 0) + coalesce(gen_ms, 0) ELSE 0 END AS gpu_ms
-        FROM model_calls WHERE pool = @pool AND thread IN (SELECT value FROM json_each(@threads)) AND task = 'chat'
+        FROM model_calls WHERE pool = @pool AND thread IN (SELECT value FROM json_each(@threads)) AND task IN ('chat', 'code')
           AND (prompt_tokens IS NOT NULL OR read_tokens IS NOT NULL OR output_tokens IS NOT NULL)
         UNION ALL SELECT thread, label, kind, tokens, gpu_ms FROM call_totals
           WHERE pool = @pool AND thread IN (SELECT value FROM json_each(@threads))

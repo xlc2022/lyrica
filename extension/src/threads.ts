@@ -23,6 +23,7 @@ export type Delivery = "started" | "running" | "queued" | "saved" | "wakes" | "u
 
 export interface ThreadsHost {
   readonly limits: ThreadsLimits;
+  code?(from: ThreadContext, on: boolean): void;
   asked?(from: ThreadContext): Promise<void>;
   questionsChanged?(userId: string, pool: ThreadContext["pool"], thread: string): void;
   draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
@@ -59,7 +60,9 @@ export const READ_DEFAULT = 10;
 export const READ_MAX = 30;
 
 const Params = Type.Object({
-  action: StringEnum(["ask", "start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"] as const),
+  action: StringEnum(["code", "ask", "start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"] as const),
+  on: Type.Optional(Type.Boolean()),
+  done: Type.Optional(Type.String({ maxLength: 1200 })),
   goal: Type.Optional(Type.String({ maxLength: 2000 })),
   instructions: Type.Optional(Type.String({ maxLength: 2000 })),
   ids: Type.Optional(Type.Array(Type.String(), { maxItems: 10, description: "For fold: existing thread IDs to suggest bringing into this project. The person applies the card." })),
@@ -100,8 +103,9 @@ type Field = keyof typeof Params.properties;
 
 /** The actions each field serves: a thread is sent only the fields of the actions it has. */
 const FIELD_ACTIONS: Record<Exclude<Field, "action">, string[]> = {
+  on: ["code"], done: ["code"],
   goal: ["draft"], instructions: ["draft"], ids: ["fold"], threads: ["suggest"],
-  title: ["start"], task: ["start"], folders: ["start"], readOnly: ["start"], internet: ["start"],
+  title: ["start"], task: ["start", "code"], folders: ["start"], readOnly: ["start"], internet: ["start"],
   id: ["message", "read", "stop", "resolve", "reopen"], text: ["message"], to: ["message"], question: ["message", "ask"], options: ["ask"], recommended: ["ask"], context: ["ask"], needsYou: ["message"], last: ["read"],
   minutes: ["later"], cancel: ["later"], note: ["later", "routine"],
   routineAction: ["routine"], routineId: ["routine"], schedule: ["routine"], newThread: ["routine"],
@@ -195,6 +199,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
     ].filter(Boolean).join(" ");
 
     const actions = [
+      ...(host?.code ? ["code"] : []),
       ...(!host ? [] : projectThread() ? ["message", "list", "read", ...(host.resolve ? ["resolve"] : [])]
         : child ? ["message"]
         : ["start", "message", "list", "read", ...(host.stop ? ["stop"] : []),
@@ -209,7 +214,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       name: "threads",
       label: "Threads",
       description: description(),
-      promptSnippet: [!host ? "" : child ? "post an update to the parent thread" : "start, message and list child threads", host?.later ? "set a wake-up for this thread" : "", host ? "manage this thread's routines" : "", steps ? "keep this thread's checklist" : "", meter ? "compact this thread with your own summary" : ""].filter(Boolean).join("; "),
+      promptSnippet: [host?.code ? "turn code mode on or off with code({ on, task, done })" : "", !host ? "" : child ? "post an update to the parent thread" : "start, message and list child threads", host?.later ? "set a wake-up for this thread" : "", host ? "manage this thread's routines" : "", steps ? "keep this thread's checklist" : "", meter ? "compact this thread with your own summary" : ""].filter(Boolean).join("; "),
       promptGuidelines: [
         ...(!host ? [] : projectThread() ? PROJECT_THREAD_GUIDELINES : child ? [] : inProjectChat() ? PROJECT_CHAT_GUIDELINES : CHILD_THREAD_GUIDELINES),
         ...(host && (!child || projectThread()) ? [ASK_GUIDELINE] : []),
@@ -231,6 +236,14 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           return { ...text(r.text), ...(r.isError ? { isError: true } : {}) };
         }
         if (!host) throw new Error("child threads aren't available here");
+        if (p.action === "code") {
+          if (!host.code) throw new Error("code mode is unavailable here");
+          if (typeof p.on !== "boolean") throw new Error("code needs on: true or false");
+          if ((p.task?.length ?? 0) > 300 || (p.done?.length ?? 0) > 1200) throw new Error("code task is at most 300 characters and done is at most 1200");
+          host.code(thread, p.on);
+          store.setCodeTask(thread.threadId, p.task ?? "", p.done ?? "");
+          return text(`Code mode ${p.on ? "on" : "off"} from the next turn.`);
+        }
         if (p.action === "ask") {
           if (child && !projectThread()) throw new Error("a child asks its parent with message question: true");
           cleanAsk(p);

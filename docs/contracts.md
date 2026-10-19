@@ -637,6 +637,13 @@ delegation.stopAll(userId?)                            // Lock and shutdown
 ```
 
 One model-facing tool: `delegate({ action?, ... })`.
+The built-in coder comes first in its role list (strong, writes, high
+thinking; read/write/edit/bash/recall/read_memory). It uses the parent's
+`code` model list, preset and context limit, and project/filtered recall
+through its existing thread view, without persona. A step's optional
+`done` accompanies its task in the Code task section. Without a role, a
+write-capable step in a repository thread selects coder; otherwise worker.
+Custom roles override built-ins by name.
 - The default action runs work: `task` with an optional `role` and `tier`;
   or `tasks: [...]` (parallel), `chain: [...]`, `loop`, `council`, or
   `workflow: name`. Any of these can be `background: true`. She picks a tier,
@@ -924,6 +931,19 @@ Every run:
 
 ## extension
 
+Code-mode options are `code(): boolean` and optional
+`codeRepositories(): Promise<string | undefined>`, read once per turn.
+Code turns use SOUL only, no topic routing, WAKE, about-user, page index or
+sleep opening; project, folders and pins remain. `setToolsOff` with reason
+`code` removes `models`, `download_model`, `model_files`, `image`, `react`.
+Code task/progress is stable prompt text from pool.db; repository status
+is per-turn. The thread's model task callback selects `code` instead of
+`chat`, including initial open, prepare and retry, retaining context limits.
+Automatic recall and `recall` use `only: { project: true, about: "working" }`;
+`recall` accepts optional `everywhere: true` for one unrestricted search
+through the same thread view. Working preferences are tagged on remember
+and retained by consolidation.
+
 The extension is created with a `ThreadContext`:
 `{ user, pool, interface, threadId, view: PoolView, call: CallContext }`.
 
@@ -932,7 +952,7 @@ The extension is created with a `ThreadContext`:
 modelRuntimeFor(models, ctx): Promise<ModelRuntime>       // Pi runtime holding only models.allowed(ctx), sealed
 piModelFor(runtime, models, task, ctx, resolution?): { ref; model; resolution }
 prepareTurn({ session, runtime, models, call, pool, threadId, task?, thinking?, retry? }): Promise<Resolution>
-openThreadSession({ thread, models, cwd, extensions, settings? }): Promise<ThreadSession>
+openThreadSession({ thread, models, cwd, extensions, settings?, task?: () => Task }): Promise<ThreadSession>
 interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?: { thinking?; retry? }): Promise<Resolution>; dispose() }
 interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary } }   // LyricaOptions.meter
 ```
@@ -1706,6 +1726,17 @@ sleep.events                       // started, phase, finished: IDs only, never 
 expand-only user step 14 (`thread_workspaces.code`). `inheritSettings`
 copies it to descendants; each child can edit it independently. It is not
 narrowed by ancestors and never changes permission mode.
+`ThreadSettings` returns `code: boolean`; PATCH accepts `code?: boolean`.
+The daemon's `Task` and `THREAD_TASKS` include `code`. A thread's `code`
+override wins in code mode; its Chat override does not apply. Thread model
+selection continues to use `preset`, never a profile choice.
+`threads({ action: "code", on, task?, done? })` replaces pool.db task text
+and changes the next turn, emitting `settings`; subagents are refused.
+Project settings carry optional `threadsCode`, stored in encrypted user
+settings (`project.code.<pool>/<id>`), removed on forget. New child and
+routine threads apply it beside `threadsModel`; unset inherits the parent.
+The watcher exposes cached open PR checks via `codePulls`, without a new
+network call, and drops that cache on Lock.
 
 ```ts
 new Workspace(keyring, users, { excludePorts, frontDoor? })
@@ -1996,7 +2027,7 @@ missing thread is 404. Models sort by tokens descending. `threads` appears
 only for a project chat: the chat first, then descending tokens. The total
 is also `ProjectOverview.tokens`. User step 10 adds nullable
 `model_calls.read_tokens` and `call_totals` keyed by pool, thread, label,
-kind, with tokens, gpu_ms and calls. Pruning folds counted chat records
+kind, with tokens, gpu_ms and calls. Pruning folds counted chat and code records
 before deleting them, in one transaction; forgetting removes their totals.
 
 ## Push notifications

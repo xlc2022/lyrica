@@ -128,6 +128,26 @@ async function setupForge(kind: ForgeKind = "forgejo", opts: { project?: boolean
 }
 
 describe("the forge watcher", () => {
+  it("supplies cached open PR checks to code turns without fetching, and clears on close or Lock", async () => {
+    const s = await setupForge();
+    routeForgejo(s.fake, { status: statusBody(runningChecks()) });
+    s.watch();
+    await s.tick(0);
+    const calls = s.fake.asked.length;
+    expect(s.forge.codePulls(s.user.id, "general", s.thread.id)).toEqual(["ada/lyrica PR #12: build: passed, e2e: pending"]);
+    expect(s.fake.asked).toHaveLength(calls);
+    expect(s.forge.codePulls(s.user.id, "private", s.thread.id)).toEqual([]);
+    routeForgejo(s.fake, { pull: pullBody({ state: "closed" }) });
+    await s.tick(2);
+    expect(s.forge.codePulls(s.user.id, "general", s.thread.id)).toEqual([]);
+    routeForgejo(s.fake, { status: statusBody(runningChecks()) });
+    s.watch();
+    await s.tick(4);
+    expect(s.forge.codePulls(s.user.id, "general", s.thread.id)).toHaveLength(1);
+    s.forge.drop(s.user.id);
+    expect(s.forge.codePulls(s.user.id, "general", s.thread.id)).toEqual([]);
+  });
+
   it("wakes once when the checks finish, not again for the same head, and waits again on a new head", async () => {
     const s = await setupForge();
     routeForgejo(s.fake, { status: statusBody(finishedChecks()) });

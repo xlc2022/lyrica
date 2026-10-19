@@ -27,7 +27,8 @@ subagent:
   recorded like any thread's;
 - gets its model from `childContext(parent, child, { tier } | { model })`,
   with the parent's `CallContext` as it is when the subagent starts: the
-  parent's `subagent.cheap` or `subagent.strong` model. She picks a tier,
+  parent's `subagent.cheap` or `subagent.strong` model (the coder instead
+  inherits the parent's `code` list and context limit). She picks a tier,
   never a model; only a saved workflow, which a user writes, may name a model
   the parent allows, by its offering ID or as `<endpoint>/<model>`. In a private or local-only thread it is always a local
   model. A refused model fails the run before any thread is made;
@@ -166,6 +167,7 @@ tool in the subagent's thread only.
 
 | Role | Tier | Tools | Writes |
 |---|---|---|---|
+| coder | strong (`code` task), high thinking | read, write, edit, bash, recall, read_memory | yes |
 | scout | cheap | read, bash, recall, read_memory | no |
 | researcher | cheap | read, bash, recall, read_memory, web_search, web_fetch | no |
 | reviewer | cheap | read, bash, recall, read_memory | no |
@@ -173,7 +175,17 @@ tool in the subagent's thread only.
 | oracle | strong | read, recall, read_memory | no |
 
 Prompts are adapted from `pi-subagents` 0.76.1 (MIT, credited in
-`roles.ts`). A task with no role gets the worker. The parent's prompt lists
+`roles.ts`; coder uses the five code-mode guidelines). A task with no role
+gets coder when the thread has a repository and the run permits writes;
+otherwise it gets worker. Custom coder roles override the built-in too.
+Coder receives the project section and recall restricted to project items
+or `working` notes, through its existing thread view. Its Code task section
+uses the full step's task and optional `done` (1,200 characters). Its short
+task summary (300 characters) and progress are retained in encrypted
+pool.db for continuation; the full task stays in the subagent's conversation. It gets no
+persona. `recall({ everywhere: true })` widens one search in its view.
+Every thread's prompt names coder first and advises using it for coding
+jobs, or enabling code mode when working together. The parent's prompt lists
 the roles and saved workflows, after a line (`SHARED_SANDBOX`) saying that
 subagents and child threads have her sandbox's tools and her network or
 less, so a brief asks for the result rather than a way to verify it.

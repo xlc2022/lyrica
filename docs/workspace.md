@@ -461,6 +461,17 @@ it. Other storage tests use synthetic bitmap bytes in a stand-in home.
 Core stores a `code` preference in `thread_workspaces` (user step 14), off
 by default. `inheritSettings` copies it at creation; a child can change it
 independently of its ancestors. It never changes Mode or grants.
+Thread settings GET/PATCH carry `code`. The `threads` action `code` takes
+`on`, optional `task` (300 characters) and `done` (1,200 characters); it
+emits `settings` and applies from the next turn. Subagents cannot call it.
+A project's `threadsCode` API choice applies to child and routine threads,
+with `threadsModel`; unset, they inherit their parent's code preference.
+The choice lives in encrypted user settings as `project.code.<pool>/<id>`,
+and forgetting the project removes it. No additional migration is needed.
+Code turns read branch and at most ten commit subjects since origin's
+default branch with fixed git argv in the sandbox; no fetch or model call
+is made. The forge watcher supplies its last known open PR check metadata,
+cleared on Lock. An unavailable checkout is reported without blocking chat.
 
 A workspace is not a separate kind of session. It's any thread that has
 folders granted. Every thread has the same settings panel, and the current

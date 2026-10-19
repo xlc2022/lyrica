@@ -7,6 +7,7 @@ import type { ModelRef, Pool, ThinkingLevel, Users } from "@lyrica/core";
 
 export interface ProjectSettings {
   paused: boolean;
+  code?: boolean;
   draftGoal?: string;
   draftInstructions?: string;
   /** The chat model new threads of the project start with; none: the project chat's. */
@@ -38,6 +39,10 @@ export class Projects {
       { paused: number; model: string | null; thinking: string | null; watch: number; fallback: number | null; draft_goal: string | null; draft_instructions: string | null } | undefined;
     return {
       paused: row?.paused === 1,
+      code: this.db(userId, db => {
+        const saved = db.prepare("SELECT value FROM settings WHERE key = ?").get(`project.code.${pool}/${project}`) as { value: string } | undefined;
+        return saved ? saved.value === "true" : undefined;
+      }),
       watch: row?.watch !== 0,
       ...(row?.draft_goal !== null && row?.draft_goal !== undefined ? { draftGoal: row.draft_goal } : {}),
       ...(row?.draft_instructions !== null && row?.draft_instructions !== undefined ? { draftInstructions: row.draft_instructions } : {}),
@@ -48,9 +53,13 @@ export class Projects {
   }
 
   /** Changes some of a project's settings; `null` clears the model, thinking or Fallback. */
-  set(userId: string, pool: Pool, project: string, change: { paused?: boolean; model?: ModelRef | ModelRef[] | null; thinking?: ThinkingLevel | null; fallback?: boolean | null; watch?: boolean; draftGoal?: string | null; draftInstructions?: string | null }): ProjectSettings {
+  set(userId: string, pool: Pool, project: string, change: { code?: boolean; paused?: boolean; model?: ModelRef | ModelRef[] | null; thinking?: ThinkingLevel | null; fallback?: boolean | null; watch?: boolean; draftGoal?: string | null; draftInstructions?: string | null }): ProjectSettings {
     if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");
     for (const value of [change.draftGoal, change.draftInstructions]) if (value !== undefined && value !== null && (typeof value !== "string" || value.length > 2000)) throw new Error("project drafts have at most 2000 characters");
+    if (change.code !== undefined) {
+      if (typeof change.code !== "boolean") throw new Error("code is true or false");
+      this.db(userId, db => db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`project.code.${pool}/${project}`, String(change.code)));
+    }
     const now = this.settings(userId, pool, project);
     const model = change.model === undefined ? now.model : change.model ?? undefined;
     const thinking = change.thinking === undefined ? now.thinking : change.thinking ?? undefined;
@@ -81,6 +90,7 @@ export class Projects {
   forget(userId: string, pool: Pool, threads: string[]): void {
     const t = JSON.stringify(threads);
     this.db(userId, (db) => {
+      for (const thread of threads) db.prepare("DELETE FROM settings WHERE key = ?").run(`project.code.${pool}/${thread}`);
       for (const table of ["pinned_threads", "project_settings", "started_suggestions"]) {
         db.prepare(`DELETE FROM ${table} WHERE pool = ? AND thread IN (SELECT value FROM json_each(?))`).run(pool, t);
       }

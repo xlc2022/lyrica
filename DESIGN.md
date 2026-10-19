@@ -318,11 +318,13 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - **strong** for writing, judgment, and changing code or files.
 
   The thread's `subagent.cheap` and `subagent.strong` models decide which
-  model that is.
+  model that is. The coder role uses the `code` task instead, defaulting to
+  strong subagents. A write step with no role in a repository thread uses
+  coder; otherwise it uses worker.
 - **`delegate` is Lyrica's own tool, built on Pi's SDK,** and covers what
   `pi-subagents` offers that makes sense for her. See
   [docs/delegation.md](docs/delegation.md) and History.
-  - Roles (scout, researcher, reviewer, worker, oracle) and custom roles.
+  - Roles (coder, scout, researcher, reviewer, worker, oracle) and custom roles.
   - Parallel runs, chains, review loops, councils and saved workflows.
   - Background runs with status, wait and stop.
   - **Conversation both ways.** Lyrica sends a subagent a message at any
@@ -1481,6 +1483,24 @@ Decided 2026-10-12 (docs/briefs/claude-code.md).
   model.
 
 ## Memory
+
+Code mode (principles 1, 2, 6 and 8) keeps SOUL, project context, folder
+pages and pins, omitting STYLE, REGISTER, topic routing, WAKE, about-user
+and the page index. Automatic and deliberate recall keep project items and
+notes tagged `working`; `recall({ everywhere: true })` widens one search
+within the existing pool boundary. Coding and workflow preferences are
+noted with `working`, which consolidation preserves.
+
+A thread's editable `code` preference selects the `code` model list instead
+of Chat, keeping its context limit, preset, permissions and grants. The
+`threads code` action changes the next turn and replaces its encrypted
+Code task and progress. Projects can choose code mode for new threads.
+Code turns omit models, downloads, images and reactions, add five coding
+guidelines, and read repository branches and up to ten commit subjects
+since the default base, plus cached open pull-request checks, once per turn.
+Coder subagents use that project's filtered memory through their existing
+thread view, their role prompt without persona, and their step's task and
+optional progress.
 
 Core search can restrict recall to project items plus notes tagged `working`,
 using the existing project membership and whole-tag match. This filter runs

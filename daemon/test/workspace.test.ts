@@ -57,11 +57,16 @@ describe("lyricad and the home workspace", () => {
         expect(defaults.status).toBe(200);
         expect(recent).not.toHaveBeenCalled();
         for (const key of ["messages", "memory", "answered", "context"]) expect(defaults.body).not.toHaveProperty(key);
-        expect(defaults.body).toMatchObject({ mode: "ask", webSearch: true, images: true });
+        expect(defaults.body).toMatchObject({ mode: "ask", code: false, webSearch: true, images: true });
         expect((await call("GET", `${u}/threads`)).body).toEqual(before);
         const thread = (await call<ThreadSummary>("POST", `${u}/threads`, { pool })).body;
         const settings = (await call<ThreadSettings>("GET", `${u}/threads/${pool}/${encodeURIComponent(thread.id)}/settings`)).body;
         expect(defaults.body).toEqual(settings);
+        const path = `${u}/threads/${pool}/${encodeURIComponent(thread.id)}/settings`;
+        expect((await call<ThreadSettings>("PATCH", path, { code: true })).body).toMatchObject({ code: true, mode: "ask" });
+        expect((await call<ThreadSettings>("PATCH", path, { code: "wrong", mode: "auto" })).status).toBe(400);
+        expect((await call<ThreadSettings>("GET", path)).body).toMatchObject({ code: true, mode: "ask" });
+        expect((await call<ThreadSettings>("PATCH", path, { code: false })).body.code).toBe(false);
         await call("DELETE", `${u}/threads/${pool}/${encodeURIComponent(thread.id)}`);
       }
       expect((await call("GET", `${u}/threads`)).body).toEqual(before);

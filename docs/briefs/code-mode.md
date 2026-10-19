@@ -193,15 +193,21 @@ child edits, and `codeTask` / `setCodeTask` in the encrypted pool. User step
 14 and pool step 9 were free after merging main and are used unchanged.
 The router ignores a thread's chat override when resolving the code task.
 
-Parts 2 and 3 remain: daemon/extension settings and task wiring, prompt and
-recall integration, tools, working-preference guidance, coder role, project
-defaults, scripted evals, web controls and e2e. The daemon's separate Task
-union still needs code in part 2; root typecheck reports that boundary until
-then. Its extension workspace test fixture also needs the new code default.
-No real model, paid API or plan endpoint was used.
+Part 2 implements daemon/extension settings and task wiring against presets,
+prompt and recall integration, tool gating, working-preference guidance,
+coder and its repository default, project defaults, repository/PR context,
+and scripted evals. Code calls also contribute to usage totals through
+pruning. Root TypeScript and the focused fake-only suites pass; the eval
+has four scripted checks passing and its real-model check skipped.
+Part 2 changes remain in the tree, uncommitted and unpushed.
+
+Part 3 remains: web controls and task labels, e2e at both widths, web/UX
+docs and final handoff. Full typecheck currently stops on the missing code
+labels in web/src/ModelsFrame.tsx and web/src/Settings.tsx. No real model,
+paid API or plan endpoint was used, and no full test suite was run.
 
 Validation for part 1: targeted store, models, workspace and migration suites
 under `/tmp/lyrica-tests.lock`: 112 passed, 4 existing sandbox-dependent
 checks skipped. Core source and these four test files typecheck with the
 repository's compiler flags and SQLite declaration. The full suite was not
-run. Changes remain uncommitted and unpushed for the operator.
+run. Part 1 is committed in the branch history.

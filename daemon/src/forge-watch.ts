@@ -110,6 +110,11 @@ export class ForgeWatcher {
   /** Threads already told about the eleventh pull request, by `user/pool/thread`. */
   private readonly toldFull = new Set<string>();
   private running = false;
+  private readonly codeState = new Map<string, { thread: string; line: string }>();
+
+  codePulls(userId: string, pool: Pool, threadId: string): string[] {
+    return [...this.codeState].filter(([key, value]) => key.startsWith(`${userId}/${pool}/`) && value.thread === threadId).map(([, value]) => value.line);
+  }
 
   constructor(private readonly o: ForgeWatchOptions) {}
 
@@ -118,6 +123,7 @@ export class ForgeWatcher {
   /** At Lock: their watches leave memory; the pool keeps them. */
   drop(userId: string): void {
     this.unlocked.delete(userId);
+    for (const key of this.codeState.keys()) if (key.startsWith(`${userId}/`)) this.codeState.delete(key);
     for (const k of [...this.lastPoll.keys()]) if (k.startsWith(`${userId}/`)) this.lastPoll.delete(k);
     for (const k of [...this.rate.keys()]) if (k.startsWith(`${userId}/`)) this.rate.delete(k);
     for (const k of [...this.cache.keys()]) if (k.startsWith(`${userId}/`)) this.cache.delete(k);
@@ -230,6 +236,9 @@ export class ForgeWatcher {
       this.o.log(`a forge poll of ${w.repo}#${w.number} failed: ${(err as Error).name}`); // transient; keep watching
       return;
     }
+    if (poll.kind === "snapshot" && poll.pull.state === "open") {
+      this.codeState.set(id, { thread: w.thread, line: `${w.repo} PR #${w.number}: ${poll.pull.checks.map(c => `${c.name}: ${c.result ?? "pending"}`).join(", ") || "no checks reported"}` });
+    } else this.codeState.delete(id);
     const lastState: ForgeWatchState = { head: w.head, headSince: w.headSince, notifiedHeads: w.notifiedHeads, seenReviews: w.seenReviews };
     const out = decideWatch({ number: w.number, account: a.account, now: now.toISOString(), last: lastState, poll });
     const note = out.note ? renderNote(out.note) : null;

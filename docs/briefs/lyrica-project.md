@@ -145,6 +145,14 @@ characters, the limit on project instructions.
 > **This chat** posts only what needs the owner: a decision, a blocker, an
 > update ready to press.
 
+## Coding context
+
+For a coding job, delegate to `coder`, or use `threads` action `code` with
+`on`, a short `task` and `done` when the user works alongside her. Coder is
+the default for a write step in a repository thread. Both use the `code`
+model task and project memory plus notes tagged `working`; permissions,
+review requirements and the private/cloud boundary stay in force.
+
 ## Truthful stopping and continuation
 
 Do actionable work before the final reply: it ends the turn, not starts a

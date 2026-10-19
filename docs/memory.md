@@ -225,6 +225,15 @@ crowd out project memory. Without project membership, including in the
 general pool read by a private view, only tagged notes pass. Omitting
 `only` leaves ordinary search unchanged.
 
+Code-mode turns and coder subagents apply this filter to automatic recall
+and `recall`; `everywhere: true` opts out for one deliberate search. A coder
+uses its nearest ordinary ancestor's project, through its existing thread
+view. Code turns retain project context, folder pages and pins but omit
+WAKE, about-user, the page index and sleep-item opening. The persona is
+SOUL alone. `remember` asks for `working` on stated coding and workflow
+preferences; consolidation keeps that tag when merging notes and may add
+it to clear preferences.
+
 `codeTask(threadId)` and `setCodeTask(threadId, task, done)` read and replace
 the latest task (300 characters) and progress (1,200 characters), with its
 time. These words stay in encrypted pool.db's `code_tasks`, never user.db,

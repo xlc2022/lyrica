@@ -24,11 +24,11 @@ export type PresetScope = "private" | "general";
 /** The Models page's two columns. */
 export type Column = "private" | "general";
 export type Task =
-  | "chat" | "subagent.cheap" | "subagent.strong" | "compaction"
+  | "chat" | "code" | "subagent.cheap" | "subagent.strong" | "compaction"
   | "title" | "watching" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
   | "image.create" | "image.edit" | "image.upscale" | "speech.transcribe" | "speech.speak";
 /** The tasks a thread can choose models for. Compaction isn't one: Pi compacts with the thread's chat model. */
-export const THREAD_TASKS = ["chat", "subagent.cheap", "subagent.strong", "title", "watching", "image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
+export const THREAD_TASKS = ["chat", "code", "subagent.cheap", "subagent.strong", "title", "watching", "image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
 
 /** One model on one endpoint, by its permanent offering ID, or a model group, which expands into its members in order. */
@@ -854,6 +854,7 @@ export interface ProjectSettingsInfo {
   /** Paused: its threads stop, nothing new starts, and they take no messages. */
   paused: boolean;
   /** The chat model new threads of the project start with; none: the project chat's. */
+  threadsCode?: boolean;
   threadsModel?: ModelRef | ModelRef[];
   threadsThinking?: ThinkingLevel;
   /** Fallback for new threads of the project; none: the project chat's. */
@@ -883,6 +884,7 @@ export interface ThreadChange {
   discardDraft?: boolean;
   title?: string; hidden?: boolean; project?: true; goal?: string; instructions?: string;
   commandRules?: CommandRule[];
+  threadsCode?: boolean;
   paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; threadsFallback?: boolean | null; watchThreads?: boolean;
 }
 /** PUT and DELETE /api/u/:userId/threads/:pool/:threadId/pin → ThreadSummary. The user's own pin, in user.db. */
@@ -1021,6 +1023,7 @@ export interface TaskModel {
 }
 
 export interface ThreadSettings {
+  code: boolean;
   models: Record<ThreadTask, TaskModel>;
   /** Wake-ups waiting, soonest first; the user may remove each (`DELETE …/wakeups/:id`). */
   wakeups: WakeupInfo[];
@@ -1089,6 +1092,7 @@ export interface ThreadSettings {
  * outside the allowed paths, a subagent wider than its parent.
  */
 export interface ThreadSettingsChange {
+  code?: boolean;
   /** A model or an ordered list; null clears the thread's choice, so the column's applies. */
   models?: Partial<Record<ThreadTask, ModelRef | ModelRef[] | null>>;
   /** The preset the thread uses by id; null follows its column. Private and local-only threads may choose only a private preset. */
