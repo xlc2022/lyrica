@@ -45,9 +45,15 @@ length times any stretch).
   `contextLength` unset, so the editor shows the automatic value as a
   placeholder. `contextLength` in the model list and serving entry is the
   value in effect.
+- Pinned models stay counted, since they are never unloaded; other
+  programs' memory stays counted too.
 - The value follows the GPUs: it is computed whenever settings are read, so
   changing a GPU's keep-free amount or its allowed servers changes it at the
-  next load.
+  next load. A load's VRAM measurement is kept under its automatic context,
+  so a new context is measured again.
+- The trade: an unconfigured chat model now claims its whole GPU, so two of
+  them on one GPU (the thread's model and a fast one) unload each other on
+  every switch. A saved, smaller context keeps both loaded.
 
 ## Part 2: asking Lyrica to change the context
 

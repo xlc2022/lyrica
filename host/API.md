@@ -228,7 +228,7 @@ seconds of audio.
     voice: Kokoro's ONNX export. Its `contextLength` is `null`.
   - `contextLength` is the context it is served with: its setting, else,
     for a chat model, the largest that fits its GPUs once the host's other
-    models are unloaded (in steps of 1024, from 4096), never more than the
+    unpinned models are unloaded (in steps of 1024, from 4096), never more than the
     trained length times the stretch; 32768 when nothing fits or the
     trained length is unknown. A model keeps the context it loaded with
     while it stays loaded.

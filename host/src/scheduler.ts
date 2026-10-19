@@ -178,16 +178,17 @@ export class Scheduler {
 
   /**
    * Its settings with the context it is served with: a chat model with none
-   * saved gets the largest that fits once Lyrica's own models are unloaded
-   * (autoContext), kept while it stays loaded.
+   * saved gets the largest that fits once Lyrica's unpinned models are
+   * unloaded (autoContext), kept while it stays loaded.
    */
   served(model: TextModel): ModelSettings {
     const s = this.settings(model);
     if (s.contextLength !== undefined || model.kind !== "chat" || this.onCpu(model)) return s;
     const l = this.loaded.get(model.id);
     if (l?.auto) return { ...s, contextLength: l.settings.contextLength };
+    // What the GPUs hold besides Lyrica's models that could be unloaded: other programs, and pinned models.
     const others = this.gpusFor(serverOf(model)).map((g) => ({
-      ...g, used: Math.max(0, g.used - [...this.loaded.values()].filter((x) => x.model.id !== model.id).reduce((n, x) => n + (x.vram[g.index] ?? 0), 0)),
+      ...g, used: Math.max(0, g.used - [...this.loaded.values()].filter((x) => x.model.id !== model.id && !this.pinned(x.model.id)).reduce((n, x) => n + (x.vram[g.index] ?? 0), 0)),
     }));
     return { ...s, contextLength: autoContext(model, s, others, (i) => this.gpuSettings(i)) };
   }
@@ -226,9 +227,18 @@ export class Scheduler {
     return [{ gpus: [g.index], split: null, parallel: null, share: null, need: { [g.index]: sizes(job.model, s).weights + GIB / 2 } }];
   }
 
-  /** What a model takes on each GPU of an option: measured with that placement, else expected. */
-  private needOf(model: TextModel, o: Option): Record<number, number> {
-    return this.o.state.get().vram[`${model.id}@${placementKey(o)}`] ?? o.need;
+  /** What a model takes on each GPU of an option: measured with that placement (and automatic context), else expected. */
+  private needOf(model: TextModel, o: Option, s = this.served(model)): Record<number, number> {
+    return this.o.state.get().vram[this.vramKey(model, o, s)] ?? o.need;
+  }
+
+  /**
+   * Where a load's measurement is kept: by placement, and by context when it
+   * was automatic, since that moves with the GPUs and isn't a saved setting
+   * (saving settings forgets a model's measurements).
+   */
+  private vramKey(model: TextModel, o: Option, s: ModelSettings): string {
+    return `${model.id}@${placementKey(o)}${this.settings(model).contextLength === undefined && s.contextLength !== undefined ? `~${s.contextLength}` : ""}`;
   }
 
   /**
@@ -282,7 +292,7 @@ export class Scheduler {
           loaded.vram = measured;
           loaded.warmed = true;
           this.o.state.update((s) => {
-            s.vram[`${model.id}@${placementKey(loaded.option)}`] = measured;
+            s.vram[this.vramKey(model, loaded.option, loaded.settings)] = measured;
           });
         }
       }
@@ -402,7 +412,7 @@ export class Scheduler {
       return gpu.total - gpu.used - this.gpuSettings(g).keepFree;
     };
     const deficitOf = (o: Option) => {
-      const need = this.needOf(model, o);
+      const need = this.needOf(model, o, s);
       return (evicted: Set<Loaded>) => o.gpus.some((g) => need[g]! > free(g) + [...evicted].reduce((n, l) => n + (l.vram[g] ?? 0), 0));
     };
     // A way that can't work even on empty GPUs is out, whatever unloading
@@ -437,7 +447,7 @@ export class Scheduler {
     const reason = neverFits(model, s, o, empty, (i) => this.gpuSettings(i));
     if (reason) return new HostError(413, "too_big", reason);
     const gb = (n: number) => (n / GIB).toFixed(1);
-    const need = this.needOf(model, o);
+    const need = this.needOf(model, o, s);
     const g = o.gpus.find((i) => need[i]! > free(i) + loadedOn(i).filter((l) => !this.pinned(l.model.id)).reduce((n, l) => n + (l.vram[i] ?? 0), 0)) ?? o.gpus[0]!;
     const gpu = view.find((x) => x.index === g)!;
     const pinned = loadedOn(g).filter((l) => this.pinned(l.model.id)).reduce((n, l) => n + (l.vram[g] ?? 0), 0);
@@ -462,8 +472,8 @@ export class Scheduler {
 
   private async load(model: TextModel, o: Option, settings = this.served(model), auto = this.settings(model).contextLength === undefined): Promise<void> {
     const before = Object.fromEntries((await this.readGpus()).map((g) => [g.index, g.used]));
-    const key = `${model.id}@${placementKey(o)}`;
-    const entry: Loaded = { model, option: o, vram: { ...this.needOf(model, o) }, settings, auto, ready: false, active: 0, lastUsed: this.now(), warmed: false };
+    const key = this.vramKey(model, o, settings);
+    const entry: Loaded = { model, option: o, vram: { ...this.needOf(model, o, settings) }, settings, auto, ready: false, active: 0, lastUsed: this.now(), warmed: false };
     this.loaded.set(model.id, entry);
     this.memoryEpoch++;
     this.changing++;
@@ -741,7 +751,7 @@ export class Scheduler {
   async measuring<T>(model: TextModel, fn: () => Promise<T>): Promise<T> {
     const entry = this.loaded.get(model.id);
     if (!entry) return fn();
-    const key = `${model.id}@${placementKey(entry.option)}`;
+    const key = this.vramKey(model, entry.option, entry.settings);
     if (this.o.state.get().vram[key] !== undefined) return fn();
     const before = Object.fromEntries((await this.readGpus()).map((g) => [g.index, g.used]));
     const result = await fn();
