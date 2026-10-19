@@ -1,6 +1,6 @@
 # Brief: A worktree for each code thread in a project
 
-**Status:** Built on feature/thread-worktrees, in review.
+**Status:** Merged in #376 (35fbda8).
 
 **Branch:** `feature/thread-worktrees`. **Built by:** Codex (agent loop
 area, so PR review).
