@@ -1,6 +1,6 @@
 # Brief: Sleep's threads go after 36 hours
 
-**Status:** in review. **Branch:** `claude/project-thread-i9j6rg`.
+**Status:** merged (#361, f10fd3e). **Branch:** `claude/project-thread-i9j6rg`.
 **Built by:** the Sleep threads cleanup thread (Opus).
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md "Memory" (Deletion),
 docs/sleep.md "In code", docs/memory.md "Deletion".
@@ -38,5 +38,5 @@ No contract change beyond `sleep.prune`. No schema change.
 
 ## Handoff
 
-Done: the change above, with a test in extension/test/sleep.test.ts that
-fails without the indexing change. Next: PR review, then merge.
+Done: the change above, merged in #361, with a test in extension/test/sleep.test.ts that
+fails without the indexing change. Lunasa's older sleep threads were cleared by hand the same day. Next: nothing.
