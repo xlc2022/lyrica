@@ -14,17 +14,18 @@ import { DELEGATE_MESSAGE, outcome, Stopped, type Delegation, type Deliver, type
 const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as const, text: t }], details });
 
 const Tier = StringEnum(["cheap", "strong"] as const);
-// She picks a tier, never a model. Only a saved workflow, which a user writes, may name one.
+// She picks a tier; a model only when the person named one (a saved workflow, which a user writes, may name one too).
 const Step = Type.Object({
   task: Type.String({ description: "What to do, with everything the subagent needs: it sees none of this conversation." }),
   done: Type.Optional(Type.String({ maxLength: 1200, description: "Progress and decisions so far, for the coder’s Code task section." })),
   role: Type.Optional(Type.String({ description: "A role; coder for writing in a repository, worker otherwise." })),
   tier: Type.Optional(Tier),
+  model: Type.Optional(Type.String({ description: "Only a model the person named, in their words or as listed by action models; otherwise leave it out and pick a tier." })),
   fork: Type.Optional(Type.Boolean({ description: "Start the subagent from a copy of this conversation, not just its task." })),
 });
 
 const Params = Type.Object({
-  action: Type.Optional(StringEnum(["run", "status", "wait", "stop", "message"] as const, { description: "run (the default) starts work; the others act on a run ID." })),
+  action: Type.Optional(StringEnum(["run", "status", "wait", "stop", "message", "models"] as const, { description: "run (the default) starts work; models lists the models a step may name; the others act on a run ID." })),
   ...Step.properties,
   task: Type.Optional(Step.properties.task),
   tasks: Type.Optional(Type.Array(Step, { minItems: 1, description: "Several tasks at once; the results come back together." })),
@@ -37,6 +38,7 @@ const Params = Type.Object({
   workflow: Type.Optional(Type.String({ description: "A saved workflow's name." })),
   input: Type.Optional(Type.String({ description: "The workflow's input, for {input} in its steps." })),
   background: Type.Optional(Type.Boolean({ description: "Return a run ID at once; the result arrives as a message later." })),
+  workers: Type.Optional(Type.Integer({ minimum: 1, maximum: 8, description: "How many subagents of this run work at once, only when the person asked for more (or fewer) than the usual 2." })),
   folders: Type.Optional(Type.Array(Type.String(), { description: "Only these granted host folders. Not repository checkout paths: omit folders to read the parent's checkouts; scouts see them read-only." })),
   readOnly: Type.Optional(Type.Boolean({ description: "The subagents may read the folders but not change them." })),
   internet: Type.Optional(Type.Literal(false, { description: "false cuts the subagents off from the internet." })),
@@ -52,7 +54,7 @@ function request(p: Params): Request {
   const given = WORK.filter((k) => p[k] !== undefined);
   if (given.length !== 1) throw new Error(`give exactly one of ${WORK.join(", ")}`);
   const narrowing = { folders: p.folders, readOnly: p.readOnly, internet: p.internet };
-  if (p.task !== undefined) return { ...narrowing, task: p.task, done: p.done, role: p.role, tier: p.tier, ...(p.fork ? { fork: true } : {}) };
+  if (p.task !== undefined) return { ...narrowing, task: p.task, done: p.done, role: p.role, tier: p.tier, ...(p.model ? { model: p.model } : {}), ...(p.fork ? { fork: true } : {}) };
   if (p.workflow !== undefined) return { ...narrowing, workflow: p.workflow, input: p.input };
   const k = given[0] as "tasks" | "chain" | "loop" | "council";
   return { ...narrowing, [k]: p[k] } as Request;
@@ -128,12 +130,18 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
       promptGuidelines: [
         "Pick a delegate tier by the work, never a model: cheap for searching, reading, summarizing and checking; strong for writing, judgment, and changing code or files. A role brings its own tier.",
         "A subagent sees none of this conversation, so put everything it needs into its task. Only when it truly needs the whole conversation (trying approaches side by side, say) use fork: true; it costs the whole conversation again for each fork.",
-        "Use background: true for long work, and carry on; its result arrives as a message on a later turn.",
+        "Use background: true for long work, and carry on; its result arrives as a message on a later turn. To check on it, use status: writers in worktrees commit to their own branches, so the main checkout shows nothing until you merge them.",
+        "Pick a tier, not a model, unless the person names models (\"use qwen and gpt for this\"): then give each step its model in their words. If a name fits no one model, the error lists the closest; ask the person which they meant. A cloud model spends their quota, so use one only when they named it.",
+        "Up to 2 subagents of a run work at once. Set workers only when the person asks for more or fewer; with models named, as many as models is usually right.",
         "Talk to a subagent with delegate action message: it joins the work in progress, answers its question, or continues one that has ended with everything it knew. Ask the person you're talking with first if a question is theirs to decide.",
       ],
       parameters: Params,
       async execute(_id, p, signal, _onUpdate, ctx) {
         const action = p.action ?? "run";
+        if (action === "models") {
+          const list = delegation.models(thread);
+          return text(list.length ? list.map((m) => `${m.label} (${m.local ? "local" : "cloud"})`).join("\n") : "This thread has no chat models to name.");
+        }
         if (action === "status") {
           const rows = delegation.status(thread).filter((r) => !p.id || r.run === p.id);
           const u = delegation.usage(thread);
@@ -143,7 +151,7 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
           const req = request(p);
           // A fork copies the stored conversation, so this turn's messages are stored first.
           syncEntries(ctx.sessionManager, thread.view.own, thread.threadId);
-          const run = delegation.start(thread, req, { background: !!p.background, budget: requestBudget });
+          const run = delegation.start(thread, req, { background: !!p.background, budget: requestBudget, workers: p.workers });
           if (p.background) return text(`Started run ${run.id} in the background. Its result will arrive as a message.`, { runId: run.id, status: run.status });
           const stop = () => run.stop();
           signal?.addEventListener("abort", stop, { once: true });

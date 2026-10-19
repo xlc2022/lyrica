@@ -312,8 +312,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   general thread can switch. Each thread can also override which model
   handles which task, including the main conversation and its subagents.
   That applies to every thread, with or without folders.
-- **Delegation.** When Lyrica delegates, she picks a tier, never a model,
-  following a simple rule:
+- **Delegation.** When Lyrica delegates, she picks a tier, following a
+  simple rule (a model only when the person names one, in their own words,
+  and she asks which they meant when it fits none or several):
   - **cheap** for searching, reading, summarizing and checking;
   - **strong** for writing, judgment, and changing code or files.
 

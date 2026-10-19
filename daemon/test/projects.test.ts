@@ -96,6 +96,26 @@ describe("projects", () => {
     expect(restored.tools!.map(t => t.function.name)).toContain("react");
   });
 
+  it("switches her own model when asked, and Thread settings and the model pill follow at once", async () => {
+    const s = await setup();
+    const other = await fakeOpenAI({ label: "box", models: [{ id: "gemma-5-12b" }] });
+    other.respond(() => ({ text: "From gemma." }));
+    expect((await s.ada.post(`${s.u}/endpoints`, { name: "box", kind: "local", baseUrl: other.baseUrl })).status).toBe(200);
+    const settings = async () => (await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body;
+    s.script("chat").push(tool({ action: "model", model: "llama" }), tool({ action: "model", model: "gemma" }), { text: "Switched." });
+    const { events } = await s.say("Use gemma from now on");
+    const [vague, switched] = ends(events);
+    expect(vague!.isError).toBe(true);
+    expect(JSON.stringify(vague)).toContain("Ask the person");
+    expect(JSON.stringify(switched)).toContain("box/gemma-5-12b");
+    expect(events.some((e) => e.type === "settings")).toBe(true);
+    expect((await settings()).models.chat).toMatchObject({ label: "box/gemma-5-12b", source: "thread" });
+    // The turn that asked finished on the old model; the next one runs on gemma.
+    expect(other.requests).toHaveLength(0);
+    await s.say("Hello");
+    expect(other.requests).toHaveLength(1);
+  });
+
   it("uses the project code default for new and routine threads while children keep independent choices", async () => {
     const s = await setup();
     expect((await s.ada.patch(s.path, { threadsCode: true })).status).toBe(200);

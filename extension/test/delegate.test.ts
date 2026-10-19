@@ -226,6 +226,81 @@ describe("delegate", () => {
     expect(u.inputTokens + u.outputTokens).toBe(total);
   });
 
+  it("runs as many at once as the person asked for, on the models they named in their own words", async () => {
+    const s = await setup({ limits: { concurrency: 2 } });
+    let working = 0;
+    let most = 0;
+    const slow = async (r: ChatRequest) => {
+      most = Math.max(most, ++working);
+      for (let t = 0; t < 100 && working < 3; t++) await sleep(10);
+      await sleep(30);
+      working--;
+      return { text: `done: ${told(r)}` };
+    };
+    s.cloud.respond(slow);
+    s.local.respond(slow);
+    const parent = s.thread();
+    const tasks = [{ task: "a", model: "qwen 27b" }, { task: "b", model: "deepseek flash" }, { task: "c", model: "gpu/qwen3.8-27b" }].map((t) => ({ ...t, role: "scout" }));
+    const run = s.delegation.start(parent, { tasks }, { background: false, budget: s.delegation.newBudget(), workers: 3 });
+    await run.checkpoint();
+    expect(run.status).toBe("finished");
+    expect(most).toBe(3);
+    expect(s.delegation.status(parent).map((r) => r.model).sort()).toEqual(["gpu/qwen3.8-27b", "gpu/qwen3.8-27b", "openrouter/deepseek/deepseek-4.1-flash"]);
+
+    // A name that fits no one model: the closest are offered, and nothing starts.
+    const vague = await s.run(parent, { task: "d", role: "scout", model: "qwen 3.9" });
+    expect(vague.status).toBe("failed");
+    expect(vague.result).toContain("Closest: gpu/qwen3.8-27b");
+    expect(vague.result).toContain("Ask the person");
+    expect(s.delegation.status(parent)).toHaveLength(3);
+    // A local-only thread can't name a cloud model, even by its whole label.
+    const local = await s.run(s.thread("general", { localOnly: true }), { task: "e", role: "scout", model: "openrouter/deepseek/deepseek-4.1-flash" });
+    expect(local.status).toBe("failed");
+    expect(s.delegation.models(s.thread("general", { localOnly: true })).map((m) => m.label)).toEqual(["gpu/qwen3.8-27b"]);
+  });
+
+  it("stops a subagent whose model goes quiet, not one that keeps working, and not while it waits for approval", async () => {
+    const scratch = tempDir();
+    const target: ExecutionTarget = { name: "sandbox", cwd: async () => scratch, ops: () => ({ bash: createLocalBashOperations() } as unknown as ToolOps), folders: () => [] };
+    let answer = gate();
+    let ws!: Workspace;
+    const s = await setup({
+      limits: { idleMs: 400 },
+      workspace: (m) => (ws = new (class extends Workspace { override targetFor(_t: WorkspaceThread) { return target; } })(m.keyring, m.users, { excludePorts: [] })),
+      approve: async () => { await answer.opened; return true; },
+    });
+    const parent = s.thread();
+    ws.settings(s.ada.id).setThread(parent.threadId, "general", { mode: "acceptEdits" });
+    const hush = gate();
+    s.cloud.respond(async (r) => {
+      const task = told(r);
+      if (task === "quiet") { await hush.opened; return { text: "too late" }; }
+      if (task === "ask") return r.messages.at(-1)!.role === "tool" ? { text: "asked and done" } : { tools: [{ name: "bash", args: { command: "echo ok" } }] };
+      // Busy: a tool call every 150 ms, five times, for longer than idleMs in all.
+      const calls = r.messages.filter((m) => m.role === "tool").length;
+      await sleep(150);
+      return calls < 5 ? { tools: [{ name: "read_memory", args: { path: "nothing" } }] } : { text: "busy and done" };
+    });
+    const quiet = await s.run(parent, { task: "quiet", role: "scout" });
+    hush.open();
+    expect(quiet.status).toBe("stopped");
+    expect(quiet.result).toContain("no sign of work");
+    expect(s.delegation.status(parent)[0]!.status).toBe("stopped");
+
+    const busy = await s.run(parent, { task: "busy", role: "scout" });
+    expect(busy.status).toBe("finished");
+    expect(busy.result).toContain("busy and done");
+
+    // Waiting on the person for longer than idleMs doesn't count against it.
+    const pending = s.delegation.start(parent, { task: "ask", role: "worker" }, { background: false, budget: s.delegation.newBudget() });
+    await sleep(800);
+    answer.open();
+    await pending.checkpoint();
+    expect(pending.status).toBe("finished");
+    expect(pending.result).toContain("asked and done");
+    answer = gate();
+  });
+
   it("passes each step's output on in a chain", async () => {
     const s = await setup();
     s.cloud.respond((r) => ({ text: told(r).includes("alpha") ? "beta, from alpha" : "alpha" }));

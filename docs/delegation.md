@@ -29,9 +29,15 @@ subagent:
   with the parent's `CallContext` as it is when the subagent starts: the
   parent's `subagent.cheap` or `subagent.strong` model (the coder instead
   inherits the parent's `code` list and context limit). She picks a tier,
-  never a model; only a saved workflow, which a user writes, may name a model
-  the parent allows, by its offering ID or as `<endpoint>/<model>`. In a private or local-only thread it is always a local
-  model. A refused model fails the run before any thread is made;
+  and names a model only when the person named one (or a saved workflow,
+  which a user writes, does). A step's `model` is an offering ID, an
+  `<endpoint>/<model>` label, or the person's own words: `matchModel` takes
+  the one chat model the parent may use whose model ID or label holds every
+  word of it. A name that fits none, or several, fails the run with the
+  closest few, for her to ask the person which they meant;
+  `delegate({ action: "models" })` lists the chat models she may name, each
+  marked local or cloud. In a private or local-only thread it is always a
+  local model. A refused model fails the run before any thread is made;
 - gets its workspace from `inheritSettings`: the parent's folders (or the
   ones asked for), read-only for a read-only role or `readOnly: true`, and
   internet off if asked, and then Web search off too, so it has neither
@@ -230,12 +236,20 @@ the thread's scratch folder (`/workspace`).
   most 3. Below the limit, a subagent gets `delegate` too;
 - `concurrency`: subagents working at once per parent thread, default 2. A
   subagent holds a slot only while it works on a turn, so a loop or a paused
-  subagent never blocks the rest;
+  subagent never blocks the rest. A run started with `workers` (1 to 8, set
+  only when the person asks for more or fewer) has slots of its own instead,
+  at most `runsPerRequest`;
 - `runsPerRequest`: subagents one message to the parent may start, default 8,
   counting the ones its subagents start;
-- `timeoutMs`: per stretch of work, default 15 minutes. A timed-out run is
-  stopped;
+- `timeoutMs`: per stretch of work, default 90 minutes, however busy;
+- `idleMs`: how long a subagent may go with no sign of work (a streamed
+  token, a tool call or result), default 5 minutes. A pending approval
+  doesn't count. Neither limit counts time waiting for a slot. A subagent
+  past either is stopped, with the reason in its result;
 - `notes`: notes per stretch of work, default 3.
+
+The journal gets one line when a subagent starts (run, thread, role and
+model), finishes or is stopped (with the reason), never its text.
 
 Each subagent's tokens are recorded as it works. `usage(thread)` sums a parent
 thread's direct runs. `Models.usage` follows their descendants at every depth
@@ -352,6 +366,11 @@ checks it reaches her, and with a real model which she picks. Code:
   `read_memory` cuts an entry. Read as from another thread, so entries
   written unlogged are left out, and an unlogged thread is refused. A
   child that isn't a project's thread can't read.
+- `model({ model })`: switches the calling thread to a chat model the person
+  named, from her next turn (daemon side in `ChildThreads.model`; see
+  contracts.md, code mode). A name that fits no one model is refused with
+  the closest, for her to ask which they meant. Every hosted thread but a
+  subagent's has it.
 - `stop({ id })`: stops one of the thread's children (in a project chat,
   one of its threads) as Pause does: the running turn is aborted and the
   child is idle. The project's threads can't stop each other.

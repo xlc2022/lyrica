@@ -14,6 +14,7 @@ import { baseName } from "./identity.ts";
 import { copyIdentity } from "./library.ts";
 import { acceptedSettings, ANSWER_SETTINGS, checkSettings, DEFAULT_CONTEXT, type AnswerSettings, type SettingSource } from "./settings.ts";
 import { collectRefs, isList, mapMembers, moveSettings, refId, rewrite, type Entry, type Use } from "./refs.ts";
+import type { Named } from "./match.ts";
 import { addNotice, MIXED_PRESET, NOTICE, syncLegacy } from "./schema.ts";
 import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, speakAt, transcribeAt, wavSeconds, type SpeechTarget } from "./speech.ts";
 
@@ -24,6 +25,7 @@ export { baseName } from "./identity.ts";
 export { acceptedSettings, ANSWER_SETTINGS, payloadFields, replyCap, DEFAULT_CONTEXT, type AnswerSettings, type SettingSource } from "./settings.ts";
 export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
 export { refId, type Entry, type Use } from "./refs.ts";
+export { matchModel, unmatched, type Match, type Named } from "./match.ts";
 export { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, pcmSeconds, SPEECH_CONTENT_TYPE, SPEECH_FORMAT, wavData, wavSeconds } from "./speech.ts";
 
 /** A cloud model was asked for where only local models are allowed. Nothing falls back. */
@@ -2580,6 +2582,13 @@ export class Models {
       const prompt = median(ps.map((p) => p.promptTokPerSec));
       return [id, { ...(tok !== undefined ? { tokPerSec: tok } : {}), ...(prompt !== undefined ? { promptTokPerSec: prompt } : {}) }];
     }));
+  }
+
+  /** The chat models a context may use, by label, for her to name: listed, and not image, speech or embedding models. */
+  textModels(ctx: CallContext): (Named & { local: boolean })[] {
+    return this.allowed(ctx).flatMap(({ endpoint, offerings }) => offerings
+      .filter((o) => o.status === "listed" && o.tools !== false && !o.embedding && !o.image && !o.transcribe && !o.speak && !o.recipe)
+      .map((o) => ({ id: o.id, label: labelOf(endpoint, o), local: endpoint.kind === "local" })));
   }
 
   /** Every endpoint and model a context may use. For a restricted context, local endpoints only. */
