@@ -134,7 +134,7 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
         + "Each works in its own thread under this one, with this thread's folders or fewer. Also: status, wait, stop and message on a run ID.",
       promptSnippet: "hand work to subagents, in the foreground or background",
       promptGuidelines: [
-        "Pick a delegate tier by the work, never a model: cheap for searching, reading, summarizing and checking; strong for writing, judgment, and changing code or files. A role brings its own tier.",
+        "Pick a delegate tier by the work: cheap for searching, reading, summarizing and checking; strong for writing, judgment, and changing code or files. A role brings its own tier.",
         "A subagent sees none of this conversation, so put everything it needs into its task. Only when it truly needs the whole conversation (trying approaches side by side, say) use fork: true; it costs the whole conversation again for each fork.",
         `Use background: true for long work, and carry on; its result arrives as a message on a later turn.${CHECK_IN}`,
         MODELS_GUIDELINE,
