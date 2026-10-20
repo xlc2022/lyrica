@@ -1,6 +1,6 @@
 # Brief: Skills
 
-**Status:** Building on `claude/project-thread-30ndu9` (Roadmap thread).
+**Status:** Built on `claude/project-thread-30ndu9` (Roadmap thread), in review.
 Roadmap item 4. The owner chose it on 2026-10-20 and decided: her own skills
 need approval, with a setting to approve them automatically, and skills load
 in every thread.
@@ -55,6 +55,10 @@ General prompt.
   follow it.
 - Subagents don't get it. A coder works in the parent's checkouts, and the
   parent passes on what it needs.
+- Repository skills are looked up only when the thread has checkouts, so a
+  thread without any starts no sandbox for them.
+- `save_skill`'s words are counted in daemon/test/context.test.ts's headroom
+  (`SKILL_TOOL_TEXT`), as Agent loop asked.
 - `read_memory` takes `s:<name>` and returns the body of an active skill in
   that thread's pools.
 

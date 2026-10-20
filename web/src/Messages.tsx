@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { get, post, threadPath, u, type GoAhead, type ImagePart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
+import { SkillCard } from "./Skills.tsx";
 import { QuestionCard } from "./Question.tsx";
 import { storedLiveCopies, storedUserItems, type LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
@@ -490,6 +491,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
   const open = part.type === "tool" ? env.openTools.has(part.toolCallId) : localOpen;
   const toggle = () => (part.type === "tool" ? env.toggleTool(part.toolCallId) : setLocalOpen(!localOpen));
   if (part.type === "tool" && part.name === "delegate") return <SubagentCard part={part} env={env} />;
+  if (part.type === "tool" && part.name === "save_skill" && part.result !== undefined && !part.isError) return <SkillCard args={part.args} call={part.toolCallId} userId={env.userId} />;
   // While her plan waits for an answer, its card shows it; the marker would be a second copy.
   if (part.type === "tool" && part.name === "propose_plan" && part.result === undefined) return null;
   if (part.type === "tool" && part.name === "threads") {

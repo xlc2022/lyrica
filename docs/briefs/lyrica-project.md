@@ -55,6 +55,11 @@ and carries its children into a new project. The interface is built under
    Allow rules, pushes as Ask, and commands she must leave to the user as
    Forbid. These apply to the project chat, its threads and subagents;
    Always allow on a sandbox command card saves its prefix for this project.
+   Project settings → General → **Checks** lists the commands that run
+   when one of her code turns ends (`npm run typecheck`, `npm test`), and
+   her code threads read the repository's AGENTS.md on their own. Skills she
+   saves for recurring jobs (a CI fix, a release) wait for approval in
+   Settings → Skills unless auto-approve is on (DESIGN.md, "Skills").
 2. Paste the **Project instructions** below into Project settings →
    Memory → Instructions (the count shows it is under 2,000; only the owner can
    change them).

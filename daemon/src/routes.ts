@@ -114,6 +114,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const settings = s().workspace.settings(user.id); settings.setPhotoCloudPolicy(policy);
       return { policy: settings.photoCloudPolicy() };
     }),
+    // --- Skills (docs/briefs/skills.md) ---
+    ...skillRoutes(d, u),
     // --- State, unlock, login ---
     route("GET", "/api/state", (r) => d.state(r.cookie)),
     route("POST", "/api/unlock", async (r) => {
@@ -3036,4 +3038,53 @@ function pushInfo(d: Lyricad, user: User): Api.PushInfo {
     const url = settings ? new URL(settings.url) : undefined;
     return { host: url?.host ?? "", path: url ? "/•••" : "", set: !!settings, token: !!settings?.token, link: settings?.link ?? false, ...(lastFailure ? { lastFailure } : {}) };
   } finally { db.close(); }
+}
+
+/** The user's skill library: list, add their own, approve or decline hers, remove, and auto-approve. */
+function skillRoutes(d: Lyricad, u: string): Route[] {
+  const s = () => d.services!;
+  const page = (userId: string): Api.Skills => {
+    const library = s().workspace.settings(userId).skills;
+    return { skills: library.all(), autoApprove: library.autoApprove() };
+  };
+  const pool = (r: Request): Pool => {
+    const p = r.params.pool;
+    if (p !== "general" && p !== "private") throw new HttpError(404, "not found");
+    return p;
+  };
+  const refused = <T>(fn: () => T, status = 400): T => {
+    try { return fn(); } catch (err) { throw err instanceof HttpError ? err : new HttpError(status, (err as Error).message); }
+  };
+  return [
+    route("GET", `${u}/skills`, (r): Api.Skills => page(d.userFor(r).id)),
+    route("POST", `${u}/skills`, async (r): Promise<Api.SkillInfo> => {
+      const user = d.userFor(r);
+      const change = await r.json<Api.SkillChange>();
+      const p = change.pool ?? "general";
+      if (p !== "general" && p !== "private") throw new HttpError(400, "a skill's pool is general or private");
+      return refused(() => s().workspace.settings(user.id).skills.put(change, p));
+    }),
+    route("PUT", `${u}/skills/auto-approve`, async (r): Promise<Api.Skills> => {
+      const user = d.userFor(r);
+      const { autoApprove } = await r.json<Api.SkillsAutoApprove>();
+      if (typeof autoApprove !== "boolean") throw new HttpError(400, "autoApprove is true or false");
+      s().workspace.settings(user.id).skills.setAutoApprove(autoApprove);
+      return page(user.id);
+    }),
+    route("POST", `${u}/skills/:pool/:name/approve`, (r): Api.Skills => {
+      const user = d.userFor(r);
+      refused(() => s().workspace.settings(user.id).skills.approve(pool(r), r.params.name!), 404);
+      return page(user.id);
+    }),
+    route("POST", `${u}/skills/:pool/:name/decline`, (r): Api.Skills => {
+      const user = d.userFor(r);
+      refused(() => s().workspace.settings(user.id).skills.decline(pool(r), r.params.name!), 404);
+      return page(user.id);
+    }),
+    route("DELETE", `${u}/skills/:pool/:name`, (r): Api.Skills => {
+      const user = d.userFor(r);
+      s().workspace.settings(user.id).skills.remove(pool(r), r.params.name!);
+      return page(user.id);
+    }),
+  ];
 }

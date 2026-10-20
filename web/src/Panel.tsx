@@ -10,6 +10,7 @@ import {
 } from "./api.ts";
 import { PushSection } from "./Push.tsx";
 import { RoutinesSection } from "./Routines.tsx";
+import { SkillsSection } from "./Skills.tsx";
 import { ClaudeCodeSection } from "./ClaudeCode.tsx";
 import { CodexSection } from "./Codex.tsx";
 import { GitAccountsSection } from "./Git.tsx";
@@ -52,6 +53,7 @@ const SETTINGS: SectionDef[] = [
   { key: "mcp", label: "MCP servers", body: (ctx) => <McpServersSection ctx={ctx} /> },
   { key: "claude-code", label: "Claude Code and Codex", aliases: ["codex"], body: (ctx) => <><ClaudeCodeSection ctx={ctx} /><CodexSection ctx={ctx} /></> },
   { key: "routines", label: "Routines", body: (ctx) => <RoutinesSection ctx={ctx} /> },
+  { key: "skills", label: "Skills", body: (ctx) => <SkillsSection ctx={ctx} /> },
   { key: "portraits", label: "Portrait photos", body: (ctx) => <PortraitPhotosSection key={ctx.user.id} userId={ctx.user.id} /> },
 ];
 const ADMIN: SectionDef[] = [

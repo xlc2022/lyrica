@@ -45,7 +45,7 @@ const ESTIMATED: ContextPartName[] = ["persona", "about", "memory", "pinned", "r
 /** Which part each prompt section counts towards. */
 const PART: Record<Section["name"], ContextPartName> = {
   persona: "persona", topics: "persona", notice: "persona", user: "persona", time: "persona",
-  about: "about", opening: "memory", wake: "memory", pages: "memory", folders: "memory", project: "memory", pinned: "pinned", recall: "recall",
+  about: "about", opening: "memory", wake: "memory", pages: "memory", folders: "memory", project: "memory", pinned: "pinned", recall: "recall", skills: "memory",
 };
 const chars = (n: number) => Math.ceil(n / 4);
 

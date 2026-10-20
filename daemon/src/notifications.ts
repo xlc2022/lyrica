@@ -129,6 +129,16 @@ function collect(d: Lyricad, user: User, show: Api.Display): Api.Notification[] 
         actions: [{ label: "Drop", method: "DELETE", path: `${u}/proposals/${dr.id}`, danger: true }],
       });
     }
+    // Her skills waiting for approval, in the pools the display shows.
+    for (const sk of s.workspace.settings(user.id).skills.all()) {
+      if (sk.state !== "waiting" || !shownPool(sk.pool)) continue;
+      const path = `${u}/skills/${sk.pool}/${encodeURIComponent(sk.name)}`;
+      out.push({
+        id: `skill:${sk.pool}/${sk.name}`, type: "suggestion", title: `A new skill: ${sk.name}`, detail: sk.description.slice(0, DETAIL),
+        scope: sk.pool, decision: true, section: "settings/skills", ...(sk.thread ? { thread: { pool: sk.pool, id: sk.thread } } : {}), at: sk.at,
+        actions: [{ label: "Approve", method: "POST", path: `${path}/approve` }, { label: "Decline", method: "POST", path: `${path}/decline`, danger: true }],
+      });
+    }
     // An update that failed its probation and was rolled back (administrators, for a week).
     if (user.admin) {
       const rb = readUpdates(d.updatePaths, { version: BUILD.version ?? "0", build: BUILD.build ?? "dev" }).lastRollback;

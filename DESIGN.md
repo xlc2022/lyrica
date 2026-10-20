@@ -1640,12 +1640,40 @@ Details in [docs/memory.md](docs/memory.md).
   in transit between users, persona suggestions waiting for administrators,
   and each thread's folder, Claude Code folder and file snapshots in the
   home workspace. Users, passwords and keys, endpoints, models, presets,
-  machines, Git accounts, MCP servers, delegate roles, settings, portrait
-  photos and Lyrica's persona and name stay, and nobody is logged out.
+  machines, Git accounts, MCP servers, delegate roles, settings, skills,
+  portrait photos and Lyrica's persona and name stay, and nobody is logged out.
   Anything running is sent a stop first and the wipe waits until everything
   has stopped. A locked user's pools go at once; their user.db rows and
   thread folders at their next unlock. Backups, update snapshots, branches
   and anything already sent to a model provider are not covered.
+
+### Skills
+
+Principles 3, 6 and 8 (2026-10-20, roadmap item 4). A skill is a named
+procedure for a job that comes up again: a name, a one-line description of
+when to use it, and steps in Markdown (at most 8,000 characters).
+
+- **Where skills come from.**
+  - Granted repositories: `.claude/skills/*/SKILL.md` and
+    `.agents/skills/*/SKILL.md` in each checkout, at most 20 per
+    repository.
+  - The person: written in **Settings → Skills**.
+  - Lyrica: she saves one with `save_skill` after a job worked, or when
+    asked to remember how to do something.
+- **Storage.** The person's and hers live in the user's encrypted `user.db`
+  (`skills`, user step 17), at most 100. A skill she saves from a Private
+  thread belongs to Private and is listed only in Private threads.
+- **Approval.** Her skills wait for the person's approval, on a card in her
+  thread, in Notifications and in Settings → Skills, unless the person turns
+  on **Approve her skills automatically**. A new version of a skill waits
+  beside the active one, which stays until the new one is approved. Nothing
+  from a repository or from her can approve a skill or turn auto-approve on.
+- **In every thread.** A stable `skills` section lists each one as its name
+  and description, capped at 40 skills and 4,000 characters. She reads the
+  steps on demand: with `read_memory` and `s:<name>` for a library skill,
+  or with `read` at its path for a repository's. Subagents don't get the
+  list.
+- Skills are settings, not memory, so a memory wipe keeps them.
 
 ## Sleep
 

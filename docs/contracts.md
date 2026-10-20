@@ -1046,6 +1046,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `read_memory` alike. The wake phase hides the journal and sleep's own
     threads;
   - `sleep`: the `/sleep` command, where the host offers it (the bench);
+  - `skills`: `{ index(), read(name), propose?(input, toolCallId) }`.
+    `index()` gives the stable `skills` section for the turn
+    (`skillsIndex(ListedSkill[])`, at most 40 skills and `SKILLS_IN_ALL`,
+    4,000 characters, reported under the `skills` budget). `read(name)` gives
+    a library skill's body for `read_memory` `s:<name>`. `propose` registers
+    `save_skill({ name, description, body })`, which is turned off with
+    `remember` in an unlogged thread. lyricad lists the user's active skills
+    for the thread's pool, then `repoSkills(target, checkouts)`;
   - `name()`: her name for this deployment, read every turn. Automatic
     recall leaves it out of the query (`skip`) and asks for two shared
     words (`minWords: 2`); `lyricad` passes `selfName`.
@@ -1135,6 +1143,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `read`, `write`, `edit` and `bash` (Workspace thread; see
     [workspace.md](workspace.md));
   - `remember`, `recall` and `read_memory` (Memory thread);
+  - `save_skill` (Skills; see `LyricaOptions.skills`);
   - `delegate`, and `ask_parent` in subagents (Delegation thread; see
     [delegate](#delegate));
   - `threads`, in every hosted thread but a subagent's
@@ -1894,6 +1903,11 @@ settings(userId).setCommandRules(pool, project, rules) / addCommandRule(pool, pr
 settings(userId).checks(pool, project): string[] / setChecks(pool, project, checks)
 // checkChecks: at most 8 commands, each one line of at most 300 characters, no control characters; blanks dropped.
 // user step 16 adds project_settings.checks, JSON default [].
+settings(userId).skills: SkillLibrary   // core/src/skills.ts; user step 17 adds the skills table
+// all() / active(pool) / read(pool, name) / byCall(call) / autoApprove() / setAutoApprove(on)
+// put(input, pool?) the person's, active at once; propose(input, pool, thread, call) hers: active with auto-approve, else waiting
+// approve(pool, name) / decline(pool, name) / remove(pool, name); checkSkill and SKILL_LIMITS (name 64, description 200, body 8000, library 100).
+// A Private thread sees General's and Private's skills; a General thread only General's.
 forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), madeFiles(paths), madeSince(since), fileNotes() },
               // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:

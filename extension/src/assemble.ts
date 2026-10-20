@@ -17,6 +17,8 @@ export interface Budgets {
   user: number;
   recall: number;
   time: number;
+  /** The skills index (docs/briefs/skills.md). */
+  skills: number;
 }
 
 export const DEFAULT_BUDGETS: Budgets = {
@@ -34,6 +36,7 @@ export const DEFAULT_BUDGETS: Budgets = {
   user: 600,
   recall: 4000,
   time: 300,
+  skills: 4000,
 };
 
 export interface PromptInput {

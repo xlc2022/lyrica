@@ -7,7 +7,8 @@
 // starts a child thread with that title (then says "Started it."), "suggest: <a>, <b>"
 // proposes threads with those titles (then says "Suggested."), "steps: done <a>;
 // doing <b>; todo <c>" sets the thread's checklist (then says "Checklist set."), "plan: <plan>"
-// calls propose_plan with that plan (then says "On it."), "recall: <n>" calls
+// calls propose_plan with that plan (then says "On it."), "skill: <name> | <description> | <steps>"
+// calls save_skill (then says "Saved it."), "recall: <n>" calls
 // recall n times in a row before the echo, "reply: <markdown>"
 // answers with that markdown as written (the echo's "You said: " would put a
 // fence mid-line, where it is not a fence), a look at a project's
@@ -134,6 +135,7 @@ function fakeModel() {
       }
       const ask = /(?:^|\n\n)ask(?: twice)?: (.+)/.exec(said)?.[1];
       const plan = /plan: (.+)/.exec(said)?.[1];
+      const skill = /^skill: (.+?)\|(.+?)\|([\s\S]+)/.exec(said);
       const child = /^start(?: long| ask)?: (.+)/.exec(said)?.[1];
       // "start long: <title>" gives the child a task of many lines, for the collapsed message's Show more.
       const task = said.startsWith("start ask:") ? `ask: Which scope for ${child}?` : said.startsWith("start long:") ? Array.from({ length: 30 }, (_, i) => `Step ${i + 1} of the plan for ${child}.`).join("\n\n") : `Work on ${child}.`;
@@ -169,13 +171,13 @@ function fakeModel() {
       } else if (ask || child || suggest || steps || fold || draft) {
         send({ role: "assistant", content: child ? "Started it." : steps ? "Checklist set." : "Suggested." });
         send({}, "stop");
-      } else if ((command || plan) && last?.role !== "tool") {
-        const call = command ? { name: "bash", arguments: JSON.stringify({ command }) } : { name: "propose_plan", arguments: JSON.stringify({ plan }) };
+      } else if ((command || plan || skill) && last?.role !== "tool") {
+        const call = command ? { name: "bash", arguments: JSON.stringify({ command }) } : skill ? { name: "save_skill", arguments: JSON.stringify({ name: skill[1]!.trim(), description: skill[2]!.trim(), body: skill[3]!.trim() }) } : { name: "propose_plan", arguments: JSON.stringify({ plan }) };
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: call }] });
         send({}, "tool_calls");
       } else {
         const verbatim = /^reply:\s*([\s\S]+)/.exec(said)?.[1];
-        const text = command ? "The command finished." : plan ? "On it." : verbatim ?? `You said: ${said.slice(0, 200)}. This reply comes from the fake ${chat.model}, in a few pieces.`;
+        const text = command ? "The command finished." : plan ? "On it." : skill ? "Saved it." : verbatim ?? `You said: ${said.slice(0, 200)}. This reply comes from the fake ${chat.model}, in a few pieces.`;
         // A message that says "slowly" streams slowly enough to be read aloud while it is written.
         const pace = /slowly/.test(said) ? 300 : 30;
         for (const piece of text.match(/.{1,12}/gs) ?? []) {

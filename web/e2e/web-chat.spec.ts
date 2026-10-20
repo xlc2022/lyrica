@@ -52,6 +52,39 @@ test("Settings → Claude Code and Codex shows Codex's own sign-in and then Sign
   await noHorizontalScroll(page);
 });
 
+test("her saved skill waits on a card until Approve, then shows in Settings → Skills, where Add skill and Remove work", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "skill: render-check | Before saying a scene renders. | 1. Take a screenshot.");
+  await expect(page.getByText("Saved it.")).toBeVisible();
+  const card = page.getByRole("group", { name: "Skill render-check" });
+  await expect(card).toHaveAttribute("data-pending", "Skill");
+  await card.getByText("Steps").click();
+  await expect(card.locator(".skill-body")).toHaveText("1. Take a screenshot.");
+  await card.getByRole("button", { name: "Approve" }).click();
+  await expect(card.getByText(/In .*'s skills/)).toBeVisible();
+  await expect(card.getByRole("button", { name: "Approve" })).toHaveCount(0);
+
+  await page.goto(`/#/u/${userId}/settings/skills`);
+  const section = page.getByRole("region", { name: "Skills" });
+  await expect(section.locator(".skill")).toHaveCount(1);
+  await expect(section.locator(".skill").first()).toContainText("render-check");
+  await section.getByRole("button", { name: "Add skill" }).click();
+  await section.getByLabel("Name").fill("Release Notes");
+  await expect(section.getByText(/A name is lowercase letters/)).toBeVisible();
+  await expect(section.getByRole("button", { name: "Save" })).toBeDisabled();
+  await section.getByLabel("Name").fill("release-notes");
+  await section.getByLabel("When to use it").fill("When writing a release's notes.");
+  await section.getByLabel("Steps").fill("List what changed, newest first.");
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(section.locator(".skill")).toHaveCount(2);
+  await expect(section.locator(".skill").first()).toContainText("Yours");
+  await section.locator(".skill").first().getByRole("button", { name: "Remove" }).click();
+  await section.getByRole("group", { name: "Remove" }).getByRole("button", { name: "Remove" }).click();
+  await expect(section.locator(".skill")).toHaveCount(1);
+  await noHorizontalScroll(page);
+});
+
 test("Portrait photos uploads, downloads, confirms deletion, and saves the cloud setting across reloads", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const base = `/api/u/${userId}/photos-of-me`;

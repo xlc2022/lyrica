@@ -69,20 +69,28 @@ export interface SkillToolOptions {
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: undefined });
 
+/** save_skill's words in every thread's prompt and tool list, which the daemon's context headroom counts. */
+export const SKILL_TOOL_TEXT = {
+  description: "Save a skill: a procedure for a job that comes up again. Saving a name you have replaces that skill.",
+  snippet: "save a reusable procedure as a skill",
+  guideline: "Save a skill with save_skill after a job you'll do again worked, or when asked to remember how to do something: the steps that worked, no credentials and no facts about the person (those are notes).",
+  name: "Lowercase words joined by -, such as render-check.",
+  when: `One line, at most ${SKILL_LIMITS.description} characters: when to use it.`,
+  body: `The steps in Markdown, at most ${SKILL_LIMITS.body} characters.`,
+};
+
 export function registerSkillTool(pi: ExtensionAPI, o: SkillToolOptions): void {
+  const t = SKILL_TOOL_TEXT;
   pi.registerTool({
     name: "save_skill",
     label: "Save skill",
-    description: "Save a skill: a procedure for a job that comes up again. Saving a name you have replaces that skill.",
-    promptSnippet: "save a reusable procedure as a skill",
-    promptGuidelines: [
-      "Save a skill with save_skill after a job you will do again worked, or when the person asks you to remember how to do something. Write the steps that worked, not the story of this job.",
-      "A skill holds no credentials and no facts about the person: those go in notes.",
-    ],
+    description: t.description,
+    promptSnippet: t.snippet,
+    promptGuidelines: [t.guideline],
     parameters: Type.Object({
-      name: Type.String({ description: "Lowercase words joined by -, such as render-check." }),
-      description: Type.String({ description: `One line, at most ${SKILL_LIMITS.description} characters: when to use it.` }),
-      body: Type.String({ description: `The steps in Markdown, at most ${SKILL_LIMITS.body} characters.` }),
+      name: Type.String({ description: t.name }),
+      description: Type.String({ description: t.when }),
+      body: Type.String({ description: t.body }),
     }),
     async execute(toolCallId, params) {
       const s = o.propose(params, toolCallId);

@@ -141,9 +141,9 @@ export class SkillLibrary {
     })();
   }
 
-  /** Removes a skill: its active and waiting versions. */
+  /** Removes a skill, every version of it. */
   remove(pool: Pool, name: string): void {
-    this.db.prepare("DELETE FROM skills WHERE pool = ? AND name = ? AND state IN ('active', 'waiting')").run(pool, name);
+    this.db.prepare("DELETE FROM skills WHERE pool = ? AND name = ?").run(pool, name);
   }
 
   private limit(pool: Pool, name: string): void {
