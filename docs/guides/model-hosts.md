@@ -156,8 +156,8 @@ interfaces (Docker's, for one). That is how you change a setting.
 
 ## The dashboard
 
-- From Lyrica: **Dashboard** on the host's card in Models opens it in a
-  new tab.
+- From Lyrica: the **Dashboard** link on the host's card in Models opens
+  it in a new tab.
 - At the machine: `http://127.0.0.1:7236`, no login.
 - From the LAN: `https://<LAN address>:7236`, with the password. The
   certificate is the host's own, so the browser warns; check its
@@ -428,7 +428,7 @@ second pairing. Then:
 - **Hosts installed before the updater** need `git pull &&
   host/install.sh` once more: it installs the updater, prints the deploy
   key to add, and brings the host-api image that opens from Lyrica's
-  Dashboard button, recognises a model's vision projector and MTP file,
+  Dashboard link, recognises a model's vision projector and MTP file,
   and waits for a model's memory to free before loading the next. A host
   installed before the image server got its `/triton` scratch space needs
   this too, or image jobs fail with an `ImportError` (seen on NVIDIA).
