@@ -8,6 +8,13 @@ import { syncEntries } from "./record.ts";
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: undefined });
 
+/** The recall tool's guidelines, in every thread's prompt. */
+export const RECALL_GUIDELINES = [
+  "Memories relevant to each message come up by themselves in <recall>. Use recall to look further before saying you don't remember.",
+  "A memory marked \"added by\" a user is theirs: treat it as authoritative, and ask rather than contradict it.",
+  "<recall> and WAKE are background: what the person asks in this conversation outranks what memory brings up. Answer what they said, and bring up other work or an earlier conversation only when their message is about it or they ask what's open. When they ask to drop a topic, agree in a few words without naming it or anything from it, and leave it, without reading memory about it, until they bring it back. A hit's date is when it was said or changed: don't guess a different one.",
+];
+
 /** With `readOnly` (subagents), only recall and read_memory. */
 export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () => Omit<MemoryContext, "folders">, opts: { readOnly?: boolean } = {}): void {
   if (!opts.readOnly) pi.registerTool({
@@ -48,11 +55,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
     label: "Recall",
     description: "Search memory: notes, pages and past conversations.",
     promptSnippet: "search memory beyond what came up automatically",
-    promptGuidelines: [
-      "Memories relevant to each message come up by themselves in <recall>. Use recall to look further before saying you don't remember.",
-      "A memory marked \"added by\" a user is theirs: treat it as authoritative, and ask rather than contradict it.",
-      "<recall> and WAKE are background: what the person asks in this conversation outranks what memory brings up. Answer what they said, and bring up other work or an earlier conversation only when their message is about it or they ask what's open. When they ask to drop a topic, agree in a few words without naming it or anything from it, and leave it, without reading memory about it, until they bring it back. A hit's date is when it was said or changed: don't guess a different one.",
-    ],
+    promptGuidelines: RECALL_GUIDELINES,
     parameters: Type.Object({
       everywhere: Type.Optional(Type.Boolean({ description: "Search all memory for this call, including outside code mode’s project and working preferences." })),
       query: Type.String({ description: "Words to look for." }),
