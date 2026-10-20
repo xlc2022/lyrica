@@ -78,6 +78,23 @@ describe("skills", () => {
     expect(skillFrontmatter("---\nname: x\n---\n", "x")).toBeUndefined();
   });
 
+  it("read a checkout again only when its HEAD moves, with a cache", async () => {
+    const dir = repo({ ".claude/skills/release/SKILL.md": "---\ndescription: When cutting a release.\n---\nTag it.\n" });
+    const git = (...args: string[]) => execFileSync("git", ["-C", dir, "-c", "user.name=Ada", "-c", "user.email=ada@example.com", ...args]);
+    git("commit", "-qm", "one");
+    const calls: string[][] = [];
+    const counting = { run: async (argv: string[]) => { calls.push(argv); return local.run!(argv); } } as unknown as ExecutionTarget;
+    const cache = new Map();
+    expect((await repoSkills(counting, [dir], cache)).map((s) => s.name)).toEqual(["release"]);
+    const first = calls.length;
+    expect((await repoSkills(counting, [dir], cache)).map((s) => s.name)).toEqual(["release"]);
+    expect(calls.length - first).toBe(1);
+    writeFileSync(join(dir, ".claude/skills/release/SKILL.md"), "---\ndescription: When cutting a release, after CI.\n---\nTag it.\n");
+    git("commit", "-qam", "two");
+    expect((await repoSkills(counting, [dir], cache))[0]!.description).toBe("When cutting a release, after CI.");
+    expect(cache.size).toBe(1);
+  });
+
   it("put the index in the prompt, read a library skill with read_memory s:<name>, and save hers with save_skill", async () => {
     const m = await withMemory();
     const saved: { input: unknown; call: string }[] = [];

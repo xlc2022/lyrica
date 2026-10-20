@@ -1965,6 +1965,20 @@ export function apiRoutes(d: Lyricad): Route[] {
       await d.lockUser(t.id);
       return { ok: true };
     }),
+    // Wipe my memory (Settings → Reset): the user's own threads and memories, with their own password.
+    route("GET", `${u}/me/wipe`, (r): Api.WipeResult => {
+      const user = d.userFor(r);
+      return { wiped: false, busy: wipeBusy(d, d.busy().filter((b) => b.userId === user.id)) };
+    }),
+    route("POST", `${u}/me/wipe`, async (r): Promise<Api.WipeResult> => {
+      const user = d.userFor(r);
+      const { password, understood } = await r.json<Api.WipeRequest>();
+      if (understood !== true) throw new HttpError(400, "tick the box first");
+      const keys = [`login:${user.login.toLowerCase()}`, `ip:${r.ip}`];
+      await limited(d, keys, async () => { if (!(await s().users.checkPassword(user, String(password ?? "")))) throw new AuthError(); }, "that isn't your password");
+      const done = await d.wipeMemory(user.id);
+      return { wiped: done.wiped, busy: wipeBusy(d, done.busy) };
+    }),
     route("GET", `${u}/admin/wipe`, (r): Api.WipeResult => { d.adminFor(r); return { wiped: false, busy: wipeBusy(d, d.busy()) }; }),
     route("POST", `${u}/admin/wipe`, async (r): Promise<Api.WipeResult> => {
       const actor = d.adminFor(r);
@@ -2622,12 +2636,13 @@ function contextOf(d: Lyricad, user: User, pool: Pool, threadId: string, answere
   if (live) return { context: live };
   const p = answered?.pace;
   if (!p?.window) return undefined;
-  // The last prompt plus the reply, as the live meter counts it. The record's output is the whole turn's, so a tool turn reads a little high.
-  const tokens = p.promptTokens + p.outputTokens;
+  // The last request's whole prompt: the record's output is the whole turn's, every call's, so adding it overcounted a long tool turn past the window.
+  const tokens = p.promptTokens;
+  const compactions = owner(d, user, (o) => o[pool].countEntries(threadId, "compaction"));
   const reserve = Math.max(0, Math.min(reserveFor(p.window), p.window - tokens));
   return { context: {
     tokens, window: p.window, percent: Math.round((tokens / p.window) * 100), reserve,
-    free: Math.max(0, p.window - tokens - reserve), parts: [], measuredAt: answered!.at, pace: p,
+    free: Math.max(0, p.window - tokens - reserve), parts: [], measuredAt: answered!.at, compactions, pace: p,
   } };
 }
 

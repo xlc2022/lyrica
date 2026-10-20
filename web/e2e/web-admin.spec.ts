@@ -1561,6 +1561,28 @@ test("Code mode: thread switch, Coding model and project defaults", async ({ pag
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/code-mode-models-${page.viewportSize()!.width}.png` });
 });
 
+// Near the end of this file: it wipes Ada's memory.
+test("Settings → Reset: Wipe my memory asks for the box and the password, then wipes only the user's own", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/wipe-mine-${name}-${page.viewportSize()!.width}.png` }); };
+  await newThread(page, "General");
+  await send(page, "Something of mine to forget");
+  await expect(page.getByText("You said: Something of mine to forget")).toBeVisible();
+  await page.goto(`/#/u/${userId}/settings/reset`);
+  await page.getByRole("button", { name: "Wipe my memory…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Wipe your memory?" });
+  const wipe = dialog.getByRole("button", { name: "Wipe memory" });
+  await dialog.getByLabel("I understand this can't be undone").check();
+  await expect(wipe).toBeDisabled();
+  await dialog.getByLabel("Your password").fill("pw");
+  await noHorizontalScroll(page);
+  await shot("confirm");
+  await wipe.click();
+  await expect(page.getByText("Memory wiped.")).toBeVisible();
+  const threads = await page.evaluate(async (path) => (await fetch(path)).json(), `/api/u/${userId}/threads`) as unknown[];
+  expect(threads).toEqual([]);
+});
+
 // Last in this file: it wipes this lyricad's memory.
 test("Reset: Wipe memory asks for the box and the password, stops what runs, then wipes", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);

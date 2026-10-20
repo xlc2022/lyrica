@@ -408,6 +408,11 @@ export class PoolReader {
     return row && { text: row.text, updatedAt: row.updated_at };
   }
 
+  /** How many of the thread's entries have this role, such as `compaction`. */
+  countEntries(threadId: string, role: string): number {
+    return (this.db.prepare("SELECT count(*) AS n FROM entries WHERE thread = ? AND role = ?").get(threadId, role) as { n: number }).n;
+  }
+
   /** The newest entry of the thread with one of the roles, or of any role. */
   lastEntry(threadId: string, roles?: string[]): StoredEntry | undefined {
     const filter = roles ? `AND role IN (${roles.map(() => "?").join(",")})` : "";

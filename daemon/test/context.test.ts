@@ -62,6 +62,17 @@ describe("her context", () => {
     stream.close();
   });
 
+  it("once the session closes, reads the last request's prompt from the call record, not every call's output added to it", async () => {
+    const { rt, d, ada, model, path, thread, stream, turn } = await setup();
+    model.reply({ tools: [{ name: "recall", args: { query: "Miso" } }] }, { text: "Nothing on Miso yet." });
+    await turn("what do you remember about Miso?");
+    await d.services!.host.forget(rt.ada.id, "general", thread.id);
+    const settings = (await ada.get<ThreadSettings>(`${path}/settings`)).body;
+    const calls = (await ada.get<CallInfo[]>(`/api/u/${rt.ada.id}/models/calls`)).body.filter((c) => c.task === "chat");
+    expect(settings.context).toMatchObject({ parts: [], tokens: calls[0]!.pace!.promptTokens, compactions: 0 });
+    stream.close();
+  });
+
   it("follows a window changed while the thread is open, without reopening it", async () => {
     const { rt, ada, model, ref, path, stream, turn } = await setup();
     model.reply({ text: "First." }, { text: "Second." });
@@ -115,6 +126,10 @@ describe("her context", () => {
     expect(next).toContain("SUMMARY-MARK");
     expect(next).not.toContain("FIRST-MARK");
     expect(next).toContain("let's tidy up before the next part");
+    // The meter counts the compaction and reports what is left after it.
+    const after = (await ada.get<ThreadSettings>(`${path}/settings`)).body.context!;
+    expect(after.compactions).toBe(1);
+    expect(after.tokens).toBeLessThan(compacted.before);
     stream.close();
   });
 

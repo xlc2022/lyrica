@@ -761,6 +761,16 @@ its own copy into `/workspace/repos`, and `gh` and `tea` there use the
 right account by themselves. Details are in
 [docs/workspace.md](../workspace.md#git-accounts-and-repositories).
 
+In code mode she reads each checkout's `AGENTS.md` (or `CLAUDE.md`) and
+follows its rules. To make a project's code threads prove their work, list
+its commands under **Checks** in Project settings → General, for example
+`npm run typecheck` and `npm test` (at most 8). When a code thread ends a
+turn that changed files, each check runs in her sandbox in each checkout,
+with 10 minutes each, and the thread shows **Checks** passed or failed. A
+failure goes back to her to fix, up to 3 rounds; after that she reports it
+as not done. Details are in
+[docs/workspace.md](../workspace.md#project-checks).
+
 For her own code, the one-time setup on GitHub (her account as a
 collaborator, its token as a Git account, rules for `main` and her
 `lyrica/*` branches, CODEOWNERS) is in

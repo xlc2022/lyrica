@@ -55,6 +55,7 @@ const SETTINGS: SectionDef[] = [
   { key: "routines", label: "Routines", body: (ctx) => <RoutinesSection ctx={ctx} /> },
   { key: "skills", label: "Skills", body: (ctx) => <SkillsSection ctx={ctx} /> },
   { key: "portraits", label: "Portrait photos", body: (ctx) => <PortraitPhotosSection key={ctx.user.id} userId={ctx.user.id} /> },
+  { key: "reset", label: "Reset", body: (ctx) => <WipeSection ctx={ctx} mine /> },
 ];
 const ADMIN: SectionDef[] = [
   { key: "status", label: "Status", body: (ctx) => <StatusSection ctx={ctx} /> },

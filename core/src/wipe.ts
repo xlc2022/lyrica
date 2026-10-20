@@ -5,8 +5,8 @@ import type { Keyring } from "./keyring.ts";
 import type { Users } from "./users.ts";
 
 // Wiping memory (DESIGN.md, "Wiping memory"): every user's general and private
-// pools go, with what their threads left in user.db, self.db and the home
-// workspace. Users, passwords, keys, endpoints, models, machines, accounts,
+// pools go, or one user's own, with what their threads left in user.db, self.db
+// and the home workspace. Users, passwords, keys, endpoints, models, machines, accounts,
 // settings and Lyrica's persona stay. Nothing deleted is logged.
 
 /** user.db tables that hold threads, projects or what came from them. Every other user.db table is kept. */
@@ -28,21 +28,28 @@ const PENDING = "wipe.pending";
 const HOME = "wipe.home";
 
 /**
- * The part that needs no user's key: deletes every user's general.db and
- * private.db, threads in transit between users and persona suggestions sent
- * to administrators, and marks every user as waiting for `finishWipe` (their
- * user.db, once their key is in memory) and `homeWiped` (their home
- * workspace, once it is mounted). Running work must be stopped first.
- * Returns how many users it covered.
+ * The part that needs no user's key: deletes the general.db and private.db of
+ * every user, or of `only`, threads in transit to or from them and persona
+ * suggestions they sent to administrators, and marks them as waiting for
+ * `finishWipe` (their user.db, once their key is in memory) and `homeWiped`
+ * (their home workspace, once it is mounted). Running work must be stopped
+ * first. Returns how many users it covered.
  */
-export function wipePools(keyring: Keyring, users: Users): number {
+export function wipePools(keyring: Keyring, users: Users, only?: string): number {
   const self = keyring.self();
-  const all = users.all();
-  const ids = JSON.stringify(all.map((u) => u.id));
+  const all = users.all().filter((u) => !only || u.id === only);
   self.transaction(() => {
-    self.prepare("DELETE FROM thread_shares").run();
-    self.prepare("DELETE FROM persona_proposals").run();
-    for (const key of [PENDING, HOME]) self.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, ids);
+    if (only) {
+      self.prepare("DELETE FROM thread_shares WHERE from_user = ? OR to_user = ?").run(only, only);
+      self.prepare("DELETE FROM persona_proposals WHERE sent_by = ?").run(only);
+    } else {
+      self.prepare("DELETE FROM thread_shares").run();
+      self.prepare("DELETE FROM persona_proposals").run();
+    }
+    for (const key of [PENDING, HOME]) {
+      const ids = JSON.stringify([...new Set([...list(self, key), ...all.map((u) => u.id)])]);
+      self.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, ids);
+    }
   })();
   for (const u of all) {
     const dir = users.userDir(u.id);

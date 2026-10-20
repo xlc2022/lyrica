@@ -1646,6 +1646,12 @@ Details in [docs/memory.md](docs/memory.md).
   has stopped. A locked user's pools go at once; their user.db rows and
   thread folders at their next unlock. Backups, update snapshots, branches
   and anything already sent to a model provider are not covered.
+  Any user can do the same to their own memory alone from Settings →
+  **Reset** (**Wipe my memory…**, their own password and the box): their
+  threads, projects and memories in both pools, those user.db rows and
+  folders, threads they sent or were sent, and persona suggestions they
+  sent. Other users' memory and everything kept above stay, and only their
+  own running work is stopped first.
 
 ### Skills
 

@@ -40,24 +40,38 @@ export function skillFrontmatter(text: string, fallbackName: string): { name: st
   return { name: (field("name") || fallbackName).slice(0, SKILL_LIMITS.name), description: description.replace(/\s+/g, " ").slice(0, SKILL_LIMITS.description) };
 }
 
-/** Each checkout's .claude/skills and .agents/skills, by their SKILL.md frontmatter. No model or network request. */
-export async function repoSkills(target: ExecutionTarget, checkouts: string[]): Promise<ListedSkill[]> {
+/**
+ * Each checkout's .claude/skills and .agents/skills, by their SKILL.md frontmatter. No model or network request.
+ * With `cache` (one per thread), a checkout is read again only when its HEAD moves: one git call per turn otherwise.
+ */
+export async function repoSkills(target: ExecutionTarget, checkouts: string[], cache?: Map<string, ListedSkill[]>): Promise<ListedSkill[]> {
   if (!target.run || !checkouts.length) return [];
   const run = (args: string[]) => target.run!(args, { timeoutMs: 5000 }).catch(() => undefined);
   const out: ListedSkill[] = [];
   const seen = new Set<string>();
   for (const checkout of checkouts) {
-    const top = (await run(["git", "-C", checkout, "rev-parse", "--show-toplevel"]))?.stdout.toString().trim();
+    // The top and HEAD in one call; a repository without commits has no HEAD, so it is read uncached.
+    const both = await run(["git", "-C", checkout, "rev-parse", "--show-toplevel", "HEAD"]);
+    const [top, head] = both?.code === 0 ? both.stdout.toString().trim().split("\n") : [(await run(["git", "-C", checkout, "rev-parse", "--show-toplevel"]))?.stdout.toString().trim()];
     if (!top || seen.has(top)) continue;
     seen.add(top);
+    const key = head && `${top}@${head}`;
+    const cached = key ? cache?.get(key) : undefined;
+    if (cached) { out.push(...cached); continue; }
+    const found: ListedSkill[] = [];
     const listed = await run(["git", "-C", top, "ls-files", "--", ":(glob).claude/skills/*/SKILL.md", ":(glob).agents/skills/*/SKILL.md"]);
     if (listed?.code !== 0) continue;
     for (const path of listed.stdout.toString().split("\n").filter(Boolean).slice(0, REPO_SKILLS_MAX)) {
       const file = `${top}/${path}`;
       const r = await run(["head", "-c", "4096", "--", file]);
       const meta = r?.code === 0 ? skillFrontmatter(r.stdout.toString(), path.split("/").at(-2)!) : undefined;
-      if (meta) out.push({ ...meta, at: file });
+      if (meta) found.push({ ...meta, at: file });
     }
+    if (key && cache) {
+      for (const k of cache.keys()) if (k.startsWith(`${top}@`)) cache.delete(k);
+      cache.set(key, found);
+    }
+    out.push(...found);
   }
   return out;
 }

@@ -137,7 +137,7 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       const skills = await opts.skills?.index();
       if (skills) {
         options.sections.skills = skills;
-        report.push({ name: "skills", text: skills, budget: SKILLS_IN_ALL, truncated: false, place: "system" });
+        report.push({ name: "project", text: skills, budget: SKILLS_IN_ALL, truncated: false, place: "system" });
       } else delete options.sections.skills;
 
       // The user's reactions since her last turn, then her status line, from the last turn's measurement, and the line telling her to prepare or compact.

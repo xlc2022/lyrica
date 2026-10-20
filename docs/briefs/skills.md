@@ -56,7 +56,8 @@ General prompt.
 - Subagents don't get it. A coder works in the parent's checkouts, and the
   parent passes on what it needs.
 - Repository skills are looked up only when the thread has checkouts, so a
-  thread without any starts no sandbox for them.
+  thread without any starts no sandbox for them. Each thread caches them by
+  checkout and HEAD, so an unchanged checkout costs one git call a turn.
 - `save_skill`'s words are counted in daemon/test/context.test.ts's headroom
   (`SKILL_TOOL_TEXT`), as Agent loop asked.
 - `read_memory` takes `s:<name>` and returns the body of an active skill in

@@ -82,7 +82,7 @@ lockUser(userId: string): void
   `systemd-creds decrypt --user --name=lyrica_<name> <file> -`, reading plaintext only from stdout into
   memory. Missing, failed or empty credentials stay locked; logs contain
   only the credential name/id and error class, never stderr or secrets.
-- Wiping memory (`POST /api/u/:userId/admin/wipe` with `WipeRequest { password, understood }`, administrators, the administrator's own password; `GET` the same path for what still runs; `lyrica admin wipe` while lyricad is stopped) answers `WipeResult { wiped, busy: WipeBusy[] }`. While anything runs it only sends stops (`wiped: false`); otherwise core's `wipePools(keyring, users)` deletes every pool and marks every user, `finishWipe(self, userId, userDb)` clears `WIPED_USER_TABLES` once their key is here, and `homeWiped` clears the home mark once their thread folders are gone (`wipePending`, `homeWipePending` read the marks). `KEPT_USER_TABLES` names the rest; a new user.db table goes in one of the two. See [daemon.md](daemon.md#wiping-memory).
+- Wiping memory (`POST /api/u/:userId/admin/wipe` with `WipeRequest { password, understood }`, administrators, the administrator's own password; `GET` the same path for what still runs; `lyrica admin wipe` while lyricad is stopped) answers `WipeResult { wiped, busy: WipeBusy[] }`. While anything runs it only sends stops (`wiped: false`); otherwise core's `wipePools(keyring, users)` deletes every pool and marks every user, `finishWipe(self, userId, userDb)` clears `WIPED_USER_TABLES` once their key is here, and `homeWiped` clears the home mark once their thread folders are gone (`wipePending`, `homeWipePending` read the marks). `KEPT_USER_TABLES` names the rest; a new user.db table goes in one of the two. `POST`/`GET /api/u/:userId/me/wipe` (any user, their own password) is the same for that user alone, through `wipePools(keyring, users, userId)`. See [daemon.md](daemon.md#wiping-memory).
 - Changing the self.db passphrase (`POST /api/u/:userId/admin/passphrase/change` with `PassphraseRotate { current, next }`, administrators; `lyrica admin passphrase`) rekeys self.db in place and re-saves a saved passphrase (if the re-save fails, the saved copy is removed and the response carries a note to save it again); a wrong `current` is `403`. See [daemon.md](daemon.md).
 
 ## core/users
@@ -216,7 +216,7 @@ nothing else. No code path gives a general view a private handle.
 
 | Area | Methods |
 |---|---|
-| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `foldThread(projectId, threadId, childrenOnly?)` (existing children become project siblings, preserving entries, steps and wake-ups), `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children?, keepMemories? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared; `keepMemories` removes no notes or project page and leaves a text-free thread tombstone `t:<thread>` in each forgotten thread's place), `getThreadTombstone(id)` → `{ deletedAt } \| undefined`, `citingThread(id)` → the IDs of the notes and pages citing the thread or its entries, `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned) |
+| Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `foldThread(projectId, threadId, childrenOnly?)` (existing children become project siblings, preserving entries, steps and wake-ups), `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children?, keepMemories? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared; `keepMemories` removes no notes or project page and leaves a text-free thread tombstone `t:<thread>` in each forgotten thread's place), `getThreadTombstone(id)` → `{ deletedAt } \| undefined`, `citingThread(id)` → the IDs of the notes and pages citing the thread or its entries, `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned), `countEntries(threadId, role)` (such as its compactions) |
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
 | Reactions | `react(threadId, n, emoji, by, on)` → `Reaction[]` (`{ emoji, by: string[] }`, `by` user IDs or `LYRICA_REACTS`); `entryPage` entries carry `reactions`. Pool schema step 2 (`entries.reactions`, JSON) |
 | Code tasks | `codeTask(threadId)` → `{ task, done, at }` or undefined; `setCodeTask(threadId, task, done = "")` replaces it (300 / 1,200 characters), with credential removal. Pool step 9 adds `code_tasks`, deleted with the thread; no task text enters user.db |
@@ -1049,11 +1049,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `skills`: `{ index(), read(name), propose?(input, toolCallId) }`.
     `index()` gives the stable `skills` section for the turn
     (`skillsIndex(ListedSkill[])`, at most 40 skills and `SKILLS_IN_ALL`,
-    4,000 characters, reported under the `skills` budget). `read(name)` gives
+    4,000 characters, reported with the project's sections). `read(name)` gives
     a library skill's body for `read_memory` `s:<name>`. `propose` registers
     `save_skill({ name, description, body })`, which is turned off with
     `remember` in an unlogged thread. lyricad lists the user's active skills
-    for the thread's pool, then `repoSkills(target, checkouts)`;
+    for the thread's pool, then `repoSkills(target, checkouts, cache?)`,
+    cached per thread by checkout and HEAD;
   - `name()`: her name for this deployment, read every turn. Automatic
     recall leaves it out of the query (`skip`) and asks for two shared
     words (`minWords: 2`); `lyricad` passes `selfName`.
@@ -1479,7 +1480,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     thread-groups` and `PATCH`/`DELETE thread-groups/:id` (in `user.db`,
     never the pool); `State.version` and `build` (once unlocked);
   - `ThreadSettings.context` (`ContextInfo`: used, window, parts, reserve,
-    free, measured at), `CallInfo.pace`, the `context` and `compacted`
+    free, measured at, `compactions`: how many times it was compacted, with
+    used being what is left after them), `CallInfo.pace`, the `context` and `compacted`
     thread events, and a `compacted` message part (the stored notice);
   - offline: an `offline` thread event (`task`, `tried`) when no model for a
     turn can be reached; a turn that hadn't started keeps its message in

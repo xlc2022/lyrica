@@ -6,7 +6,7 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  checkoutsOf, codeRepositories, repoSkills, skillsIndex, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
+  checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -975,6 +975,8 @@ export class HostedThread {
       // delegate is offered where the depth limit allows; it attaches itself, so background results reach this session.
       const canDelegate = delegation.depth(ctx) < delegation.limits.depth;
       const meter = new ContextMeter();
+      // Repository skills by checkout and HEAD, so an unchanged checkout costs one git call a turn.
+      const repoSkillsSeen = new Map<string, ListedSkill[]>();
       const { session, runtime, prepare, dispose } = await openThreadSession({
         thread: ctx, models, cwd: this.o.cwd, task: () => tools.settings().code ? "code" : "chat",
         extensions: [
@@ -988,7 +990,7 @@ export class HostedThread {
                 const checkouts = checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }));
                 return skillsIndex([
                   ...workspace.settings(this.userId).skills.active(this.pool).map((s) => ({ name: s.name, description: s.description, at: `s:${s.name}` })),
-                  ...checkouts.length ? await repoSkills(tools.target(), checkouts) : [],
+                  ...checkouts.length ? await repoSkills(tools.target(), checkouts, repoSkillsSeen) : [],
                 ]);
               },
               read: (name) => workspace.settings(this.userId).skills.read(this.pool, name)?.body,

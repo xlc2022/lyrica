@@ -102,8 +102,10 @@ describe("every request's reads", () => {
       handlers.get("before_provider_request")!();
       handlers.get("message_end")!({ message: { role: "assistant", usage } });
     }
-    handlers.get("agent_end")!({}, { model: { contextWindow: 1000 }, getContextUsage: () => ({ tokens: 47 }), sessionManager: { getEntries: () => [], getLeafId: () => null } });
+    handlers.get("agent_end")!({}, { model: { contextWindow: 1000 }, getContextUsage: () => ({ tokens: 47 }), sessionManager: { getEntries: () => [], getLeafId: () => null, getBranch: () => [{ type: "compaction" }, { type: "message" }, { type: "compaction" }] } });
     expect(meter.takePace()).toMatchObject({ promptTokens: 47, readTokens: 82, outputTokens: 7, processed: 22 });
+    // The total is what is left after the branch's compactions, and the report says how many there were.
+    expect(meter.report()).toMatchObject({ tokens: 47, compactions: 2 });
   });
 });
 

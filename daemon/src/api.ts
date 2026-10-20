@@ -593,6 +593,8 @@ export interface ContextInfo {
   /** persona, about, memory, pinned, recall, tools, conversation (estimated, scaled to the measured total), then reserve and free. */
   parts: { name: "persona" | "about" | "memory" | "pinned" | "recall" | "tools" | "conversation" | "reserve" | "free"; tokens: number }[];
   measuredAt: string;
+  /** How many times the conversation has been compacted; `tokens` is what it uses now, after them. */
+  compactions?: number;
   /** The last turn's speed. */
   pace?: PaceInfo;
 }
