@@ -729,10 +729,16 @@ documented in `daemon/src/api.ts`, "The Files panel".
   frame-ancestors 'self'`: the page has an opaque origin even opened on its
   own, so the session cookie (SameSite=Strict) never goes with its requests
   and Lyrica's answers (CORP same-origin, no CORS) can't be read; it may load
-  https resources as a file opened in the browser could. SVG is
+  https resources as a file opened in the browser could. With the thread's
+  internet off (`workspace.network`, the switch her tools follow) HTML gets
+  no bridge and the CSP `sandbox; default-src data: blob: 'unsafe-inline';
+  form-action 'none'; frame-ancestors 'self'`: nothing runs and only what
+  the page carries inline loads, so it can't send anything out by itself;
+  only a link the user clicks still leaves. SVG is
   `image/svg+xml` under `default-src 'none'; sandbox`, so nothing in it runs.
   A PDF has no sandbox, since browsers refuse to show one in a sandbox, and
-  only `frame-ancestors 'self'`. None carries `X-Frame-Options`.
+  only `frame-ancestors 'self'` (some versions of Chrome's viewer fail under
+  `default-src 'none'`); `nosniff` keeps it a PDF. None carries `X-Frame-Options`.
 - `GET …/files/thumb?path=<path>` serves a copy of an image in the thread's
   folder at most 320 px on a side (PNG, or JPEG for a JPEG), made by
   ImageMagick (`magick`, or `convert` on ImageMagick 6) inside the sandbox

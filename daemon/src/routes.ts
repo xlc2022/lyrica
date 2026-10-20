@@ -1512,8 +1512,11 @@ export function apiRoutes(d: Lyricad): Route[] {
       }
       let bytes: Buffer = Buffer.concat(chunks);
       if (kind === "pdf" && !isPdf(bytes)) throw new HttpError(415, "this file isn't a PDF");
-      if (kind === "html") bytes = withConsole(bytes);
-      r.res.writeHead(200, viewHeaders(kind, bytes.length));
+      // With the thread's internet off an HTML page runs nothing, so it gets no console bridge either.
+      const user = d.userFor(r);
+      const internet = kind !== "html" || s().workspace.network({ userId: user.id, pool: poolOf(r), threadId: owner(d, user, (o) => threadOf(o, r)).id }).internet;
+      if (kind === "html" && internet) bytes = withConsole(bytes);
+      r.res.writeHead(200, viewHeaders(kind, bytes.length, internet));
       r.res.end(bytes);
       return undefined;
     }),

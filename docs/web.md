@@ -228,17 +228,21 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
 - **The file viewer** (`Viewer.tsx`, docs/ux.md §6): a modal dialog almost
   the window's size (the whole screen on a phone) holding the file large and,
   from 1180 px up, the thread whose library it is beside it (a `Thread`
-  inside a `PanelFrame`, so its header carries Open as a page and Close
-  panel). That thread is the Files panel's own thread for a file in its
+  inside a `PanelFrame`, so its header carries Open as a page, and Close
+  panel only below 1180 px, where it goes back to the file). That thread is the Files panel's own thread for a file in its
   thread folder, and the project chat for a file in Project settings → Files
   and images; a file in a grant has none and shows on its own. Below
-  1180 px the **Thread** button switches between the two; from 1180 px up it
-  shows or hides the thread. The header names the file (mono), its facts
+  1180 px the **Thread** toggle (a labelled button, pressed while the thread
+  shows) switches between the two; from 1180 px up it shows or hides the
+  thread. The header names the file (mono), its facts
   (kind, size, time) and **Preview | Source** for HTML, SVG and Markdown.
   What it shows depends on the name: HTML in an `iframe` of
   `…/files/view` with `sandbox="allow-scripts allow-popups"`, its console
   messages (posted by the route's bridge, taken only from that frame's
   window, at most 200, shown as text) in a **Console** section under it;
+  with the thread's internet off (its settings' `network.internet`) the
+  route runs nothing, and a muted line above the page says "Scripts don't
+  run here: this thread's internet is off.";
   SVG as an `img` of `…/files/view`; a PDF in an `iframe` of
   `…/files/view` (the browser's own viewer); images, audio and video from
   `…/files/content` in their own elements; Markdown rendered by `Prose`

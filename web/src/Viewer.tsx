@@ -3,13 +3,13 @@
 // sandbox with an opaque origin (daemon/src/file-view.ts), its console under it; SVG and Markdown show rendered with
 // their Source a segment away; images, PDFs, audio and video in the browser's own viewers; text as text.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Pool, ThreadSummary } from "./api.ts";
+import { get, type Pool, type ThreadSettings, type ThreadSummary } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { RowMenu } from "./Machines.tsx";
 import { href } from "./route.ts";
 import { PanelFrame, useWide, type ShellContext } from "./Shell.tsx";
 import { Thread, findThread } from "./Thread.tsx";
-import { ErrorText, fullTime, Prose, shortTime } from "./ui.tsx";
+import { ErrorText, fullTime, Prose, shortTime, useLoad } from "./ui.tsx";
 
 /** Text this large is shown; anything bigger is offered as a download. */
 export const TEXT_LIMIT = 512 * 1024;
@@ -90,13 +90,13 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, onMenu, on
                 { label: "Download", onPick: download },
                 { label: "Copy path", onPick: () => { void navigator.clipboard?.writeText(file.path).catch((e: Error) => setError(e.message)); } },
               ]} />}
-            {known && <button type="button" className="icon sm" aria-label="Thread" title={known.title || "New thread"} aria-pressed={showThread} onClick={toggleThread}><Icon name="panel" /></button>}
+            {known && <button type="button" className="sm" title={`Thread: ${known.title || "New thread"}`} aria-pressed={showThread} onClick={toggleThread}>Thread</button>}
             <button type="button" className="icon sm" aria-label="Close" title="Close" onClick={onClose}><Icon name="close" /></button>
           </>} onDownload={download} />
       )}
       {showThread && known && (
         <section className="viewer-thread" aria-label={known.title || "New thread"}>
-          <PanelFrame value={{ crumbs: [{ label: known.title || "New thread", href: threadHref }], expand: threadHref, close: toggleThread }}>
+          <PanelFrame value={{ crumbs: [{ label: known.title || "New thread", href: threadHref }], expand: threadHref, ...(wide ? {} : { close: toggleThread }) }}>
             <Thread key={`${known.pool}/${known.id}`} ctx={ctx} pool={known.pool} threadId={known.id} threads={threads} />
           </PanelFrame>
         </section>
@@ -154,7 +154,7 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, actions, onDownload }:
           {actions}
         </span>
       </div>
-      <div className={`viewer-body${raw || kind === "text" || kind === "markdown" ? " scroll" : ""}`}>
+      <div className={`viewer-body${raw || kind === "text" || kind === "markdown" ? " viewer-scroll" : ""}`}>
         {state.kind === "loading" && <p className="empty">Loading…</p>}
         {state.kind === "error" && <ErrorText error={state.message} />}
         {state.kind !== "loading" && state.kind !== "error" && (raw ? <pre className="viewer-text">{text}</pre> : (
@@ -167,7 +167,7 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, actions, onDownload }:
 
 function Shown({ kind, file, text, contentUrl, viewUrl, onDownload }: { kind: ViewKind; file: ViewerFile; text?: string; contentUrl: string; viewUrl: string; onDownload: () => void }) {
   switch (kind) {
-    case "html": return <HtmlPage url={viewUrl} name={file.name} />;
+    case "html": return <HtmlPage url={viewUrl} settingsUrl={contentUrl.replace(/\/files\/content\?.*$/, "/settings")} name={file.name} />;
     case "svg": return <div className="viewer-media"><img src={viewUrl} alt={file.name} /></div>;
     case "image": return <div className="viewer-media"><img src={contentUrl} alt={file.name} /></div>;
     // The browser's own PDF viewer; it won't show in a sandboxed frame, and the page route checks the bytes are a PDF's.
@@ -180,9 +180,14 @@ function Shown({ kind, file, text, contentUrl, viewUrl, onDownload }: { kind: Vi
   }
 }
 
-/** The page in a sandboxed frame (scripts and popups only: no same origin, no top navigation, no forms), and its console. */
-function HtmlPage({ url, name }: { url: string; name: string }) {
+/**
+ * The page in a sandboxed frame (scripts and popups only: no same origin, no top navigation, no forms), and its
+ * console. With the thread's internet off the route serves it with nothing run, and a muted line says so.
+ */
+function HtmlPage({ url, settingsUrl, name }: { url: string; settingsUrl: string; name: string }) {
   const frame = useRef<HTMLIFrameElement>(null);
+  const settings = useLoad(() => get<ThreadSettings>(settingsUrl), [settingsUrl]);
+  const offline = settings.data?.network.internet === false;
   const [lines, setLines] = useState<ConsoleLine[]>([]);
   const [open, setOpen] = useState(true);
   useEffect(() => {
@@ -197,6 +202,7 @@ function HtmlPage({ url, name }: { url: string; name: string }) {
   }, [url]);
   return (
     <>
+      {offline && <p className="viewer-note muted">Scripts don't run here: this thread's internet is off.</p>}
       <iframe ref={frame} className="viewer-frame" src={url} title={name} sandbox="allow-scripts allow-popups" referrerPolicy="no-referrer" />
       {lines.length > 0 && (
         <section className="viewer-console" aria-label="Console">

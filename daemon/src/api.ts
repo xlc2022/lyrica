@@ -1420,7 +1420,8 @@ export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
  * GET …/files/view?path=<path> → an HTML, SVG or PDF file as a page for the web's viewer (daemon/src/file-view.ts), at
  * most 16 MB (413 beyond, 415 for another kind or a .pdf that isn't one). HTML gets a console bridge script first and
  * the CSP `sandbox allow-scripts allow-popups` (an opaque origin: no cookies, storage or readable Lyrica responses),
- * https resources allowed; SVG `image/svg+xml` with nothing run; PDF unsandboxed (browsers won't show one in a
+ * https resources allowed; with the thread's internet off, `sandbox` alone and no bridge (nothing runs, only inline
+ * resources load); SVG `image/svg+xml` with nothing run; PDF unsandboxed (browsers won't show one in a
  * sandbox). Each may be framed only by Lyrica's own pages (`frame-ancestors 'self'`).
  * GET …/files/thumb?path=<path> → a copy of an image in the thread's folder at most 320 px on a side (PNG, or JPEG
  * for a JPEG), made by ImageMagick in the sandbox (decoded as what its name says, within memory, size and time

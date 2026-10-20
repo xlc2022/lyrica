@@ -166,9 +166,24 @@ describe("the Files panel's routes", () => {
 
     const pdf = await get("/workspace/paper.pdf");
     expect(pdf.headers.get("content-type")).toBe("application/pdf");
-    expect(pdf.headers.get("content-security-policy")).toBe("default-src 'none'; frame-ancestors 'self'");
+    expect(pdf.headers.get("content-security-policy")).toBe("frame-ancestors 'self'");
     expect((await get("/workspace/fake.pdf")).status).toBe(415);
     expect((await get("/workspace/a.txt")).status).toBe(415);
+  });
+
+  it("serves HTML with nothing run and nothing fetched when the thread's internet is off", async () => {
+    const { ada, base, path } = await setup();
+    const { files } = fakeFiles();
+    const page = "<!DOCTYPE html><img src=\"https://example.com/x?d=1\"><script>fetch('https://example.com')</script>";
+    files.read = async () => ({ stream: Readable.from([Buffer.from(page)]), size: Buffer.byteLength(page), type: "text/plain; charset=utf-8" });
+    vi.spyOn(Workspace.prototype, "network").mockReturnValue({ internet: false, services: false, hosts: [] });
+    const res = await fetch(`${base}${path}/view?path=${enc("/workspace/page.html")}`, { headers: { cookie: ada.cookie! } });
+    const csp = res.headers.get("content-security-policy")!;
+    expect(csp).toBe("sandbox; default-src data: blob: 'unsafe-inline'; form-action 'none'; frame-ancestors 'self'");
+    expect(csp).not.toContain("allow-scripts");
+    expect(csp).not.toContain("https:");
+    // No console bridge: it couldn't run.
+    expect(await res.text()).toBe(page);
   });
 
   it("is only the thread owner's, like the rest of a thread", async () => {

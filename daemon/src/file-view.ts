@@ -18,14 +18,19 @@ export function viewKind(path: string): ViewKind | undefined {
  * The page's headers. HTML: the CSP `sandbox` (scripts and popups only, never `allow-same-origin`) gives the
  * document an opaque origin even when it is opened on its own, so the session cookie (SameSite=Strict) never goes
  * with its requests and Lyrica's responses (CORP same-origin, no CORS) can't be read. It may load https resources, as
- * a file opened in the browser could. SVG: nothing runs. PDF: no sandbox, since browsers refuse to show a PDF in one;
- * its bytes are checked to be a PDF's first. Each may be framed only by Lyrica's own pages.
+ * a file opened in the browser could, unless the thread's internet is off (`internet` false): then nothing runs and
+ * it loads only what it carries inline, so it can't send anything out by itself; a link the user clicks still goes.
+ * SVG: nothing runs. PDF: no sandbox and no source list, since browsers refuse to show a PDF in a sandbox and some
+ * versions of Chrome's viewer under `default-src 'none'`; its bytes are checked to be a PDF's first, and nosniff keeps
+ * it a PDF. Each may be framed only by Lyrica's own pages.
  */
-export function viewHeaders(kind: ViewKind, size: number): Record<string, string> {
+export function viewHeaders(kind: ViewKind, size: number, internet = true): Record<string, string> {
   const csp = kind === "html"
-    ? "sandbox allow-scripts allow-popups; default-src https: data: blob: 'unsafe-inline' 'unsafe-eval'; form-action 'none'; frame-ancestors 'self'"
+    ? internet
+      ? "sandbox allow-scripts allow-popups; default-src https: data: blob: 'unsafe-inline' 'unsafe-eval'; form-action 'none'; frame-ancestors 'self'"
+      : "sandbox; default-src data: blob: 'unsafe-inline'; form-action 'none'; frame-ancestors 'self'"
     : kind === "svg" ? "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox; frame-ancestors 'self'"
-    : "default-src 'none'; frame-ancestors 'self'";
+    : "frame-ancestors 'self'";
   return {
     "content-type": kind === "html" ? "text/html; charset=utf-8" : kind === "svg" ? "image/svg+xml" : "application/pdf",
     "content-length": String(size), "cache-control": "no-store", "content-security-policy": csp,

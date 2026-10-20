@@ -170,7 +170,10 @@ Each user has two pools of memory.
       file large, with the thread whose library it is beside it (the
       project chat for a project's file; none for a granted folder's).
       HTML runs as a page in a sandbox with an opaque origin, so it can't
-      reach Lyrica's cookies, storage or API, with its console beneath;
+      reach Lyrica's cookies, storage or API, with its console beneath.
+      With the thread's internet off it runs no scripts and loads only what
+      it carries inline, so opening it can't carry anything out; only a
+      link the user clicks still leaves;
       Markdown and SVG show rendered with their source a switch away; PDFs,
       images, audio and video in the browser's own viewers.
     - Actions are in a right-click menu (a long press on a phone, or ⋯):

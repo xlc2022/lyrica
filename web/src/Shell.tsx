@@ -269,7 +269,8 @@ export interface PanelContext {
   crumbs: { label: string; href: string }[];
   /** The panel's page on its own. */
   expand: string;
-  close: () => void;
+  /** Closes the panel; left out beside the file viewer at the split width, where the viewer's Thread toggle hides it. */
+  close?: () => void;
 }
 const PanelCtx = createContext<PanelContext | undefined>(undefined);
 /** The panel's breadcrumb and buttons, when inside it. */
@@ -352,14 +353,14 @@ export function Crumbs() {
   );
 }
 
-/** Open as a page and Close panel, at the end of the panel's header. */
+/** Open as a page and Close panel (when the panel can close), at the end of the panel's header. */
 export function PanelButtons() {
   const p = usePanel();
   if (!p) return null;
   return (
     <div className="head-actions panel-actions">
       <a className="icon sm" href={p.expand} aria-label="Open as a page" title="Open as a page"><Icon name="expand" /></a>
-      <button type="button" className="icon sm" aria-label="Close panel" title="Close panel" onClick={p.close}><Icon name="close" /></button>
+      {p.close && <button type="button" className="icon sm" aria-label="Close panel" title="Close panel" onClick={p.close}><Icon name="close" /></button>}
     </div>
   );
 }
