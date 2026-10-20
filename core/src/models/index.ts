@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import type { Db } from "../db.ts";
 import type { Keyring } from "../keyring.ts";
-import { TASK_NAMES, TASKS, THINKING_LEVELS, type CallContext, type Column, type ModelRef, type Pool, type PresetScope, type Task, type ThinkingLevel } from "../types.ts";
+import { DEFAULT_THINKING, TASK_NAMES, TASKS, THINKING_LEVELS, type CallContext, type Column, type ModelRef, type Pool, type PresetScope, type Task, type ThinkingLevel } from "../types.ts";
 import { selfName } from "../persona.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
 import { addressesOutside, discoverModels, modelDefaults, lmStudioLoad, lmStudioModel, lmStudioModels, probeUrl, type DiscoveredModel, type ModelDefaults, type ModelIdentity } from "./http.ts";
@@ -494,6 +494,8 @@ export class Models {
   private readonly discovered = new Set<string>();
   /** Plans that reached their usage limit, until when they're skipped. */
   private readonly limited = new Map<string, number>();
+  /** Offerings whose provider refused a request with thinking off (mustThink). */
+  private readonly alwaysThinks = new Set<string>();
   private codexImages?: (userId: string, request: ImageRequest, signal?: AbortSignal) => Promise<GeneratedImage[]>;
 
   /** The models each plan offers (setPlanCatalog). */
@@ -2046,10 +2048,10 @@ export class Models {
     return this.withUser(ctx.userId, (db) => this.readColumn(db, isRestricted(ctx) ? "private" : "general").preset?.name ?? "Custom");
   }
 
-  /** The thinking level threads use unless they choose. Off by default. */
+  /** The thinking level threads use unless they choose. Medium by default. */
   defaultThinking(userId: string): ThinkingLevel {
     const v = this.setting(userId, "thinking") as ThinkingLevel | undefined;
-    return v && THINKING_LEVELS.includes(v) ? v : "off";
+    return v && THINKING_LEVELS.includes(v) ? v : DEFAULT_THINKING;
   }
 
   setDefaultThinking(userId: string, level: ThinkingLevel): void {
@@ -2169,10 +2171,11 @@ export class Models {
       const localOnly = pool === "private" || !!db.prepare("SELECT 1 FROM local_only_threads WHERE thread = ?").get(threadId);
       const choice = db.prepare("SELECT preset, thinking, fallback, context FROM thread_choices WHERE thread = ?").get(threadId) as { preset: string | null; thinking: string | null; fallback: number | null; context: number | null } | undefined;
       const setting = (key: string) => (db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
-      const thinking = (choice?.thinking ?? setting("thinking") ?? "off") as ThinkingLevel;
+      const chosen = choice?.thinking ?? setting("thinking");
+      const thinking = (chosen ?? DEFAULT_THINKING) as ThinkingLevel;
       const fallback = choice?.fallback !== null && choice?.fallback !== undefined ? choice.fallback === 1 : setting("fallback") !== "off";
       return {
-        userId, pool, localOnly, ...(choice?.preset ? { preset: choice.preset } : {}), thinking: THINKING_LEVELS.includes(thinking) ? thinking : "off", fallback,
+        userId, pool, localOnly, ...(choice?.preset ? { preset: choice.preset } : {}), thinking: THINKING_LEVELS.includes(thinking) ? thinking : DEFAULT_THINKING, ...(chosen ? {} : { thinkingUnset: true }), fallback,
         ...(choice?.context ? { contextLimit: choice.context } : {}),
         overrides: Object.fromEntries(rows.map((r) => [r.task, JSON.parse(r.entry) as ModelRef[]])),
       };
@@ -2209,7 +2212,7 @@ export class Models {
     if (parent.localOnly) this.setLocalOnly(userId, pool, childThreadId, true);
     // Copied verbatim, not through setThreadPreset, so a local-only parent's (ignored) general preset passes on without throwing.
     if (parent.preset) this.threadChoice(userId, childThreadId, "preset", parent.preset);
-    if (parent.thinking) this.setThinking(userId, childThreadId, parent.thinking);
+    if (parent.thinking && !parent.thinkingUnset) this.setThinking(userId, childThreadId, parent.thinking);
     // A child starts with its parent's Fallback, whatever the default becomes; a subagent can't change it.
     if (parent.fallback !== undefined) this.setThreadFallback(userId, childThreadId, parent.fallback);
     if (parent.contextLimit) this.setContextLimit(userId, childThreadId, parent.contextLimit);
@@ -2490,16 +2493,38 @@ export class Models {
     return { fetch: this.fetchFor(ep) ?? fetch, baseUrl: ep.baseUrl, ...(ep.apiKey ? { apiKey: ep.apiKey } : {}), modelId: r.offering.modelId, name: ep.name };
   }
 
-  /** The thinking level a model runs at for a requested one, and a note when it can't think at that level. */
-  thinkingFor(r: Pick<Resolution, "offering" | "label"> & { endpoint?: Pick<Endpoint, "api"> }, asked: ThinkingLevel = "off"): { level: ThinkingLevel; note?: string } {
-    if (asked === "off") return { level: "off" };
+  /** The level a model thinks at when it can't turn thinking off: medium, or the nearest it has. Undefined when it can't think. */
+  mandatoryThinking(o: Pick<Offering, "reasoning">): Exclude<ThinkingLevel, "off"> | undefined {
+    return nearestLevel(o.reasoning ?? [], "medium");
+  }
+
+  /**
+   * Records that a model refused a request with thinking off (some providers
+   * require it), so it thinks at mandatoryThinking from then on. Kept for the
+   * daemon's run: after a restart the first such request learns it again.
+   */
+  mustThink(offeringId: string): void {
+    this.alwaysThinks.add(offeringId);
+  }
+
+  /**
+   * The thinking level a model runs at for a requested one, and a note when it
+   * thinks at another level. A model that can't think answers without thinking,
+   * saying so unless `unset` (nobody chose a level); one that can't turn
+   * thinking off thinks at medium, or the nearest level it has.
+   */
+  thinkingFor(r: Pick<Resolution, "offering" | "label"> & { endpoint?: Pick<Endpoint, "api"> }, asked: ThinkingLevel = DEFAULT_THINKING, unset = false): { level: ThinkingLevel; note?: string } {
     const levels = r.offering.reasoning ?? [];
-    if (!levels.length) return { level: "off", note: `${r.label} can't think, so it answered without thinking` };
+    if (!levels.length) return asked === "off" || unset ? { level: "off" } : { level: "off", note: `${r.label} can't think, so it answered without thinking` };
+    if (asked === "off") {
+      if (!this.alwaysThinks.has(r.offering.id)) return { level: "off" };
+      const level = this.mandatoryThinking(r.offering)!;
+      return { level, note: `${r.label} can't turn thinking off, so it thought at ${level}` };
+    }
     if ((levels as string[]).includes(asked)) return { level: asked };
     // A host's thinking switch (one level) is simply on.
     if (levels.length === 1 && r.endpoint?.api === "host") return { level: levels[0]! };
-    const at = THINKING_LEVELS.indexOf(asked);
-    const level = [...levels].sort((a, b) => Math.abs(THINKING_LEVELS.indexOf(a) - at) - Math.abs(THINKING_LEVELS.indexOf(b) - at))[0]!;
+    const level = nearestLevel(levels, asked)!;
     return { level, note: `${r.label} doesn't think at ${asked}, so it thought at ${level}` };
   }
 
@@ -3015,6 +3040,12 @@ function checkPresetName(name: string): string {
   if (!n || n.length > 40) throw new Error("a preset needs a name of up to 40 characters");
   if (n.toLowerCase() === "custom") throw new Error("a preset can't be called Custom");
   return n;
+}
+
+/** The level in `levels` nearest `asked`; between two equally near, the lower. */
+function nearestLevel(levels: readonly Exclude<ThinkingLevel, "off">[], asked: ThinkingLevel): Exclude<ThinkingLevel, "off"> | undefined {
+  const at = THINKING_LEVELS.indexOf(asked);
+  return [...levels].sort((a, b) => Math.abs(THINKING_LEVELS.indexOf(a) - at) - Math.abs(THINKING_LEVELS.indexOf(b) - at) || THINKING_LEVELS.indexOf(a) - THINKING_LEVELS.indexOf(b))[0];
 }
 
 function checkThinking(level: string): ThinkingLevel {

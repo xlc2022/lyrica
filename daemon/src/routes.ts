@@ -1,4 +1,4 @@
-import { PushStore, type PushSettings } from "@lyrica/core";
+import { DEFAULT_THINKING, PushStore, type PushSettings } from "@lyrica/core";
 import { pushTarget } from "./push.ts";
 import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
@@ -631,7 +631,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const role = await r.json<Api.Role>();
       s().delegation.store.setRole(user.id, {
         name: r.params.name!, description: String(role.description ?? ""), prompt: String(role.prompt ?? ""), tier: role.tier,
-        tools: toolList(role.tools), readOnly: !!role.readOnly, thinking: role.thinking ?? "off",
+        tools: toolList(role.tools), readOnly: !!role.readOnly, thinking: role.thinking ?? DEFAULT_THINKING,
       });
       return roles(d, user.id);
     }),
@@ -2601,7 +2601,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   const effective = chosen && (!restricted || chosen.scope === "private") ? chosen : columnPreset;
   return {
     models: Object.fromEntries(THREAD_TASKS.map((task) => [task, taskModel(task)])) as Api.ThreadSettings["models"],
-    profile: effective?.name ?? "Custom", preset: ctx.preset ?? null, thinking: ctx.thinking ?? "off", thinkingLevels,
+    profile: effective?.name ?? "Custom", preset: ctx.preset ?? null, thinking: ctx.thinking ?? DEFAULT_THINKING, thinkingLevels,
     ...(answered ? { answered } : {}),
     ...(threadId ? contextOf(d, user, pool, threadId, answered) ?? {} : {}),
     code: applies.code, localOnly: ctx.localOnly,

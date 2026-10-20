@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach } from "vitest";
 
 /** What the fake answers to one chat request: text, streamed deltas, a tool call, or an HTTP error. */
-export type Reply = { text: string; slowMs?: number } | { tools: { name: string; args: unknown; id?: string }[] } | { status: number } | { deltas: { content?: string; reasoning_content?: string }[] };
+export type Reply = { text: string; slowMs?: number } | { tools: { name: string; args: unknown; id?: string }[] } | { status: number; message?: string } | { deltas: { content?: string; reasoning_content?: string }[] };
 /** Picks the reply from the request, and may take its time. */
 export type Responder = (chat: ChatRequest) => Reply | Promise<Reply>;
 
@@ -38,7 +38,7 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
       requests.push(chat);
       const next = queue.shift() ?? responder ?? { text: `ok from ${label}` };
       const reply = typeof next === "function" ? await next(chat) : next;
-      if ("status" in reply) { res.writeHead(reply.status, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { message: "scripted failure" } })); }
+      if ("status" in reply) { res.writeHead(reply.status, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { message: reply.message ?? "scripted failure" } })); }
       const base = { id: "chatcmpl-1", object: "chat.completion.chunk", created: 0, model: chat.model };
       const delta = "text" in reply
         ? { role: "assistant", content: reply.text }

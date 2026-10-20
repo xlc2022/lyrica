@@ -336,6 +336,7 @@ type Task = "chat" | "code" | "subagent.cheap" | "subagent.strong" | "compaction
 // populated saved presets missing it, subject to the one-level Same as rule.
 // A thread's code list wins; its chat override never supplies code's fallback.
 type ThinkingLevel = "off" | "low" | "medium" | "high";
+const DEFAULT_THINKING: ThinkingLevel = "medium";  // threads think at it unless the person chooses
 
 interface Endpoint {
   id: string;                               // permanent (UUID); the name is a label
@@ -373,6 +374,7 @@ interface CallContext {
   preset?: string;                          // the thread's own preset; absent is its column. Ignored in private and local-only threads unless the preset is private
   overrides?: Partial<Record<Task, ModelRef[]>>;   // the thread's own lists, which beat the preset
   thinking?: ThinkingLevel;
+  thinkingUnset?: boolean;                  // nobody chose the level (thread or user default): it is DEFAULT_THINKING
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
   contextLimit?: number;                    // the most context the thread plans for, below its model's window; inherited by children
 }
@@ -452,7 +454,8 @@ class Models {                                              // new Models(keyrin
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
-  thinkingFor(resolution, asked): { level; note? }
+  thinkingFor(resolution, asked, unset?): { level; note? }   // asked defaults to DEFAULT_THINKING ("medium"), also the per-user default; unset (CallContext.thinkingUnset) drops the can't-think note
+  mandatoryThinking(offering) / mustThink(offeringId)   // a model whose provider refused thinking off: medium or the nearest level; in memory for the run
   recordCall(userId, { pool, threadId, task, resolution, note?, audioSeconds? }, { retry? }) / recentCalls(userId, { limit?, threadId?, threadIds?, pool?, speech?: false }): CallRecord[]
   callHistory(userId, { limit, offset, q, pools, threadIds? }): { entries: CallRecord[]; total }
     // GET models/calls/history?project=&pool= restricts both pool and project threads; hidden project pool is 404.
@@ -1283,7 +1286,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - A host model whose only thinking level is a chat-template switch gets Pi's
   `thinkingFormat: "qwen-chat-template"`; any other model with levels gets
   `reasoning_effort`. Local endpoints and hosts are sent `system` and
-  `max_tokens`.
+  `max_tokens`. A request sent with thinking off that the provider refuses
+  because the model must think ("Reasoning is mandatory") is sent again at
+  `mandatoryThinking`, and `mustThink` is called (`thinkWhenRequired`).
 - **Projects:** a `project` section in `assemble` (`projectSection`), with
   its own `DEFAULT_BUDGETS.project` (8,000 characters, about 2,000 tokens):
   the goal, the user's instructions (at most 2,000 characters), project

@@ -399,7 +399,7 @@ describe("the thread's model", () => {
     await stream.until(is("turn_end"));
     stream.close();
     const settings = (await ada.get<ThreadSettings>(`${path}/settings`)).body;
-    expect(settings).toMatchObject({ profile: "Custom", preset: null, thinking: "off", thinkingLevels: ["off"], answered: { label: "gpu/qwen3.8-27b", kind: "local", task: "chat" } });
+    expect(settings).toMatchObject({ profile: "Custom", preset: null, thinking: "medium", thinkingLevels: ["off"], answered: { label: "gpu/qwen3.8-27b", kind: "local", task: "chat" } });
     const calls = (await ada.get<CallInfo[]>(`/api/u/${rt.ada.id}/models/calls`)).body;
     expect(calls[0]).toMatchObject({ threadId: thread.id, label: "gpu/qwen3.8-27b" });
     expect(JSON.stringify(calls)).not.toMatch(/Miso/);
