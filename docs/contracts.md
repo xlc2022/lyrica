@@ -1886,7 +1886,8 @@ claudeCodeFor(t): boolean                 // Claude Code for a run: general, not
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
 // Project code threads have their own folder; other child threads share their parent's (folderThread).
 sharedDir(t): string | undefined          // shared/ in the folder of the family's topmost thread (settings.familyRoot; the project chat in a project):
-  // SandboxSpec.shared, mounted read-write at /shared (SHARED) for the whole family; undefined when a thread made it a file or link
+  // SandboxSpec.shared, mounted read-write at /shared (SHARED) for the whole family; undefined when a thread made it a file or link,
+  // or when sharesFamilyFolder(t) is false: a local-only thread (or ancestor below the top) under a top that isn't restricted
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
 // MachineConfig { name, kind: "ssh" | "proxmox", host, port, username (Proxmox: token id), privateKey (Proxmox: the token),
 //   root (Proxmox: null), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,

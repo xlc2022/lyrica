@@ -423,7 +423,10 @@ threads and their subagents, at any depth (`familyRoot`).
   settings and the project chat's Files; a code thread, which has its own
   folder, sees it only at `/shared`. It goes when the topmost thread's
   folder goes. A thread that puts a file or link at that path leaves the
-  family without `/shared` rather than breaking its sandboxes.
+  family without `/shared` rather than breaking its sandboxes. A
+  local-only thread (itself or an ancestor below the top) under a topmost
+  thread that may call the cloud gets no `/shared`, since what it put there
+  would reach that model (`sharesFamilyFolder`).
 - The prompt's workspace section says so in one line (`SHARED_LINE`).
 - The `threads` tool refuses a message over 8,000 characters, and any
   message or task holding a long base64 run, naming `/shared` or a shared

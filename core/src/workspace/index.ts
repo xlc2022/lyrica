@@ -272,12 +272,27 @@ export class Workspace {
   }
 
   /**
+   * Whether the thread gets its family's /shared: not a local-only thread
+   * (itself or below the top) under a topmost thread that may call the cloud,
+   * since what it put there would reach that thread's model.
+   */
+  sharesFamilyFolder(t: WorkspaceThread): boolean {
+    const s = this.settings(t.userId);
+    const root = s.familyRoot(t.threadId);
+    const restricted = this.opts.restricted ?? (() => true);
+    if (restricted(t.userId, t.pool, root)) return true;
+    for (let id: string | null = t.threadId; id && id !== root; id = s.thread(id).parent) if (restricted(t.userId, t.pool, id)) return false;
+    return true;
+  }
+
+  /**
    * The folder a thread shares with its family (docs/workspace.md, "Handing
    * files over"): `shared/` in its topmost thread's folder (the project
    * folder, for a project's chat and threads), so the person sees it there
-   * and it goes with that thread.
+   * and it goes with that thread. None where sharesFamilyFolder says no.
    */
   sharedDir(t: WorkspaceThread): string | undefined {
+    if (!this.sharesFamilyFolder(t)) return undefined;
     const root = this.settings(t.userId).familyRoot(t.threadId);
     const dir = join(this.threadDir({ userId: t.userId, pool: t.pool, threadId: root }), "shared");
     try { mkdirSync(dir, { mode: 0o700 }); } catch (err) { if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err; }

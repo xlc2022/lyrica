@@ -984,7 +984,7 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   a tooltip saying the oldest reach her as their first line only.
 - A `threads` call is a card headed by what it did: "Child thread: <title>"
   for a start, "Update to the parent thread" or "Message to a thread" for a
-  message, and "Read a thread", "Stop a thread", "Resolve a thread",
+  message, and "Thread read", "Thread stopped", "Thread resolved",
   "Threads" (list) and the like for the rest (`THREADS_HEADS`); it links
   to the thread — one **Open** link in its head, or when the run made
   more than one thread a **Threads <n>** button with the count in mono and a

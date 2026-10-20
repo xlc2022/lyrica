@@ -592,7 +592,7 @@ function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool"
 
 /** What a `threads` card is titled by its action, besides start and message. */
 const THREADS_HEADS: Record<string, string> = {
-  list: "Threads", read: "Read a thread", stop: "Stop a thread", resolve: "Resolve a thread", reopen: "Reopen a thread",
+  list: "Threads", read: "Thread read", stop: "Thread stopped", resolve: "Thread resolved", reopen: "Thread reopened",
   later: "Wake-up", routine: "Routines", compact: "Compaction", code: "Code mode", model: "Model switch", ask: "Question",
 };
 
