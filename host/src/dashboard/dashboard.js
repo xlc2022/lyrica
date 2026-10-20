@@ -1,303 +1,550 @@
-// The host dashboard. Plain DOM, no build step.
+// The host dashboard. Plain DOM, no build step; it follows Lyrica's interface rules (docs/ux.md).
 const $ = (id) => document.getElementById(id);
 
+/** An element: h("button", { class: "sm", onclick }, "Load"). */
+function h(tag, props = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k.startsWith("on")) el[k] = v;
+    else if (k === "class") el.className = v;
+    else if (k === "hidden" || k === "disabled" || k === "checked" || k === "required") el[k] = !!v;
+    else if (k === "value") el.value = v;
+    else el.setAttribute(k, v);
+  }
+  el.append(...children.flat().filter((c) => c !== null && c !== undefined && c !== false));
+  return el;
+}
+
+const ICONS = { more: "M5 12h.01M12 12h.01M19 12h.01", close: "M6 6l12 12M18 6L6 18" };
+function icon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "ic");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", ICONS[name]);
+  for (const [k, v] of Object.entries({ fill: "none", stroke: "currentColor", "stroke-width": name === "more" ? 3 : 1.75, "stroke-linecap": "round", "stroke-linejoin": "round" })) path.setAttribute(k, v);
+  svg.append(path);
+  return svg;
+}
+
 async function api(path, options = {}) {
-  const res = await fetch(path, { ...options, headers: { "content-type": "application/json" }, credentials: "same-origin" });
+  const res = await fetch(path, { ...options, headers: { "content-type": "application/json", ...options.headers }, credentials: "same-origin" });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(body.error?.message ?? `Request failed (${res.status}).`), { code: body.error?.code });
   return body;
 }
+const post = (path, body = {}) => api(path, { method: "POST", body: JSON.stringify(body) });
 
 function show(error) {
   $("error").textContent = error ? error.message ?? String(error) : "";
+  $("error").hidden = !error;
 }
 
-function gib(bytes) {
-  return bytes == null ? "?" : `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
+/** Sizes as Lyrica writes them: "812.0 GB", "1.31 TB", "420 MB". */
+function size(bytes) {
+  if (bytes == null) return "?";
+  if (bytes <= 0) return "0 GB";
+  if (bytes >= 2 ** 40) return `${(bytes / 2 ** 40).toFixed(2)} TB`;
+  if (bytes >= 0.1 * 2 ** 30) return `${(bytes / 2 ** 30).toFixed(1)} GB`;
+  return `${Math.max(1, Math.round(bytes / 2 ** 20))} MB`;
+}
+const num = (n) => h("span", { class: "num" }, typeof n === "number" ? n.toLocaleString("en") : n);
+const when = (iso) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+function duration(seconds) {
+  if (seconds < 90) return `${Math.round(seconds)} s`;
+  if (seconds < 5400) return `${Math.round(seconds / 60)} min`;
+  return `${(seconds / 3600).toFixed(1)} h`;
+}
+/** A facts line: values joined by " · ". */
+const facts = (...parts) => h("p", { class: "facts" }, parts.filter(Boolean).flatMap((p, i) => (i ? [h("span", {}, "·"), p] : [p])));
+const state = (word, dot, title) => h("span", { class: "state", title }, h("span", { class: `dot ${dot}` }), word);
+
+/** Runs an action, then refreshes; a failure shows in the banner. */
+const act = (fn) => () => Promise.resolve(fn()).then(() => refresh(true), show);
+const button = (label, fn, cls = "sm") => h("button", { type: "button", class: cls, onclick: act(fn) }, label);
+
+// ---- Menus, the drawer and the confirmation dialog ----
+
+let openMenu = null;
+function closeMenu() {
+  openMenu?.remove();
+  openMenu = null;
+}
+document.addEventListener("click", (e) => {
+  if (openMenu && !openMenu.parentElement.contains(e.target)) closeMenu();
+});
+
+/** The ⋯ menu for a row's rare actions: [label, action, { danger }]. */
+function rowMenu(label, items) {
+  const wrap = h("div", { class: "row-menu" });
+  const toggle = h("button", { type: "button", class: "icon sm", "aria-label": `More for ${label}`, "aria-haspopup": "menu" }, icon("more"));
+  toggle.onclick = () => {
+    const was = openMenu?.parentElement === wrap;
+    closeMenu();
+    if (was) return;
+    openMenu = h("div", { class: "menu", role: "menu" },
+      items.filter(Boolean).map(([text, fn, opts = {}]) => h("button", { type: "button", role: "menuitem", class: opts.danger ? "danger" : undefined, onclick: () => { closeMenu(); act(fn)(); } }, text)));
+    wrap.append(openMenu);
+  };
+  wrap.append(toggle);
+  return wrap;
 }
 
-async function refresh() {
+/** Asks first: the sentence and two buttons. Resolves true on the action. */
+function confirmFirst(text, ok, danger = false) {
+  const dlg = $("confirm");
+  $("confirm-text").textContent = text;
+  $("confirm-ok").textContent = ok;
+  $("confirm-ok").className = danger ? "danger primary" : "primary";
+  dlg.returnValue = "";
+  dlg.showModal();
+  return new Promise((resolve) => dlg.addEventListener("close", () => resolve(dlg.returnValue === "ok"), { once: true }));
+}
+
+let drawer = null;
+function closeDrawer() {
+  drawer?.forEach((el) => el.remove());
+  drawer = null;
+  render();
+}
+/** Edits one thing in context: a title, its facts, the fields and one Save. save() throws to keep it open. */
+function openDrawer({ title, sub, fields, save, saveLabel = "Save", saveTitle }) {
+  closeDrawer();
+  const error = h("p", { class: "error", role: "alert", hidden: true });
+  const form = h("form", { class: "drawer", role: "dialog", "aria-label": title },
+    h("div", { class: "drawer-head" },
+      h("div", { class: "head-title" }, h("h2", {}, title), sub ? h("p", { class: "facts" }, sub) : null),
+      h("button", { type: "button", class: "icon sm", "aria-label": "Close", onclick: closeDrawer }, icon("close"))),
+    h("div", { class: "drawer-body" }, fields, error),
+    h("div", { class: "drawer-foot" }, h("button", { type: "submit", class: "primary", title: saveTitle }, saveLabel)));
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    error.hidden = true;
+    Promise.resolve(save()).then((keep) => {
+      if (keep === false) return;
+      closeDrawer();
+      refresh(true);
+    }, (err) => {
+      error.textContent = err.message;
+      error.hidden = false;
+    });
+  };
+  form.onkeydown = (e) => e.key === "Escape" && closeDrawer();
+  drawer = [h("div", { class: "scrim", onclick: closeDrawer }), form];
+  document.body.append(...drawer);
+  form.querySelector("input, select, textarea")?.focus();
+}
+
+const field = (label, input, title) => h("label", { class: "field", title }, h("span", {}, label), input);
+
+// ---- State and refreshing ----
+
+const S = { me: null, status: null, models: [], downloads: [], recipes: [], starters: [], usage: [], clients: [], code: null, hub: { source: "huggingface", repo: "", token: "", url: "", sha: "", listing: null } };
+
+const SECTIONS = [
+  ["gpus", "GPUs"], ["models", "Models"], ["images", "Image models"], ["downloads", "Downloads"], ["usage", "Usage"], ["servers", "Lyrica servers"], ["password", "Password"],
+];
+const ownerOnly = new Set(["servers", "password"]);
+const section = () => {
+  const want = location.hash.slice(1);
+  const allowed = SECTIONS.filter(([k]) => S.me?.access !== "client" || !ownerOnly.has(k)).map(([k]) => k);
+  return allowed.includes(want) ? want : "gpus";
+};
+window.addEventListener("hashchange", () => {
+  closeMenu();
+  if (drawer) closeDrawer();
+  else render();
+});
+
+/** Something the user has open, which a timed refresh mustn't redraw under them. */
+const busy = () => !!(drawer || openMenu || $("confirm").open || document.activeElement?.closest?.("#content form"));
+
+async function refresh(force = false) {
+  if (!force && busy()) return;
   const me = await api("/dashboard/me");
-  $("name").textContent = me.name;
-  $("fingerprint").textContent = me.fingerprint;
+  S.me = me;
   if (me.access === null) {
     $("login").hidden = false;
     $("main").hidden = true;
-    $("login-note").textContent = me.passwordSet ? "" : "No password is set yet. Set one on the dashboard at the machine (http://127.0.0.1:7236).";
+    $("login-name").textContent = me.name;
+    $("login-fingerprint").textContent = me.fingerprint;
+    $("login-unset").hidden = me.passwordSet;
     return;
   }
+  const [status, models, downloads, recipes, starters, usage, clients] = await Promise.all([
+    api("/host/v1/status"),
+    api("/host/v1/models").catch(() => ({ models: [] })),
+    api("/host/v1/downloads").catch(() => ({ downloads: [] })),
+    api("/host/v1/recipes").catch(() => ({ recipes: [] })),
+    api("/host/v1/starters").catch(() => ({ starters: [] })),
+    api("/host/v1/usage").catch(() => ({ models: [] })),
+    me.access === "client" ? { clients: [] } : api("/dashboard/clients"),
+  ]);
+  Object.assign(S, { status, models: models.models, downloads: downloads.downloads, recipes: recipes.recipes.filter((r) => r.state !== "ignored"), starters: starters.starters, usage: usage.models, clients: clients.clients });
+  show();
+  if (!busy() || force) render();
+}
+
+// ---- The header ----
+
+const STATES = { running: ["Running", "up"], pausing: ["Pausing", "away", "Finishing the current job."], paused: ["Paused", "away"], restarting: ["Restarting", "info"] };
+const BACKENDS = { cuda: "CUDA", rocm: "ROCm", vulkan: "Vulkan" };
+
+function renderHead() {
+  const { me, status } = S;
   $("login").hidden = true;
   $("main").hidden = false;
-  $("signout-row").hidden = me.access !== "password";
-  $("password-current").hidden = me.access !== "password";
-  $("password-note").textContent = me.passwordSet ? "Needed to open this dashboard from another machine." : "Not set: the dashboard opens only at this machine until you set one.";
+  document.title = `${me.name} · Lyrica model host`;
+  $("name").textContent = me.name;
+  $("fingerprint").textContent = me.fingerprint;
+  const [word, dot, why] = STATES[status.state] ?? [status.state, ""];
+  $("state").replaceWith(Object.assign(state(word, dot, why), { id: "state" }));
+  $("facts").replaceChildren(...facts(
+    status.version ? h("span", {}, "version ", h("code", {}, status.version)) : null,
+    h("span", { title: "To change it, run host/install.sh --models /new/path on this machine, or use Edit on this host in Lyrica." }, "models folder ", h("code", {}, status.modelsFolder.path)),
+    h("span", {}, num(size(status.modelsFolder.free)), " free"),
+    status.backend ? h("span", {}, BACKENDS[status.backend] ?? status.backend) : null,
+  ).childNodes);
+  const running = status.state === "running";
+  $("head-actions").replaceChildren(
+    h("button", { type: "button", class: "sm", disabled: status.state === "restarting", onclick: act(() => post(running ? "/host/v1/pause" : "/host/v1/resume")) }, running ? "Pause" : "Resume"),
+    rowMenu(me.name, [
+      ["Restart…", async () => (await confirmFirst(`Restart ${me.name}? Queued requests fail, and pinned models load again.`, "Restart")) && post("/host/v1/restart")],
+      me.access === "password" && ["Sign out", () => post("/dashboard/logout")],
+    ]),
+  );
+  const problems = status.problems ?? [];
+  $("problems").hidden = !problems.length;
+  $("problems").replaceChildren(...problems.map((p) => h("p", { class: "warn-text" }, p)));
 
-  const status = await api("/host/v1/status");
-  const states = { running: "Running", pausing: "Pausing: finishing the current job", paused: "Paused", restarting: "Restarting" };
-  $("status").textContent = `${states[status.state] ?? status.state}. Models folder ${status.modelsFolder.path}, ${gib(status.modelsFolder.free)} free (to change it, run host/install.sh --models /new/path on this machine).`;
-  if (status.problems?.length) $("status").textContent += ` Problems: ${status.problems.join(" ")}`;
-  $("pause").hidden = status.state !== "running";
-  $("resume").hidden = status.state === "running" || status.state === "restarting";
-  if (status.backend) $("status").textContent += ` GPUs: ${{ cuda: "CUDA", rocm: "ROCm", vulkan: "Vulkan" }[status.backend]}.`;
-  renderGpus(status.gpus, status.servers);
-  const { models } = await api("/host/v1/models");
-  renderModels(models, status.cpuServers ?? []);
-  await renderDownloads();
-  await renderRecipes();
-  const usage = await api("/host/v1/usage");
-  const table = $("usage");
-  table.replaceChildren();
-  if (!usage.models.length) table.insertRow().insertCell().textContent = "Nothing yet.";
-  for (const u of usage.models) {
-    const row = table.insertRow();
-    row.insertCell().textContent = u.id;
-    row.insertCell().textContent = `${u.requests} requests, ${u.promptTokens + u.completionTokens} tokens${u.images ? `, ${u.images} images` : ""}${u.audioSeconds ? `, ${Math.round(u.audioSeconds)} s of audio` : ""}, ${Math.round(u.seconds)} s`;
-  }
-  $("pairing-section").hidden = me.access === "client";
-  $("password-section").hidden = me.access === "client";
-  if (me.access !== "client") await renderClients();
+  const counts = { models: S.models.length, images: S.recipes.length, downloads: S.downloads.filter((d) => ["queued", "downloading", "verifying"].includes(d.state)).length || null };
+  const current = section();
+  $("subnav").replaceChildren(...SECTIONS.filter(([k]) => me.access !== "client" || !ownerOnly.has(k)).map(([k, label]) =>
+    h("a", { href: `#${k}`, "aria-current": k === current ? "page" : undefined }, label, counts[k] ? h("span", { class: "count" }, String(counts[k])) : null)));
 }
 
-function button(label, onclick) {
-  const b = document.createElement("button");
-  b.textContent = label;
-  b.onclick = () => Promise.resolve(onclick()).then(refresh, show);
-  return b;
+function render() {
+  if (!S.status) return;
+  renderHead();
+  const draw = { gpus: gpus, models: textModels, images: imageModels, downloads: downloadsSection, usage: usageSection, servers: serversSection, password: passwordSection }[section()];
+  $("content").replaceChildren(...draw().filter(Boolean));
 }
 
-const post = (path, body = {}) => api(path, { method: "POST", body: JSON.stringify(body) });
+// ---- GPUs ----
 
-function renderGpus(gpus, servers) {
-  const box = $("gpus");
-  box.replaceChildren();
-  if (!gpus.length) box.textContent = "No GPUs found.";
-  for (const g of gpus) {
-    const div = document.createElement("div");
-    const head = document.createElement("p");
-    head.textContent = `GPU ${g.index}: ${g.name}${g.integrated ? ", integrated" : ""}, ${gib(g.vram.used)} of ${gib(g.vram.total)} used. Queue: ${g.queue.chat} chat, ${g.queue.image} image, ${g.queue.background} background. `;
-    // What it may run, how much it keeps free, or left out entirely.
-    const put = (change) => api(`/host/v1/gpus/${g.index}`, { method: "PUT", body: JSON.stringify({ ...g.settings, ...change }) }).then(refresh, (e) => { show(e); refresh(); });
-    for (const [server, label] of [["llamacpp", "llama.cpp"], ["vllm", "vLLM"], ["images", "images"], ["speech", "speech"]].filter(([s]) => servers.includes(s))) {
-      const box = document.createElement("input");
-      box.type = "checkbox";
-      box.checked = g.settings.servers.includes(server);
-      box.onchange = () => put({ servers: box.checked ? [...g.settings.servers, server] : g.settings.servers.filter((x) => x !== server) });
-      const tag = document.createElement("label");
-      tag.append(box, ` ${label} `);
-      head.append(tag);
+const SERVERS = [["llamacpp", "llama.cpp"], ["vllm", "vLLM"], ["images", "Images"], ["speech", "Speech"]];
+
+function gpus() {
+  const { gpus: list, servers } = S.status;
+  const head = h("div", { class: "section-head" }, h("h2", {}, "GPUs"),
+    h("div", { class: "legend" }, h("span", {}, h("i", { class: "seg-pinned" }), "Pinned"), h("span", {}, h("i", { class: "seg-loaded" }), "Loaded on demand")));
+  if (!list.length) return [head, h("p", { class: "empty" }, "No GPUs found.")];
+  return [head, ...list.map((g) => {
+    const allowed = SERVERS.filter(([s]) => servers.includes(s) && g.settings.servers.includes(s)).map(([, l]) => l);
+    const waiting = [["chat", g.queue.chat], ["image", g.queue.image], ["background", g.queue.background]].filter(([, n]) => n).map(([k, n]) => `${n} ${k}`);
+    return h("section", { class: "card" },
+      h("div", { class: "gpu-line" },
+        h("h3", {}, `GPU ${g.index} · ${g.name}`),
+        g.settings.excluded ? h("span", { class: "pill warn", title: "Nothing loads on it." }, "left out") : null,
+        h("button", { type: "button", class: "sm", onclick: () => editGpu(g) }, "Edit")),
+      facts(h("span", {}, num(size(g.vram.used)), " of ", num(size(g.vram.total)), " used"),
+        g.integrated ? h("span", {}, "integrated") : null,
+        h("span", {}, allowed.length ? allowed.join(", ") : "no servers"),
+        h("span", {}, "keeps ", num(size(g.settings.keepFree)), " free")),
+      h("div", { class: "bar", role: "img", "aria-label": `${size(g.vram.used)} of ${size(g.vram.total)} used` },
+        g.models.map((m) => h("span", { class: m.pinned ? "seg-pinned" : "seg-loaded", style: `width:${Math.min(100, (100 * m.vram) / g.vram.total)}%`, title: `${m.id}: ${size(m.vram)}` }))),
+      g.models.length ? h("ul", { class: "model-list" }, g.models.map((m) =>
+        h("li", {}, h("code", {}, m.id),
+          h("span", { class: "muted" }, [m.pinned ? "pinned" : m.state === "loading" ? "loading" : "loaded", m.busy ? "busy" : null, m.gpus.length > 1 ? `split over GPUs ${m.gpus.join(" and ")}` : null].filter(Boolean).join(" · ")),
+          h("span", { class: "num muted" }, size(m.vram)),
+          m.pinned ? null : button("Unload", () => post("/host/v1/models/unload", { model: m.id }))))) : null,
+      waiting.length ? h("p", { class: "facts" }, `Waiting: ${waiting.join(", ")}`) : null);
+  })];
+}
+
+function editGpu(g) {
+  const boxes = SERVERS.filter(([s]) => S.status.servers.includes(s)).map(([s, label]) => [s, h("input", { type: "checkbox", checked: g.settings.servers.includes(s) }), label]);
+  const keep = h("input", { type: "number", min: "0", step: "0.5", value: (g.settings.keepFree / 2 ** 30).toFixed(1), class: "num" });
+  const out = h("input", { type: "checkbox", checked: g.settings.excluded });
+  openDrawer({
+    title: `GPU ${g.index}`,
+    sub: [h("span", {}, g.name)],
+    fields: [
+      h("fieldset", {}, h("legend", {}, "Servers"), boxes.map(([, box, label]) => h("label", { class: "check" }, box, label))),
+      field("Keep free (GB)", keep, "Memory loads leave unused, for the system or other programs."),
+      h("label", { class: "check", title: "Nothing loads on it." }, out, "Left out"),
+    ],
+    save: () => api(`/host/v1/gpus/${g.index}`, { method: "PUT", body: JSON.stringify({ servers: boxes.filter(([, b]) => b.checked).map(([s]) => s), keepFree: Math.round(Number(keep.value) * 2 ** 30), excluded: out.checked }) }),
+  });
+}
+
+// ---- Models ----
+
+const KINDS = { chat: "chat", embedding: "embedding", transcribe: "transcription", speak: "voice" };
+const SERVER_NAMES = Object.fromEntries(SERVERS);
+
+function textModels() {
+  const head = h("div", { class: "section-head" }, h("h2", {}, "Models"), button("Scan the folder", () => post("/host/v1/scan")));
+  if (!S.models.length) return [head, h("ul", { class: "list" }, h("li", { class: "empty" }, "No text or voice models in the models folder."))];
+  const cpu = S.status.cpuServers ?? [];
+  return [head, h("ul", { class: "list" }, S.models.map((m) => {
+    const where = cpu.includes(m.server) ? "CPU" : m.placement.mode === "auto" ? "placed automatically" : `GPU ${m.placement.gpus.join("+")}`;
+    const [word, dot] = m.state === "loaded" ? ["Loaded", "up"] : m.state === "loading" ? ["Loading", "info"] : ["Unloaded", ""];
+    return h("li", {},
+      h("div", { class: "main" },
+        h("div", { class: "name" }, h("code", {}, m.id)),
+        facts(h("span", {}, KINDS[m.kind] ?? m.kind), h("span", {}, SERVER_NAMES[m.server] ?? m.server), num(size(m.size)), h("span", {}, where),
+          m.capabilities?.speak ? h("span", {}, num(m.capabilities.speak.voices.length), " voices") : null,
+          m.contextLength ? h("span", {}, num(m.contextLength), " context") : null,
+          m.stretch ? h("span", {}, "stretch ×", num(m.stretch)) : null,
+          m.kvBytes ? h("span", {}, "KV ", num(size(m.kvBytes))) : null)),
+      h("div", { class: "actions" },
+        state(word, dot), m.pinned ? h("span", { class: "pill" }, "pinned") : null,
+        m.state === "unloaded" ? button("Load", () => post("/host/v1/models/load", { model: m.id }))
+          : h("button", { type: "button", class: "sm", disabled: m.pinned, title: m.pinned ? "Unpin it first." : undefined, onclick: act(() => post("/host/v1/models/unload", { model: m.id })) }, "Unload"),
+        h("button", { type: "button", class: "sm", onclick: () => editModel(m).catch(show) }, "Settings"),
+        rowMenu(m.id, [
+          [m.pinned ? "Unpin" : "Pin", () => post("/host/v1/models/pin", { model: m.id, pinned: !m.pinned })],
+          m.state !== "unloaded" && ["Reload", () => post("/host/v1/models/reload", { model: m.id })],
+        ])));
+  }))];
+}
+
+/** A model's placement and serving settings; what isn't a field stays as JSON under Other settings. */
+async function editModel(m) {
+  const info = await api(`/host/v1/models/settings?model=${encodeURIComponent(m.id)}`);
+  const { placement = { mode: "auto" }, contextLength, stretch, parallel, maxSeqs, kvCacheType, memoryShare, ...rest } = info.settings;
+  const { mode, gpus: chosen = [], ...placementRest } = placement;
+  const llama = m.server === "llamacpp", vllm = m.server === "vllm", chat = m.kind === "chat";
+  const usable = S.status.gpus.filter((g) => !g.settings.excluded);
+
+  const where = h("select", {}, h("option", { value: "auto" }, "Automatic"), h("option", { value: "gpus" }, "These GPUs"));
+  where.value = mode === "gpus" ? "gpus" : "auto";
+  const picks = usable.map((g) => [g.index, h("input", { type: "checkbox", checked: chosen.includes(g.index) })]);
+  const pickBox = h("fieldset", { hidden: where.value !== "gpus" }, h("legend", {}, "GPUs"), picks.map(([i, box]) => h("label", { class: "check" }, box, `GPU ${i} · ${usable.find((g) => g.index === i).name}`)));
+  where.onchange = () => (pickBox.hidden = where.value !== "gpus");
+
+  const ctx = h("input", { type: "number", min: "512", step: "1024", class: "num", value: contextLength ?? "", placeholder: String(info.contextLength ?? "") });
+  const factor = h("input", { type: "number", min: "1", max: "8", step: llama ? "1" : "0.5", class: "num", value: stretch?.factor ?? "", placeholder: "none" });
+  const card = h("p", { class: "facts" });
+  const repo = h("input", { placeholder: "owner/name", hidden: true });
+  const describe = (r) => card.replaceChildren(...facts(
+    r ? h("span", {}, "card ", num(r.native ?? "?"), r.factor ? h("span", {}, " tokens, or ", num(r.stretched), " with a stretch of ", num(r.factor)) : " tokens, no stretch documented") : h("span", {}, "card not read"),
+    h("button", { type: "button", class: "link", onclick: () => lookUp().catch((e) => { card.append(h("span", { class: "error" }, e.message)); }) }, "Look up")).childNodes);
+  async function lookUp() {
+    try {
+      const entry = await post("/host/v1/models/lookup", { model: m.id, ...(repo.value.trim() ? { repo: repo.value.trim() } : {}) });
+      repo.hidden = true;
+      describe(entry.recommended);
+    } catch (e) {
+      if (e.code !== "need_repo") throw e;
+      repo.hidden = false;
+      repo.focus();
     }
-    const out = document.createElement("input");
-    out.type = "checkbox";
-    out.checked = g.settings.excluded;
-    out.onchange = () => put({ excluded: out.checked });
-    const outLabel = document.createElement("label");
-    outLabel.append(out, " left out ");
-    const keep = document.createElement("input");
-    keep.type = "number";
-    keep.min = "0";
-    keep.step = "0.5";
-    keep.style.width = "5em";
-    keep.value = (g.settings.keepFree / 1024 ** 3).toFixed(1);
-    keep.onchange = () => put({ keepFree: Math.round(Number(keep.value) * 1024 ** 3) });
-    const keepLabel = document.createElement("label");
-    keepLabel.append(" keep ", keep, " GiB free");
-    head.append(outLabel, keepLabel);
-    div.append(head);
-    const list = document.createElement("ul");
-    for (const m of g.models) {
-      const li = document.createElement("li");
-      li.textContent = `${m.id} (${m.state}${m.gpus.length > 1 ? `, split over GPUs ${m.gpus.join(" and ")}` : ""}${m.pinned ? ", pinned" : ""}${m.busy ? ", busy" : ""}, ${gib(m.vram)} here) `;
-      if (!m.pinned) li.append(button("Unload", () => post("/host/v1/models/unload", { model: m.id })));
-      list.append(li);
+  }
+  describe(info.recommended);
+  const atOnce = h("input", { type: "number", min: "1", class: "num", value: (llama ? parallel : maxSeqs) ?? "", placeholder: m.parallel ? String(m.parallel) : "" });
+  const kv = h("select", {}, ["", "f16", "q8_0", "q4_0"].map((v) => h("option", { value: v }, v || "Default (f16)")));
+  kv.value = kvCacheType ?? "";
+  const share = h("input", { type: "number", min: "5", max: "95", step: "5", class: "num", value: memoryShare ? Math.round(memoryShare * 100) : "", placeholder: "what it needs" });
+  const other = h("textarea", { rows: "5", spellcheck: "false" });
+  other.value = Object.keys(rest).length || Object.keys(placementRest).length ? JSON.stringify({ ...rest, ...(Object.keys(placementRest).length ? { placement: placementRest } : {}) }, null, 2) : "";
+
+  const build = () => {
+    let extra = {};
+    if (other.value.trim()) {
+      try { extra = JSON.parse(other.value); } catch { throw new Error("Other settings isn't valid JSON."); }
     }
-    div.append(list);
-    box.append(div);
-  }
-}
+    const { placement: extraPlacement, ...extraRest } = extra;
+    const settings = { ...extraRest };
+    settings.placement = where.value === "gpus" ? { ...extraPlacement, mode: "gpus", gpus: picks.filter(([, b]) => b.checked).map(([i]) => i) } : { mode: "auto" };
+    if (ctx.value) settings.contextLength = Number(ctx.value);
+    if (chat && Number(factor.value) > 1) settings.stretch = { ...stretch, type: "yarn", factor: Number(factor.value) };
+    if (atOnce.value) settings[llama ? "parallel" : "maxSeqs"] = Number(atOnce.value);
+    if (llama && kv.value) settings.kvCacheType = kv.value;
+    if (vllm && share.value) settings.memoryShare = Number(share.value) / 100;
+    return settings;
+  };
+  const put = (anyway) => api("/host/v1/models/settings", { method: "PUT", body: JSON.stringify({ model: m.id, settings: build(), ...(anyway ? { anyway } : {}) }) });
 
-function renderModels(models, cpuServers) {
-  const table = $("models");
-  table.replaceChildren();
-  if (!models.length) table.insertRow().insertCell().textContent = "No text or voice models found in the models folder.";
-  for (const m of models) {
-    const row = table.insertRow();
-    row.insertCell().textContent = m.id;
-    const where = cpuServers.includes(m.server) ? "on the CPU" : m.placement.mode === "auto" ? "auto" : `GPU ${m.placement.gpus.join("+")}`;
-    const extra = m.capabilities.speak ? `${m.capabilities.speak.voices.length} voices` : `${m.contextLength ?? "?"} context${m.stretch ? `, stretched ×${m.stretch}` : ""}${m.kvBytes ? `, ${gib(m.kvBytes)} KV` : ""}`;
-    row.insertCell().textContent = `${m.kind}, ${m.server}, ${gib(m.size)}, ${where}, ${extra}`;
-    const actions = row.insertCell();
-    if (m.state === "unloaded") actions.append(button("Load", () => post("/host/v1/models/load", { model: m.id })));
-    else actions.append(button("Reload", () => post("/host/v1/models/reload", { model: m.id })));
-    actions.append(" ", button(m.pinned ? "Unpin" : "Pin", () => post("/host/v1/models/pin", { model: m.id, pinned: !m.pinned })));
-    actions.append(" ", button("Settings", () => editSettings(m)));
-    if (m.kind === "chat") actions.append(" ", button("Look up", () => lookUp(m)));
-  }
-}
-
-/** Placement and serving settings, edited as JSON; the host says why a change can't work. */
-async function editSettings(m) {
-  const { settings, recommended } = await api(`/host/v1/models/settings?model=${encodeURIComponent(m.id)}`);
-  const recipe = recommended?.factor ? ` Its card recommends a stretch of ${recommended.factor} from ${recommended.originalContext} for ${recommended.stretched} tokens: "stretch": { "type": "yarn", "factor": ${recommended.factor} }.` : "";
-  const text = prompt(`Settings for ${m.id} (placement { "mode": "auto" } or { "mode": "gpus", "gpus": [0, 1] }; contextLength, stretch, and more in the host's API.md). They apply at the next load, or on Reload.${recipe}`, JSON.stringify(settings));
-  if (text === null) return;
-  let next;
-  try {
-    next = JSON.parse(text);
-  } catch {
-    throw new Error("That isn't valid JSON.");
-  }
-  const save = (anyway) => api("/host/v1/models/settings", { method: "PUT", body: JSON.stringify({ model: m.id, settings: next, ...(anyway ? { anyway } : {}) }) });
-  try {
-    await save(false);
-  } catch (e) {
-    // A stretch past the publisher's: saved only on purpose.
-    if (e.code !== "above_recommended" || !confirm(`${e.message} Save anyway?`)) throw e;
-    await save(true);
-  }
-}
-
-/** Reads the model's card for its recommended context; asks for the repository when the host doesn't know it. */
-async function lookUp(m) {
-  const look = (repo) => api("/host/v1/models/lookup", { method: "POST", body: JSON.stringify({ model: m.id, ...(repo ? { repo } : {}) }) });
-  let entry;
-  try {
-    entry = await look();
-  } catch (e) {
-    if (e.code !== "need_repo") throw e;
-    const repo = prompt(`Repository for ${m.id} (owner/name, or modelscope:owner/name)`);
-    if (!repo) return;
-    entry = await look(repo);
-  }
-  const r = entry.recommended;
-  alert(r?.factor ? `${r.source.repo}: ${r.native} tokens, or ${r.stretched} with a stretch of ${r.factor} from ${r.originalContext}.` : `${r?.source.repo ?? m.id}: ${r?.native ?? "?"} tokens; no stretch documented.`);
-}
-
-async function renderRecipes() {
-  const { recipes } = await api("/host/v1/recipes").catch(() => ({ recipes: [] }));
-  const table = $("recipes");
-  table.replaceChildren();
-  if (!recipes.length) table.insertRow().insertCell().textContent = "None yet: install a starter, or put image models in the models folder and scan.";
-  for (const r of recipes.filter((x) => x.state !== "ignored")) {
-    const row = table.insertRow();
-    row.insertCell().textContent = r.name;
-    const missing = r.parts.filter((p) => !p.file || p.missing).length;
-    row.insertCell().textContent = `${r.arch}, ${r.does.join(" and ")}${r.state === "proposed" ? ", proposed" : ""}${r.ready ? "" : missing ? `, ${missing} part${missing > 1 ? "s" : ""} missing` : ", not ready"}`;
-    const actions = row.insertCell();
-    if (r.state === "proposed") {
-      actions.append(button("Use", () => post(`/host/v1/recipes/${r.id}/confirm`)), " ", button("Ignore", () => post(`/host/v1/recipes/${r.id}/ignore`)));
-    }
-    if (missing) actions.append(" ", button("Download parts", () => post(`/host/v1/recipes/${r.id}/download-parts`)));
-    actions.append(" ", button("Delete", () => confirm(`Delete ${r.name}? Parts the host downloaded that no other recipe uses are deleted too.`) && api(`/host/v1/recipes/${r.id}`, { method: "DELETE" })));
-  }
-  const { starters } = await api("/host/v1/starters").catch(() => ({ starters: [] }));
-  const st = $("starters");
-  st.replaceChildren();
-  for (const s of starters) {
-    const row = st.insertRow();
-    row.insertCell().textContent = s.name;
-    const have = s.parts.filter((p) => p.present).length;
-    row.insertCell().textContent = `${have} of ${s.parts.length} parts here`;
-    row.insertCell().append(button("Install", () => post(`/host/v1/starters/${s.id}/install`)));
-  }
-}
-
-async function renderDownloads() {
-  const { downloads } = await api("/host/v1/downloads").catch(() => ({ downloads: [] }));
-  const table = $("downloads");
-  table.replaceChildren();
-  for (const d of downloads) {
-    const row = table.insertRow();
-    const what = row.insertCell();
-    what.textContent = d.path;
-    if (d.source === "url" && d.url) {
-      const link = document.createElement("div");
-      link.className = "mono muted";
-      link.style.wordBreak = "break-all";
-      link.textContent = d.url;
-      what.append(link);
-    }
-    const pct = d.size ? ` ${Math.floor((100 * d.received) / d.size)}%` : "";
-    row.insertCell().textContent = d.state === "downloading" ? `downloading${pct}` : d.state === "done" && d.verified === false ? "done, unverified" : d.error ?? d.state;
-    row.insertCell().append(button(["queued", "downloading", "verifying"].includes(d.state) ? "Cancel" : "Clear", () => api(`/host/v1/downloads/${d.id}`, { method: "DELETE" })));
-  }
-}
-
-$("hub-form").onsubmit = (e) => {
-  e.preventDefault();
-  const source = $("hub-source").value;
-  const repo = $("hub-repo").value.trim();
-  const token = $("hub-token").value;
-  const headers = { "content-type": "application/json", ...(token ? { "x-hub-token": token } : {}) };
-  fetch(`/host/v1/hub/files?source=${source}&repo=${encodeURIComponent(repo)}`, { headers, credentials: "same-origin" })
-    .then((r) => r.json().then((b) => (r.ok ? b : Promise.reject(new Error(b.error?.message)))))
-    .then((listing) => {
-      const table = $("hub-files");
-      table.replaceChildren();
-      for (const f of listing.files) {
-        const row = table.insertRow();
-        row.insertCell().textContent = f.path;
-        row.insertCell().textContent = gib(f.size);
-        const cell = row.insertCell();
-        if (!f.allowed) cell.textContent = f.reason;
-        else if (f.present) cell.textContent = "already here";
-        else if (!f.fits) cell.textContent = "too big for the free space";
-        else cell.append(button("Download", () =>
-          fetch("/host/v1/downloads", { method: "POST", headers, credentials: "same-origin", body: JSON.stringify({ source, repo, revision: listing.revision, files: [f.path] }) })
-            .then((r) => r.json().then((b) => (r.ok ? b : Promise.reject(new Error(b.error?.message)))))));
+  openDrawer({
+    title: "Model settings",
+    saveTitle: "They apply at the next load, or on Reload.",
+    sub: [h("code", {}, m.id)],
+    fields: [
+      field("Placement", where), pickBox,
+      info.contextLength != null ? field("Context length", ctx, "Unset: the largest that fits.") : null,
+      chat ? h("div", { class: "field" }, field("Stretch", factor, info.stretchUntested ? "A YaRN factor, 1 to 8. Untested on vLLM for this model." : "A YaRN factor, 1 to 8."), card, repo) : null,
+      chat && (llama || vllm) ? field("Requests at once", atOnce, "Unset: by its context, 1 below 200k tokens.") : null,
+      llama ? field("KV cache", kv, "q8_0 and q4_0 need flashAttention on, under Other settings.") : null,
+      vllm ? field("Memory share (%)", share, "Of each of its GPUs. Unset: what it needs.") : null,
+      field("Other settings", other, "JSON: flashAttention, gpuLayers, batchSize, chatTemplate and the rest in the host's API.md."),
+    ],
+    save: async () => {
+      try {
+        await put(false);
+      } catch (e) {
+        // A stretch past the publisher's: saved only on purpose.
+        if (e.code !== "above_recommended") throw e;
+        if (!(await confirmFirst(`${e.message} Save the stretch anyway?`, "Save anyway"))) return false;
+        await put(true);
       }
-      show();
-    }, show);
-};
-$("link-form").onsubmit = (e) => {
-  e.preventDefault();
-  const sha256 = $("link-sha").value.trim();
-  post("/host/v1/downloads", { source: "url", url: $("link-url").value.trim(), ...(sha256 ? { sha256 } : {}) }).then(refresh, show);
-};
-
-async function renderClients() {
-  const { clients } = await api("/dashboard/clients");
-  const table = $("clients");
-  table.replaceChildren();
-  if (!clients.length) table.insertRow().insertCell().textContent = "None paired yet.";
-  for (const c of clients) {
-    const row = table.insertRow();
-    row.insertCell().textContent = c.name;
-    const fp = row.insertCell();
-    fp.className = "mono muted";
-    fp.textContent = `${c.fingerprint.slice(0, 16)}…`;
-    row.insertCell().textContent = c.lastSeen ? `seen ${new Date(c.lastSeen).toLocaleString()}` : `paired ${new Date(c.pairedAt).toLocaleString()}`;
-    const revoke = document.createElement("button");
-    revoke.textContent = "Revoke";
-    revoke.onclick = () => {
-      if (confirm(`Revoke ${c.name}? It will need to pair again.`)) api(`/dashboard/clients/${c.fingerprint}`, { method: "DELETE" }).then(refresh, show);
-    };
-    row.insertCell().append(revoke);
-  }
+    },
+  });
 }
 
-$("login").onsubmit = (e) => {
+// ---- Image models ----
+
+function imageModels() {
+  const list = h("ul", { class: "list" }, S.recipes.length ? S.recipes.map((r) => {
+    const missing = r.parts.filter((p) => !p.file || p.missing).length;
+    const badge = r.state === "proposed" ? h("span", { class: "pill info", title: "Found in the models folder; Use adds it." }, "proposed")
+      : missing ? h("span", { class: "pill warn" }, `${missing} part${missing > 1 ? "s" : ""} missing`)
+      : r.ready ? state("Ready", "up") : state("Not ready", "away");
+    const del = ["Delete…", async () => (await confirmFirst(`Delete ${r.name}? Parts the host downloaded that no other recipe uses are deleted too.`, "Delete", true)) && api(`/host/v1/recipes/${r.id}`, { method: "DELETE" }), { danger: true }];
+    const parts = ["Download parts", () => post(`/host/v1/recipes/${r.id}/download-parts`)];
+    return h("li", {},
+      h("div", { class: "main" }, h("div", { class: "name" }, r.name), facts(h("span", {}, r.arch), h("span", {}, r.does.join(" and ")))),
+      h("div", { class: "actions" }, badge,
+        r.state === "proposed" ? button("Use", () => post(`/host/v1/recipes/${r.id}/confirm`)) : missing ? button(...parts) : null,
+        rowMenu(r.name, [
+          r.state === "proposed" && ["Ignore", () => post(`/host/v1/recipes/${r.id}/ignore`)],
+          r.state === "proposed" && missing && parts,
+          del,
+        ])));
+  }) : h("li", { class: "empty" }, "None yet."));
+  return [
+    h("div", { class: "section-head" }, h("h2", {}, "Image models"), button("Scan the folder", () => post("/host/v1/scan"))),
+    list,
+    S.starters.length ? h("h3", {}, "Starters") : null,
+    S.starters.length ? h("ul", { class: "list" }, S.starters.map((s) => {
+      const have = s.parts.filter((p) => p.present).length;
+      return h("li", {}, h("div", { class: "main" }, h("div", { class: "name" }, s.name), facts(h("span", {}, num(have), " of ", num(s.parts.length), " parts here"))),
+        h("div", { class: "actions" }, button("Install", () => post(`/host/v1/starters/${s.id}/install`))));
+    })) : null,
+  ];
+}
+
+// ---- Downloads ----
+
+const hubHeaders = () => ({ ...(S.hub.token ? { "x-hub-token": S.hub.token } : {}) });
+const bound = (key, props = {}) => h("input", { ...props, value: S.hub[key], oninput: (e) => (S.hub[key] = e.target.value) });
+
+function downloadsSection() {
+  const hub = S.hub;
+  const pick = (source) => h("button", { type: "button", "aria-pressed": String(hub.source === source), onclick: () => { hub.source = source; hub.listing = null; render(); } }, { huggingface: "Hugging Face", modelscope: "ModelScope", url: "Link" }[source]);
+  const form = hub.source === "url"
+    ? h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); act(async () => { await post("/host/v1/downloads", { source: "url", url: hub.url.trim(), ...(hub.sha.trim() ? { sha256: hub.sha.trim() } : {}) }); hub.url = hub.sha = ""; })(); } },
+      field("Link", bound("url", { type: "url", required: true, placeholder: "https://…/model.gguf" }), "A .gguf or .safetensors file."),
+      field("SHA-256", bound("sha", { class: "num" }), "If the page lists one."),
+      h("button", { type: "submit", class: "primary" }, "Download"))
+    : h("form", { class: "row", onsubmit: (e) => { e.preventDefault(); listFiles().catch(show); } },
+      field("Repository", bound("repo", { required: true, placeholder: "owner/name" })),
+      field("Access token", bound("token", { type: "password", autocomplete: "off" }), "Only for a gated repository. Used for this download, never kept."),
+      h("button", { type: "submit", class: "primary" }, "List files"));
+  const listing = hub.listing;
+  return [
+    h("div", { class: "section-head" }, h("h2", {}, "Downloads"), h("span", { class: "facts" }, num(size(S.status.modelsFolder.free)), " free")),
+    h("section", { class: "card" }, h("div", { class: "seg", role: "group", "aria-label": "Source" }, pick("huggingface"), pick("modelscope"), pick("url")), form),
+    listing ? h("div", { class: "section-head" }, h("h3", {}, h("code", {}, listing.repo)), h("span", { class: "facts" }, "revision ", h("code", {}, listing.revision.slice(0, 12)))) : null,
+    listing ? h("ul", { class: "list" }, listing.files.length ? listing.files.map((f) =>
+      h("li", {}, h("div", { class: "main" }, h("div", { class: "name" }, h("code", {}, f.path)), facts(num(size(f.size)))),
+        h("div", { class: "actions" }, !f.allowed ? h("span", { class: "facts" }, f.reason) : f.present ? state("Here", "up") : !f.fits ? h("span", { class: "pill warn" }, "too big for the free space")
+          : button("Download", () => fetch("/host/v1/downloads", { method: "POST", headers: { "content-type": "application/json", ...hubHeaders() }, credentials: "same-origin", body: JSON.stringify({ source: hub.source, repo: listing.repo, revision: listing.revision, files: [f.path] }) })
+            .then((r) => r.json().then((b) => (r.ok ? b : Promise.reject(new Error(b.error?.message)))))))))
+      : h("li", { class: "empty" }, "No files.")) : null,
+    S.downloads.length ? h("h3", {}, "On this host") : null,
+    S.downloads.length ? h("ul", { class: "list" }, S.downloads.map(downloadRow)) : null,
+  ];
+}
+
+async function listFiles() {
+  const { source, repo } = S.hub;
+  const res = await fetch(`/host/v1/hub/files?source=${source}&repo=${encodeURIComponent(repo.trim())}`, { headers: hubHeaders(), credentials: "same-origin" });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error?.message ?? `Request failed (${res.status}).`);
+  S.hub.listing = { ...body, repo: repo.trim() };
+  show();
+  render();
+}
+
+function downloadRow(d) {
+  const going = ["queued", "downloading", "verifying"].includes(d.state);
+  const pct = d.size ? Math.floor((100 * d.received) / d.size) : null;
+  const word = d.state === "downloading" ? state(pct == null ? "Downloading" : h("span", {}, "Downloading ", num(`${pct}%`)), "info")
+    : d.state === "queued" ? state("Queued", "") : d.state === "verifying" ? state("Verifying", "info")
+    : d.state === "done" ? (d.verified === false ? state("Done, unverified", "away", "No SHA-256 to check it against.") : state("Done", "up"))
+    : state(d.state === "failed" ? "Failed" : d.state, "down");
+  return h("li", {},
+    h("div", { class: "main" }, h("div", { class: "name" }, h("code", {}, d.path)), d.url ? h("p", { class: "facts" }, h("code", { class: "muted" }, d.url)) : null),
+    h("div", { class: "actions" }, word, button(going ? "Cancel" : "Clear", () => api(`/host/v1/downloads/${d.id}`, { method: "DELETE" }))),
+    d.state === "downloading" && pct != null ? h("div", { class: "progress wide" }, h("span", { style: `width:${pct}%` })) : null,
+    d.error ? h("p", { class: "warn-text wide" }, d.error) : null);
+}
+
+// ---- Usage ----
+
+function usageSection() {
+  return [
+    h("div", { class: "section-head" }, h("h2", { title: "Counts only: never prompts, results or who asked. Nothing leaves this machine." }, "Usage")),
+    h("ul", { class: "list" }, S.usage.length ? S.usage.map((u) => h("li", {},
+      h("div", { class: "main" }, h("div", { class: "name" }, h("code", {}, u.id)),
+        facts(h("span", {}, num(u.requests), " requests"),
+          u.promptTokens + u.completionTokens ? h("span", {}, num(u.promptTokens + u.completionTokens), " tokens") : null,
+          u.images ? h("span", {}, num(u.images), " images") : null,
+          u.audioSeconds ? h("span", {}, num(duration(u.audioSeconds)), " of audio") : null,
+          h("span", {}, num(duration(u.seconds)), " busy"))))) : h("li", { class: "empty" }, "Nothing yet.")),
+  ];
+}
+
+// ---- Lyrica servers and the password ----
+
+function serversSection() {
+  const code = S.code && Date.parse(S.code.expiresAt) > Date.now() ? S.code : null;
+  return [
+    h("div", { class: "section-head" }, h("h2", {}, "Lyrica servers"),
+      h("button", { type: "button", class: "primary", onclick: () => post("/dashboard/pairing").then((made) => { S.code = made; render(); }, show) }, code ? "New code" : "Pair with Lyrica")),
+    code ? h("section", { class: "card" }, h("div", { class: "code", title: "In Lyrica: Models, Hosts and endpoints, Add model host." }, code.code),
+      facts(h("span", {}, "enter it on Lyrica's Add model host"), h("span", {}, "works once, until ", h("span", { class: "num" }, new Date(code.expiresAt).toLocaleTimeString(undefined, { timeStyle: "short" }))))) : null,
+    h("ul", { class: "list" }, S.clients.length ? S.clients.map((c) => h("li", {},
+      h("div", { class: "main" }, h("div", { class: "name" }, c.name),
+        facts(h("code", { title: c.fingerprint }, `${c.fingerprint.slice(0, 16)}…`), h("span", {}, c.lastSeen ? "seen " : "paired ", h("span", { class: "num" }, when(c.lastSeen ?? c.pairedAt))))),
+      h("div", { class: "actions" }, button("Revoke…", async () => (await confirmFirst(`Revoke ${c.name}? It will need to pair again.`, "Revoke", true)) && api(`/dashboard/clients/${c.fingerprint}`, { method: "DELETE" })))))
+      : h("li", { class: "empty" }, "None paired yet.")),
+  ];
+}
+
+function passwordSection() {
+  const { me } = S;
+  const current = h("input", { type: "password", autocomplete: "current-password", required: true });
+  const next = h("input", { type: "password", autocomplete: "new-password", minlength: "10", required: true });
+  const save = h("button", { type: "submit", class: "primary" }, "Save");
+  const form = h("form", { class: "card", onsubmit: (e) => {
+    e.preventDefault();
+    post("/dashboard/password", { password: next.value, ...(me.access === "password" ? { current: current.value } : {}) }).then(() => {
+      current.value = next.value = "";
+      document.activeElement?.blur();
+      save.textContent = "Saved";
+      setTimeout(() => refresh(true).catch(show), 2000);
+    }, show);
+  } },
+    me.access === "password" ? field("Current password", current) : null,
+    field(me.passwordSet ? "New password" : "Password", next, "10 or more characters."),
+    h("div", {}, save));
+  return [
+    h("div", { class: "section-head" }, h("h2", {}, "Password"),
+      me.passwordSet ? state("Set", "up", "Needed to open this dashboard from another machine.") : state("Not set", "away", "The dashboard opens only at this machine until one is set.")),
+    form,
+  ];
+}
+
+$("login-form").onsubmit = (e) => {
   e.preventDefault();
-  api("/dashboard/login", { method: "POST", body: JSON.stringify({ password: $("login-password").value }) })
-    .then(() => { $("login-password").value = ""; show(); return refresh(); }, show);
-};
-$("pause").onclick = () => post("/host/v1/pause").then(refresh, show);
-$("resume").onclick = () => post("/host/v1/resume").then(refresh, show);
-$("restart").onclick = () => confirm("Restart? Queued requests fail, and pinned models load again.") && post("/host/v1/restart").then(refresh, show);
-$("scan").onclick = () => post("/host/v1/scan").then(refresh, show);
-$("signout").onclick = () => api("/dashboard/logout", { method: "POST" }).then(refresh, show);
-$("pair").onclick = () =>
-  api("/dashboard/pairing", { method: "POST" }).then((made) => {
-    $("code").textContent = made.code;
-    $("code-expires").textContent = new Date(made.expiresAt).toLocaleTimeString();
-    $("code-box").hidden = false;
-  }, show);
-$("password-form").onsubmit = (e) => {
-  e.preventDefault();
-  const body = { password: $("password-new").value };
-  if (!$("password-current").hidden) body.current = $("password-current").value;
-  api("/dashboard/password", { method: "POST", body: JSON.stringify(body) })
-    .then(() => { $("password-new").value = ""; $("password-current").value = ""; show(); return refresh(); }, show);
+  post("/dashboard/login", { password: $("login-password").value })
+    .then(() => { $("login-password").value = ""; show(); return refresh(true); }, show);
 };
 
-refresh().catch(show);
+refresh(true).catch(show);
 setInterval(() => refresh().catch(show), 10_000);

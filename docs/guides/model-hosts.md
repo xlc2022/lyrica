@@ -166,9 +166,11 @@ interfaces (Docker's, for one). That is how you change a setting.
   Tailscale's certificate.
 
 Until a password is set (by the script, or on the dashboard at the machine)
-it opens only at the machine. It shows the GPUs and what is loaded on them,
-the model library with each model's placement and settings, downloads,
-image recipes, paired Lyrica servers, and Pause.
+it opens only at the machine. It looks like Lyrica's own pages: the host's
+state with **Pause** at the top, and sections down the left for the GPUs
+and what is loaded on them, the model library (each model's **Settings**
+opens a drawer), image models, downloads, usage, paired Lyrica servers and
+the password.
 
 ## Pair it with Lyrica
 
