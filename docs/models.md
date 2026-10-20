@@ -377,9 +377,16 @@ too. Nothing acts on speed.
 Offerings carry `reasoning`, the levels they offer besides off: discovered
 from OpenRouter's `supported_parameters`, or set by hand. Threads have a
 thinking setting (off, low, medium, high, `setThinking`) with a per-user
-default (`setDefaultThinking`, off unless set). `thinkingFor` maps it to
-what the model offers: the nearest level it has, with a note, or off with a
-note when it can't think. A model host's model with one level (a thinking
+default (`setDefaultThinking`, medium unless set: `DEFAULT_THINKING`).
+`thinkingFor` maps it to what the model offers: the nearest level it has,
+with a note, or off when it can't think, with a note unless nobody chose
+the level (`CallContext.thinkingUnset`). A child thread copies its parent's
+level only when one was chosen. Some providers won't
+run a model with thinking off (OpenRouter: "Reasoning is mandatory"). When
+one refuses a request sent with thinking off, the request is sent again at
+`mandatoryThinking` (medium, or the nearest level the model has), and
+`mustThink` remembers it for the daemon's run, so `thinkingFor` turns off
+into that level, with a note. A model host's model with one level (a thinking
 switch in its chat template) simply runs at it, with no note, whatever level
 was asked; on a plain endpoint, a single level is the nearest level, with the
 note. Pi passes it as `reasoning_effort` to OpenAI-compatible

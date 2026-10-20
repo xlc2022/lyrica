@@ -574,14 +574,18 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
 - **Reasoning level.** For models that support it, the message box has a
   thinking control (Off, Low, Medium, High, showing only the levels the
   current model offers), as in Claude and ChatGPT.
-  - It is a per-thread setting, with a per-user default, and goes to the
+  - It is a per-thread setting, with a per-user default (Medium unless the
+    user sets another, so models aren't run below their ability), and goes to the
     model through Pi's thinking level (`reasoning_effort` for
     OpenAI-compatible endpoints, the chat template's thinking switch for
     llama.cpp and vLLM models that use one).
   - Offerings carry a `reasoning` capability with their levels, from
     discovery or set by hand in the library.
-  - When a fallback model can't think, the thread says so beside the model
-    badge rather than failing. Subagent roles keep their own level.
+  - When a fallback model can't think at a level someone chose, the thread
+    says so beside the model badge rather than failing; at the default
+    nobody chose, it just answers. A model whose provider won't turn
+    thinking off thinks at Medium, or the nearest level it has, when asked
+    for Off. Subagent roles keep their own level.
   - Thinking text stays in the thread, encrypted like the rest, shown as a
     collapsed marker. It isn't indexed for recall.
 - **Model settings, saved per copy.** Each copy of a model has settings

@@ -210,6 +210,42 @@ describe("each turn's model", () => {
     expect(thought!.note).toBeUndefined();
   });
 
+  it("thinks at medium unless someone chooses, with no note for a model that can't", async () => {
+    const s = await setup();
+    s.models.setCapabilities(s.ada, s.cloudRef.offeringId, { reasoning: ["low", "medium", "high"] });
+    for (const t of [s.thread("general"), s.thread("private")]) {
+      const { session, prepare, dispose } = await s.open(t);
+      try {
+        await prepare();
+        await session.prompt("hello");
+      } finally {
+        dispose();
+      }
+    }
+    expect((s.cloud.requests[0] as unknown as Record<string, unknown>).reasoning_effort).toBe("medium");
+    expect(s.models.recentCalls(s.ada.id).map((c) => c.note)).toEqual([undefined, undefined]);
+  });
+
+  it("asks again at medium when a provider won't run a model without thinking, and keeps thinking from then on", async () => {
+    const s = await setup();
+    s.models.setCapabilities(s.ada, s.cloudRef.offeringId, { reasoning: ["low", "medium", "high"] });
+    s.models.setDefaultThinking(s.ada.id, "off");
+    s.cloud.reply({ status: 400, message: "Reasoning is mandatory for this endpoint and cannot be disabled." });
+    const { session, prepare, dispose } = await s.open(s.thread("general"));
+    try {
+      await prepare();
+      await session.prompt("hello");
+      expect(session.messages.at(-1)).toMatchObject({ role: "assistant", stopReason: "stop" });
+      await prepare();
+      await session.prompt("and again");
+    } finally {
+      dispose();
+    }
+    const sent = s.cloud.requests.map((r) => (r as unknown as Record<string, unknown>).reasoning_effort);
+    expect(sent).toEqual([undefined, "medium", "medium"]);
+    expect(s.models.recentCalls(s.ada.id)[0]!.note).toBe("openrouter/deepseek/deepseek-4.1-flash can't turn thinking off, so it thought at medium");
+  });
+
   it("leaves a subagent role's own thinking level alone", async () => {
     const s = await setup();
     s.models.setCapabilities(s.ada, s.localRef.offeringId, { reasoning: ["low", "medium", "high"] });

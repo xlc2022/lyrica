@@ -1,4 +1,4 @@
-import type { Api, Model, TranscriptContext } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, type Api, type AssistantMessageEventStream, type Model, type TranscriptContext } from "@earendil-works/pi-ai";
 import { estimateTokens, ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { PlanCredentials, planProvider } from "./plans.ts";
@@ -98,8 +98,11 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
         // Its own signal, so a runaway reply can stop the request; the caller's still stops it.
         const stop = new AbortController();
         const signal = options?.signal ? AbortSignal.any([options.signal, stop.signal]) : stop.signal;
-        const midThought = startsMidThought(list.find((m) => m.modelId === model.id), options?.reasoning);
-        const send = () => markOverflow(capToolCalls(streamWithInlineThinking(model as Model<"openai-completions">, objectTools(context), { ...options, signal }, midThought), () => stop.abort()));
+        const offering = list.find((m) => m.modelId === model.id);
+        const request = (reasoning = options?.reasoning) => markOverflow(capToolCalls(streamWithInlineThinking(model as Model<"openai-completions">, objectTools(context), { ...options, reasoning, signal }, startsMidThought(offering, reasoning)), () => stop.abort()));
+        // Asked not to think, a model whose provider requires it is asked again at medium, or the nearest level it has.
+        const must = offering && !options?.reasoning ? models.mandatoryThinking(offering) : undefined;
+        const send = () => must ? thinkWhenRequired(request(), () => request(must), () => models.mustThink(offering!.id)) : request();
         if (endpoint.kind !== "local") return send();
         // A local server's cache is shared by everything it serves at once: wait for room (model-share.ts).
         const need = Math.min(model.contextWindow, requestTokens(context) + model.maxTokens);
@@ -123,6 +126,34 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
   const sealed = () => { throw new Error("Lyrica's model runtime takes no other providers"); };
   Object.assign(runtime, { registerProvider: sealed, registerNativeProvider: sealed, registerVirtualModel: sealed, login: sealed });
   return runtime;
+}
+
+// OpenRouter's words when a model's provider won't run it without thinking.
+const MUST_THINK = /reasoning (is mandatory|.{0,40}cannot be disabled)/i;
+
+/**
+ * A request sent with thinking off: when the provider refuses it because the
+ * model must think, `refused` is told and the request is sent again (`again`).
+ */
+export function thinkWhenRequired(first: AssistantMessageEventStream, again: () => AssistantMessageEventStream, refused: () => void): AssistantMessageEventStream {
+  const out = createAssistantMessageEventStream();
+  void (async () => {
+    let answered = false;
+    try {
+      for await (const event of first) {
+        if (!answered && event.type === "error" && MUST_THINK.test(event.error.errorMessage ?? "")) {
+          refused();
+          for await (const e of again()) out.push(e);
+          break;
+        }
+        answered = true;
+        out.push(event);
+      }
+    } finally {
+      out.end();
+    }
+  })();
+  return out;
 }
 
 /** About how many tokens a request's transcript takes: Pi's estimate per message, and its tool schemas. */
@@ -166,7 +197,7 @@ export async function prepareTurn(o: {
   if (!current || current.provider !== model.provider || current.id !== model.id) await o.session.setModel(model);
   let note: string | undefined;
   if (o.thinking !== false) {
-    const t = o.models.thinkingFor(r, o.call.thinking);
+    const t = o.models.thinkingFor(r, o.call.thinking, o.call.thinkingUnset);
     o.session.setThinkingLevel(t.level);
     note = t.note;
   }
