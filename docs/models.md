@@ -346,7 +346,11 @@ kind, tokens, gpu_ms, calls); forgetting a thread removes its totals too.
 User schema step 10 adds this table and nullable `model_calls.read_tokens`.
 `endpointUses(userId, pools)` counts each endpoint's calls over these rows in
 the given pools; the Models page sends them so the sidebar can rank endpoints
-without leaning on the recent-calls preview.
+without leaning on the recent-calls preview. Each also carries the endpoint's
+recent speed: output tokens over `gen_ms` (`tokPerSec`) and processed prompt
+tokens over `ttft_ms` (`promptTokPerSec`), summed over its last 10 measured
+turns (`gen_ms` of 50 ms or more) of the past 24 hours, with `speedCalls`
+saying how many; none of these when it had no such turn.
 
 `usage(userId, pool, threadIds)` returns shares by thread, model label and
 kind, summing retained calls and folded totals. Tokens are `read_tokens +

@@ -4,6 +4,7 @@
 import { createServer } from "node:http";
 import { expect, test, type Page } from "@playwright/test";
 import { phone, enter, newThread, send, openSettings, openProjectSettings, threadIdOf, sendTo, hitHeight, noHorizontalScroll, fetchReal } from "./helpers.ts";
+import type { ModelsPage } from "../src/api.ts";
 
 test.describe.configure({ mode: "serial" });
 // Routes that fetch the real response (fakeHost, fakeImages) can still be running when a test ends.
@@ -142,8 +143,13 @@ test("the sidebar's status panel shows the endpoints on any page, and a very lon
   for (const name of ["router", "openai"]) {
     const item = line.locator(".status-item").filter({ hasText: name });
     await expect(item).toBeVisible();
-    await expect(item.locator(".num")).toHaveText(/^\d+$/);
+    await expect(item.locator(".status-state", { hasText: "checked" }).locator(".num")).toHaveText(/^\d+$/);
   }
+  // A text endpoint with no measured turn in the past day shows no speed, and its tooltip says so; a speech-only one never mentions speed.
+  const gpuItem = line.locator(".status-item").filter({ hasText: "gpu" });
+  await expect(gpuItem.locator(".status-state", { hasText: "tok/s" })).toHaveCount(0);
+  await expect(gpuItem).toHaveAttribute("title", "gpu · no turns in the past day");
+  await expect(line.locator(".status-item").filter({ hasText: "speech" })).toHaveAttribute("title", "speech");
   await noHorizontalScroll(page);
 
   // A very long name ellipsizes in place, with the whole of it in the tooltip, and never pushes the sidebar wide.
@@ -160,7 +166,7 @@ test("the sidebar's status panel shows the endpoints on any page, and a very lon
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   const renamed = line.locator(".status-item").filter({ hasText: LONG });
   await expect(renamed).toBeVisible();
-  await expect(renamed).toHaveAttribute("title", LONG);
+  await expect(renamed).toHaveAttribute("title", new RegExp(`^${LONG} · `));
   const nameBox = renamed.locator(".status-name");
   await expect(nameBox).toBeVisible();
   expect(await nameBox.evaluate((el) => el.scrollWidth > el.clientWidth), `the long name should ellipsize at ${page.viewportSize()!.width} px`).toBe(true);
@@ -181,12 +187,28 @@ test("the sidebar's status panel shows the endpoints on any page, and a very lon
   // Nothing of it is clipped away: the checked time ends inside the item's own box.
   const [itemBox, checkedBox] = [await cloudItem.boundingBox(), await checked.boundingBox()];
   expect(checkedBox!.x + checkedBox!.width).toBeLessThanOrEqual(itemBox!.x + itemBox!.width + 1);
-  await expect(cloudItem).toHaveAttribute("title", new RegExp(`^${LONG_CLOUD} · checked \\d+ (s|min) ago$`));
+  await expect(cloudItem).toHaveAttribute("title", new RegExp(`^${LONG_CLOUD} · .+ · checked \\d+ (s|min) ago$`));
   if (page.viewportSize()?.width === 390) await page.screenshot({ path: "shots/status-390.png" });
 
   // Back as they were, for the tests that follow.
   await rename(gpuId, "gpu");
   await rename(routerId, "router");
+
+  // With measured turns, the speed follows the name in mono, and the tooltip adds prompt speed and how many turns it covers.
+  await page.route("**/models/page", async (route) => {
+    const body = await (await route.fetch()).json() as ModelsPage;
+    body.endpointUses = [{ endpointId: gpuId, calls: 9, tokPerSec: 41.6, promptTokPerSec: 812.3, speedCalls: 9 },
+      ...body.endpointUses.filter((u) => u.endpointId !== gpuId)];
+    await route.fulfill({ json: body });
+  });
+  await page.reload();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  const fast = line.locator(".status-item").filter({ hasText: "gpu" });
+  await expect(fast.locator(".status-state", { hasText: "tok/s" })).toHaveText("· 42 tok/s");
+  await expect(fast).toHaveAttribute("title", "gpu · 42 tok/s · 812 prompt tok/s · last 9 turns");
+  await noHorizontalScroll(page);
+  if (page.viewportSize()?.width === 390) await page.screenshot({ path: "shots/status-speed-390.png" });
+  await page.unroute("**/models/page");
 });
 
 test("Tasks: the table shows each column's models; a cell's drawer adds, reorders and removes, and Same as points a task at another; the Preset menu switches, saves and edits a preset; Settings → Model profiles lands here", async ({ page, baseURL }) => {

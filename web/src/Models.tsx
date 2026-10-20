@@ -54,12 +54,13 @@ function modelAndEndpoint(label: string, endpointName?: string): string {
   return `${m[2]} · ${endpointName ?? m[1]}`;
 }
 
-/** A text model: not one that draws, embeds, hears or speaks, and not gone. Counted once per model ID. */
+/** A text model: not one that draws, embeds, hears or speaks, and not gone. */
+export const isTextModel = (m: EndpointInfo["models"][number]) => m.status !== "gone" && !m.image && !m.edit && !m.embedding && !m.transcribe && !m.speak;
+
+/** The text models, counted once per model ID. */
 function textModels(eps: EndpointInfo[]): number {
   const ids = new Set<string>();
-  for (const ep of eps) for (const m of ep.models) {
-    if (m.status !== "gone" && !m.image && !m.edit && !m.embedding && !m.transcribe && !m.speak) ids.add(m.modelId.toLowerCase());
-  }
+  for (const ep of eps) for (const m of ep.models) if (isTextModel(m)) ids.add(m.modelId.toLowerCase());
   return ids.size;
 }
 
