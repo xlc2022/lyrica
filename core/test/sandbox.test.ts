@@ -103,6 +103,17 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await sh("ls /run/lyrica/claude 2>&1 || true")).out).toContain("No such file");
   });
 
+  it("mounts a family's shared folder at /shared, read-write, for every thread given it", async () => {
+    mkdirSync(p("family"), { recursive: true });
+    mkdirSync(p("child-work"), { recursive: true });
+    const parent = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], shared: p("family") });
+    const child = new Sandbox({ workdir: p("child-work"), grants: [], network: OFF, self: [], shared: p("family") });
+    await parent.ops().write.writeFile("/shared/page.html", "<h1>pagoda</h1>");
+    expect((await child.ops().read.readFile("/shared/page.html")).toString()).toBe("<h1>pagoda</h1>");
+    expect((await sh("cd /shared && cat page.html", child)).out).toBe("<h1>pagoda</h1>");
+    expect((await sh("ls /shared 2>&1 || true")).out).toContain("No such file");
+  });
+
   it("gives a run with Claude Code the wrapper and its relay, and never the token", async () => {
     const TOKEN = "sk-ant-oat01-made-up-for-tests-only";
     const seen: string[] = [];

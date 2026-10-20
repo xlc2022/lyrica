@@ -38,7 +38,8 @@ database files. A command that could see either one could read everything.
   namespace, it can't see `lyricad` at all, let alone read its memory.
 - Inside it are `/usr` (with the `/bin` and `/lib` links), a handful of `/etc`
   files (certificates, `resolv.conf`, `hosts`, `passwd`, `group`, the loader
-  cache), `/proc`, `/dev`, an empty `/tmp`, the thread's folder at
+  cache), `/proc`, `/dev`, an empty `/tmp`, its family's shared folder at
+  `/shared` (below, "Handing files over"), the thread's folder at
   `/workspace`, and each grant at its own host path. Its environment is a
   fixed minimal set; nothing of `lyricad`'s is passed in.
 - On NixOS (`LYRICA_SANDBOX_TOOLS` set, docs/daemon.md "On NixOS") the
@@ -406,6 +407,30 @@ takes is `lyrica@pve!agent=<that secret>`.
   forgotten thread's go with its folder. It logs counts only.
 - **Granted host paths outside the home workspace are ordinary files.** Their
   protection is whatever the host gives them.
+
+## Handing files over
+
+Threads that work together hand files over through one folder, never in
+messages (a model once planned to send a page to another thread as base64
+chunks). A thread's family is its topmost thread and everything started
+under it: a project's chat and all its threads, or a thread with its child
+threads and their subagents, at any depth (`familyRoot`).
+
+- The family's folder is `shared/` inside the topmost thread's folder,
+  mounted read-write at `/shared` in every sandbox of the family
+  (`Workspace.sharedDir`, `SandboxSpec.shared`). In a project that is
+  `shared/` in the project folder, so the person sees it in Project
+  settings and the project chat's Files; a code thread, which has its own
+  folder, sees it only at `/shared`. It goes when the topmost thread's
+  folder goes. A thread that puts a file or link at that path leaves the
+  family without `/shared` rather than breaking its sandboxes. A
+  local-only thread (itself or an ancestor below the top) under a topmost
+  thread that may call the cloud gets no `/shared`, since what it put there
+  would reach that model (`sharesFamilyFolder`).
+- The prompt's workspace section says so in one line (`SHARED_LINE`).
+- The `threads` tool refuses a message over 8,000 characters, and any
+  message or task holding a long base64 run, naming `/shared` or a shared
+  repository instead (`checkWords`).
 
 ## Images and portrait photos
 

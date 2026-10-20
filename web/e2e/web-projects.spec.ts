@@ -744,7 +744,7 @@ test("Project settings → Files and images: the project folder one folder at a 
   await noHorizontalScroll(page);
 });
 
-test("the split view: a thread from its card opens in the panel, links inside it grow the breadcrumb, Open as a page and Close panel; Open beside, View thread and the Threads list open beside at 1180 px up, and below it they navigate", async ({ page, baseURL }) => {
+test("the split view: a thread from its card opens in the panel, links inside it grow the breadcrumb, Open as a page, Open in panel and Close panel; Open beside, View thread and the Threads list open beside at 1180 px up, and below it they navigate", async ({ page, baseURL }) => {
   test.skip(phone(page), "the panel starts at 1180 px");
   await enter(page, baseURL!);
   const list = page.locator(".threads");
@@ -813,8 +813,14 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await expect(settings).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();
   expect(page.url()).toContain("/p/general/");
-  await page.goBack();
+  // The page opened that way goes back beside the chat with Open in panel in the same place, or with Esc.
+  await page.getByRole("link", { name: "Open in panel" }).click();
   await expect(settings).toBeVisible();
+  await settings.getByRole("link", { name: "Open as a page" }).click();
+  await expect(settings).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(settings).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open in panel" })).toHaveCount(0);
   // Below 1180 px the same address shows the panel's page on its own.
   const size = page.viewportSize()!;
   await page.setViewportSize({ width: 1000, height: size.height });

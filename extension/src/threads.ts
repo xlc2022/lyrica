@@ -68,6 +68,19 @@ const MODEL_ACTION = "model: switch this thread to a model the person asked for,
 export const THREAD_MODEL_TEXT = [MODEL_PARAM, MODEL_ACTION, "model"];
 export const READ_MAX = 30;
 
+/** The longest message one thread sends another: words, not files (docs/workspace.md, "Handing files over"). */
+export const MESSAGE_MAX = 8_000;
+// A run this long of base64 (or base64url) characters, line breaks aside, is a file, not words.
+const ENCODED = /[A-Za-z0-9+/=_-]{400,}/;
+
+/** Refuses a message that carries a file, naming the route that works. */
+export function checkWords(text: string, max = Infinity): void {
+  const file = ENCODED.test(text.replace(/[\r\n]/g, ""));
+  if (file || text.length > max) {
+    throw new Error(`${file ? "That looks like an encoded file" : `That message is over ${max.toLocaleString("en-US")} characters`}. Files don't travel by message: put it in /shared, which your parent, child and project threads all see, or commit it to a repository you share, and say where.`);
+  }
+}
+
 const Params = Type.Object({
   action: StringEnum(["code", "model", "ask", "start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"] as const),
   on: Type.Optional(Type.Boolean()),
@@ -329,6 +342,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         if (p.action === "message") {
           if (p.question !== undefined && typeof p.question !== "boolean") throw new Error("message question must be true or false");
           if (!p.text?.trim()) throw new Error("message needs text");
+          checkWords(p.text, MESSAGE_MAX);
           if (child && p.to === "parent") {
             if (p.needsYou && !inProject) throw new Error("needsYou is for a project's thread");
             const d = await host.message(thread, "parent", p.text, { needsYou: !!p.needsYou, question: !!p.question });
@@ -359,6 +373,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           if (!p.id) throw new Error("read needs the thread's id or title");
           const rows = host.list(thread);
           const id = pickThread(p.id, rows);
+          if (inProject && id === self.parent) throw new Error(`[t:${id}] is your project chat: it can't be read from here, but you can message it with to: "parent"`);
           if (!rows.some((r) => r.id === id)) throw new Error(`[t:${id}] isn't ${inProject ? "another thread of this project" : "a child thread of this one"}`);
           if (store.getThread(id)?.unlogged) throw new Error(`[t:${id}] isn't logged, so it can't be read from here`);
           const last = Math.min(READ_MAX, Math.max(1, Math.round(p.last ?? READ_DEFAULT)));
@@ -403,6 +418,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           return text(`Suggested ${list.length === 1 ? "a thread" : `${list.length} threads`}; the person starts them from the card.`, { suggested: list.length });
         }
         if (!p.title?.trim() || !p.task?.trim()) throw new Error("start needs a title and a task");
+        checkWords(p.task);
         // Counted before starting, so calls made at once can't all slip under the limit.
         if (started >= host.limits.perRequest) throw new Error(`one message can start at most ${host.limits.perRequest} child threads`);
         started++;

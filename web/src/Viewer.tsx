@@ -96,7 +96,7 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, onMenu, on
       )}
       {showThread && known && (
         <section className="viewer-thread" aria-label={known.title || "New thread"}>
-          <PanelFrame value={{ crumbs: [{ label: known.title || "New thread", href: threadHref }], expand: threadHref, ...(wide ? {} : { close: toggleThread }) }}>
+          <PanelFrame value={{ crumbs: [{ label: known.title || "New thread", href: threadHref }], expand: threadHref, noReturn: true, ...(wide ? {} : { close: toggleThread }) }}>
             <Thread key={`${known.pool}/${known.id}`} ctx={ctx} pool={known.pool} threadId={known.id} threads={threads} />
           </PanelFrame>
         </section>

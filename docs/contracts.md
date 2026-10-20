@@ -336,6 +336,7 @@ type Task = "chat" | "code" | "subagent.cheap" | "subagent.strong" | "compaction
 // populated saved presets missing it, subject to the one-level Same as rule.
 // A thread's code list wins; its chat override never supplies code's fallback.
 type ThinkingLevel = "off" | "low" | "medium" | "high";
+const DEFAULT_THINKING: ThinkingLevel = "medium";  // threads think at it unless the person chooses
 
 interface Endpoint {
   id: string;                               // permanent (UUID); the name is a label
@@ -373,6 +374,7 @@ interface CallContext {
   preset?: string;                          // the thread's own preset; absent is its column. Ignored in private and local-only threads unless the preset is private
   overrides?: Partial<Record<Task, ModelRef[]>>;   // the thread's own lists, which beat the preset
   thinking?: ThinkingLevel;
+  thinkingUnset?: boolean;                  // nobody chose the level (thread or user default): it is DEFAULT_THINKING
   fallback?: boolean;                       // Fallback; false: only a list's first entry answers; absent is on
   contextLimit?: number;                    // the most context the thread plans for, below its model's window; inherited by children
 }
@@ -452,7 +454,8 @@ class Models {                                              // new Models(keyrin
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
-  thinkingFor(resolution, asked): { level; note? }
+  thinkingFor(resolution, asked, unset?): { level; note? }   // asked defaults to DEFAULT_THINKING ("medium"), also the per-user default; unset (CallContext.thinkingUnset) drops the can't-think note
+  mandatoryThinking(offering) / mustThink(offeringId)   // a model whose provider refused thinking off: medium or the nearest level; in memory for the run
   recordCall(userId, { pool, threadId, task, resolution, note?, audioSeconds? }, { retry? }) / recentCalls(userId, { limit?, threadId?, threadIds?, pool?, speech?: false }): CallRecord[]
   callHistory(userId, { limit, offset, q, pools, threadIds? }): { entries: CallRecord[]; total }
     // GET models/calls/history?project=&pool= restricts both pool and project threads; hidden project pool is 404.
@@ -946,7 +949,12 @@ Custom roles override built-ins by name.
   thread of the same project, marked with the same `[From t:<sender>]` line
   (`HostedThread.send(text, { fromThread })`; only `lyricad` writes it, and
   `Message.from.kind` is `thread`), at most `ThreadsLimits.siblingMessages`
-  (3) per turn; `list` in a project's thread lists the project's other
+  (3) per turn. A `message` text is at most `MESSAGE_MAX` (8,000)
+  characters, and a `message` or `start` text holding a run of 400 base64
+  characters (line breaks aside) is refused (`checkWords`): the refusal
+  sends files to `/shared` or a shared repository. `read` of a project
+  thread's own project chat is refused with the route that works (`message`
+  with `to: "parent"`); `list` in a project's thread lists the project's other
   threads with `ChildInfo.state` (`ThreadState`) and `needsYou`; new actions
   `suggest({ threads: { title, task }[] })` (a card, no thread made),
   `fold({ ids: string[] })` (up to ten existing threads; a card, no move),
@@ -1283,7 +1291,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - A host model whose only thinking level is a chat-template switch gets Pi's
   `thinkingFormat: "qwen-chat-template"`; any other model with levels gets
   `reasoning_effort`. Local endpoints and hosts are sent `system` and
-  `max_tokens`.
+  `max_tokens`. A request sent with thinking off that the provider refuses
+  because the model must think ("Reasoning is mandatory") is sent again at
+  `mandatoryThinking`, and `mustThink` is called (`thinkWhenRequired`).
 - **Projects:** a `project` section in `assemble` (`projectSection`), with
   its own `DEFAULT_BUDGETS.project` (8,000 characters, about 2,000 tokens):
   the goal, the user's instructions (at most 2,000 characters), project
@@ -1875,6 +1885,9 @@ inheritSettings(parent, childThreadId, narrower?)  // subagents and child thread
 claudeCodeFor(t): boolean                 // Claude Code for a run: general, not local-only along its chain (WorkspaceOptions.restricted; without it never), switch on, token saved, reaches api.anthropic.com
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
 // Project code threads have their own folder; other child threads share their parent's (folderThread).
+sharedDir(t): string | undefined          // shared/ in the folder of the family's topmost thread (settings.familyRoot; the project chat in a project):
+  // SandboxSpec.shared, mounted read-write at /shared (SHARED) for the whole family; undefined when a thread made it a file or link,
+  // or when sharesFamilyFolder(t) is false: a local-only thread (or ancestor below the top) under a top that isn't restricted
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
 // MachineConfig { name, kind: "ssh" | "proxmox", host, port, username (Proxmox: token id), privateKey (Proxmox: the token),
 //   root (Proxmox: null), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,

@@ -190,7 +190,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   settings link opens the drawer). The page in the panel is the same
   component as on its own, rooted in a block instead of `main`, and its
   header gains **Open as a page** (a link to the page's own address) and **Close panel**; Esc closes
-  it, and focus lands on its heading each time it shows something else. The
+  it, and focus lands on its heading each time it shows something else. Open as a page remembers the
+  conversation it left (in `sessionStorage`, `lyrica.beside`), so that page's header shows **Open in
+  panel** instead, from 1180 px up, a link back to the conversation with the page in its panel as it
+  is now (its drawer, file or section); Esc follows it too. Opening any other page forgets it. The
   panel is `role="complementary"` named by its breadcrumb. Below 1180 px the
   same address shows the panel's page on its own.
 - **The Files panel** (`Files.tsx`, docs/ux.md §6): **Files** in a thread's
@@ -1005,8 +1008,11 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   them by sender and first line; choosing one scrolls to it and outlines it
   for a second. When the pins are over their budget the badge adds "shortened", with
   a tooltip saying the oldest reach her as their first line only.
-- A `threads` call is a card: the child thread started (title and task) or
-  messaged, linking to it — one **Open** link in its head, or when the run made
+- A `threads` call is a card headed by what it did: "Child thread: <title>"
+  for a start, "Update to the parent thread" or "Message to a thread" for a
+  message, and "Thread read", "Thread stopped", "Thread resolved",
+  "Threads" (list) and the like for the rest (`THREADS_HEADS`); it links
+  to the thread — one **Open** link in its head, or when the run made
   more than one thread a **Threads <n>** button with the count in mono and a
   chevron (`aria-expanded`, turning down while open; `src/Messages.tsx`) that
   opens a dialog of them: each row the title cut to one line and its state as a

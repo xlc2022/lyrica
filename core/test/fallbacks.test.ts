@@ -237,6 +237,8 @@ describe("thinking", () => {
     expect(s.models.thinkingFor(think, "high")).toEqual({ level: "high" });
     const plain = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
     expect(s.models.thinkingFor(plain, "medium")).toEqual({ level: "off", note: "blackwell/qwen3.8-27b can't think, so it answered without thinking" });
+    // The default level, chosen by nobody, isn't worth a note.
+    expect(s.models.thinkingFor(plain, "medium", true)).toEqual({ level: "off" });
     s.models.setCapabilities(s.ada, s.blackwell.ref.offeringId, { reasoning: ["medium", "high"] });
     const some = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
     expect(s.models.thinkingFor(some, "low")).toEqual({ level: "medium", note: "blackwell/qwen3.8-27b doesn't think at low, so it thought at medium" });
@@ -245,9 +247,21 @@ describe("thinking", () => {
     const one = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
     expect(s.models.thinkingFor(one, "high")).toEqual({ level: "medium", note: "blackwell/qwen3.8-27b doesn't think at high, so it thought at medium" });
     expect(s.models.thinkingFor({ ...one, endpoint: { ...one.endpoint, api: "host" } }, "high")).toEqual({ level: "medium" });
-    // Per thread, with a per-user default.
-    s.models.setDefaultThinking(s.ada.id, "medium");
-    expect(s.models.callContext(s.ada.id, "general", "web/t").thinking).toBe("medium");
+    // Off is off, unless the model's provider refused it: then medium, or the nearest level it has, with a note.
+    s.models.setCapabilities(s.ada, s.blackwell.ref.offeringId, { reasoning: ["high", "medium"] });
+    const must = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
+    expect(s.models.thinkingFor(must, "off")).toEqual({ level: "off" });
+    s.models.mustThink(must.offering.id);
+    expect(s.models.thinkingFor(must, "off")).toEqual({ level: "medium", note: "blackwell/qwen3.8-27b can't turn thinking off, so it thought at medium" });
+    s.models.setCapabilities(s.ada, s.blackwell.ref.offeringId, { reasoning: ["high"] });
+    const high = s.models.resolve("chat", { ...s.ctx(), overrides: { chat: [s.blackwell.ref] } });
+    expect(s.models.thinkingFor(high, "off")).toEqual({ level: "high", note: "blackwell/qwen3.8-27b can't turn thinking off, so it thought at high" });
+    // Per thread, with a per-user default that starts at medium.
+    expect(s.models.defaultThinking(s.ada.id)).toBe("medium");
+    expect(s.models.callContext(s.ada.id, "general", "web/t")).toMatchObject({ thinking: "medium", thinkingUnset: true });
+    s.models.setDefaultThinking(s.ada.id, "high");
+    expect(s.models.callContext(s.ada.id, "general", "web/t").thinking).toBe("high");
+    expect(s.models.callContext(s.ada.id, "general", "web/t").thinkingUnset).toBeUndefined();
     s.models.setThinking(s.ada.id, "web/t", "off");
     expect(s.models.callContext(s.ada.id, "general", "web/t").thinking).toBe("off");
   });

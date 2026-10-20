@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_THREADS_LIMITS, ROUTINE_GUIDELINE } from "@lyrica/core";
-import { createThreadsExtension, type ThreadsHost } from "../src/threads.ts";
+import { checkWords, createThreadsExtension, MESSAGE_MAX, type ThreadsHost } from "../src/threads.ts";
 import { ContextMeter } from "../src/context.ts";
 import { withMemory } from "./helpers.ts";
 
@@ -132,6 +132,33 @@ describe("threads definition", () => {
     expect(defs.child!.size).toBeLessThan(2900);
     expect(defs.projectChat!.size).toBeLessThan(4750);
     expect(defs.projectThread!.size).toBeLessThan(3600);
+  });
+});
+
+describe("handing files over", () => {
+  // A model once planned to send a whole page to another thread as base64 chunks in messages.
+  it("refuses a file or an over-long text in a message, naming /shared", async () => {
+    const s = await withMemory();
+    const t = s.thread();
+    const own = t.view.own;
+    const project = own.createThread({ interface: "web", project: true, title: "Homelab" });
+    const dns = own.createThread({ interface: "web", parent: project.id, child: true, title: "DNS" });
+    const sent: string[] = [];
+    const host: ThreadsHost = { limits: DEFAULT_THREADS_LIMITS, start: async () => { throw new Error("unused"); }, message: async (_t, _to, text) => { sent.push(text); return "started" as const; }, list: () => [] };
+    let tool!: Parameters<ExtensionAPI["registerTool"]>[0];
+    createThreadsExtension({ ...t.context, threadId: dns.id }, host)({ on: () => {}, registerTool: (v: typeof tool) => { tool = v; } } as unknown as ExtensionAPI);
+    const call = (args: object) => tool.execute("call", args, undefined, undefined, {} as never);
+    const page = Buffer.from("<html>".repeat(200)).toString("base64").replace(/.{76}/g, "$&\n");
+    await expect(call({ action: "message", to: "parent", text: `Part 1 of 3:\n${page}` })).rejects.toThrow(/encoded file.*\/shared/);
+    await expect(call({ action: "message", to: "parent", text: "word ".repeat(MESSAGE_MAX / 4) })).rejects.toThrow(/over 8,000 characters.*\/shared/);
+    await call({ action: "message", to: "parent", text: "The page is at /shared/pagoda.html." });
+    expect(sent).toEqual(["The page is at /shared/pagoda.html."]);
+    // Its own project chat can't be read from a project thread, and the error names what works.
+    await expect(call({ action: "read", id: project.id })).rejects.toThrow(`[t:${project.id}] is your project chat: it can't be read from here, but you can message it with to: "parent"`);
+  });
+
+  it("lets ordinary prose, links and hashes through", () => {
+    expect(() => checkWords("See https://example.com/a/b?c=d and commit 3f9c2e4b1d7a8f6e5d4c3b2a1908f7e6d5c4b3a2 for the fix.", MESSAGE_MAX)).not.toThrow();
   });
 });
 

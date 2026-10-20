@@ -30,6 +30,8 @@ export type ModelRef = { offeringId: string } | { groupId: string };
 /** How hard a model thinks, where it can. */
 export type ThinkingLevel = "off" | "low" | "medium" | "high";
 export const THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "low", "medium", "high"];
+/** The level threads think at unless the person chooses another. */
+export const DEFAULT_THINKING: ThinkingLevel = "medium";
 
 export interface CallContext {
   userId: string;
@@ -42,6 +44,8 @@ export interface CallContext {
   overrides?: Partial<Record<Task, ModelRef[]>>;
   /** The thread's thinking setting. */
   thinking?: ThinkingLevel;
+  /** Nobody chose the thinking level (neither the thread nor the user's default): it is DEFAULT_THINKING. */
+  thinkingUnset?: boolean;
   /** Fallback: a later model in a task's list may answer when the first can't. Absent is on. */
   fallback?: boolean;
   /** The most context the thread plans for, below its model's window. Absent is the whole window. */
