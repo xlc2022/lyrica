@@ -128,8 +128,13 @@ export async function discoverModels(baseUrl: string, apiKey: string | undefined
 // LM Studio's own REST API, beside its OpenAI-compatible one at /v1.
 const lmStudioRoot = (baseUrl: string) => baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "");
 
-/** A model LM Studio has, with its loaded instances and the context each was loaded with, whether it reads images, and how it thinks. */
-export interface LmStudioModel { key: string; maxContext?: number; vision?: boolean; reasoning?: LmStudioReasoning; instances: { id: string; context?: number; parallel?: number }[] }
+/**
+ * A model LM Studio has, with its loaded instances and the context each was
+ * loaded with, whether it reads images, how it thinks, whether it is an
+ * embedding model, and whether it was trained for tool use (only a yes
+ * counts: LM Studio runs tools for any model through its own format).
+ */
+export interface LmStudioModel { key: string; maxContext?: number; vision?: boolean; reasoning?: LmStudioReasoning; embedding?: boolean; tools?: boolean; instances: { id: string; context?: number; parallel?: number }[] }
 
 /** The thinking levels LM Studio lists for a model, and whether off is among them. */
 export interface LmStudioReasoning { levels: ("low" | "medium" | "high")[]; canTurnOff: boolean }
@@ -163,6 +168,8 @@ export async function lmStudioModels(baseUrl: string, apiKey: string | undefined
     key: m.key, maxContext: num(m.max_context_length),
     ...(typeof m.capabilities?.vision === "boolean" ? { vision: m.capabilities.vision as boolean } : {}),
     ...(lmStudioReasoning(m.capabilities?.reasoning) ? { reasoning: lmStudioReasoning(m.capabilities.reasoning) } : {}),
+    ...(m.type === "embedding" ? { embedding: true } : {}),
+    ...(m.capabilities?.trained_for_tool_use === true ? { tools: true } : {}),
     instances: (Array.isArray(m.loaded_instances) ? m.loaded_instances : []).filter((i: any) => typeof i?.id === "string")
       .map((i: any) => ({ id: i.id as string, context: num(i.config?.context_length), ...(num(i.config?.parallel) ? { parallel: num(i.config.parallel) } : {}) })),
   }]);
