@@ -89,8 +89,8 @@ any other AMD GPU, such as Vega or a Radeon 780M, the script picks
 and voices on the CPU. `--amd-backend` chooses yourself; `--hsa-override
 11.0.0` runs a 780M on ROCm as a gfx1100, which AMD doesn't support and
 which works on some machines and not others. An integrated GPU beside a
-discrete one is left out until you include it on the dashboard. The
-supported GPUs and the memory an integrated GPU can use are in
+discrete one is left out until you untick **Left out** in its **Edit** on
+the dashboard. The supported GPUs and the memory an integrated GPU can use are in
 [host/README.md](../../host/README.md#amd-gpus). None of the AMD paths has
 been tried on hardware.
 
@@ -299,8 +299,8 @@ what it serves. Unset, a chat model gets the largest context that fits its
 GPUs, up to its trained length (32k when the host can't tell), so it may
 fill a GPU and be unloaded whenever another model needs the room; set a
 smaller context to keep both loaded. The editor's hint shows what the
-model's card recommends; **Look up** on the model reads the card (it asks for the
-repository when the host doesn't know it). A factor above the card's asks
+model's card recommends; **Look up** in the model's Settings reads the
+card (it asks for the repository when the host doesn't know it). A factor above the card's asks
 "<publisher> documents N. Save anyway?". Each model row shows "stretched
 ×N" and the size of its KV cache, which grows with the context length, so a
 stretched model may need a lower context or more memory. The host reports a
