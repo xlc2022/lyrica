@@ -160,7 +160,9 @@ export class ThreadImages {
   /** home must check the key and mount on every access; thread names its relative folder in that home. */
   constructor(private readonly home: () => string, private readonly thread: () => string[],
     private readonly readWorkspace: (path: string) => Promise<{ stream: Readable; size: number }>,
-    private readonly portraits: Pick<WorkspaceSettings, "isPortraitImage" | "recordPortraitImage">) {}
+    private readonly portraits: Pick<WorkspaceSettings, "isPortraitImage" | "recordPortraitImage">,
+    /** Hears of the images saved, as she sees their paths. */
+    private readonly made: (paths: string[]) => void = () => {}) {}
 
   content(path: string): HomeFile {
     const home = this.home();
@@ -203,7 +205,7 @@ export class ThreadImages {
 
   /** Exclusive PNG names, no sidecars or prompt metadata, and no writes through a symlink. */
   save(images: GeneratedImage[], portrait = false): string[] {
-    return inDir(this.home(), [...this.thread(), "images"], true, dir => images.map(image => {
+    const paths = inDir(this.home(), [...this.thread(), "images"], true, dir => images.map(image => {
       const png = cleanPng(image.bytes);
       // Record before publishing the bytes so concurrent readers cannot miss the policy.
       if (portrait) this.portraits.recordPortraitImage(createHash("sha256").update(png.bytes).digest("hex"));
@@ -212,5 +214,7 @@ export class ThreadImages {
       try { writeFileSync(fd, png.bytes); } finally { closeSync(fd); }
       return posix.join(WORKDIR, "images", name);
     }));
+    this.made(paths);
+    return paths;
   }
 }

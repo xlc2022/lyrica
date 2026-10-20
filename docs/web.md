@@ -232,9 +232,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the window's size (the whole screen on a phone) holding the file large and,
   from 1180 px up, the thread whose library it is beside it (a `Thread`
   inside a `PanelFrame`, so its header carries Open as a page, and Close
-  panel only below 1180 px, where it goes back to the file). That thread is the Files panel's own thread for a file in its
+  panel only below 1180 px, where it goes back to the file). That thread is
+  the one that wrote the file (the entry's `madeBy`) when it is recorded and
+  still in the list; otherwise the Files panel's own thread for a file in its
   thread folder, and the project chat for a file in Project settings → Files
-  and images; a file in a grant has none and shows on its own. Below
+  and images. A file in a grant has none and shows on its own. Below
   1180 px the **Thread** toggle (a labelled button, pressed while the thread
   shows) switches between the two; from 1180 px up it shows or hides the
   thread. The header names the file (mono), its facts

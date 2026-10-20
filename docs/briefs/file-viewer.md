@@ -1,6 +1,7 @@
 # Brief: The file viewer
 
-**Status:** Built; PR open, waiting on PR review and UI review.
+**Status:** Done. The viewer merged in #388; Part 2, the record of which
+thread wrote each file, merged in #391.
 
 **Thread:** File viewer. **Branch:** `claude/project-thread-mws19s`.
 **Model:** Opus.
@@ -41,15 +42,33 @@ text (principle 6: what the user needs, without leaving where they are).
 6. **Docs:** docs/ux.md, docs/web.md, docs/daemon.md, DESIGN.md, the
    `api.ts` comment, the app mockup.
 
+## Part 2: which thread wrote a file
+
+The user asked (2026-10-20) that the viewer show the thread that made the
+file, with the record cleaned up when the file is deleted. Files in a
+project folder and in `/shared` are written by many threads, so the folder
+alone doesn't say.
+
+- `user.db` step 15 adds `file_origins` (folder's thread, path in it,
+  thread, time; no content), last writer wins.
+- Recorded from her sandbox `write`, `edit` and `bash` calls (a sweep for
+  files newer than the call's start), uploads and her images.
+- Dropped by the panel's Delete, moved by its Rename, pruned by a whole
+  listing of a folder (for files her commands delete), and dropped with a
+  forgotten thread or folder and by the nightly sweep.
+- Listings carry `madeBy`; the viewer shows that thread and falls back to
+  the library's own.
+
 ## Out of scope
 
-- Recording which thread wrote a file (no back end for it).
 - An HTML page's relative links to its sibling files (the sandboxed page
   has no cookie to fetch them with); self-contained pages and https
   resources work.
 - Syntax highlighting (no highlighter in the bundle; code in messages has
   none either).
 - Message thumbnails keep the Lightbox, since their thread is already open.
+- Part 2: her writes on a machine or in a granted folder, and a removed
+  turn's undone files until the folder is next listed.
 
 ## Done when
 
@@ -59,5 +78,7 @@ text (principle 6: what the user needs, without leaving where they are).
 
 ## Handoff notes
 
+- 2026-10-20: part 2 built. Only bwrap hosts run the Files panel's sandbox
+  test that checks the panel's origin events.
 - 2026-10-20: built as in scope. Locally the e2e step "the tree follows what
   she writes" fails because bash can't run in this container; CI decides.

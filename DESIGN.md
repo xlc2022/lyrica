@@ -167,8 +167,10 @@ Each user has two pools of memory.
     - **Images:** thumbnails of the images in the thread's folder, with All,
       Uploaded and Made by Lyrica. Clicking one opens it in the file viewer.
     - **The file viewer** (decided 2026-10-20, as in Claude's own app): the
-      file large, with the thread whose library it is beside it (the
-      project chat for a project's file; none for a granted folder's).
+      file large, with the thread that wrote it beside it (recorded for her
+      writes, commands, uploads and images, and dropped with the file;
+      otherwise the thread whose library it is, the project chat for a
+      project's file; none for a granted folder's).
       HTML runs as a page in a sandbox with an opaque origin, so it can't
       reach Lyrica's cookies, storage or API, with its console beneath.
       With the thread's internet off it runs no scripts and loads only what
@@ -1626,7 +1628,8 @@ Details in [docs/memory.md](docs/memory.md).
   every user's threads, projects and memories in both pools (WAKE, journal,
   pages, notes, wake-ups, routines, checklists, questions), what user.db
   keeps about those threads (models chosen per thread, call records, pins,
-  groups, workspace grants per thread, child threads, persona drafts), threads
+  groups, workspace grants per thread, child threads, persona drafts, which
+  thread wrote each file), threads
   in transit between users, persona suggestions waiting for administrators,
   and each thread's folder, Claude Code folder and file snapshots in the
   home workspace. Users, passwords and keys, endpoints, models, presets,

@@ -23,6 +23,8 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
   const c = s.workspace.changes(userId).sweep(old);
   counts.snapshots = c.snapshots;
   counts.records = c.records;
+  // Records of which thread wrote a file, naming a thread or folder that is gone.
+  counts.records += s.workspace.settings(userId).sweepOrigins(threadExists(s, userId));
 
   const threadsDir = join(home, "threads");
   if (!existsSync(threadsDir)) return counts;
@@ -64,15 +66,20 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
 
 /**
  * Removes the files of threads just forgotten, at once rather than at the next
- * sweep: the records of what her calls changed and their snapshots, each
+ * sweep: the records of which thread wrote each file, the records of what her calls changed and their snapshots, each
  * thread's folder under `threads/` (its run worktrees forgotten by git first)
  * and its Claude Code folder. Only while the home is mounted; otherwise the
  * sweep takes the folders later. Returns how many folders went.
  */
 export function forgetThreadFiles(s: Services, userId: string, pool: Pool, threads: string[]): number {
   const home = s.workspace.homeDir(userId);
-  if (!threads.length || !isMounted(home)) return 0;
-  return forgetFiles(home, s.workspace.changes(userId), pool, threads, allowedOf(s, userId), threadExists(s, userId));
+  if (!threads.length) return 0;
+  // Which thread wrote a file: the forgotten threads' records, and those in their folders (a folder another pool's
+  // thread still has is kept, as below).
+  const exists = threadExists(s, userId);
+  try { s.workspace.settings(userId).forgetOrigins(threads, threads.filter((id) => !exists(id))); } catch { /* locked: the sweep takes them */ }
+  if (!isMounted(home)) return 0;
+  return forgetFiles(home, s.workspace.changes(userId), pool, threads, allowedOf(s, userId), exists);
 }
 
 /** Whether a thread with this id is in either pool: folders are named by id alone. */

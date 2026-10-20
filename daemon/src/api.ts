@@ -1399,7 +1399,11 @@ export interface UploadResponse { path: string }
 // --- The Files panel (DESIGN, "Files and images"): the thread's folder and its grants, through the sandbox ---
 
 /** One row of a listing; `path` is the file's path as she sees it. */
-export interface FileEntry { name: string; path: string; kind: "file" | "folder" | "link" | "other"; size: number; modified: string }
+/**
+ * `madeBy`: the thread that last wrote the file, where one is recorded (her write, edit and command calls, the
+ * thread's uploads and images; a subagent's as its parent's): the file viewer shows that thread beside it.
+ */
+export interface FileEntry { name: string; path: string; kind: "file" | "folder" | "link" | "other"; size: number; modified: string; madeBy?: string }
 /** A top of the panel's tree: the thread's folder (`/workspace`), then each granted folder. */
 export interface FileRoot { path: string; writable: boolean; kind: "thread" | "grant" }
 /**

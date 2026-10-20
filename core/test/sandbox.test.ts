@@ -346,7 +346,10 @@ describe.skipIf(!runnable)("the sandbox", () => {
 const nixTools = process.env.LYRICA_SANDBOX_TOOLS;
 describe.skipIf(!runnable)("the Files panel", () => {
   const notes: [string, string[]][] = [];
-  const files = () => new ThreadFiles(box(), grants(), (kind, names) => notes.push([kind, names]));
+  const origins: [string, ...string[]][] = [];
+  const files = () => new ThreadFiles(box(), grants(), (kind, names) => notes.push([kind, names]), undefined, {
+    added: (ps) => origins.push(["added", ...ps]), moved: (from, to) => origins.push(["moved", from, to]), removed: (ps) => origins.push(["removed", ...ps]),
+  });
 
   it("lists one folder at a time, folders first, and searches names under a root", async () => {
     mkdirSync(p("work", "notes"), { recursive: true });
@@ -381,6 +384,7 @@ describe.skipIf(!runnable)("the Files panel", () => {
 
   it("uploads under a free name, makes folders, renames and deletes, and refuses a read-only grant, the roots and escapes", async () => {
     notes.length = 0;
+    origins.length = 0;
     const f = files();
     expect(await f.upload("/workspace/notes", "../../etc/x.txt", Buffer.from("one"))).toBe("/workspace/notes/x.txt");
     expect(await f.upload("/workspace/notes", "x.txt", Buffer.from("two"))).toBe("/workspace/notes/x-2.txt");
@@ -395,6 +399,11 @@ describe.skipIf(!runnable)("the Files panel", () => {
     expect(notes).toEqual([
       ["added", ["/workspace/notes/x.txt"]], ["added", ["/workspace/notes/x-2.txt"]], ["added", ["/workspace/pout"]],
       ["removed", ["/workspace/notes/x-2.txt"]], ["added", ["/workspace/pout/y.txt"]], ["removed", ["/workspace/pout", "/workspace/notes/x.txt"]],
+    ]);
+    // The record of which thread wrote a file hears of uploads, the rename and the delete, never of a new folder.
+    expect(origins).toEqual([
+      ["added", "/workspace/notes/x.txt"], ["added", "/workspace/notes/x-2.txt"], ["moved", "/workspace/notes/x-2.txt", "/workspace/pout/y.txt"],
+      ["removed", "/workspace/pout", "/workspace/notes/x.txt"],
     ]);
     for (const call of [
       () => f.upload(p("ro"), "new.txt", Buffer.from("x")), () => f.mkdir(p("ro", "d")), () => f.rename(p("ro", "song.txt"), p("ro", "hymn.txt")),

@@ -6,16 +6,16 @@ import { lookup } from "node:dns/promises";
 import { lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { isIP } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { Locked, type Keyring } from "../keyring.ts";
 import { inOwnNetwork } from "../models/http.ts";
 import type { Pool } from "../types.ts";
 import type { Users } from "../users.ts";
 import { FileChanges, type NewChange } from "./changes.ts";
-import { cleanUploadName, ThreadFiles } from "./files.ts";
+import { cleanUploadName, PANEL_DIR, ThreadFiles, type FileEntry } from "./files.ts";
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import type { ExecutionTarget } from "./ops.ts";
-import { Sandbox, sandboxHas, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
+import { Sandbox, sandboxHas, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
 import type { CodexBox } from "../models/codex.ts";
 import { authorizedKeysLine, machineSetup } from "./machines.ts";
 import {
@@ -172,6 +172,8 @@ export async function resolveHost(host: string): Promise<{ addresses: string[]; 
  */
 export class Workspace {
   private readonly worktreeCleanup = new Map<string, Promise<string>>();
+  /** Each thread's running sweep for files her command wrote, and the earliest start asked for while it runs. */
+  private readonly sweeps = new Map<string, { next?: Date }>();
   private readonly settingsByUser = new Map<string, WorkspaceSettings>();
   private readonly changesByUser = new Map<string, FileChanges>();
   private readonly sshTargets = new Map<string, SshTarget>();
@@ -341,6 +343,10 @@ export class Workspace {
       folders: () => this.folders(t),
       /** Called after her write or edit tool changed a file, so removing the turn can undo it. */
       recordChange: (c: NewChange) => { this.changes(t.userId).record(t.pool, t.threadId, c); },
+      /** Her write or edit call wrote this file (as she sees it). */
+      madeFiles: (paths: string[]) => { try { this.madeFiles(t, paths); } catch { /* locked: unrecorded */ } },
+      /** Her command ran from `since`: the files it left newer are hers, found in the background (the call doesn't wait). */
+      madeSince: (since: Date) => { this.sweepSince(t, since); },
       /** Files the panel added or removed since her last turn, names only; taking them clears them. */
       fileNotes: () => this.settings(t.userId).takeFileNotes(t.threadId),
     };
@@ -358,7 +364,88 @@ export class Workspace {
       const id = encodeURIComponent(this.settings(t.userId).folderThread(t.threadId));
       if (!id || id === "." || id === "..") throw new Error("unusable thread id");
       return ["threads", id];
-    }, path => this.files(t).read(path), this.settings(t.userId));
+    }, path => this.files(t).read(path), this.settings(t.userId), (paths) => this.madeFiles(t, paths));
+  }
+
+  /**
+   * Where a path she sees lies among the thread folders, for the record of which thread wrote it: the thread whose
+   * folder holds it and the path inside that folder. /shared is `shared/` in her family's topmost folder. A grant's
+   * path, or one outside every folder, has none.
+   */
+  originKey(t: WorkspaceThread, path: string): { folder: string; path: string } | undefined {
+    const s = this.settings(t.userId);
+    const p = posix.normalize(path);
+    const inside = (root: string) => (p.startsWith(`${root}/`) ? p.slice(root.length + 1) : undefined);
+    const alias = this.workdirAlias(t);
+    const own = inside(WORKDIR) ?? (alias ? inside(alias) : undefined);
+    if (own) return { folder: s.folderThread(t.threadId), path: own };
+    const shared = inside(SHARED);
+    if (shared) return { folder: s.folderThread(s.familyRoot(t.threadId)), path: `shared/${shared}` };
+    return undefined;
+  }
+
+  /** Thread `t` wrote these files (as she sees them). With `since`, from a command's sweep for files newer than its start. */
+  madeFiles(t: WorkspaceThread, paths: string[], since?: Date): void {
+    const s = this.settings(t.userId);
+    const byFolder = new Map<string, string[]>();
+    for (const path of paths) {
+      const key = this.originKey(t, path);
+      if (key && !key.path.split("/").includes(PANEL_DIR)) byFolder.set(key.folder, [...(byFolder.get(key.folder) ?? []), key.path]);
+    }
+    for (const [folder, inFolder] of byFolder) s.recordOrigins(folder, inFolder, t.threadId, since?.toISOString());
+  }
+
+  /**
+   * After a command: the files in the thread's folder and /shared changed since `since` (to the second before it),
+   * found by `find` in a fresh no-network sandbox, are recorded as this thread's, keeping a record another thread
+   * made while the command ran. Git's own files, node_modules, the panel's folder and repos/ (a repository's files,
+   * mounted from elsewhere for some threads) are skipped; at most NEW_FILES_LIMIT files, within 10 seconds.
+   */
+  /**
+   * madeSince in the background, one sweep at a time per thread: one asked for while another runs waits and takes
+   * the earliest start asked for meanwhile. A failed sweep only leaves its files unrecorded.
+   */
+  sweepSince(t: WorkspaceThread, since: Date): void {
+    const key = `${t.userId}/${t.threadId}`;
+    const sweep = this.sweeps.get(key);
+    if (sweep) { if (!sweep.next || since < sweep.next) sweep.next = since; return; }
+    const entry: { next?: Date } = {};
+    this.sweeps.set(key, entry);
+    void (async () => {
+      for (let from: Date | undefined = since; from; from = entry.next, entry.next = undefined) await this.madeSince(t, from).catch(() => {});
+      this.sweeps.delete(key);
+    })();
+  }
+
+  async madeSince(t: WorkspaceThread, since: Date): Promise<void> {
+    const shared = this.sharedDir(t);
+    const box = new Sandbox({ workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), shared, grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
+    const at = String(Math.floor(since.getTime() / 1000) - 1);
+    const script = `find "$@" -xdev \\( -name .git -o -name node_modules -o -name .lyrica -o -path ${WORKDIR}/repos \\) -prune -o -type f -newermt "@$0" -print0 2>/dev/null | head -z -n ${NEW_FILES_LIMIT}`;
+    const r = await box.run(["sh", "-c", script, at, WORKDIR, ...(shared ? [SHARED] : [])], { timeoutMs: 10_000 });
+    const paths = r.stdout.toString().split("\0").filter(Boolean);
+    if (paths.length) this.madeFiles(t, paths, since);
+  }
+
+  /**
+   * Which thread wrote each entry of a listing, by its path; a whole listing of one folder (`dir`, not cut short)
+   * also drops the records of what it no longer holds, since her commands can delete files the panel never sees go.
+   */
+  fileOrigins(t: WorkspaceThread, entries: FileEntry[], dir?: string): Map<string, string> {
+    const s = this.settings(t.userId);
+    const out = new Map<string, string>();
+    const listed = dir !== undefined ? this.originKey(t, posix.join(dir, "x")) : undefined;
+    if (listed) s.pruneOrigins(listed.folder, posix.dirname(listed.path) === "." ? "" : posix.dirname(listed.path), entries.map((e) => e.name));
+    const byFolder = new Map<string, { path: string; key: string }[]>();
+    for (const e of entries) {
+      const key = this.originKey(t, e.path);
+      if (key) byFolder.set(key.folder, [...(byFolder.get(key.folder) ?? []), { path: e.path, key: key.path }]);
+    }
+    for (const [folder, items] of byFolder) {
+      const found = s.origins(folder, items.map((i) => i.key));
+      for (const i of items) { const thread = found.get(i.key); if (thread) out.set(i.path, thread); }
+    }
+    return out;
   }
 
   photos(userId: string): PortraitPhotos { return new PortraitPhotos(() => this.imageHome(userId)); }
@@ -376,8 +463,16 @@ export class Workspace {
       workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), grants: tw.grants, network: { internet: false, services: false, hosts: [] },
       check: (g) => checkGrant(s.allowed(), t.pool, g), bwrap: this.opts.bwrap,
     });
-    return new ThreadFiles(box, tw.grants, (kind, names) => s.noteFiles(t.threadId, kind, names));
-  }
+    // What the panel uploads is the panel's thread's; what it renames or deletes takes its record along.
+    return new ThreadFiles(box, tw.grants, (kind, names) => s.noteFiles(t.threadId, kind, names), WORKDIR, {
+      added: (paths) => this.madeFiles(t, paths),
+      moved: (from, to) => {
+        const f = this.originKey(t, from), k = this.originKey(t, to);
+        if (f && k && f.folder === k.folder) s.moveOrigins(f.folder, f.path, k.path);
+        else if (f) s.dropOrigins(f.folder, [f.path]);
+      },
+      removed: (paths) => { for (const p of paths) { const key = this.originKey(t, p); if (key) s.dropOrigins(key.folder, [key.path]); } },
+    });  }
 
   /** What the thread's tools may reach: its settings, or nothing while the self-test has refused network. */
   network(t: WorkspaceThread): Network {
@@ -1218,9 +1313,14 @@ export class Workspace {
     const box = new Sandbox({ workdir: shared ? join(this.threadDir(t), "shared") : this.threadDir(t), grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
     const r = await box.run(["sh", "-c", script, "sh", stem, ext], { input: bytes });
     if (r.code !== 0) throw new Error(`could not save ${clean}: ${r.stderr.toString().trim()}`);
-    return `${WORKDIR}/${shared ? "shared/" : ""}uploads/${r.stdout.toString()}`;
+    const path = `${WORKDIR}/${shared ? "shared/" : ""}uploads/${r.stdout.toString()}`;
+    this.madeFiles(t, [path]);
+    return path;
   }
 }
+
+/** At most this many files are recorded from one command. */
+const NEW_FILES_LIMIT = 2000;
 
 /** A token that didn't work, or a host that didn't answer: the state it leaves the account in, and why. */
 export class GitAccountProblem extends Error {
