@@ -246,8 +246,10 @@ export function registerContext(pi: ExtensionAPI, meter: ContextMeter): void {
   });
 }
 
+const NUDGES = new Set(["lyrica-ask-nudge", "lyrica-empty-reply-retry"]);
+
 /** A hidden nudge belongs only to the agent run that consumed it. */
-export function dropAskNudges<T extends { role: string; customType?: string }>(messages: T[]): T[] {
+export function dropNudges<T extends { role: string; customType?: string }>(messages: T[]): T[] {
   const boundary = messages.findLastIndex(m => m.role === "user" || m.customType === "lyrica-turn");
-  return messages.filter((m, i) => m.customType !== "lyrica-ask-nudge" || i > boundary);
+  return messages.filter((m, i) => !NUDGES.has(m.customType ?? "") || i > boundary);
 }

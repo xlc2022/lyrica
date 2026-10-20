@@ -1,5 +1,5 @@
 import { FROM_PARENT, LYRICA_REACTS, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
-import { type ChecksResult, CHECKS_NOTICE, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, USER_MESSAGE } from "@lyrica/extension";
+import { type ChecksResult, CHECKS_NOTICE, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, Reaction, ThreadRef, Told } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
@@ -131,6 +131,12 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       const list = (cs: string[] = []) => cs.map((c) => `\`${c}\``).join(", ");
       const text = d ? (ok ? list(d.passed) : `${list(d.failed)}${d.passed?.length ? `. Passed: ${list(d.passed)}` : ""}`) : textOf(e.content);
       out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [{ type: "delegation", text, status: ok ? "checks-passed" : "checks-failed" }] });
+      continue;
+    }
+    if (e.type === "custom_message" && e.customType === EMPTY_REPLY_NOTICE) {
+      // Shown as the error of the reply that had only thinking, as it was live.
+      const reply = out.findLast((m) => m.role === "assistant");
+      if (reply) reply.error = textOf(e.content);
       continue;
     }
     if (e.type === "custom_message" && e.customType === TURN_TOOL_NOTICE) {
