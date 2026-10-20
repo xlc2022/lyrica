@@ -11,7 +11,7 @@ import type { Users } from "./users.ts";
 
 /** user.db tables that hold threads, projects or what came from them. Every other user.db table is kept. */
 export const WIPED_USER_TABLES = [
-  "call_totals", "child_threads", "file_changes", "local_only_threads", "model_calls", "panel_files", "persona_drafts",
+  "call_totals", "child_threads", "file_changes", "file_origins", "local_only_threads", "model_calls", "panel_files", "persona_drafts",
   "pinned_threads", "project_settings", "push_sent", "started_suggestions", "subagent_runs", "thread_choices",
   "thread_groups", "thread_models", "thread_prefs", "thread_workspaces",
 ] as const;
