@@ -49,6 +49,7 @@ export function ContextFact({ context, footer }: { context: ContextInfo; footer?
       </button>
       {open && (
         <div className="picker ctx-pop" role="dialog" aria-label="Context">
+          {!!context.compactions && <p className="ctx-foot">Compacted <span className="num">{context.compactions}</span> {context.compactions === 1 ? "time" : "times"}, now using</p>}
           <p className="ctx-total"><span className="num">{tokens(context.tokens)}</span> of <span className="num">{tokens(context.window)}</span> tokens</p>
           <div className="ctx-bar" aria-hidden="true">
             {parts.filter((p) => p.key !== "free" && p.tokens > 0).map((p) => <span key={p.key} data-part={p.key} style={{ width: width(p.tokens) }} />)}

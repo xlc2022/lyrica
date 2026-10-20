@@ -810,7 +810,10 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
   `Presets.sleepFallback` (`PATCH presets`, `sleep.fallback` in `user.db`)
   does the same for sleep's phases.
 - `ThreadSettings.answered` skips speech calls, so the context meter reads
-  the chat call.
+  the chat call. With no open session the meter reads that call's record:
+  the last request's whole prompt, since its output counts every call of the
+  turn. `ContextInfo.compactions` counts the thread's stored compaction
+  entries; an open session counts them on the conversation's branch.
 
 ## Memory browser and settings
 
