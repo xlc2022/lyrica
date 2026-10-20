@@ -194,8 +194,9 @@ and `shared` ([docs/contracts.md](../contracts.md)).
 
 If the host's key ever changes (a rebuilt `data` volume), Lyrica refuses it
 with "This host's identity changed. Pair it again." Make a new code on the
-dashboard and choose **Pair again…** in the host's ⋯ menu; every id stays.
-New addresses go in with **Edit** on the host card's facts line.
+dashboard, choose **Pair again…** in the host's ⋯ menu and enter it on
+the page that opens; every id stays. New addresses go in with **Edit** on
+the host card.
 
 ## Put models on it
 
@@ -406,8 +407,8 @@ second pairing. Then:
   carries its `.env` along.
   Either way the `data` volume keeps the host's key, so pairing survives.
   Details are in [host/README.md](../../host/README.md#updates).
-- **Move to another models folder:** **Change** beside "models folder" on
-  the host's card under Models → Hosts and endpoints, or `sudo
+- **Move to another models folder:** **Edit** on the host's card under
+  Models → Hosts and endpoints, then **Models folder** and Save, or `sudo
   lyrica-host-update --models <folder>` on the host. The updater pauses the
   host (running jobs finish first), installs the same commit again with
   the new folder, and goes back to the old one if host-api doesn't answer

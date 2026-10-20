@@ -393,7 +393,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   each with its pool and preset beneath; links to Tasks) and Clean up (the count, the tile's
   tooltip "To decide" or "Nothing to clean up"); then the hosts and
   endpoints summary (a host with its combined VRAM bar, Pause or Resume,
-  Dashboard; a plain endpoint with its model count) and the newest visible
+  and Dashboard as a link; a plain endpoint with its model count) and the newest visible
   call under **History**, with **Show all** beside the eyebrow. Hosts and endpoints: **Add endpoint** (a drawer: Name, Kind, Base
   URL, API key, Shared for administrators; a plain-HTTP warning for a local URL off
   loopback and the tailnet. Kind also offers ChatGPT plan, with **Sign in with
@@ -402,17 +402,23 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   xAI's page, then its **Code** and **Finish**; closing the drawer cancels
   the sign-in) and **Add model host** (the one primary; a page
   at `…/models/hosts/add-host`: Name, Addresses, Pairing code, Shared,
-  **Pair**, then the fingerprint in mono). A host card: name, kind, state
-  (Online, Paused, Pausing, Restarting, Unreachable with the duration, or
-  Unpaired when the host has revoked this server), Pause or Resume
-  (administrators on a shared host; disabled with "Nothing is loaded"),
-  or **Pair again…** in their place while Unpaired, opening Pairing code
-  and **Pair** in the card (otherwise Pair again… is in the ⋯), Dashboard (`GET …/dashboard`, a new tab; administrators on a shared host), "N models"
-  opening its model list (a speaking model's **Settings** there), the facts
-  line (shared or only you, paired unless Unpaired, ID and addresses in mono, "version" and the
-  version, "update available" while it runs another commit than Lyrica's
-  release, **Edit** for the addresses, `PUT …/addresses`), **Update** in the
-  ⋯ while an update is available (`POST …/update`), the state Updating while
+  **Pair**, then the fingerprint in mono; with `?host=<id>`, **Pair again…**
+  for that host: "Pair <host> again", only the Pairing code, `POST …/pair`). A
+  host card: name (its ID as the tooltip), state (Online, Paused, Pausing,
+  Restarting, Unreachable with the duration, Moving, Updating, or Unpaired
+  when the host has revoked this server), an "update available" pill while
+  it runs another commit than Lyrica's release, then Pause or Resume
+  (administrators on a shared host; disabled with "Nothing is loaded"), or
+  **Pair again…** in its place while Unpaired, **Edit** and the ⋯ (Update
+  while an update is available, `POST …/update`; Read its models; Pair
+  again…; the endpoint actions). One facts line: the first address and "+n",
+  "version" and the version, for its managers "models folder", its path and
+  free space, shared or only you, "N models" opening its model list (a
+  speaking model's **Settings** there) and **Dashboard** (a link, `GET
+  …/dashboard`, a new tab). **Edit** opens the host's drawer: Name (`PATCH
+  …/endpoints/:id`), Addresses (`PUT …/addresses`) and Models folder (`POST
+  …/models-folder` after a confirm dialog, enabled only when the host's
+  updater can move it), one Save. The state Updating while
   it updates, with Pause disabled, a warn line after a failed update, per GPU its card, used/total in mono,
   a bar of pinned, loaded-on-demand and vLLM-share segments, the loaded
   models and the queue when nonzero. A plain endpoint row: name, kind,

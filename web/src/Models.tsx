@@ -12,7 +12,8 @@ import {
 } from "./api.ts";
 import { HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
-import { Downloads, DownloadText } from "./Downloads.tsx";
+import { Downloads, DownloadText, Size } from "./Downloads.tsx";
+import { size } from "./downloads.ts";
 import { DownloadImage, ImageModels, ImageReview } from "./ImageModels.tsx";
 import { duration, RowMenu } from "./Machines.tsx";
 import {
@@ -133,7 +134,7 @@ export function ModelsArea({ ctx: shell, tab = "overview", add, project, pool, r
   const { reload } = ctx.models;
   // Fresh status on opening Models and on each tab: the shared page may be up to 30 s old.
   useEffect(() => { reload(); }, [tab, reload]);
-  if (tab === "hosts" && add === "host") return <AddHost ctx={ctx} />;
+  if (tab === "hosts" && add === "host") return <AddHost ctx={ctx} again={route?.host} />;
   if (tab === "tasks") return <Tasks ctx={ctx} />;
   if (tab === "text") return <TextModels ctx={ctx} />;
   if (tab === "images" && add === "review") return <ImageReview ctx={ctx} />;
@@ -367,7 +368,7 @@ function EndpointPauseButton({ ctx, ep }: { ctx: MCtx; ep: Endpoint }) {
   );
 }
 
-/** Dashboard: the host's own page, in a new tab. The tab opens at once, so the browser doesn't block it. */
+/** Dashboard: the host's own page, in a new tab, so it looks like a link. The tab opens at once, so the browser doesn't block it. */
 function DashboardButton({ ctx, ep }: { ctx: MCtx; ep: Endpoint }) {
   const [run, busy, error] = useAction();
   const open = () => {
@@ -379,7 +380,7 @@ function DashboardButton({ ctx, ep }: { ctx: MCtx; ep: Endpoint }) {
       } catch (e) { w?.close(); throw e; }
     });
   };
-  return <>{<button type="button" className="sm" disabled={busy} onClick={open}>Dashboard</button>}{error && <ErrorText error={error} />}</>;
+  return <>{<button type="button" className="link sm" disabled={busy} onClick={open}>Dashboard</button>}{error && <ErrorText error={error} />}</>;
 }
 
 /** A host in the Overview: its state, what's loaded, the VRAM it uses, Pause or Resume and Dashboard. */
@@ -392,7 +393,7 @@ function HostRow({ ctx, ep, host }: { ctx: MCtx; ep: Endpoint; host?: Host }) {
     <li className="hostrow" data-endpoint={ep.id}>
       <span className={`dot ${s.dot}`} aria-hidden="true" />
       <div className="main-col">
-        <span className="name">{ep.name} <Kind kind="local" /></span>
+        <span className="name">{ep.name}</span>
         <span className="meta">{s.word !== "Online" ? <StateWord ep={ep} host={host} /> : loaded.length ? [...new Set(loaded)].join(", ") : "nothing loaded"}</span>
       </div>
       <div className="main-col usage">
@@ -961,9 +962,10 @@ function Hosts({ ctx }: { ctx: MCtx }) {
   const hosts = eps.filter((e) => e.api === "host"), plain = eps.filter((e) => e.api !== "host");
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Endpoint>();
+  const [editingHost, setEditingHost] = useState<Endpoint>();
   const [signIn, setSignIn] = useState(false);
   const [voice, setVoice] = useState<OfferingInfo>();
-  const close = useCallback(() => { setAdding(false); setEditing(undefined); setSignIn(false); }, []);
+  const close = useCallback(() => { setAdding(false); setEditing(undefined); setEditingHost(undefined); setSignIn(false); }, []);
   const closeVoice = useCallback(() => setVoice(undefined), []);
   const facts = p && <>{plural(hosts.length, "paired host", "paired hosts")} · {plural(plain.length, "plain endpoint", "plain endpoints")}</>;
   const actions = <>
@@ -979,7 +981,7 @@ function Hosts({ ctx }: { ctx: MCtx }) {
             <h2 id="h-model-hosts">Model hosts</h2>
             <span className="cap legend"><span><i className="seg-pinned" />Pinned</span><span><i className="seg-loaded" />Loaded on demand</span><span><i className="seg-vllm" />vLLM share</span></span>
           </div>
-          {hosts.map((ep) => <HostCard key={ep.id} ctx={ctx} ep={ep} host={hostOf(p, ep.id)} others={eps} onVoice={setVoice} />)}
+          {hosts.map((ep) => <HostCard key={ep.id} ctx={ctx} ep={ep} host={hostOf(p, ep.id)} others={eps} onVoice={setVoice} onEdit={() => setEditingHost(ep)} />)}
         </section>
       )}
       {p && (
@@ -991,6 +993,12 @@ function Hosts({ ctx }: { ctx: MCtx }) {
             </ul>
           ) : <p className="empty">No endpoints yet.</p>}
         </section>
+      )}
+      {editingHost && p && (
+        <>
+          <HostDrawer key={editingHost.id} ctx={ctx} ep={editingHost} host={hostOf(p, editingHost.id)} onClose={close} />
+          <div className="scrim drawer-scrim" aria-hidden="true" onClick={close} />
+        </>
       )}
       {(adding || editing) && (
         <>
@@ -1084,94 +1092,58 @@ function useEndpointActions(ctx: MCtx, ep: Endpoint, others: Endpoint[], onSignI
   return { items, forms };
 }
 
-/** A paired model host: its state, Pause or Resume (Pair again… once it has revoked this server), Dashboard, its models, addresses and each GPU. */
-function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint; host?: Host; others: Endpoint[]; onVoice: (m: OfferingInfo) => void }) {
+/**
+ * A paired model host: its name, state and "update available"; Pause or Resume (Pair again… once it has revoked this
+ * server), Edit and ⋯; one facts line (address, version, models folder, free space, who can use it, its models,
+ * Dashboard); a failed update or move; each GPU.
+ */
+function HostCard({ ctx, ep, host, others, onVoice, onEdit }: { ctx: MCtx; ep: Endpoint; host?: Host; others: Endpoint[]; onVoice: (m: OfferingInfo) => void; onEdit: () => void }) {
   const userId = ctx.user.id;
   const editable = canEdit(ctx, ep);
   const [open, setOpen] = useState(false);
-  const [addresses, setAddresses] = useState<string>();
-  const [code, setCode] = useState<string>();
-  const [folder, setFolder] = useState<string>();
-  const [moving, setMoving] = useState(false);
-  const [run, busy, error] = useAction();
+  const [run, , error] = useAction();
   const actions = useEndpointActions(ctx, ep, others);
   const status = host && "status" in host ? host.status : undefined;
   const revoked = unpaired(host);
   const id = `h-host-${ep.id}`;
-  const saveAddresses = () => run(async () => {
-    await put(u(userId, "hosts", ep.id, "addresses"), { addresses: (addresses ?? "").split(/[\s,]+/).filter(Boolean) });
-    setAddresses(undefined); ctx.models.reload();
-  });
-  const pair = () => run(async () => { await post(u(userId, "hosts", ep.id, "pair"), { code: (code ?? "").trim() }); setCode(undefined); ctx.models.reload(); });
+  const pairAgain = () => go({ page: "models", userId, tab: "hosts", add: "host", host: ep.id });
   const offer = updateOffer(ctx.models.page, status);
   const update = () => run(async () => {
     const next = await post<HostStatus>(u(userId, "hosts", ep.id, "update"));
     const p = ctx.models.page;
     if (p) ctx.models.set({ ...p, hosts: p.hosts.map((h) => (h.endpointId === ep.id ? { endpointId: ep.id, status: next } : h)) });
   });
-  const showStatus = (next: HostStatus) => {
-    const p = ctx.models.page;
-    if (p) ctx.models.set({ ...p, hosts: p.hosts.map((h) => (h.endpointId === ep.id ? { endpointId: ep.id, status: next } : h)) });
-  };
-  const move = () => run(async () => {
-    showStatus(await post<HostStatus>(u(userId, "hosts", ep.id, "models-folder"), { path: (folder ?? "").trim() }));
-    setMoving(false); setFolder(undefined);
-  });
-  const menu = revoked ? actions.items : [actions.items[0]!, ...(offer ? [{ label: "Update", onPick: () => void update() }] : []), { label: "Pair again…", onPick: () => setCode("") }, ...actions.items.slice(1)];
+  const menu = revoked ? actions.items : [...(offer ? [{ label: "Update", onPick: () => void update() }] : []), actions.items[0]!, { label: "Pair again…", onPick: pairAgain }, ...actions.items.slice(1)];
   const failed = status?.update?.state === "failed" ? status.update : undefined;
-  const changesFolder = editable && !!status?.update?.changesFolder && !hostUpdating(status);
+  const addresses = ep.addresses ?? [];
+  const why = status?.update && !status.update.available ? status.update.reason : undefined;
   return (
     <article className="card host" data-endpoint={ep.id} aria-labelledby={id}>
       <div className="host-top">
-        <h3 id={id}>{ep.name}</h3><Kind kind="local" /><StateWord ep={ep} host={host} />
+        <h3 id={id} title={`ID ${ep.id}`}>{ep.name}</h3><StateWord ep={ep} host={host} />
+        {editable && offer && <span className="pill info" title={`Lyrica runs ${offer.tag}; this host runs ${status!.version}`}>update available</span>}
         <span className="spacer" />
-        <div className="actions">
-          {editable && (revoked
-            ? <button type="button" className="sm" aria-expanded={code !== undefined} aria-controls={`${id}-pair`} onClick={() => setCode(code === undefined ? "" : undefined)}>Pair again…</button>
-            : <PauseButton ctx={ctx} ep={ep} host={host} />)}
-          {editable && <DashboardButton ctx={ctx} ep={ep} />}
-          <button type="button" className="link sm" aria-expanded={open} onClick={() => setOpen(!open)}>{plural(ep.models.length, "model", "models")}</button>
-          {editable && <RowMenu label={`Actions for ${ep.name}`} items={menu} />}
-        </div>
+        {editable && (
+          <div className="actions">
+            {revoked
+              ? <button type="button" className="sm" onClick={pairAgain}>Pair again…</button>
+              : <PauseButton ctx={ctx} ep={ep} host={host} />}
+            <button type="button" className="sm" onClick={onEdit}>Edit</button>
+            <RowMenu label={`Actions for ${ep.name}`} items={menu} />
+          </div>
+        )}
       </div>
-      {addresses === undefined ? (
-        <div className="addrs">
-          <span className="muted">{ep.shared ? "Shared with every user" : "Only you"}{revoked ? "" : " · paired"} · ID</span><code>{ep.id}</code>
-          <span className="muted">· addresses</span>{(ep.addresses ?? []).map((a) => <code key={a}>{a}</code>)}
-          {status && <><span className="muted" title={status.update && !status.update.available ? status.update.reason : undefined}>· version</span><code>{status.version}</code>
-            {status.update && !status.update.available && status.update.reason && <span className="sr-only">. {status.update.reason}</span>}</>}
-          {editable && offer && <span className="muted">· update available</span>}
-          {editable && <button type="button" className="link sm" onClick={() => setAddresses((ep.addresses ?? []).join(" "))}>Edit</button>}
-          {editable && status && <><span className="muted" title={folderHow(status)}>· models folder</span><code>{status.modelsFolder.path}</code>
-            {folderHow(status) && <span className="sr-only">. {folderHow(status)}</span>}
-            {changesFolder && folder === undefined && <button type="button" className="link sm" onClick={() => setFolder(status.modelsFolder.path)}>Change</button>}</>}
-        </div>
-      ) : (
-        <form className="inline" onSubmit={(e) => { e.preventDefault(); void saveAddresses(); }}>
-          <label className="field grow"><span>Addresses</span><input className="mono" autoFocus value={addresses} onChange={(e) => setAddresses(e.target.value)} /></label>
-          <button className="sm" disabled={busy || !addresses.trim()}>Save</button>
-          <button type="button" className="sm" onClick={() => setAddresses(undefined)}>Cancel</button>
-        </form>
-      )}
-      {code !== undefined && (
-        <form className="inline" id={`${id}-pair`} onSubmit={(e) => { e.preventDefault(); void pair(); }}>
-          <label className="field grow"><span>Pairing code</span><input className="mono" autoFocus autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} /></label>
-          <button className="sm" disabled={busy || !code.trim()}>Pair</button>
-          <button type="button" className="sm" onClick={() => setCode(undefined)}>Cancel</button>
-        </form>
-      )}
-      {folder !== undefined && status && (
-        <form className="inline" onSubmit={(e) => { e.preventDefault(); if (folder.trim() !== status.modelsFolder.path) setMoving(true); else setFolder(undefined); }}>
-          <label className="field grow"><span>Models folder</span><input className="mono" autoFocus value={folder} onChange={(e) => setFolder(e.target.value)} /></label>
-          <button className="sm" disabled={busy || !folder.trim().startsWith("/")}>Save</button>
-          <button type="button" className="sm" onClick={() => setFolder(undefined)}>Cancel</button>
-        </form>
-      )}
-      {moving && folder !== undefined && (
-        <ConfirmDialog title={`Move ${ep.name} to another models folder?`}
-          sentence={`It pauses once running jobs finish and restarts on ${folder.trim()}. No files move; models that aren't in that folder leave its lists.`}
-          confirm="Move" onCancel={() => setMoving(false)} onConfirm={() => void move()} />
-      )}
+      <div className="host-facts">
+        {addresses.length > 0 && <><code title={addresses.join("\n")}>{addresses[0]}</code>
+          {addresses.length > 1 && <span title={addresses.slice(1).join("\n")}>+<span className="num">{addresses.length - 1}</span></span>}</>}
+        {status && <><span className="sep">·</span><span title={why}>version</span><code>{status.version}</code>{why && <span className="sr-only">. {why}</span>}</>}
+        {editable && status && <><span className="sep">·</span><span title={folderHow(status)}>models folder</span><code>{status.modelsFolder.path}</code>
+          {folderHow(status) && <span className="sr-only">. {folderHow(status)}</span>}
+          <span className="sep">·</span><span><Size text={size(status.modelsFolder.free)} /> free</span></>}
+        <span className="sep">·</span><span>{ep.shared ? "shared" : "only you"}</span>
+        <span className="sep">·</span><button type="button" className="link sm" aria-expanded={open} onClick={() => setOpen(!open)}>{plural(ep.models.length, "model", "models")}</button>
+        {editable && <><span className="sep">·</span><DashboardButton ctx={ctx} ep={ep} /></>}
+      </div>
       <ErrorText error={error} />
       {failed && (failed.models
         ? <p className="warn-text" role="note">Moving to <code>{failed.models}</code> failed: {folderFailure(failed.error)}.</p>
@@ -1180,6 +1152,72 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
       {status?.gpus.map((g) => <GpuBlock key={g.index} g={g} />)}
       {open && <ModelList ctx={ctx} ep={ep} onVoice={onVoice} />}
     </article>
+  );
+}
+
+/** Edit on a host card: its name, addresses and models folder, with one Save. A new folder is asked about first, since the host restarts on it. */
+function HostDrawer({ ctx, ep, host, onClose }: { ctx: MCtx; ep: Endpoint; host?: Host; onClose: () => void }) {
+  const userId = ctx.user.id;
+  const status = host && "status" in host ? host.status : undefined;
+  const [name, setName] = useState(ep.name);
+  const [addresses, setAddresses] = useState((ep.addresses ?? []).join("\n"));
+  const [folder, setFolder] = useState(status?.modelsFolder.path ?? "");
+  const [asking, setAsking] = useState(false);
+  const [run, busy, error] = useAction();
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    ref.current?.querySelector("input")?.focus();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && !asking && onClose();
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, [onClose, asking]);
+  const list = addresses.split(/[\s,]+/).filter(Boolean);
+  const renamed = name.trim() !== ep.name;
+  const readdressed = list.join(" ") !== (ep.addresses ?? []).join(" ");
+  const changesFolder = !!status?.update?.changesFolder && !hostUpdating(status);
+  const moved = !!status && changesFolder && folder.trim() !== status.modelsFolder.path;
+  const ready = !!name.trim() && list.length > 0 && (!moved || folder.trim().startsWith("/")) && (renamed || readdressed || moved);
+  const save = () => run(async () => {
+    if (renamed) await patch(u(userId, "endpoints", ep.id), { name: name.trim() } satisfies EndpointChange);
+    if (readdressed) await put(u(userId, "hosts", ep.id, "addresses"), { addresses: list });
+    if (moved) {
+      const next = await post<HostStatus>(u(userId, "hosts", ep.id, "models-folder"), { path: folder.trim() });
+      const p = ctx.models.page;
+      if (p) ctx.models.set({ ...p, hosts: p.hosts.map((h) => (h.endpointId === ep.id ? { endpointId: ep.id, status: next } : h)) });
+    }
+    if (renamed || readdressed) ctx.models.reload();
+    onClose();
+  });
+  return (
+    <aside ref={ref} tabIndex={-1} className="drawer" aria-label={`Edit ${ep.name}`}>
+      <div className="drawer-head">
+        <div>
+          <h2>{ep.name}</h2>
+          <p className="cap">ID <span className="mono">{ep.id}</span>{ep.fingerprint && <> · <span className="mono">{ep.fingerprint}</span></>}</p>
+        </div>
+        <button type="button" className="icon sm" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
+      </div>
+      <form className="drawer-body" onSubmit={(e) => { e.preventDefault(); if (!ready) return; if (moved) setAsking(true); else void save(); }}>
+        <fieldset className="group" disabled={busy}>
+          <label className="field"><span>Name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
+          <label className="field"><span>Addresses</span><textarea className="mono" rows={3} autoCapitalize="none" spellCheck={false} value={addresses} onChange={(e) => setAddresses(e.target.value)} /></label>
+          {status && (
+            <label className="field"><span title={folderHow(status) ?? "Moving it moves no files."}>Models folder</span>
+              <input className="mono" autoCapitalize="none" spellCheck={false} disabled={!changesFolder} value={folder} onChange={(e) => setFolder(e.target.value)} />
+            </label>
+          )}
+        </fieldset>
+        <ErrorText error={error} />
+        <div className="row drawer-foot">
+          <button type="submit" className="primary" disabled={busy || !ready}>Save</button>
+        </div>
+      </form>
+      {asking && (
+        <ConfirmDialog title={`Move ${ep.name} to another models folder?`}
+          sentence={`It pauses once running jobs finish and restarts on ${folder.trim()}. No files move; models that aren't in that folder leave its lists.`}
+          confirm="Move" onCancel={() => setAsking(false)} onConfirm={() => { setAsking(false); void save(); }} />
+      )}
+    </aside>
   );
 }
 
@@ -1414,9 +1452,13 @@ function OpenRouterSignIn({ ctx, name, shared, onShared, onDone }: { ctx: MCtx; 
   </>;
 }
 
-/** Add model host: name, addresses and the code its dashboard shows; then the fingerprint it paired with. */
-function AddHost({ ctx }: { ctx: MCtx }) {
+/**
+ * Add model host: name, addresses and the code its dashboard shows; then the fingerprint it paired with.
+ * Pair again… opens it for one host (`again`): only the code, since the name and addresses stay.
+ */
+function AddHost({ ctx, again }: { ctx: MCtx; again?: string }) {
   const userId = ctx.user.id;
+  const known = again ? ctx.models.page?.endpoints.find((e) => e.id === again && e.api === "host") : undefined;
   const [name, setName] = useState("");
   const [addresses, setAddresses] = useState("");
   const [code, setCode] = useState("");
@@ -1425,25 +1467,31 @@ function AddHost({ ctx }: { ctx: MCtx }) {
   const [run, busy, error] = useAction();
   const list = addresses.split(/[\s,]+/).filter(Boolean);
   const pair = () => run(async () => {
-    setPaired(await post<EndpointInfo>(u(userId, "hosts"), { name: name.trim(), addresses: list, code: code.trim(), ...(shared ? { shared } : {}) }));
+    setPaired(known
+      ? await post<EndpointInfo>(u(userId, "hosts", known.id, "pair"), { code: code.trim() })
+      : await post<EndpointInfo>(u(userId, "hosts"), { name: name.trim(), addresses: list, code: code.trim(), ...(shared ? { shared } : {}) }));
     ctx.models.reload();
   });
   const back = href({ page: "models", userId, tab: "hosts" });
+  const ready = !!code.trim() && (known ? true : !!name.trim() && list.length > 0);
+  if (again && !known) return <Frame ctx={ctx} tab="hosts" title="Pair again">{ctx.models.page ? <p className="empty">That host isn't paired with this server. <a href={back}>Hosts and endpoints</a></p> : null}</Frame>;
   return (
-    <Frame ctx={ctx} tab="hosts" title="Add model host">
+    <Frame ctx={ctx} tab="hosts" title={known ? `Pair ${known.name} again` : "Add model host"} facts={known && (known.addresses ?? []).map((a, i) => <Fragment key={a}>{i > 0 && " · "}<span className="mono">{a}</span></Fragment>)}>
       <div className="steps add-host">
         <form className="step" onSubmit={(e) => { e.preventDefault(); void pair(); }}>
-          <h2 className="eyebrow">Host</h2>
+          <h2 className="eyebrow">{known ? "Pair" : "Host"}</h2>
           <fieldset className="stack" disabled={busy || !!paired}>
-            <label className="field"><span>Name</span><input value={name} autoFocus onChange={(e) => setName(e.target.value)} /></label>
-            <label className="field"><span>Addresses</span><textarea className="mono" rows={3} autoCapitalize="none" placeholder={"192.168.1.40\nblackwell.tailnet.ts.net"} value={addresses} onChange={(e) => setAddresses(e.target.value)} /></label>
-            <label className="field"><span>Pairing code</span><input className="mono" autoComplete="off" autoCapitalize="none" value={code} onChange={(e) => setCode(e.target.value)} /></label>
-            {ctx.user.admin && <Switch label="Shared" hint="Every user on this server can use it" checked={shared} onChange={setShared} />}
+            {!known && <>
+              <label className="field"><span>Name</span><input value={name} autoFocus onChange={(e) => setName(e.target.value)} /></label>
+              <label className="field"><span>Addresses</span><textarea className="mono" rows={3} autoCapitalize="none" placeholder={"192.168.1.40\nblackwell.tailnet.ts.net"} value={addresses} onChange={(e) => setAddresses(e.target.value)} /></label>
+            </>}
+            <label className="field"><span>Pairing code</span><input className="mono" autoComplete="off" autoCapitalize="none" autoFocus={!!known} value={code} onChange={(e) => setCode(e.target.value)} /></label>
+            {!known && ctx.user.admin && <Switch label="Shared" hint="Every user on this server can use it" checked={shared} onChange={setShared} />}
           </fieldset>
           <ErrorText error={error} />
           <div className="row">
-            <button className={paired ? "" : "primary"} disabled={busy || !!paired || !name.trim() || !list.length || !code.trim()}>Pair</button>
-            {!paired && <a className="link" href={back}>Cancel</a>}
+            <button className={paired ? "" : "primary"} disabled={busy || !!paired || !ready}>Pair</button>
+            {!paired && <button type="button" onClick={() => go({ page: "models", userId, tab: "hosts" })}>Cancel</button>}
           </div>
         </form>
         {paired && (

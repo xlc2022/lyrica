@@ -248,10 +248,12 @@ function Accounts({ ctx }: { ctx: MCtx }) {
 
 /** Download to: the hosts this user manages that answered, each with its free space. */
 export function HostField({ hosts, value, onChange }: { hosts: { ep: Endpoint; status?: HostStatus }[]; value?: string; onChange: (id: string) => void }) {
+  const isPaused = (s?: HostStatus) => s?.state === "paused" || s?.state === "pausing";
+  const chosen = hosts.find((h) => h.ep.id === value)?.status;
   return (
-    <label className="field"><span>Download to</span>
-      <select value={value} title={hosts.find((h) => h.ep.id === value)?.status?.modelsFolder.path} onChange={(e) => onChange(e.target.value)}>
-        {hosts.map(({ ep, status }) => <option key={ep.id} value={ep.id}>{ep.name} · {size(status!.modelsFolder.free)} free</option>)}
+    <label className="field"><span title={isPaused(chosen) ? "Downloading doesn't use the GPU, so it runs on a paused host too." : undefined}>Download to</span>
+      <select value={value} title={chosen?.modelsFolder.path} onChange={(e) => onChange(e.target.value)}>
+        {hosts.map(({ ep, status }) => <option key={ep.id} value={ep.id}>{ep.name}{isPaused(status) ? " · paused" : ""} · {size(status!.modelsFolder.free)} free</option>)}
       </select>
     </label>
   );
@@ -313,7 +315,7 @@ export function LinkFields({ link, setLink, sha, setSha }: { link: string; setLi
     <label className="field"><span>Link to the file</span>
       <input className="mono" inputMode="url" autoCapitalize="none" spellCheck={false} placeholder="https://" value={link} onChange={(e) => setLink(e.target.value)} />
     </label>
-    <label className="field"><span>SHA-256, if the page lists one</span>
+    <label className="field"><span title="If the page lists one. Without it, the download is marked unverified.">SHA-256</span>
       <input className="mono" autoCapitalize="none" spellCheck={false} value={sha} onChange={(e) => setSha(e.target.value)} />
     </label>
   </>;
@@ -391,7 +393,6 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
     }
   };
   const saved = source === "url" ? undefined : tokenFor(tokens.data, source);
-  const paused = host?.status?.state === "paused" || host?.status?.state === "pausing";
 
   const download = () => {
     if (!host) return;
@@ -427,7 +428,6 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
       {host && (
         <div className="card dl-form">
           <HostField hosts={hosts} value={host.ep.id} onChange={setHostId} />
-          {paused && <p className="meta">This host is paused. Downloading doesn't use the GPU, so it still runs.</p>}
           <div className="seg" role="group" aria-label="Source">
             {(["huggingface", "modelscope", "url"] as const).map((s) => (
               <button key={s} type="button" aria-pressed={source === s} onClick={() => { setSource(s); setProblem(""); }}>{s === "url" ? "Link" : HUB_WORD[s]}</button>
@@ -462,7 +462,7 @@ export function DownloadText({ ctx }: { ctx: MCtx }) {
           <ErrorText error={problem || (source === "url" ? "" : look.error) || error} />
           <div className="row">
             <button type="button" className="primary" disabled={busy || look.busy} onClick={download}>Download</button>
-            <a className="link" href={back}>Cancel</a>
+            <button type="button" onClick={() => { location.hash = back; }}>Cancel</button>
           </div>
         </div>
       )}

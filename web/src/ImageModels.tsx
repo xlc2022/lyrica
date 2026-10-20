@@ -814,7 +814,6 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
   const saved = tokenFor(tokens.data, "huggingface");
   const files = found?.files.filter((f) => f.allowed) ?? [];
   const refused = useMemo(() => (found ? fileChoices(found).refused : []), [found]);
-  const paused = host?.status?.state === "paused" || host?.status?.state === "pausing";
 
   /** Makes the starter's recipe on the host; its missing parts download, and the Downloads tab shows them. */
   const install = (s: HostStarter) => void run(async () => {
@@ -874,7 +873,6 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
       {host && (
         <div className="card dl-form">
           <HostField hosts={hosts} value={host.ep.id} onChange={setHostId} />
-          {paused && <p className="meta">This host is paused. Downloading doesn't use the GPU, so it still runs.</p>}
           <div className="seg" role="group" aria-label="Source">
             {SOURCES.map(([s, label]) => <button key={s} type="button" aria-pressed={source === s} onClick={() => { setSource(s); setProblem(""); }}>{label}</button>)}
           </div>
@@ -922,7 +920,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
           <ErrorText error={problem || (source === "huggingface" ? look.error : "") || error} />
           <div className="row">
             {source !== "scan" && <button type="button" className="primary" disabled={busy || look.busy} onClick={download}>{source === "starters" ? "Add model" : "Download"}</button>}
-            <a className="link" href={back}>{source === "scan" ? "Back" : "Cancel"}</a>
+            <button type="button" onClick={() => { location.hash = back; }}>{source === "scan" ? "Back" : "Cancel"}</button>
           </div>
         </div>
       )}
