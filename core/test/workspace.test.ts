@@ -726,3 +726,27 @@ describe("which thread wrote a file", () => {
     expect(settings.origins("web/project", ["notes.md", "aXb/x.txt"]).size).toBe(0);
   });
 });
+
+describe("the sweep after her command", () => {
+  it("runs in the background, one at a time per thread, the next taking the earliest start asked for meanwhile", async () => {
+    const { ada, workspace } = await setup();
+    const t = { userId: ada.id, pool: "general" as const, threadId: "web/a" };
+    const runs: Date[] = [];
+    let release!: () => void;
+    workspace.madeSince = async (_t, since) => { runs.push(since); await new Promise<void>((r) => { release = r; }); };
+    const [a, b, c] = [new Date(1000), new Date(3000), new Date(2000)];
+    workspace.sweepSince(t, a);
+    workspace.sweepSince(t, b);
+    workspace.sweepSince(t, c);
+    expect(runs).toEqual([a]);
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(runs).toEqual([a, c]);
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    // Done: the next one starts at once.
+    workspace.sweepSince(t, b);
+    expect(runs).toEqual([a, c, b]);
+    release();
+  });
+});

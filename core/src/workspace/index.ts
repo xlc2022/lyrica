@@ -172,6 +172,8 @@ export async function resolveHost(host: string): Promise<{ addresses: string[]; 
  */
 export class Workspace {
   private readonly worktreeCleanup = new Map<string, Promise<string>>();
+  /** Each thread's running sweep for files her command wrote, and the earliest start asked for while it runs. */
+  private readonly sweeps = new Map<string, { next?: Date }>();
   private readonly settingsByUser = new Map<string, WorkspaceSettings>();
   private readonly changesByUser = new Map<string, FileChanges>();
   private readonly sshTargets = new Map<string, SshTarget>();
@@ -343,8 +345,8 @@ export class Workspace {
       recordChange: (c: NewChange) => { this.changes(t.userId).record(t.pool, t.threadId, c); },
       /** Her write or edit call wrote this file (as she sees it). */
       madeFiles: (paths: string[]) => { try { this.madeFiles(t, paths); } catch { /* locked: unrecorded */ } },
-      /** Her command ran from `since`: the files it left newer are hers. */
-      madeSince: (since: Date) => this.madeSince(t, since),
+      /** Her command ran from `since`: the files it left newer are hers, found in the background (the call doesn't wait). */
+      madeSince: (since: Date) => { this.sweepSince(t, since); },
       /** Files the panel added or removed since her last turn, names only; taking them clears them. */
       fileNotes: () => this.settings(t.userId).takeFileNotes(t.threadId),
     };
@@ -396,15 +398,31 @@ export class Workspace {
   /**
    * After a command: the files in the thread's folder and /shared changed since `since` (to the second before it),
    * found by `find` in a fresh no-network sandbox, are recorded as this thread's, keeping a record another thread
-   * made while the command ran. Git's own files, node_modules and the panel's folder are skipped; at most
-   * NEW_FILES_LIMIT files.
+   * made while the command ran. Git's own files, node_modules, the panel's folder and repos/ (a repository's files,
+   * mounted from elsewhere for some threads) are skipped; at most NEW_FILES_LIMIT files, within 10 seconds.
    */
+  /**
+   * madeSince in the background, one sweep at a time per thread: one asked for while another runs waits and takes
+   * the earliest start asked for meanwhile. A failed sweep only leaves its files unrecorded.
+   */
+  sweepSince(t: WorkspaceThread, since: Date): void {
+    const key = `${t.userId}/${t.threadId}`;
+    const sweep = this.sweeps.get(key);
+    if (sweep) { if (!sweep.next || since < sweep.next) sweep.next = since; return; }
+    const entry: { next?: Date } = {};
+    this.sweeps.set(key, entry);
+    void (async () => {
+      for (let from: Date | undefined = since; from; from = entry.next, entry.next = undefined) await this.madeSince(t, from).catch(() => {});
+      this.sweeps.delete(key);
+    })();
+  }
+
   async madeSince(t: WorkspaceThread, since: Date): Promise<void> {
     const shared = this.sharedDir(t);
     const box = new Sandbox({ workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), shared, grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
     const at = String(Math.floor(since.getTime() / 1000) - 1);
-    const script = 'find "$@" -xdev \\( -name .git -o -name node_modules -o -name .lyrica \\) -prune -o -type f -newermt "@$0" -print0 2>/dev/null | head -z -n ' + NEW_FILES_LIMIT;
-    const r = await box.run(["sh", "-c", script, at, WORKDIR, ...(shared ? [SHARED] : [])], { timeoutMs: 30_000 });
+    const script = `find "$@" -xdev \\( -name .git -o -name node_modules -o -name .lyrica -o -path ${WORKDIR}/repos \\) -prune -o -type f -newermt "@$0" -print0 2>/dev/null | head -z -n ${NEW_FILES_LIMIT}`;
+    const r = await box.run(["sh", "-c", script, at, WORKDIR, ...(shared ? [SHARED] : [])], { timeoutMs: 10_000 });
     const paths = r.stdout.toString().split("\0").filter(Boolean);
     if (paths.length) this.madeFiles(t, paths, since);
   }

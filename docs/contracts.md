@@ -1240,10 +1240,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `{ added, removed }` paths the Files panel changed since her last turn,
     which the `workspace` prompt section names in one line. `madeFiles`
     hears of what a sandbox `write` or `edit` wrote, and `madeSince(since)`
-    of a sandbox `bash` call's start, whether or not the call succeeded:
-    `Workspace.madeSince` then records the files in `/workspace` and
-    `/shared` newer than it (`find` in a fresh no-network sandbox, at most
-    2,000, `.git`, `node_modules` and `.lyrica` skipped). `claudeCode()`
+    of a sandbox `bash` call's start, whether or not the call succeeded,
+    without the call waiting: `Workspace.sweepSince` runs one sweep per
+    thread at a time (a later start waits, the earliest kept), and
+    `madeSince` records the files in `/workspace` and `/shared` newer than
+    it (`find` in a fresh no-network sandbox, at most 2,000 within 10
+    seconds; `.git`, `node_modules`, `.lyrica` and `/workspace/repos`
+    skipped). `claudeCode()`
     true adds `CLAUDE_CODE_LINE` to that section.
   - `read`, `write`, `edit` and `bash` take an optional `machine`. On a
     machine the call's mode is `stricterMode(settings().mode, limit)`; a

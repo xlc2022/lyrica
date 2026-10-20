@@ -386,8 +386,9 @@ takes is `lyrica@pve!agent=<that secret>`.
 - **Which thread wrote each file** is recorded in `user.db` (`file_origins`:
   the folder's thread, the path in it, the thread, the time; never content),
   so the file viewer shows that thread beside the file. Her sandbox `write`
-  and `edit` calls record their file; a `bash` call records the files in
-  `/workspace` and `/shared` newer than its start, keeping a record another
+  and `edit` calls record their file; a `bash` call records, in the background
+  after it returns, the files in `/workspace` and `/shared` newer than its
+  start (not `repos/`, `.git` or `node_modules`), keeping a record another
   thread made while it ran; uploads and her images record the thread they
   came in. It is the last writer, and her work on a machine or in a grant
   isn't recorded. Records go with the file: the panel's Rename moves them,

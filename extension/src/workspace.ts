@@ -58,8 +58,8 @@ export interface ThreadTools {
   recordChange?(change: NewChange): void;
   /** Records that this thread wrote these files in the sandbox (paths as she sees them), for the file viewer's thread beside a file. */
   madeFiles?(paths: string[]): void;
-  /** The same for a command: the files in her folder and /shared newer than `since`, its start. */
-  madeSince?(since: Date): Promise<void>;
+  /** The same for a command: the files in her folder and /shared newer than `since`, its start, found in the background. */
+  madeSince?(since: Date): void;
   /** What the person's Files panel added or removed since her last turn, names only; taking them clears them. */
   fileNotes?(): { added: string[]; removed: string[] };
 }
@@ -199,7 +199,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
             return await tool.execute(id, rest, signal, onUpdate, here);
           } finally {
             // Which thread wrote what, for the file viewer; a failed sweep only leaves it unrecorded.
-            if (name === "bash") await tools.madeSince?.(since).catch(() => {});
+            if (name === "bash") tools.madeSince?.(since);
             else if (typeof rest.path === "string") tools.madeFiles?.([posix.resolve(cwd, rest.path)]);
           }
         },
