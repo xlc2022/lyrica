@@ -487,9 +487,9 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .wipe-wait { display: flex; gap: 10px; align-items: flex-start; }
 .spinner { flex: none; width: 14px; height: 14px; margin-top: 3px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
 .wipe-busy { font-size: 13px; }
-.wipe-busy summary { list-style: none; cursor: pointer; color: var(--accent); }
+.wipe-busy summary { list-style: none; cursor: pointer; color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
+@media (pointer: coarse) { .wipe-busy summary { min-height: var(--tap); } }
 .wipe-busy summary::-webkit-details-marker { display: none; }
 .wipe-busy ul { margin: 6px 0 0; padding-left: 18px; max-height: 160px; overflow-y: auto; }
 
