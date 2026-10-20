@@ -483,6 +483,15 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .dlg { padding: 18px; display: grid; gap: 12px; }
 .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .check { display: inline-flex; gap: 8px; align-items: center; min-height: calc(var(--tap) - 8px); cursor: pointer; }
+/* Wipe memory's wait (docs/ux.md §6 "Wiping memory"): a spinner beside the sentence, and what it is stopping behind a disclosure. */
+.wipe-wait { display: flex; gap: 10px; align-items: flex-start; }
+.spinner { flex: none; width: 14px; height: 14px; margin-top: 3px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+.wipe-busy { font-size: 13px; }
+.wipe-busy summary { list-style: none; cursor: pointer; color: var(--accent); }
+.wipe-busy summary::-webkit-details-marker { display: none; }
+.wipe-busy ul { margin: 6px 0 0; padding-left: 18px; max-height: 160px; overflow-y: auto; }
 
 /* ---- Memory, the notebook (docs/ux.md §6): a browse pane with the layer segment and the list, the memory beside it. ---- */
 .mem { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }

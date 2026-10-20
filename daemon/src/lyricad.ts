@@ -8,8 +8,8 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  adoptLocalSearxng, bootstrap, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
-  SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace,
+  adoptLocalSearxng, bootstrap, isMounted, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
+  SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, homeWiped, homeWipePending, wipePending, wipePools,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
 import { Delegation, planCatalog, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
@@ -35,7 +35,7 @@ import { TailnetControl } from "./tailnet.ts";
 import { listenUpdateSocket, type Drainable, type UpdatePaths } from "./updates.ts";
 import { DIRECT_PORT, directFor, ExternalListener, hostAddresses, WebAccess, type Bind } from "./web/access.ts";
 import { apiRoutes } from "./routes.ts";
-import { sweepUser } from "./sweep.ts";
+import { sweepUser, wipeHome } from "./sweep.ts";
 
 export interface LyricadOptions {
   /** LYRICA_HOME: self.db, users/, and the Unix socket. */
@@ -543,6 +543,12 @@ export class Lyricad implements Drainable {
     } catch (err) {
       this.log(`the home workspace didn't mount: ${(err as Error).message.split("\n")[0]}`);
     }
+    // A wipe made while this user was locked finishes before anything reads their threads.
+    try {
+      this.finishWipe(userId);
+    } catch (err) {
+      this.log(`finishing a memory wipe failed: ${(err as Error).name}`);
+    }
     // Scheduled turns wait in the encrypted pools and fire on the tick while unlocked.
     try {
       this.services!.wakeups.load(userId);
@@ -573,9 +579,18 @@ export class Lyricad implements Drainable {
 
   /** Lock: stops the user's threads, unmounts their home, drops their key and every session of theirs. */
   async lockUser(userId: string): Promise<void> {
-    const s = this.services!;
     // First, at once: no request or stream gets past userFor from here on.
     this.sessions.dropUser(userId);
+    await this.stopWork(userId);
+    this.keyring.lockUser(userId);
+    await this.services!.host.close(userId);
+    await this.services!.workspace.unmountHome(userId).catch((err: Error) => this.log(`unmounting a home workspace failed: ${firstLine(err)}`));
+    this.mounted.delete(userId);
+  }
+
+  /** Stops everything running for the user: scheduled turns, subagents, child threads, sleep. Their key stays. */
+  private async stopWork(userId: string): Promise<void> {
+    const s = this.services!;
     s.wakeups.drop(userId);
     s.routines.drop(userId);
     s.forge.drop(userId);
@@ -584,10 +599,66 @@ export class Lyricad implements Drainable {
     await s.children.lock(userId);
     s.watcher.close(userId);
     await s.sleep.stop(userId);
-    this.keyring.lockUser(userId);
-    await s.host.close(userId);
-    await s.workspace.unmountHome(userId).catch((err: Error) => this.log(`unmounting a home workspace failed: ${firstLine(err)}`));
-    this.mounted.delete(userId);
+  }
+
+  /**
+   * Wipe memory (DESIGN.md, "Wiping memory"): every user's threads and
+   * memories in both pools, and their thread files. Running work stops first;
+   * a locked user's user.db and home are cleaned at their next unlock. Users
+   * stay signed in. Logs a count only. While anything is running (a turn, a
+   * subagent, a sleep run) it is sent a stop and nothing is wiped: the
+   * result lists what was running, and the wipe is asked for again.
+   */
+  async wipeMemory(): Promise<{ wiped: boolean; busy: BusyItem[] }> {
+    const s = this.services!;
+    const busy = this.busy();
+    if (busy.length) {
+      for (const b of busy) {
+        if (b.kind === "turn" && b.pool && b.threadId) await s.host.get(b.userId, b.pool, b.threadId).stop();
+        else if (b.kind === "subagent") await s.delegation.stopAll(b.userId);
+        else if (b.kind === "sleep") await s.sleep.stop(b.userId);
+      }
+      return { wiped: false, busy };
+    }
+    const unlocked = s.users.all().map((u) => u.id).filter((id) => this.keyring.hasUserKey(id));
+    for (const id of unlocked) {
+      await this.stopWork(id);
+      await s.host.close(id);
+    }
+    const n = wipePools(this.keyring, s.users);
+    for (const id of unlocked) {
+      try {
+        this.finishWipe(id, true);
+        s.wakeups.load(id);
+        s.routines.load(id);
+        s.forge.load(id);
+      } catch (err) {
+        this.log(`finishing a memory wipe failed: ${(err as Error).name}`);
+      }
+      this.userEvents.changed(id);
+    }
+    this.log(`wiped memory for ${n} users`);
+    return { wiped: true, busy: [] };
+  }
+
+  /**
+   * The key-needing half of a wipe, when this user waits for one: their
+   * user.db rows, then their thread folders once the home is mounted. Right
+   * after the wipe (`now`) every folder goes; at a later unlock, as the
+   * nightly sweep does, only the folders of threads that don't exist, so
+   * threads made since keep theirs.
+   */
+  private finishWipe(userId: string, now = false): void {
+    const s = this.services!;
+    const self = this.keyring.self();
+    if (wipePending(self, userId)) {
+      const db = s.users.openUserDb(userId);
+      try { finishWipe(self, userId, db); } finally { db.close(); }
+    }
+    if (!homeWipePending(self, userId) || !isMounted(s.workspace.homeDir(userId))) return;
+    if (now) wipeHome(s, userId);
+    else sweepUser(s, userId);
+    homeWiped(self, userId);
   }
 
   /** The nightly sleep time, `HH:MM` local time (self.db `settings`). */

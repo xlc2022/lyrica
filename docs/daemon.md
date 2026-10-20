@@ -858,6 +858,38 @@ recorded as partial and resumes next time.
 Once an hour, `lyricad` forgets sleep's phase threads older than 36 hours in
 every pool whose key is here (`Sleep.prune`), logging only how many went.
 
+## Wiping memory
+
+`POST …/admin/wipe` with `WipeRequest { password, understood: true }`
+(administrators; the administrator's own password, checked on the login
+limiter like **Change password…**; without `understood` it is `400`)
+deletes every user's threads and memories in both pools (DESIGN.md,
+"Wiping memory"). `lyricad.wipeMemory()`:
+
+- While anything runs (`busy()`: a turn or a message waiting for a model, a
+  subagent run, a sleep run), it sends each a stop, wipes nothing and answers
+  `WipeResult { wiped: false, busy }`, each item its kind, the user's display
+  name and the pool, never a thread title. `GET …/admin/wipe` lists what still
+  runs; the page asks again once it lists nothing.
+- Otherwise it stops each unlocked user's scheduled turns, child threads,
+  subagents, sleep and hosted threads, then `wipePools` (core/wipe.ts) deletes
+  every user's `general.db` and `private.db` with their WAL files, every
+  `thread_shares` row and every persona suggestion sent to administrators,
+  and marks every user in self.db's settings (`wipe.pending` for user.db,
+  `wipe.home` for the home workspace). For each unlocked user it then
+  finishes at once: `finishWipe` deletes the user.db rows in
+  `WIPED_USER_TABLES` with `secure_delete` on, and while the home is mounted
+  `wipeHome` (sweep.ts) removes every thread folder (run worktrees forgotten
+  by git first, branches kept), Claude Code folder and snapshot. Whatever is
+  left finishes at the user's next unlock, in `keyAvailable`, before
+  scheduled turns load; the home part then runs the nightly sweep, so
+  threads made since keep their folders. Nobody is logged out, and it logs
+  only the number of users.
+- `lyrica admin wipe` does the first half from a terminal while lyricad is
+  stopped (it refuses while it runs): the self.db passphrase, an
+  administrator's login and password, and typing `wipe`. Each user finishes
+  at their next unlock.
+
 ## Logs
 
 One line per request: method, route pattern (never the path, which holds
