@@ -590,13 +590,20 @@ function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool"
   );
 }
 
+/** What a `threads` card is titled by its action, besides start and message. */
+const THREADS_HEADS: Record<string, string> = {
+  list: "Threads", read: "Read a thread", stop: "Stop a thread", resolve: "Resolve a thread", reopen: "Reopen a thread",
+  later: "Wake-up", routine: "Routines", compact: "Compaction", code: "Code mode", model: "Model switch", ask: "Question",
+};
+
 /** A `threads` call: a child thread started (with its checklist's count and current step), messaged or listed, linking to it. */
 function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {
   const args = (part.args ?? {}) as { action?: string; title?: string; task?: string; text?: string; to?: string };
   const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
-  // No action yet while she writes the call: the tool's own name, until it runs.
-  const head = args.action === "start" ? `Child thread: ${args.title ?? ""}` : !args.action || args.action === "list" ? "Child threads"
-    : args.to === "parent" ? "Update to the parent thread" : "Message to a child thread";
+  // No action yet while she writes the call: the tool's own name, until it runs. The head names what the call does, never more.
+  const head = args.action === "start" ? `Child thread: ${args.title ?? ""}`
+    : args.action === "message" ? (args.to === "parent" ? "Update to the parent thread" : "Message to a thread")
+    : (args.action && THREADS_HEADS[args.action]) ?? "Threads";
   const started = args.action === "start" ? part.threads?.[0] : undefined;
   const child = started && findThread(env.threads, started.pool, started.id);
   return (

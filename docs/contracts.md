@@ -949,7 +949,12 @@ Custom roles override built-ins by name.
   thread of the same project, marked with the same `[From t:<sender>]` line
   (`HostedThread.send(text, { fromThread })`; only `lyricad` writes it, and
   `Message.from.kind` is `thread`), at most `ThreadsLimits.siblingMessages`
-  (3) per turn; `list` in a project's thread lists the project's other
+  (3) per turn. A `message` text is at most `MESSAGE_MAX` (8,000)
+  characters, and a `message` or `start` text holding a run of 400 base64
+  characters (line breaks aside) is refused (`checkWords`): the refusal
+  sends files to `/shared` or a shared repository. `read` of a project
+  thread's own project chat is refused with the route that works (`message`
+  with `to: "parent"`); `list` in a project's thread lists the project's other
   threads with `ChildInfo.state` (`ThreadState`) and `needsYou`; new actions
   `suggest({ threads: { title, task }[] })` (a card, no thread made),
   `fold({ ids: string[] })` (up to ten existing threads; a card, no move),
@@ -1880,6 +1885,8 @@ inheritSettings(parent, childThreadId, narrower?)  // subagents and child thread
 claudeCodeFor(t): boolean                 // Claude Code for a run: general, not local-only along its chain (WorkspaceOptions.restricted; without it never), switch on, token saved, reaches api.anthropic.com
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
 // Project code threads have their own folder; other child threads share their parent's (folderThread).
+sharedDir(t): string | undefined          // shared/ in the folder of the family's topmost thread (settings.familyRoot; the project chat in a project):
+  // SandboxSpec.shared, mounted read-write at /shared (SHARED) for the whole family; undefined when a thread made it a file or link
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
 // MachineConfig { name, kind: "ssh" | "proxmox", host, port, username (Proxmox: token id), privateKey (Proxmox: the token),
 //   root (Proxmox: null), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,

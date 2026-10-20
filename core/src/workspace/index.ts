@@ -3,7 +3,7 @@ import { ensurePhotosDir, PortraitPhotos, ThreadImages } from "./images.ts";
 export * from "./images.ts";
 import { randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { isIP } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -269,6 +269,20 @@ export class Workspace {
     const dir = join(home, "threads", name);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     return dir;
+  }
+
+  /**
+   * The folder a thread shares with its family (docs/workspace.md, "Handing
+   * files over"): `shared/` in its topmost thread's folder (the project
+   * folder, for a project's chat and threads), so the person sees it there
+   * and it goes with that thread.
+   */
+  sharedDir(t: WorkspaceThread): string | undefined {
+    const root = this.settings(t.userId).familyRoot(t.threadId);
+    const dir = join(this.threadDir({ userId: t.userId, pool: t.pool, threadId: root }), "shared");
+    try { mkdirSync(dir, { mode: 0o700 }); } catch (err) { if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err; }
+    // A thread can put a file or a link there instead: then the family goes without, rather than every sandbox failing.
+    return lstatSync(dir).isDirectory() ? dir : undefined;
   }
 
   /**
@@ -556,6 +570,7 @@ export class Workspace {
     return new Sandbox({
       workdir: this.threadDir(t),
       workdirAlias: this.workdirAlias(t),
+      shared: this.sharedDir(t),
       grants: ownGrants(t, s.effective(t.threadId).grants),
       network: this.network(t),
       repos: this.reposDir(t),
