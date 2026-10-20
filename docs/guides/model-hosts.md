@@ -71,7 +71,8 @@ back each other up.
   the same folder.
 
   It can be one another program already uses, such as LM Studio's; the
-  stack mounts it read-only and writes only into `lyrica/`.
+  stack mounts it read-only and writes only into `lyrica/`. To move to
+  another folder later, see [Operating a host](#operating-a-host).
 - A **private LAN address** (10/8, 172.16/12, 192.168/16, or a tailnet
   address). Docker's published ports bypass the machine's firewall, so the
   script never publishes on every interface, and a detected address that
@@ -405,6 +406,24 @@ second pairing. Then:
   carries its `.env` along.
   Either way the `data` volume keeps the host's key, so pairing survives.
   Details are in [host/README.md](../../host/README.md#updates).
+- **Move to another models folder:** **Change** beside "models folder" on
+  the host's card under Models → Hosts and endpoints, or `sudo
+  lyrica-host-update --models <folder>` on the host. The updater pauses the
+  host (running jobs finish first), installs the same commit again with
+  the new folder, and goes back to the old one if host-api doesn't answer
+  on the new one within 5 minutes. No files move: models not in the new
+  folder leave the lists. It refuses a folder that doesn't exist, a system
+  folder (all of `/var/lib` included), one holding the host's own files,
+  or one that someone else could change: the folder and every folder above
+  it must belong to root or the current folder's owner with no group or
+  other write, though a sticky folder such as `/tmp` above it is fine. A
+  `lyrica/` subfolder must be a folder, not a link or a file. An updater
+  installed before this was added can't move the folder, and an update
+  never replaces the updater, so run `host/install.sh` once more; until
+  then the card's tooltip says "Run install.sh on the host again". On NixOS, which has no updater, set
+  `modelsDir` and run `host/install.sh --models <folder>`; any host can
+  still change it that way. Details are in
+  [host/README.md](../../host/README.md#the-models-folder).
 - **Hosts installed before the updater** need `git pull &&
   host/install.sh` once more: it installs the updater, prints the deploy
   key to add, and brings the host-api image that opens from Lyrica's
