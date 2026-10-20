@@ -18,7 +18,7 @@ export interface ThreadTools {
   /** Called on every tool call, so a change of grants applies at once: the sandbox, or one of the thread's machines. */
   target(machine?: string): ExecutionTarget;
   /** What applies to the thread now, its ancestors' limits included. */
-  settings(): ThreadWorkspace;
+  settings(): ThreadWorkspace & { coordinates?: boolean };
   network(): Network;
   /** Whether her sandbox runs have Claude Code on the person's Claude plan now. Without it, never. */
   claudeCode?(): boolean;
@@ -371,7 +371,7 @@ export function describe(tools: ThreadTools): string {
   const pves = all.filter((m) => m.kind === "proxmox").map((m) => `${m.name} (${limit(m)})`);
   return [
     `Your file and command tools run in a sandbox. ${WORKDIR} is this conversation's folder; uploads arrive in ${WORKDIR}/uploads.`,
-    `A ${WORKDIR} path you write is a link the person can open, and an image under it that you write as markdown (![what it shows](${WORKDIR}/plot.png)) shows in your message.`,
+    s.coordinates ? READ_ONLY_CHAT : `A ${WORKDIR} path you write is a link the person can open, and an image under it that you write as markdown (![what it shows](${WORKDIR}/plot.png)) shows in your message.`,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
     SHARED_LINE,
     ...(s.grants.some((g) => g.writable) ? [BUILD_THERE] : []),
@@ -388,6 +388,9 @@ export function describe(tools: ThreadTools): string {
     ...fileNotes(tools.fileNotes?.()),
   ].join("\n");
 }
+
+/** A project chat builds nothing itself: a model building alone in its own folder, three runs running, is why. */
+export const READ_ONLY_CHAT = `Every folder here is read-only to you, ${WORKDIR} and ${SHARED} included (/tmp lasts one command): a code thread makes or changes every file, and puts what you need to see in ${SHARED}.`;
 
 /** Threads hand files to each other through one folder: a model once planned to send a whole page as base64 chunks in messages. */
 export const SHARED_LINE = `${SHARED} is shared with your parent and child threads (in a project, with its chat and every thread): hand files over there; messages carry words, not files.`;

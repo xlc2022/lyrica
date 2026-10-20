@@ -1889,6 +1889,8 @@ settings(userId).detach(threadId)          // a kept child, once its parent is f
 sharedDir(t): string | undefined          // shared/ in the folder of the family's topmost thread (settings.familyRoot; the project chat in a project):
   // SandboxSpec.shared, mounted read-write at /shared (SHARED) for the whole family; undefined when a thread made it a file or link,
   // or when sharesFamilyFolder(t) is false: a local-only thread (or ancestor below the top) under a top that isn't restricted
+// SandboxSpec.readOnly (t.coordinates, a project chat and its subagents): /workspace, its alias and /shared mount read-only and
+//   a write the tools try throws SandboxDenied naming a code thread; /tmp stays a command's scratch
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
 // MachineConfig { name, kind: "ssh" | "proxmox", host, port, username (Proxmox: token id), privateKey (Proxmox: the token),
 //   root (Proxmox: null), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,
@@ -1990,7 +1992,8 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   `repositoriesFor(t)`; `cloneFor(t)` makes or fetches each clone in the
   sandbox under the thread's folder in the home workspace (`repos/<name>`,
   a subagent's under its parent's, mounted read-only for one with
-  `reposReadOnly`) and returns the problems, never removing
+  `reposReadOnly` and for a project chat, though `cloneFor` itself may
+  write them) and returns the problems, never removing
   one (a clone goes with the thread); `addRepository(t, r)` is the
   `add_repository` tool's change. `credentialsFor(t).forge` holds the
   tokens; it is empty when the thread is of the other pool, has no

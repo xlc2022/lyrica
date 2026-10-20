@@ -66,6 +66,17 @@ async function sh(command: string, sandbox = box()): Promise<{ code: number | nu
   return { code: exitCode, out };
 }
 
+describe("a project chat's sandbox", () => {
+  // Three runs had a project chat build the whole thing in its own folder instead of starting a thread.
+  it("refuses writes to its folder and /shared, and still reads them", () => {
+    const chat = new Sandbox({ workdir: "/tmp/never-mounted", shared: "/tmp/never-mounted-shared", grants: [], network: OFF, self: [], readOnly: true });
+    expect(() => chat.allow("/workspace/page.html", true)).toThrow(/read-only in a project chat: start a code thread/);
+    expect(() => chat.allow("/shared/page.html", true)).toThrow(/read-only in a project chat/);
+    expect(chat.allow("/shared/page.html", false)).toBe("/shared/page.html");
+    expect(chat.allow("/workspace/notes.md", false)).toBe("/workspace/notes.md");
+  });
+});
+
 describe.skipIf(!runnable)("the sandbox", () => {
   it("lets her work in her folder and her grants", async () => {
     const ops = box().ops();
@@ -101,6 +112,13 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await sh("echo kept > /run/lyrica/claude/notes && ls -A /workspace | grep -c claude || true", own)).out).toBe("0\n");
     expect(readFileSync(p("claude-own", "notes"), "utf8")).toBe("kept\n");
     expect((await sh("ls /run/lyrica/claude 2>&1 || true")).out).toContain("No such file");
+  });
+
+  it("mounts a project chat's own folder and /shared read-only, leaving /tmp for a command's scratch", async () => {
+    mkdirSync(p("chat-shared"), { recursive: true });
+    const chat = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], shared: p("chat-shared"), readOnly: true });
+    const r = await sh("touch /workspace/x 2>&1; touch /shared/x 2>&1; touch /tmp/x && echo TMP-OK", chat);
+    expect(r.out).toMatch(/Read-only file system[\s\S]*Read-only file system[\s\S]*TMP-OK/);
   });
 
   it("mounts a family's shared folder at /shared, read-write, for every thread given it", async () => {

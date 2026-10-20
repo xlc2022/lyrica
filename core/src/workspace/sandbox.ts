@@ -44,6 +44,8 @@ export interface SandboxSpec {
   repos?: string;
   /** Mount `repos` read-only: a read-only subagent's view of its parent's clones. */
   reposReadOnly?: boolean;
+  /** A project chat's: its own folder and /shared are read-only too, so whatever it would build, a thread builds. /tmp stays writable for checks. */
+  readOnly?: boolean;
   /**
    * The credentials its runs may use (Workspace.credentialsFor), which stay
    * in this process. Each run gets a relay (relay.ts) forwarded to its
@@ -297,7 +299,10 @@ export class Sandbox implements ExecutionTarget {
   /** Refuses paths outside the thread's folder and grants (SandboxDenied). The mounts confine her regardless. */
   allow(path: string, write: boolean): string {
     const p = cleanPath(path);
-    if (within(p, WORKDIR) || (this.spec.workdirAlias && within(p, this.spec.workdirAlias)) || (this.spec.shared && within(p, SHARED))) return p;
+    if (within(p, WORKDIR) || (this.spec.workdirAlias && within(p, this.spec.workdirAlias)) || (this.spec.shared && within(p, SHARED))) {
+      if (write && this.spec.readOnly) throw new SandboxDenied(`${p} is read-only in a project chat: start a code thread to make or change files, and it hands them back in /shared`);
+      return p;
+    }
     const grant = [...this.grants].reverse().find((g) => within(p, g.path));
     if (!grant) throw new SandboxDenied(`${p} is outside this thread's folders`);
     if (write && !grant.writable) throw new SandboxDenied(`${grant.path} is read-only in this thread`);
@@ -465,11 +470,11 @@ export class Sandbox implements ExecutionTarget {
       check?.();
       args.push(writable ? "--bind-fd" : "--ro-bind-fd", String(fds.length + 2), dest);
     };
-    if (this.spec.workdir) mount(cleanPath(this.spec.workdir), true, WORKDIR);
-    if (this.spec.workdir && this.spec.workdirAlias) mount(cleanPath(this.spec.workdir), true, this.spec.workdirAlias);
+    if (this.spec.workdir) mount(cleanPath(this.spec.workdir), !this.spec.readOnly, WORKDIR);
+    if (this.spec.workdir && this.spec.workdirAlias) mount(cleanPath(this.spec.workdir), !this.spec.readOnly, this.spec.workdirAlias);
     if (this.spec.workdir && this.spec.repos) mount(cleanPath(this.spec.repos), !this.spec.reposReadOnly, `${WORKDIR}/repos`);
     if (this.spec.claudeDir) mount(cleanPath(this.spec.claudeDir), true, CLAUDE_DIR);
-    if (this.spec.shared) mount(cleanPath(this.spec.shared), true, SHARED);
+    if (this.spec.shared) mount(cleanPath(this.spec.shared), !this.spec.readOnly, SHARED);
     for (const g of this.grants) mount(g.path, g.writable, g.path, () => this.spec.check?.(g));
     for (const f of this.spec.files ?? []) args.push("--ro-bind", f, f);
 

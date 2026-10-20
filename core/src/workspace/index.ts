@@ -59,7 +59,7 @@ export interface WorkspaceThread {
   reposOf?: string;
   /** A read-only subagent's: its parent's clones are mounted read-only, so it can't change their working trees or commits. */
   reposReadOnly?: boolean;
-  /** A project chat's: its folders and clones are read-only to it, so a change goes through one of its threads, which inherit them as given. */
+  /** A project chat's: its folders, clones, own folder and /shared are read-only to it, so a change goes through one of its threads, which inherit them as given. */
   coordinates?: boolean;
 }
 
@@ -310,7 +310,7 @@ export class Workspace {
       prepareWorktrees: () => this.prepareWorktrees(t),
       commandRules: () => t.project ? this.settings(t.userId).commandRules(t.pool, t.project) : [],
       target: (machine?: string) => this.targetFor(t, machine),
-      settings: () => { const s = this.settings(t.userId).effective(t.threadId); return { ...s, grants: ownGrants(t, s.grants) }; },
+      settings: () => { const s = this.settings(t.userId).effective(t.threadId); return { ...s, grants: ownGrants(t, s.grants), ...(t.coordinates ? { coordinates: true } : {}) }; },
       machines: () => this.machinesFor(t),
       /** The thread's repositories, where each is cloned and whether its token reaches the sandbox now. */
       repositories: () => this.repositoriesFor(t),
@@ -571,8 +571,8 @@ export class Workspace {
     ws.setThreadWork(t.threadId, { ...work, cleaned: false });
   }
 
-  /** Where a call runs: the sandbox, or one of the thread's machines. */
-  targetFor(t: WorkspaceThread, machine?: string): ExecutionTarget {
+  /** Where a call runs: the sandbox, or one of the thread's machines. `fetching` is the daemon's own clone run, which may write repos/. */
+  targetFor(t: WorkspaceThread, machine?: string, fetching = false): ExecutionTarget {
     const s = this.settings(t.userId);
     s.checkInherited(t.threadId, t.pool);
     if (machine) {
@@ -589,7 +589,8 @@ export class Workspace {
       grants: ownGrants(t, s.effective(t.threadId).grants),
       network: this.network(t),
       repos: this.reposDir(t),
-      reposReadOnly: t.reposReadOnly || t.coordinates,
+      reposReadOnly: !fetching && (t.reposReadOnly || t.coordinates),
+      readOnly: t.coordinates,
       credentials,
       ...credentials.anthropic ? { claudeDir: this.claudeDir(t) } : {},
       onPullCreate: this.opts.onPullCreate && ((pr) => this.opts.onPullCreate!(t, pr)),
@@ -652,7 +653,8 @@ export class Workspace {
       const refused = await this.checkGitHost(t.userId, a).then(() => undefined, (err: Error) => err.message);
       if (refused) problems.push(refused);
     }
-    const box = this.targetFor(t) as Sandbox;
+    // The daemon fetches even a project chat's clones, which are read-only to the chat itself.
+    const box = this.targetFor(t, undefined, true) as Sandbox;
     // Fetches when the folder is a clone already; otherwise clones into it, which git refuses if something else is there.
     const script = 'if [ -e "$1/.git" ]; then git -C "$1" fetch --prune --quiet origin; else mkdir -p "$(dirname "$1")" && git clone --quiet "$2" "$1"; fi';
     for (const r of this.repositoriesFor(t)) {
