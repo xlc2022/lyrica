@@ -3,7 +3,7 @@ export const CODE_GUIDELINES = `Read the repository instructions and relevant fi
 Run the repository’s checks after each change; start servers in the background with a time limit.
 Read a failing log before changing anything.
 Keep diffs small and focused on the task: put screenshots, logs and other check output in your scratch folder (/workspace, outside worktrees/), never in a repository, and commit only the work asked for. Before saying done, run git status in each repository or worktree you changed: commit what belongs to the work, or say what is left uncommitted and why.
-Check what the request literally asked for (a single-file page opened from disk with no network, say); report which check ran, what it showed and what remains unchecked: a check that failed or never ran isn't done.`;
+Check what the request literally asked for (a single-file page opened from disk with no network, say); report which check ran, what it showed and what remains unchecked: a check that failed, never ran or ran before your last change isn't done.`;
 export const CODING_GUIDELINE = "For a coding job outside a project chat, code in this thread: before your first edit, however small the change, turn on code mode (threads code, with task and done), and turn it off (on: false) when the coding is done. "
   + "Start a code: true thread only if the user asks for one. Delegate a small change on the side to the coder role. "
   + "Requested code children get their own worktrees and branches; keep the base and merge their branches here, starting a merge thread only if the user asks for one.";
