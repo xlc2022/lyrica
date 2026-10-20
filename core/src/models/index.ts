@@ -179,6 +179,8 @@ export interface Offering extends Capabilities {
   separate?: boolean;
   /** A host's chat template writes `<think>` itself, so a reply can start mid-thought. */
   opensThinking?: boolean;
+  /** Its server says it can't turn thinking off (LM Studio), so it thinks at mandatoryThinking when asked for off. */
+  alwaysThinks?: boolean;
   /** An LM Studio model, as last discovered: the `models` tool may load it again with another context. */
   lmStudio?: boolean;
   /** Requests its server runs at once, sharing one context cache (LM Studio's `parallel`), when the server says. */
@@ -433,7 +435,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; lmStudio?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -450,6 +452,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.recipe ? { recipe: caps.recipe, useFor: caps.useFor ?? "both" } : {}),
     ...(caps.separate ? { separate: true } : {}),
     ...(caps.opensThinking ? { opensThinking: true } : {}),
+    ...(caps.alwaysThinks ? { alwaysThinks: true } : {}),
     ...(caps.lmStudio ? { lmStudio: true } : {}),
     ...(caps.servedParallel ? { parallel: caps.servedParallel } : {}),
   };
@@ -767,8 +770,9 @@ export class Models {
         const l = lmStudioModel(lm, m.modelId);
         const served = l?.instances[0]?.context;
         const parallel = l?.instances[0]?.parallel;
-        // Its OpenAI-compatible list says nothing about images; its own API says whether the model has a vision projector.
-        return { ...m, ...(served ? { servedContext: served } : {}), ...(parallel ? { servedParallel: parallel } : {}), ...(l ? { lmStudio: true } : {}), ...(m.vision === undefined && l?.vision !== undefined ? { vision: l.vision } : {}) };
+        // Its OpenAI-compatible list says nothing about images or thinking; its own API says whether the model has a vision projector and how it thinks.
+        return { ...m, ...(served ? { servedContext: served } : {}), ...(parallel ? { servedParallel: parallel } : {}), ...(l ? { lmStudio: true } : {}), ...(m.vision === undefined && l?.vision !== undefined ? { vision: l.vision } : {}),
+          ...(m.reasoning === undefined && l?.reasoning ? { reasoning: l.reasoning.levels, ...(l.reasoning.canTurnOff ? {} : { alwaysThinks: true }) } : {}) };
       });
       // A ChatGPT plan's image tool is one model of its own, not a switch on each chat model.
       if (ep.api === "chatgpt") found = [...found, PLAN_IMAGE];
@@ -1161,10 +1165,10 @@ export class Models {
 
   /**
    * Reads again what LM Studio says of a model before a request: the context
-   * it is loaded with, and whether it has vision. Each is kept when it
-   * changed, so a load made in LM Studio itself is planned by from the next
-   * request, and a model stored before discovery read vision sees from then
-   * on. An unloaded model keeps its context. Nothing happens for other
+   * it is loaded with, whether it has vision, and how it thinks. Each is kept
+   * when it changed, so a load made in LM Studio itself is planned by from the
+   * next request, and a model stored before discovery read vision or thinking
+   * sees and thinks from then on. An unloaded model keeps its context. Nothing happens for other
    * servers, or when LM Studio doesn't answer within `timeoutMs`.
    */
   async refreshServed(userId: string, offeringId: string, timeoutMs = 1500): Promise<void> {
@@ -1179,8 +1183,13 @@ export class Models {
       const row = db.prepare("SELECT found FROM offerings WHERE id = ?").get(offeringId) as { found: string } | undefined;
       const found = row && JSON.parse(row.found) as DiscoveredModel;
       if (!found) return;
-      const next = { ...found, ...(served ? { servedContext: served } : {}), ...(parallel ? { servedParallel: parallel } : {}), ...(m.vision !== undefined ? { vision: m.vision } : {}) };
-      if (next.servedContext !== found.servedContext || next.servedParallel !== found.servedParallel || next.vision !== found.vision) db.prepare("UPDATE offerings SET found = ? WHERE id = ?").run(JSON.stringify(next), offeringId);
+      const next: DiscoveredModel = { ...found, ...(served ? { servedContext: served } : {}), ...(parallel ? { servedParallel: parallel } : {}), ...(m.vision !== undefined ? { vision: m.vision } : {}) };
+      if (m.reasoning) {
+        next.reasoning = m.reasoning.levels;
+        if (m.reasoning.canTurnOff) delete next.alwaysThinks;
+        else next.alwaysThinks = true;
+      }
+      if (next.servedContext !== found.servedContext || next.servedParallel !== found.servedParallel || next.vision !== found.vision || String(next.reasoning) !== String(found.reasoning) || next.alwaysThinks !== found.alwaysThinks) db.prepare("UPDATE offerings SET found = ? WHERE id = ?").run(JSON.stringify(next), offeringId);
     };
     if (o.endpoint.shared) update(this.self());
     else this.withUser(userId, update);
@@ -2517,13 +2526,13 @@ export class Models {
     const levels = r.offering.reasoning ?? [];
     if (!levels.length) return asked === "off" || unset ? { level: "off" } : { level: "off", note: `${r.label} can't think, so it answered without thinking` };
     if (asked === "off") {
-      if (!this.alwaysThinks.has(r.offering.id)) return { level: "off" };
+      if (!r.offering.alwaysThinks && !this.alwaysThinks.has(r.offering.id)) return { level: "off" };
       const level = this.mandatoryThinking(r.offering)!;
       return { level, note: `${r.label} can't turn thinking off, so it thought at ${level}` };
     }
     if ((levels as string[]).includes(asked)) return { level: asked };
-    // A host's thinking switch (one level) is simply on.
-    if (levels.length === 1 && r.endpoint?.api === "host") return { level: levels[0]! };
+    // A host's or LM Studio's thinking switch (one level) is simply on.
+    if (levels.length === 1 && (r.endpoint?.api === "host" || r.offering.lmStudio)) return { level: levels[0]! };
     const level = nearestLevel(levels, asked)!;
     return { level, note: `${r.label} doesn't think at ${asked}, so it thought at ${level}` };
   }

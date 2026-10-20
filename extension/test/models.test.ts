@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CloudModelForbidden, Memory, PRONOUN_PRESETS, type Persona, type Pool } from "@lyrica/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { deadUrl } from "../../core/test/fake-openai.ts";
+import { deadUrl, fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { fakeHost } from "../../core/test/fake-host.ts";
 import { withModels } from "../../core/test/helpers.ts";
 import { createLyricaExtension, modelRuntimeFor, openThreadSession, piModelFor, toStoredEntry, type ThreadContext } from "../src/index.ts";
@@ -244,6 +244,32 @@ describe("each turn's model", () => {
     const sent = s.cloud.requests.map((r) => (r as unknown as Record<string, unknown>).reasoning_effort);
     expect(sent).toEqual([undefined, "medium", "medium"]);
     expect(s.models.recentCalls(s.ada.id)[0]!.note).toBe("openrouter/deepseek/deepseek-4.1-flash can't turn thinking off, so it thought at medium");
+  });
+
+  it("thinks on LM Studio as its own API says, and turns thinking off with none unless it can't", async () => {
+    const s = await setup();
+    const studio = await fakeOpenAI({ models: [{ id: "flash" }, { id: "glm" }], lmStudio: [
+      { type: "llm", key: "flash", capabilities: { vision: true, reasoning: { allowed_options: ["off", "on"], default: "on" } }, loaded_instances: [] },
+      { type: "llm", key: "glm", capabilities: { vision: true, reasoning: { allowed_options: ["on"], default: "on" } }, loaded_instances: [] },
+    ] });
+    const ep = s.models.addEndpoint(s.ada, { name: "studio", kind: "local", baseUrl: studio.baseUrl });
+    const [flash, glm] = await s.models.discover(s.ada, ep.id);
+    const ask = async (offeringId: string, level: "medium" | "off") => {
+      s.models.setColumnTask(s.ada.id, "private", "chat", [{ offeringId }]);
+      s.models.setDefaultThinking(s.ada.id, level);
+      const { session, prepare, dispose } = await s.open(s.thread("private"));
+      try {
+        await prepare();
+        await session.prompt("hello");
+      } finally {
+        dispose();
+      }
+      return (studio.requests.at(-1) as unknown as Record<string, unknown>).reasoning_effort;
+    };
+    expect(await ask(flash!.id, "medium")).toBe("medium");
+    expect(await ask(flash!.id, "off")).toBe("none");
+    expect(await ask(glm!.id, "off")).toBe("medium");
+    expect(s.models.recentCalls(s.ada.id).map((c) => c.note)).toEqual(["studio/glm can't turn thinking off, so it thought at medium", undefined, undefined]);
   });
 
   it("leaves a subagent role's own thinking level alone", async () => {

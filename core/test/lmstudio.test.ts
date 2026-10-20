@@ -7,8 +7,8 @@ const servers: Server[] = [];
 afterEach(() => { for (const s of servers.splice(0)) s.close(); });
 
 /** A fake LM Studio: its OpenAI-compatible list, and its own REST API's models, load and unload. */
-async function fakeLmStudio(o: { context?: number; max: number; refuseAbove?: number; vision?: boolean }) {
-  let loaded: number | undefined = o.context, vision = o.vision;
+async function fakeLmStudio(o: { context?: number; max: number; refuseAbove?: number; vision?: boolean; reasoning?: unknown }) {
+  let loaded: number | undefined = o.context, vision = o.vision, reasoning = o.reasoning;
   const calls: string[] = [];
   const server = createServer((req, res) => {
     let body = "";
@@ -17,7 +17,7 @@ async function fakeLmStudio(o: { context?: number; max: number; refuseAbove?: nu
       const json = (status: number, v: unknown) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(v)); };
       if (req.method === "GET" && req.url === "/v1/models") return json(200, { object: "list", data: [{ id: "qwen-flash", object: "model" }] });
       if (req.method === "GET" && req.url === "/api/v1/models") {
-        return json(200, { models: [{ type: "llm", key: "qwen-flash", max_context_length: o.max, capabilities: { vision: vision ?? false, trained_for_tool_use: true }, loaded_instances: loaded ? [{ id: "qwen-flash", config: { context_length: loaded, parallel: 4 } }] : [] }] });
+        return json(200, { models: [{ type: "llm", key: "qwen-flash", max_context_length: o.max, capabilities: { vision: vision ?? false, trained_for_tool_use: true, ...(reasoning !== undefined ? { reasoning } : {}) }, loaded_instances: loaded ? [{ id: "qwen-flash", config: { context_length: loaded, parallel: 4 } }] : [] }] });
       }
       const b = JSON.parse(body || "{}") as { instance_id?: string; model?: string; context_length?: number };
       if (req.method === "POST" && req.url === "/api/v1/models/unload") { calls.push(`unload ${b.instance_id}`); loaded = undefined; return json(200, { instance_id: b.instance_id }); }
@@ -32,7 +32,7 @@ async function fakeLmStudio(o: { context?: number; max: number; refuseAbove?: nu
   });
   servers.push(server);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  return { baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, calls, loadInStudio: (n: number | undefined) => { loaded = n; }, setVision: (v: boolean) => { vision = v; } };
+  return { baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, calls, loadInStudio: (n: number | undefined) => { loaded = n; }, setVision: (v: boolean) => { vision = v; }, setReasoning: (r: unknown) => { reasoning = r; } };
 }
 
 describe("LM Studio context", () => {
@@ -82,6 +82,33 @@ describe("LM Studio context", () => {
     const blind = await fakeLmStudio({ max: 131072 });
     const [b] = await s.models.discover(s.ada, s.models.addEndpoint(s.ada, { name: "studio-2", kind: "local", baseUrl: blind.baseUrl }).id);
     expect(s.models.offering(s.ada.id, b!.id)!.offering.vision).toBe(false);
+  });
+
+  it("takes thinking from LM Studio's own API, so a thinking model thinks", async () => {
+    const s = await withModels();
+    const add = async (name: string, reasoning?: unknown) => {
+      const studio = await fakeLmStudio({ max: 262144, reasoning });
+      const [o] = await s.models.discover(s.ada, s.models.addEndpoint(s.ada, { name, kind: "local", baseUrl: studio.baseUrl }).id);
+      return { studio, r: s.models.offering(s.ada.id, o!.id)! };
+    };
+    const { studio, r: on } = await add("studio", { allowed_options: ["off", "on"], default: "on" });
+    expect(on.offering.reasoning).toEqual(["medium"]);
+    expect(s.models.thinkingFor({ ...on, label: "studio/qwen-flash" }, "medium")).toEqual({ level: "medium" });
+    expect(s.models.thinkingFor({ ...on, label: "studio/qwen-flash" }, "high")).toEqual({ level: "medium" });
+    expect(s.models.thinkingFor({ ...on, label: "studio/qwen-flash" }, "off")).toEqual({ level: "off" });
+    const always = (await add("studio-4", { allowed_options: ["on"], default: "on" })).r;
+    expect(always.offering).toMatchObject({ reasoning: ["medium"], alwaysThinks: true });
+    expect(s.models.thinkingFor({ ...always, label: "studio-4/qwen-flash" }, "off")).toEqual({ level: "medium", note: "studio-4/qwen-flash can't turn thinking off, so it thought at medium" });
+    expect((await add("studio-2", { allowed_options: ["off", "low", "medium", "high"], default: "medium" })).r.offering.reasoning).toEqual(["low", "medium", "high"]);
+    expect((await add("studio-3")).r.offering.reasoning).toBeUndefined();
+
+    // One stored before discovery read thinking catches up before its next request.
+    studio.setReasoning(undefined);
+    const [o] = await s.models.discover(s.ada, on.endpoint.id);
+    expect(s.models.offering(s.ada.id, o!.id)!.offering.reasoning).toBeUndefined();
+    studio.setReasoning({ allowed_options: ["off", "on"], default: "on" });
+    await s.models.refreshServed(s.ada.id, o!.id);
+    expect(s.models.offering(s.ada.id, o!.id)!.offering.reasoning).toEqual(["medium"]);
   });
 
   it("catches up a model stored as blind once a request or a restart's re-read sees its vision", async () => {

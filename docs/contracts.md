@@ -360,6 +360,7 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
   digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host; useFor inherited from Capabilities
   opensThinking?;                                            // a host's chat template writes <think> itself
+  alwaysThinks?;                                             // LM Studio says it can't turn thinking off
   lmStudio?;                                                 // LM Studio listed it on its own API at the last discovery
 }
 type ModelRef = { offeringId: string } | { groupId: string };
@@ -478,7 +479,7 @@ class Models {                                              // new Models(keyrin
   offeringSettings(userId, offeringId): { values: AnswerSettings; sources: Partial<Record<keyof AnswerSettings, SettingSource>>;
                                           dropped: (keyof AnswerSettings)[]; defaults: ModelDefaults;   // the sampling the model reports as its own
                                           contextWindow: { value; source: "host" | "hand" | "discovered" | "assumed" } }   // assumed: DEFAULT_CONTEXT, 131,072
-  refreshServed(userId, offeringId, timeoutMs = 1500): Promise<void>   // LM Studio's loaded context, parallel slots and vision, read again (before each turn, on Settings)
+  refreshServed(userId, offeringId, timeoutMs = 1500): Promise<void>   // LM Studio's loaded context, parallel slots, vision and thinking, read again (before each turn, on Settings)
   rereadLocal(actor): Promise<void>   // the user's local endpoints discovered again, once per daemon run (lyricad, on the first unlock); shared ones as an administrator
   setOfferingSettings(actor, offeringId, change, scope: "shared" | "mine" = "mine")   // null clears a value
   // Library, tokens, downloads, delete

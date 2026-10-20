@@ -26,6 +26,8 @@ function piModel(ep: Endpoint, m: Offering, limit?: number): ProviderModelConfig
     : ep.kind === "local" ? { ...LOCAL_COMPAT, supportsReasoningEffort: reasoning } : undefined;
   return {
     id: m.modelId, name: m.modelId, input: m.vision ? ["text", "image"] : ["text"], cost: FREE, reasoning,
+    // LM Studio thinks unless asked not to: off is `reasoning_effort: "none"`.
+    ...(m.lmStudio && reasoning && !m.alwaysThinks ? { thinkingLevelMap: { off: "none" } } : {}),
     contextWindow, maxTokens: replyCap(contextWindow),
     ...(compat ? { compat } : {}),
   };

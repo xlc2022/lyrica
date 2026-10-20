@@ -31,6 +31,8 @@ export interface DiscoveredModel {
   reasoning?: ("low" | "medium" | "high")[];
   /** A host's chat template writes `<think>` itself (host/API.md "Models"). */
   opensThinking?: boolean;
+  /** LM Studio says the model can't turn thinking off. */
+  alwaysThinks?: boolean;
   /** The file's SHA-256, where a host reports it: the same file on two hosts is the same model. */
   digest?: string;
   /** What a host read from the file or its model card, for the library. */
@@ -126,8 +128,24 @@ export async function discoverModels(baseUrl: string, apiKey: string | undefined
 // LM Studio's own REST API, beside its OpenAI-compatible one at /v1.
 const lmStudioRoot = (baseUrl: string) => baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "");
 
-/** A model LM Studio has, with its loaded instances and the context each was loaded with, and whether it reads images. */
-export interface LmStudioModel { key: string; maxContext?: number; vision?: boolean; instances: { id: string; context?: number; parallel?: number }[] }
+/** A model LM Studio has, with its loaded instances and the context each was loaded with, whether it reads images, and how it thinks. */
+export interface LmStudioModel { key: string; maxContext?: number; vision?: boolean; reasoning?: LmStudioReasoning; instances: { id: string; context?: number; parallel?: number }[] }
+
+/** The thinking levels LM Studio lists for a model, and whether off is among them. */
+export interface LmStudioReasoning { levels: ("low" | "medium" | "high")[]; canTurnOff: boolean }
+
+/**
+ * LM Studio's `capabilities.reasoning`: its `allowed_options` (off, on, low,
+ * medium, high), where "on" is a switch and counts as medium. Undefined when
+ * it doesn't say the model thinks.
+ */
+function lmStudioReasoning(r: unknown): LmStudioReasoning | undefined {
+  const options = r && typeof r === "object" ? (r as { allowed_options?: unknown }).allowed_options : undefined;
+  if (!Array.isArray(options)) return undefined;
+  const levels = (["low", "medium", "high"] as const).filter((l) => options.includes(l));
+  if (!levels.length && !options.includes("on")) return undefined;
+  return { levels: levels.length ? levels : ["medium"], canTurnOff: options.includes("off") };
+}
 
 /** LM Studio's models (GET /api/v1/models), or null when the server doesn't answer like LM Studio. */
 export async function lmStudioModels(baseUrl: string, apiKey: string | undefined, timeoutMs = 5000, fetchImpl: typeof fetch = fetch): Promise<LmStudioModel[] | null> {
@@ -144,6 +162,7 @@ export async function lmStudioModels(baseUrl: string, apiKey: string | undefined
   return body.models.flatMap((m: Record<string, any>) => typeof m?.key !== "string" ? [] : [{
     key: m.key, maxContext: num(m.max_context_length),
     ...(typeof m.capabilities?.vision === "boolean" ? { vision: m.capabilities.vision as boolean } : {}),
+    ...(lmStudioReasoning(m.capabilities?.reasoning) ? { reasoning: lmStudioReasoning(m.capabilities.reasoning) } : {}),
     instances: (Array.isArray(m.loaded_instances) ? m.loaded_instances : []).filter((i: any) => typeof i?.id === "string")
       .map((i: any) => ({ id: i.id as string, context: num(i.config?.context_length), ...(num(i.config?.parallel) ? { parallel: num(i.config.parallel) } : {}) })),
   }]);
