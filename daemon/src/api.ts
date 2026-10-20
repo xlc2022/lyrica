@@ -855,6 +855,8 @@ export interface ProjectSettingsInfo {
   draftGoal?: string;
   draftInstructions?: string;
   commandRules: CommandRule[];
+  /** Commands run when a code turn in the project ends, at most 8 (docs/workspace.md, "Project checks"). */
+  checks: string[];
   /** The project page's memory ID, for the memory browser. The page exists once instructions are saved or sleep writes it. */
   pageId: string;
   /** Paused: its threads stop, nothing new starts, and they take no messages. */
@@ -890,6 +892,7 @@ export interface ThreadChange {
   discardDraft?: boolean;
   title?: string; hidden?: boolean; project?: true; goal?: string; instructions?: string;
   commandRules?: CommandRule[];
+  checks?: string[];
   threadsCode?: boolean;
   paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; threadsFallback?: boolean | null; watchThreads?: boolean;
 }

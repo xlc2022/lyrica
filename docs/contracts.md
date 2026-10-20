@@ -986,7 +986,23 @@ Every run:
 ## extension
 
 Code-mode options are `code(): boolean` and optional
-`codeRepositories(): Promise<string | undefined>`, read once per turn.
+`codeRepositories(): Promise<string | undefined>`, read once per turn, and
+`repoRules(): Promise<string | undefined>`, the stable `repo_rules` section:
+`repoRules(target, checkouts)` reads each checkout's root AGENTS.md (or
+CLAUDE.md, `@file` lines inside the repository expanded once), at most
+6,000 characters each and 12,000 in all, cut at a line end naming the file,
+plus up to 20 nested instruction paths; `checkoutsOf(settings, clones,
+worktrees?)` lists worktrees, clones and writable grants no worktree
+replaces. Coder subagents get the same section
+(`createSubagentExtension(…, codingTask?, repoRules?)`).
+`createChecksExtension({ checks(), code(), plan(), checkouts(), target() })`
+runs the project's checks with `sh -c` in each checkout (10 minutes each)
+when a code-mode reply without tool calls ends a run in which `edit`,
+`write` or `bash` succeeded, and not in Plan mode or once her tools are off.
+It shows a `lyrica-checks` notice ("Checks passed: …" or "Checks failed: …")
+and, on a failure, sends the last 60 lines (4,000 characters) of each
+failing output as a hidden `lyrica-checks-failed` follow-up, at most 3
+rounds a run.
 Code turns use SOUL only, no topic routing, WAKE, about-user, page index or
 sleep opening; project, folders and pins remain. `setToolsOff` with reason
 `code` removes `models`, `download_model`, `model_files`, `image`, `react`.
@@ -1361,7 +1377,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   with `alwaysAllow: true` saves that stored prefix as a project Allow rule
   and approves the call, also for a subagent. Other requests refuse it.
   `ThreadChange.commandRules` replaces rules only on a project chat;
-  `ProjectSettingsInfo.commandRules` returns them.
+  `ProjectSettingsInfo.commandRules` returns them. `ThreadChange.checks`
+  and `ProjectSettingsInfo.checks` do the same for the project's checks
+  (400 with the reason when invalid).
 - **Sweep** (`Lyricad.sweep`, nightly, before sleep): `sweepUser(services,
   userId)` for each user whose home workspace is mounted clears snapshots
   and change records older than 30 days (`SWEEP_AGE_MS`), the folders and
@@ -1869,7 +1887,10 @@ settings(userId).setCommandRules(pool, project, rules) / addCommandRule(pool, pr
 // CommandRule { prefix; decision: "allow" | "ask" | "forbid" }; at most 100; duplicate prefix replaces.
 // user step 6 adds project_settings.command_rules, JSON default []; Projects.set upserts other columns.
 // rules.ts exports commandRules (validation), decide, alwaysAllowPrefix; machines.ts exports simpleCommands.
-forThread(t)  // { commandRules(), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), madeFiles(paths), madeSince(since), fileNotes() },
+settings(userId).checks(pool, project): string[] / setChecks(pool, project, checks)
+// checkChecks: at most 8 commands, each one line of at most 300 characters, no control characters; blanks dropped.
+// user step 16 adds project_settings.checks, JSON default [].
+forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), madeFiles(paths), madeSince(since), fileNotes() },
               // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:
   // roots(), list(dir), search(root, q), images(), read(path) → { stream, size, type }, upload(dir, name, bytes) → path,

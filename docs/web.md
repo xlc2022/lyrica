@@ -265,8 +265,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   drawer showing, `…/t/<pool>/<thread>/settings`, for network, local-only
   and the other task models), then **Commands**: a mono prefix field per
   rule, an Allow | Ask | Forbid segment, Remove, and **Add rule**. Empty
-  reads "No rules: commands ask as the mode says." Empty rows are ignored and dropped on Save, and duplicate prefixes (spaces collapsed) fail validation. The page has one Save, which patches the thread
-  (`goal`, `paused`, `commandRules`, `watchThreads` when it changed, `threadsModel`,
+  reads "No rules: commands ask as the mode says." Empty rows are ignored and dropped on Save, and duplicate prefixes (spaces collapsed) fail validation.
+  Then **Checks**: a mono command field per check, Remove, and **Add check**
+  (at most 8). Empty reads "No checks: <name> runs what the repository asks.";
+  a multi-line or over-long check fails validation. The page has one Save, which patches the thread
+  (`goal`, `paused`, `commandRules`, `checks`, `watchThreads` when it changed, `threadsModel`,
   `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
   settings (`grants`, `machines`, `repositories`, `mcpServers` among them); `lyricad`'s
   reason shows when it refuses. Every thread the project starts gets these

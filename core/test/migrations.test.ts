@@ -498,3 +498,35 @@ describe("user step 15 (which thread wrote a file)", () => {
     }
   });
 });
+
+describe("user step 16 (project checks)", () => {
+  it("adds project_settings.checks to every released user schema, keeping command rules and earlier readers", () => {
+    for (let version = 1; version < 16; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter((s) => s.version <= version);
+      migrate(db, "user", {}, previous);
+      const rules = version >= 6;
+      if (rules) db.prepare("INSERT INTO project_settings (pool, thread, command_rules) VALUES ('general', 'web/p', ?)").run(JSON.stringify([{ prefix: "npm test", decision: "allow" }]));
+      migrate(db, "user");
+      const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+      expect(settings.checks("general", "web/p"), `v${version}`).toEqual([]);
+      settings.setChecks("general", "web/p", ["npm run typecheck", " ", "npm test"]);
+      expect(settings.checks("general", "web/p")).toEqual(["npm run typecheck", "npm test"]);
+      if (rules) expect(settings.commandRules("general", "web/p")).toEqual([{ prefix: "npm test", decision: "allow" }]);
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      db.close();
+    }
+  });
+
+  it("refuses checks that aren't one short line each, or too many", () => {
+    const db = scratchDb();
+    migrate(db, "user");
+    const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+    expect(() => settings.setChecks("general", "web/p", ["npm test\nrm -rf /"])).toThrow(/one line/);
+    expect(() => settings.setChecks("general", "web/p", ["x".repeat(301)])).toThrow(/300 characters/);
+    expect(() => settings.setChecks("general", "web/p", Array.from({ length: 9 }, (_, i) => `check ${i}`))).toThrow(/at most 8/);
+    expect(() => settings.setChecks("general", "web/p", "npm test")).toThrow(/list/);
+    db.close();
+  });
+});

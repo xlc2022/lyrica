@@ -1,5 +1,5 @@
 import { FROM_PARENT, LYRICA_REACTS, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
-import { DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, USER_MESSAGE } from "@lyrica/extension";
+import { CHECKS_NOTICE, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, Reaction, ThreadRef, Told } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
@@ -122,6 +122,10 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "assistant", parts: [
         { type: "tool", name: "image", toolCallId: d.toolCallId, args: d.args, result: shortResult(e.content), isError: !!d.result.isError,
           imageRefusal: imageRefusal("image", d.result.details) }, ...(image ? [image] : [])] });
+      continue;
+    }
+    if (e.type === "custom_message" && e.customType === CHECKS_NOTICE) {
+      out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [{ type: "text", text: textOf(e.content) }] });
       continue;
     }
     if (e.type === "custom_message" && e.customType === TURN_TOOL_NOTICE) {

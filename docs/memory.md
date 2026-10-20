@@ -238,7 +238,9 @@ Code-mode turns and coder subagents apply this filter to automatic recall
 and `recall`; `everywhere: true` opts out for one deliberate search. A coder
 uses its nearest ordinary ancestor's project, through its existing thread
 view. Code turns retain project context, folder pages and pins but omit
-WAKE, about-user, the page index and sleep-item opening. The persona is
+WAKE, about-user, the page index and sleep-item opening. They add each
+checkout's AGENTS.md or CLAUDE.md as `repo_rules`, read from the checkout,
+not memory (docs/contracts.md, extension). The persona is
 SOUL alone. `remember` asks for `working` on stated coding and workflow
 preferences; consolidation keeps that tag when merging notes and may add
 it to clear preferences.

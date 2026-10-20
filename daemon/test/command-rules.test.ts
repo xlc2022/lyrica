@@ -2,13 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Workspace, type ExecutionTarget } from "@lyrica/core";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
-import type { EndpointInfo, PermissionRequest, ThreadSummary } from "../src/api.ts";
+import type { EndpointInfo, MessagePage, PermissionRequest, ThreadSummary } from "../src/api.ts";
 
 afterEach(() => vi.restoreAllMocks());
 async function setup() {
   const commands: string[] = [];
+  const runs: string[][] = [];
   vi.spyOn(Workspace.prototype, "targetFor").mockImplementation(() => ({
     name: "sandbox", cwd: async () => "/workspace", folders: () => [],
+    run: async (argv: string[]) => { runs.push(argv); return { code: 0, stdout: Buffer.from("ok"), stderr: Buffer.alloc(0) }; },
     ops: () => ({ bash: { exec: async (command: string, _cwd: string, opts: { onData: (b: Buffer) => void }) => { commands.push(command); opts.onData(Buffer.from("ran")); return { exitCode: 0 }; } } }),
   } as unknown as ExecutionTarget));
   const rt = await runtime();
@@ -28,7 +30,7 @@ async function setup() {
   const child = view.own.createThread({ interface: "web", parent: project.id, child: true, title: "Work" });
   view.close();
   dm.d.services!.workspace.inheritSettings({ userId: rt.ada.id, pool: "general", threadId: project.id }, child.id);
-  return { ...dm, rt, ada, model, sub, path, childPath: `${u}/${enc(child.id)}`, commands, project };
+  return { ...dm, rt, ada, model, sub, path, childPath: `${u}/${enc(child.id)}`, commands, runs, project };
 }
 const bash = (command: string) => ({ tools: [{ name: "bash", args: { command } }] });
 
@@ -110,4 +112,25 @@ describe("project command rules through lyricad", () => {
     stream.close();
   });
 
+});
+
+describe("project checks through lyricad", () => {
+  it("are set on the project chat only, and run when a code thread of the project ends a turn that changed something", async () => {
+    const s = await setup();
+    expect((await s.ada.patch(s.path, { checks: ["npm test\nrm -rf x"] })).status).toBe(400);
+    expect((await s.ada.patch(s.childPath, { checks: ["npm test"] })).status).toBe(400);
+    const set = await s.ada.patch<ThreadSummary>(s.path, { checks: ["npm test", " "] });
+    expect(set.body.projectSettings!.checks).toEqual(["npm test"]);
+    expect((await s.ada.patch<ThreadSummary>(s.path, { threadsThinking: "high" })).body.projectSettings!.checks).toEqual(["npm test"]);
+    await s.ada.patch(`${s.childPath}/settings`, { code: true, mode: "auto" });
+    // Code mode runs on the Coding model, the workers endpoint here.
+    s.sub.respond(c => c.messages.some(m => m.role === "tool") ? { text: "Done." } : bash("echo built"));
+    const stream = s.ada.events(`${s.childPath}/events`);
+    await s.ada.post(`${s.childPath}/messages`, { text: "Build it" });
+    await stream.until(e => e.type === "turn_end");
+    stream.close();
+    const notices = async () => (await s.ada.get<MessagePage>(`${s.childPath}/messages`)).body.messages.filter((m) => m.role === "notice").map((m) => m.parts[0]);
+    await vi.waitFor(async () => expect(await notices()).toEqual([{ type: "text", text: "Checks passed: `npm test`" }]));
+    expect(s.runs.filter((r) => r.some((a) => a.includes("npm test")))).toEqual([["sh", "-c", "npm test 2>&1"]]);
+  });
 });
