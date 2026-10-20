@@ -118,7 +118,7 @@ function openDrawer({ title, sub, fields, save, saveLabel = "Save", saveTitle })
       h("div", { class: "head-title" }, h("h2", {}, title), sub ? h("p", { class: "facts" }, sub) : null),
       h("button", { type: "button", class: "icon sm", "aria-label": "Close", onclick: closeDrawer }, icon("close"))),
     h("div", { class: "drawer-body" }, fields, error),
-    h("div", { class: "drawer-foot" }, h("button", { type: "button", onclick: closeDrawer }, "Cancel"), h("button", { type: "submit", class: "primary", title: saveTitle }, saveLabel)));
+    h("div", { class: "drawer-foot" }, h("button", { type: "submit", class: "primary", title: saveTitle }, saveLabel)));
   form.onsubmit = (e) => {
     e.preventDefault();
     error.hidden = true;
@@ -473,7 +473,7 @@ async function listFiles() {
 function downloadRow(d) {
   const going = ["queued", "downloading", "verifying"].includes(d.state);
   const pct = d.size ? Math.floor((100 * d.received) / d.size) : null;
-  const word = d.state === "downloading" ? state(pct == null ? "Downloading" : `Downloading ${pct}%`, "info")
+  const word = d.state === "downloading" ? state(pct == null ? "Downloading" : h("span", {}, "Downloading ", num(`${pct}%`)), "info")
     : d.state === "queued" ? state("Queued", "") : d.state === "verifying" ? state("Verifying", "info")
     : d.state === "done" ? (d.verified === false ? state("Done, unverified", "away", "No SHA-256 to check it against.") : state("Done", "up"))
     : state(d.state === "failed" ? "Failed" : d.state, "down");
