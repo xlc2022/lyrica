@@ -776,8 +776,9 @@ export class Models {
         const l = lmStudioModel(lm, m.modelId);
         const served = l?.instances[0]?.context;
         const parallel = l?.instances[0]?.parallel;
-        // Its OpenAI-compatible list says nothing about images or thinking; its own API says whether the model has a vision projector and how it thinks.
+        // Its OpenAI-compatible list says nothing about images, thinking, embeddings or tools; its own API says.
         return { ...m, ...(served ? { servedContext: served } : {}), ...(parallel ? { servedParallel: parallel } : {}), ...(l ? { lmStudio: true } : {}), ...(m.vision === undefined && l?.vision !== undefined ? { vision: l.vision } : {}),
+          ...(m.embedding === undefined && l?.embedding ? { embedding: true } : {}), ...(m.tools === undefined && l?.tools ? { tools: true } : {}),
           ...(m.reasoning === undefined && l?.reasoning ? { reasoning: l.reasoning.levels, ...(l.reasoning.canTurnOff ? {} : { alwaysThinks: true }) } : {}) };
       });
       // A ChatGPT plan's image tool is one model of its own, not a switch on each chat model.

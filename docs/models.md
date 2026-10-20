@@ -64,7 +64,7 @@ and `-`, at most 40 characters.
 - **Capabilities:** context window, tools, vision, embedding, image, edit, upscale
   and thinking levels. OpenRouter reports the context, tools, thinking and
   modalities; llama-server reports the context
-  (`meta.n_ctx`); vLLM reports the context as `max_model_len`; LM Studio reports the context, vision and thinking on its own API
+  (`meta.n_ctx`); vLLM reports the context as `max_model_len`; LM Studio reports the context, vision, thinking, embedding models and tool use on its own API
   (below); KoboldCpp reports neither. Anything can be
   set by hand (`setCapabilities`), which wins over discovery. Switching off
   image, edit, upscale or transcribe takes the model out of that task's lists
@@ -752,6 +752,9 @@ Its `capabilities.vision` becomes the model's vision, and
 `capabilities.reasoning` its thinking, since `/v1/models` says neither:
 `allowed_options` low, medium and high are those levels, and "on" (a
 thinking switch) is one level, medium. A model without the key doesn't think.
+A model of `type` "embedding" is an embedding model, and one with
+`capabilities.trained_for_tool_use` true has tools; false isn't a no, since
+LM Studio runs tools for any model through its own format.
 One whose options leave out "off" is marked `alwaysThinks`, so `thinkingFor`
 turns off into `mandatoryThinking`, with a note. LM Studio thinks when a
 request doesn't say, so off goes out as `reasoning_effort: "none"`.

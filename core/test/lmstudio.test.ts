@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
+import { fakeOpenAI } from "./fake-openai.ts";
 import { profile, withModels } from "./helpers.ts";
 
 const servers: Server[] = [];
@@ -109,6 +110,23 @@ describe("LM Studio context", () => {
     studio.setReasoning({ allowed_options: ["off", "on"], default: "on" });
     await s.models.refreshServed(s.ada.id, o!.id);
     expect(s.models.offering(s.ada.id, o!.id)!.offering.reasoning).toEqual(["medium"]);
+  });
+
+  it("takes embedding models and tool use from LM Studio's own API", async () => {
+    const s = await withModels();
+    const studio = await fakeOpenAI({ models: [{ id: "nomic-embed" }, { id: "flash" }, { id: "plain" }], lmStudio: [
+      { type: "embedding", key: "nomic-embed", capabilities: {}, loaded_instances: [] },
+      { type: "llm", key: "flash", capabilities: { vision: true, trained_for_tool_use: true }, loaded_instances: [] },
+      { type: "llm", key: "plain", capabilities: { vision: false, trained_for_tool_use: false }, loaded_instances: [] },
+    ] });
+    const found = await s.models.discover(s.ada, s.models.addEndpoint(s.ada, { name: "studio", kind: "local", baseUrl: studio.baseUrl }).id);
+    const [embed, flash, plain] = ["nomic-embed", "flash", "plain"].map((id) => s.models.offering(s.ada.id, found.find((o) => o.modelId === id)!.id)!.offering);
+    expect(embed).toMatchObject({ embedding: true });
+    expect(flash).toMatchObject({ tools: true });
+    expect(flash!.embedding).toBeUndefined();
+    // LM Studio runs tools for a model not trained for them, so that isn't a no.
+    expect(plain!.tools).toBeUndefined();
+    expect(s.models.textModels(s.ctx()).map((m) => m.label)).not.toContain("studio/nomic-embed");
   });
 
   it("catches up a model stored as blind once a request or a restart's re-read sees its vision", async () => {
