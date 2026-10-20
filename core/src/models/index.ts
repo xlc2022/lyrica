@@ -1479,6 +1479,23 @@ export class Models {
     return status;
   }
 
+  /**
+   * Asks a model host to move to another models folder, a path on the host
+   * machine (host/README.md, "The models folder"). The host's updater checks
+   * the folder as root, pauses the host and restarts it on the new folder.
+   */
+  async hostModelsFolder(actor: User, id: string, path: string): Promise<unknown> {
+    const ep = this.needHost(actor.id, id);
+    if (ep.shared && !this.users.get(actor.id)?.admin) throw new Forbidden("only an administrator can manage a shared model host");
+    if (!path.startsWith("/")) throw new Error("the models folder is an absolute path on the host machine");
+    await this.hostCall(ep, "POST", "/host/v1/models-folder", { path });
+    const status = await this.hostCall(ep, "GET", "/host/v1/status");
+    // It pauses and restarts as it moves: chats go elsewhere meanwhile.
+    this.awayStatus.set(ep.id, status);
+    this.reportDown(ep.id);
+    return status;
+  }
+
   private needHost(userId: string, id: string): Endpoint {
     const ep = this.endpoint(userId, id);
     if (!ep || ep.api !== "host") throw new NoModel(`no model host ${id}`);

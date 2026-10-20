@@ -1638,6 +1638,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       (again, same addresses); `PUT …/addresses`; `GET …/status`; `POST
       …/pause|resume|restart`; `POST …/update` (→ `HostStatus`, to the release
       Lyrica runs, `409` when she runs none; administrators on a shared host);
+      `POST …/models-folder` (`{ path }` → `HostStatus`: the host's updater
+      moves it to that folder on the host machine; administrators on a
+      shared host);
       `GET …/dashboard` (→ `{ url }`); `POST …/manage`;
       `GET …/hub/files`; `POST`/`GET …/downloads`, `DELETE …/downloads/:id`;
       `GET …/images`; `GET …/starters` (→ `{ starters: HostStarter[] }`);
@@ -1647,7 +1650,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       saves on the host and refreshes discovery). Unpair is `DELETE
       endpoints/:id`. Types: `HostInput`, `HostRepair`, `HostAddresses`,
       `HostStatus` (with `commit` and `update` when the host has an updater),
-      `HostUpdate` (`available`, `reason`, `state`, `tag`, `error`, `last`),
+      `HostUpdate` (`available`, `reason`, `changesFolder`, `state`, `tag`,
+      `models`, `error`, `last`),
       `HostManage`, `DownloadInput`, `RecipeAction`.
     - **Offerings:** `PATCH`/`DELETE offerings/:id`; `POST …/replace`; `GET
       …/same`; `GET`/`PUT …/settings`; `PUT …/star`; `PUT …/separate`; `POST

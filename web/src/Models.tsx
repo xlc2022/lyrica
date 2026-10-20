@@ -68,7 +68,7 @@ export function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string;
   const since = ep.downSince ? duration(Date.now() - Date.parse(ep.downSince)) : undefined;
   if (ep.api === "host" && host && "status" in host) {
     const s = host.status.state;
-    if (hostUpdating(host.status)) return { dot: "info", word: "Updating" };
+    if (hostUpdating(host.status)) return { dot: "info", word: host.status.update!.models ? "Moving" : "Updating" };
     if (s === "running") return { dot: "up", word: "Online" };
     if (s === "restarting") return { dot: "info", word: "Restarting" };
     return { dot: "away", word: s === "pausing" ? "Pausing" : "Paused" };
@@ -99,6 +99,22 @@ function updateFailure(step: string | undefined): string {
   if (step?.startsWith("no ")) return "the host's updater isn't set up; run install.sh on the host again";
   if (step?.startsWith("not ")) return "the host refused the release, so nothing changed";
   return "something went wrong on the host, so nothing changed";
+}
+/** Why moving a host to another models folder failed, from the updater's step. */
+function folderFailure(step: string | undefined): string {
+  if (step === "not a folder") return "it isn't a folder on the host";
+  if (step === "a system folder") return "it's one of the system's folders";
+  if (step === "holds the host's own files") return "it holds the host's own files";
+  if (step === "its lyrica subfolder isn't a folder") return "its lyrica subfolder is a link or a file";
+  if (step === "probation") return "the host didn't start on it, so it went back to the folder before";
+  if (step === "not on main") return "the host runs a version the updater can't install, so nothing changed";
+  return updateFailure(step);
+}
+/** How a host's models folder changes when Lyrica can't change it: the tooltip on its facts. */
+function folderHow(s: HostStatus): string | undefined {
+  if (s.update?.changesFolder) return undefined;
+  if (s.update?.available) return "Run install.sh on the host again to change it from here.";
+  return "Change it on the host: host/install.sh --models <folder>.";
 }
 /** Update in a host's ⋯: when Lyrica runs a release, the host has an updater and runs another commit. */
 const updateOffer = (p: ModelsPage | undefined, s: HostStatus | undefined) =>
@@ -1073,6 +1089,8 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
   const [open, setOpen] = useState(false);
   const [addresses, setAddresses] = useState<string>();
   const [code, setCode] = useState<string>();
+  const [folder, setFolder] = useState<string>();
+  const [moving, setMoving] = useState(false);
   const [run, busy, error] = useAction();
   const actions = useEndpointActions(ctx, ep, others);
   const status = host && "status" in host ? host.status : undefined;
@@ -1089,8 +1107,17 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
     const p = ctx.models.page;
     if (p) ctx.models.set({ ...p, hosts: p.hosts.map((h) => (h.endpointId === ep.id ? { endpointId: ep.id, status: next } : h)) });
   });
+  const showStatus = (next: HostStatus) => {
+    const p = ctx.models.page;
+    if (p) ctx.models.set({ ...p, hosts: p.hosts.map((h) => (h.endpointId === ep.id ? { endpointId: ep.id, status: next } : h)) });
+  };
+  const move = () => run(async () => {
+    showStatus(await post<HostStatus>(u(userId, "hosts", ep.id, "models-folder"), { path: (folder ?? "").trim() }));
+    setMoving(false); setFolder(undefined);
+  });
   const menu = revoked ? actions.items : [actions.items[0]!, ...(offer ? [{ label: "Update", onPick: () => void update() }] : []), { label: "Pair again…", onPick: () => setCode("") }, ...actions.items.slice(1)];
   const failed = status?.update?.state === "failed" ? status.update : undefined;
+  const changesFolder = editable && !!status?.update?.changesFolder && !hostUpdating(status);
   return (
     <article className="card host" data-endpoint={ep.id} aria-labelledby={id}>
       <div className="host-top">
@@ -1113,6 +1140,9 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
             {status.update && !status.update.available && status.update.reason && <span className="sr-only">. {status.update.reason}</span>}</>}
           {editable && offer && <span className="muted">· update available</span>}
           {editable && <button type="button" className="link sm" onClick={() => setAddresses((ep.addresses ?? []).join(" "))}>Edit</button>}
+          {editable && status && <><span className="muted" title={folderHow(status)}>· models folder</span><code>{status.modelsFolder.path}</code>
+            {folderHow(status) && <span className="sr-only">. {folderHow(status)}</span>}
+            {changesFolder && folder === undefined && <button type="button" className="link sm" onClick={() => setFolder(status.modelsFolder.path)}>Change</button>}</>}
         </div>
       ) : (
         <form className="inline" onSubmit={(e) => { e.preventDefault(); void saveAddresses(); }}>
@@ -1128,8 +1158,22 @@ function HostCard({ ctx, ep, host, others, onVoice }: { ctx: MCtx; ep: Endpoint;
           <button type="button" className="sm" onClick={() => setCode(undefined)}>Cancel</button>
         </form>
       )}
+      {folder !== undefined && status && (
+        <form className="inline" onSubmit={(e) => { e.preventDefault(); if (folder.trim() !== status.modelsFolder.path) setMoving(true); else setFolder(undefined); }}>
+          <label className="field grow"><span>Models folder</span><input className="mono" autoFocus value={folder} onChange={(e) => setFolder(e.target.value)} /></label>
+          <button className="sm" disabled={busy || !folder.trim().startsWith("/")}>Save</button>
+          <button type="button" className="sm" onClick={() => setFolder(undefined)}>Cancel</button>
+        </form>
+      )}
+      {moving && folder !== undefined && (
+        <ConfirmDialog title={`Move ${ep.name} to another models folder?`}
+          sentence={`It pauses once running jobs finish and restarts on ${folder.trim()}. No files move; models that aren't in that folder leave its lists.`}
+          confirm="Move" onCancel={() => setMoving(false)} onConfirm={() => void move()} />
+      )}
       <ErrorText error={error} />
-      {failed && <p className="warn-text" role="note">The update to <code>{failed.tag}</code> failed: {updateFailure(failed.error)}.</p>}
+      {failed && (failed.models
+        ? <p className="warn-text" role="note">Moving to <code>{failed.models}</code> failed: {folderFailure(failed.error)}.</p>
+        : <p className="warn-text" role="note">The update to <code>{failed.tag}</code> failed: {updateFailure(failed.error)}.</p>)}
       {actions.forms}
       {status?.gpus.map((g) => <GpuBlock key={g.index} g={g} />)}
       {open && <ModelList ctx={ctx} ep={ep} onVoice={onVoice} />}

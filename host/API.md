@@ -169,7 +169,8 @@ seconds of audio.
   reserved memory share. A load-only API call does not count as a request.
 - `queue` counts the requests waiting for this GPU; a request for a split
   model waits for all of its GPUs.
-- `modelsFolder.path` is the folder on the host machine.
+- `modelsFolder.path` is the folder on the host machine. `POST
+  /host/v1/models-folder` changes it.
 
 ### Models
 
@@ -455,7 +456,21 @@ Only the repository's name and revision leave the host.
   failed step (`fetch`, `drain`, `probation`, or a refusal such as `not on
   main`); `last` is the last update, `{ tag, commit, at, ok }`. While it
   updates the host pauses, restarts and, unless it was paused before,
-  resumes.
+  resumes. `changesFolder` is true when the updater also takes a models
+  folder.
+- `POST /host/v1/models-folder` with `{ "path": "/mnt/big/models" }` (a
+  paired Lyrica, or the dashboard): asks the updater to move the host to
+  that folder on the host machine (README.md, "The models folder"), and
+  answers `202` with `{ "update": … }`. `400` for a path that isn't
+  absolute or holds a control character; `409 unavailable` when the host
+  has no updater or one without `changesFolder`; `409 updating` while one
+  runs. While it moves, `update.models` is the folder asked for, and `state`
+  goes through the same steps as an update; a refusal leaves `state`
+  `failed` with `models` and `error`: `not a folder`, `a system folder`,
+  `holds the host's own files`, `its lyrica subfolder isn't a folder`,
+  `drain`, `fetch` (the running commit wasn't in the updater's repository
+  and couldn't be fetched) or `probation` (it went back to the old folder).
+  `last` is then `{ models, commit, at, ok }`.
 - After an unload, a server's process can take seconds to let go of its
   memory. Until a GPU has freed half of what the model held (30 s at most),
   a request that wouldn't fit there waits for it rather than failing with

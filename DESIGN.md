@@ -711,7 +711,7 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       address, never to every interface, because Docker's published ports
       bypass the machine's firewall. The host API also accepts only the
       addresses of the Lyrica servers it is paired with.
-  - **Models folder.** Models live in a folder chosen when the host is installed (run `install.sh` again to change it; the dashboard shows the folder and that command). That can
+  - **Models folder.** Models live in a folder chosen when the host is installed (run `install.sh --models` again to change it, or Change on the host's card in Lyrica, which asks the host's root updater; the dashboard shows the folder and that command). That can
     be a shared folder on another drive that LM Studio also uses, for example.
     - It is mounted read-only into the model servers. Downloads go into a
       `lyrica` subfolder of it.

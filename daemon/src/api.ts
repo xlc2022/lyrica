@@ -338,18 +338,23 @@ export interface HostStatus {
 /** GET /api/u/:userId/hosts/:endpointId/status → HostStatus */
 /** POST /api/u/:userId/hosts/:endpointId/pause|resume|restart → HostStatus. A shared host needs an administrator. */
 /** POST /api/u/:userId/hosts/:endpointId/update → HostStatus. Asks the host to update to the release Lyrica runs (409 when she runs none). A shared host needs an administrator. */
+/** POST /api/u/:userId/hosts/:endpointId/models-folder { path } → HostStatus. Asks the host's updater to move it to another models folder, a path on the host machine. A shared host needs an administrator. */
 
 /** A model host's updater (host/API.md, "POST /host/v1/update"). */
 export interface HostUpdate {
   available: boolean;
   /** Why not, in words for the person. */
   reason?: string;
+  /** It also moves the host to another models folder (POST /api/u/:userId/hosts/:endpointId/models-folder). */
+  changesFolder?: boolean;
   state: "idle" | "requested" | "fetching" | "draining" | "building" | "rolling-back" | "failed";
   since?: string;
   tag?: string;
-  /** The step that failed: fetch, drain, probation, … */
+  /** The models folder asked for, while it moves the host or after that failed. */
+  models?: string;
+  /** The step that failed: fetch, drain, probation, not a folder, a system folder, … */
   error?: string;
-  last?: { tag: string; commit: string; at: string; ok: boolean };
+  last?: { tag?: string; models?: string; commit: string; at: string; ok: boolean };
 }
 
 /** How a model answers. Unset values aren't sent, so the server's default applies. */

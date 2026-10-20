@@ -146,9 +146,21 @@ asks for is same-origin.
 
 The models folder is given at install (`--models`, default `/srv/models`) and
 mounted read-only into the containers. It can be a folder another program
-also uses, such as LM Studio's. To change it, run
-`host/install.sh --models /new/path`. host-api can't remount containers
-itself, because it has no access to the Docker socket.
+also uses, such as LM Studio's. Its `lyrica/` subfolder must be a folder, not
+a link. To change it, run `host/install.sh --models /new/path`, or use
+**Change** beside the folder on the host's card in Lyrica's Models page.
+host-api can't remount containers itself, because it has no access to the
+Docker socket, so Change goes through the updater (Updates above), as root:
+it refuses a folder that doesn't exist, is or lies in a system folder (`/`,
+`/etc`, `/usr`, `/var/lib/docker` and the like), or holds or lies in the
+host's own files (the installed folder, the updater's, its trees and
+`/etc/lyrica-host`). Then it pauses the host, installs the running commit
+again from its own tree with `install.sh --yes --models <folder>`, and goes
+back to the old folder if host-api doesn't answer with the new one within 5
+minutes. No files move. By hand: `sudo lyrica-host-update --models <folder>`.
+Only an updater installed by a `host/install.sh` run from this release on
+takes a folder (an update never replaces the updater), and NixOS has no
+updater: there, set `modelsDir` and run `install.sh --models`.
 
 ## Downloads
 

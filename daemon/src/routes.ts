@@ -487,6 +487,11 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (!release) throw new HttpError(409, "Lyrica isn't running a release yet: update her first, from Administration → Updates.");
       return (await s().models.hostUpdate(d.userFor(r), r.params.endpointId!, release.tag)) as Api.HostStatus;
     }),
+    route("POST", `${u}/hosts/:endpointId/models-folder`, async (r) => {
+      const path = (await r.json<{ path?: unknown } | null>())?.path;
+      if (typeof path !== "string" || !path.trim()) throw new HttpError(400, "path is the models folder on the host machine");
+      return (await s().models.hostModelsFolder(d.userFor(r), r.params.endpointId!, path.trim())) as Api.HostStatus;
+    }),
     route("POST", `${u}/hosts/:endpointId/:action`, async (r) => {
       const action = r.params.action;
       if (action !== "pause" && action !== "resume" && action !== "restart") throw new HttpError(404, "a host can be paused, resumed or restarted");

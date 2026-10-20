@@ -136,6 +136,14 @@ describe("host updates", () => {
     await s.host.stop();
     expect(await s.models.pageStatus(s.ada.id, ep.id)).toMatchObject({ state: "down", status: { update: { state: "requested" } } });
   });
+
+  it("asks the host's updater for another models folder", async () => {
+    const s = await setup();
+    const ep = await s.models.pairHost(s.ada, { name: "blackwell", addresses: [s.host.address], code: s.host.newCode() });
+    await expect(s.models.hostModelsFolder(s.ada, ep.id, "models")).rejects.toThrow("absolute path");
+    expect(await s.models.hostModelsFolder(s.ada, ep.id, "/mnt/big")).toMatchObject({ update: { state: "requested" } });
+    expect(s.host.updates).toEqual(["models /mnt/big"]);
+  });
 });
 
 describe("shared and personal hosts", () => {

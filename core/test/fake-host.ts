@@ -97,6 +97,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
         update: { available: true, state: updates.length ? "requested" : "idle" },
       });
       if (req.method === "POST" && url.pathname === "/host/v1/update") { updates.push(JSON.parse(raw).tag); return json(res, 202, { update: status().update }); }
+      if (req.method === "POST" && url.pathname === "/host/v1/models-folder") { updates.push(`models ${JSON.parse(raw).path}`); return json(res, 202, { update: status().update }); }
       if (req.method === "GET" && url.pathname === "/host/v1/status") return json(res, 200, status());
       if (req.method === "POST" && url.pathname === "/host/v1/pause") { paused = true; return json(res, 200, status()); }
       if (req.method === "POST" && url.pathname === "/host/v1/resume") { paused = false; return json(res, 200, status()); }
