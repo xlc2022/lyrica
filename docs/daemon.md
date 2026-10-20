@@ -919,8 +919,10 @@ deletes every user's threads and memories in both pools (DESIGN.md,
 - With `keepSkills`, `wipePools` renames each pool (and its WAL files) to
   `<pool>.keep.db` instead of deleting it, and `finishWipe` first calls
   `Memory.carrySkills`, which copies its active skills into the fresh pool
-  (`SkillLibrary.restore`) and deletes the set-aside files. A wipe without it
-  deletes set-aside files too.
+  (`SkillLibrary.restore`) and deletes the set-aside files. A pool and its
+  WAL files are set aside together. If they can't be read, a count-free line
+  is logged, the files wait for the next unlock and the rest of the wipe
+  still finishes. A wipe without it deletes set-aside files too.
 - `lyrica admin wipe` does the first half from a terminal while lyricad is
   stopped (it refuses while it runs): the self.db passphrase, an
   administrator's login and password, and typing `wipe`. Each user finishes

@@ -1,7 +1,7 @@
 // Wiping memory (DESIGN.md, "Wiping memory"): an administrator, with their own
 // password and the box ticked, deletes every user's threads and memories in
 // both pools. Users, passwords and endpoints stay; running work is stopped first.
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { KEPT_USER_TABLES, WIPED_USER_TABLES } from "@lyrica/core";
@@ -153,6 +153,27 @@ describe("wiping memory", () => {
     // Without the option, skills go with everything else.
     expect((await ada.post<WipeResult>(`${au}/me/wipe`, { password: "pw", understood: true })).body.wiped).toBe(true);
     expect(await names(ada, au)).toEqual([]);
+  });
+
+  it("finishes the rest of a wipe when the kept skills can't be read, leaving them for the next unlock", async () => {
+    const rt = await runtime();
+    const { base, d, logs } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(base, "ada", "pw");
+    const sam = await login(base, "sam", "pw2");
+    const su = `/api/u/${rt.sam.id}`;
+    const plans = (await sam.post<ThreadSummary>(`${su}/threads`, { pool: "general", title: "Sam's plans" })).body;
+    await sam.put(`${su}/threads/general/${enc(plans.id)}/pin`, {});
+    await sam.post(`${su}/lock`, {});
+    expect((await ada.post<WipeResult>(`/api/u/${rt.ada.id}/admin/wipe`, { password: "pw", understood: true, keepSkills: true })).body.wiped).toBe(true);
+    const kept = join(rt.home, "users", rt.sam.id, "general.keep.db");
+    writeFileSync(kept, "not a database");
+    const sam2 = await login(base, "sam", "pw2");
+    expect((await sam2.get<ThreadSummary[]>(`${su}/threads`)).body).toEqual([]);
+    expect(existsSync(kept)).toBe(true);
+    expect(logs.join("\n")).toContain("keeping skills through a wipe failed");
+    const db = d.services!.users.openUserDb(rt.sam.id);
+    try { expect(db.prepare("SELECT count(*) AS n FROM pinned_threads").get()).toEqual({ n: 0 }); } finally { db.close(); }
   });
 
   it("names every user.db table as wiped or kept", async () => {

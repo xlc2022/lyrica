@@ -664,8 +664,13 @@ export class Lyricad implements Drainable {
   private finishWipe(userId: string, now = false): void {
     const s = this.services!;
     const self = this.keyring.self();
-    // Skills a wipe set aside to keep go into the fresh pools first.
-    s.memory.carrySkills(userId);
+    // Skills a wipe set aside to keep go into the fresh pools first. A failure leaves the set-aside files for the
+    // next unlock and never stops the rest of the wipe.
+    try {
+      s.memory.carrySkills(userId);
+    } catch (err) {
+      this.log(`keeping skills through a wipe failed: ${(err as Error).name}`);
+    }
     if (wipePending(self, userId)) {
       const db = s.users.openUserDb(userId);
       try { finishWipe(self, userId, db); } finally { db.close(); }

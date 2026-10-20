@@ -60,13 +60,18 @@ export function wipePools(keyring: Keyring, users: Users, only?: string, keepSki
     const dir = users.userDir(u.id);
     if (!existsSync(dir)) continue;
     // The pool and its journal or WAL files: a fresh, empty pool is made at the next open.
-    for (const name of readdirSync(dir)) {
-      const pool = /^(general|private)(\.keep)?\.db(-.*)?$/.exec(name);
-      if (!pool) continue;
-      if (!keepSkills) rmSync(join(dir, name), { force: true });
+    // Decided once per pool, before any file moves, so a pool and its WAL go the same way.
+    const files = readdirSync(dir);
+    for (const pool of ["general", "private"]) {
+      const own = files.filter((n) => n === `${pool}.db` || n.startsWith(`${pool}.db-`));
+      const kept = files.filter((n) => n === `${pool}.keep.db` || n.startsWith(`${pool}.keep.db-`));
       // A pool already set aside, for a user who hasn't unlocked since, stays as it is: this one has no skills of its own yet.
-      else if (!pool[2] && !existsSync(join(dir, `${pool[1]}.keep.db`))) renameSync(join(dir, name), join(dir, `${pool[1]}.keep.db${pool[3] ?? ""}`));
-      else if (!pool[2]) rmSync(join(dir, name), { force: true });
+      const setAside = keepSkills && !kept.length;
+      for (const n of own) {
+        if (setAside) renameSync(join(dir, n), join(dir, `${pool}.keep${n.slice(pool.length)}`));
+        else rmSync(join(dir, n), { force: true });
+      }
+      if (!keepSkills) for (const n of kept) rmSync(join(dir, n), { force: true });
     }
   }
   return all.length;
