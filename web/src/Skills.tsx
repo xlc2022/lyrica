@@ -36,7 +36,7 @@ export function SkillsSection({ ctx }: { ctx: ShellContext }) {
           <li key={`${s.pool}/${s.name}/${s.state}`} className="stack skill" data-state={s.state}>
             <SkillHead skill={s} />
             <p>{s.description}</p>
-            <Steps body={s.body} />
+            <Steps id={`${s.pool}/${s.name}/${s.state}`} body={s.body} />
             <div className="row">
               {s.state === "waiting" && <>
                 <button type="button" disabled={busy} onClick={() => act(() => post<Skills>(`${skillPath(userId, s)}/approve`))}>Approve</button>
@@ -55,12 +55,19 @@ export function SkillsSection({ ctx }: { ctx: ShellContext }) {
   );
 }
 
+// Which folds are open, by skill: the conversation remounts her card when her turn ends, and an open fold stays open.
+const openSteps = new Set<string>();
+
 /** A skill's steps, folded: the chevron turns down while open. */
-function Steps({ body }: { body: string }) {
-  const [open, setOpen] = useState(false);
+function Steps({ id, body }: { id: string; body: string }) {
+  const [open, setOpen] = useState(() => openSteps.has(id));
+  const toggle = () => {
+    if (open) openSteps.delete(id); else openSteps.add(id);
+    setOpen(!open);
+  };
   return (
     <div>
-      <button type="button" className="skill-fold" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name={open ? "down" : "right"} />Steps</button>
+      <button type="button" className="skill-fold" aria-expanded={open} onClick={toggle}><Icon name={open ? "down" : "right"} />Steps</button>
       {open && <pre className="skill-body">{body}</pre>}
     </div>
   );
@@ -117,7 +124,7 @@ export function SkillCard({ args, call, userId }: { args: unknown; call: string;
         {outcome && <span className="status-word"><span className={`dot ${skill?.state === "active" ? "up" : "down"}`} aria-hidden="true" />{outcome}</span>}
       </div>
       {a.description && <p>{a.description}</p>}
-      <Steps body={a.body ?? ""} />
+      <Steps id={`call:${call}`} body={a.body ?? ""} />
       {waiting && <div className="row">
         <button type="button" className="primary" disabled={busy} onClick={() => run(async () => page.set(await post<Skills>(`${skillPath(userId, skill)}/approve`)))}>Approve</button>
         <button type="button" disabled={busy} onClick={() => run(async () => page.set(await post<Skills>(`${skillPath(userId, skill)}/decline`)))}>Decline</button>
