@@ -899,7 +899,7 @@ form.drawer-body { flex: 1; }
 }
 
 /* ---- The Files panel (docs/ux.md §6): a thread's folder and its grants beside the conversation, or the page on its own. ---- */
-.files-page { display: flex; flex-direction: column; min-height: 0; container: files / inline-size; }
+.files-page { display: flex; flex-direction: column; min-height: 0; }
 .files-page.drop { box-shadow: inset 0 0 0 2px var(--accent); }
 .files-page > .error { padding: 6px 16px; }
 .files-page .head .seg button[role="tab"] { padding: 0 12px; }
@@ -907,8 +907,8 @@ form.drawer-body { flex: 1; }
 .head-actions a.sm:hover { border-color: color-mix(in oklab, var(--fg) 25%, var(--line)); text-decoration: none; }
 .fsearch { padding: 10px var(--gutter) 0; }
 .fsearch input { width: 100%; min-height: 34px; }
-.fbody { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); }
-.ftree { border-right: 1px solid var(--line); overflow-y: auto; padding: 8px calc(var(--gutter) - 8px) 24px var(--gutter); display: grid; align-content: start; gap: 1px; min-width: 0; }
+.fbody { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.ftree { overflow-y: auto; padding: 8px calc(var(--gutter) - 8px) 24px var(--gutter); display: grid; align-content: start; gap: 1px; min-width: 0; }
 .fentry { display: grid; gap: 1px; min-width: 0; }
 .ftree button { justify-content: flex-start; border: 0; background: transparent; min-height: 30px; padding: 0 6px; font-size: 13px; width: 100%; border-radius: 6px; gap: 6px; font-weight: 400; min-width: 0; }
 .ftree button:hover { background: var(--tool); border: 0; }
@@ -921,24 +921,46 @@ form.drawer-body { flex: 1; }
 .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .ftree .rw { margin-left: auto; font-size: 11px; color: var(--muted); }
 .ftree .empty { padding: 4px 6px; font-size: 13px; }
-.fview { overflow: auto; padding: 12px var(--gutter) 24px; display: grid; align-content: start; gap: 10px; min-width: 0; }
 .fhead { display: flex; gap: 8px; align-items: center; min-width: 0; }
 .fhead .fname { font-size: 13px; margin-right: auto; flex: 1; }
-.fhead .num { font-size: 12px; white-space: nowrap; }
 .files-page .head .cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fview pre { margin: 0; font: 12px/1.5 var(--mono); background: var(--tool); padding: 10px 12px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.fview img { max-width: 100%; border-radius: 8px; border: 1px solid var(--line); }
-.fview .pick { text-align: center; padding-top: 24vh; }
-.fback { display: none; }
-/* Narrow (a phone, or the panel column): one column, the tree or the file. The page is the container, since a query never matches its own element. */
-@container files (max-width: 560px) {
-  .fbody { grid-template-columns: minmax(0, 1fr); }
-  .ftree { border-right: 0; }
-  .fbody.viewing .ftree, .fbody:not(.viewing) .fview { display: none; }
-  .fback { display: inline-flex; }
-}
-@container files (max-width: 480px) {
-  .fview .fhead .num { display: none; }
+/* ---- The file viewer (docs/ux.md §6, A file opened from a library): the file large, the thread whose library it is beside it. ---- */
+dialog.viewer { width: calc(100vw - 32px); height: calc(100vh - 32px); max-width: none; max-height: none; margin: auto; display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
+dialog.viewer[data-split] { grid-template-columns: minmax(0, 1fr) clamp(360px, 32vw, 520px); }
+.viewer-file { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.viewer-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.viewer-head .fname { font-size: 13px; flex: 0 1 auto; }
+.viewer-facts { font-size: 13px; white-space: nowrap; margin-right: auto; }
+.viewer-acts { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+.viewer-body { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
+.viewer-body.viewer-scroll { overflow: auto; }
+.viewer-body > .empty, .viewer-body > .error { padding: 16px; }
+.viewer-note { margin: 0; padding: 6px 16px; font-size: 13px; border-bottom: 1px solid var(--line); }
+.viewer-acts .sm[aria-pressed="true"] { background: var(--tool); font-weight: 600; }
+@media (pointer: coarse) { .viewer-acts .sm, .viewer-acts .seg button { min-height: var(--tap); } }
+.viewer-frame { flex: 1; width: 100%; min-height: 0; border: 0; background: #fff; }
+.viewer-media { flex: 1; min-height: 0; display: grid; place-items: center; padding: 16px; overflow: auto; }
+.viewer-media img, .viewer-media video { max-width: 100%; max-height: 100%; border-radius: 8px; }
+.viewer-media audio { width: min(480px, 100%); }
+.viewer-text { margin: 0; padding: 12px 16px; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.viewer-prose { padding: 16px 16px 32px; max-width: 760px; }
+.viewer-console { border-top: 1px solid var(--line); background: var(--panel); max-height: 30%; display: flex; flex-direction: column; min-height: 0; }
+.viewer-console-head { justify-content: flex-start; gap: 6px; border: 0; border-radius: 0; background: transparent; min-height: 30px; padding: 0 12px; }
+.viewer-console-head:hover { border: 0; background: var(--tool); }
+.viewer-console-head .ic { width: 14px; height: 14px; }
+.viewer-console-lines { list-style: none; margin: 0; padding: 0 12px 8px; overflow-y: auto; display: grid; gap: 2px; align-content: start; }
+.viewer-console-lines li { font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; padding: 2px 6px; border-radius: 4px; }
+.viewer-console-lines li.c-warn { color: var(--warn); background: color-mix(in oklab, var(--warn) 10%, transparent); }
+.viewer-console-lines li.c-error { color: var(--danger); background: color-mix(in oklab, var(--danger) 10%, transparent); }
+.viewer-thread { border-left: 1px solid var(--line); min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; container: panel / inline-size; }
+.viewer-thread > * { flex: 1; min-height: 0; }
+dialog.viewer > .error { position: absolute; bottom: 8px; left: 16px; }
+/* Below the split width the file and the thread take turns, the Thread button switching; a phone gets the whole screen. */
+@media (max-width: 1179px) { .viewer-thread { border-left: 0; } }
+@media (max-width: 760px) {
+  dialog.viewer { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
+  .viewer-head { padding: 6px 8px 6px var(--gutter); }
+  .viewer-text, .viewer-prose, .viewer-note { padding-inline: var(--gutter); }
 }
 .ifilter { padding: 10px var(--gutter) 0; }
 .igrid { flex: 1; min-height: 0; overflow-y: auto; padding: 12px var(--gutter) 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; align-content: start; }

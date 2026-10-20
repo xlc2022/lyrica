@@ -356,7 +356,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
       {menuAt && (
         <ThreadMenu at={menuAt} userId={userId} groups={ctx.groups} onGroups={ctx.refreshGroups} onToast={ctx.toast}
           onChange={() => { summary.reload(); refreshThreads(); }} onClose={closeMenu}
-          onGone={panel ? panel.close : () => go({ page: "home", userId })} />
+          onGone={panel?.close ?? (() => go({ page: "home", userId }))} />
       )}
     </Main>
   );

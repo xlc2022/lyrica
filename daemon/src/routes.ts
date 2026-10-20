@@ -26,6 +26,7 @@ import { forgetThreadFiles } from "./sweep.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 import { historyQuery } from "./history.ts";
 import { redactUrl, unredactUrl } from "./redact.ts";
+import { isPdf, VIEW_LIMIT, viewHeaders, viewKind, withConsole } from "./file-view.ts";
 
 const DISPLAY_DEFAULTS: Api.Display = { theme: "device", showGeneral: true, showPrivate: true, showHidden: false, sort: "date", projects: "all", checklists: true };
 const THREAD_SORTS: Api.ThreadSort[] = ["date", "activity", "started", "title", "groups"];
@@ -1494,6 +1495,29 @@ export function apiRoutes(d: Lyricad): Route[] {
       }),
       stream.on("error", () => r.res.destroy());
       stream.pipe(r.res);
+      return undefined;
+    }),
+    route("GET", `${t}/files/view`, async (r) => {
+      const path = r.query.get("path") ?? "";
+      const kind = viewKind(path);
+      if (!kind) throw new HttpError(415, "only HTML, SVG and PDF files open as a page");
+      const { stream, size } = await refused(() => files(r).read(path));
+      if (size > VIEW_LIMIT) { stream.destroy(); throw new HttpError(413, "this file is too large to open as a page; download it instead"); }
+      const chunks: Buffer[] = [];
+      let read = 0;
+      for await (const chunk of stream) {
+        read += (chunk as Buffer).length;
+        if (read > VIEW_LIMIT) { stream.destroy(); throw new HttpError(413, "this file is too large to open as a page; download it instead"); }
+        chunks.push(chunk as Buffer);
+      }
+      let bytes: Buffer = Buffer.concat(chunks);
+      if (kind === "pdf" && !isPdf(bytes)) throw new HttpError(415, "this file isn't a PDF");
+      // With the thread's internet off an HTML page runs nothing, so it gets no console bridge either.
+      const user = d.userFor(r);
+      const internet = kind !== "html" || s().workspace.network({ userId: user.id, pool: poolOf(r), threadId: owner(d, user, (o) => threadOf(o, r)).id }).internet;
+      if (kind === "html" && internet) bytes = withConsole(bytes);
+      r.res.writeHead(200, viewHeaders(kind, bytes.length, internet));
+      r.res.end(bytes);
       return undefined;
     }),
     route("POST", `${t}/files/upload`, async (r): Promise<Api.UploadResponse> => {

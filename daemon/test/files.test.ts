@@ -129,6 +129,63 @@ describe("the Files panel's routes", () => {
     expect(Buffer.from(await zip.arrayBuffer()).toString()).toBe("PK\u0003\u0004zipbytes");
   });
 
+  it("serves HTML as a sandboxed page with its console bridge, SVG with nothing run, and only a real PDF", async () => {
+    const { ada, base, path } = await setup();
+    const { files } = fakeFiles();
+    const bodies: Record<string, string> = {
+      "/workspace/site/index.html": "<!DOCTYPE html><html><body><script>console.log(1)</script></body></html>",
+      "/workspace/bare.htm": "<p>hi</p>",
+      "/workspace/logo.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+      "/workspace/paper.pdf": "%PDF-1.7 rest",
+      "/workspace/fake.pdf": "<script>alert(1)</script>",
+    };
+    files.read = async (p: string) => ({ stream: Readable.from([Buffer.from(bodies[p] ?? "")]), size: Buffer.byteLength(bodies[p] ?? ""), type: "text/plain; charset=utf-8" });
+    const get = (p: string) => fetch(`${base}${path}/view?path=${enc(p)}`, { headers: { cookie: ada.cookie! } });
+
+    const html = await get("/workspace/site/index.html");
+    expect(html.status).toBe(200);
+    expect(html.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    const csp = html.headers.get("content-security-policy")!;
+    // An opaque origin: never allow-same-origin, top navigation or forms.
+    expect(csp).toMatch(/^sandbox allow-scripts allow-popups;/);
+    expect(csp).not.toContain("allow-same-origin");
+    expect(csp).not.toContain("allow-top-navigation");
+    expect(csp).toContain("frame-ancestors 'self'");
+    expect(html.headers.get("x-frame-options")).toBeNull();
+    const text = await html.text();
+    expect(text.startsWith("<!DOCTYPE html><script>")).toBe(true);
+    expect(text).toContain("lyricaConsole");
+    expect(text.endsWith("<script>console.log(1)</script></body></html>")).toBe(true);
+    expect((await (await get("/workspace/bare.htm")).text())).toMatch(/^<script>.*<\/script><p>hi<\/p>$/s);
+
+    const svg = await get("/workspace/logo.svg");
+    expect(svg.headers.get("content-type")).toBe("image/svg+xml");
+    expect(svg.headers.get("content-security-policy")).toContain("default-src 'none'");
+    expect(svg.headers.get("content-security-policy")).toContain("sandbox");
+    expect(await svg.text()).toBe(bodies["/workspace/logo.svg"]);
+
+    const pdf = await get("/workspace/paper.pdf");
+    expect(pdf.headers.get("content-type")).toBe("application/pdf");
+    expect(pdf.headers.get("content-security-policy")).toBe("frame-ancestors 'self'");
+    expect((await get("/workspace/fake.pdf")).status).toBe(415);
+    expect((await get("/workspace/a.txt")).status).toBe(415);
+  });
+
+  it("serves HTML with nothing run and nothing fetched when the thread's internet is off", async () => {
+    const { ada, base, path } = await setup();
+    const { files } = fakeFiles();
+    const page = "<!DOCTYPE html><img src=\"https://example.com/x?d=1\"><script>fetch('https://example.com')</script>";
+    files.read = async () => ({ stream: Readable.from([Buffer.from(page)]), size: Buffer.byteLength(page), type: "text/plain; charset=utf-8" });
+    vi.spyOn(Workspace.prototype, "network").mockReturnValue({ internet: false, services: false, hosts: [] });
+    const res = await fetch(`${base}${path}/view?path=${enc("/workspace/page.html")}`, { headers: { cookie: ada.cookie! } });
+    const csp = res.headers.get("content-security-policy")!;
+    expect(csp).toBe("sandbox; default-src data: blob: 'unsafe-inline'; form-action 'none'; frame-ancestors 'self'");
+    expect(csp).not.toContain("allow-scripts");
+    expect(csp).not.toContain("https:");
+    // No console bridge: it couldn't run.
+    expect(await res.text()).toBe(page);
+  });
+
   it("is only the thread owner's, like the rest of a thread", async () => {
     const { base, path } = await setup();
     fakeFiles();

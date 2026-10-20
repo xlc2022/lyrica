@@ -163,9 +163,19 @@ Each user has two pools of memory.
     opens a side panel (full screen on a phone) with two tabs:
     - **Files:** a searchable tree of the thread's folder (uploads, images
       she made, her notes and scratch files) and each granted folder.
-      Clicking a file shows it.
+      Clicking a file opens it in the file viewer.
     - **Images:** thumbnails of the images in the thread's folder, with All,
-      Uploaded and Made by Lyrica. Clicking one opens it large.
+      Uploaded and Made by Lyrica. Clicking one opens it in the file viewer.
+    - **The file viewer** (decided 2026-10-20, as in Claude's own app): the
+      file large, with the thread whose library it is beside it (the
+      project chat for a project's file; none for a granted folder's).
+      HTML runs as a page in a sandbox with an opaque origin, so it can't
+      reach Lyrica's cookies, storage or API, with its console beneath.
+      With the thread's internet off it runs no scripts and loads only what
+      it carries inline, so opening it can't carry anything out; only a
+      link the user clicks still leaves;
+      Markdown and SVG show rendered with their source a switch away; PDFs,
+      images, audio and video in the browser's own viewers.
     - Actions are in a right-click menu (a long press on a phone, or ⋯):
       Attach to message, Show in thread, Download, Copy path, Rename and
       Delete on a file; Upload and New folder on a folder or empty space.

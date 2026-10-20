@@ -202,11 +202,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   phone, it is the page. `…/files/<encoded path>` opens with that file shown
   and its folders open (a folder: opened), or says it is gone. Files lists one folder at a time from
   `GET …/files?dir=` (docs/daemon.md "Files"), the thread folder open at the
-  start and each grant after it; a search runs under every root; a file
-  fetches `…/files/content` once and shows images as themselves, text (up to
-  512 KB) as text, and anything else by its size with Download. Images lists
-  `…/files/images`, filtered by source, and opens one large in a dialog.
-  The right-click menu (a long press, or the ⋯ beside a shown file) attaches
+  start and each grant after it; a search runs under every root; a file,
+  or an image from Images (`…/files/images`, filtered by source), opens in
+  the **file viewer** (below). The right-click menu (a long press, or the
+  viewer's ⋯, which renders the same menu inside the viewer's dialog) attaches
   (the path goes into this thread's message box through a window event, or
   waits in session storage when the page has no box), selects, shows in the
   thread (the conversation scrolls to the first message naming the path, an
@@ -229,6 +228,30 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   messages and `tool_end.image`, and an owner-only `…/file?path=` route.
   Messages render that part inline as described below. Settings manages
   portraits separately from the Files panel.
+- **The file viewer** (`Viewer.tsx`, docs/ux.md §6): a modal dialog almost
+  the window's size (the whole screen on a phone) holding the file large and,
+  from 1180 px up, the thread whose library it is beside it (a `Thread`
+  inside a `PanelFrame`, so its header carries Open as a page, and Close
+  panel only below 1180 px, where it goes back to the file). That thread is the Files panel's own thread for a file in its
+  thread folder, and the project chat for a file in Project settings → Files
+  and images; a file in a grant has none and shows on its own. Below
+  1180 px the **Thread** toggle (a labelled button, pressed while the thread
+  shows) switches between the two; from 1180 px up it shows or hides the
+  thread. The header names the file (mono), its facts
+  (kind, size, time) and **Preview | Source** for HTML, SVG and Markdown.
+  What it shows depends on the name: HTML in an `iframe` of
+  `…/files/view` with `sandbox="allow-scripts allow-popups"`, its console
+  messages (posted by the route's bridge, taken only from that frame's
+  window, at most 200, shown as text) in a **Console** section under it;
+  with the thread's internet off (its settings' `network.internet`) the
+  route runs nothing, and a muted line above the page says "Scripts don't
+  run here: this thread's internet is off.";
+  SVG as an `img` of `…/files/view`; a PDF in an `iframe` of
+  `…/files/view` (the browser's own viewer); images, audio and video from
+  `…/files/content` in their own elements; Markdown rendered by `Prose`
+  (raw HTML skipped); other names by the type `…/files/content` answers,
+  text up to 512 KB as text and anything else with Download. Escape closes
+  a menu inside first, then the viewer, and so does any navigation.
 - **Project settings page** (`…/p/<pool>/<project>/general`, `/memory` or `/files`),
   sections at the left. **General**: Goal, the Paused and **Watching
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
@@ -254,10 +277,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   through the Files panel's routes on the project chat, one folder at a time
   with crumbs, Files | Images, Upload… (to the folder shown, or by dropping
   files on the section), New folder, and per row Open (a folder in the list,
-  a file in the chat's Files panel) and a ⋯: Download, Rename… in place, Move
+  a file in the file viewer with the project chat beside it) and a ⋯: Download, Rename… in place, Move
   to… (a drawer listing up to 500 folders, found folder by folder; `rename`
   moves) and Delete… with its dialog. Images is the panel's grid with its
-  filter. It reloads when any thread finishes a tool call or a turn, and on
+  filter, a tile opening the image in the file viewer. It reloads when any thread finishes a tool call or a turn, and on
   focus.
 - **Thread settings drawer:** a preset and a model per task, including **Coding** (each option says cloud or local first; **Watching threads**, under
   Titles, only in a project chat; then **Images**, **Image edits** and
@@ -788,11 +811,11 @@ local/cloud chip and preset, then each model host's state as a dot and word.
 - Her messages are prose, rendered with `react-markdown`. Raw HTML is
   skipped and links open in a new tab. A path under `/workspace`, in her
   prose or the person's message, is a link to `…/files/<encoded path>`,
-  which shows the file in the Files panel (`paths.tsx`; a code block is left
+  which opens the Files panel with the file in the viewer (`paths.tsx`; a code block is left
   as written). An image she writes from the thread folder shows in the
   message by its thumbnail (`…/files/thumb`, or the image itself where the
   server makes none) and opens large, from `…/files/content`, in the
-  Images tab's dialog; the conversation holds which image is open, so the
+  shared Lightbox dialog; the conversation holds which image is open, so the
   stored copy replacing a live message doesn't close it (an SVG stays a link, since `…/files/content` serves it as text, never as a page); a remote image is never loaded and shows as a link with its
   alt text. An image her image tool already shows in the same turn (an
   image part before her text, up to the next user message) is rendered as
