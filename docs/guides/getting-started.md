@@ -536,11 +536,12 @@ Reset: tick the box and give your password. It deletes every user's
 threads, projects and memories in General and Private, with their thread
 files; users, passwords, endpoints, models, settings and her persona stay.
 Skills stay too while **Keep everyone's skills** is ticked; untick it to
-delete them as well (`lyrica admin wipe` always deletes them). If anything is running it sends each a stop first and lists what it is
-waiting on, then lets the wipe go ahead. With lyricad stopped, `sudo
-lyrica admin wipe` does the same at prompts (the passphrase, an
-administrator's login and password, then typing `wipe`) and refuses
-while lyricad runs; each user's thread files go at their next unlock.
+delete them as well. If anything is running it sends each a stop first
+and lists what it is waiting on, then lets the wipe go ahead. With
+lyricad stopped, `sudo lyrica admin wipe` does the same at prompts (the
+passphrase, an administrator's login and password, then typing `wipe`),
+always deleting skills, and refuses while lyricad runs; each user's
+thread files go at their next unlock.
 Backups and update snapshots aren't wiped.
 
 ## Reach her from other machines
