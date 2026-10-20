@@ -70,6 +70,15 @@ describe("the panel's speeds", () => {
     expect(box?.speed).toBeUndefined();
   });
 
+  it("marks only endpoints that serve a text model, or have a speed, as writing text", () => {
+    const text = { modelId: "m", status: "listed" }, speech = { modelId: "s", status: "listed", transcribe: true };
+    const p = page([ep("gpu", "local", { models: [text, speech] }), ep("speech", "local", { models: [speech] }), ep("fast", "cloud")], [],
+      [{ endpointId: "fast", calls: 1, tokPerSec: 80, speedCalls: 1 }]);
+    const { local, cloud } = selectStatus(p);
+    expect(local.map((i) => [i.name, i.text])).toEqual([["gpu", true], ["speech", false]]);
+    expect(cloud[0]?.text).toBe(true);
+  });
+
   it("puts the detail in the tooltip", () => {
     expect(speedTitle({ tokPerSec: 41.6, promptTokPerSec: 812.3, calls: 3 })).toBe("42 tok/s · 812 prompt tok/s · last 3 turns");
     expect(speedTitle({ tokPerSec: 12, calls: 1 })).toBe("12 tok/s · last 1 turn");
