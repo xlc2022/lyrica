@@ -54,7 +54,8 @@ test("Settings → Claude Code and Codex shows Codex's own sign-in and then Sign
 
 test("her saved skill waits on a card until Approve, then shows in Settings → Skills, where Add skill and Remove work", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
-  await newThread(page, "General");
+  // Private, so its words stay out of later General threads' automatic recall on this server.
+  await newThread(page, "Private");
   await send(page, "skill: render-check | Before saying a scene renders. | 1. Take a screenshot.");
   await expect(page.getByText("Saved it.")).toBeVisible();
   const card = page.getByRole("group", { name: "Skill render-check" });
