@@ -6,9 +6,9 @@ import { PermissionPrompt } from "../src/Messages.tsx";
 import type { CommandRule, PermissionRequest, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import type { ShellContext } from "../src/Shell.tsx";
 
-const general = (rules: CommandRule[]) => renderToStaticMarkup(createElement(GeneralSection, {
+const general = (rules: CommandRule[], checks: string[] = []) => renderToStaticMarkup(createElement(GeneralSection, {
   ctx: { user: { id: "ada" }, groups: [] } as unknown as ShellContext, base: "/project",
-  summary: { id: "project", pool: "general", projectSettings: { commandRules: rules } } as ThreadSummary,
+  summary: { id: "project", pool: "general", projectSettings: { commandRules: rules, checks } } as unknown as ThreadSummary,
   settings: { mode: "ask", models: { chat: { source: "column" } }, allowed: [], grants: [], machines: [], repositories: [], mcpServers: [] } as unknown as ThreadSettings,
   onSummary: () => {}, onSettings: () => {},
 }));
@@ -41,6 +41,19 @@ describe("command rules in the web UI", () => {
     const duplicate = general([{ prefix: "npm test", decision: "allow" }, { prefix: " npm   test ", decision: "forbid" }]);
     expect(duplicate).toContain("Each prefix can have one rule.");
     expect(duplicate).toContain('disabled="">Save</button>');
+  });
+  it("puts Checks after Commands, one mono command per row, and refuses a multi-line one before Save", () => {
+    const html = general([]);
+    expect(html.indexOf("Commands</h3>")).toBeLessThan(html.indexOf("Checks</h3>"));
+    expect(html).toMatch(/No checks: .+ runs what the repository asks\./);
+    expect(html).toContain("Add check</button>");
+    const set = general([], ["npm run typecheck"]);
+    expect(set).toContain('class="mono" aria-label="Check command" placeholder="npm test" value="npm run typecheck"');
+    expect(set).toContain('aria-label="Remove npm run typecheck"');
+    const invalid = general([], ["npm test\nrm -rf x"]);
+    expect(invalid).toContain("A check is one line of at most 300 characters");
+    expect(invalid).toContain('disabled="">Save</button>');
+    expect(general([], Array.from({ length: 8 }, (_, i) => `check ${i}`))).toContain('disabled="">Add check</button>');
   });
   it("offers Always allow between Allow and Deny only with a daemon prefix", () => {
     const html = permission("npm run test");

@@ -279,6 +279,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principle 6: which thread wrote each file, for the file viewer (DESIGN, "Files and images"). Adds a table only.
     version: 15,
     run(db) { db.exec(ORIGINS_SCHEMA); },
+  }, {
+    // Principles 2 and 6: a project's checks, the person's commands run when a code turn ends. Adds a column only.
+    version: 16,
+    run(db) { addColumns(db, [["project_settings", "checks", "TEXT NOT NULL DEFAULT '[]'"]]); },
   }],
   pool: [{
     version: 1, contract: true,

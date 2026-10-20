@@ -286,12 +286,13 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   );
 }
 
-/** Goal, Paused and Watching threads; New threads (Model, Code mode, Thinking, Fallback); This chat (Model, Mode, Group, Folders, Machines, Repositories, MCP servers); Commands; one Save. */
+/** Goal, Paused and Watching threads; New threads (Model, Code mode, Thinking, Fallback); This chat (Model, Mode, Group, Folders, Machines, Repositories, MCP servers); Commands; Checks; one Save. */
 export function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
 }) {
   const ps = summary.projectSettings;
   const [rules, setRules] = useState<CommandRule[]>(ps?.commandRules ?? []);
+  const [checks, setChecks] = useState<string[]>(ps?.checks ?? []);
   const [goal, setGoal] = useState(ps?.draftGoal ?? summary.goal ?? "");
   useEffect(() => { if (ps?.draftGoal !== undefined) setGoal(ps.draftGoal); }, [ps?.draftGoal]);
   const [paused, setPaused] = useState(!!ps?.paused);
@@ -315,7 +316,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
   const save = () => run(async () => {
     setSaved(false);
     const change: ThreadChange = {
-      goal, paused, commandRules: rules.filter(r => r.prefix.trim()),
+      goal, paused, commandRules: rules.filter(r => r.prefix.trim()), checks: checks.map(c => c.trim()).filter(Boolean),
       ...(watch !== (ps?.watchThreads !== false) ? { watchThreads: watch } : {}),
       threadsModel: model ? { offeringId: model } : null,
       ...(code !== (ps?.threadsCode ?? settings.code) ? { threadsCode: code } : {}),
@@ -325,6 +326,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
     };
     const updated = await patch<ThreadSummary>(base, change);
     setRules(updated.projectSettings?.commandRules ?? rules);
+    setChecks(updated.projectSettings?.checks ?? checks);
     onSummary(updated);
     if (chat !== undefined || mode !== settings.mode || grants || granted || repositories || mcpServers) {
       onSettings(await patch<ThreadSettings>(`${base}/settings`, {
@@ -340,6 +342,8 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
   const ruleError = filled.some(r => /[\x00-\x1f\x7f-\x9f]/.test(r.prefix) || r.prefix.trim().split(/\s+/).length > 8 || r.prefix.trim().split(/\s+/).some(w => w.length > 64))
     || new Set(filled.map(r => normal(r.prefix))).size < filled.length
     ? "A command prefix has 1 to 8 words, each at most 64 characters, with no control characters. Each prefix can have one rule." : "";
+  const checkError = checks.some(c => c.trim().length > 300 || /[\x00-\x1f\x7f-\x9f]/.test(c))
+    ? "A check is one line of at most 300 characters, with no control characters." : "";
   const newThreadsHint = `Threads ${her()} starts from this chat. Each one can be changed after it starts.`;
   return (
     <form className="card project-form" aria-labelledby="h-general" onSubmit={(e) => { e.preventDefault(); void save(); }}>
@@ -439,8 +443,17 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
       <ErrorText error={ruleError} />
       <button type="button" disabled={rules.length >= 100} onClick={() => setRules([...rules, { prefix: "", decision: "ask" }])}>Add rule</button>
 
+      <h3 title={`Run in each repository when a code thread ends a turn that changed something; if one fails, ${her()} fixes it before finishing.`}>Checks</h3>
+      {!checks.length && <p className="muted">No checks: {her()} runs what the repository asks.</p>}
+      {checks.map((check, i) => <div className="command-rule" key={i}>
+        <input className="mono" aria-label="Check command" placeholder="npm test" autoFocus={!check} value={check} onChange={e => setChecks(checks.map((c, n) => n === i ? e.target.value : c))} />
+        <button type="button" className="icon sm" aria-label={`Remove ${check || "check"}`} onClick={() => setChecks(checks.filter((_, n) => n !== i))}><Icon name="close" /></button>
+      </div>)}
+      <ErrorText error={checkError} />
+      <button type="button" disabled={checks.length >= 8} onClick={() => setChecks([...checks, ""])}>Add check</button>
+
       <div className="row">
-        <button type="submit" className="primary" disabled={busy || !!ruleError}>Save</button>
+        <button type="submit" className="primary" disabled={busy || !!ruleError || !!checkError}>Save</button>
         {ps?.draftGoal !== undefined && <button type="button" disabled={busy} onClick={() => run(async () => { const updated = await patch<ThreadSummary>(base, { discardDraft: true }); onSummary(updated); setGoal(updated.goal ?? ""); })}>Discard draft</button>}
         {saved && <span className="muted" role="status">Saved.</span>}
       </div>

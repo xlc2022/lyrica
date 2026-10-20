@@ -303,6 +303,22 @@ export function checkGrant(allowed: Record<Pool, string[]>, pool: Pool, grant: G
   }
 }
 
+export const MAX_CHECKS = 8;
+export const MAX_CHECK_LENGTH = 300;
+
+/** At most 8 commands, each one line of at most 300 characters with no control characters; empty ones dropped. */
+export function checkChecks(value: unknown): string[] {
+  if (!Array.isArray(value)) throw new Error("checks must be a list of commands");
+  const checks = value.map((c) => {
+    if (typeof c !== "string") throw new Error("a check is a command");
+    return c.trim();
+  }).filter(Boolean);
+  // eslint-disable-next-line no-control-regex
+  if (checks.some((c) => c.length > MAX_CHECK_LENGTH || /[\x00-\x1f\x7f]/.test(c))) throw new Error(`A check is one line of at most ${MAX_CHECK_LENGTH} characters, with no control characters.`);
+  if (checks.length > MAX_CHECKS) throw new Error(`A project has at most ${MAX_CHECKS} checks.`);
+  return checks;
+}
+
 /** Defaults when the user hasn't set any: general has internet, private has nothing. */
 const DEFAULTS: Record<Pool, Network> = {
   general: { internet: true, services: false, hosts: [] },
@@ -324,6 +340,18 @@ export class WorkspaceSettings {
   setCommandRules(pool: Pool, project: string, rules: unknown): CommandRule[] {
     const checked = checkCommandRules(rules);
     this.db.prepare("INSERT INTO project_settings (pool, thread, command_rules) VALUES (?, ?, ?) ON CONFLICT(pool, thread) DO UPDATE SET command_rules = excluded.command_rules").run(pool, project, JSON.stringify(checked));
+    return checked;
+  }
+
+  /** The person's commands that run when a code turn in the project ends (docs/workspace.md, "Project checks"). */
+  checks(pool: Pool, project: string): string[] {
+    const row = this.db.prepare("SELECT checks FROM project_settings WHERE pool = ? AND thread = ?").get(pool, project) as { checks: string } | undefined;
+    return row ? JSON.parse(row.checks) : [];
+  }
+
+  setChecks(pool: Pool, project: string, checks: unknown): string[] {
+    const checked = checkChecks(checks);
+    this.db.prepare("INSERT INTO project_settings (pool, thread, checks) VALUES (?, ?, ?) ON CONFLICT(pool, thread) DO UPDATE SET checks = excluded.checks").run(pool, project, JSON.stringify(checked));
     return checked;
   }
 

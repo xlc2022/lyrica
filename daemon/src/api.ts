@@ -855,6 +855,8 @@ export interface ProjectSettingsInfo {
   draftGoal?: string;
   draftInstructions?: string;
   commandRules: CommandRule[];
+  /** Commands run when a code turn in the project ends, at most 8 (docs/workspace.md, "Project checks"). */
+  checks: string[];
   /** The project page's memory ID, for the memory browser. The page exists once instructions are saved or sleep writes it. */
   pageId: string;
   /** Paused: its threads stop, nothing new starts, and they take no messages. */
@@ -890,6 +892,7 @@ export interface ThreadChange {
   discardDraft?: boolean;
   title?: string; hidden?: boolean; project?: true; goal?: string; instructions?: string;
   commandRules?: CommandRule[];
+  checks?: string[];
   threadsCode?: boolean;
   paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; threadsFallback?: boolean | null; watchThreads?: boolean;
 }
@@ -1186,7 +1189,8 @@ export type MessagePart =
   /**
    * Something a subagent run delivered into the thread: a background run's
    * result or question, a note, or what a user wrote to one of its subagents.
-   * `status` says which ("finished", "question", "note", "user_message", …).
+   * `status` says which ("finished", "question", "note", "user_message", …;
+   * "limit" for the tool limit, "checks-passed" or "checks-failed" for a project's checks).
    */
   | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[]; told?: Told[] }
   /** The thread was compacted: tokens before and (estimated) after, and the summary that replaced the older messages. */

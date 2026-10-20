@@ -1546,6 +1546,13 @@ and turns it off when done; a project chat splits a build with several parts int
 Code turns omit models, downloads, images and reactions, add five coding
 guidelines, and read repository branches and up to ten commit subjects
 since the default base, plus cached open pull-request checks, once per turn.
+They and coder subagents also get each checkout's own AGENTS.md (or
+CLAUDE.md) as stable prompt text, capped, with its nested instruction files
+listed, so she follows each repository's rules as Claude Code and Codex do
+(decided 2026-10-20). A project's checks, the person's commands set in
+Project settings, run in her sandbox when a code turn that changed something
+ends; a failure goes back to her to fix, at most three rounds, and the thread
+shows which checks passed or failed (docs/workspace.md, "Project checks").
 Coder subagents use that project's filtered memory through their existing
 thread view, their role prompt without persona, and their step's task and
 optional progress.
@@ -1776,6 +1783,9 @@ Details in [docs/sleep.md](docs/sleep.md).
     never machine limits or irreversible-action prompts. A sandbox command
     card can save its computed prefix with **Always allow**. Opaque commands
     ask when the project has a forbid rule.
+  - **Project checks:** up to 8 commands, edited under Checks in Project
+    settings → General, run without a card when a code turn in the
+    project's threads ends after a change, since the person wrote them.
   - Irreversible actions that leave the server always ask, whatever the
     mode. Subagents and child threads get the parent's mode or a stricter
     one, and follow the parent when it is made stricter later, at any

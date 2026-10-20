@@ -5,6 +5,7 @@ import { dropAskNudges, contextLines, registerContext, type ContextMeter } from 
 import { setToolsOff } from "./gate.ts";
 import { memorySections } from "./memory.ts";
 import { CODE_GUIDELINES, CODING_GUIDELINE, CODE_TOOLS_OFF, codeTaskText } from "./code.ts";
+import { RULES_IN_ALL } from "./code-repositories.ts";
 import { SELF_PRIMER } from "./primer.ts";
 import { TopicRouter, type RoutedTopic } from "./routing.ts";
 import { reactionLines, type UserReaction } from "./react.ts";
@@ -14,6 +15,7 @@ import { registerVisionGuard } from "./vision.ts";
 
 export * from "./assemble.ts";
 export * from "./code.ts";
+export * from "./checks.ts";
 export * from "./code-repositories.ts";
 export * from "./context.ts";
 export * from "./gate.ts";
@@ -45,6 +47,8 @@ export interface LyricaOptions {
   persona: () => Persona;
   code?: () => boolean;
   codeRepositories?: () => Promise<string | undefined>;
+  /** Each checkout's own AGENTS.md or CLAUDE.md, for code turns (repoRules). */
+  repoRules?: () => Promise<string | undefined>;
   /** The user's current profile; called every turn so a rename applies at once. */
   profile: () => Profile;
   /** The thread's granted folders, read every turn. Workspace supplies them; defaults to none. */
@@ -115,7 +119,12 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       if (code) {
         options.sections.code_task = codeTaskText(view.own.codeTask(thread.threadId));
         report.push({ name: "project", text: options.sections.code_task, budget: 1600, truncated: false, place: "system" });
-      } else delete options.sections.code_task;
+        const rules = await opts.repoRules?.();
+        if (rules) {
+          options.sections.repo_rules = rules;
+          report.push({ name: "project", text: rules, budget: RULES_IN_ALL, truncated: false, place: "system" });
+        } else delete options.sections.repo_rules;
+      } else { delete options.sections.code_task; delete options.sections.repo_rules; }
 
       // The user's reactions since her last turn, then her status line, from the last turn's measurement, and the line telling her to prepare or compact.
       const repositories = code ? await opts.codeRepositories?.() : undefined;

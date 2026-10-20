@@ -11,6 +11,7 @@ import { syncEntries, toStoredEntry } from "../record.ts";
 import { openThreadSession } from "../session.ts";
 import { createMcpServersExtension } from "../mcp.ts";
 import { createWebExtension } from "../web.ts";
+import { checkoutsOf, repoRules } from "../code-repositories.ts";
 import { createImageExtension } from "../images.ts";
 import { createWorkspaceExtension, type ApprovalRequest } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";
@@ -970,6 +971,7 @@ export class Delegation {
       };
       const extensions: ExtensionFactory[] = [];
       let mcp = false;
+      let rules: (() => Promise<string | undefined>) | undefined;
       if (workspace) {
         let owner = parent.threadId;
         while (view.own.getThread(owner)?.subagent && view.own.getThread(owner)?.parent) owner = view.own.getThread(owner)!.parent!;
@@ -992,6 +994,8 @@ export class Delegation {
         // A project chat's subagent is read-only as the chat is, so delegating can't make what the chat may not.
         const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines || coordinates, ...(coordinates ? { coordinates } : {}) });
         extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }));
+        // A coder works in its parent's checkouts or its own worktrees, under their repositories' own instructions.
+        if (role.name === "coder") rules = () => repoRules(tools.target(), checkoutsOf(tools.settings(), tools.repositories?.() ?? [], worktrees));
         if (workspace.imageFiles) extensions.push(createImageExtension({ models: this.o.models, threadId: child.id,
           call: () => this.o.models.callContext(parent.user.id, parent.pool, child.id),
           files: workspace.imageFiles({ ...p, threadId: child.id }), settings: () => workspace.settings(parent.user.id),
@@ -1011,7 +1015,7 @@ export class Delegation {
       // tool_search loads the MCP tools, which register after its role's tools are set, so the role doesn't turn them off.
       const allowed = new Set([...role.tools, "ask_parent", ...(nested ? ["delegate"] : []), ...(mcp ? ["tool_search"] : [])]);
       // First: it must run before the MCP extension registers anything, else the role gate turns loaded MCP tools off.
-      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica", !earlier && role.name === "coder" ? { task, done } : undefined));
+      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica", !earlier && role.name === "coder" ? { task, done } : undefined, rules));
       const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions, task: () => role.name === "coder" ? "code" : "chat" });
       opened.session.setThinkingLevel(role.thinking);
       // Passes over a model whose machine is away, and records the call. The role keeps its own thinking level.

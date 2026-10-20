@@ -961,6 +961,29 @@ gives it to no one below it. Changing a thread's workspace tells its
 descendants' open views to fetch their settings again. Parallel
 writers get their own git worktrees (see [delegation.md](delegation.md)).
 
+## Project checks
+
+Principles 2 and 6: a project keeps at most 8 check commands (`npm test`) in
+encrypted `user.db` (`project_settings.checks`, expand-only user step 16),
+each one line of at most 300 characters. Only the person sets them, under
+Checks in Project settings → General; nothing from a repository or from her
+adds one, so they run without an approval card.
+
+When a code-mode thread of the project (never its read-only chat) ends a run
+with a reply after an `edit`, `write`, `bash` or `delegate` call succeeded
+(a single coder writes in the thread's own checkouts), lyricad runs
+each check with `sh -c` in her sandbox, once in each checkout the thread works
+in (its worktrees, its clones and its writable granted folders), or once in its
+folder when it has none, with 10 minutes each. They don't run in Plan mode
+or after the tool limit turned her tools off, and Stop stops a running check
+and sends nothing. Each run shows a **Checks** notice in the thread, passed
+or failed, listing the commands. A failure gives her the last 60 lines of
+each failing output, unseen and with the thread's secrets masked as her
+`bash` output is, so she fixes it and the
+checks run again when she ends; after 3 failing rounds they stop and she is
+told to report the failure as not done. The output stays in the encrypted
+conversation and is never logged (`extension/src/checks.ts`).
+
 ## Project command rules
 
 Principles 6, 2 and 8: a project keeps at most 100 Allow, Ask or Forbid

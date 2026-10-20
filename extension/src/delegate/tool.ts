@@ -216,7 +216,7 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
  * A subagent's own extension: the preamble and its role's prompt, read-only
  * memory, ask_parent, and only the tools its role allows.
  */
-export function createSubagentExtension(thread: ThreadContext, role: Role, hooks: SubagentHooks, allowed: Set<string>, name = "Lyrica", codingTask?: { task: string; done: string }): ExtensionFactory {
+export function createSubagentExtension(thread: ThreadContext, role: Role, hooks: SubagentHooks, allowed: Set<string>, name = "Lyrica", codingTask?: { task: string; done: string }, repoRules?: () => Promise<string | undefined>): ExtensionFactory {
   const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: thread.user.profile }, code: role.name === "coder" });
   return (pi) => {
     registerMemoryTools(pi, thread.view, who, { readOnly: true });
@@ -252,6 +252,8 @@ export function createSubagentExtension(thread: ThreadContext, role: Role, hooks
         const memory = await memorySections(thread.view, event.prompt, { ...who(), folders: [] });
         o.sections.project = memory.project ?? "";
         o.sections.code_task = codeTaskText(codingTask ?? thread.view.own.codeTask(thread.threadId));
+        const rules = await repoRules?.();
+        if (rules) o.sections.repo_rules = rules;
         if (memory.recall) return { message: { customType: "lyrica-coder-turn", content: `<recall>\n${memory.recall}\n</recall>`, display: false } };
       }
     });

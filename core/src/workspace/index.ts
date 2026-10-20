@@ -311,6 +311,8 @@ export class Workspace {
     return {
       prepareWorktrees: () => this.prepareWorktrees(t),
       commandRules: () => t.project ? this.settings(t.userId).commandRules(t.pool, t.project) : [],
+      /** The project's checks, read when a code turn ends; none outside a project or in its read-only chat. */
+      checks: () => t.project && !t.coordinates ? this.settings(t.userId).checks(t.pool, t.project) : [],
       target: (machine?: string) => this.targetFor(t, machine),
       settings: () => { const s = this.settings(t.userId).effective(t.threadId); return { ...s, grants: ownGrants(t, s.grants), ...(t.coordinates ? { coordinates: true } : {}) }; },
       machines: () => this.machinesFor(t),

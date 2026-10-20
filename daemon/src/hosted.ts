@@ -6,7 +6,7 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  codeRepositories, formatEntry, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
+  checkoutsOf, codeRepositories, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -981,6 +981,7 @@ export class HostedThread {
           createLyricaExtension(ctx, {
             code: () => tools.settings().code,
             codeRepositories: () => codeRepositories(tools.target(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }), this.o.codePulls?.(this.userId, this.pool, this.threadId)),
+            repoRules: () => repoRules(tools.target(), checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }))),
             persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter,
             recentWork: () => this.recentWork(view),
             reactions: () => this.unseenReactions.splice(0),
@@ -1001,6 +1002,9 @@ export class HostedThread {
           }),
           // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
           createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target() }),
+          // The project's checks, run when a code turn that changed something ends.
+          createChecksExtension({ checks: () => tools.checks(), code: () => tools.settings().code, plan: () => tools.settings().mode === "plan",
+            checkouts: () => checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId })), target: () => tools.target() }),
           // Pi's MCP client and tool_search, only while the thread has a server: a change of grants reopens the session.
           ...(tools.settings().mcpServers.length ? [createMcpServersExtension(tools)] : []),
           ...(canDelegate ? [createDelegateExtension(ctx, delegation)] : []),
