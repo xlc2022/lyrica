@@ -507,6 +507,28 @@ describe.skipIf(!homeRunnable)("the home workspace", () => {
   });
 });
 
+describe.skipIf(!homeRunnable)("a project chat's uploads", () => {
+  it("land in its shared folder, which its threads read at /shared", async () => {
+    const keyring = await freshKeyring();
+    const users = new Users(keyring);
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
+    const workspace = new Workspace(keyring, users, { excludePorts: [] });
+    const chat = { userId: ada.id, pool: "general" as const, threadId: "p1", coordinates: true };
+    try {
+      await workspace.mountHome(ada.id);
+      workspace.settings(ada.id).inheritSettings("p1", "c1", "general");
+      const path = await workspace.saveUpload(chat, "mockup.txt", Buffer.from("a header and three cards"));
+      expect(path).toBe("/workspace/shared/uploads/mockup.txt");
+      expect((await workspace.targetFor(chat).ops().read.readFile(path)).toString()).toBe("a header and three cards");
+      const code = workspace.targetFor({ userId: ada.id, pool: "general", threadId: "c1" }).ops();
+      expect((await code.read.readFile("/shared/uploads/mockup.txt")).toString()).toBe("a header and three cards");
+    } finally {
+      await workspace.unmountHome(ada.id);
+    }
+  });
+});
+
 describe.skipIf(!homeRunnable)("a running child thread's folders", () => {
   it("narrow with its parent's: its Files panel and its next sandbox run lose what the parent lost", async () => {
     const keyring = await freshKeyring();

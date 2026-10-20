@@ -1213,10 +1213,12 @@ export class Workspace {
     // noclobber makes taking the name atomic: a file that appears meanwhile is never overwritten.
     const script = 'mkdir -p uploads && n="$1$2" && i=2 && until (set -C; cat > "uploads/$n") 2>/dev/null; do ' +
       '[ "$i" -gt 999 ] && exit 1; n="$1-$i$2"; i=$((i+1)); done && printf %s "$n"';
-    const box = new Sandbox({ workdir: this.threadDir(t), grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
+    // A project chat's go in its shared/ (its threads' /shared), so the threads that build from them can read them.
+    const shared = t.coordinates && this.sharedDir(t) === join(this.threadDir(t), "shared");
+    const box = new Sandbox({ workdir: shared ? join(this.threadDir(t), "shared") : this.threadDir(t), grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
     const r = await box.run(["sh", "-c", script, "sh", stem, ext], { input: bytes });
     if (r.code !== 0) throw new Error(`could not save ${clean}: ${r.stderr.toString().trim()}`);
-    return `${WORKDIR}/uploads/${r.stdout.toString()}`;
+    return `${WORKDIR}/${shared ? "shared/" : ""}uploads/${r.stdout.toString()}`;
   }
 }
 

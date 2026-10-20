@@ -1916,7 +1916,7 @@ allowedPaths.allow(actor, userId, pool, path) / disallow(...) / list(userId)
   //   overlapping them are left out of list()
 credentialsFor(t): Credentials            // the thread's reachable repositories' tokens and Claude Code's, for SandboxSpec.credentials, never the env (Git accounts below); targetFor
   // passes it as the sandbox's env, never argv, and `repos` (reposDir(t)) mounted at /workspace/repos
-saveUpload(t, name, bytes): Promise<string>  // cleans the name (cleanUploadName), never overwrites
+saveUpload(t, name, bytes): Promise<string>  // cleans the name (cleanUploadName), never overwrites; a project chat's (t.coordinates) go in shared/uploads (/workspace/shared/uploads, its threads' /shared/uploads)
 imageFiles(t): ThreadImages
 // ThreadImages.content(path): HomeFile { stream: Readable; size; type }; relative or /workspace/ paths,
 //   the thread's folder only (including the shared project folder); traversal/symlinks/nonfiles → HomeFileMissing.

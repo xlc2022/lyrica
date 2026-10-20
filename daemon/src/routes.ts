@@ -1463,7 +1463,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, (o) => threadOf(o, r));
       const name = r.query.get("name") ?? "";
       const bytes = await r.bytes(d.opts.uploadLimit ?? 50 * 1024 * 1024);
-      const path = await s().workspace.saveUpload({ userId: user.id, pool: poolOf(r), threadId: thread.id }, name, bytes);
+      const path = await s().workspace.saveUpload({ userId: user.id, pool: poolOf(r), threadId: thread.id, ...(thread.project ? { coordinates: true } : {}) }, name, bytes);
       return { path };
     }),
     // --- The Files panel: the thread's folder and grants, every call inside the sandbox ---

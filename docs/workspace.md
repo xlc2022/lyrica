@@ -377,7 +377,11 @@ takes is `lyrica@pve!agent=<that secret>`.
   (`uploads/7f3a9c2e4b1d.png`), so a phone's `IMG_1234.jpg` or a telling
   filename never reaches her context or the thread; other files keep their
   name. `Workspace.saveUpload` writes it from inside a sandbox, so a
-  symlink she left in `uploads/` can't point it anywhere else.
+  symlink she left in `uploads/` can't point it anywhere else. In a project
+  chat (`WorkspaceThread.coordinates`) it goes in `shared/uploads/` instead
+  (`/workspace/shared/uploads/…`), so the threads that build from it read it
+  at `/shared/uploads/`. The chat can't copy it there itself: its folders are
+  read-only. Its Files panel can add files under `shared/` too.
 - **The Files panel** (`core/src/workspace/files.ts`, `Workspace.files(t)`)
   lists, searches, reads, uploads, renames, deletes and zips in the thread's
   folder and its grants, every operation a fresh no-network sandbox over the
