@@ -157,6 +157,9 @@ export interface Item extends Body {
   updatedAt: string;
 }
 
+/** Who wrote an entry: the user or her. Tool results have no speaker. */
+const ENTRY_ORIGIN: Record<string, Origin | undefined> = { user: "user", assistant: "lyrica" };
+
 export interface Hit {
   id: string;
   kind: Kind;
@@ -840,7 +843,7 @@ export class PoolReader {
       if (id.startsWith("e:sleep/")) return undefined;
       const [entry] = this.entryWindow(id, 0);
       if (!entry || !holdsEnough(entry.text, terms, opts.minWords)) return undefined;
-      return { id, kind, score, snippet: snippet(entry.text, words), origin: entry.role === "user" ? "user" : "lyrica", at: entry.createdAt };
+      return { id, kind, score, snippet: snippet(entry.text, words), origin: ENTRY_ORIGIN[entry.role], at: entry.createdAt };
     }
     const item = this.get(id);
     if (!item || (item.archived && !opts.includeArchived) || (item.supersededBy && opts.current)) return undefined;

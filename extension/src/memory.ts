@@ -92,7 +92,7 @@ export function formatHit(h: Hit, user: MemoryContext["user"]): string {
 
 /** Who said a recalled message, and that a journal entry is her own, so hits from different speakers don't blend. */
 function kindLabel(h: Hit, user: MemoryContext["user"]): string {
-  if (h.kind === "entry") return `entry by ${h.origin === "user" ? user.profile.displayName : "you"}`;
+  if (h.kind === "entry") return h.origin === "user" ? `entry by ${user.profile.displayName}` : h.origin === "lyrica" ? "entry by you" : "tool result";
   return h.kind === "journal" ? "your journal" : h.kind;
 }
 
