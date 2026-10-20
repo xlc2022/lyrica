@@ -6,6 +6,8 @@ import type { ExecutionTarget } from "@lyrica/core";
 
 /** Shown in the thread: which checks passed or failed. */
 export const CHECKS_NOTICE = "lyrica-checks";
+/** A CHECKS_NOTICE entry's details, which the thread's notice shows. */
+export interface ChecksResult { ok: boolean; failed: string[]; passed: string[] }
 /** Told to her, unseen: what failed, so she fixes it in the same turn. */
 export const CHECKS_FAILED = "lyrica-checks-failed";
 export const CHECK_ROUNDS = 3;
@@ -74,7 +76,8 @@ export function createChecksExtension(o: ChecksOptions): ExtensionFactory {
       const list = (cs: string[]) => cs.map((c) => `\`${c}\``).join(", ");
       if (!failed.length) {
         changed = false;
-        return { entries: [{ type: "custom_message", customType: CHECKS_NOTICE, content: `Checks passed: ${list(passed)}`, display: true }] };
+        const details: ChecksResult = { ok: true, failed: [], passed };
+        return { entries: [{ type: "custom_message", customType: CHECKS_NOTICE, content: `Checks passed: ${list(passed)}`, display: true, details }] };
       }
       // Still pending: her next reply ending the run is checked again, edits or not.
       rounds++;
@@ -84,7 +87,8 @@ export function createChecksExtension(o: ChecksOptions): ExtensionFactory {
         ? `The project's checks still fail after ${CHECK_ROUNDS} rounds, so they won't run again this turn. Stop here and tell the person plainly what fails and why: the work isn't done.`
         : "The project's checks failed. Fix what they report, then finish: they run again when you end your turn.";
       pi.sendMessage({ customType: CHECKS_FAILED, content: `${ask}\n\n${detail}`, display: false }, { deliverAs: "followUp", triggerTurn: true });
-      return { entries: [{ type: "custom_message", customType: CHECKS_NOTICE, content: `Checks failed: ${list([...new Set(failed.map((f) => f.command))])}${passed.length ? `. Passed: ${list(passed)}` : ""}`, display: true }] };
+      const details: ChecksResult = { ok: false, failed: [...new Set(failed.map((f) => f.command))], passed };
+      return { entries: [{ type: "custom_message", customType: CHECKS_NOTICE, content: `Checks failed: ${list(details.failed)}${passed.length ? `. Passed: ${list(passed)}` : ""}`, display: true, details }] };
     });
   };
 }

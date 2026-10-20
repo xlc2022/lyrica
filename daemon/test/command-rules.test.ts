@@ -130,7 +130,7 @@ describe("project checks through lyricad", () => {
     await stream.until(e => e.type === "turn_end");
     stream.close();
     const notices = async () => (await s.ada.get<MessagePage>(`${s.childPath}/messages`)).body.messages.filter((m) => m.role === "notice").map((m) => m.parts[0]);
-    await vi.waitFor(async () => expect(await notices()).toEqual([{ type: "text", text: "Checks passed: `npm test`" }]));
+    await vi.waitFor(async () => expect(await notices()).toEqual([{ type: "delegation", text: "`npm test`", status: "checks-passed" }]));
     expect(s.runs.filter((r) => r.some((a) => a.includes("npm test")))).toEqual([["sh", "-c", "npm test 2>&1"]]);
   });
 });

@@ -999,7 +999,9 @@ replaces. Coder subagents get the same section
 runs the project's checks with `sh -c` in each checkout (10 minutes each)
 when a code-mode reply without tool calls ends a run in which `edit`,
 `write` or `bash` succeeded, and not in Plan mode or once her tools are off.
-It shows a `lyrica-checks` notice ("Checks passed: …" or "Checks failed: …")
+It shows a `lyrica-checks` notice ("Checks passed: …" or "Checks failed: …",
+with `ChecksResult` details that the daemon turns into a `delegation` part
+with status `checks-passed` or `checks-failed`)
 and, on a failure, sends the last 60 lines (4,000 characters) of each
 failing output as a hidden `lyrica-checks-failed` follow-up, at most 3
 rounds a run.

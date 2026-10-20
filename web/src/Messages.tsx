@@ -771,7 +771,12 @@ function ThreadsPill({ threads, env }: { threads: ThreadRef[]; env: Env }) {
 
 const NOTICE_HEADS: Record<string, string> = {
   question: "Subagent asks", note: "Subagent note", user_message: "Message to a subagent", interrupted: "Subagent interrupted",
-  update: "Child thread", limit: "Tool limit",
+  update: "Child thread", limit: "Tool limit", "checks-passed": "Checks", "checks-failed": "Checks",
+};
+/** A project's checks at the end of a code turn: a dot and a word after the head. */
+const CHECK_STATES: Record<string, ReactNode> = {
+  "checks-passed": <span className="status-word"><span className="dot up" aria-hidden="true" />passed</span>,
+  "checks-failed": <span className="status-word"><span className="dot down" aria-hidden="true" />failed</span>,
 };
 
 /** Something a subagent run delivered into the thread: a result, a question, a note, or what someone wrote to one. */
@@ -780,7 +785,11 @@ function Notice({ text, status, threads, env }: { text: string; status?: string;
   if (env.project && (status === "update" || status === "waiting")) return null;
   return (
     <div className="subagent delivered" data-status={status}>
-      <div className="sub-head"><b>{NOTICE_HEADS[status ?? ""] ?? "Subagent result"}</b><ThreadLinks threads={threads} env={env} /></div>
+      <div className="sub-head">
+        <b>{NOTICE_HEADS[status ?? ""] ?? "Subagent result"}</b>
+        {CHECK_STATES[status ?? ""]}
+        <ThreadLinks threads={threads} env={env} />
+      </div>
       <div className="prose"><HerProse text={text} env={env} /></div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { FROM_PARENT, LYRICA_REACTS, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
-import { CHECKS_NOTICE, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, USER_MESSAGE } from "@lyrica/extension";
+import { type ChecksResult, CHECKS_NOTICE, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, Reaction, ThreadRef, Told } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
@@ -125,7 +125,12 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       continue;
     }
     if (e.type === "custom_message" && e.customType === CHECKS_NOTICE) {
-      out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [{ type: "text", text: textOf(e.content) }] });
+      // Head "Checks" with a passed or failed state; the body lists the commands, failed ones first.
+      const d = (e as { details?: Partial<ChecksResult> }).details;
+      const ok = d?.ok ?? textOf(e.content).startsWith("Checks passed");
+      const list = (cs: string[] = []) => cs.map((c) => `\`${c}\``).join(", ");
+      const text = d ? (ok ? list(d.passed) : `${list(d.failed)}${d.passed?.length ? `. Passed: ${list(d.passed)}` : ""}`) : textOf(e.content);
+      out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [{ type: "delegation", text, status: ok ? "checks-passed" : "checks-failed" }] });
       continue;
     }
     if (e.type === "custom_message" && e.customType === TURN_TOOL_NOTICE) {
