@@ -3,7 +3,6 @@ import { randomBytes } from "node:crypto";
 import { commandRules as checkCommandRules, type CommandRule } from "./rules.ts";
 import { isAbsolute, posix } from "node:path";
 import type { Db } from "../db.ts";
-import { SkillLibrary } from "../skills.ts";
 import type { Pool } from "../types.ts";
 import { parseHost } from "./net.ts";
 import { MCP_NAME, mcpNamespace, mcpUrl, type McpStateKind } from "./mcp.ts";
@@ -364,17 +363,18 @@ export class WorkspaceSettings {
     })();
   }
 
-  constructor(private readonly db: Db, readonly allowed: () => Record<Pool, string[]>) {
-    this.skills = new SkillLibrary(db);
-  }
-
-  /** The user's skills (docs/briefs/skills.md). */
-  readonly skills: SkillLibrary;
+  constructor(private readonly db: Db, readonly allowed: () => Record<Pool, string[]>) {}
 
   close(): void { this.db.close(); }
 
   private setting(key: string): string | undefined {
     return (this.db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
+  }
+
+  /** Her skills are active at once instead of waiting for approval (docs/briefs/skills.md). */
+  skillsAutoApprove(): boolean { return this.setting("skills.auto_approve") === "1"; }
+  setSkillsAutoApprove(on: boolean): void {
+    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('skills.auto_approve', ?)").run(on ? "1" : "0");
   }
 
   threadWork(threadId: string): ThreadWork | undefined {

@@ -100,9 +100,10 @@ function Sections({ ctx, page, title, sections, current }: { ctx: ShellContext; 
   );
 }
 
-export function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** A settings card. `hint` is the heading's tooltip, never a caption under it (docs/ux.md). */
+export function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   const id = `h-${title.toLowerCase().replace(/\W+/g, "-")}`;
-  return <section className="card" aria-labelledby={id}><h2 id={id}>{title}</h2>{children}</section>;
+  return <section className="card" aria-labelledby={id}><h2 id={id} {...(hint ? { title: hint } : {})}>{title}</h2>{children}</section>;
 }
 
 export function PronounFields({ value, onChange }: { value: Pronouns; onChange: (p: Pronouns) => void }) {

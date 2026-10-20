@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  checkReadable, Keyring, Memory, migrate, MigrationFailed, MIN_READER, openEncrypted, SCHEMA, schemaOf, SchemaTooNew, STEPS, Users, WorkspaceSettings,
+  checkReadable, Keyring, Memory, migrate, MigrationFailed, MIN_READER, openEncrypted, SCHEMA, schemaOf, SchemaTooNew, SkillLibrary, STEPS, Users, WorkspaceSettings,
   type Db, type DbKind, type MigrationStep,
 } from "../src/index.ts";
 import { ARGON2, freshKeyring, KDF_ITER, profile } from "./helpers.ts";
@@ -531,18 +531,20 @@ describe("user step 16 (project checks)", () => {
   });
 });
 
-describe("user step 17 (skills)", () => {
-  it("adds the skills table to every released user schema, keeping earlier readers", () => {
-    for (let version = 1; version < 17; version++) {
+describe("pool step 10 (skills)", () => {
+  it("adds the skills table to every released pool schema, keeping earlier readers and thread data", () => {
+    for (let version = 1; version < 10; version++) {
       const db = scratchDb();
-      const previous = STEPS.user.filter((s) => s.version <= version);
-      migrate(db, "user", {}, previous);
-      migrate(db, "user");
-      const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
-      settings.skills.put({ name: "render-check", description: "Before saying a scene works.", body: "Take a screenshot." });
-      expect(settings.skills.active("general").map((s) => s.name), `v${version}`).toEqual(["render-check"]);
-      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
-      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      const previous = STEPS.pool.filter((s) => s.version <= version);
+      migrate(db, "pool", {}, previous);
+      SEED.pool(db);
+      migrate(db, "pool");
+      const skills = new SkillLibrary(db, "general");
+      skills.put({ name: "render-check", description: "Before saying a scene works.", body: "Take a screenshot." });
+      expect(skills.active().map((s) => s.name), `v${version}`).toEqual(["render-check"]);
+      expect(db.prepare("SELECT title FROM threads WHERE id = 'web/a'").get()).toEqual({ title: "A test thread" });
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.pool, minReader: MIN_READER.pool });
+      expect(() => checkReadable(db, "pool", previous)).not.toThrow();
       db.close();
     }
   });

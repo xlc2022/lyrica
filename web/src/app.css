@@ -400,6 +400,10 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .skill-body { margin: 6px 0 0; background: var(--tool); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; max-height: 320px; overflow: auto; }
 .skill-card p, .skill p { margin: 0; }
 .skill-head { gap: 10px; align-items: center; }
+.skill-fold { justify-content: flex-start; gap: 4px; border: 0; background: transparent; padding: 0; min-height: 28px; color: var(--accent); }
+.skill-fold:hover { border: 0; background: transparent; text-decoration: underline; }
+.skill-fold .ic { width: 14px; height: 14px; }
+@media (pointer: coarse) { .skill-fold { min-height: var(--tap); } }
 .turn-error { background: color-mix(in oklab, var(--danger) 8%, var(--panel)); border-radius: 10px; padding: 8px 12px; }
 .offline { margin: 0; padding: 4px var(--gutter); font-size: 13px; color: var(--muted); background: var(--panel); border-top: 1px solid var(--line); }
 .main > .head, .composer, .subnote, .offline { flex: none; }

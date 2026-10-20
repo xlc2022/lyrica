@@ -282,7 +282,8 @@ secrets, and does not rewrite memory already stored. A secret-named label follow
 
 Model-facing memory tools: `remember`, `recall`, `read_memory`. That's three of the
 30-tool budget. `read_memory` also opens a skill by `s:<name>` (DESIGN.md,
-"Skills"), and `save_skill` saves one; skills live in user.db, not in a pool.
+"Skills"), and `save_skill` saves one; skills live in their pool's database, like
+notes.
 
 ## Workspace activity is memory too
 

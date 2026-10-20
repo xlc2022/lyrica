@@ -5,7 +5,7 @@ Roadmap item 4. The owner chose it on 2026-10-20 and decided: her own skills
 need approval, with a setting to approve them automatically, and skills load
 in every thread.
 **Read first:** AGENTS.md, PRINCIPLES.md (3, 6, 8), DESIGN.md "Memory" and
-"Code mode", docs/contracts.md (Memory tools, user.db), docs/ux.md.
+"Code mode", docs/contracts.md (Memory tools, pool store), docs/ux.md.
 
 ## Why
 
@@ -34,15 +34,17 @@ Markdown (at most 8,000 characters).
    approves it, or straight away when **Approve her skills automatically**
    is on.
 
-Library skills (2 and 3) are stored encrypted in user.db, in a `skills`
-table added by user step 17 (expand only). They are limited to 100 per user.
+Library skills (2 and 3) are stored in the pool they belong to, in that
+pool's encrypted database, in a `skills` table added by pool step 10 (expand
+only), and reached only through the pool's view. They are limited to 100 per
+pool. A memory wipe removes them with the pools.
 Saving a name that already exists replaces that skill once the new version
 is approved; until then the old one stays active.
 
-**Pools.** A skill saved from a Private thread belongs to the Private pool
-and is listed only in Private threads. The person's skills and skills saved
-from General threads are listed everywhere. Private text never reaches a
-General prompt.
+**Pools.** A skill saved from a Private thread is in private.db and is
+listed only in Private threads. The person's skills and skills saved from
+General threads are in general.db and listed everywhere. A General thread
+can't open private.db, and Settings lists only the pools the display shows.
 
 ## B. The index in every thread
 
@@ -57,7 +59,8 @@ General prompt.
   parent passes on what it needs.
 - Repository skills are looked up only when the thread has checkouts, so a
   thread without any starts no sandbox for them. Each thread caches them by
-  checkout and HEAD, so an unchanged checkout costs one git call a turn.
+  checkout and HEAD, so an unchanged checkout costs one git call a turn. An
+  edit to a SKILL.md shows once it is committed.
 - `save_skill`'s words are counted in daemon/test/context.test.ts's headroom
   (`SKILL_TOOL_TEXT`), as Agent loop asked.
 - `read_memory` takes `s:<name>` and returns the body of an active skill in
@@ -103,12 +106,12 @@ General prompt.
 - **3:** Pi's skill format and on-demand reading, with Lyrica's own index.
 - **6:** her drafts wait for the person, unless the person chose otherwise.
 - **8:** one new tool (21 of 30) and no new process.
-- **Privacy:** pool-scoped skills, user.db encryption, nothing logged.
+- **Privacy:** skills in each pool's own database, nothing logged.
 
 ## Docs to update
 
 - DESIGN.md (Memory, skills).
-- docs/contracts.md (`save_skill`, `read_memory` `s:`, user step 17, API).
+- docs/contracts.md (`save_skill`, `read_memory` `s:`, pool step 10, API).
 - docs/memory.md.
 - docs/ux.md (Settings → Skills, the card).
 - docs/web.md.

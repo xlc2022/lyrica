@@ -284,10 +284,6 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principles 2 and 6: a project's checks, the person's commands run when a code turn ends. Adds a column only.
     version: 16,
     run(db) { addColumns(db, [["project_settings", "checks", "TEXT NOT NULL DEFAULT '[]'"]]); },
-  }, {
-    // Principles 3 and 6: skills, the person's and hers (docs/briefs/skills.md). Adds a table only.
-    version: 17,
-    run(db) { db.exec(SKILLS_SCHEMA); },
   }],
   pool: [{
     version: 1, contract: true,
@@ -345,6 +341,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
       thread TEXT PRIMARY KEY REFERENCES threads(id) ON DELETE CASCADE,
       task TEXT NOT NULL, done TEXT NOT NULL, at TEXT NOT NULL
     )`); },
+  }, {
+    // Principles 3 and 6: skills, the person's and hers, in the pool they belong to (docs/briefs/skills.md). Adds a table only.
+    version: 10,
+    run(db) { db.exec(SKILLS_SCHEMA); },
   }],
 };
 

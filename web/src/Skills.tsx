@@ -1,6 +1,7 @@
 // Principles 3 and 6: her skills wait for the person unless they chose otherwise (docs/briefs/skills.md).
 import { useState } from "react";
 import { del, get, post, put, u, type SkillInfo, type Skills } from "./api.ts";
+import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { Section } from "./Panel.tsx";
 import type { ShellContext } from "./Shell.tsx";
@@ -25,8 +26,7 @@ export function SkillsSection({ ctx }: { ctx: ShellContext }) {
   const [adding, setAdding] = useState(false);
   const act = (fn: () => Promise<Skills>) => run(async () => page.set(await fn()));
   return (
-    <Section title="Skills">
-      <p className="muted">Procedures for jobs that come up again. {her()} sees each one's name and description in every thread, and reads the steps when a job calls for them.</p>
+    <Section title="Skills" hint={`Procedures for jobs that come up again. ${her()} sees each one's name and description in every thread, and reads the steps when a job calls for them.`}>
       {page.data && <Switch label={`Approve ${her()}'s skills automatically`} hint={`When off, a skill ${her()} saves waits for you on a card in her thread and here.`}
         checked={page.data.autoApprove} disabled={busy} onChange={(on) => act(() => put<Skills>(u(userId, "skills", "auto-approve"), { autoApprove: on }))} />}
       <ErrorText error={page.error || error} />
@@ -36,10 +36,10 @@ export function SkillsSection({ ctx }: { ctx: ShellContext }) {
           <li key={`${s.pool}/${s.name}/${s.state}`} className="stack skill" data-state={s.state}>
             <SkillHead skill={s} />
             <p>{s.description}</p>
-            <details><summary>Steps</summary><pre className="skill-body">{s.body}</pre></details>
+            <Steps body={s.body} />
             <div className="row">
               {s.state === "waiting" && <>
-                <button type="button" className="primary" disabled={busy} onClick={() => act(() => post<Skills>(`${skillPath(userId, s)}/approve`))}>Approve</button>
+                <button type="button" disabled={busy} onClick={() => act(() => post<Skills>(`${skillPath(userId, s)}/approve`))}>Approve</button>
                 <button type="button" disabled={busy} onClick={() => act(() => post<Skills>(`${skillPath(userId, s)}/decline`))}>Decline</button>
               </>}
               {s.state !== "waiting" && <Confirm label="Remove" danger confirm="Remove" question={`Remove ${s.name}? ${her()} won't see it any more.`}
@@ -52,6 +52,17 @@ export function SkillsSection({ ctx }: { ctx: ShellContext }) {
         ? <AddSkill userId={userId} onDone={(saved) => { setAdding(false); if (saved) page.reload(); }} />
         : <div className="row"><button type="button" onClick={() => setAdding(true)}>Add skill</button></div>}
     </Section>
+  );
+}
+
+/** A skill's steps, folded: the chevron turns down while open. */
+function Steps({ body }: { body: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button type="button" className="skill-fold" aria-expanded={open} onClick={() => setOpen((o) => !o)}><Icon name={open ? "down" : "right"} />Steps</button>
+      {open && <pre className="skill-body">{body}</pre>}
+    </div>
   );
 }
 
@@ -106,7 +117,7 @@ export function SkillCard({ args, call, userId }: { args: unknown; call: string;
         {outcome && <span className="status-word"><span className={`dot ${skill?.state === "active" ? "up" : "down"}`} aria-hidden="true" />{outcome}</span>}
       </div>
       {a.description && <p>{a.description}</p>}
-      <details><summary>Steps</summary><pre className="skill-body">{a.body}</pre></details>
+      <Steps body={a.body ?? ""} />
       {waiting && <div className="row">
         <button type="button" className="primary" disabled={busy} onClick={() => run(async () => page.set(await post<Skills>(`${skillPath(userId, skill)}/approve`)))}>Approve</button>
         <button type="button" disabled={busy} onClick={() => run(async () => page.set(await post<Skills>(`${skillPath(userId, skill)}/decline`)))}>Decline</button>

@@ -2,16 +2,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { migrate, openEncrypted, SKILL_LIMITS, WorkspaceSettings } from "../src/index.ts";
+import { migrate, openEncrypted, SKILL_LIMITS, SkillLibrary, WorkspaceSettings } from "../src/index.ts";
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
-const scratchDb = () => { const dir = mkdtempSync(join(tmpdir(), "lyrica-skills-")); dirs.push(dir); return openEncrypted(join(dir, "user.db"), { raw: Buffer.alloc(32, 7) }); };
+const scratchDb = (file: string) => { const dir = mkdtempSync(join(tmpdir(), "lyrica-skills-")); dirs.push(dir); return openEncrypted(join(dir, file), { raw: Buffer.alloc(32, 7) }); };
 
 function library() {
-  const db = scratchDb();
-  migrate(db, "user");
-  return new WorkspaceSettings(db, () => ({ general: [], private: [] })).skills;
+  const db = scratchDb("general.db");
+  migrate(db, "pool");
+  return new SkillLibrary(db, "general");
 }
 const draft = (name: string, body = "Do it.") => ({ name, description: `When ${name} comes up.`, body });
 
@@ -19,38 +19,32 @@ describe("skills", () => {
   it("keep her draft waiting beside the active skill until the person approves it, or decline it", () => {
     const s = library();
     s.put(draft("release", "v1"));
-    const waiting = s.propose(draft("release", "v2"), "general", "web/t1", "call-1");
-    expect(waiting.state).toBe("waiting");
-    expect(s.read("general", "release")?.body).toBe("v1");
+    const waiting = s.propose(draft("release", "v2"), "web/t1", "call-1", false);
+    expect(waiting).toMatchObject({ state: "waiting", pool: "general" });
+    expect(s.read("release")?.body).toBe("v1");
     expect(s.byCall("call-1")?.state).toBe("waiting");
-    s.approve("general", "release");
-    expect(s.read("general", "release")?.body).toBe("v2");
-    expect(s.active("general")).toHaveLength(1);
-    s.propose(draft("release", "v3"), "general", "web/t1", "call-2");
-    s.decline("general", "release");
+    s.approve("release");
+    expect(s.read("release")?.body).toBe("v2");
+    expect(s.active()).toHaveLength(1);
+    s.propose(draft("release", "v3"), "web/t1", "call-2", false);
+    s.decline("release");
     expect(s.byCall("call-2")?.state).toBe("declined");
-    expect(s.read("general", "release")?.body).toBe("v2");
-    expect(() => s.approve("general", "release")).toThrow(/waiting/);
+    expect(s.read("release")?.body).toBe("v2");
+    expect(() => s.approve("release")).toThrow(/waiting/);
   });
 
-  it("make her drafts active at once when the person turned on auto-approve", () => {
+  it("make her drafts active at once when the person turned on auto-approve, a user.db setting", () => {
+    const db = scratchDb("user.db");
+    migrate(db, "user");
+    const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+    expect(settings.skillsAutoApprove()).toBe(false);
+    settings.setSkillsAutoApprove(true);
     const s = library();
-    s.setAutoApprove(true);
-    expect(s.propose(draft("ci-fix"), "general", "web/t1", "c").state).toBe("active");
-    expect(s.read("general", "ci-fix")).toBeDefined();
+    expect(s.propose(draft("ci-fix"), "web/t1", "c", settings.skillsAutoApprove()).state).toBe("active");
+    expect(s.read("ci-fix")).toBeDefined();
   });
 
-  it("list a Private thread's skills only in Private threads", () => {
-    const s = library();
-    s.put(draft("everywhere"));
-    s.setAutoApprove(true);
-    s.propose(draft("secret-recipe"), "private", "private/t", "c");
-    expect(s.active("general").map((x) => x.name)).toEqual(["everywhere"]);
-    expect(s.active("private").map((x) => x.name)).toEqual(["everywhere", "secret-recipe"]);
-    expect(s.read("general", "secret-recipe")).toBeUndefined();
-  });
-
-  it("refuse bad names, long fields and a full library", () => {
+  it("refuse bad names, long fields and a full pool", () => {
     const s = library();
     expect(() => s.put(draft("Release Notes"))).toThrow(/lowercase/);
     expect(() => s.put({ ...draft("a"), description: "x".repeat(201) })).toThrow(/200/);
@@ -58,7 +52,7 @@ describe("skills", () => {
     for (let i = 0; i < SKILL_LIMITS.library; i++) s.put(draft(`s${i}`));
     expect(() => s.put(draft("one-more"))).toThrow(/at most 100/);
     s.put(draft("s0", "replaced"));
-    s.remove("general", "s1");
+    s.remove("s1");
     s.put(draft("one-more"));
   });
 });

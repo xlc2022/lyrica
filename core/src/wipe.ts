@@ -16,10 +16,10 @@ export const WIPED_USER_TABLES = [
   "thread_groups", "thread_models", "thread_prefs", "thread_workspaces",
 ] as const;
 
-/** user.db tables a wipe keeps: settings, endpoints and models, machines, accounts, roles, skills. */
+/** user.db tables a wipe keeps: settings, endpoints and models, machines, accounts, roles. */
 export const KEPT_USER_TABLES = [
   "delegate_roles", "delegate_workflows", "endpoints", "git_accounts", "hub_tokens", "machines", "mcp_servers", "meta",
-  "model_columns", "model_groups", "model_presets", "model_profiles", "offering_settings", "offerings", "settings", "skills",
+  "model_columns", "model_groups", "model_presets", "model_profiles", "offering_settings", "offerings", "settings",
   "starred_offerings",
 ] as const;
 

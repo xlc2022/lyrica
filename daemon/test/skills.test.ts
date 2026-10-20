@@ -69,7 +69,7 @@ describe("skills", () => {
     s.stream.close();
   });
 
-  it("keep a Private thread's skill out of General threads", async () => {
+  it("keep a Private thread's skill in the Private pool: out of General threads, and out of Settings while the display hides Private", async () => {
     const s = await setup("private");
     await s.ada.put(`${s.u}/skills/auto-approve`, { autoApprove: true });
     await s.save();
@@ -84,6 +84,10 @@ describe("skills", () => {
     await stream.until((e) => e.type === "turn_end", 0);
     expect(JSON.stringify(s.model.requests.at(-1)!.messages)).not.toContain("render-check");
     stream.close();
+
+    await s.ada.patch(`${s.u}/me/display`, { showPrivate: false });
+    expect((await s.ada.get<Skills>(`${s.u}/skills`)).body.skills).toEqual([]);
+    expect((await s.ada.del(`${s.u}/skills/private/render-check`)).status).toBe(404);
     s.stream.close();
   });
 });

@@ -59,7 +59,9 @@ test("her saved skill waits on a card until Approve, then shows in Settings → 
   await expect(page.getByText("Saved it.")).toBeVisible();
   const card = page.getByRole("group", { name: "Skill render-check" });
   await expect(card).toHaveAttribute("data-pending", "Skill");
-  await card.getByText("Steps").click();
+  await expect(card.locator(".skill-body")).toHaveCount(0);
+  await card.getByRole("button", { name: "Steps" }).click();
+  await expect(card.getByRole("button", { name: "Steps" })).toHaveAttribute("aria-expanded", "true");
   await expect(card.locator(".skill-body")).toHaveText("1. Take a screenshot.");
   await card.getByRole("button", { name: "Approve" }).click();
   await expect(card.getByText(/In .*'s skills/)).toBeVisible();
@@ -67,6 +69,7 @@ test("her saved skill waits on a card until Approve, then shows in Settings → 
 
   await page.goto(`/#/u/${userId}/settings/skills`);
   const section = page.getByRole("region", { name: "Skills" });
+  await expect(section.getByRole("heading", { name: "Skills" })).toHaveAttribute("title", /^Procedures for jobs that come up again\./);
   await expect(section.locator(".skill")).toHaveCount(1);
   await expect(section.locator(".skill").first()).toContainText("render-check");
   await section.getByRole("button", { name: "Add skill" }).click();

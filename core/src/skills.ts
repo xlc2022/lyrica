@@ -1,13 +1,12 @@
 import type { Db } from "./db.ts";
 import type { Pool } from "./types.ts";
 
-// Skills (docs/briefs/skills.md, DESIGN.md "Skills"): named procedures in the user's encrypted user.db. The
-// person's are active at once; hers wait for the person's approval unless the person turned on auto-approve.
-// A skill saved from a Private thread is listed only in Private threads.
+// Skills (docs/briefs/skills.md, DESIGN.md "Skills"): named procedures, kept in each pool's own database like the
+// rest of its memory, so a Private thread's skill can't reach a General thread. The person's are active at once;
+// hers wait for the person's approval unless the person turned on auto-approve (a user.db setting).
 
 export const SKILLS_SCHEMA = `
-CREATE TABLE IF NOT EXISTS skills (
-  pool TEXT NOT NULL,
+CREATE TABLE skills (
   name TEXT NOT NULL,
   state TEXT NOT NULL,
   description TEXT NOT NULL,
@@ -16,9 +15,9 @@ CREATE TABLE IF NOT EXISTS skills (
   thread TEXT,
   call TEXT,
   at TEXT NOT NULL,
-  PRIMARY KEY (pool, name, state)
+  PRIMARY KEY (name, state)
 );
-CREATE INDEX IF NOT EXISTS skills_call ON skills(call);
+CREATE INDEX skills_call ON skills(call);
 `;
 
 export const SKILL_LIMITS = { name: 64, description: 200, body: 8000, library: 100 } as const;
@@ -56,104 +55,92 @@ export function checkSkill(input: unknown): SkillDraft {
   return { name, description, body };
 }
 
-interface Row { pool: Pool; name: string; state: SkillState; description: string; body: string; author: SkillAuthor; thread: string | null; call: string | null; at: string }
-const toSkill = (r: Row): Skill => ({
-  pool: r.pool, name: r.name, state: r.state, description: r.description, body: r.body, author: r.author,
-  ...(r.thread ? { thread: r.thread } : {}), ...(r.call ? { call: r.call } : {}), at: r.at,
-});
+interface Row { name: string; state: SkillState; description: string; body: string; author: SkillAuthor; thread: string | null; call: string | null; at: string }
 
-/** The pools whose skills a thread in `pool` sees: Private threads see both. */
-const visible = (pool: Pool): Pool[] => (pool === "private" ? ["general", "private"] : ["general"]);
-
+/** One pool's skills, on that pool's database: a thread view's `own` or `reads`, or the owner view's. */
 export class SkillLibrary {
-  constructor(private readonly db: Db, private readonly now: () => Date = () => new Date()) {}
+  constructor(private readonly db: Db, readonly pool: Pool, private readonly now: () => Date = () => new Date()) {}
+
+  private toSkill = (r: Row): Skill => ({
+    pool: this.pool, name: r.name, state: r.state, description: r.description, body: r.body, author: r.author,
+    ...(r.thread ? { thread: r.thread } : {}), ...(r.call ? { call: r.call } : {}), at: r.at,
+  });
 
   /** Every skill, for Settings: waiting first, then by name. */
   all(): Skill[] {
-    return (this.db.prepare("SELECT * FROM skills ORDER BY state = 'waiting' DESC, name, pool, state").all() as Row[]).map(toSkill);
+    return (this.db.prepare("SELECT * FROM skills ORDER BY state = 'waiting' DESC, name, state").all() as Row[]).map(this.toSkill);
   }
 
-  /** The active skills a thread in `pool` lists, by name. */
-  active(pool: Pool): Skill[] {
-    const pools = visible(pool);
-    return (this.db.prepare(`SELECT * FROM skills WHERE state = 'active' AND pool IN (${pools.map(() => "?").join(", ")}) ORDER BY name, pool`).all(...pools) as Row[]).map(toSkill);
+  /** The active skills, by name. */
+  active(): Skill[] {
+    return (this.db.prepare("SELECT * FROM skills WHERE state = 'active' ORDER BY name").all() as Row[]).map(this.toSkill);
   }
 
-  /** An active skill a thread in `pool` may read; its own pool's wins over General's. */
-  read(pool: Pool, name: string): Skill | undefined {
-    const pools = visible(pool);
-    const rows = this.db.prepare(`SELECT * FROM skills WHERE state = 'active' AND name = ? AND pool IN (${pools.map(() => "?").join(", ")})`).all(name, ...pools) as Row[];
-    const row = rows.find((r) => r.pool === pool) ?? rows[0];
-    return row && toSkill(row);
+  /** An active skill by name. */
+  read(name: string): Skill | undefined {
+    const row = this.db.prepare("SELECT * FROM skills WHERE state = 'active' AND name = ?").get(name) as Row | undefined;
+    return row && this.toSkill(row);
   }
 
   /** The skill her save_skill call made, in whatever state it is now. */
   byCall(call: string): Skill | undefined {
     const row = this.db.prepare("SELECT * FROM skills WHERE call = ?").get(call) as Row | undefined;
-    return row && toSkill(row);
+    return row && this.toSkill(row);
   }
 
-  autoApprove(): boolean {
-    return (this.db.prepare("SELECT value FROM settings WHERE key = 'skills.auto_approve'").get() as { value: string } | undefined)?.value === "1";
-  }
-
-  setAutoApprove(on: boolean): void {
-    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('skills.auto_approve', ?)").run(on ? "1" : "0");
-  }
-
-  /** The person's own skill, active at once, in General unless they chose Private. */
-  put(input: unknown, pool: Pool = "general"): Skill {
+  /** The person's own skill, active at once. */
+  put(input: unknown): Skill {
     const draft = checkSkill(input);
     return this.db.transaction(() => {
-      this.limit(pool, draft.name);
-      this.db.prepare("DELETE FROM skills WHERE pool = ? AND name = ? AND state IN ('active', 'waiting')").run(pool, draft.name);
-      return this.insert({ ...draft, pool, state: "active", author: "user", at: this.now().toISOString() });
+      this.limit(draft.name);
+      this.db.prepare("DELETE FROM skills WHERE name = ? AND state IN ('active', 'waiting')").run(draft.name);
+      return this.insert({ ...draft, pool: this.pool, state: "active", author: "user", at: this.now().toISOString() });
     })();
   }
 
   /** Her draft: active at once with auto-approve, otherwise waiting beside the active one it would replace. */
-  propose(input: unknown, pool: Pool, thread: string, call: string): Skill {
+  propose(input: unknown, thread: string, call: string, autoApprove: boolean): Skill {
     const draft = checkSkill(input);
     return this.db.transaction(() => {
-      this.limit(pool, draft.name);
-      const state: SkillState = this.autoApprove() ? "active" : "waiting";
-      this.db.prepare("DELETE FROM skills WHERE pool = ? AND name = ? AND state = ?").run(pool, draft.name, state);
-      return this.insert({ ...draft, pool, state, author: "lyrica", thread, call, at: this.now().toISOString() });
+      this.limit(draft.name);
+      const state: SkillState = autoApprove ? "active" : "waiting";
+      this.db.prepare("DELETE FROM skills WHERE name = ? AND state = ?").run(draft.name, state);
+      return this.insert({ ...draft, pool: this.pool, state, author: "lyrica", thread, call, at: this.now().toISOString() });
     })();
   }
 
   /** Approves her waiting draft: it replaces the active skill of that name. */
-  approve(pool: Pool, name: string): Skill {
+  approve(name: string): Skill {
     return this.db.transaction(() => {
-      if (!this.db.prepare("SELECT 1 FROM skills WHERE pool = ? AND name = ? AND state = 'waiting'").get(pool, name)) throw new Error("No skill of that name is waiting.");
-      this.db.prepare("DELETE FROM skills WHERE pool = ? AND name = ? AND state = 'active'").run(pool, name);
-      this.db.prepare("UPDATE skills SET state = 'active' WHERE pool = ? AND name = ? AND state = 'waiting'").run(pool, name);
-      return toSkill(this.db.prepare("SELECT * FROM skills WHERE pool = ? AND name = ? AND state = 'active'").get(pool, name) as Row);
+      if (!this.db.prepare("SELECT 1 FROM skills WHERE name = ? AND state = 'waiting'").get(name)) throw new Error("No skill of that name is waiting.");
+      this.db.prepare("DELETE FROM skills WHERE name = ? AND state = 'active'").run(name);
+      this.db.prepare("UPDATE skills SET state = 'active' WHERE name = ? AND state = 'waiting'").run(name);
+      return this.toSkill(this.db.prepare("SELECT * FROM skills WHERE name = ? AND state = 'active'").get(name) as Row);
     })();
   }
 
   /** Declines her waiting draft; the active skill of that name, if any, stays. */
-  decline(pool: Pool, name: string): void {
+  decline(name: string): void {
     this.db.transaction(() => {
-      if (!this.db.prepare("SELECT 1 FROM skills WHERE pool = ? AND name = ? AND state = 'waiting'").get(pool, name)) throw new Error("No skill of that name is waiting.");
-      this.db.prepare("DELETE FROM skills WHERE pool = ? AND name = ? AND state = 'declined'").run(pool, name);
-      this.db.prepare("UPDATE skills SET state = 'declined' WHERE pool = ? AND name = ? AND state = 'waiting'").run(pool, name);
+      if (!this.db.prepare("SELECT 1 FROM skills WHERE name = ? AND state = 'waiting'").get(name)) throw new Error("No skill of that name is waiting.");
+      this.db.prepare("DELETE FROM skills WHERE name = ? AND state = 'declined'").run(name);
+      this.db.prepare("UPDATE skills SET state = 'declined' WHERE name = ? AND state = 'waiting'").run(name);
     })();
   }
 
   /** Removes a skill, every version of it. */
-  remove(pool: Pool, name: string): void {
-    this.db.prepare("DELETE FROM skills WHERE pool = ? AND name = ?").run(pool, name);
+  remove(name: string): void {
+    this.db.prepare("DELETE FROM skills WHERE name = ?").run(name);
   }
 
-  private limit(pool: Pool, name: string): void {
-    const { n } = this.db.prepare("SELECT count(*) AS n FROM skills WHERE state IN ('active', 'waiting') AND NOT (pool = ? AND name = ?)").get(pool, name) as { n: number };
-    if (n >= SKILL_LIMITS.library) throw new Error(`The library holds at most ${SKILL_LIMITS.library} skills: remove one first.`);
+  private limit(name: string): void {
+    const { n } = this.db.prepare("SELECT count(*) AS n FROM skills WHERE state IN ('active', 'waiting') AND name != ?").get(name) as { n: number };
+    if (n >= SKILL_LIMITS.library) throw new Error(`A pool holds at most ${SKILL_LIMITS.library} skills: remove one first.`);
   }
 
   private insert(s: Skill): Skill {
-    this.db.prepare("INSERT INTO skills (pool, name, state, description, body, author, thread, call, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(s.pool, s.name, s.state, s.description, s.body, s.author, s.thread ?? null, s.call ?? null, s.at);
+    this.db.prepare("INSERT INTO skills (name, state, description, body, author, thread, call, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(s.name, s.state, s.description, s.body, s.author, s.thread ?? null, s.call ?? null, s.at);
     return s;
   }
 }

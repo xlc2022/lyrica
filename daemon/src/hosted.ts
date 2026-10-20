@@ -3,7 +3,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   ANSWER, answerMark, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
-  type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
+  type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
   checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
@@ -985,16 +985,17 @@ export class HostedThread {
             codeRepositories: () => codeRepositories(tools.target(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }), this.o.codePulls?.(this.userId, this.pool, this.threadId)),
             repoRules: () => repoRules(tools.target(), checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }))),
             skills: {
-              // The library's skills this pool may see, then each checkout's own (docs/briefs/skills.md).
+              // The skills in this thread's own pool, then those it reads (a Private thread's General ones), then each
+              // checkout's own (docs/briefs/skills.md). A name in its own pool wins.
               index: async () => {
                 const checkouts = checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }));
                 return skillsIndex([
-                  ...workspace.settings(this.userId).skills.active(this.pool).map((s) => ({ name: s.name, description: s.description, at: `s:${s.name}` })),
+                  ...librarySkills(view).map((s) => ({ name: s.name, description: s.description, at: `s:${s.name}` })),
                   ...checkouts.length ? await repoSkills(tools.target(), checkouts, repoSkillsSeen) : [],
                 ]);
               },
-              read: (name) => workspace.settings(this.userId).skills.read(this.pool, name)?.body,
-              propose: (input, call) => workspace.settings(this.userId).skills.propose(input, this.pool, this.threadId, call),
+              read: (name) => [view.own, ...view.reads].map((p) => p.skills.read(name)).find(Boolean)?.body,
+              propose: (input, call) => view.own.skills.propose(input, this.threadId, call, workspace.settings(this.userId).skillsAutoApprove()),
             },
             persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter,
             recentWork: () => this.recentWork(view),
@@ -1256,6 +1257,12 @@ export class Busy extends Error {}
 
 /** A message carries a mark only lyricad may put on it. */
 export class MarkedText extends Error {}
+
+/** The active skills a thread's view sees: its own pool's, then the pools it reads, a name listed once. */
+function librarySkills(view: PoolView): Skill[] {
+  const seen = new Set<string>();
+  return [view.own, ...view.reads].flatMap((p) => p.skills.active()).filter((s) => !seen.has(s.name) && !!seen.add(s.name));
+}
 
 function refusal(err: unknown): string {
   const message = (err as Error)?.message ?? String(err);

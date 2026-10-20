@@ -1,4 +1,4 @@
-import { DEFAULT_THINKING, PushStore, type PushSettings } from "@lyrica/core";
+import { DEFAULT_THINKING, PushStore, type PushSettings, type SkillLibrary } from "@lyrica/core";
 import { pushTarget } from "./push.ts";
 import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
@@ -3055,16 +3055,25 @@ function pushInfo(d: Lyricad, user: User): Api.PushInfo {
   } finally { db.close(); }
 }
 
-/** The user's skill library: list, add their own, approve or decline hers, remove, and auto-approve. */
+/**
+ * The user's skills: list, add their own, approve or decline hers, remove, and auto-approve. Each pool's skills live
+ * in that pool's database and are reached through its view; only the pools the display shows are listed or changed.
+ */
 function skillRoutes(d: Lyricad, u: string): Route[] {
   const s = () => d.services!;
-  const page = (userId: string): Api.Skills => {
-    const library = s().workspace.settings(userId).skills;
-    return { skills: library.all(), autoApprove: library.autoApprove() };
+  const inPool = <T>(userId: string, pool: Pool, fn: (skills: SkillLibrary) => T): T => {
+    const view = s().memory.openThreadView(userId, pool);
+    try { return fn(view.own.skills); } finally { view.close(); }
   };
-  const pool = (r: Request): Pool => {
+  const page = (userId: string): Api.Skills => {
+    const skills = shownPools(display(d, userId)).flatMap((p) => inPool(userId, p, (k) => k.all()));
+    skills.sort((a, b) => Number(b.state === "waiting") - Number(a.state === "waiting") || a.name.localeCompare(b.name) || a.pool.localeCompare(b.pool));
+    return { skills, autoApprove: s().workspace.settings(userId).skillsAutoApprove() };
+  };
+  /** A shown pool from the path, or 404. */
+  const pool = (r: Request, userId: string): Pool => {
     const p = r.params.pool;
-    if (p !== "general" && p !== "private") throw new HttpError(404, "not found");
+    if ((p !== "general" && p !== "private") || !shownPools(display(d, userId)).includes(p)) throw new HttpError(404, "not found");
     return p;
   };
   const refused = <T>(fn: () => T, status = 400): T => {
@@ -3077,28 +3086,28 @@ function skillRoutes(d: Lyricad, u: string): Route[] {
       const change = await r.json<Api.SkillChange>();
       const p = change.pool ?? "general";
       if (p !== "general" && p !== "private") throw new HttpError(400, "a skill's pool is general or private");
-      return refused(() => s().workspace.settings(user.id).skills.put(change, p));
+      return refused(() => inPool(user.id, p, (k) => k.put(change)));
     }),
     route("PUT", `${u}/skills/auto-approve`, async (r): Promise<Api.Skills> => {
       const user = d.userFor(r);
       const { autoApprove } = await r.json<Api.SkillsAutoApprove>();
       if (typeof autoApprove !== "boolean") throw new HttpError(400, "autoApprove is true or false");
-      s().workspace.settings(user.id).skills.setAutoApprove(autoApprove);
+      s().workspace.settings(user.id).setSkillsAutoApprove(autoApprove);
       return page(user.id);
     }),
     route("POST", `${u}/skills/:pool/:name/approve`, (r): Api.Skills => {
       const user = d.userFor(r);
-      refused(() => s().workspace.settings(user.id).skills.approve(pool(r), r.params.name!), 404);
+      refused(() => inPool(user.id, pool(r, user.id), (k) => k.approve(r.params.name!)), 404);
       return page(user.id);
     }),
     route("POST", `${u}/skills/:pool/:name/decline`, (r): Api.Skills => {
       const user = d.userFor(r);
-      refused(() => s().workspace.settings(user.id).skills.decline(pool(r), r.params.name!), 404);
+      refused(() => inPool(user.id, pool(r, user.id), (k) => k.decline(r.params.name!)), 404);
       return page(user.id);
     }),
     route("DELETE", `${u}/skills/:pool/:name`, (r): Api.Skills => {
       const user = d.userFor(r);
-      s().workspace.settings(user.id).skills.remove(pool(r), r.params.name!);
+      inPool(user.id, pool(r, user.id), (k) => k.remove(r.params.name!));
       return page(user.id);
     }),
   ];
