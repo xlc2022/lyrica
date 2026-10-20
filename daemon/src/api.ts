@@ -1758,7 +1758,7 @@ export interface NewUser { login: string; password: string; displayName: string;
 export interface AdminPassword { password: string; /** The administrator's own password, asked again. */ yourPassword: string }
 export interface AdminFlag { admin: boolean }
 /** POST /api/u/:userId/admin/wipe → WipeResult. The administrator's own password, and the ticked box. */
-export interface WipeRequest { password: string; understood: boolean }
+export interface WipeRequest { password: string; understood: boolean; /** Keep every user's active skills (DESIGN.md, "Wiping memory"). */ keepSkills?: boolean }
 /** Something running that a wipe waits for: whose, what kind and in which pool. No thread titles: they may be another user's. */
 export interface WipeBusy { kind: BusyItem["kind"]; user: string; pool?: Pool }
 /**

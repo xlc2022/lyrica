@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { Db } from "./db.ts";
 import type { Keyring } from "./keyring.ts";
@@ -34,8 +34,13 @@ const HOME = "wipe.home";
  * `finishWipe` (their user.db, once their key is in memory) and `homeWiped`
  * (their home workspace, once it is mounted). Running work must be stopped
  * first. Returns how many users it covered.
+ *
+ * With `keepSkills`, each pool is set aside as `<pool>.keep.db` instead, still
+ * encrypted, until `Memory.carrySkills` copies its active skills into the fresh
+ * pool and deletes it: at once for an unlocked user, at the next unlock for a
+ * locked one. Without it, a pool set aside by an earlier wipe goes too.
  */
-export function wipePools(keyring: Keyring, users: Users, only?: string): number {
+export function wipePools(keyring: Keyring, users: Users, only?: string, keepSkills = false): number {
   const self = keyring.self();
   const all = users.all().filter((u) => !only || u.id === only);
   self.transaction(() => {
@@ -55,7 +60,14 @@ export function wipePools(keyring: Keyring, users: Users, only?: string): number
     const dir = users.userDir(u.id);
     if (!existsSync(dir)) continue;
     // The pool and its journal or WAL files: a fresh, empty pool is made at the next open.
-    for (const name of readdirSync(dir)) if (/^(general|private)\.db(-.*)?$/.test(name)) rmSync(join(dir, name), { force: true });
+    for (const name of readdirSync(dir)) {
+      const pool = /^(general|private)(\.keep)?\.db(-.*)?$/.exec(name);
+      if (!pool) continue;
+      if (!keepSkills) rmSync(join(dir, name), { force: true });
+      // A pool already set aside, for a user who hasn't unlocked since, stays as it is: this one has no skills of its own yet.
+      else if (!pool[2] && !existsSync(join(dir, `${pool[1]}.keep.db`))) renameSync(join(dir, name), join(dir, `${pool[1]}.keep.db${pool[3] ?? ""}`));
+      else if (!pool[2]) rmSync(join(dir, name), { force: true });
+    }
   }
   return all.length;
 }

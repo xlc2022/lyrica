@@ -1972,22 +1972,22 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${u}/me/wipe`, async (r): Promise<Api.WipeResult> => {
       const user = d.userFor(r);
-      const { password, understood } = await r.json<Api.WipeRequest>();
+      const { password, understood, keepSkills } = await r.json<Api.WipeRequest>();
       if (understood !== true) throw new HttpError(400, "tick the box first");
       const keys = [`login:${user.login.toLowerCase()}`, `ip:${r.ip}`];
       await limited(d, keys, async () => { if (!(await s().users.checkPassword(user, String(password ?? "")))) throw new AuthError(); }, "that isn't your password");
-      const done = await d.wipeMemory(user.id);
+      const done = await d.wipeMemory(user.id, keepSkills === true);
       return { wiped: done.wiped, busy: wipeBusy(d, done.busy) };
     }),
     route("GET", `${u}/admin/wipe`, (r): Api.WipeResult => { d.adminFor(r); return { wiped: false, busy: wipeBusy(d, d.busy()) }; }),
     route("POST", `${u}/admin/wipe`, async (r): Promise<Api.WipeResult> => {
       const actor = d.adminFor(r);
-      const { password, understood } = await r.json<Api.WipeRequest>();
+      const { password, understood, keepSkills } = await r.json<Api.WipeRequest>();
       if (understood !== true) throw new HttpError(400, "tick the box first");
       // An open session isn't enough: the administrator's own password is checked, and guesses count on the limiter.
       const keys = [`login:${actor.login.toLowerCase()}`, `ip:${r.ip}`];
       await limited(d, keys, async () => { if (!(await s().users.checkPassword(actor, String(password ?? "")))) throw new AuthError(); }, "that isn't your password");
-      const done = await d.wipeMemory();
+      const done = await d.wipeMemory(undefined, keepSkills === true);
       return { wiped: done.wiped, busy: wipeBusy(d, done.busy) };
     }),
     route("PATCH", `${u}/admin/users/:targetId/profile`, async (r) => {

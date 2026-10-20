@@ -1652,6 +1652,11 @@ Details in [docs/memory.md](docs/memory.md).
   folders, threads they sent or were sent, and persona suggestions they
   sent. Other users' memory and everything kept above stay, and only their
   own running work is stopped first.
+  Both dialogs have **Keep skills**, ticked by default (the owner,
+  2026-10-20): each active skill stays in its pool, without links to the
+  threads that made it; drafts still waiting go. A locked user's pools are
+  then set aside, still encrypted, until their next unlock copies the
+  skills out and deletes them.
 
 ### Skills
 
@@ -1681,8 +1686,9 @@ when to use it, and steps in Markdown (at most 8,000 characters).
   steps on demand: with `read_memory` and `s:<name>` for a library skill,
   or with `read` at its path for a repository's. Subagents don't get the
   list.
-- Skills are memory: a wipe removes them with the pools, the person's
-  included. Only the auto-approve switch, a user.db setting, stays.
+- Skills are memory, so a wipe removes them with the pools unless
+  **Keep skills** stays ticked ("Wiping memory"). The auto-approve switch,
+  a user.db setting, always stays.
 
 ## Sleep
 

@@ -37,7 +37,8 @@ Markdown (at most 8,000 characters).
 Library skills (2 and 3) are stored in the pool they belong to, in that
 pool's encrypted database, in a `skills` table added by pool step 10 (expand
 only), and reached only through the pool's view. They are limited to 100 per
-pool. A memory wipe removes them with the pools.
+pool. A memory wipe removes them with the pools unless its **Keep skills**
+box (ticked by default) stays ticked; then active skills carry over.
 Saving a name that already exists replaces that skill once the new version
 is approved; until then the old one stays active.
 

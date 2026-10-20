@@ -128,6 +128,16 @@ export class SkillLibrary {
     })();
   }
 
+  /** Skills kept through a wipe, active as they were, without the threads that made them; a name already here stays. */
+  restore(skills: Skill[]): void {
+    this.db.transaction(() => {
+      for (const s of skills) {
+        if (this.read(s.name)) continue;
+        this.insert({ name: s.name, description: s.description, body: s.body, pool: this.pool, state: "active", author: s.author, at: s.at });
+      }
+    })();
+  }
+
   /** Removes a skill, every version of it. */
   remove(name: string): void {
     this.db.prepare("DELETE FROM skills WHERE name = ?").run(name);

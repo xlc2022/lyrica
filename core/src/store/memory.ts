@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { openEncrypted, type Db } from "../db.ts";
 import type { Keyring } from "../keyring.ts";
@@ -9,6 +9,7 @@ import type { Users } from "../users.ts";
 import { PoolReader, PoolStore, type Hit, type Item, type SearchOptions, type StoredEntry } from "./pool.ts";
 import { splitId } from "./refs.ts";
 import { checkReadable, migrate } from "../migrations.ts";
+import { SkillLibrary, type Skill } from "../skills.ts";
 
 /**
  * Store handles for one conversation (or one sleep run). A general view holds
@@ -63,6 +64,26 @@ export class Memory {
     const general = new PoolStore(this.context(userId, "general", "owner"));
     const priv = new PoolStore(this.context(userId, "private", "owner"));
     return Object.freeze({ userId, general, private: priv, close: () => { general.close(); priv.close(); } });
+  }
+
+  /**
+   * After a wipe that kept skills (`wipePools` with `keepSkills`): copies each set-aside pool's active skills into
+   * the fresh pool, then deletes the set-aside files. Waiting and declined drafts, and links to her threads, go.
+   */
+  carrySkills(userId: UserId): void {
+    const dir = this.users.userDir(userId);
+    for (const pool of ["general", "private"] as const) {
+      const path = join(dir, `${pool}.keep.db`);
+      if (!existsSync(path)) continue;
+      const kept = openEncrypted(path, { raw: this.keyring.subkey(userId, `pool:${pool}`) });
+      let skills: Skill[] = [];
+      try {
+        if (kept.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'skills'").get()) skills = new SkillLibrary(kept, pool).active();
+      } finally { kept.close(); }
+      const view = this.openThreadView(userId, pool);
+      try { view.own.skills.restore(skills); } finally { view.close(); }
+      for (const name of readdirSync(dir)) if (name.startsWith(`${pool}.keep.db`)) rmSync(join(dir, name), { force: true });
+    }
   }
 
   private context(userId: UserId, pool: Pool, mode: "thread" | "owner", readonly = false) {

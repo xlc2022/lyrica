@@ -887,7 +887,7 @@ every pool whose key is here (`Sleep.prune`), logging only how many went.
 
 ## Wiping memory
 
-`POST …/admin/wipe` with `WipeRequest { password, understood: true }`
+`POST …/admin/wipe` with `WipeRequest { password, understood: true, keepSkills? }`
 (administrators; the administrator's own password, checked on the login
 limiter like **Change password…**; without `understood` it is `400`)
 deletes every user's threads and memories in both pools (DESIGN.md,
@@ -916,6 +916,11 @@ deletes every user's threads and memories in both pools (DESIGN.md,
   scheduled turns load; the home part then runs the nightly sweep, so
   threads made since keep their folders. Nobody is logged out, and it logs
   only the number of users.
+- With `keepSkills`, `wipePools` renames each pool (and its WAL files) to
+  `<pool>.keep.db` instead of deleting it, and `finishWipe` first calls
+  `Memory.carrySkills`, which copies its active skills into the fresh pool
+  (`SkillLibrary.restore`) and deletes the set-aside files. A wipe without it
+  deletes set-aside files too.
 - `lyrica admin wipe` does the first half from a terminal while lyricad is
   stopped (it refuses while it runs): the self.db passphrase, an
   administrator's login and password, and typing `wipe`. Each user finishes
