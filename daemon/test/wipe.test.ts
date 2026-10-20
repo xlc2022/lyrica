@@ -3,7 +3,7 @@
 // both pools. Users, passwords and endpoints stay; running work is stopped first.
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { KEPT_USER_TABLES, WIPED_USER_TABLES } from "@lyrica/core";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
 import type { EndpointInfo, ThreadSummary, WipeResult } from "../src/api.ts";
@@ -71,6 +71,31 @@ describe("wiping memory", () => {
     expect((await ada.post<WipeResult>(`${au}/admin/wipe`, { password: "pw", understood: true })).body).toEqual({ wiped: true, busy: [] });
     expect((await ada.get<ThreadSummary[]>(`${au}/threads`)).body).toEqual([]);
     stream.close();
+  });
+
+  it("refuses new messages while it runs, and still leaves no threads", async () => {
+    const rt = await runtime();
+    const { base, d } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(base, "ada", "pw");
+    const au = `/api/u/${rt.ada.id}`;
+    const model = await fakeOpenAI({ label: "local", models: [{ id: "qwen3.8-27b" }] });
+    await localModel(ada, rt.ada.id, model.baseUrl);
+    const thread = (await ada.post<ThreadSummary>(`${au}/threads`, { pool: "general", title: "late message" })).body;
+    // Stopping the user's work takes a moment: a message sent meanwhile is refused.
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    const stop = d.services!.sleep.stop.bind(d.services!.sleep);
+    vi.spyOn(d.services!.sleep, "stop").mockImplementation(async (id) => { await held; return stop(id); });
+    const wiping = ada.post<WipeResult>(`${au}/admin/wipe`, { password: "pw", understood: true });
+    await vi.waitFor(() => expect(d.services!.sleep.stop).toHaveBeenCalled());
+    const late = await ada.post(`${au}/threads/general/${enc(thread.id)}/messages`, { text: "one more thing" });
+    expect(late.status).toBe(409);
+    expect((await ada.post(`${au}/admin/wipe`, { password: "pw", understood: true })).status).toBe(409);
+    release();
+    expect((await wiping).body).toEqual({ wiped: true, busy: [] });
+    expect((await ada.get<ThreadSummary[]>(`${au}/threads`)).body).toEqual([]);
+    expect(model.requests).toHaveLength(0);
   });
 
   it("names every user.db table as wiped or kept", async () => {

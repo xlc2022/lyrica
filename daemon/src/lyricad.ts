@@ -191,6 +191,8 @@ export class Lyricad implements Drainable {
   /** The scheduled sleep came due during an update's drain: it runs at undrain. */
   private sleepDue = false;
   private drainingNow = false;
+  /** A memory wipe is running: new turns are refused and scheduled work waits, as while draining. */
+  private wipingNow = false;
   /** Why unlocking failed, other than a wrong passphrase (a database this release can't read or migrate): a failed health check. */
   private unlockError: string | undefined;
   readonly updatePaths: UpdatePaths;
@@ -611,34 +613,44 @@ export class Lyricad implements Drainable {
    */
   async wipeMemory(): Promise<{ wiped: boolean; busy: BusyItem[] }> {
     const s = this.services!;
-    const busy = this.busy();
-    if (busy.length) {
-      for (const b of busy) {
-        if (b.kind === "turn" && b.pool && b.threadId) await s.host.get(b.userId, b.pool, b.threadId).stop();
-        else if (b.kind === "subagent") await s.delegation.stopAll(b.userId);
-        else if (b.kind === "sleep") await s.sleep.stop(b.userId);
+    if (this.wipingNow) throw new HttpError(409, "a wipe is already running");
+    // From here no new turn starts (refuseWhileDraining, host.draining) and ticks and sleep wait, until the wipe is done or gives way.
+    this.wipingNow = true;
+    s.host.draining = true;
+    try {
+      const busy = this.busy();
+      if (busy.length) {
+        for (const b of busy) {
+          if (b.kind === "turn" && b.pool && b.threadId) await s.host.get(b.userId, b.pool, b.threadId).stop();
+          else if (b.kind === "subagent") await s.delegation.stopAll(b.userId);
+          else if (b.kind === "sleep") await s.sleep.stop(b.userId);
+        }
+        return { wiped: false, busy };
       }
-      return { wiped: false, busy };
-    }
-    const unlocked = s.users.all().map((u) => u.id).filter((id) => this.keyring.hasUserKey(id));
-    for (const id of unlocked) {
-      await this.stopWork(id);
-      await s.host.close(id);
-    }
-    const n = wipePools(this.keyring, s.users);
-    for (const id of unlocked) {
-      try {
-        this.finishWipe(id, true);
-        s.wakeups.load(id);
-        s.routines.load(id);
-        s.forge.load(id);
-      } catch (err) {
-        this.log(`finishing a memory wipe failed: ${(err as Error).name}`);
+      const unlocked = s.users.all().map((u) => u.id).filter((id) => this.keyring.hasUserKey(id));
+      for (const id of unlocked) {
+        await this.stopWork(id);
+        await s.host.close(id);
       }
-      this.userEvents.changed(id);
+      const n = wipePools(this.keyring, s.users);
+      for (const id of unlocked) {
+        try {
+          this.finishWipe(id, true);
+          s.wakeups.load(id);
+          s.routines.load(id);
+          s.forge.load(id);
+        } catch (err) {
+          this.log(`finishing a memory wipe failed: ${(err as Error).name}`);
+        }
+        this.userEvents.changed(id);
+      }
+      this.log(`wiped memory for ${n} users`);
+      return { wiped: true, busy: [] };
+    } finally {
+      this.wipingNow = false;
+      s.host.draining = this.drainingNow;
+      if (!this.drainingNow) this.undrained();
     }
-    this.log(`wiped memory for ${n} users`);
-    return { wiped: true, busy: [] };
   }
 
   /**
@@ -671,7 +683,7 @@ export class Lyricad implements Drainable {
     if (!this.services) return;
     this.push.tick();
     const now = new Date();
-    if (!this.draining) {
+    if (!this.draining && !this.wipingNow) {
       this.services.children.drainWakes();
       this.services.wakeups.tick(now);
       this.services.routines.tick(now);
@@ -687,7 +699,7 @@ export class Lyricad implements Drainable {
     const pad = (n: number) => String(n).padStart(2, "0");
     if (`${pad(now.getHours())}:${pad(now.getMinutes())}` !== this.sleepTime() || this.sleptOn === now.toDateString()) return;
     this.sleptOn = now.toDateString();
-    if (this.draining) { this.sleepDue = true; return; }
+    if (this.draining || this.wipingNow) { this.sleepDue = true; return; }
     this.night(now);
   }
 
@@ -740,12 +752,13 @@ export class Lyricad implements Drainable {
   get draining(): boolean { return this.drainingNow; }
   set draining(on: boolean) {
     this.drainingNow = on;
-    if (this.services) this.services.host.draining = on;
+    if (this.services) this.services.host.draining = on || this.wipingNow;
   }
 
-  /** New turns from outside are refused while an update drains. */
+  /** New turns from outside are refused while an update drains or a memory wipe runs. */
   refuseWhileDraining(): void {
     if (this.drainingNow) throw new Updating();
+    if (this.wipingNow) throw new HttpError(409, "Lyrica is wiping memory");
   }
 
   /** Back from a drain that gave up: the sleep that came due meanwhile runs now. */

@@ -866,6 +866,10 @@ limiter like **Change password…**; without `understood` it is `400`)
 deletes every user's threads and memories in both pools (DESIGN.md,
 "Wiping memory"). `lyricad.wipeMemory()`:
 
+- From the start of the call until it returns, new turns are refused
+  (`409 Lyrica is wiping memory`, as `refuseWhileDraining` does for an
+  update), child-thread wakes, wake-ups, routines and forge checks wait, and a
+  sleep that comes due runs afterwards; a second wipe meanwhile is `409`.
 - While anything runs (`busy()`: a turn or a message waiting for a model, a
   subagent run, a sleep run), it sends each a stop, wipes nothing and answers
   `WipeResult { wiped: false, busy }`, each item its kind, the user's display
