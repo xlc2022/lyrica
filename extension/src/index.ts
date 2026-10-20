@@ -6,6 +6,7 @@ import { setToolsOff } from "./gate.ts";
 import { memorySections } from "./memory.ts";
 import { CODE_GUIDELINES, CODING_GUIDELINE, CODE_TOOLS_OFF, codeTaskText } from "./code.ts";
 import { RULES_IN_ALL } from "./code-repositories.ts";
+import { registerSkillTool, SKILLS_IN_ALL, type SkillToolOptions } from "./skills.ts";
 import { SELF_PRIMER } from "./primer.ts";
 import { TopicRouter, type RoutedTopic } from "./routing.ts";
 import { reactionLines, type UserReaction } from "./react.ts";
@@ -27,6 +28,7 @@ export * from "./downloads-tool.ts";
 export * from "./react.ts";
 export * from "./record.ts";
 export * from "./routing.ts";
+export * from "./skills.ts";
 export * from "./sleep.ts";
 export * from "./threads.ts";
 export * from "./vision.ts";
@@ -73,6 +75,11 @@ export interface LyricaOptions {
   reactions?: () => UserReaction[];
   /** Her name for this deployment, read every turn; automatic recall leaves it out. */
   name?: () => string;
+  /**
+   * Skills (docs/briefs/skills.md): the index for this turn, a library skill's body for read_memory s:<name>, and,
+   * where she may save one, save_skill.
+   */
+  skills?: { index(): Promise<string | undefined>; read(name: string): string | undefined } & Partial<SkillToolOptions>;
 }
 
 /** The Lyrica Pi extension for one thread. */
@@ -84,7 +91,9 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
   const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: opts.profile() }, hide: opts.hide, code: turnCode });
   return (pi) => {
     const router = new TopicRouter();
-    registerMemoryTools(pi, view, who, { readOnly: opts.memoryTools === "read" });
+    registerMemoryTools(pi, view, who, { readOnly: opts.memoryTools === "read", skill: opts.skills?.read });
+    const saving = opts.memoryTools !== "read" && !!opts.skills?.propose;
+    if (saving) registerSkillTool(pi, { propose: opts.skills!.propose! });
     registerVisionGuard(pi);
     if (opts.meter) registerContext(pi, opts.meter);
     if (opts.sleep) pi.registerCommand("sleep", { description: "Sleep now: consolidate, dream and wake, for this pool", handler: (_args, ctx) => opts.sleep!(ctx) });
@@ -103,7 +112,7 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       setToolsOff(pi, ctx, "code", code ? CODE_TOOLS_OFF : []);
       const memory = await memorySections(view, event.prompt, { ...who(), folders: opts.folders?.() ?? [], projectThreads: opts.projectThreads, name: opts.name?.() });
       // An unlogged thread isn't offered remember at all.
-      if (opts.memoryTools !== "read") setToolsOff(pi, ctx, "unlogged", memory.notice ? ["remember"] : []);
+      if (opts.memoryTools !== "read") setToolsOff(pi, ctx, "unlogged", memory.notice ? ["remember", ...(saving ? ["save_skill"] : [])] : []);
       const { customPrompt, sections, turn, report } = assemble(
         { persona, topics, memory, profile: opts.profile(), now: opts.now?.() ?? new Date() },
         opts.budgets,
@@ -125,6 +134,11 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
           report.push({ name: "project", text: rules, budget: RULES_IN_ALL, truncated: false, place: "system" });
         } else delete options.sections.repo_rules;
       } else { delete options.sections.code_task; delete options.sections.repo_rules; }
+      const skills = await opts.skills?.index();
+      if (skills) {
+        options.sections.skills = skills;
+        report.push({ name: "project", text: skills, budget: SKILLS_IN_ALL, truncated: false, place: "system" });
+      } else delete options.sections.skills;
 
       // The user's reactions since her last turn, then her status line, from the last turn's measurement, and the line telling her to prepare or compact.
       const repositories = code ? await opts.codeRepositories?.() : undefined;

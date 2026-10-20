@@ -1595,6 +1595,7 @@ test("Reset: Wipe memory asks for the box and the password, stops what runs, the
   const dialog = page.getByRole("dialog", { name: "Wipe all memory?" });
   const wipe = dialog.getByRole("button", { name: "Wipe memory" });
   await expect(wipe).toBeDisabled();
+  await expect(dialog.getByLabel("Keep everyone's skills")).toBeChecked();
   await dialog.getByLabel("I understand this can't be undone").check();
   await expect(wipe).toBeDisabled();
   await dialog.getByLabel("Your password").fill("not-mine");

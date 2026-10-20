@@ -1001,7 +1001,7 @@ export interface Notification {
   decision: boolean;
   /** Where it leads, if anywhere: a thread, or a section of Settings or Administration. */
   thread?: { pool: Pool; id: string };
-  section?: "settings/suggestions" | "admin/persona" | "admin/updates";
+  section?: "settings/suggestions" | "settings/skills" | "admin/persona" | "admin/updates";
   actions: NotificationAction[];
   at: string;
 }
@@ -1758,7 +1758,7 @@ export interface NewUser { login: string; password: string; displayName: string;
 export interface AdminPassword { password: string; /** The administrator's own password, asked again. */ yourPassword: string }
 export interface AdminFlag { admin: boolean }
 /** POST /api/u/:userId/admin/wipe → WipeResult. The administrator's own password, and the ticked box. */
-export interface WipeRequest { password: string; understood: boolean }
+export interface WipeRequest { password: string; understood: boolean; /** Keep every user's active skills (DESIGN.md, "Wiping memory"). */ keepSkills?: boolean }
 /** Something running that a wipe waits for: whose, what kind and in which pool. No thread titles: they may be another user's. */
 export interface WipeBusy { kind: BusyItem["kind"]; user: string; pool?: Pool }
 /**
@@ -2081,6 +2081,30 @@ export interface CodexStatus { installed: boolean; signedIn: boolean; signIn?: {
 /** GET /api/u/:userId/threads/:pool/:threadId/file?path=… → sniffed file bytes, no-store; thread folder only. */
 /** GET /api/u/:userId/photos-of-me → PortraitPhoto[]; POST raw image bytes → UploadResponse; GET …/:name → sniffed portrait bytes, no-store; DELETE …/:name → Ok. */
 export interface PortraitPhoto { path: string; size: number; type: string }
+/**
+ * A skill in the user's library (docs/briefs/skills.md): the person's ("user") or hers ("lyrica"). Hers waits
+ * for approval unless auto-approve is on; `call` is her save_skill call, whose card in `thread` shows its state.
+ */
+export interface SkillInfo {
+  pool: Pool;
+  name: string;
+  state: "active" | "waiting" | "declined";
+  description: string;
+  body: string;
+  author: "user" | "lyrica";
+  thread?: string;
+  call?: string;
+  at: string;
+}
+/** GET /api/u/:userId/skills → Skills. */
+export interface Skills { skills: SkillInfo[]; autoApprove: boolean }
+/** POST /api/u/:userId/skills: the person's own skill, active at once (400 with the reason when it doesn't fit) → SkillInfo. */
+export interface SkillChange { name: string; description: string; body: string; pool?: Pool }
+/** PUT /api/u/:userId/skills/auto-approve → Skills. Her drafts are active at once while it is on. */
+export interface SkillsAutoApprove { autoApprove: boolean }
+// POST /api/u/:userId/skills/:pool/:name/approve and …/decline (404 when none waits) → Skills;
+// DELETE /api/u/:userId/skills/:pool/:name removes every version of it → Skills.
+
 /** GET /api/u/:userId/photo-cloud; PUT { policy } → PhotoCloudSetting. */
 export interface PhotoCloudSetting { policy: "never" | "ask" | "always" }
 

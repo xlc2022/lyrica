@@ -82,7 +82,7 @@ lockUser(userId: string): void
   `systemd-creds decrypt --user --name=lyrica_<name> <file> -`, reading plaintext only from stdout into
   memory. Missing, failed or empty credentials stay locked; logs contain
   only the credential name/id and error class, never stderr or secrets.
-- Wiping memory (`POST /api/u/:userId/admin/wipe` with `WipeRequest { password, understood }`, administrators, the administrator's own password; `GET` the same path for what still runs; `lyrica admin wipe` while lyricad is stopped) answers `WipeResult { wiped, busy: WipeBusy[] }`. While anything runs it only sends stops (`wiped: false`); otherwise core's `wipePools(keyring, users)` deletes every pool and marks every user, `finishWipe(self, userId, userDb)` clears `WIPED_USER_TABLES` once their key is here, and `homeWiped` clears the home mark once their thread folders are gone (`wipePending`, `homeWipePending` read the marks). `KEPT_USER_TABLES` names the rest; a new user.db table goes in one of the two. `POST`/`GET /api/u/:userId/me/wipe` (any user, their own password) is the same for that user alone, through `wipePools(keyring, users, userId)`. See [daemon.md](daemon.md#wiping-memory).
+- Wiping memory (`POST /api/u/:userId/admin/wipe` with `WipeRequest { password, understood, keepSkills? }`, administrators, the administrator's own password; `GET` the same path for what still runs; `lyrica admin wipe` while lyricad is stopped) answers `WipeResult { wiped, busy: WipeBusy[] }`. While anything runs it only sends stops (`wiped: false`); otherwise core's `wipePools(keyring, users)` deletes every pool and marks every user, `finishWipe(self, userId, userDb)` clears `WIPED_USER_TABLES` once their key is here, and `homeWiped` clears the home mark once their thread folders are gone (`wipePending`, `homeWipePending` read the marks). `KEPT_USER_TABLES` names the rest; a new user.db table goes in one of the two. `POST`/`GET /api/u/:userId/me/wipe` (any user, their own password) is the same for that user alone, through `wipePools(keyring, users, userId)`. With `keepSkills`, `wipePools(…, keepSkills)` sets each pool aside as `<pool>.keep.db` and `Memory.carrySkills(userId)` (called by lyricad's finish, at once or at the next unlock) copies its active skills into the fresh pool with `SkillLibrary.restore` and deletes it. See [daemon.md](daemon.md#wiping-memory).
 - Changing the self.db passphrase (`POST /api/u/:userId/admin/passphrase/change` with `PassphraseRotate { current, next }`, administrators; `lyrica admin passphrase`) rekeys self.db in place and re-saves a saved passphrase (if the re-save fails, the saved copy is removed and the response carries a note to save it again); a wrong `current` is `403`. See [daemon.md](daemon.md).
 
 ## core/users
@@ -219,6 +219,7 @@ nothing else. No code path gives a general view a private handle.
 | Threads | `createThread({ interface, parent?, subagent?, child?, unlogged?, title?, project?, goal? })` (a child of a child is refused), `setProject`, `foldThread(projectId, threadId, childrenOnly?)` (existing children become project siblings, preserving entries, steps and wake-ups), `setGoal`, `projectOf`, `projectThreads`, `listThreads({ includeHidden?, parent?, children? })` (`children: true` lists the non-subagent daughters), `getThread` (`Thread.child`), `setHidden`, `setUnlogged`, `appendEntry(threadId, { piId, role, data, text })`, `loadEntries`, `entryWindow`, `entryPage` (entries carry `pinned`), `setTitle`, `exportThread`, `forgetThread(id, author, { children?, keepMemories? })` (forgets its subagents' threads; other daughters go too with `children`, else they are kept with no parent and `child` cleared; `keepMemories` removes no notes or project page and leaves a text-free thread tombstone `t:<thread>` in each forgotten thread's place), `getThreadTombstone(id)` → `{ deletedAt } \| undefined`, `citingThread(id)` → the IDs of the notes and pages citing the thread or its entries, `branchThread(threadId, n, { title? })`, `truncateThread(threadId, fromN, author)` → `{ removed, pins, subagents }`, `subagentsSince(threadId, fromN)`, `copyEntries(from, to, { upTo? })` (a thread's entries into another, for forks and branches), `exportEntries(threadId)` → `ExportedEntry[]` (the conversation alone, for Share with: `conversationOnly` drops her context, memory tool calls and results and thinking, and strips citations; `MEMORY_TOOLS` names the tools), `importEntries(threadId, entries)` (into an empty thread of this pool, as its own, indexed, entries), `entriesMentioning(needle)` → `{ thread, n }[]` (where an upload is still mentioned), `countEntries(threadId, role)` (such as its compactions) |
 | Pins | `pinEntry(threadId, n, pinned)`, `pins(threadId?)` → `PinnedEntry[]` (one thread's, or the pool's), oldest first |
 | Reactions | `react(threadId, n, emoji, by, on)` → `Reaction[]` (`{ emoji, by: string[] }`, `by` user IDs or `LYRICA_REACTS`); `entryPage` entries carry `reactions`. Pool schema step 2 (`entries.reactions`, JSON) |
+| Skills | `skills` → `SkillLibrary` for this pool (core/src/skills.ts): `all()`, `active()`, `read(name)`, `byCall(call)`; a store's also `put(input)` (the person's, active at once), `propose(input, thread, call, autoApprove)` (hers: active with auto-approve, else waiting beside the active one), `approve(name)`, `decline(name)`, `remove(name)`. `checkSkill` and `SKILL_LIMITS` (name 64, description 200, body 8000, 100 per pool). Pool step 10 adds `skills` |
 | Code tasks | `codeTask(threadId)` → `{ task, done, at }` or undefined; `setCodeTask(threadId, task, done = "")` replaces it (300 / 1,200 characters), with credential removal. Pool step 9 adds `code_tasks`, deleted with the thread; no task text enters user.db |
 | Drafts | `draft(threadId)` → `{ text, updatedAt }` or undefined, `setDraft(threadId, text)` (empty deletes it); one per thread, gone with the thread. Pool schema step 3 (`drafts`) |
 | Projects | `pageForProject(threadId)`, `projectNotes(threadId, since?)` |
@@ -1046,6 +1047,15 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `read_memory` alike. The wake phase hides the journal and sleep's own
     threads;
   - `sleep`: the `/sleep` command, where the host offers it (the bench);
+  - `skills`: `{ index(), read(name), propose?(input, toolCallId) }`.
+    `index()` gives the stable `skills` section for the turn
+    (`skillsIndex(ListedSkill[])`, at most 40 skills and `SKILLS_IN_ALL`,
+    4,000 characters, reported with the project's sections). `read(name)` gives
+    a library skill's body for `read_memory` `s:<name>`. `propose` registers
+    `save_skill({ name, description, body })`, which is turned off with
+    `remember` in an unlogged thread. lyricad lists the active skills of the
+    thread view's own pool, then of the pools it reads (a name once), then `repoSkills(target, checkouts, cache?)`,
+    cached per thread by checkout and HEAD;
   - `name()`: her name for this deployment, read every turn. Automatic
     recall leaves it out of the query (`skip`) and asks for two shared
     words (`minWords: 2`); `lyricad` passes `selfName`.
@@ -1143,6 +1153,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `read`, `write`, `edit` and `bash` (Workspace thread; see
     [workspace.md](workspace.md));
   - `remember`, `recall` and `read_memory` (Memory thread);
+  - `save_skill` (Skills; see `LyricaOptions.skills`);
   - `delegate`, and `ask_parent` in subagents (Delegation thread; see
     [delegate](#delegate));
   - `threads`, in every hosted thread but a subagent's
@@ -1903,6 +1914,7 @@ settings(userId).setCommandRules(pool, project, rules) / addCommandRule(pool, pr
 settings(userId).checks(pool, project): string[] / setChecks(pool, project, checks)
 // checkChecks: at most 8 commands, each one line of at most 300 characters, no control characters; blanks dropped.
 // user step 16 adds project_settings.checks, JSON default [].
+settings(userId).skillsAutoApprove() / setSkillsAutoApprove(on)   // her skills active at once; user.db setting skills.auto_approve
 forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), madeFiles(paths), madeSince(since), fileNotes() },
               // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:

@@ -1,12 +1,12 @@
 // Wiping memory (DESIGN.md, "Wiping memory"): an administrator, with their own
 // password and the box ticked, deletes every user's threads and memories in
 // both pools. Users, passwords and endpoints stay; running work is stopped first.
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { KEPT_USER_TABLES, WIPED_USER_TABLES } from "@lyrica/core";
 import { fakeOpenAI } from "../../core/test/fake-openai.ts";
-import type { EndpointInfo, ThreadSummary, WipeResult } from "../src/api.ts";
+import type { EndpointInfo, Skills, ThreadSummary, WipeResult } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 describe("wiping memory", () => {
@@ -124,6 +124,56 @@ describe("wiping memory", () => {
     const db = d.services!.users.openUserDb(rt.ada.id);
     try { expect(db.prepare("SELECT count(*) AS n FROM pinned_threads").get()).toEqual({ n: 1 }); } finally { db.close(); }
     expect(existsSync(join(rt.home, "users", rt.ada.id, "general.db"))).toBe(true);
+  });
+
+  it("keeps active skills when asked, for an unlocked user at once and a locked one at their next unlock", async () => {
+    const rt = await runtime();
+    const { base } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(base, "ada", "pw");
+    const sam = await login(base, "sam", "pw2");
+    const au = `/api/u/${rt.ada.id}`;
+    const su = `/api/u/${rt.sam.id}`;
+    const skill = (name: string) => ({ name, description: `When ${name} comes up.`, body: "Do it." });
+    await ada.post(`${au}/skills`, skill("release"));
+    await ada.post(`${au}/skills`, { ...skill("secret-recipe"), pool: "private" });
+    await sam.post(`${su}/skills`, skill("sams-way"));
+    await ada.post<ThreadSummary>(`${au}/threads`, { pool: "general", title: "Miso the cat" });
+    await sam.post(`${su}/lock`, {});
+
+    expect((await ada.post<WipeResult>(`${au}/admin/wipe`, { password: "pw", understood: true, keepSkills: true })).body.wiped).toBe(true);
+    expect((await ada.get<ThreadSummary[]>(`${au}/threads`)).body).toEqual([]);
+    const names = async (c: typeof ada, u: string) => (await c.get<Skills>(`${u}/skills`)).body.skills.map((k) => `${k.pool}/${k.name}`);
+    expect(await names(ada, au)).toEqual(["general/release", "private/secret-recipe"]);
+    expect(existsSync(join(rt.home, "users", rt.sam.id, "general.keep.db"))).toBe(true);
+    const sam2 = await login(base, "sam", "pw2");
+    expect(await names(sam2, su)).toEqual(["general/sams-way"]);
+    expect(existsSync(join(rt.home, "users", rt.sam.id, "general.keep.db"))).toBe(false);
+
+    // Without the option, skills go with everything else.
+    expect((await ada.post<WipeResult>(`${au}/me/wipe`, { password: "pw", understood: true })).body.wiped).toBe(true);
+    expect(await names(ada, au)).toEqual([]);
+  });
+
+  it("finishes the rest of a wipe when the kept skills can't be read, leaving them for the next unlock", async () => {
+    const rt = await runtime();
+    const { base, d, logs } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(base, "ada", "pw");
+    const sam = await login(base, "sam", "pw2");
+    const su = `/api/u/${rt.sam.id}`;
+    const plans = (await sam.post<ThreadSummary>(`${su}/threads`, { pool: "general", title: "Sam's plans" })).body;
+    await sam.put(`${su}/threads/general/${enc(plans.id)}/pin`, {});
+    await sam.post(`${su}/lock`, {});
+    expect((await ada.post<WipeResult>(`/api/u/${rt.ada.id}/admin/wipe`, { password: "pw", understood: true, keepSkills: true })).body.wiped).toBe(true);
+    const kept = join(rt.home, "users", rt.sam.id, "general.keep.db");
+    writeFileSync(kept, "not a database");
+    const sam2 = await login(base, "sam", "pw2");
+    expect((await sam2.get<ThreadSummary[]>(`${su}/threads`)).body).toEqual([]);
+    expect(existsSync(kept)).toBe(true);
+    expect(logs.join("\n")).toContain("keeping skills through a wipe failed");
+    const db = d.services!.users.openUserDb(rt.sam.id);
+    try { expect(db.prepare("SELECT count(*) AS n FROM pinned_threads").get()).toEqual({ n: 0 }); } finally { db.close(); }
   });
 
   it("names every user.db table as wiped or kept", async () => {

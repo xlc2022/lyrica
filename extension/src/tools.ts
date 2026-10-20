@@ -15,8 +15,8 @@ export const RECALL_GUIDELINES = [
   "<recall> and WAKE are background: what the person asks in this conversation outranks what memory brings up. Answer what they said, and bring up other work or an earlier conversation only when their message is about it or they ask what's open. When they ask to drop a topic, agree in a few words without naming it or anything from it, and leave it, without reading memory about it, until they bring it back. A hit's date is when it was said or changed: don't guess a different one.",
 ];
 
-/** With `readOnly` (subagents), only recall and read_memory. */
-export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () => Omit<MemoryContext, "folders">, opts: { readOnly?: boolean } = {}): void {
+/** With `readOnly` (subagents), only recall and read_memory. `skill` reads a library skill's body for s:<name>. */
+export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () => Omit<MemoryContext, "folders">, opts: { readOnly?: boolean; skill?: (name: string) => string | undefined } = {}): void {
   if (!opts.readOnly) pi.registerTool({
     name: "remember",
     label: "Remember",
@@ -71,11 +71,12 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
   pi.registerTool({
     name: "read_memory",
     label: "Read memory",
-    description: "Open a page or note by ID, or read the conversation around an entry (e:…) or the start of a thread (t:…).",
+    description: "Open a page or note by ID, a skill (s:…), or read the conversation around an entry (e:…) or the start of a thread (t:…).",
     promptSnippet: "open a memory, or a past conversation, by its ID",
     promptGuidelines: ["Use read_memory with an ID from a citation or a recall hit to see the whole memory, or what was said around it."],
     parameters: Type.Object({ id: Type.String({ description: "For example p:homelab, n:20261009-a1b2c3d4 or e:web/3f7a2c#41." }) }),
     async execute(_id, params) {
+      if (opts.skill && params.id.startsWith("s:")) return text(opts.skill(params.id.slice(2)) ?? `No skill ${params.id.slice(2)}.`);
       return text(formatRead(view, params.id, ctx()));
     },
   });

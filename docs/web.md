@@ -714,6 +714,21 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Pause** or **Resume** (`PATCH …/threads/:pool/:threadId/routines/:id`
   with `paused`) and the bordered Remove icon (`DELETE` at the same path).
   Listings contain no notes. Empty: "No routines."
+  **Skills** (`src/Skills.tsx`, `GET …/skills`, the pools the display
+  shows), after Routines, its explanation the heading's tooltip
+  (`Section`'s `hint`): the
+  **Approve her skills automatically** switch (`PUT …/skills/auto-approve`),
+  then each skill with its name in mono, Waiting or Declined as a state, Yours
+  or her name, Private when it is, its description and its steps folded under
+  **Steps** (a button with the chevron turning down while open, `--tap` tall
+  on touch). A waiting one has plain **Approve** and **Decline**
+  (`POST …/skills/:pool/:name/approve|decline`); the others have **Remove**,
+  confirmed in place (`DELETE`). **Add skill** opens Name, When to use it and
+  Steps with Save and Cancel (`POST …/skills`). Empty: "No skills yet." In
+  the conversation, her `save_skill` call is a card (`SkillCard`): **New
+  skill**, the name in mono, the description and the folded steps, with
+  Approve primary and Decline while it waits, and otherwise its outcome as a dot and
+  words (In her skills, Declined, Replaced or removed).
 - **Portrait photos** (`src/PortraitPhotos.tsx`, `…/settings/portraits`): a card with the photo count pill and a grid of square
   thumbnails (132 px minimum, 12 px gap), the filename in mono underneath,
   and the existing row menu for Download and Delete…. The existing confirm
@@ -746,7 +761,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Updates**, **Persona**: the persona changes that users sent on
   (who sent them, whether they edited them, and a confirmation when the file
   changed since), and **Reset** (`src/Wipe.tsx`): **Wipe memory…** opens a
-  dialog with its sentence, an unticked "I understand this can't be undone",
+  dialog with its sentence, **Keep everyone's skills** (ticked; `keepSkills`), an unticked "I understand this can't be undone",
   **Your password**, Cancel and **Wipe memory**, enabled once both are given
   (`POST …/admin/wipe`; a 401 says "That isn't your password."). When
   something was running the same dialog becomes **Stopping everything**: a
@@ -755,7 +770,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   nothing runs, when it says **Everything has stopped** and **Wipe memory**
   enables again. Done, the section says "Memory wiped.". Settings ends with
   its own **Reset**: **Wipe my memory…** opens the same dialog, "Wipe your
-  memory?", on `POST`/`GET …/me/wipe`, which wipes and lists only the user's
+  memory?", with **Keep my skills**, on `POST`/`GET …/me/wipe`, which wipes and lists only the user's
   own; its stopping state is titled **Stopping your work**. Her name (`src/name.ts`, `her()`) is what every label,
   placeholder and sentence says where this doc says Lyrica, and the tab's
   title. **Tailnet** (`src/Tailnet.tsx`; docs/ux.md §6 "The tailnet"): a

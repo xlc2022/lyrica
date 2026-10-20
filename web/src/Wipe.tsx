@@ -1,6 +1,6 @@
 // Administration → Reset and Settings → Reset (docs/ux.md §6 "Wiping memory"):
 // Wipe memory… (everyone's) or Wipe my memory… (the user's own) opens a dialog
-// with its sentence, an unticked box and the person's own password.
+// with its sentence, Keep skills (ticked), an unticked box and the person's own password.
 // While anything runs, the server sends it a stop and the dialog waits, showing
 // what it is stopping, until the wipe can go ahead.
 import { useEffect, useState } from "react";
@@ -30,6 +30,8 @@ export function WipeSection({ ctx, mine }: { ctx: ShellContext; mine?: boolean }
 
 function WipeDialog({ userId, mine, onCancel, onWiped }: { userId: string; mine: boolean; onCancel: () => void; onWiped: () => void }) {
   const [understood, setUnderstood] = useState(false);
+  // Skills are procedures, not what was said: kept unless the person unticks it.
+  const [keepSkills, setKeepSkills] = useState(true);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -46,7 +48,7 @@ function WipeDialog({ userId, mine, onCancel, onWiped }: { userId: string; mine:
   const wipe = async () => {
     setBusy(true); setError("");
     try {
-      const r = await post<WipeResult>(path, { password, understood });
+      const r = await post<WipeResult>(path, { password, understood, keepSkills });
       if (r.wiped) onWiped();
       else setStopping(r.busy);
     } catch (e) {
@@ -81,6 +83,7 @@ function WipeDialog({ userId, mine, onCancel, onWiped }: { userId: string; mine:
           <p>{mine
             ? "Your threads, projects and memories in General and Private are deleted, with their thread files. Your password, endpoints, models and settings stay. This can't be undone."
             : "Every user's threads, projects and memories in General and Private are deleted, with their thread files. Users, passwords, endpoints, models and settings stay. This can't be undone."}</p>
+          <label className="check"><input type="checkbox" checked={keepSkills} onChange={(e) => setKeepSkills(e.target.checked)} /> {mine ? "Keep my skills" : "Keep everyone's skills"}</label>
           <label className="check"><input type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} /> I understand this can't be undone</label>
           <label className="field"><span>Your password</span><input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
         </>

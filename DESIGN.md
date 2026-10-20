@@ -1633,15 +1633,15 @@ Details in [docs/memory.md](docs/memory.md).
   from Administration → **Reset** (or `lyrica admin wipe` with lyricad
   stopped), with an unticked confirm box and their own password. It deletes
   every user's threads, projects and memories in both pools (WAKE, journal,
-  pages, notes, wake-ups, routines, checklists, questions), what user.db
+  pages, notes, wake-ups, routines, checklists, questions, skills), what user.db
   keeps about those threads (models chosen per thread, call records, pins,
   groups, workspace grants per thread, child threads, persona drafts, which
   thread wrote each file), threads
   in transit between users, persona suggestions waiting for administrators,
   and each thread's folder, Claude Code folder and file snapshots in the
   home workspace. Users, passwords and keys, endpoints, models, presets,
-  machines, Git accounts, MCP servers, delegate roles, settings, portrait
-  photos and Lyrica's persona and name stay, and nobody is logged out.
+  machines, Git accounts, MCP servers, delegate roles, settings,
+  portrait photos and Lyrica's persona and name stay, and nobody is logged out.
   Anything running is sent a stop first and the wipe waits until everything
   has stopped. A locked user's pools go at once; their user.db rows and
   thread folders at their next unlock. Backups, update snapshots, branches
@@ -1652,6 +1652,43 @@ Details in [docs/memory.md](docs/memory.md).
   folders, threads they sent or were sent, and persona suggestions they
   sent. Other users' memory and everything kept above stay, and only their
   own running work is stopped first.
+  Both dialogs have **Keep skills**, ticked by default (the owner,
+  2026-10-20): each active skill stays in its pool, without links to the
+  threads that made it; drafts still waiting go. A locked user's pools are
+  then set aside, still encrypted, until their next unlock copies the
+  skills out and deletes them.
+
+### Skills
+
+Principles 3, 6 and 8 (2026-10-20, roadmap item 4). A skill is a named
+procedure for a job that comes up again: a name, a one-line description of
+when to use it, and steps in Markdown (at most 8,000 characters).
+
+- **Where skills come from.**
+  - Granted repositories: `.claude/skills/*/SKILL.md` and
+    `.agents/skills/*/SKILL.md` in each checkout, at most 20 per
+    repository.
+  - The person: written in **Settings → Skills**.
+  - Lyrica: she saves one with `save_skill` after a job worked, or when
+    asked to remember how to do something.
+- **Storage.** The person's and hers live in the pool they belong to, in
+  that pool's encrypted database (`skills`, pool step 10), at most 100 per
+  pool, and are reached only through the pool's view. A skill she saves
+  from a Private thread is in private.db, so only Private threads list it;
+  the person's are General unless they choose Private.
+- **Approval.** Her skills wait for the person's approval, on a card in her
+  thread, in Notifications and in Settings → Skills, unless the person turns
+  on **Approve her skills automatically**. A new version of a skill waits
+  beside the active one, which stays until the new one is approved. Nothing
+  from a repository or from her can approve a skill or turn auto-approve on.
+- **In every thread.** A stable `skills` section lists each one as its name
+  and description, capped at 40 skills and 4,000 characters. She reads the
+  steps on demand: with `read_memory` and `s:<name>` for a library skill,
+  or with `read` at its path for a repository's. Subagents don't get the
+  list.
+- Skills are memory, so a wipe removes them with the pools unless
+  **Keep skills** stays ticked ("Wiping memory"). The auto-approve switch,
+  a user.db setting, always stays.
 
 ## Sleep
 

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  checkReadable, Keyring, Memory, migrate, MigrationFailed, MIN_READER, openEncrypted, SCHEMA, schemaOf, SchemaTooNew, STEPS, Users, WorkspaceSettings,
+  checkReadable, Keyring, Memory, migrate, MigrationFailed, MIN_READER, openEncrypted, SCHEMA, schemaOf, SchemaTooNew, SkillLibrary, STEPS, Users, WorkspaceSettings,
   type Db, type DbKind, type MigrationStep,
 } from "../src/index.ts";
 import { ARGON2, freshKeyring, KDF_ITER, profile } from "./helpers.ts";
@@ -528,5 +528,24 @@ describe("user step 16 (project checks)", () => {
     expect(() => settings.setChecks("general", "web/p", Array.from({ length: 9 }, (_, i) => `check ${i}`))).toThrow(/at most 8/);
     expect(() => settings.setChecks("general", "web/p", "npm test")).toThrow(/list/);
     db.close();
+  });
+});
+
+describe("pool step 10 (skills)", () => {
+  it("adds the skills table to every released pool schema, keeping earlier readers and thread data", () => {
+    for (let version = 1; version < 10; version++) {
+      const db = scratchDb();
+      const previous = STEPS.pool.filter((s) => s.version <= version);
+      migrate(db, "pool", {}, previous);
+      SEED.pool(db);
+      migrate(db, "pool");
+      const skills = new SkillLibrary(db, "general");
+      skills.put({ name: "render-check", description: "Before saying a scene works.", body: "Take a screenshot." });
+      expect(skills.active().map((s) => s.name), `v${version}`).toEqual(["render-check"]);
+      expect(db.prepare("SELECT title FROM threads WHERE id = 'web/a'").get()).toEqual({ title: "A test thread" });
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.pool, minReader: MIN_READER.pool });
+      expect(() => checkReadable(db, "pool", previous)).not.toThrow();
+      db.close();
+    }
   });
 });

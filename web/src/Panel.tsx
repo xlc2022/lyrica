@@ -10,6 +10,7 @@ import {
 } from "./api.ts";
 import { PushSection } from "./Push.tsx";
 import { RoutinesSection } from "./Routines.tsx";
+import { SkillsSection } from "./Skills.tsx";
 import { ClaudeCodeSection } from "./ClaudeCode.tsx";
 import { CodexSection } from "./Codex.tsx";
 import { GitAccountsSection } from "./Git.tsx";
@@ -52,6 +53,7 @@ const SETTINGS: SectionDef[] = [
   { key: "mcp", label: "MCP servers", body: (ctx) => <McpServersSection ctx={ctx} /> },
   { key: "claude-code", label: "Claude Code and Codex", aliases: ["codex"], body: (ctx) => <><ClaudeCodeSection ctx={ctx} /><CodexSection ctx={ctx} /></> },
   { key: "routines", label: "Routines", body: (ctx) => <RoutinesSection ctx={ctx} /> },
+  { key: "skills", label: "Skills", body: (ctx) => <SkillsSection ctx={ctx} /> },
   { key: "portraits", label: "Portrait photos", body: (ctx) => <PortraitPhotosSection key={ctx.user.id} userId={ctx.user.id} /> },
   { key: "reset", label: "Reset", body: (ctx) => <WipeSection ctx={ctx} mine /> },
 ];
@@ -98,9 +100,10 @@ function Sections({ ctx, page, title, sections, current }: { ctx: ShellContext; 
   );
 }
 
-export function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** A settings card. `hint` is the heading's tooltip, never a caption under it (docs/ux.md). */
+export function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   const id = `h-${title.toLowerCase().replace(/\W+/g, "-")}`;
-  return <section className="card" aria-labelledby={id}><h2 id={id}>{title}</h2>{children}</section>;
+  return <section className="card" aria-labelledby={id}><h2 id={id} {...(hint ? { title: hint } : {})}>{title}</h2>{children}</section>;
 }
 
 export function PronounFields({ value, onChange }: { value: Pronouns; onChange: (p: Pronouns) => void }) {

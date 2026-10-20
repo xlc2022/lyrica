@@ -1,4 +1,4 @@
-import { DEFAULT_THINKING, PushStore, type PushSettings } from "@lyrica/core";
+import { DEFAULT_THINKING, PushStore, type PushSettings, type SkillLibrary } from "@lyrica/core";
 import { pushTarget } from "./push.ts";
 import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
@@ -114,6 +114,8 @@ export function apiRoutes(d: Lyricad): Route[] {
       const settings = s().workspace.settings(user.id); settings.setPhotoCloudPolicy(policy);
       return { policy: settings.photoCloudPolicy() };
     }),
+    // --- Skills (docs/briefs/skills.md) ---
+    ...skillRoutes(d, u),
     // --- State, unlock, login ---
     route("GET", "/api/state", (r) => d.state(r.cookie)),
     route("POST", "/api/unlock", async (r) => {
@@ -1970,22 +1972,22 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("POST", `${u}/me/wipe`, async (r): Promise<Api.WipeResult> => {
       const user = d.userFor(r);
-      const { password, understood } = await r.json<Api.WipeRequest>();
+      const { password, understood, keepSkills } = await r.json<Api.WipeRequest>();
       if (understood !== true) throw new HttpError(400, "tick the box first");
       const keys = [`login:${user.login.toLowerCase()}`, `ip:${r.ip}`];
       await limited(d, keys, async () => { if (!(await s().users.checkPassword(user, String(password ?? "")))) throw new AuthError(); }, "that isn't your password");
-      const done = await d.wipeMemory(user.id);
+      const done = await d.wipeMemory(user.id, keepSkills === true);
       return { wiped: done.wiped, busy: wipeBusy(d, done.busy) };
     }),
     route("GET", `${u}/admin/wipe`, (r): Api.WipeResult => { d.adminFor(r); return { wiped: false, busy: wipeBusy(d, d.busy()) }; }),
     route("POST", `${u}/admin/wipe`, async (r): Promise<Api.WipeResult> => {
       const actor = d.adminFor(r);
-      const { password, understood } = await r.json<Api.WipeRequest>();
+      const { password, understood, keepSkills } = await r.json<Api.WipeRequest>();
       if (understood !== true) throw new HttpError(400, "tick the box first");
       // An open session isn't enough: the administrator's own password is checked, and guesses count on the limiter.
       const keys = [`login:${actor.login.toLowerCase()}`, `ip:${r.ip}`];
       await limited(d, keys, async () => { if (!(await s().users.checkPassword(actor, String(password ?? "")))) throw new AuthError(); }, "that isn't your password");
-      const done = await d.wipeMemory();
+      const done = await d.wipeMemory(undefined, keepSkills === true);
       return { wiped: done.wiped, busy: wipeBusy(d, done.busy) };
     }),
     route("PATCH", `${u}/admin/users/:targetId/profile`, async (r) => {
@@ -3051,4 +3053,62 @@ function pushInfo(d: Lyricad, user: User): Api.PushInfo {
     const url = settings ? new URL(settings.url) : undefined;
     return { host: url?.host ?? "", path: url ? "/•••" : "", set: !!settings, token: !!settings?.token, link: settings?.link ?? false, ...(lastFailure ? { lastFailure } : {}) };
   } finally { db.close(); }
+}
+
+/**
+ * The user's skills: list, add their own, approve or decline hers, remove, and auto-approve. Each pool's skills live
+ * in that pool's database and are reached through its view; only the pools the display shows are listed or changed.
+ */
+function skillRoutes(d: Lyricad, u: string): Route[] {
+  const s = () => d.services!;
+  const inPool = <T>(userId: string, pool: Pool, fn: (skills: SkillLibrary) => T): T => {
+    const view = s().memory.openThreadView(userId, pool);
+    try { return fn(view.own.skills); } finally { view.close(); }
+  };
+  const page = (userId: string): Api.Skills => {
+    const skills = shownPools(display(d, userId)).flatMap((p) => inPool(userId, p, (k) => k.all()));
+    skills.sort((a, b) => Number(b.state === "waiting") - Number(a.state === "waiting") || a.name.localeCompare(b.name) || a.pool.localeCompare(b.pool));
+    return { skills, autoApprove: s().workspace.settings(userId).skillsAutoApprove() };
+  };
+  /** A shown pool from the path, or 404. */
+  const pool = (r: Request, userId: string): Pool => {
+    const p = r.params.pool;
+    if ((p !== "general" && p !== "private") || !shownPools(display(d, userId)).includes(p)) throw new HttpError(404, "not found");
+    return p;
+  };
+  const refused = <T>(fn: () => T, status = 400): T => {
+    try { return fn(); } catch (err) { throw err instanceof HttpError ? err : new HttpError(status, (err as Error).message); }
+  };
+  return [
+    route("GET", `${u}/skills`, (r): Api.Skills => page(d.userFor(r).id)),
+    route("POST", `${u}/skills`, async (r): Promise<Api.SkillInfo> => {
+      const user = d.userFor(r);
+      const change = await r.json<Api.SkillChange>();
+      const p = change.pool ?? "general";
+      if (p !== "general" && p !== "private") throw new HttpError(400, "a skill's pool is general or private");
+      return refused(() => inPool(user.id, p, (k) => k.put(change)));
+    }),
+    route("PUT", `${u}/skills/auto-approve`, async (r): Promise<Api.Skills> => {
+      const user = d.userFor(r);
+      const { autoApprove } = await r.json<Api.SkillsAutoApprove>();
+      if (typeof autoApprove !== "boolean") throw new HttpError(400, "autoApprove is true or false");
+      s().workspace.settings(user.id).setSkillsAutoApprove(autoApprove);
+      return page(user.id);
+    }),
+    route("POST", `${u}/skills/:pool/:name/approve`, (r): Api.Skills => {
+      const user = d.userFor(r);
+      refused(() => inPool(user.id, pool(r, user.id), (k) => k.approve(r.params.name!)), 404);
+      return page(user.id);
+    }),
+    route("POST", `${u}/skills/:pool/:name/decline`, (r): Api.Skills => {
+      const user = d.userFor(r);
+      refused(() => inPool(user.id, pool(r, user.id), (k) => k.decline(r.params.name!)), 404);
+      return page(user.id);
+    }),
+    route("DELETE", `${u}/skills/:pool/:name`, (r): Api.Skills => {
+      const user = d.userFor(r);
+      inPool(user.id, pool(r, user.id), (k) => k.remove(r.params.name!));
+      return page(user.id);
+    }),
+  ];
 }

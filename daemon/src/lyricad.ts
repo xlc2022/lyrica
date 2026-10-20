@@ -612,7 +612,7 @@ export class Lyricad implements Drainable {
    * subagent, a sleep run) it is sent a stop and nothing is wiped: the
    * result lists what was running, and the wipe is asked for again.
    */
-  async wipeMemory(only?: string): Promise<{ wiped: boolean; busy: BusyItem[] }> {
+  async wipeMemory(only?: string, keepSkills = false): Promise<{ wiped: boolean; busy: BusyItem[] }> {
     const s = this.services!;
     if (this.wipingNow) throw new HttpError(409, "a wipe is already running");
     // From here no new turn starts (refuseWhileDraining, host.draining) and ticks and sleep wait, until the wipe is done or gives way.
@@ -633,7 +633,7 @@ export class Lyricad implements Drainable {
         await this.stopWork(id);
         await s.host.close(id);
       }
-      const n = wipePools(this.keyring, s.users, only);
+      const n = wipePools(this.keyring, s.users, only, keepSkills);
       for (const id of unlocked) {
         try {
           this.finishWipe(id, true);
@@ -664,6 +664,13 @@ export class Lyricad implements Drainable {
   private finishWipe(userId: string, now = false): void {
     const s = this.services!;
     const self = this.keyring.self();
+    // Skills a wipe set aside to keep go into the fresh pools first. A failure leaves the set-aside files for the
+    // next unlock and never stops the rest of the wipe.
+    try {
+      s.memory.carrySkills(userId);
+    } catch (err) {
+      this.log(`keeping skills through a wipe failed: ${(err as Error).name}`);
+    }
     if (wipePending(self, userId)) {
       const db = s.users.openUserDb(userId);
       try { finishWipe(self, userId, db); } finally { db.close(); }

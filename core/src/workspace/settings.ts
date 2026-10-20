@@ -371,6 +371,12 @@ export class WorkspaceSettings {
     return (this.db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value;
   }
 
+  /** Her skills are active at once instead of waiting for approval (docs/briefs/skills.md). */
+  skillsAutoApprove(): boolean { return this.setting("skills.auto_approve") === "1"; }
+  setSkillsAutoApprove(on: boolean): void {
+    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('skills.auto_approve', ?)").run(on ? "1" : "0");
+  }
+
   threadWork(threadId: string): ThreadWork | undefined {
     const value = this.setting(`workspace.threadWork.${threadId}`);
     return value ? JSON.parse(value) : undefined;

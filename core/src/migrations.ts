@@ -6,6 +6,7 @@ import { addNotice, ENDPOINT_SCHEMA, MIXED_PRESET, migrate as moveModels, MODEL_
 import { PREFS_SCHEMA } from "./prefs.ts";
 import { POOL_SCHEMA, POOL_UPGRADES, ROUTINES_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
 import { CHANGES_SCHEMA } from "./workspace/changes.ts";
+import { SKILLS_SCHEMA } from "./skills.ts";
 import { MACHINES_SCHEMA, ORIGINS_SCHEMA, upgradeWorkspace, WORKSPACE_SCHEMA } from "./workspace/settings.ts";
 
 // Every encrypted database's schema history. Each database records its schema
@@ -340,6 +341,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
       thread TEXT PRIMARY KEY REFERENCES threads(id) ON DELETE CASCADE,
       task TEXT NOT NULL, done TEXT NOT NULL, at TEXT NOT NULL
     )`); },
+  }, {
+    // Principles 3 and 6: skills, the person's and hers, in the pool they belong to (docs/briefs/skills.md). Adds a table only.
+    version: 10,
+    run(db) { db.exec(SKILLS_SCHEMA); },
   }],
 };
 

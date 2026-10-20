@@ -1,4 +1,5 @@
 import { removeSecrets } from "../secrets.ts";
+import { SkillLibrary } from "../skills.ts";
 import { randomBytes } from "node:crypto";
 import { nextRun, parseSchedule, type Schedule } from "../routines.ts";
 import type { ForgeKind, ForgeWatchState } from "../forge/types.ts";
@@ -294,6 +295,8 @@ export class PoolReader {
   get owner(): UserId { return this.c.owner; }
   protected get db(): Db { return this.c.db; }
   close(): void { this.db.close(); }
+  /** This pool's skills (docs/briefs/skills.md). A reader's connection is read-only, so only its reads work. */
+  get skills(): SkillLibrary { return new SkillLibrary(this.db, this.pool); }
 
   protected render(text: string): string {
     const profiles = this.c.profiles();

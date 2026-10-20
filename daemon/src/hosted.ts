@@ -3,10 +3,10 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   ANSWER, answerMark, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
-  type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Users, type Workspace,
+  type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  checkoutsOf, codeRepositories, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
+  checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -975,6 +975,8 @@ export class HostedThread {
       // delegate is offered where the depth limit allows; it attaches itself, so background results reach this session.
       const canDelegate = delegation.depth(ctx) < delegation.limits.depth;
       const meter = new ContextMeter();
+      // Repository skills by checkout and HEAD, so an unchanged checkout costs one git call a turn.
+      const repoSkillsSeen = new Map<string, ListedSkill[]>();
       const { session, runtime, prepare, dispose } = await openThreadSession({
         thread: ctx, models, cwd: this.o.cwd, task: () => tools.settings().code ? "code" : "chat",
         extensions: [
@@ -982,6 +984,19 @@ export class HostedThread {
             code: () => tools.settings().code,
             codeRepositories: () => codeRepositories(tools.target(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }), this.o.codePulls?.(this.userId, this.pool, this.threadId)),
             repoRules: () => repoRules(tools.target(), checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }))),
+            skills: {
+              // The skills in this thread's own pool, then those it reads (a Private thread's General ones), then each
+              // checkout's own (docs/briefs/skills.md). A name in its own pool wins.
+              index: async () => {
+                const checkouts = checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }));
+                return skillsIndex([
+                  ...librarySkills(view).map((s) => ({ name: s.name, description: s.description, at: `s:${s.name}` })),
+                  ...checkouts.length ? await repoSkills(tools.target(), checkouts, repoSkillsSeen) : [],
+                ]);
+              },
+              read: (name) => [view.own, ...view.reads].map((p) => p.skills.read(name)).find(Boolean)?.body,
+              propose: (input, call) => view.own.skills.propose(input, this.threadId, call, workspace.settings(this.userId).skillsAutoApprove()),
+            },
             persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter,
             recentWork: () => this.recentWork(view),
             reactions: () => this.unseenReactions.splice(0),
@@ -1244,6 +1259,12 @@ export class Busy extends Error {}
 
 /** A message carries a mark only lyricad may put on it. */
 export class MarkedText extends Error {}
+
+/** The active skills a thread's view sees: its own pool's, then the pools it reads, a name listed once. */
+function librarySkills(view: PoolView): Skill[] {
+  const seen = new Set<string>();
+  return [view.own, ...view.reads].flatMap((p) => p.skills.active()).filter((s) => !seen.has(s.name) && !!seen.add(s.name));
+}
 
 function refusal(err: unknown): string {
   const message = (err as Error)?.message ?? String(err);
