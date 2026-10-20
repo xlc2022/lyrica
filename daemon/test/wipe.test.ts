@@ -98,6 +98,34 @@ describe("wiping memory", () => {
     expect(model.requests).toHaveLength(0);
   });
 
+  it("wipes only the user's own memory from Settings, with their own password", async () => {
+    const rt = await runtime();
+    const { base, d } = await daemon(rt);
+    await browser(base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(base, "ada", "pw");
+    const sam = await login(base, "sam", "pw2");
+    const au = `/api/u/${rt.ada.id}`;
+    const su = `/api/u/${rt.sam.id}`;
+    const adas = (await ada.post<ThreadSummary>(`${au}/threads`, { pool: "general", title: "Ada's garden" })).body;
+    await ada.put(`${au}/threads/general/${enc(adas.id)}/pin`, {});
+    await sam.post<ThreadSummary>(`${su}/threads`, { pool: "general", title: "Sam's plans" });
+    await sam.post<ThreadSummary>(`${su}/threads`, { pool: "private", title: "Sam's worry" });
+
+    // Anyone may wipe their own, not someone else's, and only with their own password and the box ticked.
+    expect((await sam.post(`${au}/me/wipe`, { password: "pw2", understood: true })).status).toBe(401);
+    expect((await sam.post(`${su}/me/wipe`, { password: "pw2", understood: false })).status).toBe(400);
+    expect((await sam.post(`${su}/me/wipe`, { password: "pw", understood: true })).status).toBe(401);
+    expect((await sam.get<WipeResult>(`${su}/me/wipe`)).body).toEqual({ wiped: false, busy: [] });
+    expect((await sam.post<WipeResult>(`${su}/me/wipe`, { password: "pw2", understood: true })).body).toEqual({ wiped: true, busy: [] });
+
+    // Sam's threads are gone from both pools; Ada's thread and pin stay, and Sam is still signed in.
+    expect((await sam.get<ThreadSummary[]>(`${su}/threads`)).body).toEqual([]);
+    expect((await ada.get<ThreadSummary[]>(`${au}/threads`)).body.map((t) => t.title)).toEqual(["Ada's garden"]);
+    const db = d.services!.users.openUserDb(rt.ada.id);
+    try { expect(db.prepare("SELECT count(*) AS n FROM pinned_threads").get()).toEqual({ n: 1 }); } finally { db.close(); }
+    expect(existsSync(join(rt.home, "users", rt.ada.id, "general.db"))).toBe(true);
+  });
+
   it("names every user.db table as wiped or kept", async () => {
     const rt = await runtime();
     const { base, d } = await daemon(rt);

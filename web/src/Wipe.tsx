@@ -1,5 +1,6 @@
-// Administration → Reset (docs/ux.md §6 "Wiping memory"): Wipe memory… opens a
-// dialog with its sentence, an unticked box and the administrator's password.
+// Administration → Reset and Settings → Reset (docs/ux.md §6 "Wiping memory"):
+// Wipe memory… (everyone's) or Wipe my memory… (the user's own) opens a dialog
+// with its sentence, an unticked box and the person's own password.
 // While anything runs, the server sends it a stop and the dialog waits, showing
 // what it is stopping, until the wipe can go ahead.
 import { useEffect, useState } from "react";
@@ -12,28 +13,29 @@ const KIND: Record<WipeBusy["kind"], string> = { turn: "Reply", subagent: "Subag
 const POOL = { general: "General", private: "Private" } as const;
 const POLL_MS = 1500;
 
-export function WipeSection({ ctx }: { ctx: ShellContext }) {
+/** `mine`: Settings' wipe of the user's own memory; otherwise Administration's wipe of everyone's. */
+export function WipeSection({ ctx, mine }: { ctx: ShellContext; mine?: boolean }) {
   const [open, setOpen] = useState(false);
   const [wiped, setWiped] = useState(false);
   return (
     <Section title="Reset">
       <div className="row">
-        <button type="button" className="danger" onClick={() => { setWiped(false); setOpen(true); }}>Wipe memory…</button>
+        <button type="button" className="danger" onClick={() => { setWiped(false); setOpen(true); }}>{mine ? "Wipe my memory…" : "Wipe memory…"}</button>
       </div>
       {wiped && <p className="meta">Memory wiped.</p>}
-      {open && <WipeDialog userId={ctx.user.id} onCancel={() => setOpen(false)} onWiped={() => { setOpen(false); setWiped(true); }} />}
+      {open && <WipeDialog userId={ctx.user.id} mine={!!mine} onCancel={() => setOpen(false)} onWiped={() => { setOpen(false); setWiped(true); }} />}
     </Section>
   );
 }
 
-function WipeDialog({ userId, onCancel, onWiped }: { userId: string; onCancel: () => void; onWiped: () => void }) {
+function WipeDialog({ userId, mine, onCancel, onWiped }: { userId: string; mine: boolean; onCancel: () => void; onWiped: () => void }) {
   const [understood, setUnderstood] = useState(false);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   // Set once a stop went out: what is still running, polled until nothing is.
   const [stopping, setStopping] = useState<WipeBusy[] | undefined>();
-  const path = u(userId, "admin", "wipe");
+  const path = mine ? u(userId, "me", "wipe") : u(userId, "admin", "wipe");
 
   useEffect(() => {
     if (!stopping?.length) return;
@@ -75,8 +77,10 @@ function WipeDialog({ userId, onCancel, onWiped }: { userId: string; onCancel: (
         </>
       ) : (
         <>
-          <h2 id="wipe-title">Wipe all memory?</h2>
-          <p>Every user's threads, projects and memories in General and Private are deleted, with their thread files. Users, passwords, endpoints, models and settings stay. This can't be undone.</p>
+          <h2 id="wipe-title">{mine ? "Wipe your memory?" : "Wipe all memory?"}</h2>
+          <p>{mine
+            ? "Your threads, projects and memories in General and Private are deleted, with their thread files. Your password, endpoints, models and settings stay. This can't be undone."
+            : "Every user's threads, projects and memories in General and Private are deleted, with their thread files. Users, passwords, endpoints, models and settings stay. This can't be undone."}</p>
           <label className="check"><input type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} /> I understand this can't be undone</label>
           <label className="field"><span>Your password</span><input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
         </>
