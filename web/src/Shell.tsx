@@ -1,7 +1,7 @@
 // The signed-in layout: the sidebar, and the page the route points at.
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { get, patch, post, upload, threadPath, u, type Display, type DisplayChange, type LogoutResponse, type Me, type Pool, type SearchHit, type State, type ThreadGroup, type ThreadSort, type ThreadSummary, type ThreadSettings, type ThreadSettingsChange, type UserCard } from "./api.ts";
-import { href, go, panelRoute, parse, type Panel, type Route } from "./route.ts";
+import { asPanel, href, go, panelRoute, parse, type Panel, type Route } from "./route.ts";
 import { Icon } from "./icons.tsx";
 import { ComposerRow } from "./Composer.tsx";
 import { useDictation, stopReading } from "./Voice.tsx";
@@ -76,8 +76,8 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
   const shown: Route = route.page === "thread" && route.panel && !wide ? panelRoute(route.userId, route.panel) : route;
   const trail = usePanelTrail(route);
 
-  // Close the sidebar overlay whenever the page changes.
-  useEffect(() => setSideOpen(false), [route]);
+  // Close the sidebar overlay whenever the page changes, and forget where a page opened as a page came from once it is left.
+  useEffect(() => { setSideOpen(false); forgetBeside(route); }, [route]);
   const notes = useWaiting(user.id);
   const sleep = useSleepOverview(user.id, me.data?.display);
   const cleanup = useCleanupCount(user.id);
@@ -350,13 +350,59 @@ export function Crumbs() {
   );
 }
 
-/** Open as a page and Close panel, at the end of the panel's header. */
+/**
+ * Where Open as a page left from: the conversation's address, and which page went on its own, so that page
+ * can go back beside it (Open in panel). Kept for the tab's session; where storage is off, for this visit.
+ */
+const BESIDE_KEY = "lyrica.beside";
+let beside: { from: string; page: string } | undefined = (() => { try { return JSON.parse(sessionStorage.getItem(BESIDE_KEY) ?? "null") ?? undefined; } catch { return undefined; } })();
+function keepBeside(b: typeof beside) {
+  beside = b;
+  try { if (b) sessionStorage.setItem(BESIDE_KEY, JSON.stringify(b)); else sessionStorage.removeItem(BESIDE_KEY); } catch { /* kept for this visit only */ }
+}
+/** Which page a panel shows, whatever its drawer, file or section: the page on its own stays the same page through those. */
+const pageKey = (p: Panel) => p.page === "memory" ? `memory/${p.pool}/${p.id}` : `${p.page}/${p.pool}/${p.threadId}`;
+
+/** The conversation the page at `route` was opened from with Open as a page, with this page in its panel as it is now; forgotten once another page shows. */
+function besideRoute(route: Route): Route | undefined {
+  const panel = asPanel(route);
+  if (!beside || !panel || pageKey(panel) !== beside.page) return undefined;
+  const from = parse(beside.from);
+  return from.page === "thread" ? { ...from, panel } : undefined;
+}
+function forgetBeside(route: Route) {
+  const panel = asPanel(route);
+  if (beside && (!panel || pageKey(panel) !== beside.page)) keepBeside(undefined);
+}
+
+/** Open as a page and Close panel at the end of the panel's header; on a page opened that way, Open in panel in their place, from 1180 px up. */
 export function PanelButtons() {
   const p = usePanel();
+  const wide = useWide();
+  const back = !p && wide ? besideRoute(parse(location.hash)) : undefined;
+  const backHref = back && href(back);
+  // Esc on the page goes back beside the conversation, as it closes the panel.
+  useEffect(() => {
+    if (!backHref) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if ((e.target as Element).closest?.("dialog, [role='menu'], .drawer, .picker, [aria-expanded='true'], .panel")) return;
+      location.hash = backHref;
+    };
+    addEventListener("keydown", key);
+    return () => removeEventListener("keydown", key);
+  }, [backHref]);
+  if (backHref) {
+    return (
+      <div className="head-actions panel-actions">
+        <a className="icon sm" href={backHref} aria-label="Open in panel" title="Open in panel"><Icon name="collapse" /></a>
+      </div>
+    );
+  }
   if (!p) return null;
   return (
     <div className="head-actions panel-actions">
-      <a className="icon sm" href={p.expand} aria-label="Open as a page" title="Open as a page"><Icon name="expand" /></a>
+      <a className="icon sm" href={p.expand} aria-label="Open as a page" title="Open as a page" onClick={() => keepBeside({ from: location.hash, page: pageKey(asPanel(parse(p.expand))!) })}><Icon name="expand" /></a>
       <button type="button" className="icon sm" aria-label="Close panel" title="Close panel" onClick={p.close}><Icon name="close" /></button>
     </div>
   );

@@ -56,6 +56,16 @@ export type Panel =
 /** The panel's own page, as a route of its own. */
 export const panelRoute = (userId: string, p: Panel): Route => ({ ...p, userId });
 
+/** A page the panel can show, as the panel's part of an address; undefined for any other page. */
+export function asPanel(r: Route): Panel | undefined {
+  return r.page === "thread" ? { page: "thread", pool: r.pool, threadId: r.threadId, ...(r.drawer ? { drawer: true as const } : {}) }
+    : r.page === "files" ? { page: "files", pool: r.pool, threadId: r.threadId, ...(r.path ? { path: r.path } : {}) }
+    : r.page === "project" ? { page: "project", pool: r.pool, threadId: r.threadId, ...(r.section ? { section: r.section } : {}) }
+    : r.page === "threads" ? { page: "threads", pool: r.pool, threadId: r.threadId }
+    : r.page === "memory" && r.pool && r.id ? { page: "memory", pool: r.pool, id: r.id }
+    : undefined;
+}
+
 export function parse(hash: string): Route {
   const [rawPath = "", rawQuery] = hash.replace(/^#/, "").split("?");
   // A history list's search text and page number ride in the address; only meaningful values are kept (page 1 is the default).
@@ -74,12 +84,7 @@ export function parse(hash: string): Route {
     const inner = at >= 0 ? parse(`#/u/${encodeURIComponent(userId)}/${more.slice(at + 1).map(encodeURIComponent).join("/")}`) : undefined;
     if (c === "files") return { page: "files", userId, pool, threadId: b, ...(more[1] ? { path: more[1] } : {}) };
     if (c === "threads") return { page: "threads", userId, pool, threadId: b };
-    const panel: Panel | undefined = inner?.page === "thread" ? { page: "thread", pool: inner.pool, threadId: inner.threadId, ...(inner.drawer ? { drawer: true as const } : {}) }
-      : inner?.page === "files" ? { page: "files", pool: inner.pool, threadId: inner.threadId, ...(inner.path ? { path: inner.path } : {}) }
-      : inner?.page === "project" ? { page: "project", pool: inner.pool, threadId: inner.threadId, ...(inner.section ? { section: inner.section } : {}) }
-      : inner?.page === "threads" ? { page: "threads", pool: inner.pool, threadId: inner.threadId }
-      : inner?.page === "memory" && inner.pool && inner.id ? { page: "memory", pool: inner.pool, id: inner.id }
-      : undefined;
+    const panel = inner && asPanel(inner);
     return { page: "thread", userId, pool, threadId: b, ...(drawer ? { drawer: true as const } : {}), ...(panel ? { panel } : {}) };
   }
   if (section === "p" && pool && b) return { page: "project", userId, pool, threadId: b, ...(c ? { section: c } : {}) };

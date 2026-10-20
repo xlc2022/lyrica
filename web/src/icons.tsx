@@ -18,6 +18,7 @@ const PATHS = {
   more: "M5 12h.01M12 12h.01M19 12h.01",
   close: "M6 6l12 12M18 6L6 18",
   expand: "M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7",
+  collapse: "M4 14h6v6M3 21l7-7M20 10h-6V4M21 3l-7 7",
   check: "M5 12l5 5L20 7",
   pin: "M12 17v4M8 3h8l-1 7 3 3H6l3-3-1-7z",
   edit: "M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z",
