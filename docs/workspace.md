@@ -974,8 +974,9 @@ with a reply after an `edit`, `write`, `bash` or `delegate` call succeeded
 (a single coder writes in the thread's own checkouts), lyricad runs
 each check with `sh -c` in her sandbox, once in each checkout the thread works
 in (its worktrees, its clones and its writable granted folders), or once in its
-folder when it has none, with 10 minutes each. They don't run in Plan mode
-or after the tool limit turned her tools off, and Stop stops a running check
+folder when it has none, with 10 minutes each. They don't run in Plan mode,
+after the tool limit turned her tools off, or on a reply with only thinking
+(the turn tool limits ask her to carry on), and Stop stops a running check
 and sends nothing. Each run shows a **Checks** notice in the thread, passed
 or failed, listing the commands. A failure gives her the last 60 lines of
 each failing output, unseen and with the thread's secrets masked as her

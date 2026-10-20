@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxProvider, fauxThinking, fauxToolCall } from "@earendil-works/pi-ai";
 import { createAgentSession, DefaultResourceLoader, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
@@ -9,7 +9,7 @@ import type { ExecutionTarget } from "@lyrica/core";
 import { CHECK_ROUNDS, CHECKS_FAILED, CHECKS_NOTICE, createChecksExtension, tail, type ChecksOptions } from "../src/checks.ts";
 
 /** She edits once, then says done after every message; the checks pass from round `passFrom` (never when 0). */
-async function scenario(o: { passFrom?: number; edit?: boolean; options?: Partial<ChecksOptions>; output?: string; reject?: string } = {}) {
+async function scenario(o: { passFrom?: number; edit?: boolean; thinking?: boolean; options?: Partial<ChecksOptions>; output?: string; reject?: string } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-checks-"));
   const faux = fauxProvider({ provider: "faux", models: [{ id: "coder" }] });
   const runs: string[][] = [];
@@ -24,7 +24,7 @@ async function scenario(o: { passFrom?: number; edit?: boolean; options?: Partia
   const done = (ctx: { messages: unknown[] }) => {
     round++;
     seen.push(JSON.stringify(ctx.messages.slice(-1)));
-    return fauxAssistantMessage("Done: the track renders.");
+    return fauxAssistantMessage(o.thinking ? fauxThinking("The track renders now.") : "Done: the track renders.");
   };
   faux.setResponses([
     () => fauxAssistantMessage(o.edit === false ? "Nothing to change." : fauxToolCall("write", { path: "a.ts" }), { stopReason: o.edit === false ? "stop" : "toolUse" }),
@@ -76,6 +76,12 @@ describe("project checks", () => {
       expect(r.runs).toEqual([]);
       expect(r.notices).toEqual([]);
     }
+  });
+
+  it("don't run on a reply with only thinking: it doesn't end her work", async () => {
+    const r = await scenario({ passFrom: 1, thinking: true });
+    expect(r.runs).toEqual([]);
+    expect(r.notices).toEqual([]);
   });
 
   it("run once in the thread's folder when it has no checkout", async () => {
