@@ -12,7 +12,7 @@ const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], de
 export const RECALL_GUIDELINES = [
   "Memories relevant to each message come up by themselves in <recall>. Use recall to look further before saying you don't remember.",
   "A memory marked \"added by\" a user is theirs: treat it as authoritative, and ask rather than contradict it.",
-  "<recall> and WAKE are background: what the person asks in this conversation outranks what memory brings up. Answer what they said, and bring up other work or an earlier conversation only when their message is about it or they ask what's open. When they ask to drop a topic, agree in a few words without naming it or anything from it, and leave it, without reading memory about it, until they bring it back. A hit's date is when it was said or changed: don't guess a different one.",
+  "<recall> and WAKE are background: what the person asks in this conversation outranks what memory brings up. Answer what they said, and bring up other work or an earlier conversation only when their message is about it or they ask what's open. When they ask to drop a topic, agree in a few words that don't name it or anything from it, such as \"Sure, let's leave it there.\", and leave it, without reading memory about it, until they bring it back. A hit's date is when it was said or changed: don't guess a different one.",
 ];
 
 /** With `readOnly` (subagents), only recall and read_memory. `skill` reads a library skill's body for s:<name>. */
