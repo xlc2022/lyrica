@@ -756,7 +756,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   enables again. Done, the section says "Memory wiped.". Settings ends with
   its own **Reset**: **Wipe my memory…** opens the same dialog, "Wipe your
   memory?", on `POST`/`GET …/me/wipe`, which wipes and lists only the user's
-  own. Her name (`src/name.ts`, `her()`) is what every label,
+  own; its stopping state is titled **Stopping your work**. Her name (`src/name.ts`, `her()`) is what every label,
   placeholder and sentence says where this doc says Lyrica, and the tab's
   title. **Tailnet** (`src/Tailnet.tsx`; docs/ux.md §6 "The tailnet"): a
   facts line in mono (tailnet, address, MagicDNS name, control server) and

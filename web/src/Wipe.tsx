@@ -64,9 +64,9 @@ function WipeDialog({ userId, mine, onCancel, onWiped }: { userId: string; mine:
     <Dialog labelledBy="wipe-title" onCancel={onCancel} onSubmit={() => { if (!waiting && understood && password) void wipe(); }}>
       {stopping ? (
         <>
-          <h2 id="wipe-title">{waiting ? "Stopping everything" : "Everything has stopped"}</h2>
+          <h2 id="wipe-title">{waiting ? (mine ? "Stopping your work" : "Stopping everything") : "Everything has stopped"}</h2>
           {waiting ? (
-            <p className="wipe-wait"><span className="spinner" role="status" aria-label="Stopping" />A stop was sent to everything running. The wipe can go ahead once all of it has stopped.</p>
+            <p className="wipe-wait"><span className="spinner" role="status" aria-label="Stopping" />{mine ? "A stop was sent to your running work." : "A stop was sent to everything running."} The wipe can go ahead once all of it has stopped.</p>
           ) : <p>Nothing is running now. The wipe can go ahead.</p>}
           {waiting && (
             <details className="wipe-busy">
