@@ -19,6 +19,8 @@ import { withModels } from "../core/test/helpers.ts";
 // Measured on the local 27B, 15 conversations each: 7 brought work back before
 // the guideline "agree in a few words without naming it", 1 after; every
 // failure was the first reply naming the project while agreeing to drop it.
+// Later builds measured 10/30 (thinking on or off); with an example
+// acknowledgement in the guideline, 3/30, each again the first reply.
 //
 // Scripted, it checks the request and the work-heavy sections both reach her.
 // With LYRICA_EVAL_BASE_URL and LYRICA_EVAL_MODEL (and LYRICA_EVAL_KIND=local
