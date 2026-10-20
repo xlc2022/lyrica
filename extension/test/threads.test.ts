@@ -172,11 +172,11 @@ describe("prose question shape", () => {
 
 describe("hidden nudge context", () => {
   it("expires at a new turn marker even without a typed message", async () => {
-    const { dropAskNudges } = await import("../src/context.ts");
+    const { dropNudges } = await import("../src/context.ts");
     const nudge = { role: "custom", customType: "lyrica-ask-nudge" };
     const turn = { role: "custom", customType: "lyrica-turn" };
-    expect(dropAskNudges([turn, nudge])).toEqual([turn, nudge]);
-    expect(dropAskNudges([turn, nudge, turn])).toEqual([turn, turn]);
+    expect(dropNudges([turn, nudge])).toEqual([turn, nudge]);
+    expect(dropNudges([turn, nudge, turn])).toEqual([turn, turn]);
   });
 });
 

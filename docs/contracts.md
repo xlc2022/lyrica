@@ -870,7 +870,7 @@ Custom roles override built-ins by name.
   it), the thread can ask, no question is open and the run made no `ask`
   call, the extension sends one hidden follow-up (`lyrica-ask-nudge`,
   `display: false`, `deliverAs: "followUp"`) asking her to use a card if the
-  choice blocks her. Context assembly drops it at the next turn.
+  choice blocks her. Context assembly drops it at the next turn (`dropNudges`).
   Ask once on the card, recommend the first option, continue reversible work
   on that option, and end the turn before an irreversible step. Answers
   arrive in later turns. Routine and wake-up turns may ask in their thread.
@@ -1116,6 +1116,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   Pi validates tool schemas before execution and returns validation errors
   naming missing fields. These limits serve principles 1 and 2: real
   runaway turns stop structurally.
+- **Replies with only thinking** (same extension): a reply that isn't an
+  error or a stop and has no text and no tool call would end the run with
+  nothing said or done. The first in a run gets one hidden follow-up
+  (`lyrica-empty-reply-retry`, `CARRY_ON`, dropped at the next turn like
+  `lyrica-ask-nudge`) asking her to carry on. A second stores a
+  `lyrica-empty-reply` message (`EMPTY_REPLY`); the daemon emits it as the
+  turn's `error` event, so a project's thread fails as it would on a model
+  error, and after reload it shows as that reply's error.
 - **Tool guards for OpenAI-compatible endpoints** (`extension/src/tool-stream.ts`,
   wrapped around every local server's and model host's stream in
   `modelRuntimeFor`): `objectTools` sends every tool's parameters with

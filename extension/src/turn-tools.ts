@@ -9,6 +9,12 @@ export const TURN_TOOL_NOTICE = "lyrica-tool-limit";
 /** Told to her, unseen, once the limit stops her tools: the person gets a reply, never only the notice. */
 export const TURN_TOOL_WRAP_UP = "lyrica-tool-limit-wrap-up";
 export const WRAP_UP = "You reached this turn's tool limit, so your tools are off for the rest of this turn. Reply now in a few lines: what you did, where things stand, and what's left.";
+/** Told to her, unseen, after a reply with only thinking in it: no text and no tool call. */
+export const EMPTY_REPLY_RETRY = "lyrica-empty-reply-retry";
+export const CARRY_ON = "Your last reply had only thinking in it: no text and no tool call. Carry on from there: make the tool call you meant to, or write your reply.";
+/** Shown, and reported as the turn's error, when the retry came back empty too. */
+export const EMPTY_REPLY_NOTICE = "lyrica-empty-reply";
+export const EMPTY_REPLY = "The model replied with only its thinking, twice: no answer and no tool call.";
 
 function normalized(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(normalized).join(",")}]`;
@@ -21,12 +27,13 @@ export function createTurnToolsExtension(): ExtensionFactory {
   return pi => {
     let calls = 0, run = 0, last = "", stopped = false, notified = false, why = "";
     let wrapped = false;
+    let empty = 0;
     const repeats = new Map<string, number>();
     const refused = new Map<string, string>();
     // Back on as the run ends: the next prompt's first request is built before agent_start.
     pi.on("agent_end", (_e, ctx) => { if (notified) setToolsOff(pi, ctx, "tool-limit", []); });
     pi.on("agent_start", () => {
-      calls = run = 0; last = why = ""; stopped = notified = wrapped = false;
+      calls = run = empty = 0; last = why = ""; stopped = notified = wrapped = false;
       repeats.clear(); refused.clear();
     });
     // This event precedes schema validation, so malformed and unknown calls count too.
@@ -47,6 +54,16 @@ export function createTurnToolsExtension(): ExtensionFactory {
       if (reason) return { block: true, reason };
     });
     pi.on("turn_end", (e, ctx) => {
+      // A reply with only thinking ends the run with nothing said or done: once, she carries on; again, the turn fails visibly.
+      const m = e.message;
+      if (m.role === "assistant" && m.stopReason !== "error" && m.stopReason !== "aborted"
+        && !m.content.some((c) => c.type === "toolCall" || (c.type === "text" && c.text.trim()))) {
+        if (++empty === 1) {
+          pi.sendMessage({ customType: EMPTY_REPLY_RETRY, content: CARRY_ON, display: false }, { deliverAs: "followUp", triggerTurn: true });
+          return;
+        }
+        if (empty === 2) return { entries: [{ type: "custom_message", customType: EMPTY_REPLY_NOTICE, content: EMPTY_REPLY, display: true }] };
+      }
       if (!stopped) return;
       // Her wrap-up came back with tool calls anyway: end there.
       if (notified) {

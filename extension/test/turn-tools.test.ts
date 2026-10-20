@@ -1,11 +1,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxProvider, fauxToolCall, type JsonObject } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxProvider, fauxThinking, fauxToolCall, type JsonObject } from "@earendil-works/pi-ai";
 import { createAgentSession, DefaultResourceLoader, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { expect, it } from "vitest";
-import { createTurnToolsExtension, MAX_TURN_TOOL_CALLS, TURN_TOOL_NOTICE, WRAP_UP } from "../src/turn-tools.ts";
+import { CARRY_ON, createTurnToolsExtension, EMPTY_REPLY, MAX_TURN_TOOL_CALLS, TURN_TOOL_NOTICE, WRAP_UP } from "../src/turn-tools.ts";
 import { createImageExtension, type ImageTools } from "../src/images.ts";
 import { toMessages } from "../../daemon/src/messages.ts";
 
@@ -107,4 +107,41 @@ it("resets the budget on the next prompt", async () => {
   expect(r.executed).toBe(26);
   expect(r.notices).toHaveLength(1);
   expect(r.requested).toBe(28);
+});
+
+/** Her replies, in order, to one prompt: what each request asked and what the thread shows. */
+async function replies(responses: ReturnType<typeof fauxAssistantMessage>[]) {
+  const dir = mkdtempSync(join(tmpdir(), "lyrica-empty-reply-"));
+  const faux = fauxProvider({ provider: "faux", models: [{ id: "think" }] });
+  const asked: string[] = [];
+  faux.setResponses(responses.map((r) => (ctx: { messages: unknown[] }) => { asked.push(JSON.stringify(ctx.messages)); return r; }));
+  const loader = new DefaultResourceLoader({ cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
+    extensionFactories: [createTurnToolsExtension(), pi => pi.registerProvider(faux.provider)] });
+  try {
+    await loader.reload();
+    const { session } = await createAgentSession({ cwd: dir, agentDir: dir, resourceLoader: loader, sessionManager: SessionManager.inMemory(dir), noTools: "builtin" });
+    try {
+      await session.bindExtensions({});
+      await session.setModel(faux.getModel());
+      await session.prompt("Build the terrain");
+      const entries = session.sessionManager.getEntries();
+      return { asked, shown: toMessages("test", "general", entries.map((data, n) => ({ data, n, createdAt: "2026-10-20" }))) };
+    } finally { session.dispose(); }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+it("asks her once to carry on after a reply with only thinking", async () => {
+  const r = await replies([fauxAssistantMessage(fauxThinking("I'll write the terrain module next.")), fauxAssistantMessage("Terrain done.")]);
+  expect(r.asked).toHaveLength(2);
+  expect(r.asked[1]).toContain(CARRY_ON);
+  const shown = JSON.stringify(r.shown);
+  expect(shown).toContain("Terrain done.");
+  expect(shown).not.toContain(CARRY_ON);
+  expect(r.shown.some((m) => m.error)).toBe(false);
+});
+
+it("fails the turn visibly when the retry has only thinking too", async () => {
+  const r = await replies([fauxAssistantMessage(fauxThinking("Planning.")), fauxAssistantMessage(fauxThinking("Still planning.")), fauxAssistantMessage("never asked")]);
+  expect(r.asked).toHaveLength(2);
+  expect(r.shown.at(-1)).toMatchObject({ role: "assistant", error: EMPTY_REPLY });
 });
