@@ -139,16 +139,19 @@ export function thinkWhenRequired(first: AssistantMessageEventStream, again: () 
   const out = createAssistantMessageEventStream();
   void (async () => {
     let answered = false;
-    for await (const event of first) {
-      if (!answered && event.type === "error" && MUST_THINK.test(event.error.errorMessage ?? "")) {
-        refused();
-        for await (const e of again()) out.push(e);
-        break;
+    try {
+      for await (const event of first) {
+        if (!answered && event.type === "error" && MUST_THINK.test(event.error.errorMessage ?? "")) {
+          refused();
+          for await (const e of again()) out.push(e);
+          break;
+        }
+        answered = true;
+        out.push(event);
       }
-      answered = true;
-      out.push(event);
+    } finally {
+      out.end();
     }
-    out.end();
   })();
   return out;
 }
