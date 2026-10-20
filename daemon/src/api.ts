@@ -1747,6 +1747,15 @@ export interface NewUser { login: string; password: string; displayName: string;
 /** PUT /api/u/:userId/admin/users/:targetId/password (AdminPassword) → Ok. The user's data stays (DESIGN.md, "Users"); they are logged out everywhere, and `Me.warning` tells them until they change it. 401 when `yourPassword` is wrong; 409 for a user with no recovery copy yet. */
 export interface AdminPassword { password: string; /** The administrator's own password, asked again. */ yourPassword: string }
 export interface AdminFlag { admin: boolean }
+/** POST /api/u/:userId/admin/wipe → WipeResult. The administrator's own password, and the ticked box. */
+export interface WipeRequest { password: string; understood: boolean }
+/** Something running that a wipe waits for: whose, what kind and in which pool. No thread titles: they may be another user's. */
+export interface WipeBusy { kind: BusyItem["kind"]; user: string; pool?: Pool }
+/**
+ * wiped false: something was running and was sent a stop; `busy` is what was
+ * running, and the wipe is asked for again once GET /admin/wipe lists nothing.
+ */
+export interface WipeResult { wiped: boolean; busy: WipeBusy[] }
 /** PATCH /api/u/:userId/admin/users/:targetId/profile → UserCard */
 
 /** GET /api/u/:userId/admin/users/:targetId/paths → AllowedPaths */

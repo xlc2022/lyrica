@@ -26,3 +26,4 @@ export * from "./web.ts";
 
 export * from "./routines.ts";
 export * from "./push.ts";
+export * from "./wipe.ts";

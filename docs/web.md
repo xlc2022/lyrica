@@ -739,9 +739,17 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **SearXNG address** in mono, without its password (a basic-auth password
   is kept when the user@host is unchanged), one Save, and Reachable or Unreachable as a
   dot and a word, what failed as its tooltip; `GET`/`PUT …/admin/web-search`),
-  **Updates**, and **Persona**: the persona changes that users sent on
+  **Updates**, **Persona**: the persona changes that users sent on
   (who sent them, whether they edited them, and a confirmation when the file
-  changed since). Her name (`src/name.ts`, `her()`) is what every label,
+  changed since), and **Reset** (`src/Wipe.tsx`): **Wipe memory…** opens a
+  dialog with its sentence, an unticked "I understand this can't be undone",
+  **Your password**, Cancel and **Wipe memory**, enabled once both are given
+  (`POST …/admin/wipe`; a 401 says "That isn't your password."). When
+  something was running the same dialog becomes **Stopping everything**: a
+  spinner beside its sentence and "<n> running" as a disclosure listing each
+  (Reply, Subagent or Sleep · user · pool), polling `GET …/admin/wipe` until
+  nothing runs, when it says **Everything has stopped** and **Wipe memory**
+  enables again. Done, the section says "Memory wiped.". Her name (`src/name.ts`, `her()`) is what every label,
   placeholder and sentence says where this doc says Lyrica, and the tab's
   title. **Tailnet** (`src/Tailnet.tsx`; docs/ux.md §6 "The tailnet"): a
   facts line in mono (tailnet, address, MagicDNS name, control server) and

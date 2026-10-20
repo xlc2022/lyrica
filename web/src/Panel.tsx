@@ -25,6 +25,7 @@ import { href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
 import { WebSearchSection } from "./WebSearch.tsx";
+import { WipeSection } from "./Wipe.tsx";
 import { Confirm, ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
 
 export const PRESETS: Record<string, Pronouns> = {
@@ -64,6 +65,7 @@ const ADMIN: SectionDef[] = [
   { key: "search", label: "Web search", body: (ctx) => <WebSearchSection ctx={ctx} /> },
   { key: "updates", label: "Updates", body: (ctx) => <UpdatesSection ctx={ctx} /> },
   { key: "persona", label: "Persona", body: (ctx) => <ProposalsSection ctx={ctx} /> },
+  { key: "reset", label: "Reset", body: (ctx) => <WipeSection ctx={ctx} /> },
 ];
 
 /** The user's own settings: a page with its sections listed at the left (docs/ux.md §6). */

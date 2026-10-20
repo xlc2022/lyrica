@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  bootstrap, Keyring, MACHINE_LIMITS, MIN_READER, SCHEMA, parseHost, proxmoxAddress, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, Workspace,
+  bootstrap, Keyring, MACHINE_LIMITS, MIN_READER, SCHEMA, parseHost, proxmoxAddress, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, wipePools, Workspace,
   type MachineLimit, type Pool, type Profile, type Pronouns, type User,
 } from "@lyrica/core";
 import { AgentSessionRuntime, InteractiveMode } from "@earendil-works/pi-coding-agent";
@@ -15,6 +15,7 @@ const USAGE = `usage:
   lyrica admin setup-code         (first run: the setup page's code, addresses and fingerprint)
   lyrica admin init               (first run from a terminal instead of the setup page)
   lyrica admin passphrase         (change the self.db passphrase)
+  lyrica admin wipe               (wipe every user's memory and threads; lyricad stopped)
   lyrica admin user add <login> [--admin]
   lyrica admin user list
   lyrica admin user set-admin <login> on|off
@@ -139,6 +140,17 @@ async function admin(args: string[], home: string): Promise<void> {
     console.log(done.savedCopyRemoved
       ? "Passphrase changed. The saved copy couldn't be updated and was removed; save it again under Administration, Start unlocked."
       : "Passphrase changed.");
+    return;
+  }
+  if (sub === "wipe") {
+    // A running lyricad holds the pools open and has threads running: it wipes from Administration instead.
+    if (existsSync(join(home, "lyricad.sock"))) throw new Error("lyricad is running: wipe from Administration, Reset, or stop it first (sudo systemctl stop lyricad).");
+    await keyring.unlockSelf(await ask("self.db passphrase: ", true));
+    await signIn(users, "Administrator login: ").then((u) => { if (!u.admin) throw new Error("only an administrator can wipe memory"); });
+    console.log("Every user's threads, projects and memories in General and Private are deleted, with their thread files. Users, passwords, endpoints, models and settings stay. This can't be undone.");
+    if ((await ask("Type wipe to go on: ")).trim() !== "wipe") throw new Error("nothing was wiped");
+    const n = wipePools(keyring, users);
+    console.log(`Wiped ${n} users' memory. Their thread files go when each is next unlocked.`);
     return;
   }
   if (sub !== "user" && sub !== "grants" && sub !== "ssh" && sub !== "proxmox" && sub !== "net" && sub !== "models") throw new Error(USAGE);

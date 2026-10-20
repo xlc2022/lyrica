@@ -1618,6 +1618,22 @@ Details in [docs/memory.md](docs/memory.md).
   notes' citations of it lead to. Sleep's own threads are never indexed and
   are forgotten 36 hours after each run, so a deleted memory doesn't live on
   in a sleep transcript.
+- **Wiping memory** (2026-10-20): an administrator can start everyone over
+  from Administration → **Reset** (or `lyrica admin wipe` with lyricad
+  stopped), with an unticked confirm box and their own password. It deletes
+  every user's threads, projects and memories in both pools (WAKE, journal,
+  pages, notes, wake-ups, routines, checklists, questions), what user.db
+  keeps about those threads (models chosen per thread, call records, pins,
+  groups, workspace grants per thread, child threads, persona drafts), threads
+  in transit between users, persona suggestions waiting for administrators,
+  and each thread's folder, Claude Code folder and file snapshots in the
+  home workspace. Users, passwords and keys, endpoints, models, presets,
+  machines, Git accounts, MCP servers, delegate roles, settings, portrait
+  photos and Lyrica's persona and name stay, and nobody is logged out.
+  Anything running is sent a stop first and the wipe waits until everything
+  has stopped. A locked user's pools go at once; their user.db rows and
+  thread folders at their next unlock. Backups, update snapshots, branches
+  and anything already sent to a model provider are not covered.
 
 ## Sleep
 
