@@ -605,7 +605,7 @@ test("Downloads History: the queue shows progress with Cancel and how each ended
   await expect(page.getByRole("heading", { level: 1, name: "Download text model" })).toBeVisible();
   await expect(page.getByLabel("Download to")).toHaveValue("ep-box");
   await expect(page.getByLabel("Download to")).toHaveAttribute("title", "/srv/models");
-  await page.getByRole("link", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/text$`));
   await page.getByRole("button", { name: "Download model" }).click();
   await page.getByRole("button", { name: "Download", exact: true }).click();
@@ -694,7 +694,7 @@ async function fakeImages(page: Page) {
   return { asked, zi, qi, offering: { id: "off-z", modelId: `recipe/${zi}`, label: `box/recipe/${zi}`, manual: false, status: "listed", recipe: "Z-Image Turbo", image: true } };
 }
 
-test("a host card shows its models folder, and Change moves the host to another after asking", async ({ page, baseURL }) => {
+test("a host card has one facts line and Pause, Edit and ⋯; Edit opens a drawer that moves the models folder after asking, and Pair again… is a page", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/models-folder-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
@@ -715,23 +715,30 @@ test("a host card shows its models folder, and Change moves the host to another 
   });
   await page.goto(`/#/u/${userId}/models/hosts`);
   const card = page.locator("article.host[data-endpoint=ep-box]");
-  await expect(card.locator(".addrs")).toContainText("models folder/srv/models");
-  await card.getByRole("button", { name: "Change" }).click();
-  await card.getByLabel("Models folder").fill("/mnt/big/models");
+  await expect(card.locator(".host-facts")).toContainText("box.lan:7236·version0.9.0·models folder/srv/models·");
+  await expect(card.locator(".host-top").getByRole("button")).toHaveText(["Pause", "Edit", ""]);
+  await expect(card.locator(".host-facts").getByRole("button", { name: "Dashboard" })).toBeVisible();
+  await shot("card");
+  await card.getByRole("button", { name: "Edit" }).click();
+  const drawer = page.getByRole("complementary", { name: "Edit box" });
+  await drawer.getByLabel("Models folder").fill("/mnt/big/models");
   await shot("change");
-  await card.getByRole("button", { name: "Save" }).click();
+  await drawer.getByRole("button", { name: "Save" }).click();
   const ask = page.getByRole("dialog");
   await shot("dialog");
   await expect(ask.getByRole("heading")).toHaveText("Move box to another models folder?");
   await expect(ask).toContainText("restarts on /mnt/big/models");
   await ask.getByRole("button", { name: "Cancel" }).click();
   expect(asked).toEqual([]);
-  await card.getByRole("button", { name: "Save" }).click();
+  await drawer.getByRole("button", { name: "Save" }).click();
   await ask.getByRole("button", { name: "Move" }).click();
   await expect(card.locator(".status-word")).toHaveText("Moving");
   await shot("moving");
   expect(asked).toEqual([{ path: "/mnt/big/models" }]);
-  await expect(card.getByRole("button", { name: "Change" })).toHaveCount(0);
+  await expect(drawer).toHaveCount(0);
+  await card.getByRole("button", { name: "Edit" }).click();
+  await expect(drawer.getByLabel("Models folder")).toBeDisabled();
+  await drawer.getByRole("button", { name: "Close" }).click();
   await noHorizontalScroll(page);
 
   // A failed move says why; an updater from before this release says how to get one that moves.
@@ -741,9 +748,23 @@ test("a host card shows its models folder, and Change moves the host to another 
   await shot("failed");
   update = { available: true, state: "idle" };
   await page.reload();
-  await expect(card.getByRole("button", { name: "Change" })).toHaveCount(0);
-  await expect(card.locator(".addrs .muted[title]")).toHaveAttribute("title", "Run install.sh on the host again to change it from here.");
+  await expect(card.locator(".host-facts [title]").filter({ hasText: "models folder" })).toHaveAttribute("title", "Run install.sh on the host again to change it from here.");
+  await card.getByRole("button", { name: "Edit" }).click();
+  await expect(drawer.getByLabel("Models folder")).toBeDisabled();
+  await drawer.getByRole("button", { name: "Close" }).click();
+
+  // Pair again… is a page of its own for that host: only the code, then the fingerprint.
+  await card.getByRole("button", { name: "Actions for box" }).click();
+  await page.getByRole("menuitem", { name: "Pair again…" }).click();
+  await expect(page).toHaveURL(/\/models\/hosts\/add-host\?host=ep-box$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Pair box again");
+  await expect(page.getByLabel("Name")).toHaveCount(0);
+  await expect(page.getByLabel("Pairing code")).toBeVisible();
+  await shot("pair-again");
+  await noHorizontalScroll(page);
 });
+
+
 
 test("Image models: groups by architecture with Role and Where; a recipe opens to its parts with Change, Add part and Delete model…; Parts lists the files; To review selects and ignores; Download image model makes a starter after asking, scans and downloads", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);

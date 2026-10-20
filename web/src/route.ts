@@ -26,10 +26,10 @@ export type Route =
    * The Models area, at one of its tabs (Overview when none). `add` is a page under its tab: "host" is Add model host
    * under Hosts and endpoints (`…/hosts/add-host`), "text" is Download text model under Downloads (`…/downloads/text`),
    * "image" Download image model (`…/images/download`) and "review" To review (`…/images/review`) under Image models;
-   * "history" is Download history (`…/downloads/history`).
+   * "history" is Download history (`…/downloads/history`). `host` on Add model host pairs that host again (`?host=`).
    * `q` and `at` (the page number) ride in the address as `?q=&page=` on Call history and Download history, so Back returns to the same search and page.
    */
-  | { page: "models"; userId: string; tab?: ModelsTab; add?: ModelsPageUnder; project?: string; pool?: Pool; q?: string; at?: number }
+  | { page: "models"; userId: string; tab?: ModelsTab; add?: ModelsPageUnder; host?: string; project?: string; pool?: Pool; q?: string; at?: number }
   | { page: "settings"; userId: string; section?: string }
   | { page: "admin"; userId: string; section?: string };
 
@@ -97,7 +97,7 @@ export function parse(hash: string): Route {
   if (section === "models") {
     const tab = MODELS_TABS.find((t) => t === a);
     const add = UNDER.find((x) => x.tab === tab && x.part === b)?.add;
-    return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(add ? { add } : {}), ...(tab === "calls" && params.get("project") ? { project: params.get("project")!, pool: params.get("pool") === "private" ? "private" as const : "general" as const } : {}), ...(q ? { q } : {}), ...(pageNum ? { at: pageNum } : {}) };
+    return { page: "models", userId, ...(tab && tab !== "overview" ? { tab } : {}), ...(add ? { add } : {}), ...(add === "host" && params.get("host") ? { host: params.get("host")! } : {}), ...(tab === "calls" && params.get("project") ? { project: params.get("project")!, pool: params.get("pool") === "private" ? "private" as const : "general" as const } : {}), ...(q ? { q } : {}), ...(pageNum ? { at: pageNum } : {}) };
   }
   // Settings → Endpoints moved to Models → Hosts and endpoints, and Settings → Model presets to Models → Tasks.
   if (section === "settings" && a === "endpoints") return { page: "models", userId, tab: "hosts" };
@@ -138,7 +138,7 @@ export function href(r: Route): string {
     case "notifications": return `#/u/${e(r.userId)}/notifications`;
     case "models": {
       const under = UNDER.find((x) => x.tab === r.tab && x.add === r.add);
-      return `#/u/${e(r.userId)}/models` + (r.tab && r.tab !== "overview" ? `/${r.tab}` : "") + (under ? `/${under.part}` : "") + pageQuery(r, r.tab === "calls" && r.project ? { project: r.project, pool: r.pool ?? "general" } : {});
+      return `#/u/${e(r.userId)}/models` + (r.tab && r.tab !== "overview" ? `/${r.tab}` : "") + (under ? `/${under.part}` : "") + pageQuery(r, r.tab === "calls" && r.project ? { project: r.project, pool: r.pool ?? "general" } : r.add === "host" && r.host ? { host: r.host } : {});
     }
     case "settings": return `#/u/${e(r.userId)}/settings` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");
     case "admin": return `#/u/${e(r.userId)}/admin` + (r.section ? `/${r.section.split("/").map(e).join("/")}` : "");

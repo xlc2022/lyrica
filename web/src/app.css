@@ -1146,6 +1146,7 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .pill { display: inline-flex; align-items: center; font-size: 12px; font-weight: 400; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; line-height: 1.5; }
 .pill.warn { color: var(--warn); border-color: color-mix(in oklab, var(--warn) 45%, var(--line)); }
 .pill.bad { color: var(--danger); border-color: color-mix(in oklab, var(--danger) 45%, var(--line)); }
+.pill.info { color: var(--info); border-color: color-mix(in oklab, var(--info) 45%, var(--line)); }
 /* Portrait photos (web-2 Images brief): square thumbnails and each photo's existing row menu. */
 .portrait-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; min-width: 0; }
 .portrait-photo { min-width: 0; }
@@ -1167,8 +1168,13 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 .host-top h3 { font-size: 15px; }
 .gpu { display: grid; gap: 5px; }
 .gpu-line { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; font-size: 13px; }
-.addrs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
-.addrs code { overflow-wrap: anywhere; }
+/* A host's facts line: plain mono values, no code chips, wrapping between facts. */
+.host-facts { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: baseline; font-size: 13px; color: var(--muted); }
+.host-facts button.link { min-height: 0; padding: 0; position: relative; }
+/* A link in the facts line keeps the line's height on a touch screen, with a 44 px target around it. */
+@media (pointer: coarse) { .models .host-facts button.link.sm { min-height: 0; } .host-facts button.link::after { content: ""; position: absolute; inset: -12px -6px; } }
+.host-facts code { background: none; padding: 0; font-size: 13px; color: var(--fg); overflow-wrap: anywhere; }
+@media (pointer: coarse) { .host-top button.sm { min-height: var(--tap); } }
 .models button.link.sm { min-height: 30px; }
 .model-list { list-style: none; margin: 0; padding: 8px 0 0; border-top: 1px solid var(--line); display: grid; gap: 2px; font-size: 13px; }
 .model-list li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; min-height: 30px; }
