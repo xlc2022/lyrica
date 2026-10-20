@@ -985,8 +985,11 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   them by sender and first line; choosing one scrolls to it and outlines it
   for a second. When the pins are over their budget the badge adds "shortened", with
   a tooltip saying the oldest reach her as their first line only.
-- A `threads` call is a card: the child thread started (title and task) or
-  messaged, linking to it — one **Open** link in its head, or when the run made
+- A `threads` call is a card headed by what it did: "Child thread: <title>"
+  for a start, "Update to the parent thread" or "Message to a thread" for a
+  message, and "Thread read", "Thread stopped", "Thread resolved",
+  "Threads" (list) and the like for the rest (`THREADS_HEADS`); it links
+  to the thread — one **Open** link in its head, or when the run made
   more than one thread a **Threads <n>** button with the count in mono and a
   chevron (`aria-expanded`, turning down while open; `src/Messages.tsx`) that
   opens a dialog of them: each row the title cut to one line and its state as a

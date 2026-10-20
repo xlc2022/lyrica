@@ -1213,6 +1213,11 @@ project page and the web part are built. Recent calls can be filtered by project
   (decided 2026-10-11; folders in
   [briefs/folder-narrowing.md](docs/briefs/folder-narrowing.md)). Two threads may
   write one file; her guidance is a subfolder per thread for its outputs.
+  A code thread has its own folder, so files pass between the threads
+  through the project folder's `shared/`, mounted at `/shared` in every
+  thread of the project; outside a project a thread and its children share
+  one the same way. Messages carry words, not files: the threads tool
+  refuses long or encoded ones (docs/workspace.md, "Handing files over").
 - **What the user sees:**
   - In the sidebar a project is a thread row with a project icon, its
     threads nested under it with their state and unseen count, resolved ones

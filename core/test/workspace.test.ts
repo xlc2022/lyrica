@@ -145,6 +145,9 @@ describe("grants", () => {
     settings.setThread("parent", "general", { grants: [{ path: music, writable: false }] });
     expect(() => settings.setThread("child", "general", { grants: [{ path: music, writable: true }] })).toThrow(/read-only in the parent/);
     expect(settings.folderThread("child2")).toBe("parent");
+    // A family shares one /shared folder: its topmost thread's, at any depth.
+    settings.inheritSettings("child2", "grandchild", "general");
+    expect(["parent", "child2", "grandchild"].map((t) => settings.familyRoot(t))).toEqual(["parent", "parent", "parent"]);
   });
 
   it("narrow a running child's folders at once when its parent's are narrowed", async () => {

@@ -4,7 +4,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 import {
-  decide, type CommandRule, holdsSecret, mcpNamespace, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  decide, type CommandRule, holdsSecret, mcpNamespace, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, SHARED, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -373,6 +373,7 @@ export function describe(tools: ThreadTools): string {
     `Your file and command tools run in a sandbox. ${WORKDIR} is this conversation's folder; uploads arrive in ${WORKDIR}/uploads.`,
     `A ${WORKDIR} path you write is a link the person can open, and an image under it that you write as markdown (![what it shows](${WORKDIR}/plot.png)) shows in your message.`,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
+    SHARED_LINE,
     ...(s.grants.some((g) => g.writable) ? [BUILD_THERE] : []),
     ...(s.threadWork ? [
       ...(s.threadWork.base ? ["You hold the project's base checkout: scaffold or merge here, then resolve this thread to release it."] : []),
@@ -387,6 +388,9 @@ export function describe(tools: ThreadTools): string {
     ...fileNotes(tools.fileNotes?.()),
   ].join("\n");
 }
+
+/** Threads hand files to each other through one folder: a model once planned to send a whole page as base64 chunks in messages. */
+export const SHARED_LINE = `${SHARED} is shared with your parent and child threads (in a project, with its chat and every thread): hand files over there; messages carry words, not files.`;
 
 /** With a read-write folder given, work for it goes there: a model once built a whole project in the sandbox's own folder instead. */
 export const BUILD_THERE = `Build, edit and save the work in a read-write folder you were given (or a repository in ${WORKDIR}/repos), never as loose files in ${WORKDIR}, which is for scratch and things to show the person.`;

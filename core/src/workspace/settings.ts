@@ -647,6 +647,16 @@ export class WorkspaceSettings {
     throw new Error(`thread ${threadId} has too many ancestors`);
   }
 
+  /** The topmost thread above this one (a project's chat for its threads): its family shares one folder. */
+  familyRoot(threadId: string): string {
+    for (let id = threadId, i = 0; i < 100; i++) {
+      const parent = this.thread(id).parent;
+      if (!parent) return id;
+      id = parent;
+    }
+    throw new Error(`thread ${threadId} has too many ancestors`);
+  }
+
   machines(): MachineConfig[] {
     return (this.db.prepare("SELECT * FROM machines ORDER BY name").all() as MachineRow[]).map(toMachine);
   }

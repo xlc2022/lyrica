@@ -26,6 +26,21 @@ async function setup() {
   return { workspace, settings: workspace.settings(ada.id), thread, localOnly };
 }
 
+describe("a family's shared folder", () => {
+  it("is withheld from a local-only thread under a topmost thread that may call the cloud", async () => {
+    const { workspace, settings, thread, localOnly } = await setup();
+    settings.startThread("top", "general");
+    settings.inheritSettings("top", "child", "general");
+    settings.inheritSettings("child", "grandchild", "general");
+    expect(["top", "child", "grandchild"].map((t) => workspace.sharesFamilyFolder(thread(t)))).toEqual([true, true, true]);
+    localOnly.add("child");
+    expect(["top", "child", "grandchild"].map((t) => workspace.sharesFamilyFolder(thread(t)))).toEqual([true, false, false]);
+    // A local-only top keeps its family's files local already.
+    localOnly.add("top");
+    expect(["top", "child", "grandchild"].map((t) => workspace.sharesFamilyFolder(thread(t)))).toEqual([true, true, true]);
+  });
+});
+
 describe("Claude Code's token", () => {
   it("is given to the relay of only a general thread's runs with the switch on, a saved token and a way to Anthropic, never a local-only or private one", async () => {
     const { workspace, settings, thread, localOnly } = await setup();
