@@ -63,6 +63,9 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
 
   // A new title, or a finished turn, may change the sidebar.
   useEffect(() => { if (t.live.title) { summary.reload(); refreshThreads(); } }, [t.live.title, summary.reload, refreshThreads]);
+  // The stream's hello (and each turn's end) reloads the summary too: a title set after the first fetch but before
+  // the stream opened came as no event, as when the file viewer opens this thread beside a file just as it is named.
+  useEffect(() => { if (t.live.reload) summary.reload(); }, [t.live.reload, summary.reload]);
   const { refreshNotifications } = ctx;
   useEffect(() => {
     if (t.live.reload || t.live.settings || t.live.children) { refreshThreads(); refreshNotifications(); }
