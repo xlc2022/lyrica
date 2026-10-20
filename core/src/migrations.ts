@@ -6,7 +6,7 @@ import { addNotice, ENDPOINT_SCHEMA, MIXED_PRESET, migrate as moveModels, MODEL_
 import { PREFS_SCHEMA } from "./prefs.ts";
 import { POOL_SCHEMA, POOL_UPGRADES, ROUTINES_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
 import { CHANGES_SCHEMA } from "./workspace/changes.ts";
-import { MACHINES_SCHEMA, upgradeWorkspace, WORKSPACE_SCHEMA } from "./workspace/settings.ts";
+import { MACHINES_SCHEMA, ORIGINS_SCHEMA, upgradeWorkspace, WORKSPACE_SCHEMA } from "./workspace/settings.ts";
 
 // Every encrypted database's schema history. Each database records its schema
 // version (PRAGMA user_version) and the oldest schema that can still read it
@@ -275,6 +275,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principles 1 and 6: code mode is an editable thread preference, off by default. Expand only.
     version: 14,
     run(db) { addColumns(db, [["thread_workspaces", "code", "INTEGER NOT NULL DEFAULT 0"]]); },
+  }, {
+    // Principle 6: which thread wrote each file, for the file viewer (DESIGN, "Files and images"). Adds a table only.
+    version: 15,
+    run(db) { db.exec(ORIGINS_SCHEMA); },
   }],
   pool: [{
     version: 1, contract: true,

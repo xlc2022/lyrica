@@ -3,6 +3,7 @@ import {
   type ExtensionContext, type ExtensionFactory, type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
+import { posix } from "node:path";
 import {
   decide, type CommandRule, holdsSecret, mcpNamespace, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, SHARED, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
@@ -55,6 +56,10 @@ export interface ThreadTools {
   proposePlan?(request: PlanRequest): Promise<GoAhead | undefined>;
   /** Records what a write or edit call did to a file, so removing its turn can undo it. */
   recordChange?(change: NewChange): void;
+  /** Records that this thread wrote these files in the sandbox (paths as she sees them), for the file viewer's thread beside a file. */
+  madeFiles?(paths: string[]): void;
+  /** The same for a command: the files in her folder and /shared newer than `since`, its start, found in the background. */
+  madeSince?(since: Date): void;
   /** What the person's Files panel added or removed since her last turn, names only; taking them clears them. */
   fileNotes?(): { added: string[]; removed: string[] };
 }
@@ -188,7 +193,15 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           const tool = create(cwd, { operations: ops as never });
           // Pi resolves paths against the session's cwd, which is on the host; use the target's.
           const here = new Proxy(ctx, { get: (t, k) => (k === "cwd" ? cwd : Reflect.get(t, k)) });
-          return tool.execute(id, rest, signal, onUpdate, here);
+          if (machine || (name !== "write" && name !== "edit" && name !== "bash")) return tool.execute(id, rest, signal, onUpdate, here);
+          const since = new Date();
+          try {
+            return await tool.execute(id, rest, signal, onUpdate, here);
+          } finally {
+            // Which thread wrote what, for the file viewer; a failed sweep only leaves it unrecorded.
+            if (name === "bash") tools.madeSince?.(since);
+            else if (typeof rest.path === "string") tools.madeFiles?.([posix.resolve(cwd, rest.path)]);
+          }
         },
       });
     }

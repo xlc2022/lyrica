@@ -758,6 +758,10 @@ documented in `daemon/src/api.ts`, "The Files panel".
 - `POST …/files/zip { paths }` answers `application/zip`, built in Node as it
   streams from `cat` in the sandbox: nothing is written to disk, and no zip
   tool is needed in the sandbox.
+- Listings, searches and images carry `madeBy`, the thread that last wrote
+  each file (docs/workspace.md, "Which thread wrote each file"), a subagent's
+  work shown as its nearest thread that isn't one; a listing that isn't cut
+  short drops the records of files no longer in that folder.
 - What the panel adds or removes is noted in `user.db` (`panel_files`), and
   her next turn's prompt gets one line naming it ("Since your last turn, in the
   Files panel, the person added … and removed …"), then the notes are cleared.

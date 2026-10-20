@@ -383,6 +383,19 @@ takes is `lyrica@pve!agent=<that secret>`.
   read-only grant are refused (`FilesRefused`). Uploads land under a free name,
   as in the message box. Adds and removes are noted (`panel_files` in
   `user.db`) and told to her once, at her next turn, by `ThreadTools.fileNotes`.
+- **Which thread wrote each file** is recorded in `user.db` (`file_origins`:
+  the folder's thread, the path in it, the thread, the time; never content),
+  so the file viewer shows that thread beside the file. Her sandbox `write`
+  and `edit` calls record their file; a `bash` call records, in the background
+  after it returns, the files in `/workspace` and `/shared` newer than its
+  start (not `repos/`, `.git` or `node_modules`), keeping a record another
+  thread made while it ran; uploads and her images record the thread they
+  came in. It is the last writer, and her work on a machine or in a grant
+  isn't recorded. Records go with the file: the panel's Rename moves them,
+  its Delete drops them, a whole listing of a folder drops what it no longer
+  holds (her `rm` included), forgetting a thread drops what it wrote and what
+  was in its folder, and the nightly sweep drops records naming a thread that
+  is gone.
 - An uploaded file is a file, not a memory. She notes what matters from it, as
   with anything else she reads.
 - **What her write and edit calls change is recorded**, so removing the

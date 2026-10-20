@@ -677,3 +677,76 @@ describe("code preference", () => {
     expect(settings.effective("child")).toMatchObject({ code: true, mode: "ask" });
   });
 });
+
+describe("which thread wrote a file", () => {
+  it("keys a path by the folder that holds it, /shared by the family's top, and follows renames, deletes and listings", async () => {
+    const { ada, workspace, settings } = await setup();
+    settings.startThread("web/project", "general");
+    settings.inheritSettings("web/project", "web/child", "general");
+    const child = { userId: ada.id, pool: "general" as const, threadId: "web/child" };
+    const project = { ...child, threadId: "web/project" };
+    // A child thread works in its project's folder, and /shared is shared/ there.
+    expect(workspace.originKey(child, "/workspace/site/index.html")).toEqual({ folder: "web/project", path: "site/index.html" });
+    expect(workspace.originKey(child, "/shared/plan.md")).toEqual({ folder: "web/project", path: "shared/plan.md" });
+    expect(workspace.originKey(child, "/srv/docs/a.txt")).toBeUndefined();
+
+    workspace.madeFiles(child, ["/workspace/site/index.html", "/shared/plan.md", "/workspace/.lyrica/thumbs/x.png"]);
+    workspace.madeFiles(project, ["/workspace/notes.md"]);
+    const entry = (path: string) => ({ name: path.split("/").pop()!, path, kind: "file" as const, size: 1, modified: "2026-10-20T00:00:00.000Z" });
+    const seen = workspace.fileOrigins(project, [entry("/workspace/site/index.html"), entry("/workspace/shared/plan.md"), entry("/workspace/notes.md")]);
+    expect(Object.fromEntries(seen)).toEqual({ "/workspace/site/index.html": "web/child", "/workspace/shared/plan.md": "web/child", "/workspace/notes.md": "web/project" });
+    expect(settings.origins("web/project", [".lyrica/thumbs/x.png"]).size).toBe(0);
+
+    // A command's sweep doesn't take a file another thread wrote while it ran.
+    const since = new Date(Date.now() - 1000);
+    workspace.madeFiles(project, ["/workspace/site/index.html"], since);
+    expect(settings.origins("web/project", ["site/index.html"]).get("site/index.html")).toBe("web/child");
+    workspace.madeFiles(project, ["/workspace/site/index.html"]);
+    expect(settings.origins("web/project", ["site/index.html"]).get("site/index.html")).toBe("web/project");
+
+    // A folder moved takes its files' records with it; one deleted takes them away.
+    settings.moveOrigins("web/project", "site", "www");
+    expect([...settings.origins("web/project", ["site/index.html", "www/index.html"]).keys()]).toEqual(["www/index.html"]);
+    settings.dropOrigins("web/project", ["www"]);
+    expect(settings.origins("web/project", ["www/index.html"]).size).toBe(0);
+    // A name with LIKE's wildcards matches only itself.
+    workspace.madeFiles(project, ["/workspace/a_b/x.txt", "/workspace/aXb/x.txt"]);
+    settings.dropOrigins("web/project", ["a_b"]);
+    expect([...settings.origins("web/project", ["a_b/x.txt", "aXb/x.txt"]).keys()]).toEqual(["aXb/x.txt"]);
+
+    // A whole listing drops what is gone from that folder, and nothing deeper or elsewhere.
+    workspace.madeFiles(project, ["/workspace/shared/old.md"]);
+    workspace.fileOrigins(project, [entry("/workspace/shared/plan.md")], "/workspace/shared");
+    expect([...settings.origins("web/project", ["shared/plan.md", "shared/old.md", "notes.md"]).keys()]).toEqual(["shared/plan.md", "notes.md"]);
+
+    // A forgotten thread's records go, and those in its folder; the sweep takes what names a thread that is gone.
+    settings.forgetOrigins(["web/child"], []);
+    expect(settings.origins("web/project", ["shared/plan.md", "notes.md"]).size).toBe(1);
+    expect(settings.sweepOrigins((id) => id !== "web/project")).toBe(2);
+    expect(settings.origins("web/project", ["notes.md", "aXb/x.txt"]).size).toBe(0);
+  });
+});
+
+describe("the sweep after her command", () => {
+  it("runs in the background, one at a time per thread, the next taking the earliest start asked for meanwhile", async () => {
+    const { ada, workspace } = await setup();
+    const t = { userId: ada.id, pool: "general" as const, threadId: "web/a" };
+    const runs: Date[] = [];
+    let release!: () => void;
+    workspace.madeSince = async (_t, since) => { runs.push(since); await new Promise<void>((r) => { release = r; }); };
+    const [a, b, c] = [new Date(1000), new Date(3000), new Date(2000)];
+    workspace.sweepSince(t, a);
+    workspace.sweepSince(t, b);
+    workspace.sweepSince(t, c);
+    expect(runs).toEqual([a]);
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(runs).toEqual([a, c]);
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    // Done: the next one starts at once.
+    workspace.sweepSince(t, b);
+    expect(runs).toEqual([a, c, b]);
+    release();
+  });
+});
