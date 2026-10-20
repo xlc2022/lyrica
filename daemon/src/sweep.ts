@@ -112,6 +112,25 @@ export function forgetFiles(home: string, changes: FileChanges, pool: Pool, thre
   return n;
 }
 
+/**
+ * After a memory wipe, everything her threads left in a mounted home: every
+ * thread folder (run worktrees forgotten by git first, branches kept), every
+ * Claude Code folder and every snapshot. Returns false while the home isn't
+ * mounted, so the wipe finishes at the next unlock.
+ */
+export function wipeHome(s: Services, userId: string): boolean {
+  const home = s.workspace.homeDir(userId);
+  if (!isMounted(home)) return false;
+  const allowed = allowedOf(s, userId);
+  const threads = join(home, "threads");
+  if (existsSync(threads)) for (const name of readdirSync(threads)) removeThreadFolder(join(threads, name), allowed);
+  for (const dir of ["claude", "snapshots"]) {
+    const d = join(home, dir);
+    if (existsSync(d)) for (const name of readdirSync(d)) rmSync(join(d, name), { recursive: true, force: true });
+  }
+  return true;
+}
+
 function allowedOf(s: Services, userId: string): string[] {
   const paths = s.workspace.allowedPaths.list(userId);
   return [...paths.general, ...paths.private];

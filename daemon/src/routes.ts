@@ -1960,6 +1960,17 @@ export function apiRoutes(d: Lyricad): Route[] {
       await d.lockUser(t.id);
       return { ok: true };
     }),
+    route("GET", `${u}/admin/wipe`, (r): Api.WipeResult => { d.adminFor(r); return { wiped: false, busy: wipeBusy(d, d.busy()) }; }),
+    route("POST", `${u}/admin/wipe`, async (r): Promise<Api.WipeResult> => {
+      const actor = d.adminFor(r);
+      const { password, understood } = await r.json<Api.WipeRequest>();
+      if (understood !== true) throw new HttpError(400, "tick the box first");
+      // An open session isn't enough: the administrator's own password is checked, and guesses count on the limiter.
+      const keys = [`login:${actor.login.toLowerCase()}`, `ip:${r.ip}`];
+      await limited(d, keys, async () => { if (!(await s().users.checkPassword(actor, String(password ?? "")))) throw new AuthError(); }, "that isn't your password");
+      const done = await d.wipeMemory();
+      return { wiped: done.wiped, busy: wipeBusy(d, done.busy) };
+    }),
     route("PATCH", `${u}/admin/users/:targetId/profile`, async (r) => {
       const actor = d.adminFor(r);
       s().users.updateProfile(actor, target(d, r), pick(await r.json<Api.ProfileChange>(), ["displayName", "pronouns", "accent", "monogram"]));
@@ -2045,6 +2056,12 @@ export function apiRoutes(d: Lyricad): Route[] {
 }
 
 // --- Helpers ---
+
+/** What a wipe waits for, as an administrator may see it: the user's display name, never a thread's title. */
+function wipeBusy(d: Lyricad, busy: Api.BusyItem[]): Api.WipeBusy[] {
+  const name = (id: string) => d.services!.users.get(id)?.profile.displayName ?? "";
+  return busy.map((b) => ({ kind: b.kind, user: name(b.userId), ...(b.pool ? { pool: b.pool } : {}) }));
+}
 
 /**
  * One password attempt under the rate limiter: refused while the keys must

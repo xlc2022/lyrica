@@ -1560,3 +1560,43 @@ test("Code mode: thread switch, Coding model and project defaults", async ({ pag
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/code-mode-models-${page.viewportSize()!.width}.png` });
 });
+
+// Last in this file: it wipes this lyricad's memory.
+test("Reset: Wipe memory asks for the box and the password, stops what runs, then wipes", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/wipe-${name}-${page.viewportSize()!.width}.png` }); };
+  await newThread(page, "General");
+  await send(page, "Something to forget");
+  await expect(page.getByText("You said: Something to forget")).toBeVisible();
+  await page.goto(`/#/u/${userId}/admin/reset`);
+  await page.getByRole("button", { name: "Wipe memory…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Wipe all memory?" });
+  const wipe = dialog.getByRole("button", { name: "Wipe memory" });
+  await expect(wipe).toBeDisabled();
+  await dialog.getByLabel("I understand this can't be undone").check();
+  await expect(wipe).toBeDisabled();
+  await dialog.getByLabel("Your password").fill("not-mine");
+  await noHorizontalScroll(page);
+  await shot("confirm");
+  await wipe.click();
+  await expect(dialog.getByRole("alert")).toHaveText("That isn't your password.");
+  await dialog.getByLabel("Your password").fill("pw");
+  // Something is running (the server's side is in daemon/test/wipe.test.ts): until the polls say it stopped,
+  // the dialog waits with a spinner and what it is stopping behind a disclosure.
+  const busy = { wiped: false, busy: [{ kind: "turn", user: "Ada", pool: "general" }, { kind: "sleep", user: "Sam" }] };
+  await page.route(`**/api/u/${userId}/admin/wipe`, (route) => route.fulfill({ json: busy }));
+  await wipe.click();
+  const waiting = page.getByRole("dialog", { name: "Stopping everything" });
+  await expect(waiting.getByRole("status", { name: "Stopping" })).toBeVisible();
+  await expect(waiting.getByRole("button", { name: "Wipe memory" })).toBeDisabled();
+  await waiting.locator("summary").click();
+  await expect(waiting.getByText("Sleep · Sam")).toBeVisible();
+  await shot("stopping");
+  await page.unrouteAll();
+  const stopped = page.getByRole("dialog", { name: "Everything has stopped" });
+  await stopped.getByRole("button", { name: "Wipe memory" }).click();
+  await expect(page.getByText("Memory wiped.")).toBeVisible();
+  await shot("done");
+  const threads = await page.evaluate(async (path) => (await fetch(path)).json(), `/api/u/${userId}/threads`) as unknown[];
+  expect(threads).toEqual([]);
+});
