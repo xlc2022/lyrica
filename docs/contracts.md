@@ -1230,14 +1230,19 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `ThreadTools` is `{ commandRules?(), target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
     mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
-    proposePlan?(PlanRequest), recordChange?(NewChange), fileNotes?() }`.
+    proposePlan?(PlanRequest), recordChange?(NewChange), madeFiles?(paths), madeSince?(since), fileNotes?() }`.
     `commandRules()` reads the owning project on every bash call. Forbid
     blocks in all modes and targets; Ask always prompts; Allow skips only
     sandbox mode prompts. Opaque commands ask with any forbid rule.
     `user_bash` is never checked.
     `settings()` is the thread's effective settings. `fileNotes()` returns
     `{ added, removed }` paths the Files panel changed since her last turn,
-    which the `workspace` prompt section names in one line. `claudeCode()`
+    which the `workspace` prompt section names in one line. `madeFiles`
+    hears of what a sandbox `write` or `edit` wrote, and `madeSince(since)`
+    of a sandbox `bash` call's start, whether or not the call succeeded:
+    `Workspace.madeSince` then records the files in `/workspace` and
+    `/shared` newer than it (`find` in a fresh no-network sandbox, at most
+    2,000, `.git`, `node_modules` and `.lyrica` skipped). `claudeCode()`
     true adds `CLAUDE_CODE_LINE` to that section.
   - `read`, `write`, `edit` and `bash` take an optional `machine`. On a
     machine the call's mode is `stricterMode(settings().mode, limit)`; a
@@ -1860,7 +1865,7 @@ settings(userId).setCommandRules(pool, project, rules) / addCommandRule(pool, pr
 // CommandRule { prefix; decision: "allow" | "ask" | "forbid" }; at most 100; duplicate prefix replaces.
 // user step 6 adds project_settings.command_rules, JSON default []; Projects.set upserts other columns.
 // rules.ts exports commandRules (validation), decide, alwaysAllowPrefix; machines.ts exports simpleCommands.
-forThread(t)  // { commandRules(), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileNotes() },
+forThread(t)  // { commandRules(), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), madeFiles(paths), madeSince(since), fileNotes() },
               // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:
   // roots(), list(dir), search(root, q), images(), read(path) → { stream, size, type }, upload(dir, name, bytes) → path,
@@ -2093,6 +2098,20 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   changed file's earlier content is a snapshot in the encrypted home
   workspace's `snapshots/`. Target operations' `writeFile` takes `string |
   Buffer`, so a snapshot is put back byte for byte.
+- **File origins** (`ORIGINS_SCHEMA`, user.db step 15): `file_origins`
+  holds `(folder, path) → thread, at`, the thread that last wrote each file,
+  where `folder` is the id of the thread whose folder holds it and `path`
+  is inside that folder (`/shared/x` is `shared/x` in the family's topmost
+  folder, `Workspace.originKey`). Paths and ids only. `WorkspaceSettings`
+  `recordOrigins(folder, paths, thread, since?)` (with `since`, a row
+  another thread wrote at or after it is kept), `origins`, `moveOrigins`,
+  `dropOrigins`, `pruneOrigins(folder, dir, names)`, `forgetOrigins(threads,
+  folders)`, `sweepOrigins(exists)`. `Workspace.madeFiles(t, paths, since?)`
+  and `madeSince(t, since)` record her writes, uploads (`saveUpload`, the panel's) and images;
+  `fileOrigins(t, entries, dir?)` reads them for a listing, and a whole
+  listing of `dir` prunes what it no longer holds. `ThreadFiles` takes
+  `OriginEvents { added?, moved?, removed? }` for the panel's uploads,
+  renames and deletes.
 - **Allowed paths** live in `self.db` (`workspace_paths`, keyed by user ID)
   and change only with an administrator actor. Paths overlapping
   `NEVER_GRANTED` (`/run/lyrica-caddy`, `/var/lib/lyrica-update`, `/var/lib/lyrica-snapshots`) are refused, because sandboxes run with

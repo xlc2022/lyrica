@@ -225,6 +225,26 @@ CREATE TABLE IF NOT EXISTS panel_files (
 );
 `;
 
+/**
+ * Which thread last wrote each file in a thread's folder (DESIGN, "Files and images"): `folder` is the id of the
+ * thread whose folder holds it (its name under threads/), `path` the file's path inside that folder. Paths and ids
+ * only, never content. Rows go with the file (the panel's Delete and Rename, a listing that no longer has it) and
+ * with the thread or the folder.
+ */
+export const ORIGINS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS file_origins (
+  folder TEXT NOT NULL,
+  path   TEXT NOT NULL,
+  thread TEXT NOT NULL,
+  at     TEXT NOT NULL,
+  PRIMARY KEY (folder, path)
+);
+CREATE INDEX IF NOT EXISTS file_origins_thread ON file_origins (thread);
+`;
+
+/** Everything under `path`, as a LIKE pattern (with ESCAPE '\\'). */
+const under = (path: string) => `${path.replace(/[\\%_]/g, "\\$&")}/%`;
+
 /** Machines she can work on, with the key she signs in with. Older databases call it ssh_targets; migrate renames it. */
 export const MACHINES_SCHEMA = `
 CREATE TABLE IF NOT EXISTS machines (
@@ -634,6 +654,71 @@ export class WorkspaceSettings {
     const rows = this.db.prepare("SELECT kind, path FROM panel_files WHERE thread_id = ? ORDER BY rowid").all(threadId) as { kind: string; path: string }[];
     if (rows.length) this.db.prepare("DELETE FROM panel_files WHERE thread_id = ?").run(threadId);
     return { added: rows.filter((r) => r.kind === "added").map((r) => r.path), removed: rows.filter((r) => r.kind === "removed").map((r) => r.path) };
+  }
+
+  /**
+   * Records that `thread` wrote these files in `folder`'s folder. With `since` (an ISO time), a row another thread
+   * wrote at or after it is kept: a command's sweep for new files can't tell its own writes from a concurrent one's.
+   */
+  recordOrigins(folder: string, paths: string[], thread: string, since?: string): void {
+    const at = new Date().toISOString();
+    const put = this.db.prepare(`INSERT INTO file_origins (folder, path, thread, at) VALUES (?, ?, ?, ?)
+      ON CONFLICT (folder, path) DO UPDATE SET thread = excluded.thread, at = excluded.at
+      WHERE ? IS NULL OR file_origins.thread = excluded.thread OR file_origins.at < ?`);
+    for (const path of paths) put.run(folder, path, thread, at, since ?? null, since ?? null);
+  }
+
+  /** Which thread wrote each of these files in `folder`'s folder, for those with a record. */
+  origins(folder: string, paths: string[]): Map<string, string> {
+    const get = this.db.prepare("SELECT thread FROM file_origins WHERE folder = ? AND path = ?");
+    const out = new Map<string, string>();
+    for (const path of paths) { const row = get.get(folder, path) as { thread: string } | undefined; if (row) out.set(path, row.thread); }
+    return out;
+  }
+
+  /** A file or folder moved within `folder`'s folder: its records, and those of everything under it, move with it. */
+  moveOrigins(folder: string, from: string, to: string): void {
+    this.db.prepare("DELETE FROM file_origins WHERE folder = ? AND (path = ? OR path LIKE ? ESCAPE '\\')").run(folder, to, under(to));
+    this.db.prepare("UPDATE file_origins SET path = ? || substr(path, ?) WHERE folder = ? AND (path = ? OR path LIKE ? ESCAPE '\\')")
+      .run(to, from.length + 1, folder, from, under(from));
+  }
+
+  /** Files or folders gone from `folder`'s folder: their records and those of everything under them. */
+  dropOrigins(folder: string, paths: string[]): void {
+    const drop = this.db.prepare("DELETE FROM file_origins WHERE folder = ? AND (path = ? OR path LIKE ? ESCAPE '\\')");
+    for (const path of paths) drop.run(folder, path, under(path));
+  }
+
+  /** A whole listing of `dir` in `folder`'s folder: records of what it no longer holds go (her command may have deleted it). */
+  pruneOrigins(folder: string, dir: string, present: string[]): void {
+    const prefix = dir ? `${dir}/` : "";
+    const rows = this.db.prepare("SELECT path FROM file_origins WHERE folder = ? AND path LIKE ? ESCAPE '\\'")
+      .all(folder, prefix ? under(dir) : "%") as { path: string }[];
+    const here = new Set(present);
+    const gone = new Set<string>();
+    for (const { path } of rows) {
+      const name = path.slice(prefix.length).split("/")[0]!;
+      if (!here.has(name)) gone.add(prefix + name);
+    }
+    this.dropOrigins(folder, [...gone]);
+  }
+
+  /** Threads forgotten: the records they wrote, and those of the folders that went with them. */
+  forgetOrigins(threads: string[], folders: string[] = threads): void {
+    const byThread = this.db.prepare("DELETE FROM file_origins WHERE thread = ?");
+    const byFolder = this.db.prepare("DELETE FROM file_origins WHERE folder = ?");
+    for (const id of threads) byThread.run(id);
+    for (const id of folders) byFolder.run(id);
+  }
+
+  /** The nightly sweep: records naming a thread or a folder that no longer exists. Returns how many went. */
+  sweepOrigins(exists: (thread: string) => boolean): number {
+    const rows = this.db.prepare("SELECT DISTINCT thread AS id FROM file_origins UNION SELECT DISTINCT folder FROM file_origins").all() as { id: string }[];
+    const gone = rows.map((r) => r.id).filter((id) => !exists(id));
+    let n = 0;
+    const drop = this.db.prepare("DELETE FROM file_origins WHERE thread = ? OR folder = ?");
+    for (const id of gone) n += Number(drop.run(id, id).changes);
+    return n;
   }
 
   /** The thread whose folder in the home workspace this one works in: itself for a code child thread, otherwise its nearest ancestor with its own folder. */

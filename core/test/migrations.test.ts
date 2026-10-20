@@ -479,3 +479,22 @@ describe("code mode migrations", () => {
     }
   });
 });
+
+describe("user step 15 (which thread wrote a file)", () => {
+  it("adds file_origins to every released user schema, keeping earlier readers", () => {
+    for (let version = 1; version < 15; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter((s) => s.version <= version);
+      migrate(db, "user", {}, previous);
+      db.prepare("INSERT INTO thread_workspaces (thread_id, grants, mode) VALUES ('web/a', '[]', 'ask')").run();
+      migrate(db, "user");
+      const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+      settings.recordOrigins("web/a", ["site/index.html"], "web/b");
+      expect(Object.fromEntries(settings.origins("web/a", ["site/index.html"])), `v${version}`).toEqual({ "site/index.html": "web/b" });
+      expect(settings.thread("web/a").mode).toBe("ask");
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      db.close();
+    }
+  });
+});

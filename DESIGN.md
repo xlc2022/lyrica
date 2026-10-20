@@ -167,8 +167,10 @@ Each user has two pools of memory.
     - **Images:** thumbnails of the images in the thread's folder, with All,
       Uploaded and Made by Lyrica. Clicking one opens it in the file viewer.
     - **The file viewer** (decided 2026-10-20, as in Claude's own app): the
-      file large, with the thread whose library it is beside it (the
-      project chat for a project's file; none for a granted folder's).
+      file large, with the thread that wrote it beside it (recorded for her
+      writes, commands, uploads and images, and dropped with the file;
+      otherwise the thread whose library it is, the project chat for a
+      project's file; none for a granted folder's).
       HTML runs as a page in a sandbox with an opaque origin, so it can't
       reach Lyrica's cookies, storage or API, with its console beneath.
       With the thread's internet off it runs no scripts and loads only what

@@ -186,6 +186,18 @@ describe("the Files panel's routes", () => {
     expect(await res.text()).toBe(page);
   });
 
+  it("names the thread that wrote each file, and a whole listing forgets what is gone", async () => {
+    const { ada, path, thread, rt, d } = await setup();
+    fakeFiles();
+    const t = { userId: rt.ada.id, pool: "general" as const, threadId: thread.id };
+    d.services!.workspace.madeFiles(t, ["/workspace/a.txt", "/workspace/gone.txt"]);
+    const list = await ada.get<FileListing>(path);
+    expect(list.body.entries.map((e) => [e.name, e.madeBy])).toEqual([["notes", undefined], ["a.txt", thread.id]]);
+    // gone.txt wasn't in the listing, so its record went.
+    expect(d.services!.workspace.settings(rt.ada.id).origins(thread.id, ["a.txt", "gone.txt"]).size).toBe(1);
+    expect((await ada.get<{ entries: { madeBy?: string }[] }>(`${path}/search?root=${enc("/workspace")}&q=a`)).body.entries[0]!.madeBy).toBe(thread.id);
+  });
+
   it("is only the thread owner's, like the rest of a thread", async () => {
     const { base, path } = await setup();
     fakeFiles();

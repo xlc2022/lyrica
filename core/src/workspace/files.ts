@@ -41,13 +41,21 @@ const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp"];
 const PRINTF = String.raw`%y\t%s\t%T@\t%p\0`;
 const ZIP_PRINTF = String.raw`%s\t%p\0`;
 
+/** What the panel did to files, for the record of which thread wrote each (paths as she sees them). */
+export interface OriginEvents { added?(paths: string[]): void; moved?(from: string, to: string): void; removed?(paths: string[]): void }
+
 /** Thrown for a path the panel may not touch: a root itself, or one outside the thread's folders. */
 export class FilesRefused extends Error {}
 
 /** The panel's operations for one thread, each a fresh sandbox run. */
 export class ThreadFiles {
-  /** `note` records what the panel added or removed, for her next turn. `workdir` is the thread's folder (a test's stand-in may put it elsewhere). */
-  constructor(private readonly box: Sandbox, private readonly grants: Grant[], private readonly note: (kind: "added" | "removed", names: string[]) => void = () => {}, private readonly workdir = WORKDIR) {}
+  /**
+   * `note` records what the panel added or removed, for her next turn; `origins` hears of each upload, rename and
+   * delete, so the record of which thread wrote a file follows it. `workdir` is the thread's folder (a test's
+   * stand-in may put it elsewhere).
+   */
+  constructor(private readonly box: Sandbox, private readonly grants: Grant[], private readonly note: (kind: "added" | "removed", names: string[]) => void = () => {},
+    private readonly workdir = WORKDIR, private readonly origins: OriginEvents = {}) {}
 
   roots(): FileRoot[] {
     return [{ path: WORKDIR, writable: true, kind: "thread" }, ...this.grants.map((g) => ({ path: g.path, writable: g.writable, kind: "grant" as const }))];
@@ -163,6 +171,7 @@ export class ThreadFiles {
     const out = await this.file(["sh", "-c", script, "sh", d, stem, ext], bytes);
     const path = posix.join(d, out.toString());
     this.note("added", [path]);
+    this.origins.added?.([path]);
     return path;
   }
 
@@ -179,6 +188,7 @@ export class ThreadFiles {
     await this.file(["sh", "-c", 'if [ -e "$2" ] || [ -L "$2" ]; then echo "$2 is already there" >&2; exit 1; fi; mv -T -- "$1" "$2" && shift 2 && rm -rf -- "$@"', "sh", f, t, ...this.thumbsOf([f])]);
     this.note("removed", [f]);
     this.note("added", [t]);
+    this.origins.moved?.(f, t);
   }
 
   /** Deletes files and folders, for good. */
@@ -187,6 +197,7 @@ export class ThreadFiles {
     const ps = paths.map((p) => this.inside(p));
     await this.file(["rm", "-rf", "--", ...ps, ...this.thumbsOf(ps)]);
     this.note("removed", ps);
+    this.origins.removed?.(ps);
   }
 
   /**

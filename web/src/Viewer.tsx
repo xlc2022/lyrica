@@ -36,7 +36,8 @@ const KIND_WORD: Record<ViewKind, string> = { html: "HTML", svg: "SVG", markdown
 /** Kinds with a Preview and a Source. */
 const HAS_SOURCE = new Set<ViewKind>(["html", "svg", "markdown"]);
 
-export interface ViewerFile { path: string; name: string; size: number; modified: string }
+/** `madeBy`: the thread recorded as having written it, shown beside it in place of the library's own thread. */
+export interface ViewerFile { path: string; name: string; size: number; modified: string; madeBy?: string }
 
 export interface ConsoleLine { level: string; text: string }
 
@@ -52,7 +53,8 @@ export function consoleLine(data: unknown): ConsoleLine | undefined {
 const size = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
 /**
- * `base` is the library's `…/files` route. `thread`: the thread whose library it is, shown beside the file from the
+ * `base` is the library's `…/files` route. `thread`: the thread whose library it is; the thread that wrote the file
+ * (`file.madeBy`, in the same pool) is shown in its place where there is one. It shows beside the file from the
  * split width up and a toggle away below it; without one the file shows on its own. `items` fill the ⋯ menu after
  * Download and Copy path, unless `onMenu` opens the library's own menu (rendered as `children`, inside the dialog).
  */
@@ -72,7 +74,8 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, onMenu, on
   const viewUrl = `${base}/view?path=${encodeURIComponent(file.path)}`;
   const download = () => { const a = document.createElement("a"); a.href = contentUrl(true); a.download = file.name; a.click(); };
 
-  const known = thread && findThread(threads, thread.pool, thread.threadId);
+  // The thread that wrote the file, where one is recorded and still there; else the library's own.
+  const known = thread && ((file.madeBy && findThread(threads, thread.pool, file.madeBy)) || findThread(threads, thread.pool, thread.threadId));
   const showThread = !!known && (wide ? !besideHidden : narrowPane === "thread");
   const showFile = wide || narrowPane === "file" || !known;
   const toggleThread = () => (wide ? setBesideHidden((h) => !h) : setNarrowPane((p) => (p === "file" ? "thread" : "file")));

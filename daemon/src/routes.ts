@@ -44,6 +44,24 @@ export function apiRoutes(d: Lyricad): Route[] {
     const thread = owner(d, user, (o) => threadOf(o, r));
     return s().workspace.files({ userId: user.id, pool: poolOf(r), threadId: thread.id });
   };
+  /**
+   * Each entry with the thread that last wrote it (`madeBy`), a subagent's work shown as its parent's; a whole
+   * listing of `dir` also drops the records of what it no longer holds. A locked home leaves the entries as they are.
+   */
+  const withOrigins = <E extends Api.FileEntry>(r: Request, entries: E[], dir?: string): E[] => {
+    const user = d.userFor(r);
+    const pool = poolOf(r);
+    return owner(d, user, (o) => {
+      const thread = threadOf(o, r);
+      let found: Map<string, string>;
+      try { found = s().workspace.fileOrigins({ userId: user.id, pool, threadId: thread.id }, entries, dir); } catch { return entries; }
+      const shown = (id: string) => {
+        for (let t = o[pool].getThread(id), i = 0; t && i < 100; t = t.parent ? o[pool].getThread(t.parent) : undefined, i++) if (!t.subagent) return t.id;
+        return undefined;
+      };
+      return entries.map((e) => { const by = found.get(e.path); const madeBy = by && shown(by); return madeBy ? { ...e, madeBy } : e; });
+    });
+  };
   const refused = async <T>(fn: () => Promise<T>): Promise<T> => {
     try { return await fn(); } catch (err) { throw err instanceof FilesRefused ? new HttpError(403, err.message) : err; }
   };
@@ -1470,10 +1488,14 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${t}/files`, async (r): Promise<Api.FileListing> => {
       const f = files(r);
       const dir = r.query.get("dir") || WORKDIR;
-      return { roots: f.roots(), dir, ...(await refused(() => f.list(dir))) };
+      const listing = await refused(() => f.list(dir));
+      return { roots: f.roots(), dir, ...listing, entries: withOrigins(r, listing.entries, listing.more ? undefined : dir) };
     }),
-    route("GET", `${t}/files/search`, (r): Promise<Api.FileSearch> => refused(() => files(r).search(r.query.get("root") || WORKDIR, r.query.get("q") ?? ""))),
-    route("GET", `${t}/files/images`, (r): Promise<Api.ImageEntry[]> => refused(() => files(r).images())),
+    route("GET", `${t}/files/search`, async (r): Promise<Api.FileSearch> => {
+      const found = await refused(() => files(r).search(r.query.get("root") || WORKDIR, r.query.get("q") ?? ""));
+      return { ...found, entries: withOrigins(r, found.entries) };
+    }),
+    route("GET", `${t}/files/images`, async (r): Promise<Api.ImageEntry[]> => withOrigins(r, await refused(() => files(r).images()))),
     route("GET", `${t}/files/thumb`, async (r) => {
       const thumb = await refused(() => files(r).thumb(r.query.get("path") ?? ""));
       if (!thumb) throw new HttpError(404, "no thumbnail; show the image itself");
