@@ -6,6 +6,7 @@ import { addNotice, ENDPOINT_SCHEMA, MIXED_PRESET, migrate as moveModels, MODEL_
 import { PREFS_SCHEMA } from "./prefs.ts";
 import { POOL_SCHEMA, POOL_UPGRADES, ROUTINES_SCHEMA, WAKEUPS_SCHEMA, WATCHES_SCHEMA } from "./store/schema.ts";
 import { CHANGES_SCHEMA } from "./workspace/changes.ts";
+import { SKILLS_SCHEMA } from "./skills.ts";
 import { MACHINES_SCHEMA, ORIGINS_SCHEMA, upgradeWorkspace, WORKSPACE_SCHEMA } from "./workspace/settings.ts";
 
 // Every encrypted database's schema history. Each database records its schema
@@ -283,6 +284,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principles 2 and 6: a project's checks, the person's commands run when a code turn ends. Adds a column only.
     version: 16,
     run(db) { addColumns(db, [["project_settings", "checks", "TEXT NOT NULL DEFAULT '[]'"]]); },
+  }, {
+    // Principles 3 and 6: skills, the person's and hers (docs/briefs/skills.md). Adds a table only.
+    version: 17,
+    run(db) { db.exec(SKILLS_SCHEMA); },
   }],
   pool: [{
     version: 1, contract: true,

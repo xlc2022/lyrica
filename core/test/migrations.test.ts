@@ -530,3 +530,20 @@ describe("user step 16 (project checks)", () => {
     db.close();
   });
 });
+
+describe("user step 17 (skills)", () => {
+  it("adds the skills table to every released user schema, keeping earlier readers", () => {
+    for (let version = 1; version < 17; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter((s) => s.version <= version);
+      migrate(db, "user", {}, previous);
+      migrate(db, "user");
+      const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+      settings.skills.put({ name: "render-check", description: "Before saying a scene works.", body: "Take a screenshot." });
+      expect(settings.skills.active("general").map((s) => s.name), `v${version}`).toEqual(["render-check"]);
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      db.close();
+    }
+  });
+});

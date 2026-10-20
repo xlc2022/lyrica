@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { commandRules as checkCommandRules, type CommandRule } from "./rules.ts";
 import { isAbsolute, posix } from "node:path";
 import type { Db } from "../db.ts";
+import { SkillLibrary } from "../skills.ts";
 import type { Pool } from "../types.ts";
 import { parseHost } from "./net.ts";
 import { MCP_NAME, mcpNamespace, mcpUrl, type McpStateKind } from "./mcp.ts";
@@ -363,7 +364,12 @@ export class WorkspaceSettings {
     })();
   }
 
-  constructor(private readonly db: Db, readonly allowed: () => Record<Pool, string[]>) {}
+  constructor(private readonly db: Db, readonly allowed: () => Record<Pool, string[]>) {
+    this.skills = new SkillLibrary(db);
+  }
+
+  /** The user's skills (docs/briefs/skills.md). */
+  readonly skills: SkillLibrary;
 
   close(): void { this.db.close(); }
 
