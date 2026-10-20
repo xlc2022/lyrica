@@ -604,6 +604,7 @@ test("Downloads History: the queue shows progress with Cancel and how each ended
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/downloads/text$`));
   await expect(page.getByRole("heading", { level: 1, name: "Download text model" })).toBeVisible();
   await expect(page.getByLabel("Download to")).toHaveValue("ep-box");
+  await expect(page.getByLabel("Download to")).toHaveAttribute("title", "/srv/models");
   await page.getByRole("link", { name: "Cancel" }).click();
   await expect(page).toHaveURL(new RegExp(`#/u/${userId}/models/text$`));
   await page.getByRole("button", { name: "Download model" }).click();
@@ -692,6 +693,57 @@ async function fakeImages(page: Page) {
   });
   return { asked, zi, qi, offering: { id: "off-z", modelId: `recipe/${zi}`, label: `box/recipe/${zi}`, manual: false, status: "listed", recipe: "Z-Image Turbo", image: true } };
 }
+
+test("a host card shows its models folder, and Change moves the host to another after asking", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/models-folder-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
+  let update: Record<string, unknown> = { available: true, changesFolder: true, state: "idle" };
+  const status = () => ({ name: "box", version: "0.9.0", fingerprint: "SHA256:aaaa", state: "running", gpus: [], downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: 2 ** 40 }, update });
+  await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
+    const real = await (await fetchReal(route)).json() as { endpoints: Record<string, unknown>[]; hosts: unknown[] };
+    const local = real.endpoints.find((e) => e.kind === "local")!;
+    real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", addresses: ["box.lan:7236"], fingerprint: "SHA256:aaaa", state: "up", shared: false, models: [] });
+    real.hosts.push({ endpointId: "ep-box", status: status() });
+    await route.fulfill(json(real));
+  });
+  const asked: unknown[] = [];
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/models-folder$/, async (route) => {
+    asked.push(route.request().postDataJSON());
+    update = { available: true, changesFolder: true, state: "requested", models: "/mnt/big/models" };
+    await route.fulfill(json(status()));
+  });
+  await page.goto(`/#/u/${userId}/models/hosts`);
+  const card = page.locator("article.host[data-endpoint=ep-box]");
+  await expect(card.locator(".addrs")).toContainText("models folder/srv/models");
+  await card.getByRole("button", { name: "Change" }).click();
+  await card.getByLabel("Models folder").fill("/mnt/big/models");
+  await shot("change");
+  await card.getByRole("button", { name: "Save" }).click();
+  const ask = page.getByRole("dialog");
+  await shot("dialog");
+  await expect(ask.getByRole("heading")).toHaveText("Move box to another models folder?");
+  await expect(ask).toContainText("restarts on /mnt/big/models");
+  await ask.getByRole("button", { name: "Cancel" }).click();
+  expect(asked).toEqual([]);
+  await card.getByRole("button", { name: "Save" }).click();
+  await ask.getByRole("button", { name: "Move" }).click();
+  await expect(card.locator(".status-word")).toHaveText("Moving");
+  await shot("moving");
+  expect(asked).toEqual([{ path: "/mnt/big/models" }]);
+  await expect(card.getByRole("button", { name: "Change" })).toHaveCount(0);
+  await noHorizontalScroll(page);
+
+  // A failed move says why; an updater from before this release says how to get one that moves.
+  update = { available: true, changesFolder: true, state: "failed", models: "/etc", error: "a system folder" };
+  await page.reload();
+  await expect(card.getByRole("note")).toHaveText("Moving to /etc failed: it's one of the system's folders.");
+  await shot("failed");
+  update = { available: true, state: "idle" };
+  await page.reload();
+  await expect(card.getByRole("button", { name: "Change" })).toHaveCount(0);
+  await expect(card.locator(".addrs .muted[title]")).toHaveAttribute("title", "Run install.sh on the host again to change it from here.");
+});
 
 test("Image models: groups by architecture with Role and Where; a recipe opens to its parts with Change, Add part and Delete model…; Parts lists the files; To review selects and ignores; Download image model makes a starter after asking, scans and downloads", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);

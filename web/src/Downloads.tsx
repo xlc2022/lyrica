@@ -250,7 +250,7 @@ function Accounts({ ctx }: { ctx: MCtx }) {
 export function HostField({ hosts, value, onChange }: { hosts: { ep: Endpoint; status?: HostStatus }[]; value?: string; onChange: (id: string) => void }) {
   return (
     <label className="field"><span>Download to</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
+      <select value={value} title={hosts.find((h) => h.ep.id === value)?.status?.modelsFolder.path} onChange={(e) => onChange(e.target.value)}>
         {hosts.map(({ ep, status }) => <option key={ep.id} value={ep.id}>{ep.name} · {size(status!.modelsFolder.free)} free</option>)}
       </select>
     </label>

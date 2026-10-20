@@ -208,6 +208,13 @@ export class Host {
       this.opts.log("update requested", { tag: String(body.tag) });
       return sendJson(res, 202, { update });
     }
+    if (pathname === "/host/v1/models-folder" && method === "POST") {
+      const body = await readJson(req);
+      onlyFields(body, ["path"]);
+      const update = this.updates.requestModels(body.path);
+      this.opts.log("models folder requested", {});
+      return sendJson(res, 202, { update });
+    }
     // /v1 carries prompts: only a paired Lyrica server may use it.
     if (pathname.startsWith("/v1/") && access !== "client") throw refused("Only a paired Lyrica server can use /v1.");
     if (this.runtime && (await this.runtime.route(req, res, pathname, method))) return;

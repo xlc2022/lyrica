@@ -909,7 +909,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
           </>}
           {source === "url" && <LinkFields link={link} setLink={(t) => { setLink(t); setProblem(""); }} sha={sha} setSha={setSha} />}
           {source === "scan" && <>
-            <div className="row"><button type="button" disabled={busy} onClick={() => void scan()}>Scan now</button></div>
+            <div className="row"><button type="button" disabled={busy} title={host.status!.modelsFolder.path} onClick={() => void scan()}>Scan now</button></div>
             {scanned && (proposed.length ? (
               <ul className="list review" aria-label="Found">
                 {proposed.map((c) => {
@@ -917,7 +917,7 @@ export function DownloadImage({ ctx }: { ctx: MCtx }) {
                   return <ReviewRow key={k} L={L} c={c} menu={rows.menu === k} setMenu={(o) => rows.setMenu(o ? k : undefined)} details={rows.details.has(k)} onDetails={() => rows.toggleDetails(k)} />;
                 })}
               </ul>
-            ) : <p className="muted">Nothing new in the models folder.</p>)}
+            ) : <p className="muted">Nothing new in <code>{host.status!.modelsFolder.path}</code>.</p>)}
           </>}
           <ErrorText error={problem || (source === "huggingface" ? look.error : "") || error} />
           <div className="row">

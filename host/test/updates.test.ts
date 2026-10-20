@@ -42,7 +42,9 @@ async function world() {
   const first = release("one");
   // The person's checkout, installed by hand: its settings, and code root must never run.
   execFileSync("git", ["clone", "-q", origin, checkout], { stdio: "ignore" });
-  writeFileSync(join(checkout, "host", ".env"), `HOST_NAME=box\nHOST_COMMIT=${first}\n`);
+  const modelsA = join(root, "models-a");
+  mkdirSync(modelsA);
+  writeFileSync(join(checkout, "host", ".env"), `HOST_NAME=box\nHOST_COMMIT=${first}\nMODELS_DIR=${modelsA}\n`);
   writeFileSync(join(checkout, "host", "install.sh"), `#!/usr/bin/env bash\ntouch "${fake}/checkout-ran"\n`);
   chmodSync(join(checkout, "host", "install.sh"), 0o755);
   mkdirSync(join(dir, "status"), { recursive: true });
@@ -53,23 +55,30 @@ async function world() {
 
   // host-api: its state, and the commit the last install left it on.
   const api = { state: "running", calls: [] as string[] };
-  const running = join(fake, "running");
+  const running = join(fake, "running"), folder = join(fake, "folder");
   writeFileSync(running, first);
+  writeFileSync(folder, modelsA);
   const commitNow = () => readFileSync(running, "utf8").trim();
+  const folderNow = () => readFileSync(folder, "utf8").trim();
   const server: Server = createServer((req, res) => {
     api.calls.push(`${req.method} ${req.url}`);
     if (req.url === "/host/v1/pause") api.state = "paused";
     if (req.url === "/host/v1/resume") api.state = "running";
     res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify({ state: api.state, commit: commitNow() }));
+    res.end(JSON.stringify({ state: api.state, commit: commitNow(), modelsFolder: { path: folderNow() } }));
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   cleanup.push(() => new Promise<void>((r) => server.close(() => r())));
-  // install.sh, run in the tree: fails on a broken release, as one that doesn't build would.
+  // install.sh, run in the tree: fails on a broken release, as one that doesn't build would,
+  // and comes up on a models folder unless it holds a BROKEN mark.
   writeFileSync(join(fake, "install"), `#!/usr/bin/env bash
-echo "$(cat version) $PWD $(cat .env | head -n 1)" >>"${fake}/installs"
+echo "$(cat version) $PWD $(cat .env | head -n 1) $*" >>"${fake}/installs"
 [ ! -e BROKEN ] || exit 1
 echo "$LYRICA_HOST_COMMIT" >"${running}"
+if [ "\${2:-}" = --models ]; then
+  sed -i "s#^MODELS_DIR=.*#MODELS_DIR=$3#" .env
+  [ -e "$3/BROKEN" ] || echo "$3" >"${folder}"
+fi
 `);
   chmodSync(join(fake, "install"), 0o755);
 
@@ -84,7 +93,7 @@ echo "$LYRICA_HOST_COMMIT" >"${running}"
   const state = () => JSON.parse(readFileSync(join(dir, "status", "state.json"), "utf8"));
   const installs = () => (existsSync(join(fake, "installs")) ? readFileSync(join(fake, "installs"), "utf8").trim().split("\n") : []);
   const current = () => readFileSync(join(dir, "current"), "utf8").trim();
-  return { dir, api, first, release, run, state, installs, commitNow, current, releases, checkout, fake };
+  return { root, dir, api, first, release, run, state, installs, commitNow, folderNow, current, releases, checkout, fake, modelsA };
 }
 
 describe("lyrica-host-update", () => {
@@ -96,7 +105,7 @@ describe("lyrica-host-update", () => {
     expect(r.code, r.err).toBe(0);
     expect(w.commitNow()).toBe(two);
     // From a tree of its own, with the checkout's settings, never the checkout's code.
-    expect(w.installs()).toEqual([`two ${join(w.releases, two, "host")} HOST_NAME=box`]);
+    expect(w.installs()).toEqual([`two ${join(w.releases, two, "host")} HOST_NAME=box --yes`]);
     expect(w.current()).toBe(join(w.releases, two, "host"));
     expect(existsSync(join(w.fake, "checkout-ran"))).toBe(false);
     expect(w.api.calls).toContain("POST /host/v1/pause");
@@ -143,6 +152,72 @@ describe("lyrica-host-update", () => {
   });
 });
 
+describe("lyrica-host-update --models", () => {
+  it("installs the running commit again on the new folder, from a tree of its own, and resumes the host", async () => {
+    const w = await world();
+    const b = join(w.root, "models-b");
+    mkdirSync(b);
+    writeFileSync(join(w.dir, "inbox", "request.json"), JSON.stringify({ models: `${b}/` }));
+    const r = await w.run("--request");
+    expect(r.code, r.err).toBe(0);
+    expect(w.folderNow()).toBe(b);
+    expect(w.commitNow()).toBe(w.first);
+    expect(w.installs()).toEqual([`one ${join(w.releases, w.first, "host")} HOST_NAME=box --yes --models ${b}`]);
+    expect(w.current()).toBe(join(w.releases, w.first, "host"));
+    expect(readFileSync(join(w.current(), ".env"), "utf8")).toContain(`MODELS_DIR=${b}\n`);
+    expect(existsSync(join(w.fake, "checkout-ran"))).toBe(false);
+    expect(w.api.calls).toContain("POST /host/v1/pause");
+    expect(w.api.state).toBe("running");
+    expect(w.state()).toMatchObject({ state: "idle", last: { models: b, commit: w.first, ok: true } });
+    expect(w.state().models).toBeUndefined();
+
+    // Again from the tree it now runs in: the same tree, its own settings.
+    const c = join(w.root, "models-c");
+    mkdirSync(c);
+    expect((await w.run("--models", c)).code).toBe(0);
+    expect(w.folderNow()).toBe(c);
+    expect(w.current()).toBe(join(w.releases, w.first, "host"));
+  });
+
+  it("refuses a folder that doesn't exist, a system folder or one holding the host's own files, and changes nothing", async () => {
+    const w = await world();
+    // Folders others can write to: the folder itself, or one above it.
+    const open = join(w.root, "open"), under = join(w.root, "shared", "models");
+    mkdirSync(open); chmodSync(open, 0o777);
+    mkdirSync(under, { recursive: true }); chmodSync(join(w.root, "shared"), 0o775);
+    const linked = join(w.root, "linked");
+    mkdirSync(linked);
+    execFileSync("ln", ["-s", "/etc", join(linked, "lyrica")]);
+    for (const [path, error] of [
+      [join(w.root, "nowhere"), "not a folder"], ["relative/path", "not a folder"], ["/", "a system folder"], ["/etc", "a system folder"],
+      ["/usr/share", "a system folder"], [w.root, "holds the host's own files"], [w.dir, "holds the host's own files"],
+      [join(w.checkout, "host"), "holds the host's own files"], [linked, "its lyrica subfolder isn't a folder"],
+      [open, "someone else can change it"], [under, "someone else can change it"],
+    ] as const) {
+      const r = await w.run("--models", path);
+      expect(r.code, path).not.toBe(0);
+      expect(w.state(), path).toMatchObject({ state: "failed", error });
+    }
+    expect(w.installs()).toEqual([]);
+    expect(w.folderNow()).toBe(w.modelsA);
+    expect(w.api.calls).not.toContain("POST /host/v1/pause");
+  });
+
+  it("goes back to the old folder when the host doesn't come up on the new one", async () => {
+    const w = await world();
+    const b = join(w.root, "models-b");
+    mkdirSync(b);
+    writeFileSync(join(b, "BROKEN"), "");
+    const r = await w.run("--models", b);
+    expect(r.code).not.toBe(0);
+    expect(w.folderNow()).toBe(w.modelsA);
+    expect(w.installs().map((l) => l.split(" ").at(-1))).toEqual([b, w.modelsA]);
+    expect(readFileSync(join(w.current(), ".env"), "utf8")).toContain(`MODELS_DIR=${w.modelsA}\n`);
+    expect(w.api.state).toBe("running");
+    expect(w.state()).toMatchObject({ state: "failed", error: "probation", models: b, last: { models: b, ok: false } });
+  });
+});
+
 describe("POST /host/v1/update", () => {
   it("hands Lyrica's request to the updater, and refuses where there is none or one is running", async () => {
     const dir = mkdtempSync(join(tmpdir(), "lyrica-host-updates-"));
@@ -168,5 +243,18 @@ describe("POST /host/v1/update", () => {
 
     const status = await call({ port: tls, path: "/host/v1/status", identity: me, pinned: fp });
     expect(status.body).toMatchObject({ commit: "a".repeat(40), update: { state: "requested" } });
+
+    // A new models folder: only from an updater that takes one, and never while it is busy.
+    rmSync(join(dir, "inbox", "request.json"));
+    const folder = (path: unknown) => call({ port: tls, path: "/host/v1/models-folder", identity: me, pinned: fp, method: "POST", body: { path } });
+    expect(await folder("/mnt/big")).toMatchObject({ status: 409, body: { error: { code: "unavailable" } } });
+    writeFileSync(join(dir, "status", "state.json"), JSON.stringify({ available: true, changesFolder: true, state: "idle" }));
+    expect((await folder("relative")).status).toBe(400);
+    expect((await folder("/mnt/big\nMODELS_DIR=/")).status).toBe(400);
+    const moved = await folder("/mnt/big");
+    expect(moved.status).toBe(202);
+    expect(moved.body.update).toMatchObject({ changesFolder: true, state: "requested" });
+    expect(JSON.parse(readFileSync(join(dir, "inbox", "request.json"), "utf8"))).toEqual({ models: "/mnt/big" });
+    expect((await folder("/mnt/other")).body).toMatchObject({ error: { code: "updating" } });
   });
 });
