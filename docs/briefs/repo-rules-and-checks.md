@@ -56,15 +56,17 @@ structurally (AGENTS.md: never rely on telling the model).
     This is user step 16, expand only (a new column defaulting to `[]`).
 - **When they run:** at the end of a code-mode turn in a project's thread,
   meaning a thread whose project has checks. The trigger is her reply with
-  no tool calls, after an `edit`, `write` or `bash` call in this run has
-  changed something. They don't run:
+  no tool calls, after an `edit`, `write`, `bash` or `delegate` call in this
+  run has changed something (a single coder writes in the thread's own
+  checkouts). Stop stops a running check and sends nothing. They don't run:
   - in the project chat, which is read-only;
   - in Plan mode;
   - after the tool limit stopped the turn;
   - outside projects.
 - **Where:** each command runs with `sh -c` in her sandbox (the thread's
   target, its network and mounts), once per checkout the thread works in
-  (its worktrees, else its clones), or once in its folder when it has none.
+  (its worktrees, its clones and its writable granted folders), or once in
+  its folder when it has none.
   Each run has a 10-minute timeout.
 - **No approval card:** the person wrote these commands in settings, so
   running them needs no further consent (principle 6). Nothing from a
@@ -77,8 +79,9 @@ structurally (AGENTS.md: never rely on telling the model).
     follow-up, and the turn continues so she can fix it.
   - **Third failing round in one run:** they stop there. Her follow-up says
     to report the failure plainly, as not done.
-- The check output stays in the thread's encrypted conversation. It is never
-  logged (no plaintext memory).
+- The check output stays in the thread's encrypted conversation, with the
+  thread's secrets masked as in `bash` output. It is never logged (no
+  plaintext memory).
 
 ## Out of scope
 
@@ -86,8 +89,8 @@ structurally (AGENTS.md: never rely on telling the model).
 - Running checks after every edit. They run once she stops, which covers
   "after her edits" without paying for a test run on each one.
 - Language-server diagnostics.
-- Checks for coder subagents. The parent's checks cover their changes when
-  the parent ends.
+- Checks inside coder subagents. A `delegate` result counts as a change, so
+  the parent's checks cover their work when the parent ends.
 
 ## Principles
 

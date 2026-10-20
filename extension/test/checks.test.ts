@@ -9,16 +9,17 @@ import type { ExecutionTarget } from "@lyrica/core";
 import { CHECK_ROUNDS, CHECKS_FAILED, CHECKS_NOTICE, createChecksExtension, tail, type ChecksOptions } from "../src/checks.ts";
 
 /** She edits once, then says done after every message; the checks pass from round `passFrom` (never when 0). */
-async function scenario(o: { passFrom?: number; edit?: boolean; options?: Partial<ChecksOptions> } = {}) {
+async function scenario(o: { passFrom?: number; edit?: boolean; options?: Partial<ChecksOptions>; output?: string; reject?: string } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-checks-"));
   const faux = fauxProvider({ provider: "faux", models: [{ id: "coder" }] });
   const runs: string[][] = [];
   const seen: string[] = [];
   let round = 0;
-  const target = { run: async (argv: string[]) => {
+  const target = { secrets: () => ["sekret-token"], run: async (argv: string[]) => {
     runs.push(argv);
+    if (o.reject) throw new Error(o.reject);
     const ok = !!o.passFrom && round >= o.passFrom;
-    return { code: ok ? 0 : 1, stdout: Buffer.from(ok ? "all good\n" : "FAIL track.test.ts\nexpected surface\n"), stderr: Buffer.alloc(0) };
+    return { code: ok ? 0 : 1, stdout: Buffer.from(ok ? "all good\n" : o.output ?? "FAIL track.test.ts\nexpected surface\n"), stderr: Buffer.alloc(0) };
   } } as unknown as ExecutionTarget;
   const done = (ctx: { messages: unknown[] }) => {
     round++;
@@ -88,5 +89,15 @@ describe("project checks", () => {
     expect(tail(out).split("\n")).toHaveLength(60);
     expect(tail(out)).toMatch(/line 199$/);
     expect(tail("x".repeat(9000))).toHaveLength(4000);
+  });
+
+  it("mask the thread's secrets in what she is told, and say plainly when a check ran out of time", async () => {
+    const masked = await scenario({ passFrom: 2, output: "FAIL: token sekret-token rejected\n" });
+    const told = String(masked.told[0]!.content);
+    expect(told).toContain("FAIL: token");
+    expect(told).not.toContain("sekret-token");
+    const slow = await scenario({ reject: "timeout:600" });
+    expect(String(slow.told[0]!.content)).toContain("(stopped after 10 minutes)");
+    expect(String(slow.told[0]!.content)).not.toContain("timeout:600");
   });
 });

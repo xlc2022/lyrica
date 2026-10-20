@@ -998,7 +998,9 @@ replaces. Coder subagents get the same section
 `createChecksExtension({ checks(), code(), plan(), checkouts(), target() })`
 runs the project's checks with `sh -c` in each checkout (10 minutes each)
 when a code-mode reply without tool calls ends a run in which `edit`,
-`write` or `bash` succeeded, and not in Plan mode or once her tools are off.
+`write`, `bash` or `delegate` succeeded, and not in Plan mode, once her tools
+are off, or after a Stop (the turn's signal also stops a running check). The
+output is masked with the target's `secrets()`.
 It shows a `lyrica-checks` notice ("Checks passed: …" or "Checks failed: …",
 with `ChecksResult` details that the daemon turns into a `delegation` part
 with status `checks-passed` or `checks-failed`)

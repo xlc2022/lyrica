@@ -1,5 +1,5 @@
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import type { ExecutionTarget } from "@lyrica/core";
+import { maskSecrets, type ExecutionTarget } from "@lyrica/core";
 
 // Principles 2 and 6: a project's checks run when a code turn ends, whatever the model decides,
 // so "done" means the person's own commands passed (docs/workspace.md, "Project checks").
@@ -33,15 +33,19 @@ export function tail(output: string): string {
   return lines.length > TAIL_CHARS ? lines.slice(-TAIL_CHARS) : lines;
 }
 
-async function runCheck(target: ExecutionTarget, dir: string | undefined, command: string): Promise<{ ok: boolean; output: string }> {
+async function runCheck(target: ExecutionTarget, dir: string | undefined, command: string, signal?: AbortSignal): Promise<{ ok: boolean; output: string }> {
   if (!target.run) return { ok: false, output: "This thread can't run commands here." };
   const argv = dir ? ["sh", "-c", 'cd "$1" && sh -c "$2" 2>&1', "sh", dir, command] : ["sh", "-c", `${command} 2>&1`];
+  const stopped = `(stopped after ${CHECK_TIMEOUT_MS / 60_000} minutes)`;
   try {
-    const r = await target.run(argv, { timeoutMs: CHECK_TIMEOUT_MS });
-    const output = r.stdout.toString() + r.stderr.toString();
-    return { ok: r.code === 0, output: r.code === null ? `${output}\n(stopped after ${CHECK_TIMEOUT_MS / 60_000} minutes)` : output };
+    const r = await target.run(argv, { timeoutMs: CHECK_TIMEOUT_MS, signal });
+    // Masked as her bash tool's output is: a check can print a token it reads.
+    const secrets = target.secrets?.() ?? [];
+    const output = maskSecrets(r.stdout, secrets).toString() + maskSecrets(r.stderr, secrets).toString();
+    return { ok: r.code === 0, output: r.code === null ? `${output}\n${stopped}` : output };
   } catch (err) {
-    return { ok: false, output: (err as Error).message };
+    const message = (err as Error).message;
+    return { ok: false, output: message.startsWith("timeout:") ? stopped : message };
   }
 }
 
@@ -51,9 +55,10 @@ export function createChecksExtension(o: ChecksOptions): ExtensionFactory {
     let rounds = 0;
     pi.on("agent_start", () => { changed = false; rounds = 0; });
     pi.on("tool_result", (e) => {
-      if (!e.isError && (e.toolName === "edit" || e.toolName === "write" || e.toolName === "bash")) changed = true;
+      // A delegate counts too: a single coder writes in the thread's own checkouts (docs/delegation.md).
+      if (!e.isError && ["edit", "write", "bash", "delegate"].includes(e.toolName)) changed = true;
     });
-    pi.on("turn_end", async (e) => {
+    pi.on("turn_end", async (e, ctx) => {
       // Her reply ends the run: no tool calls, and not cut off by an error, a stop or the tool limit's wrap-up.
       if (!changed || rounds >= CHECK_ROUNDS || e.message.role !== "assistant") return;
       if (e.message.content.some((c) => c.type === "toolCall") || e.message.stopReason === "error" || e.message.stopReason === "aborted") return;
@@ -68,11 +73,14 @@ export function createChecksExtension(o: ChecksOptions): ExtensionFactory {
       for (const command of checks) {
         let ok = true;
         for (const dir of dirs) {
-          const r = await runCheck(target, dir, command);
+          if (ctx.signal?.aborted) return;
+          const r = await runCheck(target, dir, command, ctx.signal);
           if (!r.ok) { ok = false; failed.push({ command, ...(dir ? { dir } : {}), output: tail(r.output) }); }
         }
         if (ok) passed.push(command);
       }
+      // Stopped by the person: no notice, no follow-up.
+      if (ctx.signal?.aborted) return;
       const list = (cs: string[]) => cs.map((c) => `\`${c}\``).join(", ");
       if (!failed.length) {
         changed = false;

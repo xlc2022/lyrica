@@ -970,14 +970,16 @@ Checks in Project settings → General; nothing from a repository or from her
 adds one, so they run without an approval card.
 
 When a code-mode thread of the project (never its read-only chat) ends a run
-with a reply after an `edit`, `write` or `bash` call succeeded, lyricad runs
+with a reply after an `edit`, `write`, `bash` or `delegate` call succeeded
+(a single coder writes in the thread's own checkouts), lyricad runs
 each check with `sh -c` in her sandbox, once in each checkout the thread works
-in (its worktrees, clones and writable granted repositories), or once in its
+in (its worktrees, its clones and its writable granted folders), or once in its
 folder when it has none, with 10 minutes each. They don't run in Plan mode
-or after the tool limit turned her tools off. Each run shows a
-**Checks** notice in the thread, passed or failed, listing the commands. A
-failure gives her
-the last 60 lines of each failing output, unseen, so she fixes it and the
+or after the tool limit turned her tools off, and Stop stops a running check
+and sends nothing. Each run shows a **Checks** notice in the thread, passed
+or failed, listing the commands. A failure gives her the last 60 lines of
+each failing output, unseen and with the thread's secrets masked as her
+`bash` output is, so she fixes it and the
 checks run again when she ends; after 3 failing rounds they stop and she is
 told to report the failure as not done. The output stays in the encrypted
 conversation and is never logged (`extension/src/checks.ts`).
