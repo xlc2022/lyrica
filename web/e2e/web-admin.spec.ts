@@ -142,8 +142,12 @@ test("the sidebar's status panel shows the endpoints on any page, and a very lon
   for (const name of ["router", "openai"]) {
     const item = line.locator(".status-item").filter({ hasText: name });
     await expect(item).toBeVisible();
-    await expect(item.locator(".num")).toHaveText(/^\d+$/);
+    await expect(item.locator(".status-state", { hasText: "checked" }).locator(".num")).toHaveText(/^\d+$/);
   }
+  // Each up endpoint shows its recent speed, a dash with no measured turns in the past day; the tooltip says why.
+  const gpuItem = line.locator(".status-item").filter({ hasText: "gpu" });
+  await expect(gpuItem.locator(".status-state", { hasText: "tok/s" })).toHaveText(/^· (\d+|–) tok\/s$/);
+  await expect(gpuItem).toHaveAttribute("title", /^gpu · (\d+ tok\/s .*|no turns in the past day)$/);
   await noHorizontalScroll(page);
 
   // A very long name ellipsizes in place, with the whole of it in the tooltip, and never pushes the sidebar wide.
@@ -160,7 +164,7 @@ test("the sidebar's status panel shows the endpoints on any page, and a very lon
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   const renamed = line.locator(".status-item").filter({ hasText: LONG });
   await expect(renamed).toBeVisible();
-  await expect(renamed).toHaveAttribute("title", LONG);
+  await expect(renamed).toHaveAttribute("title", new RegExp(`^${LONG} · `));
   const nameBox = renamed.locator(".status-name");
   await expect(nameBox).toBeVisible();
   expect(await nameBox.evaluate((el) => el.scrollWidth > el.clientWidth), `the long name should ellipsize at ${page.viewportSize()!.width} px`).toBe(true);
@@ -181,7 +185,7 @@ test("the sidebar's status panel shows the endpoints on any page, and a very lon
   // Nothing of it is clipped away: the checked time ends inside the item's own box.
   const [itemBox, checkedBox] = [await cloudItem.boundingBox(), await checked.boundingBox()];
   expect(checkedBox!.x + checkedBox!.width).toBeLessThanOrEqual(itemBox!.x + itemBox!.width + 1);
-  await expect(cloudItem).toHaveAttribute("title", new RegExp(`^${LONG_CLOUD} · checked \\d+ (s|min) ago$`));
+  await expect(cloudItem).toHaveAttribute("title", new RegExp(`^${LONG_CLOUD} · .+ · checked \\d+ (s|min) ago$`));
   if (page.viewportSize()?.width === 390) await page.screenshot({ path: "shots/status-390.png" });
 
   // Back as they were, for the tests that follow.

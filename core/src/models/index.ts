@@ -357,6 +357,12 @@ export function speeds(p: Omit<Pace, "tokPerSec" | "promptTokPerSec">): Pace {
   return { ...p, ...(tok !== undefined ? { tokPerSec: tok } : {}), ...(prompt !== undefined ? { promptTokPerSec: prompt } : {}) };
 }
 
+/** An endpoint's call count, and its recent speeds when it has measured turns (Models.endpointUses). */
+export interface EndpointUse { endpointId: string; calls: number; tokPerSec?: number; promptTokPerSec?: number; speedCalls?: number }
+/** How many of an endpoint's latest measured turns its recent speed averages over, and how far back they may reach. */
+export const SPEED_CALLS = 10;
+export const SPEED_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 /** Private and local-only threads may use local endpoints only. */
 export const isRestricted = (ctx: Pick<CallContext, "pool" | "localOnly">): boolean => ctx.pool === "private" || ctx.localOnly;
 
@@ -2570,17 +2576,30 @@ export class Models {
     return rows.map(toCall);
   }
 
-  /** How many times each endpoint answered, counted over `model_calls` in these pools rather than over any preview list.
+  /** How many times each endpoint answered, counted over `model_calls` in these pools rather than over any preview list,
+   * and how fast it wrote lately: output tokens over generation time (and prompt tokens read over time to first token)
+   * across its last SPEED_CALLS measured turns of the past day, `speedCalls` of them. No measured turn, no speeds.
    * Endpoints with no calls aren't listed; a call to an endpoint since removed counts nowhere. */
-  endpointUses(userId: string, pools: Pool[]): { endpointId: string; calls: number }[] {
+  endpointUses(userId: string, pools: Pool[], now = Date.now()): EndpointUse[] {
     if (!pools.length) return [];
-    const rows = this.withUser(userId, (db) => db.prepare(
-      "SELECT endpoint, kind, count(*) AS calls FROM model_calls WHERE pool IN (SELECT value FROM json_each(@pools)) GROUP BY endpoint, kind"
-    ).all({ pools: JSON.stringify(pools) })) as { endpoint: string; kind: "local" | "cloud"; calls: number }[];
+    const params = { pools: JSON.stringify(pools), since: new Date(now - SPEED_WINDOW_MS).toISOString(), last: SPEED_CALLS };
+    const [rows, paced] = this.withUser(userId, (db) => [
+      db.prepare("SELECT endpoint, kind, count(*) AS calls FROM model_calls WHERE pool IN (SELECT value FROM json_each(@pools)) GROUP BY endpoint, kind").all(params),
+      db.prepare(`SELECT endpoint, kind, count(*) AS n, sum(output_tokens) AS out, sum(gen_ms) AS gen, sum(processed) AS processed, sum(ttft_ms) AS ttft FROM (
+          SELECT endpoint, kind, output_tokens, gen_ms, coalesce(processed, 0) AS processed, coalesce(ttft_ms, 0) AS ttft_ms,
+            row_number() OVER (PARTITION BY endpoint, kind ORDER BY id DESC) AS rn
+          FROM model_calls WHERE pool IN (SELECT value FROM json_each(@pools)) AND at >= @since AND gen_ms >= 50 AND output_tokens > 0
+        ) WHERE rn <= @last GROUP BY endpoint, kind`).all(params),
+    ]) as [{ endpoint: string; kind: "local" | "cloud"; calls: number }[], { endpoint: string; kind: "local" | "cloud"; n: number; out: number; gen: number; processed: number; ttft: number }[]];
     const byName = new Map(rows.map((r) => [`${r.kind}/${r.endpoint}`, r.calls]));
+    const paceByName = new Map(paced.map((r) => [`${r.kind}/${r.endpoint}`, r]));
     return this.endpoints(userId).flatMap((e) => {
       const calls = byName.get(`${e.kind}/${e.name}`);
-      return calls ? [{ endpointId: e.id, calls }] : [];
+      if (!calls) return [];
+      const p = paceByName.get(`${e.kind}/${e.name}`);
+      const s = p && speeds({ promptTokens: 0, outputTokens: p.out, window: 0, ttftMs: p.ttft, genMs: p.gen, processed: p.processed });
+      return [{ endpointId: e.id, calls, ...(s?.tokPerSec !== undefined ? { tokPerSec: s.tokPerSec, speedCalls: p!.n } : {}),
+        ...(s?.tokPerSec !== undefined && s.promptTokPerSec !== undefined ? { promptTokPerSec: s.promptTokPerSec } : {}) }];
     });
   }
 

@@ -477,8 +477,12 @@ export interface ModelsPage {
   presets: Presets;
   /** The newest call in the displayed pools; older ones come from /models/calls/history. */
   calls: CallInfo[];
-  /** Each endpoint's call count over `model_calls` in the pools this page shows, not over `calls`; what ranks the sidebar's status panel. Endpoints with no calls aren't listed. */
-  endpointUses: { endpointId: string; calls: number }[];
+  /**
+   * Each endpoint's call count over `model_calls` in the pools this page shows, not over `calls`; what ranks the sidebar's status panel.
+   * Endpoints with no calls aren't listed. `tokPerSec` (output tokens over generation time) and `promptTokPerSec` (prompt tokens read
+   * over time to first token) are summed over its last 10 measured turns of the past 24 hours, `speedCalls` of them; absent with none.
+   */
+  endpointUses: { endpointId: string; calls: number; tokPerSec?: number; promptTokPerSec?: number; speedCalls?: number }[];
   notice: string[];
   /** How many items Clean up lists. */
   cleanup: number;

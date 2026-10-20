@@ -1672,7 +1672,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       endpoints with `pageStatus`, hosts' status or error (`unpaired` when the
       host revoked this server), the presets and columns, the newest visible call,
       per-endpoint call counts over the shown pools (`endpointUses`, what ranks
-      the sidebar's status panel),
+      the sidebar's status panel, with `tokPerSec`, `promptTokPerSec` and
+      `speedCalls` over its last 10 measured turns of the past day),
       the notice, the Clean up count, and `release` (`{ tag, commit }`) when
       Lyrica runs one); `GET models/cleanup`; `GET`/`DELETE
       models/notice`; `GET models/calls` (`?project=&pool=` filters both pool and project tree); `GET library/text`; `GET hub-tokens`,

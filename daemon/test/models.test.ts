@@ -57,4 +57,31 @@ describe("the models page response", () => {
       expect(both.calls.length).toBeLessThanOrEqual(20);
     } finally { await d.stop(); }
   });
+
+  it("gives each endpoint its recent speed over its last measured turns of the past day", async () => {
+    const rt = await runtime();
+    const d = new Lyricad({ home: rt.home, port: 0, selfTest: false, log: () => {}, argon2: { memoryCost: 1024, timeCost: 1, parallelism: 1 }, kdfIter: 1 });
+    await d.unlock("passphrase");
+    try {
+      await d.services!.users.authenticate("ada", "pw");
+      const models = d.services!.models, actor = d.services!.users.get(rt.ada.id)!;
+      const gpu = models.addEndpoint(actor, { name: "gpu", kind: "local", baseUrl: "http://127.0.0.1:9/v1" });
+      const box = models.addEndpoint(actor, { name: "box", kind: "local", baseUrl: "http://127.0.0.1:9/v1" });
+      const now = Date.parse("2026-10-20T12:00:00Z");
+      const db = d.services!.users.openUserDb(rt.ada.id);
+      const call = db.prepare("INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, output_tokens, gen_ms, processed, ttft_ms) VALUES (?, 'general', 't', 'chat', 'o', 'm', ?, 'local', ?, ?, ?, ?)");
+      // gpu: an old fast turn outside the day, eleven slow ones inside it (only the last ten count), and one unmeasured.
+      call.run("2026-10-18T12:00:00Z", "gpu", 9000, 1000, 0, 0);
+      call.run("2026-10-20T08:00:00Z", "gpu", 9000, 1000, 0, 0);
+      for (let i = 0; i < 10; i++) call.run("2026-10-20T09:00:00Z", "gpu", 400, 10_000, 3000, 1000);
+      call.run("2026-10-20T10:00:00Z", "gpu", null, null, null, null);
+      // box: only a turn from two days ago, so it keeps its count but has no speed.
+      call.run("2026-10-18T12:00:00Z", "box", 500, 1000, 0, 0);
+      db.close();
+
+      const uses = models.endpointUses(rt.ada.id, ["general"], now);
+      expect(uses.find((u) => u.endpointId === gpu.id)).toEqual({ endpointId: gpu.id, calls: 13, tokPerSec: 40, promptTokPerSec: 3000, speedCalls: 10 });
+      expect(uses.find((u) => u.endpointId === box.id)).toEqual({ endpointId: box.id, calls: 1 });
+    } finally { await d.stop(); }
+  });
 });

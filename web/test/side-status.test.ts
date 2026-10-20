@@ -2,7 +2,7 @@
 // most-used cloud ones, ranked by the page's endpointUses counts (web/src/SideStatus.tsx).
 import { describe, expect, it } from "vitest";
 import type { ModelsPage } from "../src/api.ts";
-import { checkedAgo, selectStatus } from "../src/SideStatus.tsx";
+import { checkedAgo, selectStatus, speedTitle } from "../src/SideStatus.tsx";
 
 const ep = (name: string, kind: "local" | "cloud", over: Record<string, unknown> = {}) => ({
   id: name, name, kind, api: "openai-compatible", baseUrl: "http://x/v1", hasApiKey: false, shared: false, unencrypted: false, stale: false, models: [], state: "up", ...over,
@@ -59,5 +59,20 @@ describe("the panel's last-checked time", () => {
     expect(checkedAgo(59_900)).toBe("59 s");
     expect(checkedAgo(180_000)).toBe("3 min");
     expect(checkedAgo(-5_000)).toBe("0 s");
+  });
+});
+
+describe("the panel's speeds", () => {
+  it("carries each endpoint's recent speed from endpointUses, and none without measured turns", () => {
+    const p = page([ep("gpu", "local"), ep("box", "local")], [], [{ endpointId: "gpu", calls: 3, tokPerSec: 41.6, promptTokPerSec: 812.3, speedCalls: 3 }, use("box", 1)]);
+    const [gpu, box] = selectStatus(p).local;
+    expect(gpu?.speed).toEqual({ tokPerSec: 41.6, promptTokPerSec: 812.3, calls: 3 });
+    expect(box?.speed).toBeUndefined();
+  });
+
+  it("puts the detail in the tooltip", () => {
+    expect(speedTitle({ tokPerSec: 41.6, promptTokPerSec: 812.3, calls: 3 })).toBe("42 tok/s · 812 prompt tok/s · last 3 turns");
+    expect(speedTitle({ tokPerSec: 12, calls: 1 })).toBe("12 tok/s · last 1 turn");
+    expect(speedTitle()).toBe("no turns in the past day");
   });
 });
