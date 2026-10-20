@@ -62,6 +62,8 @@ export function createChecksExtension(o: ChecksOptions): ExtensionFactory {
       // Her reply ends the run: no tool calls, and not cut off by an error, a stop or the tool limit's wrap-up.
       if (!changed || rounds >= CHECK_ROUNDS || e.message.role !== "assistant") return;
       if (e.message.content.some((c) => c.type === "toolCall") || e.message.stopReason === "error" || e.message.stopReason === "aborted") return;
+      // A reply with only thinking isn't one: turn-tools asks her to carry on.
+      if (!e.message.content.some((c) => c.type === "text" && c.text.trim())) return;
       if (!pi.getActiveTools().length) return;
       const checks = o.checks();
       if (!checks.length || !o.code() || o.plan()) return;
