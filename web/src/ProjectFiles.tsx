@@ -7,8 +7,8 @@ import { kb } from "./Files.tsx";
 import { Icon } from "./icons.tsx";
 import { RowMenu } from "./Machines.tsx";
 import { her } from "./name.ts";
-import { Lightbox, Thumb, useFileLinks, WORKDIR } from "./paths.tsx";
-import { href } from "./route.ts";
+import { Thumb, useFileLinks, WORKDIR } from "./paths.tsx";
+import { Viewer } from "./Viewer.tsx";
 import type { ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, InlineRename, shortTime, useAction } from "./ui.tsx";
 
@@ -49,7 +49,9 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
   const [adding, setAdding] = useState(false);
   const [moving, setMoving] = useState<FileEntry>();
   const [deleting, setDeleting] = useState<FileEntry>();
-  const [large, setLarge] = useState<ImageEntry>();
+  /** The file open in the viewer, with the project chat beside it. */
+  const [viewing, setViewing] = useState<FileEntry>();
+  const closeViewer = useCallback(() => setViewing(undefined), []);
   const [dropping, setDropping] = useState(false);
   const [run, busy, error] = useAction();
   const [loadError, setLoadError] = useState("");
@@ -144,7 +146,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
                   </span>
                   {e.kind === "folder"
                     ? <button type="button" className="sm" onClick={() => setDir(e.path)}>Open</button>
-                    : <a className="sm" href={links.href(e.path)}>Open</a>}
+                    : <button type="button" className="sm" onClick={() => setViewing(e)}>Open</button>}
                   <RowMenu label={`Actions for ${e.name}`} items={menu(e)} />
                 </li>
               ))}
@@ -162,7 +164,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
             <ul className="pfiles-grid" aria-label="Images">
               {shownImages.map((i) => (
                 <li key={i.path}>
-                  <button type="button" className="pfiles-thumb" aria-label={`Open ${i.name}`} onClick={() => setLarge(i)}><Thumb path={i.path} alt="" files={links} /></button>
+                  <button type="button" className="pfiles-thumb" aria-label={`Open ${i.name}`} onClick={() => setViewing(i)}><Thumb path={i.path} alt="" files={links} /></button>
                   <span className="pfiles-tile">
                     {renaming === i.path
                       ? <InlineRename className="mono" value={i.name} label="New name" onSave={(n) => rename(i, n)} onDone={() => setRenaming(undefined)} />
@@ -176,7 +178,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
         </>
       )}
       <input ref={picker} type="file" multiple hidden onChange={(e) => { send(e.target.files ?? []); e.target.value = ""; }} />
-      {large && <Lightbox path={large.path} url={contentUrl(large.path)} onClose={() => setLarge(undefined)} />}
+      {viewing && <Viewer ctx={ctx} threads={ctx.threads} file={viewing} base={base} shownPath={relative(viewing.path)} thread={{ pool, threadId }} onClose={closeViewer} />}
       {moving && <MoveDrawer base={base} entry={moving} onClose={() => setMoving(undefined)} onMoved={() => { setMoving(undefined); void load(); }} />}
       {deleting && (
         <ConfirmDialog title={`Delete ${deleting.name}?`} danger confirm="Delete" onCancel={() => setDeleting(undefined)}

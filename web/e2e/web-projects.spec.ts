@@ -694,7 +694,14 @@ test("Project settings → Files and images: the project folder one folder at a 
   await row("uploads").getByRole("button", { name: "Open" }).click();
   await expect(section.getByRole("navigation", { name: "Folder" })).toHaveText("Project folder/uploads");
   await expect(row("plan.md")).toContainText("B");
-  await expect(row("plan.md").getByRole("link", { name: "Open" })).toHaveAttribute("href", /\/files\/%2Fworkspace%2Fuploads%2Fplan\.md$/);
+  // A file opens in the viewer, the project chat beside it from 1180 px up.
+  await row("plan.md").getByRole("button", { name: "Open" }).click();
+  const viewer = page.getByRole("dialog", { name: "plan.md" });
+  await expect(viewer.locator(".viewer-head .fname")).toHaveText("uploads/plan.md");
+  if (!phone(page)) await expect(viewer.locator(".viewer-thread h1")).toBeVisible();
+  else await expect(viewer.getByRole("button", { name: "Thread" })).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/viewer-project-${page.viewportSize()!.width}.png` });
+  await viewer.getByRole("button", { name: "Close", exact: true }).click();
   // Upload puts files in the folder shown.
   await section.locator('input[type="file"]').setInputFiles({ name: "seeds.txt", mimeType: "text/plain", buffer: Buffer.from("Basil, chard") });
   await expect(row("seeds.txt")).toBeVisible();
@@ -730,8 +737,9 @@ test("Project settings → Files and images: the project folder one folder at a 
   await expect(section.locator(".pfiles-grid img")).toHaveCount(1);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-images-${page.viewportSize()!.width}.png` });
   await section.getByRole("button", { name: /^Open .*\.png$/ }).click();
-  await expect(page.locator("dialog.lightbox")).toBeVisible();
+  await expect(page.locator("dialog.viewer .viewer-media img")).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(page.locator("dialog.viewer")).toHaveCount(0);
   await noHorizontalScroll(page);
 });
 
@@ -1038,9 +1046,27 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await expect(panel.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
   await panel.getByRole("button", { name: "uploads", exact: true }).click();
   await panel.getByRole("button", { name: "plan.md", exact: true }).click();
-  await expect(panel.locator(".fview pre")).toContainText("Water the trays.");
-  // The panel is narrow, so the file took the tree's place.
-  await panel.locator(".fback").click();
+  // A file opens in the viewer: Markdown rendered, its Source a segment away, the thread beside it from 1180 px up.
+  const viewer = page.getByRole("dialog", { name: "plan.md" });
+  await expect(viewer.locator(".viewer-prose h1")).toHaveText("The plan");
+  await expect(viewer.locator(".viewer-facts")).toContainText("Markdown");
+  await viewer.getByRole("button", { name: "Source" }).click();
+  await expect(viewer.locator(".viewer-text")).toContainText("# The plan");
+  const beside = viewer.getByRole("region", { name: "hello files" });
+  if (phone(page)) {
+    await expect(beside).toHaveCount(0);
+    await viewer.getByRole("button", { name: "Thread" }).click();
+    await expect(beside.getByRole("heading", { level: 1, name: "hello files" })).toBeVisible();
+    await expect(viewer.locator(".viewer-file")).toHaveCount(0);
+    await beside.getByRole("button", { name: "Close panel" }).click();
+    await expect(viewer.locator(".viewer-file")).toBeVisible();
+  } else {
+    await expect(beside.getByRole("heading", { level: 1, name: "hello files" })).toBeVisible();
+    await expect(beside.getByText("You said: hello files")).toBeVisible();
+  }
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/viewer-markdown-${page.viewportSize()!.width}.png` });
+  await page.keyboard.press("Escape");
+  await expect(viewer).toHaveCount(0);
   await panel.getByLabel("Search files").fill(tray.slice(0, 6));
   await expect(panel.getByRole("button", { name: `uploads/${tray}`, exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: /plan\.md/ })).toHaveCount(0);
@@ -1052,7 +1078,7 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
     const uploads = panel.getByRole("button", { name: "uploads", exact: true });
     await expect(uploads).toBeVisible();
     if ((await uploads.getAttribute("aria-expanded")) === "false") await uploads.click();
-    if (phone(page)) { await panel.getByRole("button", { name, exact: true }).click(); await panel.getByRole("button", { name: "File actions" }).click(); }
+    if (phone(page)) { await panel.getByRole("button", { name, exact: true }).click(); await page.getByRole("dialog", { name }).getByRole("button", { name: "File actions" }).click(); }
     else await panel.getByRole("button", { name, exact: true }).click({ button: "right" });
     return page.getByRole("menu", { name: "File actions" });
   };
@@ -1071,10 +1097,12 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   // The path in her reply is a link that shows the file; the person's message links it too.
   await expect(page.locator(".msg.user a.fpath", { hasText: "/workspace/uploads/plan.md" })).toBeVisible();
   await page.locator(".prose a.fpath", { hasText: "/workspace/uploads/plan.md" }).first().click();
-  await expect(page.locator(".fview .fname")).toHaveText("uploads/plan.md");
-  await expect(page.locator(".fview pre")).toContainText("# The plan");
+  const linked = page.getByRole("dialog", { name: "plan.md" });
+  await expect(linked.locator(".viewer-head .fname")).toHaveText("uploads/plan.md");
+  await expect(linked.locator(".viewer-prose")).toContainText("Water the trays.");
+  await linked.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(linked).toHaveCount(0);
   if (phone(page)) { await page.goBack(); await page.getByRole("heading", { level: 1, name: "hello files" }).waitFor(); }
-  else await page.locator(".fview .fback").click(); // the panel column is narrow, so the file took the tree's place
   // An image she writes from the thread folder shows in the message and opens large.
   await page.getByLabel("Message", { exact: true }).fill(`![the tray](${trayPath})`);
   // An image named in the draft shows above the box with its ✕, a 44 px target on a phone (docs/ux.md §6, The message box).
@@ -1136,6 +1164,46 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await panel.getByRole("group", { name: "Show" }).getByRole("button", { name: "Made by Lyrica" }).click();
   await expect(panel.getByText("No images yet")).toBeVisible();
   await noHorizontalScroll(page);
+});
+
+test("the file viewer: an HTML page runs in a sandbox that can't reach Lyrica, its console beneath, the thread beside", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "make a page");
+  await expect(page.getByText("You said: make a page")).toBeVisible();
+  const threadId = decodeURIComponent(location_of(page).split("/t/general/")[1]!.split("/")[0]!);
+  const html = `<!doctype html><html><body><h1>Garden</h1><script>
+console.warn("old three.js");
+let reached; try { reached = parent.document.title; } catch { reached = "blocked"; }
+console.log("parent: " + reached);
+let cookie; try { cookie = document.cookie; } catch { cookie = "blocked"; }
+console.log("cookie: " + cookie);
+fetch("/api/u/${userId}/me").then((r) => console.log("api: " + r.status), () => console.log("api: refused"));
+</script></body></html>`;
+  await page.evaluate(async ([path, body]) => {
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/octet-stream" }, body });
+    if (!r.ok) throw new Error(`${path}: ${r.status}`);
+  }, [`/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/uploads?name=garden.html`, html] as const);
+
+  await page.getByRole("link", { name: "Files and images" }).click();
+  const panel = phone(page) ? page.locator(".files-page") : page.getByRole("complementary");
+  await panel.getByRole("button", { name: "uploads", exact: true }).click();
+  await panel.getByRole("button", { name: "garden.html", exact: true }).click();
+  const viewer = page.getByRole("dialog", { name: "garden.html" });
+  await expect(viewer.frameLocator("iframe.viewer-frame").getByRole("heading", { name: "Garden" })).toBeVisible();
+  const lines = viewer.getByRole("region", { name: "Console" }).locator("li");
+  await expect(lines).toHaveText(["old three.js", "parent: blocked", "cookie: blocked", "api: refused"], { timeout: 15_000 });
+  await expect(lines.first()).toHaveClass(/c-warn/);
+  if (!phone(page)) await expect(viewer.getByRole("region", { name: "make a page" }).getByText("You said: make a page")).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/viewer-html-${page.viewportSize()!.width}.png` });
+  // Source shows the page as text; Preview runs it again.
+  await viewer.getByRole("button", { name: "Source" }).click();
+  await expect(viewer.locator(".viewer-text")).toContainText("<h1>Garden</h1>");
+  await viewer.getByRole("button", { name: "Preview" }).click();
+  await expect(viewer.frameLocator("iframe.viewer-frame").getByRole("heading", { name: "Garden" })).toBeVisible();
+  await noHorizontalScroll(page);
+  await viewer.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(viewer).toHaveCount(0);
 });
 
 test("Share with sends a copy; the recipient sees it in Notifications and adds it to Private", async ({ page, baseURL }) => {

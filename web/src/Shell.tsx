@@ -264,7 +264,7 @@ function showInPanel(route: Route & { page: "thread" }, trail: Trail, panel: Pan
   go({ ...route, drawer: undefined, panel });
 }
 
-interface PanelContext {
+export interface PanelContext {
   /** The pages opened in turn; the current one last. */
   crumbs: { label: string; href: string }[];
   /** The panel's page on its own. */
@@ -274,6 +274,8 @@ interface PanelContext {
 const PanelCtx = createContext<PanelContext | undefined>(undefined);
 /** The panel's breadcrumb and buttons, when inside it. */
 export const usePanel = () => useContext(PanelCtx);
+/** A page shown as if in the panel somewhere else (the producing thread beside the file viewer): its own crumbs and buttons. */
+export const PanelFrame = ({ value, children }: { value: PanelContext; children: React.ReactNode }) => <PanelCtx.Provider value={value}>{children}</PanelCtx.Provider>;
 
 /** The page's root: `main` on its own, a plain block inside the panel (one main per document). */
 export function Main(props: React.HTMLAttributes<HTMLElement>) {

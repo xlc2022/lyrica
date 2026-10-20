@@ -1,20 +1,18 @@
 // The Files panel (DESIGN "Files and images", docs/ux.md §6): a thread's
 // folder and its granted folders, one folder at a time, with a search, a
-// file shown beside the tree, an Images tab, and every action in a
+// file opened in the viewer (Viewer.tsx), an Images tab, and every action in a
 // right-click menu (a long press on a phone, or the ⋯ beside a file).
 // Beside the conversation from the split width; the page on its own below it.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { get, post, threadPath, upload, type FileEntry, type FileListing, type FileRoot, type FileSearch, type ImageEntry, type Pool, type ThreadSummary } from "./api.ts";
 import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
-import { Lightbox, shown, Thumb, useFileLinks, WORKDIR, type FileLinks } from "./paths.tsx";
+import { isUnderWorkdir, shown, Thumb, useFileLinks, WORKDIR, type FileLinks } from "./paths.tsx";
+import { Viewer } from "./Viewer.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { go } from "./route.ts";
 import { Crumbs, Main, PanelButtons, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, InlineRename, menuArrows, useLongPress, useSelection } from "./ui.tsx";
-
-/** Text this large is shown in the panel; anything bigger, or of another kind, is offered as a download. */
-const TEXT_LIMIT = 512 * 1024;
 
 type Tab = "files" | "images";
 type Filter = "all" | "uploaded" | "made";
@@ -277,6 +275,15 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const act = (fn: () => Promise<unknown>) => fn().then(() => setMenu(undefined), (e: Error) => { setError(e.message); setMenu(undefined); });
   const dropDir = current ? parent(current.path) : cwd;
   const panelTitle = tab === "files" ? "Files" : "Images";
+  const closeViewer = useCallback(() => setCurrent(undefined), []);
+  // Inside the viewer while it shows, since the page under a modal dialog can't be reached.
+  const fileMenu = menu && (
+    <FileMenu at={menu} writable={writable} onClose={() => setMenu(undefined)} shownName={shown}
+      onAttach={(ps) => { setMenu(undefined); setCurrent(undefined); attach(ps); }} onDownload={(ps) => { setMenu(undefined); download(ps); }} onCopy={(ps) => { setMenu(undefined); void copy(ps); }}
+      onSelect={(p) => { setMenu(undefined); setSel((s) => new Set([...s, p])); }} onShow={(p) => { setMenu(undefined); setCurrent(undefined); showInThread(p); }}
+      onUpload={(dir) => { setMenu(undefined); askUpload(dir); }} onMkdir={(dir, name) => act(() => mkdir(dir, name))} onRename={(p, name) => act(() => rename(p, name))}
+      onDelete={(ps) => act(() => remove(ps))} />
+  );
 
   return (
     <Main className={`main files-page${dropping ? " drop" : ""}`} aria-label={`${title}: files`}
@@ -303,19 +310,12 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
       {tab === "files" ? (
         <>
           <div className="fsearch"><input type="search" aria-label="Search files" placeholder="Search files" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          <div className={`fbody${current && !hits ? " viewing" : ""}`}>
+          <div className="fbody">
             <div className="ftree" role="tree" aria-label="Folders and files" {...press({ kind: "space", dir: cwd })}>{tree}</div>
-            <div className="fview">
-              {current ? (
-                <FileView key={current.path} entry={current} url={contentUrl(current.path)} onBack={() => setCurrent(undefined)}
-                  onMenu={(e) => openMenu(e, { kind: "file", entry: current })} onDownload={() => download([current.path])} />
-              ) : <p className="empty pick">Pick a file</p>}
-            </div>
           </div>
         </>
       ) : (
-        <ImagesTab images={images} filter={filter} onFilter={setFilter} url={contentUrl} links={links} sel={sel} onPick={pick} press={(e) => press({ kind: "file", entry: e })}
-          onMenu={(e, entry) => openMenu(e, { kind: "file", entry })} />
+        <ImagesTab images={images} filter={filter} onFilter={setFilter} links={links} sel={sel} onPick={pick} press={(e) => press({ kind: "file", entry: e })} onOpen={view} />
       )}
       {sel.size > 0 && (
         <div className="selbar" role="toolbar" aria-label="Selection">
@@ -325,56 +325,23 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
         </div>
       )}
       <input ref={picker} type="file" multiple hidden onChange={(e) => { send(uploadTo.current, e.target.files ?? []); e.target.value = ""; }} />
-      {menu && (
-        <FileMenu at={menu} writable={writable} onClose={() => setMenu(undefined)} shownName={shown}
-          onAttach={(ps) => { setMenu(undefined); attach(ps); }} onDownload={(ps) => { setMenu(undefined); download(ps); }} onCopy={(ps) => { setMenu(undefined); void copy(ps); }}
-          onSelect={(p) => { setMenu(undefined); setSel((s) => new Set([...s, p])); }} onShow={(p) => { setMenu(undefined); showInThread(p); }}
-          onUpload={(dir) => { setMenu(undefined); askUpload(dir); }} onMkdir={(dir, name) => act(() => mkdir(dir, name))} onRename={(p, name) => act(() => rename(p, name))}
-          onDelete={(ps) => act(() => remove(ps))} />
+      {current && (
+        // The file large, with this thread beside it when the file is in its own folder (a grant's has no thread of its own).
+        <Viewer ctx={ctx} threads={threads} file={current} base={base} shownPath={shown(current.path)} thread={isUnderWorkdir(current.path) ? { pool, threadId } : undefined}
+          onMenu={(e) => openMenu(e, { kind: "file", entry: current })} onClose={closeViewer}>
+          {menu && fileMenu}
+        </Viewer>
       )}
+      {menu && !current && fileMenu}
     </Main>
   );
 }
 
-/** One file: an image as itself, text as text, anything else by its size with Download. */
-function FileView({ entry, url, onBack, onMenu, onDownload }: { entry: FileEntry; url: string; onBack: () => void; onMenu: (e: React.MouseEvent) => void; onDownload: () => void }) {
-  const [state, setState] = useState<{ kind: "loading" } | { kind: "image" } | { kind: "text"; text: string } | { kind: "other"; type: string } | { kind: "error"; message: string }>({ kind: "loading" });
-  useEffect(() => {
-    let live = true;
-    // The type comes with the bytes (lyricad sniffs images); what isn't shown as text is stopped after its headers.
-    const ctl = new AbortController();
-    fetch(url, { credentials: "same-origin", signal: ctl.signal }).then(async (r) => {
-      if (!r.ok) throw new Error(r.status === 404 ? "That file is gone." : (await r.json().catch(() => ({ error: "the file can't be read" })) as { error: string }).error);
-      const type = r.headers.get("content-type") ?? "";
-      const textual = type.startsWith("text/") || /json|xml|javascript|yaml|csv/.test(type);
-      if (type.startsWith("image/") || !textual || entry.size > TEXT_LIMIT) { ctl.abort(); return type.startsWith("image/") ? { kind: "image" as const } : { kind: "other" as const, type }; }
-      return { kind: "text" as const, text: await r.text() };
-    }).then((s) => { if (live) setState(s); }, (e: Error) => { if (live) setState({ kind: "error", message: e.message }); });
-    return () => { live = false; ctl.abort(); };
-  }, [url, entry.size]);
-  return (
-    <>
-      <div className="fhead">
-        <button type="button" className="sm fback" onClick={onBack}><Icon name="back" />Files</button>
-        <span className="fname mono">{shown(entry.path)}</span>
-        <span className="num muted">{kb(entry.size)}</span>
-        <button type="button" className="icon sm" aria-label="File actions" aria-haspopup="menu" onClick={onMenu}><Icon name="more" /></button>
-      </div>
-      {state.kind === "loading" && <p className="empty">Loading…</p>}
-      {state.kind === "image" && <img src={url} alt={entry.name} />}
-      {state.kind === "text" && <pre>{state.text || <span className="muted">Empty</span>}</pre>}
-      {state.kind === "other" && <p className="empty">This kind of file isn't shown here. <button type="button" className="link" onClick={onDownload}>Download</button></p>}
-      {state.kind === "error" && <ErrorText error={state.message} />}
-    </>
-  );
-}
-
-/** The thread's images, filtered, each opening large. */
-function ImagesTab({ images, filter, onFilter, url, links, sel, onPick, press, onMenu }: {
-  images?: ImageEntry[]; filter: Filter; onFilter: (f: Filter) => void; url: (p: string) => string; links: FileLinks; sel: Set<string>;
-  onPick: (e: React.MouseEvent, entry: FileEntry) => boolean; press: (entry: FileEntry) => Record<string, unknown>; onMenu: (e: React.MouseEvent, entry: FileEntry) => void;
+/** The thread's images, filtered, each opening in the viewer. */
+function ImagesTab({ images, filter, onFilter, links, sel, onPick, press, onOpen }: {
+  images?: ImageEntry[]; filter: Filter; onFilter: (f: Filter) => void; links: FileLinks; sel: Set<string>;
+  onPick: (e: React.MouseEvent, entry: FileEntry) => boolean; press: (entry: FileEntry) => Record<string, unknown>; onOpen: (entry: FileEntry) => void;
 }) {
-  const [large, setLarge] = useState<ImageEntry>();
   const shownImages = images?.filter((i) => filter === "all" || i.source === filter);
   return (
     <>
@@ -388,16 +355,14 @@ function ImagesTab({ images, filter, onFilter, url, links, sel, onPick, press, o
       <div className="igrid" aria-label="Images">
         {!images ? <p className="empty">Loading…</p> : !shownImages?.length ? <p className="empty">No images yet</p> : shownImages.map((i) => (
           <button key={i.path} type="button" aria-label={i.name} className={sel.has(i.path) ? "sel" : undefined} aria-pressed={sel.has(i.path) || undefined}
-            onClick={(e) => { if (!onPick(e, i)) setLarge(i); }} {...press(i)}>
+            onClick={(e) => { if (!onPick(e, i)) onOpen(i); }} {...press(i)}>
             <Thumb path={i.path} alt="" files={links} /><span className="meta mono">{i.name}</span>
           </button>
         ))}
       </div>
-      {large && <Lightbox path={large.path} url={url(large.path)} onClose={() => setLarge(undefined)} onMenu={(e) => onMenu(e, large)} />}
     </>
   );
 }
-
 function Item({ label, kbd, danger, onClick }: { label: ReactNode; kbd?: string; danger?: boolean; onClick: () => void }) {
   return (
     <button type="button" role="menuitem" className={danger ? "danger" : undefined} data-key={kbd} onClick={onClick}>

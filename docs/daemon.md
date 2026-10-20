@@ -719,6 +719,20 @@ documented in `daemon/src/api.ts`, "The Files panel".
   as `text/plain`. Every answer carries `Content-Security-Policy: default-src
   'none'; sandbox` and `nosniff`, so a served file never runs as a page.
   `download` makes it an attachment.
+- `GET …/files/view?path=<path>` serves an HTML, SVG or PDF file as a page
+  for the web's file viewer (`file-view.ts`), at most 16 MB (413 beyond;
+  415 for any other kind, or a `.pdf` whose bytes aren't a PDF's). HTML is
+  `text/html` with a small console bridge inserted first (after any
+  doctype), which posts the page's console messages and uncaught errors to
+  the viewer, and the CSP `sandbox allow-scripts allow-popups; default-src
+  https: data: blob: 'unsafe-inline' 'unsafe-eval'; form-action 'none';
+  frame-ancestors 'self'`: the page has an opaque origin even opened on its
+  own, so the session cookie (SameSite=Strict) never goes with its requests
+  and Lyrica's answers (CORP same-origin, no CORS) can't be read; it may load
+  https resources as a file opened in the browser could. SVG is
+  `image/svg+xml` under `default-src 'none'; sandbox`, so nothing in it runs.
+  A PDF has no sandbox, since browsers refuse to show one in a sandbox, and
+  only `frame-ancestors 'self'`. None carries `X-Frame-Options`.
 - `GET …/files/thumb?path=<path>` serves a copy of an image in the thread's
   folder at most 320 px on a side (PNG, or JPEG for a JPEG), made by
   ImageMagick (`magick`, or `convert` on ImageMagick 6) inside the sandbox
