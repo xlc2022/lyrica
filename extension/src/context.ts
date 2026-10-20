@@ -24,6 +24,8 @@ export interface ContextReport {
   /** The parts, adding up to the window: the estimated ones scaled to the measured total, then the reserve and free space. */
   parts: ContextPart[];
   measuredAt: string;
+  /** How many times this conversation has been compacted: the tokens are what is left after them. */
+  compactions: number;
   /** The last turn's speed. */
   pace?: Pace;
 }
@@ -61,6 +63,8 @@ export class ContextMeter {
   private fresh?: Pace;
   /** The last finished turn's pace. */
   last?: Pace;
+  /** Compactions on the conversation's branch, counted at each turn's end. */
+  compactions = 0;
   /** A compaction she asked for, run when the turn ends: her summary, or notes for Pi's own. */
   pending?: { summary?: string; notes?: string };
   /** The compaction now running, for `session_before_compact`. */
@@ -95,6 +99,7 @@ export class ContextMeter {
     const { parts } = this.snapshot;
     const rest = ESTIMATED.filter((k) => k !== "conversation").reduce((a, k) => a + (parts[k] ?? 0), 0);
     this.snapshot = { ...this.snapshot, parts: { ...parts, conversation: Math.max(0, after - rest) }, tokens: after, at: new Date().toISOString() };
+    this.compactions++;
   }
 
   report(): ContextReport | undefined {
@@ -110,7 +115,7 @@ export class ContextMeter {
     const free = Math.max(0, s.window - s.tokens - reserve);
     parts.push({ name: "reserve", tokens: reserve }, { name: "free", tokens: free });
     return {
-      tokens: s.tokens, window: s.window, percent: Math.round((s.tokens / s.window) * 100), reserve, free, parts, measuredAt: s.at,
+      tokens: s.tokens, window: s.window, percent: Math.round((s.tokens / s.window) * 100), reserve, free, parts, measuredAt: s.at, compactions: this.compactions,
       ...(this.last ? { pace: this.last } : {}),
     };
   }
@@ -224,6 +229,7 @@ export function registerContext(pi: ExtensionAPI, meter: ContextMeter): void {
   pi.on("agent_end", (_e, ctx) => {
     const window = ctx.model?.contextWindow ?? 0;
     const pace = turn.calls ? speeds({ promptTokens: turn.prompt, readTokens: turn.read, outputTokens: turn.output, window, ttftMs: turn.ttft, genMs: turn.gen, processed: turn.processed }) : undefined;
+    meter.compactions = ctx.sessionManager.getBranch().filter((e) => e.type === "compaction").length;
     meter.measure(ctx.getContextUsage()?.tokens, window, conversationTokens(ctx), pace);
   });
 
