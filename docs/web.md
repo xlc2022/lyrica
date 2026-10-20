@@ -190,7 +190,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   settings link opens the drawer). The page in the panel is the same
   component as on its own, rooted in a block instead of `main`, and its
   header gains **Open as a page** (a link to the page's own address) and **Close panel**; Esc closes
-  it, and focus lands on its heading each time it shows something else. The
+  it, and focus lands on its heading each time it shows something else. Open as a page remembers the
+  conversation it left (in `sessionStorage`, `lyrica.beside`), so that page's header shows **Open in
+  panel** instead, from 1180 px up, a link back to the conversation with the page in its panel as it
+  is now (its drawer, file or section); Esc follows it too. Opening any other page forgets it. The
   panel is `role="complementary"` named by its breadcrumb. Below 1180 px the
   same address shows the panel's page on its own.
 - **The Files panel** (`Files.tsx`, docs/ux.md §6): **Files** in a thread's
