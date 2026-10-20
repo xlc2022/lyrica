@@ -9,6 +9,7 @@ import { SELF_PRIMER } from "./primer.ts";
 import { TopicRouter, type RoutedTopic } from "./routing.ts";
 import { reactionLines, type UserReaction } from "./react.ts";
 import { registerMemoryTools } from "./tools.ts";
+export { RECALL_GUIDELINES } from "./tools.ts";
 import { registerVisionGuard } from "./vision.ts";
 
 export * from "./assemble.ts";

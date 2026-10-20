@@ -84,10 +84,16 @@ export function search(view: PoolView, query: string, opts: SearchOptions, hide?
   return searchView(view, query, { ...opts, limit: limit * 4 }).filter((h) => !hide(h.id)).slice(0, limit);
 }
 
-/** One recall hit: `[id] (kind, 2026-10-12, added by Sam) snippet`. */
+/** One recall hit: `[id] (entry by Ada, 2026-10-12) snippet`, `(your journal, …)`, `(note, …, added by Sam)`. */
 export function formatHit(h: Hit, user: MemoryContext["user"]): string {
-  const labels = [h.kind, h.at?.slice(0, 10), authorLabel(h.author, user), h.supersededBy && `superseded by ${h.supersededBy}`].filter(Boolean);
+  const labels = [kindLabel(h, user), h.at?.slice(0, 10), authorLabel(h.author, user), h.supersededBy && `superseded by ${h.supersededBy}`].filter(Boolean);
   return `[${h.id}] (${labels.join(", ")}) ${h.snippet}`;
+}
+
+/** Who said a recalled message, and that a journal entry is her own, so hits from different speakers don't blend. */
+function kindLabel(h: Hit, user: MemoryContext["user"]): string {
+  if (h.kind === "entry") return h.origin === "user" ? `entry by ${user.profile.displayName}` : h.origin === "lyrica" ? "entry by you" : "tool result";
+  return h.kind === "journal" ? "your journal" : h.kind;
 }
 
 function authorLabel(author: string | undefined, user: MemoryContext["user"]): string | undefined {
