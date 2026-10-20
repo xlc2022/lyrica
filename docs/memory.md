@@ -197,7 +197,10 @@ The cheapest mechanism comes first:
    which new entries were pinned, as a sign they matter.
 2. **Automatic recall on every user turn.** Search notes, pages and past
    threads in the pool using the user's message, and inject up to five hits as
-   short snippets with their IDs and dates (at most 4,000 characters). The
+   short snippets with their IDs and dates (at most 4,000 characters). A
+   message hit says who said it (`entry by Ada` or `entry by you`) and a
+   journal hit says `your journal`, so the model doesn't blend what the user
+   asked with her own replies and dreams. The
    search leaves out her own name, which nearly everything mentions, and when
    the message has three words or more (after stopwords), a hit must hold at
    least two of them (each as a word or a word's start; a user's name counts

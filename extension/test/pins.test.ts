@@ -88,7 +88,15 @@ describe("automatic recall", () => {
     const ctx = { threadId, user: { id: m.user.id, profile: m.user.profile }, folders: [], name: "Lyrica" };
     const recall = (await memorySections(view, "Hi Lyrica, do you have a body?", ctx)).recall ?? "";
     expect(recall).not.toContain("lyrica-relay-test");
-    expect(recall).toMatch(/\(entry, \d{4}-\d{2}-\d{2}\) Does a body matter/);
-    expect((await memorySections(view, "which branch should the test use for the body?", ctx)).recall).toContain("lyrica-relay-test");
+    expect(recall).toMatch(/\(entry by Ada, \d{4}-\d{2}-\d{2}\) Does a body matter/);
+    expect((await memorySections(view, "which branch should the test use for the body?", ctx)).recall).toMatch(/\(entry by you, [^)]*\) The default branch/);
+  });
+
+  it("marks a journal hit as her own", async () => {
+    const m = await withMemory();
+    const { view, threadId } = m.thread();
+    view.own.addJournal("I dreamed of a lighthouse at the end of a railway line.", "sleep");
+    const ctx = { threadId, user: { id: m.user.id, profile: m.user.profile }, folders: [] };
+    expect((await memorySections(view, "a lighthouse by the railway", ctx)).recall).toMatch(/\(your journal, \d{4}-\d{2}-\d{2}\) I dreamed/);
   });
 });
