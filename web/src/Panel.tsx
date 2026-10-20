@@ -53,6 +53,7 @@ const SETTINGS: SectionDef[] = [
   { key: "claude-code", label: "Claude Code and Codex", aliases: ["codex"], body: (ctx) => <><ClaudeCodeSection ctx={ctx} /><CodexSection ctx={ctx} /></> },
   { key: "routines", label: "Routines", body: (ctx) => <RoutinesSection ctx={ctx} /> },
   { key: "portraits", label: "Portrait photos", body: (ctx) => <PortraitPhotosSection key={ctx.user.id} userId={ctx.user.id} /> },
+  { key: "reset", label: "Reset", body: (ctx) => <WipeSection ctx={ctx} mine /> },
 ];
 const ADMIN: SectionDef[] = [
   { key: "status", label: "Status", body: (ctx) => <StatusSection ctx={ctx} /> },

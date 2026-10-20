@@ -78,7 +78,7 @@ test("Portrait photos uploads, downloads, confirms deletion, and saves the cloud
   await page.evaluate((id) => fetch(`/api/u/${id}/photo-cloud`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ policy: "ask" }) }), userId);
   await page.goto(`/#/u/${userId}/settings/portraits`);
   const nav = page.getByRole("navigation", { name: "Settings sections" });
-  await expect(nav.getByRole("link").last()).toHaveText("Portrait photos");
+  await expect(nav.getByRole("link").nth(-2)).toHaveText("Portrait photos");
   await expect(page.getByText("No photos yet.", { exact: true })).toBeVisible();
   const policy = page.getByLabel("Sending them to a cloud image model");
   await expect(policy).toHaveValue("ask");

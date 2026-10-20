@@ -714,8 +714,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Pause** or **Resume** (`PATCH …/threads/:pool/:threadId/routines/:id`
   with `paused`) and the bordered Remove icon (`DELETE` at the same path).
   Listings contain no notes. Empty: "No routines."
-- **Portrait photos** (`src/PortraitPhotos.tsx`, `…/settings/portraits`),
-  last in Settings: a card with the photo count pill and a grid of square
+- **Portrait photos** (`src/PortraitPhotos.tsx`, `…/settings/portraits`): a card with the photo count pill and a grid of square
   thumbnails (132 px minimum, 12 px gap), the filename in mono underneath,
   and the existing row menu for Download and Delete…. The existing confirm
   dialog asks "Delete <name>?". Add photos is secondary and opens a multiple
@@ -754,7 +753,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   spinner beside its sentence and "<n> running" as a disclosure listing each
   (Reply, Subagent or Sleep · user · pool), polling `GET …/admin/wipe` until
   nothing runs, when it says **Everything has stopped** and **Wipe memory**
-  enables again. Done, the section says "Memory wiped.". Her name (`src/name.ts`, `her()`) is what every label,
+  enables again. Done, the section says "Memory wiped.". Settings ends with
+  its own **Reset**: **Wipe my memory…** opens the same dialog, "Wipe your
+  memory?", on `POST`/`GET …/me/wipe`, which wipes and lists only the user's
+  own; its stopping state is titled **Stopping your work**. Her name (`src/name.ts`, `her()`) is what every label,
   placeholder and sentence says where this doc says Lyrica, and the tab's
   title. **Tailnet** (`src/Tailnet.tsx`; docs/ux.md §6 "The tailnet"): a
   facts line in mono (tailnet, address, MagicDNS name, control server) and

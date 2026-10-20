@@ -1,6 +1,6 @@
 # Brief: Wiping memory
 
-**Status:** Built on `claude/project-thread-07cqb3`; in review.
+**Status:** Everyone wipe merged (#390); personal wipe in review.
 
 **Read first:** AGENTS.md, PRINCIPLES.md (2, 6, 7), DESIGN.md (Memory,
 "Wiping memory"; Storage), docs/contracts.md, docs/daemon.md ("Wiping
@@ -30,15 +30,18 @@ test machine's first reset waits for this page.
 - `lyrica admin wipe` while lyricad is stopped.
 - Administration → **Reset** with the confirm dialog and the stopping state
   (spinner, collapsible list, polling).
+- Settings → **Reset**: **Wipe my memory…**, the same dialog on
+  `POST`/`GET …/me/wipe`, wiping only the user's own (`wipePools(…, userId)`).
 
 ## Out of scope
 
 - Resetting Lyrica's persona to the seed, or her name.
 - Branches her worktrees made in granted repositories (kept, as when a thread
   is forgotten), backups and update snapshots.
-- Wiping one user only.
+- An administrator wiping one other user only.
 
 ## Handoff
 
-Done: everything above, with daemon tests (`daemon/test/wipe.test.ts`) and an
-e2e test at both sizes. Next: PR review and UI review.
+Done: everything above, with daemon tests (`daemon/test/wipe.test.ts`) and
+e2e tests at both sizes. The everyone wipe merged as #390; the personal wipe
+followed in its own PR.

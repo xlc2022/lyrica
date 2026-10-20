@@ -605,20 +605,21 @@ export class Lyricad implements Drainable {
 
   /**
    * Wipe memory (DESIGN.md, "Wiping memory"): every user's threads and
-   * memories in both pools, and their thread files. Running work stops first;
+   * memories in both pools, and their thread files; with `only`, that user's
+   * alone, and only their running work is waited for. Running work stops first;
    * a locked user's user.db and home are cleaned at their next unlock. Users
    * stay signed in. Logs a count only. While anything is running (a turn, a
    * subagent, a sleep run) it is sent a stop and nothing is wiped: the
    * result lists what was running, and the wipe is asked for again.
    */
-  async wipeMemory(): Promise<{ wiped: boolean; busy: BusyItem[] }> {
+  async wipeMemory(only?: string): Promise<{ wiped: boolean; busy: BusyItem[] }> {
     const s = this.services!;
     if (this.wipingNow) throw new HttpError(409, "a wipe is already running");
     // From here no new turn starts (refuseWhileDraining, host.draining) and ticks and sleep wait, until the wipe is done or gives way.
     this.wipingNow = true;
     s.host.draining = true;
     try {
-      const busy = this.busy();
+      const busy = this.busy().filter((b) => !only || b.userId === only);
       if (busy.length) {
         for (const b of busy) {
           if (b.kind === "turn" && b.pool && b.threadId) await s.host.get(b.userId, b.pool, b.threadId).stop();
@@ -627,12 +628,12 @@ export class Lyricad implements Drainable {
         }
         return { wiped: false, busy };
       }
-      const unlocked = s.users.all().map((u) => u.id).filter((id) => this.keyring.hasUserKey(id));
+      const unlocked = s.users.all().map((u) => u.id).filter((id) => (!only || id === only) && this.keyring.hasUserKey(id));
       for (const id of unlocked) {
         await this.stopWork(id);
         await s.host.close(id);
       }
-      const n = wipePools(this.keyring, s.users);
+      const n = wipePools(this.keyring, s.users, only);
       for (const id of unlocked) {
         try {
           this.finishWipe(id, true);
