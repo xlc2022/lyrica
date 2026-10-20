@@ -50,9 +50,13 @@ const LOCAL_NAMES = new Set(["127.0.0.1", "localhost", "::1"]);
 const STATIC: Record<string, [string, string]> = {
   "/": ["dashboard.html", "text/html; charset=utf-8"],
   "/dashboard.js": ["dashboard.js", "text/javascript; charset=utf-8"],
+  "/dashboard.css": ["dashboard.css", "text/css; charset=utf-8"],
+  "/fonts/ibm-plex-sans-latin-400-normal.woff2": ["fonts/ibm-plex-sans-latin-400-normal.woff2", "font/woff2"],
+  "/fonts/ibm-plex-sans-latin-600-normal.woff2": ["fonts/ibm-plex-sans-latin-600-normal.woff2", "font/woff2"],
+  "/fonts/ibm-plex-mono-latin-400-normal.woff2": ["fonts/ibm-plex-mono-latin-400-normal.woff2", "font/woff2"],
 };
 const SECURITY_HEADERS = {
-  "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
 };

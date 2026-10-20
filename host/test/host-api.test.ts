@@ -161,6 +161,9 @@ describe("dashboard", () => {
     const { local: lp } = await host();
     expect((await local(lp, "/host/v1/status")).status).toBe(200);
     expect((await local(lp, "/")).body).toContain("Lyrica model host");
+    // Its look and fonts come from the host itself.
+    expect((await local(lp, "/dashboard.css")).body).toContain("IBM Plex");
+    expect((await local(lp, "/fonts/ibm-plex-mono-latin-400-normal.woff2")).status).toBe(200);
   });
 
   it("accepts the local listener only from the published port's address", async () => {

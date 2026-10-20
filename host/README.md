@@ -139,8 +139,16 @@ dashboard. Until it is set, the dashboard opens only at the machine. Five
 wrong tries in 15 minutes from one address, or 20 in all, lock the login
 until the window passes. The dashboard refuses requests whose Host or
 Origin isn't the host's own; only its page itself opens from a link
-elsewhere, such as Lyrica's **Dashboard** button, and what the page then
+elsewhere, such as Lyrica's **Dashboard** link, and what the page then
 asks for is same-origin.
+
+The page has Lyrica's look (docs/ux.md), with its fonts served by the host
+itself: the host's name, state and facts at the top, with **Pause** or
+**Resume** and a ⋯ (Restart…, Sign out), and sections down the left (a
+row on a phone): GPUs, Models, Image models, Downloads, Usage, Lyrica
+servers and Password. A GPU's servers, the memory it keeps free and Left
+out are edited in its drawer (**Edit**); a model's placement and serving
+settings in its **Settings** drawer, where **Look up** reads its card.
 
 ## The models folder
 
