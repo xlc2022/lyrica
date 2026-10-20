@@ -181,6 +181,10 @@ describe("lyrica-host-update --models", () => {
 
   it("refuses a folder that doesn't exist, a system folder or one holding the host's own files, and changes nothing", async () => {
     const w = await world();
+    // Folders others can write to: the folder itself, or one above it.
+    const open = join(w.root, "open"), under = join(w.root, "shared", "models");
+    mkdirSync(open); chmodSync(open, 0o777);
+    mkdirSync(under, { recursive: true }); chmodSync(join(w.root, "shared"), 0o775);
     const linked = join(w.root, "linked");
     mkdirSync(linked);
     execFileSync("ln", ["-s", "/etc", join(linked, "lyrica")]);
@@ -188,6 +192,7 @@ describe("lyrica-host-update --models", () => {
       [join(w.root, "nowhere"), "not a folder"], ["relative/path", "not a folder"], ["/", "a system folder"], ["/etc", "a system folder"],
       ["/usr/share", "a system folder"], [w.root, "holds the host's own files"], [w.dir, "holds the host's own files"],
       [join(w.checkout, "host"), "holds the host's own files"], [linked, "its lyrica subfolder isn't a folder"],
+      [open, "someone else can change it"], [under, "someone else can change it"],
     ] as const) {
       const r = await w.run("--models", path);
       expect(r.code, path).not.toBe(0);

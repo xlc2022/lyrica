@@ -106,13 +106,31 @@ if [ -n "$MODELS" ]; then
   MODELS=$(realpath -e -- "$MODELS") || fail "not a folder"
   [ -d "$MODELS" ] || fail "not a folder"
   [ "$MODELS" != / ] || fail "a system folder"
-  for sys in /bin /boot /dev /etc /lib /lib32 /lib64 /libx32 /proc /root /run /sbin /sys /usr /var/lib/docker /var/lib/containerd /var/log; do
+  for sys in /bin /boot /dev /etc /lib /lib32 /lib64 /libx32 /proc /root /run /sbin /sys /usr /var/lib /var/log; do
     inside "$MODELS" "$sys" && fail "a system folder"
   done
   for own in "$UPDATE" "$RELEASES" "$(dirname "$KEY")" "$HOST_DIR"; do
     own=$(realpath -m -- "$own")
     inside "$own" "$MODELS" && fail "holds the host's own files"
     inside "$MODELS" "$own" && fail "holds the host's own files"
+  done
+  # Nobody else may change the path between this check and install.sh: the
+  # folder and every folder above it are real folders, owned by root or by
+  # whoever owns the current models folder (the operator), that no group or
+  # other user can write to (above it, a sticky folder such as /tmp is fine:
+  # others can't move what isn't theirs). That refuses /tmp itself, other
+  # people's folders, and anything under a lyrica/ subfolder, which fetch
+  # (10001) owns.
+  owners=" 0 $(stat -c %u -- "$OLD_MODELS" 2>/dev/null || true) "
+  d=$MODELS
+  while :; do
+    [ -d "$d" ] && [ ! -L "$d" ] || fail "someone else can change it"
+    read -r uid mode < <(stat -c '%u %a' -- "$d")
+    [[ $owners == *" $uid "* ]] || fail "someone else can change it"
+    if [ "$d" = "$MODELS" ]; then (( (8#$mode & 8#022) == 0 )) || fail "someone else can change it"
+    else (( (8#$mode & 8#022) == 0 || (8#$mode & 8#1000) != 0 )) || fail "someone else can change it"; fi
+    [ "$d" = / ] && break
+    d=$(dirname -- "$d")
   done
   # Downloads go into its lyrica/ subfolder: a real folder, never a link.
   [ ! -L "$MODELS/lyrica" ] && { [ ! -e "$MODELS/lyrica" ] || [ -d "$MODELS/lyrica" ]; } || fail "its lyrica subfolder isn't a folder"

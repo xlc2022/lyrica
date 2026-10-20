@@ -105,6 +105,7 @@ function folderFailure(step: string | undefined): string {
   if (step === "not a folder") return "it isn't a folder on the host";
   if (step === "a system folder") return "it's one of the system's folders";
   if (step === "holds the host's own files") return "it holds the host's own files";
+  if (step === "someone else can change it") return "another user can write to it or a folder above it";
   if (step === "its lyrica subfolder isn't a folder") return "its lyrica subfolder is a link or a file";
   if (step === "probation") return "the host didn't start on it, so it went back to the folder before";
   if (step === "not on main") return "the host runs a version the updater can't install, so nothing changed";

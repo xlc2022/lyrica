@@ -467,7 +467,8 @@ Only the repository's name and revision leave the host.
   runs. While it moves, `update.models` is the folder asked for, and `state`
   goes through the same steps as an update; a refusal leaves `state`
   `failed` with `models` and `error`: `not a folder`, `a system folder`,
-  `holds the host's own files`, `its lyrica subfolder isn't a folder`,
+  `holds the host's own files`, `someone else can change it`, `its lyrica
+  subfolder isn't a folder`,
   `drain`, `fetch` (the running commit wasn't in the updater's repository
   and couldn't be fetched) or `probation` (it went back to the old folder).
   `last` is then `{ models, commit, at, ok }`.

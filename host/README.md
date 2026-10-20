@@ -152,9 +152,14 @@ a link. To change it, run `host/install.sh --models /new/path`, or use
 host-api can't remount containers itself, because it has no access to the
 Docker socket, so Change goes through the updater (Updates above), as root:
 it refuses a folder that doesn't exist, is or lies in a system folder (`/`,
-`/etc`, `/usr`, `/var/lib/docker` and the like), or holds or lies in the
-host's own files (the installed folder, the updater's, its trees and
-`/etc/lyrica-host`). Then it pauses the host, installs the running commit
+`/etc`, `/usr`, `/var/lib` and the like), holds or lies in the host's own
+files (the installed folder, the updater's, its trees and
+`/etc/lyrica-host`), or that someone else could change before it is
+mounted: the folder and every folder above it must be owned by root or by
+the current models folder's owner, with no group or other write (above
+it, a sticky folder such as `/tmp` is fine). That also refuses anything
+under a `lyrica/` subfolder. Any other folder is the paired server's to
+choose, and the model servers and host-api then read it. Then it pauses the host, installs the running commit
 again from its own tree with `install.sh --yes --models <folder>`, and goes
 back to the old folder if host-api doesn't answer with the new one within 5
 minutes. No files move. By hand: `sudo lyrica-host-update --models <folder>`.
