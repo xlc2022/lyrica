@@ -1,7 +1,7 @@
 # Brief: The file viewer
 
-**Status:** The viewer merged in #388. Part 2, the record of which thread
-wrote each file, is built; PR open.
+**Status:** Done. The viewer merged in #388; Part 2, the record of which
+thread wrote each file, merged in #391.
 
 **Thread:** File viewer. **Branch:** `claude/project-thread-mws19s`.
 **Model:** Opus.
