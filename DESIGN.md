@@ -1118,10 +1118,12 @@ project page and the web part are built. Recent calls can be filtered by project
   propose first, she suggests threads instead of starting them. How the user wants
   the project run ("two at a time", "only post when something is done") she
   saves as a project note and follows; it is guidance, not a hard limit.
-  The project chat's grants and repository clones are read-only to her
-  there: she reads them and runs checks, and the threads she starts make the
-  changes (decided 2026-10-19, after a run where she built a whole game in
-  the project chat despite her guidance).
+  Every folder in the project chat is read-only to her there, its own
+  folder and `/shared` included: she reads them and runs checks, and the
+  threads she starts make every file and hand back what she needs in
+  `/shared` (grants and clones decided 2026-10-19, after a run where she
+  built a whole game in the project chat despite her guidance; her own
+  folder 2026-10-20, after three runs built in it instead).
 - **Code builds run scaffold, parts, merge** (principles 1, 6 and 8).
   A `code: true, base: true` thread scaffolds the original checkout and
   resolves; parallel `code: true` parts each get worktrees of their writable

@@ -341,13 +341,17 @@ takes is `lyrica@pve!agent=<that secret>`.
   handles share credentials.
 - **Repositories** are granted to threads like folders, each from a Git
   account in Settings (Git accounts and repositories, below).
-- **A project chat's grants and clones are read-only to it.** It can read
-  them and run checks, and the threads it starts get them as given, so a
-  change goes through a thread. Subagents it delegates to get them
-  read-only too, and its default role there is `worker`, not `coder`. Its
-  own folder stays writable, and its machines and MCP servers stay usable.
-  lyricad sets `WorkspaceThread.coordinates` for a project chat;
-  `forThread(t).settings()` and its sandbox both apply it.
+- **Every folder in a project chat's sandbox is read-only to it:** its
+  grants, its clones, its own folder and `/shared`. It can read them and
+  run checks (`/tmp` is writable but lasts one command), and the threads it
+  starts get the grants as given, so every file is made or changed by a
+  thread, which hands back what the chat should see in `/shared`. A write
+  its tools try is refused with that advice (`SandboxSpec.readOnly`).
+  Subagents it delegates to get the same view, and its default role there
+  is `worker`, not `coder`. Its machines and MCP servers stay usable, and
+  lyricad still fetches its clones (`cloneFor`). lyricad sets
+  `WorkspaceThread.coordinates` for a project chat; `forThread(t).settings()`,
+  its prompt and its sandbox all apply it.
 
 ## The home workspace and uploads
 
@@ -373,7 +377,11 @@ takes is `lyrica@pve!agent=<that secret>`.
   (`uploads/7f3a9c2e4b1d.png`), so a phone's `IMG_1234.jpg` or a telling
   filename never reaches her context or the thread; other files keep their
   name. `Workspace.saveUpload` writes it from inside a sandbox, so a
-  symlink she left in `uploads/` can't point it anywhere else.
+  symlink she left in `uploads/` can't point it anywhere else. In a project
+  chat (`WorkspaceThread.coordinates`) it goes in `shared/uploads/` instead
+  (`/workspace/shared/uploads/…`), so the threads that build from it read it
+  at `/shared/uploads/`. The chat can't copy it there itself: its folders are
+  read-only. Its Files panel can add files under `shared/` too.
 - **The Files panel** (`core/src/workspace/files.ts`, `Workspace.files(t)`)
   lists, searches, reads, uploads, renames, deletes and zips in the thread's
   folder and its grants, every operation a fresh no-network sandbox over the

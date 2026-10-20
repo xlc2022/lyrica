@@ -684,20 +684,22 @@ test("Project settings → Files and images: the project folder one folder at a 
   await expect(section.getByRole("button", { name: "Files", exact: true })).toHaveAttribute("aria-pressed", "true");
   const rows = section.locator(".pfile-row");
   const row = (name: string) => rows.filter({ has: page.getByText(name, { exact: true }) });
-  await expect(row("uploads")).toContainText("Folder");
+  // The project chat's uploads land in shared/, where its threads read them at /shared.
+  await expect(row("shared")).toContainText("Folder");
   // New folder names its row in place.
   await section.getByRole("button", { name: "New folder" }).click();
   await section.getByLabel("Folder name").fill("notes");
   await section.getByLabel("Folder name").press("Enter");
   await expect(row("notes")).toBeVisible();
   // Open goes into a folder; the crumbs come back out.
+  await row("shared").getByRole("button", { name: "Open" }).click();
   await row("uploads").getByRole("button", { name: "Open" }).click();
-  await expect(section.getByRole("navigation", { name: "Folder" })).toHaveText("Project folder/uploads");
+  await expect(section.getByRole("navigation", { name: "Folder" })).toHaveText("Project folder/shared/uploads");
   await expect(row("plan.md")).toContainText("B");
   // A file opens in the viewer, the project chat beside it from 1180 px up.
   await row("plan.md").getByRole("button", { name: "Open" }).click();
   const viewer = page.getByRole("dialog", { name: "plan.md" });
-  await expect(viewer.locator(".viewer-head .fname")).toHaveText("uploads/plan.md");
+  await expect(viewer.locator(".viewer-head .fname")).toHaveText("shared/uploads/plan.md");
   await expect(viewer.locator(".viewer-prose")).toBeVisible();
   if (!phone(page)) await expect(viewer.locator(".viewer-thread h1")).toBeVisible();
   else await expect(viewer.getByRole("button", { name: "Thread", exact: true })).toBeVisible();
@@ -717,7 +719,7 @@ test("Project settings → Files and images: the project folder one folder at a 
   await row("plan.md").getByRole("button", { name: "Actions for plan.md" }).click();
   await page.getByRole("menuitem", { name: "Move to…" }).click();
   const drawer = page.getByRole("complementary", { name: "Move plan.md" });
-  await expect(drawer.getByLabel("Folder").locator("option")).toHaveText(["Project folder", "notes"]);
+  await expect(drawer.getByLabel("Folder").locator("option")).toHaveText(["Project folder", "notes", "shared"]);
   await drawer.getByLabel("Folder").selectOption({ label: "notes" });
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-files-move-${page.viewportSize()!.width}.png` });
   await drawer.getByRole("button", { name: "Move" }).click();

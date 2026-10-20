@@ -989,7 +989,8 @@ export class Delegation {
         // Its settings follow its parent's as they are now (the stricter mode, switches off where theirs are); it can't leave Plan mode itself.
         // It works in its parent's clones, which the parent fetched at its turn's start; read-only when it gets
         // no repositories, so a narrowed or read-only subagent, or a writer in a worktree, can't change them.
-        const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines || coordinates });
+        // A project chat's subagent is read-only as the chat is, so delegating can't make what the chat may not.
+        const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines || coordinates, ...(coordinates ? { coordinates } : {}) });
         extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }));
         if (workspace.imageFiles) extensions.push(createImageExtension({ models: this.o.models, threadId: child.id,
           call: () => this.o.models.callContext(parent.user.id, parent.pool, child.id),

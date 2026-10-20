@@ -66,6 +66,17 @@ async function sh(command: string, sandbox = box()): Promise<{ code: number | nu
   return { code: exitCode, out };
 }
 
+describe("a project chat's sandbox", () => {
+  // Three runs had a project chat build the whole thing in its own folder instead of starting a thread.
+  it("refuses writes to its folder and /shared, and still reads them", () => {
+    const chat = new Sandbox({ workdir: "/tmp/never-mounted", shared: "/tmp/never-mounted-shared", grants: [], network: OFF, self: [], readOnly: true });
+    expect(() => chat.allow("/workspace/page.html", true)).toThrow(/read-only in a project chat: start a code thread/);
+    expect(() => chat.allow("/shared/page.html", true)).toThrow(/read-only in a project chat/);
+    expect(chat.allow("/shared/page.html", false)).toBe("/shared/page.html");
+    expect(chat.allow("/workspace/notes.md", false)).toBe("/workspace/notes.md");
+  });
+});
+
 describe.skipIf(!runnable)("the sandbox", () => {
   it("lets her work in her folder and her grants", async () => {
     const ops = box().ops();
@@ -101,6 +112,13 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await sh("echo kept > /run/lyrica/claude/notes && ls -A /workspace | grep -c claude || true", own)).out).toBe("0\n");
     expect(readFileSync(p("claude-own", "notes"), "utf8")).toBe("kept\n");
     expect((await sh("ls /run/lyrica/claude 2>&1 || true")).out).toContain("No such file");
+  });
+
+  it("mounts a project chat's own folder and /shared read-only, leaving /tmp for a command's scratch", async () => {
+    mkdirSync(p("chat-shared"), { recursive: true });
+    const chat = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], shared: p("chat-shared"), readOnly: true });
+    const r = await sh("touch /workspace/x 2>&1; touch /shared/x 2>&1; touch /tmp/x && echo TMP-OK", chat);
+    expect(r.out).toMatch(/Read-only file system[\s\S]*Read-only file system[\s\S]*TMP-OK/);
   });
 
   it("mounts a family's shared folder at /shared, read-write, for every thread given it", async () => {
@@ -492,6 +510,28 @@ describe.skipIf(!homeRunnable)("the home workspace", () => {
     await workspace.mountHome(ada.id);
     try {
       expect((await workspace.targetFor(thread).ops().read.readFile("/workspace/uploads/letter.txt")).toString()).toContain("secret plan");
+    } finally {
+      await workspace.unmountHome(ada.id);
+    }
+  });
+});
+
+describe.skipIf(!homeRunnable)("a project chat's uploads", () => {
+  it("land in its shared folder, which its threads read at /shared", async () => {
+    const keyring = await freshKeyring();
+    const users = new Users(keyring);
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
+    const workspace = new Workspace(keyring, users, { excludePorts: [] });
+    const chat = { userId: ada.id, pool: "general" as const, threadId: "p1", coordinates: true };
+    try {
+      await workspace.mountHome(ada.id);
+      workspace.settings(ada.id).inheritSettings("p1", "c1", "general");
+      const path = await workspace.saveUpload(chat, "mockup.txt", Buffer.from("a header and three cards"));
+      expect(path).toBe("/workspace/shared/uploads/mockup.txt");
+      expect((await workspace.targetFor(chat).ops().read.readFile(path)).toString()).toBe("a header and three cards");
+      const code = workspace.targetFor({ userId: ada.id, pool: "general", threadId: "c1" }).ops();
+      expect((await code.read.readFile("/shared/uploads/mockup.txt")).toString()).toBe("a header and three cards");
     } finally {
       await workspace.unmountHome(ada.id);
     }
