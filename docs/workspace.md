@@ -842,6 +842,15 @@ it adds no tool.
   other bearer and any path outside `/v1/`, drops the run's own keys,
   swaps in the user's token, and passes the request to
   `https://api.anthropic.com`.
+- **Its tokens** show in the thread's usage as a **Claude Code** row
+  (cloud). The relay asks for a `POST /v1/messages` answer uncompressed and
+  reads its counts as it passes, holding nothing back: a stream's from its
+  `message_start` and `message_delta` events only, skipping the others
+  unread, a JSON answer's from the `usage` object at its end. It never keeps
+  the text. `RelaySpec.onUsage` hands each request's input tokens (cached
+  reads and writes included) and output tokens, through `SandboxSpec` and
+  the Workspace's `onClaudeCodeUsage`, to `Models.addCallTotals`, which adds
+  them to the thread's `call_totals`.
 - **The wrapper** (`core/src/workspace/claude.sh`) is at
   `/run/lyrica/bin/claude`, first on the run's PATH. It runs the real program with `CLAUDE_CONFIG_DIR` at
   `/run/lyrica/claude`, the thread's own folder for it in the encrypted

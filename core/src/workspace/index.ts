@@ -16,6 +16,7 @@ import { cleanUploadName, PANEL_DIR, ThreadFiles, type FileEntry } from "./files
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import type { ExecutionTarget } from "./ops.ts";
 import { Sandbox, sandboxHas, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
+import type { ClaudeCodeUsage } from "./relay.ts";
 import type { CodexBox } from "../models/codex.ts";
 import { authorizedKeysLine, machineSetup } from "./machines.ts";
 import {
@@ -101,6 +102,8 @@ export interface WorkspaceOptions {
   upstreams?: Record<string, string>;
   /** A pull request the run's relay opened, for that run's thread: watched for CI and reviews (docs/briefs/ci-wakes.md). */
   onPullCreate?: (t: WorkspaceThread, pr: { repo: string; number: number }) => void;
+  /** A run's Claude Code token counts, one message request at a time, for that run's thread: the usage view's "Claude Code" row. */
+  onClaudeCodeUsage?: (t: WorkspaceThread, usage: ClaudeCodeUsage) => void;
 }
 
 /** Where Claude Code sends what it reads: a run gets Claude Code only if its network reaches this. */
@@ -698,6 +701,7 @@ export class Workspace {
       credentials,
       ...credentials.anthropic ? { claudeDir: this.claudeDir(t) } : {},
       onPullCreate: this.opts.onPullCreate && ((pr) => this.opts.onPullCreate!(t, pr)),
+      onUsage: this.opts.onClaudeCodeUsage && ((u) => this.opts.onClaudeCodeUsage!(t, u)),
       ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,

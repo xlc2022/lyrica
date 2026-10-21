@@ -435,6 +435,11 @@ export class Lyricad implements Drainable {
       restricted: (u, p, thread) => isRestricted(models.callContext(u, p, thread)),
       // A run's relay opened a pull request: the CI-watch poller records it (docs/briefs/ci-wakes.md).
       onPullCreate: (t, pr) => forge.record(t.userId, t.pool, t.threadId, pr.repo, pr.number),
+      // Claude Code's tokens, counted by the run's relay, join that thread's usage as their own row.
+      onClaudeCodeUsage: (t, u) => {
+        try { models.addCallTotals(t.userId, t.pool, t.threadId, "Claude Code", "cloud", u.inputTokens + u.outputTokens); }
+        catch (err) { this.log(`Claude Code usage not recorded: ${(err as Error).message}`); }
+      },
     });
     if (this.opts.selfTest !== false) {
       const refused = await workspace.selfTest();

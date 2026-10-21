@@ -44,7 +44,10 @@ output_tokens`, by `model` label, kind from the offering when it still
 exists, no GPU time), followed down every depth from the thread. Replace
 `tokensFor` with it, so the project's total gains its subagents and the pool
 filter. A thread's total is its own records and its subagents'; a project's
-is its chat's and every thread's.
+is its chat's and every thread's. Claude Code in the sandbox has no call
+records either: its relay counts each message request's tokens, which go
+straight into the thread's `call_totals` as **Claude Code**, cloud
+(docs/workspace.md, "Claude Code").
 
 **D. API** (`daemon/src/routes.ts`, `api.ts`). `GET …/threads/:pool/:id/usage`
 → `ThreadUsage { tokens, gpuMs?, models: { label, kind?, tokens, gpuMs? }[],

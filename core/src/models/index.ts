@@ -2651,6 +2651,17 @@ export class Models {
     });
   }
 
+  /**
+   * Adds one call's tokens to a thread's running totals, for calls Lyrica
+   * doesn't make herself (Claude Code in her sandbox, counted by its relay):
+   * no call record, only the count the usage view sums.
+   */
+  addCallTotals(userId: string, pool: Pool, threadId: string, label: string, kind: "local" | "cloud", tokens: number): void {
+    if (!Number.isFinite(tokens) || tokens <= 0) return;
+    this.withUser(userId, (db) => db.prepare(`INSERT INTO call_totals (pool, thread, label, kind, tokens, gpu_ms, calls) VALUES (?, ?, ?, ?, ?, 0, 1)
+      ON CONFLICT (pool, thread, label, kind) DO UPDATE SET tokens = tokens + excluded.tokens, calls = calls + 1`).run(pool, threadId, label, kind, Math.round(tokens)));
+  }
+
   /** Turns and recursively nested subagents, filtered by both pool and thread. */
   usage(userId: string, pool: Pool, threadIds: string[]): { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[] {
     const rows = this.withUser(userId, (db) => db.prepare(`

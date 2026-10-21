@@ -358,7 +358,10 @@ output_tokens`, falling back to `prompt_tokens + output_tokens` on older
 records. Local GPU time is `ttft_ms + gen_ms`, including queueing and loading;
 cloud calls and subagents have none. Subagents contribute their recorded
 input and output tokens down every depth, using the offering's kind when it
-still exists. Every lookup filters both pool and thread.
+still exists. Every lookup filters both pool and thread. Claude Code in her
+sandbox makes no call records: its relay counts each message request's
+tokens and `addCallTotals` adds them to the thread's `call_totals` as
+**Claude Code**, cloud (docs/workspace.md, "Claude Code").
 
 Totals count her turns, including `code` turns through pruning, and her subagents' work; titles, images, speech and a project chat's looks at its threads carry no counts and aren't included.
 Models Overview shows
