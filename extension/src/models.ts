@@ -17,8 +17,9 @@ const LOCAL_COMPAT = { supportsDeveloperRole: false, supportsStore: false, suppo
 // A host model with an on/off thinking switch (one level) thinks through the chat template's switch instead.
 // A thread's context limit narrows the window it plans by (compaction, the meter, the reply cap).
 const windowOf = (m: Offering, limit?: number) => Math.min(m.contextWindow ?? DEFAULT_CONTEXT, limit ?? Infinity);
-// The reply cap, never above the longest reply the endpoint says the model gives.
-const replyRoom = (m: Offering, contextWindow: number) => Math.min(replyCap(contextWindow), m.maxOutput ?? Infinity);
+const replyRoom = (ep: Pick<Endpoint, "kind">, m: Offering, contextWindow: number) => replyCap(contextWindow, { local: ep.kind === "local", ...(m.maxOutput ? { maxOutput: m.maxOutput } : {}) });
+// A shared local cache keeps room for the reply a request usually gives, not the longest it may.
+const SHARE_REPLY = 32_768;
 
 function piModel(ep: Endpoint, m: Offering, limit?: number): ProviderModelConfig {
   const contextWindow = windowOf(m, limit);
@@ -30,7 +31,7 @@ function piModel(ep: Endpoint, m: Offering, limit?: number): ProviderModelConfig
     id: m.modelId, name: m.modelId, input: m.vision ? ["text", "image"] : ["text"], cost: FREE, reasoning,
     // LM Studio thinks unless asked not to: off is `reasoning_effort: "none"`.
     ...(m.lmStudio && reasoning && !m.alwaysThinks ? { thinkingLevelMap: { off: "none" } } : {}),
-    contextWindow, maxTokens: replyRoom(m, contextWindow),
+    contextWindow, maxTokens: replyRoom(ep, m, contextWindow),
     ...(compat ? { compat } : {}),
   };
 }
@@ -74,7 +75,7 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
     const now = found && models.offering(ctx.userId, found.offering.id)?.offering;
     if (now) {
       const contextWindow = windowOf(now, ctx.contextLimit);
-      const maxTokens = replyRoom(now, contextWindow);
+      const maxTokens = replyRoom(found.endpoint, now, contextWindow);
       if (model.contextWindow !== contextWindow || model.maxTokens !== maxTokens) Object.assign(model, { contextWindow, maxTokens });
     }
     if (found) {
@@ -110,7 +111,7 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
         const send = () => must ? thinkWhenRequired(request(), () => request(must), () => models.mustThink(offering!.id)) : request();
         if (endpoint.kind !== "local") return send();
         // A local server's cache is shared by everything it serves at once: wait for room (model-share.ts).
-        const need = Math.min(model.contextWindow, requestTokens(context) + model.maxTokens);
+        const need = Math.min(model.contextWindow, requestTokens(context) + Math.min(model.maxTokens, SHARE_REPLY));
         const failed = (reason: "aborted" | "error", message: string) => ({ type: "error" as const, reason, error: {
           role: "assistant" as const, content: [], api: model.api, provider: model.provider, model: model.id,
           usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },

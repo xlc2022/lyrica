@@ -817,9 +817,11 @@ never sent with a chat request.
   hosts and OpenRouter; OpenAI's set (temperature, top-p, presence and
   frequency penalties, longest reply, seed, stop) for other cloud endpoints.
   `offeringSettings` lists the saved values that aren't sent (`dropped`).
-  The longest reply is capped at the smaller of 131,072 tokens and a quarter
-  of the context window (`replyCap` in core, the room Pi leaves; never above
-  the model's `maxOutput`), and a saved
+  The longest reply is capped at a quarter of the context window and the
+  model's `maxOutput` (`replyCap` in core, the room Pi leaves, which Pi sends
+  as `max_tokens` on every request): at most 131,072 tokens on a local
+  endpoint or with a `maxOutput`, else 32,768, since a cloud provider may
+  refuse a longer ask or check the key's credit against it. A saved
   maximum above the cap is clamped to it.
 - Settings follow redirects: a replacement, merge or Reset IDs moves them to
   the new ID (shared values at once, each user's when their lists are
@@ -949,7 +951,9 @@ server or host serves its requests from one context cache (LM Studio's is
 unified), so threads that each fit can overflow it together. Every request
 to a local model, from any thread, subagent or project chat in the daemon,
 first takes a share of that model, keyed by the endpoint's address and the
-model: its estimated transcript plus its reply cap, against the window the
+model: its estimated transcript plus its reply cap (at most 32,768, the
+reply a request usually gives, so a 131,072 cap doesn't halve how much runs
+at once), against the window the
 model is served with. It waits while the running requests plus its own
 wouldn't fit, or while the model already serves its limit: 1 below a
 200,000-token window, 2 from 200,000, 4 from 500,000, and never more than

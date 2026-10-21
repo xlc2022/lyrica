@@ -521,10 +521,9 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   // Sampling: a field shows what was typed, else the value saved in this scope; the placeholder is what it inherits.
   const s = settings.data;
   const savedText = (sc: Scope, k: SKey) => (s && s.sources[k] === (sc === "mine" ? "yours" : "shared") ? textOf(s.values[k]) : "");
-  // The longest reply: a quarter of the context in effect (one typed here first), at most 131,072; a value above it shows clamped, as it is sent.
-  // Never above the longest reply the endpoint says the model gives (OpenRouter's `maxOutput`).
-  const maxOutput = ctx.models.page?.endpoints.flatMap((ep) => ep.models).find((m) => m.id === id)?.maxOutput;
-  const cap = Math.min(replyCap(ctxText !== undefined ? Number(ctxText) || undefined : s?.contextWindow?.value), maxOutput ?? Infinity);
+  // The longest reply: replyCap of the context in effect (one typed here first); a value above it shows clamped, as it is sent.
+  const maxOutput = ep?.models.find((m) => m.id === id)?.maxOutput;
+  const cap = replyCap(ctxText !== undefined ? Number(ctxText) || undefined : s?.contextWindow?.value, { local: ep?.kind === "local", ...(maxOutput ? { maxOutput } : {}) });
   const capped = (k: SKey, text: string) => (k === "maxTokens" && text.trim() !== "" && Number(text) > cap ? String(cap) : text);
   const shown = (k: SKey) => texts[scope][k] ?? capped(k, savedText(scope, k));
   const clampMax = () => {
