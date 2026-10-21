@@ -562,7 +562,10 @@ export class PoolReader {
     }
   }
 
-  getWake(): string | undefined { return this.load("wake")?.text; }
+  getWake(): string | undefined {
+    const text = this.load("wake")?.text;
+    return text === undefined ? undefined : this.render(text);
+  }
 
   /** Titles and one-line summaries of every page she uses, newest first. */
   pageIndex(): { id: string; title: string; summary: string; updatedAt: string }[] {
@@ -743,18 +746,24 @@ export class PoolReader {
   listItems(opts: { run?: string; includeDismissed?: boolean } = {}): SleepItem[] {
     const where = [opts.includeDismissed ? "" : "dismissed = 0", opts.run ? "run = @run" : ""].filter(Boolean);
     return (this.db.prepare(`SELECT * FROM sleep_items ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC, rowid DESC`)
-      .all(opts.run ? { run: opts.run } : {}) as ItemRow[]).map(toItem);
+      .all(opts.run ? { run: opts.run } : {}) as ItemRow[]).map((r) => this.shownItem(r));
   }
 
   getItem(id: string): SleepItem | undefined {
     const row = this.db.prepare("SELECT * FROM sleep_items WHERE id = ?").get(id) as ItemRow | undefined;
-    return row && toItem(row);
+    return row && this.shownItem(row);
   }
 
   /** The item a thread was started from: the only way an item reaches a conversation. */
   itemForThread(threadId: string): SleepItem | undefined {
     const row = this.db.prepare("SELECT * FROM sleep_items WHERE thread = ?").get(threadId) as ItemRow | undefined;
-    return row && toItem(row);
+    return row && this.shownItem(row);
+  }
+
+  /** An item with its mentions rendered as names. */
+  private shownItem(row: ItemRow): SleepItem {
+    const item = toItem(row);
+    return { ...item, text: this.render(item.text) };
   }
 
   // Search
@@ -1433,7 +1442,7 @@ export class PoolStore extends PoolReader {
   }
 
   putWake(text: string, author: Author): void {
-    text = removeSecrets(text);
+    text = toStored(removeSecrets(text), this.c.owner);
     this.checkAuthor(author);
     if (this.load("wake")) return this.edit("wake", { text }, author);
     const at = now();
@@ -1444,7 +1453,7 @@ export class PoolStore extends PoolReader {
   }
 
   addJournal(text: string, author: Author): string {
-    text = removeSecrets(text);
+    text = toStored(removeSecrets(text), this.c.owner);
     this.checkAuthor(author);
     return this.tx(() => {
       const id = this.newId("j", "journal");
@@ -1479,7 +1488,7 @@ export class PoolStore extends PoolReader {
   }
 
   addItem(run: string, item: { kind: SleepItem["kind"]; text: string; source?: string }): string {
-    const text = removeSecrets(item.text.trim());
+    const text = toStored(removeSecrets(item.text.trim()), this.c.owner);
     if (!text) throw new Error("an item needs text");
     const id = this.newSleepId("i", "sleep_items");
     this.db.prepare("INSERT INTO sleep_items (id, run, kind, text, source, created_at) VALUES (?, ?, ?, ?, ?, ?)")

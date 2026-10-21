@@ -214,9 +214,10 @@ restart in between loses the record.
     entry that wasn't deleted; a note most of whose words a note citing the
     same entry already has isn't saved, and the reply names that note),
     `write_page` (must cite something, never the journal or sleep's threads),
-    `raise` (a question). Both writing tools turn the person's whole display
-    name into `{user}`, except on a page with words the person wrote. With
-    notes to build from, pages come first: reading a conversation (an `e:`
+    `raise` (a question). Every tool sleep writes with (these, and dream's and
+    wake's below) turns the person's whole display name into `{user}`, except
+    on a page with words the person wrote, so the name is stored as a link.
+    With notes to build from, pages come first: reading a conversation (an `e:`
     or `t:` ID, or `recall`) is refused until a page is written, except a
     project's threads by their `t:` ID, which its page is written from; at
     turn 6 with no page, she is told to write pages now. After the first
