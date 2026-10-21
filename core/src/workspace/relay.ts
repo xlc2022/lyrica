@@ -239,7 +239,11 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
       if (onUsage && up.statusCode === 200 && !up.headers["content-encoding"]) {
         // Each chunk goes on as it comes; the counts are read beside it.
         const usage = usageReader(String(up.headers["content-type"] ?? ""), onUsage);
-        up.on("data", (c: Buffer) => { res.write(c); try { usage.data(c); } catch { /* counting never breaks the answer */ } });
+        up.on("data", (c: Buffer) => {
+          // As pipe does: a slow reader holds the upstream back rather than filling memory.
+          if (!res.write(c)) { up.pause(); res.once("drain", () => up.resume()); }
+          try { usage.data(c); } catch { /* counting never breaks the answer */ }
+        });
         up.on("end", () => { res.end(); try { usage.end(); } catch { /* as above */ } });
         up.on("error", () => res.destroy());
         return;
