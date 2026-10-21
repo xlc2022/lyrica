@@ -1964,7 +1964,8 @@ export interface SleepRunInfo {
   /** Entries written before this are what the run covers. */
   until: string;
   /** Each phase's thread (interface `sleep`) and whether it finished. */
-  phases: Partial<Record<SleepPhase, { thread: string; done: boolean }>>;
+  /** limit: the limit a phase stopped at (turns, tokens or time). */
+  phases: Partial<Record<SleepPhase, { thread: string; done: boolean; limit?: "turns" | "tokens" | "time" }>>;
   startedAt: string;
   finishedAt?: string;
 }

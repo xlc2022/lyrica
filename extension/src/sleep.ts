@@ -3,7 +3,7 @@ import type { AgentSessionEvent, ExtensionFactory } from "@earendil-works/pi-cod
 import {
   aboutToTidy, citationsIn, CORE_LIMIT, danglingPages, emptySleepMaterial, kindOf, NoModel, CloudModelForbidden, projectSlug, sleepInstruction,
   type CallContext, type Memory, type ModelRef, type Models, type PersonaProposals, type PersonaStore, type Pool, type PoolView,
-  type SkipReason, type SleepItem, type SleepMaterial, type SleepPhase, type SleepRunRecord, type Users,
+  type SkipReason, type SleepItem, type SleepMaterial, type SleepLimit, type SleepPhase, type SleepRunRecord, type Users,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { createLyricaExtension, type ThreadContext } from "./index.ts";
@@ -18,15 +18,17 @@ export const PHASES: readonly SleepPhase[] = ["consolidate", "dream", "wake"];
 export interface SleepLimits {
   /** Agent turns per phase. */
   turns: number;
-  /** Input plus output tokens per phase. */
+  /** Input plus output tokens per phase, at least: see `windows`. */
   tokens: number;
+  /** A phase may use this many of its model's context windows instead, when that's more, paid models included (DESIGN.md, Sleep). */
+  windows: number;
   timeoutMs: number;
   /** Pi's retries of a failed model call, on the same model. */
   retries: number;
   retryDelayMs: number;
 }
 
-export const DEFAULT_SLEEP_LIMITS: SleepLimits = { turns: 40, tokens: 600_000, timeoutMs: 20 * 60_000, retries: 2, retryDelayMs: 2000 };
+export const DEFAULT_SLEEP_LIMITS: SleepLimits = { turns: 40, tokens: 600_000, windows: 4, timeoutMs: 20 * 60_000, retries: 2, retryDelayMs: 2000 };
 
 /** How long a phase's thread is kept. What sleep wrote stays; the transcript would keep copies of memories deleted since. */
 export const SLEEP_THREAD_AGE_MS = 36 * 3600_000;
@@ -206,7 +208,7 @@ export class Sleep {
         if (state.stopped) { ok = false; break; }
         this.emit({ type: "phase", userId, pool, runId, phase, state: "started" });
         const result = await this.phase(view, userId, pool, runId, phase, plan.material, state);
-        phases[phase] = { thread: result.thread, done: result.ok };
+        phases[phase] = { thread: result.thread, done: result.ok, ...(result.limit ? { limit: result.limit } : {}) };
         view.own.updateSleepRun(runId, { phases });
         this.emit({ type: "phase", userId, pool, runId, phase, state: result.ok ? "done" : "stopped" });
         if (!result.ok) { ok = false; break; }
@@ -278,15 +280,19 @@ export class Sleep {
   }
 
   private async phase(view: PoolView, userId: string, pool: Pool, runId: string, phase: SleepPhase, material: SleepMaterial,
-    state: { stopped: boolean; abort?: () => Promise<void> }): Promise<{ thread: string; ok: boolean }> {
+    state: { stopped: boolean; abort?: () => Promise<void> }): Promise<{ thread: string; ok: boolean; limit?: SleepLimit }> {
     const user = this.o.users.get(userId)!;
     const thread = view.own.createThread({ interface: "sleep", title: `Sleep: ${phase}` });
     const done: SleepTools["done"] = { wake: false };
     let ok = false;
+    let limit: SleepLimit | undefined;
     try {
-      const { call } = await this.context(userId, pool, phase);
+      const { call, ref } = await this.context(userId, pool, phase);
+      const window = this.o.models.offering(userId, ref.offeringId)?.offering.contextWindow ?? 0;
+      const budget = Math.max(this.limits.tokens, this.limits.windows * window);
       const ctx: ThreadContext = { user, pool, interface: "sleep", threadId: thread.id, view, call };
-      const tools: SleepTools = { view, runId, threadId: thread.id, proposals: this.o.proposals, done };
+      const tools: SleepTools = { view, runId, threadId: thread.id, proposals: this.o.proposals, done, user: user.profile.displayName, pagesFirst: material.notes.length > 0,
+        projectThreads: new Set(material.threads.flatMap((t) => (t.project ? [`t:${t.id}`, `t:${t.project}`] : []))) };
       const { session, dispose } = await openThreadSession({
         thread: ctx, models: this.o.models, cwd: this.o.cwd,
         settings: { retry: { enabled: this.limits.retries > 0, maxRetries: this.limits.retries, baseDelayMs: this.limits.retryDelayMs } },
@@ -301,18 +307,17 @@ export class Sleep {
       let turns = 0;
       let tokens = 0;
       let failed = false;
-      let over = false;
-      const halt = () => { over = true; void session.abort(); };
+      const halt = (why: SleepLimit) => { limit ??= why; void session.abort(); };
       state.abort = () => session.abort();
       const unsubscribe = session.subscribe((e: AgentSessionEvent) => {
-        if (e.type === "turn_end" && ++turns >= this.limits.turns) halt();
+        if (e.type === "turn_end" && ++turns >= this.limits.turns) halt("turns");
         if (e.type === "message_end" && e.message.role === "assistant") {
           tokens += e.message.usage?.totalTokens ?? 0;
           failed = e.message.stopReason === "error" || e.message.stopReason === "aborted";
-          if (tokens > this.limits.tokens) halt();
+          if (tokens > budget) halt("tokens");
         }
       });
-      const timer = setTimeout(halt, this.limits.timeoutMs);
+      const timer = setTimeout(() => halt("time"), this.limits.timeoutMs);
       try {
         if (!state.stopped) await session.prompt(sleepInstruction(phase, { view, user: user.profile.displayName, material, runId }));
       } catch {
@@ -323,11 +328,12 @@ export class Sleep {
         state.abort = undefined;
         dispose();
       }
-      ok = !failed && !over && !state.stopped && (phase !== "dream" || !!done.journal) && (phase !== "wake" || done.wake);
+      if (limit) this.log(`sleep ${pool} ${phase} stopped at its ${limit} limit`);
+      ok = !failed && !limit && !state.stopped && (phase !== "dream" || !!done.journal) && (phase !== "wake" || done.wake);
     } catch (err) {
       this.log(`sleep ${pool} ${phase} failed: ${(err as Error).name}`);
     }
-    return { thread: thread.id, ok };
+    return { thread: thread.id, ok, ...(limit ? { limit } : {}) };
   }
 
   private log(line: string): void { this.o.log?.(line); }
@@ -342,6 +348,37 @@ interface SleepTools {
   proposals: PersonaProposals;
   /** What this phase wrote: tonight's journal entry, and whether WAKE is written. */
   done: { journal?: string; wake: boolean };
+  /** The person's display name, written as {user} wherever sleep writes it. */
+  user: string;
+  /** Consolidation has notes to build pages from, so pages come before skimming conversations. */
+  pagesFirst: boolean;
+  /** Projects' conversations, which their pages are written from, so readable before any page. */
+  projectThreads: Set<string>;
+}
+
+/** Conversation reads (an entry or thread, or recall) consolidation gets once it has written a page. */
+export const GAP_READS = 12;
+/** The turn by which consolidation with notes to build from is told to write pages, if it hasn't. */
+export const PAGES_NUDGE_TURN = 6;
+const PAGES_FIRST = "Write the pages first, from the notes you were shown: p:about-user, and each project's page, with write_page. Then skim the conversations for anything missed.";
+const READS_DONE = `That's ${GAP_READS} reads of conversation tonight, which is enough: write what you have and finish.`;
+
+/** The person's whole display name as {user}. Only the whole name: a first name alone can be a date ("May 3rd") or someone else. */
+export function asUserToken(text: string, name: string): string {
+  const n = name.trim();
+  if (n.length < 2) return text;
+  const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(`(?<![\\w{])${esc}(?![\\w}])`, "g"), "{user}");
+}
+
+const words = (t: string) => new Set(t.toLowerCase().replace(/\[[^\]]*\]/g, " ").replace(/\{user[^}]*\}/g, " user ").match(/[\p{L}\p{N}]+/gu) ?? []);
+/** Two notes say the same thing: most of their words are shared. */
+export function nearCopy(a: string, b: string): boolean {
+  const x = words(a), y = words(b);
+  if (!x.size || !y.size) return false;
+  let both = 0;
+  for (const w of x) if (y.has(w)) both++;
+  return both / (x.size + y.size - both) >= 0.6;
 }
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: undefined });
@@ -351,7 +388,23 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
   const { view } = s;
   const own = view.own;
   return (pi) => {
+    let pages = 0;
     if (phase === "consolidate") {
+      // Pages come first, built from the notes shown; then a few reads of conversation for gaps. A refusal says what to do instead.
+      let reads = 0;
+      let turns = 0;
+      pi.on("tool_call", (e) => {
+        const id = e.toolName === "read_memory" ? String((e.input as { id?: unknown }).id ?? "") : "";
+        const conversation = e.toolName === "recall" || /^(general\/)?[et]:/.test(id);
+        if (!conversation) return;
+        if (!pages) return s.pagesFirst && !s.projectThreads.has(id) ? { block: true, reason: PAGES_FIRST } : undefined;
+        if (++reads > GAP_READS) return { block: true, reason: READS_DONE };
+      });
+      pi.on("turn_end", () => {
+        if (++turns === PAGES_NUDGE_TURN && s.pagesFirst && !pages) {
+          pi.sendMessage({ customType: "lyrica-sleep-nudge", content: PAGES_FIRST, display: false }, { deliverAs: "steer" });
+        }
+      });
       pi.registerTool({
         name: "remember",
         label: "Remember",
@@ -365,14 +418,21 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
           }), { minItems: 1 }),
         }),
         async execute(_id, params) {
-          for (const n of params.notes) {
+          const notes = params.notes.map((n) => ({ ...n, text: asUserToken(n.text, s.user) }));
+          const copies: string[] = [];
+          const fresh = notes.filter((n) => {
             const entries = citationsIn(n.text, view.pool).filter((c) => /^e:/.test(c));
             if (!entries.length) throw new Error("each note cites the entry it came from, like [e:web/3f7a2c#41]");
             const gone = entries.find((e) => own.isTombstoned(e));
             if (gone) throw new Error(`what ${gone} said was deleted from memory on purpose: don't note it again`);
-          }
-          const ids = own.addNotes(params.notes, { author: "sleep" });
-          return text(`Saved ${ids.join(", ")}.`);
+            // A note from the same entry that already says this is the note: cite it instead.
+            const same = entries.flatMap((e) => own.usedIn(e)).find((id) => id.startsWith("n:") && nearCopy(n.text, own.get(id, { raw: true })?.text ?? ""));
+            if (same) copies.push(same);
+            return !same;
+          });
+          const ids = fresh.length ? own.addNotes(fresh, { author: "sleep" }) : [];
+          const already = copies.length ? `${ids.length ? " " : ""}Already noted, so not saved again: ${[...new Set(copies)].map((id) => `[${id}]`).join(", ")}.` : "";
+          return text(`${ids.length ? `Saved ${ids.join(", ")}.` : ""}${already}`);
         },
       });
       pi.registerTool({
@@ -398,7 +458,11 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
             if (!project && !own.get(`p:${params.slug}`)) throw new Error("pages named project-… are projects' pages, and there's no such project here");
             if (project?.unlogged) throw new Error("that project isn't logged in memory, so it keeps no page");
           }
-          const id = own.putPage(params, "sleep");
+          // The person's own words on the page stay as they wrote them.
+          const theirs = own.revisions(`p:${params.slug}`).some((r) => r.author.startsWith("user:"));
+          const page = theirs ? params : { ...params, title: asUserToken(params.title, s.user), summary: asUserToken(params.summary, s.user), text: asUserToken(params.text, s.user) };
+          const id = own.putPage(page, "sleep");
+          pages++;
           return text(`Wrote ${id}.`);
         },
       });

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { deadUrl, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
 import { profile, withModels } from "../../core/test/helpers.ts";
 import { DREAM_HEADER, memorySections, Sleep, type SleepLimits } from "../src/index.ts";
+import { asUserToken } from "../src/sleep.ts";
 
 // Sleep against scripted fake model servers. Each phase is told apart by the
 // tools it is offered; each step of a phase answers the next model call.
@@ -396,7 +397,7 @@ describe("a night's sleep", () => {
     s.talk(v, "Something.", "{user} said something");
     s.script({ consolidate: [call("recall", { query: "a" }), call("recall", { query: "b" }), call("recall", { query: "c" })] });
     const limited = await s.sleep.run(s.ada.id, "general", "manual");
-    expect(limited).toMatchObject({ status: "partial", phases: { consolidate: { done: false } } });
+    expect(limited).toMatchObject({ status: "partial", phases: { consolidate: { done: false, limit: "turns" } } });
     expect(v.own.watermark()).toBeUndefined();
 
     let release!: () => void;
@@ -406,6 +407,51 @@ describe("a night's sleep", () => {
     await held;
     await s.sleep.stop(s.ada.id);
     expect((await running).status).toBe("partial");
+    v.close();
+  });
+});
+
+describe("consolidation that keeps to its job", () => {
+  it("sizes a phase's token budget by its model's context window, and records the limit it stopped at", async () => {
+    // The cloud model's window is 128,000: four windows is far more than a phase uses here.
+    const roomy = await setup({ tokens: 1 });
+    roomy.talk(roomy.view(), "Something.", "{user} said something");
+    roomy.script({ consolidate: [call("recall", { query: "a" })] });
+    expect((await roomy.sleep.run(roomy.ada.id, "general", "manual")).status).toBe("complete");
+
+    const tight = await setup({ tokens: 1, windows: 0 });
+    tight.talk(tight.view(), "Something.", "{user} said something");
+    tight.script({ consolidate: [call("recall", { query: "a" })] });
+    expect(await tight.sleep.run(tight.ada.id, "general", "manual")).toMatchObject({ status: "partial", phases: { consolidate: { done: false, limit: "tokens" } } });
+    expect(tight.logs).toContain("sleep general consolidate stopped at its tokens limit");
+  });
+
+  it("writes {user} only for the person's whole name, never a date or someone sharing their first name", () => {
+    expect(asUserToken("May Lin moved the review to May 3rd; May Chen agreed.", "May Lin")).toBe("{user} moved the review to May 3rd; May Chen agreed.");
+  });
+
+  it("writes pages before reading conversations, reads only so many, keeps no near-copies, and writes {user} for the name", async () => {
+    const s = await setup();
+    const v = s.view();
+    const { note, entry } = s.talk(v, "I take my tea without sugar.", "{user} takes tea without sugar");
+    const reads = Array.from({ length: 13 }, (_, i) => call("recall", { query: `q${i}` }));
+    const seen = s.script({
+      consolidate: [
+        call("read_memory", { id: entry }),
+        (c) => { expect(said(c)).toContain("Write the pages first"); return call("write_page", { slug: "about-user", title: "About Ada", summary: "who Ada is", text: `Ada takes tea without sugar [${note}].` }); },
+        call("remember", { notes: [{ text: `Ada takes her tea without sugar [${entry}]` }, { text: `Ada drinks it at four [${entry}]` }] }),
+        ...reads,
+      ],
+    });
+    expect((await s.sleep.run(s.ada.id, "general", "manual")).status).toBe("complete");
+    // The page and the new note say {user}, which shows as her name; the near-copy wasn't saved again.
+    expect(v.own.get("p:about-user", { raw: true })!.text).not.toContain("Ada");
+    expect(v.own.get("p:about-user")!.text).toBe(`Ada takes tea without sugar [${note}].`);
+    const notes = v.own.usedIn(entry).filter((id) => id.startsWith("n:"));
+    expect(notes).toHaveLength(2);
+    expect(said(seen.consolidate[3]!)).toContain(`Already noted, so not saved again: [${note}]`);
+    // Twelve reads of conversation after the page, then a refusal.
+    expect(said(seen.consolidate.at(-1)!)).toContain("enough: write what you have");
     v.close();
   });
 });

@@ -1702,6 +1702,9 @@ Details in [docs/sleep.md](docs/sleep.md).
   `/sleep` runs it by hand. A **manual** mode works like Monika: sleep happens
   only on `/sleep`, which then opens a fresh thread.
 - **Pools:** general and private sleep run separately, each with its own model.
+- **Budget:** each phase may use 600k tokens or four of its model's context
+  windows, whichever is more, on any model, paid ones included (the owner's
+  call, 2026-10-21): a large-context model should use its context.
 - **Skipping:** sleep skips a user whose key isn't available, or a pool whose
   endpoint is offline, and tries again at the next due time. Nothing is lost.
   The next sleep just covers a longer period.
