@@ -33,6 +33,14 @@ minutes on a private repository are billed past the plan's allowance.
   (`~/.local/state/nix/profiles/lyrica-ci`), deleting all but the 10 newest
   and collecting garbage; `keep-outputs` in `/etc/nix/nix.conf` keeps what
   those 10 were built from, so the next run still finds them cached.
+- Leftovers: a cancelled job can leave its test servers, browsers and
+  sandbox helpers running, and enough of them use up the runner user's
+  threads, so Chromium fails to start (`pthread_create: Resource
+  temporarily unavailable`, `spawn EAGAIN`). The check, nix and host-stack
+  jobs start with `.github/runner/clear-leftovers.sh`, which stops the
+  runner user's processes of those kinds whose parent is init or the
+  user's systemd (the running job's descend from the runner), with
+  everything under them, and logs the user's thread count before and after.
 - The host-stack job removes what it installed (the stack and its volumes,
   the egress unit and rules, Docker's daemon.json) when it ends.
 - Runner speed: the runners sit on three machines of different speed. The
