@@ -405,7 +405,8 @@ model's label and why). `prepareTurn` then appends a `lyrica-paid-fallback`
 session entry (`PAID_FALLBACK`: the two labels and the reason, no text), a
 custom entry Pi keeps out of her context, and the thread shows it as
 `Message.paid`, one warn line under the turn's last reply, once the turn
-ends. Calls that aren't turns (titles, sleep, images) aren't marked.
+ends. When Pi retries the turn, the retry's choice replaces it, and a retry
+answered by any other model appends `{ cleared: true }`, leaving no line. Calls that aren't turns (titles, sleep, images) aren't marked.
 
 ## Thinking
 

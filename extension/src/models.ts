@@ -182,7 +182,8 @@ export function piModelFor(runtime: ModelRuntime, models: Models, task: Task, ct
 
 /** A turn a model that costs money answered because a free one earlier in its list couldn't: a session entry kept out of her context, shown under the reply. */
 export const PAID_FALLBACK = "lyrica-paid-fallback";
-export interface PaidFallback { model: string; from: string; reason: string }
+/** `cleared`: Pi retried the turn and a model that isn't a paid fallback answered, so the turn has no line. */
+export type PaidFallback = { model: string; from: string; reason: string } | { cleared: true };
 
 /**
  * Before a turn: picks the chat model again, passing over any whose machine
@@ -214,5 +215,6 @@ export async function prepareTurn(o: {
   }
   o.models.recordCall(o.call.userId, { pool: o.pool, threadId: o.threadId, task, resolution: r, ...(note ? { note } : {}) }, { retry: !!o.retry });
   if (r.paidAfter) o.session.sessionManager.appendCustomEntry(PAID_FALLBACK, { model: r.label, from: r.paidAfter.label, reason: r.paidAfter.reason } satisfies PaidFallback);
+  else if (o.retry) o.session.sessionManager.appendCustomEntry(PAID_FALLBACK, { cleared: true } satisfies PaidFallback);
   return r;
 }

@@ -18,3 +18,15 @@ it("puts a paid fallback's line under the turn's last reply, and only that turn'
   const replies = toMessages("web/a", "general", entries).filter((m) => m.role === "assistant");
   expect(replies.map((m) => m.paid)).toEqual([undefined, "router/paid/thinker costs money. It answered because router/free/thinker:free was skipped (no longer exists).", undefined]);
 });
+
+it("keeps one line per turn when Pi retries, and drops it when the retry lands on a free model", () => {
+  const paid = (from: string) => ({ type: "custom", customType: PAID_FALLBACK, data: { model: "router/paid/thinker", from, reason: "it no longer exists" } });
+  const failed = { type: "message", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "connection reset" } };
+  const entries = [
+    paid("gpu/a"), said("One"), failed, paid("gpu/b"), reply([{ type: "text", text: "First." }]),
+    paid("gpu/c"), said("Two"), failed, { type: "custom", customType: PAID_FALLBACK, data: { cleared: true } }, reply([{ type: "text", text: "Second." }]),
+    paid("gpu/d"), said("Three"), reply([{ type: "text", text: "Third." }]),
+  ].map((data, i) => ({ n: i + 1, createdAt: "2026-10-21", data }));
+  const lines = toMessages("web/a", "general", entries).filter((m) => m.role === "assistant").map((m) => m.paid?.match(/gpu\/\w/)?.[0]);
+  expect(lines).toEqual([undefined, "gpu/b", undefined, undefined, "gpu/d"]);
+});

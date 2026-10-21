@@ -113,9 +113,11 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
   const out: Message[] = [];
   const calls = new Map<string, { part: Extract<MessagePart, { type: "tool" }>; owner: Message }>();
   let pendingRecall: string[] = [];
-  // A paid fallback's line, recorded before the turn's user message, goes under the turn's last reply.
+  // A paid fallback's line, recorded before the turn's user message (or before a retry's reply), goes under the
+  // turn's last reply; `fresh` until a reply carries it, so the next turn's user message drops only a delivered one.
   let paid: string | undefined;
   let paidOn: Message | undefined;
+  let fresh = false;
   for (const { n, data, createdAt, pinned, reactions: stored } of entries) {
     const reactions = opts.userId ? toReactions(stored, opts.userId) : undefined;
     const e = data as PiEntry;
@@ -147,8 +149,15 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       continue;
     }
     if (e.type === "custom" && e.customType === PAID_FALLBACK) {
-      paid = paidLine(e.data as PaidFallback);
-      paidOn = undefined;
+      const d = e.data as PaidFallback;
+      if ("cleared" in d) {
+        if (paidOn) delete paidOn.paid;
+        paid = paidOn = undefined;
+        fresh = false;
+      } else {
+        paid = paidLine(d);
+        fresh = true;
+      }
       continue;
     }
     if (e.type === "custom_message" && e.customType === "lyrica-turn") {
@@ -186,7 +195,10 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
     const m = e.type === "message" ? e.message : undefined;
     if (!m) continue;
     const base = { id: `e:${threadId}#${n}`, n, createdAt, ...(pinned ? { pinned: true } : {}), ...(reactions?.length ? { reactions } : {}) };
-    if (m.role === "user" && paidOn) paid = paidOn = undefined;
+    if (m.role === "user") {
+      paidOn = undefined;
+      if (!fresh) paid = undefined;
+    }
     if (m.role === "user") {
       if (textOf(m.content) === OPENING) continue; // a thread started from a sleep item: she speaks first
       const answer = /^\[Answer to q:\d+\]\n\n/.exec(textOf(m.content));
@@ -240,6 +252,7 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
         if (paidOn) delete paidOn.paid;
         msg.paid = paid;
         paidOn = msg;
+        fresh = false;
       }
       out.push(msg);
     } else if (m.role === "toolResult" && m.toolCallId) {
@@ -286,6 +299,6 @@ export function plainError(message: string): string {
 }
 
 /** The line under a reply a paid model wrote in place of a free one. */
-export function paidLine(p: PaidFallback): string {
+export function paidLine(p: Exclude<PaidFallback, { cleared: true }>): string {
   return `${p.model} costs money. It answered because ${p.from} was skipped (${p.reason.replace(/^it /, "")}).`;
 }
