@@ -336,6 +336,10 @@ A session opens on its chat model even when that machine is down
 (`evenIfDown`), since each turn chooses again. The retry rewrites the turn's call record, so a turn is one
 call. `resolveLive`'s probe only asks
 whether the endpoint answers; the address check never holds up a turn.
+OpenRouter's 404 "Provider returned error" (the provider it routed to can't
+run the model) isn't retried: `markUnservable` replaces it with a plain line
+naming the provider and the model, in words Pi doesn't retry, and the turn
+ends with it.
 Tools are asked of a model only when the thread has tools.
 
 **Recent calls** (`recentCalls`, `model_calls` in `user.db`) hold the time,
