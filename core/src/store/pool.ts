@@ -218,6 +218,8 @@ export interface Edited {
 export type SleepStatus = "running" | "complete" | "partial" | "skipped";
 export type SkipReason = "no-key" | "endpoint-down" | "no-activity";
 export type SleepPhase = "consolidate" | "dream" | "wake";
+/** The limit a sleep phase stopped at. */
+export type SleepLimit = "turns" | "tokens" | "time";
 
 export interface SleepRunRecord {
   id: string;
@@ -226,8 +228,8 @@ export interface SleepRunRecord {
   skipReason?: SkipReason;
   /** Entries written before this are what the run covers. */
   until: string;
-  /** Each phase's thread, and whether it finished. */
-  phases: Partial<Record<SleepPhase, { thread: string; done: boolean }>>;
+  /** Each phase's thread, whether it finished, and the limit it stopped at, if one. */
+  phases: Partial<Record<SleepPhase, { thread: string; done: boolean; limit?: SleepLimit }>>;
   startedAt: string;
   finishedAt?: string;
 }

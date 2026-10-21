@@ -211,8 +211,17 @@ restart in between loses the record.
   (persona and her usual context, `memoryTools: "read"`) and the phase's own
   tools. Nothing else: no shell, web, `delegate` or `image`.
   - consolidate: `recall`, `read_memory`, `remember` (each note must cite an
-    entry that wasn't deleted), `write_page` (must cite something, never the
-    journal or sleep's threads), `raise` (a question);
+    entry that wasn't deleted; a note most of whose words a note citing the
+    same entry already has isn't saved, and the reply names that note),
+    `write_page` (must cite something, never the journal or sleep's threads),
+    `raise` (a question). Both writing tools turn the person's display name
+    (whole, then its first word) into `{user}`, except on a page with words
+    the person wrote. With notes to build from, pages come first: reading a
+    conversation (an `e:` or `t:` ID, or `recall`) is refused until a page is
+    written, except a project's conversations, which its page is written
+    from; at turn 6 with no page, she is told to write pages now. In all,
+    12 conversation reads (`GAP_READS`), then each is refused with "write
+    what you have and finish";
   - dream: `recall`, `read_memory`, `write_journal` (headed as reflection),
     `propose_persona` (through `PersonaProposals.propose`, so a normal user's
     proposal is a draft in their `user.db`), `raise` (a thought);
@@ -221,8 +230,12 @@ restart in between loses the record.
 - **Watermark.** A run records `until` (its start). The watermark is the
   latest `until` whose consolidate finished. If dream or wake didn't finish,
   the next run resumes that run's remaining phases first.
-- **Limits.** Each phase has a turn limit (40), a token limit (600k) and a
-  timeout (20 minutes). Going over ends it, and the run is partial.
+- **Limits.** Each phase has a turn limit (40), a token limit and a timeout
+  (20 minutes). The token limit, input plus output summed over the phase's
+  turns, is 600k or four of its model's context windows, whichever is more,
+  so a model with a large context can use it. Going over ends the phase, the
+  run is partial, and the run records which limit (`limit` on the phase:
+  `turns`, `tokens` or `time`); the log says so, with no text.
 - **User text.** The store refuses a sleep edit to a page that drops the text
   of its latest user-written version: she can only add around it, or raise a
   question.

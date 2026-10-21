@@ -69,8 +69,8 @@ export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: s
       generalText ? `General memory's page about ${user} [general/p:about-user]:\n${generalText}` : "",
       [
         "What to do:",
-        "1. Skim the conversations. If something important was never noted, note it with remember, citing the entry it came from ([e:…]). Keep this light.",
-        "2. Create or update pages with write_page, one subject each, citing the notes behind each claim ([n:…]). Pages describing a folder list it in folders.",
+        "1. First create or update pages with write_page from the notes above, one subject each, citing the notes behind each claim ([n:…]). Pages describing a folder list it in folders.",
+        "2. Then skim the conversations for anything important that was never noted, and note it with remember, citing the entry it came from ([e:…]). A few reads are enough; don't note again what a note above already says.",
         aboutStep,
         `4. What ${user} wrote or edited is authoritative: build on it, and never change their words. If newer conversation contradicts it, raise a question instead.`,
         "5. When two things contradict each other, raise a question rather than guessing.",
