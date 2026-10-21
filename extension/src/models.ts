@@ -105,7 +105,7 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
         const stop = new AbortController();
         const signal = options?.signal ? AbortSignal.any([options.signal, stop.signal]) : stop.signal;
         const offering = list.find((m) => m.modelId === model.id);
-        const request = (reasoning = options?.reasoning) => markOverflow(capToolCalls(streamWithInlineThinking(model as Model<"openai-completions">, objectTools(context), { ...options, reasoning, signal }, startsMidThought(offering, reasoning)), () => stop.abort()));
+        const request = (reasoning = options?.reasoning) => markUnservable(model.id, markOverflow(capToolCalls(streamWithInlineThinking(model as Model<"openai-completions">, objectTools(context), { ...options, reasoning, signal }, startsMidThought(offering, reasoning)), () => stop.abort())));
         // Asked not to think, a model whose provider requires it is asked again at medium, or the nearest level it has.
         const must = offering && !options?.reasoning ? models.mandatoryThinking(offering) : undefined;
         const send = () => must ? thinkWhenRequired(request(), () => request(must), () => models.mustThink(offering!.id)) : request();
@@ -154,6 +154,33 @@ export function thinkWhenRequired(first: AssistantMessageEventStream, again: () 
         }
         answered = true;
         out.push(event);
+      }
+    } finally {
+      out.end();
+    }
+  })();
+  return out;
+}
+
+// OpenRouter's 404 when the provider it routed to can't run the model (a
+// retired deployment, an account it lacks). Pi retries "Provider returned
+// error" as a passing fault; this one won't pass within the turn.
+const unservable = (message: string) => /\b404\b/.test(message) && /provider returned error/i.test(message);
+
+/**
+ * Says plainly that the model's provider can't serve it, in words Pi doesn't
+ * retry, instead of OpenRouter's raw 404.
+ */
+export function markUnservable(modelId: string, source: AssistantMessageEventStream): AssistantMessageEventStream {
+  const out = createAssistantMessageEventStream();
+  void (async () => {
+    try {
+      for await (const event of source) {
+        const message = event.type === "error" ? event.error.errorMessage ?? "" : "";
+        if (event.type === "error" && unservable(message)) {
+          const provider = /"provider_name"\s*:\s*"([^"]{1,60})"/.exec(message)?.[1];
+          out.push({ ...event, error: { ...event.error, errorMessage: `${provider ?? "The provider"} can't serve ${modelId} right now (OpenRouter answered 404). Pick another model, or try again later.` } });
+        } else out.push(event);
       }
     } finally {
       out.end();

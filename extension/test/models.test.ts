@@ -2,11 +2,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CloudModelForbidden, Memory, PRONOUN_PRESETS, type Persona, type Pool } from "@lyrica/core";
+import { createAssistantMessageEventStream, fauxAssistantMessage, isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import { deadUrl, fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { fakeHost } from "../../core/test/fake-host.ts";
 import { withModels } from "../../core/test/helpers.ts";
 import { createLyricaExtension, modelRuntimeFor, openThreadSession, piModelFor, toStoredEntry, type ThreadContext } from "../src/index.ts";
+import { markUnservable } from "../src/models.ts";
 import { keepRecentFor, reserveFor } from "../src/context.ts";
 
 const persona: Persona = { core: [{ path: "SOUL.md", text: "She is Lyrica." }], topics: [] };
@@ -410,4 +412,18 @@ describe("thinking on a host", () => {
     expect(host.chats[0]).toMatchObject({ reasoning_effort: "high" });
     expect(host.chats[0]!.chat_template_kwargs).toBeUndefined();
   });
+});
+
+it("says plainly when OpenRouter's provider can't serve a model, in words Pi won't retry", async () => {
+  const raw = '404 Provider returned error\n{"error":{"message":"Function \'f\': Not found for account \'a\'"},"metadata":{"provider_name":"Nvidia"}}';
+  const source = createAssistantMessageEventStream();
+  const error = { ...fauxAssistantMessage(""), stopReason: "error" as const, errorMessage: raw };
+  expect(isRetryableAssistantError(error)).toBe(true);
+  source.push({ type: "error", reason: "error", error });
+  source.end();
+  const out = [];
+  for await (const e of markUnservable("vendor/big:free", source)) out.push(e);
+  const shown = out[0]!.type === "error" ? out[0]!.error : error;
+  expect(shown.errorMessage).toBe("Nvidia can't serve vendor/big:free right now (OpenRouter answered 404). Pick another model, or try again later.");
+  expect(isRetryableAssistantError(shown)).toBe(false);
 });
