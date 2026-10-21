@@ -521,7 +521,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   // Sampling: a field shows what was typed, else the value saved in this scope; the placeholder is what it inherits.
   const s = settings.data;
   const savedText = (sc: Scope, k: SKey) => (s && s.sources[k] === (sc === "mine" ? "yours" : "shared") ? textOf(s.values[k]) : "");
-  // The longest reply: a quarter of the context in effect (one typed here first), at most 32,768; a value above it shows clamped, as it is sent.
+  // The longest reply: a quarter of the context in effect (one typed here first), at most 131,072; a value above it shows clamped, as it is sent.
   // Never above the longest reply the endpoint says the model gives (OpenRouter's `maxOutput`).
   const maxOutput = ctx.models.page?.endpoints.flatMap((ep) => ep.models).find((m) => m.id === id)?.maxOutput;
   const cap = Math.min(replyCap(ctxText !== undefined ? Number(ctxText) || undefined : s?.contextWindow?.value), maxOutput ?? Infinity);

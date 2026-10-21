@@ -1338,7 +1338,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   the request: `repeat_penalty` for plain local servers,
   `repetition_penalty` for hosts and cloud; `max_tokens` or
   `max_completion_tokens` never above the room Pi left (`replyCap`: the
-  smaller of 32,768 tokens and a quarter of the context window, and never
+  smaller of 131,072 tokens and a quarter of the context window, and never
   above the offering's `maxOutput`). Settings are read at
   each request, so a change applies without reopening the session.
 - A host model whose only thinking level is a chat-template switch gets Pi's

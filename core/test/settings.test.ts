@@ -14,8 +14,8 @@ async function setup() {
 }
 
 describe("how a model answers", () => {
-  it("caps a reply at the smaller of 32,768 tokens and a quarter of the context, taking 131,072 as the context when it isn't known", () => {
-    expect([replyCap(262_144), replyCap(32_768), replyCap(undefined)]).toEqual([32_768, 8192, 32_768]);
+  it("caps a reply at the smaller of 131,072 tokens and a quarter of the context, taking 131,072 as the context when it isn't known", () => {
+    expect([replyCap(1_048_576), replyCap(262_144), replyCap(32_768), replyCap(undefined)]).toEqual([131_072, 65_536, 8192, 32_768]);
   });
 
   it("reports the sampling a model gives as its own, and a window it assumes when nothing says", async () => {

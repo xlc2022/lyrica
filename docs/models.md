@@ -817,7 +817,7 @@ never sent with a chat request.
   hosts and OpenRouter; OpenAI's set (temperature, top-p, presence and
   frequency penalties, longest reply, seed, stop) for other cloud endpoints.
   `offeringSettings` lists the saved values that aren't sent (`dropped`).
-  The longest reply is capped at the smaller of 32,768 tokens and a quarter
+  The longest reply is capped at the smaller of 131,072 tokens and a quarter
   of the context window (`replyCap` in core, the room Pi leaves; never above
   the model's `maxOutput`), and a saved
   maximum above the cap is clamped to it.

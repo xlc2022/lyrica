@@ -503,7 +503,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the shared value ("shared"), else the model's own (`defaults`, "model's"),
   else for Maximum reply length the cap; a dropped key
   disabled with "not sent", Maximum reply length "of <cap> tokens" (`replyCap`
-  of the context in effect, at most 32,768 and the offering's `maxOutput`; clamped on leaving the
+  of the context in effect, at most 131,072 and the offering's `maxOutput`; clamped on leaving the
   field and on save, and a saved value above it shown clamped), Reset; on a
   plain endpoint **Context window**, its placeholder the window planned by,
   marked "loaded" (LM Studio) or "assumed" when nothing says,

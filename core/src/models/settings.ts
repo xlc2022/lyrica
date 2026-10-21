@@ -4,8 +4,8 @@
 /** The context window a model is taken to have when nothing says what it is: what current models offer at least. */
 export const DEFAULT_CONTEXT = 131_072;
 
-/** The longest reply a model is asked for: the smaller of 32,768 tokens and a quarter of its context window (DEFAULT_CONTEXT when that isn't known). A saved maximum above it is clamped. */
-export const replyCap = (contextWindow?: number) => Math.min(32_768, Math.floor((contextWindow || DEFAULT_CONTEXT) / 4));
+/** The longest reply a model is asked for: the smaller of 131,072 tokens and a quarter of its context window (DEFAULT_CONTEXT when that isn't known). A saved maximum above it is clamped. */
+export const replyCap = (contextWindow?: number) => Math.min(131_072, Math.floor((contextWindow || DEFAULT_CONTEXT) / 4));
 
 /** Settings an offering answers with. */
 export interface AnswerSettings {
