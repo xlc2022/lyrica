@@ -20,7 +20,7 @@ export interface SleepLimits {
   turns: number;
   /** Input plus output tokens per phase, at least: see `windows`. */
   tokens: number;
-  /** A phase on a model that costs nothing (local, or free) may use this many of its context windows instead, when that's more. */
+  /** A phase may use this many of its model's context windows instead, when that's more, paid models included (DESIGN.md, Sleep). */
   windows: number;
   timeoutMs: number;
   /** Pi's retries of a failed model call, on the same model. */
@@ -288,10 +288,8 @@ export class Sleep {
     let limit: SleepLimit | undefined;
     try {
       const { call, ref } = await this.context(userId, pool, phase);
-      // Only a model that costs nothing (local, or free) gets its windows' worth: a paid one spends the user's money.
-      const r = this.o.models.offering(userId, ref.offeringId);
-      const free = r && (r.endpoint.kind === "local" || r.offering.price?.free);
-      const budget = Math.max(this.limits.tokens, free ? this.limits.windows * (r.offering.contextWindow ?? 0) : 0);
+      const window = this.o.models.offering(userId, ref.offeringId)?.offering.contextWindow ?? 0;
+      const budget = Math.max(this.limits.tokens, this.limits.windows * window);
       const ctx: ThreadContext = { user, pool, interface: "sleep", threadId: thread.id, view, call };
       const tools: SleepTools = { view, runId, threadId: thread.id, proposals: this.o.proposals, done, user: user.profile.displayName, pagesFirst: material.notes.length > 0,
         projectThreads: new Set(material.threads.flatMap((t) => (t.project ? [`t:${t.id}`, `t:${t.project}`] : []))) };
