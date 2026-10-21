@@ -604,8 +604,10 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   that last between uses, edited from its row in the library:
   - **Sampling**, for any endpoint: temperature, top-p, top-k, min-p,
     repeat, presence and frequency penalties, maximum reply length, seed and
-    stop strings. A reply is capped at the smaller of 32,768 tokens and a
-    quarter of the context window, and a saved maximum above the cap is
+    stop strings. A reply is capped at a quarter of the context window and
+    the model's own limit where its endpoint gives one, and at most 131,072
+    tokens on a local endpoint or with that limit, else 32,768 (a cloud
+    provider may refuse a longer ask or check credit against it); a saved maximum above the cap is
     clamped to it. They go with every call to that copy; an empty one means
     the endpoint's default. An administrator sets them for shared
     endpoints, and each user can override them for themselves, in

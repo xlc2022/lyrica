@@ -4,8 +4,16 @@
 /** The context window a model is taken to have when nothing says what it is: what current models offer at least. */
 export const DEFAULT_CONTEXT = 131_072;
 
-/** The longest reply a model is asked for: the smaller of 32,768 tokens and a quarter of its context window (DEFAULT_CONTEXT when that isn't known). A saved maximum above it is clamped. */
-export const replyCap = (contextWindow?: number) => Math.min(32_768, Math.floor((contextWindow || DEFAULT_CONTEXT) / 4));
+/**
+ * The longest reply a model is asked for (Pi sends it as max_tokens on every
+ * request): the smaller of a ceiling, a quarter of its context window
+ * (DEFAULT_CONTEXT when that isn't known) and the model's own limit. The
+ * ceiling is 131,072 tokens on a local endpoint or where the endpoint gives
+ * the model's limit, else 32,768, since a cloud provider may refuse a longer
+ * ask or check credit against it. A saved maximum above it is clamped.
+ */
+export const replyCap = (contextWindow?: number, o: { local?: boolean; maxOutput?: number } = {}) =>
+  Math.min(o.local || o.maxOutput ? 131_072 : 32_768, Math.floor((contextWindow || DEFAULT_CONTEXT) / 4), o.maxOutput ?? Infinity);
 
 /** Settings an offering answers with. */
 export interface AnswerSettings {

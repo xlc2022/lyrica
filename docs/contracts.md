@@ -1337,9 +1337,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `onPayload` that merges `payloadFields(offeringSettings(…).values, …)` into
   the request: `repeat_penalty` for plain local servers,
   `repetition_penalty` for hosts and cloud; `max_tokens` or
-  `max_completion_tokens` never above the room Pi left (`replyCap`: the
-  smaller of 32,768 tokens and a quarter of the context window, and never
-  above the offering's `maxOutput`). Settings are read at
+  `max_completion_tokens` never above the room Pi left (`replyCap`: a
+  quarter of the context window, never above the offering's `maxOutput`,
+  and at most 131,072 tokens on a local endpoint or with a `maxOutput`, else
+  32,768). Settings are read at
   each request, so a change applies without reopening the session.
 - A host model whose only thinking level is a chat-template switch gets Pi's
   `thinkingFormat: "qwen-chat-template"`; any other model with levels gets

@@ -344,10 +344,10 @@ describe("how a model answers", () => {
     expect(sent.top_k).toBeUndefined();
   });
 
-  it("caps a reply at the smaller of 32,768 tokens and a quarter of the context window, clamping a longer saved maximum", async () => {
+  it("caps a reply at the smaller of 131,072 tokens and a quarter of the context window, clamping a longer saved maximum", async () => {
     const s = await setup();
     const id = s.localRef.offeringId;
-    s.models.setOfferingSettings(s.ada, id, { maxTokens: 100_000 });
+    s.models.setOfferingSettings(s.ada, id, { maxTokens: 200_000 });
     const sentFor = async (contextWindow: number) => {
       s.models.setCapabilities(s.ada, id, { contextWindow });
       const { session, dispose } = await s.open(s.thread("private"));
@@ -358,7 +358,8 @@ describe("how a model answers", () => {
       }
       return (s.local.requests.at(-1) as unknown as Record<string, unknown>).max_tokens;
     };
-    expect(await sentFor(262_144)).toBe(32_768);
+    expect(await sentFor(1_048_576)).toBe(131_072);
+    expect(await sentFor(262_144)).toBe(65_536);
     expect(await sentFor(32_768)).toBe(8192);
   });
 });
