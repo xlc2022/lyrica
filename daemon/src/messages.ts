@@ -1,5 +1,5 @@
 import { FROM_PARENT, LYRICA_REACTS, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
-import { type ChecksResult, CHECKS_NOTICE, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, USER_MESSAGE } from "@lyrica/extension";
+import { type ChecksResult, CHECKS_NOTICE, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, PAID_FALLBACK, type PaidFallback, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, Reaction, ThreadRef, Told } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
@@ -43,7 +43,7 @@ export function delegateThreads(tool: string, details: unknown, pool: Pool, runT
     : typeof d.runId === "string" && runThreads ? runThreads(d.runId) : [];
   return ids.length ? ids.map((id) => ({ pool, id })) : undefined;
 }
-interface PiEntry { type: string; message?: PiMessage; customType?: string; content?: Content }
+interface PiEntry { type: string; message?: PiMessage; customType?: string; content?: Content; data?: unknown }
 
 /** The first few lines of a tool's output. */
 export function shortResult(content: unknown): string {
@@ -113,6 +113,9 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
   const out: Message[] = [];
   const calls = new Map<string, { part: Extract<MessagePart, { type: "tool" }>; owner: Message }>();
   let pendingRecall: string[] = [];
+  // A paid fallback's line, recorded before the turn's user message, goes under the turn's last reply.
+  let paid: string | undefined;
+  let paidOn: Message | undefined;
   for (const { n, data, createdAt, pinned, reactions: stored } of entries) {
     const reactions = opts.userId ? toReactions(stored, opts.userId) : undefined;
     const e = data as PiEntry;
@@ -141,6 +144,11 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
     }
     if (e.type === "custom_message" && e.customType === TURN_TOOL_NOTICE) {
       out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [{ type: "delegation", text: textOf(e.content), status: "limit" }] });
+      continue;
+    }
+    if (e.type === "custom" && e.customType === PAID_FALLBACK) {
+      paid = paidLine(e.data as PaidFallback);
+      paidOn = undefined;
       continue;
     }
     if (e.type === "custom_message" && e.customType === "lyrica-turn") {
@@ -178,6 +186,7 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
     const m = e.type === "message" ? e.message : undefined;
     if (!m) continue;
     const base = { id: `e:${threadId}#${n}`, n, createdAt, ...(pinned ? { pinned: true } : {}), ...(reactions?.length ? { reactions } : {}) };
+    if (m.role === "user" && paidOn) paid = paidOn = undefined;
     if (m.role === "user") {
       if (textOf(m.content) === OPENING) continue; // a thread started from a sleep item: she speaks first
       const answer = /^\[Answer to q:\d+\]\n\n/.exec(textOf(m.content));
@@ -227,6 +236,11 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
         }
       }
       if (m.stopReason === "error" && m.errorMessage) msg.error = plainError(m.errorMessage);
+      if (paid) {
+        if (paidOn) delete paidOn.paid;
+        msg.paid = paid;
+        paidOn = msg;
+      }
       out.push(msg);
     } else if (m.role === "toolResult" && m.toolCallId) {
       const call = calls.get(m.toolCallId);
@@ -269,4 +283,9 @@ export function plainError(message: string): string {
     return `The model's endpoint didn't answer (${message}).`;
   }
   return message;
+}
+
+/** The line under a reply a paid model wrote in place of a free one. */
+export function paidLine(p: PaidFallback): string {
+  return `${p.model} costs money. It answered because ${p.from} was skipped (${p.reason.replace(/^it /, "")}).`;
 }

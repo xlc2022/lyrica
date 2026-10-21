@@ -180,10 +180,15 @@ export function piModelFor(runtime: ModelRuntime, models: Models, task: Task, ct
   return { ref: r.ref, model, resolution: r };
 }
 
+/** A turn a model that costs money answered because a free one earlier in its list couldn't: a session entry kept out of her context, shown under the reply. */
+export const PAID_FALLBACK = "lyrica-paid-fallback";
+export interface PaidFallback { model: string; from: string; reason: string }
+
 /**
  * Before a turn: picks the chat model again, passing over any whose machine
  * is away (probed when there is a fallback), switches the session to it,
- * sets the thinking level it can do, and records which model answers and why.
+ * sets the thinking level it can do, and records which model answers and why
+ * (and, when a paid model answers in place of a free one, a PAID_FALLBACK entry).
  * With `thinking: false` the session keeps its own level (a subagent role's).
  */
 export async function prepareTurn(o: {
@@ -208,5 +213,6 @@ export async function prepareTurn(o: {
     note = t.note;
   }
   o.models.recordCall(o.call.userId, { pool: o.pool, threadId: o.threadId, task, resolution: r, ...(note ? { note } : {}) }, { retry: !!o.retry });
+  if (r.paidAfter) o.session.sessionManager.appendCustomEntry(PAID_FALLBACK, { model: r.label, from: r.paidAfter.label, reason: r.paidAfter.reason } satisfies PaidFallback);
   return r;
 }

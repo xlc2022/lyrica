@@ -42,7 +42,7 @@ describe("endpoints", () => {
   });
 
   it("reads OpenRouter's thinking, prices, retirement and reply limit", async () => {
-    const { models, ada } = await withModels();
+    const { models, ada, gpu, localRef } = await withModels();
     const router = await fakeOpenAI({ models: [
       { id: "minimax/minimax-m3.1-flash:free", context_length: 1048576, supported_parameters: ["tools", "reasoning"],
         reasoning: { mandatory: true, supported_efforts: ["max", "xhigh", "high", "medium", "low"], default_effort: "max" },
@@ -76,6 +76,14 @@ describe("endpoints", () => {
     expect(models.resolve("chat", ctx()).ref).toEqual(ref(auto));
     models.setColumnTask(ada.id, "general", "chat", [ref(paid)]);
     expect(() => models.resolve("chat", ctx())).toThrow(/Free models only is on/);
+    // With it off, a paid model answering in place of a free one says which free one was passed over.
+    models.setFreeOnly(ada.id, false);
+    models.setColumnTask(ada.id, "general", "chat", [localRef, ref(paid)]);
+    expect(models.resolve("chat", ctx()).paidAfter).toBeUndefined();
+    models.reportDown(gpu.id);
+    expect(models.resolve("chat", ctx()).paidAfter).toEqual({ label: "gpu/qwen3.8-27b", reason: expect.any(String) });
+    models.setColumnTask(ada.id, "general", "chat", [localRef, ref(auto)]);
+    expect(models.resolve("chat", ctx()).paidAfter).toBeUndefined();
   });
 
   it("keeps a model the endpoint stops listing, marked missing, and its ID when it comes back", async () => {
