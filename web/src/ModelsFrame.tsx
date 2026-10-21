@@ -58,7 +58,7 @@ export function Retires({ m }: { m: Pick<OfferingInfo, "retiresAt"> }) {
   const at = Date.parse(m.retiresAt);
   const day = new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
   const soon = at - Date.now() < 14 * 86_400_000;
-  return <span className={soon ? "warn-text" : undefined}>{at < Date.now() ? "retired" : "retires"} {day}</span>;
+  return <span className={soon ? "warn-text" : undefined}>{at < Date.now() ? "retired" : "retires"} <span className="num">{day}</span></span>;
 }
 
 export const Kind = ({ kind }: { kind: "local" | "cloud" }) => <span className={`kind ${kind}`}>{kind}</span>;

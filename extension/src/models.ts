@@ -74,7 +74,8 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
     const now = found && models.offering(ctx.userId, found.offering.id)?.offering;
     if (now) {
       const contextWindow = windowOf(now, ctx.contextLimit);
-      if (model.contextWindow !== contextWindow) Object.assign(model, { contextWindow, maxTokens: replyRoom(now, contextWindow) });
+      const maxTokens = replyRoom(now, contextWindow);
+      if (model.contextWindow !== contextWindow || model.maxTokens !== maxTokens) Object.assign(model, { contextWindow, maxTokens });
     }
     if (found) {
       const values = models.offeringSettings(ctx.userId, found.offering.id).values;
