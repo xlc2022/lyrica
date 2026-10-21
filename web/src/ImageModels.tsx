@@ -7,12 +7,12 @@ import { CloudImageControls } from "./CloudImageControls.tsx";
 // …/hosts/:id/images, and every change a RecipeAction (POST …/hosts/:id/recipes/:recipeId), which on a shared host is
 // for administrators. The pure parts are in src/images.ts.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { get, post, u, type DeleteCopy, type GroupInfo, type HostStarter, type HubTokenInfo, type ModelsPage, type ModelUse, type OfferingInfo, type RecipeAction } from "./api.ts";
+import { get, post, put, u, type DeleteCopy, type GroupInfo, type HostStarter, type HubTokenInfo, type ModelsPage, type ModelUse, type OfferingInfo, type RecipeAction } from "./api.ts";
 import { fileChoices, size } from "./downloads.ts";
 import { GatedNote, HostField, LinkFields, linkProblem, managedHosts, RepoField, Size, startDownload, tokenFor, useLookup, wayBack } from "./Downloads.tsx";
 import { Icon } from "./icons.tsx";
 import {
-  addableRoles, archWord, defaultsWords, deletePlan, fileName, missingOf, precisionWord, recipeFiles, recipeRows, ROLE_WORD, roleWord, slotWord, withLora,
+  addableRoles, archWord, defaultsWords, deletePlan, fileName, missingOf, precisionWord, recipeFiles, recipeRows, ROLE_WORD, roleWord, slotWord, starredFirst, withLora,
   type HostLibrary, type HostPart, type HostRecipe, type ImageRow, type RecipeCopy, type Role,
 } from "./images.ts";
 import { RowMenu } from "./Machines.tsx";
@@ -158,6 +158,14 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
     setOpen(key);
     setScrollTo(key);
   };
+  /** A recipe row's offerings, one per confirmed copy: what its star stars. */
+  const idsOf = (r: ImageRow) => r.copies.map((c) => offeringOf(c)?.id).filter((id): id is string => !!id);
+  const rowStarred = (r: ImageRow) => r.copies.some((c) => offeringOf(c)?.starred);
+  /** Stars or unstars every copy, as Text models does. */
+  const star = (ids: string[], on: boolean) => void run(async () => {
+    await Promise.all(ids.map((id) => put(u(userId, "offerings", id, "star"), { starred: on })));
+    reloadModels();
+  });
   const L: Lib = {
     ctx, busy, editable,
     libOf: (hostId) => all.find((l) => l.hostId === hostId),
@@ -250,11 +258,17 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
                   <span className="cap">{plural(g.rows.length + g.plain.length, "model", "models")}</span>
                 </header>
                 <ul className="list library" aria-label={`${groupWord(a)} models`}>
-                  {g.rows.map((r) => (
-                    <RecipeRow key={r.key} L={L} row={r} groups={groups.data ?? []} offeringOf={offeringOf} open={open === r.key} reveal={reveal}
-                      onToggle={() => setOpen(open === r.key ? undefined : r.key)} />
-                  ))}
-                  {g.plain.map(({ ep, m }) => <PlainRow ctx={ctx} key={m.id} ep={ep} m={m} open={open === m.id} onToggle={() => setOpen(open === m.id ? undefined : m.id)} />)}
+                  {starredFirst([
+                    ...g.rows.map((r) => ({ starred: rowStarred(r), el: (
+                      <RecipeRow key={r.key} L={L} row={r} groups={groups.data ?? []} offeringOf={offeringOf} open={open === r.key} reveal={reveal}
+                        starred={rowStarred(r)} onStar={idsOf(r).length ? () => star(idsOf(r), !rowStarred(r)) : undefined}
+                        onToggle={() => setOpen(open === r.key ? undefined : r.key)} />
+                    ) })),
+                    ...g.plain.map(({ ep, m }) => ({ starred: !!m.starred, el: (
+                      <PlainRow ctx={ctx} key={m.id} ep={ep} m={m} busy={busy} onStar={() => star([m.id], !m.starred)}
+                        open={open === m.id} onToggle={() => setOpen(open === m.id ? undefined : m.id)} />
+                    ) })),
+                  ], (x) => x.starred).map((x) => x.el)}
                 </ul>
                 {a !== CLOUD && a !== OTHER && <ArchParts arch={a} libs={all} />}
                 {a === CLOUD && more.length > 0 && <MoreCloud ctx={ctx} models={more} />}
@@ -278,9 +292,19 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
   );
 }
 
-/** One recipe name: its facts, opening to its copy on each host and what it was copied from. */
-function RecipeRow({ L, row, groups, offeringOf, open, reveal, onToggle }: {
-  L: Lib; row: ImageRow; groups: GroupInfo[]; offeringOf: (c: RecipeCopy) => OfferingInfo | undefined; open: boolean; reveal: (key: string) => void; onToggle: () => void;
+/** The star at a row's left, as on Text models; none to press before the recipe has a model (it is still to confirm). */
+function StarButton({ name, starred, busy, onStar }: { name: string; starred: boolean; busy: boolean; onStar?: () => void }) {
+  return (
+    <button type="button" className="icon sm star" aria-pressed={starred} aria-label={`${starred ? "Unstar" : "Star"} ${name}`} disabled={busy || !onStar} onClick={onStar}>
+      <Icon name="star" />
+    </button>
+  );
+}
+
+/** One recipe name: its star, its facts, opening to its copy on each host and what it was copied from. */
+function RecipeRow({ L, row, groups, offeringOf, open, reveal, starred, onStar, onToggle }: {
+  L: Lib; row: ImageRow; groups: GroupInfo[]; offeringOf: (c: RecipeCopy) => OfferingInfo | undefined; open: boolean; reveal: (key: string) => void;
+  starred: boolean; onStar?: () => void; onToggle: () => void;
 }) {
   const ids = row.copies.map((c) => offeringOf(c)?.id).filter(Boolean);
   const group = groups.find((g) => g.members.some((m) => ids.includes(m)));
@@ -296,6 +320,7 @@ function RecipeRow({ L, row, groups, offeringOf, open, reveal, onToggle }: {
   ].filter(Boolean);
   return (
     <li className={`lrow img-row${open ? " open" : ""}`} data-entry={row.key}>
+      <StarButton name={row.name} starred={starred} busy={L.busy} onStar={onStar} />
       <button type="button" className="lrow-main" aria-expanded={open} onClick={onToggle}>
         <span className="name">{row.name}{row.pill && <span className="pill warn">{row.pill}</span>}</span>
         <span className="meta">{facts.map((x, i) => <Fragment key={i}>{i > 0 && " · "}{x}</Fragment>)}</span>
@@ -317,11 +342,12 @@ function RecipeRow({ L, row, groups, offeringOf, open, reveal, onToggle }: {
 
 const PLAN_NOTE = "Runs your own Codex (Settings → Claude Code and Codex), on your ChatGPT plan's limits. Masked edits go to the next model in the list.";
 
-/** An image model on a plain endpoint or a plan: no parts, so its switches. */
-function PlainRow({ ctx, ep, m, open, onToggle }: { ctx: MCtx; ep: Endpoint; m: OfferingInfo; open: boolean; onToggle: () => void }) {
+/** An image model on a plain endpoint or a plan: its star, and no parts, so its switches. */
+function PlainRow({ ctx, ep, m, busy, onStar, open, onToggle }: { ctx: MCtx; ep: Endpoint; m: OfferingInfo; busy: boolean; onStar: () => void; open: boolean; onToggle: () => void }) {
   const plan = ep.api === "chatgpt";
   return (
     <li className={`lrow img-row${open ? " open" : ""}`} data-entry={m.id}>
+      <StarButton name={modelName(m)} starred={!!m.starred} busy={busy} onStar={onStar} />
       <button type="button" className="lrow-main" aria-expanded={open} onClick={onToggle}>
         <span className="name">
           <ModelLabel model={modelName(m)} endpoint={ep.name} />

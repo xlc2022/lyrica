@@ -674,14 +674,12 @@ docs/ux.md §6 "Dictation and Read aloud models" lists the third place.
   captions are left out (ux.md §4), so after UI review the LoRA line is
   "Built on <base> with a LoRA.", a plain endpoint's is "Runs on
   <endpoint>." and Add a part links **Download another…**. Not built, as
-  the API gives nothing for them: Star on an image model (the library
-  route lists text models only), the New pill, trigger words, deleting a
-  single part, Starter recipes (`…/manage` doesn't pass
-  `/host/v1/starters`) and a deletion's row in the queue. Found while
+  the API gives nothing for them: the New pill, trigger words, deleting a
+  single part and a deletion's row in the queue. Found while
   building it: core read the host's `{ recipes }` and `{ parts }` answers
   as bare lists, so a real host's library failed; fixed apart, in core's
   `listIn`. The e2e answers for a made-up host's library in the browser
-  (`fakeImages`). Starter recipes came later (image-settings.md, #318). Known
+  (`fakeImages`). Starter recipes came later (image-settings.md, #318), and so did Star on an image model's row. Known
   gap: **Delete** needs the main file to be Lyrica's, so a LoRA Lyrica
   downloaded into a recipe whose main file is in the shared folder can't
   be freed from here.

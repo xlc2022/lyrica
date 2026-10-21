@@ -242,6 +242,8 @@ export interface OfferingInfo extends Capabilities {
   retiresAt?: string;
   /** The longest reply it gives, in tokens, from OpenRouter. */
   maxOutput?: number;
+  /** This user starred it (PUT …/offerings/:id/star). Set on the Models page's endpoints only: the Image models tab sorts by it. */
+  starred?: boolean;
 }
 
 export interface EndpointInfo {

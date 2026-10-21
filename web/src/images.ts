@@ -96,6 +96,9 @@ export function recipeRows(libs: HostLibrary[]): ImageRow[] {
   return out.sort((a, b) => Number(!a.pill) - Number(!b.pill) || a.name.localeCompare(b.name));
 }
 
+/** A group's models with the starred ones first, each part keeping its order (as Text models lists them). */
+export const starredFirst = <T>(items: T[], starred: (x: T) => boolean): T[] => [...items.filter(starred), ...items.filter((x) => !starred(x))];
+
 /**
  * What deleting a recipe deletes: the parts Lyrica downloaded that no other recipe still in use needs. The rest stays,
  * each with why. An ignored recipe doesn't keep a file, as on the host (host/src/recipes.ts, `remove`).

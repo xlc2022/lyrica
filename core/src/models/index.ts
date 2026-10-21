@@ -866,7 +866,7 @@ export class Models {
    */
   textLibrary(userId: string, q: { search?: string; kind?: "cloud" | "local"; endpointId?: string; capability?: "tools" | "vision" | "embedding" | "image" | "transcribe" | "speak"; groupsOnly?: boolean; offset?: number; limit?: number } = {}): { total: number; entries: LibraryEntry[] } {
     const c = this.catalog(userId);
-    const starred = this.withUser(userId, (db) => new Set((db.prepare("SELECT offering FROM starred_offerings").all() as { offering: string }[]).map((r) => r.offering)));
+    const starred = this.starredIds(userId);
     const inGroups = new Map<string, string[]>();
     for (const g of c.groups.values()) for (const m of g.members) inGroups.set(m, [...(inGroups.get(m) ?? []), g.id]);
     const entries = new Map<string, LibraryEntry>();
@@ -897,6 +897,11 @@ export class Models {
     }).sort((a, b) => Number(b.starred) - Number(a.starred) || a.name.localeCompare(b.name));
     const offset = Math.max(0, q.offset ?? 0);
     return { total: list.length, entries: list.slice(offset, offset + Math.min(200, Math.max(1, q.limit ?? 50))) };
+  }
+
+  /** The models this user starred, by offering ID. */
+  starredIds(userId: string): Set<string> {
+    return this.withUser(userId, (db) => new Set((db.prepare("SELECT offering FROM starred_offerings").all() as { offering: string }[]).map((r) => r.offering)));
   }
 
   /** Stars (or unstars) a model for this user; pickers show starred models first. */

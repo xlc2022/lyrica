@@ -586,8 +586,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   checkboxes (`POST …/downloads` with `files`), a link, or **Scan now**,
   which asks the host to read its models folder (`POST …/manage` with
   `/host/v1/scan`) and shows what it proposed as To review's rows. Its
-  Cancel goes back as the text page's does. There is no Star here: the
-  library route, which reads stars, lists text models only.
+  Cancel goes back as the text page's does. A row on Image models has
+  **Star** or **Unstar** at its left, as on Text models (`PUT …/star` on
+  each copy's offering; `GET …/models/page` marks a starred offering
+  `starred`), and starred rows come first in their group (`starredFirst`
+  in `src/images.ts`).
   Downloads (`src/Downloads.tsx`, its wording in `src/downloads.ts`) lists
   the downloads of every host the user may manage (`GET
   …/hosts/:id/downloads?preview=1`; a shared host's need an administrator),

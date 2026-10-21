@@ -489,7 +489,7 @@ class Models {                                              // new Models(keyrin
   setOfferingSettings(actor, offeringId, change, scope: "shared" | "mine" = "mine")   // null clears a value
   // Library, tokens, downloads, delete
   textLibrary(userId, { search?, kind?, endpointId?, capability?, groupsOnly?, offset?, limit? }): { total; entries: LibraryEntry[] }
-  star(userId, offeringId, on) / notThisModel(actor, offeringId, separate = true)
+  star(userId, offeringId, on) / starredIds(userId): Set<offeringId> / notThisModel(actor, offeringId, separate = true)
   hubTokens(userId): { hub; shared; last4 }[] / setHubToken(actor, hub, token, { shared? }) / removeHubToken(actor, hub, { shared? })
   hubFiles(actor, hostId, { source, repo, revision? }) / startDownload(actor, hostId, body) / downloads(actor, hostId) / cancelDownload(actor, hostId, downloadId)
   deleteCopy(actor, offeringId, { confirm? }): Promise<{ usedIn: Use[]; deleted?: string[]; left?: { files; reason } }>
@@ -1681,7 +1681,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `sleepFallback` and `readAloudLive`), `ColumnTaskChange`,
       `PresetsChange`.
     - **Models page, library, tokens:** `GET models/page` (→ `ModelsPage`:
-      endpoints with `pageStatus`, hosts' status or error (`unpaired` when the
+      endpoints with `pageStatus` and each starred offering marked `starred`, hosts' status or error (`unpaired` when the
       host revoked this server), the presets and columns, the newest visible call,
       per-endpoint call counts over the shown pools (`endpointUses`, what ranks
       the sidebar's status panel, with `tokPerSec`, `promptTokPerSec` and
