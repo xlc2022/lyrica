@@ -454,6 +454,24 @@ describe("consolidation that keeps to its job", () => {
     expect(said(seen.consolidate.at(-1)!)).toContain("enough: write what you have");
     v.close();
   });
+
+  it("writes {user} for the name in the journal, WAKE and what she raises, and shows the name", async () => {
+    const s = await setup();
+    const v = s.view();
+    s.talk(v, "I'm thinking about the garden.", "{user} is planning the garden");
+    s.script({
+      dream: [call("write_journal", { text: "Ada and I walked the garden." }), call("raise", { text: "Ada owes me a decision on the beds" })],
+      wake: [call("write_wake", { text: `Ada is planning the garden. ${words(400)}` })],
+    });
+    expect((await s.sleep.run(s.ada.id, "general", "manual")).status).toBe("complete");
+    const journal = v.own.listJournal(1)[0]!;
+    expect(v.own.get(journal.id, { raw: true })!.text).not.toContain("Ada");
+    expect(journal.text).toContain("Ada and I walked the garden.");
+    expect(v.own.get("wake", { raw: true })!.text).not.toContain("Ada");
+    expect(v.own.getWake()).toMatch(/^Ada is planning the garden\./);
+    expect(v.own.listItems().map((i) => i.text)).toEqual(["Ada owes me a decision on the beds"]);
+    v.close();
+  });
 });
 
 describe("project pages", () => {

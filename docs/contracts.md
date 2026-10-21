@@ -229,7 +229,7 @@ nothing else. No code path gives a general view a private handle.
 | Search | `search(query, { kinds, limit, current, excludeThread, fromThread, only, skip, minWords })`, returning `{ id, kind, snippet, score, at, origin }` (`origin`: who wrote a memory, or `user` or `lyrica` for a user or assistant entry, unset for a tool result; `at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, as a word or a word's start, a user's name counting once); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
 | Lineage | `cameFrom`, `usedIn`, `revisions`, `revisionHistory(id, { limit, offset, q })` → `{ entries, total }` (newest first), `isTombstoned(entryId)`, `editedSince(since)` |
 | Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `sleepRunHistory({ limit, offset, q })` → `{ entries, total }`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` |
-| Sleep items | `addItem`, `listItems`, `getItem`, `startItem(id, threadId)`, `dismissItem`, `itemForThread` |
+| Sleep items | `addItem`, `listItems`, `getItem`, `startItem(id, threadId)`, `dismissItem`, `itemForThread`. Items, like the journal and WAKE, store `{user}` as a mention token, and the readers give it back as the name |
 
 IDs:
 - `e:<thread>#<n>` for an entry, `t:<thread>` for a thread;

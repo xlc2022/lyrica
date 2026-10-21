@@ -475,7 +475,7 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
         promptSnippet: "write tonight's journal entry",
         parameters: Type.Object({ text: Type.String() }),
         async execute(_id, params) {
-          const id = own.addJournal(`${DREAM_HEADER}\n\n${params.text.trim()}`, "sleep");
+          const id = own.addJournal(`${DREAM_HEADER}\n\n${asUserToken(params.text.trim(), s.user)}`, "sleep");
           s.done.journal = id;
           return text(`Wrote ${id}.`);
         },
@@ -505,7 +505,7 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
         promptSnippet: "write WAKE",
         parameters: Type.Object({ text: Type.String() }),
         async execute(_id, params) {
-          own.putWake(params.text.trim(), "sleep");
+          own.putWake(asUserToken(params.text.trim(), s.user), "sleep");
           s.done.wake = true;
           return text("WAKE is written.");
         },
@@ -525,7 +525,7 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
       async execute(_id, params) {
         const kind: SleepItem["kind"] = phase === "consolidate" ? "question" : "thought";
         const source = params.source?.trim() || s.done.journal || `t:${s.threadId}`;
-        own.addItem(s.runId, { kind, text: params.text, source });
+        own.addItem(s.runId, { kind, text: asUserToken(params.text, s.user), source });
         return text(kind === "question" ? "Raised the question." : "Kept it for later.");
       },
     });
