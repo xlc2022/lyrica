@@ -233,8 +233,10 @@ restart in between loses the record.
   the next run resumes that run's remaining phases first.
 - **Limits.** Each phase has a turn limit (40), a token limit and a timeout
   (20 minutes). The token limit, input plus output summed over the phase's
-  turns, is 600k or four of its model's context windows, whichever is more,
-  so a model with a large context can use it. Going over ends the phase, the
+  turns, is 600k, or on a model that costs nothing (a local endpoint, or a
+  model its endpoint lists as free) four of its context windows if that's
+  more, so a large free model can use its context. A paid model stays at
+  600k. Going over ends the phase, the
   run is partial, and the run records which limit (`limit` on the phase:
   `turns`, `tokens` or `time`); the log says so, with no text.
 - **User text.** The store refuses a sleep edit to a page that drops the text

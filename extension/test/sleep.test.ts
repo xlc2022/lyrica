@@ -412,18 +412,18 @@ describe("a night's sleep", () => {
 });
 
 describe("consolidation that keeps to its job", () => {
-  it("sizes a phase's token budget by its model's context window, and records the limit it stopped at", async () => {
-    // The cloud model's window is 128,000: four windows is far more than a phase uses here.
-    const roomy = await setup({ tokens: 1 });
-    roomy.talk(roomy.view(), "Something.", "{user} said something");
-    roomy.script({ consolidate: [call("recall", { query: "a" })] });
-    expect((await roomy.sleep.run(roomy.ada.id, "general", "manual")).status).toBe("complete");
+  it("sizes a phase's token budget by a free model's context window, and records the limit it stopped at", async () => {
+    // Private sleep runs on the local model (window 32,768): four windows is far more than a phase uses here.
+    const s = await setup({ tokens: 1 });
+    s.talk(s.view("private"), "Something.", "{user} said something");
+    s.script({ consolidate: [call("recall", { query: "a" })] });
+    expect((await s.sleep.run(s.ada.id, "private", "manual")).status).toBe("complete");
 
-    const tight = await setup({ tokens: 1, windows: 0 });
-    tight.talk(tight.view(), "Something.", "{user} said something");
-    tight.script({ consolidate: [call("recall", { query: "a" })] });
-    expect(await tight.sleep.run(tight.ada.id, "general", "manual")).toMatchObject({ status: "partial", phases: { consolidate: { done: false, limit: "tokens" } } });
-    expect(tight.logs).toContain("sleep general consolidate stopped at its tokens limit");
+    // General sleep's cloud model has no free price, so it keeps the fixed budget.
+    s.talk(s.view(), "Something.", "{user} said something");
+    s.script({ consolidate: [call("recall", { query: "a" })] });
+    expect(await s.sleep.run(s.ada.id, "general", "manual")).toMatchObject({ status: "partial", phases: { consolidate: { done: false, limit: "tokens" } } });
+    expect(s.logs).toContain("sleep general consolidate stopped at its tokens limit");
   });
 
   it("writes {user} only for the person's whole name, never a date or someone sharing their first name", () => {
