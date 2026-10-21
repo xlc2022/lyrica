@@ -360,7 +360,10 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
   digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host; useFor inherited from Capabilities
   opensThinking?;                                            // a host's chat template writes <think> itself
-  alwaysThinks?;                                             // LM Studio says it can't turn thinking off
+  alwaysThinks?;                                             // LM Studio or OpenRouter says it can't turn thinking off
+  price?: { input; output; reasoning?; cacheRead?; cacheWrite?; free };   // OpenRouter's pricing, US dollars per million tokens
+  retiresAt?;                                                // OpenRouter's expiration_date
+  maxOutput?;                                                // OpenRouter's top_provider.max_completion_tokens
   lmStudio?;                                                 // LM Studio listed it on its own API at the last discovery
 }
 type ModelRef = { offeringId: string } | { groupId: string };
@@ -1335,7 +1338,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   the request: `repeat_penalty` for plain local servers,
   `repetition_penalty` for hosts and cloud; `max_tokens` or
   `max_completion_tokens` never above the room Pi left (`replyCap`: the
-  smaller of 32,768 tokens and a quarter of the context window). Settings are read at
+  smaller of 32,768 tokens and a quarter of the context window, and never
+  above the offering's `maxOutput`). Settings are read at
   each request, so a change applies without reopening the session.
 - A host model whose only thinking level is a chat-template switch gets Pi's
   `thinkingFormat: "qwen-chat-template"`; any other model with levels gets

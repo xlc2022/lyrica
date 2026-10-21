@@ -18,7 +18,7 @@ import { DownloadImage, ImageModels, ImageReview } from "./ImageModels.tsx";
 import { duration, RowMenu } from "./Machines.tsx";
 import {
   canEdit, Frame, GB, gb, hostOf, Kind, plural, TASK_WORD, useWords, VoiceDrawer,
-  type Host, type MCtx, type ModelsState,
+  Price, Retires, type Host, type MCtx, type ModelsState,
 } from "./ModelsFrame.tsx";
 import { go, href, type ModelsPageUnder, type ModelsTab, type Route } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
@@ -856,6 +856,7 @@ function Picker({ p, groups, column, task, list, q, setQ, busy, onAdd, onCancel 
                     {[
                       m.contextWindow ? <><span className="num">{contextWord(m.contextWindow)}</span> context</> : null,
                       m.tools ? "tools" : null, m.vision ? "vision" : null, m.reasoning?.length ? "thinking" : null,
+                      m.price ? <Price m={m} /> : null, m.retiresAt ? <Retires m={m} /> : null,
                       m.speak?.voices.length ? <><span className="num">{m.speak.voices.length}</span> {m.speak.voices.length === 1 ? "voice" : "voices"}</> : null,
                     ].filter(Boolean).map((x, i) => <Fragment key={i}>{i > 0 && " · "}{x}</Fragment>)}
                   </span>

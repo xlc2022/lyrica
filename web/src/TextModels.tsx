@@ -12,7 +12,7 @@ import {
 import { Icon } from "./icons.tsx";
 import { canon, groupWarnings, reseedDraft, type LibraryCopy as Copy } from "./library.ts";
 import { RowMenu } from "./Machines.tsx";
-import { canEdit, Frame, gb, hostOf, Kind, plural, UsedIn, VoiceDrawer, type MCtx } from "./ModelsFrame.tsx";
+import { canEdit, Frame, gb, hostOf, Kind, plural, Price, Retires, UsedIn, VoiceDrawer, type MCtx } from "./ModelsFrame.tsx";
 import { replyCap } from "../../core/src/models/settings.ts";
 import { go } from "./route.ts";
 import { ConfirmDialog, Dialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
@@ -327,6 +327,8 @@ function Detail({ L, e, group }: { L: Lib; e: Entry; group?: GroupInfo }) {
               const cap = [
                 c.downloaded ? "downloaded by Lyrica" : host ? "shared folder" : null,
                 c.speed?.tokPerSec ? <><span className="num">{Math.round(c.speed.tokPerSec)}</span> tok/s</> : null,
+                L.offering(c.offeringId)?.price ? <Price m={L.offering(c.offeringId)!} /> : null,
+                L.offering(c.offeringId)?.retiresAt ? <Retires m={L.offering(c.offeringId)!} /> : null,
                 <button type="button" className="link sm" aria-label={`Settings for ${c.rawName} on ${c.endpointName}`} onClick={() => L.onSettings(e, c)}>Settings</button>,
                 c.flagged ? <span className="warn-text" title={c.flagged}>the file records no finetune, but its name suggests one</span> : null,
               ].filter(Boolean);
@@ -520,7 +522,9 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   const s = settings.data;
   const savedText = (sc: Scope, k: SKey) => (s && s.sources[k] === (sc === "mine" ? "yours" : "shared") ? textOf(s.values[k]) : "");
   // The longest reply: a quarter of the context in effect (one typed here first), at most 32,768; a value above it shows clamped, as it is sent.
-  const cap = replyCap(ctxText !== undefined ? Number(ctxText) || undefined : s?.contextWindow?.value);
+  // Never above the longest reply the endpoint says the model gives (OpenRouter's `maxOutput`).
+  const maxOutput = ctx.models.page?.endpoints.flatMap((ep) => ep.models).find((m) => m.id === id)?.maxOutput;
+  const cap = Math.min(replyCap(ctxText !== undefined ? Number(ctxText) || undefined : s?.contextWindow?.value), maxOutput ?? Infinity);
   const capped = (k: SKey, text: string) => (k === "maxTokens" && text.trim() !== "" && Number(text) > cap ? String(cap) : text);
   const shown = (k: SKey) => texts[scope][k] ?? capped(k, savedText(scope, k));
   const clampMax = () => {

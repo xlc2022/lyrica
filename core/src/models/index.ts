@@ -8,7 +8,7 @@ import type { Keyring } from "../keyring.ts";
 import { DEFAULT_THINKING, TASK_NAMES, TASKS, THINKING_LEVELS, type CallContext, type Column, type ModelRef, type Pool, type PresetScope, type Task, type ThinkingLevel } from "../types.ts";
 import { selfName } from "../persona.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
-import { addressesOutside, discoverModels, modelDefaults, lmStudioLoad, lmStudioModel, lmStudioModels, probeUrl, type DiscoveredModel, type ModelDefaults, type ModelIdentity } from "./http.ts";
+import { addressesOutside, discoverModels, modelDefaults, lmStudioLoad, lmStudioModel, lmStudioModels, probeUrl, type DiscoveredModel, type ModelDefaults, type ModelIdentity, type ModelPrice } from "./http.ts";
 import { hostError, hostFetch, HostRefused, hostOrigin, listIn, lyricaIdentity, pair } from "./host.ts";
 import { baseName } from "./identity.ts";
 import { copyIdentity } from "./library.ts";
@@ -20,7 +20,7 @@ import { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, speakAt, transcribeA
 
 export type SpeechTask = "speech.transcribe" | "speech.speak";
 
-export { addressesOutside, discoverModels, inOwnNetwork, probeUrl, type DiscoveredModel, type ModelDefaults, type ModelIdentity } from "./http.ts";
+export { addressesOutside, discoverModels, inOwnNetwork, openRouterPrice, openRouterReasoning, probeUrl, type DiscoveredModel, type ModelDefaults, type ModelIdentity, type ModelPrice } from "./http.ts";
 export { baseName } from "./identity.ts";
 export { acceptedSettings, ANSWER_SETTINGS, payloadFields, replyCap, DEFAULT_CONTEXT, type AnswerSettings, type SettingSource } from "./settings.ts";
 export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
@@ -179,12 +179,18 @@ export interface Offering extends Capabilities {
   separate?: boolean;
   /** A host's chat template writes `<think>` itself, so a reply can start mid-thought. */
   opensThinking?: boolean;
-  /** Its server says it can't turn thinking off (LM Studio), so it thinks at mandatoryThinking when asked for off. */
+  /** Its server says it can't turn thinking off (LM Studio, OpenRouter), so it thinks at mandatoryThinking when asked for off. */
   alwaysThinks?: boolean;
   /** An LM Studio model, as last discovered: the `models` tool may load it again with another context. */
   lmStudio?: boolean;
   /** Requests its server runs at once, sharing one context cache (LM Studio's `parallel`), when the server says. */
   parallel?: number;
+  /** What it costs, where its server says (OpenRouter). */
+  price?: ModelPrice;
+  /** The day its server stops offering it, where the server says (OpenRouter). */
+  retiresAt?: string;
+  /** The longest reply it gives, in tokens, where the server says (OpenRouter). */
+  maxOutput?: number;
 }
 
 /** Offerings from different endpoints declared the same model, in preferred order. */
@@ -441,7 +447,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -461,6 +467,9 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.alwaysThinks ? { alwaysThinks: true } : {}),
     ...(caps.lmStudio ? { lmStudio: true } : {}),
     ...(caps.servedParallel ? { parallel: caps.servedParallel } : {}),
+    ...(caps.price ? { price: caps.price } : {}),
+    ...(caps.retiresAt ? { retiresAt: caps.retiresAt } : {}),
+    ...(caps.maxOutput ? { maxOutput: caps.maxOutput } : {}),
   };
 };
 const toGroup = (r: GroupRow, shared: boolean): Group => ({ id: r.id, name: r.name, shared, members: JSON.parse(r.members) });

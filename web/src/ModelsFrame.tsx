@@ -42,6 +42,25 @@ export const gb = (bytes: number) => (bytes / GB).toFixed(1);
 export const plural = (n: number, one: string, many: string) => <><span className="num">{n}</span> {n === 1 ? one : many}</>;
 export const canEdit = (ctx: ShellContext, ep: { shared: boolean }) => !ep.shared || ctx.user.admin;
 
+const dollars = (n: number) => `$${n < 0.01 ? n.toPrecision(2) : n.toFixed(2)}`;
+/** What a model costs, from its endpoint: "free", or dollars per million tokens in and out. Nothing when the endpoint doesn't say. */
+export function Price({ m }: { m: Pick<OfferingInfo, "price"> }) {
+  const p = m.price;
+  if (!p) return null;
+  if (p.free) return <span className="price free">free</span>;
+  return <span className="price" title="US dollars per million tokens, in and out">
+    <span className="num">{dollars(p.input)}</span> in, <span className="num">{dollars(p.output)}</span> out per M</span>;
+}
+
+/** The day an endpoint stops offering a model, as a warning within two weeks. Nothing when it doesn't say. */
+export function Retires({ m }: { m: Pick<OfferingInfo, "retiresAt"> }) {
+  if (!m.retiresAt) return null;
+  const at = Date.parse(m.retiresAt);
+  const day = new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  const soon = at - Date.now() < 14 * 86_400_000;
+  return <span className={soon ? "warn-text" : undefined}>{at < Date.now() ? "retired" : "retires"} {day}</span>;
+}
+
 export const Kind = ({ kind }: { kind: "local" | "cloud" }) => <span className={`kind ${kind}`}>{kind}</span>;
 
 export const hostOf = (p: ModelsPage, endpointId: string): Host | undefined => p.hosts.find((h) => h.endpointId === endpointId);

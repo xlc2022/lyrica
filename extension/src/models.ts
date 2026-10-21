@@ -17,6 +17,8 @@ const LOCAL_COMPAT = { supportsDeveloperRole: false, supportsStore: false, suppo
 // A host model with an on/off thinking switch (one level) thinks through the chat template's switch instead.
 // A thread's context limit narrows the window it plans by (compaction, the meter, the reply cap).
 const windowOf = (m: Offering, limit?: number) => Math.min(m.contextWindow ?? DEFAULT_CONTEXT, limit ?? Infinity);
+// The reply cap, never above the longest reply the endpoint says the model gives.
+const replyRoom = (m: Offering, contextWindow: number) => Math.min(replyCap(contextWindow), m.maxOutput ?? Infinity);
 
 function piModel(ep: Endpoint, m: Offering, limit?: number): ProviderModelConfig {
   const contextWindow = windowOf(m, limit);
@@ -28,7 +30,7 @@ function piModel(ep: Endpoint, m: Offering, limit?: number): ProviderModelConfig
     id: m.modelId, name: m.modelId, input: m.vision ? ["text", "image"] : ["text"], cost: FREE, reasoning,
     // LM Studio thinks unless asked not to: off is `reasoning_effort: "none"`.
     ...(m.lmStudio && reasoning && !m.alwaysThinks ? { thinkingLevelMap: { off: "none" } } : {}),
-    contextWindow, maxTokens: replyCap(contextWindow),
+    contextWindow, maxTokens: replyRoom(m, contextWindow),
     ...(compat ? { compat } : {}),
   };
 }
@@ -72,7 +74,7 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
     const now = found && models.offering(ctx.userId, found.offering.id)?.offering;
     if (now) {
       const contextWindow = windowOf(now, ctx.contextLimit);
-      if (model.contextWindow !== contextWindow) Object.assign(model, { contextWindow, maxTokens: replyCap(contextWindow) });
+      if (model.contextWindow !== contextWindow) Object.assign(model, { contextWindow, maxTokens: replyRoom(now, contextWindow) });
     }
     if (found) {
       const values = models.offeringSettings(ctx.userId, found.offering.id).values;

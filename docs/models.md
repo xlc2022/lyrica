@@ -376,11 +376,26 @@ the user's last twenty measured calls; the text library shows them on each
 copy (`speed`). Counts and times only, so a "Do not log" thread records them
 too. Nothing acts on speed.
 
+## Prices, retirement and reply limits
+
+OpenRouter's model list also gives each model's `pricing` (dollars per token,
+kept as `price` in dollars per million tokens: input, output, and reasoning
+and cache reads and writes when they cost anything; `free` when input and
+output cost nothing; a negative price, a router's, gives none), its
+`expiration_date` (`retiresAt`) and `top_provider.max_completion_tokens`
+(`maxOutput`), which caps the reply cap. The model picker and the text
+library show the price and the retirement day. Nothing yet stops or warns
+about a paid model.
+
 ## Thinking
 
 Offerings carry `reasoning`, the levels they offer besides off: discovered
-from OpenRouter's `supported_parameters` or LM Studio's `capabilities.reasoning`
-(below), or set by hand. Threads have a
+from OpenRouter's `reasoning.supported_efforts` (minimal counts as low, xhigh
+and max as high; `supported_parameters` naming reasoning gives all three when
+a model lists no efforts) or LM Studio's `capabilities.reasoning`
+(below), or set by hand. OpenRouter's `reasoning.mandatory` marks the model
+`alwaysThinks`, so off becomes `mandatoryThinking` before the first request
+rather than after a refusal. Threads have a
 thinking setting (off, low, medium, high, `setThinking`) with a per-user
 default (`setDefaultThinking`, medium unless set: `DEFAULT_THINKING`).
 `thinkingFor` maps it to what the model offers: the nearest level it has,
@@ -803,7 +818,8 @@ never sent with a chat request.
   frequency penalties, longest reply, seed, stop) for other cloud endpoints.
   `offeringSettings` lists the saved values that aren't sent (`dropped`).
   The longest reply is capped at the smaller of 32,768 tokens and a quarter
-  of the context window (`replyCap` in core, the room Pi leaves), and a saved
+  of the context window (`replyCap` in core, the room Pi leaves; never above
+  the model's `maxOutput`), and a saved
   maximum above the cap is clamped to it.
 - Settings follow redirects: a replacement, merge or Reset IDs moves them to
   the new ID (shared values at once, each user's when their lists are
