@@ -101,7 +101,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
     let refused = false;
     pi.on("agent_start", () => { refused = false; });
     pi.registerTool({
-      name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/.",
+      name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat).",
       promptSnippet: "create, edit or upscale images",
       promptGuidelines: ["Write prompts from the conversation; inspect results and retry if needed.",
         "Draw exact layouts and diagrams as HTML, SVG or Mermaid."],

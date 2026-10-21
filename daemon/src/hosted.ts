@@ -798,7 +798,7 @@ export class HostedThread {
         result = await executeImage({ models, threadId: this.threadId,
           call: () => { const ctx = models.callContext(this.userId, this.pool, this.threadId); return { ...ctx,
             overrides: { ...ctx.overrides, [`image.${args.action}`]: [{ offeringId }] }, fallback: false }; },
-          files: workspace.imageFiles({ userId: this.userId, pool: this.pool, threadId: this.threadId }),
+          files: workspace.imageFiles({ userId: this.userId, pool: this.pool, threadId: this.threadId, coordinates: !!view.own.getThread(this.threadId)?.project }),
           settings: () => workspace.settings(this.userId), enabled: () => tools.settings().images && tools.settings().mode !== "plan",
           approve: r => this.approve(r),
         }, id, args, controller.signal);
@@ -1011,7 +1011,7 @@ export class HostedThread {
           }),
           createImageExtension({ models, threadId: this.threadId,
             call: () => models.callContext(this.userId, this.pool, this.threadId),
-            files: workspace.imageFiles({ userId: this.userId, pool: this.pool, threadId: this.threadId }),
+            files: workspace.imageFiles({ userId: this.userId, pool: this.pool, threadId: this.threadId, coordinates: !!thread.project }),
             settings: () => workspace.settings(this.userId), enabled: () => tools.settings().images && tools.settings().mode !== "plan",
             approve: r => this.approve(r),
           }),

@@ -779,7 +779,7 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   // A recipe: its facts, then its copy on the host as a block of parts.
   const list = page.getByRole("list", { name: "Z-Image models" });
   await expect(page.getByRole("region", { name: "Z-Image", exact: true }).locator("header")).toContainText("Z-Image1 model");
-  await expect(list.getByRole("button", { name: /Z-Image Turbo/ })).toContainText("Z-Image · generate · fast and quality · 1 copy · box");
+  await expect(list.getByRole("button", { name: /^Z-Image Turbo/ })).toContainText("Z-Image · generate · fast and quality · 1 copy · box");
   await expect(page.locator(".arch-groups").getByText("Qwen-Image")).toHaveCount(0);
   // The parts that fit Z-Image, collapsed under its models.
   await expect(page.getByRole("region", { name: "Z-Image", exact: true }).locator("summary")).toContainText("Parts for Z-Image");
@@ -787,12 +787,12 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await page.getByRole("group", { name: "Role" }).getByRole("button", { name: "Upscale" }).click();
   await expect(page.locator(".arch-groups")).toContainText("No image models match.");
   await page.getByRole("group", { name: "Role" }).getByRole("button", { name: "Generate" }).click();
-  await expect(list.getByRole("button", { name: /Z-Image Turbo/ })).toBeVisible();
+  await expect(list.getByRole("button", { name: /^Z-Image Turbo/ })).toBeVisible();
   await page.getByRole("group", { name: "Where" }).getByRole("button", { name: "Cloud" }).click();
   await expect(list).toHaveCount(0);
   await page.getByRole("group", { name: "Where" }).getByRole("button", { name: "All" }).click();
   await page.getByRole("group", { name: "Role" }).getByRole("button", { name: "All" }).click();
-  await list.getByRole("button", { name: /Z-Image Turbo/ }).click();
+  await list.getByRole("button", { name: /^Z-Image Turbo/ }).click();
   const block = page.getByRole("region", { name: "Z-Image Turbo on box" });
   await expect(block.locator(".copyhead")).toContainText("template z-image · 8 steps · CFG 1 · 1024×1024");
   await expect(block.locator(".partrow").nth(1)).toContainText("Text encoderQwen3");
@@ -812,7 +812,7 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
     await expect(list.locator(".lrow-main .meta")).toContainText(`generate · ${facts} ·`);
   }
   await page.reload();
-  await list.getByRole("button", { name: /Z-Image Turbo/ }).click();
+  await list.getByRole("button", { name: /^Z-Image Turbo/ }).click();
   await expect(useFor.getByRole("button", { name: "Both", exact: true })).toHaveAttribute("aria-pressed", "true");
   await noHorizontalScroll(page);
   if (phone(page)) expect((await useFor.getByRole("button", { name: "Fast", exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
@@ -841,7 +841,7 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await expect.poll(() => post("recipes/00000000-0000-4000-8000-000000000003")).toEqual([{ do: "change", change: { op: "addLora", file: "comfy/loras/pixel-art.safetensors", strength: 1 } }]);
   expect(post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "copy", name: "Z-Image Turbo + pixel art" });
   // The page opens the new model's row; this made-up host never makes it, so open Z-Image Turbo again.
-  await list.getByRole("button", { name: /Z-Image Turbo/ }).click();
+  await list.getByRole("button", { name: /^Z-Image Turbo/ }).click();
 
   // Delete model…: what goes and what it frees, and that no list uses it.
   await block.getByRole("button", { name: "Delete model…" }).click();
@@ -861,7 +861,7 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await expect(parts.locator("li").first()).toContainText("Not used by any recipe");
   await page.getByRole("group", { name: "Type" }).getByRole("button", { name: /^VAEs/ }).click();
   await parts.getByRole("button", { name: "Z-Image Turbo" }).click();
-  await expect(list.getByRole("button", { name: /Z-Image Turbo/ })).toHaveAttribute("aria-expanded", "true");
+  await expect(list.getByRole("button", { name: /^Z-Image Turbo/ })).toHaveAttribute("aria-expanded", "true");
 
   // To review: Ctrl-click or Select picks a row; the bar acts on the selection; Escape clears it.
   await page.getByRole("link", { name: "1 to review" }).click();
@@ -1064,17 +1064,21 @@ test("image providers run 2: cloud switches and refusal links", async ({ page, b
   await controls.getByRole("checkbox", { name: "Generate" }).click();
   // Switched on, it is one of the group's models, closed; it opens to the same switches.
   const imageRow = cloud.locator(`li.img-row[data-entry="${model.id}"]`);
-  await imageRow.getByRole("button").first().click();
+  await imageRow.locator(".lrow-main").click();
   await expect(imageRow.getByRole("checkbox", { name: "Generate" })).toBeChecked();
   await imageRow.getByRole("checkbox", { name: "Edit" }).click();
   await expect(imageRow.getByRole("checkbox", { name: "Edit" })).toBeChecked();
   await imageRow.getByRole("button", { name: "Fast", exact: true }).click();
   await expect(imageRow.getByRole("button", { name: "Fast", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(imageRow.locator(".lrow-main .meta")).toHaveText("generate · edit");
+  // Its star is a text model's: pressed, it stays pressed after a reload.
+  await imageRow.getByRole("button", { name: /^Star / }).click();
+  await expect(imageRow.getByRole("button", { name: /^Unstar / })).toHaveAttribute("aria-pressed", "true");
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/image-switches-${page.viewportSize()!.width}.png` });
   await page.reload();
-  await imageRow.getByRole("button").first().click();
+  await expect(imageRow.getByRole("button", { name: /^Unstar / })).toHaveAttribute("aria-pressed", "true");
+  await imageRow.locator(".lrow-main").click();
   await expect(imageRow.getByRole("button", { name: "Fast", exact: true })).toHaveAttribute("aria-pressed", "true");
   await imageRow.getByRole("button", { name: "Quality", exact: true }).click();
   await expect(imageRow.getByRole("button", { name: "Quality", exact: true })).toHaveAttribute("aria-pressed", "true");

@@ -866,7 +866,7 @@ export class Models {
    */
   textLibrary(userId: string, q: { search?: string; kind?: "cloud" | "local"; endpointId?: string; capability?: "tools" | "vision" | "embedding" | "image" | "transcribe" | "speak"; groupsOnly?: boolean; offset?: number; limit?: number } = {}): { total: number; entries: LibraryEntry[] } {
     const c = this.catalog(userId);
-    const starred = this.withUser(userId, (db) => new Set((db.prepare("SELECT offering FROM starred_offerings").all() as { offering: string }[]).map((r) => r.offering)));
+    const starred = this.starredIds(userId);
     const inGroups = new Map<string, string[]>();
     for (const g of c.groups.values()) for (const m of g.members) inGroups.set(m, [...(inGroups.get(m) ?? []), g.id]);
     const entries = new Map<string, LibraryEntry>();
@@ -897,6 +897,11 @@ export class Models {
     }).sort((a, b) => Number(b.starred) - Number(a.starred) || a.name.localeCompare(b.name));
     const offset = Math.max(0, q.offset ?? 0);
     return { total: list.length, entries: list.slice(offset, offset + Math.min(200, Math.max(1, q.limit ?? 50))) };
+  }
+
+  /** The models this user starred, by offering ID. */
+  starredIds(userId: string): Set<string> {
+    return this.withUser(userId, (db) => new Set((db.prepare("SELECT offering FROM starred_offerings").all() as { offering: string }[]).map((r) => r.offering)));
   }
 
   /** Stars (or unstars) a model for this user; pickers show starred models first. */
@@ -2649,6 +2654,17 @@ export class Models {
       const rows = db.prepare(`SELECT * FROM model_calls WHERE ${where} ORDER BY id DESC LIMIT @limit OFFSET @offset`).all({ ...params, limit: opts.limit, offset: opts.offset }) as CallRow[];
       return { total, entries: rows.map(toCall) };
     });
+  }
+
+  /**
+   * Adds one call's tokens to a thread's running totals, for calls Lyrica
+   * doesn't make herself (Claude Code in her sandbox, counted by its relay):
+   * no call record, only the count the usage view sums.
+   */
+  addCallTotals(userId: string, pool: Pool, threadId: string, label: string, kind: "local" | "cloud", tokens: number): void {
+    if (!Number.isFinite(tokens) || tokens <= 0) return;
+    this.withUser(userId, (db) => db.prepare(`INSERT INTO call_totals (pool, thread, label, kind, tokens, gpu_ms, calls) VALUES (?, ?, ?, ?, ?, 0, 1)
+      ON CONFLICT (pool, thread, label, kind) DO UPDATE SET tokens = tokens + excluded.tokens, calls = calls + 1`).run(pool, threadId, label, kind, Math.round(tokens)));
   }
 
   /** Turns and recursively nested subagents, filtered by both pool and thread. */

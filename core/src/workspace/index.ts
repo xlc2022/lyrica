@@ -16,6 +16,7 @@ import { cleanUploadName, PANEL_DIR, ThreadFiles, type FileEntry } from "./files
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import type { ExecutionTarget } from "./ops.ts";
 import { Sandbox, sandboxHas, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
+import type { ClaudeCodeUsage } from "./relay.ts";
 import type { CodexBox } from "../models/codex.ts";
 import { authorizedKeysLine, machineSetup } from "./machines.ts";
 import {
@@ -101,6 +102,8 @@ export interface WorkspaceOptions {
   upstreams?: Record<string, string>;
   /** A pull request the run's relay opened, for that run's thread: watched for CI and reviews (docs/briefs/ci-wakes.md). */
   onPullCreate?: (t: WorkspaceThread, pr: { repo: string; number: number }) => void;
+  /** A run's Claude Code token counts, one message request at a time, for that run's thread: the usage view's "Claude Code" row. */
+  onClaudeCodeUsage?: (t: WorkspaceThread, usage: ClaudeCodeUsage) => void;
 }
 
 /** Where Claude Code sends what it reads: a run gets Claude Code only if its network reaches this. */
@@ -366,7 +369,14 @@ export class Workspace {
       const id = encodeURIComponent(this.settings(t.userId).folderThread(t.threadId));
       if (!id || id === "." || id === "..") throw new Error("unusable thread id");
       return ["threads", id];
-    }, path => this.files(t).read(path), this.settings(t.userId), (paths) => this.madeFiles(t, paths));
+    }, path => this.files(t).read(path), this.settings(t.userId), (paths) => this.madeFiles(t, paths),
+    // A project chat's go in its shared/, as its uploads do (saveUpload), so its threads can read them at /shared.
+    () => this.sharesOwnFolder(t));
+  }
+
+  /** A project chat whose shared/ is its own folder's (it is its family's top): what it makes goes there. */
+  private sharesOwnFolder(t: WorkspaceThread): boolean {
+    return !!t.coordinates && this.sharedDir(t) === join(this.threadDir(t), "shared");
   }
 
   /**
@@ -691,6 +701,7 @@ export class Workspace {
       credentials,
       ...credentials.anthropic ? { claudeDir: this.claudeDir(t) } : {},
       onPullCreate: this.opts.onPullCreate && ((pr) => this.opts.onPullCreate!(t, pr)),
+      onUsage: this.opts.onClaudeCodeUsage && ((u) => this.opts.onClaudeCodeUsage!(t, u)),
       ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,
@@ -1311,7 +1322,7 @@ export class Workspace {
     const script = 'mkdir -p uploads && n="$1$2" && i=2 && until (set -C; cat > "uploads/$n") 2>/dev/null; do ' +
       '[ "$i" -gt 999 ] && exit 1; n="$1-$i$2"; i=$((i+1)); done && printf %s "$n"';
     // A project chat's go in its shared/ (its threads' /shared), so the threads that build from them can read them.
-    const shared = t.coordinates && this.sharedDir(t) === join(this.threadDir(t), "shared");
+    const shared = this.sharesOwnFolder(t);
     const box = new Sandbox({ workdir: shared ? join(this.threadDir(t), "shared") : this.threadDir(t), grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
     const r = await box.run(["sh", "-c", script, "sh", stem, ext], { input: bytes });
     if (r.code !== 0) throw new Error(`could not save ${clean}: ${r.stderr.toString().trim()}`);

@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { makeWorktrees, worktreeGrants, removeWorktrees, FilesRefused, Sandbox, SandboxDenied, ThreadFiles, Users, Workspace, type Worktree, type Grant, type Network } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
+import { png } from "./fake-images.ts";
 
 // Escaping the sandbox is the main failure. These tests must run as an
 // unprivileged user, because root hides permission bugs; as root they are
@@ -532,6 +533,31 @@ describe.skipIf(!homeRunnable)("a project chat's uploads", () => {
       expect((await workspace.targetFor(chat).ops().read.readFile(path)).toString()).toBe("a header and three cards");
       const code = workspace.targetFor({ userId: ada.id, pool: "general", threadId: "c1" }).ops();
       expect((await code.read.readFile("/shared/uploads/mockup.txt")).toString()).toBe("a header and three cards");
+    } finally {
+      await workspace.unmountHome(ada.id);
+    }
+  });
+
+  it("and its generated images too, which still show in the chat", async () => {
+    const keyring = await freshKeyring();
+    const users = new Users(keyring);
+    const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
+    await users.authenticate("ada", "pw");
+    const workspace = new Workspace(keyring, users, { excludePorts: [] });
+    const chat = { userId: ada.id, pool: "general" as const, threadId: "p1", coordinates: true };
+    try {
+      await workspace.mountHome(ada.id);
+      workspace.settings(ada.id).inheritSettings("p1", "c1", "general");
+      const [path] = workspace.imageFiles(chat).save([{ bytes: png, type: "image/png", width: 1, height: 1 }]);
+      expect(path).toMatch(/^\/workspace\/shared\/images\/[0-9a-f-]{36}\.png$/);
+      const shown = workspace.imageFiles(chat).content(path!);
+      shown.stream.destroy();
+      expect(shown.type).toBe("image/png");
+      const code = workspace.targetFor({ userId: ada.id, pool: "general", threadId: "c1" }).ops();
+      expect(await code.read.readFile(path!.replace("/workspace/shared/", "/shared/"))).toEqual(png);
+      // A thread that isn't a project chat keeps its images in its own folder.
+      const [own] = workspace.imageFiles({ userId: ada.id, pool: "general", threadId: "c1" }).save([{ bytes: png, type: "image/png", width: 1, height: 1 }]);
+      expect(own).toMatch(/^\/workspace\/images\//);
     } finally {
       await workspace.unmountHome(ada.id);
     }

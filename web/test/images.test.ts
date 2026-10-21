@@ -1,6 +1,6 @@
 // A host's recipes and parts in words (web/src/images.ts), as the Image models tab shows them.
 import { describe, expect, it } from "vitest";
-import { addableRoles, defaultsWords, deletePlan, missingOf, recipeFiles, recipeRows, withLora, type HostPart, type HostRecipe } from "../src/images.ts";
+import { addableRoles, defaultsWords, deletePlan, missingOf, recipeFiles, recipeRows, starredFirst, withLora, type HostPart, type HostRecipe } from "../src/images.ts";
 
 const GB = 2 ** 30;
 const recipe = (r: Partial<HostRecipe>): HostRecipe => ({
@@ -81,5 +81,15 @@ describe("deleting a recipe", () => {
     const plan = deletePlan(recipe({}), parts, (id) => others[id]);
     expect(plan.goes.map((p) => p.file)).toEqual(["lyrica/z/z_image_turbo_bf16.safetensors", "lyrica/z/ae.safetensors"]);
     expect(plan.keeps).toEqual([{ file: "lyrica/z/qwen_3_4b.safetensors", why: "Krea 2 uses it" }]);
+  });
+});
+
+describe("an architecture's group of image models", () => {
+  it("lists starred models first, recipes and plain models alike, each keeping its order", () => {
+    const shown = [
+      { name: "Flux dev", starred: false }, { name: "Z-Image Turbo", starred: true },
+      { name: "shared.cloud/gpt-image", starred: false }, { name: "ChatGPT Images", starred: true },
+    ];
+    expect(starredFirst(shown, (x) => x.starred).map((x) => x.name)).toEqual(["Z-Image Turbo", "ChatGPT Images", "Flux dev", "shared.cloud/gpt-image"]);
   });
 });

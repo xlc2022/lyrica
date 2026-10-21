@@ -73,4 +73,12 @@ describe("spend share", () => {
     expect(models.recentCalls(ada.id, { pool: "private", threadId: "same" })[0]?.label).toBe("Local");
     db.close();
   });
+
+  it("shows Claude Code's tokens, counted by its relay, as the thread's own cloud row", async () => {
+    const { ada, models } = await withUsageModels();
+    models.addCallTotals(ada.id, "general", "work", "Claude Code", "cloud", 2112 + 34);
+    models.addCallTotals(ada.id, "general", "work", "Claude Code", "cloud", 45 + 7);
+    expect(models.usage(ada.id, "general", ["work"])).toEqual([{ threadId: "work", label: "Claude Code", kind: "cloud", tokens: 2198 }]);
+    expect(models.usage(ada.id, "private", ["work"])).toEqual([]);
+  });
 });

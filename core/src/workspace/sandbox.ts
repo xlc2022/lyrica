@@ -5,7 +5,7 @@ import { join, posix } from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { capOutput, maskSecrets, secretMasker, sniffImage, type ExecutionTarget, type ToolOps } from "./ops.ts";
 import { randomBytes } from "node:crypto";
-import { openRelay, type Relay } from "./relay.ts";
+import { openRelay, type ClaudeCodeUsage, type Relay } from "./relay.ts";
 import { hostAddresses, nftRules, pastaArgs, reachesHost, resolveAddresses, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
 import { cleanPath, repositoryUrl, within, type GitAccountConfig, type Grant, type Network } from "./settings.ts";
 
@@ -57,6 +57,8 @@ export interface SandboxSpec {
   claudeDir?: string;
   /** The relay's pull-request-create record, passed straight through (relay.ts). */
   onPullCreate?: (pr: { repo: string; number: number }) => void;
+  /** Claude Code's token counts per message request, passed straight through (relay.ts). */
+  onUsage?: (usage: ClaudeCodeUsage) => void;
   bwrap?: string;
   pasta?: string;
 }
@@ -349,6 +351,7 @@ export class Sandbox implements ExecutionTarget {
       internet: this.spec.network.internet,
       upstreams: c.upstreams,
       onPullCreate: this.spec.onPullCreate,
+      onUsage: this.spec.onUsage,
     }) : undefined;
     try {
       return await this.launch(argv, cwd, forward, relay);

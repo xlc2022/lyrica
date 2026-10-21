@@ -47,7 +47,12 @@ export interface RelaySpec {
   upstreams?: Record<string, string>;
   /** Called when the relay forwards a successful pull request create: only the repository and its number, never the body (docs/briefs/ci-wakes.md). */
   onPullCreate?: (pr: { repo: string; number: number }) => void;
+  /** Called after each Claude Code message request with its token counts only, never its text: for the usage view. */
+  onUsage?: (usage: ClaudeCodeUsage) => void;
 }
+
+/** One Claude Code request's tokens: `inputTokens` counts every prompt token read, cached or not. */
+export interface ClaudeCodeUsage { inputTokens: number; outputTokens: number }
 
 export interface Relay {
   /** The loopback port the relay listens on, forwarded into the run's sandbox. */
@@ -126,6 +131,85 @@ function notePullCreate(c: ForgeCredential, body: Buffer, onPullCreate: NonNulla
   onPullCreate({ repo: c.repo, number });
 }
 
+/** A JSON answer's usage is its last field, and a stream's usage event is short: no more than this is held to read them. */
+const USAGE_LIMIT = 16 * 1024;
+const USAGE_EVENTS = new Set(["message_start", "message_delta"]);
+
+/** Merges one usage object into the counts so far: later counts (message_delta's are cumulative) replace earlier ones. */
+function mergeUsage(into: Record<string, number>, u: unknown): void {
+  if (!u || typeof u !== "object") return;
+  for (const key of ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"]) {
+    const n = (u as Record<string, unknown>)[key];
+    if (typeof n === "number" && Number.isFinite(n) && n >= 0) into[key] = n;
+  }
+}
+
+const totalUsage = (u: Record<string, number>): ClaudeCodeUsage | undefined => (Object.keys(u).length ? {
+  inputTokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0),
+  outputTokens: u.output_tokens ?? 0,
+} : undefined);
+
+/**
+ * Reads a /v1/messages answer's token counts beside it as it passes, never
+ * holding it back. A stream's come from its message_start and message_delta
+ * events only, and every other event's data (where the text is) is skipped
+ * unread; a JSON answer's come from the `usage` object at its end, of which
+ * only a short tail is held. Nothing is kept once the counts are out.
+ */
+function usageReader(type: string, done: (usage: ClaudeCodeUsage) => void): { data(chunk: Buffer): void; end(): void } {
+  const counts: Record<string, number> = {};
+  const finish = () => { const u = totalUsage(counts); if (u) done(u); };
+  if (/^text\/event-stream/i.test(type)) {
+    let line = "", event = "", skipping = false;
+    const wanted = (l: string) => l.startsWith("event:") || (l.startsWith("data:") && USAGE_EVENTS.has(event));
+    const take = (l: string) => {
+      if (l === "") { event = ""; return; }
+      if (l.startsWith("event:")) { event = l.slice(6).trim(); return; }
+      if (!l.startsWith("data:") || !USAGE_EVENTS.has(event)) return;
+      let data: { message?: { usage?: unknown }; usage?: unknown };
+      try { data = JSON.parse(l.slice(5)); } catch { return; }
+      mergeUsage(counts, event === "message_start" ? data.message?.usage : data.usage);
+    };
+    return {
+      data(chunk) {
+        let text = chunk.toString("latin1");
+        while (text) {
+          const nl = text.indexOf("\n");
+          if (!skipping) {
+            line += nl < 0 ? text : text.slice(0, nl);
+            // Once a line shows it is another event's, the rest of it is never held.
+            if ((line.length >= 6 && !wanted(line)) || line.length > USAGE_LIMIT) { line = ""; skipping = true; }
+          }
+          if (nl < 0) break;
+          if (!skipping) take(Buffer.from(line.replace(/\r$/, ""), "latin1").toString("utf8"));
+          line = ""; skipping = false;
+          text = text.slice(nl + 1);
+        }
+      },
+      end: finish,
+    };
+  }
+  if (!/^application\/json/i.test(type)) return { data() {}, end() {} };
+  let tail = Buffer.alloc(0);
+  return {
+    data(chunk) { tail = Buffer.concat([tail, chunk]); if (tail.length > USAGE_LIMIT) tail = tail.subarray(tail.length - USAGE_LIMIT); },
+    end() {
+      const s = tail.toString("utf8");
+      tail = Buffer.alloc(0);
+      const open = s.indexOf("{", s.lastIndexOf('"usage"'));
+      if (s.lastIndexOf('"usage"') < 0 || open < 0) return;
+      let depth = 0;
+      for (let i = open; i < s.length; i++) {
+        if (s[i] === "{") depth++;
+        else if (s[i] === "}" && --depth === 0) {
+          try { mergeUsage(counts, JSON.parse(s.slice(open, i + 1))); } catch { return; }
+          return finish();
+        }
+      }
+    },
+  };
+}
+
 /** Opens a relay for one run. */
 export async function openRelay(spec: RelaySpec): Promise<Relay> {
   const capability = randomBytes(32).toString("base64url");
@@ -145,12 +229,25 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
   const sockets = new Set<Socket>();
   const track = (s: Socket) => { sockets.add(s); s.on("close", () => sockets.delete(s)); s.on("error", () => s.destroy()); return s; };
 
-  const forward = (to: string, path: string, req: IncomingMessage, res: ServerResponse, headers: IncomingHttpHeaders, capture?: (body: Buffer) => void) => {
+  const forward = (to: string, path: string, req: IncomingMessage, res: ServerResponse, headers: IncomingHttpHeaders, capture?: (body: Buffer) => void,
+    onUsage?: (usage: ClaudeCodeUsage) => void) => {
     const base = new URL(spec.upstreams?.[to] ?? `https://${to}`);
     const request = base.protocol === "https:" ? httpsRequest : httpRequest;
     const out = request({ protocol: base.protocol, hostname: hostname(base.host), port: base.port || undefined, method: req.method, path, headers,
       ...base.protocol === "https:" ? { ca: upstreamCAs() } : {} }, (up) => {
       res.writeHead(up.statusCode ?? 502, up.headers);
+      if (onUsage && up.statusCode === 200 && !up.headers["content-encoding"]) {
+        // Each chunk goes on as it comes; the counts are read beside it.
+        const usage = usageReader(String(up.headers["content-type"] ?? ""), onUsage);
+        up.on("data", (c: Buffer) => {
+          // As pipe does: a slow reader holds the upstream back rather than filling memory.
+          if (!res.write(c)) { up.pause(); res.once("drain", () => up.resume()); }
+          try { usage.data(c); } catch { /* counting never breaks the answer */ }
+        });
+        up.on("end", () => { res.end(); try { usage.end(); } catch { /* as above */ } });
+        up.on("error", () => res.destroy());
+        return;
+      }
       if (!capture) { up.pipe(res); return; }
       // A create's answer is small and worth a look; anything larger is piped on without a record.
       const chunks: Buffer[] = [];
@@ -178,7 +275,11 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
     if (!spec.anthropic || !same(String(req.headers.authorization ?? ""), `Bearer ${capability}`) || !path.startsWith("/v1/")) {
       return refuse(req, res, 401, '{"type":"error","error":{"type":"authentication_error","message":"not this run\'s relay"}}', "application/json");
     }
-    forward(ANTHROPIC_HOST, path, req, res, { ...passed(req, ["authorization", "x-api-key"]), authorization: `Bearer ${spec.anthropic}` });
+    const headers: IncomingHttpHeaders = { ...passed(req, ["authorization", "x-api-key"]), authorization: `Bearer ${spec.anthropic}` };
+    // A message request's answer is read for its token counts, so it is asked for uncompressed.
+    const messages = !!spec.onUsage && req.method === "POST" && path.split("?")[0] === "/v1/messages";
+    if (messages) headers["accept-encoding"] = "identity";
+    forward(ANTHROPIC_HOST, path, req, res, headers, undefined, messages ? spec.onUsage : undefined);
   });
 
   // Git: requests that came through CONNECT to one of its hosts, after the relay ended their TLS.

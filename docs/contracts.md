@@ -468,6 +468,8 @@ class Models {                                              // new Models(keyrin
   recordPace(userId, threadId, pace, task?, pool?) / speedsByOffering(userId): Map<offeringId, { tokPerS?; promptTokPerS? }>   // medians over the last 20 calls
   usage(userId, pool, threadIds): { threadId; label; kind?: "local" | "cloud"; tokens; gpuMs? }[]
     // Calls plus durable folded counts plus subagent runs at every depth; pool AND thread filtered.
+  addCallTotals(userId, pool, threadId, label, kind, tokens): void   // adds one call to call_totals; Claude Code's, counted by its relay
+    // (RelaySpec/SandboxSpec.onUsage({ inputTokens, outputTokens }) → Workspace onClaudeCodeUsage(t, usage)), as label "Claude Code", kind cloud
   // Hosts and pairing
   pairHost(actor, { name, addresses, code }, { shared?, endpointId? }): Promise<Endpoint>   // endpointId: pair again, IDs kept
   setHostAddresses(actor, id, addresses): Endpoint / fetchFor(endpoint): typeof fetch | undefined   // undefined for a plain endpoint
@@ -487,7 +489,7 @@ class Models {                                              // new Models(keyrin
   setOfferingSettings(actor, offeringId, change, scope: "shared" | "mine" = "mine")   // null clears a value
   // Library, tokens, downloads, delete
   textLibrary(userId, { search?, kind?, endpointId?, capability?, groupsOnly?, offset?, limit? }): { total; entries: LibraryEntry[] }
-  star(userId, offeringId, on) / notThisModel(actor, offeringId, separate = true)
+  star(userId, offeringId, on) / starredIds(userId): Set<offeringId> / notThisModel(actor, offeringId, separate = true)
   hubTokens(userId): { hub; shared; last4 }[] / setHubToken(actor, hub, token, { shared? }) / removeHubToken(actor, hub, { shared? })
   hubFiles(actor, hostId, { source, repo, revision? }) / startDownload(actor, hostId, body) / downloads(actor, hostId) / cancelDownload(actor, hostId, downloadId)
   deleteCopy(actor, offeringId, { confirm? }): Promise<{ usedIn: Use[]; deleted?: string[]; left?: { files; reason } }>
@@ -1679,7 +1681,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       `sleepFallback` and `readAloudLive`), `ColumnTaskChange`,
       `PresetsChange`.
     - **Models page, library, tokens:** `GET models/page` (→ `ModelsPage`:
-      endpoints with `pageStatus`, hosts' status or error (`unpaired` when the
+      endpoints with `pageStatus` and each starred offering marked `starred`, hosts' status or error (`unpaired` when the
       host revoked this server), the presets and columns, the newest visible call,
       per-endpoint call counts over the shown pools (`endpointUses`, what ranks
       the sidebar's status panel, with `tokPerSec`, `promptTokPerSec` and
@@ -1989,7 +1991,8 @@ imageFiles(t): ThreadImages
 //   /photos-of-me/<file> from that user's mounted encrypted home, refusing symlinks/traversal; at most 20 MB, PNG/JPEG/WebP.
 // ThreadImages.read also marks bytes whose SHA-256 was recorded as a derived portrait, regardless of path.
 // ThreadImages.save(GeneratedImage[], portrait = false): string[]; exclusive images/<uuid>.png in the encrypted thread folder,
-//   removes PNG metadata, refuses symlinks, returns /workspace/images/<uuid>.png paths.
+//   removes PNG metadata, refuses symlinks, returns /workspace/images/<uuid>.png paths. A project chat's (t.coordinates,
+//   as saveUpload) go in shared/images (/workspace/shared/images/<uuid>.png, its threads' /shared/images).
 //   With a portrait input, records each result's SHA-256 in encrypted user.db settings before writing; descendants inherit the rule.
 photos(userId): PortraitPhotos
 // list(): PortraitPhoto[] { path; size; type }; upload(bytes): path (PNG/JPEG/WebP, 20 MB, metadata removed,
