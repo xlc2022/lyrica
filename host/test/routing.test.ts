@@ -342,6 +342,17 @@ it("refuses a llama.cpp child that died during loading", async () => {
   await expect(backend.load(model, { gpus: [0], split: null, parallel: null, share: null, need: {} }, { placement: { mode: "auto" } })).rejects.toMatchObject({ code: "model_unavailable" });
 });
 
+it("unloads at start what llama.cpp still holds from before host-api restarted", async () => {
+  const router = await fakeLlamaRouter();
+  open.push({ close: () => new Promise<void>((r) => router.server.close(() => r())) });
+  router.status.set("left-over.gguf", "loaded");
+  router.status.set("gone.gguf", "unloaded");
+  const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+  const backend = new LlamaCpp({ url: router.url, serving, models: "/models", device: () => "CUDA0" });
+  await backend.reset();
+  expect(router.status.get("left-over.gguf")).toBe("unloaded");
+});
+
 it("selects family parsers without advertising unknown tool formats", () => {
   expect(familyParsers("Qwen3_5ForConditionalGeneration")).toEqual({ toolCallParser: "hermes", reasoningParser: "qwen3" });
   expect(familyParsers("qwen2")).toEqual({ toolCallParser: "hermes" });
