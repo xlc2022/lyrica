@@ -214,14 +214,15 @@ restart in between loses the record.
     entry that wasn't deleted; a note most of whose words a note citing the
     same entry already has isn't saved, and the reply names that note),
     `write_page` (must cite something, never the journal or sleep's threads),
-    `raise` (a question). Both writing tools turn the person's display name
-    (whole, then its first word) into `{user}`, except on a page with words
-    the person wrote. With notes to build from, pages come first: reading a
-    conversation (an `e:` or `t:` ID, or `recall`) is refused until a page is
-    written, except a project's conversations, which its page is written
-    from; at turn 6 with no page, she is told to write pages now. In all,
-    12 conversation reads (`GAP_READS`), then each is refused with "write
-    what you have and finish";
+    `raise` (a question). Both writing tools turn the person's whole display
+    name into `{user}`, except on a page with words the person wrote. With
+    notes to build from, pages come first: reading a conversation (an `e:`
+    or `t:` ID, or `recall`) is refused until a page is written, except a
+    project's threads by their `t:` ID, which its page is written from; at
+    turn 6 with no page, she is told to write pages now. After the first
+    page, 12 conversation reads (`GAP_READS`), then each is refused with
+    "write what you have and finish". With no notes and no page, reads are
+    bounded only by the phase's limits;
   - dream: `recall`, `read_memory`, `write_journal` (headed as reflection),
     `propose_persona` (through `PersonaProposals.propose`, so a normal user's
     proposal is a draft in their `user.db`), `raise` (a thought);

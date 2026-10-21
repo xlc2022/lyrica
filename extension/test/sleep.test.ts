@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { deadUrl, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
 import { profile, withModels } from "../../core/test/helpers.ts";
 import { DREAM_HEADER, memorySections, Sleep, type SleepLimits } from "../src/index.ts";
+import { asUserToken } from "../src/sleep.ts";
 
 // Sleep against scripted fake model servers. Each phase is told apart by the
 // tools it is offered; each step of a phase answers the next model call.
@@ -423,6 +424,10 @@ describe("consolidation that keeps to its job", () => {
     tight.script({ consolidate: [call("recall", { query: "a" })] });
     expect(await tight.sleep.run(tight.ada.id, "general", "manual")).toMatchObject({ status: "partial", phases: { consolidate: { done: false, limit: "tokens" } } });
     expect(tight.logs).toContain("sleep general consolidate stopped at its tokens limit");
+  });
+
+  it("writes {user} only for the person's whole name, never a date or someone sharing their first name", () => {
+    expect(asUserToken("May Lin moved the review to May 3rd; May Chen agreed.", "May Lin")).toBe("{user} moved the review to May 3rd; May Chen agreed.");
   });
 
   it("writes pages before reading conversations, reads only so many, keeps no near-copies, and writes {user} for the name", async () => {

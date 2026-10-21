@@ -363,11 +363,12 @@ export const PAGES_NUDGE_TURN = 6;
 const PAGES_FIRST = "Write the pages first, from the notes you were shown: p:about-user, and each project's page, with write_page. Then skim the conversations for anything missed.";
 const READS_DONE = `That's ${GAP_READS} reads of conversation tonight, which is enough: write what you have and finish.`;
 
-/** The person's name as {user}: the whole display name, then its first word. */
+/** The person's whole display name as {user}. Only the whole name: a first name alone can be a date ("May 3rd") or someone else. */
 export function asUserToken(text: string, name: string): string {
-  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const names = [name.trim(), name.trim().split(/\s+/)[0] ?? ""].filter((n, i, a) => n.length > 1 && a.indexOf(n) === i);
-  return names.reduce((t, n) => t.replace(new RegExp(`(?<![\\w{])${esc(n)}(?![\\w}])`, "g"), "{user}"), text);
+  const n = name.trim();
+  if (n.length < 2) return text;
+  const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(`(?<![\\w{])${esc}(?![\\w}])`, "g"), "{user}");
 }
 
 const words = (t: string) => new Set(t.toLowerCase().replace(/\[[^\]]*\]/g, " ").replace(/\{user[^}]*\}/g, " user ").match(/[\p{L}\p{N}]+/gu) ?? []);
@@ -396,7 +397,7 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
         const id = e.toolName === "read_memory" ? String((e.input as { id?: unknown }).id ?? "") : "";
         const conversation = e.toolName === "recall" || /^(general\/)?[et]:/.test(id);
         if (!conversation) return;
-        if (s.pagesFirst && !pages && !s.projectThreads.has(id)) return { block: true, reason: PAGES_FIRST };
+        if (!pages) return s.pagesFirst && !s.projectThreads.has(id) ? { block: true, reason: PAGES_FIRST } : undefined;
         if (++reads > GAP_READS) return { block: true, reason: READS_DONE };
       });
       pi.on("turn_end", () => {
