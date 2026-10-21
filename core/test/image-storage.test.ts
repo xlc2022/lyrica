@@ -50,6 +50,16 @@ describe("image storage boundaries (principles 2 and 4)", () => {
     expect(() => files.save([cleanPng(png)])).toThrow();
     expect(readdirSync(root)).toEqual(["home"]);
   });
+  it("saves a project chat's results in its shared folder, where the chat still shows them", () => {
+    const { home } = setup();
+    const chat = new ThreadImages(() => home, () => ["threads", "p1"], async () => ({ stream: Readable.from([png]), size: png.length }),
+      { isPortraitImage: () => false, recordPortraitImage: () => {} }, () => {}, () => true);
+    const [path] = chat.save([cleanPng(png)]);
+    expect(path).toMatch(/^\/workspace\/shared\/images\/[0-9a-f-]{36}\.png$/);
+    expect(readFileSync(join(home, "threads", "p1", "shared", "images", path!.split("/").at(-1)!))).toEqual(png);
+    const shown = chat.content(path!); shown.stream.destroy();
+    expect(shown.type).toBe("image/png");
+  });
   it("doesn't read portraits or save results while the user's encrypted home is unmounted", async () => {
     const keyring = await freshKeyring(), users = new Users(keyring);
     const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true }); await users.authenticate("ada", "pw");

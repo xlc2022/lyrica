@@ -366,7 +366,14 @@ export class Workspace {
       const id = encodeURIComponent(this.settings(t.userId).folderThread(t.threadId));
       if (!id || id === "." || id === "..") throw new Error("unusable thread id");
       return ["threads", id];
-    }, path => this.files(t).read(path), this.settings(t.userId), (paths) => this.madeFiles(t, paths));
+    }, path => this.files(t).read(path), this.settings(t.userId), (paths) => this.madeFiles(t, paths),
+    // A project chat's go in its shared/, as its uploads do (saveUpload), so its threads can read them at /shared.
+    () => this.sharesOwnFolder(t));
+  }
+
+  /** A project chat whose shared/ is its own folder's (it is its family's top): what it makes goes there. */
+  private sharesOwnFolder(t: WorkspaceThread): boolean {
+    return !!t.coordinates && this.sharedDir(t) === join(this.threadDir(t), "shared");
   }
 
   /**
@@ -1311,7 +1318,7 @@ export class Workspace {
     const script = 'mkdir -p uploads && n="$1$2" && i=2 && until (set -C; cat > "uploads/$n") 2>/dev/null; do ' +
       '[ "$i" -gt 999 ] && exit 1; n="$1-$i$2"; i=$((i+1)); done && printf %s "$n"';
     // A project chat's go in its shared/ (its threads' /shared), so the threads that build from them can read them.
-    const shared = t.coordinates && this.sharedDir(t) === join(this.threadDir(t), "shared");
+    const shared = this.sharesOwnFolder(t);
     const box = new Sandbox({ workdir: shared ? join(this.threadDir(t), "shared") : this.threadDir(t), grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
     const r = await box.run(["sh", "-c", script, "sh", stem, ext], { input: bytes });
     if (r.code !== 0) throw new Error(`could not save ${clean}: ${r.stderr.toString().trim()}`);

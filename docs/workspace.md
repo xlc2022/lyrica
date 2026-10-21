@@ -380,7 +380,8 @@ takes is `lyrica@pve!agent=<that secret>`.
   symlink she left in `uploads/` can't point it anywhere else. In a project
   chat (`WorkspaceThread.coordinates`) it goes in `shared/uploads/` instead
   (`/workspace/shared/uploads/…`), so the threads that build from it read it
-  at `/shared/uploads/`. The chat can't copy it there itself: its folders are
+  at `/shared/uploads/`; its image tool's results go in `shared/images/`
+  the same way. The chat can't copy it there itself: its folders are
   read-only. Its Files panel can add files under `shared/` too.
 - **The Files panel** (`core/src/workspace/files.ts`, `Workspace.files(t)`)
   lists, searches, reads, uploads, renames, deletes and zips in the thread's
@@ -495,7 +496,10 @@ The clock is injectable for tests; a policy or local-only change while approval
 is pending is checked again before sending.
 
 Results have exclusive `images/<uuid>.png` names under the thread's encrypted
-folder, following its shared project/parent folder where applicable. Writes
+folder, following its shared project/parent folder where applicable. A
+project chat's go in `shared/images/<uuid>.png` instead
+(`/workspace/shared/images/…`), as its uploads do, so its threads read them
+at `/shared/images/`. Writes
 require an unlocked key and mounted home, follow no symlinks, and strip PNG
 metadata. Nothing stores a prompt beside an image. The text result names the
 model and host or endpoint that made the image. Pi gets the bytes as image

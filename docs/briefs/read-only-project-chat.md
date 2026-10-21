@@ -17,11 +17,11 @@ the last place it could write.
   a code thread, which hands files back in `/shared`.
 - Its subagents get the same view. lyricad still fetches its clones.
 - Its prompt says every folder is read-only in place of the "a path you
-  write is a link" line, and where its uploads land.
+  write is a link" line, and where its uploads and images land.
 - Since it can no longer copy files into `/shared`, a file uploaded to it
   lands in its `shared/uploads/`, which its threads read at `/shared/uploads/`.
-  An image its image tool makes stays in its own `images/`: a code thread
-  that needs one makes it there.
+  An image its image tool makes lands in its `shared/images/` the same way,
+  which its threads read at `/shared/images/`.
 
 Principles: the structural-boundary rule in AGENTS.md, and principle 1
 (the user's work lands in reviewable threads, not one long chat).

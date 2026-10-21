@@ -162,7 +162,9 @@ export class ThreadImages {
     private readonly readWorkspace: (path: string) => Promise<{ stream: Readable; size: number }>,
     private readonly portraits: Pick<WorkspaceSettings, "isPortraitImage" | "recordPortraitImage">,
     /** Hears of the images saved, as she sees their paths. */
-    private readonly made: (paths: string[]) => void = () => {}) {}
+    private readonly made: (paths: string[]) => void = () => {},
+    /** Whether images go to the thread's shared/ (a project chat's, read by its threads at /shared) instead of images/. */
+    private readonly shared: () => boolean = () => false) {}
 
   content(path: string): HomeFile {
     const home = this.home();
@@ -205,14 +207,15 @@ export class ThreadImages {
 
   /** Exclusive PNG names, no sidecars or prompt metadata, and no writes through a symlink. */
   save(images: GeneratedImage[], portrait = false): string[] {
-    const paths = inDir(this.home(), [...this.thread(), "images"], true, dir => images.map(image => {
+    const folder = this.shared() ? ["shared", "images"] : ["images"];
+    const paths = inDir(this.home(), [...this.thread(), ...folder], true, dir => images.map(image => {
       const png = cleanPng(image.bytes);
       // Record before publishing the bytes so concurrent readers cannot miss the policy.
       if (portrait) this.portraits.recordPortraitImage(createHash("sha256").update(png.bytes).digest("hex"));
       const name = `${randomUUID()}.png`;
       const fd = openSync(`/proc/self/fd/${dir}/${name}`, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
       try { writeFileSync(fd, png.bytes); } finally { closeSync(fd); }
-      return posix.join(WORKDIR, "images", name);
+      return posix.join(WORKDIR, ...folder, name);
     }));
     this.made(paths);
     return paths;

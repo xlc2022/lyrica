@@ -1989,7 +1989,8 @@ imageFiles(t): ThreadImages
 //   /photos-of-me/<file> from that user's mounted encrypted home, refusing symlinks/traversal; at most 20 MB, PNG/JPEG/WebP.
 // ThreadImages.read also marks bytes whose SHA-256 was recorded as a derived portrait, regardless of path.
 // ThreadImages.save(GeneratedImage[], portrait = false): string[]; exclusive images/<uuid>.png in the encrypted thread folder,
-//   removes PNG metadata, refuses symlinks, returns /workspace/images/<uuid>.png paths.
+//   removes PNG metadata, refuses symlinks, returns /workspace/images/<uuid>.png paths. A project chat's (t.coordinates,
+//   as saveUpload) go in shared/images (/workspace/shared/images/<uuid>.png, its threads' /shared/images).
 //   With a portrait input, records each result's SHA-256 in encrypted user.db settings before writing; descendants inherit the rule.
 photos(userId): PortraitPhotos
 // list(): PortraitPhoto[] { path; size; type }; upload(bytes): path (PNG/JPEG/WebP, 20 MB, metadata removed,
