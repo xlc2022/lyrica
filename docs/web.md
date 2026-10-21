@@ -485,7 +485,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   …/groups/:id`), then the others (**Add to group** when the row's group is
   the user's to change). A Copy cell: raw model name with its endpoint muted
   after it, kind, status and "same file" pills (the Models page's checksum),
-  "downloaded by Lyrica" or "shared folder", tok/s and **Settings**; Context and Vision
+  "downloaded by Lyrica" or "shared folder", tok/s, the price and retirement
+  day where the endpoint says (`Price` and `Retires` in src/ModelsFrame.tsx;
+  the picker's facts line shows them too) and **Settings**; Context and Vision
   cells tinted where the copies differ; a ⋯ with **Not this model** (`PUT
   …/separate`; the new row reads "Separated from <name> · Undo", the name
   known for the visit, else "Separated") and **Delete from host…** (a dialog
@@ -501,7 +503,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the shared value ("shared"), else the model's own (`defaults`, "model's"),
   else for Maximum reply length the cap; a dropped key
   disabled with "not sent", Maximum reply length "of <cap> tokens" (`replyCap`
-  of the context in effect, at most 32,768; clamped on leaving the
+  of the context in effect, at most 32,768 and the offering's `maxOutput`; clamped on leaving the
   field and on save, and a saved value above it shown clamped), Reset; on a
   plain endpoint **Context window**, its placeholder the window planned by,
   marked "loaded" (LM Studio) or "assumed" when nothing says,

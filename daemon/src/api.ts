@@ -234,6 +234,14 @@ export interface OfferingInfo extends Capabilities {
   recipe?: string;
   /** Moved to a library entry of its own (Not this model). */
   separate?: boolean;
+  /** Can't turn thinking off, so it thinks at medium (or the nearest level) when asked for off. */
+  alwaysThinks?: boolean;
+  /** US dollars per million tokens, from OpenRouter. `free` when input and output cost nothing. */
+  price?: { input: number; output: number; reasoning?: number; cacheRead?: number; cacheWrite?: number; free: boolean };
+  /** The day the endpoint stops offering it, from OpenRouter. */
+  retiresAt?: string;
+  /** The longest reply it gives, in tokens, from OpenRouter. */
+  maxOutput?: number;
 }
 
 export interface EndpointInfo {

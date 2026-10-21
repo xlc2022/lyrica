@@ -31,7 +31,7 @@ export interface DiscoveredModel {
   reasoning?: ("low" | "medium" | "high")[];
   /** A host's chat template writes `<think>` itself (host/API.md "Models"). */
   opensThinking?: boolean;
-  /** LM Studio says the model can't turn thinking off. */
+  /** Its server says the model can't turn thinking off (LM Studio, OpenRouter's `reasoning.mandatory`). */
   alwaysThinks?: boolean;
   /** The file's SHA-256, where a host reports it: the same file on two hosts is the same model. */
   digest?: string;
@@ -52,6 +52,47 @@ export interface DiscoveredModel {
   servedParallel?: number;
   /** The sampling the model or its provider uses when a request sets none, where the server says (a host's file, OpenRouter's `default_parameters`). */
   defaults?: ModelDefaults;
+  /** What it costs, where the server says (OpenRouter's `pricing`). */
+  price?: ModelPrice;
+  /** The day the server stops offering it (OpenRouter's `expiration_date`). */
+  retiresAt?: string;
+  /** The longest reply it gives, in tokens (OpenRouter's `top_provider.max_completion_tokens`). */
+  maxOutput?: number;
+}
+
+/** US dollars per million tokens. `free` when input and output both cost nothing. */
+export interface ModelPrice { input: number; output: number; reasoning?: number; cacheRead?: number; cacheWrite?: number; free: boolean }
+
+/**
+ * OpenRouter's `pricing` (dollars per token, as strings) per million tokens.
+ * Undefined when it isn't there or is negative (a router whose price varies).
+ */
+export function openRouterPrice(p: unknown): ModelPrice | undefined {
+  if (!p || typeof p !== "object") return undefined;
+  const per = (k: string) => {
+    const v = Number((p as Record<string, unknown>)[k]);
+    return Number.isFinite(v) && (p as Record<string, unknown>)[k] !== undefined ? Math.round(v * 1e6 * 1e6) / 1e6 : undefined;
+  };
+  const input = per("prompt"), output = per("completion");
+  if (input === undefined || output === undefined || input < 0 || output < 0) return undefined;
+  const extra = { reasoning: per("internal_reasoning"), cacheRead: per("input_cache_read"), cacheWrite: per("input_cache_write") };
+  return { input, output, ...Object.fromEntries(Object.entries(extra).filter(([, v]) => v !== undefined && v > 0)), free: input === 0 && output === 0 };
+}
+
+/**
+ * OpenRouter's `reasoning`: the efforts a model takes, mapped to Lyrica's
+ * levels (minimal counts as low, xhigh and max as high), and whether it
+ * always thinks (`mandatory`). Undefined when the model doesn't say.
+ */
+export function openRouterReasoning(r: unknown): { levels: ("low" | "medium" | "high")[]; alwaysThinks: boolean } | undefined {
+  if (!r || typeof r !== "object") return undefined;
+  const o = r as { mandatory?: unknown; supported_efforts?: unknown };
+  if (!Array.isArray(o.supported_efforts)) return o.mandatory === true ? { levels: ["low", "medium", "high"], alwaysThinks: true } : undefined;
+  const efforts = new Set(o.supported_efforts.filter((e): e is string => typeof e === "string"));
+  const levels = (["low", "medium", "high"] as const).filter((l) => efforts.has(l)
+    || (l === "low" && efforts.has("minimal")) || (l === "high" && (efforts.has("xhigh") || efforts.has("max"))));
+  if (!levels.length) return undefined;
+  return { levels, alwaysThinks: o.mandatory === true };
 }
 
 /** Sampling a model reports as its own, under the settings' names. */
@@ -101,7 +142,9 @@ export async function probeUrl(baseUrl: string, apiKey: string | undefined, time
  * Reads GET /models. Capabilities are recorded only when the server says:
  * OpenRouter's `context_length`, `supported_parameters` (tools, reasoning)
  * and `architecture` modalities (vision, images), `default_parameters`
- * (the sampling it uses when a request sets none), llama-server's
+ * (the sampling it uses when a request sets none), `reasoning` (its
+ * efforts, and whether thinking can be turned off), `pricing`,
+ * `expiration_date` and `top_provider.max_completion_tokens`, llama-server's
  * `meta.n_ctx`, LM Studio's `max_context_length`, vLLM's `max_model_len`.
  */
 export async function discoverModels(baseUrl: string, apiKey: string | undefined, timeoutMs = 10_000): Promise<DiscoveredModel[]> {
@@ -113,11 +156,19 @@ export async function discoverModels(baseUrl: string, apiKey: string | undefined
     const params = Array.isArray(m.supported_parameters) ? m.supported_parameters : undefined;
     const input = Array.isArray(m.architecture?.input_modalities) ? m.architecture.input_modalities : undefined;
     const output = Array.isArray(m.architecture?.output_modalities) ? m.architecture.output_modalities : undefined;
+    const thinks = openRouterReasoning(m.reasoning);
+    const price = openRouterPrice(m.pricing);
+    const retires = typeof m.expiration_date === "string" && !Number.isNaN(Date.parse(m.expiration_date)) ? m.expiration_date : undefined;
+    const maxOutput = num(m.top_provider?.max_completion_tokens);
     return [{
       modelId: m.id,
       contextWindow: num(m.context_length) ?? num(m.meta?.n_ctx) ?? num(m.max_context_length) ?? num(m.max_model_len),
       tools: params ? params.includes("tools") : undefined,
-      reasoning: params?.includes("reasoning") || params?.includes("reasoning_effort") ? ["low", "medium", "high"] as ("low" | "medium" | "high")[] : undefined,
+      reasoning: thinks?.levels ?? (params?.includes("reasoning") || params?.includes("reasoning_effort") ? ["low", "medium", "high"] as ("low" | "medium" | "high")[] : undefined),
+      ...(thinks?.alwaysThinks ? { alwaysThinks: true } : {}),
+      ...(price ? { price } : {}),
+      ...(retires ? { retiresAt: retires } : {}),
+      ...(maxOutput ? { maxOutput } : {}),
       vision: input ? input.includes("image") : undefined,
       image: output ? output.includes("image") : undefined,
       defaults: m.default_parameters && typeof m.default_parameters === "object" ? modelDefaults((k) => m.default_parameters[OPENROUTER_DEFAULTS[k]]) : undefined,
