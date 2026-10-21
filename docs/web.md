@@ -451,7 +451,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   kind mark; "a forgotten thread" when gone), Task, Answered by ("model ·
   endpoint"), Note (the fallback or note, warn text); hidden pools left
   out; the table stacks on a phone. Tasks (`GET …/presets`) has two columns, **Private threads** and
-  **General threads**, with a **Preset** menu in each head. Local is private;
+  **General threads**, with a **Preset** menu in each head, and the
+  header's **Free models only** switch (`PresetsChange.freeOnly`). Local is private;
   Cloud is general; named presets follow their scope. The menu holds Search
   presets, the available presets with Edit beside user presets, Save to and
   Save as preset… while Custom, then New preset…. Picking a preset sends

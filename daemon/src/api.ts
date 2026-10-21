@@ -585,6 +585,8 @@ export interface Presets {
   sleepFallback: boolean;
   /** Read aloud while agent writes: Read aloud is offered on the reply she is still writing (`messages/live/speech`). Off by default. */
   readAloudLive: boolean;
+  /** Free models only: every list skips a model whose price is known and isn't free. Off by default. */
+  freeOnly: boolean;
 }
 /**
  * PUT /api/u/:userId/columns/:column/:task → Presets. A private column takes
@@ -594,7 +596,7 @@ export interface Presets {
  */
 export type ColumnTaskChange = { models: ModelRef[] | null } | { same: Task } | { model: ModelRef | null };
 /** PATCH /api/u/:userId/presets → Presets */
-export interface PresetsChange { thinking?: ThinkingLevel; fallback?: boolean; sleepFallback?: boolean; readAloudLive?: boolean }
+export interface PresetsChange { thinking?: ThinkingLevel; fallback?: boolean; sleepFallback?: boolean; readAloudLive?: boolean; freeOnly?: boolean }
 
 /**
  * One turn's counts and times. `promptTokens` is the whole prompt of its last

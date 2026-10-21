@@ -498,6 +498,7 @@ function Tasks({ ctx }: { ctx: MCtx }) {
   const [presetDrawer, setPresetDrawer] = useState<{ column: Column; mode: "new" | "saveAs" | "edit"; preset?: PresetInfo }>();
   const close = useCallback(() => setEditing(undefined), []);
   const closePreset = useCallback(() => setPresetDrawer(undefined), []);
+  const [run, , error] = useAction();
   const all = p ? copies(p) : new Map<string, Copy>();
   const gs = groups.data ?? [];
   const apply = (next: Presets) => { const cur = ctx.models.page; if (cur) ctx.models.set({ ...cur, presets: next }); };
@@ -534,8 +535,11 @@ function Tasks({ ctx }: { ctx: MCtx }) {
       onEdit={(preset) => setPresetDrawer({ column, mode: "edit", preset })} />
   );
   return (
-    <Frame ctx={ctx} tab="tasks" title="Tasks">
-      <ErrorText error={ctx.models.error || groups.error} />
+    <Frame ctx={ctx} tab="tasks" title="Tasks" actions={p && (
+      <Switch label="Free models only" hint="Every list skips a model that costs money. A model with no known price, such as one from an API key, isn't skipped."
+        checked={p.presets.freeOnly} onChange={(freeOnly) => run(async () => apply(await patch<Presets>(u(userId, "presets"), { freeOnly })))} />
+    )}>
+      <ErrorText error={ctx.models.error || groups.error || error} />
       {p && (
         <div className="tablewrap tasks">
           <table className="ttable">
