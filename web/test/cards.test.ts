@@ -69,7 +69,7 @@ describe("welcome cards", () => {
           private: { column: "private", preset: local, fromPreset: null, entries: {} },
           general: { column: "general", preset: null, fromPreset: null, entries: { chat: { same: "compaction" }, compaction: [{ groupId: "group" }] } },
         },
-        thinking: "off", fallback: true, sleepFallback: true, readAloudLive: false,
+        thinking: "off", fallback: true, sleepFallback: true, readAloudLive: false, freeOnly: false,
       },
       endpoints: [
         { id: "cloud-ep", name: "Cloud host", kind: "cloud", models: [{ id: "cloud", modelId: "cloud-model" }], state: "up" },

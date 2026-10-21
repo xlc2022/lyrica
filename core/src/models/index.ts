@@ -2125,6 +2125,16 @@ export class Models {
     this.setSetting(userId, "fallback", on ? "on" : "off");
   }
 
+  /** Free models only: lists skip a model whose price is known and isn't free. Off by default. */
+  freeOnly(userId: string): boolean {
+    return this.setting(userId, "free_only") === "on";
+  }
+
+  setFreeOnly(userId: string, on: boolean): void {
+    if (typeof on !== "boolean") throw new Error("freeOnly is true or false");
+    this.setSetting(userId, "free_only", on ? "on" : "off");
+  }
+
   /** A thread's own Fallback switch; null follows the user's default. */
   setThreadFallback(userId: string, threadId: string, on: boolean | null): void {
     if (on !== null && typeof on !== "boolean") throw new Error("fallback is true, false or null");
@@ -2290,7 +2300,8 @@ export class Models {
    * members are skipped and a cloud model named directly throws
    * CloudModelForbidden. With Fallback off (`ctx.fallback === false`) only
    * the list's first entry can answer: a group there keeps its copies, and
-   * nothing after it is tried.
+   * nothing after it is tried. With Free models only on, a model whose price
+   * is known and isn't free is skipped.
    */
   resolve(task: Task, ctx: CallContext, need: Need = {}, opts: ResolveOptions = {}): Resolution {
     const c = this.catalog(ctx.userId);
@@ -2306,6 +2317,7 @@ export class Models {
     const seen = new Set<string>();
     const unique = candidates.filter((x) => !seen.has(x.id) && !!seen.add(x.id));
     const skipped: { label: string; reason: string }[] = [];
+    const freeOnly = this.freeOnly(ctx.userId);
     let away = false;
     for (let i = 0; i < unique.length; i++) {
       const { id, grouped } = unique[i]!;
@@ -2318,7 +2330,7 @@ export class Models {
         continue;
       }
       // Unfit first: a model that couldn't take the call even with its machine up doesn't make the task offline.
-      const why = this.unfit(task, o, ep, need);
+      const why = this.unfit(task, o, ep, need) ?? (freeOnly && o.price && !o.price.free ? "it costs money, and Free models only is on" : undefined);
       if (why) { skipped.push({ label, reason: why }); continue; }
       const gone = this.away(ep, opts, o);
       if (gone) { skipped.push({ label, reason: gone }); away = true; continue; }

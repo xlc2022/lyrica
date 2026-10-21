@@ -62,6 +62,20 @@ describe("endpoints", () => {
     expect(auto!.retiresAt).toBeUndefined();
     // A model that must think thinks at medium when asked for off.
     expect(models.thinkingFor({ offering: free!, label: "free" }, "off").level).toBe("medium");
+    // Free models only skips a priced model, never one with no known price.
+    const ref = (o: typeof free) => ({ offeringId: o!.id });
+    models.setColumnTask(ada.id, "general", "chat", [ref(paid), ref(free)]);
+    const ctx = () => models.callContext(ada.id, "general", "web/a");
+    expect(models.freeOnly(ada.id)).toBe(false);
+    expect(models.resolve("chat", ctx()).ref).toEqual(ref(paid));
+    models.setFreeOnly(ada.id, true);
+    const r = models.resolve("chat", ctx());
+    expect(r.ref).toEqual(ref(free));
+    expect(r.skipped).toEqual([{ label: "router/paid/thinker", reason: "it costs money, and Free models only is on" }]);
+    models.setColumnTask(ada.id, "general", "chat", [ref(paid), ref(auto)]);
+    expect(models.resolve("chat", ctx()).ref).toEqual(ref(auto));
+    models.setColumnTask(ada.id, "general", "chat", [ref(paid)]);
+    expect(() => models.resolve("chat", ctx())).toThrow(/Free models only is on/);
   });
 
   it("keeps a model the endpoint stops listing, marked missing, and its ID when it comes back", async () => {

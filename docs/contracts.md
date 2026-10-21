@@ -1671,14 +1671,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       (`usedIn`, `deleted`, `left`), `ServingSettings`.
     - **Groups and presets:** `GET`/`POST groups`; `GET groups/suggestions`;
       `GET`/`PATCH`/`DELETE groups/:id`; `GET`/`PATCH presets` (`thinking`,
-      `fallback`, `sleepFallback`, `readAloudLive`); `POST presets`
+      `fallback`, `sleepFallback`, `readAloudLive`, `freeOnly`); `POST presets`
       (`{ name, column }`); `PATCH`/`DELETE presets/:id` (`{ name }`);
       `PUT columns/:column` (`{ preset }`); `PUT columns/:column/:task`
       (`{ models }`, `{ same }` or `{ model }`); `POST columns/:column/save`
       (`{ preset }` or `{ name }`). Types: `GroupInfo`, `GroupInput`,
       `GroupChange`, `GroupDetail`, `GroupSuggestion`, `PresetInfo`,
       `Presets` (the presets, the two columns, `thinking`, `fallback`,
-      `sleepFallback` and `readAloudLive`), `ColumnTaskChange`,
+      `sleepFallback`, `readAloudLive` and `freeOnly`), `ColumnTaskChange`,
       `PresetsChange`.
     - **Models page, library, tokens:** `GET models/page` (→ `ModelsPage`:
       endpoints with `pageStatus` and each starred offering marked `starred`, hosts' status or error (`unpaired` when the

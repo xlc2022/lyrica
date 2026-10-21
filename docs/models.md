@@ -276,6 +276,7 @@ when:
 - it can't handle the call: no tools when tools are needed, a context window
   smaller than the conversation, or, for image and speech tasks, not the
   capability the task needs;
+- Free models only is on and its price is known and isn't free (below);
 - outside a general column, it is of the other kind than the list (local in
   a private or local-only thread, cloud in the Cloud preset, else the
   list's first model's), so nothing falls back across the local/cloud line.
@@ -387,8 +388,15 @@ and cache reads and writes when they cost anything; `free` when input and
 output cost nothing; a negative price, a router's, gives none), its
 `expiration_date` (`retiresAt`) and `top_provider.max_completion_tokens`
 (`maxOutput`), which caps the reply cap. The model picker and the text
-library show the price and the retirement day. Nothing yet stops or warns
-about a paid model.
+library show the price and the retirement day.
+
+**Free models only** (`freeOnly`, `setFreeOnly`; `settings.free_only` in
+`user.db`, off by default) is one switch per user, in the Tasks tab's
+header. With it on, `resolve` skips every model whose price is known and
+isn't free ("it costs money, and Free models only is on"), in every list
+and context, so a retired `:free` model can't fall through to its paid twin.
+A model with no known price (any endpoint but OpenRouter, or a router) isn't
+skipped. Nothing yet warns before a paid model answers with it off.
 
 ## Thinking
 

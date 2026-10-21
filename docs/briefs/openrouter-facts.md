@@ -23,9 +23,10 @@ All of it rides in `offerings.found`, so no migration.
 
 ## Next, each its own PR
 
-1. A "free models only" rule per user, and a warning before a turn or task
-   would use a paid model, so a retired `:free` model never falls through to
-   its paid twin unnoticed.
+1. A "free models only" rule per user (done: **Free models only** in Tasks,
+   docs/models.md), and a warning before a turn or task would use a paid
+   model with it off, so a retired `:free` model never falls through to its
+   paid twin unnoticed.
 2. A warning when a model in a task list retires within two weeks.
 3. With the key, `GET /api/v1/key`: usage, limit and the free tier's daily
    requests.
