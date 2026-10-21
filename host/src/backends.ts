@@ -134,6 +134,13 @@ export class LlamaCpp implements Backend {
     return body.data.find((m) => m.id === id)?.status ?? null;
   }
 
+  /** Models the router has loaded or is loading that this host-api didn't place. */
+  private async held(): Promise<string[]> {
+    const res = await fetch(`${this.o.url}/models`);
+    const body = (await res.json()) as { data: { id: string; status: { value: string } }[] };
+    return body.data.filter((m) => m.status.value !== "unloaded" && !this.placed.has(m.id)).map((m) => m.id);
+  }
+
   /** POSTs to the router. A 400 saying the model is already in that state is fine; any other is an error. */
   private async post(path: string, body: unknown): Promise<void> {
     const res = await fetch(`${this.o.url}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => {
@@ -185,6 +192,12 @@ export class LlamaCpp implements Backend {
   async reset(): Promise<void> {
     let failed = 0;
     for (const { model } of [...this.placed.values()]) await this.unload(model).catch(() => failed++);
+    // What the router still holds that host-api didn't place: models loaded before host-api last restarted.
+    for (const id of await this.held().catch(() => [])) {
+      await this.post("/models/unload", { model: id })
+        .then(() => poll(async () => (await this.status(id))?.value !== "loaded", 60_000, "llama.cpp"))
+        .catch(() => failed++);
+    }
     if (failed) throw new HostError(503, "model_unavailable", `llama.cpp couldn't unload ${failed} model${failed > 1 ? "s" : ""}.`);
   }
 }

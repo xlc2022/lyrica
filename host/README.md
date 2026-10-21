@@ -322,11 +322,11 @@ revoked. A revoked server must pair again.
   larger measurement, including buffers grown on first use, until settings
   change. If another model serves or memory changes during the request, the
   host retries measurement on a later request.
-- **Known limitation:** host-api doesn't take over models llama.cpp still
-  holds when host-api alone restarts (a re-run of `install.sh` that doesn't
-  restart llama.cpp). Their memory counts as other programs' until
-  `docker restart lyrica-host-llamacpp-1`, so a model may be refused as too
-  big in the meantime.
+- **At start** host-api unloads every model llama.cpp still holds that it
+  didn't load itself, such as those loaded before host-api alone restarted
+  (a re-run of `install.sh` that doesn't restart llama.cpp), so their memory
+  isn't counted as other programs'. If llama.cpp isn't answering then,
+  `docker restart lyrica-host-llamacpp-1` clears it.
 - **Pause** refuses new work, lets the current job finish, then unloads
   every model and stops vLLM, so nothing of the host's stays in VRAM. What
   couldn't be unloaded shows on the dashboard. Until Resume, new work gets
