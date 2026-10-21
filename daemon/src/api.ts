@@ -1250,6 +1250,8 @@ export interface Message {
   createdAt: string;
   /** The model that wrote an assistant message. */
   model?: string;
+  /** A model that costs money wrote this turn because a free one earlier in the list couldn't: the line shown under its last reply. */
+  paid?: string;
   error?: string;
   /** The user pinned it: it stays in her context word for word. */
   pinned?: boolean;

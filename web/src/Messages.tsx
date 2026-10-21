@@ -253,6 +253,7 @@ function StoredMessage({ m, env, you, cards, told, folded, shown }: { m: Message
     <>
       <Parts parts={m.parts} env={env} model={m.model} n={m.n} at={m.createdAt} folded={folded} reactions={m.reactions} shown={shown} />
       {m.error && <p className="error turn-error">{m.error}</p>}
+      {m.paid && <p className="warn-text turn-paid">{m.paid}</p>}
       {after}
     </>
   );

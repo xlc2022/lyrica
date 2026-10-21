@@ -396,7 +396,17 @@ header. With it on, `resolve` skips every model whose price is known and
 isn't free ("it costs money, and Free models only is on"), in every list
 and context, so a retired `:free` model can't fall through to its paid twin.
 A model with no known price (any endpoint but OpenRouter, or a router) isn't
-skipped. Nothing yet warns before a paid model answers with it off.
+skipped.
+
+**Paid fallback.** With it off, when a model whose price is known and isn't
+free answers a turn because a free model earlier in the list (local, or
+priced free) was skipped, `resolve` says so in `Resolution.paidAfter` (that
+model's label and why). `prepareTurn` then appends a `lyrica-paid-fallback`
+session entry (`PAID_FALLBACK`: the two labels and the reason, no text), a
+custom entry Pi keeps out of her context, and the thread shows it as
+`Message.paid`, one warn line under the turn's last reply, once the turn
+ends. When Pi retries the turn, the retry's choice replaces it, and a retry
+answered by any other model appends `{ cleared: true }`, leaving no line. Calls that aren't turns (titles, sleep, images) aren't marked.
 
 ## Thinking
 

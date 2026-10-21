@@ -1130,6 +1130,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `lyrica-empty-reply` message (`EMPTY_REPLY`); the daemon emits it as the
   turn's `error` event, so a project's thread fails as it would on a model
   error, and after reload it shows as that reply's error.
+- **Paid fallback** (`extension/src/models.ts`): when `Resolution.paidAfter`
+  is set, `prepareTurn` appends a `lyrica-paid-fallback` custom entry
+  (`PaidFallback`: `model`, `from`, `reason`), outside her context, and a
+  retry that lands elsewhere appends `{ cleared: true }`; `toMessages` puts
+  the turn's latest line (`paidLine`) on its last reply as `Message.paid`
+  (docs/models.md, Prices).
 - **Tool guards for OpenAI-compatible endpoints** (`extension/src/tool-stream.ts`,
   wrapped around every local server's and model host's stream in
   `modelRuntimeFor`): `objectTools` sends every tool's parameters with

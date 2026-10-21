@@ -313,6 +313,8 @@ export interface Resolution {
   skipped: { label: string; reason: string }[];
   /** Models after this one in the list that could still be tried. */
   remaining: number;
+  /** A free model earlier in the list (local, or priced free) that was skipped, when this one costs money. */
+  paidAfter?: { label: string; reason: string };
 }
 
 export interface CallRecord {
@@ -2319,6 +2321,7 @@ export class Models {
     const skipped: { label: string; reason: string }[] = [];
     const freeOnly = this.freeOnly(ctx.userId);
     let away = false;
+    let free: { label: string; reason: string } | undefined;
     for (let i = 0; i < unique.length; i++) {
       const { id, grouped } = unique[i]!;
       const o = c.offerings.get(id);
@@ -2331,10 +2334,15 @@ export class Models {
       }
       // Unfit first: a model that couldn't take the call even with its machine up doesn't make the task offline.
       const why = this.unfit(task, o, ep, need) ?? (freeOnly && o.price && !o.price.free ? "it costs money, and Free models only is on" : undefined);
-      if (why) { skipped.push({ label, reason: why }); continue; }
-      const gone = this.away(ep, opts, o);
-      if (gone) { skipped.push({ label, reason: gone }); away = true; continue; }
-      return { ref: { offeringId: o.id }, endpoint: ep, offering: o, label, profile: found.profile, source: found.source, skipped, remaining: unique.length - i - 1 };
+      const reason = why ?? this.away(ep, opts, o);
+      if (reason) {
+        skipped.push({ label, reason });
+        if (!why) away = true;
+        if (!free && (ep.kind === "local" || o.price?.free)) free = { label, reason };
+        continue;
+      }
+      const paidAfter = free && o.price && !o.price.free ? { paidAfter: free } : {};
+      return { ref: { offeringId: o.id }, endpoint: ep, offering: o, label, profile: found.profile, source: found.source, skipped, remaining: unique.length - i - 1, ...paidAfter };
     }
     // Something would answer once its machine is back: offline, not unset.
     if (away) throw new Offline(task, skipped);
