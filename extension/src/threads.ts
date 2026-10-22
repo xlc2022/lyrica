@@ -111,7 +111,7 @@ const Params = Type.Object({
   routineId: Type.Optional(Type.Integer({ minimum: 1, description: "For routine pause, resume or remove: the routine's numeric ID from routine list." })),
   schedule: Type.Optional(Type.Object({
     kind: Type.String({ description: "daily, weekdays, weekly, yearly or every." }),
-    time: Type.Optional(Type.String({ description: "HH:MM in the person's time zone, the one your time line names." })),
+    time: Type.Optional(Type.String({ description: "HH:MM in the person's time zone." })),
     day: Type.Optional(Type.Number({ description: "For weekly: 0 (Sunday) to 6 (Saturday)." })),
     date: Type.Optional(Type.String({ description: "For yearly: MM-DD." })),
     hours: Type.Optional(Type.Number({ description: "For every: a whole number from 1 to 168, counted from now." })),
