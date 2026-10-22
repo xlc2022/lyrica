@@ -1658,7 +1658,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `Workspace.checkouts(t)` and `core/src/workspace/git-changes.ts`
     (`repositoryChanges`, `commitFiles`, `fileSides`); the open pull request
     from `ForgeWatcher.openPull(userId, pool, thread, repo)`, the last poll's
-    number, head, URL and checks;
+    number, head, URL and checks; `ForgeWatcher.openPulls(userId, pool,
+    thread)` lists them all for a project thread's `ThreadSummary.pull`, and
+    `DelegationStore.liveCounts(userId, pool)` counts its running or asking
+    subagents by parent thread for `ThreadSummary.subagents`;
   - images: `GET /api/u/:userId/threads/:pool/:threadId/file?path=` serves
     sniffed regular file bytes from that thread's folder only (relative or
     `/workspace/` paths), with `no-store`, `nosniff` and a sandbox CSP.

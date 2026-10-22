@@ -175,7 +175,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   its state word and its time in mono); below it a popover of the project's
   threads grouped Waiting on
   you, Working, Queued, Blocked, Idle and Resolved (each a link, with its unseen
-  count). The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
+  count). Each row carries the thread's **chips** (`ThreadChips`, root `.tchips`, docs/ux.md
+  §6 "A project's threads at a glance"), plain spans inside the row's link:
+  its checklist's count from `ThreadSummary.steps`, its open pull request
+  from `ThreadSummary.pull` (the number, and the checks' dot as the changes
+  badge colours it), and `ThreadSummary.subagents`, the subagents working
+  for it now; a chip without anything to say is left out. The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
   This chat first, then thread links by descending tokens, and **Recent
   calls** linking to the project's filter. On a phone Tokens opens in place
   at the foot of the Threads popover. The header has a **Project**
@@ -272,7 +277,14 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `…/files/view` (the browser's own viewer); images, audio and video from
   `…/files/content` in their own elements; Markdown rendered by `Prose`
   (raw HTML skipped); other names by the type `…/files/content` answers,
-  text up to 512 KB as text and anything else with Download. Escape closes
+  text up to 512 KB as text and anything else with Download. An image or
+  SVG opened among others (the caller's `list`: the Files panel's folder,
+  its search hits or its Images grid, as filtered; Project settings' folder
+  shown or its Images grid) steps through the images and SVGs of that list
+  with **Previous image** and **Next image**, round 44 px buttons on its
+  sides, and with Left and Right, except in a field, a menu or the thread
+  beside. It stops at the ends, where that button is disabled, and the
+  facts read "Image 2 of 4". Escape closes
   a menu inside first, then the viewer, and so does any navigation.
 - **The changes view** (`Changes.tsx`): the same kind of dialog for a
   thread's branch, described under Chat ("Changes").
@@ -1124,7 +1136,9 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   (`ThreadSummary.steps`: "2 of 5" with its numbers in mono, a link named
   "Checklist, 2 of 5 steps done" that opens the header's popover; on a
   phone it opens in flow under the card's head, the card's width, with no
-  shadow), "wakes" and its next
+  shadow), then its pull request and subagent chips as in the threads list's
+  rows (the pull request's a link to it on its forge, opening a new tab; on
+  a phone the chips take their own line under the title), "wakes" and its next
   wake-up's time in mono while one waits (`ThreadSummary.wakeAt`);
   beneath, the step under way (or the first to do) with its mark, on one
   line with an ellipsis, left off once all are done or the thread is

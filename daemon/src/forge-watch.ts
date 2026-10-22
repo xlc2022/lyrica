@@ -127,6 +127,11 @@ export class ForgeWatcher {
     return [...this.codeState].find(([key, value]) => key.startsWith(`${userId}/${pool}/`) && value.thread === threadId && value.pull.repo === repo)?.[1].pull;
   }
 
+  /** Every open pull request of a thread as the last poll saw them, in the order its watches were recorded. */
+  openPulls(userId: string, pool: Pool, threadId: string): OpenPull[] {
+    return [...this.codeState].filter(([key, value]) => key.startsWith(`${userId}/${pool}/`) && value.thread === threadId).map(([, value]) => value.pull);
+  }
+
   constructor(private readonly o: ForgeWatchOptions) {}
 
   load(userId: string): void { this.unlocked.add(userId); }
