@@ -91,3 +91,26 @@ describe("skills", () => {
     s.stream.close();
   });
 });
+
+describe("the model-host skill", () => {
+  it("is listed only while the thread has an SSH machine, reads like a library skill, and gives way to a library skill of its name", async () => {
+    const s = await setup();
+    expect(await s.prompt()).not.toContain("model-host");
+    const ws = s.d.services!.workspace.settings(s.rt.ada.id);
+    ws.addMachine({ name: "box", host: "127.0.0.1", port: 22, username: "lyrica", root: null, pool: "general", limit: "ask", privateKey: "fake", offNetwork: false }, `SHA256:${"A".repeat(43)}`);
+    ws.setThread(s.thread.id, "general", { machines: ["box"] });
+    expect(await s.prompt()).toContain('<skill name=\\"model-host\\" read=\\"s:model-host\\">Install a Lyrica model host');
+
+    const from = s.stream.events.length;
+    s.model.reply({ tools: [{ name: "read_memory", args: { id: "s:model-host" } }] }, { text: "Read it." });
+    await s.ada.post(`${s.path}/messages`, { text: "install a model host on box" });
+    await s.stream.until((e) => e.type === "turn_end", from);
+    expect(JSON.stringify(s.model.requests.at(-1)!.messages)).toContain("Installing a model host on a machine");
+
+    await s.ada.post(`${s.u}/skills`, { name: "model-host", description: "Our own way.", body: "Ask first." });
+    const prompt = await s.prompt();
+    expect(prompt).toContain('<skill name=\\"model-host\\" read=\\"s:model-host\\">Our own way.</skill>');
+    expect(prompt).not.toContain('read=\\"s:model-host\\">Install');
+    s.stream.close();
+  });
+});

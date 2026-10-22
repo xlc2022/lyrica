@@ -294,6 +294,20 @@ on a machine goes to the user on a card (`run_as_root`,
 - Not in an ordinary child thread (it asks its parent), a subagent, or
   Plan mode.
 
+### Installing a model host
+
+While a thread has an SSH machine, its skills list Lyrica's own
+`model-host` skill (`extension/src/model-host.md`, DESIGN.md "Skills"),
+which she reads with `read_memory` `s:model-host`. It walks her through:
+checking the card, driver, Docker and disk, and whether someone else uses
+the GPU; saying what can run there; listing the system-wide changes for a
+yes; the prerequisites as a root step; cloning and `install.sh --no-start`
+as her account, with the image build and pull in the background; the
+install itself as a root step; a smoke test against
+`127.0.0.1:7236/host/v1/status`; pausing the host on a shared machine; and
+a pairing code from `127.0.0.1:7236/dashboard/pairing` for the user to
+enter in **Add model host**. Nothing under `host/` changes for it.
+
 ## Proxmox
 
 A Proxmox machine (`kind: "proxmox"`) is reached over Proxmox's HTTPS API
