@@ -882,6 +882,10 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await expect(page.locator("main h1")).toHaveText(chatTitle);
   await alphaRow.click();
   await expect(alphaBeside.getByRole("heading", { level: 1, name: "Alpha" })).toBeFocused();
+  // The row of the thread in the panel is outlined, and only that one.
+  await expect(alphaRow).toHaveAttribute("data-beside", "true");
+  await expect(betaRow).not.toHaveAttribute("data-beside");
+  await expect(page.locator(".side a.thread[data-beside]")).toHaveCount(1);
   // A double-click on a row's title renames it in place; so does one on the chat's title.
   await betaRow.locator(".title").dblclick();
   const rowField = page.locator(".side .children a.thread").getByRole("textbox", { name: "Title" });
@@ -1189,6 +1193,48 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await panel.getByRole("group", { name: "Show" }).getByRole("button", { name: "Made by Lyrica" }).click();
   await expect(panel.getByText("No images yet")).toBeVisible();
   await noHorizontalScroll(page);
+});
+
+test("the file viewer: an image steps to the previous or next image of its list with the buttons and Left and Right", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "hello images");
+  await expect(page.getByText("You said: hello images")).toBeVisible();
+  const threadId = decodeURIComponent(location_of(page).split("/t/general/")[1]!.split("/")[0]!);
+  const upload = (name: string, b64: string) => page.evaluate(async ([path, b64]) => {
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/octet-stream" }, body: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)) });
+    if (!r.ok) throw new Error(`${path}: ${r.status}`);
+    return ((await r.json()) as { path: string }).path;
+  }, [`/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/uploads?name=${encodeURIComponent(name)}`, b64] as const);
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwyBNJjFAAAiOQZ3YJ5p9QAAAABJRU5ErkJggg==";
+  // Two images and a note in one folder: the note is skipped.
+  const names = [await upload("a.png", png), await upload("b.png", png)].map((p) => p.slice("/workspace/uploads/".length)).sort();
+  await upload("plan.md", Buffer.from("# The plan\n").toString("base64"));
+
+  await page.getByRole("link", { name: "Files and images" }).click();
+  const panel = phone(page) ? page.locator(".files-page") : page.getByRole("complementary");
+  await panel.getByRole("button", { name: "uploads", exact: true }).click();
+  await panel.getByRole("button", { name: names[0], exact: true }).click();
+  let viewer = page.getByRole("dialog", { name: names[0] });
+  await expect(viewer.locator(".viewer-facts")).toContainText("Image 1 of 2");
+  await expect(viewer.getByRole("button", { name: "Previous image" })).toBeDisabled();
+  if (phone(page)) expect(await hitHeight(viewer.getByRole("button", { name: "Next image" }))).toBeGreaterThanOrEqual(44);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/viewer-steps-${page.viewportSize()!.width}.png` });
+  await page.keyboard.press("ArrowRight");
+  viewer = page.getByRole("dialog", { name: names[1] });
+  await expect(viewer.locator(".viewer-facts")).toContainText("Image 2 of 2");
+  await expect(viewer.getByRole("button", { name: "Next image" })).toBeDisabled();
+  await viewer.getByRole("button", { name: "Previous image" }).click();
+  await expect(page.getByRole("dialog", { name: names[0] })).toBeVisible();
+  // The clicked button keeps the focus, so the keys go on working.
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("dialog", { name: names[1] })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // A Markdown file has no steps.
+  await panel.getByRole("button", { name: "plan.md", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "plan.md" }).getByRole("button", { name: "Next image" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 });
 
 test("the file viewer: an HTML page runs in a sandbox that can't reach Lyrica, its console beneath, the thread beside", async ({ page, baseURL }) => {

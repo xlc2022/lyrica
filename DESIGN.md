@@ -177,7 +177,9 @@ Each user has two pools of memory.
       it carries inline, so opening it can't carry anything out; only a
       link the user clicks still leaves;
       Markdown and SVG show rendered with their source a switch away; PDFs,
-      images, audio and video in the browser's own viewers.
+      images, audio and video in the browser's own viewers. An image steps
+      to the previous or next image of the list it was opened from
+      (decided 2026-10-22).
     - Actions are in a right-click menu (a long press on a phone, or ⋯):
       Attach to message, Show in thread, Download, Copy path, Rename and
       Delete on a file; Upload and New folder on a folder or empty space.
@@ -1805,6 +1807,9 @@ Details in [docs/sleep.md](docs/sleep.md).
   - Each operation goes either to a bubblewrap sandbox, which sees only the
     folders granted to the thread, or to one of the machines granted to it
     (see [Machines](#machines)).
+  - A long command runs in the background: approved as any command, it
+    returns a job id at once, and the thread is told (and woken if idle)
+    when it ends. Jobs live in `lyricad`'s memory only.
   - An administrator decides which folders each user may grant, with separate
     lists for the general and private pools. The lists live in `self.db`, so
     the user's password isn't needed and users can't extend their own.

@@ -67,7 +67,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   pool dot's place (amber-dotted when one of its threads waits on the user)
   and its threads nested under it, open by default, each with its pool dot,
   its state as a word (Working, Waiting on you, Waiting for approval,
-  Queued, Idle) and its unseen count, the ones pinned from their cards
+  Queued, Blocked, Idle; Blocked's tooltip reads "Blocked until it agrees
+  with <thread> on who changes <file>.") and its unseen count, the ones pinned from their cards
   first; resolved ones fold under a **Resolved** row with their count. The
   list's own menu (right-click or a long press on its empty space) has
   **New project** (General or Private: an empty, pinned project chat) and
@@ -173,8 +174,13 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   (`{page:"threads"}`: `ThreadsPage`, the same groups as the popover below, each row
   its state word and its time in mono); below it a popover of the project's
   threads grouped Waiting on
-  you, Working, Queued, Idle and Resolved (each a link, with its unseen
-  count). The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
+  you, Working, Queued, Blocked, Idle and Resolved (each a link, with its unseen
+  count). Each row carries the thread's **chips** (`ThreadChips`, root `.tchips`, docs/ux.md
+  §6 "A project's threads at a glance"), plain spans inside the row's link:
+  its checklist's count from `ThreadSummary.steps`, its open pull request
+  from `ThreadSummary.pull` (the number, and the checks' dot as the changes
+  badge colours it), and `ThreadSummary.subagents`, the subagents working
+  for it now; a chip without anything to say is left out. The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
   This chat first, then thread links by descending tokens, and **Recent
   calls** linking to the project's filter. On a phone Tokens opens in place
   at the foot of the Threads popover. The header has a **Project**
@@ -197,7 +203,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `besideOnClick`: the project chat, or the thread the child was started
   from), a plain click on a child row opens it beside too, replacing what
   the panel shows. The sidebar's other rows navigate as before, and so does any other
-  modified click. The column
+  modified click. The row of the thread in the panel carries `data-beside`,
+  drawn as a thin box without the open row's fill. The column
   is 280 to 1000 px (420 to start), dragged on its divider (a `separator`
   that the arrow keys move too), the width kept in `localStorage`
   (`lyrica.panel-width`); the grid holds it short of leaving the
@@ -270,7 +277,14 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `…/files/view` (the browser's own viewer); images, audio and video from
   `…/files/content` in their own elements; Markdown rendered by `Prose`
   (raw HTML skipped); other names by the type `…/files/content` answers,
-  text up to 512 KB as text and anything else with Download. Escape closes
+  text up to 512 KB as text and anything else with Download. An image or
+  SVG opened among others (the caller's `list`: the Files panel's folder,
+  its search hits or its Images grid, as filtered; Project settings' folder
+  shown or its Images grid) steps through the images and SVGs of that list
+  with **Previous image** and **Next image**, round 44 px buttons on its
+  sides, and with Left and Right, except in a field, a menu or the thread
+  beside. It stops at the ends, where that button is disabled, and the
+  facts read "Image 2 of 4". Escape closes
   a menu inside first, then the viewer, and so does any navigation.
 - **The changes view** (`Changes.tsx`): the same kind of dialog for a
   thread's branch, described under Chat ("Changes").
@@ -688,8 +702,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   counts on the unlock limiter; too many say to wait, longer after each
   wrong code, up to 15 minutes.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
-  left (a scrolling row on a phone): Profile (name, pronouns, accent colour,
-  monogram), Appearance (theme; the **Checklists** switch, which saves
+  left (a scrolling row on a phone): Profile (name, pronouns, **Time zone**,
+  accent colour, monogram), Appearance (theme; the **Checklists** switch, which saves
   `Display.checklists` at once and reloads the thread list: off, the API
   sends no steps, so no card or header shows one; then Read aloud while
   agent writes under Speech), **Push** (`src/Push.tsx`: URL, optional masked Token,
@@ -1078,7 +1092,12 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   time in the reader's locale as its tooltip ("Monday, October 12, 2026 at
   14:32" in en-US; `ui.tsx`). Every time of day in the app is 24-hour
   HH:MM through `clock` (lists, sidebar, Sleep, Updates, the welcome page),
-  whatever the locale. It comes from the stored message's
+  whatever the locale. Every time and day the app shows is in the user's
+  own time zone (`Me.timeZone`), not the browser's: the shell sets it with
+  `setTimeZone` before rendering, and `clock`, `dateText`, `dayNumber` (the
+  sidebar's Today and Yesterday), `hourOf` (the greeting), `wakeTime` and
+  `fullTime` read it. A user without one is given the browser's zone once,
+  by `PATCH …/me/profile` (`useZone` in `Shell.tsx`). It comes from the stored message's
   `createdAt`, so a reply that is still streaming (or a message waiting to
   go) has none until its stored copy replaces it. Markers keep their own
   lines and show no time; there are no day dividers. The line never wraps:
@@ -1122,7 +1141,9 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   (`ThreadSummary.steps`: "2 of 5" with its numbers in mono, a link named
   "Checklist, 2 of 5 steps done" that opens the header's popover; on a
   phone it opens in flow under the card's head, the card's width, with no
-  shadow), "wakes" and its next
+  shadow), then its pull request and subagent chips as in the threads list's
+  rows (the pull request's a link to it on its forge, opening a new tab; on
+  a phone the chips take their own line under the title), "wakes" and its next
   wake-up's time in mono while one waits (`ThreadSummary.wakeAt`);
   beneath, the step under way (or the first to do) with its mark, on one
   line with an ellipsis, left off once all are done or the thread is

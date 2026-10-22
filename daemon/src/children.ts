@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import {
-  makeWorktrees, worktreeGrants, removeWorktrees, DEFAULT_THREADS_LIMITS, matchModel, unmatched, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
+  makeWorktrees, zoneOf, worktreeGrants, removeWorktrees, DEFAULT_THREADS_LIMITS, matchModel, unmatched, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
 } from "@lyrica/core";
 import type { Delegation, Delivery, ThreadContext, ThreadsHost } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
@@ -26,7 +26,7 @@ interface Row {
 }
 
 /** A project's thread for the project chat and the sidebar. */
-export interface ProjectThreadInfo extends ChildInfo { worktreeReason?: string; state: ThreadState; anchor?: number; unseen: number; resolvedAt?: string }
+export interface ProjectThreadInfo extends ChildInfo { worktreeReason?: string; state: ThreadState; held?: { thread: string; title?: string; path: string }; anchor?: number; unseen: number; resolvedAt?: string }
 
 export interface ChildOptions {
   users: Users;
@@ -45,6 +45,10 @@ export interface ChildOptions {
   updated?: (userId: string, pool: Pool, project: string, thread: string) => void;
   /** Wake-ups, which her `threads later` sets. */
   wakeups?: () => Wakeups;
+  /** The thread's unsettled same-file hold (same-file.ts), shown as Blocked while it is idle. */
+  held?: (userId: string, pool: Pool, thread: string) => { other: string; path: string } | undefined;
+  /** One of a project's threads messaged another: a hold between them is theirs to settle. */
+  messaged?: (userId: string, pool: Pool, from: string, to: string) => void;
 }
 
 /** The most of a child's last message that goes to its parent as its report. */
@@ -307,6 +311,7 @@ export class ChildThreads implements ThreadsHost {
     if (!target || (target.parent !== from.threadId && !sibling)) throw new Error(`[t:${to}] isn't a child thread of this one${mine ? ", or another thread of this project" : ""}`);
     if (this.o.paused?.(userId, from.pool, target.parent)) throw new Error("this project is paused; its threads take no messages until the person resumes it");
     if (target.queued) throw new Error(`[t:${to}] is queued and hasn't started; it starts when another thread finishes`);
+    this.o.messaged?.(userId, from.pool, from.threadId, to);
     const host = this.o.host();
     const key = `${userId}/${from.pool}/${to}`;
     // A parent woken by this child answers it with a turn, for a few rounds; past that it's saved, so two threads can't keep each other going.
@@ -520,6 +525,11 @@ export class ChildThreads implements ThreadsHost {
     return this.checklists(from.user.id);
   }
 
+  zone(from: ThreadContext): string {
+    const user = this.o.users.get(from.user.id);
+    return zoneOf(user?.profile ?? from.user.profile);
+  }
+
   /** The user's Checklists switch; off, no list or summary carries steps. */
   private checklists(userId: string): boolean {
     const db = this.o.users.openUserDb(userId);
@@ -629,8 +639,10 @@ export class ChildThreads implements ThreadsHost {
         const t = view.own.getThread(r.thread)!;
         const status = this.o.host().status(userId, pool, r.thread);
         const reason = this.o.workspace.settings(userId).threadWork(r.thread)?.reason;
+        const state = stateOf(r, status);
+        const hold = state === "idle" ? this.o.held?.(userId, pool, r.thread) : undefined;
         return {
-          id: r.thread, ...(t.title ? { title: t.title } : {}), status, state: stateOf(r, status), ...(r.needs_you ? { needsYou: true } : {}),
+          id: r.thread, ...(t.title ? { title: t.title } : {}), status, state: hold ? "held" : state, ...(hold ? { held: { thread: hold.other, ...(view.own.getThread(hold.other)?.title ? { title: view.own.getThread(hold.other)!.title! } : {}), path: hold.path } } : {}), ...(r.needs_you ? { needsYou: true } : {}),
           ...(reason ? { worktreeReason: reason } : {}),
           updatedAt: view.own.lastEntry(r.thread)?.createdAt ?? t.createdAt, unseen: r.unseen, ...(on ? stepsOf(view.own.steps(r.thread)) : {}),
           ...(r.anchor !== null ? { anchor: r.anchor } : {}), ...(r.resolved_at ? { resolvedAt: r.resolved_at } : {}),

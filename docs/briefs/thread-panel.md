@@ -28,7 +28,7 @@ as the Claude app's Overview button and thread cards do.
 1. **Threads opens the panel list** from the project chat's facts line, at
    1180 px and wider, in place of the popover; below 1180 px it keeps the
    popover. There is no second Overview button, so one list has one entry
-   point (ux.md "A project's threads at a glance"). If Li asks for the button by
+   point (ux.md "A project's threads at a glance"). If the owner asks for the button by
    name, it replaces Threads in the facts line. The list is the popover's
    groups (Waiting on you, Working, Queued, Idle, Resolved). Rows follow ux.md
    §5: state as a dot and a word, times in mono, the latest message muted and cut

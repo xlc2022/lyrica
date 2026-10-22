@@ -64,6 +64,8 @@ export interface ThreadsHost {
   stepsChanged?(from: ThreadContext): void;
   /** Whether the person wants checklists; off, `steps` isn't offered. Read when the session opens. */
   checklistsOn?(from: ThreadContext): boolean;
+  /** The person's time zone now, which routines' wall times are in. */
+  zone?(from: ThreadContext): string;
 }
 
 /** Messages `threads read` returns by default, and at most. */
@@ -109,7 +111,7 @@ const Params = Type.Object({
   routineId: Type.Optional(Type.Integer({ minimum: 1, description: "For routine pause, resume or remove: the routine's numeric ID from routine list." })),
   schedule: Type.Optional(Type.Object({
     kind: Type.String({ description: "daily, weekdays, weekly, yearly or every." }),
-    time: Type.Optional(Type.String({ description: "HH:MM in the daemon's local time zone." })),
+    time: Type.Optional(Type.String({ description: "HH:MM in the person's time zone." })),
     day: Type.Optional(Type.Number({ description: "For weekly: 0 (Sunday) to 6 (Saturday)." })),
     date: Type.Optional(Type.String({ description: "For yearly: MM-DD." })),
     hours: Type.Optional(Type.Number({ description: "For every: a whole number from 1 to 168, counted from now." })),
@@ -314,14 +316,14 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
               const at = new Date().toISOString();
               const schedule = parseSchedule(p.schedule?.kind === "every" ? { ...p.schedule, from: at } : p.schedule);
               if (store.routines(thread.threadId).length >= 10) throw new Error("this thread has at most 10 routines, including paused ones; remove one first");
-              const id = store.addRoutine(thread.threadId, schedule, p.note.trim(), !!p.newThread, at);
+              const id = store.addRoutine(thread.threadId, schedule, p.note.trim(), !!p.newThread, at, host.zone?.(thread));
               return text(`Added routine ${id}: ${describe(schedule)}, ${p.newThread ? "opens a new thread" : "runs here"}.`);
             }
             if (!["pause", "resume", "remove"].includes(p.routineAction ?? "")) throw new Error("routine needs add, list, pause, resume or remove");
             if (!Number.isSafeInteger(p.routineId) || p.routineId! < 1) throw new Error("routine needs its numeric ID from routine list");
             const changed = p.routineAction === "remove"
               ? store.removeRoutine(thread.threadId, p.routineId!)
-              : store.pauseRoutine(thread.threadId, p.routineId!, p.routineAction === "pause");
+              : store.pauseRoutine(thread.threadId, p.routineId!, p.routineAction === "pause", undefined, host.zone?.(thread));
             if (!changed) throw new Error("this thread has no routine with that ID");
             return text(`${p.routineAction === "remove" ? "Removed" : p.routineAction === "pause" ? "Paused" : "Resumed"} routine ${p.routineId}.`);
           } catch (err) {

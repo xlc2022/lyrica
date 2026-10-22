@@ -1,6 +1,6 @@
 # Brief: The changes view
 
-**Status:** Built; in review.
+**Status:** The changes view merged (#436). The thread chips: built; in review.
 
 **Thread:** Changes view for PRs. **Branch:** `claude/project-thread-h16cf8`.
 **Model:** Opus.
@@ -45,7 +45,23 @@ commits and checks reached her prompt only.
 - Review comments, approving or merging from the view: the forge has them.
 - Diffs on an SSH machine's checkout (its tools don't run git for the
   daemon); the badge stays away there.
-- Counts on a project thread's card in the project chat (its "+n" files).
+- The branch's line counts ("+n −m") on a project thread's card or rows: they
+  take git where the thread's tools run, once per thread, which a list of
+  threads can't afford on every load; the badge in the thread has them.
+
+## Thread chips (second ask, 2026-10-22)
+
+The user then asked for the same at a glance in the project's threads
+drawer, as Claude's own thread list shows: the checklist's progress, the
+pull request's number, the subagent count. Built as **chips** (docs/ux.md §6
+"A project's threads at a glance", "A thread of a project, in the project
+chat"): in the Threads panel's rows, the Threads popover's rows and on the
+thread's card. The daemon adds `ThreadSummary.pull` (the forge watcher's
+last poll, `ForgeWatcher.openPulls`) and `ThreadSummary.subagents`
+(`DelegationStore.liveCounts`), so the list costs no fetch. Web:
+`ThreadChips` in `web/src/Project.tsx`, the `agents` icon. Tests: the live
+count in `daemon/test/rewind.test.ts`, an e2e in `web-chat.spec.ts` ("a
+project thread's chips") with the overview answered from a fixture.
 
 ## Handoff
 
@@ -53,5 +69,7 @@ Done: the back end (core `git-changes.ts`, routes, the watcher's `openPull`),
 the web badge and dialog, unit tests (core `git-changes.test.ts`, web
 `diff.test.ts`), an e2e test with the routes answered from a fixture
 (`web-chat.spec.ts`, "changes view"), docs and the mockup.
-Next: UI review's verified, PR review (the daemon routes), merge.
-Open: whether a project thread's card should carry the counts too.
+The changes view merged as #436 (91566de). The thread chips are the second
+pull request from this thread.
+Next: UI review's verified, PR review (`daemon/src/routes.ts`, the store),
+merge.

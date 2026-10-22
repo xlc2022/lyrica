@@ -27,7 +27,7 @@ import { PageHead, type ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
 import { WebSearchSection } from "./WebSearch.tsx";
 import { WipeSection } from "./Wipe.tsx";
-import { Confirm, ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
+import { browserZone, Confirm, ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
 
 export const PRESETS: Record<string, Pronouns> = {
   "she/her": { subj: "she", obj: "her", poss: "her", possPro: "hers", refl: "herself" },
@@ -132,16 +132,20 @@ export function PronounFields({ value, onChange }: { value: Pronouns; onChange: 
   );
 }
 
+/** The time zones this browser knows, for the Time zone field's suggestions. */
+const ZONES: string[] = (Intl as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.("timeZone") ?? [];
+
 function ProfileSection({ ctx }: { ctx: ShellContext }) {
   const { me } = ctx;
   const [name, setName] = useState(me.user.displayName);
   const [pronouns, setPronouns] = useState(me.user.pronouns);
   const [accent, setAccent] = useState(me.user.accent ?? "");
   const [monogram, setMonogram] = useState(me.user.monogram ?? "");
+  const [zone, setZone] = useState(me.timeZone ?? "");
   const [run, busy, error] = useAction();
   const path = u(me.user.id, "me");
   const save = () => run(async () => ctx.setMe(await patch<Me>(`${path}/profile`, {
-    displayName: name, pronouns, accent: accent || null, monogram: monogram || null,
+    displayName: name, pronouns, accent: accent || null, monogram: monogram || null, timeZone: zone.trim() || browserZone(),
   })));
   return (
     <Section title="Profile">
@@ -149,6 +153,10 @@ function ProfileSection({ ctx }: { ctx: ShellContext }) {
         <label className="field"><span>Display name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
         {me.previousNames.length > 0 && <p className="cap">Before: {me.previousNames.map((p) => `${p.name} (until ${p.until.slice(0, 10)})`).join(", ")}</p>}
         <PronounFields value={pronouns} onChange={setPronouns} />
+        <label className="field"><span title={`Times you see, the date ${her()} is told, routines and your nightly sleep all follow it.`}>Time zone</span>
+          <input className="mono" list="time-zones" value={zone} placeholder={browserZone()} spellCheck={false} autoComplete="off" onChange={(e) => setZone(e.target.value)} />
+          <datalist id="time-zones">{ZONES.map((z) => <option key={z} value={z} />)}</datalist>
+        </label>
         <div className="row wrap top">
           <div className="field narrow swatch">
             <label className="field"><span>Accent colour</span>

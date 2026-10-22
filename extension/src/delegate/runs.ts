@@ -1011,7 +1011,7 @@ export class Delegation {
         // It works in its parent's clones, which the parent fetched at its turn's start; read-only when it gets
         // no repositories, so a narrowed or read-only subagent, or a writer in a worktree, can't change them.
         // A project chat's subagent is read-only as the chat is, so delegating can't make what the chat may not.
-        const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines || coordinates, ...(coordinates ? { coordinates } : {}) });
+        const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, startJob: _bg, jobs: _jobs, jobOutput: _out, stopJob: _stop, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines || coordinates, ...(coordinates ? { coordinates } : {}) });
         extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }));
         // A coder works in its parent's checkouts or its own worktrees, under their repositories' own instructions.
         if (role.name === "coder") rules = () => repoRules(tools.target(), checkoutsOf(tools.settings(), tools.repositories?.() ?? [], worktrees));

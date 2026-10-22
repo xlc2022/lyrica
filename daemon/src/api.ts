@@ -147,6 +147,10 @@ export interface Me {
   savedCredentials: boolean;
   /** Whether logging out keeps the key in memory, so sleep can run. On by default; Lock always drops it. */
   stayUnlocked: boolean;
+  /** The user's own time zone (IANA), when set: every time she shows or is told is in it. The web sets the browser's when there is none. */
+  timeZone?: string;
+  /** The server's zone, which applies while the user has none. */
+  serverTimeZone: string;
   /** Something the user should know, in plain words: saved credentials with stay-unlocked off; an administrator set their password. */
   warning?: string;
 }
@@ -173,12 +177,13 @@ export interface LinkRequest { password: string; login: string; otherPassword: s
 export interface ProposalDraft { id: number; path: string; text: string; reason: string; author: string; createdAt: string }
 export interface ProposalDraftChange { text?: string; reason?: string }
 
-/** PATCH /api/u/:userId/me/profile → Me. Accent is "#rrggbb"; the monogram is one or two letters. */
+/** PATCH /api/u/:userId/me/profile → Me. Accent is "#rrggbb"; the monogram is one or two letters; the time zone an IANA name (the user's own route only). */
 export interface ProfileChange {
   displayName?: string;
   pronouns?: Pronouns;
   accent?: string | null;
   monogram?: string | null;
+  timeZone?: string | null;
 }
 
 /** PATCH /api/u/:userId/me/display → Me */
@@ -871,13 +876,19 @@ export interface ThreadSummary {
   /** A project's thread: the project chat's message it hangs off (an entry number), if that is still there. */
   anchor?: number;
   /** A project's thread: waiting covers an approval and a question for the user. */
-  state?: "working" | "waiting" | "queued" | "idle" | "resolved";
+  state?: "working" | "waiting" | "queued" | "held" | "idle" | "resolved";
+  /** A project's thread held by the same-file rule (docs/workspace.md), idle until it settles: the other thread and the file. */
+  held?: { thread: string; title?: string; path: string };
   /** A project's thread is waiting on the user to decide something. */
   needsYou?: true;
   /** Its next wake-up, if one is waiting (her `threads later`). */
   wakeAt?: string;
   /** Her checklist for it (`threads steps`), in order; absent when it has none or Checklists is off. */
   steps?: ThreadStep[];
+  /** A project's thread: its open pull request as the forge watcher's last poll saw it (the first recorded, when it has several), for the chip on its card and rows. */
+  pull?: OpenPull;
+  /** A project's thread: how many subagents it has working or waiting on a question now; absent when none. */
+  subagents?: number;
 }
 
 /** One step of a thread's checklist: done, under way, or not started. */
@@ -1224,7 +1235,8 @@ export type MessagePart =
    * Something a subagent run delivered into the thread: a background run's
    * result or question, a note, or what a user wrote to one of its subagents.
    * `status` says which ("finished", "question", "note", "user_message", …;
-   * "limit" for the tool limit, "checks-passed" or "checks-failed" for a project's checks).
+   * "limit" for the tool limit, "checks-passed" or "checks-failed" for a project's checks,
+   * "job" for a background command that ended).
    */
   | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[]; told?: Told[] }
   /** The thread was compacted: tokens before and (estimated) after, and the summary that replaced the older messages. */

@@ -112,6 +112,7 @@ interface Profile {
   previousNames: { name: string; until: string }[];   // appended on rename
   accent?: string;                           // the user's colour in the web UI, "#rrggbb"
   monogram?: string;                         // one or two letters
+  timeZone?: string;                         // IANA name ("Europe/Vienna"), checked by checkProfile; unset: the server's
 }
 ```
 
@@ -719,8 +720,12 @@ Custom roles override built-ins by name.
   calling thread ID. Add refuses more than 10 routines including paused
   ones. Errors return plain text with `isError: true`.
 - **Routine storage and firing** (`core/src/routines.ts`,
-  `daemon/src/routines.ts`): `parseSchedule`, `nextRun` and `describe`
-  supply local-time schedule maths. Expand-only pool step 6 adds `routines`
+  `daemon/src/routines.ts`): `parseSchedule`, `nextRun(schedule, after,
+  zone?)` and `describe` supply wall-time schedule maths in the user's time
+  zone (`core/src/zone.ts`: `zoneOf(profile)`, the server's when unset;
+  `wall`, `zonedTime`, `localDate`, `localTime`). `addRoutine` and
+  `pauseRoutine` take the zone; `rezoneRoutines(zone)` moves every
+  non-`every` routine's next run when the user changes zone. Expand-only pool step 6 adds `routines`
   (`id`, `thread`, JSON `schedule`, `note`, `new_thread`, `paused`,
   `next_at`, `last_at`, `created_at`), encrypted with the thread's pool;
   forgetting its thread deletes it. `PoolReader.routines` includes paused
@@ -1301,6 +1306,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
   - A `bash` call with no `timeout` gets `BASH_TIMEOUT_S` (600 seconds),
     and the tool's schema says so; she gives a longer one for a long build.
+  - With `startJob`, `bash` takes `background: true` and there is a `jobs`
+    tool (`list`, `output`, `stop`); a subagent has neither. A background
+    call is approved like any `bash`, then `startJob(command, machine?,
+    timeoutS?)` returns a `JobInfo` at once (docs/workspace.md, Background
+    commands).
   - `ExecutionTarget.run?(argv, { signal?, timeoutMs? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
   - `ExecutionTarget.secrets?()` is the sandbox's tokens and placeholders
@@ -1311,11 +1321,16 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `ThreadTools` is `{ commandRules?(), target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
     mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
-    proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path), madeFiles?(paths), madeSince?(since), fileNotes?() }`.
+    proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path), madeFiles?(paths), madeSince?(since), fileNotes?(),
+    startJob?(command, machine?, timeoutS?), jobs?(), jobOutput?(id), stopJob?(id) }`.
     `sameFile(path)` runs in `tool_call` for a sandbox `write` or `edit`,
     before any approval is asked; a text it returns blocks the call as its
     reason and nothing is written (daemon
-    `SameFile.claim`, keyed by `Workspace.fileKey`).
+    `SameFile.claim`, keyed by `Workspace.fileKey`; it holds only while the
+    other thread is busy, and `SameFile.held` gives both sides of an
+    unsettled hold, which `ChildThreads` shows as `ThreadState` `"held"` and
+    `held: { thread, title?, path }`; `ChildThreads.message` calls
+    `SameFile.messaged`, which settles it).
     `commandRules()` reads the owning project on every bash call. Forbid
     blocks in all modes and targets; Ask always prompts; Allow skips only
     sandbox mode prompts. Opaque commands ask with any forbid rule.
@@ -1654,7 +1669,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `Workspace.checkouts(t)` and `core/src/workspace/git-changes.ts`
     (`repositoryChanges`, `commitFiles`, `fileSides`); the open pull request
     from `ForgeWatcher.openPull(userId, pool, thread, repo)`, the last poll's
-    number, head, URL and checks;
+    number, head, URL and checks; `ForgeWatcher.openPulls(userId, pool,
+    thread)` lists them all for a project thread's `ThreadSummary.pull`, and
+    `DelegationStore.liveCounts(userId, pool)` counts its running or asking
+    subagents by parent thread for `ThreadSummary.subagents`;
   - images: `GET /api/u/:userId/threads/:pool/:threadId/file?path=` serves
     sniffed regular file bytes from that thread's folder only (relative or
     `/workspace/` paths), with `no-store`, `nosniff` and a sandbox CSP.
@@ -1846,8 +1864,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   serves the same API to local clients; no `lyrica` subcommand uses it. The
   user still logs in with a password over the socket. Being on the machine
   isn't enough.
-- **Scheduler:** at `sleep.time` (default 04:00), for each user not in manual
-  mode, sleep each pool, one run at a time.
+- **Scheduler:** at `sleep.time` (default 04:00) in each user's own time
+  zone (`Profile.timeZone`, else the server's), for each user not in manual
+  mode, sleep each pool, one run at a time across all users. The night's
+  chores (model cleanup, sweep, idle project threads) run at `sleep.time`
+  in the server's zone.
 - **Updates** (docs/daemon.md, "Updates"): an update socket,
   `<runtime>/update.sock` (mode `0600`, the service user's, for root's
   updater; no login, and like the rest of the runtime directory never

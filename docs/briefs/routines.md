@@ -29,7 +29,8 @@ function in `core/src/routines.ts`: `nextRun(schedule, after: Date): Date`.
 Schedules: `daily` at HH:MM, `weekdays` at HH:MM, `weekly` on a day at
 HH:MM, `yearly` on MM-DD at HH:MM (29 February fires on 28 February in
 other years), `every` N hours (1 to 168, counted from when it was set).
-Times are in lyricad's local time zone; a time skipped by a DST change
+Times are in the user's time zone (lyricad's local one until the time zone
+setting, [time-zone.md](time-zone.md)); a time skipped by a DST change
 fires at the next valid minute, and a repeated hour fires once. Unit tests
 for each kind and both DST edges. Also `parseSchedule` and `describe` (the
 words the facts line shows, such as "Weekdays at 08:00").

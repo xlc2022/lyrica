@@ -203,6 +203,23 @@ describe("in a Pi session", () => {
     expect(after!.turn).not.toContain("These sections");
   });
 
+  it("keeps the top when the user's time zone changes; the time line in the turn follows it", async () => {
+    const { session: s, seen } = await session((await withMemory()).thread().context);
+    try {
+      profile.timeZone = "Europe/Vienna";
+      await s.prompt("hello");
+      profile.timeZone = "Asia/Tokyo";
+      await s.prompt("and now?");
+    } finally {
+      delete profile.timeZone;
+      s.dispose();
+    }
+    expect(seen[1]!.system).toBe(seen[0]!.system);
+    expect(seen[0]!.turn).toContain("Europe/Vienna");
+    expect(seen[1]!.turn).toContain("Asia/Tokyo");
+    expect(seen[1]!.turn).not.toContain("These sections");
+  });
+
   it("keeps the tools' own prompt guidance", async () => {
     const { session: s, seen } = await session((await withMemory()).thread().context);
     try {

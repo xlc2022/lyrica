@@ -1,4 +1,4 @@
-import { CORE_LIMIT, coreText, pronounLabel, type Persona, type Profile } from "@lyrica/core";
+import { CORE_LIMIT, coreText, pronounLabel, zoneOf, type Persona, type Profile } from "@lyrica/core";
 import type { MemorySections } from "./memory.ts";
 import type { RoutedTopic } from "./routing.ts";
 
@@ -102,7 +102,7 @@ export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS)
 
   const turn = (["opening", "recall", "time"] as const)
     .map((name) => {
-      const text = add(name, name === "time" ? timeLine(input.now, input.memory.lastTalk) : input.memory[name], "turn");
+      const text = add(name, name === "time" ? timeLine(input.now, zoneOf(input.profile), input.memory.lastTalk) : input.memory[name], "turn");
       return text && `<${name}>\n${text}\n</${name}>`;
     })
     .filter(Boolean)
@@ -167,9 +167,10 @@ function whoLine(p: Profile): string {
   return lines.join("\n");
 }
 
-function timeLine(now: Date, lastTalk?: Date): string {
-  const fmt = new Intl.DateTimeFormat("en-GB", { dateStyle: "full", timeStyle: "short" });
-  const line = `It is ${fmt.format(now)}.`;
+/** The user's local date and time, naming the zone, so "today" and the weekday are theirs. */
+function timeLine(now: Date, zone: string, lastTalk?: Date): string {
+  const fmt = new Intl.DateTimeFormat("en-GB", { dateStyle: "full", timeStyle: "short", timeZone: zone });
+  const line = `It is ${fmt.format(now)} (${zone}).`;
   return lastTalk ? `${line} You last talked ${ago(now.getTime() - lastTalk.getTime())}.` : line;
 }
 

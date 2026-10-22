@@ -582,7 +582,9 @@ usage, finished, stopped, interrupted) go out as `delegation` to the parent
 thread's stream and to the subagent's own thread's stream. What a run
 delivers into the thread (a background result or question, a note, a user's
 message to a subagent) goes out as `notice`, with its status and threads,
-and is stored: the message list shows it as a `notice` message.
+and is stored: the message list shows it as a `notice` message. A
+background command's end comes the same way, with status `job`, and wakes
+an idle thread once (docs/workspace.md, Background commands).
 
 Child-thread notices use the same encrypted delivery path. Questions,
 `needsYou`, a report at the child's idle turn end, and failure/didn't-start
@@ -778,7 +780,12 @@ thread's worktrees (a project thread's, or the ancestor's it works in), its
 cloned repositories, and the writable granted folders no worktree replaces;
 a folder that isn't a git repository is left out when read. The core module
 is `core/src/workspace/git-changes.ts`; types and routes are documented in
-`daemon/src/api.ts`, "Changes".
+`daemon/src/api.ts`, "Changes". A project thread's summary (`ThreadSummary`
+in the thread list and the project's overview) also carries `pull`, its
+open pull request from the watcher's last poll (`ForgeWatcher.openPulls`,
+the first when it has several), and `subagents`, how many subagents work
+for it or wait on a question now (`DelegationStore.liveCounts`, one query
+per pool per request); neither fetches anything.
 
 - `GET …/threads/:pool/:threadId/changes` → `ThreadChanges`: per checkout,
   the branch, the base (origin's default branch, else the first of
@@ -886,11 +893,13 @@ drafted against: if the file has changed since, approving it needs
 
 `lyricad` builds one `Sleep` ([sleep.md](sleep.md)) and runs it three ways:
 
-- **At night.** At `sleep.time` (local time, default 04:00) it sleeps every
-  user's general pool, then private pool, one at a time
-  (`Lyricad.sleepNight`). A user in manual mode is left out; a user without
+- **At night.** At `sleep.time` (default 04:00) in each user's own time zone
+  (`Profile.timeZone`, else the server's) it sleeps that user's general
+  pool, then private pool (`Lyricad.sleepNight`); runs queue, so only one
+  goes at a time across users. A user still queued when a drain or a memory
+  wipe begins waits for it to end (`undrained`). A user in manual mode is left out; a user without
   a key, or a pool with nothing new, is skipped with the reason.
-  Before that, it prunes gone models nothing names (`Models.prune`,
+  At `sleep.time` in the server's zone it prunes gone models nothing names (`Models.prune`,
   [models.md](models.md)), and sweeps each mounted user's home workspace
   ([workspace.md](workspace.md), "The nightly sweep").
 - **`/sleep`.** `POST …/sleep/:pool`, or the text `/sleep` sent to a thread

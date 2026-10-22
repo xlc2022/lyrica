@@ -199,6 +199,19 @@ describe("nextRun", () => {
       process.env.TZ = "America/New_York";
     }
   });
+
+  it("runs in the user's own zone when one is given, whatever the server's", () => {
+    const s = schedule({ kind: "weekdays", time: "08:00" });
+    // Monday 12 Oct 2026, 23:00 in New York, is already Tuesday 05:00 in Vienna.
+    const after = new Date("2026-10-12T23:00:00-04:00");
+    expect(nextRun(s, after, "Europe/Vienna").toISOString()).toBe("2026-10-13T06:00:00.000Z");
+    expect(nextRun(s, after, "Asia/Kolkata").toISOString()).toBe("2026-10-14T02:30:00.000Z"); // 08:30 there: Wednesday's
+    expect(nextRun(s, after).toISOString()).toBe("2026-10-13T12:00:00.000Z"); // the server's zone
+    // Vienna's own spring-forward skips 02:30 on 29 March 2026.
+    expect(nextRun(schedule({ kind: "daily", time: "02:30" }), new Date("2026-03-29T00:00:00Z"), "Europe/Vienna").toISOString()).toBe("2026-03-29T01:00:00.000Z");
+    // And its fall-back repeats 02:30 on 25 October: the first one (CEST).
+    expect(nextRun(schedule({ kind: "daily", time: "02:30" }), new Date("2026-10-24T22:00:00Z"), "Europe/Vienna").toISOString()).toBe("2026-10-25T00:30:00.000Z");
+  });
 });
 
 describe("describe", () => {

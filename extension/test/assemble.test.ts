@@ -35,6 +35,17 @@ describe("prompt assembly", () => {
     expect(a.turn).toMatch(/^<opening>\nBring up the garden\.\n<\/opening>\n\n<recall>\na recall hit\n<\/recall>\n\n<time>\nIt is Friday, 9 October 2026 at .*You last talked 2 days ago\.\n<\/time>$/s);
   });
 
+  it("tells her the user's own date and time, in their zone", () => {
+    // 23:30 UTC on Friday is already Saturday morning in Tokyo, and still Friday afternoon in Los Angeles.
+    const late = new Date("2026-10-09T23:30:00Z");
+    const tokyo = assemble({ persona, topics: [], memory: {}, profile: { ...ada, timeZone: "Asia/Tokyo" }, now: late });
+    expect(tokyo.turn).toContain("It is Saturday, 10 October 2026 at 08:30 (Asia/Tokyo).");
+    const la = assemble({ persona, topics: [], memory: {}, profile: { ...ada, timeZone: "America/Los_Angeles" }, now: late });
+    expect(la.turn).toContain("It is Friday, 9 October 2026 at 16:30 (America/Los_Angeles).");
+    // Without one, the server's (UTC in tests).
+    expect(assemble({ persona, topics: [], memory: {}, profile: ada, now: late }).turn).toContain("It is Friday, 9 October 2026 at 23:30 (UTC).");
+  });
+
   it("gives the same system content at a different time", () => {
     const input = { persona, topics: [], memory: {}, profile: ada };
     const a = assemble({ ...input, now });
