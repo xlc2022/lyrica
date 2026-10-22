@@ -480,7 +480,7 @@ export class Workspace {
 
   /**
    * The thread's Files panel: its folder, its family's /shared (unless that is
-   * its own folder's shared/, a project chat's) and grants, every operation in
+   * its own folder's shared/: the family's top thread, a project chat) and grants, every operation in
    * a fresh sandbox with no network. Grants are checked against the allowed
    * paths as they are now, as for her tools.
    */
@@ -488,7 +488,8 @@ export class Workspace {
     const s = this.settings(t.userId);
     s.checkInherited(t.threadId, t.pool);
     const tw = s.effective(t.threadId);
-    const shared = this.sharesOwnFolder(t) ? undefined : this.sharedDir(t);
+    const family = this.sharedDir(t);
+    const shared = family === join(this.threadDir(t), "shared") ? undefined : family;
     const box = new Sandbox({
       workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), shared, grants: tw.grants, network: { internet: false, services: false, hosts: [] },
       check: (g) => checkGrant(s.allowed(), t.pool, g), bwrap: this.opts.bwrap,
