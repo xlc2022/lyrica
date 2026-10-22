@@ -212,6 +212,24 @@ describe("each turn's model", () => {
     expect(thought!.note).toBeUndefined();
   });
 
+  it("drops the can't-think note once a model with no levels is seen thinking, and doesn't add it again", async () => {
+    const s = await setup();
+    s.models.setDefaultThinking(s.ada.id, "high");
+    s.local.reply({ deltas: [{ reasoning_content: "Let me think it over." }, { content: "Done." }] });
+    for (let i = 0; i < 2; i++) {
+      const { session, prepare, dispose } = await s.open(s.thread("private"));
+      try {
+        await prepare();
+        await session.prompt("think about it");
+      } finally {
+        dispose();
+      }
+    }
+    const calls = s.models.recentCalls(s.ada.id);
+    expect(calls).toHaveLength(2);
+    for (const c of calls) expect(c.note).toBeUndefined();
+  });
+
   it("thinks at medium unless someone chooses, with no note for a model that can't", async () => {
     const s = await setup();
     s.models.setCapabilities(s.ada, s.cloudRef.offeringId, { reasoning: ["low", "medium", "high"] });

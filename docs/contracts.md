@@ -462,6 +462,7 @@ class Models {                                              // new Models(keyrin
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked, unset?): { level; note? }   // asked defaults to DEFAULT_THINKING ("medium"), also the per-user default; unset (CallContext.thinkingUnset) drops the can't-think note
   mandatoryThinking(offering) / mustThink(offeringId)   // a model whose provider refused thinking off: medium or the nearest level; in memory for the run
+  sawThinking(userId, offeringId, { pool, threadId, task })   // a model with no levels thought anyway: clears the can't-think note on that call and drops it from later ones; in memory for the run
   recordCall(userId, { pool, threadId, task, resolution, note?, audioSeconds? }, { retry? }) / recentCalls(userId, { limit?, threadId?, threadIds?, pool?, speech?: false }): CallRecord[]
   callHistory(userId, { limit, offset, q, pools, threadIds? }): { entries: CallRecord[]; total }
     // GET models/calls/history?project=&pool= restricts both pool and project threads; hidden project pool is 404.

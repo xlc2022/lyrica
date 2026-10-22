@@ -516,6 +516,8 @@ export class Models {
   private readonly limited = new Map<string, number>();
   /** Offerings whose provider refused a request with thinking off (mustThink). */
   private readonly alwaysThinks = new Set<string>();
+  /** Models seen thinking though their server lists no thinking levels: they think on their own, so nothing says they can't. */
+  private readonly thinksUnasked = new Set<string>();
   private codexImages?: (userId: string, request: ImageRequest, signal?: AbortSignal) => Promise<GeneratedImage[]>;
 
   /** The models each plan offers (setPlanCatalog). */
@@ -2575,14 +2577,34 @@ export class Models {
   }
 
   /**
+   * Records that a model with no thinking levels thought anyway (a plain
+   * llama-server running a model whose template thinks by default), and
+   * clears the "can't think" note on the thread's latest call to it. Kept
+   * for the daemon's run, like mustThink.
+   */
+  sawThinking(userId: string, offeringId: string, at: { pool: Pool; threadId: string; task: Task }): void {
+    this.thinksUnasked.add(offeringId);
+    this.withUser(userId, (db) => {
+      db.prepare("UPDATE model_calls SET note = NULL WHERE id = (SELECT max(id) FROM model_calls WHERE pool = ? AND thread = ? AND task = ?) AND offering = ?")
+        .run(at.pool, at.threadId, at.task, offeringId);
+    });
+  }
+
+  /** Whether a model with no thinking levels was seen thinking anyway. */
+  thinksOnItsOwn(offeringId: string): boolean {
+    return this.thinksUnasked.has(offeringId);
+  }
+
+  /**
    * The thinking level a model runs at for a requested one, and a note when it
    * thinks at another level. A model that can't think answers without thinking,
-   * saying so unless `unset` (nobody chose a level); one that can't turn
+   * saying so unless `unset` (nobody chose a level) or it was seen thinking on
+   * its own (sawThinking); one that can't turn
    * thinking off thinks at medium, or the nearest level it has.
    */
   thinkingFor(r: Pick<Resolution, "offering" | "label"> & { endpoint?: Pick<Endpoint, "api"> }, asked: ThinkingLevel = DEFAULT_THINKING, unset = false): { level: ThinkingLevel; note?: string } {
     const levels = r.offering.reasoning ?? [];
-    if (!levels.length) return asked === "off" || unset ? { level: "off" } : { level: "off", note: `${r.label} can't think, so it answered without thinking` };
+    if (!levels.length) return asked === "off" || unset || this.thinksUnasked.has(r.offering.id) ? { level: "off" } : { level: "off", note: `${r.label} can't think, so it answered without thinking` };
     if (asked === "off") {
       if (!r.offering.alwaysThinks && !this.alwaysThinks.has(r.offering.id)) return { level: "off" };
       const level = this.mandatoryThinking(r.offering)!;
