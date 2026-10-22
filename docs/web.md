@@ -357,8 +357,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `…/history/memory/<pool>/<id>` lists versions newest first, with
   word differences (`wordDiff`, computed in the browser) and Restore, and
   Edit in place with a `[[` popover of pages and people (a page shows as
-  `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Forget… on a
-  selection, and Add a memory. The **Recent** layer (`kinds=entry`) lists
+  `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Export and Forget… on a
+  selection, and Add a memory with a Write | Import segment (export and
+  import in [memory.md](memory.md#export-and-import); the downloaded file
+  is made from the response in the browser and kept nowhere else). The **Recent** layer (`kinds=entry`) lists
   the logged messages written since sleep last consolidated
   (`PoolStore.recentEntries`), newest first and paged by `before`; one
   opens as a memory of kind `entry` (`GET …/memory/<pool>/e:…`), read-only

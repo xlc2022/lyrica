@@ -4,7 +4,7 @@ import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
 import {
   ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
-  citationsIn, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
+  citationsIn, exportMemories, importMemories, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled, modelName,
   codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn,
@@ -1888,6 +1888,30 @@ export function apiRoutes(d: Lyricad): Route[] {
         return memoryDetail(d, o, poolOf(r), id);
       });
     }),
+    // Export and import (docs/memory.md): Markdown built in memory and sent to the browser, never written here.
+    route("POST", `${u}/memory/export`, async (r): Promise<Api.MemoryExport> => {
+      const user = d.userFor(r);
+      const { items } = await r.json<Api.MemoryExportRequest>();
+      if (!Array.isArray(items) || !items.length) throw new HttpError(400, "items lists the memories to export");
+      const shown = shownPools(display(d, user.id));
+      const refs = items.map((i) => ({ pool: checkPool(i?.pool), id: String(i?.id ?? "") }));
+      if (refs.some((x) => !shown.includes(x.pool))) throw new HttpError(404, "no such memory");
+      return owner(d, user, (o) => exportMemories(o, refs));
+    }),
+    route("POST", `${u}/memory/import`, async (r): Promise<Api.MemoryImportResult> => {
+      const user = d.userFor(r);
+      let body: Api.MemoryImport;
+      try {
+        body = JSON.parse((await r.bytes(IMPORT_BYTES)).toString("utf8")) as Api.MemoryImport;
+      } catch (err) {
+        if (err instanceof HttpError) throw err;
+        throw new HttpError(400, "the body isn't valid JSON");
+      }
+      if (!Array.isArray(body.files) || !body.files.length) throw new HttpError(400, "files lists the files to import");
+      const pool = body.pool === undefined ? undefined : checkPool(body.pool);
+      const files = body.files.map((f) => ({ name: String(f?.name ?? ""), text: String(f?.text ?? "") }));
+      return owner(d, user, (o) => importMemories(o, files, { ...(pool ? { pool } : {}), author: author(user) }));
+    }),
     route("POST", `${u}/memory/:pool/forget`, async (r) => {
       const user = d.userFor(r);
       const { ids } = await r.json<Api.ForgetTopic>();
@@ -2185,6 +2209,8 @@ function checkKind(k: unknown): "ssh" | "proxmox" {
   return k;
 }
 const author = (user: User): Author => `user:${user.id}`;
+/** The largest memory import, as JSON. */
+const IMPORT_BYTES = 16 << 20;
 
 /** The owner view for one request, closed afterwards. */
 function owner<T>(d: Lyricad, user: User, fn: (o: OwnerView) => T): T {
