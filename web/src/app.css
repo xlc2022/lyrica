@@ -382,6 +382,7 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .state[data-state="failed"] { color: var(--danger); }
 .marker-body { margin-top: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--tool); padding: 8px 12px; display: grid; gap: 8px; }
 .marker-body pre { margin: 0; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); font-size: 12px; line-height: 1.5; }
+.subagent > pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .marker-body ul { margin: 0; padding-left: 18px; }
 .thought { margin: 0; white-space: pre-wrap; font-style: italic; }
 .tool-error { color: var(--danger) !important; }

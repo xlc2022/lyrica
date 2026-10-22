@@ -596,7 +596,7 @@ function delegateText(a: DelegateArgs): string | undefined {
 /**
  * A `delegate` call. A run is headed by its subagents' roles and, when they share one, the model
  * they ran on (until they start, the role it asked for); a message names whom it went to; status,
- * wait, stop and models by what they are. A failed call says why.
+ * wait, stop and models by what they are, status and models with what came back. A failed call says why.
  */
 function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {
   const args = (part.args ?? {}) as DelegateArgs;
@@ -622,7 +622,8 @@ function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool"
         <ThreadLinks threads={part.threads} env={env} />
       </div>
       {text && <div className="prose"><HerProse text={text} env={env} /></div>}
-      {part.isError && <ToolError text={String(part.result ?? "")} env={env} />}
+      {part.isError ? <ToolError text={String(part.result ?? "")} env={env} />
+        : (action === "status" || action === "models") && part.result && <pre>{part.result}</pre>}
       {threads.map((t, i) => <SubagentWork key={t.id} thread={t} label={threads.length > 1 ? `${t.role ?? "Subagent"} ${i + 1}` : "Its work"} env={env} />)}
     </div>
   );

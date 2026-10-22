@@ -943,7 +943,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   question or a workflow. With several subagents, each one's toggle names
   its role and number. The other actions say what they are: "Message to the
   <role>" with the message, Subagent status, Subagent wait, Subagent run
-  stopped, Subagent models. A failed call shows its error. Each expands to its work: the stored transcript, read-only,
+  stopped, Subagent models; status and models show the result's first
+  lines. A failed call shows its error. Each expands to its work: the stored transcript, read-only,
   where each message says who sent it (Lyrica, the user by name, or the
   subagent's own work), reloaded as the subagent works; its waiting
   approvals; and a message box that writes to it as the user (Lyrica is
