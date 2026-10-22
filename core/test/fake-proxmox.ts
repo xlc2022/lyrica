@@ -13,7 +13,7 @@ export const TOKEN = "lyrica@pve!agent=6b9f4c2e-0d1a-4c3e-9a7b-2f1e8d5c4b3a";
 
 interface Guest { vmid: number; name: string; node: string; type: "qemu" | "lxc"; status: string; config: Record<string, string>; snapshots: { name: string; snaptime?: number; description?: string }[] }
 
-function selfSigned(): { key: string; cert: string; fingerprint: string } {
+export function selfSigned(): { key: string; cert: string; fingerprint: string } {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-pve-"));
   try {
     execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",

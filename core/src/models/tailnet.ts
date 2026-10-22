@@ -7,7 +7,7 @@
 // listens on the proxy's port (no tailscaled of hers, or one started before
 // it had the proxy): a machine with its own Tailscale reaches it that way.
 import { BlockList, connect as tcp, isIP, type Socket } from "node:net";
-import { Agent, buildConnector, setGlobalDispatcher } from "undici";
+import { Agent, buildConnector, fetch as undiciFetch } from "undici";
 
 const TAILNET = new BlockList();
 TAILNET.addSubnet("100.64.0.0", 10, "ipv4");
@@ -15,12 +15,18 @@ TAILNET.addSubnet("fd7a:115c:a1e0::", 48, "ipv6");
 
 let proxy: { host: string; port: number } | undefined;
 let suffix: () => string | undefined = () => undefined;
+let builtinFetch: typeof fetch | undefined;
 
 /**
  * Sends tailnet destinations through her tailscaled's proxy (`host:port` on
  * loopback), from every fetch and every model host connection. `magicDns`
  * gives her tailnet's MagicDNS suffix, when she is on one: names under it go
  * through the proxy too, where tailscaled resolves them to its peers.
+ *
+ * Only those calls change: they go through undici's own fetch with its own
+ * dispatcher, as one version. Node's fetch keeps its own dispatcher for
+ * everything else, since a newer undici's dispatcher under Node's fetch
+ * loses an HTTP/2 answer's headers and so its content encoding.
  */
 export function useTailnetProxy(address: string, magicDns: () => string | undefined = () => undefined): void {
   const u = new URL(`http://${address}`);
@@ -28,7 +34,7 @@ export function useTailnetProxy(address: string, magicDns: () => string | undefi
   proxy = { host: u.hostname.replace(/^\[|\]$/g, ""), port: Number(u.port) || 80 };
   suffix = magicDns;
   const direct = buildConnector({});
-  setGlobalDispatcher(new Agent({
+  const dispatcher = new Agent({
     connect: (opts, callback) => {
       const host = String(opts.hostname).replace(/^\[|\]$/g, "");
       const port = Number(opts.port) || (opts.protocol === "https:" ? 443 : 80);
@@ -37,7 +43,16 @@ export function useTailnetProxy(address: string, magicDns: () => string | undefi
         (err: Error) => callback(err, null),
       );
     },
-  }));
+  });
+  const builtin = (builtinFetch ??= globalThis.fetch);
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (!viaTailnet(url.hostname)) return builtin(input, init);
+    const from = input instanceof Request
+      ? { method: input.method, headers: input.headers, body: input.body, signal: input.signal, duplex: "half", redirect: input.redirect }
+      : {};
+    return undiciFetch(url, { ...from, ...(init as object), dispatcher } as never) as unknown as Promise<Response>;
+  }) as typeof fetch;
 }
 
 /** A name under her tailnet's MagicDNS suffix (tailscaled resolves those to its peers). */

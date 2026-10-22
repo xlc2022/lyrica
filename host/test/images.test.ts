@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Comfy } from "../src/comfy.ts";
-import { Images, inputImage } from "../src/images.ts";
+import { Images, inputImage, recipeSize } from "../src/images.ts";
 import { scanParts } from "../src/parts.ts";
 import { RecipeBook, loadStarters, type Recipe } from "../src/recipes.ts";
 import { Runtime } from "../src/runtime.ts";
@@ -187,6 +187,27 @@ describe("recipes", () => {
     expect(edit.pos!.inputs).not.toHaveProperty("image2");
     expect(edit.batch!.inputs.samples).toEqual(["encoded", 0]);
   });
+
+  it("sizes a recipe by its largest stage plus the VAE, as ComfyUI loads one stage at a time", () => {
+    const GB = 1e9;
+    const parts = [
+      { file: "z.safetensors", size: 12.3 * GB }, { file: "qwen3.safetensors", size: 8 * GB },
+      { file: "ae.safetensors", size: 0.3 * GB }, { file: "style.safetensors", size: 0.5 * GB },
+    ];
+    const z = {
+      parts: [
+        { role: "diffusion" as const, slot: null, file: "z.safetensors", added: false },
+        { role: "text_encoder" as const, slot: "qwen3", file: "qwen3.safetensors", added: false },
+        { role: "vae" as const, slot: null, file: "ae.safetensors", added: false },
+      ],
+      loras: [],
+    };
+    // Z-Image Turbo on a 16 GB card: 12.6 GB, not the 20.6 GB of every part at once.
+    expect(recipeSize(z, parts)).toBeCloseTo(12.6 * GB);
+    expect(recipeSize({ ...z, loras: [{ file: "style.safetensors", strength: 1 }] }, parts)).toBeCloseTo(13.1 * GB);
+    // An encoder larger than the diffusion model sets the peak.
+    expect(recipeSize(z, [...parts.slice(1), { file: "z.safetensors", size: 4 * GB }])).toBeCloseTo(8.3 * GB);
+  });
 });
 
 describe("ComfyUI jobs", () => {
@@ -234,6 +255,19 @@ describe("ComfyUI jobs", () => {
     await again;
     await comfy.reset();
     expect(asked().run).toBe(false);
+  });
+
+  it("fails at once, and says why, on a GPU ComfyUI's PyTorch can't run", async () => {
+    const fake = await fakeComfy();
+    open.push(fake);
+    const dir = mkdtempSync(join(tmpdir(), "comfy-gate-"));
+    const status = join(dir, "status.json");
+    const why = "Tesla V100 is sm_70, and this ComfyUI's PyTorch has kernels only for sm_75, so it can't make images on it.";
+    writeFileSync(status, JSON.stringify({ attempt: null, unsupported: why }));
+    const comfy = new Comfy(fake.url, undefined, undefined, { serving: dir, status });
+    expect(comfy.problem).toBe(why);
+    await expect(comfy.load({ id: "a" } as never)).rejects.toMatchObject({ status: 503, message: why });
+    expect(JSON.parse(readFileSync(join(dir, "comfyui.json"), "utf8")).run).toBe(false);
   });
 
   it("queues nothing when the client goes away before the prompt is sent", async () => {

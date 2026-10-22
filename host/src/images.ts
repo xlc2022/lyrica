@@ -9,7 +9,7 @@ import type { Downloads } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
-import { scanParts, type Part } from "./parts.ts";
+import { scanParts, type Part, type Role } from "./parts.ts";
 import { COLOR_MATCH, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
 import type { Runtime } from "./runtime.ts";
 import { fill, type Action, type Values } from "./templates.ts";
@@ -347,9 +347,15 @@ export class Images {
     });
   }
 
-  /** A recipe as the scheduler sees it: ComfyUI's memory for its parts. */
+  /** What stops images being made on this host, for the status. */
+  get problems(): string[] {
+    const p = this.comfy.problem;
+    return p ? [`Images: ${p}`] : [];
+  }
+
+  /** A recipe as the scheduler sees it. */
   private asModel(r: Recipe): TextModel {
-    const size = [...r.parts.map((p) => p.file), ...r.loras.map((l) => l.file)].reduce((n, f) => n + (this.parts.find((p) => p.file === f)?.size ?? 0), 0);
+    const size = recipeSize(r, this.parts);
     return {
       id: `recipe:${r.id}`, kind: "image", server: "comfyui", format: "safetensors", size,
       identity: { basename: r.name, sizeLabel: null, finetune: null, baseModels: [] },
@@ -357,4 +363,17 @@ export class Images {
       contextLength: null, kvPerToken: null, mmproj: null, remoteCode: false,
     };
   }
+}
+
+/**
+ * ComfyUI's memory for a recipe at its peak. It runs the text encoders, then
+ * the diffusion model with its LoRAs, then an upscaler, freeing one stage's
+ * models when the next needs the room, so the peak is the largest stage plus
+ * the VAE, not every part at once.
+ */
+export function recipeSize(r: Pick<Recipe, "parts" | "loras">, parts: Pick<Part, "file" | "size">[]): number {
+  const sizeOf = (f: string | null) => parts.find((p) => p.file === f)?.size ?? 0;
+  const stage = (roles: Role[]) => r.parts.filter((p) => roles.includes(p.role)).reduce((n, p) => n + sizeOf(p.file), 0);
+  const loras = r.loras.reduce((n, l) => n + sizeOf(l.file), 0);
+  return Math.max(stage(["text_encoder"]), stage(["checkpoint", "diffusion", "lora", "unknown"]) + loras, stage(["upscaler"])) + stage(["vae"]);
 }
