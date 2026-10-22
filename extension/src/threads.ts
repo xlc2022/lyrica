@@ -34,7 +34,7 @@ export interface ThreadsHost {
    * by itself after this one; returns its label, `already` when it runs on it
    * now (nothing changes), or throws with the closest.
    */
-  model?(from: ThreadContext, name: string): { label: string; already?: boolean };
+  model?(from: ThreadContext, name: string): { label: string; already?: boolean; goesOn?: boolean };
   asked?(from: ThreadContext): Promise<void>;
   questionsChanged?(userId: string, pool: ThreadContext["pool"], thread: string): void;
   draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
@@ -290,7 +290,8 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           const m = host.model(thread, p.model);
           return text(m.already
             ? `This thread already runs on ${m.label}; nothing changed. Go on now.`
-            : `This thread runs on ${m.label} from the next turn, which starts by itself when this one ends: end this turn now, and go on there.`);
+            : m.goesOn ? `This thread runs on ${m.label} from the next turn, which starts by itself when this one ends: end this turn now, and go on there.`
+            : `This thread runs on ${m.label} from the person's next message. Tell them so.`);
         }
         if (p.action === "ask") {
           if (child && !projectThread()) throw new Error("a child asks its parent with message question: true");

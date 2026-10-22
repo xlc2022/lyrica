@@ -390,7 +390,9 @@ checks it reaches her, and with a real model which she picks. Code:
   The turn that asked ends on the old model, and a turn on the new one then
   starts by itself with "You now run on <model>. Go on with what you were
   doing." (`ThreadHost.reload(…, goOn)`), unless that turn was stopped or
-  failed or a message is next. The model it already runs on changes nothing
+  failed or a message is next. A switch made in such a go-on turn waits for
+  the person's next message, and the tool says so, so switches never chain
+  unattended. The model it already runs on changes nothing
   and says so, so she goes on in the same turn. A name that fits no one
   model is refused with the closest, for her to ask which they meant. Every
   hosted thread but a subagent's has it.

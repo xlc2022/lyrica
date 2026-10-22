@@ -93,7 +93,7 @@ export class ChildThreads implements ThreadsHost {
     return this.o.workspace.settings(from.user.id).effective(from.threadId).code;
   }
 
-  model(from: ThreadContext, name: string): { label: string; already?: boolean } {
+  model(from: ThreadContext, name: string): { label: string; already?: boolean; goesOn?: boolean } {
     if (from.view.own.getThread(from.threadId)?.subagent) throw new Error("a subagent can't change its model");
     const { models, workspace } = this.o;
     const userId = from.user.id;
@@ -112,8 +112,9 @@ export class ChildThreads implements ThreadsHost {
     // In code mode the thread runs on its Coding model, so that changes too.
     if (code) models.setThreadModel(userId, from.pool, from.threadId, "code", ref);
     // The turn that asked ends on the old model; the next starts by itself on the new one.
-    this.o.host().reload(userId, from.pool, from.threadId, `You now run on ${match.model.label}. Go on with what you were doing.`);
-    return { label: match.model.label };
+    // Not from a turn that itself went on after a switch: switches never chain unattended.
+    const goesOn = this.o.host().reload(userId, from.pool, from.threadId, `You now run on ${match.model.label}. Go on with what you were doing.`);
+    return { label: match.model.label, goesOn };
   }
 
   async start(parent: ThreadContext, req: StartRequest): Promise<{ id: string; link: string; queued?: boolean }> {
