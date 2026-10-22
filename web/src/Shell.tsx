@@ -939,17 +939,17 @@ function UserMenu({ ctx, users, onAuthChange }: { ctx: ShellContext; users: User
 
 const greeting = (h: number) => (h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening");
 
-/** The welcome page: the header carries the version and build; the message box starts a thread with its first message. */
+/** The welcome page: the greeting is its heading, the version and build end the header's facts; the message box starts a thread with its first message. */
 function Welcome({ ctx }: { ctx: ShellContext }) {
   const now = useNow();
   const date = now.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
   const time = clock(now);
   return (
     <main className="main">
-      <PageHead ctx={ctx} title={<>Version <span className="ver">{ctx.build.version} · {ctx.build.build}</span></>} facts={<>{date} · <span className="num">{time}</span></>} />
+      <PageHead ctx={ctx} title={<>{greeting(now.getHours())}, {ctx.user.displayName}.</>}
+        facts={<>{date} · <span className="num">{time}</span> · <span className="ver num" title={`Version ${ctx.build.version}, build ${ctx.build.build}`}>{ctx.build.version} · {ctx.build.build}</span></>} />
       <div className="scroll">
         <div className="welcome">
-          <h1>{greeting(now.getHours())}, {ctx.user.displayName}.</h1>
           <HomeBox ctx={ctx} />
           <div className="cards">
             <SleepCard ctx={ctx} />

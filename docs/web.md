@@ -324,7 +324,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   memory browser): a notebook. The browse pane lists one layer (Pages, Notes,
   WAKE, Journal) newest first (Journal previews one entry with Show all
   beside its History eyebrow), filtered by pool and User introduced, with
-  tags for notes; a search replaces the list. The memory at the right shows
+  tags for notes; a search replaces the list. A memory without a title is
+  named by its first words (`firstWords`), with citations and Markdown's
+  marks taken off. The memory at the right shows
   its citations as titles with a hover preview (`linkCitations` turns each
   citation into a link whose word comes from `MemoryDetail.links`; the raw ID
   is never shown), Came from and Used in with the citing sentence. Each
@@ -471,7 +473,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   local models only. Changes send `PUT …/columns/:column/:task` at once.
   The model picker, Tasks entries, Text models copies and Image models show
   a muted endpoint name after each model, truncating the endpoint first.
-  `ModelLabel.tsx` shares that display.
+  `ModelLabel.tsx` shares that display. A model shows by `shortModel`: a
+  local model's ID is often its file's path, so the file's name without its
+  extension ("Qwen3.8-27B-UD-Q4_K_M"), with the whole ID as the tooltip; the
+  thread header's chip, a reply's header line, the Backend card and the
+  thread drawer's selects (the select's tooltip holds the chosen model's
+  whole ID) all use it.
   Settings → Sleep holds Sleep mode and Sleep fallback;
   `…/settings/profiles` remains a redirect to Tasks.
   Text models (`src/TextModels.tsx`, its pure parts in `src/library.ts`)
@@ -829,10 +836,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
 
 ## Home
 
-The header shows the word **Version**, then the version and build in mono, with
-the date and time beneath; her name is not repeated here — the sidebar's link
-carries it.
-A greeting by the hour precedes the message box. Its shared composer row has
+The header's heading is a greeting by the hour with the user's name ("Good
+evening, Ada."). Beneath it are the date, the time, then the version and build
+in mono, titled "Version 1.2, build abc1234"; her name is not repeated here —
+the sidebar's link carries it. Its shared composer row has
 the **+** menu (Attach a file, Web search, Internet for commands and Images),
 the mic, and **General / Private**; no Mode or Thinking controls. On home the
 menu opens downward, since the box sits near the top. The menu reads
@@ -845,8 +852,9 @@ without creating a thread. Leaving home discards the unsent text and files.
 The content is one column in a centred block at most 960 px wide.
 Beneath the box the cards sit side by side (auto-fit, each at least 240 px) and
 stack when they don't fit. Each card has a plain h2 with its link on the right:
-**From sleep** with Sleep and shows new visible-pool items with Start a chat
-and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
+**From sleep** with Sleep and shows new visible-pool items, each clamped to
+three lines (as are sleep rows in Notifications; the Sleep page and Start a
+chat carry the whole text), with Start a chat and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
 time in mono. **Notifications** has All <n> and "Nothing waiting." when
 empty. **Backend** has Models and lists each pool's first chat model, host,
 local/cloud chip and preset, then each model host's state as a dot and word.
@@ -1259,6 +1267,8 @@ the lighter `--line`. Text colours meet 4.5:1 in both themes. The accent is the 
 (`--user-accent`), lightened in dark mode; cloud, local and private keep
 fixed colours. The theme follows the device unless the user overrides it.
 
+From 1100 px an open thread drawer takes its width from the thread, so the
+header wraps beside it instead of under it; narrower it overlays the thread.
 Below 760 px the sidebar and drawer become overlays, and the model picker
 spans the screen. Touch screens get 44 px tap targets. The app is sized to the visual
 viewport (`--vvh`, for iOS) and the page asks for

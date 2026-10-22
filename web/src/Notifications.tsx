@@ -66,7 +66,7 @@ function Row({ n, ctx, picked, onPick, act, busy }: {
 }) {
   const t = TYPES[n.type];
   return (
-    <li className={`nrow${onPick ? "" : " nopick"}${n.type === "question" ? " nquestion" : ""}`}>
+    <li className={`nrow${onPick ? "" : " nopick"}${n.type === "question" ? " nquestion" : ""}${n.type === "sleep" ? " nsleep" : ""}`}>
       {onPick && <input type="checkbox" className="npick" checked={!!picked} onChange={(e) => onPick(e.target.checked)} aria-label={`Select ${n.title}`} />}
       <span className="ico" aria-hidden="true">{n.type === "question" ? <Icon name="bell" /> : t.glyph}</span>
       <div className="main-col">
