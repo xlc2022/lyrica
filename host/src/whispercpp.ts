@@ -67,7 +67,7 @@ export class WhisperCpp implements Backend {
   }
 
   url(model: TextModel): string {
-    if (this.running !== model.id) throw new HostError(503, "model_unavailable", "whisper.cpp is running another model; try again.");
+    if (this.running !== model.id) throw new HostError(503, "model_unavailable", "whisper.cpp is running another model.");
     return this.base;
   }
 

@@ -426,6 +426,9 @@ export class Scheduler {
       const cmpOnly = NOT_ON_CMP.includes(server) && this.gpus.some((g) => g.pciId === CMP_100_210);
       return new HostError(413, "too_big", cmpOnly ? `${SERVER_NAMES[server]} can't run on a CMP 100-210, and no other GPU here allows it.` : `No GPU allows ${SERVER_NAMES[server]} for this model.`);
     }
+    // whisper.cpp holds one model at a time: loading this one replaces any other.
+    const rivals = model.server === "whispercpp" ? [...this.loaded.values()].filter((l) => l.model.server === "whispercpp" && l.model.id !== model.id) : [];
+    if (rivals.some((l) => !l.ready || l.active > 0)) return { wait: [...new Set(rivals.flatMap((l) => l.option.gpus))] };
     const loadedOn = (g: number) => [...this.loaded.values()].filter((l) => l.option.gpus.includes(g));
     const view = this.gpusFor(serverOf(model));
     const free = (g: number) => {
@@ -444,20 +447,20 @@ export class Scheduler {
     if (!possible.length) return new HostError(413, "too_big", neverFits(model, s, opts[0]!, empty, (i) => this.gpuSettings(i))!);
     const usable = possible.filter((o) => !o.gpus.some((g) => held.has(g)));
     // A way that needs no unloading beats one that does, whatever its order.
-    const roomy = usable.find((o) => !deficitOf(o)(new Set()));
-    if (roomy) return { option: roomy, evict: [] };
+    const roomy = usable.find((o) => !deficitOf(o)(new Set(rivals)));
+    if (roomy) return { option: roomy, evict: rivals };
     let waitFor: number[] | null = null;
     for (const o of usable) {
       const deficit = deficitOf(o);
       const idle = [...new Set(o.gpus.flatMap(loadedOn))].filter((l) => l.ready && l.active === 0 && !this.pinned(l.model.id)).sort((a, b) => a.lastUsed - b.lastUsed);
-      const evict = new Set<Loaded>();
+      const evict = new Set<Loaded>(rivals);
       for (const l of idle) {
         if (!deficit(evict)) break;
         evict.add(l);
       }
       if (!deficit(evict)) return { option: o, evict: [...evict] };
       // Would it fit once the busy models are done?
-      const all = new Set([...new Set(o.gpus.flatMap(loadedOn))].filter((l) => !this.pinned(l.model.id)));
+      const all = new Set([...rivals, ...new Set(o.gpus.flatMap(loadedOn))].filter((l) => rivals.includes(l) || !this.pinned(l.model.id)));
       if (!deficit(all) && !waitFor) waitFor = o.gpus;
     }
     if (waitFor) return { wait: waitFor };

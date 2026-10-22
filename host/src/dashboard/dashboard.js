@@ -283,7 +283,7 @@ function editGpu(g) {
 // ---- Models ----
 
 const KINDS = { chat: "chat", embedding: "embedding", transcribe: "transcription", speak: "voice" };
-const SERVER_NAMES = Object.fromEntries(SERVERS);
+const SERVER_NAMES = { ...Object.fromEntries(SERVERS), whispercpp: "whisper.cpp" };
 
 function textModels() {
   const head = h("div", { class: "section-head" }, h("h2", {}, "Models"), button("Scan the folder", () => post("/host/v1/scan")));
@@ -357,7 +357,7 @@ function starters() {
     const fits = cpuServers.includes(s.server) || s.needs <= room;
     return h("li", {},
       h("div", { class: "main" }, h("div", { class: "name" }, s.name),
-        facts(h("span", {}, KINDS[s.kind]), h("span", {}, SERVER_NAMES[s.server] ?? "whisper.cpp"), h("span", {}, "about ", num(size(s.size))),
+        facts(h("span", {}, KINDS[s.kind]), h("span", {}, SERVER_NAMES[s.server]), h("span", {}, "about ", num(size(s.size))),
           cpuServers.includes(s.server) ? h("span", {}, "CPU") : h("span", {}, "needs ", num(size(s.needs)), " of GPU memory"))),
       h("div", { class: "actions" },
         here ? state("Here", "up") : coming ? state("Downloading", "info")

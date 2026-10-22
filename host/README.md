@@ -286,7 +286,8 @@ per host, and Lyrica's router filters create tiers by it.
     ggml's magic when downloaded and listed) with flash attention on. It
     takes its model as start-up arguments, so `whispercpp/gate.sh` starts
     it for the model and GPU host-api names in `serving/whisper.json` and
-    stops it when the model unloads; one runs at a time. It takes WAV only,
+    stops it when the model unloads. It holds one model at a time, so
+    loading another unloads the first. It takes WAV only,
     falls under the GPUs' speech setting, runs as 10001, has no route out,
     logs nothing and saves nothing. On danube's CMP, large-v3-turbo q8_0
     transcribes 180 s of English in about 6 s. Only that host's own

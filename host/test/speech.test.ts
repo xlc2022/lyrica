@@ -305,6 +305,21 @@ describe("dictation on whisper.cpp", () => {
     expect(serves(false)).toEqual({ dictation: "vllm", listed: false });
   });
 
+  it("loads a second whisper.cpp model in place of the first, and the first again when asked", async () => {
+    const dir = withWhisperCpp();
+    const second = WHISPER_CPP.replace("q8_0", "q5_0");
+    writeFileSync(join(dir, second), readFileSync(join(dir, WHISPER_CPP)));
+    const gpus = new FakeGpus([16]);
+    const whispercpp = new FakeBackend(gpus);
+    const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp: new FakeBackend(gpus), vllm: new FakeBackend(gpus), whispercpp }, state: new StateFile(mkdtempSync(join(tmpdir(), "lyrica-state-"))), log: () => {} });
+    await scheduler.start([]);
+    const [a, b] = [WHISPER_CPP, second].map((id) => scanTextModels(dir).find((m) => m.id === id)!);
+    await scheduler.pin(a!, true);
+    await scheduler.run(b!, "chat", async () => {});
+    await scheduler.run(a!, "chat", async () => {});
+    expect(whispercpp.calls).toEqual([`load ${WHISPER_CPP}@0`, `unload ${WHISPER_CPP}`, `load ${second}@0`, `unload ${second}`, `load ${WHISPER_CPP}@0`]);
+  });
+
   it("starts whisper-server for the model and GPU, and fails a load whose server exits", async () => {
     const server = http.createServer((req, res) => void res.writeHead(req.url === "/health" ? 200 : 404).end());
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
