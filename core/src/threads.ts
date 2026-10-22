@@ -26,6 +26,14 @@ export function normalizeThreadArguments(input: unknown): any {
     const aliases: Record<string, string> = { in_progress: "doing", "in progress": "doing", active: "doing", started: "doing", pending: "todo", "not started": "todo", complete: "done", completed: "done", finished: "done" };
     return { ...s, state: typeof s.state === "string" ? aliases[s.state.toLowerCase()] ?? s.state : s.state };
   });
+  // A label over the limit is cut at a word and its whole wording leads the consequence, rather than refused.
+  if (Array.isArray(a.options)) a.options = a.options.map((o: any) => {
+    if (typeof o?.label !== "string" || typeof o.consequence !== "string" || o.label.trim().length <= ASK_LIMITS.label) return o;
+    const whole = o.label.trim().replace(/[\s.]+$/, "");
+    const cut = whole.slice(0, ASK_LIMITS.label + 1).replace(/\s+\S*$/, "").replace(/[\s,;:–—-]+$/, "");
+    const consequence = `${whole}. ${o.consequence.trim()}`;
+    return cut && cut.length <= ASK_LIMITS.label && consequence.length <= ASK_LIMITS.consequence ? { ...o, label: cut, consequence } : o;
+  });
   if (typeof a.recommended === "string" && Array.isArray(a.options)) {
     const matches = a.options.flatMap((o: any, i: number) => typeof o?.label === "string" && o.label.toLowerCase() === a.recommended.toLowerCase() ? [i] : []);
     if (matches.length === 1) a.recommended = matches[0];
@@ -43,7 +51,8 @@ function invalid(action: "ask" | "steps", field: string, value: unknown, allowed
 export function cleanAsk(input: unknown): Ask {
   const a = normalizeThreadArguments(input);
   const str = (v: unknown, max: number, field: string): string => {
-    if (typeof v !== "string" || !v.trim() || v.trim().length > max) invalid("ask", field, v, `must have 1 to ${max} characters`);
+    if (typeof v === "string" && v.trim().length > max) throw new Error(`${field} is ${v.trim().length} characters; at most ${max}`);
+    if (typeof v !== "string" || !v.trim()) invalid("ask", field, v, `must have 1 to ${max} characters`);
     return (v as string).trim();
   };
   const question = str(a?.question, ASK_LIMITS.question, "question");
@@ -201,7 +210,7 @@ export const PROJECT_CHAT_GUIDELINES = [
 export const PROJECT_THREAD_GUIDELINES = [
   "Post an update to the project chat (threads message to: \"parent\") at milestones, not after every step. Always end with a message to the parent: the result, or what blocked you.",
   "Use question: true in a message to the parent when you need an answer; plain progress updates do not wake it.",
-  "Use threads ask when the person must decide something.",
+  "Ask the project chat (threads message, question: true) what it can decide, such as how work is split or merged; use threads ask only when the person must decide.",
   "Save lasting decisions about the project with remember.",
   "When the work is delivered, resolve this thread (threads resolve).",
   "You may message another thread of this project (threads message with its id) when its work affects yours, and read its latest messages (threads read).",

@@ -407,7 +407,9 @@ checks it reaches her, and with a real model which she picks. Code:
   the user, in hosted plain chats, project chats and project threads, never
   ordinary children or subagents. Two to four unique options each have a
   label and consequence; one is recommended. `ASK_LIMITS` and `cleanAsk`
-  enforce the bounds before anything is stored. Ask only for a fork that
+  enforce the bounds before anything is stored. A project thread asks the
+  project chat (`message`, `question: true`) what it can decide, such as how
+  work is split or merged, and the user only what they must. Ask only for a fork that
   changes the goal, a visible output or an irreversible step; ask once on
   the card, recommend the first option, keep working where reversible and
   stop where not. The answer arrives as an ordinary user message in a later

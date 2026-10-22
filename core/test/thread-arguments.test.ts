@@ -9,6 +9,10 @@ describe("thread arguments", () => {
     }
     expect(cleanSteps(["Check"])).toEqual([{ text: "Check", state: "todo" }]);
     expect(normalizeThreadArguments({ options: "{}" })).toEqual({ options: "{}" });
+    const long = "Merge the branch now and tell the project chat when green";
+    expect(cleanAsk({ ...ask, options: [{ label: long, consequence: "Lands today." }, ask.options[1]] }).options[0])
+      .toEqual({ label: "Merge the branch now and tell the", consequence: `${long}. Lands today.` });
+    expect(() => cleanAsk({ ...ask, options: [{ label: long, consequence: "x".repeat(150) }, ask.options[1]] })).toThrow("options[0].label is 57 characters; at most 40");
   });
   it("names fields and positions, never echoes input text, and includes a valid shape", () => {
     const cases: [string, () => unknown][] = [

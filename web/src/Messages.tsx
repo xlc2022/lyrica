@@ -645,6 +645,7 @@ function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" 
   // No action yet while she writes the call: the tool's own name, until it runs. The head names what the call does, never more.
   const head = args.action === "start" ? `Child thread: ${args.title ?? ""}`
     : args.action === "message" ? (args.to === "parent" ? "Update to the parent thread" : "Message to a thread")
+    : args.action === "ask" && part.isError ? "Question not asked"
     : (args.action && THREADS_HEADS[args.action]) ?? "Threads";
   const started = args.action === "start" ? part.threads?.[0] : undefined;
   const child = started && findThread(env.threads, started.pool, started.id);
