@@ -1296,8 +1296,11 @@ test("a project thread's chips: its checklist's count, its pull request with the
   const pull = { repo: "garden/controller", number: 430, head: "f50fa8601e5b4c9d8a3f2e1d0c9b8a7f6e5d4c3b", url: "https://github.com/garden/controller/pull/430", checks: [{ name: "tests", result: "passed" }, { name: "typecheck", result: null }] };
   const steps = [{ text: "Read the brief", state: "done" }, { text: "Write the plan", state: "doing" }, { text: "Check it", state: "todo" }];
   await page.route("**/overview", async (route) => {
-    const json = await (await route.fetch()).json() as { threads: object[] };
-    await route.fulfill({ json: { ...json, threads: json.threads.map((t) => ({ ...t, steps, pull, subagents: 2 })) } });
+    // The page reloads the overview on its own; one still in flight when the test ends must not fail it.
+    try {
+      const json = await (await route.fetch()).json() as { threads: object[] };
+      await route.fulfill({ json: { ...json, threads: json.threads.map((t) => ({ ...t, steps, pull, subagents: 2 })) } });
+    } catch { await route.continue().catch(() => {}); }
   });
   await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(project.id)}`);
   await page.getByRole("button", { name: "Make a plan", exact: true }).click();
@@ -1326,6 +1329,7 @@ test("a project thread's chips: its checklist's count, its pull request with the
   await expect(row.locator("a, button")).toHaveCount(0);
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/chips-rows-${page.viewportSize()!.width}.png` });
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
 test("a thread's branch shows as a badge that opens the changes view: files, commits, folds, side by side", async ({ page, baseURL }) => {
