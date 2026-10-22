@@ -261,8 +261,8 @@ describe("child threads", () => {
     expect(results.filter((r) => r.isError).map((r) => r.result)).toEqual([expect.stringMatching(/at most 3/)]);
   });
 
-  it("hold the limits: more on a cloud model, which uses no local GPU", async () => {
-    const { ada, u, path, parent, child, reply, say } = await setup({ threads: { concurrency: 2, perRequest: 3, cloudConcurrency: 6, cloudPerRequest: 6 } });
+  it("hold the limits: more per message on a cloud model, which uses no local GPU", async () => {
+    const { ada, u, path, parent, child, reply, say } = await setup({ threads: { concurrency: 8, perRequest: 3, cloudPerRequest: 6 } });
     const cloud = await fakeOpenAI({ models: [{ id: "gpt-cloud" }] });
     cloud.respond(reply);
     const gpt = { offeringId: (await ada.post<EndpointInfo>(`${u}/endpoints`, { name: "openrouter", kind: "cloud", baseUrl: cloud.baseUrl })).body.models[0]!.id };

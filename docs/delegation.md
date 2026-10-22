@@ -509,18 +509,17 @@ parent taking turns. A stopped turn tells nobody, nor does a turn the user
 started in the child. Which children owe a report is
 held in memory; a restart tells the parent anyway.
 
-**Limits:** `start`s per message to the parent (`perRequest`, default 3,
-counted before each start so parallel calls can't slip past), and children
-working at once per user (`concurrency`, default 2), checked by `start` and
-by a message that would start an idle child's turn (past it the message is
-saved and the child wakes when a slot frees); routines share that budget,
-parent wakes don't. A thread whose model runs in the cloud uses no local
-GPU, so it has more: `cloudPerRequest` and `cloudConcurrency`, default 6
-each. A cloud thread's turn waits only while 6 children work; a local one
-also waits while 2 local ones do. Whether a thread is cloud is its chat (or
-code, in code mode) model as it resolves now; a start checks the parent's,
-whose models the child inherits, and a thread with no usable model counts
-as local. `LyricadOptions.threads`.
+**Limits:** `start`s per message to the parent (`perRequest`, default 3;
+`cloudPerRequest`, default 6, when the thread's chat model, or code model in
+code mode, resolves to a cloud endpoint now, since it uses no local GPU),
+counted before each start so parallel calls can't slip past. Children
+working at once per user (`concurrency`, default 8) is only a ceiling: each
+model already takes as many requests at once as it can serve and queues the
+rest (models.md, "Local servers"), so children on different backends don't wait for each
+other. It is checked by `start` and by a message that would start an idle
+child's turn (past it the message is saved and the child wakes when a slot
+frees); routines share that budget, parent wakes don't.
+`LyricadOptions.threads`.
 
 **Records and restarts.** `user.db` has `child_threads`: pool, thread,
 parent, whether a turn was running, and unseen updates (no text). A turn's

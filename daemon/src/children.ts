@@ -124,9 +124,8 @@ export class ChildThreads implements ThreadsHost {
     const baseKey = `${userId}/${parent.pool}/${parent.threadId}`;
     if (project && req.base) this.checkBase(userId, parent.pool, parent.threadId);
     // In a project, past the limit the thread waits its turn; elsewhere the start is refused.
-    // The child starts on its parent's models, so the parent's say which limit applies.
-    const queued = project && this.full(userId, parent.pool, parent.threadId);
-    if (!project) this.mayStartTurn(userId, parent.pool, parent.threadId);
+    const queued = project && this.workingCount(userId) >= this.limits.concurrency;
+    if (!project) this.mayStartTurn(userId);
     // Counted at once, so starts made together can't all slip under the limit.
     const slot: { pool?: Pool; thread?: string } = {};
     const mine = this.starting.get(userId) ?? new Set();
@@ -313,7 +312,7 @@ export class ChildThreads implements ThreadsHost {
     if (task && !sibling) this.task(userId, from.pool, to);
     // An idle thread starts a turn, so the limit holds here too: past it, the message is saved and the thread wakes when a slot frees.
     const busy = host.busy(userId, from.pool, to);
-    if (!busy && (this.waiting.has(key) || this.full(userId, from.pool, to))) {
+    if (!busy && (this.waiting.has(key) || this.workingCount(userId) >= this.limits.concurrency)) {
       host.get(userId, from.pool, to).appendParent(text, from.threadId);
       this.waiting.set(key, { userId, pool: from.pool, thread: to, parent: target.parent });
       this.wakeWaiting(userId);
@@ -440,7 +439,7 @@ export class ChildThreads implements ThreadsHost {
     const row = this.row(userId, pool, thread);
     if (!row) return true;
     if (row.queued || this.o.paused?.(userId, pool, row.parent)) return false;
-    return this.o.host().busy(userId, pool, thread) || !this.full(userId, pool, thread);
+    return this.o.host().busy(userId, pool, thread) || this.workingCount(userId) < this.limits.concurrency;
   }
 
   /** Routine turns share the child at-once budget, including standalone chats. */
@@ -456,7 +455,7 @@ export class ChildThreads implements ThreadsHost {
 
   reserveRoutine(userId: string, pool: Pool, thread: string): { track(thread: string): void; release(): void } | undefined {
     if (this.routineWaiting(userId, pool, thread)) return;
-    if (!this.mayWake(userId, pool, thread) || this.full(userId, pool, thread)) return;
+    if (!this.mayWake(userId, pool, thread) || this.workingCount(userId) >= this.limits.concurrency) return;
     const slot: { pool?: Pool; thread?: string } = {};
     const mine = this.starting.get(userId) ?? new Set();
     this.starting.set(userId, mine);
@@ -718,7 +717,7 @@ export class ChildThreads implements ThreadsHost {
       if (w.userId !== userId) continue;
       try {
         if (this.o.paused?.(userId, w.pool, w.parent) || this.o.host().busy(userId, w.pool, w.thread)) continue;
-        if (this.full(userId, w.pool, w.thread)) continue;
+        if (this.workingCount(userId) >= this.limits.concurrency) return;
         this.waiting.delete(key);
         const slot = { pool: w.pool, thread: w.thread };
         const mine = this.starting.get(userId) ?? new Set();
@@ -735,7 +734,8 @@ export class ChildThreads implements ThreadsHost {
   private async startQueued(userId: string): Promise<void> {
     let next: Row | undefined;
     try {
-      next = this.rows(userId).find((r) => r.queued && !r.resolved_at && this.queue.has(`${userId}/${r.pool}/${r.thread}`) && !this.o.paused?.(userId, r.pool, r.parent) && !this.full(userId, r.pool, r.thread));
+      if (this.workingCount(userId) >= this.limits.concurrency) return;
+      next = this.rows(userId).find((r) => r.queued && !r.resolved_at && this.queue.has(`${userId}/${r.pool}/${r.thread}`) && !this.o.paused?.(userId, r.pool, r.parent));
     } catch { return; /* locked */ }
     if (!next) return;
     const key = `${userId}/${next.pool}/${next.thread}`;
@@ -836,34 +836,22 @@ export class ChildThreads implements ThreadsHost {
     } catch { return false; }
   }
 
-  /**
-   * Whether a turn in this thread must wait: all the user's working children
-   * against the cloud limit, and a local one also against the local limit,
-   * since local models share the user's GPUs.
-   */
-  private full(userId: string, pool: Pool, thread: string): boolean {
-    const working = this.working(userId);
-    if (working.length >= Math.max(this.limits.concurrency, this.limits.cloudConcurrency)) return true;
-    if (this.cloud(userId, pool, thread)) return working.length >= this.limits.cloudConcurrency;
-    return working.filter((w) => !w.thread || !this.cloud(userId, w.pool!, w.thread)).length >= this.limits.concurrency;
-  }
-
   /** Refuses a new child turn while as many children as the limit allows are working, across all the user's threads. */
-  private mayStartTurn(userId: string, pool: Pool, thread: string): void {
-    if (this.full(userId, pool, thread)) throw new Error(`${this.working(userId).length} child threads are working already; wait for one to finish, or message one`);
+  private mayStartTurn(userId: string): void {
+    const working = this.workingCount(userId);
+    if (working >= this.limits.concurrency) throw new Error(`${working} child threads are working already; wait for one to finish, or message one`);
   }
 
-  /** Children, routines and starts under way that hold a slot; a start not yet made has no thread. */
-  private working(userId: string): { pool?: Pool; thread?: string }[] {
+  private workingCount(userId: string): number {
     const host = this.o.host();
-    const starting = [...this.starting.get(userId) ?? []].filter((s) => !s.thread || !host.busy(userId, s.pool!, s.thread));
-    const working = new Map(this.rows(userId).filter(r => host.busy(userId, r.pool, r.thread)).map(r => [`${r.pool}/${r.thread}`, { pool: r.pool, thread: r.thread }]));
+    const starting = [...this.starting.get(userId) ?? []].filter((s) => !s.thread || !host.busy(userId, s.pool!, s.thread)).length;
+    const working = new Set(this.rows(userId).filter(r => host.busy(userId, r.pool, r.thread)).map(r => `${r.pool}/${r.thread}`));
     for (const [key, r] of this.routineThreads) {
       if (r.userId !== userId) continue;
-      if (host.busy(userId, r.pool, r.thread)) working.set(`${r.pool}/${r.thread}`, { pool: r.pool, thread: r.thread });
+      if (host.busy(userId, r.pool, r.thread)) working.add(`${r.pool}/${r.thread}`);
       else this.routineThreads.delete(key);
     }
-    return [...working.values(), ...starting];
+    return working.size + starting;
   }
 
   private idle(userId: string, rows: Row[], what: string): void {

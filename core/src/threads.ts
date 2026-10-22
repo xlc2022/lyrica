@@ -130,16 +130,18 @@ export interface Suggestion { title: string; task: string }
 export interface ThreadsLimits {
   /** Child threads one message to the parent may start. */
   perRequest: number;
-  /** Child threads working at once, per user. */
-  concurrency: number;
-  /** The same two for a thread whose model runs in the cloud, which uses no local GPU. */
+  /** The same for a thread whose model runs in the cloud, which uses no local GPU. */
   cloudPerRequest: number;
-  cloudConcurrency: number;
+  /**
+   * Child threads working at once, per user: a ceiling only, since each model
+   * already takes as many requests at once as it can serve (models.md).
+   */
+  concurrency: number;
   /** Messages one turn of a project's thread may send to the project's other threads. */
   siblingMessages: number;
 }
 
-export const DEFAULT_THREADS_LIMITS: ThreadsLimits = { perRequest: 3, concurrency: 2, cloudPerRequest: 6, cloudConcurrency: 6, siblingMessages: 3 };
+export const DEFAULT_THREADS_LIMITS: ThreadsLimits = { perRequest: 3, cloudPerRequest: 6, concurrency: 8, siblingMessages: 3 };
 
 /** Her guidance in a thread that can start child threads, outside a project. */
 export const CHILD_THREAD_GUIDELINES = [
