@@ -377,7 +377,7 @@ embeddings and dictation receive neither parser.
   `full_attention_interval`, else every layer; a GGUF's
   `full_attention_interval` the same way.
 - llama.cpp only: `kvCacheType` (`f16`, `q8_0`, `q4_0`), `flashAttention`
-  (`auto`, `on`, `off`; unset, `auto`, or `off` on a CMP 100-210), `gpuLayers` (0 to 999), `parallel` (requests
+  (`auto`, `on`, `off`), `gpuLayers` (0 to 999), `parallel` (requests
   served at once, 1 to 64; see below). A `q8_0` or `q4_0` KV cache needs
   `flashAttention` set to `on`. `vision: false` loads it without its
   projector (less memory, no images). `mmproj` is a projector picked by

@@ -378,22 +378,6 @@ it("refuses a llama.cpp child that died during loading", async () => {
   await expect(backend.load(model, { gpus: [0], split: null, parallel: null, share: null, need: {} }, { placement: { mode: "auto" } })).rejects.toMatchObject({ code: "model_unavailable" });
 });
 
-it("turns flash attention off on a CMP 100-210 unless it was set by hand", async () => {
-  const router = await fakeLlamaRouter();
-  open.push({ close: () => new Promise<void>((r) => router.server.close(() => r())) });
-  const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
-  const backend = new LlamaCpp({ url: router.url, serving, models: "/models", device: (i) => `CUDA${i}`, slowFlash: (i) => i === 1 });
-  const model = scanTextModels(modelsFolder())[0]!;
-  const flash = async (gpus: number[], settings: object) => {
-    await backend.load(model, { gpus, split: gpus.length > 1 ? gpus.map(() => 1 / gpus.length) : null, parallel: null, share: null, need: {} }, { placement: { mode: "auto" }, ...settings });
-    return /flash-attn = (\w+)/.exec(readFileSync(join(serving, "llamacpp.ini"), "utf8"))?.[1];
-  };
-  expect(await flash([0], {})).toBe("auto");
-  expect(await flash([1], {})).toBe("off");
-  expect(await flash([0, 1], {})).toBe("off");
-  expect(await flash([1], { flashAttention: "on" })).toBe("on");
-});
-
 it("unloads at start what llama.cpp still holds from before host-api restarted", async () => {
   const router = await fakeLlamaRouter();
   open.push({ close: () => new Promise<void>((r) => router.server.close(() => r())) });

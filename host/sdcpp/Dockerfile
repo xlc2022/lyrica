@@ -24,4 +24,8 @@ FROM ${RUNTIME}
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 jq && rm -rf /var/lib/apt/lists/*
 COPY --from=build /src/build/bin/sd-server /app/sd-server
 COPY gate.sh /app/gate.sh
+# It runs as the user that downloads the models (fetch, 10001), so it can read
+# them however the models folder's lyrica/ is set; /status becomes the volume's.
+RUN install -d -o 10001 -g 10001 /status
+USER 10001:10001
 ENTRYPOINT ["/app/gate.sh"]

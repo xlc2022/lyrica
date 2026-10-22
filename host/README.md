@@ -263,12 +263,13 @@ per host, and Lyrica's router filters create tiers by it.
   it converts the recipe's parts to Q8_0 as it loads them and runs with
   flash attention off, so the work goes to the card's int8 units. It
   creates only, for Z-Image, Qwen-Image, FLUX and SDXL recipes without
-  LoRAs; edit, upscale and other recipes fail saying why. It takes its model
+  LoRAs; the recipe list shows edit, upscale and other recipes as unsupported, saying why. It takes its model
   as start-up arguments, so `sdcpp/gate.sh` starts it for the recipe
   host-api names in `serving/sdcpp.json`, reports the run in the
   `sdcpp-status` volume, and stops it when the recipe unloads. A job for
-  another recipe starts it again first. Like ComfyUI it has no route out,
-  logs nothing and saves nothing; its jobs' images stay in its memory for
+  another recipe starts it again first. It runs as the user that downloads
+  the models (10001), so it reads them whatever the mode of `lyrica/`.
+  Like ComfyUI it has no route out, logs nothing and saves nothing; its jobs' images stay in its memory for
   ten minutes.
 
 ## Dictation and voice
@@ -396,9 +397,7 @@ revoked. A revoked server must pair again.
     llama.cpp from source (`llamacpp/Dockerfile`), at the stock image's tag
     and for the compute capabilities of the host's GPUs, with
     `GGML_CUDA_FORCE_MMQ` so quantized models use int8. That changes
-    nothing on Turing and newer cards. The first build takes a while. A
-    model on a CMP gets `flash-attn = off` unless its flash attention was
-    set by hand.
+    nothing on Turing and newer cards. The first build takes a while.
   - llama.cpp runs in router mode. host-api writes its preset file (each
     model's file, GPU and context), then loads and unloads models through
     its API. Each loaded model keeps prompts in host memory (`cache-ram`),
