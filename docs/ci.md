@@ -120,5 +120,8 @@ the self-hosted runners, set each job's `runs-on` to `lyrica-ci`, and the
 `check` job's to `[lyrica-ci, lyrica-fast]`. To move one to GitHub's
 runners, set them to `ubuntu-latest`. On a hosted runner the "Stop what
 earlier jobs left running" step finds nothing, and the nix job installs Nix
-on every run. The host-images jobs pick their "Make room" step by where they
+on every run. Claude Code is unfree, so no binary cache has it, and its
+download answers 429 when every run fetches it: the nix job keeps the file
+in the Actions cache, keyed by `flake.lock`, and adds it to the store
+before the build (`.github/runner/seed-claude-code.sh`). The host-images jobs pick their "Make room" step by where they
 run.
