@@ -287,7 +287,7 @@ const SERVER_NAMES = Object.fromEntries(SERVERS);
 
 function textModels() {
   const head = h("div", { class: "section-head" }, h("h2", {}, "Models"), button("Scan the folder", () => post("/host/v1/scan")));
-  if (!S.models.length) return [head, h("ul", { class: "list" }, h("li", { class: "empty" }, "No text or voice models in the models folder."))];
+  if (!S.models.length) return [head, h("ul", { class: "list" }, h("li", { class: "empty" }, "No text or voice models in the models folder.")), ...starters()];
   const cpu = S.status.cpuServers ?? [];
   return [head, h("ul", { class: "list" }, S.models.map((m) => {
     const where = cpu.includes(m.server) ? "CPU" : m.placement.mode === "auto" ? "placed automatically" : `GPU ${m.placement.gpus.join("+")}`;
@@ -309,7 +309,58 @@ function textModels() {
           [m.pinned ? "Unpin" : "Pin", () => post("/host/v1/models/pin", { model: m.id, pinned: !m.pinned })],
           m.state !== "unloaded" && ["Reload", () => post("/host/v1/models/reload", { model: m.id })],
         ])));
-  }))];
+  })), ...starters()];
+}
+
+/**
+ * Models worth starting with, downloaded at a pinned revision into the models folder. `id` is the model id
+ * the file or folder gets; `also` matches the rest of a folder's files; `needs` is the GPU memory it wants loaded.
+ */
+const STARTERS = [
+  { id: "lyrica/huggingface/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q4_K_M.gguf", name: "Qwen3.8 27B", kind: "chat", server: "llamacpp",
+    repo: "unsloth/Qwen3.8-27B-GGUF", revision: "4ca720788d1e01f1bff70c033e0d0028fd02e502", files: ["Qwen3.8-27B-UD-Q4_K_M.gguf", "mmproj-F16.gguf"],
+    size: 16_464_440_224 + 927_607_488, needs: 22 * 2 ** 30 },
+  { id: "lyrica/huggingface/unsloth/Qwen3.5-9B-GGUF/Qwen3.5-9B-Q4_K_M.gguf", name: "Qwen3.5 9B", kind: "chat", server: "llamacpp",
+    repo: "unsloth/Qwen3.5-9B-GGUF", revision: "3885219b6810b007914f3a7950a8d1b469d598a5", files: ["Qwen3.5-9B-Q4_K_M.gguf", "mmproj-F16.gguf"],
+    size: 5_680_522_464 + 918_166_080, needs: 8 * 2 ** 30 },
+  { id: "lyrica/huggingface/Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf", name: "Qwen3 Embedding 0.6B", kind: "embedding", server: "llamacpp",
+    repo: "Qwen/Qwen3-Embedding-0.6B-GGUF", revision: "370f27d7550e0def9b39c1f16d3fbaa13aa67728", files: ["Qwen3-Embedding-0.6B-Q8_0.gguf"],
+    size: 639_150_592, needs: 1 * 2 ** 30 },
+  { id: "lyrica/huggingface/onnx-community/Kokoro-82M-v1.1-zh-ONNX", name: "Kokoro 82M", kind: "speak", server: "speech",
+    repo: "onnx-community/Kokoro-82M-v1.1-zh-ONNX", revision: "6cc0f0d2ebe369a68b0df87c2b65c1af8c0ac3e3",
+    files: ["onnx/model.onnx", "config.json", "tokenizer.json", "tokenizer_config.json", "voices/zm_010.bin", "voices/zf_001.bin", "voices/af_maple.bin"], size: 0.33 * 2 ** 30, needs: 1 * 2 ** 30 },
+  { id: "lyrica/huggingface/openai/whisper-large-v3-turbo", name: "Whisper large-v3 turbo", kind: "transcribe", server: "vllm",
+    repo: "openai/whisper-large-v3-turbo", revision: "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
+    files: ["model.safetensors"], also: /^[^/]+\.(json|txt)$/, size: 1.6 * 2 ** 30, needs: 2.4 * 2 ** 30 },
+];
+
+/** Downloads a starter's files, read from the repository's listing at its revision. */
+async function getStarter(s) {
+  const listing = await api(`/host/v1/hub/files?source=huggingface&repo=${encodeURIComponent(s.repo)}&revision=${s.revision}`);
+  const missing = s.files.filter((f) => !listing.files.some((x) => x.path === f));
+  if (missing.length) throw new Error(`${s.repo} no longer has ${missing.join(", ")}.`);
+  const files = listing.files.filter((f) => f.allowed && !f.present && (s.files.includes(f.path) || s.also?.test(f.path))).map((f) => f.path);
+  if (files.length) await post("/host/v1/downloads", { source: "huggingface", repo: s.repo, revision: listing.revision, files });
+}
+
+/** The starters this host can serve: its servers run them, with each one's state here. */
+function starters() {
+  const { servers, cpuServers = [], gpus } = S.status;
+  const room = Math.max(0, ...gpus.filter((g) => !g.settings.excluded).map((g) => g.vram.total - g.settings.keepFree));
+  const rows = STARTERS.filter((s) => servers.includes(s.server)).map((s) => {
+    const here = S.models.some((m) => m.id === s.id);
+    const coming = S.downloads.some((d) => ["queued", "downloading", "verifying"].includes(d.state) && d.path.startsWith(`lyrica/huggingface/${s.repo}/`));
+    const fits = cpuServers.includes(s.server) || s.needs <= room;
+    return h("li", {},
+      h("div", { class: "main" }, h("div", { class: "name" }, s.name),
+        facts(h("span", {}, KINDS[s.kind]), h("span", {}, SERVER_NAMES[s.server]), h("span", {}, "about ", num(size(s.size))),
+          cpuServers.includes(s.server) ? h("span", {}, "CPU") : h("span", {}, "needs ", num(size(s.needs)), " of GPU memory"))),
+      h("div", { class: "actions" },
+        here ? state("Here", "up") : coming ? state("Downloading", "info")
+          : !fits ? h("span", { class: "pill warn", title: "More than any GPU here can give it." }, "too big for these GPUs")
+          : button("Download", () => getStarter(s))));
+  });
+  return rows.length ? [h("h3", {}, "Starters"), h("ul", { class: "list" }, rows)] : [];
 }
 
 /** A model's placement and serving settings; what isn't a field stays as JSON under Other settings. */

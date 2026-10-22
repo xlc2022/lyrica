@@ -234,10 +234,11 @@ Three ways a model gets into the library:
 ### The voice and dictation starters
 
 The owner chose these after the benchmark; the host's README names them and the
-exact revisions. The dashboard's Downloads takes a repository and
-downloads its `main` branch; to get the benchmarked revision, use the API
-from the machine, where the dashboard port needs no password. List a
-repository's files first, then ask for the ones you want by name:
+exact revisions. The dashboard's Models section offers both under
+**Starters**, at these revisions, beside the chat and embedding starters;
+**Download** there is the quickest way. The same by hand, from the
+machine, where the dashboard port needs no password: list a repository's
+files first, then ask for the ones you want by name:
 
 ```sh
 curl -sS 'http://127.0.0.1:7236/host/v1/hub/files?source=huggingface&repo=onnx-community/Kokoro-82M-v1.1-zh-ONNX&revision=6cc0f0d2ebe369a68b0df87c2b65c1af8c0ac3e3'
