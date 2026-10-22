@@ -268,6 +268,9 @@ class Handler(BaseHTTPRequestHandler):
             if not loaded:
                 model = Model(folder, file, device)
                 with LOCK:
+                    # An unload or reset may have set it while this one loaded.
+                    if EXITING:
+                        raise Refused(503, "model_unavailable", "The speech server is restarting.")
                     MODELS[name] = model
                     GPU_USED = GPU_USED or model.gpu
             return self.send(200, {"loaded": True})
