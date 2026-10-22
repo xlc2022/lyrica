@@ -562,9 +562,14 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     plain switch, not a quality floor, since models carry no quality data.
 - **Context and pace.** Lyrica and the user both see how full her context
   is and how fast her model answers.
-  - After every turn lyricad records prompt, total read and output tokens, the window,
+  - After every turn, and after each request in a turn that goes on with
+    tools, lyricad records prompt, total read and output tokens, the window,
     time to first token and generation time, in the call record. Counts and
     times only.
+  - The top of her prompt (persona core and sections) stays as the model has
+    it until a compaction rebuilds it; what changes meanwhile (topics, the
+    page index, pins, project state) comes in the turn's messages. A local
+    model would otherwise re-read the whole conversation on every change.
   - lyricad assembles the prompt, so it can break the total down: persona,
     the page about the user, pinned messages, memories recalled this turn,
     tool definitions, the conversation, Pi's compaction reserve, free space.

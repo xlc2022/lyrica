@@ -352,7 +352,10 @@ revoked. A revoked server must pair again.
   (Docker's `none` log driver).
   - llama.cpp runs in router mode. host-api writes its preset file (each
     model's file, GPU and context), then loads and unloads models through
-    its API.
+    its API. Each loaded model keeps prompts in host memory (`cache-ram`),
+    an eighth of the machine's memory up to 64 GiB, where that is more than
+    llama.cpp's own 8 GiB, so threads taking turns on a model don't each
+    re-read their whole conversation.
   - vLLM runs under `vllm/supervisor.py`, which starts one server per vLLM
     model on its GPUs, as host-api asks in a file, each in its own process
     group. A server that crashes is restarted after a growing wait (10

@@ -57,13 +57,11 @@ describe("extension", () => {
     const first = await turn("sing me a song");
     expect(first.result.systemPrompt).toBeUndefined();
     expect(first.options).toMatchObject({ customPrompt: "She is Lyrica." });
-    expect(first.options.sections.topics).toContain('<topic id="music">');
+    expect(first.options.sections.topics).toBeUndefined();
     expect(first.options.sections.user).toBe("You are talking with Ada (pronouns: she/her).");
     expect(first.result.message).toMatchObject({ customType: "lyrica-turn", display: false });
     expect(first.result.message.content).toContain("<time>");
-
-    for (let i = 0; i < 3; i++) expect((await turn("hm")).options.sections.topics).toContain("music");
-    expect((await turn("hm")).options.sections.topics).toBeUndefined();
+    expect(first.result.message.content).toContain('<topic id="music">');
   });
 
   it("accepts only a thread view from openThreadView", async () => {

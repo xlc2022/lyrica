@@ -17,22 +17,22 @@ const now = new Date("2026-10-09T12:00:00Z");
 const ada: Profile = { displayName: "Ada", pronouns: PRONOUN_PRESETS.they, previousNames: [] };
 
 describe("prompt assembly", () => {
-  it("puts stable content in the system prompt and omits empty memory", () => {
+  it("puts stable content in the system prompt, keeps topics apart and omits empty memory", () => {
     const a = assemble({ persona, topics: [routed("music", "Music is structured feeling.")], memory: {}, profile: ada, now });
     expect(a.customPrompt).toBe("# Soul\nShe is Lyrica.\n\n# Style\nWarm.");
-    expect(Object.keys(a.sections)).toEqual(["topics", "user"]);
-    expect(a.sections.topics).toBe('<topic id="music">\nMusic is structured feeling.\n</topic>');
+    expect(Object.keys(a.sections)).toEqual(["user"]);
+    expect(a.topics).toEqual([{ id: "music", text: '<topic id="music">\nMusic is structured feeling.\n</topic>' }]);
     expect(a.sections.user).toBe("You are talking with Ada (pronouns: they/them).");
   });
 
-  it("keeps per-turn content (recall, time) out of the system prompt", () => {
+  it("keeps per-turn content (opening, recall, time) out of the system prompt", () => {
     const a = assemble({
       persona, topics: [], profile: ada, now,
-      memory: { wake: "WAKE", pageIndex: "pages", recall: "a recall hit", lastTalk: new Date("2026-10-07T12:00:00Z") },
+      memory: { wake: "WAKE", pageIndex: "pages", recall: "a recall hit", opening: "Bring up the garden.", lastTalk: new Date("2026-10-07T12:00:00Z") },
     });
     expect(Object.keys(a.sections)).toEqual(["wake", "pages", "user"]);
-    expect(JSON.stringify(a.sections)).not.toMatch(/recall hit|2026/);
-    expect(a.turn).toMatch(/^<recall>\na recall hit\n<\/recall>\n\n<time>\nIt is Friday, 9 October 2026 at .*You last talked 2 days ago\.\n<\/time>$/s);
+    expect(JSON.stringify(a.sections)).not.toMatch(/recall hit|garden|2026/);
+    expect(a.turn).toMatch(/^<opening>\nBring up the garden\.\n<\/opening>\n\n<recall>\na recall hit\n<\/recall>\n\n<time>\nIt is Friday, 9 October 2026 at .*You last talked 2 days ago\.\n<\/time>$/s);
   });
 
   it("gives the same system content at a different time", () => {
@@ -62,8 +62,8 @@ describe("prompt assembly", () => {
     expect(a.customPrompt.length).toBeLessThanOrEqual(budgets.persona);
     expect(a.sections.wake!.length).toBeLessThanOrEqual(budgets.wake);
     expect(section("recall").text.length).toBeLessThanOrEqual(budgets.recall);
-    expect(a.sections.topics!.replace(/<\/?topic[^>]*>\n?/g, "").length).toBeLessThanOrEqual(budgets.topics + 10);
-    expect(a.sections.topics).toContain('<topic id="a">');
+    expect(a.topics.map((t) => t.text).join("").replace(/<\/?topic[^>]*>\n?/g, "").length).toBeLessThanOrEqual(budgets.topics + 10);
+    expect(a.topics[0]!.text).toContain('<topic id="a">');
   });
 
   it("cuts at a line break when one is near", () => {

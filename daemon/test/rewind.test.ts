@@ -166,7 +166,10 @@ describe("pinning a message", () => {
     expect((await ada.get<Pins>(`${path}/pins`)).body).toEqual({ pins: [expect.objectContaining({ n: code!.n, role: "user", text: "the gate code is 4417" })], shortened: false });
 
     await say("what was it?");
-    expect(JSON.stringify(model.requests.at(-1)!.messages[0])).toContain("User: the gate code is 4417");
+    // The top stays as the model has it, so its cache holds: the pin comes in the turn's messages.
+    const [before, now] = model.requests.slice(-2);
+    expect(now!.messages[0]).toEqual(before!.messages[0]);
+    expect(JSON.stringify(now!.messages.slice(1))).toContain("User: the gate code is 4417");
 
     const branch = (await ada.post<{ id: string }>(`${path}/messages/${reply!.n}/branch`, {})).body;
     expect((await ada.get<Pins>(path.replace(/[^/]+$/, encodeURIComponent(branch.id)) + "/pins")).body.pins).toHaveLength(1);
