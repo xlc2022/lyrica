@@ -139,9 +139,9 @@ export class ThreadHost {
   }
 
   /** Settings changed: an open session reopens with them, and open views fetch them again. A thread with no record needs nothing. */
-  reload(userId: string, pool: Pool, threadId: string): void {
+  reload(userId: string, pool: Pool, threadId: string, goOn?: string): void {
     const t = this.threads.get(`${userId}/${pool}/${threadId}`);
-    t?.reload();
+    t?.reload(goOn);
     t?.publish({ type: "settings" });
   }
 
@@ -232,6 +232,8 @@ export class HostedThread {
   private held: NodeJS.Timeout | undefined;
   /** Settings changed during a turn: reopen the session once it ends. */
   private stale = false;
+  /** The note a turn on the reloaded session starts with, when this turn asked for one (`reload`). */
+  private goOn: string | undefined;
   /** Closed by Lock, forgetting or shutdown. */
   closed = false;
   private closing = false;
@@ -595,6 +597,8 @@ export class HostedThread {
         const nxt = this.next();
         if (nxt.person) theirs = true;
         next = nxt.text;
+        if (next === undefined && this.goOn && !aborted && !this.failed) { wake = this.goOn; next = CHILD_WAKE; }
+        this.goOn = undefined;
       }
     } catch (err) {
       this.emit({ type: "error", message: plainError(refusal(err)) });
@@ -1210,9 +1214,13 @@ export class HostedThread {
     }
   }
 
-  /** Settings changed: the next turn opens a fresh session (with the new models). */
-  reload(): void {
-    if (this.busy) this.stale = true;
+  /**
+   * Settings changed: the next turn opens a fresh session (with the new models).
+   * With `goOn`, a turn running now is followed by one on the new session that
+   * starts with that note, unless it is stopped or fails or a message is next.
+   */
+  reload(goOn?: string): void {
+    if (this.busy) { this.stale = true; if (goOn) this.goOn = goOn; }
     else this.dispose();
     // A message waiting for a model tries the new settings at once.
     if (this.held) this.waitForModel(0);

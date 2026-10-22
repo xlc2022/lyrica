@@ -93,7 +93,7 @@ export class ChildThreads implements ThreadsHost {
     return this.o.workspace.settings(from.user.id).effective(from.threadId).code;
   }
 
-  model(from: ThreadContext, name: string): string {
+  model(from: ThreadContext, name: string): { label: string; already?: boolean } {
     if (from.view.own.getThread(from.threadId)?.subagent) throw new Error("a subagent can't change its model");
     const { models, workspace } = this.o;
     const userId = from.user.id;
@@ -104,11 +104,16 @@ export class ChildThreads implements ThreadsHost {
     const match = m ? { model: m } : matchModel(name, list);
     if ("closest" in match) throw new Error(unmatched(name, match));
     const ref = { offeringId: match.model.id };
+    const code = workspace.settings(userId).effective(from.threadId).code;
+    let now: string | undefined;
+    try { now = models.resolveModel(code ? "code" : "chat", call).offeringId; } catch { /* no usable model now: switch */ }
+    if (now === ref.offeringId) return { label: match.model.label, already: true };
     models.setThreadModel(userId, from.pool, from.threadId, "chat", ref);
     // In code mode the thread runs on its Coding model, so that changes too.
-    if (workspace.settings(userId).effective(from.threadId).code) models.setThreadModel(userId, from.pool, from.threadId, "code", ref);
-    this.o.host().reload(userId, from.pool, from.threadId);
-    return match.model.label;
+    if (code) models.setThreadModel(userId, from.pool, from.threadId, "code", ref);
+    // The turn that asked ends on the old model; the next starts by itself on the new one.
+    this.o.host().reload(userId, from.pool, from.threadId, `You now run on ${match.model.label}. Go on with what you were doing.`);
+    return { label: match.model.label };
   }
 
   async start(parent: ThreadContext, req: StartRequest): Promise<{ id: string; link: string; queued?: boolean }> {

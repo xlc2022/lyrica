@@ -386,10 +386,14 @@ checks it reaches her, and with a real model which she picks. Code:
   written unlogged are left out, and an unlogged thread is refused. A
   child that isn't a project's thread can't read.
 - `model({ model })`: switches the calling thread to a chat model the person
-  named, from her next turn (daemon side in `ChildThreads.model`; see
-  contracts.md, code mode). A name that fits no one model is refused with
-  the closest, for her to ask which they meant. Every hosted thread but a
-  subagent's has it.
+  named (daemon side in `ChildThreads.model`; see contracts.md, code mode).
+  The turn that asked ends on the old model, and a turn on the new one then
+  starts by itself with "You now run on <model>. Go on with what you were
+  doing." (`ThreadHost.reload(…, goOn)`), unless that turn was stopped or
+  failed or a message is next. The model it already runs on changes nothing
+  and says so, so she goes on in the same turn. A name that fits no one
+  model is refused with the closest, for her to ask which they meant. Every
+  hosted thread but a subagent's has it.
 - `stop({ id })`: stops one of the thread's children (in a project chat,
   one of its threads) as Pause does: the running turn is aborted and the
   child is idle. The project's threads can't stop each other.
