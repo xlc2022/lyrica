@@ -202,6 +202,40 @@ describe("ComfyUI jobs", () => {
     expect(fake.seen.interrupted).toEqual([]);
   });
 
+  it("runs ComfyUI only while a recipe is loaded, and stops it at once on pause", async () => {
+    const fake = await fakeComfy();
+    open.push(fake);
+    const dir = mkdtempSync(join(tmpdir(), "comfy-gate-"));
+    const status = join(dir, "status.json");
+    const asked = () => JSON.parse(readFileSync(join(dir, "comfyui.json"), "utf8")) as { run: boolean; attempt?: string };
+    const comfy = new Comfy(fake.url, undefined, undefined, { serving: dir, status });
+    expect(asked().run).toBe(false);
+    const recipe = (id: string) => ({ id }) as never;
+    // A load waits until gate.py says a ComfyUI for this attempt runs, not one still stopping.
+    writeFileSync(status, JSON.stringify({ attempt: "older" }));
+    let loaded = false;
+    const load = comfy.load(recipe("a")).then(() => { loaded = true; });
+    await new Promise((r) => setTimeout(r, 700));
+    expect(loaded).toBe(false);
+    writeFileSync(status, JSON.stringify({ attempt: asked().attempt }));
+    await load;
+    // Switching recipes keeps it running; the last one going stops it a moment later.
+    await comfy.unload(recipe("a"));
+    const switching = comfy.load(recipe("b"));
+    writeFileSync(status, JSON.stringify({ attempt: asked().attempt }));
+    await switching;
+    await comfy.unload(recipe("b"));
+    expect(asked().run).toBe(true);
+    await new Promise((r) => setTimeout(r, 2_200));
+    expect(asked().run).toBe(false);
+    // Pause stops it at once.
+    const again = comfy.load(recipe("c"));
+    writeFileSync(status, JSON.stringify({ attempt: asked().attempt }));
+    await again;
+    await comfy.reset();
+    expect(asked().run).toBe(false);
+  });
+
   it("queues nothing when the client goes away before the prompt is sent", async () => {
     const fake = await fakeComfy();
     open.push(fake);

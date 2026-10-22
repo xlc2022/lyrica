@@ -1102,9 +1102,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **`before_agent_start`** never replaces the whole system prompt. It does two
   things:
   - It edits `event.systemPromptOptions`. The persona core goes in
-    `customPrompt`. Topics, WAKE, the page index, the thread's pinned
-    messages, and "who you're talking with" go in `sections`. Pi appends only what changed, so the prompt
-    prefix stays cacheable (DeepSeek's prefix cache, a local model's KV cache).
+    `customPrompt`. WAKE, the page index, the thread's pinned messages, and
+    "who you're talking with" go in `sections`.
   - In Pi 1.1.0, setting `customPrompt` also drops Pi's default tool list and
     rules. The extension therefore rebuilds them from each tool's own snippets
     and guidelines (`toolGuidance`) into a `tools` section. Any tool
@@ -1119,10 +1118,27 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     and subagents' get `WORK_GUIDELINES` (independent tool calls together in
     one reply; no re-reading a file that hasn't changed; long output to a
     file).
-  - It returns content that changes every turn, namely recall hits and the
-    time, as the result's `message`. That way it sits in the transcript, not
-    in the prefix.
+  - It returns content that changes every turn as the result's `message`
+    (`lyrica-turn`): the opening, recall hits, the time, and each topic
+    routed for the first time since the top was built (`freshTopics`, the
+    topics told kept as hashes in the message's `details`). That way it sits
+    in the transcript, not in the prefix.
   - Each section has a size budget.
+- **The top stays as the model has it** (`createTopExtension()` in
+  `extension/src/top.ts`, registered after every extension that sets
+  sections). A local model folds every changed section into the leading
+  system message, so any change made it re-read the whole conversation. On
+  each turn it puts back the sections the transcript's system message holds,
+  so Pi sends no change, and returns what changed since she was last told as
+  a `lyrica-top` message in `<prompt-update>` ("These sections of your system prompt changed…",
+  each changed section in full, `<name> no longer applies.` for one that
+  went), with what she was told as hashes in its `details`, so a reopened
+  session knows. A new thread, the first turn after a compaction, and a turn
+  whose persona core or tools changed (which the model re-reads anyway)
+  build the top from the sections as they are then, and record what she has
+  then as a `lyrica-top` custom entry (`pi.appendEntry`, not sent to the
+  model), so those sections aren't sent again as updates. Pi's own sections (`preamble`,
+  `cwd`) follow its options as before.
 - **Turn tool limits** (`extension/src/turn-tools.ts`, installed first by
   `openThreadSession`): one prompt/agent run, including model continuations
   and nested tool calls, permits at most 100 attempted tool calls. Invalid

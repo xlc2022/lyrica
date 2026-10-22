@@ -319,6 +319,17 @@ describe("the vLLM backend", () => {
     expect(JSON.parse(readFileSync(join(serving, "vllm.json"), "utf8")).servers).toEqual({});
   });
 
+  it("keeps prompts in an eighth of host memory, where that is more than llama.cpp's own 8 GiB", () => {
+    const preset = (gib: number) => {
+      const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+      new LlamaCpp({ url: "http://127.0.0.1:1", serving, models: "/models", device: (i) => `CUDA${i}`, memoryBytes: gib * 2 ** 30 });
+      return readFileSync(join(serving, "llamacpp.ini"), "utf8");
+    };
+    expect(preset(128)).toContain("[*]\njinja = true\nno-webui = true\ncache-ram = 16384\n");
+    expect(preset(1024)).toContain("cache-ram = 65536\n");
+    expect(preset(32)).not.toContain("cache-ram");
+  });
+
   it("removes chat templates no model uses any more", async () => {
     const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
     const llama = new LlamaCpp({ url: "http://127.0.0.1:1", serving, models: "/models", device: (i) => `CUDA${i}`, loadTimeoutMs: 50 });

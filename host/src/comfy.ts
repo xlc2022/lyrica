@@ -1,9 +1,14 @@
 // ComfyUI, reached only from host-api. Results come back over its websocket
 // (SaveImageWebsocket), nothing is saved, and its history is cleared after
-// every job. One job at a time, so uploads can't mix.
+// every job. One job at a time, so uploads can't mix. It runs only while a
+// recipe is loaded (host/comfyui/gate.py reads serving/comfyui.json), since
+// its process holds GPU memory for as long as it lives.
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { HostError } from "./http.ts";
-import type { Backend } from "./backends.ts";
+import { poll, writeAtomic, type Backend } from "./backends.ts";
+import type { TextModel } from "./library.ts";
 
 /** A 1×1 PNG, written over each upload after its job. */
 const BLANK = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
@@ -11,17 +16,45 @@ const BLANK = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQ
 const unavailable = () => new HostError(503, "model_unavailable", "ComfyUI didn't answer.");
 /** How long one request to ComfyUI may take, outside the job itself: a ComfyUI that hangs fails the job rather than the queue. */
 const CALL_MS = 30_000;
+/** How long after its last recipe unloads ComfyUI stops, unless another loads. */
+const STOP_AFTER_MS = 2_000;
 
 export class Comfy implements Backend {
   private readonly base: string;
   private readonly timeoutMs: number;
   private readonly callMs: number;
   private queue: Promise<unknown> = Promise.resolve();
+  /** The recipes loaded; ComfyUI runs while there is one. */
+  private readonly loaded = new Set<string>();
+  /** Where host-api asks for ComfyUI to run, and where gate.py says it has; without them, ComfyUI is taken to run always. */
+  private readonly gate?: { state: string; status: string };
+  private stopping: NodeJS.Timeout | null = null;
+  private readonly startMs: number;
 
-  constructor(base: string, timeoutMs = 30 * 60_000, callMs = CALL_MS) {
+  constructor(base: string, timeoutMs = 30 * 60_000, callMs = CALL_MS, gate?: { serving: string; status: string }, startMs = 5 * 60_000) {
     this.base = base;
     this.timeoutMs = timeoutMs;
     this.callMs = callMs;
+    this.startMs = startMs;
+    if (gate) this.gate = { state: join(gate.serving, "comfyui.json"), status: gate.status };
+    this.ask(null);
+  }
+
+  /** Asks for ComfyUI to run (this attempt) or to stop (null). */
+  private ask(attempt: string | null): void {
+    if (this.stopping) clearTimeout(this.stopping);
+    this.stopping = null;
+    if (this.gate) writeAtomic(this.gate.state, JSON.stringify(attempt ? { run: true, attempt } : { run: false }));
+  }
+
+  /** gate.py has a ComfyUI running for this attempt (one it started since any stop). */
+  private started(attempt: string): boolean {
+    if (!this.gate) return true;
+    try {
+      return (JSON.parse(readFileSync(this.gate.status, "utf8")) as { attempt?: string }).attempt === attempt;
+    } catch {
+      return false;
+    }
   }
 
   /** Runs jobs one after another. */
@@ -137,26 +170,35 @@ export class Comfy implements Backend {
     await fetch(`${this.base}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(this.callMs) }).catch(() => {});
   }
 
-  /** Frees ComfyUI's GPU memory. */
-  async free(): Promise<void> {
-    await this.post("/free", { unload_models: true, free_memory: true });
+  // As a scheduler backend: ComfyUI starts for a recipe, loads its parts during the job, and stops once no recipe is loaded.
+  async load(model: TextModel): Promise<void> {
+    this.loaded.add(model.id);
+    const attempt = randomUUID();
+    this.ask(attempt);
+    try {
+      await poll(async () => this.started(attempt) && (await fetch(`${this.base}/system_stats`, { signal: AbortSignal.timeout(5_000) })).ok, this.startMs, "ComfyUI");
+    } catch (e) {
+      // A start that failed doesn't keep it asked for.
+      this.loaded.delete(model.id);
+      if (!this.loaded.size) this.ask(null);
+      throw e;
+    }
   }
-
-  // As a scheduler backend: ComfyUI loads parts during the job, and /free unloads them.
-  async load(): Promise<void> {}
-  async unload(): Promise<void> {
-    await this.free();
+  async unload(model: TextModel): Promise<void> {
+    this.loaded.delete(model.id);
+    await this.post("/free", { unload_models: true, free_memory: true });
+    if (this.loaded.size || !this.gate) return;
+    // Stopped a moment later, so switching recipes doesn't restart it.
+    this.stopping = setTimeout(() => this.ask(null), STOP_AFTER_MS);
+    this.stopping.unref?.();
   }
   url(): string {
     return this.base;
   }
   async reset(): Promise<void> {
-    await this.free();
+    this.loaded.clear();
+    this.ask(null);
   }
-  async sleep(): Promise<void> {
-    await this.free();
-  }
-  async wake(): Promise<void> {}
 }
 
 /** Width and height of a PNG, JPEG or WebP, from its header. */

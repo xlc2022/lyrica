@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
-import { createAgentSession, DefaultResourceLoader, SessionManager, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_THREADS_LIMITS, PRONOUN_PRESETS, type Persona, type Profile } from "@lyrica/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { createLyricaExtension, createThreadsExtension, ASK_NUDGE, recordEntries, type ThreadContext } from "../src/index.ts";
+import { createLyricaExtension, createThreadsExtension, createTopExtension, ASK_NUDGE, recordEntries, type ThreadContext } from "../src/index.ts";
 import { withMemory } from "./helpers.ts";
 
 // Runs the extension inside a real Pi session against pi-ai's fake model, and
@@ -23,16 +23,17 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 type Step = (ctx: { messages: unknown[] }) => ReturnType<typeof fauxAssistantMessage> | Promise<ReturnType<typeof fauxAssistantMessage>>;
 
 /** A Pi session for the thread, run by pi-ai's fake model, with its entries recorded in the pool. */
-async function session(thread: ThreadContext, steps?: Step[], extra: ExtensionFactory[] = []) {
-  const dir = mkdtempSync(join(tmpdir(), "lyrica-pi-"));
+async function session(thread: ThreadContext, steps?: Step[], extra: ExtensionFactory[] = [], dir = mkdtempSync(join(tmpdir(), "lyrica-pi-"))) {
   dirs.push(dir);
-  const seen: { system: string; turn: string }[] = [];
+  const seen: { system: string; turn: string; last: string }[] = [];
   const faux = fauxProvider({ provider: "faux", models: [{ id: "echo" }] });
   const record = (ctx: { messages: unknown[] }) => {
     const text = (m: unknown) => JSON.stringify(m);
     seen.push({
       system: ctx.messages.filter((m) => (m as { role: string }).role === "system").map(text).join("\n"),
-      turn: ctx.messages.filter((m) => text(m).includes("<time>")).map(text).join("\n"),
+      // This turn's messages only: from the last that carries the time.
+      turn: ctx.messages.slice(Math.max(0, ctx.messages.findLastIndex((m) => text(m).includes("<time>")))).map(text).join("\n"),
+      last: text(ctx.messages.findLast((m) => (m as { role: string }).role === "user")),
     });
   };
   const reply: Step = (ctx) => { record(ctx); return fauxAssistantMessage("ok"); };
@@ -44,13 +45,15 @@ async function session(thread: ThreadContext, steps?: Step[], extra: ExtensionFa
   });
   const loader = new DefaultResourceLoader({
     cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
-    extensionFactories: [(pi) => pi.registerProvider(faux.provider), lyrica, ...extra],
+    extensionFactories: [(pi) => pi.registerProvider(faux.provider), lyrica, ...extra, createTopExtension()],
   });
   await loader.reload();
   const { session } = await createAgentSession({
     cwd: dir, agentDir: dir, resourceLoader: loader,
     sessionManager: SessionManager.inMemory(dir, undefined, thread.view.own.loadEntries(thread.threadId) as never),
     noTools: "builtin",
+    // Keeps only the latest message when compacting, so a short test session can compact.
+    settingsManager: SettingsManager.inMemory({ compaction: { keepRecentTokens: 1 } }),
   });
   await session.bindExtensions({});
   await session.setModel(faux.getModel());
@@ -126,13 +129,95 @@ describe("in a Pi session", () => {
     expect(seen).toHaveLength(2);
     const [first, second] = seen;
     expect(first!.system).toContain("She is Lyrica.");
-    expect(first!.system).toContain('<topic id=\\"music\\">');
     expect(first!.system).toContain("You are talking with Ada (pronouns: she/her).");
     expect(first!.system).not.toContain("<time>");
     expect(first!.system).not.toContain("expert coding assistant");
     expect(second!.system).toBe(first!.system);
     expect(first!.turn).toContain("12:00");
     expect(second!.turn).toContain("12:01");
+    // A topic comes with the message that first routes it, and isn't sent again while she has it.
+    expect(first!.system).not.toContain("<topic");
+    expect(first!.turn).toContain('<topic id=\\"music\\">');
+    expect(second!.turn).not.toContain("<topic");
+  });
+
+  it("keeps the top as the model has it while memory changes, until a compaction rebuilds it with the changes", async () => {
+    const m = await withMemory();
+    const thread = m.thread();
+    const answers = (n: number) => Array.from({ length: n }, () => () => fauxAssistantMessage("ok"));
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-pi-"));
+    const { session: s1, seen: before } = await session(thread.context, answers(2), [], dir);
+    try {
+      await s1.prompt("hello");
+      thread.view.own.putWake("Ada is baking again.", "sleep");
+      await s1.prompt("what's new?");
+    } finally {
+      s1.dispose();
+    }
+    // A reopened session reads the top and what she was told from the stored turn messages. Compacting asks the model for summaries too.
+    const { session: s2, seen: after } = await session(thread.context, answers(8), [], dir);
+    try {
+      await s2.prompt("and now?");
+      await s2.compact("Earlier: greetings.");
+      await s2.prompt("after the summary");
+    } finally {
+      s2.dispose();
+    }
+    // Her turns, not the requests that write the summary.
+    const [first, changed, again, rebuilt] = [...before, ...after].filter((x) => x.system.includes("She is Lyrica."));
+    expect(changed!.system).toBe(first!.system);
+    expect(changed!.turn).toContain("These sections of your system prompt changed");
+    expect(changed!.turn).toContain("Ada is baking again.");
+    expect(again!.system).toBe(first!.system);
+    expect(again!.turn).not.toContain("baking");
+    expect(rebuilt!.system).toContain("Ada is baking again.");
+    expect(rebuilt!.turn).not.toContain("These sections");
+  });
+
+  it("after a persona change rebuilds the top, doesn't send its sections again as updates", async () => {
+    const m = await withMemory();
+    const thread = m.thread();
+    let n = 0;
+    // From the third turn the persona core and another section change together.
+    const change: ExtensionFactory = (pi) => { pi.on("before_agent_start", (event) => {
+      const options = event.systemPromptOptions;
+      const later = ++n >= 3;
+      options.sections = { ...options.sections, mood: later ? "calm" : "busy" };
+      if (later) options.customPrompt = `${options.customPrompt} She is cheerful.`;
+    }); };
+    const { session: s, seen } = await session(thread.context, Array.from({ length: 4 }, () => () => fauxAssistantMessage("ok")), [change]);
+    try {
+      await s.prompt("hello");
+      thread.view.own.putWake("Ada is baking again.", "sleep");
+      await s.prompt("what's new?");
+      await s.prompt("and now?");
+      await s.prompt("anything else?");
+    } finally {
+      s.dispose();
+    }
+    const [, changed, rebuilt, after] = seen;
+    expect(changed!.turn).toContain("These sections of your system prompt changed");
+    expect(rebuilt!.system).toContain("She is cheerful.");
+    expect(rebuilt!.system).toContain("calm");
+    expect(after!.system).toBe(rebuilt!.system);
+    expect(after!.turn).not.toContain("These sections");
+  });
+
+  it("keeps the top when the user's time zone changes; the time line in the turn follows it", async () => {
+    const { session: s, seen } = await session((await withMemory()).thread().context);
+    try {
+      profile.timeZone = "Europe/Vienna";
+      await s.prompt("hello");
+      profile.timeZone = "Asia/Tokyo";
+      await s.prompt("and now?");
+    } finally {
+      delete profile.timeZone;
+      s.dispose();
+    }
+    expect(seen[1]!.system).toBe(seen[0]!.system);
+    expect(seen[0]!.turn).toContain("Europe/Vienna");
+    expect(seen[1]!.turn).toContain("Asia/Tokyo");
+    expect(seen[1]!.turn).not.toContain("These sections");
   });
 
   it("keeps the tools' own prompt guidance", async () => {

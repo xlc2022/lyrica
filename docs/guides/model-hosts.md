@@ -397,8 +397,8 @@ second pairing. Then:
 
 - **Pause** on the dashboard (or from Lyrica, `…/hosts/<endpoint
   id>/pause`) refuses new work, finishes the current job, unloads every
-  model and stops vLLM, so nothing of the host's stays in VRAM while you
-  use the GPU for something else. Resume loads the pinned models again.
+  model and stops vLLM and ComfyUI, so nothing of the host's stays in VRAM
+  while you use the GPU for something else. Resume loads the pinned models again.
   Pause survives a restart. Lyrica falls back to the next model meanwhile.
 - **Logs:** `docker compose logs host-api` in `host/`. They hold event
   names, ids and counts; never a pairing code or a prompt. The model

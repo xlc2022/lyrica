@@ -235,7 +235,14 @@ per host, and Lyrica's router filters create tiers by it.
   (`comfyui/lock.sh` remakes it); torch is the base image's. It has no
   route out, logs nothing, keeps its input, output and temp folders in
   memory, saves no metadata, and its history is cleared after every job.
-  It uses one GPU, `COMFY_GPU` in `.env`, and frees its memory after ten idle minutes.
+  It uses one GPU, `COMFY_GPU` in `.env`. It runs only while a recipe is
+  loaded: freeing its models leaves its CUDA context (a few hundred MiB)
+  until the process exits. `comfyui/gate.py`, its container's entry point,
+  starts and stops it as host-api asks in `serving/comfyui.json`, and names
+  the run it started in the `comfyui-status` volume, so host-api waits for
+  that one. It stops two seconds after its last recipe unloads (ten idle
+  minutes after a job), at once on Pause, and starts for the next image
+  job, which then waits while it starts.
   A ComfyUI that is off, or doesn't answer a request within 30 seconds,
   fails that job as `unavailable`, and the next job still runs.
 
@@ -249,7 +256,9 @@ per host, and Lyrica's router filters create tiers by it.
   text, and streams the audio on `/v1/audio/speech`. Voices in other
   languages are left out.
   - It runs on one GPU on an NVIDIA host (CUDA), and on the CPU elsewhere;
-    Kokoro is small enough for either.
+    Kokoro is small enough for either. Once nothing is loaded, a server
+    that has used a GPU exits and Docker starts it again, since ONNX
+    Runtime keeps its CUDA context until the process exits.
   - Like the model servers, it is on the `models` network only, logs
     nothing, runs read-only with no capabilities, and writes only to its
     `/tmp` tmpfs. That tmpfs allows running files, because the phonemizer
@@ -334,7 +343,8 @@ revoked. A revoked server must pair again.
   isn't counted as other programs'. If llama.cpp isn't answering then,
   `docker restart lyrica-host-llamacpp-1` clears it.
 - **Pause** refuses new work, lets the current job finish, then unloads
-  every model and stops vLLM, so nothing of the host's stays in VRAM. What
+  every model and stops vLLM and ComfyUI, and the speech server restarts
+  if it used a GPU, so nothing of the host's stays in VRAM. What
   couldn't be unloaded shows on the dashboard. Until Resume, new work gets
   "The model host is paused." Pause survives a restart.
 
@@ -358,7 +368,10 @@ revoked. A revoked server must pair again.
   (Docker's `none` log driver).
   - llama.cpp runs in router mode. host-api writes its preset file (each
     model's file, GPU and context), then loads and unloads models through
-    its API.
+    its API. Each loaded model keeps prompts in host memory (`cache-ram`),
+    an eighth of the machine's memory up to 64 GiB, where that is more than
+    llama.cpp's own 8 GiB, so threads taking turns on a model don't each
+    re-read their whole conversation.
   - vLLM runs under `vllm/supervisor.py`, which starts one server per vLLM
     model on its GPUs, as host-api asks in a file, each in its own process
     group. A server that crashes is restarted after a growing wait (10

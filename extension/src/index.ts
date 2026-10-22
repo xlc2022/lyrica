@@ -9,6 +9,7 @@ import { RULES_IN_ALL } from "./code-repositories.ts";
 import { registerSkillTool, SKILLS_IN_ALL, type SkillToolOptions } from "./skills.ts";
 import { SELF_PRIMER } from "./primer.ts";
 import { TopicRouter, type RoutedTopic } from "./routing.ts";
+import { freshTopics, TURN_MESSAGE } from "./top.ts";
 import { reactionLines, type UserReaction } from "./react.ts";
 import { registerMemoryTools } from "./tools.ts";
 export { RECALL_GUIDELINES } from "./tools.ts";
@@ -23,6 +24,7 @@ export * from "./gate.ts";
 export * from "./images.ts";
 export * from "./mcp.ts";
 export * from "./memory.ts";
+export { createTopExtension, TOP_MESSAGE } from "./top.ts";
 export * from "./models-tool.ts";
 export * from "./downloads-tool.ts";
 export * from "./react.ts";
@@ -113,7 +115,7 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       const memory = await memorySections(view, event.prompt, { ...who(), folders: opts.folders?.() ?? [], projectThreads: opts.projectThreads, name: opts.name?.() });
       // An unlogged thread isn't offered remember at all.
       if (opts.memoryTools !== "read") setToolsOff(pi, ctx, "unlogged", memory.notice ? ["remember", ...(saving ? ["save_skill"] : [])] : []);
-      const { customPrompt, sections, turn, report } = assemble(
+      const { customPrompt, sections, topics: topicTexts, turn, report } = assemble(
         { persona, topics, memory, profile: opts.profile(), now: opts.now?.() ?? new Date() },
         opts.budgets,
       );
@@ -140,20 +142,24 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
         report.push({ name: "project", text: skills, budget: SKILLS_IN_ALL, truncated: false, place: "system" });
       } else delete options.sections.skills;
 
+      // A topic comes once, with the message that first routes it since the top was built; the top extension holds the rest.
+      const routed = freshTopics(ctx, topicTexts);
+      for (const t of routed.topics) report.push({ name: "topics", text: t.text, budget: t.text.length, truncated: false, place: "turn" });
+
       // The user's reactions since her last turn, then her status line, from the last turn's measurement, and the line telling her to prepare or compact.
       const repositories = code ? await opts.codeRepositories?.() : undefined;
       if (repositories) report.push({ name: "recall", text: repositories, budget: repositories.length, truncated: false, place: "turn" });
-      const told = [turn, repositories && `<repositories>\n${repositories}\n</repositories>`, reactionLines(opts.reactions?.() ?? [], thread.threadId, opts.profile().displayName)].filter(Boolean).join("\n\n");
-      let full = told;
+      const said = [...routed.topics.map((t) => t.text), turn, repositories && `<repositories>\n${repositories}\n</repositories>`, reactionLines(opts.reactions?.() ?? [], thread.threadId, opts.profile().displayName)].filter(Boolean).join("\n\n");
+      let full = said;
       if (opts.meter) {
         const defs = pi.getAllTools().filter((t) => pi.getActiveTools().includes(t.name)).map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
         opts.meter.setPrompt(report, tools.length + JSON.stringify(defs).length);
         const lines = contextLines(opts.meter);
-        if (lines) full = [told, `<context>\n${lines}\n</context>`].filter(Boolean).join("\n\n");
+        if (lines) full = [said, `<context>\n${lines}\n</context>`].filter(Boolean).join("\n\n");
       }
 
       if (opts.debugPrompt) showDebug(ctx, topics, report, `${event.systemPrompt}\n\n--- this turn ---\n${full}`);
-      return full ? { message: { customType: "lyrica-turn", content: full, display: false } } : undefined;
+      return { message: { customType: TURN_MESSAGE, content: full, display: false, details: { told: routed.told } } };
     });
   };
 }

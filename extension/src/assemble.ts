@@ -57,17 +57,19 @@ export interface Section {
 export interface Assembled {
   /** The persona core: Pi's `customPrompt`. */
   customPrompt: string;
-  /** Stable sections for Pi's `sections`, in order: topics, notice, opening, wake, about, pages, folders, project, pinned, user. Pi adds the tags. */
+  /** Stable sections for Pi's `sections`, in order: notice, wake, about, pages, folders, project, pinned, user. Pi adds the tags. */
   sections: Record<string, string>;
-  /** Content that changes every turn (recall, time), sent as a message so the prompt prefix stays cacheable. */
+  /** The topics routed for this message, each a `<topic>` block: they go in a turn's message once, when first routed. */
+  topics: { id: string; text: string }[];
+  /** Content that changes every turn (opening, recall, time), sent as a message so the prompt prefix stays cacheable. */
   turn: string;
   report: Section[];
 }
 
 /**
- * Splits her context into a stable system prompt (persona core, topics, an
- * unlogged notice, WAKE, the page about the user, page index, folder pages,
- * who she's talking with) and a per-turn message (recall, time).
+ * Splits her context into a stable system prompt (persona core, an unlogged
+ * notice, WAKE, the page about the user, page index, folder pages, who she's
+ * talking with), the routed topics, and a per-turn message (opening, recall, time).
  */
 export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS): Assembled {
   const report: Section[] = [];
@@ -83,13 +85,8 @@ export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS)
 
   const sections: Record<string, string> = {};
   const topics = topicBlocks(input.topics, budgets.topics);
-  if (topics.text) {
-    sections.topics = topics.text;
-    report.push({ name: "topics", text: topics.text, budget: budgets.topics, truncated: topics.truncated, place: "system" });
-  }
   const stable: [keyof Budgets, string | undefined][] = [
     ["notice", input.memory.notice],
-    ["opening", input.memory.opening],
     ["wake", input.memory.wake],
     ["about", input.memory.about],
     ["pages", input.memory.pageIndex],
@@ -103,30 +100,28 @@ export function assemble(input: PromptInput, budgets: Budgets = DEFAULT_BUDGETS)
     if (text) sections[name] = text;
   }
 
-  const turn = (["recall", "time"] as const)
+  const turn = (["opening", "recall", "time"] as const)
     .map((name) => {
-      const text = add(name, name === "recall" ? input.memory.recall : timeLine(input.now, zoneOf(input.profile), input.memory.lastTalk), "turn");
+      const text = add(name, name === "time" ? timeLine(input.now, zoneOf(input.profile), input.memory.lastTalk) : input.memory[name], "turn");
       return text && `<${name}>\n${text}\n</${name}>`;
     })
     .filter(Boolean)
     .join("\n\n");
 
-  return { customPrompt, sections, turn, report };
+  return { customPrompt, sections, topics, turn, report };
 }
 
-function topicBlocks(topics: RoutedTopic[], budget: number): { text: string; truncated: boolean } {
+function topicBlocks(topics: RoutedTopic[], budget: number): { id: string; text: string }[] {
   let room = budget;
-  let truncated = false;
-  const blocks: string[] = [];
+  const blocks: { id: string; text: string }[] = [];
   for (const { topic } of topics) {
     const raw = topic.text.trim();
     if (room < 200 || !raw) continue;
     const body = fit(raw, room);
-    truncated ||= body !== raw;
-    blocks.push(`<topic id="${topic.id}">\n${body}\n</topic>`);
+    blocks.push({ id: topic.id, text: `<topic id="${topic.id}">\n${body}\n</topic>` });
     room -= body.length;
   }
-  return { text: blocks.join("\n\n"), truncated };
+  return blocks;
 }
 
 /** A pinned message, as the pinned section holds it. */
