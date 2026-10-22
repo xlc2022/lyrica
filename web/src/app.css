@@ -1041,11 +1041,11 @@ dialog.viewer > .error { position: absolute; bottom: 8px; left: 16px; }
 .cfold { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 2px 12px; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0; background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in oklab, var(--fg) 5%, transparent) 6px 7px); color: var(--muted); font: 12px var(--ui); text-align: left; }
 .cfold:hover { color: var(--fg); background-color: var(--tool); }
 .cfold .ic { width: 14px; height: 14px; }
-.dl { display: grid; grid-template-columns: 4ch 4ch 1.5ch minmax(0, 1fr); gap: 0 6px; padding: 0 8px; white-space: pre; }
+.dl { display: grid; grid-template-columns: 4ch 4ch 1.5ch minmax(0, 1fr); gap: 0 6px; padding: 0 8px; align-items: start; }
 .split .dl { grid-template-columns: 4ch 1.5ch minmax(0, 1fr); }
 .dl .ln { text-align: right; color: var(--muted); user-select: none; }
 .dl .sign { color: var(--muted); user-select: none; text-align: center; }
-.dl .code { overflow: hidden; text-overflow: ellipsis; }
+.dl .code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .dl.del { background: color-mix(in oklab, var(--danger) 12%, transparent); }
 .dl.ins { background: color-mix(in oklab, var(--ok) 12%, transparent); }
 .dl.blank { background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in oklab, var(--fg) 5%, transparent) 6px 7px); }

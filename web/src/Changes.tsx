@@ -45,7 +45,7 @@ export function ChangesFact({ base, activity }: { base: string; activity: number
       {shown.map((r) => {
         const totals = sum(r.files), checks = r.pull && checksState(r.pull.checks);
         return (
-          <button key={r.path} type="button" className="badge changes" aria-haspopup="dialog" title={`Changes in ${r.name}`} onClick={() => setOpen(r.path)}>
+          <button key={r.path} type="button" className="badge changes" aria-haspopup="dialog" title={`Changes in ${r.name}: ${r.branch || "detached"}`} onClick={() => setOpen(r.path)}>
             <Icon name={r.pull ? "pull" : "branch"} />
             {r.pull && <span className="num">#{r.pull.number}</span>}
             <span className="name folder">{r.branch || "detached"}</span>
@@ -182,7 +182,7 @@ function FileSection({ index, base, repoPath, file, commit, split, startOpen }: 
           {state.kind === "sides" && state.note && <p className="muted cnote">{state.note}</p>}
           {state.kind === "sides" && !state.note && !state.lines.some((l) => l.kind !== "same") && <p className="muted cnote">No differences in the text.</p>}
           {state.kind === "sides" && shown.map((b) => (b.kind === "fold"
-            ? <button key={`f${b.from}`} type="button" className="cfold" onClick={() => unfold(b.from)}><Icon name="down" />{b.to - b.from} unmodified lines</button>
+            ? <button key={`f${b.from}`} type="button" className="cfold" onClick={() => unfold(b.from)}><Icon name="down" /><span className="num">{b.to - b.from}</span> unmodified lines</button>
             : split ? <SplitLines key={`l${b.from}`} lines={state.lines} from={b.from} to={b.to} /> : <UnifiedLines key={`l${b.from}`} lines={state.lines} from={b.from} to={b.to} />))}
         </div>
       )}

@@ -1277,6 +1277,7 @@ test("a thread's branch shows as a badge that opens the changes view: files, com
   await send(page, "Show me the branch");
   const badge = page.locator("button.badge.changes");
   await expect(badge).toContainText("#430");
+  await expect(badge).toHaveAttribute("title", "Changes in garden/controller: lyrica/endpoint-tokens-per-second");
   await expect(badge).toContainText("+50");
   await expect(badge).toContainText("−23");
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/badge-${page.viewportSize()!.width}.png` });
