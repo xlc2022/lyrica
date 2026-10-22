@@ -1015,8 +1015,11 @@ HTTP proxy on `127.0.0.1:1056` (`--outbound-http-proxy-listen`), and
 in `100.64.0.0/10` or `fd7a:115c:a1e0::/48`, or a name under her tailnet's
 MagicDNS suffix (read from `status`, at start and every five minutes). That
 covers model host pairing and calls (TLS and the pin inside the tunnel) and
-any endpoint fetch (a global undici dispatcher). Anything else is dialled
-directly, and so is a tailnet destination when nothing listens on the port.
+any endpoint fetch: the global `fetch` hands a tailnet destination to
+undici's own fetch with the proxy's dispatcher, and leaves everything else
+to Node's fetch (a newer undici's dispatcher under Node's fetch loses an
+HTTP/2 answer's content encoding). Anything else is dialled directly, and
+so is a tailnet destination when nothing listens on the port.
 
 - `GET …/admin/tailnet` → `Tailnet`, read from her tailscaled each time:
   `connected`, `disconnected`, `notJoined`, or `notInstalled` (no binary, or

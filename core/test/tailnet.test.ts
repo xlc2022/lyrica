@@ -1,8 +1,11 @@
 import { createServer as createHttp } from "node:http";
+import { createSecureServer } from "node:http2";
+import { brotliCompressSync, gzipSync } from "node:zlib";
 import { createServer as createTcp, connect, type AddressInfo, type Socket } from "node:net";
 import { afterAll, describe, expect, it } from "vitest";
 import { addressesOutside, useTailnetProxy } from "../src/index.ts";
 import { fakeHost } from "./fake-host.ts";
+import { selfSigned } from "./fake-proxmox.ts";
 import { withModels } from "./helpers.ts";
 
 // Her tailscaled's proxy, as a stand-in: every CONNECT goes to the same port on loopback, and the targets are kept.
@@ -55,5 +58,31 @@ describe("the tailnet, through her tailscaled's proxy", () => {
     }
     // A name in her tailnet counts as her own network: tailscaled resolves it to a peer.
     expect(await addressesOutside("http://lm.tail1234.ts.net:1234/v1")).toEqual([]);
+  });
+
+  it("leaves every other fetch as it was: compressed HTTP/2 answers still decode, through the tunnel too", async () => {
+    // Node's fetch under a newer undici's dispatcher lost an HTTP/2 answer's headers, so br and gzip bodies came back raw.
+    const body = '{"ok":true}';
+    const server = createSecureServer({ ...selfSigned(), allowHTTP1: true }, (req, res) => {
+      const br = req.url === "/br";
+      res.writeHead(200, { "content-type": "application/json", "content-encoding": br ? "br" : "gzip" }).end(br ? brotliCompressSync(body) : gzipSync(body));
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as AddressInfo).port;
+    const reject = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    try {
+      for (const host of ["127.0.0.1", "lm.tail1234.ts.net"]) {
+        for (const path of ["/br", "/gzip"]) {
+          const res = await fetch(`https://${host}:${port}${path}`);
+          expect(res.headers.get("content-encoding")).toBe(path.slice(1));
+          expect(await res.json()).toEqual({ ok: true });
+        }
+      }
+    } finally {
+      if (reject === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      else process.env.NODE_TLS_REJECT_UNAUTHORIZED = reject;
+      server.close();
+    }
   });
 });
