@@ -31,6 +31,8 @@ export interface DiscoveredModel {
   reasoning?: ("low" | "medium" | "high")[];
   /** A host's chat template writes `<think>` itself (host/API.md "Models"). */
   opensThinking?: boolean;
+  /** A plain llama-server described it on /props: its thinking switch goes through the chat template, as on a model host. */
+  llamaServer?: boolean;
   /** Its server says the model can't turn thinking off (LM Studio, OpenRouter's `reasoning.mandatory`). */
   alwaysThinks?: boolean;
   /** The file's SHA-256, where a host reports it: the same file on two hosts is the same model. */
@@ -146,6 +148,7 @@ export async function probeUrl(baseUrl: string, apiKey: string | undefined, time
  * efforts, and whether thinking can be turned off), `pricing`,
  * `expiration_date` and `top_provider.max_completion_tokens`, llama-server's
  * `meta.n_ctx`, LM Studio's `max_context_length`, vLLM's `max_model_len`.
+ * A plain llama-server's template, vision and slots come from `llamaServerModel`.
  */
 export async function discoverModels(baseUrl: string, apiKey: string | undefined, timeoutMs = 10_000): Promise<DiscoveredModel[]> {
   const body = (await getModels(baseUrl, apiKey, timeoutMs)) as { data?: unknown };
@@ -224,6 +227,41 @@ export async function lmStudioModels(baseUrl: string, apiKey: string | undefined
     instances: (Array.isArray(m.loaded_instances) ? m.loaded_instances : []).filter((i: any) => typeof i?.id === "string")
       .map((i: any) => ({ id: i.id as string, context: num(i.config?.context_length), ...(num(i.config?.parallel) ? { parallel: num(i.config.parallel) } : {}) })),
   }]);
+}
+
+/** What a plain llama-server says of one model: its chat template's thinking switch and tools, a vision projector, and its slots. */
+export interface LlamaServerModel { reasoning?: ["medium"]; opensThinking?: boolean; tools?: boolean; vision?: boolean; parallel?: number }
+
+/**
+ * A plain llama-server's GET /props for a model (with `?model=` in router
+ * mode, then without), read as the model host reads a file's template: a
+ * template that reads `enable_thinking` has an on/off switch (one level),
+ * one that writes `<think>` may start mid-thought, one that names `tools`
+ * takes them. Null when the server doesn't answer like llama-server.
+ */
+export async function llamaServerModel(baseUrl: string, apiKey: string | undefined, modelId: string, timeoutMs = 5000, fetchImpl: typeof fetch = fetch): Promise<LlamaServerModel | null> {
+  const root = lmStudioRoot(baseUrl);
+  for (const path of [`/props?model=${encodeURIComponent(modelId)}`, "/props"]) {
+    let body: Record<string, any>;
+    try {
+      const res = await fetchImpl(`${root}${path}`, { headers: headers(apiKey), signal: AbortSignal.timeout(timeoutMs) });
+      if (!res.ok) continue;
+      body = (await res.json()) as Record<string, any>;
+    } catch {
+      continue;
+    }
+    if (typeof body?.chat_template !== "string" || !body.default_generation_settings) continue;
+    const template: string = body.chat_template;
+    const slots = typeof body.total_slots === "number" && body.total_slots > 0 ? Math.floor(body.total_slots) : undefined;
+    return {
+      ...(/\benable_thinking\b/.test(template) ? { reasoning: ["medium"] as ["medium"] } : {}),
+      ...(template.includes("<think>") ? { opensThinking: true } : {}),
+      ...(/\btools\b/.test(template) ? { tools: true } : {}),
+      ...(typeof body.modalities?.vision === "boolean" ? { vision: body.modalities.vision as boolean } : {}),
+      ...(slots ? { parallel: slots } : {}),
+    };
+  }
+  return null;
 }
 
 /** The LM Studio model an OpenAI-compatible model ID names: its key, or one of its loaded instances. */

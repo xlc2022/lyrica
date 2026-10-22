@@ -15,10 +15,10 @@ afterEach(async () => { await Promise.all(servers.splice(0).map((s) => new Promi
 
 /**
  * A small OpenAI-compatible server on 127.0.0.1: GET /v1/models and streaming
- * POST /v1/chat/completions, and with `lmStudio` LM Studio's GET /api/v1/models. It records every chat request. Replies come from
+ * POST /v1/chat/completions, with `lmStudio` LM Studio's GET /api/v1/models, and with `props` llama-server's GET /props. It records every chat request. Replies come from
  * the queue, then the responder, then a default text.
  */
-export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; label?: string; port?: number; lmStudio?: Record<string, unknown>[] } = {}) {
+export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; label?: string; port?: number; lmStudio?: Record<string, unknown>[]; props?: Record<string, Record<string, unknown>> } = {}) {
   const requests: ChatRequest[] = [];
   const queue: (Reply | Responder)[] = [];
   let responder: Responder | undefined;
@@ -37,6 +37,13 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
       if (req.method === "GET" && req.url === "/api/v1/models" && opts.lmStudio) {
         res.writeHead(200, { "content-type": "application/json" });
         return res.end(JSON.stringify({ models: opts.lmStudio }));
+      }
+      // llama-server's /props, when it plays llama-server: by model in router mode (`?model=`), else the "" entry.
+      if (req.method === "GET" && req.url?.startsWith("/props") && opts.props) {
+        const props = opts.props[new URL(req.url, "http://x").searchParams.get("model") ?? ""];
+        if (!props) { res.writeHead(404); return res.end(); }
+        res.writeHead(200, { "content-type": "application/json" });
+        return res.end(JSON.stringify(props));
       }
       if (req.method !== "POST" || req.url !== "/v1/chat/completions") { res.writeHead(404); return res.end(); }
       const chat = JSON.parse(body) as ChatRequest;

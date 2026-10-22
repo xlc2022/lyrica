@@ -86,6 +86,21 @@ describe("endpoints", () => {
     expect(models.resolve("chat", ctx()).paidAfter).toBeUndefined();
   });
 
+  it("reads a plain llama-server's /props: the template's thinking switch and tools, vision and slots", async () => {
+    const { models, ada } = await withModels();
+    const template = "{%- if tools %}...{%- endif %}{%- if enable_thinking is defined and enable_thinking is false %}<think>\n\n</think>{%- endif %}";
+    const server = await fakeOpenAI({ models: [{ id: "qwen.gguf", meta: { n_ctx: 131072 } }, { id: "other.gguf" }],
+      props: { "qwen.gguf": { chat_template: template, default_generation_settings: { n_ctx: 131072 }, total_slots: 2, modalities: { vision: false } } } });
+    const ep = models.addEndpoint(ada, { name: "direct", kind: "local", baseUrl: server.baseUrl });
+    const found = await models.discover(ada, ep.id);
+    const qwen = found.find((o) => o.modelId === "qwen.gguf")!;
+    expect(qwen).toMatchObject({ llamaServer: true, reasoning: ["medium"], tools: true, vision: false, parallel: 2, opensThinking: true, contextWindow: 131072 });
+    expect(found.find((o) => o.modelId === "other.gguf")!.llamaServer).toBeUndefined();
+    // Its one level is the template's switch: on at any level asked, with no note, and off when asked.
+    expect(models.thinkingFor({ offering: qwen, label: "direct/qwen.gguf" }, "high")).toEqual({ level: "medium" });
+    expect(models.thinkingFor({ offering: qwen, label: "direct/qwen.gguf" }, "off")).toEqual({ level: "off" });
+  });
+
   it("keeps a model the endpoint stops listing, marked missing, and its ID when it comes back", async () => {
     const m = await withShared();
     m.lanModels.pop();

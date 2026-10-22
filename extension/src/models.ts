@@ -14,7 +14,7 @@ const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const LOCAL_COMPAT = { supportsDeveloperRole: false, supportsStore: false, supportsReasoningEffort: false, maxTokensField: "max_tokens" } as const;
 
 // A model that thinks gets `reasoning_effort` (OpenAI-compatible endpoints) at the thread's level.
-// A host model with an on/off thinking switch (one level) thinks through the chat template's switch instead.
+// A host or plain llama-server model with an on/off thinking switch (one level) thinks through the chat template's switch instead.
 // A thread's context limit narrows the window it plans by (compaction, the meter, the reply cap).
 const windowOf = (m: Offering, limit?: number) => Math.min(m.contextWindow ?? DEFAULT_CONTEXT, limit ?? Infinity);
 const replyRoom = (ep: Pick<Endpoint, "kind">, m: Offering, contextWindow: number) => replyCap(contextWindow, { local: ep.kind === "local", ...(m.maxOutput ? { maxOutput: m.maxOutput } : {}) });
@@ -24,8 +24,8 @@ const SHARE_REPLY = 32_768;
 function piModel(ep: Endpoint, m: Offering, limit?: number): ProviderModelConfig {
   const contextWindow = windowOf(m, limit);
   const reasoning = !!m.reasoning?.length;
-  const toggle = ep.api === "host" && m.reasoning?.length === 1;
-  const compat = ep.api === "host" ? { ...LOCAL_COMPAT, ...(toggle ? { thinkingFormat: "qwen-chat-template" as const } : { supportsReasoningEffort: reasoning }) }
+  const toggle = (ep.api === "host" || !!m.llamaServer) && m.reasoning?.length === 1;
+  const compat = ep.api === "host" || toggle ? { ...LOCAL_COMPAT, ...(toggle ? { thinkingFormat: "qwen-chat-template" as const } : { supportsReasoningEffort: reasoning }) }
     : ep.kind === "local" ? { ...LOCAL_COMPAT, supportsReasoningEffort: reasoning } : undefined;
   return {
     id: m.modelId, name: m.modelId, input: m.vision ? ["text", "image"] : ["text"], cost: FREE, reasoning,

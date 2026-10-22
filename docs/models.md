@@ -64,7 +64,11 @@ and `-`, at most 40 characters.
 - **Capabilities:** context window, tools, vision, embedding, image, edit, upscale
   and thinking levels. OpenRouter reports the context, tools, thinking and
   modalities; llama-server reports the context
-  (`meta.n_ctx`); vLLM reports the context as `max_model_len`; LM Studio reports the context, vision, thinking, embedding models and tool use on its own API
+  (`meta.n_ctx`), and on `/props` (`?model=` in router mode) its chat
+  template, vision and slots, read as a model host reads a template: one
+  that reads `enable_thinking` has a thinking switch (one level, medium),
+  one that names `tools` takes them, and the offering is marked
+  `llamaServer`; vLLM reports the context as `max_model_len`; LM Studio reports the context, vision, thinking, embedding models and tool use on its own API
   (below); KoboldCpp reports neither. Anything can be
   set by hand (`setCapabilities`), which wins over discovery. Switching off
   image, edit, upscale or transcribe takes the model out of that task's lists
@@ -417,8 +421,8 @@ answered by any other model appends `{ cleared: true }`, leaving no line. Calls 
 Offerings carry `reasoning`, the levels they offer besides off: discovered
 from OpenRouter's `reasoning.supported_efforts` (minimal counts as low, xhigh
 and max as high; `supported_parameters` naming reasoning gives all three when
-a model lists no efforts) or LM Studio's `capabilities.reasoning`
-(below), or set by hand. OpenRouter's `reasoning.mandatory` marks the model
+a model lists no efforts), LM Studio's `capabilities.reasoning`
+(below) or a llama-server's chat template (above), or set by hand. OpenRouter's `reasoning.mandatory` marks the model
 `alwaysThinks`, so off becomes `mandatoryThinking` before the first request
 rather than after a refusal. Threads have a
 thinking setting (off, low, medium, high, `setThinking`) with a per-user
@@ -434,7 +438,7 @@ run a model with thinking off (OpenRouter: "Reasoning is mandatory"). When
 one refuses a request sent with thinking off, the request is sent again at
 `mandatoryThinking` (medium, or the nearest level the model has), and
 `mustThink` remembers it for the daemon's run, so `thinkingFor` turns off
-into that level, with a note. A model host's or LM Studio's model with one level (a thinking
+into that level, with a note. A model host's, LM Studio's or a llama-server's model with one level (a thinking
 switch in its chat template) simply runs at it, with no note, whatever level
 was asked; on a plain endpoint, a single level is the nearest level, with the
 note. Pi passes it as `reasoning_effort` to OpenAI-compatible
