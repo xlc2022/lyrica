@@ -1,0 +1,71 @@
+name: CMP images
+# The CMP 100-210's llama.cpp and sd-server images (host/prebuilt.sh). A host
+# with that card pulls them instead of compiling for half an hour. A pull
+# request only builds them; main, or a run started by hand on a branch,
+# publishes each tag it doesn't have yet (a tag names its content, so a
+# branch's is the same image main would publish).
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["host/llamacpp/**", "host/sdcpp/**", "host/prebuilt.sh", ".github/workflows/cmp-images.yml"]
+  push:
+    branches: [main]
+    paths: ["host/llamacpp/**", "host/sdcpp/**", "host/prebuilt.sh", ".github/workflows/cmp-images.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    # llama.cpp for six CUDA capabilities is a long compile on four cores.
+    timeout-minutes: 340
+    # A fork's pull request gets a read-only token whatever this says, and
+    # a pull request's run never pushes.
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [llamacpp, sdcpp]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # The CUDA devel image unpacks to about 10 GB beside the build.
+      - name: Make room
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost /opt/microsoft \
+            /usr/local/.ghcup /usr/share/swift /usr/local/julia* /usr/lib/jvm /opt/az /usr/local/share/powershell /opt/google /usr/local/lib/node_modules \
+            /usr/share/miniconda /usr/local/share/chromium /opt/pipx
+          df -h /
+      - name: Tag
+        id: tag
+        working-directory: host
+        run: |
+          . ./prebuilt.sh
+          image=$(prebuilt_image ${{ matrix.name }})
+          echo "image=$image" >>"$GITHUB_OUTPUT"
+          echo "archs=$(prebuilt_archs ${{ matrix.name }})" >>"$GITHUB_OUTPUT"
+          echo "registry=${image%%/*}" >>"$GITHUB_OUTPUT"
+          echo "image: $image"
+      - name: Log in
+        if: github.event_name != 'pull_request'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login "${{ steps.tag.outputs.registry }}" -u "${{ github.actor }}" --password-stdin
+      - name: Already published?
+        id: have
+        if: github.event_name != 'pull_request'
+        run: |
+          if docker manifest inspect "${{ steps.tag.outputs.image }}" >/dev/null 2>&1; then echo "yes=1" >>"$GITHUB_OUTPUT"; echo "already published"; fi
+      - name: Build
+        if: steps.have.outputs.yes != '1'
+        run: |
+          image=${{ steps.tag.outputs.image }}
+          docker buildx build host/${{ matrix.name }} \
+            --build-arg "CUDA_ARCHS=${{ steps.tag.outputs.archs }}" \
+            --label "org.lyrica.content=${image##*:}" \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            -t "$image" ${{ github.event_name != 'pull_request' && '--push' || '--output type=cacheonly' }}

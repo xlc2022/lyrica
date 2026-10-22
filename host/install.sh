@@ -219,18 +219,27 @@ UNIFIED=
 [[ $VENDOR == amd && $AMD_BACKEND != vulkan ]] && FILES+=:compose.amd.yaml
 [[ -n $HSA_OVERRIDE ]] && FILES+=:compose.hsa.yaml
 [[ -n $UNIFIED ]] && FILES+=:compose.apu.yaml
-# A CMP 100-210 (PCI ID 10de:1df4): llama.cpp built to use int8, for the
-# compute capabilities of this host's GPUs (compose.cmp.yaml).
-CUDA_ARCHS=
+# A CMP 100-210 (PCI ID 10de:1df4): llama.cpp built to use int8
+# (compose.cmp.yaml). Its image, and sd-server's, are pulled when this host's
+# GPUs are among those CI built them for (prebuilt.sh); otherwise they're
+# built here for this host's GPUs, which takes a while the first time.
+CUDA_ARCHS= LLAMACPP_CMP_IMAGE= SDCPP_IMAGE=
 if [[ $VENDOR == nvidia ]] && nvidia-smi --query-gpu=pci.device_id --format=csv,noheader 2>/dev/null | grep -qix 0x1df410de; then
+  # shellcheck source=prebuilt.sh
+  . ./prebuilt.sh
   CUDA_ARCHS=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | tr -d '. ' | sort -u | sed 's/$/-real/' | paste -sd';' -)
   FILES+=:compose.cmp.yaml
-  say "CMP 100-210: llama.cpp is built for it from source (CUDA $CUDA_ARCHS), which takes a while the first time."
+  prebuilt_pick llamacpp "$CUDA_ARCHS" "$START"
+  LLAMACPP_CMP_IMAGE=${PREBUILT:-lyrica-host-llamacpp:cmp}
+  [[ -n $PREBUILT ]] || FILES+=:compose.cmp.build.yaml
   # The image GPU is one: stable-diffusion.cpp makes images in ComfyUI's place (compose.sdcpp.yaml).
   if nvidia-smi -i "${COMFY_GPU:-0}" --query-gpu=pci.device_id --format=csv,noheader 2>/dev/null | grep -qix 0x1df410de; then
     FILES+=:compose.sdcpp.yaml
     [[ $NVIDIA_CDI == 1 ]] && FILES+=:compose.sdcpp.cdi.yaml
-    say "CMP 100-210 for images: stable-diffusion.cpp makes them in ComfyUI's place, also built from source."
+    say "CMP 100-210 for images: stable-diffusion.cpp makes them in ComfyUI's place."
+    prebuilt_pick sdcpp 70-real "$START"
+    SDCPP_IMAGE=${PREBUILT:-lyrica-host-sdcpp:cmp}
+    [[ -n $PREBUILT ]] || FILES+=:compose.sdcpp.build.yaml
   fi
 fi
 RENDER_GID=$(getent group render 2>/dev/null | cut -d: -f3 || true)
@@ -273,6 +282,8 @@ HSA_OVERRIDE_GFX_VERSION=$HSA_OVERRIDE
 LLAMA_UNIFIED_MEMORY=$UNIFIED
 COMFY_GPU=${COMFY_GPU:-0}
 CUDA_ARCHS=$CUDA_ARCHS
+LLAMACPP_CMP_IMAGE=$LLAMACPP_CMP_IMAGE
+SDCPP_IMAGE=$SDCPP_IMAGE
 RENDER_GID=${RENDER_GID:-}
 COMPOSE_FILE=$FILES
 HOST_VERSION=$VERSION

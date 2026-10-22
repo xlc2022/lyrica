@@ -1,8 +1,8 @@
 # Images on a CMP 100-210 (PCI ID 10de:1df4): install.sh adds this when
 # COMFY_GPU is one. stable-diffusion.cpp's sd-server (sdcpp/Dockerfile),
-# built to use int8, makes the images in ComfyUI's place, which isn't started.
-# It uses one GPU, COMFY_GPU, and runs only while a recipe is loaded
-# (sdcpp/gate.sh reads serving/sdcpp.json).
+# built to use int8 by CI or here, makes the images in ComfyUI's place,
+# which isn't started. It uses one GPU, COMFY_GPU, and runs only while a
+# recipe is loaded (sdcpp/gate.sh reads serving/sdcpp.json).
 volumes:
   # gate.sh names the sd-server it is running; host-api reads it.
   sdcpp-status: {}
@@ -18,11 +18,8 @@ services:
     profiles: [comfyui]
 
   sdcpp:
-    build:
-      context: sdcpp
-      args:
-        CUDA_ARCHS: ${CUDA_ARCHS:?run install.sh}
-    image: lyrica-host-sdcpp:cmp
+    # The image CI publishes (prebuilt.sh), or one built here (compose.sdcpp.build.yaml).
+    image: ${SDCPP_IMAGE:?run install.sh}
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]

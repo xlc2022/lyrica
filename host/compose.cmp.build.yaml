@@ -1,0 +1,8 @@
+# compose.cmp.yaml's llama.cpp built here, for this host's GPUs: install.sh
+# adds this when the published image can't be used.
+services:
+  llamacpp:
+    build:
+      context: llamacpp
+      args:
+        CUDA_ARCHS: ${CUDA_ARCHS:?run install.sh}
