@@ -348,6 +348,8 @@ export class Workspace {
       folders: () => this.folders(t),
       /** Called after her write or edit tool changed a file, so removing the turn can undo it. */
       recordChange: (c: NewChange) => { this.changes(t.userId).record(t.pool, t.threadId, c); },
+      /** The file whichever thread names it (`fileKey`). */
+      fileKey: (path: string) => this.fileKey(t, path),
       /** Her write or edit call wrote this file (as she sees it). */
       madeFiles: (paths: string[]) => { try { this.madeFiles(t, paths); } catch { /* locked: unrecorded */ } },
       /** Her command ran from `since`: the files it left newer are hers, found in the background (the call doesn't wait). */
@@ -394,6 +396,18 @@ export class Workspace {
     const shared = inside(SHARED);
     if (shared) return { folder: s.folderThread(s.familyRoot(t.threadId)), path: `shared/${shared}` };
     return undefined;
+  }
+
+  /**
+   * The same file whichever thread names it, for telling threads that change one file apart: a file in a thread's
+   * folder or /shared by its folder, a file in a writable grant (mounted at its own path) by that path. A machine's,
+   * a worktree's own or anything else is undefined: no other thread writes it there.
+   */
+  fileKey(t: WorkspaceThread, path: string): string | undefined {
+    const origin = this.originKey(t, path);
+    if (origin) return `${origin.folder}:${origin.path}`;
+    const p = posix.normalize(path);
+    return this.grantsFor(t).some((g) => g.writable && p.startsWith(`${g.path.replace(/\/$/, "")}/`)) ? `grant:${p}` : undefined;
   }
 
   /** Thread `t` wrote these files (as she sees them). With `since`, from a command's sweep for files newer than its start. */

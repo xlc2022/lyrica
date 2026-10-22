@@ -689,6 +689,10 @@ describe("which thread wrote a file", () => {
     expect(workspace.originKey(child, "/workspace/site/index.html")).toEqual({ folder: "web/project", path: "site/index.html" });
     expect(workspace.originKey(child, "/shared/plan.md")).toEqual({ folder: "web/project", path: "shared/plan.md" });
     expect(workspace.originKey(child, "/srv/docs/a.txt")).toBeUndefined();
+    // fileKey names one file the same for every thread that can write it; outside her folders and grants, none.
+    expect(workspace.fileKey(child, "/workspace/site/index.html")).toBe(workspace.fileKey(project, "/workspace/site/index.html"));
+    expect(workspace.fileKey(child, "/workspace/site/index.html")).toBe("web/project:site/index.html");
+    expect(workspace.fileKey(child, "/srv/docs/a.txt")).toBeUndefined();
 
     workspace.madeFiles(child, ["/workspace/site/index.html", "/shared/plan.md", "/workspace/.lyrica/thumbs/x.png"]);
     workspace.madeFiles(project, ["/workspace/notes.md"]);

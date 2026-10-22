@@ -11,6 +11,7 @@ import {
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
+import type { SameFile } from "./same-file.ts";
 import { delegateThreads, delegationPart, imagePart, imageRefusal, markersFor, plainError, shortResult, toReactions, turnRecall } from "./messages.ts";
 
 export interface HostOptions {
@@ -38,6 +39,8 @@ export interface HostOptions {
   offlineRetryMs?: number;
   /** Her name for this deployment, which automatic recall leaves out. */
   name?: () => string;
+  /** Holds a write to a file another thread changed lately, once, and tells that thread (same-file.ts). */
+  sameFile?: SameFile;
   /** A project chat's threads, one line each, for her project section. */
   projectThreads?: (userId: string, pool: Pool, project: string) => string | undefined;
   /** A turn started or ended in a thread; at the end, whether the person's own text was part of it (a child's wake isn't). */
@@ -1005,6 +1008,7 @@ export class HostedThread {
           }),
           createWorkspaceExtension({
             ...tools,
+            sameFile: (path) => this.o.sameFile?.claim(this.userId, this.pool, this.threadId, tools.fileKey(path), path),
             approve: (r) => this.approve(r),
             proposePlan: (r) => this.proposePlan(r),
             setMode: (mode) => { tools.setMode(mode); this.emit({ type: "settings" }); },

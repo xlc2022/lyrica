@@ -56,6 +56,11 @@ export interface ThreadTools {
   proposePlan?(request: PlanRequest): Promise<GoAhead | undefined>;
   /** Records what a write or edit call did to a file, so removing its turn can undo it. */
   recordChange?(change: NewChange): void;
+  /**
+   * Called before her write or edit in the sandbox (the path as she sees it): a text when another thread changed the
+   * file lately and hasn't heard from this one, so the call is held once while the two agree who changes what.
+   */
+  sameFile?(path: string): string | undefined;
   /** Records that this thread wrote these files in the sandbox (paths as she sees them), for the file viewer's thread beside a file. */
   madeFiles?(paths: string[]): void;
   /** The same for a command: the files in her folder and /shared newer than `since`, its start, found in the background. */
@@ -283,6 +288,11 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       }
       const pve = event.toolName === "proxmox";
       const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve ? String(input.machine) : undefined;
+      // A file another thread just changed is held before anyone is asked, so a held change is never one the person approved.
+      if (place === "sandbox" && (event.toolName === "write" || event.toolName === "edit") && typeof input.path === "string" && tools.sameFile) {
+        const held = tools.sameFile(posix.resolve(await tools.target().cwd(), input.path));
+        if (held) return { block: true, reason: held };
+      }
       const machine = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place && (m.kind === "proxmox") === pve) : undefined;
       if (place && place !== "sandbox" && !machine) return { block: true, reason: `${place} isn't one of this thread's ${pve ? "Proxmox " : ""}machines.` };
       // On a machine, the stricter of the thread's mode and the machine's limit.
