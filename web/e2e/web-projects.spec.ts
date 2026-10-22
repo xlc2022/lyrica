@@ -502,6 +502,13 @@ test("a project: New project, suggested threads start into cards, the Threads po
   const alphaView = phone(page) ? page : page.getByRole("complementary");
   await expect(alphaView.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
   await expect(alphaView.getByLabel("Message", { exact: true })).toHaveCount(0);
+  await expect(alphaView.getByRole("button", { name: "Resolve", exact: true })).toHaveCount(0);
+  await alphaView.getByRole("button", { name: "Reopen" }).click();
+  await expect(alphaView.getByLabel("Message", { exact: true })).toBeVisible();
+  // Open again, its header carries Resolve: one press resolves it, and Reopen puts it back.
+  await alphaView.getByRole("button", { name: "Resolve", exact: true }).click();
+  await expect(alphaView.getByLabel("Message", { exact: true })).toHaveCount(0);
+  await expect(alphaView.getByRole("button", { name: "Resolve", exact: true })).toHaveCount(0);
   await alphaView.getByRole("button", { name: "Reopen" }).click();
   await expect(alphaView.getByLabel("Message", { exact: true })).toBeVisible();
 
@@ -1307,10 +1314,15 @@ fetch("/api/u/${userId}/me").then((r) => console.log("api: " + r.status), () => 
   await expect(lines).toHaveText(["old three.js", "parent: blocked", "cookie: blocked", "api: refused"], { timeout: 15_000 });
   await expect(lines.first()).toHaveClass(/c-warn/);
   if (!phone(page)) {
-    // Beside the file the thread has no Close panel of its own: the Thread toggle hides it.
+    // Beside the file the thread has no Close panel of its own (the Thread toggle hides it): the viewer's Close ends its header, at the far right.
     const beside = viewer.getByRole("region", { name: "make a page" });
     await expect(beside.getByText("You said: make a page")).toBeVisible();
     await expect(beside.getByRole("button", { name: "Close panel" })).toHaveCount(0);
+    await expect(beside.getByRole("button", { name: "Close", exact: true })).toBeVisible();
+    await expect(viewer.locator(".viewer-head").getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
+    await viewer.getByRole("button", { name: "Thread", exact: true }).click();
+    await expect(viewer.locator(".viewer-head").getByRole("button", { name: "Close", exact: true })).toBeVisible();
+    await viewer.getByRole("button", { name: "Thread", exact: true }).click();
     await expect(viewer.getByRole("button", { name: "Thread", exact: true })).toHaveAttribute("aria-pressed", "true");
   }
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/viewer-html-${page.viewportSize()!.width}.png` });

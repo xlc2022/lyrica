@@ -103,7 +103,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   on a focused thread opens it under the row; the arrows move between items
   and Escape closes it. The thread header's ⋯ (Thread actions) opens the
   same menu under it, and pressing it again closes it; in the panel,
-  Delete closes the panel. The user menu works the same way. Groups and unread marks are
+  Delete closes the panel. A project's thread that isn't resolved also has
+  **Resolve** in its header before the ⋯ (`POST …/resolve`). The user menu works the same way. Groups and unread marks are
   the user's own (`thread_groups`, `thread_prefs` in `user.db`); opening a
   thread clears its unread mark.
 - **Hidden pools:** with Show general or Show private off, a thread or
@@ -256,8 +257,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
 - **The file viewer** (`Viewer.tsx`, docs/ux.md §6): a modal dialog almost
   the window's size (the whole screen on a phone) holding the file large and,
   from 1180 px up, the thread whose library it is beside it (a `Thread`
-  inside a `PanelFrame`, so its header carries Open as a page, and Close
-  panel only below 1180 px, where it goes back to the file). That thread is
+  inside a `PanelFrame`, so its header carries Open as a page, then the
+  viewer's Close at the far right, taken from the file's header while the
+  thread shows beside it; below 1180 px Close panel in its place, which goes
+  back to the file). That thread is
   the one that wrote the file (the entry's `madeBy`) when it is recorded and
   still in the list; otherwise the Files panel's own thread for a file in its
   thread folder, and the project chat for a file in Project settings → Files

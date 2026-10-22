@@ -255,6 +255,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const title = t.live.title || s?.title || (s?.project ? "New project" : "New thread");
   const resolved = s?.state === "resolved";
   const reopen = () => post<ThreadSummary>(`${base}/reopen`).then((x) => { summary.set(x); refreshThreads(); }, (e: Error) => setSendError(e.message));
+  const resolve = () => post<ThreadSummary>(`${base}/resolve`).then((x) => { summary.set(x); refreshThreads(); }, (e: Error) => setSendError(e.message));
   const scroller = useStickyScroll([t.messages, t.live]);
   // On a phone the tokens move into the Threads popover, so the facts line stays at two rows.
   const phone = usePhone();
@@ -310,6 +311,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls={drawerId} onClick={() => setDrawer(!drawer)}>
               <Icon name="gear" /><span className="long">{s?.project ? "Settings (this thread)" : "Settings"}</span>
             </button>
+            {/* A project's thread resolves in one press (docs/ux.md §6); once resolved, its message box carries Reopen. */}
+            {s?.state !== undefined && !resolved && <button type="button" className="sm" aria-label="Resolve" title="Resolve" onClick={() => void resolve()}><Icon name="check" /><span className="long">Resolve</span></button>}
             {/* Its pointerdown stays here, so a press while the menu is open closes it rather than closing and reopening. */}
             {listed && (
               <button ref={moreBtn} type="button" className="icon sm" aria-label="Thread actions" title="Thread actions" aria-haspopup="menu" aria-expanded={!!menuAt}

@@ -111,12 +111,13 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, list, onSt
                 { label: "Copy path", onPick: () => { void navigator.clipboard?.writeText(file.path).catch((e: Error) => setError(e.message)); } },
               ]} />}
             {known && <button type="button" className="sm" title={`Thread: ${known.title || "New thread"}`} aria-pressed={showThread} onClick={toggleThread}>Thread</button>}
-            <button type="button" className="icon sm" aria-label="Close" title="Close" onClick={onClose}><Icon name="close" /></button>
+            {/* With the thread beside, Close moves to the end of its header, the far right of the viewer. */}
+            {!(wide && showThread) && <button type="button" className="icon sm" aria-label="Close" title="Close" onClick={onClose}><Icon name="close" /></button>}
           </>} onDownload={download} />
       )}
       {showThread && known && (
         <section className="viewer-thread" aria-label={known.title || "New thread"}>
-          <PanelFrame value={{ crumbs: [{ label: known.title || "New thread", href: threadHref }], expand: threadHref, noReturn: true, ...(wide ? {} : { close: toggleThread }) }}>
+          <PanelFrame value={{ crumbs: [{ label: known.title || "New thread", href: threadHref }], expand: threadHref, noReturn: true, ...(wide ? { close: onClose, closeLabel: "Close" } : { close: toggleThread }) }}>
             <Thread key={`${known.pool}/${known.id}`} ctx={ctx} pool={known.pool} threadId={known.id} threads={threads} />
           </PanelFrame>
         </section>

@@ -309,8 +309,10 @@ export interface PanelContext {
   crumbs: { label: string; href: string }[];
   /** The panel's page on its own. */
   expand: string;
-  /** Closes the panel; left out beside the file viewer at the split width, where the viewer's Thread toggle hides it. */
+  /** Closes the panel; beside the file viewer at the split width it closes the viewer instead, as the header's last button. */
   close?: () => void;
+  /** The close button's name where it isn't Close panel (Close, beside the file viewer). */
+  closeLabel?: string;
   /** Open as a page keeps no way back beside it (the thread beside the file viewer, whose page isn't a conversation's panel). */
   noReturn?: true;
 }
@@ -402,7 +404,7 @@ function forgetBeside(route: Route) {
   if (beside && (!panel || pageKey(panel) !== beside.page)) keepBeside(undefined);
 }
 
-/** Open as a page and Close panel (when the panel can close) at the end of the panel's header; on a page opened that way, Open in panel in their place, from 1180 px up. */
+/** Open as a page and Close panel (when the panel can close, or `closeLabel`) at the end of the panel's header; on a page opened that way, Open in panel in their place, from 1180 px up. */
 export function PanelButtons() {
   const p = usePanel();
   const wide = useWide();
@@ -430,7 +432,7 @@ export function PanelButtons() {
   return (
     <div className="head-actions panel-actions">
       <a className="icon sm" href={p.expand} aria-label="Open as a page" title="Open as a page" onClick={p.noReturn ? undefined : () => keepBeside({ from: location.hash, page: pageKey(asPanel(parse(p.expand))!) })}><Icon name="expand" /></a>
-      {p.close && <button type="button" className="icon sm" aria-label="Close panel" title="Close panel" onClick={p.close}><Icon name="close" /></button>}
+      {p.close && <button type="button" className="icon sm" aria-label={p.closeLabel ?? "Close panel"} title={p.closeLabel ?? "Close panel"} onClick={p.close}><Icon name="close" /></button>}
     </div>
   );
 }
