@@ -31,6 +31,9 @@ export function viewKindOf(name: string): ViewKind | undefined {
   return undefined;
 }
 
+/** Kinds that step to the previous or next of their list: what shows as a picture. */
+const STEPS = new Set<ViewKind | undefined>(["image", "svg"]);
+
 /** The word for a kind in the facts line. */
 const KIND_WORD: Record<ViewKind, string> = { html: "HTML", svg: "SVG", markdown: "Markdown", pdf: "PDF", image: "Image", audio: "Audio", video: "Video", text: "Text", other: "File" };
 /** Kinds with a Preview and a Source. */
@@ -57,10 +60,13 @@ const size = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.max
  * (`file.madeBy`, in the same pool) is shown in its place where there is one. It shows beside the file from the
  * split width up and a toggle away below it; without one the file shows on its own. `items` fill the ⋯ menu after
  * Download and Copy path, unless `onMenu` opens the library's own menu (rendered as `children`, inside the dialog).
+ * `list`: the files it was opened among, in their order; a picture steps to the previous or next picture of them
+ * with the buttons on its sides or Left and Right, through `onStep`, stopping at the ends.
  */
-export function Viewer({ ctx, threads, file, base, shownPath, thread, onMenu, onClose, children }: {
+export function Viewer({ ctx, threads, file, base, shownPath, thread, list, onStep, onMenu, onClose, children }: {
   ctx: ShellContext; threads: ThreadSummary[]; file: ViewerFile; base: string; shownPath: string;
-  thread?: { pool: Pool; threadId: string }; onMenu?: (e: React.MouseEvent) => void; onClose: () => void; children?: ReactNode;
+  thread?: { pool: Pool; threadId: string }; list?: ViewerFile[]; onStep?: (f: ViewerFile) => void;
+  onMenu?: (e: React.MouseEvent) => void; onClose: () => void; children?: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const wide = useWide();
@@ -73,6 +79,17 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, onMenu, on
   const contentUrl = (download = false) => `${base}/content?path=${encodeURIComponent(file.path)}${download ? "&download=1" : ""}`;
   const viewUrl = `${base}/view?path=${encodeURIComponent(file.path)}`;
   const download = () => { const a = document.createElement("a"); a.href = contentUrl(true); a.download = file.name; a.click(); };
+  const pictures = STEPS.has(viewKindOf(file.name)) && onStep ? (list ?? []).filter((f) => STEPS.has(viewKindOf(f.name))) : [];
+  const at = pictures.findIndex((f) => f.path === file.path);
+  const steps: Steps | undefined = at >= 0 && pictures.length > 1
+    ? { at, count: pictures.length, go: (by) => { const f = pictures[at + by]; if (f) onStep!(f); } } : undefined;
+  // Left and Right step, unless a field, a menu or the thread beside has the keys.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!steps || (e.key !== "ArrowLeft" && e.key !== "ArrowRight") || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if ((e.target as Element).closest("input, textarea, select, [contenteditable], [role='menu'], .ctx-menu, .viewer-thread")) return;
+    e.preventDefault();
+    steps.go(e.key === "ArrowLeft" ? -1 : 1);
+  };
 
   // The thread that wrote the file, where one is recorded and still there; else the library's own.
   const known = thread && ((file.madeBy && findThread(threads, thread.pool, file.madeBy)) || findThread(threads, thread.pool, thread.threadId));
@@ -84,9 +101,9 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, onMenu, on
   return (
     <dialog ref={ref} className="viewer" aria-label={file.name} data-split={(wide && showThread) || undefined}
       // Escape closes the topmost thing: a menu or drawer open inside first, then the viewer.
-      onCancel={(e) => { e.preventDefault(); if (!document.activeElement?.closest("[role='menu'], .ctx-menu, .drawer")) onClose(); }}>
+      onCancel={(e) => { e.preventDefault(); if (!document.activeElement?.closest("[role='menu'], .ctx-menu, .drawer")) onClose(); }} onKeyDown={onKeyDown}>
       {showFile && (
-        <FilePane file={file} shownPath={shownPath} contentUrl={contentUrl()} viewUrl={viewUrl}
+        <FilePane file={file} shownPath={shownPath} contentUrl={contentUrl()} viewUrl={viewUrl} steps={steps}
           actions={<>
             {onMenu ? <button type="button" className="icon sm" aria-label="File actions" aria-haspopup="menu" title="File actions" onClick={onMenu}><Icon name="more" /></button>
               : <RowMenu label="File actions" items={[
@@ -110,11 +127,14 @@ export function Viewer({ ctx, threads, file, base, shownPath, thread, onMenu, on
   );
 }
 
+/** A picture's place among the pictures it was opened with, and the step to the one before or after. */
+type Steps = { at: number; count: number; go: (by: -1 | 1) => void };
+
 type Loaded = { kind: "loading" } | { kind: ViewKind; text?: string } | { kind: "error"; message: string };
 
 /** The file itself: its header line, then what it shows as. */
-function FilePane({ file, shownPath, contentUrl, viewUrl, actions, onDownload }: {
-  file: ViewerFile; shownPath: string; contentUrl: string; viewUrl: string; actions: ReactNode; onDownload: () => void;
+function FilePane({ file, shownPath, contentUrl, viewUrl, steps, actions, onDownload }: {
+  file: ViewerFile; shownPath: string; contentUrl: string; viewUrl: string; steps?: Steps; actions: ReactNode; onDownload: () => void;
 }) {
   const byName = viewKindOf(file.name);
   const [state, setState] = useState<Loaded>({ kind: "loading" });
@@ -146,7 +166,7 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, actions, onDownload }:
     <section className="viewer-file" aria-label={shownPath}>
       <div className="viewer-head">
         <span className="fname mono" title={shownPath}>{shownPath}</span>
-        <span className="viewer-facts muted">{kind ? KIND_WORD[kind] : "File"} · <span className="num">{size(file.size)}</span> · <span className="num" title={fullTime(file.modified)}>{shortTime(file.modified)}</span></span>
+        <span className="viewer-facts muted">{kind ? KIND_WORD[kind] : "File"}{steps && <> <span className="num">{steps.at + 1}</span> of <span className="num">{steps.count}</span></>} · <span className="num">{size(file.size)}</span> · <span className="num" title={fullTime(file.modified)}>{shortTime(file.modified)}</span></span>
         <span className="viewer-acts">
           {sourceable && (
             <div className="seg" role="group" aria-label="Show">
@@ -163,6 +183,13 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, actions, onDownload }:
         {state.kind !== "loading" && state.kind !== "error" && (raw ? <pre className="viewer-text">{text}</pre> : (
           <Shown kind={state.kind} file={file} text={text} contentUrl={contentUrl} viewUrl={viewUrl} onDownload={onDownload} />
         ))}
+        {/* aria-disabled, not disabled, at an end: a disabled button would drop the focus, and the keys with it. */}
+        {steps && !raw && (
+          <>
+            <button type="button" className="viewer-step prev" aria-label="Previous image" title="Previous image (←)" aria-disabled={steps.at === 0} onClick={() => steps.go(-1)}><Icon name="back" /></button>
+            <button type="button" className="viewer-step next" aria-label="Next image" title="Next image (→)" aria-disabled={steps.at === steps.count - 1} onClick={() => steps.go(1)}><Icon name="right" /></button>
+          </>
+        )}
       </div>
     </section>
   );

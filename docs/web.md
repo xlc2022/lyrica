@@ -255,7 +255,14 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `…/files/view` (the browser's own viewer); images, audio and video from
   `…/files/content` in their own elements; Markdown rendered by `Prose`
   (raw HTML skipped); other names by the type `…/files/content` answers,
-  text up to 512 KB as text and anything else with Download. Escape closes
+  text up to 512 KB as text and anything else with Download. An image or
+  SVG opened among others (the caller's `list`: the Files panel's folder,
+  its search hits or its Images grid, as filtered; Project settings' folder
+  shown or its Images grid) steps through the images and SVGs of that list
+  with **Previous image** and **Next image**, round 44 px buttons on its
+  sides, and with Left and Right, except in a field, a menu or the thread
+  beside. It stops at the ends, where that button is disabled, and the
+  facts read "Image 2 of 4". Escape closes
   a menu inside first, then the viewer, and so does any navigation.
 - **Project settings page** (`…/p/<pool>/<project>/general`, `/memory` or `/files`),
   sections at the left. **General**: Goal, the Paused and **Watching

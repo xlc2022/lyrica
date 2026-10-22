@@ -51,6 +51,9 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
   const [deleting, setDeleting] = useState<FileEntry>();
   /** The file open in the viewer, with the project chat beside it. */
   const [viewing, setViewing] = useState<FileEntry>();
+  /** The files the open one was opened among (the folder shown or the Images grid), for the viewer's steps. */
+  const [among, setAmong] = useState<FileEntry[]>();
+  const view = (f: FileEntry, list?: FileEntry[]) => { setViewing(f); setAmong(list); };
   const closeViewer = useCallback(() => setViewing(undefined), []);
   const [dropping, setDropping] = useState(false);
   const [run, busy, error] = useAction();
@@ -146,7 +149,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
                   </span>
                   {e.kind === "folder"
                     ? <button type="button" className="sm" onClick={() => setDir(e.path)}>Open</button>
-                    : <button type="button" className="sm" onClick={() => setViewing(e)}>Open</button>}
+                    : <button type="button" className="sm" onClick={() => view(e, listing.entries)}>Open</button>}
                   <RowMenu label={`Actions for ${e.name}`} items={menu(e)} />
                 </li>
               ))}
@@ -164,7 +167,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
             <ul className="pfiles-grid" aria-label="Images">
               {shownImages.map((i) => (
                 <li key={i.path}>
-                  <button type="button" className="pfiles-thumb" aria-label={`Open ${i.name}`} onClick={() => setViewing(i)}><Thumb path={i.path} alt="" files={links} /></button>
+                  <button type="button" className="pfiles-thumb" aria-label={`Open ${i.name}`} onClick={() => view(i, shownImages)}><Thumb path={i.path} alt="" files={links} /></button>
                   <span className="pfiles-tile">
                     {renaming === i.path
                       ? <InlineRename className="mono" value={i.name} label="New name" onSave={(n) => rename(i, n)} onDone={() => setRenaming(undefined)} />
@@ -178,7 +181,8 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
         </>
       )}
       <input ref={picker} type="file" multiple hidden onChange={(e) => { send(e.target.files ?? []); e.target.value = ""; }} />
-      {viewing && <Viewer ctx={ctx} threads={ctx.threads} file={viewing} base={base} shownPath={relative(viewing.path)} thread={{ pool, threadId }} onClose={closeViewer} />}
+      {viewing && <Viewer ctx={ctx} threads={ctx.threads} file={viewing} base={base} shownPath={relative(viewing.path)} thread={{ pool, threadId }}
+        list={among} onStep={(f) => setViewing(f as FileEntry)} onClose={closeViewer} />}
       {moving && <MoveDrawer base={base} entry={moving} onClose={() => setMoving(undefined)} onMoved={() => { setMoving(undefined); void load(); }} />}
       {deleting && (
         <ConfirmDialog title={`Delete ${deleting.name}?`} danger confirm="Delete" onCancel={() => setDeleting(undefined)}

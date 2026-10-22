@@ -46,6 +46,8 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const [listings, setListings] = useState<Record<string, FileListing>>({});
   const [open, setOpen] = useState<Set<string>>(() => new Set([WORKDIR]));
   const [current, setCurrent] = useState<FileEntry>();
+  /** The files the open one was opened among (its folder, the search hits or the Images grid), for the viewer's steps. */
+  const [among, setAmong] = useState<FileEntry[]>();
   const [menu, setMenu] = useState<MenuAt>();
   /** The row renamed in place from its Rename button. */
   const [renaming, setRenaming] = useState<string>();
@@ -127,7 +129,10 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     setOpen((s) => { const n = new Set(s); if (n.has(dir)) n.delete(dir); else n.add(dir); return n; });
     if (!listings[dir]) load(dir).catch(fail);
   };
-  const view = (f: FileEntry) => { setCurrent(f); setCwd(parent(f.path)); };
+  const view = (f: FileEntry, list?: FileEntry[]) => {
+    setCurrent(f); setCwd(parent(f.path));
+    setAmong(list ?? (hits ? hits.entries : listings[parent(f.path)]?.entries));
+  };
 
   // Ctrl- or Cmd-click adds to the selection, Shift-click takes everything between (docs/ux.md §6).
   const visible = useMemo(() => {
@@ -315,7 +320,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
           </div>
         </>
       ) : (
-        <ImagesTab images={images} filter={filter} onFilter={setFilter} links={links} sel={sel} onPick={pick} press={(e) => press({ kind: "file", entry: e })} onOpen={view} />
+        <ImagesTab images={images} filter={filter} onFilter={setFilter} links={links} sel={sel} onPick={pick} press={(e) => press({ kind: "file", entry: e })} onOpen={(i) => view(i, shownImages(images, filter))} />
       )}
       {sel.size > 0 && (
         <div className="selbar" role="toolbar" aria-label="Selection">
@@ -328,6 +333,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
       {current && (
         // The file large, with this thread beside it when the file is in its own folder (a grant's has no thread of its own).
         <Viewer ctx={ctx} threads={threads} file={current} base={base} shownPath={shown(current.path)} thread={isUnderWorkdir(current.path) ? { pool, threadId } : undefined}
+          list={among} onStep={(f) => view(f as FileEntry, among)}
           onMenu={(e) => openMenu(e, { kind: "file", entry: current })} onClose={closeViewer}>
           {menu && fileMenu}
         </Viewer>
@@ -337,12 +343,14 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   );
 }
 
+const shownImages = (images: ImageEntry[] | undefined, filter: Filter) => images?.filter((i) => filter === "all" || i.source === filter);
+
 /** The thread's images, filtered, each opening in the viewer. */
 function ImagesTab({ images, filter, onFilter, links, sel, onPick, press, onOpen }: {
   images?: ImageEntry[]; filter: Filter; onFilter: (f: Filter) => void; links: FileLinks; sel: Set<string>;
   onPick: (e: React.MouseEvent, entry: FileEntry) => boolean; press: (entry: FileEntry) => Record<string, unknown>; onOpen: (entry: FileEntry) => void;
 }) {
-  const shownImages = images?.filter((i) => filter === "all" || i.source === filter);
+  const listed = shownImages(images, filter);
   return (
     <>
       <div className="ifilter">
@@ -353,7 +361,7 @@ function ImagesTab({ images, filter, onFilter, links, sel, onPick, press, onOpen
         </div>
       </div>
       <div className="igrid" aria-label="Images">
-        {!images ? <p className="empty">Loading…</p> : !shownImages?.length ? <p className="empty">No images yet</p> : shownImages.map((i) => (
+        {!images ? <p className="empty">Loading…</p> : !listed?.length ? <p className="empty">No images yet</p> : listed.map((i) => (
           <button key={i.path} type="button" aria-label={i.name} className={sel.has(i.path) ? "sel" : undefined} aria-pressed={sel.has(i.path) || undefined}
             onClick={(e) => { if (!onPick(e, i)) onOpen(i); }} {...press(i)}>
             <Thumb path={i.path} alt="" files={links} /><span className="meta mono">{i.name}</span>
