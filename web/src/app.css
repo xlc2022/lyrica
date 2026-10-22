@@ -797,14 +797,18 @@ form.drawer-body { flex: 1; }
 .twake { font-size: 12px; color: var(--muted); white-space: nowrap; }
 /* A project thread's chips (docs/ux.md §6, Project.tsx ThreadChips) in its rows and on its card: the checklist's count, the pull request with its checks' dot, the live subagents. Numbers in mono; the dot per §5. */
 .chips { display: inline-flex; gap: 4px; align-items: center; white-space: nowrap; }
-.chip { display: inline-flex; align-items: center; gap: 4px; min-height: 20px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); font-size: 12px; font-family: var(--ui); color: var(--muted); line-height: 1; text-decoration: none; }
-.chip .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.chip .ic { width: 12px; height: 12px; }
-.chip.pull { color: var(--fg); }
-.chip .dot { width: 6px; height: 6px; }
-a.chip:hover { border-color: color-mix(in oklab, var(--fg) 25%, var(--line)); text-decoration: none; }
+/* Scoped under .chips: Notifications' filter chips are a bare .chip of their own size. */
+.chips > .chip { display: inline-flex; align-items: center; gap: 4px; min-height: 20px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); font-size: 12px; font-family: var(--ui); color: var(--muted); line-height: 1; text-decoration: none; }
+.chips > .chip .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.chips > .chip .ic { width: 12px; height: 12px; }
+.chips > .chip.pull { color: var(--fg); }
+.chips > .chip .dot { width: 6px; height: 6px; }
+.chips > a.chip { position: relative; }
+.chips > a.chip:hover { border-color: color-mix(in oklab, var(--fg) 25%, var(--line)); text-decoration: none; }
+/* The card's pull request link keeps its small look; on touch its hit area grows to 44 px like the facts line's links (ux.md: touch targets are 44 px). */
+@media (pointer: coarse) { .chips > a.chip::after { content: ""; position: absolute; inset: -12px -4px; } }
 .tcard-head .chips { font-weight: 400; }
-.thread-item:hover .chip { background: var(--panel); }
+.thread-item:hover .chips > .chip { background: var(--panel); }
 .tcard-title { color: var(--fg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tcard-line { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tcard .msg-menu { position: relative; }
