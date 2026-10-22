@@ -54,7 +54,7 @@ export function SkillsSection({ ctx }: { ctx: ShellContext }) {
         : <div className="row">
           <button type="button" onClick={() => setAdding("skill")}>Add skill</button>
           <RowMenu label="More skill actions" items={[
-            ...(page.data?.skills.some((x) => x.state === "active") ? [{ label: "Export all", onPick: () => void run(() => exportAll(userId)) }] : []),
+            ...(page.data?.skills.some((x) => x.state === "active") ? [{ label: "Export all", title: "Downloads a Markdown file. It isn't encrypted.", onPick: () => void run(() => exportAll(userId)) }] : []),
             { label: "Import…", onPick: () => setAdding("import") },
           ]} />
         </div>}
