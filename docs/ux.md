@@ -117,7 +117,7 @@ Rules:
   Not "Everything is fine", not "Loading your models…".
 - **Names in use** (don't invent synonyms): General and Private (pools),
   Hidden, Notifications, Backend, Models, Tasks, Text models, Thread actions, Tool limit,
-  Checks, Add check, Skills, Add skill, Export all, Import…, New skill, Steps, Approve, Decline, Background command, Not now, Command, Sudoers,
+  Checks, Add check, Skills, Add skill, Export all, Import…, New skill, Steps, Approve, Decline, Background command, Question, Question not asked, Not now, Command, Sudoers,
   Pinned to the top, Unpinned, Pull request #<n> on <repo> (a chip's tooltip,
   with its checks by name on the lines below), <n> subagents working,
   Image models, Hosts and endpoints, Downloads, Clean up, Recent calls,
