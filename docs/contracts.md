@@ -888,9 +888,13 @@ Custom roles override built-ins by name.
   `recommended` naming exactly one option's label; a bare-string step as
   `{ text, state: "todo" }`; and step state aliases (ignoring case:
   in_progress, in progress, active, started → doing; pending, not started →
-  todo; complete, completed, finished → done). Any other malformed `ask` or
-  `steps` call gets an error naming the field and position, the received
-  type (never the text), what is allowed, and one valid example.
+  todo; complete, completed, finished → done); and an option label over 40
+  characters, cut at the last whole word within 40 when its whole wording,
+  a period and the consequence fit in 200 characters as the new consequence.
+  A string over its limit gets an error naming the field, its length and the
+  limit. Any other malformed `ask` or `steps` call gets an error naming the
+  field and position, the received type (never the text), what is allowed,
+  and one valid example.
   When a reply ends with a question next to 2–4 list items (before or after
   it), the thread can ask, no question is open and the run made no `ask`
   call, the extension sends one hidden follow-up (`lyrica-ask-nudge`,

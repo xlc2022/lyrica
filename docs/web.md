@@ -1131,7 +1131,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
 - A `threads` call is a card headed by what it did: "Child thread: <title>"
   for a start, "Update to the parent thread" or "Message to a thread" for a
   message, and "Thread read", "Thread stopped", "Thread resolved",
-  "Threads" (list) and the like for the rest (`THREADS_HEADS`); it links
+  "Threads" (list) and the like for the rest (`THREADS_HEADS`); a failed
+  `ask` is "Question not asked" with its error, never a question card; it links
   to the thread — one **Open** link in its head, or when the run made
   more than one thread a **Threads <n>** button with the count in mono and a
   chevron (`aria-expanded`, turning down while open; `src/Messages.tsx`) that
