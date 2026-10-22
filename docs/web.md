@@ -172,7 +172,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   its state word and its time in mono); below it a popover of the project's
   threads grouped Waiting on
   you, Working, Queued, Idle and Resolved (each a link, with its unseen
-  count). Each row carries the thread's **chips** (`ThreadChips`, docs/ux.md
+  count). Each row carries the thread's **chips** (`ThreadChips`, root `.tchips`, docs/ux.md
   §6 "A project's threads at a glance"), plain spans inside the row's link:
   its checklist's count from `ThreadSummary.steps`, its open pull request
   from `ThreadSummary.pull` (the number, and the checks' dot as the changes

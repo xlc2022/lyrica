@@ -39,7 +39,7 @@ export function ThreadChips({ t, link }: { t: Pick<ThreadSummary, "steps" | "pul
   );
   const pullTitle = t.pull && `Pull request #${t.pull.number} on ${t.pull.repo}${checks && checks.tone !== "none" ? `\n${checks.text}` : ""}`;
   return (
-    <span className="chips">
+    <span className="tchips">
       {list && <span className="chip" title="Checklist"><span className="num">{list.done}</span> of <span className="num">{list.total}</span><span className="sr-only"> steps done</span></span>}
       {t.pull && (link
         ? <a className="chip pull" href={t.pull.url} target="_blank" rel="noreferrer" title={pullTitle} aria-label={`Pull request #${t.pull.number}`}>{pull}</a>

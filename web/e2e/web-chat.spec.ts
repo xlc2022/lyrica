@@ -1273,7 +1273,7 @@ test("a project thread's chips: its checklist's count, its pull request with the
   await expect(card).toBeVisible();
   // On the card the checklist keeps its own button, the pull request is a link to it, and the subagents are counted.
   await expect(card.locator(".tcard-count .link")).toHaveText("1 of 3");
-  await expect(card.locator(".chips .chip")).toHaveCount(2);
+  await expect(card.locator(".tchips .chip")).toHaveCount(2);
   const link = card.locator("a.chip.pull");
   await expect(link).toHaveText("#430");
   await expect(link).toHaveAttribute("href", pull.url);
