@@ -1793,6 +1793,9 @@ Details in [docs/sleep.md](docs/sleep.md).
   - Each operation goes either to a bubblewrap sandbox, which sees only the
     folders granted to the thread, or to one of the machines granted to it
     (see [Machines](#machines)).
+  - A long command runs in the background: approved as any command, it
+    returns a job id at once, and the thread is told (and woken if idle)
+    when it ends. Jobs live in `lyricad`'s memory only.
   - An administrator decides which folders each user may grant, with separate
     lists for the general and private pools. The lists live in `self.db`, so
     the user's password isn't needed and users can't extend their own.

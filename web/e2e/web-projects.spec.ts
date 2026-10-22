@@ -882,6 +882,10 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await expect(page.locator("main h1")).toHaveText(chatTitle);
   await alphaRow.click();
   await expect(alphaBeside.getByRole("heading", { level: 1, name: "Alpha" })).toBeFocused();
+  // The row of the thread in the panel is outlined, and only that one.
+  await expect(alphaRow).toHaveAttribute("data-beside", "true");
+  await expect(betaRow).not.toHaveAttribute("data-beside");
+  await expect(page.locator(".side a.thread[data-beside]")).toHaveCount(1);
   // A double-click on a row's title renames it in place; so does one on the chat's title.
   await betaRow.locator(".title").dblclick();
   const rowField = page.locator(".side .children a.thread").getByRole("textbox", { name: "Title" });

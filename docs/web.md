@@ -203,7 +203,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `besideOnClick`: the project chat, or the thread the child was started
   from), a plain click on a child row opens it beside too, replacing what
   the panel shows. The sidebar's other rows navigate as before, and so does any other
-  modified click. The column
+  modified click. The row of the thread in the panel carries `data-beside`,
+  drawn as a thin box without the open row's fill. The column
   is 280 to 1000 px (420 to start), dragged on its divider (a `separator`
   that the arrow keys move too), the width kept in `localStorage`
   (`lyrica.panel-width`); the grid holds it short of leaving the

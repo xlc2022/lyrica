@@ -582,7 +582,9 @@ usage, finished, stopped, interrupted) go out as `delegation` to the parent
 thread's stream and to the subagent's own thread's stream. What a run
 delivers into the thread (a background result or question, a note, a user's
 message to a subagent) goes out as `notice`, with its status and threads,
-and is stored: the message list shows it as a `notice` message.
+and is stored: the message list shows it as a `notice` message. A
+background command's end comes the same way, with status `job`, and wakes
+an idle thread once (docs/workspace.md, Background commands).
 
 Child-thread notices use the same encrypted delivery path. Questions,
 `needsYou`, a report at the child's idle turn end, and failure/didn't-start

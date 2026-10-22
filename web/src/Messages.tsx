@@ -810,7 +810,7 @@ function ThreadsPill({ threads, env }: { threads: ThreadRef[]; env: Env }) {
 
 const NOTICE_HEADS: Record<string, string> = {
   question: "Subagent asks", note: "Subagent note", user_message: "Message to a subagent", interrupted: "Subagent interrupted",
-  update: "Child thread", limit: "Tool limit", "checks-passed": "Checks", "checks-failed": "Checks",
+  update: "Child thread", limit: "Tool limit", "checks-passed": "Checks", "checks-failed": "Checks", job: "Background command",
 };
 /** A project's checks at the end of a code turn: a dot and a word after the head. */
 const CHECK_STATES: Record<string, ReactNode> = {
