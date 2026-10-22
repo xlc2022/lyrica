@@ -113,7 +113,7 @@ tool each for A and B, prompt lines only where the thread has a machine).
 
 - A guide (`extension/src/host-install.md`), offered by one prompt line when
   the thread has an SSH machine, and read with `read_guide({ name:
-  "model-host" })`. It follows the danube job: check the card, driver and
+  "model-host" })`. It follows the steps of a hand-run install: check the card, driver and
   free disk; say which host images can run there; list the system-wide
   changes for a yes; get the code onto the machine (a read-only deploy key
   the user adds); hand the root steps over with `run_as_root`; start the

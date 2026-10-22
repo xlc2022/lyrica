@@ -176,19 +176,19 @@ describe("workspace tools in a Pi session", () => {
     const asked: ApprovalRequest[] = [];
     const { commands, results } = await run("acceptEdits", [
       fauxToolCall("bash", { command: "docker compose pull", background: true }, { id: "1" }),
-      fauxToolCall("bash", { command: "make", background: true, machine: "danube" }, { id: "2" }),
+      fauxToolCall("bash", { command: "make", background: true, machine: "box" }, { id: "2" }),
       fauxToolCall("jobs", { action: "list" }, { id: "3" }),
       fauxToolCall("jobs", { action: "output", id: "j1" }, { id: "4" }),
       fauxToolCall("jobs", { action: "stop", id: "j1" }, { id: "5" }),
-    ], { jobs, machines: [{ name: "danube", kind: "ssh", limit: "auto", root: null }], approve: async (r) => { asked.push(r); return true; } });
-    expect(asked.map((r) => [r.tool, r.machine])).toEqual([["bash", undefined], ["bash", "danube"]]);
-    expect(jobs).toEqual(["sandbox: docker compose pull", "danube: make"]);
+    ], { jobs, machines: [{ name: "box", kind: "ssh", limit: "auto", root: null }], approve: async (r) => { asked.push(r); return true; } });
+    expect(asked.map((r) => [r.tool, r.machine])).toEqual([["bash", undefined], ["bash", "box"]]);
+    expect(jobs).toEqual(["sandbox: docker compose pull", "box: make"]);
     // Nothing ran in the foreground.
     expect(commands).toEqual([]);
     const said = results.join("\n\n");
     expect(said).toMatch(/^bash: Started j1 in the sandbox, running for 0 s: docker compose pull\nYou'll be told when it ends/m);
-    expect(said).toMatch(/^bash: Started j2 in danube/m);
-    expect(said).toContain("j2 in danube, running for 0 s: make");
+    expect(said).toMatch(/^bash: Started j2 in box/m);
+    expect(said).toContain("j2 in box, running for 0 s: make");
     expect(said).toContain("half way");
     expect(said).toContain("jobs: Stopped j1.");
   });

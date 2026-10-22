@@ -34,13 +34,13 @@ describe("background commands", () => {
     await stream.until((e) => e.type === "turn_end", from);
 
     const { target, finish } = slowTarget();
-    const job = dm.d.services!.workspace.jobs.start({ userId: rt.ada.id, pool: "general", threadId: thread.id }, "danube", target, "docker compose pull", "/home/lyrica");
+    const job = dm.d.services!.workspace.jobs.start({ userId: rt.ada.id, pool: "general", threadId: thread.id }, "box", target, "docker compose pull", "/home/lyrica");
     expect(job.id).toBe("j1");
     from = stream.events.length;
     finish("Pulled llama-server\nPulled host-api\n");
     await stream.until((e) => e.type === "turn_end", from);
 
-    expect(asked.at(-1)).toMatch(/Background command j1 in danube, exited with code 0 after \d+ s: docker compose pull\\nLast output:\\nPulled llama-server\\nPulled host-api/);
+    expect(asked.at(-1)).toMatch(/Background command j1 in box, exited with code 0 after \d+ s: docker compose pull\\nLast output:\\nPulled llama-server\\nPulled host-api/);
     const page = (await ada.get<MessagePage>(`${path}/messages`)).body;
     const notice = page.messages.find((m) => m.role === "notice")!;
     expect(notice.parts[0]).toMatchObject({ type: "delegation", status: "job", text: expect.stringContaining("docker compose pull") });
@@ -62,7 +62,7 @@ describe("a stopped background command", () => {
     const path = `/api/u/${rt.ada.id}/threads/general/${enc(thread.id)}`;
     const t = { userId: rt.ada.id, pool: "general", threadId: thread.id };
     const jobs = dm.d.services!.workspace.jobs;
-    jobs.start(t, "danube", slowTarget().target, "docker compose pull", "/home/lyrica");
+    jobs.start(t, "box", slowTarget().target, "docker compose pull", "/home/lyrica");
     expect(jobs.stop(t, "j1", "stopped by her")).toBe(true);
     await new Promise((r) => setTimeout(r, 300));
     expect(model.requests).toHaveLength(0);
@@ -70,7 +70,7 @@ describe("a stopped background command", () => {
     expect(page.messages.find((m) => m.role === "notice")!.parts[0]).toMatchObject({ status: "job", text: expect.stringContaining("stopped after") });
 
     // Lock stops a running job the same way: no turn starts.
-    jobs.start(t, "danube", slowTarget().target, "make", "/home/lyrica");
+    jobs.start(t, "box", slowTarget().target, "make", "/home/lyrica");
     await dm.d.lockUser(rt.ada.id);
     await new Promise((r) => setTimeout(r, 300));
     expect(model.requests).toHaveLength(0);
