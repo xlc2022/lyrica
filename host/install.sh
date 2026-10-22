@@ -228,7 +228,8 @@ if [[ $VENDOR == nvidia ]] && nvidia-smi --query-gpu=pci.device_id --format=csv,
   # shellcheck source=prebuilt.sh
   . ./prebuilt.sh
   CUDA_ARCHS=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | tr -d '. ' | sort -u | sed 's/$/-real/' | paste -sd';' -)
-  FILES+=:compose.cmp.yaml
+  # The speech server with a cuDNN that still has Volta kernels.
+  FILES+=:compose.cmp.yaml:compose.cmp.speech.yaml
   prebuilt_pick llamacpp "$CUDA_ARCHS" "$START"
   LLAMACPP_CMP_IMAGE=${PREBUILT:-lyrica-host-llamacpp:cmp}
   [[ -n $PREBUILT ]] || FILES+=:compose.cmp.build.yaml

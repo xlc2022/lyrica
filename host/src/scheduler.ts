@@ -22,8 +22,8 @@ export const PRIORITIES: Priority[] = ["chat", "image", "background"];
 
 const RANK: Record<Priority, number> = { chat: 0, image: 1, background: 2 };
 
-/** Servers with no kernels for a CMP 100-210 (sm_70): vLLM's PyTorch, and the speech server's cuDNN. */
-const NOT_ON_CMP: Server[] = ["vllm", "speech"];
+/** Servers with no kernels for a CMP 100-210 (sm_70): vLLM, whose PyTorch has none. */
+const NOT_ON_CMP: Server[] = ["vllm"];
 const GIB = 1024 ** 3;
 
 export const paused = () => new HostError(503, "paused", "The model host is paused.");

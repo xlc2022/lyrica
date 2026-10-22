@@ -1,6 +1,6 @@
 # The model host's speech server: Kokoro voice models through ONNX Runtime,
 # on the CPU or an NVIDIA GPU. Build from the repository root:
-#   docker build -f host/speech/Dockerfile --build-arg FLAVOUR=cpu|cuda .
+#   docker build -f host/speech/Dockerfile --build-arg FLAVOUR=cpu|cuda|cuda-volta .
 # Every package is pinned with its hash (lock.sh); nothing is fetched at run time.
 ARG BASE=python:3.12.15-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
 FROM ${BASE}

@@ -441,9 +441,8 @@ Only the repository's name and revision leave the host.
   out entirely (a GPU kept for the display, for example). Every field is
   optional; the defaults are all the servers this host runs, 512 MiB, and
   not left out (left out for an integrated GPU beside a discrete one). A
-  server the host doesn't run is `invalid`. A CMP 100-210 never runs vLLM
-  or the speech server, whose PyTorch and cuDNN have no kernels for it,
-  whatever its settings say.
+  server the host doesn't run is `invalid`. A CMP 100-210 never runs vLLM,
+  whose PyTorch has no kernels for it, whatever its settings say.
   `keepFree` must be less than the GPU's memory.
   Models it may no longer hold are unloaded first (`in_use` while a request
   runs on one). Answers `{ "settings": { ... } }`.

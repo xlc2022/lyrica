@@ -111,8 +111,8 @@ stable-diffusion.cpp, downloaded the same way (or built, 18 minutes),
 makes the images instead: create only, for Z-Image,
 Qwen-Image, FLUX and SDXL recipes without LoRAs. The first image after a
 load takes about 2.5 minutes while it converts the weights to Q8_0.
-vLLM models, dictation included, can't run on the card, and voices run on
-the CPU when it is the host's only kind of GPU.
+vLLM models, dictation included, can't run on the card. Voices run on it
+with an older cuDNN, so on such a host a Blackwell card can't run voices.
 Details are in [host/README.md](../../host/README.md#image-models).
 
 ## Install

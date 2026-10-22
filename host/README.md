@@ -283,9 +283,11 @@ per host, and Lyrica's router filters create tiers by it.
   reads them in English and Mandarin, including English words in Mandarin
   text, and streams the audio on `/v1/audio/speech`. Voices in other
   languages are left out.
-  - It runs on one GPU on an NVIDIA host (CUDA), and on the CPU elsewhere
-    and on a host whose GPUs are all CMP 100-210s (its cuDNN fails on
-    sm_70); Kokoro is small enough for either. It runs as the user that
+  - It runs on one GPU on an NVIDIA host (CUDA), and on the CPU elsewhere;
+    Kokoro is small enough for either. On a host with a CMP 100-210,
+    `compose.cmp.speech.yaml` builds it with an older cuDNN that still has
+    Volta kernels (`requirements.cuda-volta.txt`), so a Blackwell card
+    beside the CMP can't run voices. It runs as the user that
     downloads the models (10001), so it reads them whatever the mode of
     `lyrica/`. Once nothing is loaded, a server
     that has used a GPU exits and Docker starts it again, since ONNX
