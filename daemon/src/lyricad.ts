@@ -481,6 +481,8 @@ export class Lyricad implements Drainable {
       users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads,
       paused: stopped,
       project: (u, p, project) => projects.settings(u, p, project),
+      held: (u, p, t) => sameFile.held(u, p, t),
+      messaged: (u, p, from, to) => sameFile.messaged(u, p, from, to),
       draft: (u, p, project, change) => { projects.set(u, p, project, { draftGoal: change.goal, draftInstructions: change.instructions }); },
       updated: (u, p, project, thread) => watcher.updated(u, p, project, thread),
       wakeups: (): Wakeups => wakeups,
@@ -490,9 +492,13 @@ export class Lyricad implements Drainable {
     // Two threads on one file: the second is held once and the first is told, steered into its turn or kept for its next.
     const sameFile = new SameFile({
       exists: (u, p, t) => { const v = memory.openThreadView(u, p); try { return !!v.own.getThread(t); } finally { v.close(); } },
+      busy: (u, p, t) => host.busy(u, p, t),
       tell: (u, p, to, from, text) => {
         if (!host.busy(u, p, to)) return host.get(u, p, to).appendParent(text, from);
         host.get(u, p, to).send(text, { fromThread: from }).catch((err) => this.log(`couldn't tell a thread about a shared file: ${firstLine(err as Error)}`));
+      },
+      changed: (u, p, threads) => {
+        for (const t of threads) { const parent = children.parentOf(u, p, t); if (parent) host.changed(u, p, parent, t); }
       },
     });
     host = new ThreadHost({

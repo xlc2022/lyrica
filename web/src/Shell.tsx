@@ -17,7 +17,7 @@ import type { ModelsState } from "./ModelsFrame.tsx";
 import { SideStatus } from "./SideStatus.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
 import { Flyout, useCanHover, useFlyout } from "./flyout.tsx";
-import { ProjectPage, ThreadsPage, stateWord } from "./Project.tsx";
+import { heldTitle, ProjectPage, ThreadsPage, stateWord } from "./Project.tsx";
 import { SearchGroups, searchable, useMessageSearch } from "./Search.tsx";
 import { ask, JUMP_EVENT, JUMP_KEY, keep, type JumpRequest } from "./links.ts";
 import { clock, ErrorText, hidden, InlineRename, menuArrows, shortTime, Toast, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
@@ -867,7 +867,7 @@ export function ThreadLink({ t, userId, on, menu, child, openBeside, besideOnCli
   // most pressing first (ux.md §5): waiting on her, then new updates, then hidden.
   const inProject = t.state !== undefined;
   const badges = [
-    t.question ? <span key="q" className="tstate" data-state="needsYou">Waiting on you</span> : inProject ? <span key="s" className="tstate" data-state={t.needsYou ? "needsYou" : t.state}>{stateWord(t)}</span> : t.status === "waiting" && <span key="w" className="flag">waiting</span>,
+    t.question ? <span key="q" className="tstate" data-state="needsYou">Waiting on you</span> : inProject ? <span key="s" className="tstate" data-state={t.needsYou ? "needsYou" : t.state} title={heldTitle(t)}>{stateWord(t)}</span> : t.status === "waiting" && <span key="w" className="flag">waiting</span>,
     !!t.unseen && <span key="u" className="count" aria-label={`${t.unseen} new ${t.unseen === 1 ? "update" : "updates"}`}>{t.unseen}</span>,
     t.hidden && <span key="h" className="flag">hidden</span>,
   ].filter(Boolean).slice(0, 2);

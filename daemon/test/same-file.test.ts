@@ -71,3 +71,55 @@ describe("a command that changed a file another thread changed", () => {
     expect(s.claim("u", "general", "b", "folder:shared/notes.md", "/shared/notes.md")).toMatch(/^Not changed yet: \[t:a\]/);
   });
 });
+
+describe("Held", () => {
+  function busySetup(busy: Set<string>) {
+    let now = 1_000_000;
+    const told: { to: string; from: string; text: string }[] = [];
+    const changed: string[][] = [];
+    const s = new SameFile({
+      exists: () => true, busy: (_u, _p, t) => busy.has(t), now: () => now,
+      tell: (_u, _p, to, from, text) => told.push({ to, from, text }), changed: (_u, _p, threads) => changed.push(threads),
+    });
+    return { s, told, changed, later: (ms: number) => { now += ms; } };
+  }
+
+  it("shows both threads as held until the held write goes through", () => {
+    const { s, changed, later } = busySetup(new Set(["a"]));
+    s.claim("u", "general", "a", "k", "/shared/notes.md");
+    later(60_000);
+    expect(s.claim("u", "general", "b", "k", "/shared/notes.md")).toMatch(/^Not changed yet/);
+    expect(s.held("u", "general", "b")).toEqual({ other: "a", path: "/shared/notes.md" });
+    expect(s.held("u", "general", "a")).toEqual({ other: "b", path: "/shared/notes.md" });
+    expect(changed).toEqual([["b", "a"]]);
+    expect(s.claim("u", "general", "b", "k", "/shared/notes.md")).toBeUndefined();
+    expect(s.held("u", "general", "a")).toBeUndefined();
+    expect(s.held("u", "general", "b")).toBeUndefined();
+  });
+
+  it("settles when one messages the other, or after a while", () => {
+    const { s, later } = busySetup(new Set(["a", "c"]));
+    s.claim("u", "general", "a", "k", "/shared/notes.md");
+    s.claim("u", "general", "b", "k", "/shared/notes.md");
+    s.messaged("u", "general", "x", "a");
+    expect(s.held("u", "general", "b")).toBeDefined();
+    s.messaged("u", "general", "a", "b");
+    expect(s.held("u", "general", "b")).toBeUndefined();
+    expect(s.held("u", "general", "a")).toBeUndefined();
+
+    s.claim("u", "general", "c", "j", "/shared/plan.md");
+    s.claim("u", "general", "d", "j", "/shared/plan.md");
+    later(SAME_FILE_MS);
+    expect(s.held("u", "general", "d")).toBeUndefined();
+  });
+
+  it("lets a write through when the other thread isn't working, telling it once for its next turn", () => {
+    const { s, told } = busySetup(new Set());
+    s.claim("u", "general", "a", "k", "/shared/notes.md");
+    expect(s.claim("u", "general", "b", "k", "/shared/notes.md")).toBeUndefined();
+    expect(told).toEqual([{ to: "a", from: "b", text: expect.stringMatching(/^\[t:b\] changed \/shared\/notes\.md, which you changed 1 min ago, while you weren't working/) }]);
+    expect(s.held("u", "general", "b")).toBeUndefined();
+    expect(s.claim("u", "general", "a", "k", "/shared/notes.md")).toBeUndefined();
+    expect(told).toHaveLength(1);
+  });
+});

@@ -2556,7 +2556,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
       commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), checks: d.services!.workspace.settings(user.id).checks(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, threadsCode: settings.code, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
-    ...(mine ? { state: mine.state, ...(mine.worktreeReason ? { worktreeReason: mine.worktreeReason } : {}), ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
+    ...(mine ? { state: mine.state, ...(mine.held ? { held: mine.held } : {}), ...(mine.worktreeReason ? { worktreeReason: mine.worktreeReason } : {}), ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
     ...(question ? { question: { n: question.n, asked: question.asked } } : {}),
     ...wakeAt(d.services!.wakeups.list(user.id, pool, th.id)),
     ...(look.checklists() ? stepsOf(store.steps(th.id)) : {}),

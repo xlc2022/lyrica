@@ -1295,7 +1295,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `sameFile(path)` runs in `tool_call` for a sandbox `write` or `edit`,
     before any approval is asked; a text it returns blocks the call as its
     reason and nothing is written (daemon
-    `SameFile.claim`, keyed by `Workspace.fileKey`).
+    `SameFile.claim`, keyed by `Workspace.fileKey`; it holds only while the
+    other thread is busy, and `SameFile.held` gives both sides of an
+    unsettled hold, which `ChildThreads` shows as `ThreadState` `"held"` and
+    `held: { thread, title?, path }`; `ChildThreads.message` calls
+    `SameFile.messaged`, which settles it).
     `commandRules()` reads the owning project on every bash call. Forbid
     blocks in all modes and targets; Ask always prompts; Allow skips only
     sandbox mode prompts. Opaque commands ask with any forbid rule.

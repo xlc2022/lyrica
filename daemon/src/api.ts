@@ -871,7 +871,9 @@ export interface ThreadSummary {
   /** A project's thread: the project chat's message it hangs off (an entry number), if that is still there. */
   anchor?: number;
   /** A project's thread: waiting covers an approval and a question for the user. */
-  state?: "working" | "waiting" | "queued" | "idle" | "resolved";
+  state?: "working" | "waiting" | "queued" | "held" | "idle" | "resolved";
+  /** A project's thread held by the same-file rule (docs/workspace.md), idle until it settles: the other thread and the file. */
+  held?: { thread: string; title?: string; path: string };
   /** A project's thread is waiting on the user to decide something. */
   needsYou?: true;
   /** Its next wake-up, if one is waiting (her `threads later`). */
