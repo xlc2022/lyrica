@@ -45,7 +45,7 @@ export interface ChildOptions {
   updated?: (userId: string, pool: Pool, project: string, thread: string) => void;
   /** Wake-ups, which her `threads later` sets. */
   wakeups?: () => Wakeups;
-  /** The thread's unsettled same-file hold (same-file.ts), shown as Held while it is idle. */
+  /** The thread's unsettled same-file hold (same-file.ts), shown as Blocked while it is idle. */
   held?: (userId: string, pool: Pool, thread: string) => { other: string; path: string } | undefined;
   /** One of a project's threads messaged another: a hold between them is theirs to settle. */
   messaged?: (userId: string, pool: Pool, from: string, to: string) => void;

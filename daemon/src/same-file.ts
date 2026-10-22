@@ -27,7 +27,7 @@ export interface Hold { other: string; path: string; key: string; at: number }
  * and a restart forgets them). A thread about to change a file another
  * thread in the same pool changed within SAME_FILE_MS is held once while
  * that thread is working, and the other thread is told; its next write to
- * the file goes through. Both show as Held until then, or until one
+ * the file goes through. Both show as Blocked until then, or until one
  * messages the other. If the other thread isn't working, the write goes
  * through and it is told for its next turn.
  */
@@ -35,7 +35,7 @@ export class SameFile {
   private readonly writes = new Map<string, Write>();
   /** `user/pool/key/thread/other`: this thread was held for that one's work on the file, so it may go on. */
   private readonly told = new Set<string>();
-  /** Both sides of each unsettled hold, by `user/pool/thread`: shown as Held until the write goes through or one messages the other. */
+  /** Both sides of each unsettled hold, by `user/pool/thread`: shown as Blocked until the write goes through or one messages the other. */
   private readonly holds = new Map<string, Hold>();
 
   constructor(private readonly o: SameFileOptions) {}

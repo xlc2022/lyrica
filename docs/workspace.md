@@ -339,7 +339,7 @@ takes is `lyrica@pve!agent=<that secret>`.
   They agree who changes what (project threads
   message each other with `threads`); after that neither is held again on
   that file. Until the held write goes through, or one of them messages the
-  other, both show as **Held** (`state: "held"` with `held` naming the other
+  other, both show as **Blocked** (`state: "held"` with `held` naming the other
   thread and the file, in place of idle; `SameFile.held`). If the other
   thread isn't working, there is no one to agree with: the write goes
   through, and that thread is told for its next turn, once. Paths only, in memory: a restart forgets them. A command

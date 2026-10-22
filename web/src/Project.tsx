@@ -28,7 +28,7 @@ export function stateWord(t: Pick<ThreadSummary, "state" | "needsYou" | "questio
     case "waiting": return "Waiting for approval";
     case "working": return "Working";
     case "queued": return "Queued";
-    case "held": return "Held";
+    case "held": return "Blocked";
     case "resolved": return "Resolved";
     default: return "Idle";
   }
@@ -36,7 +36,7 @@ export function stateWord(t: Pick<ThreadSummary, "state" | "needsYou" | "questio
 
 /** A held thread's tooltip: the file and the thread it is to agree with (the same-file rule, docs/workspace.md). */
 export const heldTitle = (t: Pick<ThreadSummary, "state" | "held">) =>
-  t.state === "held" && t.held ? `Held: agree with ${t.held.title || "the other thread"} who changes ${t.held.path}` : undefined;
+  t.state === "held" && t.held ? `Blocked until it agrees with ${t.held.title || "the other thread"} on who changes ${t.held.path}.` : undefined;
 
 /** "312k tokens", "1.2M tokens". */
 export const tokenCount = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
@@ -62,7 +62,7 @@ const GROUPS: { label: string; of: (t: ThreadSummary) => boolean }[] = [
   { label: "Waiting on you", of: (t) => t.state === "waiting" },
   { label: "Working", of: (t) => t.state === "working" },
   { label: "Queued", of: (t) => t.state === "queued" },
-  { label: "Held", of: (t) => t.state === "held" },
+  { label: "Blocked", of: (t) => t.state === "held" },
   { label: "Idle", of: (t) => t.state === "idle" || t.state === undefined },
   { label: "Resolved", of: (t) => t.state === "resolved" },
 ];
