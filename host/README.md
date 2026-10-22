@@ -161,7 +161,8 @@ and one too big for every GPU says so.
 The models folder is given at install (`--models`, default `/srv/models`) and
 mounted read-only into the containers. It can be a folder another program
 also uses, such as LM Studio's. Its `lyrica/` subfolder must be a folder, not
-a link. To change it, run `host/install.sh --models /new/path`, or use
+a link. `install.sh` gives it to the download service's user (10001) with
+mode 755, so the model servers, which run as other users, can read it. To change it, run `host/install.sh --models /new/path`, or use
 **Change** beside the folder on the host's card in Lyrica's Models page.
 host-api can't remount containers itself, because it has no access to the
 Docker socket, so Change goes through the updater (Updates above), as root:

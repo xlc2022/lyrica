@@ -364,6 +364,8 @@ mkdir -p "$MODELS/lyrica"
 "${COMPOSE[@]}" build
 # fetch writes downloads as its own user (10001), into lyrica/ only.
 "${COMPOSE[@]}" run --rm --no-deps -T --user 0 --cap-add CHOWN --entrypoint chown fetch 10001:10001 /models/lyrica
+# The model servers run as other users and read it: 755, whatever the umask made it.
+"${COMPOSE[@]}" run --rm --no-deps -T --entrypoint chmod fetch 755 /models/lyrica
 "${COMPOSE[@]}" up -d --remove-orphans
 
 # Once Tailscale has joined, the auth key isn't needed: drop it from .env.

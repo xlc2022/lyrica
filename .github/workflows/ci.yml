@@ -192,7 +192,8 @@ jobs:
           persist-credentials: false
       - name: Stop what earlier jobs left running
         run: .github/runner/clear-leftovers.sh
-      - run: mkdir -p "$RUNNER_TEMP/models"
+      # A lyrica/ subfolder made with a tight umask: install.sh opens it to the model servers.
+      - run: mkdir -p -m 700 "$RUNNER_TEMP/models/lyrica"
       # Build the images first: Docker 29 hands build steps the loopback
       # resolver below as is, and they can't reach it. (GitHub's runners have
       # Docker 28.)
@@ -207,6 +208,7 @@ jobs:
           echo '{"dns": ["127.0.0.53"]}' | sudo tee /etc/docker/daemon.json
           sudo systemctl restart docker
       - run: host/install.sh --no-gpu --yes --models "$RUNNER_TEMP/models" --name ci-host
+      - run: test "$(stat -c '%u %a' "$RUNNER_TEMP/models/lyrica")" = "10001 755"
       - run: host/test/stack/network.sh
       # Again with the Tailscale service (not logged in: no auth key in CI).
       - run: host/install.sh --no-gpu --yes --tailscale ci-host-ts
