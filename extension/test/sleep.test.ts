@@ -445,6 +445,8 @@ describe("consolidation that keeps to its job", () => {
         ...reads,
       ],
     });
+    // Sleep takes notes made before it starts (created_at < until): one made in the same millisecond waits for the next run.
+    await new Promise((r) => setTimeout(r, 2));
     expect((await s.sleep.run(s.ada.id, "general", "manual")).status).toBe("complete");
     // The page and the new note say {user}, which shows as her name; the near-copy wasn't saved again.
     expect(v.own.get("p:about-user", { raw: true })!.text).not.toContain("Ada");
