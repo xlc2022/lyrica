@@ -245,6 +245,11 @@ describe("machines", () => {
     const added = (await ada.post<MachineInfo>(u, { name: "nas", address: "lyrica@127.0.0.1:1", root: "/srv", pool: "general", draft: probe.draft, hostKey: KEY })).body;
     expect(added).toMatchObject({ name: "nas", address: "lyrica@127.0.0.1:1", pool: "general", limit: "ask", hostKey: KEY });
     expect(added.keyLine).toMatch(/^restrict/);
+    expect(added.asUser).toBeUndefined();
+    // On the user's own account the setup needs no root, and the row says so.
+    const own = (await ada.post<MachineProbe>(`${u}/probe`, { name: "laptop", address: "ada@127.0.0.1:1", asUser: true })).body;
+    expect(own.setup).toContain(">> ~/.ssh/authorized_keys");
+    expect((await ada.post<MachineInfo>(u, { name: "laptop", address: "ada@127.0.0.1:1", pool: "private", draft: own.draft, hostKey: KEY, asUser: true })).body).toMatchObject({ name: "laptop", asUser: true, limit: "ask" });
     await ada.patch(`${u}/nas`, { limit: "auto" });
     expect((await ada.patch(`${path}/settings`, { machines: ["nas"] })).status).toBe(200);
     expect((await ada.get<ThreadSettings>(`${path}/settings`)).body.machines).toEqual(["nas"]);

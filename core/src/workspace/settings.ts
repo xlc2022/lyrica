@@ -90,6 +90,8 @@ export interface MachineConfig {
   privateKey: string;
   /** Optional remote folder that read, write and edit stay inside. Always null for Proxmox. */
   root: string | null;
+  /** SSH only: `username` is the user's own account, not one made for her (docs/workspace.md, "Your own account"). */
+  asUser: boolean;
   /**
    * SHA-256 of the host key the user confirmed (`SHA256:…`), or for Proxmox of its
    * TLS certificate (`AB:CD:…`). A machine from before confirming may have
@@ -187,7 +189,7 @@ export function repositoryName(raw: string): string {
 export const repositoryDir = (name: string): string => name.split("/").at(-1)!;
 
 /** What adding a machine takes: the rest starts empty. */
-export type NewMachine = Omit<MachineConfig, "kind" | "hostKey" | "limit" | "lastUsed" | "state"> & { kind?: MachineKind; limit?: MachineLimit };
+export type NewMachine = Omit<MachineConfig, "kind" | "hostKey" | "limit" | "lastUsed" | "state" | "asUser"> & { kind?: MachineKind; limit?: MachineLimit; asUser?: boolean };
 
 const MACHINE_NAME = /^[A-Za-z0-9._-]{1,64}$/;
 const HOST_KEY = /^SHA256:[A-Za-z0-9+/]{43}=?$/;
@@ -261,7 +263,8 @@ CREATE TABLE IF NOT EXISTS machines (
   off_network INTEGER NOT NULL DEFAULT 0,
   last_used   TEXT,
   state       TEXT,
-  state_since TEXT
+  state_since TEXT,
+  as_user     INTEGER NOT NULL DEFAULT 0
 );
 `;
 
@@ -801,9 +804,9 @@ export class WorkspaceSettings {
     if (m.pool !== "general" && m.pool !== "private") throw new Error("a machine is general or private");
     const limit = m.limit ?? "ask";
     if (!MACHINE_LIMITS.includes(limit)) throw new Error(`unknown mode limit: ${limit}`);
-    this.db.prepare(`INSERT INTO machines (name, kind, host, port, username, private_key, root, host_key, pool, mode_limit, off_network)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(m.name, kind, m.host, m.port, m.username, m.privateKey,
-      m.root === null || kind === "proxmox" ? null : cleanPath(m.root), hostKey, m.pool, limit, m.offNetwork ? 1 : 0);
+    this.db.prepare(`INSERT INTO machines (name, kind, host, port, username, private_key, root, host_key, pool, mode_limit, off_network, as_user)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(m.name, kind, m.host, m.port, m.username, m.privateKey,
+      m.root === null || kind === "proxmox" ? null : cleanPath(m.root), hostKey, m.pool, limit, m.offNetwork ? 1 : 0, m.asUser && kind === "ssh" ? 1 : 0);
     return this.need(m.name);
   }
 
@@ -1189,9 +1192,10 @@ export function upgradeWorkspace(db: Db): void {
 interface MachineRow {
   name: string; kind: MachineKind; host: string; port: number; username: string; private_key: string; root: string | null; host_key: string | null;
   pool: Pool; mode_limit: MachineLimit; off_network: number; last_used: string | null; state: MachineState["kind"] | null; state_since: string | null;
+  as_user: number;
 }
 const toMachine = (r: MachineRow): MachineConfig => ({
-  name: r.name, kind: r.kind, host: r.host, port: r.port, username: r.username, privateKey: r.private_key, root: r.root, hostKey: r.host_key,
+  name: r.name, kind: r.kind, host: r.host, port: r.port, username: r.username, privateKey: r.private_key, root: r.root, asUser: r.as_user === 1, hostKey: r.host_key,
   pool: r.pool, limit: r.mode_limit, offNetwork: r.off_network === 1, lastUsed: r.last_used,
   state: r.state && r.state_since ? { kind: r.state, since: r.state_since } : null,
 });

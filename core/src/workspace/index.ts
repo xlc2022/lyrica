@@ -132,7 +132,7 @@ export interface GitRepositoryInfo { name: string; account: string }
 export interface ThreadMcpServer { name: string; url: string; token: string; description: string | null }
 
 /** A machine as one thread sees it: granted, of its pool, with its limit. */
-export interface ThreadMachine { name: string; kind: MachineKind; limit: MachineLimit; root: string | null }
+export interface ThreadMachine { name: string; kind: MachineKind; limit: MachineLimit; root: string | null; asUser?: boolean }
 
 /** What adding a machine needs before it is saved: the key she will use and what the machine showed. */
 export interface MachineProbe {
@@ -590,7 +590,7 @@ export class Workspace {
   machinesFor(t: WorkspaceThread): ThreadMachine[] {
     const s = this.settings(t.userId);
     return s.effective(t.threadId).machines.map((name) => s.machine(name))
-      .filter((m): m is MachineConfig => !!m && m.pool === t.pool).map((m) => ({ name: m.name, kind: m.kind, limit: m.limit, root: m.root }));
+      .filter((m): m is MachineConfig => !!m && m.pool === t.pool).map((m) => ({ name: m.name, kind: m.kind, limit: m.limit, root: m.root, ...(m.asUser ? { asUser: true } : {}) }));
   }
 
   /** The mode a call runs in: the thread's, or on a machine the stricter of it and the machine's limit, read now. */
@@ -1183,7 +1183,7 @@ export class Workspace {
    * (or the one from an earlier probe), its setup steps, and a test that
    * reads the host key and tries the key. Nothing is saved.
    */
-  async probeMachine(userId: string, login: string, input: { kind?: MachineKind; name: string; address: string; draft?: string }): Promise<MachineProbe> {
+  async probeMachine(userId: string, login: string, input: { kind?: MachineKind; name: string; address: string; draft?: string; asUser?: boolean }): Promise<MachineProbe> {
     if (input.kind === "proxmox") return this.probeProxmox(input.address);
     const now = Date.now();
     for (const [id, d] of this.drafts) if (d.expires < now) this.drafts.delete(id);
@@ -1197,7 +1197,7 @@ export class Workspace {
     }
     pair.expires = now + DRAFT_MS;
     const keyLine = authorizedKeysLine(pair.publicKey);
-    const base = { draft: draft!, keyLine, setup: machineSetup(username, keyLine) };
+    const base = { draft: draft!, keyLine, setup: machineSetup(username, keyLine, input.asUser) };
     let resolved: { addresses: string[]; outside: boolean };
     try {
       resolved = await resolveHost(host);
@@ -1318,7 +1318,7 @@ export class Workspace {
     const { outside } = await resolveHost(host);
     if (outside && input.pool === "private" && !input.offNetworkConfirmed) throw new Error(`${host} resolves outside your network; confirm adding it anyway`);
     const m = this.settings(userId).addMachine({
-      name: input.name, host, port, username, privateKey: pair.privateKey, root: input.root, pool: input.pool, limit: input.limit, offNetwork: outside,
+      name: input.name, host, port, username, privateKey: pair.privateKey, root: input.root, asUser: input.asUser === true, pool: input.pool, limit: input.limit, offNetwork: outside,
     }, input.hostKey);
     this.drafts.delete(input.draft);
     return m;

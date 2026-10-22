@@ -800,8 +800,10 @@ Claude Code sends what it reads to Anthropic. Details are in
 A **machine** is one of your other computers that she works on over SSH,
 with a dedicated account there, in one pool (general or private) and with
 a **mode limit** she can't exceed on it (Ask, Accept edits or Auto; new
-machines start at Ask). The reference is
-[docs/workspace.md](../workspace.md#machines).
+machines start at Ask). The Add machine page in Settings can also log
+her in as your own account (**Account: Mine**), after warnings and typing
+the machine's name; the command below always uses a dedicated one. The
+reference is [docs/workspace.md](../workspace.md#machines).
 
 ```sh
 lyrica admin ssh add --user ada office ada-lyrica@office.lan --pool general --limit ask

@@ -9,6 +9,7 @@ import {
 } from "./api.ts";
 import { ModeItem, MODES } from "./Modes.tsx";
 import { Icon } from "./icons.tsx";
+import { her } from "./name.ts";
 import { go, href } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
@@ -77,7 +78,7 @@ function MachinesList({ ctx }: { ctx: ShellContext }) {
             return (
               <li key={m.name} className="machine-row">
                 <button type="button" className="machine-open" aria-haspopup="dialog" aria-expanded={open === m.name} onClick={() => setOpen(m.name)}>
-                  <span className="machine-name">{m.name}</span>
+                  <span className="machine-name">{m.name}{m.asUser && <> <span className="pill warn">Your account</span></>}</span>
                   <span className="machine-facts">{facts(m)}</span>
                 </button>
                 {state && (
@@ -202,6 +203,19 @@ function MachineDrawer({ userId, machine, onSaved, onClose }: { userId: string; 
 }
 
 type Kind = "ssh" | "proxmox";
+type Account = "hers" | "mine";
+
+/** What logging in as the user's own account gives her, shown before it can be chosen (docs/workspace.md, "Your own account"). */
+export function accountWarnings(pool: Pool): string[] {
+  return [
+    `${her()} can read and change everything this account can: its files, SSH keys, browser profiles, and signed-in tools and their tokens.`,
+    "Groups count: membership of docker, sudo, wheel or lxd is as good as root, and a cached sudo password works for her too.",
+    "Her commands aren't checked by path, so she could change this account's own SSH keys.",
+    pool === "general"
+      ? "In a general thread on a cloud model, what she reads there can reach the cloud provider."
+      : "Only private threads can use it, so no cloud model sees what she reads there.",
+  ];
+}
 type Step = "address" | "key" | "test" | "fingerprint";
 
 /**
@@ -214,7 +228,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
   const replacing = name !== undefined;
   const existing = useLoad(() => (replacing ? get<MachineInfo[]>(u(userId, "machines")).then((l) => l.find((m) => m.name === name) ?? null) : Promise.resolve(null)), [userId, name]);
   const [kind, setKind] = useState<Kind>("ssh");
-  const [form, setForm] = useState({ name: "", address: "", root: "", pool: "general" as Pool, token: "" });
+  const [form, setForm] = useState({ name: "", address: "", root: "", pool: "general" as Pool, token: "", account: "hers" as Account, typed: "" });
   // The probe's answer: her key's setup steps and, after Test, the fingerprint and whether the login worked.
   const [probe, setProbe] = useState<MachineProbe>();
   const [copied, setCopied] = useState(false);
@@ -229,17 +243,18 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
     setForm((f) => ({ ...f, name: machine.name, address: machine.address, root: machine.root ?? "", pool: machine.pool }));
   }, [machine]);
 
-  const setField = (k: keyof typeof form, v: string) => { setForm((f) => ({ ...f, [k]: v })); if (k === "address" || k === "name") { setProbe(undefined); setCopied(false); setTested(false); } };
+  const setField = (k: keyof typeof form, v: string) => { setForm((f) => ({ ...f, [k]: v })); if (k === "address" || k === "name" || k === "account") { setProbe(undefined); setCopied(false); setTested(false); } };
   const ready = form.name.trim() !== "" && form.address.trim() !== "";
+  const mine = kind === "ssh" && form.account === "mine" && !replacing;
   const probeNow = (draft?: string) => probing(async () => {
-    const p = await post<MachineProbe>(u(userId, "machines", "probe"), { kind, name: form.name.trim(), address: form.address.trim(), draft });
+    const p = await post<MachineProbe>(u(userId, "machines", "probe"), { kind, name: form.name.trim(), address: form.address.trim(), draft, ...(mine ? { asUser: true } : {}) });
     setProbe(p);
     return p;
   });
   // Leaving the address, or Enter in it, fetches her key for the machine, so the Key step can show its setup steps.
   const reach = () => { if (ready && !probe && !probingBusy) void probeNow(); };
   const test = () => probing(async () => {
-    const p = await post<MachineProbe>(u(userId, "machines", "probe"), { kind, name: form.name.trim(), address: form.address.trim(), draft: probe?.draft });
+    const p = await post<MachineProbe>(u(userId, "machines", "probe"), { kind, name: form.name.trim(), address: form.address.trim(), draft: probe?.draft, ...(mine ? { asUser: true } : {}) });
     setProbe(p);
     setTested(true);
   });
@@ -255,6 +270,8 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
 
   const loginOk = kind === "proxmox" ? !!probe?.fingerprint : !!probe?.login;
   const tokenOk = kind === "ssh" || form.token.trim() !== "" || replacing;
+  // Her login on the user's own account needs the machine's name typed, after its warnings.
+  const typedOk = !mine || form.typed.trim() === form.name.trim();
   const step: Step = !probe ? "address" : !copied && !replacing ? "key" : !tested || !loginOk ? "test" : "fingerprint";
   // Replace key goes straight to the fingerprint: the machine is known, only its key is confirmed again.
   useEffect(() => { if (machine && !probe && !probingBusy) void probeNow(); }, [machine]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -266,7 +283,7 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
     } else {
       const input: MachineInput = {
         kind, name: form.name.trim(), address: form.address.trim(), root: kind === "ssh" && form.root.trim() ? form.root.trim() : undefined, pool: form.pool,
-        hostKey: probe.fingerprint, offNetworkConfirmed, ...(kind === "proxmox" ? { token: form.token.trim() } : { draft: probe.draft }),
+        hostKey: probe.fingerprint, offNetworkConfirmed, ...(kind === "proxmox" ? { token: form.token.trim() } : { draft: probe.draft }), ...(mine ? { asUser: true } : {}),
       };
       await post<MachineInfo>(u(userId, "machines"), input);
     }
@@ -303,8 +320,16 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
             <div className="row wrap top">
               <label className="field narrow"><span>Name</span><input value={form.name} autoFocus onBlur={reach} onChange={(e) => setField("name", e.target.value)} /></label>
               <label className="field grow"><span>Address</span>
-                <input className="mono" value={form.address} placeholder={kind === "proxmox" ? "https://pve.lan:8006" : "lyrica@build-box.lan"} onBlur={reach} onChange={(e) => setField("address", e.target.value)} />
+                <input className="mono" value={form.address} placeholder={kind === "proxmox" ? "https://pve.lan:8006" : mine ? "you@laptop.lan" : "lyrica@build-box.lan"} onBlur={reach} onChange={(e) => setField("address", e.target.value)} />
               </label>
+              {kind === "ssh" && (
+                <label className="field narrow"><span>Account</span>
+                  <select value={form.account} onChange={(e) => setField("account", e.target.value)}>
+                    <option value="hers">{her()}'s own</option>
+                    <option value="mine">Mine</option>
+                  </select>
+                </label>
+              )}
             </div>
             <div className="row wrap top">
               {kind === "ssh" && <label className="field grow"><span>Folder</span><input className="mono" value={form.root} placeholder="/" onChange={(e) => setField("root", e.target.value)} /></label>}
@@ -314,6 +339,11 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
                 </select>
               </label>
             </div>
+            {mine && (
+              <ul className="account-warnings" aria-label="Logging in as your own account">
+                {accountWarnings(form.pool).map((w) => <li key={w}>{w}</li>)}
+              </ul>
+            )}
             {step === "address" && <ErrorText error={probeError} />}
           </form>
         )}
@@ -355,8 +385,13 @@ export function MachinePage({ ctx, name }: { ctx: ShellContext; name?: string })
             <h2 className="eyebrow" id="step-fingerprint">Fingerprint</h2>
             {probe?.fingerprint ? <p className="fingerprint mono">{probe.fingerprint}</p> : replacing && probe?.problem ? <ErrorText error={probe.problem} /> : <p className="muted">Reaching it…</p>}
             {replacing && probeError && <ErrorText error={probeError} />}
+            {mine && (
+              <label className="field"><span>Type {form.name.trim()} to let {her()} log in as you</span>
+                <input className="mono" value={form.typed} autoComplete="off" spellCheck={false} onChange={(e) => setForm((f) => ({ ...f, typed: e.target.value }))} />
+              </label>
+            )}
             <div className="row">
-              <button type="button" className={step === "fingerprint" || replacing ? "primary" : ""} disabled={busy || !probe?.fingerprint || !tokenOk} onClick={confirm}>Confirm</button>
+              <button type="button" className={step === "fingerprint" || replacing ? "primary" : ""} disabled={busy || !probe?.fingerprint || !tokenOk || !typedOk} onClick={confirm}>Confirm</button>
               {replacing && <button type="button" onClick={() => go({ page: "settings", userId, section: "machines" })}>Cancel</button>}
             </div>
             <ErrorText error={error} />

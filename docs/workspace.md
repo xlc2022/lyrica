@@ -26,7 +26,7 @@ database files. A command that could see either one could read everything.
 | Target | What it is | How she is confined |
 |---|---|---|
 | **Sandbox** (always there) | Each command runs on the Lyrica host inside bubblewrap. | The sandbox is described below. |
-| **A machine** | One of the owner's other computers, reached over SSH, when a call names it. | She is confined by the machine's own account, so each machine uses a dedicated account. An optional root path limits `read`, `write` and `edit`. If SSH fails, the action fails: it **never** falls back to running locally. See [Machines](#machines). |
+| **A machine** | One of the owner's other computers, reached over SSH, when a call names it. | She is confined by the machine's own account, so each machine uses a dedicated account, unless the user chooses their own ([Your own account](#your-own-account)). An optional root path limits `read`, `write` and `edit`. If SSH fails, the action fails: it **never** falls back to running locally. See [Machines](#machines). |
 
 **The sandbox:**
 - It runs with every namespace unshared (mount, process, user, IPC, network),
@@ -84,8 +84,9 @@ existed before became general machines at Ask.
 - **Kept in `user.db`** (`machines`): name, address, account, the private
   key, an optional root, the host key the user confirmed, the pool, the **mode
   limit**, whether the address is off network, when she last
-  connected, and how the last connection went (online, unreachable, or host
-  key changed) and since when. That state clears when the address or host key
+  connected, how the last connection went (online, unreachable, or host
+  key changed) and since when, and whether the account is the user's own
+  (`as_user`, user step 18). That state clears when the address or host key
   changes. The key is generated in memory, stored only there, and handed to
   the SSH client in memory; she never sees it.
 - **One pool each.** A general thread grants general machines and a private
@@ -212,6 +213,37 @@ Replacing the key (`setHostKey`) re-confirms the host key only; her own key
 pair stays as it was. A test answers whatever the machine said (refused,
 timed out), so any signed-in user can learn whether an address answers on
 a port, as they could from a sandbox with network.
+
+### Your own account
+
+A machine may log in as the user's own account instead of one made for her
+(`asUser`, **Account: Mine** on the Add machine page), on a general or a
+private machine alike. It is chosen only when adding, and the page first
+lists what it gives her (`accountWarnings` in `web/src/Machines.tsx`):
+
+- everything that account can read and change: its files, SSH keys,
+  browser profiles, and signed-in tools and their tokens;
+- its groups: `docker`, `sudo`, `wheel` or `lxd` membership is as good as
+  root, and a cached sudo password works for her too;
+- her commands aren't checked by path, so she could change that account's
+  own `authorized_keys` (the `write` and `edit` floor still refuses it);
+- in a general thread on a cloud model, what she reads there can reach the
+  cloud provider. A private machine keeps its rules: private threads only,
+  so no cloud model.
+
+Saving needs the machine's name typed. The setup, run as that account with
+no root, appends the same `restrict,from=` key line to its own keys file:
+
+```sh
+install -d -m 700 ~/.ssh
+printf '%s\n' '<the key line>' >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+Everything else is as on any machine: it starts at Ask, suspect commands
+ask, and root steps still go to the user on a card. Its row carries **Your
+account**, and the `workspace` prompt section says the machine logs in as
+the person's own account.
 
 ## Root steps
 

@@ -289,6 +289,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // totals folded before this step have neither, so their tokens count in Total alone.
     version: 17,
     run(db) { addColumns(db, [["call_totals", "input_tokens", "INTEGER NOT NULL DEFAULT 0"], ["call_totals", "output_tokens", "INTEGER NOT NULL DEFAULT 0"]]); },
+  }, {
+    // Principle 2: a machine may log in as the user's own account, which they chose with its warnings. Adds a column only.
+    version: 18,
+    run(db) { addColumns(db, [["machines", "as_user", "INTEGER NOT NULL DEFAULT 0"]]); },
   }],
   pool: [{
     version: 1, contract: true,

@@ -77,6 +77,22 @@ describe("machines", () => {
     expect(settings.thread("g").machines).toEqual(["nas"]);
   });
 
+  it("may log in as the user's own account, set up without root, in either pool", async () => {
+    const { settings, workspace, thread, ada } = await setup();
+    const own = await workspace.probeMachine(ada.id, "ada", { name: "laptop", address: "ada@127.0.0.1", asUser: true });
+    expect(own.login).toBe(true);
+    expect(own.setup).toContain(`>> ~/.ssh/authorized_keys`);
+    expect(own.setup).toContain("run as ada, not as root");
+    expect(own.setup).not.toMatch(/sshd_config|sudoers|NOPASSWD/);
+    const hers = await workspace.probeMachine(ada.id, "ada", { name: "box", address: "lyrica@127.0.0.1" });
+    expect(hers.setup).toContain("/etc/ssh/authorized_keys/lyrica");
+    const m = await workspace.addMachine(ada.id, { name: "laptop", address: "ada@127.0.0.1", root: null, pool: "private", draft: own.draft, hostKey: KEY, asUser: true });
+    expect(m).toMatchObject({ asUser: true, pool: "private", limit: "ask", username: "ada" });
+    expect((await workspace.addMachine(ada.id, { name: "box", address: "lyrica@127.0.0.1", root: null, pool: "general", draft: hers.draft, hostKey: KEY })).asUser).toBe(false);
+    settings.setThread("p", "private", { machines: ["laptop"] });
+    expect(workspace.machinesFor(thread("p", "private"))).toEqual([{ name: "laptop", kind: "ssh", limit: "ask", root: null, asUser: true }]);
+  });
+
   it("leave every thread that granted them when their pool changes", async () => {
     const { settings, add, workspace, thread } = await setup();
     add({ name: "nas" });

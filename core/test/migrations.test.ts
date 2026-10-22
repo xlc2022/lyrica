@@ -549,6 +549,24 @@ describe("user step 17 (input and output in folded totals)", () => {
   });
 });
 
+describe("user step 18 (machines on the user's own account)", () => {
+  it("adds machines.as_user to every released user schema, keeping machines and earlier readers", () => {
+    for (let version = 1; version < 18; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter((s) => s.version <= version);
+      migrate(db, "user", {}, previous);
+      // Step 1 builds today's table, so the column a released schema lacked is taken out first.
+      db.exec("ALTER TABLE machines DROP COLUMN as_user");
+      db.prepare("INSERT INTO machines (name, host, port, username, private_key) VALUES ('box', 'box.lan', 22, 'lyrica', 'k')").run();
+      migrate(db, "user");
+      expect(db.prepare("SELECT name, username, as_user FROM machines").get(), `v${version}`).toEqual({ name: "box", username: "lyrica", as_user: 0 });
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      db.close();
+    }
+  });
+});
+
 describe("pool step 10 (skills)", () => {
   it("adds the skills table to every released pool schema, keeping earlier readers and thread data", () => {
     for (let version = 1; version < 10; version++) {
