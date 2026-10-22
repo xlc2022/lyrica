@@ -1,8 +1,10 @@
 # CI
 
-The checks in `.github/workflows/` run on the owner's own GitHub Actions runner, not
-on GitHub's hosted runners: a self-hosted runner costs nothing, while hosted
-minutes on a private repository are billed past the plan's allowance.
+For now, every workflow runs on GitHub's hosted runners (`ubuntu-latest`):
+runs were queueing behind the owner's own runners, and the repository is
+public, so hosted minutes cost nothing. The rest of this page describes the
+self-hosted runners, which no workflow uses at the moment.
+"Switching runners" below says how to move between them.
 
 ## The runner
 
@@ -43,8 +45,8 @@ minutes on a private repository are billed past the plan's allowance.
   everything under them, and logs the user's thread count before and after.
 - The host-stack job removes what it installed (the stack and its volumes,
   the egress unit and rules, Docker's daemon.json) when it ends.
-- Runner speed: the runners sit on three machines of different speed. The
-  `check` job (unit tests and e2e) needs the extra label `lyrica-fast` and
+- Runner speed: the runners sit on three machines of different speed. On
+  them, the `check` job (unit tests and e2e) needs the extra label `lyrica-fast` and
   so runs only on the faster machines; it timed out and flaked on the slowest
   (4 cores), where it took twice as long. The other jobs run on any runner.
   Give a runner the label with `--labels lyrica-ci,lyrica-fast` when
@@ -95,12 +97,28 @@ internet and nothing else:
 
 ## Who can run code on it
 
-Every job runs the code of the branch it checks, with root on the VM. The
-repository is private, so only people with access to it can open a pull
-request; the workflows' token is read-only. The repository must stay private
-while it uses this runner.
+Every job runs the code of the branch it checks, with root on the VM, and
+the workflows' token is read-only. The repository is public, so anyone can
+open a pull request from a fork, and a pull request's run uses the
+workflow files from its own branch: a fork can name `lyrica-ci` in any
+workflow, whatever `main`'s workflows say. So the boundary is a repository
+setting, not the workflows: Settings, Actions, General, "Approval for
+running fork pull request workflows from contributors" set to "Require
+approval for all external contributors", and whoever approves a run reads
+its changes under `.github/` first. An approved run can still name the
+runners in its own copy of a workflow, and a personal repository has no
+runner groups to restrict them, so while the repository is public and no
+workflow uses them, remove them from it (Settings, Actions, Runners). In
+Settings, Actions, General, keep "Workflow permissions" at "Read repository
+contents" and "Allow GitHub Actions to create and approve pull requests"
+off. No workflow uses `pull_request_target`.
 
-## Going back to GitHub's runners
+## Switching runners
 
-Change `runs-on: lyrica-ci` back to `ubuntu-latest` in both workflows. The
-host-images jobs pick their "Make room" step by where they run.
+Only with the approval setting above in place: to move a workflow back to
+the self-hosted runners, set each job's `runs-on` to `lyrica-ci`, and the
+`check` job's to `[lyrica-ci, lyrica-fast]`. To move one to GitHub's
+runners, set them to `ubuntu-latest`. On a hosted runner the "Stop what
+earlier jobs left running" step finds nothing, and the nix job installs Nix
+on every run. The host-images jobs pick their "Make room" step by where they
+run.

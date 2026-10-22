@@ -190,6 +190,10 @@ address.
 2. In Lyrica, open Models, Hosts and endpoints, **Add model host**. Give
    the host a name, its addresses one per line in the order to try them
    (LAN address first, tailnet name second, say) and the pairing code.
+   A tailnet address or name works when Lyrica is on that tailnet itself
+   (Administration, Tailnet): she reaches it through her own tailscaled.
+   On a Debian install from before 2026-10-22, re-run `install.sh` once
+   so her tailscaled gets that proxy; NixOS gets it with the next rebuild.
    Turn on **Shared** for a host every user may use (administrators only);
    leave it off for one of your own. Then **Pair**.
 3. Lyrica shows the host's fingerprint: compare it with the one the install

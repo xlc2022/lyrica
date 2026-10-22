@@ -52,6 +52,8 @@ const KEY_PATTERN = /tskey-[A-Za-z0-9_-]+/g;
 
 export class TailnetControl {
   private queue: Promise<unknown> = Promise.resolve();
+  /** Her tailnet's MagicDNS suffix as last read, for routing names in it through her tailscaled's proxy. */
+  magicDnsSuffix?: string;
 
   constructor(private readonly o: TailnetOptions) {}
 
@@ -82,10 +84,12 @@ export class TailnetControl {
   }
 
   private async rawStatus(): Promise<Status> {
-    return JSON.parse(await this.run("status")) as Status;
+    const s = JSON.parse(await this.run("status")) as Status;
+    this.magicDnsSuffix = s.BackendState === "Running" && s.CurrentTailnet?.MagicDNSEnabled ? s.CurrentTailnet.MagicDNSSuffix || undefined : undefined;
+    return s;
   }
 
-  /** Read from her tailscaled each time; nothing is kept. */
+  /** Read from her tailscaled each time; only the MagicDNS suffix is kept. */
   async status(): Promise<Api.Tailnet> {
     let s: Status;
     try {

@@ -1,7 +1,7 @@
 # CI runners: adding a machine that runs the checks
 
-The checks in `.github/workflows/` run on your own GitHub Actions runners,
-labelled `lyrica-ci`, not on GitHub's hosted runners. This guide follows
+These are your own GitHub Actions runners, labelled `lyrica-ci`. For now
+every workflow runs on GitHub's hosted runners instead, and these are idle. This guide follows
 `.github/runner/setup.sh`; why it is set up this way, and what the runner
 may and may not reach, is in [docs/ci.md](../ci.md).
 
@@ -29,8 +29,13 @@ set up with the script on 2026-10-11, and every pull request and push to
 
 Every job runs as root-equivalent on the VM (an ordinary user with
 passwordless sudo and Docker), with the code of whatever branch it checks.
-That is why the VM is dedicated, sits behind its own firewall, and why the
-repository must stay private while it uses these runners.
+That is why the VM is dedicated and sits behind its own firewall. The
+repository is public, and a fork's pull request can name these runners in
+its own copy of a workflow, so before a runner is online set Settings,
+Actions, General, "Approval for running fork pull request workflows from
+contributors" to "Require approval for all external contributors", and
+while no workflow uses the runners, remove them from the repository
+(docs/ci.md, "Who can run code on it").
 
 ## Set up a runner
 
@@ -123,7 +128,6 @@ runner keeps its registration, and the firewall is applied again.
   sudo ./svc.sh stop && sudo ./svc.sh uninstall`, then `sudo -u runner
   ./config.sh remove --token <a removal token from the Runners page>`; or
   delete it on the Runners page and discard the VM.
-- **Going back to GitHub's runners:** change `runs-on: lyrica-ci` to
-  `ubuntu-latest` in both workflows, and the `check` job's `runs-on` list
-  (`[lyrica-ci, lyrica-fast]`) to `ubuntu-latest` too. Hosted minutes on a private repository
-  are billed past the plan's allowance, which is why these exist.
+- **GitHub's runners:** for now every workflow runs on GitHub's hosted
+  runners (`ubuntu-latest`). docs/ci.md "Switching runners" says how to move
+  each way.
