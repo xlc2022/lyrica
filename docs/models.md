@@ -385,7 +385,7 @@ Models Overview shows
 only the latest visible call under History; Show all beside its eyebrow
 opens Call history with server-side search and numbered pages.
 
-Once a turn ends, `recordPace` adds its counts and times to the record
+After each request that goes on with tools, and once a turn ends, `recordPace` writes the turn's counts and times so far to the record
 within the hosted thread's pool (`pace`), a subagent's turns included: the last request's prompt tokens (the context used), total reads across
 every request including cached reads (`readTokens`), output tokens,
 the window, time to first token and generation time, and the prompt tokens

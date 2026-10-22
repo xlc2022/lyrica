@@ -991,6 +991,13 @@ export class HostedThread {
       // delegate is offered where the depth limit allows; it attaches itself, so background results reach this session.
       const canDelegate = delegation.depth(ctx) < delegation.limits.depth;
       const meter = new ContextMeter();
+      // Mid-turn, each request's counts go on the turn's call record and the stream gets the context, as after a turn.
+      meter.onProgress = () => {
+        const pace = meter.takePace();
+        if (pace) models.recordPace(this.userId, this.threadId, pace, this.turnTask, this.pool);
+        const context = meter.report();
+        if (context) this.emit({ type: "context", context });
+      };
       // Repository skills by checkout and HEAD, so an unchanged checkout costs one git call a turn.
       const repoSkillsSeen = new Map<string, ListedSkill[]>();
       const { session, runtime, prepare, dispose } = await openThreadSession({
