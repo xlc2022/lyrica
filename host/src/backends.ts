@@ -84,6 +84,8 @@ export interface LlamaCppOptions {
   loadTimeoutMs?: number;
   /** The machine's memory in bytes, for the prompt cache each loaded model keeps in it. */
   memoryBytes?: number;
+  /** A GPU whose flash attention is slower than none: a CMP 100-210's runs on its throttled tensor cores. */
+  slowFlash?: (gpu: number) => boolean;
 }
 
 /** llama.cpp's own prompt cache in host memory, per loaded model, in MiB. */
@@ -96,7 +98,7 @@ export class LlamaCpp implements Backend {
   private readonly templates: Templates;
 
   constructor(o: LlamaCppOptions) {
-    this.o = { loadTimeoutMs: 10 * 60_000, memoryBytes: totalmem(), ...o };
+    this.o = { loadTimeoutMs: 10 * 60_000, memoryBytes: totalmem(), slowFlash: () => false, ...o };
     this.templates = new Templates(o.serving, "llamacpp");
     this.writePreset();
   }
@@ -118,7 +120,9 @@ export class LlamaCpp implements Backend {
       lines.push(`c = ${contextOf(model, s)}`);
       // YaRN, as the publisher's card gives it for llama-server.
       if (s.stretch) lines.push("rope-scaling = yarn", `rope-scale = ${s.stretch.factor}`, `yarn-orig-ctx = ${s.stretch.originalContext}`);
-      lines.push(`n-gpu-layers = ${s.gpuLayers ?? 999}`, `flash-attn = ${s.flashAttention ?? "auto"}`);
+      // Unset, flash attention is llama.cpp's own choice, except on a GPU where it is slower than none.
+      const flash = s.flashAttention ?? (at.gpus.some(this.o.slowFlash) ? "off" : "auto");
+      lines.push(`n-gpu-layers = ${s.gpuLayers ?? 999}`, `flash-attn = ${flash}`);
       if (s.kvCacheType) lines.push(`cache-type-k = ${s.kvCacheType}`, `cache-type-v = ${s.kvCacheType}`);
       // One cache of the whole context, shared by the requests it serves at once, as the daemon plans.
       const parallel = concurrentOf(model, s);

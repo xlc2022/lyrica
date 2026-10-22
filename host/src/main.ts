@@ -7,7 +7,7 @@ import { Downloads } from "./downloads.ts";
 import { Images } from "./images.ts";
 import { RecipeBook, loadStarters } from "./recipes.ts";
 import { loadTemplates } from "./templates.ts";
-import { amdMonitor, noGpus, nvidiaMonitor } from "./gpus.ts";
+import { amdMonitor, CMP_100_210, noGpus, nvidiaMonitor } from "./gpus.ts";
 import { stdoutLog } from "./log.ts";
 import { Runtime } from "./runtime.ts";
 import { Scheduler } from "./scheduler.ts";
@@ -47,7 +47,7 @@ const host = new Host({
 });
 
 const comfy = new Comfy(env.COMFYUI_URL || "http://comfyui:8188", undefined, undefined, { serving, status: env.COMFYUI_STATUS || "/comfyui-status/comfyui.json" });
-const scheduler = new Scheduler({
+const scheduler: Scheduler = new Scheduler({
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,
   gpuBackend: backend,
   servers: backend === "vulkan" ? ["llamacpp"] : undefined,
@@ -58,7 +58,10 @@ const scheduler = new Scheduler({
   // when install.sh turned on unified memory (an APU without a discrete GPU).
   sharedMemory: backend === "vulkan" || (backend === "rocm" && env.LLAMA_UNIFIED_MEMORY === "1") ? ["llamacpp"] : [],
   backends: {
-    llamacpp: new LlamaCpp({ url: env.LLAMACPP_URL || "http://llamacpp:8080", serving, models: modelsDir, device: (i) => `${backend === "vulkan" ? "Vulkan" : backend === "rocm" ? "ROCm" : "CUDA"}${i}` }),
+    llamacpp: new LlamaCpp({
+      url: env.LLAMACPP_URL || "http://llamacpp:8080", serving, models: modelsDir, device: (i) => `${backend === "vulkan" ? "Vulkan" : backend === "rocm" ? "ROCm" : "CUDA"}${i}`,
+      slowFlash: (i): boolean => scheduler.gpusFor("llamacpp").some((g) => g.index === i && g.pciId === CMP_100_210),
+    }),
     vllm: new Vllm({ url: env.VLLM_URL || "http://vllm:{port}", serving, models: modelsDir }),
     comfyui: comfy,
     speech: new Speech({ url: env.SPEECH_URL || "http://speech:8000", models: modelsDir }),

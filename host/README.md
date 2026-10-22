@@ -377,6 +377,14 @@ revoked. A revoked server must pair again.
   Docker's nvidia runtime (NixOS), `compose.cdi.yaml` swaps the GPU
   reservations for CDI devices. They log nothing
   (Docker's `none` log driver).
+  - On a host with a CMP 100-210 (PCI ID `10de:1df4`), whose FP16 tensor
+    cores are throttled, `install.sh` adds `compose.cmp.yaml`. It builds
+    llama.cpp from source (`llamacpp/Dockerfile`), at the stock image's tag
+    and for the compute capabilities of the host's GPUs, with
+    `GGML_CUDA_FORCE_MMQ` so quantized models use int8. That changes
+    nothing on Turing and newer cards. The first build takes a while. A
+    model on a CMP gets `flash-attn = off` unless its flash attention was
+    set by hand.
   - llama.cpp runs in router mode. host-api writes its preset file (each
     model's file, GPU and context), then loads and unloads models through
     its API. Each loaded model keeps prompts in host memory (`cache-ram`),
