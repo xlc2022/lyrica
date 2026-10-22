@@ -1,10 +1,9 @@
 # CI
 
-For now, `ci.yml`'s jobs run on GitHub's hosted runners (`ubuntu-latest`),
-since runs queued behind the owner's own runners, and the repository is
-public, so hosted minutes cost nothing. `host-images.yml` stays on the
-owner's runners for its large image builds, except for pull requests from
-forks. The rest of this page describes those self-hosted runners.
+For now, every workflow runs on GitHub's hosted runners (`ubuntu-latest`):
+runs were queueing behind the owner's own runners, and the repository is
+public, so hosted minutes cost nothing. The rest of this page describes the
+self-hosted runners, which no workflow uses at the moment.
 "Switching runners" below says how to move between them.
 
 ## The runner
@@ -98,21 +97,24 @@ internet and nothing else:
 
 ## Who can run code on it
 
-Every job runs the code of the branch it checks, with root on the VM. The
-repository is public, so anyone can open a pull request from a fork: such a
-pull request runs only on GitHub's runners (each self-hosted job's `runs-on`
-picks `lyrica-ci` only for a push or a pull request from a branch of this
-repository, which only people with write access can create). No workflow
-uses `pull_request_target`, and the workflows' token is read-only. A job
-moved back to the self-hosted runners keeps that guard.
+Every job runs the code of the branch it checks, with root on the VM, and
+the workflows' token is read-only. The repository is public, so anyone can
+open a pull request from a fork, and a pull request's run uses the
+workflow files from its own branch: a fork can name `lyrica-ci` in any
+workflow, whatever `main`'s workflows say. So the boundary is a repository
+setting, not the workflows: Settings, Actions, General, "Approval for
+running fork pull request workflows from contributors" set to "Require
+approval for all external contributors", and whoever approves a run reads
+its changes under `.github/` first. While that isn't set, keep the runners
+offline or remove them from the repository. No workflow uses
+`pull_request_target`.
 
 ## Switching runners
 
-To move a workflow back to the self-hosted runners, give each job the
-`runs-on` expression host-images.yml uses (`lyrica-ci` for a push or a pull
-request from this repository, `ubuntu-latest` for a fork), with the `check`
-job's labels `lyrica-ci` and `lyrica-fast`. To move
-one to GitHub's runners, set them to `ubuntu-latest`. On a hosted runner the
-"Stop what earlier jobs left running" step finds nothing, and the nix job
-installs Nix on every run. The host-images jobs pick their "Make room" step
-by where they run.
+Only with the approval setting above in place: to move a workflow back to
+the self-hosted runners, set each job's `runs-on` to `lyrica-ci`, and the
+`check` job's to `[lyrica-ci, lyrica-fast]`. To move one to GitHub's
+runners, set them to `ubuntu-latest`. On a hosted runner the "Stop what
+earlier jobs left running" step finds nothing, and the nix job installs Nix
+on every run. The host-images jobs pick their "Make room" step by where they
+run.
