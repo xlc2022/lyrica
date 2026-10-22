@@ -447,7 +447,8 @@ takes is `lyrica@pve!agent=<that secret>`.
   hours, before the command started, both threads are told at once; the
   change counts as hers, so the other thread's next `write` or `edit` of
   it is held. A change made while the command ran is left as it is.
-  Commands that change a writable grant aren't checked.
+  Commands that change a writable grant, and background commands, get no
+  sweep afterwards.
 - The lists live in `self.db` (`workspace_paths`, keyed by user ID), and only
   an administrator can change them, so no user can widen their own.
   `lyrica admin grants add|remove --user <u> --pool <pool> <path>` signs in as
