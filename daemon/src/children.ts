@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import {
   makeWorktrees, zoneOf, worktreeGrants, removeWorktrees, DEFAULT_THREADS_LIMITS, matchModel, unmatched, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
 } from "@lyrica/core";
-import type { Delegation, Delivery, ThreadContext, ThreadsHost } from "@lyrica/extension";
+import { appendNotice, INTERRUPTED, INTERRUPTED_NOTICE, type Delegation, type Delivery, type ThreadContext, type ThreadsHost } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
 import type { ProjectSettings } from "./projects.ts";
 import type { Wakeups } from "./wakeups.ts";
@@ -933,10 +933,26 @@ export class ChildThreads implements ThreadsHost {
       .run({ pool, t: JSON.stringify(threads) }));
   }
 
-  /** At unlock: children a restart left working are idle now, never resumed; their parents are told. Once per user per process. */
+  /**
+   * At unlock: children a restart left working are idle now, never resumed
+   * here, since a turn cut off partway may have done half of something. Each
+   * says so under its cut-off reply, and its parent is told and woken, to
+   * message the ones that should go on. Once per user per process.
+   */
   recover(userId: string): void {
     if (this.recovered.has(userId)) return;
-    this.idle(userId, this.rows(userId).filter((r) => r.working && !this.o.host().busy(userId, r.pool, r.thread)), "was interrupted when Lyrica restarted");
+    const cut = this.rows(userId).filter((r) => r.working && !this.o.host().busy(userId, r.pool, r.thread));
+    for (const r of cut) {
+      try {
+        const view = this.o.memory.openThreadView(userId, r.pool);
+        try {
+          if (view.own.getThread(r.thread)) appendNotice(view.own, r.thread, INTERRUPTED_NOTICE, INTERRUPTED);
+        } finally {
+          view.close();
+        }
+      } catch { /* locked meanwhile */ }
+    }
+    this.idle(userId, cut, "was interrupted when Lyrica restarted", true);
     // A queued task was held in memory only: the thread is there, but hasn't started.
     const lost = this.rows(userId).filter((r) => r.queued && !this.queue.has(`${userId}/${r.pool}/${r.thread}`));
     this.db(userId, (db) => { for (const r of lost) db.prepare("UPDATE child_threads SET queued = 0 WHERE pool = ? AND thread = ?").run(r.pool, r.thread); });
@@ -974,10 +990,10 @@ export class ChildThreads implements ThreadsHost {
     return working.size + starting;
   }
 
-  private idle(userId: string, rows: Row[], what: string): void {
+  private idle(userId: string, rows: Row[], what: string, wake = false): void {
     for (const r of rows) {
       this.turn(userId, r.pool, r.thread, false);
-      this.deliver(userId, r.pool, r.parent, `Child thread [t:${r.thread}] ${what}, and is idle. Message it to go on.`, r.thread);
+      this.deliver(userId, r.pool, r.parent, `Child thread [t:${r.thread}] ${what}, and is idle. Message it to go on.`, r.thread, "update", wake);
     }
   }
 

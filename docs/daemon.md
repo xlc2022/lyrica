@@ -363,7 +363,11 @@ Each active thread is one Pi session from `openThreadSession`, with
   thread; `ThreadHost.status` says working, waiting or idle, and
   `onTurn` keeps its record. Its summary has `child`, `status` and `unseen`
   (updates not yet seen; reading its messages sees them). Lock stops working
-  children before the key goes.
+  children before the key goes. At unlock, a child a restart cut off
+  mid-turn is idle, never resumed by itself (the turn may have done half of
+  something): its thread shows "Interrupted when Lyrica restarted" as the
+  error of its cut-off reply (`lyrica-interrupted`), and its parent is told
+  and woken to message the ones that should go on.
 - **Wake-ups** (`daemon/src/wakeups.ts`). `threads later` stores a note
   for the thread she's in, in its pool, so it is as encrypted as the thread
   and survives a restart; a thread has at most 3 waiting, and wake-ups

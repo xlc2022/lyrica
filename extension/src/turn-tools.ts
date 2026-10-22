@@ -15,6 +15,9 @@ export const CARRY_ON = "Your last reply had only thinking in it: no text and no
 /** Shown, and reported as the turn's error, when the retry came back empty too. */
 export const EMPTY_REPLY_NOTICE = "lyrica-empty-reply";
 export const EMPTY_REPLY = "The model replied with only its thinking, twice: no answer and no tool call.";
+/** Written into a thread whose turn a restart cut off, shown as that turn's error. */
+export const INTERRUPTED_NOTICE = "lyrica-interrupted";
+export const INTERRUPTED = "Interrupted when Lyrica restarted, before this turn finished. Send a message to go on.";
 
 function normalized(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(normalized).join(",")}]`;

@@ -1458,7 +1458,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `ThreadsHost` every hosted thread's `threads` tool uses: `user.db`
   `child_threads` (pool, thread, parent, working, unseen; no text). Lock
   stops working children and tells their parents; at unlock, children a
-  restart left working are marked idle and their parents told.
+  restart left working are marked idle, each gets an `INTERRUPTED_NOTICE`
+  entry (`appendNotice`, shown as its last reply's error), and their parents
+  are told and woken.
 - **Permission prompts:** the workspace extension's `tool_call` hook calls
   `ThreadTools.approve?(request)`; `lyricad` supplies it and waits for an
   answer from any open view, denying on timeout or Stop. `proposePlan`

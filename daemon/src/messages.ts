@@ -1,5 +1,5 @@
 import { FROM_PARENT, LYRICA_REACTS, ROOT_TOOL, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
-import { type ChecksResult, CHECKS_NOTICE, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, PAID_FALLBACK, type PaidFallback, USER_MESSAGE } from "@lyrica/extension";
+import { type ChecksResult, CHECKS_NOTICE, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, INTERRUPTED_NOTICE, TURN_TOOL_NOTICE, OPENING, PAID_FALLBACK, type PaidFallback, USER_MESSAGE } from "@lyrica/extension";
 import type { Message, MessagePart, Pool, Reaction, RootStep, ThreadRef, Told } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
@@ -156,6 +156,14 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       // Shown as the error of the reply that had only thinking, as it was live.
       const reply = out.findLast((m) => m.role === "assistant");
       if (reply) reply.error = textOf(e.content);
+      continue;
+    }
+    if (e.type === "custom_message" && e.customType === INTERRUPTED_NOTICE) {
+      // The error of the reply a restart cut off, or of a turn cut off before it replied at all.
+      const asked = out.findLastIndex((m) => m.role === "user");
+      const reply = out.findLast((m, i) => m.role === "assistant" && i > asked);
+      if (reply) reply.error = textOf(e.content);
+      else out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "assistant", parts: [], error: textOf(e.content) });
       continue;
     }
     if (e.type === "custom_message" && e.customType === TURN_TOOL_NOTICE) {
