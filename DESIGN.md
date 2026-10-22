@@ -570,6 +570,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     it until a compaction rebuilds it; what changes meanwhile (topics, the
     page index, pins, project state) comes in the turn's messages. A local
     model would otherwise re-read the whole conversation on every change.
+    Something deleted meanwhile (an unpinned message, a forgotten note) is
+    left out of the updated section in the turn but stays in the held top
+    until that compaction.
   - lyricad assembles the prompt, so it can break the total down: persona,
     the page about the user, pinned messages, memories recalled this turn,
     tool definitions, the conversation, Pi's compaction reserve, free space.

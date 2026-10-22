@@ -33,8 +33,10 @@ export function sinceTop(ctx: ExtensionContext, customType: string): { details?:
   const compaction = branch.findLastIndex((e) => e.type === "compaction");
   const turn = branch.findLastIndex((e) => e.type === "custom_message" && e.customType === TURN_MESSAGE);
   if (turn < 0 || compaction > turn) return undefined;
-  const at = branch.findLastIndex((e) => e.type === "custom_message" && e.customType === customType);
-  return at > compaction ? branch[at] as { details?: { told?: Told } } : "none";
+  const at = branch.findLastIndex((e) => (e.type === "custom_message" || e.type === "custom") && e.customType === customType);
+  if (at <= compaction) return "none";
+  const entry = branch[at] as { details?: { told?: Told }; data?: { told?: Told } };
+  return { details: entry.details ?? entry.data };
 }
 
 /** The topics to send this turn: each routed for the first time since the top was built. */
@@ -97,7 +99,11 @@ export function createTopExtension(): ExtensionFactory {
       const seen = (t: Pick<Tool, "name" | "description" | "parameters">) => JSON.stringify([t.name, t.description, t.parameters]);
       const tools = new Set(pi.getAllTools().filter((t) => active.has(t.name)).map(seen));
       const same = top && top.tools.length === tools.size && top.tools.every((t) => tools.has(seen(t)));
-      if (!last || !top || !same || top.preamble !== options.customPrompt) return undefined;
+      if (!last || !top || !same || top.preamble !== options.customPrompt) {
+        // Pi sends the sections as they are now: note that she has them, so they aren't sent again as updates.
+        if (ctx.sessionManager) pi.appendEntry(TOP_MESSAGE, { told: toldOf(options.sections ?? {}) });
+        return undefined;
+      }
       const held = top.sections;
       const updates = topUpdates(typeof last === "object" ? last.details?.told ?? toldOf(held) : toldOf(held), options.sections ?? {});
       options.sections = held;

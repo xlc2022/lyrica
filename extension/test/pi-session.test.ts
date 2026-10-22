@@ -174,6 +174,35 @@ describe("in a Pi session", () => {
     expect(rebuilt!.turn).not.toContain("These sections");
   });
 
+  it("after a persona change rebuilds the top, doesn't send its sections again as updates", async () => {
+    const m = await withMemory();
+    const thread = m.thread();
+    let n = 0;
+    // From the third turn the persona core and another section change together.
+    const change: ExtensionFactory = (pi) => { pi.on("before_agent_start", (event) => {
+      const options = event.systemPromptOptions;
+      const later = ++n >= 3;
+      options.sections = { ...options.sections, mood: later ? "calm" : "busy" };
+      if (later) options.customPrompt = `${options.customPrompt} She is cheerful.`;
+    }); };
+    const { session: s, seen } = await session(thread.context, Array.from({ length: 4 }, () => () => fauxAssistantMessage("ok")), [change]);
+    try {
+      await s.prompt("hello");
+      thread.view.own.putWake("Ada is baking again.", "sleep");
+      await s.prompt("what's new?");
+      await s.prompt("and now?");
+      await s.prompt("anything else?");
+    } finally {
+      s.dispose();
+    }
+    const [, changed, rebuilt, after] = seen;
+    expect(changed!.turn).toContain("These sections of your system prompt changed");
+    expect(rebuilt!.system).toContain("She is cheerful.");
+    expect(rebuilt!.system).toContain("calm");
+    expect(after!.system).toBe(rebuilt!.system);
+    expect(after!.turn).not.toContain("These sections");
+  });
+
   it("keeps the tools' own prompt guidance", async () => {
     const { session: s, seen } = await session((await withMemory()).thread().context);
     try {

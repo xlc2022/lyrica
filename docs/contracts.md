@@ -1128,7 +1128,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   went), with what she was told as hashes in its `details`, so a reopened
   session knows. A new thread, the first turn after a compaction, and a turn
   whose persona core or tools changed (which the model re-reads anyway)
-  build the top from the sections as they are then. Pi's own sections (`preamble`,
+  build the top from the sections as they are then, and record what she has
+  then as a `lyrica-top` custom entry (`pi.appendEntry`, not sent to the
+  model), so those sections aren't sent again as updates. Pi's own sections (`preamble`,
   `cwd`) follow its options as before.
 - **Turn tool limits** (`extension/src/turn-tools.ts`, installed first by
   `openThreadSession`): one prompt/agent run, including model continuations
