@@ -173,6 +173,7 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .children { list-style: none; margin: 0 0 4px 8px; padding: 0 0 0 4px; display: grid; gap: 1px; border-left: 1px solid var(--line); }
 .children .thread { font-size: 13px; grid-template-columns: minmax(0, 1fr) auto; padding-left: 8px; }
 .pool-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); justify-self: center; }
+.thread.working > .pool-dot, .thread.working > .pool-lock { animation: pulse 1.4s ease-in-out infinite; }
 .pool-lock { width: 10px; height: 12px; fill: var(--private); stroke: var(--private); justify-self: center; }
 .flag { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; line-height: 1.5; font-family: var(--ui); }
 .busy { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
@@ -592,7 +593,9 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .mem-edit .ac .popover .item:hover, .mem-edit .ac .popover .item[aria-selected="true"] { background: var(--tool); }
 .mem-edit .ac .popover .item .meta { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .mem-edit .preview-pane { min-height: 120px; }
-.add-memory { max-width: 60ch; }
+.mem-add { max-width: 60ch; }
+.mem-add > .seg { justify-self: start; }
+.import-memory .picked { overflow-wrap: anywhere; }
 /* Remembering a message: a one-line box under it, prefilled with its first line. */
 .remember-box { display: grid; gap: 6px; max-width: 72ch; }
 .remember-box label { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }
@@ -746,7 +749,7 @@ form.drawer-body { flex: 1; }
 .children .thread.dotted .pool-dot { width: 7px; height: 7px; }
 .tstate { font-size: 12px; font-family: var(--ui); color: var(--muted); white-space: nowrap; }
 .tstate[data-state="working"] { color: var(--info); }
-.tstate[data-state="waiting"], .tstate[data-state="needsYou"] { color: var(--warn); }
+.tstate[data-state="waiting"], .tstate[data-state="needsYou"], .tstate[data-state="held"] { color: var(--warn); }
 .tstate[data-state="resolved"] { color: var(--ok); }
 .resolved-row { border: 0; background: transparent; color: var(--muted); font-size: 12px; min-height: 28px; padding: 0 8px 0 4px; justify-content: flex-start; gap: 4px; width: 100%; border-radius: 8px; font-weight: 400; }
 .resolved-row:hover { background: color-mix(in oklab, var(--panel) 60%, transparent); border: 0; }
@@ -760,7 +763,7 @@ form.drawer-body { flex: 1; }
 .threads-pop .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
 .threads-pop .thread-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status[data-state="working"] { background: var(--info); animation: pulse 1.4s ease-in-out infinite; }
-.status[data-state="waiting"], .status[data-state="needsYou"] { background: var(--warn); }
+.status[data-state="waiting"], .status[data-state="needsYou"], .status[data-state="held"] { background: var(--warn); }
 .status[data-state="resolved"] { background: var(--ok); }
 .status[data-state="idle"], .status[data-state="queued"] { background: var(--muted); }
 .threads-pop .tokens { margin: 0; padding: 2px 6px 4px; color: var(--muted); }

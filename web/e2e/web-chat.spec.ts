@@ -635,8 +635,12 @@ test("in an ask mode, a command can be allowed, and denying it stops the tool", 
   await send(page, "run: echo allowed");
   const prompt = page.getByRole("group", { name: "Allow bash?" });
   await expect(prompt).toContainText("echo allowed");
+  // While the turn waits, the thread's sidebar row pulses its pool dot; it rests once the turn ends.
+  const row = page.locator(".side a.thread[aria-current='page']");
+  await expect(row).toHaveClass(/\bworking\b/);
   await prompt.getByRole("button", { name: "Allow" }).click();
   await expect(page.getByText("The command finished.")).toBeVisible();
+  await expect(row).not.toHaveClass(/\bworking\b/);
   await page.locator(".marker", { hasText: "echo allowed" }).getByRole("button").click();
   await expect(page.locator(".marker", { hasText: "echo allowed" })).not.toContainText("Not approved");
 
@@ -988,6 +992,36 @@ test("a memory can be added, edited and restored", async ({ page, baseURL }) => 
   await expect(article.locator(".hist .wdiff")).toContainText("night");
   await article.getByRole("button", { name: "Restore" }).first().click();
   await expect(article.locator(".prose").first()).toContainText("runs at night");
+  await noHorizontalScroll(page);
+});
+
+test("memories export as Markdown and import back, skipping what is already there", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await page.goto(`/#/u/${userId}/memory`);
+  await page.getByRole("button", { name: "Add a memory" }).click();
+  await page.getByLabel("Text").fill("Marigold seeds keep in a tin.");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  const article = page.locator("article.mem-item");
+  await expect(article).toContainText("Marigold seeds");
+
+  // The memory's ⋯ downloads it as a Markdown file.
+  await article.getByRole("button", { name: "More actions" }).click();
+  const saving = page.waitForEvent("download");
+  await article.getByRole("menuitem", { name: "Export" }).click();
+  const file = await saving;
+  expect(file.suggestedFilename()).toMatch(/^marigold-seeds.*\.md$/);
+  const path = await file.path();
+
+  // Importing it again finds it already there.
+  await page.goto(`/#/u/${userId}/memory`);
+  await page.getByRole("button", { name: "Add a memory" }).click();
+  await page.getByRole("button", { name: "Import", exact: true }).click();
+  const form = page.locator("form.import-memory");
+  await expect(form.getByLabel("Pool")).toHaveValue("");
+  await form.locator("input[type=file]").setInputFiles(path);
+  await form.getByRole("button", { name: "Import" }).click();
+  await expect(page.getByRole("status")).toHaveText("Nothing new to import · 1 already here");
+  await page.getByRole("button", { name: "Done" }).click();
   await noHorizontalScroll(page);
 });
 

@@ -46,7 +46,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const { refreshThreads } = ctx;
   // A project chat: its threads, reloaded when one changes state or a turn ends.
   const isProject = !!summary.data?.project;
-  const usage = useLoad(() => get<ThreadUsage>(`${base}/usage`), [base, t.live.children, t.live.reload]);
+  // Reloaded with each context reading too, which a long turn sends after every request.
+  const usage = useLoad(() => get<ThreadUsage>(`${base}/usage`), [base, t.live.children, t.live.reload, t.live.context?.measuredAt]);
   const overview = useOverview(userId, pool, threadId, isProject, t.live.children + t.live.reload);
   const usageProps = usage.data ? { usage: usage.data, userId, pool, threadId, threads: overview.data?.threads ?? threads } : undefined;
   useEffect(() => { if (t.live.children) refreshThreads(); }, [t.live.children, refreshThreads]);

@@ -264,6 +264,10 @@ word: sleep can only add around it.
 **Owner view.** `openOwnerView(userId)` gives the signed-in user read and write
 access to both of their own pools, for the memory browser.
 It is never passed to the extension, a Pi session or sleep.
+`exportMemories(owner, refs)` and `importMemories(owner, files, { pool?,
+author })` move notes and pages in and out as Markdown, only through it;
+`PoolStore.importMemory(id, body, author, createdAt?)` refuses a thread
+view and a taken ID.
 
 **Pages can describe folders.** A page has an optional `folders` list of host
 paths or machine locations (`<machine>:<root>`). Sleep sets it. `forFolders(paths)` returns the pages
@@ -1044,7 +1048,7 @@ piModelFor(runtime, models, task, ctx, resolution?): { ref; model; resolution }
 prepareTurn({ session, runtime, models, call, pool, threadId, task?, thinking?, retry? }): Promise<Resolution>
 openThreadSession({ thread, models, cwd, extensions, settings?, task?: () => Task }): Promise<ThreadSession>
 interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?: { thinking?; retry? }): Promise<Resolution>; dispose() }
-interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary } }   // LyricaOptions.meter
+interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary }; onProgress?(): void }   // LyricaOptions.meter; onProgress runs after each request that goes on with tools
 ```
 
 - The factory is `createLyricaExtension(thread: ThreadContext, opts:
@@ -1295,7 +1299,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `sameFile(path)` runs in `tool_call` for a sandbox `write` or `edit`,
     before any approval is asked; a text it returns blocks the call as its
     reason and nothing is written (daemon
-    `SameFile.claim`, keyed by `Workspace.fileKey`).
+    `SameFile.claim`, keyed by `Workspace.fileKey`; it holds only while the
+    other thread is busy, and `SameFile.held` gives both sides of an
+    unsettled hold, which `ChildThreads` shows as `ThreadState` `"held"` and
+    `held: { thread, title?, path }`; `ChildThreads.message` calls
+    `SameFile.messaged`, which settles it).
     `commandRules()` reads the owning project on every bash call. Forbid
     blocks in all modes and targets; Ask always prompts; Allow skips only
     sandbox mode prompts. Opaque commands ask with any forbid rule.
@@ -1771,6 +1779,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     summary, author and date, case-insensitively. Differences are computed
     in the browser against the current text; Restore keeps its existing
     contract;
+    `POST …/memory/export` (`MemoryExportRequest { items: { pool, id }[] }`)
+    → `MemoryExport { name, markdown, count, skipped }`: the notes and pages
+    as one Markdown file, built in memory for the browser to save (other
+    kinds counted in `skipped`, a hidden pool 404). `POST …/memory/import`
+    (`MemoryImport { files: { name?, text }[], pool? }`, up to 16 MiB) →
+    `MemoryImportResult { imported, duplicates, renamed, linksKept,
+    linksWorded, skipped }`, through `importMemories` (memory.md, "Export
+    and import");
   - speech: `POST …/threads/:pool/:threadId/transcribe` and `POST
     /api/u/:userId/transcribe?pool=` (an `audio/wav` body, `?language=`) →
     `Transcription { text, seconds, model }`; `GET

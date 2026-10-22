@@ -871,7 +871,9 @@ export interface ThreadSummary {
   /** A project's thread: the project chat's message it hangs off (an entry number), if that is still there. */
   anchor?: number;
   /** A project's thread: waiting covers an approval and a question for the user. */
-  state?: "working" | "waiting" | "queued" | "idle" | "resolved";
+  state?: "working" | "waiting" | "queued" | "held" | "idle" | "resolved";
+  /** A project's thread held by the same-file rule (docs/workspace.md), idle until it settles: the other thread and the file. */
+  held?: { thread: string; title?: string; path: string };
   /** A project's thread is waiting on the user to decide something. */
   needsYou?: true;
   /** Its next wake-up, if one is waiting (her `threads later`). */
@@ -1790,6 +1792,29 @@ export interface ForgetTopic { ids: string[] }
  */
 export interface NewNote { text: string; about?: string[]; links?: string[] }
 export interface NewPage { slug: string; title: string; summary: string; text: string; folders?: string[]; links?: string[] }
+
+/**
+ * POST /api/u/:userId/memory/export → MemoryExport. The notes and pages as one
+ * Markdown file for the browser to download; other kinds are counted in
+ * `skipped`. Only pools the display shows.
+ */
+export interface MemoryExportRequest { items: { pool: Pool; id: string }[] }
+export interface MemoryExport { name: string; markdown: string; count: number; skipped: number }
+/**
+ * POST /api/u/:userId/memory/import → MemoryImportResult. Files as read in the
+ * browser (16 MiB in all), into `pool`, or each memory's exported pool when
+ * left out (a file without headers goes to private). Each is a memory the
+ * user added; links that resolve stay, the rest become words.
+ */
+export interface MemoryImport { files: { name?: string; text: string }[]; pool?: Pool }
+export interface MemoryImportResult {
+  imported: { pool: Pool; id: string }[];
+  duplicates: number;
+  renamed: number;
+  linksKept: number;
+  linksWorded: number;
+  skipped: number;
+}
 
 // --- Administrators: /api/u/:userId/admin/… ---
 

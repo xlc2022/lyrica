@@ -575,7 +575,7 @@ refused, an endpoint that didn't answer), `offline` when no model could be
 reached, the queue, `received` (a marked message that reached the turn, or
 was kept), the title, `settings`
 when the thread's settings changed (an approved plan switching its mode),
-and turn end, then the thread's `context` after each turn and a `compacted`
+and turn end, then the thread's `context` after each request that goes on with tools and after each turn, and a `compacted`
 marker when it compacts.
 A subagent run's events (started, output, tool calls, questions, notes,
 usage, finished, stopped, interrupted) go out as `delegation` to the parent
@@ -857,8 +857,9 @@ Dictation and Read aloud (see [models.md](models.md) Speech). Types are in
 The memory browser goes through `openOwnerView`, opened and closed per
 request. Memories are sent in stored form, with mention tokens, plus a map of
 users, so the UI renders current names and edits keep the tokens. It covers
-search, lineage, edit, restore, the four deletion levels and user-introduced
-notes and pages. The settings API covers profiles (with accent and monogram),
+search, lineage, edit, restore, the four deletion levels, user-introduced
+notes and pages, and export and import (Markdown held in memory and sent to
+the browser, never written to disk or logged). The settings API covers profiles (with accent and monogram),
 display settings (in `user.db`), passwords, endpoints, model hosts (pair,
 pair again, addresses, status, pause, resume, restart, update to her
 running release (409 when she runs none), management,

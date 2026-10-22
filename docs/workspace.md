@@ -333,12 +333,16 @@ takes is `lyrica@pve!agent=<that secret>`.
 - **Two threads on one file.** Before a sandbox `write` or `edit`, the
   daemon's `SameFile` checks who last wrote that file (`Workspace.fileKey`:
   a thread's folder, /shared or a writable grant; a worktree is its thread's
-  alone). If another thread of the same pool wrote it within two hours and
-  still exists, the call is held once, before anyone is asked to approve it: it fails with the other thread's
-  mention and how long ago, and that thread is told, steered into its turn
-  or kept for its next. They agree who changes what (project threads
+  alone). If another thread of the same pool wrote it within two hours,
+  still exists and is working now, the call is held once, before anyone is asked to approve it: it fails with the other thread's
+  mention and how long ago, and that thread is told, steered into its turn.
+  They agree who changes what (project threads
   message each other with `threads`); after that neither is held again on
-  that file. Paths only, in memory: a restart forgets them. A command
+  that file. Until the held write goes through, or one of them messages the
+  other, both show as **Blocked** (`state: "held"` with `held` naming the other
+  thread and the file, in place of idle; `SameFile.held`). If the other
+  thread isn't working, there is no one to agree with: the write goes
+  through, and that thread is told for its next turn, once. Paths only, in memory: a restart forgets them. A command
   (`bash`) can't be held before it runs, since what it will change isn't
   known: the sweep after it (`madeSince`) finds the files it changed in
   her folder and /shared, and for one another thread changed within two

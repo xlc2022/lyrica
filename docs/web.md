@@ -57,7 +57,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Only projects or No projects. The sort, the checkboxes and the projects
   choice are saved per user (`Display`). Pinned threads come first under a
   **Pinned** eyebrow, whatever the sort. A thread unread for this user
-  is bold; private threads carry a small lock in the private colour; child
+  is bold; private threads carry a small lock in the private colour; a
+  thread at work (`busy`, or a project thread's `working` state) pulses its
+  pool dot or lock, steady under reduced motion; child
   threads (Lyrica's, branches, forks, copies) sit behind `›`, a child
   showing when it works or waits and a count of its unseen updates (at most
   two badges a row: waiting, then the count, then hidden).
@@ -65,7 +67,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   pool dot's place (amber-dotted when one of its threads waits on the user)
   and its threads nested under it, open by default, each with its pool dot,
   its state as a word (Working, Waiting on you, Waiting for approval,
-  Queued, Idle) and its unseen count, the ones pinned from their cards
+  Queued, Blocked, Idle; Blocked's tooltip reads "Blocked until it agrees
+  with <thread> on who changes <file>.") and its unseen count, the ones pinned from their cards
   first; resolved ones fold under a **Resolved** row with their count. The
   list's own menu (right-click or a long press on its empty space) has
   **New project** (General or Private: an empty, pinned project chat) and
@@ -171,7 +174,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   (`{page:"threads"}`: `ThreadsPage`, the same groups as the popover below, each row
   its state word and its time in mono); below it a popover of the project's
   threads grouped Waiting on
-  you, Working, Queued, Idle and Resolved (each a link, with its unseen
+  you, Working, Queued, Blocked, Idle and Resolved (each a link, with its unseen
   count). Each row carries the thread's **chips** (`ThreadChips`, root `.tchips`, docs/ux.md
   §6 "A project's threads at a glance"), plain spans inside the row's link:
   its checklist's count from `ThreadSummary.steps`, its open pull request
@@ -362,8 +365,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `…/history/memory/<pool>/<id>` lists versions newest first, with
   word differences (`wordDiff`, computed in the browser) and Restore, and
   Edit in place with a `[[` popover of pages and people (a page shows as
-  `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Forget… on a
-  selection, and Add a memory. The **Recent** layer (`kinds=entry`) lists
+  `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Export and Forget… on a
+  selection, and Add a memory with a Write | Import segment (export and
+  import in [memory.md](memory.md#export-and-import); the downloaded file
+  is made from the response in the browser and kept nowhere else). The **Recent** layer (`kinds=entry`) lists
   the logged messages written since sleep last consolidated
   (`PoolStore.recentEntries`), newest first and paged by `before`; one
   opens as a memory of kind `entry` (`GET …/memory/<pool>/e:…`), read-only

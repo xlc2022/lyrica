@@ -305,6 +305,16 @@ export class PoolReader {
     return render(text, (id) => profiles.get(id));
   }
 
+  /**
+   * Stored text as it leaves the install (an export): the owner's tokens go
+   * back to `{user}`, so an import writes them as the importing user's; anyone
+   * else's become their current name.
+   */
+  portable(text: string): string {
+    return this.render(text.replace(/\[\[u:([A-Za-z0-9-]+)(?::([a-z-]+))?\]\]/g, (token, id: string, form?: string) =>
+      (id === this.c.owner ? `{user${form ? `:${form}` : ""}}` : token)));
+  }
+
   // Threads and entries
 
   getThread(id: string): Thread | undefined {
@@ -1438,6 +1448,61 @@ export class PoolStore extends PoolReader {
         .run(page.slug, stored.title, stored.summary, stored.text, JSON.stringify(stored.folders), originOf(author), author, at, at);
       this.written(id, stored, author, at);
       return id;
+    });
+  }
+
+  /** Whether `id` can name a new note or page here: nothing holds it, and no note was deleted under it. */
+  isFree(id: string): boolean {
+    if (this.load(id)) return false;
+    return kindOf(id) !== "note" || !this.db.prepare("SELECT 1 FROM tombstones WHERE id = ?").get(id);
+  }
+
+  /** An unused note ID, as `addNotes` makes them. */
+  unusedNoteId(): string {
+    return this.newId("n", "notes");
+  }
+
+  /** The note whose stored text is exactly what `text` would be stored as, if there is one: an import's duplicate. */
+  noteWithText(text: string): string | undefined {
+    const stored = removeSecrets(toStored(removeSecrets(text.trim()), this.c.owner));
+    return (this.db.prepare("SELECT id FROM notes WHERE text = ?").get(stored) as { id: string } | undefined)?.id;
+  }
+
+  /** Whether page `slug` already holds `text`, as it would be stored. */
+  pageHolds(slug: string, text: string): boolean {
+    const r = this.db.prepare("SELECT text FROM pages WHERE slug = ?").get(slug) as { text: string } | undefined;
+    return !!r && r.text === toStored(removeSecrets(text), this.c.owner);
+  }
+
+  /**
+   * Writes an imported note or page under `id`, which must be free, as a
+   * memory the user added, keeping its original creation time.
+   */
+  importMemory(id: string, body: Body, author: Author, createdAt?: string): void {
+    this.checkAuthor(author);
+    if (this.c.mode !== "owner") throw new Error("only the memory browser imports memories");
+    if (!this.isFree(id)) throw new Error(`${id} is already taken`);
+    const at = now();
+    const created = createdAt && !Number.isNaN(Date.parse(createdAt)) && createdAt < at ? new Date(createdAt).toISOString() : at;
+    this.tx(() => {
+      const stored = this.stored(body);
+      if (!stored.text.trim()) throw new Error("an imported memory needs text");
+      if (kindOf(id) === "note") {
+        const about = (stored.about ?? []).map((a) => a.trim()).filter(Boolean);
+        this.db.prepare("INSERT INTO notes (id, text, about, origin, author, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .run(id, stored.text, about.join(", "), "user", author, created, at);
+        this.written(id, { text: stored.text, about }, author, at);
+      } else if (kindOf(id) === "page") {
+        const slug = id.slice(2);
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) throw new Error("page slugs use lowercase letters, digits and '-'");
+        const page = { ...stored, title: stored.title || slug, summary: stored.summary ?? "", folders: stored.folders ?? [] };
+        this.db.prepare(`INSERT INTO pages (slug, title, summary, text, folders, origin, author, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .run(slug, page.title, page.summary, page.text, JSON.stringify(page.folders), "user", author, created, at);
+        this.written(id, { text: page.text, title: page.title, summary: page.summary, folders: page.folders }, author, at);
+      } else {
+        throw new Error("only notes and pages can be imported");
+      }
     });
   }
 
