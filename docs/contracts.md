@@ -1617,6 +1617,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     (`removalPlan` and `applyRemoval` in `daemon/src/removal.ts`; uploads
     found with `PoolStore.entriesMentioning`); the `rewound` event carries
     `from` and `resend`, never text);
+  - changes: `GET /api/u/:userId/threads/:pool/:threadId/changes` →
+    `ThreadChanges`, `…/changes/commit?repo=&hash=` → `CommitChanges`,
+    `…/changes/file?repo=&path=&old=&commit=` → `FileSides` (docs/daemon.md
+    "Changes"): git run where the thread's tools run, through
+    `Workspace.checkouts(t)` and `core/src/workspace/git-changes.ts`
+    (`repositoryChanges`, `commitFiles`, `fileSides`); the open pull request
+    from `ForgeWatcher.openPull(userId, pool, thread, repo)`, the last poll's
+    number, head, URL and checks;
   - images: `GET /api/u/:userId/threads/:pool/:threadId/file?path=` serves
     sniffed regular file bytes from that thread's folder only (relative or
     `/workspace/` paths), with `no-store`, `nosniff` and a sandbox CSP.
@@ -1946,6 +1954,7 @@ files(t): ThreadFiles                     // the Files panel, every call a fresh
   // roots(), list(dir), search(root, q), images(), read(path) → { stream, size, type }, upload(dir, name, bytes) → path,
   // mkdir(path), rename(from, to), remove(paths), zip(paths) → Readable. FilesRefused: outside the grants, a root, .lyrica, read-only.
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
+checkouts(t): { name, path, kind }[]     // where its code lives, for the changes view: worktrees, clones, writable grants (docs/daemon.md "Changes")
 targetFor(t, machine?): ExecutionTarget  // the sandbox, or an SSH machine the thread may use now (a Proxmox one is refused)
 machinesFor(t): ThreadMachine[]           // { name, kind, limit, root }: granted by it and every ancestor, of its pool
 proxmox(t, machine, action, vm?): Promise<string>  // one PROXMOX_ACTIONS call on a thread's Proxmox machine, token sent only to the pinned certificate

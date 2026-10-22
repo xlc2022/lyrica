@@ -1249,3 +1249,71 @@ test("Fallback is on by default and turns off per thread, with Use default to fo
   await back.first().click();
   await expect(fallback).toBeChecked();
 });
+
+// The changes view (docs/ux.md §6): the daemon's git reads need a sandbox, so the routes are answered here with a
+// branch as a thread would have it; what the badge and the dialog make of them is the real UI.
+test("a thread's branch shows as a badge that opens the changes view: files, commits, folds, side by side", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  const file = (path: string, kind: "added" | "modified" | "deleted" | "renamed", added: number, removed: number, oldPath?: string) => ({ path, kind, added, removed, ...(oldPath ? { oldPath } : {}) });
+  const commits = [
+    { hash: "f50fa8601e5b4c9d8a3f2e1d0c9b8a7f6e5d4c3b", subject: "Usage: Total's own tooltip; one doc line", author: "Lyrica", at: "2026-10-22T01:58:00Z" },
+    { hash: "52b5268a1e5b4c9d8a3f2e1d0c9b8a7f6e5d4c3b", subject: "Measure subagents' turns, so their speed counts", author: "Lyrica", at: "2026-10-22T01:40:00Z" },
+  ];
+  const files = [file("DESIGN.md", "modified", 2, 2), file("core/src/models/index.ts", "modified", 32, 18), file("daemon/src/api.ts", "modified", 8, 3), file("docs/models.md", "renamed", 0, 0, "docs/model.md"), file("web/src/Usage.tsx", "added", 8, 0)];
+  const changes = { repositories: [{ name: "garden/controller", path: "/workspace/repos/controller", branch: "lyrica/endpoint-tokens-per-second", base: "origin/main", commits, uncommitted: true, files,
+    pull: { repo: "garden/controller", number: 430, head: commits[0]!.hash, url: "https://github.com/garden/controller/pull/430", checks: [{ name: "tests", result: "passed" }, { name: "typecheck", result: null }] } }] };
+  const long = Array.from({ length: 60 }, (_, i) => `line ${i + 1}: ${i % 3 ? "const value = compute(i);" : "// a comment"}`);
+  const sides: Record<string, { before?: string; after?: string }> = {
+    "DESIGN.md": { before: "# Design\n\nTokens follows Checklist once a thread has a counted turn. Its\npopover sums every request's reads and outputs\nby model.\n", after: "# Design\n\nTokens follows Checklist once a thread has a counted turn. Its\npopover sums every request's reads as input and\nits outputs as output, by model.\n" },
+    "core/src/models/index.ts": { before: long.join("\n") + "\n", after: long.map((l, i) => (i === 29 ? "line 30: const value = measure(i, { gpu: true });" : l)).join("\n") + "\n" },
+    "daemon/src/api.ts": { before: "export interface UsageRow { threadId: string; tokens: number }\n", after: "export interface UsageRow { threadId: string; tokens: number; input: number; output: number }\n" },
+    "docs/models.md": { before: "# Models\n", after: "# Models\n" },
+    "web/src/Usage.tsx": { after: "export function Totals() {\n  return null;\n}\n" },
+  };
+  await page.route("**/changes", (route) => route.fulfill({ json: changes }));
+  await page.route("**/changes/commit?*", (route) => route.fulfill({ json: { files: files.slice(1, 3) } }));
+  await page.route("**/changes/file?*", (route) => route.fulfill({ json: sides[new URL(route.request().url()).searchParams.get("path")!] ?? {} }));
+  await newThread(page, "General");
+  await send(page, "Show me the branch");
+  const badge = page.locator("button.badge.changes");
+  await expect(badge).toContainText("#430");
+  await expect(badge).toContainText("+50");
+  await expect(badge).toContainText("−23");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/badge-${page.viewportSize()!.width}.png` });
+  await badge.click();
+  const dialog = page.getByRole("dialog", { name: "Changes in garden/controller" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("origin/main → lyrica/endpoint-tokens-per-second")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "#430" })).toHaveAttribute("href", "https://github.com/garden/controller/pull/430");
+  const side = dialog.getByRole("navigation", { name: "Files and commits" });
+  await expect(side.getByRole("button")).toHaveCount(5 + 2 + commits.length);
+  await expect(side.getByRole("button", { name: /^All changes/ })).toHaveAttribute("aria-pressed", "true");
+  // The changed words are marked inside the changed lines, and a renamed file says where it was.
+  await expect(dialog.locator(".dl.ins mark.ins").first()).toContainText("as input");
+  await expect(dialog.getByText("docs/model.md → docs/models.md")).toBeVisible();
+  await expect(dialog.getByText("No differences in the text.")).toBeVisible();
+  // A long unchanged stretch folds, and a press shows twenty more lines of it.
+  const fold = dialog.getByRole("button", { name: "26 unmodified lines" });
+  await expect(fold).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "27 unmodified lines" })).toBeVisible();
+  await fold.click();
+  await expect(dialog.getByRole("button", { name: "6 unmodified lines" })).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/unified-${page.viewportSize()!.width}.png` });
+  const view = dialog.getByRole("group", { name: "View" });
+  if (phone(page)) {
+    await expect(view).toBeHidden();
+  } else {
+    await view.getByRole("button", { name: "Side by side" }).click();
+    await expect(dialog.locator(".dr").first()).toBeVisible();
+    await expect(dialog.locator(".dr .dl.del mark.del").first()).toContainText("outputs");
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/split-${page.viewportSize()!.width}.png` });
+    await view.getByRole("button", { name: "Unified" }).click();
+  }
+  // One commit shows its own files; the heading names it.
+  await side.getByRole("button", { name: /Measure subagents/ }).click();
+  await expect(dialog.locator(".cfile")).toHaveCount(2);
+  await expect(dialog.getByText("Measure subagents' turns, so their speed counts").first()).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await noHorizontalScroll(page);
+});

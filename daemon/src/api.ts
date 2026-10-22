@@ -1392,6 +1392,29 @@ export interface PlanBranch { id: string; repo: string; branch: string; commits:
 /** `pins`: how many of the removed messages were pinned; `files` and `branches`: how many were undone. */
 export interface RewindResponse { removed: number; subagents: number; pins: number; files: number; branches: number }
 
+// --- Changes: a thread's branch against its base ---
+
+/** A thread's open pull request on a repository, as the forge watcher last saw it (docs/briefs/ci-wakes.md). */
+export interface OpenPull { repo: string; number: number; head: string; url: string; checks: { name: string; result: CheckResult | null }[] }
+/** One checkout's changes with its pull request where the watcher knows one. `worktree`: a project thread's own checkout. */
+export interface RepositoryChangesInfo extends RepositoryChanges { pull?: OpenPull; worktree?: boolean }
+/**
+ * GET /api/u/:userId/threads/:pool/:threadId/changes → ThreadChanges: each
+ * checkout the thread works in (its cloned repositories, a project thread's
+ * worktrees, and writable granted folders that are the top of a git
+ * repository), its branch, base, commits since the base (newest first, at
+ * most 100), whether anything is uncommitted, and every file changed since
+ * the base with its line counts. Read with git where the thread's tools run;
+ * nothing is stored. 409 while the thread's folders can't be reached (a
+ * locked home, an SSH target).
+ * GET …/changes/commit?repo=<path>&hash=<commit> → CommitChanges, one
+ * commit's files. GET …/changes/file?repo=<path>&path=<file>[&old=<path>]
+ * &commit=all|<hash> → FileSides, both sides as text (a side over 512 KB,
+ * or a binary file, is said and not sent). `repo` is a checkout's `path`.
+ */
+export interface ThreadChanges { repositories: RepositoryChangesInfo[] }
+export interface CommitChanges { files: ChangedFile[] }
+
 /**
  * PUT /api/u/:userId/threads/:pool/:threadId/messages/:n/pin → Pin, and DELETE to unpin.
  * Only the user's messages and her replies can be pinned; not in a subagent's thread.
@@ -2174,6 +2197,8 @@ export interface PushInfo {
   lastFailure?: { at: string; status: number };
 }
 export type { PushSettings } from "@lyrica/core";
+export type { ChangedFile, ChangeCommit, CheckResult, FileSides, RepositoryChanges } from "@lyrica/core";
+import type { ChangedFile, CheckResult, RepositoryChanges } from "@lyrica/core";
 
 /** GET /api/u/:userId/events: text-free list invalidation; hello on every connection. */
 export type UserEvent = { type: "hello" } | { type: "changed" };

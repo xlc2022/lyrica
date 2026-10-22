@@ -13,6 +13,7 @@ import { ContextFact, newerContext } from "./ContextMeter.tsx";
 import { TokensFact } from "./Usage.tsx";
 import { RoutinesFact } from "./Routines.tsx";
 import { ChecklistButton } from "./Checklist.tsx";
+import { ChangesFact } from "./Changes.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
 import { Crumbs, Main, PanelButtons, usePanel, useWide, type ShellContext } from "./Shell.tsx";
 import { ThreadMenu, type MenuAt } from "./ThreadMenu.tsx";
@@ -295,6 +296,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             {settings.data?.machines.map((m) => <span key={m} className="badge folder" title="Machine">{m}</span>)}
             {settings.data?.repositories.map((r) => <span key={`${r.account}/${r.name}`} className="badge folder" title={`Repository, through ${r.account}`}>{r.name}</span>)}
             {settings.data?.mcpServers.map((m) => <span key={`mcp:${m}`} className="badge folder" title="MCP server">{m}</span>)}
+            {/* The branch and pull request badge (docs/ux.md §6): a project chat has no checkout of its own; its threads do. */}
+            {s && !s.subagent && !isProject && <ChangesFact base={base} activity={ctx.activity[`${pool}/${threadId}`] ?? 0} />}
           </div>
         </div>
         {!s?.subagent && (

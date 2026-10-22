@@ -767,6 +767,36 @@ documented in `daemon/src/api.ts`, "The Files panel".
   her next turn's prompt gets one line naming it ("Since your last turn, in the
   Files panel, the person added … and removed …"), then the notes are cleared.
 
+## Changes
+
+The changes view (docs/ux.md §6) reads a thread's checkouts with git where
+its tools run (`Workspace.targetFor(t).run`, fixed argv, hooks off), so no
+host path is handled by `lyricad` and nothing is stored or logged; the texts
+go to the user's browser alone. `Workspace.checkouts(t)` names them: the
+thread's worktrees (a project thread's, or the ancestor's it works in), its
+cloned repositories, and the writable granted folders no worktree replaces;
+a folder that isn't a git repository is left out when read. The core module
+is `core/src/workspace/git-changes.ts`; types and routes are documented in
+`daemon/src/api.ts`, "Changes".
+
+- `GET …/threads/:pool/:threadId/changes` → `ThreadChanges`: per checkout,
+  the branch, the base (origin's default branch, else the first of
+  `origin/main`, `origin/master`, `main`, `master` that exists), the commits
+  since their merge base (newest first, at most 100), whether the working
+  tree differs from the last commit, and every file changed since the base
+  with its line counts, untracked files counted as added (at most 200), and
+  a clone's open pull request as the forge watcher last saw it
+  (`ForgeWatcher.openPull`: number, head, the forge page's URL, each check
+  and its result). 409 while the thread's folders can't be reached.
+- `GET …/changes/commit?repo=&hash=` → `CommitChanges`, one commit's files
+  (`hash` `working` for the uncommitted ones). `GET
+  …/changes/file?repo=&path=&old=&commit=` → `FileSides`, both sides as
+  text: the merge base's and the working tree's (`all`), the last commit's
+  and the working tree's (`working`), or the commit's parent's and its own.
+  A binary side, or one over 512 KB, is said and not sent. `repo` must be
+  one of the thread's checkouts (404 otherwise), and a path with `..` or a
+  bad hash is refused.
+
 ## Speech
 
 Dictation and Read aloud (see [models.md](models.md) Speech). Types are in

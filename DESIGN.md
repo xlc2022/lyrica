@@ -193,6 +193,12 @@ Each user has two pools of memory.
       in a grant says it deletes on the server.
     - A panel upload belongs to the thread, not to a message, so removing
       turns never deletes it.
+  - **Changes** (decided 2026-10-22, as in Claude's own app): a thread with a
+    checkout shows its branch, its open pull request and "+n −m" as a badge
+    in its header, which opens the changes view: the files and commits at
+    the left, each file's differences at the right, unified or side by side,
+    with the unchanged stretches folded. Git runs where her tools run, and
+    the texts go to the user's browser and nowhere else.
   - **Voice**, as in Claude: a mic in the message box for dictation, and
     **Read aloud** on her messages; later, voice conversation. See
     [Voice](#voice).
