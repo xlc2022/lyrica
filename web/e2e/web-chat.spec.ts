@@ -635,8 +635,12 @@ test("in an ask mode, a command can be allowed, and denying it stops the tool", 
   await send(page, "run: echo allowed");
   const prompt = page.getByRole("group", { name: "Allow bash?" });
   await expect(prompt).toContainText("echo allowed");
+  // While the turn waits, the thread's sidebar row pulses its pool dot; it rests once the turn ends.
+  const row = page.locator(".side a.thread[aria-current='page']");
+  await expect(row).toHaveClass(/\bworking\b/);
   await prompt.getByRole("button", { name: "Allow" }).click();
   await expect(page.getByText("The command finished.")).toBeVisible();
+  await expect(row).not.toHaveClass(/\bworking\b/);
   await page.locator(".marker", { hasText: "echo allowed" }).getByRole("button").click();
   await expect(page.locator(".marker", { hasText: "echo allowed" })).not.toContainText("Not approved");
 

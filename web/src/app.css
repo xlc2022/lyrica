@@ -173,6 +173,7 @@ button.private { color: var(--private); border-color: color-mix(in oklab, var(--
 .children { list-style: none; margin: 0 0 4px 8px; padding: 0 0 0 4px; display: grid; gap: 1px; border-left: 1px solid var(--line); }
 .children .thread { font-size: 13px; grid-template-columns: minmax(0, 1fr) auto; padding-left: 8px; }
 .pool-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); justify-self: center; }
+.thread.working > .pool-dot, .thread.working > .pool-lock { animation: pulse 1.4s ease-in-out infinite; }
 .pool-lock { width: 10px; height: 12px; fill: var(--private); stroke: var(--private); justify-self: center; }
 .flag { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; line-height: 1.5; font-family: var(--ui); }
 .busy { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
