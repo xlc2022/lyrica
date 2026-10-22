@@ -3,7 +3,7 @@
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import type { RecordEntry } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
-import { scanTextModels, type TextModel } from "./library.ts";
+import { projectorFiles, scanTextModels, type TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import { SERVER_NAMES, SERVERS, concurrentOf, contextOf, maxContextOf, serverOf, sizes, usesVision, validate, type Server } from "./placement.ts";
 import { PRIORITIES, type Priority, type Scheduler } from "./scheduler.ts";
@@ -82,6 +82,10 @@ async function readRaw(req: IncomingMessage): Promise<Buffer> {
 
 export class Runtime {
   models: TextModel[] = [];
+  /** Every vision projector in the models folder: what a model's projector may be picked from. */
+  projectors: { path: string; size: number }[] = [];
+  /** The projector each model's name matches, which a pick in its settings replaces. */
+  private readonly matched = new Map<string, { path: string; size: number } | null>();
   /** The download record, by path, from the fetch service. */
   record = new Map<string, RecordEntry>();
   /** Scans image parts too (set when the host has ComfyUI). */
@@ -104,6 +108,12 @@ export class Runtime {
 
   scan(): { models: number; parts: number; proposals: number } {
     this.models = scanTextModels(this.modelsDir);
+    this.projectors = projectorFiles(this.modelsDir);
+    this.matched.clear();
+    for (const m of this.models) {
+      this.matched.set(m.id, m.mmproj ? { path: m.mmproj, size: m.mmprojSize ?? 0 } : null);
+      this.pickProjector(m, this.scheduler.settings(m).mmproj);
+    }
     const images = this.afterScan?.() ?? { parts: 0, proposals: 0 };
     this.log("scanned", { models: this.models.length, ...images });
     return { models: this.models.length, ...images };
@@ -112,6 +122,19 @@ export class Runtime {
   async start(): Promise<void> {
     this.scan();
     await this.scheduler.start(this.models);
+  }
+
+  /**
+   * The model's projector: the one picked in its settings while that file is
+   * still here, else the one its name matches. Its sight follows.
+   */
+  private pickProjector(m: TextModel, picked: string | undefined): void {
+    if (m.server !== "llamacpp" || m.kind !== "chat") return;
+    const p = (picked ? this.projectors.find((x) => x.path === picked) : undefined) ?? this.matched.get(m.id) ?? null;
+    m.mmproj = p?.path ?? null;
+    if (p) m.mmprojSize = p.size;
+    else delete m.mmprojSize;
+    m.capabilities = { ...m.capabilities, vision: !!p };
   }
 
   find(id: unknown): TextModel {
@@ -187,14 +210,20 @@ export class Runtime {
       onlyFields(body, ["model", "settings", "anyway"]);
       const model = this.find(body.model);
       if (!body.settings || typeof body.settings !== "object") throw invalid("settings is needed.");
+      const picked = (body.settings as Record<string, unknown>).mmproj;
+      if (picked !== undefined && !this.projectors.some((p) => p.path === picked)) throw invalid("There's no projector at that path in the models folder.");
+      // Checked with the projector it would have.
+      const as = { ...model, capabilities: { ...model.capabilities } };
+      this.pickProjector(as, picked as string | undefined);
       // Refused when saved if the placement can't work, with the reason. Applies at the next load, or on Reload.
-      const saved = validate(model, body.settings as Record<string, unknown>, await s.validationGpus(serverOf(model)), (i) => s.gpuSettings(i), s.onCpu(model));
+      const saved = validate(as, body.settings as Record<string, unknown>, await s.validationGpus(serverOf(model)), (i) => s.gpuSettings(i), s.onCpu(model));
       // A stretch past what the publisher documents was never tested by them: saved only when asked for anyway.
       const rec = this.state.get().recommended[model.id];
       if (saved.stretch && rec?.factor && saved.stretch.factor > rec.factor && body.anyway !== true) {
         throw new HostError(409, "above_recommended", `${rec.source.repo.split("/")[0]} documents ${rec.factor}.`);
       }
       s.saveSettings(model, saved);
+      this.pickProjector(model, saved.mmproj);
       sendJson(res, 200, this.describe(model));
       return true;
     }
@@ -268,6 +297,25 @@ export class Runtime {
       stretchUntested: m.server === "vllm",
       // What the Vision and MTP switches can turn off: a projector, and an MTP file or the model's own MTP layers.
       extras: { vision: !!m.mmproj, mtp: m.mtp ? "file" : m.builtInMtp ? "built-in" : null },
+      ...(m.server === "llamacpp" && m.kind === "chat" ? this.companionFacts(m) : {}),
+    };
+  }
+
+  /**
+   * A GGUF chat model's companion files: the projector it loads (picked or
+   * matched by name), the projector its name matches, every projector here
+   * (its own folders first) to pick from, and the repository it was
+   * downloaded from, where a missing projector or MTP file can be found.
+   */
+  private companionFacts(m: TextModel) {
+    const dirs = (p: string) => p.split("/").slice(0, -1);
+    const near = (p: string) => { const a = dirs(p), b = dirs(m.id); let n = 0; while (n < a.length && a[n] === b[n]) n++; return n; };
+    const entry = this.record.get(m.id);
+    return {
+      projector: m.mmproj,
+      matchedProjector: this.matched.get(m.id)?.path ?? null,
+      projectors: [...this.projectors].sort((a, b) => near(b.path) - near(a.path) || a.path.localeCompare(b.path)),
+      origin: entry?.repo && (entry.source === "huggingface" || entry.source === "modelscope") ? { source: entry.source, repo: entry.repo, revision: entry.revision } : null,
     };
   }
 

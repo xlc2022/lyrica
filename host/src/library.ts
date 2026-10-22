@@ -47,7 +47,7 @@ export interface TextModel {
   contextLength: number | null;
   /** KV-cache elements per token (keys and values, every layer that holds a cache), to size the cache; null if unknown. */
   kvPerToken: number | null;
-  /** A vision projector next to a GGUF model, relative like `id`. */
+  /** A vision projector next to a GGUF model, or the one picked in its settings, relative like `id`. */
   mmproj: string | null;
   /** A GGUF model's MTP draft file (`mtp-…`, beside it or in an `MTP` folder), relative like `id`. */
   mtp?: string | null;
@@ -125,6 +125,23 @@ function companions(root: string, path: string): { mmproj: string | null; mtp: s
     if (dir === root) break;
   }
   return { mmproj, mtp };
+}
+
+/** Every vision projector under the models folder, relative with `/`, with its size: what a model's projector may be picked from. */
+export function projectorFiles(root: string): { path: string; size: number }[] {
+  const found: { path: string; size: number }[] = [];
+  const walk = (dir: string, depth: number) => {
+    if (depth > 12) return;
+    for (const e of readdirSafe(dir).filter((x) => !x.startsWith(".")).sort()) {
+      const path = join(dir, e);
+      let st;
+      try { st = statSync(path); } catch { continue; }
+      if (st.isDirectory()) walk(path, depth + 1);
+      else if (st.isFile() && e.toLowerCase().endsWith(".gguf") && e.toLowerCase().includes("mmproj")) found.push({ path: relative(root, path).split("\\").join("/"), size: st.size });
+    }
+  };
+  walk(root, 0);
+  return found;
 }
 
 function readdirSafe(dir: string): string[] {

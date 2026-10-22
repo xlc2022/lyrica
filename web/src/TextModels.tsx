@@ -16,6 +16,7 @@ import { canEdit, Frame, gb, hostOf, Kind, plural, Price, Retires, UsedIn, Voice
 import { replyCap } from "../../core/src/models/settings.ts";
 import { go } from "./route.ts";
 import { ConfirmDialog, Dialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { companionsOf, fileChoices, HUB_WORD, size, type FileChoice, type HubFiles } from "./downloads.ts";
 
 type Entry = LibraryEntry;
 const PAGE = 40;
@@ -454,11 +455,56 @@ type Placement = { mode: "auto" } | { mode: "gpus"; gpus: number[]; split?: numb
 type Stretch = { type: "yarn"; factor: number; originalContext?: number };
 /** The host's settings that size the model's memory: Reset in the Memory group takes them back to the host's defaults. */
 const VISION_TIP = "The vision projector: off saves its memory, and the model no longer sees images.";
+const PROJECTOR_TIP = "The vision projector the model loads with. By name is the one beside it whose name matches; a fine-tune may need one picked by hand. A wrong one fails when the model loads.";
+const fileName = (path: string) => path.split("/").pop() ?? path;
+
+/**
+ * A downloaded model's missing vision projector or MTP file, looked up in the
+ * repository it came from and downloaded beside it, where the host finds it
+ * at the model's next load.
+ */
+function MissingCompanions({ userId, hostId, model, origin, lacks, onStarted }: {
+  userId: string; hostId: string; model: string; origin: NonNullable<ServingSettings["origin"]>; lacks: { vision: boolean; mtp: boolean }; onStarted: (said: string) => void;
+}) {
+  const [found, setFound] = useState<FileChoice[]>();
+  const [run, busy, error] = useAction();
+  const what = lacks.vision && lacks.mtp ? "a projector or MTP file" : lacks.vision ? "a projector" : "an MTP file";
+  const look = () => run(async () => {
+    const list = await get<HubFiles>(`${u(userId, "hosts", hostId, "hub", "files")}?${new URLSearchParams({ source: origin.source, repo: origin.repo, ...(origin.revision ? { revision: origin.revision } : {}) })}`);
+    const choices = fileChoices(list).choices.filter((c) => c.kind && !c.present && lacks[c.kind]);
+    // What the host would pair with the model first, as the download picker ticks it.
+    const best = companionsOf(choices, model);
+    setFound([...choices].sort((a, b) => (best.includes(b.key) ? 1 : 0) - (best.includes(a.key) ? 1 : 0)));
+  });
+  const download = (c: FileChoice) => run(async () => {
+    await post(u(userId, "hosts", hostId, "downloads"), { source: origin.source, repo: origin.repo, ...(origin.revision ? { revision: origin.revision } : {}), files: c.files });
+    onStarted(`Downloading ${fileName(c.label)}. The model uses it from its next load.`);
+  });
+  return (
+    <fieldset className="sgroup">
+      <legend className="eyebrow">Missing files</legend>
+      {!found ? (
+        <p className="cap">No {what} here. <button type="button" className="link" disabled={busy} onClick={look}>Look in {origin.repo}</button> <span className="cap">({HUB_WORD[origin.source]})</span></p>
+      ) : !found.length ? (
+        <p className="cap">{origin.repo} has no {what} this model lacks.</p>
+      ) : <>
+        {found.map((c) => (
+            <div key={c.key} className="srow">
+              <span className="lbl"><span className="mono" title={c.key}>{fileName(c.label)}</span> <span className="cap">{c.kind === "vision" ? "Vision" : "MTP"} · <span className="num">{size(c.size)}</span></span></span>
+              <button type="button" disabled={busy || !c.fits} title={c.fits ? undefined : "Not enough free space on the host."} onClick={() => download(c)}>Download</button>
+            </div>
+          ))}
+        {found.some((c) => c.kind === "vision") && <p className="cap">A projector takes about its size in GPU memory beside the model: a model that only just fits may need a shorter context.</p>}
+      </>}
+      <ErrorText error={error} />
+    </fieldset>
+  );
+}
 const MTP_TIPS = {
   file: "Multi-token prediction with the model's MTP file: faster answers for a little more memory.",
   "built-in": "Multi-token prediction with the model's own MTP layers: faster answers.",
 } as const;
-const MEMORY_KEYS = ["contextLength", "stretch", "kvCacheType", "gpuLayers", "flashAttention", "vision", "mtp", "draftMax"];
+const MEMORY_KEYS = ["contextLength", "stretch", "kvCacheType", "gpuLayers", "flashAttention", "vision", "mmproj", "mtp", "draftMax"];
 const MAX_STRETCH = 8;
 
 /** A label, a control and its unit; `word` is the value's source after the label. */
@@ -752,6 +798,15 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
           <input type="number" min={0} max={999} step={1} aria-label="GPU layers" placeholder="999" value={num("gpuLayers")} onChange={(e) => setNum("gpuLayers", e.target.value)} onBlur={() => clamp("gpuLayers", 0, 999)} />
         </SRow>
         <label className="check"><input type="checkbox" checked={draft.flashAttention === "on"} onChange={(e) => set("flashAttention", e.target.checked ? "on" : undefined)} /> Flash attention</label>
+        {!!sv.projectors?.length && (
+          <SRow label="Projector" title={PROJECTOR_TIP} word={typeof draft.mmproj === "string" ? "yours" : undefined}>
+            <select aria-label="Projector" title={typeof draft.mmproj === "string" ? draft.mmproj : sv.matchedProjector ?? undefined}
+              value={typeof draft.mmproj === "string" ? draft.mmproj : ""} onChange={(e) => set("mmproj", e.target.value || undefined)}>
+              <option value="">{sv.matchedProjector ? `By name: ${fileName(sv.matchedProjector)}` : "By name: none"}</option>
+              {sv.projectors.map((p) => <option key={p.path} value={p.path}>{p.path} · {size(p.size)}</option>)}
+            </select>
+          </SRow>
+        )}
         {sv.extras?.vision && (
           <label className="check" title={VISION_TIP}>
             <input type="checkbox" checked={draft.vision !== false} onChange={(e) => set("vision", e.target.checked ? undefined : false)} /> Vision<span className="sr-only">. {VISION_TIP}</span>
@@ -769,6 +824,9 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
         </>}
       </>}
     </fieldset>
+    {llama && sv.origin && serveOwn && (!sv.extras?.vision || !sv.extras.mtp) && (
+      <MissingCompanions userId={userId} hostId={copy.endpointId} model={copy.rawName} origin={sv.origin} lacks={{ vision: !sv.extras?.vision, mtp: !sv.extras?.mtp }} onStarted={onSaved} />
+    )}
     <fieldset className="sgroup" disabled={busy || !serveOwn}>
       <legend className="eyebrow">Throughput</legend>
       {llama ? <>

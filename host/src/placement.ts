@@ -34,6 +34,8 @@ export interface ModelSettings {
   stretch?: Stretch;
   /** llama.cpp: false leaves the vision projector out (less memory, no images). On when the model has one. */
   vision?: boolean;
+  /** llama.cpp: a projector picked by hand, relative to the models folder, instead of the one its name matches. */
+  mmproj?: string;
   /** llama.cpp: false turns off drafting with MTP. On when the model has an MTP file or its own MTP layers. */
   mtp?: boolean;
   /** llama.cpp: tokens MTP drafts ahead, 1 to 6; 2 unless set. */
@@ -224,7 +226,7 @@ const oneOf = (v: unknown, values: readonly string[], what: string) => {
   if (v !== undefined && !values.includes(v as string)) throw invalid(`${what} must be one of ${values.join(", ")}.`);
 };
 
-const LLAMA_ONLY = ["kvCacheType", "flashAttention", "gpuLayers", "parallel", "vision", "mtp", "draftMax"] as const;
+const LLAMA_ONLY = ["kvCacheType", "flashAttention", "gpuLayers", "parallel", "vision", "mmproj", "mtp", "draftMax"] as const;
 const VLLM_ONLY = ["memoryShare", "maxSeqs", "dtype"] as const;
 const KEYS = ["placement", "contextLength", "batchSize", "chatTemplate", "stretch", ...LLAMA_ONLY, ...VLLM_ONLY];
 
@@ -290,6 +292,7 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
   }
   int(body.gpuLayers, 0, 999, "gpuLayers");
   for (const k of ["vision", "mtp"] as const) if (body[k] !== undefined && typeof body[k] !== "boolean") throw invalid(`${k} is true or false.`);
+  if (body.mmproj !== undefined && (typeof body.mmproj !== "string" || model.kind !== "chat")) throw invalid("mmproj is a projector's path, for a chat model.");
   if (body.vision !== undefined && !model.mmproj) throw invalid("This model has no vision projector.");
   if (body.mtp !== undefined && !model.mtp && !model.builtInMtp) throw invalid("This model has no MTP file or layers.");
   int(body.draftMax, 1, 6, "draftMax");

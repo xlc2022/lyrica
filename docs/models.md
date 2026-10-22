@@ -733,6 +733,15 @@ stretch above the card's factor is saved only with `{ anyway: true }` (Save
 anyway). Lookups and changes need the host's administrator (shared) or
 owner.
 
+**Companion files.** A GGUF chat model's serving settings carry the
+projector it loads, the one its name matches, every projector on the host
+and the repository it was downloaded from (host/API.md). The drawer's
+**Projector** picks any of them (`mmproj`), for a fine-tune whose name
+doesn't match its base's projector. A model downloaded before the picker
+ticked companions can fetch its missing projector or MTP file from its
+repository with **Missing files**: the file lands beside the model, and the
+host finds it at the next load.
+
 **Downloading when asked** (extension/src/downloads-tool.ts):
 `model_files { host?, source?, repo }` lists what a repository offers as
 the host sees it (sizes, present, fits, and which files are a vision
