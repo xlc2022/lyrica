@@ -21,6 +21,7 @@ import { Projects } from "./projects.ts";
 import { Watcher } from "./watch.ts";
 import type { BusyItem, Health, SetupRequest, State, UserCard } from "./api.ts";
 import { RateLimiter, Sessions } from "./auth.ts";
+import { SameFile } from "./same-file.ts";
 import { ThreadHost } from "./hosted.ts";
 
 /** Model host refusals the web UI acts on, so their code goes with the message. */
@@ -486,8 +487,16 @@ export class Lyricad implements Drainable {
     });
     const wakeups: Wakeups = new Wakeups({ memory, host: () => host, children, log: this.log });
     forge = new ForgeWatcher({ memory, workspace, wakeups, log: this.log });
+    // Two threads on one file: the second is held once and the first is told, steered into its turn or kept for its next.
+    const sameFile = new SameFile({
+      exists: (u, p, t) => { const v = memory.openThreadView(u, p); try { return !!v.own.getThread(t); } finally { v.close(); } },
+      tell: (u, p, to, from, text) => {
+        if (!host.busy(u, p, to)) return host.get(u, p, to).appendParent(text, from);
+        host.get(u, p, to).send(text, { fromThread: from }).catch((err) => this.log(`couldn't tell a thread about a shared file: ${firstLine(err as Error)}`));
+      },
+    });
     host = new ThreadHost({
-      users, memory, models, workspace, persona, delegation, cwd, log: this.log, searxng: () => searxngAddress(keyring.self()), name: () => selfName(keyring.self()),
+      users, memory, models, workspace, persona, delegation, cwd, log: this.log, sameFile, searxng: () => searxngAddress(keyring.self()), name: () => selfName(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       codePulls: (u, p, t) => forge.codePulls(u, p, t),
       threads: children, onTurn: (u, p, t, working, byPerson) => {

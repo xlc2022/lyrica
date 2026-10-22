@@ -67,6 +67,8 @@ interface Run {
   secrets?: string[];
   /** Whether the thread's runs have Claude Code. */
   claudeCode?: boolean;
+  /** Before a sandbox write or edit: a text to hold it with. */
+  sameFile?: (path: string) => string | undefined;
 }
 
 /** Tools any thread has besides the workspace's: memory, and the switched ones, which do nothing here. */
@@ -109,6 +111,7 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     allowedInThread: (machine, command) => (o.allowed ?? []).includes(`${machine}: ${command}`), network: () => ({ internet: false, services: false, hosts: ["nas.lan:8080"] }),
     approve: o.approve, proposePlan: o.proposePlan, setMode: (m) => { settings.mode = m; },
     claudeCode: () => !!o.claudeCode,
+    ...(o.sameFile ? { sameFile: o.sameFile } : {}),
     repositories: () => o.repositories ?? [], cloneRepositories: async () => o.cloneProblems ?? [],
     gitAccounts: () => (o.gitAccounts ?? []).map((name) => ({ name, kind: "github", host: "github.com" })),
     addRepository: (r) => { o.added?.push(r); return [...(o.repositories ?? []), ...(o.added ?? [])]; },
@@ -182,6 +185,18 @@ describe("workspace tools in a Pi session", () => {
     ]);
     expect(files.has("/workspace/new.md")).toBe(false);
     expect(commands).toEqual([]);
+  });
+
+  it("hold a write or edit to a file another thread just changed, and only that", async () => {
+    const asked: string[] = [];
+    const { files, results } = await run("auto", [
+      fauxToolCall("write", { path: "notes.txt", content: "mine" }, { id: "1" }),
+      fauxToolCall("write", { path: "new.md", content: "hello" }, { id: "2" }),
+    ], { sameFile: (path) => { asked.push(path); return path === "/workspace/notes.txt" ? "Not changed yet: [t:other] changed it." : undefined; } });
+    expect(asked).toEqual(["/workspace/notes.txt", "/workspace/new.md"]);
+    expect(files.get("/workspace/notes.txt")).toBe("one\ntwo\n");
+    expect(files.get("/workspace/new.md")).toBe("hello");
+    expect(results.find((r) => r.startsWith("write:"))).toContain("Not changed yet: [t:other]");
   });
 
   it("ask before commands only", async () => {

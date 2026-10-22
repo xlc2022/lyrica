@@ -167,7 +167,9 @@ is done and what it depends on; a small job (one feature or fix) keeps one
 thread. Parts get their own worktrees for host-folder repository roots.
 After their branch reports, start a `code: true, base: true` merge thread:
 merge each branch, test after each merge, message the owning thread about
-conflicts or red tests, then delete merged branches. Only one open base
+conflicts or red tests, then delete merged branches. Two threads that
+change one file in the same folder are stopped once and told about each
+other, and agree who changes what before going on. Only one open base
 thread per project is allowed. A thread's report names the check that
 tests the request as asked and what it showed; with that evidence a light
 look is enough, and otherwise check fully before reporting it done. A

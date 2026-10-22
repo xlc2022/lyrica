@@ -56,6 +56,11 @@ export interface ThreadTools {
   proposePlan?(request: PlanRequest): Promise<GoAhead | undefined>;
   /** Records what a write or edit call did to a file, so removing its turn can undo it. */
   recordChange?(change: NewChange): void;
+  /**
+   * Called before her write or edit in the sandbox (the path as she sees it): a text when another thread changed the
+   * file lately and hasn't heard from this one, so the call is held once while the two agree who changes what.
+   */
+  sameFile?(path: string): string | undefined;
   /** Records that this thread wrote these files in the sandbox (paths as she sees them), for the file viewer's thread beside a file. */
   madeFiles?(paths: string[]): void;
   /** The same for a command: the files in her folder and /shared newer than `since`, its start, found in the background. */
@@ -194,6 +199,8 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           // Pi resolves paths against the session's cwd, which is on the host; use the target's.
           const here = new Proxy(ctx, { get: (t, k) => (k === "cwd" ? cwd : Reflect.get(t, k)) });
           if (machine || (name !== "write" && name !== "edit" && name !== "bash")) return tool.execute(id, rest, signal, onUpdate, here);
+          const held = name !== "bash" && typeof rest.path === "string" ? tools.sameFile?.(posix.resolve(cwd, rest.path)) : undefined;
+          if (held) throw new Error(held);
           const since = new Date();
           try {
             return await tool.execute(id, rest, signal, onUpdate, here);

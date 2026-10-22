@@ -1282,7 +1282,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `ThreadTools` is `{ commandRules?(), target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
     mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
-    proposePlan?(PlanRequest), recordChange?(NewChange), madeFiles?(paths), madeSince?(since), fileNotes?() }`.
+    proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path), madeFiles?(paths), madeSince?(since), fileNotes?() }`.
+    `sameFile(path)` runs before a sandbox `write` or `edit`; a text it
+    returns is the call's error and nothing is written (daemon
+    `SameFile.claim`, keyed by `Workspace.fileKey`).
     `commandRules()` reads the owning project on every bash call. Forbid
     blocks in all modes and targets; Ask always prompts; Allow skips only
     sandbox mode prompts. Opaque commands ask with any forbid rule.
@@ -1934,7 +1937,8 @@ settings(userId).checks(pool, project): string[] / setChecks(pool, project, chec
 // checkChecks: at most 8 commands, each one line of at most 300 characters, no control characters; blanks dropped.
 // user step 16 adds project_settings.checks, JSON default [].
 settings(userId).skillsAutoApprove() / setSkillsAutoApprove(on)   // her skills active at once; user.db setting skills.auto_approve
-forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), madeFiles(paths), madeSince(since), fileNotes() },
+forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileKey(path), madeFiles(paths), madeSince(since), fileNotes() },
+fileKey(t, path)  // one file under the same key for every thread that can write it: "<folder thread>:<path>" in a thread's folder or /shared, "grant:<path>" in a writable grant; else undefined
               // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:
   // roots(), list(dir), search(root, q), images(), read(path) → { stream, size, type }, upload(dir, name, bytes) → path,
