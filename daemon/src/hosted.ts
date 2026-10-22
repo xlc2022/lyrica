@@ -12,7 +12,7 @@ import {
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
 import type { SameFile } from "./same-file.ts";
-import { delegateThreads, delegationPart, imagePart, imageRefusal, markersFor, plainError, shortResult, toReactions, turnRecall } from "./messages.ts";
+import { delegateThreads, delegationPart, imagePart, imageRefusal, markersFor, plainError, shortResult, toReactions, turnRecall, type Started } from "./messages.ts";
 
 export interface HostOptions {
   users: Users;
@@ -1143,7 +1143,7 @@ export class HostedThread {
       case "tool_execution_end": {
         const content = (e.result as { content?: unknown } | undefined)?.content;
         const result = shortResult(content);
-        const threads = delegateThreads(e.toolName, (e.result as { details?: unknown } | undefined)?.details, this.pool);
+        const threads = delegateThreads(e.toolName, (e.result as { details?: unknown } | undefined)?.details, this.pool, e.toolName === "delegate" ? this.started() : undefined);
         const image = !e.isError ? imagePart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;
         const refusedImage = imageRefusal(e.toolName, (e.result as { details?: unknown } | undefined)?.details);
         this.emit({ type: "tool_end", ...(refusedImage ? { imageRefusal: refusedImage } : {}), toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}), ...(image ? { image } : {}) });
@@ -1194,8 +1194,13 @@ export class HostedThread {
     if (this.noticed.has(key)) return;
     this.noticed.add(key);
     if (this.noticed.size > 100) this.noticed.delete(this.noticed.values().next().value!);
-    const threads = delegateThreads("delegate", details, this.pool);
+    const threads = delegateThreads("delegate", details, this.pool, this.started());
     this.emit({ type: "notice", ...notice, ...(threads ? { threads } : {}) });
+  }
+
+  /** The subagents this thread started, for their cards' roles and models; none while the user is locked. */
+  private started(): Started[] | undefined {
+    try { return this.o.delegation.store.runs(this.userId, this.pool, { parent: this.threadId }); } catch { return undefined; }
   }
 
   private async maybeTitle(opened: Opened): Promise<void> {

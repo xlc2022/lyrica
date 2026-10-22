@@ -577,19 +577,53 @@ function ImageRefusalLinks({ part, env }: { part: Extract<MessagePart, { type: "
   </>;
 }
 
+/** What a `delegate` card is titled by its action, besides run and message. */
+const DELEGATE_HEADS: Record<string, string> = { status: "Subagent status", wait: "Subagent wait", stop: "Subagent run stopped", models: "Subagent models" };
+
+type DelegateStep = { task?: string; role?: string };
+type DelegateArgs = DelegateStep & {
+  action?: string; tier?: string; message?: string; tasks?: DelegateStep[]; chain?: DelegateStep[];
+  loop?: { task?: string }; council?: { question?: string }; workflow?: string; input?: string;
+};
+
+/** What a run was asked to do: its task, its steps (numbered), a loop's task, a council's question or a saved workflow. */
+function delegateText(a: DelegateArgs): string | undefined {
+  const steps = a.tasks ?? a.chain;
+  if (steps?.length) return steps.length === 1 ? steps[0]!.task : steps.map((t, i) => `${i + 1}. ${t.task ?? ""}`).join("\n");
+  return a.task ?? a.loop?.task ?? a.council?.question ?? (a.workflow ? `${a.workflow}${a.input ? `: ${a.input}` : ""}` : undefined);
+}
+
+/**
+ * A `delegate` call. A run is headed by its subagents' roles and, when they share one, the model
+ * they ran on (until they start, the role it asked for); a message names whom it went to; status,
+ * wait, stop and models by what they are. A failed call says why.
+ */
 function SubagentCard({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {
-  const args = (part.args ?? {}) as { task?: string; role?: string; tier?: string };
+  const args = (part.args ?? {}) as DelegateArgs;
+  const action = args.action ?? "run";
   const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
+  const threads = part.threads ?? [];
+  const asked = [...new Set([args.role, ...(args.tasks ?? args.chain ?? []).map((t) => t.role)].filter((r): r is string => !!r))];
+  const roles = [...new Set(threads.map((t) => t.role).filter((r): r is string => !!r))];
+  const role = (roles.length ? roles : asked).join(", ");
+  const models = new Set(threads.map((t) => t.model));
+  const model = models.size === 1 ? threads[0]?.model : undefined;
+  // A role is a lowercase name, capitalised as a head; the other heads are written as they show.
+  const head = action === "run" ? (role || "Subagent")
+    : action === "message" ? (role ? `Message to the ${role}` : "Message to a subagent")
+    : DELEGATE_HEADS[action] ?? "Subagent";
+  const text = action === "run" ? delegateText(args) : action === "message" ? args.message : undefined;
   return (
     <div className="subagent">
       <div className="sub-head">
         <span className="status" data-state={state} aria-label={state} />
-        <b>{args.role ?? "subagent"}</b>
-        {args.tier && <span className="muted">{args.tier}</span>}
+        <b className={action === "run" && role ? undefined : "as-is"}>{head}</b>
+        {model ? <span className="muted" title={model}>{shortModel(model)}</span> : action === "run" && args.tier && <span className="muted">{args.tier}</span>}
         <ThreadLinks threads={part.threads} env={env} />
       </div>
-      {args.task && <div className="prose"><HerProse text={args.task} env={env} /></div>}
-      {part.threads?.map((t, i) => <SubagentWork key={t.id} thread={t} label={part.threads!.length > 1 ? `Subagent ${i + 1}` : "Its work"} env={env} />)}
+      {text && <div className="prose"><HerProse text={text} env={env} /></div>}
+      {part.isError && <ToolError text={String(part.result ?? "")} env={env} />}
+      {threads.map((t, i) => <SubagentWork key={t.id} thread={t} label={threads.length > 1 ? `${t.role ?? "Subagent"} ${i + 1}` : "Its work"} env={env} />)}
     </div>
   );
 }
@@ -700,7 +734,7 @@ function SubagentWork({ thread, label, env }: { thread: ThreadRef; label: string
   useEffect(() => () => env.show(thread.id, false), [thread.id]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="sub-work">
-      <button type="button" className="quiet" aria-expanded={open} onClick={toggle}>{open ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}</button>
+      <button type="button" className="quiet" aria-expanded={open} onClick={toggle} title={thread.model}>{open ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}</button>
       {open && (
         <>
           <Transcript thread={thread} env={env} />

@@ -935,7 +935,15 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   stored copy replaces them (`src/looks.ts`). It is never the user's
   bubble, and nothing shows when the setting is off, since no look is sent.
 - A `delegate` call is a card for its subagents (the tool part's
-  `threads`). Each expands to its work: the stored transcript, read-only,
+  `threads`), headed by their role (coder, scout, worker, or a role the
+  user added) and, when they share one, the short name of the model they
+  ran on, with the full label in its tooltip. Until they start it shows the
+  role the call asked for, else "Subagent". Under the head is what the run
+  was asked: its task, its steps numbered, a loop's task, a council's
+  question or a workflow. With several subagents, each one's toggle names
+  its role and number. The other actions say what they are: "Message to the
+  <role>" with the message, Subagent status, Subagent wait, Subagent run
+  stopped, Subagent models. A failed call shows its error. Each expands to its work: the stored transcript, read-only,
   where each message says who sent it (Lyrica, the user by name, or the
   subagent's own work), reloaded as the subagent works; its waiting
   approvals; and a message box that writes to it as the user (Lyrica is

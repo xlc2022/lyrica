@@ -1200,7 +1200,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         const names = thread.subagent ? { userName: (id: string) => s().users.get(id)?.profile.displayName ?? "a user" } : undefined;
         const questions = o[poolOf(r)].questions(thread.id);
         return { messages: toMessages(thread.id, poolOf(r), page.entries,
-          (run) => s().delegation.store.runs(user.id, poolOf(r), { run }).map((x) => x.thread), names, { ...(thread.child && thread.parent ? { parent: thread.parent } : {}), userId: user.id, userName: user.profile.displayName }), hasMore: page.hasMore, ...(questions.length ? { questions } : {}) };
+          s().delegation.store.runs(user.id, poolOf(r), { parent: thread.id }), names, { ...(thread.child && thread.parent ? { parent: thread.parent } : {}), userId: user.id, userName: user.profile.displayName }), hasMore: page.hasMore, ...(questions.length ? { questions } : {}) };
       });
     }),
     route("GET", `${t}/image-calls/:toolCallId`, async (r): Promise<Api.ImageRetryOptions> => {
