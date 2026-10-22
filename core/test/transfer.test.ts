@@ -107,6 +107,18 @@ describe("memory export and import", () => {
     o.close();
   });
 
+  it("gives a hand-edited ID that no link could name a fresh one", async () => {
+    const { memory, ada } = await setup();
+    const o = memory.openOwnerView(ada.id);
+    const md = [
+      "---", "lyrica: memory 1", "kind: note", "pool: general", "id: n:my note", "---", "", "seeds in jars", "",
+      "---", "lyrica: memory 1", "kind: page", "pool: general", "id: p:My Garden", 'title: "My Garden"', "---", "", "roses", "",
+    ].join("\n");
+    const r = importMemories(o, [{ text: md }], { author: `user:${ada.id}` });
+    expect(r.imported.map((x) => x.id)).toEqual([expect.stringMatching(/^n:\d{8}-[0-9a-f]{8}$/), "p:my-garden"]);
+    o.close();
+  });
+
   it("imports a plain Markdown file as one private note", async () => {
     const { memory, ada } = await setup();
     const o = memory.openOwnerView(ada.id);

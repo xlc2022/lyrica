@@ -183,7 +183,9 @@ export function importMemories(o: OwnerView, sources: ImportSource[], opts: { po
     const to = opts.pool ?? item.pool ?? "private";
     const from = item.pool ?? to;
     const store = o[to];
-    const was = item.id && kindOf(item.id) === item.kind ? item.id : undefined;
+    // An ID edited by hand by someone who doesn't know the shapes gets a fresh one rather than one no link can name.
+    const was = item.id && kindOf(item.id) === item.kind && splitId(item.id)?.id === item.id
+      && (item.kind === "note" || /^p:[a-z0-9][a-z0-9-]*$/.test(item.id)) ? item.id : undefined;
     const free = (id: string) => !taken.has(`${to}/${id}`) && store.isFree(id);
     // An earlier import of the same file stored its links resolved: compare that form too.
     const linked = relink(item, from, to, find(from), { ...result });
