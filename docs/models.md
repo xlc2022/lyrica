@@ -1004,13 +1004,13 @@ model: its estimated transcript plus its reply cap (at most 32,768, the
 reply a request usually gives, so a 131,072 cap doesn't halve how much runs
 at once), against the window the
 model is served with. It waits while the running requests plus its own
-wouldn't fit, or while the model already serves its limit: 1 below a
-200,000-token window, 2 from 200,000, 4 from 500,000, and never more than
-the server's own slots where it says (LM Studio's `parallel`, read with the
-loaded context, or a model host's `parallel` from its model list, into the
-offering's `parallel`). A model host serves a chat model with the same
-limit by default and one shared cache (host/API.md, "Placement and serving
-settings"). A request alone always
+wouldn't fit, or while the model already serves as many requests as the
+server says it has slots for (LM Studio's `parallel`, read with the loaded
+context; llama-server's slots from `/props`; or a model host's `parallel`
+from its model list; all into the offering's `parallel`). A server that
+reports no slots has no limit but the cache. A model host picks a chat
+model's slots by its context unless set by hand, with one shared cache
+(host/API.md, "Placement and serving settings"). A request alone always
 runs, and requests start in the order they asked. A wait the turn aborts
 ends as an aborted reply. LM Studio's "Context size has been exceeded" is
 marked as an overflow, so Pi compacts and retries instead of failing. Image

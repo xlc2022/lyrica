@@ -6,17 +6,13 @@ import { createAssistantMessageEventStream, type AssistantMessageEventStream } f
 // model take turns by what they could fill, across every thread, subagent and
 // project chat in this daemon (one scope: its Models).
 
-/** Requests to one model at once, by the context it is served with (the operator's tiers), and never more than the server's own slots. */
-export function concurrentLimit(window: number, slots?: number): number {
-  return Math.min(window >= 500_000 ? 4 : window >= 200_000 ? 2 : 1, slots ?? Infinity);
-}
-
 interface Share { used: number; running: number; queue: { need: number; window: number; slots?: number; go: () => void }[] }
 /** Each daemon's shares, by its Models: a daemon started again in the same process starts with none. */
 const scopes = new WeakMap<object, Map<string, Share>>();
 
 function fits(s: Share, need: number, window: number, slots?: number): boolean {
-  return s.running === 0 || (s.running < concurrentLimit(window, slots) && s.used + need <= window);
+  // At most the slots the server says it serves at once; none said, no limit but the cache.
+  return s.running === 0 || (s.running < (slots ?? Infinity) && s.used + need <= window);
 }
 
 function next(shares: Map<string, Share>, key: string, s: Share): void {
