@@ -1,8 +1,11 @@
 # CI
 
-The checks in `.github/workflows/` run on the owner's own GitHub Actions runner, not
-on GitHub's hosted runners: a self-hosted runner costs nothing, while hosted
-minutes on a private repository are billed past the plan's allowance.
+For now, `ci.yml`'s jobs run on GitHub's hosted runners (`ubuntu-latest`),
+since runs queued behind the owner's own runners, and the repository is
+public, so hosted minutes cost nothing. `host-images.yml` stays on the
+owner's runners for its large image builds, except for pull requests from
+forks. The rest of this page describes those self-hosted runners.
+"Switching runners" below says how to move between them.
 
 ## The runner
 
@@ -43,8 +46,8 @@ minutes on a private repository are billed past the plan's allowance.
   everything under them, and logs the user's thread count before and after.
 - The host-stack job removes what it installed (the stack and its volumes,
   the egress unit and rules, Docker's daemon.json) when it ends.
-- Runner speed: the runners sit on three machines of different speed. The
-  `check` job (unit tests and e2e) needs the extra label `lyrica-fast` and
+- Runner speed: the runners sit on three machines of different speed. On
+  them, the `check` job (unit tests and e2e) needs the extra label `lyrica-fast` and
   so runs only on the faster machines; it timed out and flaked on the slowest
   (4 cores), where it took twice as long. The other jobs run on any runner.
   Give a runner the label with `--labels lyrica-ci,lyrica-fast` when
@@ -96,11 +99,20 @@ internet and nothing else:
 ## Who can run code on it
 
 Every job runs the code of the branch it checks, with root on the VM. The
-repository is private, so only people with access to it can open a pull
-request; the workflows' token is read-only. The repository must stay private
-while it uses this runner.
+repository is public, so anyone can open a pull request from a fork: such a
+pull request runs only on GitHub's runners (each self-hosted job's `runs-on`
+picks `lyrica-ci` only for a push or a pull request from a branch of this
+repository, which only people with write access can create). No workflow
+uses `pull_request_target`, and the workflows' token is read-only. A job
+moved back to the self-hosted runners keeps that guard.
 
-## Going back to GitHub's runners
+## Switching runners
 
-Change `runs-on: lyrica-ci` back to `ubuntu-latest` in both workflows. The
-host-images jobs pick their "Make room" step by where they run.
+To move a workflow back to the self-hosted runners, give each job the
+`runs-on` expression host-images.yml uses (`lyrica-ci` for a push or a pull
+request from this repository, `ubuntu-latest` for a fork), with the `check`
+job's labels `lyrica-ci` and `lyrica-fast`. To move
+one to GitHub's runners, set them to `ubuntu-latest`. On a hosted runner the
+"Stop what earlier jobs left running" step finds nothing, and the nix job
+installs Nix on every run. The host-images jobs pick their "Make room" step
+by where they run.

@@ -9,7 +9,9 @@ on:
   push:
     branches: [main]
     paths: ["host/comfyui/**", "host/speech/**", "host/compose.nvidia.yaml", "host/compose.amd.yaml", "host/recipes/**"]
-# The jobs run on the operator's own runner (docs/ci.md), so their token can only read.
+# The jobs run on the operator's own runners (docs/ci.md), so their token can only read.
+# The repository is public: a pull request from a fork runs on GitHub's
+# runners instead, since every job runs the branch's code with root.
 permissions:
   contents: read
 # One runner: a newer push to a PR replaces its older runs; main tests every commit.
@@ -19,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   comfyui:
-    runs-on: lyrica-ci
+    runs-on: ${{ (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && 'lyrica-ci' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
@@ -66,7 +68,7 @@ jobs:
           if [ -n "$BASE" ]; then docker image rm "$BASE" >/dev/null 2>&1 || true; fi
           df -h /var/lib/docker
   speech:
-    runs-on: lyrica-ci
+    runs-on: ${{ (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && 'lyrica-ci' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,7 +79,7 @@ jobs:
       - name: Build the CUDA image
         run: docker buildx build -f host/speech/Dockerfile --build-arg FLAVOUR=cuda --output type=cacheonly .
   starters:
-    runs-on: lyrica-ci
+    runs-on: ${{ (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && 'lyrica-ci' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
         with:
