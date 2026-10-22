@@ -498,9 +498,10 @@ export class Workspace {
   photos(userId: string): PortraitPhotos { return new PortraitPhotos(() => this.imageHome(userId)); }
 
   /**
-   * The thread's Files panel: its folder, its family's /shared (unless that is
-   * inside the folder it works in, as for the family's top thread and those
-   * working in its folder) and grants, every operation in
+   * The thread's Files panel: its folder, its family's /shared (a root of its
+   * own unless that is inside the folder it works in, as for the family's top
+   * thread and those working in its folder, which still reach it at /shared,
+   * as her tools do) and grants, every operation in
    * a fresh sandbox with no network. Grants are checked against the allowed
    * paths as they are now, as for her tools.
    */
@@ -508,8 +509,8 @@ export class Workspace {
     const s = this.settings(t.userId);
     s.checkInherited(t.threadId, t.pool);
     const tw = s.effective(t.threadId);
-    const family = this.sharedDir(t);
-    const shared = family === join(this.threadDir(t), "shared") ? undefined : family;
+    const shared = this.sharedDir(t);
+    const own = shared === join(this.threadDir(t), "shared");
     const box = new Sandbox({
       workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), shared, grants: tw.grants, network: { internet: false, services: false, hosts: [] },
       check: (g) => checkGrant(s.allowed(), t.pool, g), bwrap: this.opts.bwrap,
@@ -523,7 +524,7 @@ export class Workspace {
         else if (f) s.dropOrigins(f.folder, [f.path]);
       },
       removed: (paths) => { for (const p of paths) { const key = this.originKey(t, p); if (key) s.dropOrigins(key.folder, [key.path]); } },
-    }, !!shared);
+    }, !!shared && !own);
   }
 
   /** What the thread's tools may reach: its settings, or nothing while the self-test has refused network. */

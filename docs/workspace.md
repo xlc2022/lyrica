@@ -507,7 +507,8 @@ takes is `lyrica@pve!agent=<that secret>`.
   folder, its family's `/shared` (a root of its own, kind `shared`, for a
   thread with a folder of its own, such as a code thread; a thread working
   in its family's top folder, such as a project chat, sees it there as
-  `shared/`) and
+  `shared/`, and still reaches it at `/shared`, so a link she writes to
+  either path opens) and
   its grants, every operation a fresh no-network sandbox over the
   thread's grants (`find`, `cat`, `stat`, `mkdir`, `mv`, `rm`), so the panel
   can reach exactly what she can and nothing else: a path outside, a symlink
@@ -573,6 +574,9 @@ threads and their subagents, at any depth (`familyRoot`).
   thread that may call the cloud gets no `/shared`, since what it put there
   would reach that model (`sharesFamilyFolder`).
 - The prompt's workspace section says so in one line (`SHARED_LINE`).
+- Another line (`LINK_LINE`), in every thread and the project chat, tells
+  her a `/workspace` or `/shared` path is a link the person can open, and to
+  link a file by its absolute path, never a relative one (docs/web.md, Chat).
 - The `threads` tool refuses a message over 8,000 characters, and any
   message or task holding a long base64 run, naming `/shared` or a shared
   repository instead (`checkWords`).

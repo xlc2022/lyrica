@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { get, post, threadPath, upload, type FileEntry, type FileListing, type FileRoot, type FileSearch, type ImageEntry, type Pool, type ThreadSummary } from "./api.ts";
 import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
-import { isUnderWorkdir, shown, Thumb, useFileLinks, WORKDIR, type FileLinks } from "./paths.tsx";
+import { isUnderWorkdir, SHARED, shown, Thumb, useFileLinks, WORKDIR, type FileLinks } from "./paths.tsx";
 import { Viewer } from "./Viewer.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
@@ -83,20 +83,24 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     addEventListener("focus", on);
     return () => removeEventListener("focus", on);
   }, [reloadShown]);
-  // A linked file: its folders open and it is shown; a folder is only opened.
+  // A linked file: its folders open and it is shown; a folder is only opened. Where the family's /shared is the
+  // thread's own `shared/` (a project chat), a /shared path opens there.
   useEffect(() => {
     if (!path) return;
     let live = true;
     (async () => {
+      let p = path;
+      let l = await load(parent(p));
+      if (under(p, SHARED) && !l.roots.some((r) => r.kind === "shared")) l = await load(parent(p = `${WORKDIR}/shared${p.slice(SHARED.length)}`));
+      const root = l.roots.find((r) => under(p, r.path))?.path ?? WORKDIR;
       const dirs: string[] = [];
-      for (let d = parent(path); d.length >= WORKDIR.length && under(d, WORKDIR); d = parent(d)) dirs.unshift(d);
-      const l = await load(parent(path));
-      const entry = l.entries.find((e) => e.path === path);
+      for (let d = parent(p); d.length >= root.length && under(d, root); d = parent(d)) dirs.unshift(d);
+      const entry = l.entries.find((e) => e.path === p);
       if (!live) return;
-      setOpen((s) => new Set([...s, ...dirs, ...(entry?.kind === "folder" ? [path] : [])]));
-      if (entry?.kind === "folder") { setCwd(path); if (!listings[path]) load(path).catch(fail); }
+      setOpen((s) => new Set([...s, ...dirs, ...(entry?.kind === "folder" ? [p] : [])]));
+      if (entry?.kind === "folder") { setCwd(p); if (!listings[p]) load(p).catch(fail); }
       else if (entry) view(entry);
-      else setError(`There is no ${shown(path)} any more.`);
+      else setError(`There is no ${shown(p)} any more.`);
     })().catch(fail);
     return () => { live = false; };
   }, [path, load]); // eslint-disable-line react-hooks/exhaustive-deps

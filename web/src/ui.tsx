@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import Markdown, { type Components } from "react-markdown";
 import { CodeBlock } from "./CodeBlock.tsx";
 import { Icon } from "./icons.tsx";
-import { basename, InlineImage, isUnderWorkdir, Lightbox, rehypePaths, type FileLinks } from "./paths.tsx";
+import { basename, fileTarget, InlineImage, Lightbox, rehypePaths, type FileLinks } from "./paths.tsx";
 import type { Display, Pool } from "./api.ts";
 
 /** Whether the display filters hide a pool. Hiding only changes what's shown. */
@@ -199,17 +199,25 @@ export function fullTime(iso: string): string {
 }
 
 /**
- * Links open in a new tab, except Lyrica's own (a mentioned thread, a file of the thread). A remote image is never
- * loaded, only linked by its alt text; one from the thread's folder shows in the message and opens large (docs/ux.md §6).
+ * Links open in a new tab, except Lyrica's own (a mentioned thread, a file she can reach). A link to a file, by its
+ * absolute path or relative to the thread's folder, opens it in the Files panel. A remote image is never loaded, only
+ * linked by its alt text; a file's shows in the message and opens large (docs/ux.md §6).
  */
 function markdown(files: FileLinks | undefined, large: (path: string) => void, skip?: ReadonlySet<string>): Components {
   return {
-    a: ({ node: _, ...props }) => (props.href?.startsWith("#/") ? <a {...props} /> : <a {...props} target="_blank" rel="noopener noreferrer" />),
-    img: ({ src, alt }) => (typeof src !== "string" || !src ? <>{alt}</>
+    a: ({ node: _, ...props }) => {
+      if (props.href?.startsWith("#/")) return <a {...props} />;
+      const file = files && fileTarget(props.href);
+      return file ? <a {...props} className="fpath" href={files.href(file)} title={file} /> : <a {...props} target="_blank" rel="noopener noreferrer" />;
+    },
+    img: ({ src, alt }) => {
+      if (typeof src !== "string" || !src) return <>{alt}</>;
+      const file = files && fileTarget(src);
       // An image already shown in this turn (an image part's) stays a link to it, so it isn't shown twice.
-      : files && skip?.has(src) ? <a className="fpath" href={files.href(src)}>{alt || basename(src)}</a>
-      : files && isUnderWorkdir(src) ? <InlineImage src={src} alt={alt ?? ""} files={files} large={large} />
-      : <a href={src} target="_blank" rel="noopener noreferrer">{alt || src}</a>),
+      return file && files && skip?.has(file) ? <a className="fpath" href={files.href(file)}>{alt || basename(file)}</a>
+        : file && files ? <InlineImage src={file} alt={alt ?? ""} files={files} large={large} />
+        : <a href={src} target="_blank" rel="noopener noreferrer">{alt || src}</a>;
+    },
   };
 }
 const PLAIN = markdown(undefined, () => {});

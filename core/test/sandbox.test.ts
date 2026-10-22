@@ -544,6 +544,8 @@ describe.skipIf(!homeRunnable)("a project chat's uploads", () => {
       expect((await files.list("/shared/uploads")).entries.map((e) => e.name)).toEqual(["mockup.txt"]);
       expect(workspace.files(chat).roots().map((r) => r.path)).toEqual(["/workspace"]);
       expect(workspace.files({ userId: ada.id, pool: "general", threadId: "c1" }).roots().map((r) => r.path)).toEqual(["/workspace"]);
+      // A link to a /shared file in the chat's reply still opens: its panel reaches /shared as her tools do.
+      expect((await workspace.files(chat).list("/shared/uploads")).entries.map((e) => e.path)).toEqual(["/shared/uploads/mockup.txt"]);
     } finally {
       await workspace.unmountHome(ada.id);
     }
