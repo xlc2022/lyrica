@@ -366,7 +366,8 @@ records. Local GPU time is `ttft_ms + gen_ms`, including queueing and loading;
 cloud calls and subagents have none. Subagents contribute their recorded
 input and output tokens down every depth, using the offering's kind when it
 still exists; a subagent thread's own call records and folded totals are
-left out, since its run counts it. Every lookup filters both pool and thread. Claude Code in her
+left out, since its run counts them, except Claude Code's totals, which its
+run doesn't count. Every lookup filters both pool and thread. Claude Code in her
 sandbox makes no call records: its relay counts each message request's
 tokens and `addCallTotals` adds them to the thread's `call_totals` as
 **Claude Code**, cloud (docs/workspace.md, "Claude Code").

@@ -42,6 +42,10 @@ describe("spend share", () => {
     // Input and output split the total: the work thread's own cloud turn read 20 and wrote 7.
     expect(own.find(r => r.label === "Cloud")).toMatchObject({ tokens: 27, input: 20, output: 7 });
     expect(models.usage(ada.id, "general", ["sub"]).reduce((n, r) => n + r.tokens, 0)).toBe(59);
+    // Claude Code run from the subagent's thread isn't in its run, so it still counts there.
+    models.addCallTotals(ada.id, "general", "sub", "Claude Code", "cloud", 30, 4);
+    expect(models.usage(ada.id, "general", ["sub"]).find((r) => r.label === "Claude Code")).toEqual({ threadId: "sub", label: "Claude Code", kind: "cloud", tokens: 34, input: 30, output: 4 });
+    db.prepare("DELETE FROM call_totals WHERE thread = 'sub'").run();
     const project = models.usage(ada.id, "general", ["chat", "work"]);
     expect(project.reduce((n, r) => n + r.tokens, 0)).toBe(180);
     expect(project.reduce((n, r) => n + (r.gpuMs ?? 0), 0)).toBe(330);

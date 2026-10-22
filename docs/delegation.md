@@ -277,7 +277,8 @@ use `subagent_runs` input plus output tokens once, with no GPU time. A
 subagent's turns are also measured on its own call record (`recordPace`, as
 hers are), so its endpoint's speed counts them, but `Models.usage` leaves
 subagent threads' call records out, so a project tree that lists one counts
-it once. Cost is not tracked: every model is declared free to Pi.
+it once. Claude Code run from a subagent's thread still counts there, since
+its run doesn't count it. Cost is not tracked: every model is declared free to Pi.
 
 ## Records and restarts
 

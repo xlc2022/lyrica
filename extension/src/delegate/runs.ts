@@ -186,6 +186,8 @@ export class Subagent {
     session.subscribe((e) => {
       this.active = Date.now();
       if (e.type === "agent_start") pace.reset();
+      // From turn_start rather than her meter's before_provider_request, which a session subscriber doesn't see:
+      // its time to first token then includes Pi's context building, so its prompt speed reads a little low.
       else if (e.type === "turn_start") pace.request();
       else if (e.type === "message_update" && e.message.role === "assistant") pace.token();
       else if (e.type === "message_end" && e.message.role === "assistant") pace.end(e.message.usage);
@@ -673,13 +675,13 @@ export class Delegation {
     this.store.forgetThreads(userId, pool, threads);
   }
 
-  /** Why a subagent may no longer go on, if its parent thread changed under it. */
   /** A subagent's finished turn's counts and times, on its call record. */
   recordPace(sub: Subagent, pace: Parameters<Models["recordPace"]>[2]): void {
     try { this.o.models.recordPace(sub.ctx.user.id, sub.ctx.threadId, pace, sub.role.name === "coder" ? "code" : "chat", sub.ctx.pool); }
     catch { /* its user's database closed meanwhile */ }
   }
 
+  /** Why a subagent may no longer go on, if its parent thread changed under it. */
   parentChanged(sub: Subagent): string | undefined {
     const { user, pool, threadId } = sub.run.parent;
     const own = sub.ctx.view.own;
