@@ -24,11 +24,17 @@ export type Delivery = "started" | "running" | "queued" | "saved" | "wakes" | "u
 
 export interface ThreadsHost {
   readonly limits: ThreadsLimits;
+  /** Child threads one message from this thread may start: more when its model runs in the cloud. */
+  perRequest?(from: ThreadContext): number;
   code?(from: ThreadContext, on: boolean): void;
   /** Whether code mode is on in this thread now. */
   codeOn?(from: ThreadContext): boolean;
-  /** Switches this thread to a model the person named, from the next turn; returns its label, or throws with the closest. */
-  model?(from: ThreadContext, name: string): string;
+  /**
+   * Switches this thread to a model the person named, from a turn that starts
+   * by itself after this one; returns its label, `already` when it runs on it
+   * now (nothing changes), or throws with the closest.
+   */
+  model?(from: ThreadContext, name: string): { label: string; already?: boolean; goesOn?: boolean };
   asked?(from: ThreadContext): Promise<void>;
   questionsChanged?(userId: string, pool: ThreadContext["pool"], thread: string): void;
   draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
@@ -63,7 +69,7 @@ export interface ThreadsHost {
 /** Messages `threads read` returns by default, and at most. */
 export const READ_DEFAULT = 10;
 const MODEL_PARAM = "For model: the model the person named, in their words.";
-const MODEL_ACTION = "model: switch this thread to a model the person asked for, from your next turn.";
+const MODEL_ACTION = "model: switch this thread to a model the person asked for; a turn on it starts by itself when this one ends.";
 /** The text the model action adds to the tool's definition, for tests that size a window around it. */
 export const THREAD_MODEL_TEXT = [MODEL_PARAM, MODEL_ACTION, "model"];
 export const READ_MAX = 30;
@@ -281,7 +287,11 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         if (p.action === "model") {
           if (!host.model) throw new Error("switching models is unavailable here");
           if (!p.model) throw new Error("model needs the model's name");
-          return text(`This thread runs on ${host.model(thread, p.model)} from your next turn.`);
+          const m = host.model(thread, p.model);
+          return text(m.already
+            ? `This thread already runs on ${m.label}; nothing changed. Go on now.`
+            : m.goesOn ? `This thread runs on ${m.label} from the next turn, which starts by itself when this one ends: end this turn now, and go on there.`
+            : `This thread runs on ${m.label} from the person's next message. Tell them so.`);
         }
         if (p.action === "ask") {
           if (child && !projectThread()) throw new Error("a child asks its parent with message question: true");
@@ -420,7 +430,8 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         if (!p.title?.trim() || !p.task?.trim()) throw new Error("start needs a title and a task");
         checkWords(p.task);
         // Counted before starting, so calls made at once can't all slip under the limit.
-        if (started >= host.limits.perRequest) throw new Error(`one message can start at most ${host.limits.perRequest} child threads`);
+        const most = host.perRequest?.(thread) ?? host.limits.perRequest;
+        if (started >= most) throw new Error(`one message can start at most ${most} child threads`);
         started++;
         let made: { id: string; link: string; queued?: boolean };
         try {

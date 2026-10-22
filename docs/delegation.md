@@ -386,10 +386,16 @@ checks it reaches her, and with a real model which she picks. Code:
   written unlogged are left out, and an unlogged thread is refused. A
   child that isn't a project's thread can't read.
 - `model({ model })`: switches the calling thread to a chat model the person
-  named, from her next turn (daemon side in `ChildThreads.model`; see
-  contracts.md, code mode). A name that fits no one model is refused with
-  the closest, for her to ask which they meant. Every hosted thread but a
-  subagent's has it.
+  named (daemon side in `ChildThreads.model`; see contracts.md, code mode).
+  The turn that asked ends on the old model, and a turn on the new one then
+  starts by itself with "You now run on <model>. Go on with what you were
+  doing." (`ThreadHost.reload(…, goOn)`), unless that turn was stopped or
+  failed or a message is next. A switch made in such a go-on turn waits for
+  the person's next message, and the tool says so, so switches never chain
+  unattended. The model it already runs on changes nothing
+  and says so, so she goes on in the same turn. A name that fits no one
+  model is refused with the closest, for her to ask which they meant. Every
+  hosted thread but a subagent's has it.
 - `stop({ id })`: stops one of the thread's children (in a project chat,
   one of its threads) as Pause does: the running turn is aborted and the
   child is idle. The project's threads can't stop each other.
@@ -505,12 +511,17 @@ parent taking turns. A stopped turn tells nobody, nor does a turn the user
 started in the child. Which children owe a report is
 held in memory; a restart tells the parent anyway.
 
-**Limits:** `start`s per message to the parent (`perRequest`, default 3,
-counted before each start so parallel calls can't slip past), and children
-working at once per user (`concurrency`, default 2), checked by `start` and
-by a message that would start an idle child's turn (past it the message is
-saved and the child wakes when a slot frees); routines share that budget,
-parent wakes don't. `LyricadOptions.threads`.
+**Limits:** `start`s per message to the parent (`perRequest`, default 3;
+`cloudPerRequest`, default 6, when the thread's chat model, or code model in
+code mode, resolves to a cloud endpoint now, since it uses no local GPU),
+counted before each start so parallel calls can't slip past. Children
+working at once per user (`concurrency`, default 32, room for several cloud models) is only a ceiling: each
+model already takes as many requests at once as it can serve and queues the
+rest (models.md, "Local servers"), so children on different backends don't wait for each
+other. It is checked by `start` and by a message that would start an idle
+child's turn (past it the message is saved and the child wakes when a slot
+frees); routines share that budget, parent wakes don't.
+`LyricadOptions.threads`.
 
 **Records and restarts.** `user.db` has `child_threads`: pool, thread,
 parent, whether a turn was running, and unseen updates (no text). A turn's

@@ -100,7 +100,9 @@ describe("projects", () => {
   it("switches her own model when asked, and Thread settings and the model pill follow at once", async () => {
     const s = await setup();
     const other = await fakeOpenAI({ label: "box", models: [{ id: "gemma-5-12b" }] });
-    other.respond(() => ({ text: "From gemma." }));
+    // The go-on turn switches again: that switch waits for the person, so switches can't chain unattended.
+    const onGemma: Reply[] = [tool({ action: "model", model: "qwen3.8-27b" }), { text: "Back to qwen." }];
+    other.respond(() => onGemma.shift() ?? { text: "From gemma." });
     expect((await s.ada.post(`${s.u}/endpoints`, { name: "box", kind: "local", baseUrl: other.baseUrl })).status).toBe(200);
     const settings = async () => (await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body;
     s.script("chat").push(tool({ action: "model", model: "llama" }), tool({ action: "model", model: "gemma" }), { text: "Switched." });
@@ -110,11 +112,23 @@ describe("projects", () => {
     expect(JSON.stringify(vague)).toContain("Ask the person");
     expect(JSON.stringify(switched)).toContain("box/gemma-5-12b");
     expect(events.some((e) => e.type === "settings")).toBe(true);
-    expect((await settings()).models.chat).toMatchObject({ label: "box/gemma-5-12b", source: "thread" });
-    // The turn that asked finished on the old model; the next one runs on gemma.
-    expect(other.requests).toHaveLength(0);
-    await s.say("Hello");
-    expect(other.requests).toHaveLength(1);
+    // The turn that asked finished on the old model; the next starts by itself on gemma.
+    await expect.poll(() => other.requests.length).toBe(2);
+    expect(said(other.requests[0]!)).toContain("You now run on box/gemma-5-12b");
+    await expect.poll(() => s.d.services!.host.busy(s.rt.ada.id, "general", s.project.id)).toBe(false);
+    // Its own switch back is saved, but no turn runs it until the person writes, and it is told so.
+    expect(said(other.requests[1]!)).toContain("from the person's next message");
+    expect((await settings()).models.chat).toMatchObject({ label: expect.stringContaining("qwen3.8-27b"), source: "thread" });
+    const before = s.requests.length;
+    await new Promise((r) => setTimeout(r, 300));
+    expect(s.requests).toHaveLength(before);
+    // The model it already runs on: nothing changes, and no turn follows.
+    s.script("chat").push(tool({ action: "model", model: "qwen3.8-27b" }), { text: "Still qwen." });
+    const again = ends((await s.say("Use qwen")).events);
+    expect(JSON.stringify(again)).toContain("already runs on");
+    const after = s.requests.length;
+    await new Promise((r) => setTimeout(r, 300));
+    expect(s.requests).toHaveLength(after);
   });
 
   it("uses the project code default for new and routine threads while children keep independent choices", async () => {

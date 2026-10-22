@@ -93,7 +93,7 @@ export class ChildThreads implements ThreadsHost {
     return this.o.workspace.settings(from.user.id).effective(from.threadId).code;
   }
 
-  model(from: ThreadContext, name: string): string {
+  model(from: ThreadContext, name: string): { label: string; already?: boolean; goesOn?: boolean } {
     if (from.view.own.getThread(from.threadId)?.subagent) throw new Error("a subagent can't change its model");
     const { models, workspace } = this.o;
     const userId = from.user.id;
@@ -104,11 +104,17 @@ export class ChildThreads implements ThreadsHost {
     const match = m ? { model: m } : matchModel(name, list);
     if ("closest" in match) throw new Error(unmatched(name, match));
     const ref = { offeringId: match.model.id };
+    const code = workspace.settings(userId).effective(from.threadId).code;
+    let now: string | undefined;
+    try { now = models.resolveModel(code ? "code" : "chat", call).offeringId; } catch { /* no usable model now: switch */ }
+    if (now === ref.offeringId) return { label: match.model.label, already: true };
     models.setThreadModel(userId, from.pool, from.threadId, "chat", ref);
     // In code mode the thread runs on its Coding model, so that changes too.
-    if (workspace.settings(userId).effective(from.threadId).code) models.setThreadModel(userId, from.pool, from.threadId, "code", ref);
-    this.o.host().reload(userId, from.pool, from.threadId);
-    return match.model.label;
+    if (code) models.setThreadModel(userId, from.pool, from.threadId, "code", ref);
+    // The turn that asked ends on the old model; the next starts by itself on the new one.
+    // Not from a turn that itself went on after a switch: switches never chain unattended.
+    const goesOn = this.o.host().reload(userId, from.pool, from.threadId, `You now run on ${match.model.label}. Go on with what you were doing.`);
+    return { label: match.model.label, goesOn };
   }
 
   async start(parent: ThreadContext, req: StartRequest): Promise<{ id: string; link: string; queued?: boolean }> {
@@ -817,6 +823,18 @@ export class ChildThreads implements ThreadsHost {
     this.db(userId, (db) => { for (const r of lost) db.prepare("UPDATE child_threads SET queued = 0 WHERE pool = ? AND thread = ?").run(r.pool, r.thread); });
     for (const r of lost) this.deliver(userId, r.pool, r.parent, `Queued thread [t:${r.thread}] didn't start before Lyrica restarted, and is idle. Message it to start it.`, r.thread, "update", true);
     this.recovered.add(userId);
+  }
+
+  perRequest(from: ThreadContext): number {
+    return this.cloud(from.user.id, from.pool, from.threadId) ? this.limits.cloudPerRequest : this.limits.perRequest;
+  }
+
+  /** Whether the thread's model runs in the cloud now; a thread with no usable model counts as local. */
+  private cloud(userId: string, pool: Pool, thread: string): boolean {
+    try {
+      const code = this.o.workspace.settings(userId).effective(thread).code;
+      return this.o.models.resolve(code ? "code" : "chat", this.o.models.callContext(userId, pool, thread)).endpoint.kind === "cloud";
+    } catch { return false; }
   }
 
   /** Refuses a new child turn while as many children as the limit allows are working, across all the user's threads. */

@@ -138,11 +138,16 @@ export class ThreadHost {
     });
   }
 
-  /** Settings changed: an open session reopens with them, and open views fetch them again. A thread with no record needs nothing. */
-  reload(userId: string, pool: Pool, threadId: string): void {
+  /**
+   * Settings changed: an open session reopens with them, and open views fetch
+   * them again. A thread with no record needs nothing. Returns whether a turn
+   * will go on by itself with `goOn`.
+   */
+  reload(userId: string, pool: Pool, threadId: string, goOn?: string): boolean {
     const t = this.threads.get(`${userId}/${pool}/${threadId}`);
-    t?.reload();
+    const going = t?.reload(goOn) ?? false;
     t?.publish({ type: "settings" });
+    return going;
   }
 
   /** Something every thread of the user reads changed (an MCP server): each open session reopens at its next turn, and open views fetch settings again. */
@@ -232,6 +237,10 @@ export class HostedThread {
   private held: NodeJS.Timeout | undefined;
   /** Settings changed during a turn: reopen the session once it ends. */
   private stale = false;
+  /** The note a turn on the reloaded session starts with, when this turn asked for one (`reload`). */
+  private goOn: string | undefined;
+  /** This turn is itself a go-on turn: a switch it makes waits for the person, so switches can't chain unattended. */
+  private goingOn = false;
   /** Closed by Lock, forgetting or shutdown. */
   closed = false;
   private closing = false;
@@ -595,6 +604,9 @@ export class HostedThread {
         const nxt = this.next();
         if (nxt.person) theirs = true;
         next = nxt.text;
+        this.goingOn = next === undefined && !!this.goOn && !aborted && !this.failed;
+        if (this.goingOn) { wake = this.goOn; next = CHILD_WAKE; }
+        this.goOn = undefined;
       }
     } catch (err) {
       this.emit({ type: "error", message: plainError(refusal(err)) });
@@ -604,6 +616,7 @@ export class HostedThread {
     } finally {
       this.busy = false;
       this.childWakeTurn = false;
+      this.goingOn = false;
       this.keepParentReplies();
       this.aborted = false;
       // A session that lacks what keep stored: the next turn opens afresh.
@@ -1210,12 +1223,18 @@ export class HostedThread {
     }
   }
 
-  /** Settings changed: the next turn opens a fresh session (with the new models). */
-  reload(): void {
-    if (this.busy) this.stale = true;
+  /**
+   * Settings changed: the next turn opens a fresh session (with the new models).
+   * With `goOn`, a turn running now is followed by one on the new session that
+   * starts with that note, unless it is stopped or fails or a message is next,
+   * or the turn running now is itself one of those: switches never chain.
+   */
+  reload(goOn?: string): boolean {
+    if (this.busy) { this.stale = true; if (goOn && !this.goingOn) this.goOn = goOn; }
     else this.dispose();
     // A message waiting for a model tries the new settings at once.
     if (this.held) this.waitForModel(0);
+    return !!goOn && this.goOn === goOn;
   }
 
   /** Delivered into the stored thread or the live session: shown once either way. */
