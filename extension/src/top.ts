@@ -77,7 +77,8 @@ export function topUpdates(told: Told, sections: Record<string, string>): { text
     next[name] = null;
     parts.push(`<${name}> no longer applies.`);
   }
-  const text = parts.length ? `These sections of your system prompt changed; each replaces the one above and any earlier update:\n\n${parts.join("\n\n")}` : "";
+  // In a tag like the rest of the turn's context, so it doesn't read as what the user said.
+  const text = parts.length ? `<prompt-update>\nThese sections of your system prompt changed; each replaces the one above and any earlier update:\n\n${parts.join("\n\n")}\n</prompt-update>` : "";
   return { text, told: next };
 }
 

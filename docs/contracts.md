@@ -1123,7 +1123,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   system message, so any change made it re-read the whole conversation. On
   each turn it puts back the sections the transcript's system message holds,
   so Pi sends no change, and returns what changed since she was last told as
-  a `lyrica-top` message ("These sections of your system prompt changed…",
+  a `lyrica-top` message in `<prompt-update>` ("These sections of your system prompt changed…",
   each changed section in full, `<name> no longer applies.` for one that
   went), with what she was told as hashes in its `details`, so a reopened
   session knows. A new thread, the first turn after a compaction, and a turn
