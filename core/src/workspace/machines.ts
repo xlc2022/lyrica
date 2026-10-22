@@ -119,12 +119,15 @@ export function suspectCommand(command: string): string | undefined {
 /**
  * The files a command plainly writes before it runs: the targets of its `>`
  * and `>>` redirections and of `tee`. A name made from a variable or a
- * substitution, or under /dev, isn't known, so it isn't listed.
+ * substitution, or under /dev, isn't known, so it isn't listed; nor is a
+ * relative name after a `cd` or `pushd`, which moves where it points.
  */
 export function writtenFiles(command: string): string[] {
   const out: string[] = [];
-  const add = (w: string | undefined) => { if (w && !w.includes("$") && !/\s/.test(w) && !w.startsWith("/dev/")) out.push(w); };
+  let moved = false;
+  const add = (w: string | undefined) => { if (w && !w.includes("$") && !/\s/.test(w) && !w.startsWith("/dev/") && (!moved || w.startsWith("/"))) out.push(w); };
   for (const words of simpleCommands(command)) {
+    if (words[0] === "cd" || words[0] === "pushd") { moved = true; continue; }
     for (let i = 0; i < words.length; i++) {
       const m = /^(?:\d*|&)>>?(.*)$/.exec(words[i]!);
       if (m && !m[1]!.startsWith("&")) add(m[1] || words[++i]);

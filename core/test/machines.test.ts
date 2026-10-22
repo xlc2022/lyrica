@@ -312,6 +312,8 @@ describe("the files a command plainly writes", () => {
     expect(writtenFiles("cat >>notes.md <<'EOF'\nmore\nEOF")).toEqual(["notes.md"]);
     expect(writtenFiles("make 2> err.log > out.log && date | tee -a log.txt x.txt >/dev/null")).toEqual(["err.log", "out.log", "log.txt", "x.txt"]);
     expect(writtenFiles("bash -c 'echo hi > a.txt'")).toEqual(["a.txt"]);
+    // After a cd, a relative name points elsewhere: only absolute ones are known.
+    expect(writtenFiles("echo a > a.txt; cd /shared && echo x >> notes.md > /shared/log.md")).toEqual(["a.txt", "/shared/log.md"]);
     for (const c of ["ls 2>/dev/null", "make 2>&1 | grep x", "echo hi >&2", "echo x > $OUT", "echo 'a > b'", "cat notes.md", "sort < in.txt"]) {
       expect(writtenFiles(c), c).toEqual([]);
     }
