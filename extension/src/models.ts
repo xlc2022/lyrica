@@ -241,6 +241,17 @@ export async function prepareTurn(o: {
     note = t.note;
   }
   o.models.recordCall(o.call.userId, { pool: o.pool, threadId: o.threadId, task, resolution: r, ...(note ? { note } : {}) }, { retry: !!o.retry });
+  // A model said to be unable to think may think anyway (its server lists no levels): the first reply with thinking clears the note.
+  if (note && !r.offering.reasoning?.length) {
+    const offeringId = r.offering.id;
+    const stop = o.session.subscribe((e) => {
+      if (e.type === "agent_end") stop();
+      if (e.type !== "message_end" || e.message.role !== "assistant") return;
+      if (!e.message.content.some((c) => c.type === "thinking" && c.thinking.trim())) return;
+      o.models.sawThinking(o.call.userId, offeringId, { pool: o.pool, threadId: o.threadId, task });
+      stop();
+    });
+  }
   if (r.paidAfter) o.session.sessionManager.appendCustomEntry(PAID_FALLBACK, { model: r.label, from: r.paidAfter.label, reason: r.paidAfter.reason } satisfies PaidFallback);
   else if (o.retry) o.session.sessionManager.appendCustomEntry(PAID_FALLBACK, { cleared: true } satisfies PaidFallback);
   return r;
