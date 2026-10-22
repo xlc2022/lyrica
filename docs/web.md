@@ -145,6 +145,19 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   ✕ (Remove, `DELETE …/wakeups/:id`), never her note. Each `wakeups` stream
   event replaces the list, so one set, removed or fired shows at once; the
   fact goes when none is left.
+  **Changes** (`src/Changes.tsx`, docs/ux.md §6 "A thread's branch and pull
+  request"): after the folder, machine, repository and MCP badges, one badge
+  per checkout from `GET …/changes` (docs/daemon.md "Changes"), fetched when
+  the thread opens and again when `ShellContext.activity` moves (a finished
+  tool call or turn); a 409 (a locked home, an SSH machine) shows nothing.
+  It opens `ChangesView`, a `dialog` like the file viewer: `…/changes/commit`
+  for one commit's files, `…/changes/file` for each file's two sides, which
+  `diff.ts` compares in the browser (Myers over the lines, the middle shown
+  as replaced past 2,000 edits; a change's line pairs get `wordDiff`'s marks;
+  unchanged stretches fold past three lines of context and open twenty at a
+  time). **Unified | Side by side** is kept in `localStorage`
+  (`lyrica.changes.view`); below 1180 px it is unified. Nothing of it is
+  stored or logged: the texts come to this browser and go nowhere else.
   **Routine** (`src/Routines.tsx`, `ThreadSettings.routines`) opens the
   same style of popover listing schedules, next times in mono, Pause or
   Resume and Remove, never notes. Its fact shows the earliest active next
@@ -264,6 +277,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   beside. It stops at the ends, where that button is disabled, and the
   facts read "Image 2 of 4". Escape closes
   a menu inside first, then the viewer, and so does any navigation.
+- **The changes view** (`Changes.tsx`): the same kind of dialog for a
+  thread's branch, described under Chat ("Changes").
 - **Project settings page** (`…/p/<pool>/<project>/general`, `/memory` or `/files`),
   sections at the left. **General**: Goal, the Paused and **Watching
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
@@ -349,8 +364,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `…/history/memory/<pool>/<id>` lists versions newest first, with
   word differences (`wordDiff`, computed in the browser) and Restore, and
   Edit in place with a `[[` popover of pages and people (a page shows as
-  `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Forget… on a
-  selection, and Add a memory. The **Recent** layer (`kinds=entry`) lists
+  `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Export and Forget… on a
+  selection, and Add a memory with a Write | Import segment (export and
+  import in [memory.md](memory.md#export-and-import); the downloaded file
+  is made from the response in the browser and kept nowhere else). The **Recent** layer (`kinds=entry`) lists
   the logged messages written since sleep last consolidated
   (`PoolStore.recentEntries`), newest first and paged by `before`; one
   opens as a memory of kind `entry` (`GET …/memory/<pool>/e:…`), read-only

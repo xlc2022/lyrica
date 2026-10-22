@@ -1403,6 +1403,29 @@ export interface PlanBranch { id: string; repo: string; branch: string; commits:
 /** `pins`: how many of the removed messages were pinned; `files` and `branches`: how many were undone. */
 export interface RewindResponse { removed: number; subagents: number; pins: number; files: number; branches: number }
 
+// --- Changes: a thread's branch against its base ---
+
+/** A thread's open pull request on a repository, as the forge watcher last saw it (docs/briefs/ci-wakes.md). */
+export interface OpenPull { repo: string; number: number; head: string; url: string; checks: { name: string; result: CheckResult | null }[] }
+/** One checkout's changes with its pull request where the watcher knows one. `worktree`: a project thread's own checkout. */
+export interface RepositoryChangesInfo extends RepositoryChanges { pull?: OpenPull; worktree?: boolean }
+/**
+ * GET /api/u/:userId/threads/:pool/:threadId/changes → ThreadChanges: each
+ * checkout the thread works in (its cloned repositories, a project thread's
+ * worktrees, and writable granted folders that are the top of a git
+ * repository), its branch, base, commits since the base (newest first, at
+ * most 100), whether anything is uncommitted, and every file changed since
+ * the base with its line counts. Read with git where the thread's tools run;
+ * nothing is stored. 409 while the thread's folders can't be reached (a
+ * locked home, an SSH target).
+ * GET …/changes/commit?repo=<path>&hash=<commit> → CommitChanges, one
+ * commit's files. GET …/changes/file?repo=<path>&path=<file>[&old=<path>]
+ * &commit=all|<hash> → FileSides, both sides as text (a side over 512 KB,
+ * or a binary file, is said and not sent). `repo` is a checkout's `path`.
+ */
+export interface ThreadChanges { repositories: RepositoryChangesInfo[] }
+export interface CommitChanges { files: ChangedFile[] }
+
 /**
  * PUT /api/u/:userId/threads/:pool/:threadId/messages/:n/pin → Pin, and DELETE to unpin.
  * Only the user's messages and her replies can be pinned; not in a subagent's thread.
@@ -1763,6 +1786,29 @@ export interface ForgetTopic { ids: string[] }
  */
 export interface NewNote { text: string; about?: string[]; links?: string[] }
 export interface NewPage { slug: string; title: string; summary: string; text: string; folders?: string[]; links?: string[] }
+
+/**
+ * POST /api/u/:userId/memory/export → MemoryExport. The notes and pages as one
+ * Markdown file for the browser to download; other kinds are counted in
+ * `skipped`. Only pools the display shows.
+ */
+export interface MemoryExportRequest { items: { pool: Pool; id: string }[] }
+export interface MemoryExport { name: string; markdown: string; count: number; skipped: number }
+/**
+ * POST /api/u/:userId/memory/import → MemoryImportResult. Files as read in the
+ * browser (16 MiB in all), into `pool`, or each memory's exported pool when
+ * left out (a file without headers goes to private). Each is a memory the
+ * user added; links that resolve stay, the rest become words.
+ */
+export interface MemoryImport { files: { name?: string; text: string }[]; pool?: Pool }
+export interface MemoryImportResult {
+  imported: { pool: Pool; id: string }[];
+  duplicates: number;
+  renamed: number;
+  linksKept: number;
+  linksWorded: number;
+  skipped: number;
+}
 
 // --- Administrators: /api/u/:userId/admin/… ---
 
@@ -2190,6 +2236,8 @@ export interface PushInfo {
   lastFailure?: { at: string; status: number };
 }
 export type { PushSettings } from "@lyrica/core";
+export type { ChangedFile, ChangeCommit, CheckResult, FileSides, RepositoryChanges } from "@lyrica/core";
+import type { ChangedFile, CheckResult, RepositoryChanges } from "@lyrica/core";
 
 /** GET /api/u/:userId/events: text-free list invalidation; hello on every connection. */
 export type UserEvent = { type: "hello" } | { type: "changed" };

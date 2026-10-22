@@ -13,6 +13,7 @@ import {
   type Memory, type Pool, type Watch, type Workspace,
 } from "@lyrica/core";
 import type { Wakeups } from "./wakeups.ts";
+import type { OpenPull } from "./api.ts";
 
 export interface ForgeWatchOptions {
   memory: Memory;
@@ -75,6 +76,11 @@ function headOf(body: unknown): string {
   return sha;
 }
 
+/** The pull request's page on its forge, for the changes view's link. */
+function pullUrl(a: Account, w: Watch): string {
+  return `https://${a.host}/${w.repo}/${a.kind === "github" ? "pull" : "pulls"}/${w.number}`;
+}
+
 function kindWord(kind: ForgeWakeNote["reviews"][number]["kind"]): string {
   switch (kind) {
     case "approved": return "approved";
@@ -110,10 +116,15 @@ export class ForgeWatcher {
   /** Threads already told about the eleventh pull request, by `user/pool/thread`. */
   private readonly toldFull = new Set<string>();
   private running = false;
-  private readonly codeState = new Map<string, { thread: string; line: string }>();
+  private readonly codeState = new Map<string, { thread: string; line: string; pull: OpenPull }>();
 
   codePulls(userId: string, pool: Pool, threadId: string): string[] {
     return [...this.codeState].filter(([key, value]) => key.startsWith(`${userId}/${pool}/`) && value.thread === threadId).map(([, value]) => value.line);
+  }
+
+  /** A thread's open pull request on a repository as the last poll saw it, for the changes view; none until a poll. */
+  openPull(userId: string, pool: Pool, threadId: string, repo: string): OpenPull | undefined {
+    return [...this.codeState].find(([key, value]) => key.startsWith(`${userId}/${pool}/`) && value.thread === threadId && value.pull.repo === repo)?.[1].pull;
   }
 
   constructor(private readonly o: ForgeWatchOptions) {}
@@ -237,7 +248,10 @@ export class ForgeWatcher {
       return;
     }
     if (poll.kind === "snapshot" && poll.pull.state === "open") {
-      this.codeState.set(id, { thread: w.thread, line: `${w.repo} PR #${w.number}: ${poll.pull.checks.map(c => `${c.name}: ${c.result ?? "pending"}`).join(", ") || "no checks reported"}` });
+      this.codeState.set(id, {
+        thread: w.thread, line: `${w.repo} PR #${w.number}: ${poll.pull.checks.map(c => `${c.name}: ${c.result ?? "pending"}`).join(", ") || "no checks reported"}`,
+        pull: { repo: w.repo, number: w.number, head: poll.pull.head, url: pullUrl(a, w), checks: poll.pull.checks.map((c) => ({ name: c.name, result: c.result })) },
+      });
     } else this.codeState.delete(id);
     const lastState: ForgeWatchState = { head: w.head, headSince: w.headSince, notifiedHeads: w.notifiedHeads, seenReviews: w.seenReviews };
     const out = decideWatch({ number: w.number, account: a.account, now: now.toISOString(), last: lastState, poll });

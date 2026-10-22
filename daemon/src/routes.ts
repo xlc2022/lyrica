@@ -4,10 +4,11 @@ import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
 import {
   ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
-  citationsIn, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
+  citationsIn, exportMemories, importMemories, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled, modelName,
   codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn,
+  ChangesUnavailable, commitFiles, fileSides, repositoryChanges, type ExecutionTarget,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
@@ -61,6 +62,22 @@ export function apiRoutes(d: Lyricad): Route[] {
       };
       return entries.map((e) => { const by = found.get(e.path); const madeBy = by && shown(by); return madeBy ? { ...e, madeBy } : e; });
     });
+  };
+  /** The thread's checkouts and where git runs for them; 409 while its folders can't be reached. */
+  const changesOf = (r: Request) => {
+    const user = d.userFor(r);
+    const thread = owner(d, user, (o) => threadOf(o, r));
+    const t = { userId: user.id, pool: poolOf(r), threadId: thread.id };
+    let target: ExecutionTarget;
+    try { target = s().workspace.targetFor(t); } catch (err) { throw new HttpError(409, `this thread's folders can't be reached now: ${(err as Error).message}`); }
+    return { target, thread: t, checkouts: s().workspace.checkouts(t) };
+  };
+  const checkoutIn = (checkouts: { path: string }[], repo: string | null): string => {
+    if (!repo || !checkouts.some((c) => c.path === repo)) throw new HttpError(404, "no such checkout in this thread");
+    return repo;
+  };
+  const unavailable = async <T>(fn: () => Promise<T>): Promise<T> => {
+    try { return await fn(); } catch (err) { throw err instanceof ChangesUnavailable ? new HttpError(409, err.message) : err; }
   };
   const refused = async <T>(fn: () => Promise<T>): Promise<T> => {
     try { return await fn(); } catch (err) { throw err instanceof FilesRefused ? new HttpError(403, err.message) : err; }
@@ -1594,6 +1611,29 @@ export function apiRoutes(d: Lyricad): Route[] {
       zip.pipe(r.res);
       return undefined;
     }),
+    // --- Changes: the thread's branch against its base (docs/ux.md §6, "The changes a thread made") ---
+    route("GET", `${t}/changes`, async (r): Promise<Api.ThreadChanges> => {
+      const { target, thread, checkouts } = changesOf(r);
+      const repositories: Api.RepositoryChangesInfo[] = [];
+      for (const c of checkouts) {
+        // A granted folder that isn't a repository, or a clone that isn't there yet, is left out.
+        const changes = await repositoryChanges(target, c).catch((err) => { if (err instanceof ChangesUnavailable) return undefined; throw err; });
+        if (!changes) continue;
+        const pull = c.kind === "clone" ? s().forge.openPull(thread.userId, thread.pool, thread.threadId, c.name) : undefined;
+        repositories.push({ ...changes, ...(pull ? { pull } : {}), ...(c.kind === "worktree" ? { worktree: true } : {}) });
+      }
+      return { repositories };
+    }),
+    route("GET", `${t}/changes/commit`, async (r): Promise<Api.CommitChanges> => {
+      const { target, checkouts } = changesOf(r);
+      const repo = checkoutIn(checkouts, r.query.get("repo"));
+      return { files: await unavailable(() => commitFiles(target, repo, r.query.get("hash") ?? "")) };
+    }),
+    route("GET", `${t}/changes/file`, async (r): Promise<Api.FileSides> => {
+      const { target, checkouts } = changesOf(r);
+      const repo = checkoutIn(checkouts, r.query.get("repo"));
+      return unavailable(() => fileSides(target, repo, r.query.get("path") ?? "", r.query.get("old") || undefined, r.query.get("commit") || "all"));
+    }),
     // --- Speech: Dictation and Read aloud ---
     route("GET", `${u}/speech`, (r): Api.Speech => {
       const user = d.userFor(r);
@@ -1847,6 +1887,30 @@ export function apiRoutes(d: Lyricad): Route[] {
         const id = store.putPage({ slug: String(p.slug ?? ""), title: String(p.title ?? ""), summary: String(p.summary ?? ""), text: withLinks(String(p.text ?? ""), p.links), folders: p.folders }, author(user));
         return memoryDetail(d, o, poolOf(r), id);
       });
+    }),
+    // Export and import (docs/memory.md): Markdown built in memory and sent to the browser, never written here.
+    route("POST", `${u}/memory/export`, async (r): Promise<Api.MemoryExport> => {
+      const user = d.userFor(r);
+      const { items } = await r.json<Api.MemoryExportRequest>();
+      if (!Array.isArray(items) || !items.length) throw new HttpError(400, "items lists the memories to export");
+      const shown = shownPools(display(d, user.id));
+      const refs = items.map((i) => ({ pool: checkPool(i?.pool), id: String(i?.id ?? "") }));
+      if (refs.some((x) => !shown.includes(x.pool))) throw new HttpError(404, "no such memory");
+      return owner(d, user, (o) => exportMemories(o, refs));
+    }),
+    route("POST", `${u}/memory/import`, async (r): Promise<Api.MemoryImportResult> => {
+      const user = d.userFor(r);
+      let body: Api.MemoryImport;
+      try {
+        body = JSON.parse((await r.bytes(IMPORT_BYTES)).toString("utf8")) as Api.MemoryImport;
+      } catch (err) {
+        if (err instanceof HttpError) throw err;
+        throw new HttpError(400, "the body isn't valid JSON");
+      }
+      if (!Array.isArray(body.files) || !body.files.length) throw new HttpError(400, "files lists the files to import");
+      const pool = body.pool === undefined ? undefined : checkPool(body.pool);
+      const files = body.files.map((f) => ({ name: String(f?.name ?? ""), text: String(f?.text ?? "") }));
+      return owner(d, user, (o) => importMemories(o, files, { ...(pool ? { pool } : {}), author: author(user) }));
     }),
     route("POST", `${u}/memory/:pool/forget`, async (r) => {
       const user = d.userFor(r);
@@ -2145,6 +2209,8 @@ function checkKind(k: unknown): "ssh" | "proxmox" {
   return k;
 }
 const author = (user: User): Author => `user:${user.id}`;
+/** The largest memory import, as JSON. */
+const IMPORT_BYTES = 16 << 20;
 
 /** The owner view for one request, closed afterwards. */
 function owner<T>(d: Lyricad, user: User, fn: (o: OwnerView) => T): T {

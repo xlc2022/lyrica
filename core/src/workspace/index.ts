@@ -35,6 +35,7 @@ import { sandboxedTransport, type SshTransport } from "./transport.ts";
 
 export * from "./worktree.ts";
 export * from "./changes.ts";
+export * from "./git-changes.ts";
 export * from "./files.ts";
 export * from "./home.ts";
 export * from "./machines.ts";
@@ -656,6 +657,22 @@ export class Workspace {
       const refused = this.gitRefused.has(`${t.userId}/${a.name}`) || (a.pool === "private" && a.kind === "github");
       return [{ ...r, kind: a.kind, host: a.host, path: `${WORKDIR}/repos/${repositoryDir(r.name)}`, reachable: !refused && reachesHost(net, a.host) }];
     });
+  }
+
+  /**
+   * Where the thread's code lives, for the changes view: its own worktrees (a project thread's, or an ancestor's
+   * that it works in), its cloned repositories, and the writable granted folders no worktree replaces. A grant is
+   * named by its folder; whether it is a git repository is found out when it is read.
+   */
+  checkouts(t: WorkspaceThread): { name: string; path: string; kind: "worktree" | "clone" | "grant" }[] {
+    const s = this.settings(t.userId);
+    const trees = s.threadWork(s.folderThread(t.threadId))?.worktrees ?? [];
+    const grants = this.grantsFor(t).filter((g) => g.writable && !trees.some((w) => w.repo === g.path));
+    return [
+      ...trees.map((w) => ({ name: posix.basename(w.repo), path: w.path, kind: "worktree" as const })),
+      ...this.repositoriesFor(t).map((r) => ({ name: r.name, path: r.path, kind: "clone" as const })),
+      ...grants.map((g) => ({ name: posix.basename(g.path), path: g.path, kind: "grant" as const })),
+    ];
   }
 
   private workdirAlias(t: WorkspaceThread): string | undefined {

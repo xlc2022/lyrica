@@ -592,7 +592,9 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .mem-edit .ac .popover .item:hover, .mem-edit .ac .popover .item[aria-selected="true"] { background: var(--tool); }
 .mem-edit .ac .popover .item .meta { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .mem-edit .preview-pane { min-height: 120px; }
-.add-memory { max-width: 60ch; }
+.mem-add { max-width: 60ch; }
+.mem-add > .seg { justify-self: start; }
+.import-memory .picked { overflow-wrap: anywhere; }
 /* Remembering a message: a one-line box under it, prefilled with its first line. */
 .remember-box { display: grid; gap: 6px; max-width: 72ch; }
 .remember-box label { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }
@@ -1009,6 +1011,65 @@ dialog.viewer > .error { position: absolute; bottom: 8px; left: 16px; }
   dialog.viewer { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
   .viewer-head { padding: 6px 8px 6px var(--gutter); }
   .viewer-text, .viewer-prose, .viewer-note { padding-inline: var(--gutter); }
+}
+/* The changes view (docs/ux.md §6, Changes.tsx): the badge, then the dialog's files and commits at the left and the differences at the right. */
+.badge.changes .ic { width: 14px; height: 14px; }
+.badge.changes .name { max-width: 24ch; }
+.counts { white-space: nowrap; }
+.cplus { color: var(--ok); }
+.cminus { color: var(--danger); }
+.changes-title { font-size: 15px; font-weight: 600; margin: 0; }
+.changes .viewer-head .name { font-family: var(--mono); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.changes .viewer-facts a { color: var(--accent); }
+.changes-body { flex: 1; min-height: 0; display: grid; grid-template-columns: clamp(220px, 22vw, 300px) minmax(0, 1fr); background: var(--bg); }
+.changes-side { border-right: 1px solid var(--line); background: var(--panel); overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
+.changes-files { list-style: none; margin: 0; padding: 6px 0; flex: 1; }
+.changes-files button, .changes-commits .commit { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 30px; padding: 3px 12px; border: 0; border-radius: 0; background: none; font-size: 13px; text-align: left; color: var(--fg); }
+.changes-files button:hover, .changes-commits .commit:hover { background: var(--tool); }
+.changes-files .ic, .cfile-head .ic { width: 14px; height: 14px; flex: none; color: var(--muted); }
+.changes-files .ic.added, .cfile-head .ic.added { color: var(--ok); }
+.changes-files .ic.deleted, .cfile-head .ic.deleted { color: var(--danger); }
+.changes-files .ic.renamed, .cfile-head .ic.renamed { color: var(--info); }
+.changes-files .fname, .cfile-head .fname { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.changes-files .fdir, .cfile-head .fdir { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
+.changes-files .counts, .cfile-head .counts { margin-left: auto; font-size: 12px; }
+.changes-files .empty { padding: 8px 12px; font-size: 13px; color: var(--muted); }
+.changes-commits { border-top: 1px solid var(--line); padding: 8px 0; }
+.changes-commits .eyebrow { padding: 2px 12px 6px; display: flex; gap: 6px; }
+.changes-commits .commit { flex-direction: column; align-items: stretch; gap: 1px; }
+.changes-commits .commit[aria-pressed="true"] { background: var(--tool); font-weight: 600; }
+.changes-commits .subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.changes-commits .cfacts { font-size: 12px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.changes-list { overflow: auto; min-height: 0; padding: 8px 12px 24px; display: flex; flex-direction: column; gap: 10px; }
+.cfile { flex: none; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; }
+.cfile-head { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 34px; padding: 4px 10px; border: 0; border-radius: 0; background: var(--tool); font-size: 13px; text-align: left; color: var(--fg); position: sticky; top: 0; z-index: 1; }
+.cfile-head .fname { font-size: 13px; flex: 0 1 auto; }
+.cfile-head .pill { flex: none; }
+.cdiff { font: 12px/1.6 var(--mono); overflow-x: auto; }
+.cnote { margin: 0; padding: 8px 12px; font-family: var(--ui); font-size: 13px; }
+.cnote.error { color: var(--danger); }
+.cfold { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 2px 12px; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0; background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in oklab, var(--fg) 5%, transparent) 6px 7px); color: var(--muted); font: 12px var(--ui); text-align: left; }
+.cfold:hover { color: var(--fg); background-color: var(--tool); }
+.cfold .ic { width: 14px; height: 14px; }
+.dl { display: grid; grid-template-columns: 4ch 4ch 1.5ch minmax(0, 1fr); gap: 0 6px; padding: 0 8px; align-items: start; }
+.split .dl { grid-template-columns: 4ch 1.5ch minmax(0, 1fr); }
+.dl .ln { text-align: right; color: var(--muted); user-select: none; }
+.dl .sign { color: var(--muted); user-select: none; text-align: center; }
+.dl .code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dl.del { background: color-mix(in oklab, var(--danger) 12%, transparent); }
+.dl.ins { background: color-mix(in oklab, var(--ok) 12%, transparent); }
+.dl.blank { background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in oklab, var(--fg) 5%, transparent) 6px 7px); }
+.dl mark { color: inherit; border-radius: 2px; }
+.dl mark.del { background: color-mix(in oklab, var(--danger) 30%, transparent); }
+.dl mark.ins { background: color-mix(in oklab, var(--ok) 30%, transparent); }
+.dr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.dr > .dl + .dl { border-left: 1px solid var(--line); }
+@media (max-width: 760px) {
+  .changes-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, auto) minmax(0, 1fr); }
+  .changes-side { border-right: 0; border-bottom: 1px solid var(--line); max-height: 40dvh; }
+  .changes-files { flex: none; }
+  .changes-list { padding-inline: var(--gutter); }
+  .dl { grid-template-columns: 3ch 3ch 1.5ch minmax(0, 1fr); }
 }
 .ifilter { padding: 10px var(--gutter) 0; }
 .igrid { flex: 1; min-height: 0; overflow-y: auto; padding: 12px var(--gutter) 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; align-content: start; }
