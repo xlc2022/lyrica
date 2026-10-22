@@ -90,6 +90,8 @@ Rules:
 - Submenus: an item with a submenu ends in ›.
 - On devices that can hover (`@media (hover: hover)`, not screen width),
   hovering or clicking the item opens the submenu as a flyout beside it.
+  Only a moving pointer hovers: when the menu moves or grows under a pointer
+  at rest (an item that arrives late), the open flyout stays as it was.
 - The flyout's first row sits level with the item, and the flyout shifts up
   to stay on screen. It opens to the right, or to the left when there's no
   room on the right.

@@ -609,6 +609,38 @@ test("hovering New project opens its flyout beside the item, and it flips at the
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/flyout-flip-${page.viewportSize()!.width}.png` });
 });
 
+test("a menu that grows under a resting pointer keeps the flyout that pointer opened", async ({ page, baseURL }) => {
+  test.skip(phone(page), "flyouts are for devices that can hover");
+  const userId = await enter(page, baseURL!);
+  // A project, so the thread menu adds Move to project once its projects arrive; they are held back until Share with is open.
+  await page.evaluate(async (uid) => {
+    for (const body of [{ pool: "general", project: true, title: "Late project" }, { pool: "general", title: "Late items" }]) {
+      const r = await fetch(`/api/u/${uid}/threads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error(`threads: ${r.status}`);
+    }
+  }, userId);
+  let release = () => {};
+  const held = new Promise<void>((r) => { release = r; });
+  await page.route(/\/threads\?all=1$/, async (route) => { await held; await route.continue(); });
+  // Opened at the foot of the window, the menu is kept on screen, so the late item pushes its rows up under the pointer.
+  const row = page.getByRole("link", { name: "Late items" }).first();
+  await expect(row).toBeVisible();
+  await row.evaluate((el) => el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: innerHeight - 4 })));
+  const menu = page.getByRole("menu", { name: "Late items menu" });
+  const share = menu.getByRole("menuitem", { name: "Share with" });
+  await share.click();
+  await expect(share).toHaveAttribute("aria-expanded", "true");
+  release();
+  await expect(menu.getByRole("menuitem", { name: "Move to project" })).toBeVisible();
+  // Move to group now sits where Share with was; resting there longer than the hover delay doesn't open it.
+  await page.waitForTimeout(600);
+  await expect(share).toHaveAttribute("aria-expanded", "true");
+  await expect(menu.getByRole("menuitem", { name: "Move to group" })).toHaveAttribute("aria-expanded", "false");
+  await page.unroute(/\/threads\?all=1$/);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+});
+
 test("tapping New project on a phone replaces the menu in place with its choices", async ({ page, baseURL }) => {
   test.skip(!phone(page), "devices that can hover get the flyout instead");
   await enter(page, baseURL!);
