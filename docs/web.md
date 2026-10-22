@@ -205,7 +205,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   phone, it is the page. `…/files/<encoded path>` opens with that file shown
   and its folders open (a folder: opened), or says it is gone. Files lists one folder at a time from
   `GET …/files?dir=` (docs/daemon.md "Files"), the thread folder open at the
-  start and each grant after it; a search runs under every root; a file,
+  start, then `/shared` for a project's thread, then each grant; a search runs under every root; a file,
   or an image from Images (`…/files/images`, filtered by source), opens in
   the **file viewer** (below). The right-click menu (a long press, or the
   viewer's ⋯, which renders the same menu inside the viewer's dialog) attaches

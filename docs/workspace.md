@@ -401,7 +401,9 @@ takes is `lyrica@pve!agent=<that secret>`.
   read-only. Its Files panel can add files under `shared/` too.
 - **The Files panel** (`core/src/workspace/files.ts`, `Workspace.files(t)`)
   lists, searches, reads, uploads, renames, deletes and zips in the thread's
-  folder and its grants, every operation a fresh no-network sandbox over the
+  folder, its family's `/shared` (a root of its own, kind `shared`, for a
+  project's threads; a project chat sees it as its folder's `shared/`) and
+  its grants, every operation a fresh no-network sandbox over the
   thread's grants (`find`, `cat`, `stat`, `mkdir`, `mv`, `rm`), so the panel
   can reach exactly what she can and nothing else: a path outside, a symlink
   out, a root, the panel's own `.lyrica` folder, and any change in a

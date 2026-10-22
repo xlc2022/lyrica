@@ -479,16 +479,18 @@ export class Workspace {
   photos(userId: string): PortraitPhotos { return new PortraitPhotos(() => this.imageHome(userId)); }
 
   /**
-   * The thread's Files panel: its folder and grants, every operation in a
-   * fresh sandbox with no network. Grants are checked against the allowed
+   * The thread's Files panel: its folder, its family's /shared (unless that is
+   * its own folder's shared/, a project chat's) and grants, every operation in
+   * a fresh sandbox with no network. Grants are checked against the allowed
    * paths as they are now, as for her tools.
    */
   files(t: WorkspaceThread): ThreadFiles {
     const s = this.settings(t.userId);
     s.checkInherited(t.threadId, t.pool);
     const tw = s.effective(t.threadId);
+    const shared = this.sharesOwnFolder(t) ? undefined : this.sharedDir(t);
     const box = new Sandbox({
-      workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), grants: tw.grants, network: { internet: false, services: false, hosts: [] },
+      workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), shared, grants: tw.grants, network: { internet: false, services: false, hosts: [] },
       check: (g) => checkGrant(s.allowed(), t.pool, g), bwrap: this.opts.bwrap,
     });
     // What the panel uploads is the panel's thread's; what it renames or deletes takes its record along.
@@ -500,7 +502,8 @@ export class Workspace {
         else if (f) s.dropOrigins(f.folder, [f.path]);
       },
       removed: (paths) => { for (const p of paths) { const key = this.originKey(t, p); if (key) s.dropOrigins(key.folder, [key.path]); } },
-    });  }
+    }, !!shared);
+  }
 
   /** What the thread's tools may reach: its settings, or nothing while the self-test has refused network. */
   network(t: WorkspaceThread): Network {

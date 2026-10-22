@@ -533,6 +533,13 @@ describe.skipIf(!homeRunnable)("a project chat's uploads", () => {
       expect((await workspace.targetFor(chat).ops().read.readFile(path)).toString()).toBe("a header and three cards");
       const code = workspace.targetFor({ userId: ada.id, pool: "general", threadId: "c1" }).ops();
       expect((await code.read.readFile("/shared/uploads/mockup.txt")).toString()).toBe("a header and three cards");
+      // A file not there yet says so, not that it can't be read.
+      await expect(code.read.access!("/shared/build-notes.md")).rejects.toThrow("no such file yet: /shared/build-notes.md");
+      // The thread's Files panel has /shared as a root of its own; the chat's shows it in its folder.
+      const files = workspace.files({ userId: ada.id, pool: "general", threadId: "c1" });
+      expect(files.roots().map((r) => `${r.path} ${r.kind}`)).toEqual(["/workspace thread", "/shared shared"]);
+      expect((await files.list("/shared/uploads")).entries.map((e) => e.name)).toEqual(["mockup.txt"]);
+      expect(workspace.files(chat).roots().map((r) => r.path)).toEqual(["/workspace"]);
     } finally {
       await workspace.unmountHome(ada.id);
     }
