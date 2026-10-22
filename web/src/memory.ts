@@ -37,9 +37,15 @@ export const dateWord = (iso: string) => new Date(iso).toLocaleDateString([], { 
 export const longDate = (iso: string) => new Date(iso).toLocaleDateString([], { day: "numeric", month: "long" });
 export const poolWord = (pool: Pool) => (pool === "private" ? "Private" : "General");
 
-/** A memory's name where it has no title: its first words. */
+/** Markdown's marks taken off, for a line of plain text: headings, quotes, list bullets, emphasis, code ticks, and links as their text. */
+export const plainMarkdown = (text: string) => text
+  .replace(/^[ \t]*(#{1,6}|>|[-*+]|\d+\.)[ \t]+/gm, "")
+  .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+  .replace(/(\*\*|\*|`+)(\S(?:.*?\S)?)\1/g, "$2");
+
+/** A memory's name where it has no title: its first words, without Markdown's marks. */
 export function firstWords(text: string, width = 60): string {
-  const flat = plainCitations(text).replace(/\s+/g, " ").trim();
+  const flat = plainMarkdown(plainCitations(text)).replace(/\s+/g, " ").trim();
   return flat.length > width ? `${flat.slice(0, width - 1).trimEnd()}…` : flat;
 }
 

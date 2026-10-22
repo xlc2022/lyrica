@@ -1,5 +1,5 @@
 // The model badge and its picker, and the thread settings drawer.
-import { isChatModel, ModelLabel, modelName } from "./ModelLabel.tsx";
+import { isChatModel, ModelLabel, modelName, shortModel } from "./ModelLabel.tsx";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   del, get, patch, u, THREAD_TASKS,
@@ -257,13 +257,14 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
   const first = value.list?.[0];
   const current = value.source === "thread" ? refKey(value.model ?? (first && "offeringId" in first ? first : undefined)) : "";
   const fromPreset = (value.source === "preset" || value.source === "column") && value.model
-    ? `${value.kind ? `${value.kind} · ` : ""}${value.modelId ? `${value.name ?? value.modelId} · ${value.endpointName}` : named(value)}` : "nothing set";
+    ? `${value.kind ? `${value.kind} · ` : ""}${value.modelId ? `${value.name ?? shortModel(value.modelId)} · ${value.endpointName}` : named(value)}` : "nothing set";
   // Picking a cloud Dictation model is the consent to send this thread's voice to the cloud, so it asks first.
   const [cloudPick, setCloudPick] = useState<{ id: string; name: string }>();
   return (<>
     <label className="field">
       <span>{label ?? TASK_LABELS[task]}</span>
-      <select value={current} onChange={(e) => {
+      {/* An option can't carry a tooltip, so the select's holds the chosen model's whole ID. */}
+      <select value={current} title={(current ? allowed.flatMap((x) => x.models).find((m) => m.id === current)?.modelId : value.modelId) ?? undefined} onChange={(e) => {
         const id = e.target.value;
         const ep = allowed.find((x) => x.models.some((m) => m.id === id));
         const m = ep?.models.find((x) => x.id === id);
@@ -273,7 +274,7 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
         <option value="">Preset ({fromPreset})</option>
         {allowed.filter((ep) => ep.models.some((m) => fits(task, m))).map((ep) => (
           <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
-            {ep.models.filter((m) => fits(task, m)).map((m) => <option key={m.id} value={m.id}>{ep.kind} · {modelName(m)} · {ep.name}</option>)}
+            {ep.models.filter((m) => fits(task, m)).map((m) => <option key={m.id} value={m.id}>{ep.kind} · {shortModel(modelName(m))} · {ep.name}</option>)}
           </optgroup>
         ))}
         {/* A thread choice that is no longer allowed still shows, so the select says what's set. */}

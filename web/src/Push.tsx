@@ -1,7 +1,7 @@
 // Principles 6 and 2: decision requests reach the user without exposing their words.
 import { useState } from "react";
 import { del, errorFrom, get, put, u, type PushInfo, type PushSettings } from "./api.ts";
-import { ErrorText, useAction, useLoad } from "./ui.tsx";
+import { clock, ErrorText, useAction, useLoad } from "./ui.tsx";
 
 export const PUSH_DESCRIPTION = "Pushes say only that something waits, never what. A link shows the receiver this server's address.";
 const OFF: PushInfo = { host: "", path: "", set: false, token: false, link: false };
@@ -24,7 +24,7 @@ export async function testPush(userId: string): Promise<string> {
 export function PushFailure({ failure }: { failure?: PushInfo["lastFailure"] }) {
   if (!failure) return null;
   const date = new Date(failure.at);
-  return <p className="warn-text" role="status">Last push failed at <time className="num" dateTime={failure.at} title={date.toLocaleString()}>{date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })}</time>: <span className="num">{failure.status}</span></p>;
+  return <p className="warn-text" role="status">Last push failed at <time className="num" dateTime={failure.at} title={date.toLocaleString()}>{clock(date)}</time>: <span className="num">{failure.status}</span></p>;
 }
 
 export function PushSection({ userId }: { userId: string }) {

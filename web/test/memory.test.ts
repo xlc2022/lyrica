@@ -26,6 +26,9 @@ describe("citations in a memory's text", () => {
   it("read plainly for a sentence or a difference, with the source marks dropped", () => {
     expect(plainWords(text, "general", links, hidePrivate, "u1")).toBe("Seeds arrive Friday. The beds are in The garden, planned in Garden bed plan; the rest is in a deleted note and Private is hidden.");
     expect(firstWords("Ada wants the cluster off the old NAS. [e:web/3f7a2c#41]")).toBe("Ada wants the cluster off the old NAS.");
+    // A page's Markdown reads as plain words: no heading marks, emphasis, ticks or link targets; snake_case stays.
+    expect(firstWords("# Ada\n## Food and drink\n- Likes **strong** `oolong` from [the shop](https://x.example) and tea_cakes", 80))
+      .toBe("Ada Food and drink Likes strong oolong from the shop and tea_cakes");
   });
 });
 

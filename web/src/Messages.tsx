@@ -18,6 +18,7 @@ import { FoldCard, stateWord, SuggestedCard, ThreadCard, type ProjectEnv } from 
 import { ChecklistButton, StepLine } from "./Checklist.tsx";
 import { findThread } from "./Thread.tsx";
 import { EditBox, MessageActions, MessageMenu, type Rewinder } from "./Rewind.tsx";
+import { shortModel } from "./ModelLabel.tsx";
 import { ConfirmDialog, ErrorText, fullTime, Prose, useAction, useDismiss, wakeTime } from "./ui.tsx";
 import { basename, InlineImage, Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
 import type { ReactNode } from "react";
@@ -426,7 +427,7 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
     <section className="turn" id={n !== undefined ? `m-${n}` : undefined} aria-label={model ? `${who} (${model})` : who}>
       <div className="who sent">
         <span className="who-head">
-          <span className="who-name" title={model ?? who}>{who}{model && <span className="muted"><Sep />{model}</span>}</span>
+          <span className="who-name" title={model ?? who}>{who}{model && <span className="muted"><Sep />{shortModel(model)}</span>}</span>
           {at && <SentAt at={at} />}
         </span>
         {env.rewinder && n !== undefined && env.rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}

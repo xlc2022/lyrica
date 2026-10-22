@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { LoginResponse, LogoutResponse, Me, PersonaProposal, ProposalDraft, State, UserCard } from "../src/api.ts";
+import type { LoginResponse, LogoutResponse, Me, NotificationPage, PersonaProposal, ProposalDraft, State, UserCard } from "../src/api.ts";
 import { browser, daemon, login, runtime } from "./helpers.ts";
 
 // Users may be different people: one browser holds one person's (linked)
@@ -147,6 +147,18 @@ describe("persona proposals", () => {
     const lt = threadOf(d, rt.ada.id);
     expect(proposals.propose(lt.view, lt.threadId, { path: "persona_topics/music.md", text: "x", reason: "y", author: "sleep" }).sent).toBe(true);
     expect((await ada.get<PersonaProposal[]>(`/api/u/${rt.ada.id}/admin/proposals`)).body.at(-1)).toMatchObject({ sentBy: `user:${rt.ada.id}`, edited: false });
+    // Notifications credit her with each, and name the sender only when it isn't the administrator reading them.
+    const titles = (await ada.get<NotificationPage>(`/api/u/${rt.ada.id}/notifications`)).body.items.filter((n) => n.type === "approval").map((n) => n.title).sort();
+    const her = d.name(), sender = d.services!.users.get(rt.sam.id)!.profile.displayName;
+    expect(titles).toEqual([
+      `${her}'s change to persona_topics/friends.md, sent on by ${sender}, waits for approval`,
+      `${her}'s change to persona_topics/music.md waits for approval`,
+    ]);
+    // A persona item from sleep isn't listed beside the approval that stands for it; a thought is.
+    lt.view.own.addItem("s:test", { kind: "persona", text: "persona_topics/music.md: y" });
+    lt.view.own.addItem("s:test", { kind: "thought", text: "Ask about the new record" });
+    const sleep = (await ada.get<NotificationPage>(`/api/u/${rt.ada.id}/notifications`)).body.items.filter((n) => n.type === "sleep");
+    expect(sleep.map((n) => [n.title, n.detail])).toEqual([["Ask about the new record", "Something from sleep"]]);
 
     // Dropping a draft.
     const another = proposals.propose(t.view, t.threadId, { path: "persona_topics/friends.md", text: "z", reason: "w", author: "sleep" });
