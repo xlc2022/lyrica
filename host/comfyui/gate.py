@@ -41,7 +41,7 @@ def wanted():
 
 # Prints why this PyTorch can't run on the GPU, or nothing. A kernel built
 # for sm_XY runs on X.Y up to X.9; PTX for compute_XY compiles on X.Y and up.
-CHECK = """
+CHECK = r"""
 import re, torch
 if torch.version.cuda and torch.cuda.is_available():
     cap = torch.cuda.get_device_capability(0)
