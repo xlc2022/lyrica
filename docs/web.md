@@ -289,7 +289,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   focus.
 - **Thread settings drawer:** a preset and a model per task, including **Coding** (each option says cloud or local first; **Watching threads**, under
   Titles, only in a project chat; then **Images**, **Image edits** and
-  **Image upscaling**, offering the models that do each, recipes by name), local-only, the internet and
+  **Image upscaling**, offering the models that do each, recipes by name;
+  a task's problem shows in red under its select only for the thread's own
+  model, a choice made in the thread, or a refusal, never for an optional
+  task nobody set), local-only, the internet and
   Local services (localhost) switches (each following the user's default until
   changed), allowed hosts, folders from the allowed paths (read-only or
   read-write), **Machines** (the sandbox, always, then each granted machine
@@ -842,7 +845,7 @@ without creating a thread. Leaving home discards the unsent text and files.
 The content is one column in a centred block at most 960 px wide.
 Beneath the box the cards sit side by side (auto-fit, each at least 240 px) and
 stack when they don't fit. Each card has a plain h2 with its link on the right:
-**Last night** with Sleep and shows new visible-pool items with Start a chat
+**From sleep** with Sleep and shows new visible-pool items with Start a chat
 and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
 time in mono. **Notifications** has All <n> and "Nothing waiting." when
 empty. **Backend** has Models and lists each pool's first chat model, host,
@@ -1029,7 +1032,9 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   date before it otherwise, in the reader's locale order ("11 Oct 14:32",
   "Oct 11 14:32" in en-US), with `fullTime`'s weekday, date and 24-hour
   time in the reader's locale as its tooltip ("Monday, October 12, 2026 at
-  14:32" in en-US; `ui.tsx`). It comes from the stored message's
+  14:32" in en-US; `ui.tsx`). Every time of day in the app is 24-hour
+  HH:MM through `clock` (lists, sidebar, Sleep, Updates, the welcome page),
+  whatever the locale. It comes from the stored message's
   `createdAt`, so a reply that is still streaming (or a message waiting to
   go) has none until its stored copy replaces it. Markers keep their own
   lines and show no time; there are no day dividers. The line never wraps:

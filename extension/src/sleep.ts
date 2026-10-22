@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { AgentSessionEvent, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import {
-  aboutToTidy, citationsIn, CORE_LIMIT, danglingPages, emptySleepMaterial, kindOf, NoModel, CloudModelForbidden, projectSlug, sleepInstruction,
+  pronounLabel, aboutToTidy, citationsIn, CORE_LIMIT, danglingPages, emptySleepMaterial, kindOf, NoModel, CloudModelForbidden, projectSlug, sleepInstruction,
   type CallContext, type Memory, type ModelRef, type Models, type PersonaProposals, type PersonaStore, type Pool, type PoolView,
   type SkipReason, type SleepItem, type SleepMaterial, type SleepLimit, type SleepPhase, type SleepRunRecord, type Users,
 } from "@lyrica/core";
@@ -319,7 +319,7 @@ export class Sleep {
       });
       const timer = setTimeout(() => halt("time"), this.limits.timeoutMs);
       try {
-        if (!state.stopped) await session.prompt(sleepInstruction(phase, { view, user: user.profile.displayName, material, runId }));
+        if (!state.stopped) await session.prompt(sleepInstruction(phase, { view, user: user.profile.displayName, pronouns: pronounLabel(user.profile.pronouns), material, runId }));
       } catch {
         failed = true;
       } finally {
@@ -519,12 +519,15 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
         : "Note something you'd like to bring up with the person sometime. It shows in the Sleep section; they can start a chat from it.",
       promptSnippet: phase === "consolidate" ? "raise a question instead of guessing" : "keep a thought to bring up later",
       parameters: Type.Object({
-        text: Type.String(),
+        text: Type.String({ description: "Said to the person, as you would say it to them: \"you\", not their name." }),
         source: Type.Optional(Type.String({ description: "The memory it's about, like p:homelab or n:…" })),
       }),
       async execute(_id, params) {
         const kind: SleepItem["kind"] = phase === "consolidate" ? "question" : "thought";
         const source = params.source?.trim() || s.done.journal || `t:${s.threadId}`;
+        // One item per subject: what she raised before and the person hasn't answered still stands.
+        const same = own.listItems().find((i) => !i.thread && nearCopy(params.text, i.text));
+        if (same) return text(`You already raised that (${same.id}); it still waits for the person.`);
         own.addItem(s.runId, { kind, text: asUserToken(params.text, s.user), source });
         return text(kind === "question" ? "Raised the question." : "Kept it for later.");
       },

@@ -151,6 +151,8 @@ describe("a night's sleep", () => {
         call("raise", { text: "A thought before writing" }),
         call("write_journal", { text: "Moonlit tomatoes climbing a ladder." }),
         call("raise", { text: "Ask about the moonlit tomato idea" }),
+        // The same subject again keeps the one item.
+        call("raise", { text: "Ask them about the moonlit tomato idea" }),
       ],
       wake: [
         call("recall", { query: "moonlit tomatoes" }),

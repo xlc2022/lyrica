@@ -38,7 +38,8 @@ describe("welcome cards", () => {
     const html = renderToStaticMarkup(createElement(SleepCard, { ctx: { ...ctx, sleep: { ...ctx.sleep, overview } } }));
     expect(html).toContain('href="#/u/user/sleep">Sleep</a>');
     expect(html).toContain('She slept at <span class="num"');
-    expect(html).toContain(new Date(startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    // 24-hour, as every time in the app (tests run in UTC).
+    expect(html).toContain('title="2026-10-12T04:00:00Z">04:00</span>');
   });
 
   it("shows private locks and both actions, leaving out old items and hidden pools", () => {

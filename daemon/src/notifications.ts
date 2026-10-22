@@ -111,11 +111,12 @@ function collect(d: Lyricad, user: User, show: Api.Display): Api.Notification[] 
     // Her items from the night, in the pools the display shows.
     for (const pool of pools) {
       for (const i of o[pool].listItems()) {
-        if (i.thread) continue;
+        // A persona item has its own suggestion or approval above, with the actions that count.
+        if (i.thread || i.kind === "persona") continue;
         const path = `${u}/sleep/${pool}/items/${encodeURIComponent(i.id)}`;
         out.push({
           id: `sleep:${i.id}`, type: "sleep", title: i.text.length > DETAIL ? `${i.text.slice(0, DETAIL - 1)}…` : i.text,
-          detail: i.kind === "question" ? "A question from the night" : i.kind === "persona" ? "A suggestion about her persona" : "Something from last night",
+          detail: i.kind === "question" ? "A question from sleep" : "Something from sleep",
           scope: pool, decision: true, at: i.createdAt,
           actions: [{ label: "Start a chat", method: "POST", path: `${path}/chat`, opens: true }, { label: "Dismiss", method: "DELETE", path }],
         });
@@ -153,10 +154,12 @@ function collect(d: Lyricad, user: User, show: Api.Display): Api.Notification[] 
     // Persona changes sent on by users, for administrators to approve.
     if (user.admin) {
       for (const p of s.persona.proposals()) {
-        const by = s.users.get(p.sentBy.replace(/^user:/, ""))?.profile.displayName ?? "a user";
+        // She writes every proposal (in her sleep); the user only sends it on, and an administrator's own goes straight here.
+        const senderId = p.sentBy.replace(/^user:/, "");
+        const by = senderId === user.id ? undefined : s.users.get(senderId)?.profile.displayName ?? "a user";
         const path = `${u}/admin/proposals/${p.id}`;
         out.push({
-          id: `approval:${p.id}`, type: "approval", title: `A change to ${p.path} from ${by} waits for approval`,
+          id: `approval:${p.id}`, type: "approval", title: `${d.name()}'s change to ${p.path}${by ? `, sent on by ${by},` : ""} waits for approval`,
           detail: `${p.reason.slice(0, DETAIL)}${p.stale ? " The file has changed since." : ""}`,
           scope: "general", decision: true, section: "admin/persona", at: p.createdAt,
           actions: [

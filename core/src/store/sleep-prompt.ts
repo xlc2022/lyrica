@@ -36,7 +36,7 @@ const NOTES_SHOWN = 150;
 /** How much of general's page about the user private consolidation is shown; read_memory has the rest. */
 const GENERAL_ABOUT_SHOWN = 4000;
 
-export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: string; material: SleepMaterial; runId: string }): string {
+export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: string; pronouns?: string; material: SleepMaterial; runId: string }): string {
   const { view, user, material: m } = c;
   const privateNote = view.pool === "private"
     ? `\nThis is your private memory with ${user}. You can read and cite general memory as [general/n:…]; you write only here.`
@@ -58,7 +58,7 @@ export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: s
       ? `${general.text.slice(0, GENERAL_ABOUT_SHOWN)}…\n(The rest: read_memory general/p:about-user.)` : general.text);
     const aboutStep = general
       ? `3. Keep p:about-user, the private page about ${user}. Every private conversation also loads general memory's page about them (below), so yours holds only what that one doesn't say: what's private, and detail it lacks. Drop anything it already says, and cite [general/p:about-user] where you build on it. Where the two disagree, keep yours and raise a question. If nothing is left, write one line pointing to [general/p:about-user]. ${aboutLine}`
-      : `3. Keep p:about-user, the page about ${user}: who they are, what they prefer, dislike and care about, citing notes. ${aboutLine}`;
+      : `3. Keep p:about-user, the page about ${user}: what ${user} is like, prefers, dislikes and cares about, citing notes. ${aboutLine}`;
     return [
       `It's night, and you're asleep. This is consolidation, the first part of sleep for your ${view.pool} memory. Nobody is waiting for a reply: work with your tools, then end with a line or two on what you did.${privateNote}`,
       section("Notes since you last slept", notes),
@@ -77,7 +77,7 @@ export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: s
         "6. Rewrite the pages listed above without the deleted source.",
         ...(projects.length ? [`7. Keep each project's page (the slug given above): what you know about the project, such as decisions, requirements, pitfalls, who to ask and what's open, citing its notes and conversations. Its instructions are ${user}'s and stay as they are; write only what you know.`] : []),
         "Keep working in the about tags of notes you merge; add it to notes that plainly state a coding or workflow preference.",
-        "Write {user} for the person, never their name, in notes and pages. Name a conversation by citing it ([t:…]), never by its title, which can change.",
+        `Write {user} for the person, never their name, in notes and pages, and {user:obj}, {user:poss}, {user:poss-pro} or {user:refl} for their pronouns${c.pronouns ? ` (${c.pronouns})` : ""}; there is no subject form, so write {user} where "she" or "they" would go. Name a conversation by citing it ([t:…]), never by its title, which can change.`,
       ].join("\n"),
     ].filter(Boolean).join("\n\n");
   }

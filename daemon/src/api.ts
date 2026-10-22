@@ -1050,7 +1050,7 @@ export interface TaskModel {
   endpointName?: string;
   /** "thread" when overridden here, "preset" or "column" when following one of those, "none" when nothing is set. */
   source: "thread" | "preset" | "column" | "none";
-  /** Why nothing usable is set here (unset, or a cloud model in a private thread), in plain words. */
+  /** Why nothing usable is set here, in plain words: the thread's own model unset, a choice made here that can't be used, or a cloud model in a private thread. Absent for any other task nobody set. */
   problem?: string;
 }
 
