@@ -365,6 +365,7 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
   retiresAt?;                                                // OpenRouter's expiration_date
   maxOutput?;                                                // OpenRouter's top_provider.max_completion_tokens
   lmStudio?;                                                 // LM Studio listed it on its own API at the last discovery
+  llamaServer?;                                              // a plain llama-server described it on /props at the last discovery: its one level is the template's switch
 }
 type ModelRef = { offeringId: string } | { groupId: string };
 interface Group { id; name; shared; members: string[] }      // offering IDs, in order, one per endpoint
@@ -1356,7 +1357,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   and at most 131,072 tokens on a local endpoint or with a `maxOutput`, else
   32,768). Settings are read at
   each request, so a change applies without reopening the session.
-- A host model whose only thinking level is a chat-template switch gets Pi's
+- A host or `llamaServer` model whose only thinking level is a chat-template switch gets Pi's
   `thinkingFormat: "qwen-chat-template"`; any other model with levels gets
   `reasoning_effort`. Local endpoints and hosts are sent `system` and
   `max_tokens`. A request sent with thinking off that the provider refuses

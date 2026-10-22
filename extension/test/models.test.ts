@@ -292,6 +292,31 @@ describe("each turn's model", () => {
     expect(s.models.recentCalls(s.ada.id).map((c) => c.note)).toEqual(["studio/glm can't turn thinking off, so it thought at medium", undefined, undefined]);
   });
 
+  it("turns a plain llama-server model's thinking on and off through its chat template's switch", async () => {
+    const s = await setup();
+    const direct = await fakeOpenAI({ models: [{ id: "qwen.gguf" }],
+      props: { "": { chat_template: "{%- if enable_thinking %}<think>{%- endif %}", default_generation_settings: { n_ctx: 32768 } } } });
+    const ep = s.models.addEndpoint(s.ada, { name: "direct", kind: "local", baseUrl: direct.baseUrl });
+    const [qwen] = await s.models.discover(s.ada, ep.id);
+    s.models.setColumnTask(s.ada.id, "private", "chat", [{ offeringId: qwen!.id }]);
+    const sent: unknown[] = [];
+    for (const level of ["high", "off"] as const) {
+      s.models.setDefaultThinking(s.ada.id, level);
+      const { session, prepare, dispose } = await s.open(s.thread("private"));
+      try {
+        await prepare();
+        await session.prompt("hello");
+      } finally {
+        dispose();
+      }
+      const r = direct.requests.at(-1) as unknown as Record<string, unknown>;
+      expect(r.reasoning_effort).toBeUndefined();
+      sent.push(r.chat_template_kwargs);
+    }
+    expect(sent).toEqual([expect.objectContaining({ enable_thinking: true }), expect.objectContaining({ enable_thinking: false })]);
+    expect(s.models.recentCalls(s.ada.id).map((c) => c.note)).toEqual([undefined, undefined]);
+  });
+
   it("leaves a subagent role's own thinking level alone", async () => {
     const s = await setup();
     s.models.setCapabilities(s.ada, s.localRef.offeringId, { reasoning: ["low", "medium", "high"] });

@@ -8,7 +8,7 @@ import type { Keyring } from "../keyring.ts";
 import { DEFAULT_THINKING, TASK_NAMES, TASKS, THINKING_LEVELS, type CallContext, type Column, type ModelRef, type Pool, type PresetScope, type Task, type ThinkingLevel } from "../types.ts";
 import { selfName } from "../persona.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
-import { addressesOutside, discoverModels, modelDefaults, lmStudioLoad, lmStudioModel, lmStudioModels, probeUrl, type DiscoveredModel, type ModelDefaults, type ModelIdentity, type ModelPrice } from "./http.ts";
+import { addressesOutside, discoverModels, llamaServerModel, type LlamaServerModel, modelDefaults, lmStudioLoad, lmStudioModel, lmStudioModels, probeUrl, type DiscoveredModel, type ModelDefaults, type ModelIdentity, type ModelPrice } from "./http.ts";
 import { hostError, hostFetch, HostRefused, hostOrigin, listIn, lyricaIdentity, pair } from "./host.ts";
 import { baseName } from "./identity.ts";
 import { copyIdentity } from "./library.ts";
@@ -183,6 +183,8 @@ export interface Offering extends Capabilities {
   alwaysThinks?: boolean;
   /** An LM Studio model, as last discovered: the `models` tool may load it again with another context. */
   lmStudio?: boolean;
+  /** A plain llama-server described it on /props: its one thinking level is the chat template's switch. */
+  llamaServer?: boolean;
   /** Requests its server runs at once, sharing one context cache (LM Studio's `parallel`), when the server says. */
   parallel?: number;
   /** What it costs, where its server says (OpenRouter). */
@@ -452,7 +454,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -471,6 +473,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.opensThinking ? { opensThinking: true } : {}),
     ...(caps.alwaysThinks ? { alwaysThinks: true } : {}),
     ...(caps.lmStudio ? { lmStudio: true } : {}),
+    ...(caps.llamaServer ? { llamaServer: true } : {}),
     ...(caps.servedParallel ? { parallel: caps.servedParallel } : {}),
     ...(caps.price ? { price: caps.price } : {}),
     ...(caps.retiresAt ? { retiresAt: caps.retiresAt } : {}),
@@ -782,6 +785,8 @@ export class Models {
     const ep = this.endpoint(actor.id, endpointId);
     if (!ep) throw new Error(`no endpoint ${endpointId}`);
     let found: DiscoveredModel[];
+    // A router's models it wasn't asked about (not loaded): they keep what /props said of them last time.
+    const unasked = new Set<string>();
     try {
       if (ep.signedOut) throw new Error(`${ep.name} is signed out; sign in again`);
       found = ep.api === "host" ? await this.hostModels(ep) : isPlan(ep.api) ? this.planCatalog(ep.api) : await discoverModels(ep.baseUrl, ep.apiKey);
@@ -797,6 +802,31 @@ export class Models {
           ...(m.embedding === undefined && l?.embedding ? { embedding: true } : {}), ...(m.tools === undefined && l?.tools ? { tools: true } : {}),
           ...(m.reasoning === undefined && l?.reasoning ? { reasoning: l.reasoning.levels, ...(l.reasoning.canTurnOff ? {} : { alwaysThinks: true }) } : {}) };
       });
+      // A plain llama-server lists only IDs and context; its /props has the chat template, a projector and the slots.
+      // A router (its list gives each model's state) is asked only about loaded models, one at a time: it may load what it's asked about.
+      // A server serving one model is asked once, without naming it.
+      else if (ep.kind === "local" && ep.api !== "host" && !isPlan(ep.api)) {
+        const router = found.some((m) => m.routerState !== undefined);
+        const props = new Map<string, LlamaServerModel>();
+        if (router) {
+          for (const m of found) {
+            if (m.routerState !== "loaded") { unasked.add(m.modelId); continue; }
+            const l = await llamaServerModel(ep.baseUrl, ep.apiKey, m.modelId);
+            if (l) props.set(m.modelId, l);
+          }
+        } else if (found.length === 1) {
+          const l = await llamaServerModel(ep.baseUrl, ep.apiKey);
+          if (l) props.set(found[0]!.modelId, l);
+        }
+        found = found.map((m) => {
+          const l = props.get(m.modelId);
+          if (!l) return m;
+          return { ...m, llamaServer: true, ...(l.parallel ? { servedParallel: l.parallel } : {}), ...(l.opensThinking ? { opensThinking: true } : {}),
+            ...(m.reasoning === undefined && l.reasoning ? { reasoning: l.reasoning } : {}), ...(m.tools === undefined && l.tools ? { tools: true } : {}),
+            ...(m.vision === undefined && l.vision !== undefined ? { vision: l.vision } : {}) };
+        });
+      }
+      found = found.map(({ routerState: _, ...m }) => m);
       // A ChatGPT plan's image tool is one model of its own, not a switch on each chat model.
       if (ep.api === "chatgpt") found = [...found, PLAN_IMAGE];
     } catch (err) {
@@ -809,8 +839,13 @@ export class Models {
     this.write(actor, endpointId, (db) => {
       db.transaction(() => {
         const have = new Map((db.prepare("SELECT id, model FROM offerings WHERE endpoint = ?").all(endpointId) as { id: string; model: string }[]).map((r) => [r.model, r.id]));
-        for (const m of found) {
+        for (let m of found) {
           const id = have.get(m.modelId);
+          if (id && unasked.has(m.modelId)) {
+            const prev = JSON.parse((db.prepare("SELECT found FROM offerings WHERE id = ?").get(id) as { found: string }).found) as DiscoveredModel;
+            if (prev.llamaServer) m = { ...m, llamaServer: true, ...Object.fromEntries((["reasoning", "tools", "vision", "opensThinking", "servedParallel"] as const)
+              .filter((k) => m[k] === undefined && prev[k] !== undefined).map((k) => [k, prev[k]])) };
+          }
           if (id) db.prepare("UPDATE offerings SET found = ?, missing_since = NULL WHERE id = ?").run(JSON.stringify(factsOf(m)), id);
           else {
             const added = randomUUID();
@@ -2616,7 +2651,7 @@ export class Models {
     }
     if ((levels as string[]).includes(asked)) return { level: asked };
     // A host's or LM Studio's thinking switch (one level) is simply on.
-    if (levels.length === 1 && (r.endpoint?.api === "host" || r.offering.lmStudio)) return { level: levels[0]! };
+    if (levels.length === 1 && (r.endpoint?.api === "host" || r.offering.lmStudio || r.offering.llamaServer)) return { level: levels[0]! };
     const level = nearestLevel(levels, asked)!;
     return { level, note: `${r.label} doesn't think at ${asked}, so it thought at ${level}` };
   }
