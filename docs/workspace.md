@@ -17,7 +17,8 @@ tool's file and process operations be swapped for another backend
 operation to an **execution target**. Nothing runs inside `lyricad`'s process.
 A `bash` call with no `timeout` gets `BASH_TIMEOUT_S` (600 seconds), so a
 command that never ends (a test whose browser never closes) can't hold the
-thread; she gives a longer one for a long build.
+thread; she gives a longer one for a long build, or runs it in the
+background ([below](#background-commands)).
 
 That matters because `lyricad` holds the unlocked keys in memory and owns the
 database files. A command that could see either one could read everything.
@@ -565,6 +566,40 @@ checks these boundaries without sockets. The real encrypted-home test skips
 when FUSE/gocryptfs isn't available; CI's `LYRICA_SANDBOX_TESTS=require` requires
 it. Other storage tests use synthetic bitmap bytes in a stand-in home.
 
+## Background commands
+
+A download, build or install that takes minutes or hours runs in the
+background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
+
+- `bash` takes `background: true`, in the sandbox or on a machine. The call
+  is approved exactly as any `bash` (the mode, the machine's limit, suspect
+  commands, command rules), then starts and returns at once with a job id
+  (`j1`, `j2`, … per thread), where it runs and the command.
+- Its time limit is 4 hours unless she gives one, and at most 24
+  (`JOB_LIMITS`); at the limit it is killed and reported as timed out. A
+  thread has at most 4 running at once; a fifth is refused, naming them.
+- The `jobs` tool lists the thread's jobs (where, command, state, how
+  long), shows one's output so far, or stops one. A target caps output as
+  for any command, so while a job runs its first 20 KB shows, and its end
+  once it ends; to follow a long job she has it write to a file and reads
+  that. The ten most recently ended jobs are kept.
+- `Workspace.jobs` holds them in `lyricad`'s memory, so they outlive the
+  thread's session, which is disposed when idle. Output is kept there only
+  (at most 64 KB a job) and never written anywhere.
+- When a job ends (exited, failed, timed out or stopped), `lyricad`'s
+  `onJobEnd` delivers a notice into the thread (`jobNotice`: the job, the
+  exit code, how long it ran and the last 40 lines of its output), on the
+  path a background subagent's result takes (`Delegation.deliver`, status
+  `job`). A busy thread gets it as a follow-up; an idle one is woken once to
+  carry on (`HostedThread.wakeChild`), unless its project is paused or it
+  waits for a child slot, when the notice waits in the thread for its next
+  turn.
+- Lock, a memory wipe, forgetting the thread and stopping `lyricad` stop
+  its jobs, and the notice says why where the thread still exists. A crash
+  loses them unreported: a sandbox runs with
+  `--die-with-parent`, and an SSH job's helper exits with `lyricad`.
+- Subagents and Plan mode have neither `background` nor `jobs`.
+
 ## Thread settings
 
 Core stores a `code` preference in `thread_workspaces` (user step 14), off
@@ -1102,7 +1137,7 @@ MCP tool its server doesn't mark read-only.
 
 ## Tools
 
-`read`, `write`, `edit` and `bash`, and `propose_plan` in a thread that isn't a subagent, built from Pi's own tool definitions
+`read`, `write`, `edit` and `bash`, `jobs` and `propose_plan` in a thread that isn't a subagent, built from Pi's own tool definitions
 with the call's target (the sandbox, or the machine its `machine` argument
 names) looked up on every call, so changing a thread's settings applies at
 once. Commands typed with `!` in the terminal run in the sandbox. A short

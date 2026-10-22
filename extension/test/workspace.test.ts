@@ -69,6 +69,8 @@ interface Run {
   claudeCode?: boolean;
   /** Before a sandbox write or edit: a text to hold it with. */
   sameFile?: (path: string) => string | undefined;
+  /** Background commands started, as "<place>: <command>"; with it, the thread has background commands. */
+  jobs?: string[];
 }
 
 /** Tools any thread has besides the workspace's: memory, and the switched ones, which do nothing here. */
@@ -112,6 +114,15 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     approve: o.approve, proposePlan: o.proposePlan, setMode: (m) => { settings.mode = m; },
     claudeCode: () => !!o.claudeCode,
     ...(o.sameFile ? { sameFile: o.sameFile } : {}),
+    ...(o.jobs ? {
+      startJob: async (command: string, machine?: string) => {
+        o.jobs!.push(`${machine ?? "sandbox"}: ${command}`);
+        return { id: `j${o.jobs!.length}`, place: machine ?? "sandbox", command, startedAt: new Date().toISOString(), state: "running" as const };
+      },
+      jobs: () => o.jobs!.map((c, i) => ({ id: `j${i + 1}`, place: c.split(": ")[0]!, command: c.split(": ")[1]!, startedAt: new Date().toISOString(), state: "running" as const })),
+      jobOutput: (id: string) => ({ job: { id, place: "sandbox", command: "x", startedAt: new Date().toISOString(), state: "running" as const }, output: "half way\n" }),
+      stopJob: (id: string) => id === "j1",
+    } : {}),
     repositories: () => o.repositories ?? [], cloneRepositories: async () => o.cloneProblems ?? [],
     gitAccounts: () => (o.gitAccounts ?? []).map((name) => ({ name, kind: "github", host: "github.com" })),
     addRepository: (r) => { o.added?.push(r); return [...(o.repositories ?? []), ...(o.added ?? [])]; },
@@ -158,6 +169,35 @@ describe("workspace tools in a Pi session", () => {
     expect(system).toContain("Internet for commands: off.");
     expect(system).toContain("Hosts you may reach: nas.lan:8080.");
     expect(system).toContain("don't mirror or proxy them");
+  });
+
+  it("starts a background command after the same approval as any command, and lists, reads and stops jobs", async () => {
+    const jobs: string[] = [];
+    const asked: ApprovalRequest[] = [];
+    const { commands, results } = await run("acceptEdits", [
+      fauxToolCall("bash", { command: "docker compose pull", background: true }, { id: "1" }),
+      fauxToolCall("bash", { command: "make", background: true, machine: "danube" }, { id: "2" }),
+      fauxToolCall("jobs", { action: "list" }, { id: "3" }),
+      fauxToolCall("jobs", { action: "output", id: "j1" }, { id: "4" }),
+      fauxToolCall("jobs", { action: "stop", id: "j1" }, { id: "5" }),
+    ], { jobs, machines: [{ name: "danube", kind: "ssh", limit: "auto", root: null }], approve: async (r) => { asked.push(r); return true; } });
+    expect(asked.map((r) => [r.tool, r.machine])).toEqual([["bash", undefined], ["bash", "danube"]]);
+    expect(jobs).toEqual(["sandbox: docker compose pull", "danube: make"]);
+    // Nothing ran in the foreground.
+    expect(commands).toEqual([]);
+    const said = results.join("\n\n");
+    expect(said).toMatch(/^bash: Started j1 in the sandbox, running for 0 s: docker compose pull\nYou'll be told when it ends/m);
+    expect(said).toMatch(/^bash: Started j2 in danube/m);
+    expect(said).toContain("j2 in danube, running for 0 s: make");
+    expect(said).toContain("half way");
+    expect(said).toContain("jobs: Stopped j1.");
+  });
+
+  it("offers no background commands where the thread has none", async () => {
+    const { offered, commands } = await run("auto", [fauxToolCall("bash", { command: "ls", background: true }, { id: "1" })]);
+    expect(offered[0]).not.toContain("jobs");
+    // Pi drops the unknown argument, so the command runs in the foreground.
+    expect(commands).toEqual(["ls"]);
   });
 
   it("names only the programs and browser this host's sandbox has", () => {

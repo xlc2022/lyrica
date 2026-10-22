@@ -1224,7 +1224,8 @@ export type MessagePart =
    * Something a subagent run delivered into the thread: a background run's
    * result or question, a note, or what a user wrote to one of its subagents.
    * `status` says which ("finished", "question", "note", "user_message", …;
-   * "limit" for the tool limit, "checks-passed" or "checks-failed" for a project's checks).
+   * "limit" for the tool limit, "checks-passed" or "checks-failed" for a project's checks,
+   * "job" for a background command that ended).
    */
   | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[]; told?: Told[] }
   /** The thread was compacted: tokens before and (estimated) after, and the summary that replaced the older messages. */
