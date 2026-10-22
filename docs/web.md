@@ -175,7 +175,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   its state word and its time in mono); below it a popover of the project's
   threads grouped Waiting on
   you, Working, Queued, Blocked, Idle and Resolved (each a link, with its unseen
-  count). The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
+  count). Each row carries the thread's **chips** (`ThreadChips`, root `.tchips`, docs/ux.md
+  §6 "A project's threads at a glance"), plain spans inside the row's link:
+  its checklist's count from `ThreadSummary.steps`, its open pull request
+  from `ThreadSummary.pull` (the number, and the checks' dot as the changes
+  badge colours it), and `ThreadSummary.subagents`, the subagents working
+  for it now; a chip without anything to say is left out. The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
   This chat first, then thread links by descending tokens, and **Recent
   calls** linking to the project's filter. On a phone Tokens opens in place
   at the foot of the Threads popover. The header has a **Project**
@@ -1131,7 +1136,9 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   (`ThreadSummary.steps`: "2 of 5" with its numbers in mono, a link named
   "Checklist, 2 of 5 steps done" that opens the header's popover; on a
   phone it opens in flow under the card's head, the card's width, with no
-  shadow), "wakes" and its next
+  shadow), then its pull request and subagent chips as in the threads list's
+  rows (the pull request's a link to it on its forge, opening a new tab; on
+  a phone the chips take their own line under the title), "wakes" and its next
   wake-up's time in mono while one waits (`ThreadSummary.wakeAt`);
   beneath, the step under way (or the first to do) with its mark, on one
   line with an ellipsis, left off once all are done or the thread is
