@@ -250,6 +250,7 @@ export async function fakeComfy(o: { hang?: boolean } = {}) {
       seen.deleted.push(...JSON.parse(body.toString()).delete);
       return res.writeHead(200).end();
     }
+    if (url.pathname === "/system_stats") return res.writeHead(200, { "content-type": "application/json" }).end("{}");
     if (url.pathname === "/free") {
       seen.freed++;
       return res.writeHead(200).end();

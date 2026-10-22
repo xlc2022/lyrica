@@ -766,6 +766,10 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - **No Docker socket.** The host API manages VRAM through each server's own
     API: vLLM's sleep and wake, llama.cpp's model loading, and ComfyUI's
     `/free`. It never touches the Docker socket, which would amount to root.
+    A process that has used a GPU keeps a CUDA context there until it exits,
+    so ComfyUI runs only while a recipe is loaded (a small gate in its
+    container starts and stops it as host-api asks), and the speech server
+    exits once nothing is loaded, for Docker to start it again.
   - **Dashboard**, served by the host API on port 7236. It shows:
     - GPUs and VRAM, loaded and pinned models, and the queue;
     - usage statistics: requests, tokens, images and time per model. Never
@@ -856,8 +860,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       reason: GPUs that don't allow that server, too little memory even
       when empty, or vLLM tensor parallel over GPUs that don't match.
     - When a model needs room, the host unloads idle models, least recently
-      used first. It never unloads a pinned model or one in use, and asks
-      ComfyUI to free its memory after it has been idle a while.
+      used first. It never unloads a pinned model or one in use, and stops
+      ComfyUI after it has been idle a while.
     - Requests wait in a queue per GPU (a split model waits for all of its
       GPUs). Interactive chat comes first, then
       images, then background work (sleep, cheap subagents). If a request

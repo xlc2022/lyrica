@@ -247,6 +247,7 @@ describe("the speech server's client", () => {
     const server = http.createServer(async (req, res) => {
       let d = "";
       for await (const c of req) d += c;
+      if (req.url === "/health") return void res.writeHead(200, { "content-type": "application/json" }).end("{}");
       sent.push({ path: req.url, ...JSON.parse(d) });
       if (JSON.parse(d).name === "broken") return void res.writeHead(503, { "content-type": "application/json" }).end(JSON.stringify({ error: { code: "unavailable", message: "The voice model has no vocabulary." } }));
       res.writeHead(200, { "content-type": "application/json" }).end("{}");

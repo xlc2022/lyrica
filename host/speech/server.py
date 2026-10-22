@@ -8,6 +8,9 @@ writable place is /tmp, a tmpfs. Text it is asked to read is never kept.
 - POST /load   {"name", "folder", "file", "device": <GPU index> | "cpu"}
 - POST /unload {"name"}
 - POST /reset  {}
+  Once nothing is loaded, a server that has used a GPU exits after answering,
+  and Docker starts it again: ONNX Runtime keeps its CUDA context for as long
+  as the process lives, so this is how a paused or idle host frees the GPU.
 - POST /v1/audio/speech {"model", "input", "voice", "speed"}: 16-bit mono PCM
   at 24 kHz, streamed as each part of the text is made.
 - GET  /health
@@ -104,6 +107,7 @@ class Model:
                 raise Refused(503, "model_unavailable", "This speech server has no GPU support; it runs voices on the CPU.")
             providers = [("CUDAExecutionProvider", {"device_id": int(device)}), "CPUExecutionProvider"]
         self.folder = folder
+        self.gpu = device != "cpu"
         options = ort.SessionOptions()
         options.log_severity_level = 3
         self.session = ort.InferenceSession(os.path.join(folder, file), sess_options=options, providers=providers)
@@ -244,6 +248,7 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
     def route(self, b):
+        global GPU_USED
         if self.path == "/load":
             name, folder, file, device = b.get("name"), b.get("folder"), b.get("file"), b.get("device")
             if not all(isinstance(x, str) and x for x in (name, folder, file)) or not (device == "cpu" or isinstance(device, int)):
@@ -257,18 +262,29 @@ class Handler(BaseHTTPRequestHandler):
                 model = Model(folder, file, device)
                 with LOCK:
                     MODELS[name] = model
+                    GPU_USED = GPU_USED or model.gpu
             return self.send(200, {"loaded": True})
         if self.path == "/unload":
             with LOCK:
                 MODELS.pop(b.get("name"), None)
-            return self.send(200, {})
+            self.send(200, {})
+            return self.exit_if_done()
         if self.path == "/reset":
             with LOCK:
                 MODELS.clear()
-            return self.send(200, {})
+            self.send(200, {})
+            return self.exit_if_done()
         if self.path == "/v1/audio/speech":
             return self.speech(b)
         raise Refused(404, "not_found", "Not found.")
+
+    def exit_if_done(self):
+        with LOCK:
+            done = GPU_USED and not MODELS
+        if done:
+            self.wfile.flush()
+            # A moment for the answer to leave; Docker starts a fresh server.
+            threading.Timer(0.2, os._exit, (0,)).start()
 
     def speech(self, b):
         with LOCK:
@@ -303,6 +319,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 MODELS_DIR = os.environ.get("MODELS_DIR", "/models")
+# Whether this process has run a voice on a GPU (and so holds a CUDA context).
+GPU_USED = False
 
 if __name__ == "__main__":
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)

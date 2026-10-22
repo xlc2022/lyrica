@@ -22,12 +22,12 @@ export interface Backend {
 
 const unavailable = (what: string) => new HostError(503, "model_unavailable", `${what} didn't answer.`);
 
-function writeAtomic(path: string, text: string): void {
+export function writeAtomic(path: string, text: string): void {
   writeFileSync(`${path}.tmp`, text, { mode: 0o644 });
   renameSync(`${path}.tmp`, path);
 }
 
-async function poll(check: () => Promise<boolean>, timeoutMs: number, what: string, intervalMs = 500): Promise<void> {
+export async function poll(check: () => Promise<boolean>, timeoutMs: number, what: string, intervalMs = 500): Promise<void> {
   const until = Date.now() + timeoutMs;
   while (Date.now() < until) {
     // A HostError from the check is a definite answer; anything else means "not yet".

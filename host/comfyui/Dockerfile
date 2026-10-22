@@ -33,15 +33,18 @@ RUN set -eux; \
 ENV PATH=/opt/venv/bin:$PATH
 
 COPY host/comfyui/extra_model_paths.yaml /opt/comfyui/extra_model_paths.yaml
-RUN useradd --uid 10002 --no-create-home --home-dir /tmp comfy
+COPY host/comfyui/gate.py /opt/gate.py
+# /status is a volume gate.py writes to; a new volume takes this folder's owner.
+RUN useradd --uid 10002 --no-create-home --home-dir /tmp comfy && mkdir /status && chown 10002 /status
 USER 10002
 WORKDIR /opt/comfyui
 ENV HOME=/tmp HF_HUB_OFFLINE=1 DO_NOT_TRACK=1
 
 # Folders in /tmp are tmpfs (see the compose files): prompts and images live in memory only.
 # Only the three custom nodes load; metadata saving and previews are off;
-# API nodes (paid cloud services) are disabled.
-ENTRYPOINT ["sh", "-c", "mkdir -p /tmp/comfy/input /tmp/comfy/output /tmp/comfy/temp /tmp/comfy/user && exec /opt/venv/bin/python main.py \
+# API nodes (paid cloud services) are disabled. gate.py runs it only while
+# host-api asks, so a paused or idle host holds no GPU memory here.
+ENTRYPOINT ["sh", "-c", "mkdir -p /tmp/comfy/input /tmp/comfy/output /tmp/comfy/temp /tmp/comfy/user && exec python3 /opt/gate.py /opt/venv/bin/python main.py \
   --listen 0.0.0.0 --port 8188 --disable-auto-launch --disable-metadata --disable-api-nodes --preview-method none \
   --disable-all-custom-nodes --whitelist-custom-nodes websocket_image_save.py ComfyUI-GGUF ComfyUI-SeedVR2_VideoUpscaler \
   --input-directory /tmp/comfy/input --output-directory /tmp/comfy/output --temp-directory /tmp/comfy/temp \
