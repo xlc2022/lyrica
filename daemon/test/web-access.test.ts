@@ -246,11 +246,26 @@ function call(o: { https: boolean; port: number; path: string; method?: string; 
 const external = (port: number, proxies: string[], extra: Record<string, unknown> = {}) =>
   ({ mode: "external", name: "lyrica.example.net", external: { address: lan, port, proxies, ...extra } });
 
+/**
+ * Turns the external listener on at a free port. Other test files run
+ * alongside and can take a port between freePort and the daemon's listen,
+ * so a port it couldn't open is tried again with another. Any other answer
+ * fails the test with its reason.
+ */
+async function onFreePort(ada: Awaited<ReturnType<typeof login>>, url: string, proxies: string[], extra: Record<string, unknown> = {}) {
+  for (let tries = 1; ; tries++) {
+    const port = await freePort();
+    const put = await ada.put<WebAccess & { error?: string }>(url, external(port, proxies, extra));
+    if (put.status === 400 && /couldn't listen/.test(put.body.error ?? "") && tries < 5) continue;
+    expect(put.status, put.body.error).toBe(200);
+    return { port, put };
+  }
+}
+
 describe.skipIf(!lan)("web access, external proxy", () => {
   it("listens for the listed proxies only, over HTTPS the proxy pins, and believes only their forwarded addresses", async () => {
     const { rt, d, ada, url } = await setup([{ address: lan!, kind: "lan", interface: "eth0" }]);
-    const port = await freePort();
-    const put = await ada.put<WebAccess>(url, external(port, ["192.0.2.250"], { proxyPort: 8443 }));
+    const { port, put } = await onFreePort(ada, url, ["192.0.2.250"], { proxyPort: 8443 });
     expect(put.status).toBe(200);
     const ext = put.body.external!;
     expect(ext).toMatchObject({ address: lan, port, https: true, proxyPort: 8443, fingerprint: expect.stringMatching(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/) });
@@ -298,8 +313,8 @@ describe.skipIf(!lan)("web access, external proxy", () => {
 
   it("opens before unlock, answering only state, unlock and the web UI", async () => {
     const first = await setup([{ address: lan!, kind: "lan", interface: "eth0" }]);
-    const port = await freePort();
-    const ext = (await first.ada.put<WebAccess>(first.url, external(port, [lan!]))).body.external!;
+    const { port, put } = await onFreePort(first.ada, first.url, [lan!]);
+    const ext = put.body.external!;
     await first.stop();
 
     const again = await daemon(first.rt, { web: { caddySocket: first.caddy.socket, addresses: () => [{ address: lan!, kind: "lan", interface: "eth0" }] } });
@@ -310,8 +325,7 @@ describe.skipIf(!lan)("web access, external proxy", () => {
 
   it("serves plain HTTP only on a Tailscale interface, whatever the address range", async () => {
     const { ada, url } = await setup([{ address: lan!, kind: "tailscale", interface: "tailscale0" }]);
-    const port = await freePort();
-    const put = await ada.put<WebAccess>(url, external(port, [lan!]));
+    const { port, put } = await onFreePort(ada, url, [lan!]);
     expect(put.body.external).toMatchObject({ https: false });
     expect(await call({ https: false, port, path: "/api/state" })).toBe(200);
     expect((await ada.get<{ caddyfile: string }>(`${url}/snippet`)).body.caddyfile).toContain(`reverse_proxy ${lan}:${port}`);
@@ -331,8 +345,8 @@ describe.skipIf(!lan)("web access, external proxy", () => {
     expect((await ada.get<WebAccess>(url)).body.mode).toBe("off");
 
     // Changing the port: if the new one can't open, the old listener keeps working.
-    const port = await freePort();
-    const ext = (await ada.put<WebAccess>(url, external(port, [lan!]))).body.external!;
+    const { port, put } = await onFreePort(ada, url, [lan!]);
+    const ext = put.body.external!;
     expect((await ada.put(url, external(taken, [lan!]))).status).toBe(400);
     expect(await call({ https: true, port, path: "/api/state", ca: ext.pem })).toBe(200);
   });
