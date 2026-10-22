@@ -586,6 +586,8 @@ A project chat's child threads are the project's threads
   project chat once. It replaces `message({ to: "parent", needsYou: true })`
   for asking the user; that older flag still works. A tap or typed answer
   clears `needs_you` immediately, rather than waiting for her next update.
+  So does the project chat's message to the thread when no question card
+  is open: it decided, so the thread no longer waits on the user.
 - **States:** working, waiting (an approval, or `needsYou`), queued, idle,
   resolved. `resolve` (her tool; a thread resolves only itself, the project
   chat any of its threads), the API, and the nightly tick for a thread idle

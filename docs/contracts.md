@@ -848,7 +848,8 @@ Custom roles override built-ins by name.
   (`ChildThreads.ended`, fed by `lyricad`'s turn events); without an
   update, the notice carries the child's last assistant message (clipped
   to 4,000 characters, never an unlogged thread's) marked as its report. A child's
-  `message({ to: "parent", text, question: true })`, a project's `needsYou`,
+  `message({ to: "parent", text, question: true })` (a string `question` is
+  sent as the message, after any `text`, and asked), a project's `needsYou`,
   its report when its turn ends idle, and the daemon's failure or
   didn't-start notes wake an idle parent for one turn. Plain progress and
   subagent results don't wake an idle parent. Child deliveries carry
@@ -913,8 +914,9 @@ Custom roles override built-ins by name.
   once. Resolve, the person's Stop and a parent's `threads stop` withdraw a
   question (`HostedThread.stop(true)`); lock, project pause, disposing an
   idle session and restarting the daemon preserve it. `needs_you` moves
-  only when a question opens or closes, so a status message's `needsYou`
-  survives an edit or rewind. Removing its tool call removes the
+  only when a question opens or closes, or when the parent messages the
+  thread while no question is open (`ChildThreads.message`), so a status
+  message's `needsYou` survives an edit or rewind. Removing its tool call removes the
   pointer with the turn.
   `ThreadSummary.question?: { n: number; asked: string }` carries only the
   open pointer. `MessagePage.questions?: QuestionState[]` carries the saved

@@ -325,6 +325,11 @@ export class ChildThreads implements ThreadsHost {
       this.rounds.set(key, n);
     }
     if (target.resolved_at) this.setResolved(userId, from.pool, to, false);
+    // The parent answered: a child that said it waits on the person no longer does, unless its question card is still open.
+    if (!sibling && target.needs_you && !from.view.own.openQuestion(to)) {
+      this.db(userId, (db) => db.prepare("UPDATE child_threads SET needs_you = 0 WHERE pool = ? AND thread = ?").run(from.pool, to));
+      host.changed(userId, from.pool, target.parent, to);
+    }
     if (task && !sibling) this.task(userId, from.pool, to);
     // An idle thread starts a turn, so the limit holds here too: past it, the message is saved and the thread wakes when a slot frees.
     const busy = host.busy(userId, from.pool, to);
