@@ -97,6 +97,26 @@ describe("sleep in lyricad", () => {
     expect(await runs()).toBe(2); // general and private, each once
   });
 
+  it("leaves queued users for after a drain that begins while an earlier user sleeps", async () => {
+    const s = await setup();
+    await s.talk();
+    let release!: () => void;
+    const hold = new Promise<void>((r) => { release = r; });
+    s.model.respond((c) => night(c, { note: s.note, hold }));
+    const run = vi.spyOn(s.d.services!.sleep, "run");
+    const slept = () => run.mock.calls.map(([userId]) => userId);
+    const queued = s.d.sleepNight([s.rt.ada.id, s.rt.sam.id]);
+    await expect.poll(() => s.d.services!.sleep.working()).toContain(s.rt.ada.id);
+    s.d.draining = true;
+    release();
+    await queued;
+    expect(slept()).not.toContain(s.rt.sam.id);
+    s.d.draining = false;
+    s.d.undrained();
+    await s.d.sleepNight([]);
+    expect(slept()).toContain(s.rt.sam.id);
+  });
+
   it("in manual mode sleeps only on /sleep, asks first, then opens a fresh thread", async () => {
     const s = await setup();
     await s.ada.put(`${s.u}/sleep/mode`, { mode: "manual" });

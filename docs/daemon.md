@@ -858,7 +858,8 @@ drafted against: if the file has changed since, approving it needs
 - **At night.** At `sleep.time` (default 04:00) in each user's own time zone
   (`Profile.timeZone`, else the server's) it sleeps that user's general
   pool, then private pool (`Lyricad.sleepNight`); runs queue, so only one
-  goes at a time across users. A user in manual mode is left out; a user without
+  goes at a time across users. A user still queued when a drain or a memory
+  wipe begins waits for it to end (`undrained`). A user in manual mode is left out; a user without
   a key, or a pool with nothing new, is skipped with the reason.
   At `sleep.time` in the server's zone it prunes gone models nothing names (`Models.prune`,
   [models.md](models.md)), and sweeps each mounted user's home workspace

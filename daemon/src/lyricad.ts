@@ -785,7 +785,13 @@ export class Lyricad implements Drainable {
   private async sleepUsers(userIds?: string[]): Promise<void> {
     const s = this.services;
     if (!s) return;
-    for (const u of s.users.all().filter((u) => !userIds || userIds.includes(u.id))) {
+    const due = s.users.all().filter((u) => !userIds || userIds.includes(u.id));
+    for (const [i, u] of due.entries()) {
+      // A drain or a wipe that began while earlier users slept: the rest wait for undrained().
+      if (this.draining || this.wipingNow) {
+        for (const later of due.slice(i)) this.sleepersDue.add(later.id);
+        return;
+      }
       if (this.keyring.hasUserKey(u.id) && s.sleep.mode(u.id) === "manual") continue;
       for (const pool of ["general", "private"] as const) {
         await s.sleep.run(u.id, pool, "scheduled").catch((err: Error) => this.log(`sleep failed: ${err.name}`));

@@ -173,8 +173,13 @@ export function apiRoutes(d: Lyricad): Route[] {
       // Routines keep their wall times: each one's next run moves to the new zone.
       if (zoneOf(next) !== before) {
         for (const pool of ["general", "private"] as const) {
-          const view = s().memory.openThreadView(user.id, pool);
-          try { view.own.rezoneRoutines(zoneOf(next)); } finally { view.close(); }
+          try {
+            const view = s().memory.openThreadView(user.id, pool);
+            try { view.own.rezoneRoutines(zoneOf(next)); } finally { view.close(); }
+          } catch (err) {
+            // The zone is saved; a routine left on the old zone moves to the new one when it next fires.
+            d.log(`moving routines to a new time zone failed: ${(err as Error).name}`);
+          }
         }
       }
       return me(d, user);
