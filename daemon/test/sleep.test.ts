@@ -78,6 +78,45 @@ describe("sleep in lyricad", () => {
     expect(sleepThreads.map((t) => t.title).sort()).toEqual(["Sleep: consolidate", "Sleep: dream", "Sleep: wake"]);
   });
 
+  it("sleeps each user at the sleep time in their own time zone, once a night", async () => {
+    const s = await setup();
+    await s.ada.patch(`${s.u}/me/profile`, { timeZone: "Asia/Tokyo" });
+    await s.talk();
+    const runs = async () => (await s.ada.get<{ entries: unknown[] }>(`${s.u}/sleep/history`)).body.entries.length;
+    const tick = (iso: string) => (s.d as unknown as { tick(now: Date): void }).tick(new Date(iso));
+    tick("2026-10-22T04:00:10Z"); // the server's 04:00 (UTC in tests): not hers
+    await new Promise((r) => setTimeout(r, 100));
+    expect(await runs()).toBe(0);
+    const events = s.sleepEvents();
+    await events.ready;
+    tick("2026-10-22T19:00:10Z"); // 04:00 in Tokyo
+    tick("2026-10-22T19:00:40Z"); // the same minute again: no second run
+    await events.until(finished("private"));
+    events.close();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await runs()).toBe(2); // general and private, each once
+  });
+
+  it("leaves queued users for after a drain that begins while an earlier user sleeps", async () => {
+    const s = await setup();
+    await s.talk();
+    let release!: () => void;
+    const hold = new Promise<void>((r) => { release = r; });
+    s.model.respond((c) => night(c, { note: s.note, hold }));
+    const run = vi.spyOn(s.d.services!.sleep, "run");
+    const slept = () => run.mock.calls.map(([userId]) => userId);
+    const queued = s.d.sleepNight([s.rt.ada.id, s.rt.sam.id]);
+    await expect.poll(() => s.d.services!.sleep.working()).toContain(s.rt.ada.id);
+    s.d.draining = true;
+    release();
+    await queued;
+    expect(slept()).not.toContain(s.rt.sam.id);
+    s.d.draining = false;
+    s.d.undrained();
+    await s.d.sleepNight([]);
+    expect(slept()).toContain(s.rt.sam.id);
+  });
+
   it("in manual mode sleeps only on /sleep, asks first, then opens a fresh thread", async () => {
     const s = await setup();
     await s.ada.put(`${s.u}/sleep/mode`, { mode: "manual" });

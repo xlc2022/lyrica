@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { WAKEUP_LIMITS, type Pool, type PoolStore } from "@lyrica/core";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { CallInfo, EndpointInfo, MessagePage, RoutineInfo, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { CallInfo, EndpointInfo, Me, MessagePage, RoutineInfo, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const HOUR = 3_600_000;
@@ -376,6 +376,21 @@ describe("routine HTTP routes", () => {
     expect((await s.ada.del<RoutineInfo[]>(path)).body).toEqual([]);
     expect((await s.ada.del(path)).status).toBe(404);
     expect((await s.ada.get<RoutineInfo[]>(`${s.u}/routines`)).body).toHaveLength(1);
+  });
+
+  it("follows the user's time zone: a daily routine keeps its wall time when the zone changes", async () => {
+    const s = await setup();
+    const id = s.own(o => o.addRoutine(s.thread.id, { kind: "daily", time: "08:00" }, "Say good morning.", false, "2026-10-20T12:00:00Z"));
+    const next = () => s.own(o => o.routines(s.thread.id).find(r => r.id === id)!.nextAt);
+    expect(next()).toBe("2026-10-21T08:00:00.000Z"); // the server's zone, UTC here
+    const me = (await s.ada.patch<Me>(`${s.u}/me/profile`, { timeZone: "Asia/Tokyo" })).body;
+    expect(me).toMatchObject({ timeZone: "Asia/Tokyo", serverTimeZone: "UTC" });
+    expect(new Date(next()).toLocaleString("en-GB", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit" })).toBe("08:00");
+    expect((await s.ada.patch(`${s.u}/me/profile`, { timeZone: "Nowhere/Else" })).status).toBe(400);
+    // Pausing and resuming from the page counts in the user's zone too.
+    await s.ada.patch(`${s.path}/routines/${id}`, { paused: true });
+    await s.ada.patch(`${s.path}/routines/${id}`, { paused: false });
+    expect(new Date(next()).toLocaleString("en-GB", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit" })).toBe("08:00");
   });
 
   it("never exposes or changes another user's private routines, even while that user is unlocked", async () => {

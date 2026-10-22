@@ -8,7 +8,8 @@ import {
 } from "./api.ts";
 import { ProjectQuestion } from "./Question.tsx";
 import { FoldConfirm, foldLosses, foldLossNames } from "./FoldConfirm.tsx";
-import { ChecklistButton, StepLine } from "./Checklist.tsx";
+import { ChecklistButton, checklistOf, StepLine } from "./Checklist.tsx";
+import { checksState } from "./Changes.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
@@ -20,6 +21,33 @@ import { CODE_MODE_HINT, Folders, Machines, TaskSelect } from "./Settings.tsx";
 import { Main, PageHead, useWide, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, Dialog, ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
 import { modelName } from "./ModelLabel.tsx";
+
+/**
+ * A project thread's chips (docs/ux.md §6, "A thread of a project at a glance"): its checklist's count, its open pull
+ * request with the checks' dot, and how many subagents work for it now. In a row that is itself a link they are plain
+ * spans; on a card (`link`) the pull request is a link to it, and the checklist is the card's own button, so left out.
+ */
+export function ThreadChips({ t, link }: { t: Pick<ThreadSummary, "steps" | "pull" | "subagents">; link?: boolean }) {
+  const list = !link && t.steps?.length ? checklistOf(t.steps) : undefined;
+  const checks = t.pull && checksState(t.pull.checks);
+  if (!list && !t.pull && !t.subagents) return null;
+  const pull = t.pull && (
+    <>
+      <Icon name="pull" /><span className="num">#{t.pull.number}</span>
+      {checks && checks.tone !== "none" && <span className={`dot ${checks.tone === "ok" ? "up" : checks.tone === "bad" ? "down" : "away"}`} />}
+    </>
+  );
+  const pullTitle = t.pull && `Pull request #${t.pull.number} on ${t.pull.repo}${checks && checks.tone !== "none" ? `\n${checks.text}` : ""}`;
+  return (
+    <span className="tchips">
+      {list && <span className="chip" title="Checklist"><span className="num">{list.done}</span> of <span className="num">{list.total}</span><span className="sr-only"> steps done</span></span>}
+      {t.pull && (link
+        ? <a className="chip pull" href={t.pull.url} target="_blank" rel="noreferrer" title={pullTitle} aria-label={`Pull request #${t.pull.number}`}>{pull}</a>
+        : <span className="chip pull" title={pullTitle}><span className="sr-only">Pull request </span>{pull}</span>)}
+      {!!t.subagents && <span className="chip" title={`${t.subagents} subagent${t.subagents === 1 ? "" : "s"} working`}><Icon name="agents" /><span className="num">{t.subagents}</span><span className="sr-only"> subagents</span></span>}
+    </span>
+  );
+}
 
 /** A project thread's state, in the sidebar's words. */
 export function stateWord(t: Pick<ThreadSummary, "state" | "needsYou" | "question">): string {
@@ -99,6 +127,7 @@ export function ThreadsFact({ userId, pool, threadId, overview, footer }: { user
                 <a key={t.id} className="picker-item thread-item" href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} onClick={close}>
                   {t.state === "idle" || t.state === "queued" || !t.state ? <span /> : <span className="status" data-state={t.needsYou ? "needsYou" : t.state} aria-hidden="true" />}
                   <span className="title">{t.title || "New thread"}</span>
+                  <ThreadChips t={t} />
                   {!!t.unseen && <span className="count">{t.unseen}</span>}
                 </a>
               ))}
@@ -140,6 +169,7 @@ export function ThreadsPage({ ctx, pool, threadId }: { ctx: ShellContext; pool: 
                   <a key={t.id} className="picker-item thread-item" href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })}>
                     <span className="status" data-state={state} aria-hidden="true" />
                     <span className="title">{t.title || "New thread"}</span>
+                    <ThreadChips t={t} />
                     <span className="tstate" data-state={state} title={heldTitle(t)}>{stateWord(t)}</span>
                     <span className="when">{shortTime(t.updatedAt)}</span>
                   </a>
@@ -186,6 +216,7 @@ export function ThreadCard({ t, userId, env }: { t: ThreadSummary; userId: strin
         <a className="tcard-title" href={open_}>{t.title || "New thread"}</a>
         <span className="tstate" data-state={state} title={heldTitle(t)}>{stateWord(t)}</span>
         {!!t.steps?.length && <ChecklistButton steps={t.steps} card />}
+        <ThreadChips t={t} link />
         {t.wakeAt && <span className="twake">wakes <span className="num">{wakeTime(t.wakeAt)}</span></span>}
         <span className="msg-menu" ref={ref}>
           <button type="button" className="icon-btn" aria-label={`Actions for ${t.title || "the thread"}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><Icon name="more" /></button>

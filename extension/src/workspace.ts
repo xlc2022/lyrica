@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  decide, type CommandRule, holdsSecret, mcpNamespace, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, SHARED, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  decide, type CommandRule, holdsSecret, JOB_LIMITS, jobLine, type JobInfo, mcpNamespace, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, SHARED, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -67,6 +67,11 @@ export interface ThreadTools {
   madeSince?(since: Date): void;
   /** What the person's Files panel added or removed since her last turn, names only; taking them clears them. */
   fileNotes?(): { added: string[]; removed: string[] };
+  /** Starts an approved command in the background (docs/workspace.md, "Background commands"). Without it, bash has no background and there is no jobs tool. */
+  startJob?(command: string, machine?: string, timeoutS?: number): Promise<JobInfo>;
+  jobs?(): JobInfo[];
+  jobOutput?(id: string): { job: JobInfo; output: string };
+  stopJob?(id: string): boolean;
 }
 
 export interface ApprovalRequest {
@@ -97,7 +102,8 @@ type Create = (cwd: string, options: { operations: never }) => ToolDefinition;
 
 /** A command's time limit when she sets none, in seconds: a test that hangs (a browser that never closes) can't hold the thread forever. */
 export const BASH_TIMEOUT_S = 600;
-const BASH_TIMEOUT = Type.Optional(Type.Number({ description: `Timeout in seconds, ${BASH_TIMEOUT_S} if left out. Give a longer one for a long build or test run.` }));
+const BASH_TIMEOUT = Type.Optional(Type.Number({ description: `Timeout in seconds, ${BASH_TIMEOUT_S} if left out (${JOB_LIMITS.timeoutS} in the background). Give a longer one for a long build or test run.` }));
+const BACKGROUND = Type.Optional(Type.Boolean({ description: "Run it in the background: you get a job id at once, and are told when it ends. For a download, build or install that takes minutes or more." }));
 const TOOLS: Record<keyof ToolOps, Create> = {
   read: createReadToolDefinition as unknown as Create,
   write: createWriteToolDefinition as unknown as Create,
@@ -185,9 +191,20 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const template = create(WORKDIR, { operations: undefined as never });
       pi.registerTool({
         ...template,
-        parameters: Type.Object({ ...(template.parameters as ReturnType<typeof Type.Object>).properties, ...(name === "bash" ? { timeout: BASH_TIMEOUT } : {}), machine: MACHINE }) as typeof template.parameters,
+        parameters: Type.Object({
+          ...(template.parameters as ReturnType<typeof Type.Object>).properties,
+          ...(name === "bash" ? { timeout: BASH_TIMEOUT, ...(tools.startJob ? { background: BACKGROUND } : {}) } : {}),
+          machine: MACHINE,
+        }) as typeof template.parameters,
         async execute(id, params, signal, onUpdate, ctx) {
-          const { machine: named, ...rest } = params as Record<string, unknown>;
+          const { machine: named, background, ...rest } = params as Record<string, unknown>;
+          if (name === "bash" && background === true && tools.startJob) {
+            const machine = (named as string | undefined) || undefined;
+            const target = tools.target(machine);
+            bound(id, name, rest, machine, machine ? await target.cwd() : undefined);
+            const job = await tools.startJob(String(rest.command), machine, typeof rest.timeout === "number" ? rest.timeout : undefined);
+            return text(`Started ${jobLine(job)}\nYou'll be told when it ends. jobs shows its output so far (the first part while it runs; the end once it ends) or stops it. To follow a long job's progress, have it write to a file and read that.`);
+          }
           if (name === "bash") rest.timeout ??= BASH_TIMEOUT_S;
           // An empty machine is the sandbox, as in tool_call.
           const machine = (named as string | undefined) || undefined;
@@ -212,6 +229,30 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
     }
 
     if (tools.proxmox) pi.registerTool(proxmoxTool(tools.proxmox, (id, { machine, ...rest }) => bound(id, "proxmox", rest, machine as string)));
+
+    if (tools.startJob && tools.jobs && tools.jobOutput && tools.stopJob) {
+      const { jobs, jobOutput, stopJob } = tools as Required<Pick<ThreadTools, "jobs" | "jobOutput" | "stopJob">>;
+      pi.registerTool({
+        name: "jobs",
+        label: "Background commands",
+        description: "This conversation's background commands (bash with background: true): list them, see one's output so far, or stop one.",
+        promptSnippet: "list, read or stop your background commands",
+        parameters: Type.Object({
+          action: Type.Union([Type.Literal("list"), Type.Literal("output"), Type.Literal("stop")]),
+          id: Type.Optional(Type.String({ description: "The job, such as j1, for output and stop." })),
+        }),
+        async execute(_id, p: { action: "list" | "output" | "stop"; id?: string }) {
+          if (p.action === "list") {
+            const all = jobs();
+            return text(all.length ? all.map((j) => jobLine(j)).join("\n") : "No background commands in this conversation.");
+          }
+          if (!p.id) throw new Error(`${p.action} needs the job's id`);
+          if (p.action === "stop") return text(stopJob(p.id) ? `Stopped ${p.id}.` : `${p.id} had already ended.`);
+          const { job, output } = jobOutput(p.id);
+          return text(`${jobLine(job)}\n${output.trim() ? output : "No output yet."}`);
+        },
+      } as ToolDefinition);
+    }
 
     if (tools.addRepository) {
       const add = tools.addRepository;

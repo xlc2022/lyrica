@@ -31,6 +31,7 @@ import {
 } from "./settings.ts";
 import { AllowedPaths } from "./paths.ts";
 import { generateSshKey, SshTarget } from "./ssh.ts";
+import { Jobs, type JobInfo } from "./jobs.ts";
 import { sandboxedTransport, type SshTransport } from "./transport.ts";
 
 export * from "./worktree.ts";
@@ -38,6 +39,8 @@ export * from "./changes.ts";
 export * from "./git-changes.ts";
 export * from "./files.ts";
 export * from "./home.ts";
+export * from "./jobs.ts";
+export * from "./root.ts";
 export * from "./machines.ts";
 export * from "./rules.ts";
 export * from "./mcp.ts";
@@ -105,6 +108,8 @@ export interface WorkspaceOptions {
   onPullCreate?: (t: WorkspaceThread, pr: { repo: string; number: number }) => void;
   /** A run's Claude Code token counts, one message request at a time, for that run's thread: the usage view's "Claude Code" row. */
   onClaudeCodeUsage?: (t: WorkspaceThread, usage: ClaudeCodeUsage) => void;
+  /** A background command ended (docs/workspace.md, "Background commands"): lyricad tells its thread. Without it, threads get no background commands. */
+  onJobEnd?: (t: WorkspaceThread, job: JobInfo, output: string) => void;
 }
 
 /** Where Claude Code sends what it reads: a run gets Claude Code only if its network reaches this. */
@@ -199,9 +204,12 @@ export class Workspace {
   readonly sshTransport: SshTransport;
   /** Which folders each user may grant. Only administrators change them. */
   readonly allowedPaths: AllowedPaths;
+  /** Every thread's background commands, in memory only. */
+  readonly jobs: Jobs;
 
   constructor(private readonly keyring: Keyring, private readonly users: Users, private readonly opts: WorkspaceOptions) {
     this.allowedPaths = new AllowedPaths(keyring.self(), users, keyring.home);
+    this.jobs = new Jobs((t, job, output) => this.opts.onJobEnd?.(t as WorkspaceThread, job, output));
     this.sshTransport = opts.sshTransport
       ?? sandboxedTransport(() => ({ ...this.door(), bwrap: this.opts.bwrap, pasta: this.opts.pasta, refused: this.networkRefused }));
   }
@@ -357,6 +365,16 @@ export class Workspace {
       madeSince: (since: Date, found?: (paths: string[]) => void) => { this.sweepSince(t, since, found); },
       /** Files the panel added or removed since her last turn, names only; taking them clears them. */
       fileNotes: () => this.settings(t.userId).takeFileNotes(t.threadId),
+      ...(this.opts.onJobEnd ? {
+        /** Starts a background command in the sandbox or on one of the thread's machines; the call was approved already. */
+        startJob: async (command: string, machine?: string, timeoutS?: number) => {
+          const target = this.targetFor(t, machine);
+          return this.jobs.start(t, machine || "sandbox", target, command, await target.cwd(), timeoutS);
+        },
+        jobs: () => this.jobs.list(t),
+        jobOutput: (id: string) => this.jobs.output(t, id),
+        stopJob: (id: string) => this.jobs.stop(t, id),
+      } : {}),
     };
   }
 
@@ -1244,6 +1262,18 @@ export class Workspace {
   }
 
   /** One action on a thread's Proxmox machine, after its address check, sent only to the certificate the user confirmed. */
+  /**
+   * A script she wrote on one of the thread's machines, read as it is (key
+   * blocks unmasked, so its hash is the file's), for a root step's card, with
+   * the account she logs in there as.
+   */
+  async rootScript(t: WorkspaceThread, machine: string, path: string): Promise<{ bytes: Buffer; account: string }> {
+    if (!path.startsWith("/")) throw new Error("path must be the script's absolute path on the machine");
+    const target = this.targetFor(t, machine);
+    const bytes = await target.ops().edit.readFile(path);
+    return { bytes, account: this.settings(t.userId).machine(machine)!.username };
+  }
+
   async proxmox(t: WorkspaceThread, machine: string, action: ProxmoxAction, vm?: string): Promise<string> {
     this.settings(t.userId).checkInherited(t.threadId, t.pool);
     if (!this.machinesFor(t).some((m) => m.name === machine && m.kind === "proxmox")) throw new Error(`${machine} isn't one of this thread's Proxmox machines`);

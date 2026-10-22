@@ -2,7 +2,7 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
-  ASK_GUIDELINE, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS,
+  ASK_GUIDELINE, isQuestionCall, ROOT_LIMITS, ROOT_TOOL, rootStep, SUDOERS_HOW, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS,
   type ChildInfo, type StartRequest, type ThreadsLimits,
 } from "@lyrica/core";
 import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
@@ -36,6 +36,12 @@ export interface ThreadsHost {
    */
   model?(from: ThreadContext, name: string): { label: string; already?: boolean; goesOn?: boolean };
   asked?(from: ThreadContext): Promise<void>;
+  /**
+   * A script she wrote on one of the thread's machines, for a root step's
+   * card, and the account she logs in there as. Without it, there is no
+   * run_as_root tool.
+   */
+  rootScript?(from: ThreadContext, machine: string, path: string): Promise<{ bytes: Buffer; account: string }>;
   questionsChanged?(userId: string, pool: ThreadContext["pool"], thread: string): void;
   draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
   /**
@@ -64,6 +70,8 @@ export interface ThreadsHost {
   stepsChanged?(from: ThreadContext): void;
   /** Whether the person wants checklists; off, `steps` isn't offered. Read when the session opens. */
   checklistsOn?(from: ThreadContext): boolean;
+  /** The person's time zone now, which routines' wall times are in. */
+  zone?(from: ThreadContext): string;
 }
 
 /** Messages `threads read` returns by default, and at most. */
@@ -109,7 +117,7 @@ const Params = Type.Object({
   routineId: Type.Optional(Type.Integer({ minimum: 1, description: "For routine pause, resume or remove: the routine's numeric ID from routine list." })),
   schedule: Type.Optional(Type.Object({
     kind: Type.String({ description: "daily, weekdays, weekly, yearly or every." }),
-    time: Type.Optional(Type.String({ description: "HH:MM in the daemon's local time zone." })),
+    time: Type.Optional(Type.String({ description: "HH:MM in the person's time zone." })),
     day: Type.Optional(Type.Number({ description: "For weekly: 0 (Sunday) to 6 (Saturday)." })),
     date: Type.Optional(Type.String({ description: "For yearly: MM-DD." })),
     hours: Type.Optional(Type.Number({ description: "For every: a whole number from 1 to 168, counted from now." })),
@@ -193,7 +201,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
     });
     pi.on("agent_start", () => { asked = false; nudged = false; });
     pi.on("message_end", (e) => {
-      if (e.message.role === "assistant" && e.message.content.some(c => c.type === "toolCall" && c.name === "threads" && c.arguments.action === "ask")) asked = true;
+      if (e.message.role === "assistant" && e.message.content.some(c => c.type === "toolCall" && isQuestionCall(c.name, c.arguments))) asked = true;
     });
     pi.on("turn_end", (e) => {
       if (!host || (child && !projectThread()) || asked || nudged || store.openQuestion(thread.threadId)) return;
@@ -314,14 +322,14 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
               const at = new Date().toISOString();
               const schedule = parseSchedule(p.schedule?.kind === "every" ? { ...p.schedule, from: at } : p.schedule);
               if (store.routines(thread.threadId).length >= 10) throw new Error("this thread has at most 10 routines, including paused ones; remove one first");
-              const id = store.addRoutine(thread.threadId, schedule, p.note.trim(), !!p.newThread, at);
+              const id = store.addRoutine(thread.threadId, schedule, p.note.trim(), !!p.newThread, at, host.zone?.(thread));
               return text(`Added routine ${id}: ${describe(schedule)}, ${p.newThread ? "opens a new thread" : "runs here"}.`);
             }
             if (!["pause", "resume", "remove"].includes(p.routineAction ?? "")) throw new Error("routine needs add, list, pause, resume or remove");
             if (!Number.isSafeInteger(p.routineId) || p.routineId! < 1) throw new Error("routine needs its numeric ID from routine list");
             const changed = p.routineAction === "remove"
               ? store.removeRoutine(thread.threadId, p.routineId!)
-              : store.pauseRoutine(thread.threadId, p.routineId!, p.routineAction === "pause");
+              : store.pauseRoutine(thread.threadId, p.routineId!, p.routineAction === "pause", undefined, host.zone?.(thread));
             if (!changed) throw new Error("this thread has no routine with that ID");
             return text(`${p.routineAction === "remove" ? "Removed" : p.routineAction === "pause" ? "Paused" : "Resumed"} routine ${p.routineId}.`);
           } catch (err) {
@@ -445,6 +453,36 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           : `Started child thread [t:${made.id}], working in the background.`, { threads: [made.id] });
       },
     });
+
+    // A root step: never in an ordinary child thread, which asks its parent instead.
+    if (host?.rootScript && (!child || projectThread())) {
+      const read = host.rootScript.bind(host);
+      pi.registerTool({
+        name: ROOT_TOOL,
+        label: "Run as root",
+        description: `Ask the person, on a card, to run as root a script you wrote with write on one of your machines; the answer comes in a later turn. Optionally offer sudoers lines for a root command needed again (one command, full path, fixed arguments).`,
+        promptSnippet: "hand a root step on a machine to the person, on a card",
+        parameters: Type.Object({
+          machine: Type.String({ description: "One of your machines, by name." }),
+          path: Type.String({ description: "The script's absolute path there." }),
+          why: Type.String({ description: `What it does and why it needs root (at most ${ROOT_LIMITS.why} characters).` }),
+          sudoers: Type.Optional(Type.Array(Type.String(), { description: "Each \"<account> ALL=(root) NOPASSWD: /usr/bin/program args\"." })),
+        }),
+        async execute(id, p: { machine: string; path: string; why: string; sudoers?: string[] }, _signal, _update, ctx) {
+          const { bytes, account } = await read(thread, p.machine, p.path);
+          const step = rootStep(p, bytes, account);
+          syncEntries(ctx.sessionManager, store, thread.threadId);
+          const n = store.questionCall(thread.threadId, id);
+          if (n === undefined) throw new Error("run_as_root needs its stored tool call");
+          store.askQuestion(thread.threadId, n);
+          await host.asked?.(thread);
+          return {
+            content: [{ type: "text" as const, text: `The root step is on a card, with the hash ${step.sha256}: \`${step.command}\`${step.sudoers ? `, and ${step.sudoers.length} sudoers line(s) to add with ${SUDOERS_HOW}` : ""}. Carry on with what doesn't depend on it, or end the turn; the answer arrives in a later turn, and then check that it worked.` }],
+            details: { root: step },
+          };
+        },
+      });
+    }
   };
 }
 

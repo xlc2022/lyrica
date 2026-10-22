@@ -135,7 +135,7 @@ code therefore never needs to open a private database.
 
 | Setting | Behavior |
 |---|---|
-| `sleep.mode: scheduled` (default) | Nightly at `sleep.time` (04:00) for each pool with new activity. `/sleep` also works. |
+| `sleep.mode: scheduled` (default) | Nightly at `sleep.time` (04:00) in the user's time zone, for each pool with new activity. `/sleep` also works. |
 | `sleep.mode: manual` | Works like Monika: sleep runs only on `/sleep`, which asks for confirmation, sleeps, then opens a fresh thread. |
 
 ## When the endpoint is offline
@@ -174,7 +174,8 @@ new. Each item has **Start a chat**, which opens a new thread in that pool
 where she begins with it, and **Dismiss**. Everything links into the memory
 browser. **Sleep now** at the foot sleeps a pool at once; the per-user mode
 (nightly, or only when asked) is a select in Settings → Sleep and the
-hour is the administrator's **Sleep time**. How it is laid out is in
+hour is the administrator's **Sleep time**, which each user reaches at
+their own **Time zone** (Settings → Profile). How it is laid out is in
 [web.md](web.md) and docs/ux.md.
 
 ## Keys
@@ -249,7 +250,7 @@ restart in between loses the record.
   `opening` section, and `lyricad` prompts that thread with a hidden opening
   line so she speaks first. Retrying an interrupted opening answers the
   existing last opening user entry without appending a second one.
-- **`lyricad`** runs every user's pools at `sleep.time` (a user in manual mode
+- **`lyricad`** runs every user's pools at `sleep.time` in their own time zone (a user in manual mode
   is left out), serves the Sleep section's API and its event stream, and
   takes `/sleep` typed in a thread. See [daemon.md](daemon.md#sleep). The
   bench offers `/sleep` as a Pi command.

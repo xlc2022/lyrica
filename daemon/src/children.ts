@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import {
-  makeWorktrees, worktreeGrants, removeWorktrees, DEFAULT_THREADS_LIMITS, matchModel, unmatched, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
+  makeWorktrees, zoneOf, worktreeGrants, removeWorktrees, DEFAULT_THREADS_LIMITS, matchModel, unmatched, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
 } from "@lyrica/core";
 import type { Delegation, Delivery, ThreadContext, ThreadsHost } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
@@ -489,6 +489,12 @@ export class ChildThreads implements ThreadsHost {
     return this.o.wakeups().cancel(from);
   }
 
+  /** A script on one of the thread's machines, for a root step's card (docs/workspace.md, "Root steps"). */
+  rootScript(from: ThreadContext, machine: string, path: string): Promise<{ bytes: Buffer; account: string }> {
+    const project = from.view.own.projectOf(from.threadId);
+    return this.o.workspace.rootScript({ userId: from.user.id, pool: from.pool, threadId: from.threadId, ...(project ? { project } : {}) }, machine, path);
+  }
+
   async asked(from: ThreadContext): Promise<void> {
     this.questionsChanged(from.user.id, from.pool, from.threadId);
     const t = from.view.own.getThread(from.threadId);
@@ -523,6 +529,11 @@ export class ChildThreads implements ThreadsHost {
   /** Whether the user keeps the Checklists display switch on (the default); off, her threads aren't offered `threads steps`. */
   checklistsOn(from: ThreadContext): boolean {
     return this.checklists(from.user.id);
+  }
+
+  zone(from: ThreadContext): string {
+    const user = this.o.users.get(from.user.id);
+    return zoneOf(user?.profile ?? from.user.profile);
   }
 
   /** The user's Checklists switch; off, no list or summary carries steps. */

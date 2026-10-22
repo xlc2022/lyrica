@@ -89,7 +89,7 @@ describe("her context", () => {
 
   it("is compacted by Pi at the window's edge when she doesn't, with a marker", async () => {
     // Principle 8: the window follows the seed persona and tool definitions; a turn must land between Pi's reserve and the window.
-    const { ada, path, stream, turn } = await setup("general", 12_500 + guidanceTokens);
+    const { ada, path, stream, turn } = await setup("general", 12_900 + guidanceTokens);
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
@@ -100,7 +100,7 @@ describe("her context", () => {
   });
 
   it("compacts with her summary when the turn ends: the old messages go, the recent ones stay, and a marker holds the summary", async () => {
-    const { ada, model, path, stream, turn } = await setup("general", 16_384 + guidanceTokens);
+    const { ada, model, path, stream, turn } = await setup("general", 16_584 + guidanceTokens);
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
@@ -134,7 +134,7 @@ describe("her context", () => {
   });
 
   it("in a private thread, compacts with its local model when her summary is too short to stand on its own", async () => {
-    const { ada, model, path, stream, turn } = await setup("private", 16_384 + guidanceTokens);
+    const { ada, model, path, stream, turn } = await setup("private", 16_584 + guidanceTokens);
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
@@ -153,7 +153,7 @@ describe("her context", () => {
   });
 
   it("doesn't compact when the turn that asked for it was stopped", async () => {
-    const { ada, model, path, stream, turn } = await setup("general", 16_384 + guidanceTokens);
+    const { ada, model, path, stream, turn } = await setup("general", 16_584 + guidanceTokens);
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));

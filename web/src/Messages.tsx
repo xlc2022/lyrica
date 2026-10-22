@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import { get, post, threadPath, u, type GoAhead, type ImagePart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import { SkillCard } from "./Skills.tsx";
-import { QuestionCard } from "./Question.tsx";
+import { isQuestionPart, QuestionCard, ROOT_TOOL } from "./Question.tsx";
 import { storedLiveCopies, storedUserItems, type LiveItem } from "./live.ts";
 import { useMentionText, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
@@ -63,7 +63,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const openLarge = useCallback((path: string, files: FileLinks) => setLarge({ path, url: files.url(path) }), []);
   const questions = new Map<string, QuestionState>();
   for (const m of messages) for (const p of m.parts) {
-    if (p.type === "tool" && p.name === "threads" && (p.args as { action?: string })?.action === "ask") {
+    if (p.type === "tool" && isQuestionPart(p)) {
       const q = thread.questions.find(q => q.n === m.n);
       if (q) questions.set(p.toolCallId, q);
     }
@@ -496,6 +496,9 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
   if (part.type === "tool" && part.name === "save_skill" && part.result !== undefined && !part.isError) return <SkillCard args={part.args} call={part.toolCallId} userId={env.userId} />;
   // While her plan waits for an answer, its card shows it; the marker would be a second copy.
   if (part.type === "tool" && part.name === "propose_plan" && part.result === undefined) return null;
+  if (part.type === "tool" && part.name === ROOT_TOOL && !part.isError && part.result !== undefined) {
+    return <QuestionCard args={part.args} name={part.name} root={part.root} state={env.questions.get(part.toolCallId)} base={env.base} onChange={env.questionChanged} />;
+  }
   if (part.type === "tool" && part.name === "threads") {
     const action = (part.args as { action?: string } | null)?.action;
     if (action === "ask" && !part.isError) return <QuestionCard args={part.args} state={env.questions.get(part.toolCallId)} base={env.base} onChange={env.questionChanged} />;
@@ -810,7 +813,7 @@ function ThreadsPill({ threads, env }: { threads: ThreadRef[]; env: Env }) {
 
 const NOTICE_HEADS: Record<string, string> = {
   question: "Subagent asks", note: "Subagent note", user_message: "Message to a subagent", interrupted: "Subagent interrupted",
-  update: "Child thread", limit: "Tool limit", "checks-passed": "Checks", "checks-failed": "Checks",
+  update: "Child thread", limit: "Tool limit", "checks-passed": "Checks", "checks-failed": "Checks", job: "Background command",
 };
 /** A project's checks at the end of a code turn: a dot and a word after the head. */
 const CHECK_STATES: Record<string, ReactNode> = {
