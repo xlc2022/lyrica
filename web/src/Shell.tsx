@@ -890,8 +890,10 @@ export function ThreadLink({ t, userId, on, menu, child, openBeside, besideOnCli
     openBeside(t);
   };
   const title = t.title || (t.project ? "New project" : "New thread");
+  // A thread at work pulses its pool dot or lock (steady with reduced motion); a project thread's word says so too.
+  const working = t.busy || t.state === "working";
   return (
-    <a className={`thread${t.unread ? " unread" : ""}${t.project ? " project" : ""}${child && inProject ? " dotted" : ""}`} href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined} {...handlers}
+    <a className={`thread${t.unread ? " unread" : ""}${t.project ? " project" : ""}${child && inProject ? " dotted" : ""}${working ? " working" : ""}`} href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined} {...handlers}
       onClick={click} onKeyDown={(e) => { if (e.key === "Enter") shiftTo(e); }}
       onDoubleClick={onRename && !renaming ? (e) => { e.preventDefault(); getSelection()?.removeAllRanges(); setRenaming(true); } : undefined}>
       {t.project ? <span className={`project-mark ${t.pool}`} data-waiting={waiting || undefined}><Icon name="project" />{waiting && <span className="sr-only">a thread waits on you</span>}</span>
@@ -902,12 +904,12 @@ export function ThreadLink({ t, userId, on, menu, child, openBeside, besideOnCli
         ? <InlineRename className="title" value={t.title ?? ""} label="Title" onSave={(name) => onRename(t, name)} onDone={() => setRenaming(false)} />
         : <span className="title">{title}</span>}
       <span className="when">
-        {t.busy && !inProject && <span className="busy" title="Working" />}
         {badges}
         {!inProject && shortTime(t.updatedAt)}
       </span>
       {t.pool === "private" && <span className="sr-only">private</span>}
       {t.unread && <span className="sr-only">unread</span>}
+      {working && !inProject && <span className="sr-only">working</span>}
     </a>
   );
 }
