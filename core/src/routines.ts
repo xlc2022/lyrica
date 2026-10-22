@@ -1,8 +1,8 @@
 // Routines' schedule maths (docs/briefs/routines.md part A): when a routine runs
-// next, in lyricad's local time zone. Pure; firing and storage live in the daemon.
-// A wall time skipped by a spring-forward fires at the next valid minute; one that
-// comes twice in a fall-back fires once, at its first occurrence (Date's local
-// constructor gives us that one).
+// next, in its user's time zone (core/src/zone.ts). Pure; firing and storage live
+// in the daemon. A wall time skipped by a spring-forward fires at the next valid
+// minute; one that comes twice in a fall-back fires once, at its first occurrence.
+import { serverZone, wall, zonedTime } from "./zone.ts";
 
 export type Schedule =
   | { kind: "daily"; time: string }
@@ -41,8 +41,8 @@ export function parseSchedule(input: unknown): Schedule {
   }
 }
 
-/** The first run strictly after `after`, in the process's local time zone. */
-export function nextRun(schedule: Schedule, after: Date): Date {
+/** The first run strictly after `after`, in `zone` (the server's when left out). */
+export function nextRun(schedule: Schedule, after: Date, zone = serverZone()): Date {
   const afterMs = after.getTime();
   if (schedule.kind === "every") {
     // Absolute milliseconds from when it was set: no DST adjustment.
@@ -53,12 +53,12 @@ export function nextRun(schedule: Schedule, after: Date): Date {
     return new Date(t);
   }
   const [hh, mm] = timeParts(parseTime(schedule.time));
-  // Walk the local days from `after`'s own until one runs later than it.
-  const start = new Date(after.getFullYear(), after.getMonth(), after.getDate());
+  // Walk the zone's calendar days from `after`'s own until one runs later than it.
+  const w = wall(after, zone);
   for (let i = 0; i < 800; i++) {
-    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const day = new Date(Date.UTC(w.year, w.month - 1, w.day + i));
     if (!runsOn(schedule, day)) continue;
-    const t = fireTime(day, hh, mm);
+    const t = zonedTime(day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), hh, mm, zone);
     if (t > afterMs) return new Date(t);
   }
   throw new Error("the schedule never runs"); // unreachable: every kind runs within a year
@@ -78,47 +78,20 @@ export function describe(schedule: Schedule): string {
   }
 }
 
-/** Whether the schedule's kind picks this local day (yearly keeps its leap-day rule). */
+/** Whether the schedule's kind picks this calendar day, a UTC midnight (yearly keeps its leap-day rule). */
 function runsOn(schedule: Schedule, day: Date): boolean {
   switch (schedule.kind) {
     case "daily": return true;
-    case "weekdays": { const w = day.getDay(); return w >= 1 && w <= 5; }
-    case "weekly": return day.getDay() === schedule.day;
+    case "weekdays": { const w = day.getUTCDay(); return w >= 1 && w <= 5; }
+    case "weekly": return day.getUTCDay() === schedule.day;
     case "yearly": {
       const [month, date] = dateParts(schedule.date);
-      if (day.getMonth() + 1 !== month) return false;
+      if (day.getUTCMonth() + 1 !== month) return false;
       // A routine set for 29 February runs on the 28th when it isn't a leap year.
-      return day.getDate() === date || (month === 2 && date === 29 && !leap(day.getFullYear()) && day.getDate() === 28);
+      return day.getUTCDate() === date || (month === 2 && date === 29 && !leap(day.getUTCFullYear()) && day.getUTCDate() === 28);
     }
     case "every": return false; // handled before the day walk
   }
-}
-
-/**
- * The instant of wall time hh:mm on `day`'s local date. When a spring-forward
- * skipped it, the first minute that exists after it (the jump itself). A repeated
- * hour comes back as its first occurrence from Date's local constructor.
- */
-function fireTime(day: Date, hh: number, mm: number): number {
-  const y = day.getFullYear(), m = day.getMonth(), d = day.getDate();
-  const t = new Date(y, m, d, hh, mm).getTime();
-  const z = new Date(t);
-  if (z.getHours() === hh && z.getMinutes() === mm) return t;
-  // Skipped: binary-search the jump. Local wall time only steps forward on such a day.
-  const target = Date.UTC(y, m, d, hh, mm);
-  let lo = new Date(y, m, d).getTime();
-  let hi = t + HOUR_MS;
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    if (wallOf(mid) >= target) hi = mid; else lo = mid + 1;
-  }
-  return lo;
-}
-
-/** A timestamp's local wall time as a UTC-shaped number, to compare against. */
-function wallOf(t: number): number {
-  const z = new Date(t);
-  return Date.UTC(z.getFullYear(), z.getMonth(), z.getDate(), z.getHours(), z.getMinutes());
 }
 
 const leap = (y: number) => y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);

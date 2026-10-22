@@ -147,6 +147,10 @@ export interface Me {
   savedCredentials: boolean;
   /** Whether logging out keeps the key in memory, so sleep can run. On by default; Lock always drops it. */
   stayUnlocked: boolean;
+  /** The user's own time zone (IANA), when set: every time she shows or is told is in it. The web sets the browser's when there is none. */
+  timeZone?: string;
+  /** The server's zone, which applies while the user has none. */
+  serverTimeZone: string;
   /** Something the user should know, in plain words: saved credentials with stay-unlocked off; an administrator set their password. */
   warning?: string;
 }
@@ -173,12 +177,13 @@ export interface LinkRequest { password: string; login: string; otherPassword: s
 export interface ProposalDraft { id: number; path: string; text: string; reason: string; author: string; createdAt: string }
 export interface ProposalDraftChange { text?: string; reason?: string }
 
-/** PATCH /api/u/:userId/me/profile → Me. Accent is "#rrggbb"; the monogram is one or two letters. */
+/** PATCH /api/u/:userId/me/profile → Me. Accent is "#rrggbb"; the monogram is one or two letters; the time zone an IANA name (the user's own route only). */
 export interface ProfileChange {
   displayName?: string;
   pronouns?: Pronouns;
   accent?: string | null;
   monogram?: string | null;
+  timeZone?: string | null;
 }
 
 /** PATCH /api/u/:userId/me/display → Me */

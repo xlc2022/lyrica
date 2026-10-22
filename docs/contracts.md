@@ -112,6 +112,7 @@ interface Profile {
   previousNames: { name: string; until: string }[];   // appended on rename
   accent?: string;                           // the user's colour in the web UI, "#rrggbb"
   monogram?: string;                         // one or two letters
+  timeZone?: string;                         // IANA name ("Europe/Vienna"), checked by checkProfile; unset: the server's
 }
 ```
 
@@ -715,8 +716,12 @@ Custom roles override built-ins by name.
   calling thread ID. Add refuses more than 10 routines including paused
   ones. Errors return plain text with `isError: true`.
 - **Routine storage and firing** (`core/src/routines.ts`,
-  `daemon/src/routines.ts`): `parseSchedule`, `nextRun` and `describe`
-  supply local-time schedule maths. Expand-only pool step 6 adds `routines`
+  `daemon/src/routines.ts`): `parseSchedule`, `nextRun(schedule, after,
+  zone?)` and `describe` supply wall-time schedule maths in the user's time
+  zone (`core/src/zone.ts`: `zoneOf(profile)`, the server's when unset;
+  `wall`, `zonedTime`, `localDate`, `localTime`). `addRoutine` and
+  `pauseRoutine` take the zone; `rezoneRoutines(zone)` moves every
+  non-`every` routine's next run when the user changes zone. Expand-only pool step 6 adds `routines`
   (`id`, `thread`, JSON `schedule`, `note`, `new_thread`, `paused`,
   `next_at`, `last_at`, `created_at`), encrypted with the thread's pool;
   forgetting its thread deletes it. `PoolReader.routines` includes paused
@@ -1802,8 +1807,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   serves the same API to local clients; no `lyrica` subcommand uses it. The
   user still logs in with a password over the socket. Being on the machine
   isn't enough.
-- **Scheduler:** at `sleep.time` (default 04:00), for each user not in manual
-  mode, sleep each pool, one run at a time.
+- **Scheduler:** at `sleep.time` (default 04:00) in each user's own time
+  zone (`Profile.timeZone`, else the server's), for each user not in manual
+  mode, sleep each pool, one run at a time across all users. The night's
+  chores (model cleanup, sweep, idle project threads) run at `sleep.time`
+  in the server's zone.
 - **Updates** (docs/daemon.md, "Updates"): an update socket,
   `<runtime>/update.sock` (mode `0600`, the service user's, for root's
   updater; no login, and like the rest of the runtime directory never

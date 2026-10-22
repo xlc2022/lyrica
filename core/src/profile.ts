@@ -1,3 +1,5 @@
+import { validZone } from "./zone.ts";
+
 export interface Pronouns {
   subj: string;
   obj: string;
@@ -15,6 +17,8 @@ export interface Profile {
   accent?: string;
   /** One or two letters. */
   monogram?: string;
+  /** IANA time zone, such as "Europe/Vienna"; without one, the server's (core/src/zone.ts). */
+  timeZone?: string;
 }
 
 export const PRONOUN_PRESETS = {
@@ -40,4 +44,5 @@ export function checkProfile(p: Profile): void {
   }
   if (p.accent !== undefined && !/^#[0-9a-f]{6}$/i.test(p.accent)) throw new Error("the accent colour looks like #rrggbb");
   if (p.monogram !== undefined && !/^\p{L}{1,2}$/u.test(p.monogram)) throw new Error("a monogram is one or two letters");
+  if (p.timeZone !== undefined && !validZone(p.timeZone)) throw new Error(`${JSON.stringify(p.timeZone)} isn't a time zone this server knows; pick one such as Europe/Vienna`);
 }

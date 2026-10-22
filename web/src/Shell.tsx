@@ -20,7 +20,7 @@ import { Flyout, useCanHover, useFlyout } from "./flyout.tsx";
 import { ProjectPage, ThreadsPage, stateWord } from "./Project.tsx";
 import { SearchGroups, searchable, useMessageSearch } from "./Search.tsx";
 import { ask, JUMP_EVENT, JUMP_KEY, keep, type JumpRequest } from "./links.ts";
-import { clock, ErrorText, hidden, InlineRename, menuArrows, shortTime, Toast, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
+import { browserZone, clock, dateText, dayNumber, ErrorText, hidden, hourOf, setTimeZone, InlineRename, menuArrows, shortTime, Toast, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
 
 export interface ShellContext {
   user: UserCard;
@@ -122,6 +122,7 @@ export function Shell({ user, users, route, build, onAuthChange, refreshState }:
     return () => { clearInterval(t); removeEventListener("focus", focus); };
   }, [refreshShell, models.reload]);
   useLook(me.data);
+  useZone(me.data, me.set);
 
   if (!me.data) return <div className="loading">{me.error ? <ErrorText error={me.error} /> : "Loading…"}</div>;
   const ctx: ShellContext = {
@@ -447,6 +448,18 @@ function useLook(me?: Me) {
   }, [theme, accent]);
 }
 
+/** Every time shows in the user's time zone. A user without one is given this browser's, once (docs/ux.md, "Time zone"). */
+function useZone(me: Me | undefined, set: (me: Me) => void) {
+  setTimeZone(me?.timeZone);
+  const userId = me?.user.id, missing = !!me && !me.timeZone;
+  const tried = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!userId || !missing || tried.current === userId) return;
+    tried.current = userId;
+    patch<Me>(`${u(userId, "me")}/profile`, { timeZone: browserZone() }).then(set, () => {});
+  }, [userId, missing, set]);
+}
+
 /** The page header: the menu button on a phone, a title, and a line of facts beneath it. */
 export function PageHead({ ctx, title, facts, children }: { ctx: ShellContext; title: React.ReactNode; facts?: React.ReactNode; children?: React.ReactNode }) {
   return (
@@ -503,13 +516,13 @@ function sections(threads: ThreadSummary[], sort: ThreadSort, groups: ThreadGrou
     ];
   }
   // By date: Today, Yesterday, Previous 7 days, Previous 30 days, Older.
-  const day = new Date(now); day.setHours(0, 0, 0, 0);
-  const start = day.getTime();
-  const edges: [string, number][] = [["Today", start], ["Yesterday", start - 864e5], ["Previous 7 days", start - 7 * 864e5], ["Previous 30 days", start - 30 * 864e5], ["Older", -Infinity]];
+  // Days count in the user's time zone, so Today starts at their midnight.
+  const today = dayNumber(now);
+  const edges: [string, number][] = [["Today", 0], ["Yesterday", 1], ["Previous 7 days", 7], ["Previous 30 days", 30], ["Older", Infinity]];
   const out = edges.map(([label]) => ({ label, threads: [] as ThreadSummary[] }));
   for (const t of sorted) {
-    const at = new Date(t.updatedAt).getTime();
-    out[edges.findIndex(([, from]) => at >= from)]!.threads.push(t);
+    const ago = today - dayNumber(t.updatedAt);
+    out[edges.findIndex(([, most]) => ago <= most)]!.threads.push(t);
   }
   return out.filter((s) => s.threads.length);
 }
@@ -973,11 +986,11 @@ const greeting = (h: number) => (h < 5 ? "Good night" : h < 12 ? "Good morning" 
 /** The welcome page: the greeting is its heading, the version and build end the header's facts; the message box starts a thread with its first message. */
 function Welcome({ ctx }: { ctx: ShellContext }) {
   const now = useNow();
-  const date = now.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
+  const date = dateText(now, { weekday: "long", day: "numeric", month: "long" });
   const time = clock(now);
   return (
     <main className="main">
-      <PageHead ctx={ctx} title={<>{greeting(now.getHours())}, {ctx.user.displayName}.</>}
+      <PageHead ctx={ctx} title={<>{greeting(hourOf(now))}, {ctx.user.displayName}.</>}
         facts={<>{date} · <span className="num">{time}</span> · <span className="ver num" title={`Version ${ctx.build.version}, build ${ctx.build.build}`}>{ctx.build.version} · {ctx.build.build}</span></>} />
       <div className="scroll">
         <div className="welcome">

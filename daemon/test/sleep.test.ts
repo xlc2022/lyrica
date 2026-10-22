@@ -78,6 +78,25 @@ describe("sleep in lyricad", () => {
     expect(sleepThreads.map((t) => t.title).sort()).toEqual(["Sleep: consolidate", "Sleep: dream", "Sleep: wake"]);
   });
 
+  it("sleeps each user at the sleep time in their own time zone, once a night", async () => {
+    const s = await setup();
+    await s.ada.patch(`${s.u}/me/profile`, { timeZone: "Asia/Tokyo" });
+    await s.talk();
+    const runs = async () => (await s.ada.get<{ entries: unknown[] }>(`${s.u}/sleep/history`)).body.entries.length;
+    const tick = (iso: string) => (s.d as unknown as { tick(now: Date): void }).tick(new Date(iso));
+    tick("2026-10-22T04:00:10Z"); // the server's 04:00 (UTC in tests): not hers
+    await new Promise((r) => setTimeout(r, 100));
+    expect(await runs()).toBe(0);
+    const events = s.sleepEvents();
+    await events.ready;
+    tick("2026-10-22T19:00:10Z"); // 04:00 in Tokyo
+    tick("2026-10-22T19:00:40Z"); // the same minute again: no second run
+    await events.until(finished("private"));
+    events.close();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await runs()).toBe(2); // general and private, each once
+  });
+
   it("in manual mode sleeps only on /sleep, asks first, then opens a fresh thread", async () => {
     const s = await setup();
     await s.ada.put(`${s.u}/sleep/mode`, { mode: "manual" });

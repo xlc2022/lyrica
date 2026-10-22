@@ -855,11 +855,12 @@ drafted against: if the file has changed since, approving it needs
 
 `lyricad` builds one `Sleep` ([sleep.md](sleep.md)) and runs it three ways:
 
-- **At night.** At `sleep.time` (local time, default 04:00) it sleeps every
-  user's general pool, then private pool, one at a time
-  (`Lyricad.sleepNight`). A user in manual mode is left out; a user without
+- **At night.** At `sleep.time` (default 04:00) in each user's own time zone
+  (`Profile.timeZone`, else the server's) it sleeps that user's general
+  pool, then private pool (`Lyricad.sleepNight`); runs queue, so only one
+  goes at a time across users. A user in manual mode is left out; a user without
   a key, or a pool with nothing new, is skipped with the reason.
-  Before that, it prunes gone models nothing names (`Models.prune`,
+  At `sleep.time` in the server's zone it prunes gone models nothing names (`Models.prune`,
   [models.md](models.md)), and sweeps each mounted user's home workspace
   ([workspace.md](workspace.md), "The nightly sweep").
 - **`/sleep`.** `POST …/sleep/:pool`, or the text `/sleep` sent to a thread
