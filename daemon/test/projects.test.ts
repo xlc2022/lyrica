@@ -739,6 +739,12 @@ describe("projects", () => {
     await until(() => get(id), (t) => t.needsYou === true && t.state === "waiting");
     expect((await overview()).waiting).toBe(1);
     expect((await messages(path)).filter((m) => m.role === "notice").at(-1)).toMatchObject({ parts: [expect.objectContaining({ status: "waiting" })] });
+    // The project chat answers it itself: it no longer waits on the person.
+    script("chat").push(tool({ action: "message", id, text: "Router." }), { text: "Answered." });
+    script("dns").push({ text: "Router it is." });
+    await say("tell DNS: router");
+    await until(() => get(id), (t) => t.needsYou === undefined);
+    expect((await overview()).waiting).toBe(0);
     // The user answers in the thread: it no longer waits.
     script("dns").push(tool({ action: "resolve" }), { text: "Done." });
     await ada.post(`${threadPath(id)}/messages`, { text: "Router" });

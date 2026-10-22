@@ -601,7 +601,8 @@ describe("child notices waking a parent", () => {
     await until(() => messages(path), m => m.some(x => x.role === "assistant" && x.parts.some(p => p.type === "text" && p.text === "parent idle")));
     const answer = held({ text: "Acknowledged." });
     parent.push({ tools: [{ name: "threads", args: { action: "message", id, text: "Use tulips." } }] }, answer.first);
-    child.push({ tools: [{ name: "threads", args: { action: "message", to: "parent", text: "Which flowers?", question: true } }] }, { text: "Waiting." });
+    // A question written out, as ask takes it, is sent as the message and asked.
+    child.push({ tools: [{ name: "threads", args: { action: "message", to: "parent", question: "Which flowers?" } }] }, { text: "Waiting." });
     await ada.post(`${childPath(id)}/messages`, { text: "Ask which flowers." });
     await answer.busy;
     await until(() => messages(childPath(id)), m => m.some(x => x.role === "user" && x.from?.kind === "parent" && x.parts.some(p => p.type === "text" && p.text === "Use tulips.")));

@@ -358,7 +358,8 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         }
         const inProject = projectThread();
         if (p.action === "message") {
-          if (p.question !== undefined && typeof p.question !== "boolean") throw new Error("message question must be true or false");
+          // A question written out is the message, asked.
+          if (typeof p.question === "string") { p.text = [p.text?.trim(), p.question.trim()].filter(Boolean).join("\n\n"); p.question = true; }
           if (!p.text?.trim()) throw new Error("message needs text");
           checkWords(p.text, MESSAGE_MAX);
           if (child && p.to === "parent") {
