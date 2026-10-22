@@ -12,9 +12,12 @@ describe("spend share", () => {
   it("renders model and thread shares, mono counts, and a project-filtered Recent calls link", () => {
     const html = renderToStaticMarkup(createElement(UsageRows, {
       userId: "user", pool: "general", threadId: "chat", threads: [],
-      usage: { tokens: 30, gpuMs: 1000, models: [{ label: "Local", kind: "local", tokens: 20, gpuMs: 1000 }, { label: "Cloud", kind: "cloud", tokens: 10 }], threads: [{ threadId: "chat", tokens: 20 }, { threadId: "work", tokens: 10 }] },
+      usage: { tokens: 30, input: 24, output: 6, gpuMs: 1000, models: [{ label: "Local", kind: "local", tokens: 20, input: 16, output: 4, gpuMs: 1000 }, { label: "Cloud", kind: "cloud", tokens: 10, input: 8, output: 2 }],
+        threads: [{ threadId: "chat", tokens: 20, input: 16, output: 4 }, { threadId: "work", tokens: 10, input: 8, output: 2 }] },
     }));
-    expect(html).toContain("GPU time");
+    for (const head of ["Input", "Output", "Total", "GPU time"]) expect(html).toContain(`${head}</span>`);
+    // Each row: input, output, then total, in mono.
+    expect(html).toContain('<span class="num">16</span><span class="num">4</span><span class="num">20</span>');
     expect(html).toContain("By thread");
     expect(html).toContain("This chat");
     expect(html).toContain('title="Counts every request, cached reads included."');

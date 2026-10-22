@@ -577,8 +577,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     Pi's automatic compaction stays on at the window's edge as the safety
     net.
   - **Tokens** follows Checklist once a thread has a counted turn. Its
-    popover sums every request's reads (cached reads included) and outputs
-    by model, with **GPU time** for local calls (first-token plus generation
+    popover sums every request's reads (cached reads included) as input and
+    its outputs as output, each with their total, by model, with **GPU time** for local calls (first-token plus generation
     time, including queueing and loading). Pruned call counts are retained.
     On a phone Tokens opens rows at the foot of Context.
   - Recent calls and the text library show measured speed; nothing acts on

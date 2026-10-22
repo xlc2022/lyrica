@@ -135,8 +135,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   already streamed included. Her call itself is a tool marker.
   **Tokens** follows Checklist once a counted turn exists (`src/Usage.tsx`,
   `GET …/usage`, reloaded after turns and child updates). Its mono count and
-  caret open model rows with muted local/cloud kind, mono tokens and local
-  **GPU time**, then Total, whose tooltip says “Counts every request, cached reads included.”
+  caret open model rows with muted local/cloud kind, mono **Input**, **Output**
+  and **Total** tokens and local **GPU time**, then Total, whose tooltip says “Counts every request, cached reads included.”
   On a phone it opens rows in place at the foot of Context.
   Then, while she has wake-ups waiting (`ThreadSettings.wakeups`, soonest
   first), **Wake-up** and the soonest time in mono (`wakeTime`: HH:MM today,

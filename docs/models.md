@@ -358,7 +358,9 @@ turns (`gen_ms` of 50 ms or more) of the past 24 hours, with `speedCalls`
 saying how many; none of these when it had no such turn.
 
 `usage(userId, pool, threadIds)` returns shares by thread, model label and
-kind, summing retained calls and folded totals. Tokens are `read_tokens +
+kind, summing retained calls and folded totals, with `input` (reads) and
+`output` beside `tokens`; user step 17 keeps the split in `call_totals`, and
+totals folded before it count in `tokens` alone. Tokens are `read_tokens +
 output_tokens`, falling back to `prompt_tokens + output_tokens` on older
 records. Local GPU time is `ttft_ms + gen_ms`, including queueing and loading;
 cloud calls and subagents have none. Subagents contribute their recorded

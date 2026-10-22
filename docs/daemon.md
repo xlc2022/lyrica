@@ -439,7 +439,7 @@ Each active thread is one Pi session from `openThreadSession`, with
   threads card's threads, each once. `GET …/overview` lists its threads, how
   many wait on the user, its total tokens and which suggestions were
   started; `models/calls?project=&pool=` its calls, filtered by both pool
-  and project thread IDs. `GET …/usage` returns `ThreadUsage`: total tokens,
+  and project thread IDs. `GET …/usage` returns `ThreadUsage`: input, output and total tokens,
   optional local GPU milliseconds, model shares, and for a project chat
   thread shares (chat first, then descending tokens). The overview uses
   this same sum of retained calls, folded totals and nested subagent runs. A project's thread's

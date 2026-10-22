@@ -37,8 +37,10 @@ describe("spend share", () => {
     db.prepare("INSERT INTO call_totals (pool, thread, label, kind, tokens, gpu_ms, calls) VALUES ('general', 'chat', 'Local', 'local', 11, 30, 1)").run();
     const own = models.usage(ada.id, "general", ["work"]);
     expect(own.reduce((n, r) => n + r.tokens, 0)).toBe(27 + 48 + 59);
-    expect(own.find(r => r.label === "Removed")).toEqual({ threadId: "work", label: "Removed", tokens: 59 });
+    expect(own.find(r => r.label === "Removed")).toEqual({ threadId: "work", label: "Removed", tokens: 59, input: 50, output: 9 });
     expect(own.find(r => r.label === "Local")?.gpuMs).toBeUndefined();
+    // Input and output split the total: the work thread's own cloud turn read 20 and wrote 7.
+    expect(own.find(r => r.label === "Cloud")).toMatchObject({ tokens: 27, input: 20, output: 7 });
     expect(models.usage(ada.id, "general", ["sub"]).reduce((n, r) => n + r.tokens, 0)).toBe(59);
     const project = models.usage(ada.id, "general", ["chat", "work"]);
     expect(project.reduce((n, r) => n + r.tokens, 0)).toBe(180);
@@ -79,9 +81,9 @@ describe("spend share", () => {
 
   it("shows Claude Code's tokens, counted by its relay, as the thread's own cloud row", async () => {
     const { ada, models } = await withUsageModels();
-    models.addCallTotals(ada.id, "general", "work", "Claude Code", "cloud", 2112 + 34);
-    models.addCallTotals(ada.id, "general", "work", "Claude Code", "cloud", 45 + 7);
-    expect(models.usage(ada.id, "general", ["work"])).toEqual([{ threadId: "work", label: "Claude Code", kind: "cloud", tokens: 2198 }]);
+    models.addCallTotals(ada.id, "general", "work", "Claude Code", "cloud", 2112, 34);
+    models.addCallTotals(ada.id, "general", "work", "Claude Code", "cloud", 45, 7);
+    expect(models.usage(ada.id, "general", ["work"])).toEqual([{ threadId: "work", label: "Claude Code", kind: "cloud", tokens: 2198, input: 2157, output: 41 }]);
     expect(models.usage(ada.id, "private", ["work"])).toEqual([]);
   });
 });
