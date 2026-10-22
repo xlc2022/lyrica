@@ -1188,6 +1188,7 @@ export class Workspace {
     const now = Date.now();
     for (const [id, d] of this.drafts) if (d.expires < now) this.drafts.delete(id);
     const { username, host, port } = parseMachineAddress(input.address);
+    refuseRoot(username);
     let draft = input.draft;
     let pair = draft ? this.drafts.get(draft) : undefined;
     if (!pair || pair.userId !== userId) {
@@ -1315,6 +1316,7 @@ export class Workspace {
     const pair = this.drafts.get(input.draft);
     if (!pair || pair.userId !== userId || pair.expires < Date.now()) throw new Error("test the machine again: its key has expired");
     const { username, host, port } = parseMachineAddress(input.address);
+    refuseRoot(username);
     const { outside } = await resolveHost(host);
     if (outside && input.pool === "private" && !input.offNetworkConfirmed) throw new Error(`${host} resolves outside your network; confirm adding it anyway`);
     const m = this.settings(userId).addMachine({
@@ -1330,6 +1332,8 @@ export class Workspace {
     const before = s.machine(name);
     const kind = before?.kind;
     const address = change.address === undefined ? {} : kind === "proxmox" ? parseProxmoxAddress(change.address) : parseMachineAddress(change.address);
+    // The account was chosen when adding, with its own setup (and for the user's own, its warnings): another one means adding it again.
+    if ("username" in address && before && address.username !== before.username) throw new Error("the account can't change: remove the machine and add it again");
     // A Proxmox moved onto her own node's address is refused, as when adding.
     if (kind === "proxmox" && change.address !== undefined) this.refuseOwn(ownAddress((await resolveHost(parseProxmoxAddress(change.address).host)).addresses, this.self()));
     let m = s.updateMachine(name, { ...address, ...(change.root !== undefined ? { root: change.root || null } : {}), ...(change.limit ? { limit: change.limit } : {}) });
@@ -1422,4 +1426,9 @@ export { inOwnNetwork } from "../models/http.ts";
 /** Codex's sandbox: its home and the internet, nothing else of the machine's. */
 export function codexSandbox(home: string, o: Pick<SandboxSpec, "exclude" | "front" | "frontHosts" | "bwrap" | "pasta">): SandboxSpec {
   return { ...o, workdir: home, grants: [], network: { internet: true, services: false, hosts: [] } };
+}
+
+/** Root is never her account, a dedicated one's or the user's: root steps go to the user on a card. */
+function refuseRoot(username: string): void {
+  if (username === "root") throw new Error("she never logs in as root: use a dedicated account, or your own");
 }

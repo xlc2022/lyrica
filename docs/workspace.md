@@ -224,14 +224,18 @@ lists what it gives her (`accountWarnings` in `web/src/Machines.tsx`):
 - everything that account can read and change: its files, SSH keys,
   browser profiles, and signed-in tools and their tokens;
 - its groups: `docker`, `sudo`, `wheel` or `lxd` membership is as good as
-  root, and a cached sudo password works for her too;
+  root, as is uid 0, and where sudo shares its timestamp across sessions a
+  cached password works for her too;
 - her commands aren't checked by path, so she could change that account's
   own `authorized_keys` (the `write` and `edit` floor still refuses it);
 - in a general thread on a cloud model, what she reads there can reach the
   cloud provider. A private machine keeps its rules: private threads only,
   so no cloud model.
 
-Saving needs the machine's name typed. The setup, run as that account with
+Saving needs the machine's name typed. The account is fixed once added:
+a changed address may not name another account (remove the machine and add
+it again), and `root` is refused for any machine, since root steps go to
+the user on a card. The setup, run as that account with
 no root, appends the same `restrict,from=` key line to its own keys file:
 
 ```sh

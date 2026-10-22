@@ -91,6 +91,10 @@ describe("machines", () => {
     expect((await workspace.addMachine(ada.id, { name: "box", address: "lyrica@127.0.0.1", root: null, pool: "general", draft: hers.draft, hostKey: KEY })).asUser).toBe(false);
     settings.setThread("p", "private", { machines: ["laptop"] });
     expect(workspace.machinesFor(thread("p", "private"))).toEqual([{ name: "laptop", kind: "ssh", limit: "ask", root: null, asUser: true }]);
+    // The account is fixed once chosen, and root is never hers.
+    await expect(workspace.updateMachine(ada.id, "box", { address: "ada@127.0.0.1" })).rejects.toThrow(/account can't change/);
+    expect((await workspace.updateMachine(ada.id, "box", { address: "lyrica@127.0.0.1:2222" })).port).toBe(2222);
+    await expect(workspace.probeMachine(ada.id, "ada", { name: "srv", address: "root@127.0.0.1", asUser: true })).rejects.toThrow(/never logs in as root/);
   });
 
   it("leave every thread that granted them when their pool changes", async () => {

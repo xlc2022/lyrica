@@ -2014,11 +2014,11 @@ proxmox(t, machine, action, vm?): Promise<string>  // one PROXMOX_ACTIONS call o
 callMode(t, machine?): PermissionMode     // on a machine, stricterMode(effective(t).mode, its limit)
 probeMachine(userId, login, { kind?, name, address, draft?, asUser? }): Promise<MachineProbe>
   // SSH: a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps, the host key seen,
-  // whether the login worked, offNetwork; asUser gives the own-account setup (no root). Proxmox: the certificate's fingerprint and the pveum setup, no token sent.
+  // whether the login worked, offNetwork; asUser gives the own-account setup (no root); account root refused. Proxmox: the certificate's fingerprint and the pveum setup, no token sent.
   // Saves nothing.
 addMachine(userId, { kind?, name, address, root, pool, limit?, draft? | token?, hostKey, offNetworkConfirmed?, asUser? }): Promise<MachineConfig>
   // Proxmox: tries the token against the confirmed certificate and refuses the Proxmox running Lyrica (ownNode)
-updateMachine(userId, name, { address?, root?, limit?, pool? }): Promise  // a new pool drops the machine from every thread; Proxmox: own-node address refused
+updateMachine(userId, name, { address?, root?, limit?, pool? }): Promise  // a new pool drops the machine from every thread; an address naming another account is refused; Proxmox: own-node address refused
 setHostKey(userId, name, hostKey, token?): Promise / confirmOffNetwork(userId, name) / removeMachine(userId, name)
 grantsFor(t): Grant[]                     // { path, writable }
 folders(t): string[]                      // grants, and "<machine>:<root>" for its machines with a root

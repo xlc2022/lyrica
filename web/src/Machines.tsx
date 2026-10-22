@@ -209,7 +209,7 @@ type Account = "hers" | "mine";
 export function accountWarnings(pool: Pool): string[] {
   return [
     `${her()} can read and change everything this account can: its files, SSH keys, browser profiles, and signed-in tools and their tokens.`,
-    "Groups count: membership of docker, sudo, wheel or lxd is as good as root, and a cached sudo password works for her too.",
+    "Groups count: membership of docker, sudo, wheel or lxd is as good as root, as is uid 0. If sudo shares its timestamp across sessions, a cached password works for her too.",
     "Her commands aren't checked by path, so she could change this account's own SSH keys.",
     pool === "general"
       ? "In a general thread on a cloud model, what she reads there can reach the cloud provider."
