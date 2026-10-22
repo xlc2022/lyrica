@@ -439,12 +439,20 @@ describe("a child's end, reading and stopping", () => {
     (await messages()).filter((m) => m.role === "notice").map((m) => (m.parts[0] as { text: string }).text);
   const call = (args: object): Reply => ({ tools: [{ name: "threads", args }] });
 
-  it("the parent hears of a child that finished without a report, and not of one that reported", async () => {
+  it("the parent gets a child's last message as its report when it sent none, again after a new message, and not from one that reported", async () => {
     const { parent, child, say, path, messages, idleParent } = await setup();
     parent.push(start("Silent", "Plan the beds."), { text: "Started." });
     child.push({ text: "Planned." });
     const silent = toolEnd(await say("start the silent one"))!.threads![0]!.id;
-    await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes(`[t:${silent}] finished without a report, and is idle`)));
+    const implicit = (text: string) => `Child thread [t:${silent}] ended without a report; its last message, as its report:\n${text}`;
+    await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes(implicit("Planned."))));
+
+    // The parent writes to it again; it ends without a report again, and the parent hears again.
+    await idleParent();
+    parent.push(call({ action: "message", id: silent, text: "And the paths?" }), { text: "Asked." });
+    child.push({ text: "Paths too." });
+    await say("ask it about the paths");
+    await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes(implicit("Paths too."))));
 
     await idleParent();
     parent.push(start("Loud", "Plan the paths."), { text: "Started." });
@@ -453,8 +461,8 @@ describe("a child's end, reading and stopping", () => {
     await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes("Paths planned.")));
     await new Promise((r) => setTimeout(r, 300));
     const all = (await notices(() => messages(path))).join("\n");
-    expect(all).toContain(`[t:${silent}] finished without a report`);
-    expect(all).not.toContain(`[t:${loud}] finished without a report`);
+    expect(all).not.toContain(`[t:${loud}] ended without a report`);
+    expect(all).not.toContain("finished without a report");
     expect(all).not.toContain("stopped with an error");
   });
 
