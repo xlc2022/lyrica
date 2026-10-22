@@ -39,7 +39,10 @@ Ubuntu VM or LXC container), running:
 - Her own `tailscaled` (`lyrica-tailscaled.service`), as the `lyrica` user
   in userspace networking, so she can be a device of her own on a tailnet.
   It also gives her a proxy on `127.0.0.1:1056` to reach model hosts and
-  other machines on that tailnet.
+  other machines on that tailnet. Updates never replace units, so an
+  install made before the proxy was added gets it by running `install.sh`
+  once more; until then Administration, Status lists
+  `lyrica-tailscaled.service` as older than the release.
   The host's own Tailscale, if it has one, is left alone.
 - The built-in Caddy (`/usr/local/bin/lyrica-caddy`) as the `lyrica-caddy`
   user, for when Web access serves a name of yours with a real certificate.
@@ -181,18 +184,6 @@ read it for anything not covered here.
    }
    ```
 
-   While the repository is private, `nix flake lock` and `nixos-rebuild`
-   need a GitHub token to fetch it. Make a fine-grained, read-only token
-   for this one repository, put `access-tokens = github.com=<token>` in
-   `/etc/nix/access-tokens.conf` (owned by root, mode 0600), and add
-   `nix.extraOptions = "!include /etc/nix/access-tokens.conf";` to
-   `configuration.nix`. Not on the command line, which keeps it in shell
-   history, and not in `nix.settings`, which copies it into the
-   world-readable Nix store. Until the first rebuild applies that, pass
-   the file in for those two commands, for example `sudo env
-   NIX_CONFIG="$(sudo cat /etc/nix/access-tokens.conf)" nixos-rebuild
-   switch --flake /etc/nixos#lyrica`; history keeps the command, not the
-   token.
    Leaving `nixpkgs` unfollowed also builds, but then the system's
    nixpkgs can differ from the one the module's Caddy hash and CI use
    (inferred; only the followed form was evaluated).
@@ -229,8 +220,9 @@ read it for anything not covered here.
    (untested).
 7. `sudo nixos-rebuild switch --flake /etc/nixos#lyrica`. The package
    builds lyricad, the CLI and the web UI, and `lyricad` starts setting
-   up, as on Debian. Nothing prints the setup code at the rebuild: `lyrica admin setup-code`, as root, prints
-   it with the addresses and the fingerprint. The first build fetches many
+   up, as on Debian. Nothing prints the setup code at the rebuild:
+   `lyrica admin setup-code`, as root, prints it with the addresses and
+   the fingerprint. The first build fetches many
    sources at once; if the Caddy plugin fetch fails on a DNS timeout
    (`sum.golang.org`), run the same command again.
 8. The first run below is the same. `lyrica` is on the system path and
@@ -259,19 +251,19 @@ makes `/etc/lyrica/deploy-key`: add its `.pub` as in "Add the deploy key"
 below. Keep a scheduled Proxmox backup of the VM, for the reason given
 there. Upgrading is
 `nix flake update lyrica` in `/etc/nixos` and `nixos-rebuild switch`,
-which restarts `lyricad` (which logs everyone out). Before that start, when the package
-changed, her databases are snapshotted and the profile moves to it; if the
-new package can't read them, the newest snapshot it can read is restored.
-The package is rebuilt only when the code it ships changed; a commit that
-touched only docs or tests reuses the built one, and the restart is quick.
-Updates and rollback from "Upgrading" work on NixOS too. After an
-Update, run `nix flake update lyrica` before your next `nixos-rebuild`
-for any reason: the system flake's lock still names the older commit.
-lyricad keeps the newer release anyway and logs it once ("the module's
-package (…) is older than the running release (…)" in `journalctl -u
-lyricad`). For the same reason, pinning the flake to an older commit
-doesn't take her back: use Roll back. The home page header shows the
-commit that is running, as on Debian.
+which restarts `lyricad` (which logs everyone out). Before that start,
+when the package changed, her databases are snapshotted and the profile
+moves to it; if the new package can't read them, the newest snapshot it
+can read is restored. The package is rebuilt only when the code it ships
+changed; a commit that touched only docs or tests reuses the built one,
+and the restart is quick. Updates and rollback from "Upgrading" work on
+NixOS too. After an Update, run `nix flake update lyrica` before your next
+`nixos-rebuild` for any reason: the system flake's lock still names the
+older commit. lyricad keeps the newer release anyway and logs it once
+("the module's package (…) is older than the running release (…)" in
+`journalctl -u lyricad`). For the same reason, pinning the flake to an
+older commit doesn't take her back: use Roll back. The home page header
+shows the commit that is running, as on Debian.
 
 ### On Debian or Ubuntu
 
@@ -381,8 +373,9 @@ answers ahead; without a terminal the answer is no), then:
    SearXNG it also starts `lyrica-searxng.service` on `127.0.0.1:8888`
    ([searxng.md](searxng.md#set-up-by-installsh)). On an upgrade it
    restarts `lyricad`. On a fresh install `lyricad` starts setting up,
-   and the script ends by printing a one-time setup code, the addresses to open and the certificate's
-   fingerprint (see "First run").
+   and the script prints a one-time setup code, the addresses to open
+   and the certificate's fingerprint (see "First run"), then the deploy
+   key's public half (see "Add the deploy key").
 
 Running it again later installs the checkout's commit as a new release
 (see "Upgrading").
@@ -414,12 +407,12 @@ Certificate fingerprint (SHA-256), to compare with the browser's warning:
   <fingerprint>
 ```
 
-`lyrica` (in `/usr/local/bin`, or on the system path on NixOS) runs the CLI as the `lyrica` user with her
-state folder, from root or any sudoer, so the files it makes are hers. It
-works from any folder: from one she can't enter, such as your home, it runs
-from `/`. Every `lyrica admin …` command in this guide works the same way
-from any shell.
-Each restart while she is still setting up makes a new code.
+`lyrica` (in `/usr/local/bin`, or on the system path on NixOS) runs the
+CLI as the `lyrica` user with her state folder, from root or any sudoer,
+so the files it makes are hers. It works from any folder: from one she
+can't enter, such as your home, it runs from `/`. Every `lyrica admin …`
+command in this guide works the same way from any shell. Each restart
+while she is still setting up makes a new code.
 
 ### Set her up in the browser
 
@@ -431,7 +424,7 @@ fingerprint matches the one printed. The page is **Set up Lyrica**:
    twice, and **Start unlocked**, which saves the passphrase (see "Save the
    passphrase" below). It is off, with the reason, where saving isn't
    available.
-2. **Name:** her name, Lyrica by default.
+2. **Lyrica** (the step shows her name): her name, Lyrica by default.
 3. **Administrator:** the first administrator's login, password, display
    name and pronouns. **Create** makes `self.db`, imports the persona seed
    from `persona/`, unlocks her and signs you in. A wrong code says so; too
@@ -598,9 +591,9 @@ the Private column too, unless a thread picks its own model, so its
 `speech.transcribe` list goes there. See [docs/models.md](../models.md).
 
 - **A cloud or OpenAI-compatible endpoint:** Models, Hosts and endpoints,
-  **Add endpoint** (Name, Kind Custom, Base URL, API key, then the Local or Cloud checkbox). Shared
-  endpoints, which every user can use, need an administrator. The same from
-  a terminal:
+  **Add endpoint** (Name, Kind Custom, Base URL, API key, then the Local
+  or Cloud checkbox). Shared endpoints, which every user can use, need an
+  administrator. The same from a terminal:
 
   ```sh
   lyrica admin models endpoints add openrouter cloud https://openrouter.ai/api/v1 --shared
@@ -612,9 +605,10 @@ the Private column too, unless a thread picks its own model, so its
   [model-hosts.md](model-hosts.md).
 - **llama-server, LM Studio, KoboldCpp** on your network are plain local
   endpoints. A bare address and port such as `192.168.1.50:1234` is enough
-  as the Base URL: Lyrica adds `http://` and `/v1`. Start llama-server and KoboldCpp with `--jinja` (KoboldCpp also
-  `--jinja_tools`) for tool calling, and enter a context window by hand
-  where the server doesn't report one (`endpoints model … --context`).
+  as the Base URL: Lyrica adds `http://` and `/v1`. Start llama-server
+  and KoboldCpp with `--jinja` (KoboldCpp also `--jinja_tools`) for tool
+  calling, and enter a context window by hand where the server doesn't
+  report one (`endpoints model … --context`).
 
 ### Image models
 
@@ -647,13 +641,14 @@ A signed-in ChatGPT plan shows one image model, **ChatGPT Images**, under
 Cloud on Models, Image models. OpenAI doesn't let the plan's sign-in make
 images, so ChatGPT Images runs your own Codex: under Settings, **Claude
 Code and Codex**, choose **Sign in** in the Codex card, open the page it
-shows, sign in to ChatGPT and enter the code. Images then come out of your plan's Codex limits.
-For a key, open Image models, then **Other cloud models** at the foot of
-the Cloud group, and tick **Generate** and **Edit** for each model that
-supports them (`gpt-image-1`, for example). Only the endpoint's owner, or
-an administrator for a shared endpoint, can change them. To use the plan
-first and the key as a paid fallback, put ChatGPT Images first in the
-General threads column's image lists and the key's model after it.
+shows, sign in to ChatGPT and enter the code. Images then come out of your
+plan's Codex limits. For a key, open Image models, then **Other cloud
+models** at the foot of the Cloud group, and tick **Generate** and
+**Edit** for each model that supports them (`gpt-image-1`, for example).
+Only the endpoint's owner, or an administrator for a shared endpoint, can
+change them. To use the plan first and the key as a paid fallback, put
+ChatGPT Images first in the General threads column's image lists and the
+key's model after it.
 
 Then put models in the lists, under Models, Tasks, or from a terminal
 (`private` for the Private column, `general` for the General column):
@@ -715,8 +710,8 @@ fills in under Administration, **Web search** for you. Otherwise host
 one and give its address there. It says **Reachable** once a test search
 works: [searxng.md](searxng.md). Every thread with the Web search switch
 on can then search, private ones included (the engines see the query,
-never who asked). `web_fetch` reads a page with `curl` inside the thread's sandbox,
-so its network switches decide what it reaches.
+never who asked). `web_fetch` reads a page with `curl` inside the thread's
+sandbox, so its network switches decide what it reaches.
 
 ## Give her repositories
 
@@ -818,9 +813,10 @@ steps:
    machine**: her public key into `/etc/ssh/authorized_keys/<account>`, a
    file only root can change, with a `Match User` block in
    `/etc/ssh/sshd_config.d/lyrica.conf`, then `sshd -t && systemctl reload
-   ssh` (the unit is `sshd` on Fedora and RHEL). The key line is restricted to connections from this computer. If
-   she should run some commands as root there, give the account exact
-   commands with `visudo -f /etc/sudoers.d/lyrica`, never a password.
+   ssh` (the unit is `sshd` on Fedora and RHEL). The key line is
+   restricted to connections from this computer. If she should run some
+   commands as root there, give the account exact commands with `visudo -f
+   /etc/sudoers.d/lyrica`, never a password.
 2. Press Enter. She connects, prints the machine's host key fingerprint
    and whether her key was accepted, and asks you to confirm the
    fingerprint. Compare it with what the machine prints:
@@ -956,7 +952,8 @@ refused. To replace the destination, enter the full URL and token again;
 - **Logs:** `journalctl -u lyricad`, `journalctl -u lyrica-caddy` and
   `journalctl -u lyrica-tailscaled`. Each request logs one line with the
   route pattern and status; never message or memory text. Caddy's TLS
-  errors go to `/run/lyrica-caddy/tls.log` instead of the journal, since a DNS plugin can quote its token in one.
+  errors go to `/run/lyrica-caddy/tls.log` instead of the journal, since a
+  DNS plugin can quote its token in one.
 - **Restart:** `systemctl restart lyricad`. On stop she ends every turn and
   sleep, unmounts home workspaces and drops keys. With no saved passphrase,
   she comes back locked; browser sessions don't survive a restart, so
@@ -965,9 +962,12 @@ refused. To replace the destination, enter the full URL and token again;
   written so far keep the old one.
 - **Sleep** runs at `sleep.time` (04:00 by default; Administration,
   Sleep), in each user's own time zone (Settings, Profile, Time zone; the
-  server's until their browser sets it), for every user whose key is available, unless they set Sleep to
-  Only when I ask in Settings, Sleep. The **Sleep** page in the
-  sidebar shows each night's runs and has **Sleep now**.
+  server's until their browser sets it), for every user whose key is
+  available, unless they set Sleep to Only when I ask in Settings, Sleep.
+  The night's chores (model cleanup, the workspace sweep, resolving idle
+  project threads) run at the same time in the server's zone. The
+  **Sleep** page in the sidebar shows each night's runs and has **Sleep
+  now**.
 - **Where the data is:** everything is under `/var/lib/lyrica`. `self.db`
   and each `users/<id>/` directory are encrypted at rest; a copy made while
   the service is stopped is a backup, and useless without the passphrase.
@@ -1044,7 +1044,7 @@ refused. To replace the destination, enter the full URL and token again;
   `install.sh` run (Update on Administration, Updates doesn't install
   them), and NixOS on the next rebuild. On NixOS that rebuild also starts
   SearXNG for her web search unless `services.lyrica.searxng = false`.
-  The home page header (her name, then
+  The home page header (the greeting, then the date, the time and
   "0.1.0 · <build>") shows the git commit that is running.
 
 ## Checklist for the first install on your machine
@@ -1054,8 +1054,8 @@ something the code expects but nobody has confirmed on real hardware.
 
 On NixOS, items 1 and 2 are `nixos-rebuild switch` building the module and
 `nix/check-host.sh` passing after the first run (it covers item 4, and
-item 5 once she has been unlocked: see step 10 of "On NixOS"), and item 3's code comes from `lyrica admin setup-code`. The rest
-apply as written.
+item 5 once she has been unlocked: see step 10 of "On NixOS"), and item
+3's code comes from `lyrica admin setup-code`. The rest apply as written.
 
 1. The LXC features and tun device from "In a Proxmox LXC container", then
    the proofs in [docs/workspace.md](../workspace.md#host-requirements):

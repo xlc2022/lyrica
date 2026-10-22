@@ -1,13 +1,14 @@
 # CI runners: adding a machine that runs the checks
 
 These are your own GitHub Actions runners, labelled `lyrica-ci`. For now
-every workflow runs on GitHub's hosted runners instead, and these are idle. This guide follows
-`.github/runner/setup.sh`; why it is set up this way, and what the runner
-may and may not reach, is in [docs/ci.md](../ci.md).
+every workflow runs on GitHub's hosted runners instead, and these are
+idle. This guide follows `.github/runner/setup.sh`; why it is set up this
+way, and what the runner may and may not reach, is in
+[docs/ci.md](../ci.md).
 
 Unlike the other guides, this one has been exercised: two runner VMs were
-set up with the script on 2026-10-11, and every pull request and push to
-`main` runs on them since PR #68.
+set up with the script on 2026-10-11 and ran every pull request and push
+to `main` until CI moved to GitHub's hosted runners.
 
 ## The machine
 
@@ -120,8 +121,9 @@ runner keeps its registration, and the firewall is applied again.
   files back in place, remove `/nix` and `/etc/nix`, the `nix-daemon`
   units and the `nixbld` users, then re-run the job.
 - **The host-stack job** installs the model host stack with `--no-gpu` and
-  removes it again when it ends (the stack, its volumes, the egress unit
-  and rules, Docker's `daemon.json`).
+  removes it again when it ends (the stack, its volumes, the egress and
+  updater units and rules, the updater's folders and deploy key, Docker's
+  `daemon.json`).
 - **More runners:** another VM from the same base image, a new hostname, a
   fresh token, the same script. There is no shared state between runners.
 - **Removing a runner:** on the VM, `cd /home/runner/actions-runner &&

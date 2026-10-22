@@ -146,6 +146,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential gocryptfs fuse3
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      # Claude Code is unfree, so no binary cache has it; its download is kept
+      # between runs so the build doesn't fetch it each time (and get a 429).
+      # Saved right after seeding, so a later failing step doesn't lose it.
+      - id: claude-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/lyrica-ci/fixed
+          key: claude-code-2-${{ hashFiles('flake.lock') }}
+          restore-keys: claude-code-2-
+      - name: Seed Claude Code's download
+        run: .github/runner/seed-claude-code.sh ~/.cache/lyrica-ci/fixed
+      - if: steps.claude-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/lyrica-ci/fixed
+          key: claude-code-2-${{ hashFiles('flake.lock') }}
       - run: nix --extra-experimental-features "nix-command flakes" flake check -L
       - run: npm ci
       - name: Sandbox tests with the NixOS sandbox tools
