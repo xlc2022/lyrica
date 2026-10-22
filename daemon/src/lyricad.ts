@@ -450,7 +450,8 @@ export class Lyricad implements Drainable {
         try {
           delegation.deliver({ user: { id: t.userId }, pool: t.pool, threadId: t.threadId } as Parameters<Delegation["deliver"]>[0], content, details);
           host.delivered(t.userId, t.pool, t.threadId, content, details);
-          if (host.draining || host.busy(t.userId, t.pool, t.threadId) || !children.mayWake(t.userId, t.pool, t.threadId)) return;
+          // A job she or lyricad stopped (her jobs stop, Lock, shutdown) only leaves its notice: waking then would spend a turn on nothing.
+          if (job.state === "stopped" || host.draining || host.busy(t.userId, t.pool, t.threadId) || !children.mayWake(t.userId, t.pool, t.threadId)) return;
           children.woke(t.userId, t.pool, t.threadId);
           void host.get(t.userId, t.pool, t.threadId).wakeChild(JOB_WAKE).catch(() => {});
         } catch (err) {

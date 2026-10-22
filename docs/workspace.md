@@ -593,11 +593,16 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   `job`). A busy thread gets it as a follow-up; an idle one is woken once to
   carry on (`HostedThread.wakeChild`), unless its project is paused or it
   waits for a child slot, when the notice waits in the thread for its next
-  turn.
+  turn. A stopped job never wakes it: she stopped it herself, or `lyricad`
+  did.
 - Lock, a memory wipe, forgetting the thread and stopping `lyricad` stop
   its jobs, and the notice says why where the thread still exists. A crash
   loses them unreported: a sandbox runs with
-  `--die-with-parent`, and an SSH job's helper exits with `lyricad`.
+  `--die-with-parent`, and an SSH job's helper exits with `lyricad`. An
+  update's drain doesn't wait for jobs, so an update stops a running one.
+  On a machine, stopping sends SSH's KILL signal and closes the channel; a
+  server that ignores the signal may leave a program that ignores the
+  hangup running there.
 - Subagents and Plan mode have neither `background` nor `jobs`.
 
 ## Thread settings

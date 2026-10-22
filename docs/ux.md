@@ -115,7 +115,7 @@ Rules:
   Not "Everything is fine", not "Loading your models…".
 - **Names in use** (don't invent synonyms): General and Private (pools),
   Hidden, Notifications, Backend, Models, Tasks, Text models, Thread actions, Tool limit,
-  Checks, Add check, Skills, Add skill, New skill, Steps, Approve, Decline,
+  Checks, Add check, Skills, Add skill, New skill, Steps, Approve, Decline, Background command,
   Pinned to the top, Unpinned,
   Image models, Hosts and endpoints, Downloads, Clean up, Recent calls,
   Model hosts, Plain endpoints, Add endpoint, ChatGPT plan, Grok plan, OpenRouter, Sign in with ChatGPT, Sign in with Grok, Sign in with OpenRouter, Redirect URL, Code, Finish, Signed out, Sign in again, Add model host, Pairing code,
