@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import {
-  makeWorktrees, worktreeGrants, removeWorktrees, DEFAULT_THREADS_LIMITS, matchModel, unmatched, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
+  makeWorktrees, zoneOf, worktreeGrants, removeWorktrees, DEFAULT_THREADS_LIMITS, matchModel, unmatched, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
 } from "@lyrica/core";
 import type { Delegation, Delivery, ThreadContext, ThreadsHost } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
@@ -523,6 +523,11 @@ export class ChildThreads implements ThreadsHost {
   /** Whether the user keeps the Checklists display switch on (the default); off, her threads aren't offered `threads steps`. */
   checklistsOn(from: ThreadContext): boolean {
     return this.checklists(from.user.id);
+  }
+
+  zone(from: ThreadContext): string {
+    const user = this.o.users.get(from.user.id);
+    return zoneOf(user?.profile ?? from.user.profile);
   }
 
   /** The user's Checklists switch; off, no list or summary carries steps. */

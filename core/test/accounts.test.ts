@@ -82,6 +82,12 @@ describe("profiles", () => {
 
     users.updateProfile(ada, ada, { pronouns: PRONOUN_PRESETS.she }); // no rename, no new entry
     expect(users.get(ada.id)!.profile.previousNames).toHaveLength(1);
+
+    // A time zone is an IANA name this server knows; null goes back to the server's.
+    expect(users.updateProfile(ada, ada, { timeZone: "Europe/Vienna" }).timeZone).toBe("Europe/Vienna");
+    expect(users.updateProfile(ada, ada, { displayName: "Lin" }).timeZone).toBe("Europe/Vienna");
+    expect(() => users.updateProfile(ada, ada, { timeZone: "Mars/Olympus" })).toThrow(/isn't a time zone/);
+    expect(users.updateProfile(ada, ada, { timeZone: null }).timeZone).toBeUndefined();
   });
 
   it("lets only the user or an administrator change a profile", async () => {

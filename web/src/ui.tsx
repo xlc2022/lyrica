@@ -151,30 +151,51 @@ export function Confirm({ label, question, confirm, danger, options, onConfirm }
   );
 }
 
+// Every time the app shows is in the user's own time zone (Settings → Profile), not the browser's.
+let zone: string | undefined;
+/** The shell sets it from Me before each render; undefined is the browser's own. */
+export function setTimeZone(z: string | undefined): void { zone = z; }
+/** The zone times show in. */
+export const timeZone = (): string => zone ?? browserZone();
+export const browserZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** toLocaleDateString in the user's zone and the reader's locale. */
+export const dateText = (at: string | number | Date, opts: Intl.DateTimeFormatOptions): string => new Date(at).toLocaleDateString([], { ...opts, timeZone: timeZone() });
+
+/** A moment's calendar day in the user's zone, as days since 1970, to compare and count days. */
+export function dayNumber(at: string | number | Date): number {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: timeZone(), year: "numeric", month: "numeric", day: "numeric" })
+    .formatToParts(new Date(at)).map((x) => [x.type, x.value]));
+  return Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)) / 864e5;
+}
+
+/** The hour of the day, 0–23, in the user's zone. */
+export const hourOf = (at: string | number | Date): number =>
+  Number(new Intl.DateTimeFormat("en-US", { timeZone: timeZone(), hour: "numeric", hourCycle: "h23" }).format(new Date(at))) % 24;
+
 /** A time of day as 24-hour HH:MM, as every time in the app is shown (docs/ux.md, "When a message was sent"). */
 export function clock(at: string | Date): string {
-  const d = new Date(at);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return new Intl.DateTimeFormat("en-GB", { timeZone: timeZone(), hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(at));
 }
 
 export const shortTime = (iso: string) => {
   const d = new Date(iso);
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) return clock(d);
-  if (now.getTime() - d.getTime() < 6 * 864e5) return d.toLocaleDateString([], { weekday: "short" });
-  return d.toLocaleDateString([], { day: "numeric", month: "short" });
+  if (dayNumber(d) === dayNumber(now)) return clock(d);
+  if (now.getTime() - d.getTime() < 6 * 864e5) return dateText(d, { weekday: "short" });
+  return dateText(d, { day: "numeric", month: "short" });
 };
 
 /** A wake-up's time in local HH:MM, with the date before it when it isn't today (docs/ux.md §6). */
 export function wakeTime(iso: string): string {
   const d = new Date(iso);
   const hm = clock(d);
-  return d.toDateString() === new Date().toDateString() ? hm : `${d.toLocaleDateString([], { day: "numeric", month: "short" })} ${hm}`;
+  return dayNumber(d) === dayNumber(new Date()) ? hm : `${dateText(d, { day: "numeric", month: "short" })} ${hm}`;
 }
 
 /** A time in full, for a tooltip: the weekday, date and 24-hour time in the reader's locale. */
 export function fullTime(iso: string): string {
-  return new Date(iso).toLocaleString([], { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  return new Date(iso).toLocaleString([], { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: timeZone() });
 }
 
 /**

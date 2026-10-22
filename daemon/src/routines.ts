@@ -1,4 +1,4 @@
-import { describe, nextRun, WAKEUP_LIMITS, type Memory, type Pool } from "@lyrica/core";
+import { describe, nextRun, serverZone, WAKEUP_LIMITS, type Memory, type Pool } from "@lyrica/core";
 import type { ChildThreads } from "./children.ts";
 import type { ThreadHost } from "./hosted.ts";
 
@@ -6,6 +6,8 @@ export interface RoutineOptions {
   memory: Memory;
   host: () => ThreadHost;
   children: ChildThreads;
+  /** The user's time zone, which the schedules' wall times are in; the server's when left out. */
+  zone?: (userId: string) => string;
   /** Failure names only, never notes or model errors containing text. */
   log: (line: string) => void;
 }
@@ -55,6 +57,7 @@ export class Routines {
       const view = this.o.memory.openThreadView(userId, pool);
       let r;
       let due = 0;
+      const zone = this.o.zone?.(userId) ?? serverZone();
       try {
         r = view.own.routines().find(r => r.id === id);
         if (!r || r.paused || !view.own.getThread(r.thread)) return;
@@ -63,7 +66,7 @@ export class Routines {
         const busy = !!last && this.o.host().busy(userId, pool, last);
         // A busy previous run is skipped even if it occupies the last slot.
         if (busy) {
-          view.own.advanceRoutine(id, nextRun(r.schedule, now).toISOString());
+          view.own.advanceRoutine(id, nextRun(r.schedule, now, zone).toISOString());
           return;
         }
         slot = this.o.children.reserveRoutine(userId, pool, r.thread);
@@ -71,10 +74,10 @@ export class Routines {
         let at: Date;
         if (r.schedule.kind === "every") {
           due = Math.floor((now.getTime() - Date.parse(r.nextAt)) / (r.schedule.hours * 3_600_000)) + 1;
-          at = nextRun(r.schedule, now);
+          at = nextRun(r.schedule, now, zone);
         } else {
           at = new Date(r.nextAt);
-          while (at <= now) { due++; at = nextRun(r.schedule, at); }
+          while (at <= now) { due++; at = nextRun(r.schedule, at, zone); }
         }
         const fired = view.own.wakeupsFired(r.thread, new Date(now.getTime() - 86_400_000).toISOString());
         if (fired.length >= WAKEUP_LIMITS.perDay) {
