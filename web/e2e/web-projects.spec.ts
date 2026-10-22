@@ -648,12 +648,16 @@ test("tapping New project on a phone replaces the menu in place with its choices
   const list = page.locator(".threads");
   // Earlier tests may fill the list: scroll to its end so the strip under the last row is in view.
   await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
-  // Measured again on each try: the status panel below the list can still be growing, which shortens the list.
+  // Measured again on each try: the status panel below the list can still be growing, which shortens the list,
+  // so a click can land on a row and open its menu instead. Close that and try again until the list's own menu opens.
+  const listMenu = page.getByRole("menu", { name: "Thread list menu" });
   await expect(async () => {
+    if (await page.getByRole("menu").count()) await page.keyboard.press("Escape");
     const box = (await list.boundingBox())!;
     await list.click({ button: "right", position: { x: box.width / 2, y: box.height - 6 }, timeout: 2000 });
+    await expect(listMenu).toBeVisible({ timeout: 1000 });
   }).toPass();
-  await page.getByRole("menu", { name: "Thread list menu" }).getByRole("menuitem", { name: "New project" }).click();
+  await listMenu.getByRole("menuitem", { name: "New project" }).click();
   // Without hover the menu is replaced in place by a ‹ Back row, as today.
   await expect(page.locator(".ctx-menu .back")).toBeVisible();
   await expect(page.locator(".flyout")).toHaveCount(0);
