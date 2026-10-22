@@ -460,7 +460,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   …/endpoints/:id`), Addresses (`PUT …/addresses`) and Models folder (`POST
   …/models-folder` after a confirm dialog, enabled only when the host's
   updater can move it), one Save. The state Updating while
-  it updates, with Pause disabled, a warn line after a failed update, per GPU its card, used/total in mono,
+  it updates, with Pause disabled, a warn line after a failed update, per GPU its card and PCI ID (`10de:1df4`), used/total in mono,
   a bar of pinned, loaded-on-demand and vLLM-share segments, the loaded
   models and the queue when nonzero. A plain endpoint row: name, kind,
   ChatGPT plan or Grok plan versus API key, and cloud Text, Vision and Image

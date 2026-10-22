@@ -8,6 +8,8 @@ import { promisify } from "node:util";
 export interface Gpu {
   index: number;
   name: string;
+  /** Its PCI vendor and device ID, as `10de:1df4`: a card that names itself as another model still shows what it is. */
+  pciId?: string;
   vendor: "nvidia" | "amd";
   /** An integrated GPU (an APU): its memory is shared with the system. */
   integrated?: boolean;
@@ -24,16 +26,22 @@ export interface GpuMonitor {
 
 const MIB = 1024 * 1024;
 
+/** nvidia-smi's pci.device_id (0x1DF410DE: device, then vendor) as `10de:1df4`. */
+export function pciIdOf(id: string | undefined): { pciId?: string } {
+  const m = /^0x([0-9a-f]{4})([0-9a-f]{4})$/i.exec(id ?? "");
+  return m ? { pciId: `${m[2]}:${m[1]}`.toLowerCase() } : {};
+}
+
 export const nvidiaMonitor: GpuMonitor = {
   async read() {
-    const { stdout } = await promisify(execFile)("nvidia-smi", ["--query-gpu=index,name,memory.total,memory.used", "--format=csv,noheader,nounits"], { timeout: 10_000 });
+    const { stdout } = await promisify(execFile)("nvidia-smi", ["--query-gpu=index,name,memory.total,memory.used,pci.device_id", "--format=csv,noheader,nounits"], { timeout: 10_000 });
     return stdout
       .trim()
       .split("\n")
       .filter(Boolean)
       .map((line) => {
-        const [index, name, total, used] = line.split(",").map((s) => s.trim());
-        return { index: Number(index), name: name ?? "NVIDIA GPU", vendor: "nvidia" as const, total: Number(total) * MIB, used: Number(used) * MIB };
+        const [index, name, total, used, id] = line.split(",").map((s) => s.trim());
+        return { index: Number(index), name: name ?? "NVIDIA GPU", ...pciIdOf(id), vendor: "nvidia" as const, total: Number(total) * MIB, used: Number(used) * MIB };
       });
   },
 };
@@ -117,10 +125,14 @@ export function amdMonitor(sys = "/sys", opts: { order?: "kfd" | "pci" } = {}): 
             name = read(join(dev, "product_name")) || name;
           } catch {}
           const integrated = gfx !== null && AMD_APUS.has(gfx);
+          let pciId: string | undefined;
+          try {
+            pciId = `${read(join(dev, "vendor"))}:${read(join(dev, "device"))}`.replace(/0x/g, "").toLowerCase();
+          } catch {}
           const vram = { total: num(join(dev, "mem_info_vram_total")), used: num(join(dev, "mem_info_vram_used")) };
-          if (!integrated) return { index, name, vendor: "amd" as const, ...vram };
+          if (!integrated) return { index, name, ...(pciId ? { pciId } : {}), vendor: "amd" as const, ...vram };
           return {
-            index, name, vendor: "amd" as const, integrated: true,
+            index, name, ...(pciId ? { pciId } : {}), vendor: "amd" as const, integrated: true,
             total: vram.total + num(join(dev, "mem_info_gtt_total")),
             used: vram.used + num(join(dev, "mem_info_gtt_used")),
             carveOut: vram,

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { amdMonitor, gfxName } from "../src/gpus.ts";
+import { amdMonitor, gfxName, pciIdOf } from "../src/gpus.ts";
 
 function file(path: string, text: string) {
   mkdirSync(join(path, ".."), { recursive: true });
@@ -20,11 +20,13 @@ describe("AMD GPUs", () => {
     file(join(dgpu, "mem_info_vram_total"), String(24 * 1024 ** 3));
     file(join(dgpu, "mem_info_vram_used"), String(1024 ** 3));
     file(join(dgpu, "product_name"), "Radeon RX 7900 XTX");
+    file(join(dgpu, "vendor"), "0x1002\n");
+    file(join(dgpu, "device"), "0x744C\n");
     // An integrated GPU that DRM lists first, but ROCm doesn't number.
     file(join(sys, "class/drm/card0/device/mem_info_vram_total"), String(512 * 1024 ** 2));
     file(join(sys, "class/drm/card0/device/mem_info_vram_used"), "0");
     expect(await amdMonitor(sys).read()).toEqual([
-      { index: 0, name: "Radeon RX 7900 XTX", vendor: "amd", total: 24 * 1024 ** 3, used: 1024 ** 3 },
+      { index: 0, name: "Radeon RX 7900 XTX", pciId: "1002:744c", vendor: "amd", total: 24 * 1024 ** 3, used: 1024 ** 3 },
     ]);
   });
 
@@ -56,5 +58,14 @@ describe("AMD GPUs", () => {
 
   it("names gfx targets from KFD's version numbers", () => {
     expect([110003, 90012, 90006, 100306, 120001].map(gfxName)).toEqual(["gfx1103", "gfx90c", "gfx906", "gfx1036", "gfx1201"]);
+  });
+});
+
+describe("NVIDIA GPUs", () => {
+  it("read their PCI ID from nvidia-smi's device ID, so a card that names itself as another shows what it is", () => {
+    // A CMP 100-210 calls itself a Tesla V100-PCIE-12GB.
+    expect(pciIdOf("0x1DF410DE")).toEqual({ pciId: "10de:1df4" });
+    expect(pciIdOf("[N/A]")).toEqual({});
+    expect(pciIdOf(undefined)).toEqual({});
   });
 });

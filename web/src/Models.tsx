@@ -1230,7 +1230,7 @@ function GpuBlock({ g }: { g: Gpu }) {
   const queued = (["chat", "image", "background"] as const).filter((k) => g.queue[k] > 0);
   return (
     <div className="gpu" data-gpu={g.index}>
-      <div className="gpu-line"><span>GPU <span className="num">{g.index}</span> · {g.name}</span><span className="num muted">{gb(g.vram.used)} / {gbTotal(g.vram.total)} GB</span></div>
+      <div className="gpu-line"><span>GPU <span className="num">{g.index}</span> · {g.name}{g.pciId && <> · <span className="num">{g.pciId}</span></>}</span><span className="num muted">{gb(g.vram.used)} / {gbTotal(g.vram.total)} GB</span></div>
       <Bar gpus={[g]} />
       <span className="meta">
         {g.models.length ? g.models.map((m, i) => (
