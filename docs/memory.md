@@ -517,6 +517,54 @@ Files panel.
 Users can also ask Lyrica to correct a memory in conversation. There is no
 terminal client for memory.
 
+## Export and import
+
+A user can export notes and pages as Markdown and import such a file back,
+into their own memory or another user's (`core/src/store/transfer.ts`).
+
+- **Export** (Export in the selection bar, or a memory's ⋯) builds one `.md`
+  file in memory and sends it to the browser, which saves it. It is not
+  encrypted: the user chose to take it out. Nothing is written or logged on
+  the server. WAKE, the journal and messages stay out.
+- **The file.** Each memory is a header, then its text:
+
+  ```text
+  ---
+  lyrica: memory 1
+  kind: note
+  pool: general
+  id: n:20261009-k3f9
+  about: ["proxmox"]
+  created: 2026-10-09T14:02:00.000Z
+  cites:
+    e:web/3f7a2c#41: "a message in the conversation “Homelab”, 9 Oct 2026"
+  ---
+
+  {user} wants the cluster off the old NAS. [e:web/3f7a2c#41]
+  ```
+
+  The exporting user's mentions are written `{user}`, anyone else's as their
+  name. `cites` says in words what each link points at, from the pool the
+  link is in, so a private memory's words appear only in a private memory's
+  export. A file with no header imports as one note.
+- **Import** writes each memory through the owner view as one the user added
+  (origin `user`, keeping its creation time), into the pool picked (As
+  exported, General or Private; a file with no header goes to Private).
+  Credentials are removed and `{user}` becomes the importing user's token,
+  as on any write.
+- **IDs and duplicates.** A note keeps its ID and a page its short name when
+  free; a note ID a deletion's tombstone holds is not reused. A note whose
+  text is already in the pool, or a page whose short name already holds the
+  same text (as written, or with its links resolved as an earlier import of
+  the file stored them), is a duplicate and is skipped. A clash with different text
+  gets a new ID (a page `garden-2`).
+- **Links.** A link to a memory in the same import follows it to its new ID.
+  A link to anything that exists in the target (a memory, a thread or a
+  message) stays, written `general/…` from private. Anything else becomes
+  words, `(from the page “Proxmox homelab”)`. A link from a memory imported
+  into general to a private memory reads `(from a private note)`, with no
+  words from it, since general never cites private.
+
 ## In code
 
 - **`core/src/store/`**: `Memory` opens the pool databases with
