@@ -132,11 +132,14 @@ export interface ThreadsLimits {
   perRequest: number;
   /** Child threads working at once, per user. */
   concurrency: number;
+  /** The same two for a thread whose model runs in the cloud, which uses no local GPU. */
+  cloudPerRequest: number;
+  cloudConcurrency: number;
   /** Messages one turn of a project's thread may send to the project's other threads. */
   siblingMessages: number;
 }
 
-export const DEFAULT_THREADS_LIMITS: ThreadsLimits = { perRequest: 3, concurrency: 2, siblingMessages: 3 };
+export const DEFAULT_THREADS_LIMITS: ThreadsLimits = { perRequest: 3, concurrency: 2, cloudPerRequest: 6, cloudConcurrency: 6, siblingMessages: 3 };
 
 /** Her guidance in a thread that can start child threads, outside a project. */
 export const CHILD_THREAD_GUIDELINES = [

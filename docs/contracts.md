@@ -825,8 +825,9 @@ Custom roles override built-ins by name.
   parent's pool, models (`models.inheritContext`) and workspace
   (`inheritSettings`), which can only narrow. `ThreadsLimits`
   (`DEFAULT_THREADS_LIMITS`): 3 starts per request, 2 children working at
-  once per user, checked on start and when a parent's message wakes an idle
-  child; child-triggered parent turns share this budget with routines. A
+  once per user; 6 and 6 for a thread whose model runs in the cloud
+  (`cloudPerRequest`, `cloudConcurrency`, `ThreadsHost.perRequest(from)`),
+  checked on start and when a parent's message wakes an idle child; child-triggered parent turns share this budget with routines. A
   parent's message is the child's next turn, marked with
   `fromParent(id)` (`FROM_PARENT`), which only `lyricad` writes; a child's
   update reaches the parent through `Delegation.deliver` as a notice with

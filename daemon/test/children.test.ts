@@ -28,10 +28,11 @@ async function setup(opts: Parameters<typeof daemon>[1] = {}, rt?: Awaited<Retur
   await localModel(ada, rt.ada.id, model.baseUrl);
   const parent: (Reply | ((c: ChatRequest) => Reply | Promise<Reply>))[] = [];
   const child: (Reply | ((c: ChatRequest) => Reply | Promise<Reply>))[] = [];
-  model.respond(async (c) => {
+  const reply = async (c: ChatRequest) => {
     const next = (isChild(c) ? child : parent).shift() ?? { text: isChild(c) ? "child idle" : "parent idle" };
     return typeof next === "function" ? next(c) : next;
-  });
+  };
+  model.respond(reply);
   const thread = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "general", title: "Homelab" })).body;
   const u = `/api/u/${rt.ada.id}`;
   const path = `${u}/threads/general/${enc(thread.id)}`;
@@ -49,7 +50,7 @@ async function setup(opts: Parameters<typeof daemon>[1] = {}, rt?: Awaited<Retur
   const idleParent = async () => {
     await expect.poll(() => dm.d.services!.host.busy(rt!.ada.id, "general", thread.id)).toBe(false);
   };
-  return { rt, ...dm, ada, model, parent, child, thread, u, path, stream, say, list, childPath, messages, idleParent };
+  return { rt, ...dm, ada, model, reply, parent, child, thread, u, path, stream, say, list, childPath, messages, idleParent };
 }
 
 const start = (title: string, task: string, more: object = {}): Reply => ({ tools: [{ name: "threads", args: { action: "start", title, task, ...more } }] });
@@ -258,6 +259,23 @@ describe("child threads", () => {
     parent.push({ tools: [1, 2, 3, 4].map((i) => ({ name: "threads", args: { action: "start", title: `U${i}`, task: `job ${i}` }, id: `d${i}` })) }, { text: "More." });
     const results = (await say("start four")).filter((e): e is Extract<ThreadEvent, { type: "tool_end" }> => e.type === "tool_end");
     expect(results.filter((r) => r.isError).map((r) => r.result)).toEqual([expect.stringMatching(/at most 3/)]);
+  });
+
+  it("hold the limits: more on a cloud model, which uses no local GPU", async () => {
+    const { ada, u, path, parent, child, reply, say } = await setup({ threads: { concurrency: 2, perRequest: 3, cloudConcurrency: 6, cloudPerRequest: 6 } });
+    const cloud = await fakeOpenAI({ models: [{ id: "gpt-cloud" }] });
+    cloud.respond(reply);
+    const gpt = { offeringId: (await ada.post<EndpointInfo>(`${u}/endpoints`, { name: "openrouter", kind: "cloud", baseUrl: cloud.baseUrl })).body.models[0]!.id };
+    expect((await ada.patch(`${path}/settings`, { models: { chat: gpt } })).status).toBe(200);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow = async () => { await gate; return { text: "done" } as Reply; };
+    // Seven at once: six start and work side by side (children inherit the cloud model); the seventh is over the per-message limit.
+    parent.push({ tools: [1, 2, 3, 4, 5, 6, 7].map((i) => ({ name: "threads", args: { action: "start", title: `C${i}`, task: `job ${i}` }, id: `e${i}` })) }, { text: "Many." });
+    child.push(slow, slow, slow, slow, slow, slow);
+    const results = (await say("start seven")).filter((e): e is Extract<ThreadEvent, { type: "tool_end" }> => e.type === "tool_end");
+    expect(results.filter((r) => r.isError).map((r) => r.result)).toEqual([expect.stringMatching(/at most 6/)]);
+    release();
   });
 
   it("Lock stops a working child; a restart leaves one idle and tells the parent", async () => {

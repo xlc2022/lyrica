@@ -24,6 +24,8 @@ export type Delivery = "started" | "running" | "queued" | "saved" | "wakes" | "u
 
 export interface ThreadsHost {
   readonly limits: ThreadsLimits;
+  /** Child threads one message from this thread may start: more when its model runs in the cloud. */
+  perRequest?(from: ThreadContext): number;
   code?(from: ThreadContext, on: boolean): void;
   /** Whether code mode is on in this thread now. */
   codeOn?(from: ThreadContext): boolean;
@@ -420,7 +422,8 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         if (!p.title?.trim() || !p.task?.trim()) throw new Error("start needs a title and a task");
         checkWords(p.task);
         // Counted before starting, so calls made at once can't all slip under the limit.
-        if (started >= host.limits.perRequest) throw new Error(`one message can start at most ${host.limits.perRequest} child threads`);
+        const most = host.perRequest?.(thread) ?? host.limits.perRequest;
+        if (started >= most) throw new Error(`one message can start at most ${most} child threads`);
         started++;
         let made: { id: string; link: string; queued?: boolean };
         try {
