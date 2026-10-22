@@ -1,7 +1,7 @@
 // How full the thread's context is: a word in the header's facts line, and a popover with the parts (docs/ux.md §6).
 import { useCallback, useRef, useState } from "react";
 import type { ContextInfo, PaceInfo } from "./api.ts";
-import { shortTime, useDismiss } from "./ui.tsx";
+import { shortTime, useDismiss, useInView } from "./ui.tsx";
 
 type PartName = ContextInfo["parts"][number]["name"];
 
@@ -33,6 +33,7 @@ export function ContextFact({ context, footer }: { context: ContextInfo; footer?
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);
+  useInView(anchor, open);
   // From a call record there is no breakdown: used, then reserve and free.
   const parts = context.parts.length
     ? ORDER.flatMap((name) => context.parts.filter((p) => p.name === name).map((p) => ({ key: name, label: NAMES[name], tokens: p.tokens })))

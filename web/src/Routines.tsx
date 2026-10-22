@@ -3,7 +3,7 @@ import { del, get, patch, threadPath, u, type RoutineInfo } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { href } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { ErrorText, fullTime, timeZone, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
+import { ErrorText, fullTime, timeZone, useAction, useDismiss, useInView, useLoad, wakeTime } from "./ui.tsx";
 
 /** The next active routine; paused schedules never supply the facts line's time. */
 export function nextRoutine(routines: RoutineInfo[]): RoutineInfo | undefined {
@@ -41,6 +41,7 @@ export function RoutinesFact({ userId, routines, onChange }: { userId: string; r
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);
+  useInView(anchor, open);
   const next = nextRoutine(routines);
   return <span className="picker-anchor" ref={anchor}>
     <button type="button" className="link" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(!open)}>

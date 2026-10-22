@@ -2,7 +2,7 @@
 // line, "2 of 5" and the current step on a thread's card, and the one popover both open.
 import { useCallback, useRef, useState } from "react";
 import type { ThreadStep } from "./api.ts";
-import { useDismiss } from "./ui.tsx";
+import { useDismiss, useInView } from "./ui.tsx";
 
 /** How far a checklist is: the steps done, how many there are, and the current step (the doing one, else the first to do; none once all are done). */
 export function checklistOf(steps: readonly ThreadStep[]): { done: number; total: number; current?: ThreadStep } {
@@ -27,6 +27,7 @@ export function ChecklistButton({ steps, card }: { steps: readonly ThreadStep[];
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);
+  useInView(anchor, open);
   const { done, total } = checklistOf(steps);
   const count = <><span className="num">{done}</span> of <span className="num">{total}</span></>;
   return (

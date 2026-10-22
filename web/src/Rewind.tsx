@@ -6,7 +6,7 @@ import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { isChatModel } from "./ModelLabel.tsx";
 import { useMentionText } from "./mentions.ts";
-import { useDismiss } from "./ui.tsx";
+import { useDismiss, useInView } from "./ui.tsx";
 import { modelName } from "./ModelLabel.tsx";
 
 /** What a thread lets its messages do. Absent in a subagent's thread. */
@@ -185,6 +185,7 @@ export function PinnedBadge({ pins, you, userId, pool }: { pins: Pins; you: stri
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);
+  useInView(anchor, open);
   if (!pins.pins.length) return null;
   const show = (n: number) => { close(); jumpTo(n); };
   return (

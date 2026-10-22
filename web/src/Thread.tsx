@@ -17,7 +17,7 @@ import { ChangesFact } from "./Changes.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
 import { Crumbs, Main, PanelButtons, usePanel, useWide, type ShellContext } from "./Shell.tsx";
 import { ThreadMenu, type MenuAt } from "./ThreadMenu.tsx";
-import { ErrorText, InlineRename, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
+import { ErrorText, InlineRename, useAction, useDismiss, useInView, useLoad, wakeTime } from "./ui.tsx";
 import { stopReading } from "./Voice.tsx";
 import { Tombstone } from "./Tombstone.tsx";
 
@@ -379,6 +379,7 @@ function GroupPicker({ ctx, base, summary, onChange }: { ctx: ShellContext; base
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);
+  useInView(anchor, open);
   const [run, busy, error] = useAction();
   const current = ctx.groups.find((g) => g.id === summary.group);
   const pick = (group: string | null) => run(async () => { onChange(await patch<ThreadSummary>(base, { group })); close(); });
@@ -420,6 +421,7 @@ function WakeupsFact({ base, wakeups, onChange }: { base: string; wakeups: Wakeu
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);
+  useInView(anchor, open);
   const [run, busy, error] = useAction();
   const remove = (id: number) => run(async () => {
     const left = await del<WakeupInfo[]>(`${base}/wakeups/${id}`);

@@ -1,5 +1,5 @@
 // Small pieces shared by every page.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Markdown, { type Components } from "react-markdown";
 import { CodeBlock } from "./CodeBlock.tsx";
@@ -47,6 +47,29 @@ export function useDismiss(ref: React.RefObject<HTMLElement | null>, open: boole
     addEventListener("pointerdown", click);
     return () => { removeEventListener("keydown", key); removeEventListener("pointerdown", click); };
   }, [ref, open, close]);
+}
+
+/**
+ * Keeps a header popover (the anchor's `.picker`) inside the window, 16px from each edge: it opens under its button
+ * and slides left as far as it would run off the right. On a phone the picker is fixed across the screen instead.
+ */
+export function useInView(anchor: React.RefObject<HTMLElement | null>, open: boolean) {
+  useLayoutEffect(() => {
+    const el = open ? anchor.current?.querySelector<HTMLElement>(":scope > .picker") : null;
+    if (!el) return;
+    const fit = () => {
+      el.style.translate = "";
+      if (getComputedStyle(el).position !== "absolute") return;
+      const r = el.getBoundingClientRect(), right = document.documentElement.clientWidth - 16;
+      const dx = Math.max(16 - r.left, Math.min(0, right - r.right));
+      if (dx) el.style.translate = `${dx}px 0`;
+    };
+    fit();
+    const seen = new ResizeObserver(fit);
+    seen.observe(el);
+    addEventListener("resize", fit);
+    return () => { seen.disconnect(); removeEventListener("resize", fit); };
+  }, [anchor, open]);
 }
 
 /** Arrow keys move between a menu's items (WCAG 2.1.1); Home and End jump to the ends. Returns whether the key was taken. */

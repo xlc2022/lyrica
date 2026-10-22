@@ -789,6 +789,18 @@ test("after a reply the header's Context shows the percent, and its popover list
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/context-${page.viewportSize()!.width}.png` });
   await page.keyboard.press("Escape");
   await expect(popover).toHaveCount(0);
+
+  // Near the window's right edge, as in a side panel, the popover slides left to stay inside it.
+  if (!phone(page)) {
+    await meter.evaluate((el) => Object.assign(el.parentElement!.style, { position: "fixed", right: "20px", top: "120px" }));
+    await meter.click();
+    const box = (await popover.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(16);
+    expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width - 16 + 0.5);
+    await noHorizontalScroll(page);
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/context-edge-${page.viewportSize()!.width}.png` });
+    await page.keyboard.press("Escape");
+  }
 });
 
 test("a thread's checklist: Checklist and its count after Context, a popover of the steps with their marks that a new list redraws in place, the child's card in its parent, and Checklists off in Appearance hides it", async ({ page, baseURL }) => {
