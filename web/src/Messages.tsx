@@ -5,7 +5,7 @@ import { get, post, threadPath, u, type GoAhead, type ImagePart, type ImageRetry
 import { SkillCard } from "./Skills.tsx";
 import { isQuestionPart, QuestionCard, ROOT_TOOL } from "./Question.tsx";
 import { storedLiveCopies, storedUserItems, type LiveItem } from "./live.ts";
-import { useMentionText, useThreadMentions } from "./mentions.ts";
+import { useMentionText, useMentionTitles, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
 import { ScheduleText } from "./Routines.tsx";
 import { Icon } from "./icons.tsx";
@@ -642,9 +642,13 @@ const THREADS_HEADS: Record<string, string> = {
 function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {
   const args = (part.args ?? {}) as { action?: string; title?: string; task?: string; text?: string; to?: string };
   const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
+  // A message names the thread it went to (known once it's sent) by its current title: "a thread" until then, and a forgotten one has no Open.
+  const to = args.action === "message" && args.to !== "parent" ? part.threads?.[0] : undefined;
+  const titleOf = useMentionTitles(to ? `[${to.pool === env.pool ? "" : `${to.pool}/`}t:${to.id}]` : "", env.userId, env.pool);
+  const toTitle = to && (env.pool === "general" && to.pool === "private" ? null : titleOf(to.pool, to.id));
   // No action yet while she writes the call: the tool's own name, until it runs. The head names what the call does, never more.
   const head = args.action === "start" ? `Child thread: ${args.title ?? ""}`
-    : args.action === "message" ? (args.to === "parent" ? "Update to the parent thread" : "Message to a thread")
+    : args.action === "message" ? (args.to === "parent" ? "Update to the parent thread" : `Message to ${toTitle === null ? "a forgotten thread" : toTitle ?? "a thread"}`)
     : args.action === "ask" && part.isError ? "Question not asked"
     : (args.action && THREADS_HEADS[args.action]) ?? "Threads";
   const started = args.action === "start" ? part.threads?.[0] : undefined;
@@ -654,9 +658,9 @@ function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" 
       <div className="sub-head">
         <span className="status" data-state={state} aria-label={state} />
         {/* A thread's title is as the user wrote it, so this head isn't capitalised as a role's is. */}
-        <b className="as-is">{head}</b>
+        <b className={to ? "as-is to-thread" : "as-is"} title={toTitle ? head : undefined}>{head}</b>
         {!!child?.steps?.length && <ChecklistButton steps={child.steps} card />}
-        {args.to === "parent" ? null : <ThreadLinks threads={part.threads} env={env} />}
+        {args.to === "parent" || toTitle === null ? null : <ThreadLinks threads={part.threads} env={env} />}
       </div>
       {child?.steps && child.state !== "resolved" && <StepLine steps={child.steps} />}
       {(args.task ?? args.text) && <div className="prose"><HerProse text={(args.task ?? args.text)!} env={env} /></div>}

@@ -394,6 +394,8 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .sub-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
 .sub-head b { text-transform: capitalize; }
 .sub-head b.as-is { text-transform: none; }
+/* A message's head names its thread on one line, cut with an ellipsis; Open stays beside it. Width 0, so a long title never widens the card. */
+.sub-head b.to-thread { flex: 1 1 0; width: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub-head .open { margin-left: auto; }
 .subagent p { margin: 0; font-size: 14px; }
 .status { width: 8px; height: 8px; border-radius: 50%; background: var(--local); }
