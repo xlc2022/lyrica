@@ -242,6 +242,13 @@ describe("workspace tools in a Pi session", () => {
     await run("ask", [fauxToolCall("write", { path: "notes.txt", content: "mine" }, { id: "1" })],
       { sameFile: () => "Not changed yet.", approve: async (r) => { shown.push(r.tool); return true; } });
     expect(shown).toEqual([]);
+    // A command is held for the files it plainly writes, before it runs.
+    const seen: string[] = [];
+    const held = await run("auto", [fauxToolCall("bash", { command: "echo done >> /shared/notes.md" }, { id: "1" })],
+      { sameFile: (path) => { seen.push(path); return "Not changed yet: [t:other] changed it."; } });
+    expect(seen).toEqual(["/shared/notes.md"]);
+    expect(held.commands).toEqual([]);
+    expect(held.results[0]).toContain("Not changed yet: [t:other]");
   });
 
   it("ask before commands only", async () => {

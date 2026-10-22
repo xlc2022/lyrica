@@ -439,13 +439,16 @@ takes is `lyrica@pve!agent=<that secret>`.
   thread and the file, in place of idle; `SameFile.held`). If the other
   thread isn't working, there is no one to agree with: the write goes
   through, and that thread is told for its next turn, once. Paths only, in memory: a restart forgets them. A command
-  (`bash`) can't be held before it runs, since what it will change isn't
-  known: the sweep after it (`madeSince`) finds the files it changed in
+  (`bash`) is held the same way for the files it plainly writes
+  (`writtenFiles`: its `>` and `>>` redirections and `tee`, by names known
+  before it runs). What else it changes isn't known until it has run:
+  the sweep after it (`madeSince`) finds the files it changed in
   her folder and /shared, and for one another thread changed within two
   hours, before the command started, both threads are told at once; the
   change counts as hers, so the other thread's next `write` or `edit` of
   it is held. A change made while the command ran is left as it is.
-  Commands that change a writable grant aren't checked.
+  Commands that change a writable grant, and background commands, get no
+  sweep afterwards.
 - The lists live in `self.db` (`workspace_paths`, keyed by user ID), and only
   an administrator can change them, so no user can widen their own.
   `lyrica admin grants add|remove --user <u> --pool <pool> <path>` signs in as
