@@ -288,3 +288,56 @@ export async function fakeComfy(o: { hang?: boolean } = {}) {
   const close = () => new Promise<void>((r) => { for (const s of sockets.values()) s.destroy(); server.closeAllConnections(); server.close(() => r()); });
   return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, seen, close };
 }
+
+/**
+ * stable-diffusion.cpp's sd-server, as host/src/sdcpp.ts uses it, with the
+ * part gate.sh plays: it reports whatever attempt host-api asks for in
+ * serving/sdcpp.json as started. `hang` keeps jobs generating.
+ */
+export async function fakeSdServer(serving: string, status: string, o: { hang?: boolean } = {}) {
+  const { readFileSync, writeFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const seen = { jobs: [] as any[], cancelled: [] as string[], started: [] as string[][] };
+  let last = "";
+  const gate = setInterval(() => {
+    let state: { run?: boolean; attempt?: string; args?: string[] } = {};
+    try {
+      state = JSON.parse(readFileSync(join(serving, "sdcpp.json"), "utf8"));
+    } catch {}
+    const key = state.run ? String(state.attempt) : "";
+    if (key === last) return;
+    last = key;
+    if (state.run) seen.started.push(state.args ?? []);
+    writeFileSync(status, JSON.stringify(state.run ? { attempt: state.attempt } : {}));
+  }, 20);
+  const server = http.createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const c of req) chunks.push(c as Buffer);
+    const body = Buffer.concat(chunks).toString();
+    const url = new URL(req.url!, "http://x");
+    const json = (code: number, v: unknown) => res.writeHead(code, { "content-type": "application/json" }).end(JSON.stringify(v));
+    if (url.pathname === "/sdcpp/v1/models/status") return json(200, { state: "ready" });
+    if (url.pathname === "/sdcpp/v1/img_gen") {
+      seen.jobs.push(JSON.parse(body));
+      return json(202, { id: `job_${seen.jobs.length}`, status: "queued" });
+    }
+    const cancel = url.pathname.match(/^\/sdcpp\/v1\/jobs\/([\w-]+)\/cancel$/);
+    if (cancel) {
+      seen.cancelled.push(cancel[1]!);
+      return json(200, {});
+    }
+    const job = url.pathname.match(/^\/sdcpp\/v1\/jobs\/job_(\d+)$/);
+    if (job) {
+      const n = seen.jobs[Number(job[1]) - 1]?.batch_count ?? 1;
+      if (o.hang) return json(200, { status: "generating", result: null, error: null });
+      return json(200, { status: "completed", result: { images: Array.from({ length: n }, (_, i) => ({ index: i, b64_json: PNG.toString("base64") })) }, error: null });
+    }
+    json(404, { error: "not found" });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  return {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    seen,
+    close: () => { clearInterval(gate); return new Promise<void>((r) => server.close(() => r())); },
+  };
+}

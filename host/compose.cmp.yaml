@@ -1,0 +1,10 @@
+# A CMP 100-210 (PCI ID 10de:1df4), added by install.sh when it finds one.
+# Its FP16 tensor cores are throttled, so llama.cpp is built to use int8
+# (llamacpp/Dockerfile) for the compute capabilities of this host's GPUs.
+services:
+  llamacpp:
+    build:
+      context: llamacpp
+      args:
+        CUDA_ARCHS: ${CUDA_ARCHS:?run install.sh}
+    image: lyrica-host-llamacpp:cmp

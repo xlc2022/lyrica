@@ -12,6 +12,7 @@ import type { Logger } from "./log.ts";
 import { scanParts, type Part, type Role } from "./parts.ts";
 import { COLOR_MATCH, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
 import type { Runtime } from "./runtime.ts";
+import { sdcppArgs, type SdCpp } from "./sdcpp.ts";
 import { fill, type Action, type Values } from "./templates.ts";
 
 const IMAGE_LIMIT = 20 * 1024 * 1024;
@@ -62,6 +63,8 @@ export class Images {
   parts: Part[] = [];
   private readonly runtime: Runtime;
   private readonly comfy: Comfy;
+  /** stable-diffusion.cpp, which makes the images in ComfyUI's place when it is set. */
+  private readonly sdcpp: SdCpp | null;
   private readonly downloads: Downloads | null;
   private readonly modelsDir: string;
   private readonly seedvr2Dir: string;
@@ -71,10 +74,11 @@ export class Images {
   /** Each SeedVR2 part's link name in its folder. */
   private seedvr2Names = new Map<string, string>();
 
-  constructor(o: { book: RecipeBook; runtime: Runtime; comfy: Comfy; downloads: Downloads | null; modelsDir: string; serving: string; comfyGpu: number; log: Logger }) {
+  constructor(o: { book: RecipeBook; runtime: Runtime; comfy: Comfy; sdcpp?: SdCpp | null; downloads: Downloads | null; modelsDir: string; serving: string; comfyGpu: number; log: Logger }) {
     this.book = o.book;
     this.runtime = o.runtime;
     this.comfy = o.comfy;
+    this.sdcpp = o.sdcpp ?? null;
     this.downloads = o.downloads;
     this.modelsDir = o.modelsDir;
     this.seedvr2Dir = join(o.serving, "seedvr2");
@@ -127,6 +131,18 @@ export class Images {
     }
   }
 
+  /** A recipe as the API lists it. With stable-diffusion.cpp, it does only what sd.cpp can run here, and says why when that's nothing. */
+  private describe(r: Recipe, files: Set<string>) {
+    const d = this.book.describe(r, files);
+    if (!this.sdcpp) return d;
+    try {
+      sdcppArgs(r, this.modelsDir);
+    } catch (e) {
+      return { ...d, does: [], unsupported: (e as Error).message };
+    }
+    return { ...d, does: r.does.filter((a) => a === "create") };
+  }
+
   private usedBy(file: string): string[] {
     return this.book.all().filter((r) => r.parts.some((p) => p.file === file) || r.loras.some((l) => l.file === file)).map((r) => r.id);
   }
@@ -142,7 +158,7 @@ export class Images {
     }
     if (path === "/host/v1/recipes" && method === "GET") {
       const state = url.searchParams.get("state");
-      sendJson(res, 200, { recipes: this.book.all().filter((r) => !state || r.state === state).map((r) => this.book.describe(r, files)) });
+      sendJson(res, 200, { recipes: this.book.all().filter((r) => !state || r.state === state).map((r) => this.describe(r, files)) });
       return true;
     }
     if (path === "/host/v1/starters" && method === "GET") {
@@ -158,7 +174,7 @@ export class Images {
       // Installing a starter again returns its recipe, and downloads only what's still missing.
       const { recipe, toDownload } = this.book.fromStarter(starter, (p) => this.have(p), (p) => this.downloading(p));
       const downloads = await this.download(toDownload, req);
-      sendJson(res, 200, { recipe: this.book.describe(recipe, files), downloads });
+      sendJson(res, 200, { recipe: this.describe(recipe, files), downloads });
       return true;
     }
     const bulk = path.match(/^\/host\/v1\/recipes\/(confirm|ignore)$/);
@@ -167,28 +183,28 @@ export class Images {
       onlyFields(body, ["ids"]);
       if (!Array.isArray(body.ids) || !body.ids.every((i) => typeof i === "string")) throw invalid("ids must be a list.");
       const { done, failed } = this.book.setState(body.ids as string[], bulk[1] === "confirm" ? "confirmed" : "ignored");
-      sendJson(res, 200, { recipes: done.map((r) => this.book.describe(r, files)), failed });
+      sendJson(res, 200, { recipes: done.map((r) => this.describe(r, files)), failed });
       return true;
     }
     const one = path.match(/^\/host\/v1\/recipes\/([0-9a-f-]{36})(?:\/(confirm|ignore|copy|download-parts))?$/);
     if (one) {
       const [, id, action] = one;
-      if (!action && method === "GET") return sendJson(res, 200, this.book.describe(this.book.get(id!), files)), true;
+      if (!action && method === "GET") return sendJson(res, 200, this.describe(this.book.get(id!), files)), true;
       if (!action && method === "PATCH") {
         const body = await readJson(req);
-        return sendJson(res, 200, this.book.describe(this.book.patch(id!, body, this.parts), files)), true;
+        return sendJson(res, 200, this.describe(this.book.patch(id!, body, this.parts), files)), true;
       }
       if (!action && method === "DELETE") return sendJson(res, 200, await this.remove(id!)), true;
       if (action === "confirm" || action === "ignore") {
         if (method !== "POST") return false;
         const { done, failed } = this.book.setState([id!], action === "confirm" ? "confirmed" : "ignored");
         if (failed[0]) throw failed[0].message === "No such recipe." ? notFound(failed[0].message) : invalid(failed[0].message);
-        return sendJson(res, 200, this.book.describe(done[0]!, files)), true;
+        return sendJson(res, 200, this.describe(done[0]!, files)), true;
       }
       if (action === "copy" && method === "POST") {
         const body = await readJson(req);
         onlyFields(body, ["name"]);
-        return sendJson(res, 200, this.book.describe(this.book.copy(id!, body.name), files)), true;
+        return sendJson(res, 200, this.describe(this.book.copy(id!, body.name), files)), true;
       }
       if (action === "download-parts" && method === "POST") {
         const r = this.book.get(id!);
@@ -200,7 +216,7 @@ export class Images {
           delete p.missing;
         }
         this.book.save();
-        return sendJson(res, 200, { recipe: this.book.describe(r, files), downloads }), true;
+        return sendJson(res, 200, { recipe: this.describe(r, files), downloads }), true;
       }
     }
     const make = path.match(/^\/host\/v1\/images\/(create|edit|upscale)$/);
@@ -275,6 +291,8 @@ export class Images {
     const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
     if (!recipe || !this.book.ready(recipe, this.files())) throw notFound("No confirmed, ready recipe with that ID.");
     if (!recipe.does.includes(action)) throw invalid(`That recipe doesn't ${action} images.`);
+    if (this.sdcpp && action !== "create") throw invalid(`This host makes images with stable-diffusion.cpp, which can't ${action} images here.`);
+    const sdArgs = this.sdcpp ? sdcppArgs(recipe, this.modelsDir) : null;
     const template = this.book.templates.get(recipe.template)!;
 
     const values: Values = { ...BASE_DEFAULTS, ...recipe.defaults };
@@ -325,23 +343,27 @@ export class Images {
       if (!res.writableFinished) abort.abort();
     });
     const scheduler = this.runtime.scheduler;
+    const sdcpp = this.sdcpp;
+    if (sdcpp && sdArgs) sdcpp.prepare(model.id, sdArgs);
     const pngs = await scheduler.run(model, "image", () =>
       scheduler.measuring(model, () =>
-        this.comfy.run(uploads, (names) => {
+        sdcpp ? sdcpp.create(model.id, recipe.template, values, abort.signal) : this.comfy.run(uploads, (names) => {
           const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
           return fill(template, parts, recipe.loras, { ...values, ...names });
         }, abort.signal)),
       this.comfyGpu,
       abort.signal,
     );
-    if (!pngs.length) throw new HostError(503, "model_unavailable", "ComfyUI returned no image.");
+    if (!pngs.length) throw new HostError(503, "model_unavailable", `${sdcpp ? "stable-diffusion.cpp" : "ComfyUI"} returned no image.`);
     const seconds = (Date.now() - started) / 1000;
     this.runtime.count(recipe.id, { requests: 1, images: pngs.length, seconds });
     this.log("image", { recipe: recipe.id, action, images: pngs.length });
     sendJson(res, 200, {
-      images: pngs.map((png) => {
+      images: pngs.map((png, i) => {
         const size = imageSize(png);
-        return { png: png.toString("base64"), width: size?.width ?? null, height: size?.height ?? null, seed: values.seed };
+        // sd.cpp makes each image of a batch from the next seed, so each is reproducible alone; ComfyUI's share one.
+        const seed = sdcpp ? Number(values.seed) + i : values.seed;
+        return { png: png.toString("base64"), width: size?.width ?? null, height: size?.height ?? null, seed };
       }),
       seconds,
     });
@@ -349,7 +371,7 @@ export class Images {
 
   /** What stops images being made on this host, for the status. */
   get problems(): string[] {
-    const p = this.comfy.problem;
+    const p = (this.sdcpp ?? this.comfy).problem;
     return p ? [`Images: ${p}`] : [];
   }
 
