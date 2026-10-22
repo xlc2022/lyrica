@@ -26,6 +26,10 @@ export function normalizeThreadArguments(input: unknown): any {
     const aliases: Record<string, string> = { in_progress: "doing", "in progress": "doing", active: "doing", started: "doing", pending: "todo", "not started": "todo", complete: "done", completed: "done", finished: "done" };
     return { ...s, state: typeof s.state === "string" ? aliases[s.state.toLowerCase()] ?? s.state : s.state };
   });
+  if (typeof a.recommended === "string" && Array.isArray(a.options)) {
+    const matches = a.options.flatMap((o: any, i: number) => typeof o?.label === "string" && o.label.toLowerCase() === a.recommended.toLowerCase() ? [i] : []);
+    if (matches.length === 1) a.recommended = matches[0];
+  }
   // A label over the limit is cut at a word and its whole wording leads the consequence, rather than refused.
   if (Array.isArray(a.options)) a.options = a.options.map((o: any) => {
     if (typeof o?.label !== "string" || typeof o.consequence !== "string" || o.label.trim().length <= ASK_LIMITS.label) return o;
@@ -34,10 +38,6 @@ export function normalizeThreadArguments(input: unknown): any {
     const consequence = `${whole}. ${o.consequence.trim()}`;
     return cut && cut.length <= ASK_LIMITS.label && consequence.length <= ASK_LIMITS.consequence ? { ...o, label: cut, consequence } : o;
   });
-  if (typeof a.recommended === "string" && Array.isArray(a.options)) {
-    const matches = a.options.flatMap((o: any, i: number) => typeof o?.label === "string" && o.label.toLowerCase() === a.recommended.toLowerCase() ? [i] : []);
-    if (matches.length === 1) a.recommended = matches[0];
-  }
   return a;
 }
 const received = (v: unknown) => v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
