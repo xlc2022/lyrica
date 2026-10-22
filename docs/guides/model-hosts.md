@@ -80,6 +80,9 @@ back each other up.
   give with `--lan`, is used as given, so don't give it a public one.
   Optionally Tailscale: the stack can join your tailnet as a device of its
   own, with no Tailscale installed on the machine.
+- **Memory beside the GPU:** each loaded llama.cpp model keeps recent
+  prompts in the machine's own memory (`cache-ram`), an eighth of it up
+  to 64 GiB, where that is more than llama.cpp's own 8 GiB.
 
 ### AMD GPUs
 
@@ -90,17 +93,19 @@ and voices on the CPU. `--amd-backend` chooses yourself; `--hsa-override
 11.0.0` runs a 780M on ROCm as a gfx1100, which AMD doesn't support and
 which works on some machines and not others. An integrated GPU beside a
 discrete one is left out until you untick **Left out** in its **Edit** on
-the dashboard. The supported GPUs and the memory an integrated GPU can use are in
-[host/README.md](../../host/README.md#amd-gpus). None of the AMD paths has
-been tried on hardware.
+the dashboard. The supported GPUs and the memory an integrated GPU can use
+are in [host/README.md](../../host/README.md#amd-gpus). None of the AMD
+paths has been tried on hardware.
 
 ## Install
 
-Lyrica can do this for you on a machine she reaches over SSH: give a
-thread the machine and ask her to install a model host there. She checks
-the machine, asks before changing anything system-wide, hands you the two
-steps that need root on cards, pulls the images in the background and ends
-with a pairing code. The steps below are the same ones, by hand.
+Lyrica can do this for you on a Debian or Ubuntu machine she reaches
+over SSH: give a thread the machine and ask her to install a model host
+there. She checks the machine, asks before changing anything system-wide,
+hands you the two steps that need root on cards, pulls the images in the
+background and ends with a pairing code. On a GPU someone else already
+uses, she leaves the host paused. On NixOS she stops and says the module
+comes first. The steps below are the same ones, by hand.
 
 ```sh
 git clone https://github.com/xlc2022/lyrica && cd lyrica
@@ -214,10 +219,11 @@ the host card.
 
 Three ways a model gets into the library:
 
-- **Copy files into the models folder** and Scan on the dashboard (the
-  host also scans at start and after each download). GGUF files are served
-  by llama.cpp; a folder with a `config.json` and safetensors by vLLM (a
-  model whose config asks for remote code is listed but never loaded).
+- **Copy files into the models folder** and **Scan the folder** on the
+  dashboard (the host also scans at start and after each download). GGUF
+  files are served by llama.cpp; a folder with a `config.json` and
+  safetensors by vLLM (a model whose config asks for remote code is listed
+  but never loaded).
   vLLM gets tool calling only for families the host knows (Qwen2.5,
   Qwen3.x, Llama 3.x, Mistral and Mixtral, DeepSeek; see `host/API.md`);
   any other family shows tools off and chats without them.
@@ -243,12 +249,16 @@ Three ways a model gets into the library:
 
 ### The voice and dictation starters
 
-The owner chose these after the benchmark; the host's README names them and the
-exact revisions. The dashboard's Models section offers both under
+The owner chose these after the benchmark; the host's README names them
+and the exact revisions. The dashboard's Models section offers both under
 **Starters**, at these revisions, beside the chat and embedding starters;
-**Download** there is the quickest way. The same by hand, from the
-machine, where the dashboard port needs no password: list a repository's
-files first, then ask for the ones you want by name:
+**Download** there is the quickest way. A starter shows only where the
+host runs its server on a GPU: the voice on NVIDIA hosts, dictation on
+hosts that run vLLM (not Vulkan). The voice starter takes three voices,
+`zm_010`, `zf_001` and `af_maple`. For other voices, or where a starter
+doesn't show, do the same by hand, from the machine, where the dashboard
+port needs no password: list a repository's files first, then ask for
+the ones you want by name:
 
 ```sh
 curl -sS 'http://127.0.0.1:7236/host/v1/hub/files?source=huggingface&repo=onnx-community/Kokoro-82M-v1.1-zh-ONNX&revision=6cc0f0d2ebe369a68b0df87c2b65c1af8c0ac3e3'
@@ -320,12 +330,13 @@ GPUs, up to its trained length (32k when the host can't tell), so it may
 fill a GPU and be unloaded whenever another model needs the room; set a
 smaller context to keep both loaded. The editor's hint shows what the
 model's card recommends; **Look up** in the model's Settings reads the
-card (it asks for the repository when the host doesn't know it). A factor above the card's asks
-"<publisher> documents N. Save anyway?". Each model row shows "stretched
-×N" and the size of its KV cache, which grows with the context length, so a
-stretched model may need a lower context or more memory. The host reports a
-stretch on any vLLM model as untested (vllm#58870) until its image carries
-the fix; llama.cpp is the safer choice for it. Details are in
+card (it asks for the repository when the host doesn't know it). A factor
+above the card's asks "<publisher> documents N. Save anyway?". Each model
+row shows "stretched ×N" and the size of its KV cache, which grows with
+the context length, so a stretched model may need a lower context or more
+memory. The host reports a stretch on any vLLM model as untested
+(vllm#58870) until its image carries the fix; llama.cpp is the safer
+choice for it. Details are in
 [host/API.md](../../host/API.md#recommended-settings).
 
 On a host with one large GPU, voice and a big chat model compete for
@@ -376,14 +387,15 @@ Confirmed, ready recipes can go in the `image.create`, `image.edit` and
 `image.upscale` lists, like any other model (see "Use it from Lyrica").
 Set each host recipe's **Use for** in **Models → Image models** to **Fast**,
 **Quality** or **Both** (default). Create skips recipes tagged only for the
-other tier, including on fallback; edits and upscaling use their lists as before.
-Her `image` tool keeps a recipe's defaults unless she gives a size or
-count, and never picks parts or LoRAs itself. Each list is an ordered
+other tier, including on fallback; edits and upscaling use their lists as
+before. Her `image` tool keeps a recipe's defaults unless she gives a size
+or count, and never picks parts or LoRAs itself. Each list is an ordered
 fallback, and private threads only use local models. SeedVR2 recipes
 upscale. Before any cloud fallback, a portrait photo's cloud setting is
-checked. OpenAI setup and offline diagrams are in the
-[getting-started guide](getting-started.md#image-models). No real GPU image
-job has run yet: item 9 of the checklist below.
+checked. OpenAI setup and offline diagrams are in the [getting-started
+guide](getting-started.md#image-models). No real GPU image job has run
+yet: item 9 of the checklist below. ComfyUI runs only while an image
+recipe is loaded, and stops once none is.
 
 ## More than one host
 
@@ -407,8 +419,9 @@ second pairing. Then:
 
 - **Pause** on the dashboard (or from Lyrica, `…/hosts/<endpoint
   id>/pause`) refuses new work, finishes the current job, unloads every
-  model and stops vLLM and ComfyUI, so nothing of the host's stays in VRAM
-  while you use the GPU for something else. Resume loads the pinned models again.
+  model, stops vLLM and ComfyUI, and restarts the speech server if it
+  used a GPU, so nothing of the host's stays in VRAM while you use the GPU
+  for something else. Resume loads the pinned models again.
   Pause survives a restart. Lyrica falls back to the next model meanwhile.
 - **Logs:** `docker compose logs host-api` in `host/`. They hold event
   names, ids and counts; never a pairing code or a prompt. The model
@@ -443,10 +456,10 @@ second pairing. Then:
   `lyrica/` subfolder must be a folder, not a link or a file. An updater
   installed before this was added can't move the folder, and an update
   never replaces the updater, so run `host/install.sh` once more; until
-  then the card's tooltip says "Run install.sh on the host again". On NixOS, which has no updater, set
-  `modelsDir` and run `host/install.sh --models <folder>`; any host can
-  still change it that way. Details are in
-  [host/README.md](../../host/README.md#the-models-folder).
+  then the card's tooltip says "Run install.sh on the host again". On
+  NixOS, which has no updater, set `modelsDir` and run `host/install.sh
+  --models <folder>`; any host can still change it that way. Details are
+  in [host/README.md](../../host/README.md#the-models-folder).
 - **Hosts installed before the updater** need `git pull &&
   host/install.sh` once more: it installs the updater, prints the deploy
   key to add, and brings the host-api image that opens from Lyrica's
