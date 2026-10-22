@@ -1285,6 +1285,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
   - A `bash` call with no `timeout` gets `BASH_TIMEOUT_S` (600 seconds),
     and the tool's schema says so; she gives a longer one for a long build.
+  - With `startJob`, `bash` takes `background: true` and there is a `jobs`
+    tool (`list`, `output`, `stop`); a subagent has neither. A background
+    call is approved like any `bash`, then `startJob(command, machine?,
+    timeoutS?)` returns a `JobInfo` at once (docs/workspace.md, Background
+    commands).
   - `ExecutionTarget.run?(argv, { signal?, timeoutMs? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
   - `ExecutionTarget.secrets?()` is the sandbox's tokens and placeholders
@@ -1295,7 +1300,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `ThreadTools` is `{ commandRules?(), target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
     mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
-    proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path), madeFiles?(paths), madeSince?(since), fileNotes?() }`.
+    proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path), madeFiles?(paths), madeSince?(since), fileNotes?(),
+    startJob?(command, machine?, timeoutS?), jobs?(), jobOutput?(id), stopJob?(id) }`.
     `sameFile(path)` runs in `tool_call` for a sandbox `write` or `edit`,
     before any approval is asked; a text it returns blocks the call as its
     reason and nothing is written (daemon
