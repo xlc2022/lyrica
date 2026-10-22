@@ -359,9 +359,11 @@ export class Images {
     this.runtime.count(recipe.id, { requests: 1, images: pngs.length, seconds });
     this.log("image", { recipe: recipe.id, action, images: pngs.length });
     sendJson(res, 200, {
-      images: pngs.map((png) => {
+      images: pngs.map((png, i) => {
         const size = imageSize(png);
-        return { png: png.toString("base64"), width: size?.width ?? null, height: size?.height ?? null, seed: values.seed };
+        // sd.cpp makes each image of a batch from the next seed, so each is reproducible alone; ComfyUI's share one.
+        const seed = sdcpp ? Number(values.seed) + i : values.seed;
+        return { png: png.toString("base64"), width: size?.width ?? null, height: size?.height ?? null, seed };
       }),
       seconds,
     });
