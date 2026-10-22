@@ -121,7 +121,7 @@ Rules:
   Model hosts, Plain endpoints, Add endpoint, ChatGPT plan, Grok plan, OpenRouter, Sign in with ChatGPT, Sign in with Grok, Sign in with OpenRouter, Redirect URL, Code, Finish, Signed out, Sign in again, Add model host, Pairing code,
   Pair, Pair again…, Unpaired, Dashboard, Pause, Resume, update available, Read its models, Add a model
   by hand, Reset IDs…, Merge into…, Replace with, All details, All calls,
-  Answered by,
+  Answered by, Sidebar width, Panel width,
   Settings, Administration, Files, Images, Thread folder, Attach to message,
   Download, Download as zip, Copy path, Show in thread, Upload…, New folder…, New folder, Uploaded,
   Files and images, Project folder, Open, Move to…,
