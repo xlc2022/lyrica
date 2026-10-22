@@ -7,7 +7,7 @@ import { posix } from "node:path";
 import { Readable } from "node:stream";
 import { crc32 } from "node:zlib";
 import { sniffImage } from "./ops.ts";
-import { Sandbox, SandboxDenied, WORKDIR } from "./sandbox.ts";
+import { SHARED, Sandbox, SandboxDenied, WORKDIR } from "./sandbox.ts";
 import type { Grant } from "./settings.ts";
 
 /** One row of a listing: `path` is the file's path as she sees it. */
@@ -21,7 +21,7 @@ export interface FileEntry {
 }
 
 /** A top of the panel's tree: the thread's folder, then each granted folder. */
-export interface FileRoot { path: string; writable: boolean; kind: "thread" | "grant" }
+export interface FileRoot { path: string; writable: boolean; kind: "thread" | "shared" | "grant" }
 
 export interface FileListing { entries: FileEntry[]; /** The listing stopped at the cap. */ more: boolean }
 
@@ -52,13 +52,13 @@ export class ThreadFiles {
   /**
    * `note` records what the panel added or removed, for her next turn; `origins` hears of each upload, rename and
    * delete, so the record of which thread wrote a file follows it. `workdir` is the thread's folder (a test's
-   * stand-in may put it elsewhere).
+   * stand-in may put it elsewhere). `shared`: the box mounts the family's /shared, a root of its own.
    */
   constructor(private readonly box: Sandbox, private readonly grants: Grant[], private readonly note: (kind: "added" | "removed", names: string[]) => void = () => {},
-    private readonly workdir = WORKDIR, private readonly origins: OriginEvents = {}) {}
+    private readonly workdir = WORKDIR, private readonly origins: OriginEvents = {}, private readonly shared = false) {}
 
   roots(): FileRoot[] {
-    return [{ path: WORKDIR, writable: true, kind: "thread" }, ...this.grants.map((g) => ({ path: g.path, writable: g.writable, kind: "grant" as const }))];
+    return [{ path: WORKDIR, writable: true, kind: "thread" }, ...this.shared ? [{ path: SHARED, writable: true, kind: "shared" as const }] : [], ...this.grants.map((g) => ({ path: g.path, writable: g.writable, kind: "grant" as const }))];
   }
 
   private allow(path: string, write: boolean): string {

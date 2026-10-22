@@ -1445,7 +1445,7 @@ export interface UploadResponse { path: string }
  */
 export interface FileEntry { name: string; path: string; kind: "file" | "folder" | "link" | "other"; size: number; modified: string; madeBy?: string }
 /** A top of the panel's tree: the thread's folder (`/workspace`), then each granted folder. */
-export interface FileRoot { path: string; writable: boolean; kind: "thread" | "grant" }
+export interface FileRoot { path: string; writable: boolean; kind: "thread" | "shared" | "grant" }
 /**
  * GET /api/u/:userId/threads/:pool/:threadId/files?dir=<path> → FileListing.
  * One folder at a time (the thread's folder without `dir`), folders first;

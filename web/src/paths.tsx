@@ -11,7 +11,7 @@ import { ErrorText } from "./ui.tsx";
 
 export const WORKDIR = "/workspace";
 /** A path as the panel shows it: the thread folder by name, its files without the prefix, a grant's as they are. */
-export const shown = (p: string) => (p === WORKDIR ? "Thread folder" : p.startsWith(`${WORKDIR}/`) ? p.slice(WORKDIR.length + 1) : p);
+export const shown = (p: string) => (p === WORKDIR ? "Thread folder" : p === "/shared" ? "Shared folder" : p.startsWith(`${WORKDIR}/`) ? p.slice(WORKDIR.length + 1) : p);
 
 /**
  * A path under the thread's folder, as written in prose: it starts the word (not inside `/home/ada/workspace`,
