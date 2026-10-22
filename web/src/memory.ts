@@ -3,7 +3,7 @@
 // differences between two versions. Nothing here keeps text anywhere.
 import type { Display, MemoryKind, MemoryLink, Pool } from "./api.ts";
 import { href, idHref } from "./route.ts";
-import { hidden } from "./ui.tsx";
+import { dateText, hidden } from "./ui.tsx";
 
 /** A citation group as stored: `[n:…]`, `[general/p:slug, t:web/x]`. Doubled brackets are mention tokens, not citations. */
 const ONE = String.raw`(?:(?:general|private)\/)?(?:[etnpj]:[^\s,;[\]]+|wake)`;
@@ -33,8 +33,8 @@ export function parseRef(raw: string, pool: Pool): Ref | undefined {
 export const refsOf = (inside: string, pool: Pool): Ref[] => inside.split(/[,;]\s*/).map((x) => parseRef(x, pool)).filter((x): x is Ref => !!x);
 
 export const KIND_WORD: Record<MemoryKind, string> = { page: "page", note: "note", wake: "WAKE", journal: "journal", thread: "thread", entry: "message" };
-export const dateWord = (iso: string) => new Date(iso).toLocaleDateString([], { day: "numeric", month: "short" });
-export const longDate = (iso: string) => new Date(iso).toLocaleDateString([], { day: "numeric", month: "long" });
+export const dateWord = (iso: string) => dateText(iso, { day: "numeric", month: "short" });
+export const longDate = (iso: string) => dateText(iso, { day: "numeric", month: "long" });
 export const poolWord = (pool: Pool) => (pool === "private" ? "Private" : "General");
 
 /** Markdown's marks taken off, for a line of plain text: headings, quotes, list bullets, emphasis, code ticks, and links as their text. */

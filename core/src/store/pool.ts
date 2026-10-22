@@ -7,7 +7,7 @@ import type { Db } from "../db.ts";
 import { render, toStored, type UserId } from "../mentions.ts";
 import type { Profile } from "../profile.ts";
 import type { Interface, Pool } from "../types.ts";
-import { cleanAsk, type Ask, FROM_PARENT, ROUTINE, WAKEUP, WATCHING, type ThreadStep } from "../threads.ts";
+import { askOfCall, isQuestionCall, type Ask, FROM_PARENT, ROUTINE, WAKEUP, WATCHING, type ThreadStep } from "../threads.ts";
 import { citationsIn, ftsQuery, holdsEnough, indexText, kindOf, queryTerms, queryWords, searchWords, snippet, stripCitations, withoutWords, type Kind } from "./refs.ts";
 
 /** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
@@ -448,15 +448,14 @@ export class PoolReader {
     const entry = this.entryPage(thread, { before: n + 1, limit: 1 }).entries.find(e => e.n === n);
     const parts = (entry?.data as { message?: { content?: unknown } } | undefined)?.message?.content;
     if (!Array.isArray(parts)) return undefined;
-    const call = parts.find(p => p.type === "toolCall" && p.name === "threads" && p.arguments?.action === "ask");
-    if (!call) return undefined;
-    try { return cleanAsk(call.arguments); } catch { return undefined; }
+    const call = parts.find(p => p.type === "toolCall" && isQuestionCall(p.name, p.arguments));
+    return call ? askOfCall(call.name, call.arguments) : undefined;
   }
   questionCall(thread: string, id: string): number | undefined {
     const rows = this.db.prepare("SELECT n, data FROM entries WHERE thread = ? AND role = 'assistant' ORDER BY n DESC").all(thread) as { n: number; data: string }[];
     return rows.find(r => {
       const parts = (json(r.data) as { message?: { content?: unknown } }).message?.content;
-      return Array.isArray(parts) && parts.some(p => p.type === "toolCall" && p.id === id && p.name === "threads" && p.arguments?.action === "ask");
+      return Array.isArray(parts) && parts.some(p => p.type === "toolCall" && p.id === id && isQuestionCall(p.name, p.arguments));
     })?.n;
   }
 
@@ -1238,22 +1237,34 @@ export class PoolStore extends PoolReader {
     });
   }
 
-  /** A recurring turn in this thread or a fresh thread in the same place. */
-  addRoutine(threadId: string, schedule: Schedule, note: string, newThread = false, at = now()): number {
+  /** A recurring turn in this thread or a fresh thread in the same place. Its times are in `zone`, the user's. */
+  addRoutine(threadId: string, schedule: Schedule, note: string, newThread = false, at = now(), zone?: string): number {
     this.mustThread(threadId);
     const checked = parseSchedule(schedule);
     return Number(this.db.prepare("INSERT INTO routines (thread, schedule, note, new_thread, next_at, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(threadId, JSON.stringify(checked), note, newThread ? 1 : 0, nextRun(checked, new Date(at)).toISOString(), at).lastInsertRowid);
+      .run(threadId, JSON.stringify(checked), note, newThread ? 1 : 0, nextRun(checked, new Date(at), zone).toISOString(), at).lastInsertRowid);
   }
 
-  /** Resuming also moves the next time to the next run from `at`, so the paused span is not a pile of missed runs. */
-  pauseRoutine(threadId: string, id: number, paused: boolean, at = now()): boolean {
+  /** The user's time zone changed: every routine's next run moves to its wall time in `zone`. Every-N-hours ones keep theirs. */
+  rezoneRoutines(zone: string, at = now()): void {
+    this.tx(() => {
+      const rows = this.db.prepare("SELECT id, schedule FROM routines").all() as { id: number; schedule: string }[];
+      const set = this.db.prepare("UPDATE routines SET next_at = ? WHERE id = ?");
+      for (const r of rows) {
+        const schedule = parseSchedule(JSON.parse(r.schedule));
+        if (schedule.kind !== "every") set.run(nextRun(schedule, new Date(at), zone).toISOString(), r.id);
+      }
+    });
+  }
+
+  /** Resuming also moves the next time to the next run from `at` in `zone`, so the paused span is not a pile of missed runs. */
+  pauseRoutine(threadId: string, id: number, paused: boolean, at = now(), zone?: string): boolean {
     return this.tx(() => {
       const row = this.db.prepare("SELECT schedule FROM routines WHERE thread = ? AND id = ?").get(threadId, id) as { schedule: string } | undefined;
       if (!row) return false;
       if (paused) this.db.prepare("UPDATE routines SET paused = 1 WHERE thread = ? AND id = ?").run(threadId, id);
       else this.db.prepare("UPDATE routines SET paused = 0, next_at = ? WHERE thread = ? AND id = ?")
-        .run(nextRun(parseSchedule(JSON.parse(row.schedule)), new Date(at)).toISOString(), threadId, id);
+        .run(nextRun(parseSchedule(JSON.parse(row.schedule)), new Date(at), zone).toISOString(), threadId, id);
       return true;
     });
   }

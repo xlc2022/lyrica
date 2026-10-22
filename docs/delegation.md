@@ -582,7 +582,7 @@ A project chat's child threads are the project's threads
   `[From t:<sender>]` line, and `list` shows it the project's other threads.
   A thread outside the project is refused.
 - `ask({ question, options, recommended, context? })` asks the user on a
-  question card and marks the thread **waiting on the user**, waking the
+  question card (so does a root step, `run_as_root`, docs/workspace.md) and marks the thread **waiting on the user**, waking the
   project chat once. It replaces `message({ to: "parent", needsYou: true })`
   for asking the user; that older flag still works. A tap or typed answer
   clears `needs_you` immediately, rather than waiting for her next update.

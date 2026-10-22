@@ -702,8 +702,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   counts on the unlock limiter; too many say to wait, longer after each
   wrong code, up to 15 minutes.
 - **Settings** (`src/Panel.tsx`): a page with its sections listed at the
-  left (a scrolling row on a phone): Profile (name, pronouns, accent colour,
-  monogram), Appearance (theme; the **Checklists** switch, which saves
+  left (a scrolling row on a phone): Profile (name, pronouns, **Time zone**,
+  accent colour, monogram), Appearance (theme; the **Checklists** switch, which saves
   `Display.checklists` at once and reloads the thread list: off, the API
   sends no steps, so no card or header shows one; then Read aloud while
   agent writes under Speech), **Push** (`src/Push.tsx`: URL, optional masked Token,
@@ -1092,7 +1092,12 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   time in the reader's locale as its tooltip ("Monday, October 12, 2026 at
   14:32" in en-US; `ui.tsx`). Every time of day in the app is 24-hour
   HH:MM through `clock` (lists, sidebar, Sleep, Updates, the welcome page),
-  whatever the locale. It comes from the stored message's
+  whatever the locale. Every time and day the app shows is in the user's
+  own time zone (`Me.timeZone`), not the browser's: the shell sets it with
+  `setTimeZone` before rendering, and `clock`, `dateText`, `dayNumber` (the
+  sidebar's Today and Yesterday), `hourOf` (the greeting), `wakeTime` and
+  `fullTime` read it. A user without one is given the browser's zone once,
+  by `PATCH …/me/profile` (`useZone` in `Shell.tsx`). It comes from the stored message's
   `createdAt`, so a reply that is still streaming (or a message waiting to
   go) has none until its stored copy replaces it. Markers keep their own
   lines and show no time; there are no day dividers. The line never wraps:

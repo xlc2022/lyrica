@@ -17,7 +17,7 @@ import { CITATION_GROUP, dateWord, firstWords, KIND_WORD, linkCitations, longDat
 import { fromEditable, readable, toEditable } from "./mentions.ts";
 import { go, href, idHref, parse, type Route } from "./route.ts";
 import { Main, PageHead, usePanel, type ShellContext } from "./Shell.tsx";
-import { ConfirmDialog, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { ConfirmDialog, dateText, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 type Layer = "page" | "note" | "wake" | "journal" | "entry";
 /** The layers; Recent is what sleep hasn't consolidated yet, the messages recall finds before they become notes and pages. */
@@ -410,7 +410,7 @@ export function JournalHistoryPage({ ctx, pool, route }: { ctx: ShellContext; po
     <div className="scroll"><div className="sleep">
       <HistoryList<MemoryHit> key={`${userId}/${pool}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} route={route} path={`${u(userId, "memory", "journal", "history")}${pool ? `?pool=${pool}` : ""}`} render={(page) => <ul className="list">
         {page.entries.map((entry) => <li key={`${entry.pool}/${entry.id}`}>
-          <div className="row between"><a href={href({ page: "memory", userId, pool: entry.pool, id: entry.id })}>{new Date(entry.updatedAt!).toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" })}</a><span className={`kind ${entry.pool}`}>{poolWord(entry.pool)}</span></div>
+          <div className="row between"><a href={href({ page: "memory", userId, pool: entry.pool, id: entry.id })}>{dateText(entry.updatedAt!, { day: "numeric", month: "long", year: "numeric" })}</a><span className={`kind ${entry.pool}`}>{poolWord(entry.pool)}</span></div>
           <p>{entry.snippet}</p>
         </li>)}
       </ul>} />

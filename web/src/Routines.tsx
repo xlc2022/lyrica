@@ -3,7 +3,7 @@ import { del, get, patch, threadPath, u, type RoutineInfo } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { href } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { ErrorText, fullTime, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
+import { ErrorText, fullTime, timeZone, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
 
 /** The next active routine; paused schedules never supply the facts line's time. */
 export function nextRoutine(routines: RoutineInfo[]): RoutineInfo | undefined {
@@ -24,7 +24,7 @@ export function RoutineRows({ userId, routines, linked, onChange }: {
       return <div className="wake-item routine-item" key={`${r.pool}/${r.id}`}>
         <div className="routine-facts">
           {linked && <a href={href({ page: "thread", userId, pool: r.pool, threadId: r.threadId })}>{r.threadTitle}</a>}
-          <span title="Schedule in the server’s local time zone"><ScheduleText text={r.schedule} /></span>
+          <span title={`In your time zone, ${timeZone()}`}><ScheduleText text={r.schedule} /></span>
           {r.paused ? <span className="muted">Paused</span> : <time className="num" dateTime={r.nextAt} title={fullTime(r.nextAt)}>{wakeTime(r.nextAt)}</time>}
         </div>
         <button type="button" className="sm" disabled={busy} onClick={() => void run(async () => { await patch(path, { paused: !r.paused }); onChange(); })}>{r.paused ? "Resume" : "Pause"}</button>
