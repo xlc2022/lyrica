@@ -186,8 +186,8 @@ function FilePane({ file, shownPath, contentUrl, viewUrl, steps, actions, onDown
         {/* aria-disabled, not disabled, at an end: a disabled button would drop the focus, and the keys with it. */}
         {steps && !raw && (
           <>
-            <button type="button" className="viewer-step prev" aria-label="Previous image" title="Previous image (←)" aria-disabled={steps.at === 0} onClick={() => steps.go(-1)}><Icon name="back" /></button>
-            <button type="button" className="viewer-step next" aria-label="Next image" title="Next image (→)" aria-disabled={steps.at === steps.count - 1} onClick={() => steps.go(1)}><Icon name="right" /></button>
+            <button type="button" className="viewer-step prev" aria-label="Previous image" title="Previous image (Left)" aria-disabled={steps.at === 0} onClick={() => steps.go(-1)}><Icon name="back" /></button>
+            <button type="button" className="viewer-step next" aria-label="Next image" title="Next image (Right)" aria-disabled={steps.at === steps.count - 1} onClick={() => steps.go(1)}><Icon name="right" /></button>
           </>
         )}
       </div>
