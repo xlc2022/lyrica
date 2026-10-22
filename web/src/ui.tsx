@@ -208,7 +208,9 @@ function markdown(files: FileLinks | undefined, large: (path: string) => void, s
     a: ({ node: _, ...props }) => {
       if (props.href?.startsWith("#/")) return <a {...props} />;
       const file = files && fileTarget(props.href);
-      return file ? <a {...props} className="fpath" href={files.href(file)} title={file} /> : <a {...props} target="_blank" rel="noopener noreferrer" />;
+      // Mono only when the link's text is the path itself; words stay prose.
+      const path = typeof props.children === "string" && props.children.startsWith("/");
+      return file ? <a {...props} className={path ? "fpath" : undefined} href={files.href(file)} title={file} /> : <a {...props} target="_blank" rel="noopener noreferrer" />;
     },
     img: ({ src, alt }) => {
       if (typeof src !== "string" || !src) return <>{alt}</>;
