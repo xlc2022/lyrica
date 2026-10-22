@@ -1699,6 +1699,10 @@ when to use it, and steps in Markdown (at most 8,000 characters).
   - The person: written in **Settings → Skills**.
   - Lyrica: she saves one with `save_skill` after a job worked, or when
     asked to remember how to do something.
+  - Built in: `model-host`, installing a model host on one of the thread's
+    SSH machines (root steps on a card, the image pull in the background,
+    the pairing code), listed only while the thread has an SSH machine. A
+    library skill of the same name replaces it.
 - **Storage.** The person's and hers live in the pool they belong to, in
   that pool's encrypted database (`skills`, pool step 10), at most 100 per
   pool, and are reached only through the pool's view. A skill she saves

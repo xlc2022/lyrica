@@ -6,7 +6,7 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
+  BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -1009,15 +1009,19 @@ export class HostedThread {
             repoRules: () => repoRules(tools.target(), checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }))),
             skills: {
               // The skills in this thread's own pool, then those it reads (a Private thread's General ones), then each
-              // checkout's own (docs/briefs/skills.md). A name in its own pool wins.
+              // checkout's own (docs/briefs/skills.md). A name in its own pool wins. Lyrica's own model-host
+              // skill is listed while the thread has an SSH machine, unless a library skill takes its name.
               index: async () => {
                 const checkouts = checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId }));
+                const library = librarySkills(view);
+                const ssh = tools.machines?.().some((m) => m.kind === "ssh");
                 return skillsIndex([
-                  ...librarySkills(view).map((s) => ({ name: s.name, description: s.description, at: `s:${s.name}` })),
+                  ...library.map((s) => ({ name: s.name, description: s.description, at: `s:${s.name}` })),
+                  ...ssh && !library.some((s) => s.name === "model-host") ? [BUILTIN_SKILLS["model-host"]!.listed] : [],
                   ...checkouts.length ? await repoSkills(tools.target(), checkouts, repoSkillsSeen) : [],
                 ]);
               },
-              read: (name) => [view.own, ...view.reads].map((p) => p.skills.read(name)).find(Boolean)?.body,
+              read: (name) => [view.own, ...view.reads].map((p) => p.skills.read(name)).find(Boolean)?.body ?? BUILTIN_SKILLS[name]?.body,
               propose: (input, call) => view.own.skills.propose(input, this.threadId, call, workspace.settings(this.userId).skillsAutoApprove()),
             },
             persona: () => persona.read(), profile: () => users.get(this.userId)!.profile, folders: tools.folders, meter,

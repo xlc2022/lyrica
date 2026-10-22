@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { SKILL_LIMITS, type ExecutionTarget, type Skill } from "@lyrica/core";
+import { readFileSync } from "node:fs";
 import { Type } from "typebox";
 
 // Skills (docs/briefs/skills.md): one line per skill in every thread's prompt, the body read only when a task calls
@@ -11,6 +12,15 @@ const REPO_SKILLS_MAX = 20;
 export const SKILLS_HEADING = "Your skills: procedures for jobs that come up again. Before doing a job one describes, read it and follow it.";
 
 export interface ListedSkill { name: string; description: string; /** Where to read it: s:<name> or a file path. */ at: string }
+
+/** Skills that ship with Lyrica, read like library skills (s:<name>); a library skill of the same name wins. */
+export const BUILTIN_SKILLS: Record<string, { body: string; listed: ListedSkill }> = Object.fromEntries(
+  ["model-host"].map((file) => {
+    const body = readFileSync(new URL(`./${file}.md`, import.meta.url), "utf8").trim();
+    const { name, description } = skillFrontmatter(body, file)!;
+    return [name, { body, listed: { name, description, at: `s:${name}` } }];
+  }),
+);
 
 const attr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 

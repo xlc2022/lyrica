@@ -112,15 +112,15 @@ tool each for A and B, prompt lines only where the thread has a machine).
 
 ## C. Model host install from a machine
 
-- A guide (`extension/src/host-install.md`), offered by one prompt line when
-  the thread has an SSH machine, and read with `read_guide({ name:
-  "model-host" })`. It follows the steps of a hand-run install: check the card, driver and
+- A built-in skill, `model-host` (`extension/src/model-host.md`), listed
+  while the thread has an SSH machine and read with `read_memory`
+  `s:model-host`: no new tool, so no tool-definition growth. It follows the
+  steps of a hand-run install: check the card, driver and
   free disk; say which host images can run there; list the system-wide
-  changes for a yes; get the code onto the machine (a read-only deploy key
-  the user adds); hand the root steps over with `run_as_root`; start the
-  image pull in the background (A); smoke test; pause; show the pairing
-  code. On a shared machine, pause the host after testing and check that no
-  container holds GPU memory.
+  changes for a yes; hand the root steps over with `run_as_root`; start the
+  image build and pull in the background (A); smoke test; pause; give the
+  pairing code. On a shared machine, pause the host after testing and check
+  that no container holds GPU memory.
 - No change to `host/`.
 
 ## Out of scope
@@ -136,6 +136,7 @@ Done: brief; A (background commands) merged in #444. B (root steps)
 built after it, merged in #450 (stricter sudoers checks and a checked copy
 of the script after review). Each grew the tool definitions by about 200
 tokens; since #451 `daemon/test/context.test.ts` sizes its windows from
-her first turn, so tool text needs no window change there. D (own account, user step 18)
-is in its pull request; C (the `model-host` built-in skill) is built after
-it.
+her first turn, so tool text needs no window change there. D (own account,
+user step 18) merged in #453 (the account is fixed once added; root is
+refused). C (the `model-host` built-in skill) is in its pull request: the
+last item.

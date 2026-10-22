@@ -1080,8 +1080,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     a library skill's body for `read_memory` `s:<name>`. `propose` registers
     `save_skill({ name, description, body })`, which is turned off with
     `remember` in an unlogged thread. lyricad lists the active skills of the
-    thread view's own pool, then of the pools it reads (a name once), then `repoSkills(target, checkouts, cache?)`,
-    cached per thread by checkout and HEAD;
+    thread view's own pool, then of the pools it reads (a name once), then Lyrica's own `model-host`
+    (`BUILTIN_SKILLS`, extension/src/model-host.md) while the thread has an SSH machine and no library skill
+    takes the name, then `repoSkills(target, checkouts, cache?)`, cached per thread by checkout and HEAD.
+    `read(name)` falls back to a built-in skill's body;
   - `name()`: her name for this deployment, read every turn. Automatic
     recall leaves it out of the query (`skip`) and asks for two shared
     words (`minWords: 2`); `lyricad` passes `selfName`.

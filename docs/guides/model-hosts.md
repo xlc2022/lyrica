@@ -96,6 +96,12 @@ been tried on hardware.
 
 ## Install
 
+Lyrica can do this for you on a machine she reaches over SSH: give a
+thread the machine and ask her to install a model host there. She checks
+the machine, asks before changing anything system-wide, hands you the two
+steps that need root on cards, pulls the images in the background and ends
+with a pairing code. The steps below are the same ones, by hand.
+
 ```sh
 git clone https://github.com/xlc2022/lyrica && cd lyrica
 host/install.sh
