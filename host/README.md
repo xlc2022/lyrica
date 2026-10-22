@@ -403,7 +403,8 @@ revoked. A revoked server must pair again.
     folder and CUDA capabilities, in the registry `prebuilt.sh` names (one
     line, or `LYRICA_HOST_REGISTRY`). `install.sh` pulls the tag that matches
     its own code when the image covers every GPU's compute capability, and
-    checks the image's content label. Otherwise it adds
+    checks the image's content label, then runs it by the digest it
+    checked, so a tag pushed again later changes nothing. Otherwise it adds
     `compose.cmp.build.yaml` (or `compose.sdcpp.build.yaml`) and builds
     the image for the host's GPUs, which takes a while, saying why.
   - llama.cpp runs in router mode. host-api writes its preset file (each

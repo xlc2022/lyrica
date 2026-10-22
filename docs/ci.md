@@ -113,7 +113,10 @@ runner groups to restrict them, so while the repository is public and no
 workflow uses them, remove them from it (Settings, Actions, Runners). In
 Settings, Actions, General, keep "Workflow permissions" at "Read repository
 contents" and "Allow GitHub Actions to create and approve pull requests"
-off. No workflow uses `pull_request_target`.
+off. No workflow uses `pull_request_target`. Any branch pushed to this repository can
+carry a workflow that asks for `packages: write` and push any tag, so the
+CMP images are trusted exactly as far as pushes to the repository are, the
+same as the code hosts update from.
 
 ## CMP images
 

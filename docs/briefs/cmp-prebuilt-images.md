@@ -39,7 +39,7 @@ likely. They should download the two images, not compile them.
    registry lookup and no file for CI to commit back.
 3. **Pull first, build as the fallback.** On a CMP host, `install.sh`
    pulls the matching tags when every GPU's compute capability is in the
-   published list, and writes them into `.env` so the compose files use
+   published list, and writes their digests into `.env` so the compose files use
    `image:` instead of `build:`. If the pull fails (offline, an
    unpublished commit, a capability outside the list), it builds from
    source as it does today, and says which and why in one line. The

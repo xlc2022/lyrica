@@ -31,14 +31,18 @@ prebuilt_image() { echo "$PREBUILT_REGISTRY/lyrica-host-$1:$(prebuilt_tag "$1")"
 
 # Sets PREBUILT to the published image of $1 when it covers CUDA $2 and, if
 # $3 is 1, it pulls and carries its own tag as its content label; else to
-# nothing, saying why it will be built here instead.
+# nothing, saying why it will be built here instead. A pulled image is named
+# by its digest, so every later start runs exactly the image checked here
+# even if the tag is pushed again. Without a pull (--no-start, which only CI
+# uses, on hosts with no CMP) it stays the unchecked tag.
 prebuilt_pick() {
   PREBUILT=$(prebuilt_image "$1")
-  local why
+  local why repo=${PREBUILT%:*}
   if ! prebuilt_covers "$1" "$2"; then why="the published image isn't built for CUDA $2"
   elif [[ $3 != 1 ]]; then return
   elif ! docker pull -q "$PREBUILT" >/dev/null 2>&1; then why="$PREBUILT couldn't be pulled"
   elif [[ $(docker image inspect -f '{{index .Config.Labels "org.lyrica.content"}}' "$PREBUILT" 2>/dev/null) != "${PREBUILT##*:}" ]]; then why="$PREBUILT doesn't carry its own tag as its content label"
+  elif ! PREBUILT=$(docker image inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "$PREBUILT" 2>/dev/null | grep -m1 "^$repo@"); then why="the pulled image has no digest from $repo"
   else echo "CMP 100-210: pulled $PREBUILT."; return
   fi
   echo "CMP 100-210: building $1 here from source, which takes a while the first time: $why."

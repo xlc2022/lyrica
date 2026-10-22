@@ -36,9 +36,10 @@ describe("the CMP's prebuilt images", () => {
   });
 
   it("are pulled and checked, and built here when the pull fails or doesn't match", () => {
-    // A docker that pulls when PULL is set and labels the image with LABEL.
+    // A docker that pulls when PULL is set, labels the image with LABEL and
+    // lists DIGESTS as its repository digests.
     const bin = mkdtempSync(join(tmpdir(), "lyrica-docker-"));
-    writeFileSync(join(bin, "docker"), `#!/usr/bin/env bash\necho "$*" >>"$LOG"\ncase $1 in pull) [ -n "$PULL" ] ;; image) echo "$LABEL" ;; esac\n`);
+    writeFileSync(join(bin, "docker"), `#!/usr/bin/env bash\necho "$*" >>"$LOG"\ncase $1 in pull) [ -n "$PULL" ] ;; image) case $* in *RepoDigests*) printf "$DIGESTS" ;; *) echo "$LABEL" ;; esac ;; esac\n`);
     chmodSync(join(bin, "docker"), 0o755);
     const log = join(bin, "log");
     const pick = (archs: string, start: string, env: Record<string, string>) => {
@@ -48,8 +49,13 @@ describe("the CMP's prebuilt images", () => {
     };
     const image = sh(host, "prebuilt_image llamacpp");
     const tag = image.split(":").pop()!;
+    const repo = image.slice(0, -tag.length - 1);
+    const pinned = `${repo}@sha256:${"ab".repeat(32)}`;
+    const DIGESTS = `other.example/lyrica-host-llamacpp@sha256:${"cd".repeat(32)}\n${pinned}\n`;
 
-    expect(pick("70-real", "1", { PULL: "1", LABEL: tag }).out).toBe(`CMP 100-210: pulled ${image}.\npicked=${image}`);
+    // What was pulled and checked is pinned by its digest.
+    expect(pick("70-real", "1", { PULL: "1", LABEL: tag, DIGESTS }).out).toBe(`CMP 100-210: pulled ${pinned}.\npicked=${pinned}`);
+    expect(pick("70-real", "1", { PULL: "1", LABEL: tag, DIGESTS: "" }).out).toMatch(new RegExp(`has no digest from ${repo.replaceAll(".", "\\.")}\\.\\npicked=$`));
     expect(pick("70-real", "1", { PULL: "", LABEL: tag }).out).toMatch(/building llamacpp here .*: .* couldn't be pulled\.\npicked=$/);
     expect(pick("70-real", "1", { PULL: "1", LABEL: "0000" }).out).toMatch(/doesn't carry its own tag as its content label\.\npicked=$/);
     // A GPU outside the list is built for here, without asking the registry.

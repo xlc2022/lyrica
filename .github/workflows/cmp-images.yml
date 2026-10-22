@@ -53,7 +53,9 @@ jobs:
           echo "image: $image"
       - name: Log in
         if: github.event_name != 'pull_request'
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login "${{ steps.tag.outputs.registry }}" -u "${{ github.actor }}" --password-stdin
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$TOKEN" | docker login "${{ steps.tag.outputs.registry }}" -u "${{ github.actor }}" --password-stdin
       - name: Already published?
         id: have
         if: github.event_name != 'pull_request'
