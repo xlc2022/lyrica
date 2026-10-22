@@ -112,20 +112,27 @@ it("resets the budget on the next prompt", async () => {
 /** Her replies, in order, to one prompt: what each request asked and what the thread shows. */
 async function replies(responses: ReturnType<typeof fauxAssistantMessage>[]) {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-empty-reply-"));
-  const faux = fauxProvider({ provider: "faux", models: [{ id: "think" }] });
+  const faux = fauxProvider({ provider: "faux", models: [{ id: "think", reasoning: true }] });
   const asked: string[] = [];
-  faux.setResponses(responses.map((r) => (ctx: { messages: unknown[] }) => { asked.push(JSON.stringify(ctx.messages)); return r; }));
+  /** The thinking level each request went with. */
+  const levels: string[] = [];
+  let level = () => "";
+  faux.setResponses(responses.map((r) => (ctx: { messages: unknown[] }) => { asked.push(JSON.stringify(ctx.messages)); levels.push(level()); return r; }));
   const loader = new DefaultResourceLoader({ cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
-    extensionFactories: [createTurnToolsExtension(), pi => pi.registerProvider(faux.provider)] });
+    extensionFactories: [createTurnToolsExtension(), pi => {
+      pi.registerProvider(faux.provider);
+      level = () => pi.getThinkingLevel();
+    }] });
   try {
     await loader.reload();
     const { session } = await createAgentSession({ cwd: dir, agentDir: dir, resourceLoader: loader, sessionManager: SessionManager.inMemory(dir), noTools: "builtin" });
     try {
       await session.bindExtensions({});
       await session.setModel(faux.getModel());
+      session.setThinkingLevel("medium");
       await session.prompt("Build the terrain");
       const entries = session.sessionManager.getEntries();
-      return { asked, shown: toMessages("test", "general", entries.map((data, n) => ({ data, n, createdAt: "2026-10-20" }))) };
+      return { asked, levels, after: session.thinkingLevel, shown: toMessages("test", "general", entries.map((data, n) => ({ data, n, createdAt: "2026-10-20" }))) };
     } finally { session.dispose(); }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
@@ -138,6 +145,19 @@ it("asks her once to carry on after a reply with only thinking", async () => {
   expect(shown).toContain("Terrain done.");
   expect(shown).not.toContain(CARRY_ON);
   expect(r.shown.some((m) => m.error)).toBe(false);
+});
+
+it("retries without thinking after thinking that ran to the reply limit, then thinks as before", async () => {
+  const r = await replies([fauxAssistantMessage(fauxThinking("Planning the scaffold at length."), { stopReason: "length" }), fauxAssistantMessage("Scaffold written.")]);
+  expect(r.asked).toHaveLength(2);
+  expect(r.levels).toEqual(["medium", "off"]);
+  expect(r.after).toBe("medium");
+  expect(JSON.stringify(r.shown)).toContain("Scaffold written.");
+});
+
+it("keeps thinking on for the retry when the reply stopped on its own", async () => {
+  const r = await replies([fauxAssistantMessage(fauxThinking("I'll write the terrain module next.")), fauxAssistantMessage("Terrain done.")]);
+  expect(r.levels).toEqual(["medium", "medium"]);
 });
 
 it("fails the turn visibly when the retry has only thinking too", async () => {
