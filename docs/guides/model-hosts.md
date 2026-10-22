@@ -103,13 +103,14 @@ The CMP 100-210 (PCI ID `10de:1df4`) is a mining card with throttled FP16
 tensor cores. The script detects it and uses a llama.cpp built so
 quantized models use its int8 units and flash attention avoids the
 tensor cores, which reads prompts about three times as fast as the stock
-image. It downloads the image CI built
-(a few GB) when the host's GPUs are among those it covers, and otherwise
-builds it here, which took 25 minutes on a 4-core machine; it says which.
-When the image GPU (`COMFY_GPU`) is one, ComfyUI isn't started and
+image. It downloads the image CI built (a few GB) when the host's GPUs
+are among those it covers, and otherwise builds it here, which took 25
+minutes on a 4-core machine; it says which. `LYRICA_HOST_REGISTRY`
+points it at another registry, such as a Forgejo instance's. When the
+image GPU (`COMFY_GPU`) is one, ComfyUI isn't started and
 stable-diffusion.cpp, downloaded the same way (or built, 18 minutes),
-makes the images instead: create only, for Z-Image,
-Qwen-Image, FLUX and SDXL recipes without LoRAs. The first image after a
+makes the images instead: create only, for Z-Image, Qwen-Image, FLUX and
+SDXL recipes without LoRAs. The first image after a
 load takes about 2.5 minutes while it converts the weights to Q8_0.
 vLLM models can't run on the card, so dictation runs on whisper.cpp
 instead, with its own starter (large-v3-turbo q8_0). Voices run on it
@@ -273,8 +274,9 @@ and the exact revisions. The dashboard's Models section offers both under
 **Starters**, at these revisions, beside the chat and embedding starters;
 **Download** there is the quickest way. A starter shows only where the
 host runs its server: the voice on every host (on the CPU except on
-NVIDIA), dictation on hosts that run vLLM (not Vulkan). The voice starter takes three voices,
-`zm_010`, `zf_001` and `af_maple`. For other voices, or where a starter
+NVIDIA), dictation on hosts that run vLLM (not Vulkan) or, beside a CMP
+100-210, whisper.cpp. The voice starter takes three voices, `zm_010`,
+`zf_001` and `af_maple`. For other voices, or where a starter
 doesn't show, do the same by hand, from the machine, where the dashboard
 port needs no password: list a repository's files first, then ask for
 the ones you want by name:
