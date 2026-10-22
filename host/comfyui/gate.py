@@ -42,10 +42,11 @@ def wanted():
 # Prints why this PyTorch can't run on the GPU, or nothing. A kernel built
 # for sm_XY runs on X.Y up to X.9; PTX for compute_XY compiles on X.Y and up.
 CHECK = """
-import torch
+import re, torch
 if torch.version.cuda and torch.cuda.is_available():
     cap = torch.cuda.get_device_capability(0)
-    archs = [(kind, tuple(divmod(int(a.split("_")[1]), 10))) for kind, a in ((a.split("_")[0], a) for a in torch.cuda.get_arch_list())]
+    # Names like sm_90a carry a letter after the number.
+    archs = [(m[1], divmod(int(m[2]), 10)) for m in (re.match(r"(sm|compute)_(\d+)", a) for a in torch.cuda.get_arch_list()) if m]
     if not any((k == "sm" and a[0] == cap[0] and a[1] <= cap[1]) or (k == "compute" and a <= cap) for k, a in archs):
         print(f"{torch.cuda.get_device_name(0)} is sm_{cap[0]}{cap[1]}, and this ComfyUI's PyTorch {torch.__version__} has kernels only for {', '.join(torch.cuda.get_arch_list())}, so it can't make images on it.")
 """
