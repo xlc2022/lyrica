@@ -199,8 +199,6 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           // Pi resolves paths against the session's cwd, which is on the host; use the target's.
           const here = new Proxy(ctx, { get: (t, k) => (k === "cwd" ? cwd : Reflect.get(t, k)) });
           if (machine || (name !== "write" && name !== "edit" && name !== "bash")) return tool.execute(id, rest, signal, onUpdate, here);
-          const held = name !== "bash" && typeof rest.path === "string" ? tools.sameFile?.(posix.resolve(cwd, rest.path)) : undefined;
-          if (held) throw new Error(held);
           const since = new Date();
           try {
             return await tool.execute(id, rest, signal, onUpdate, here);
@@ -290,6 +288,11 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       }
       const pve = event.toolName === "proxmox";
       const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve ? String(input.machine) : undefined;
+      // A file another thread just changed is held before anyone is asked, so a held change is never one the person approved.
+      if (place === "sandbox" && (event.toolName === "write" || event.toolName === "edit") && typeof input.path === "string" && tools.sameFile) {
+        const held = tools.sameFile(posix.resolve(await tools.target().cwd(), input.path));
+        if (held) return { block: true, reason: held };
+      }
       const machine = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place && (m.kind === "proxmox") === pve) : undefined;
       if (place && place !== "sandbox" && !machine) return { block: true, reason: `${place} isn't one of this thread's ${pve ? "Proxmox " : ""}machines.` };
       // On a machine, the stricter of the thread's mode and the machine's limit.

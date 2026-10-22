@@ -1283,8 +1283,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
     mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
     proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path), madeFiles?(paths), madeSince?(since), fileNotes?() }`.
-    `sameFile(path)` runs before a sandbox `write` or `edit`; a text it
-    returns is the call's error and nothing is written (daemon
+    `sameFile(path)` runs in `tool_call` for a sandbox `write` or `edit`,
+    before any approval is asked; a text it returns blocks the call as its
+    reason and nothing is written (daemon
     `SameFile.claim`, keyed by `Workspace.fileKey`).
     `commandRules()` reads the owning project on every bash call. Forbid
     blocks in all modes and targets; Ask always prompts; Allow skips only

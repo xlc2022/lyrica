@@ -334,7 +334,7 @@ takes is `lyrica@pve!agent=<that secret>`.
   daemon's `SameFile` checks who last wrote that file (`Workspace.fileKey`:
   a thread's folder, /shared or a writable grant; a worktree is its thread's
   alone). If another thread of the same pool wrote it within two hours and
-  still exists, the call is held once: it fails with the other thread's
+  still exists, the call is held once, before anyone is asked to approve it: it fails with the other thread's
   mention and how long ago, and that thread is told, steered into its turn
   or kept for its next. They agree who changes what (project threads
   message each other with `threads`); after that neither is held again on

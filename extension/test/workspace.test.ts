@@ -197,6 +197,11 @@ describe("workspace tools in a Pi session", () => {
     expect(files.get("/workspace/notes.txt")).toBe("one\ntwo\n");
     expect(files.get("/workspace/new.md")).toBe("hello");
     expect(results.find((r) => r.startsWith("write:"))).toContain("Not changed yet: [t:other]");
+    // Held before anyone is asked: the person never approves a change that then doesn't happen.
+    const shown: string[] = [];
+    await run("ask", [fauxToolCall("write", { path: "notes.txt", content: "mine" }, { id: "1" })],
+      { sameFile: () => "Not changed yet.", approve: async (r) => { shown.push(r.tool); return true; } });
+    expect(shown).toEqual([]);
   });
 
   it("ask before commands only", async () => {
