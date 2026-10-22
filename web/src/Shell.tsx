@@ -17,7 +17,7 @@ import type { ModelsState } from "./ModelsFrame.tsx";
 import { SideStatus } from "./SideStatus.tsx";
 import { ThreadMenu, useThreadMenu } from "./ThreadMenu.tsx";
 import { Flyout, useCanHover, useFlyout } from "./flyout.tsx";
-import { ProjectPage, ThreadsPage, stateWord } from "./Project.tsx";
+import { heldTitle, ProjectPage, ThreadsPage, stateWord } from "./Project.tsx";
 import { SearchGroups, searchable, useMessageSearch } from "./Search.tsx";
 import { ask, JUMP_EVENT, JUMP_KEY, keep, type JumpRequest } from "./links.ts";
 import { browserZone, clock, dateText, dayNumber, ErrorText, hidden, hourOf, setTimeZone, InlineRename, menuArrows, shortTime, Toast, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
@@ -566,6 +566,8 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
     go({ page: "thread", userId: user.id, pool, threadId: t.id });
   });
   const current = route.page === "thread" ? `${route.pool}/${route.threadId}` : "";
+  // The thread shown in the panel beside it, outlined so it's clear which one that is (docs/ux.md §6).
+  const beside = route.page === "thread" && route.panel?.page === "thread" ? `${route.panel.pool}/${route.panel.threadId}` : "";
   const sort = me.display.sort;
   // Search filters titles, child threads included, as they are typed; from 2 characters lyricad's
   // message hits follow 300 ms later, and the list becomes their groups.
@@ -656,7 +658,7 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
           <li key={s.label} className="group-rows">
             {(shown.length > 1 || sort === "groups" || s.label === "Pinned") && <span className="eyebrow">{s.label}{s.count !== undefined && <span className="num">{s.count}</span>}</span>}
             <ul className="threads-in">
-              {s.threads.map((t) => <ThreadRow key={`${t.pool}/${t.id}`} t={t} userId={user.id} current={current} menu={menu.handlers} openBeside={openBeside} onRename={rename} />)}
+              {s.threads.map((t) => <ThreadRow key={`${t.pool}/${t.id}`} t={t} userId={user.id} current={current} beside={beside} menu={menu.handlers} openBeside={openBeside} onRename={rename} />)}
             </ul>
           </li>
         ))}
@@ -828,8 +830,10 @@ function NewRow({ shown, onShow, icon, label, onCreate }: { shown: boolean; onSh
 
 export type MenuHandlers = ReturnType<ReturnType<typeof useThreadMenu>["handlers"]>;
 
-function ThreadRow({ t, userId, current, menu, openBeside, onRename }: {
+function ThreadRow({ t, userId, current, beside, menu, openBeside, onRename }: {
   t: ThreadSummary; userId: string; current: string; menu: (t: ThreadSummary) => MenuHandlers;
+  /** The thread shown in the panel, as `pool/id`, or "". */
+  beside: string;
   /** Open a child row in the panel beside the open thread; absent below 1180 px or with no thread open. */
   openBeside?: (t: ThreadSummary) => void;
   onRename?: (t: ThreadSummary, title: string) => Promise<unknown>;
@@ -847,17 +851,17 @@ function ThreadRow({ t, userId, current, menu, openBeside, onRename }: {
         {t.children.length > 0
           ? <button type="button" className="chev" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} ${t.project ? "the project's threads" : "child threads"}`} onClick={() => setOpen(!open)}><Icon name="right" /></button>
           : <span className="chev" />}
-        <ThreadLink t={t} userId={userId} on={current === key} menu={menu} onRename={onRename} />
+        <ThreadLink t={t} userId={userId} on={current === key} shown={beside === key} menu={menu} onRename={onRename} />
       </div>
       {open && (
         <ul className="children">
-          {active.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} menu={menu} child openBeside={openBeside} besideOnClick={current === key} onRename={onRename} /></li>)}
+          {active.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} shown={beside === `${c.pool}/${c.id}`} menu={menu} child openBeside={openBeside} besideOnClick={current === key} onRename={onRename} /></li>)}
           {resolved.length > 0 && (
             <li>
               <button type="button" className="resolved-row" aria-expanded={resolvedOpen} onClick={() => setResolvedOpen(!resolvedOpen)}>
                 <Icon name="right" className="chev-ic" />Resolved <span className="num">{resolved.length}</span>
               </button>
-              {resolvedOpen && <ul className="children">{resolved.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} menu={menu} child openBeside={openBeside} besideOnClick={current === key} onRename={onRename} /></li>)}</ul>}
+              {resolvedOpen && <ul className="children">{resolved.map((c) => <li key={c.id}><ThreadLink t={c} userId={userId} on={current === `${c.pool}/${c.id}`} shown={beside === `${c.pool}/${c.id}`} menu={menu} child openBeside={openBeside} besideOnClick={current === key} onRename={onRename} /></li>)}</ul>}
             </li>
           )}
         </ul>
@@ -866,8 +870,10 @@ function ThreadRow({ t, userId, current, menu, openBeside, onRename }: {
   );
 }
 
-export function ThreadLink({ t, userId, on, menu, child, openBeside, besideOnClick, onRename }: {
+export function ThreadLink({ t, userId, on, shown, menu, child, openBeside, besideOnClick, onRename }: {
   t: ThreadSummary; userId: string; on: boolean; menu: (t: ThreadSummary) => MenuHandlers; child?: boolean;
+  /** This thread is the one in the panel beside the open thread: its row is outlined. */
+  shown?: boolean;
   /** Open this row in the panel beside the open thread (Open beside); absent below 1180 px or with no thread open. */
   openBeside?: (t: ThreadSummary) => void;
   /** The open thread is this row's parent: a plain click opens the row beside it too, replacing what the panel shows. */
@@ -880,7 +886,7 @@ export function ThreadLink({ t, userId, on, menu, child, openBeside, besideOnCli
   // most pressing first (ux.md §5): waiting on her, then new updates, then hidden.
   const inProject = t.state !== undefined;
   const badges = [
-    t.question ? <span key="q" className="tstate" data-state="needsYou">Waiting on you</span> : inProject ? <span key="s" className="tstate" data-state={t.needsYou ? "needsYou" : t.state}>{stateWord(t)}</span> : t.status === "waiting" && <span key="w" className="flag">waiting</span>,
+    t.question ? <span key="q" className="tstate" data-state="needsYou">Waiting on you</span> : inProject ? <span key="s" className="tstate" data-state={t.needsYou ? "needsYou" : t.state} title={heldTitle(t)}>{stateWord(t)}</span> : t.status === "waiting" && <span key="w" className="flag">waiting</span>,
     !!t.unseen && <span key="u" className="count" aria-label={`${t.unseen} new ${t.unseen === 1 ? "update" : "updates"}`}>{t.unseen}</span>,
     t.hidden && <span key="h" className="flag">hidden</span>,
   ].filter(Boolean).slice(0, 2);
@@ -903,8 +909,10 @@ export function ThreadLink({ t, userId, on, menu, child, openBeside, besideOnCli
     openBeside(t);
   };
   const title = t.title || (t.project ? "New project" : "New thread");
+  // A thread at work pulses its pool dot or lock (steady with reduced motion); a project thread's word says so too.
+  const working = t.busy || t.state === "working";
   return (
-    <a className={`thread${t.unread ? " unread" : ""}${t.project ? " project" : ""}${child && inProject ? " dotted" : ""}`} href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined} {...handlers}
+    <a className={`thread${t.unread ? " unread" : ""}${t.project ? " project" : ""}${child && inProject ? " dotted" : ""}${working ? " working" : ""}`} href={href({ page: "thread", userId, pool: t.pool, threadId: t.id })} aria-current={on ? "page" : undefined} data-beside={shown || undefined} {...handlers}
       onClick={click} onKeyDown={(e) => { if (e.key === "Enter") shiftTo(e); }}
       onDoubleClick={onRename && !renaming ? (e) => { e.preventDefault(); getSelection()?.removeAllRanges(); setRenaming(true); } : undefined}>
       {t.project ? <span className={`project-mark ${t.pool}`} data-waiting={waiting || undefined}><Icon name="project" />{waiting && <span className="sr-only">a thread waits on you</span>}</span>
@@ -915,12 +923,13 @@ export function ThreadLink({ t, userId, on, menu, child, openBeside, besideOnCli
         ? <InlineRename className="title" value={t.title ?? ""} label="Title" onSave={(name) => onRename(t, name)} onDone={() => setRenaming(false)} />
         : <span className="title">{title}</span>}
       <span className="when">
-        {t.busy && !inProject && <span className="busy" title="Working" />}
         {badges}
         {!inProject && shortTime(t.updatedAt)}
       </span>
       {t.pool === "private" && <span className="sr-only">private</span>}
       {t.unread && <span className="sr-only">unread</span>}
+      {working && !inProject && <span className="sr-only">working</span>}
+      {shown && <span className="sr-only">in the panel</span>}
     </a>
   );
 }

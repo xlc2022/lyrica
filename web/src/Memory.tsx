@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { Components } from "react-markdown";
 import {
   del, get, patch, post, u,
-  type Display, type MemoryDetail, type MemoryHistory, type MemoryHit, type MemoryKind, type MemoryLink, type MemoryOverview, type MemoryRevision, type MemoryTag, type MemoryUse, type Pool, type UserMap,
+  type Display, type MemoryDetail, type MemoryExport, type MemoryImportResult, type MemoryHistory, type MemoryHit, type MemoryKind, type MemoryLink, type MemoryOverview, type MemoryRevision, type MemoryTag, type MemoryUse, type Pool, type UserMap,
 } from "./api.ts";
 import { HistoryHead, HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
@@ -50,15 +50,17 @@ export function Memory({ ctx, pool, id }: { ctx: ShellContext; pool?: Pool; id?:
   const display = ctx.me.display;
   const inPanel = !!usePanel();
   const [adding, setAdding] = useState(false);
+  /** Bumped after an import, so the lists and counts read again. */
+  const [imports, setImports] = useState(0);
   const [browsing, setBrowsing] = useState<Browsing>({ layer: "page" });
   const [title, setTitle] = useState<string>();
   /** The memories read in turn by following links inside one, for the page's own breadcrumb. */
   const [trail, setTrail] = useState<{ pool: Pool; id: string; title: string }[]>([]);
-  const overview = useLoad(() => get<MemoryOverview>(u(userId, "memory")), [userId, display.showGeneral, display.showPrivate]);
+  const overview = useLoad(() => get<MemoryOverview>(u(userId, "memory")), [userId, display.showGeneral, display.showPrivate, imports]);
   useEffect(() => { if (!id) setTitle(undefined); }, [id]);
 
   const reading = !!(id && pool) || adding;
-  const detail = adding ? <AddMemory userId={userId} onDone={(d) => { setAdding(false); if (d) go({ page: "memory", userId, pool: d.item.pool, id: d.item.id }); }} />
+  const detail = adding ? <AddMemory userId={userId} onImported={() => setImports((n) => n + 1)} onDone={(d) => { setAdding(false); if (d) go({ page: "memory", userId, pool: d.item.pool, id: d.item.id }); }} />
     : id && pool && hidden(display, pool) ? <p className="muted empty">{poolWord(pool)} is hidden. Turn on {poolWord(pool)} in the Sort menu to see it.</p>
     : id && pool ? <Detail key={`${pool}/${id}`} ctx={ctx} pool={pool} id={id} onTitle={setTitle} onTag={(tag) => { setBrowsing({ layer: "note", tag }); go({ page: "memory", userId }); }} />
     : <p className="muted empty">Pick a memory to read it, or search.</p>;
@@ -93,7 +95,7 @@ export function Memory({ ctx, pool, id }: { ctx: ShellContext; pool?: Pool; id?:
         <button type="button" className="sm" onClick={() => { setAdding(true); go({ page: "memory", userId }); }}><Icon name="plus" /><span className="long">Add a memory</span></button>
       </PageHead>
       <div className="mem" data-reading={reading}>
-        <Browse ctx={ctx} current={id} browsing={browsing} onBrowse={setBrowsing} onPick={() => { setTrail([]); setAdding(false); }} />
+        <Browse ctx={ctx} current={id} imports={imports} browsing={browsing} onBrowse={setBrowsing} onPick={() => { setTrail([]); setAdding(false); }} />
         <div className="mem-read" onClick={follow}>
           {reading && <a className="sm mem-back" href={href({ page: "memory", userId })}><Icon name="back" />Memory</a>}
           {trail.length > 0 && id && (
@@ -109,7 +111,7 @@ export function Memory({ ctx, pool, id }: { ctx: ShellContext; pool?: Pool; id?:
 }
 
 /** The browse pane: search, the layer segment, the filters row, the Notes layer's tags, and the list, newest first and paged. */
-function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContext; current?: string; browsing: Browsing; onBrowse: (b: Browsing) => void; onPick: () => void }) {
+function Browse({ ctx, current, imports, browsing, onBrowse, onPick }: { ctx: ShellContext; current?: string; imports: number; browsing: Browsing; onBrowse: (b: Browsing) => void; onPick: () => void }) {
   const userId = ctx.user.id;
   const { display } = ctx.me;
   const [q, setQ] = useState("");
@@ -120,6 +122,7 @@ function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContex
   const [noMore, setNoMore] = useState(false);
   const [sel, setSel] = useState<string[]>([]);
   const [forgetting, setForgetting] = useState(false);
+  const [left, setLeft] = useState(0);
   const [run, busy, error] = useAction();
   const { layer, tag } = browsing;
   useEffect(() => {
@@ -137,9 +140,9 @@ function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContex
   // The preview shows one entry; it asks for two so a second proves there is more to open.
   params.set("limit", String(journalPreview ? 2 : PAGE_SIZE));
   const search = params.toString();
-  const hits = useLoad(() => get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}`), [userId, search, display.showGeneral, display.showPrivate]);
+  const hits = useLoad(() => get<MemoryHit[]>(`${u(userId, "memory", "search")}?${search}`), [userId, search, display.showGeneral, display.showPrivate, imports]);
   const tags = useLoad(() => (layer === "note" && !query ? get<MemoryTag[]>(`${u(userId, "memory", "about")}${pool ? `?pool=${pool}` : ""}`) : Promise.resolve([] as MemoryTag[])), [userId, layer, query, pool, display.showGeneral, display.showPrivate]);
-  useEffect(() => { setMore([]); setNoMore(false); setSel([]); }, [search]);
+  useEffect(() => { setMore([]); setNoMore(false); setSel([]); setLeft(0); }, [search]);
 
   const rows = [...(hits.data ?? []), ...more];
   const shownRows = journalPreview ? rows.slice(0, 1) : rows;
@@ -168,6 +171,11 @@ function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContex
     setSel([]); setForgetting(false);
     hits.reload();
     if (sel.some((k) => k.endsWith(`/${current}`))) go({ page: "memory", userId });
+  });
+
+  const exportSel = () => run(async () => {
+    const out = await download(userId, sel.map((k) => { const [p, ...rest] = k.split("/"); return { pool: p as Pool, id: rest.join("/") }; }));
+    setLeft(out.skipped);
   });
 
   const line = (h: MemoryHit): ReactNode => {
@@ -209,12 +217,14 @@ function Browse({ ctx, current, browsing, onBrowse, onPick }: { ctx: ShellContex
         {canPage && <div className="more-row"><button type="button" className="sm" disabled={busy} onClick={page}>More</button></div>}
       </div>
       {sel.length > 0 && (
-        <div className="selbar">
+        <div className="selbar" role="toolbar" aria-label="Selection">
           <span><span className="num">{sel.length}</span> selected</span>
-          <button type="button" className="sm" onClick={() => setSel([])}>Clear</button>
+          <button type="button" className="sm" disabled={busy} title={EXPORT_TIP} onClick={exportSel}>Export</button>
           <button type="button" className="sm danger" onClick={() => setForgetting(true)}>Forget…</button>
+          <button type="button" className="icon sm" aria-label="Clear the selection" onClick={() => { setSel([]); setLeft(0); }}><Icon name="close" /></button>
         </div>
       )}
+      {left > 0 && sel.length > 0 && <p className="meta muted">{left === sel.length ? "Only notes and pages can be exported." : <><span className="num">{left}</span> left out: only notes and pages can be exported.</>}</p>}
       {forgetting && (
         <ConfirmDialog title={`Forget ${sel.length === 1 ? "this memory" : `these ${sel.length} memories`}?`} confirm="Forget" danger onCancel={() => setForgetting(false)} onConfirm={forget}
           sentence="Each is deleted for good, leaving a marker with only its ID so sleep doesn't learn it again." />
@@ -274,6 +284,7 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
               <button type="button" className="sm" onClick={() => setEditing(true)}>Edit</button>
               <MoreMenu>
                 <button type="button" role="menuitem" disabled={busy} onClick={() => act(() => post<MemoryDetail>(`${path}/archive`, { archived: !item.archived }))}>{item.archived ? "Unarchive" : "Archive"}</button>
+                {canDelete && <button type="button" role="menuitem" title={EXPORT_TIP} disabled={busy} onClick={() => run(() => download(userId, [{ pool: item.pool, id: item.id }]))}>Export</button>}
                 {canDelete && <button type="button" role="menuitem" className="danger" disabled={busy} onClick={() => setDeleting(true)}>Delete…</button>}
               </MoreMenu>
             </div>}
@@ -552,7 +563,86 @@ function Editor({ detail, display, userId, busy, onSave, onCancel }: {
   );
 }
 
-function AddMemory({ userId, onDone }: { userId: string; onDone: (d?: MemoryDetail) => void }) {
+const EXPORT_TIP = "Downloads a Markdown file. It isn't encrypted.";
+
+/** Exports notes and pages as one Markdown file the browser saves; the text is held only in this page while it downloads. */
+async function download(userId: string, items: { pool: Pool; id: string }[]): Promise<MemoryExport> {
+  const out = await post<MemoryExport>(u(userId, "memory", "export"), { items });
+  if (out.count) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([out.markdown], { type: "text/markdown" }));
+    a.download = out.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+  }
+  return out;
+}
+
+function AddMemory({ userId, onDone, onImported }: { userId: string; onDone: (d?: MemoryDetail) => void; onImported: () => void }) {
+  const [mode, setMode] = useState<"write" | "import">("write");
+  return (
+    <div className="stack mem-add">
+      <h2>Add a memory</h2>
+      <div className="seg" role="group" aria-label="Write or import">
+        <button type="button" aria-pressed={mode === "write"} onClick={() => setMode("write")}>Write</button>
+        <button type="button" aria-pressed={mode === "import"} onClick={() => setMode("import")}>Import</button>
+      </div>
+      {mode === "write" ? <WriteMemory userId={userId} onDone={onDone} /> : <ImportMemories userId={userId} onDone={() => onDone()} onImported={onImported} />}
+    </div>
+  );
+}
+
+/** Import: Markdown files read here and sent to lyricad, each memory written as one the user added. */
+function ImportMemories({ userId, onDone, onImported }: { userId: string; onDone: () => void; onImported: () => void }) {
+  const [files, setFiles] = useState<File[]>([]);
+  const picker = useRef<HTMLInputElement>(null);
+  const [pool, setPool] = useState<"" | Pool>("");
+  const [result, setResult] = useState<MemoryImportResult>();
+  const [run, busy, error] = useAction();
+  const submit = () => run(async () => {
+    const read = await Promise.all(files.map(async (f) => ({ name: f.name, text: await f.text() })));
+    setResult(await post<MemoryImportResult>(u(userId, "memory", "import"), { files: read, ...(pool ? { pool } : {}) }));
+    onImported();
+  });
+  if (result) {
+    const n = result.imported.length;
+    return (
+      <div className="stack">
+        <p role="status">
+          {n ? <>Imported <span className="num">{n}</span> {n === 1 ? "memory" : "memories"}</> : "Nothing new to import"}
+          {result.duplicates > 0 && <> · <span className="num">{result.duplicates}</span> already here</>}
+          {result.renamed > 0 && <> · <span className="num">{result.renamed}</span> renamed</>}
+          {result.linksWorded > 0 && <> · <span className="num">{result.linksWorded}</span> {result.linksWorded === 1 ? "link" : "links"} written out</>}
+          {result.skipped > 0 && <> · <span className="num">{result.skipped}</span> skipped</>}
+        </p>
+        <div className="row"><button type="button" className="primary" onClick={onDone}>Done</button></div>
+      </div>
+    );
+  }
+  return (
+    <form className="stack import-memory" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
+      <div className="field"><span id="import-files">Files</span>
+        <div className="row">
+          <button type="button" className="sm" aria-describedby="import-files" onClick={() => picker.current?.click()}>Choose files…</button>
+          {files.length > 0 && <span className="picked mono muted">{files.map((f) => f.name).join(", ")}</span>}
+        </div>
+        <input ref={picker} type="file" multiple hidden aria-labelledby="import-files" accept=".md,.markdown,.txt,text/markdown,text/plain" onChange={(e) => setFiles([...(e.target.files ?? [])])} />
+      </div>
+      <label className="field"><span>Pool</span>
+        <select value={pool} title="A file without Lyrica's header goes to Private." onChange={(e) => setPool(e.target.value as "" | Pool)}>
+          <option value="">As exported</option><option value="general">General</option><option value="private">Private</option>
+        </select>
+      </label>
+      <ErrorText error={error} />
+      <div className="row">
+        <button type="submit" className="primary" disabled={busy || !files.length}>Import</button>
+        <button type="button" onClick={onDone}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function WriteMemory({ userId, onDone }: { userId: string; onDone: (d?: MemoryDetail) => void }) {
   const [pool, setPool] = useState<Pool>("general");
   const [kind, setKind] = useState<"note" | "page">("note");
   const [text, setText] = useState("");
@@ -569,7 +659,6 @@ function AddMemory({ userId, onDone }: { userId: string; onDone: (d?: MemoryDeta
   });
   return (
     <form className="stack add-memory" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
-      <h2>Add a memory</h2>
       <div className="row">
         <label className="field"><span>Pool</span>
           <select value={pool} onChange={(e) => setPool(e.target.value as Pool)}><option value="general">General</option><option value="private">Private</option></select>

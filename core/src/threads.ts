@@ -89,7 +89,7 @@ export function lookPointer(text: string): string | undefined {
 export type ChildStatus = "working" | "waiting" | "idle";
 
 /** A project's thread, as the project chat sees it: waiting covers an approval and a question for the person (`needsYou`). */
-export type ThreadState = "working" | "waiting" | "queued" | "idle" | "resolved";
+export type ThreadState = "working" | "waiting" | "queued" | "held" | "idle" | "resolved";
 
 export interface ChildInfo { id: string; title?: string; status: ChildStatus; state?: ThreadState; needsYou?: boolean; updatedAt: string; steps?: ThreadStep[] }
 
@@ -148,7 +148,7 @@ export const CHILD_THREAD_GUIDELINES = [
   "Use a subagent (delegate) when you need an answer to carry on and the task is bounded: searching, reading, reviewing, checking.",
   "Start a child thread (threads start) when the work is a stream of its own that outlasts this conversation, that the person may want to follow or steer, or that needs a long context of its own, such as \"I'll keep going on the homelab migration in its own thread.\" Say so, mentioning it.",
   "A child thread posts updates here as it goes. Message it with threads message; the person can also talk to it directly.",
-  "You're told when a child thread stops with an error or finishes without a report. Read its latest messages with threads read; stop one that went wrong with threads stop.",
+  "You're told when a child thread stops with an error; when it ends without a report, you get its last message as its report. Read its latest messages with threads read; stop one that went wrong with threads stop.",
 ];
 
 /** Her guidance in a project chat: she coordinates, and the work happens in threads. Guidance, never a boundary. */
@@ -161,7 +161,7 @@ export const PROJECT_CHAT_GUIDELINES = [
     + "first one code: true, base: true thread sets up the repository and the interfaces the parts share (stubs, conventions) and reports and resolves, then one code: true thread per part starts, together, each in its own worktree. "
     + "Each brief names the files that part owns, what is done and what it depends on. A small job (one feature or fix) keeps one thread. "
     + "When the parts report their branches, start one code: true, base: true merge thread. It merges each branch in turn, runs tests after each merge, and messages the owning thread about conflicts or red tests rather than fixing that thread's files. It deletes each branch after merging it. Only one base thread may be open; resolve the scaffold before starting the merge thread. A small job that works in the original checkout uses base: true too. When a thread's report names the check that tests the ask and what it showed, a light look is enough; check fully yourself only when that evidence is missing or doesn't match the ask.",
-  "You're told when a thread stops with an error or finishes without a report. Read a thread's latest messages with threads read; stop one that went wrong with threads stop.",
+  "You're told when a thread stops with an error; when it ends without a report, you get its last message as its report. Read a thread's latest messages with threads read; stop one that went wrong with threads stop.",
   "When the person asks you to propose first, suggest threads (threads suggest) instead of starting them.",
   "When setting up from recent work supplied in this turn, draft Goal and Instructions with threads draft for the person to edit in Project settings; never apply them yourself. Suggest existing threads to bring in with threads fold and their ids; the person applies the Fold in card.",
   "When the person says how they want the project run (how many threads at once, who to ask, what to avoid), save it as a note with remember.",

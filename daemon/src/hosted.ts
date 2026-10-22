@@ -991,6 +991,13 @@ export class HostedThread {
       // delegate is offered where the depth limit allows; it attaches itself, so background results reach this session.
       const canDelegate = delegation.depth(ctx) < delegation.limits.depth;
       const meter = new ContextMeter();
+      // Mid-turn, each request's counts go on the turn's call record and the stream gets the context, as after a turn.
+      meter.onProgress = () => {
+        const pace = meter.takePace();
+        if (pace) models.recordPace(this.userId, this.threadId, pace, this.turnTask, this.pool);
+        const context = meter.report();
+        if (context) this.emit({ type: "context", context });
+      };
       // Repository skills by checkout and HEAD, so an unchanged checkout costs one git call a turn.
       const repoSkillsSeen = new Map<string, ListedSkill[]>();
       const { session, runtime, prepare, dispose } = await openThreadSession({
@@ -1022,6 +1029,10 @@ export class HostedThread {
           createWorkspaceExtension({
             ...tools,
             sameFile: (path) => this.o.sameFile?.claim(this.userId, this.pool, this.threadId, tools.fileKey(path), path),
+            // A command's changes can't be held before it runs: the sweep after it tells both threads instead.
+            madeSince: (since) => tools.madeSince(since, (paths) => {
+              for (const p of paths) this.o.sameFile?.changed(this.userId, this.pool, this.threadId, tools.fileKey(p), p, since.getTime());
+            }),
             approve: (r) => this.approve(r),
             proposePlan: (r) => this.proposePlan(r),
             setMode: (mode) => { tools.setMode(mode); this.emit({ type: "settings" }); },

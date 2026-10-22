@@ -269,6 +269,17 @@ export interface ServingEntry {
   stretchUntested: boolean;
   /** A vision projector, and an MTP file or the model's own MTP layers, that settings can turn off. */
   extras?: { vision: boolean; mtp: "file" | "built-in" | null };
+  /**
+   * A GGUF chat model's companions: the projector it loads (picked in its
+   * settings' `mmproj`, or matched by name), the one its name matches, every
+   * projector on the host to pick from (its own folders first), and the
+   * repository it was downloaded from, where a missing projector or MTP file
+   * can be found.
+   */
+  projector?: string | null;
+  matchedProjector?: string | null;
+  projectors?: { path: string; size: number }[];
+  origin?: { source: "huggingface" | "modelscope"; repo: string; revision: string | null } | null;
 }
 
 /** What a model's card recommends for its context (DESIGN, "Model settings"). */

@@ -14,7 +14,7 @@ import { RowMenu } from "./Machines.tsx";
 import { ask, EDIT_MESSAGE_EVENT, type EditMessageRequest, EDIT_IMAGE_EVENT, type EditImageRequest } from "./links.ts";
 import type { ShellContext } from "./Shell.tsx";
 import type { useThread } from "./stream.ts";
-import { FoldCard, stateWord, SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
+import { FoldCard, heldTitle, stateWord, SuggestedCard, ThreadCard, type ProjectEnv } from "./Project.tsx";
 import { ChecklistButton, StepLine } from "./Checklist.tsx";
 import { findThread } from "./Thread.tsx";
 import { EditBox, MessageActions, MessageMenu, type Rewinder } from "./Rewind.tsx";
@@ -798,7 +798,7 @@ function ThreadsPill({ threads, env }: { threads: ThreadRef[]; env: Env }) {
               <a key={t.id} className="picker-item thread-item" href={href({ page: "thread", userId: env.userId, pool: t.pool, threadId: t.id })} onClick={close}>
                 {!s || s.state === "idle" || s.state === "queued" ? <span /> : <span className="status" data-state={s.needsYou ? "needsYou" : s.state} aria-hidden="true" />}
                 <span className="title">{s?.title || "New thread"}</span>
-                {s && <span className="tstate" data-state={s.needsYou ? "needsYou" : s.state ?? "idle"}>{stateWord(s)}</span>}
+                {s && <span className="tstate" data-state={s.needsYou ? "needsYou" : s.state ?? "idle"} title={heldTitle(s)}>{stateWord(s)}</span>}
               </a>
             );
           })}
@@ -810,7 +810,7 @@ function ThreadsPill({ threads, env }: { threads: ThreadRef[]; env: Env }) {
 
 const NOTICE_HEADS: Record<string, string> = {
   question: "Subagent asks", note: "Subagent note", user_message: "Message to a subagent", interrupted: "Subagent interrupted",
-  update: "Child thread", limit: "Tool limit", "checks-passed": "Checks", "checks-failed": "Checks",
+  update: "Child thread", limit: "Tool limit", "checks-passed": "Checks", "checks-failed": "Checks", job: "Background command",
 };
 /** A project's checks at the end of a code turn: a dot and a word after the head. */
 const CHECK_STATES: Record<string, ReactNode> = {

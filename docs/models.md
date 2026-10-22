@@ -385,7 +385,7 @@ Models Overview shows
 only the latest visible call under History; Show all beside its eyebrow
 opens Call history with server-side search and numbered pages.
 
-Once a turn ends, `recordPace` adds its counts and times to the record
+After each request that goes on with tools, and once a turn ends, `recordPace` writes the turn's counts and times so far to the record
 within the hosted thread's pool (`pace`), a subagent's turns included: the last request's prompt tokens (the context used), total reads across
 every request including cached reads (`readTokens`), output tokens,
 the window, time to first token and generation time, and the prompt tokens
@@ -744,6 +744,15 @@ link); the user's hub token goes along, marked with the hub it is for. A
 stretch above the card's factor is saved only with `{ anyway: true }` (Save
 anyway). Lookups and changes need the host's administrator (shared) or
 owner.
+
+**Companion files.** A GGUF chat model's serving settings carry the
+projector it loads, the one its name matches, every projector on the host
+and the repository it was downloaded from (host/API.md). The drawer's
+**Projector** picks any of them (`mmproj`), for a fine-tune whose name
+doesn't match its base's projector. A model downloaded before the picker
+ticked companions can fetch its missing projector or MTP file from its
+repository with **Missing files**: the file lands beside the model, and the
+host finds it at the next load.
 
 **Downloading when asked** (extension/src/downloads-tool.ts):
 `model_files { host?, source?, repo }` lists what a repository offers as

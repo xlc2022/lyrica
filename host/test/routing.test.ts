@@ -119,7 +119,7 @@ describe("routing /v1 to the model servers", () => {
     const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp, vllm }, state: h.host.state, log });
     h.host.runtime = new Runtime({ scheduler, modelsDir: models, state: h.host.state, log });
     await h.host.runtime.start();
-    return { ...h, me: lyrica(), lines, serving, router, gpus };
+    return { ...h, me: lyrica(), lines, serving, router, gpus, models };
   }
 
   async function paired(s: Awaited<ReturnType<typeof stack>>) {
@@ -248,6 +248,27 @@ describe("routing /v1 to the model servers", () => {
     await call({ port: s.tls, path: "/host/v1/models/reload", identity: s.me, pinned, body: { model: id } });
     expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).toContain("c = 8192");
     expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).not.toContain("cache-type-k");
+  });
+
+  it("loads a projector picked by hand from anywhere in the models folder, instead of none matched by name", async () => {
+    const s = await stack();
+    const pinned = await paired(s);
+    const id = "lyrica/huggingface/Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q4_K_M.gguf";
+    writeFileSync(join(s.models, "shared/finetune-mmproj-F16.gguf"), ggufBytes({ "general.architecture": "clip" }));
+    await call({ port: s.tls, path: "/host/v1/scan", identity: s.me, pinned, body: {} });
+    const get = async () => (await call({ port: s.tls, path: `/host/v1/models/settings?model=${encodeURIComponent(id)}`, identity: s.me, pinned })).body;
+    expect(await get()).toMatchObject({ projector: null, matchedProjector: null, projectors: [{ path: "shared/finetune-mmproj-F16.gguf" }], extras: { vision: false } });
+    const put = (settings: object) => call({ port: s.tls, path: "/host/v1/models/settings", method: "PUT", identity: s.me, pinned, body: { model: id, settings } });
+    expect((await put({ placement: { mode: "auto" }, mmproj: "shared/none.gguf" })).body.error.message).toMatch(/no projector at that path/);
+    expect((await put({ placement: { mode: "auto" }, mmproj: "shared/finetune-mmproj-F16.gguf" })).body.capabilities.vision).toBe(true);
+    expect(await get()).toMatchObject({ projector: "shared/finetune-mmproj-F16.gguf", extras: { vision: true } });
+    await call({ port: s.tls, path: "/host/v1/models/load", identity: s.me, pinned, body: { model: id } });
+    expect(readFileSync(join(s.serving, "llamacpp.ini"), "utf8")).toContain("mmproj = /models/shared/finetune-mmproj-F16.gguf");
+    // Kept across a rescan; gone with its setting.
+    await call({ port: s.tls, path: "/host/v1/scan", identity: s.me, pinned, body: {} });
+    expect((await get()).projector).toBe("shared/finetune-mmproj-F16.gguf");
+    await put({ placement: { mode: "auto" } });
+    expect(await get()).toMatchObject({ projector: null, extras: { vision: false } });
   });
 
   it("serves a stretched model with llama.cpp's YaRN flags, and a stretch past the card's only when asked for anyway", async () => {

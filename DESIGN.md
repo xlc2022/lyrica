@@ -193,6 +193,12 @@ Each user has two pools of memory.
       in a grant says it deletes on the server.
     - A panel upload belongs to the thread, not to a message, so removing
       turns never deletes it.
+  - **Changes** (decided 2026-10-22, as in Claude's own app): a thread with a
+    checkout shows its branch, its open pull request and "+n −m" as a badge
+    in its header, which opens the changes view: the files and commits at
+    the left, each file's differences at the right, unified or side by side,
+    with the unchanged stretches folded. Git runs where her tools run, and
+    the texts go to the user's browser and nowhere else.
   - **Voice**, as in Claude: a mic in the message box for dictation, and
     **Read aloud** on her messages; later, voice conversation. See
     [Voice](#voice).
@@ -1787,6 +1793,9 @@ Details in [docs/sleep.md](docs/sleep.md).
   - Each operation goes either to a bubblewrap sandbox, which sees only the
     folders granted to the thread, or to one of the machines granted to it
     (see [Machines](#machines)).
+  - A long command runs in the background: approved as any command, it
+    returns a job id at once, and the thread is told (and woken if idle)
+    when it ends. Jobs live in `lyricad`'s memory only.
   - An administrator decides which folders each user may grant, with separate
     lists for the general and private pools. The lists live in `self.db`, so
     the user's password isn't needed and users can't extend their own.

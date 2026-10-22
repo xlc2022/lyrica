@@ -89,7 +89,7 @@ describe("her context", () => {
 
   it("is compacted by Pi at the window's edge when she doesn't, with a marker", async () => {
     // Principle 8: the window follows the seed persona and tool definitions; a turn must land between Pi's reserve and the window.
-    const { ada, path, stream, turn } = await setup("general", 12_500 + guidanceTokens);
+    const { ada, path, stream, turn } = await setup("general", 12_700 + guidanceTokens);
     await turn(long("FIRST-MARK"));
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));

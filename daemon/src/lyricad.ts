@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   adoptLocalSearxng, bootstrap, isMounted, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
-  SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, homeWiped, homeWipePending, wipePending, wipePools,
+  SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, jobNotice, homeWiped, homeWipePending, wipePending, wipePools,
   localDate, localTime, serverZone, zoneOf,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
@@ -29,6 +29,8 @@ import { ThreadHost } from "./hosted.ts";
 const HOST_CODES = ["need_repo", "above_recommended"];
 /** Changes no list in the shell shows, so they don't tell the user's other tabs: a draft saves after each pause in typing. */
 const UNLISTED = new Set(["/api/u/:userId/threads/:pool/:threadId/draft"]);
+/** What an idle thread is woken with when one of its background commands ends: the notice above it says which. */
+const JOB_WAKE = "A background command ended: its notice is above. Carry on with what it was for, or say what it found.";
 import {
   checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, readBody, secureServer, sendJson, serveStatic, statusOf, Updating,
   type Listener, type Request, type Route, type TrustForwarded,
@@ -448,6 +450,21 @@ export class Lyricad implements Drainable {
         try { models.addCallTotals(t.userId, t.pool, t.threadId, "Claude Code", "cloud", u.inputTokens, u.outputTokens); }
         catch (err) { this.log(`Claude Code usage not recorded: ${(err as Error).message}`); }
       },
+      // A background command ended: its thread gets a notice, as a background subagent's result, and an idle thread wakes once.
+      onJobEnd: (t, job, output) => {
+        const content = jobNotice(job, output);
+        const details = { status: "job", id: randomBytes(8).toString("hex") };
+        try {
+          delegation.deliver({ user: { id: t.userId }, pool: t.pool, threadId: t.threadId } as Parameters<Delegation["deliver"]>[0], content, details);
+          host.delivered(t.userId, t.pool, t.threadId, content, details);
+          // A job she or lyricad stopped (her jobs stop, Lock, shutdown) only leaves its notice: waking then would spend a turn on nothing.
+          if (job.state === "stopped" || host.draining || host.busy(t.userId, t.pool, t.threadId) || !children.mayWake(t.userId, t.pool, t.threadId)) return;
+          children.woke(t.userId, t.pool, t.threadId);
+          void host.get(t.userId, t.pool, t.threadId).wakeChild(JOB_WAKE).catch(() => {});
+        } catch (err) {
+          this.log(`a background command's notice wasn't delivered: ${(err as Error).name}`);
+        }
+      },
     });
     if (this.opts.selfTest !== false) {
       const refused = await workspace.selfTest();
@@ -488,6 +505,8 @@ export class Lyricad implements Drainable {
       users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads,
       paused: stopped,
       project: (u, p, project) => projects.settings(u, p, project),
+      held: (u, p, t) => sameFile.held(u, p, t),
+      messaged: (u, p, from, to) => sameFile.messaged(u, p, from, to),
       draft: (u, p, project, change) => { projects.set(u, p, project, { draftGoal: change.goal, draftInstructions: change.instructions }); },
       updated: (u, p, project, thread) => watcher.updated(u, p, project, thread),
       wakeups: (): Wakeups => wakeups,
@@ -497,9 +516,13 @@ export class Lyricad implements Drainable {
     // Two threads on one file: the second is held once and the first is told, steered into its turn or kept for its next.
     const sameFile = new SameFile({
       exists: (u, p, t) => { const v = memory.openThreadView(u, p); try { return !!v.own.getThread(t); } finally { v.close(); } },
+      busy: (u, p, t) => host.busy(u, p, t),
       tell: (u, p, to, from, text) => {
         if (!host.busy(u, p, to)) return host.get(u, p, to).appendParent(text, from);
         host.get(u, p, to).send(text, { fromThread: from }).catch((err) => this.log(`couldn't tell a thread about a shared file: ${firstLine(err as Error)}`));
+      },
+      changed: (u, p, threads) => {
+        for (const t of threads) { const parent = children.parentOf(u, p, t); if (parent) host.changed(u, p, parent, t); }
       },
     });
     host = new ThreadHost({
@@ -510,7 +533,7 @@ export class Lyricad implements Drainable {
         children.turn(u, p, t, working);
         if (!working) routines.ended(u, p, t);
         const k = `${u}/${p}/${t}`;
-        if (working) { erred.delete(k); aborted.delete(k); if (byPerson) watcher.wrote(u, p, t); return watcher.turnStarted(u, p, t); }
+        if (working) { erred.delete(k); aborted.delete(k); if (byPerson) { watcher.wrote(u, p, t); children.personWrote(u, p, t); } return watcher.turnStarted(u, p, t); }
         // Only a turn the person wrote in resets the run of looks; a child's wake or a marked message isn't one.
         if (byPerson ?? true) watcher.turnEnded(u, p, t);
         const failed = erred.delete(k);
@@ -617,6 +640,7 @@ export class Lyricad implements Drainable {
     s.wakeups.drop(userId);
     s.routines.drop(userId);
     s.forge.drop(userId);
+    s.workspace.jobs.stopUser(userId, "Lyrica locked");
     // Subagent runs record how they ended in user.db, and a sleep run in the pool, so they stop before the key goes.
     await s.delegation.stopAll(userId);
     await s.children.lock(userId);
@@ -714,6 +738,7 @@ export class Lyricad implements Drainable {
     if (!this.draining && !this.wipingNow) {
       this.services.children.drainWakes();
       this.services.wakeups.tick(now);
+      this.services.children.watchIdle(now);
       this.services.routines.tick(now);
       this.services.forge.tick(now);
       if (now.getTime() - this.prunedAt >= 3600_000) {
@@ -891,6 +916,7 @@ export class Lyricad implements Drainable {
     clearInterval(this.nightly);
     if (s) {
       await s.delegation.stopAll();
+      for (const u of s.users.all()) s.workspace.jobs.stopUser(u.id, "Lyrica stopped");
       s.watcher.close();
       for (const u of s.users.all()) await s.sleep.stop(u.id);
       await s.host.close();

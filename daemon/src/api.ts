@@ -479,6 +479,17 @@ export interface ServingSettings {
   stretchUntested: boolean;
   /** What the drawer's Vision and MTP switches can turn off: a vision projector, and an MTP file or the model's own MTP layers. */
   extras?: { vision: boolean; mtp: "file" | "built-in" | null };
+  /**
+   * A GGUF chat model's companions: the projector it loads (picked in its
+   * settings' `mmproj`, or matched by name), the one its name matches, every
+   * projector on the host to pick from (its own folders first), and the
+   * repository it was downloaded from, where a missing projector or MTP file
+   * can be found.
+   */
+  projector?: string | null;
+  matchedProjector?: string | null;
+  projectors?: { path: string; size: number }[];
+  origin?: { source: Hub; repo: string; revision: string | null } | null;
 }
 /**
  * GET /api/u/:userId/offerings/:offeringId/serving → ServingSettings. PUT { settings, anyway? } → the host's model entry; a placement that
@@ -865,7 +876,9 @@ export interface ThreadSummary {
   /** A project's thread: the project chat's message it hangs off (an entry number), if that is still there. */
   anchor?: number;
   /** A project's thread: waiting covers an approval and a question for the user. */
-  state?: "working" | "waiting" | "queued" | "idle" | "resolved";
+  state?: "working" | "waiting" | "queued" | "held" | "idle" | "resolved";
+  /** A project's thread held by the same-file rule (docs/workspace.md), idle until it settles: the other thread and the file. */
+  held?: { thread: string; title?: string; path: string };
   /** A project's thread is waiting on the user to decide something. */
   needsYou?: true;
   /** Its next wake-up, if one is waiting (her `threads later`). */
@@ -1218,7 +1231,8 @@ export type MessagePart =
    * Something a subagent run delivered into the thread: a background run's
    * result or question, a note, or what a user wrote to one of its subagents.
    * `status` says which ("finished", "question", "note", "user_message", …;
-   * "limit" for the tool limit, "checks-passed" or "checks-failed" for a project's checks).
+   * "limit" for the tool limit, "checks-passed" or "checks-failed" for a project's checks,
+   * "job" for a background command that ended).
    */
   | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[]; told?: Told[] }
   /** The thread was compacted: tokens before and (estimated) after, and the summary that replaced the older messages. */
@@ -1397,6 +1411,29 @@ export interface PlanBranch { id: string; repo: string; branch: string; commits:
 /** `pins`: how many of the removed messages were pinned; `files` and `branches`: how many were undone. */
 export interface RewindResponse { removed: number; subagents: number; pins: number; files: number; branches: number }
 
+// --- Changes: a thread's branch against its base ---
+
+/** A thread's open pull request on a repository, as the forge watcher last saw it (docs/briefs/ci-wakes.md). */
+export interface OpenPull { repo: string; number: number; head: string; url: string; checks: { name: string; result: CheckResult | null }[] }
+/** One checkout's changes with its pull request where the watcher knows one. `worktree`: a project thread's own checkout. */
+export interface RepositoryChangesInfo extends RepositoryChanges { pull?: OpenPull; worktree?: boolean }
+/**
+ * GET /api/u/:userId/threads/:pool/:threadId/changes → ThreadChanges: each
+ * checkout the thread works in (its cloned repositories, a project thread's
+ * worktrees, and writable granted folders that are the top of a git
+ * repository), its branch, base, commits since the base (newest first, at
+ * most 100), whether anything is uncommitted, and every file changed since
+ * the base with its line counts. Read with git where the thread's tools run;
+ * nothing is stored. 409 while the thread's folders can't be reached (a
+ * locked home, an SSH target).
+ * GET …/changes/commit?repo=<path>&hash=<commit> → CommitChanges, one
+ * commit's files. GET …/changes/file?repo=<path>&path=<file>[&old=<path>]
+ * &commit=all|<hash> → FileSides, both sides as text (a side over 512 KB,
+ * or a binary file, is said and not sent). `repo` is a checkout's `path`.
+ */
+export interface ThreadChanges { repositories: RepositoryChangesInfo[] }
+export interface CommitChanges { files: ChangedFile[] }
+
 /**
  * PUT /api/u/:userId/threads/:pool/:threadId/messages/:n/pin → Pin, and DELETE to unpin.
  * Only the user's messages and her replies can be pinned; not in a subagent's thread.
@@ -1439,7 +1476,7 @@ export interface UploadResponse { path: string }
  */
 export interface FileEntry { name: string; path: string; kind: "file" | "folder" | "link" | "other"; size: number; modified: string; madeBy?: string }
 /** A top of the panel's tree: the thread's folder (`/workspace`), then each granted folder. */
-export interface FileRoot { path: string; writable: boolean; kind: "thread" | "grant" }
+export interface FileRoot { path: string; writable: boolean; kind: "thread" | "shared" | "grant" }
 /**
  * GET /api/u/:userId/threads/:pool/:threadId/files?dir=<path> → FileListing.
  * One folder at a time (the thread's folder without `dir`), folders first;
@@ -1757,6 +1794,29 @@ export interface ForgetTopic { ids: string[] }
  */
 export interface NewNote { text: string; about?: string[]; links?: string[] }
 export interface NewPage { slug: string; title: string; summary: string; text: string; folders?: string[]; links?: string[] }
+
+/**
+ * POST /api/u/:userId/memory/export → MemoryExport. The notes and pages as one
+ * Markdown file for the browser to download; other kinds are counted in
+ * `skipped`. Only pools the display shows.
+ */
+export interface MemoryExportRequest { items: { pool: Pool; id: string }[] }
+export interface MemoryExport { name: string; markdown: string; count: number; skipped: number }
+/**
+ * POST /api/u/:userId/memory/import → MemoryImportResult. Files as read in the
+ * browser (16 MiB in all), into `pool`, or each memory's exported pool when
+ * left out (a file without headers goes to private). Each is a memory the
+ * user added; links that resolve stay, the rest become words.
+ */
+export interface MemoryImport { files: { name?: string; text: string }[]; pool?: Pool }
+export interface MemoryImportResult {
+  imported: { pool: Pool; id: string }[];
+  duplicates: number;
+  renamed: number;
+  linksKept: number;
+  linksWorded: number;
+  skipped: number;
+}
 
 // --- Administrators: /api/u/:userId/admin/… ---
 
@@ -2184,6 +2244,8 @@ export interface PushInfo {
   lastFailure?: { at: string; status: number };
 }
 export type { PushSettings } from "@lyrica/core";
+export type { ChangedFile, ChangeCommit, CheckResult, FileSides, RepositoryChanges } from "@lyrica/core";
+import type { ChangedFile, CheckResult, RepositoryChanges } from "@lyrica/core";
 
 /** GET /api/u/:userId/events: text-free list invalidation; hello on every connection. */
 export type UserEvent = { type: "hello" } | { type: "changed" };

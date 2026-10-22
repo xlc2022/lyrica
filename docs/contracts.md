@@ -265,6 +265,10 @@ word: sleep can only add around it.
 **Owner view.** `openOwnerView(userId)` gives the signed-in user read and write
 access to both of their own pools, for the memory browser.
 It is never passed to the extension, a Pi session or sleep.
+`exportMemories(owner, refs)` and `importMemories(owner, files, { pool?,
+author })` move notes and pages in and out as Markdown, only through it;
+`PoolStore.importMemory(id, body, author, createdAt?)` refuses a thread
+view and a taken ID.
 
 **Pages can describe folders.** A page has an optional `folders` list of host
 paths or machine locations (`<machine>:<root>`). Sleep sets it. `forFolders(paths)` returns the pages
@@ -841,7 +845,9 @@ Custom roles override built-ins by name.
   status `update`, and every delivery's details carry an `id`. A child on
   a task from its parent whose turn ends idle with an error, or without an
   update since the task, gets the parent the same kind of notice
-  (`ChildThreads.ended`, fed by `lyricad`'s turn events). A child's
+  (`ChildThreads.ended`, fed by `lyricad`'s turn events); without an
+  update, the notice carries the child's last assistant message (clipped
+  to 4,000 characters, never an unlogged thread's) marked as its report. A child's
   `message({ to: "parent", text, question: true })`, a project's `needsYou`,
   its report when its turn ends idle, and the daemon's failure or
   didn't-start notes wake an idle parent for one turn. Plain progress and
@@ -853,8 +859,12 @@ Custom roles override built-ins by name.
   `HostedThread.wakeChild`: a hidden custom message with `triggerTurn: true`,
   through the ordinary model preparation, turn events and storage. Pending
   wake metadata is in memory only; stored notices survive a restart.
-  `noticed` prevents repeated bad-end wakes until a child reports or the
-  user writes there. A reply from a child-triggered parent to its source
+  `noticed` prevents repeated error wakes until a child reports or the
+  user writes there. `ChildThreads.watchIdle(now)`, called by the daemon
+  tick unless an update drains, wakes an idle project chat with
+  `IDLE_NOTE` through `wakeChild` (see docs/delegation.md, Idle projects);
+  `ChildThreads.personWrote`, from lyricad's onTurn on a turn the person
+  started, resets its count for that project. A reply from a child-triggered parent to its source
   child goes through `HostedThread.appendParent`, saved after the child's
   current turn without a turn or steer; the next turn reads it.
   `message` returns a `Delivery`: `started`, `running`, `queued` (an idle
@@ -1043,7 +1053,7 @@ piModelFor(runtime, models, task, ctx, resolution?): { ref; model; resolution }
 prepareTurn({ session, runtime, models, call, pool, threadId, task?, thinking?, retry? }): Promise<Resolution>
 openThreadSession({ thread, models, cwd, extensions, settings?, task?: () => Task }): Promise<ThreadSession>
 interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?: { thinking?; retry? }): Promise<Resolution>; dispose() }
-interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary } }   // LyricaOptions.meter
+interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary }; onProgress?(): void }   // LyricaOptions.meter; onProgress runs after each request that goes on with tools
 ```
 
 - The factory is `createLyricaExtension(thread: ThreadContext, opts:
@@ -1280,6 +1290,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
   - A `bash` call with no `timeout` gets `BASH_TIMEOUT_S` (600 seconds),
     and the tool's schema says so; she gives a longer one for a long build.
+  - With `startJob`, `bash` takes `background: true` and there is a `jobs`
+    tool (`list`, `output`, `stop`); a subagent has neither. A background
+    call is approved like any `bash`, then `startJob(command, machine?,
+    timeoutS?)` returns a `JobInfo` at once (docs/workspace.md, Background
+    commands).
   - `ExecutionTarget.run?(argv, { signal?, timeoutMs? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
   - `ExecutionTarget.secrets?()` is the sandbox's tokens and placeholders
@@ -1290,11 +1305,16 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `ThreadTools` is `{ commandRules?(), target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
     mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
-    proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path), madeFiles?(paths), madeSince?(since), fileNotes?() }`.
+    proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path), madeFiles?(paths), madeSince?(since), fileNotes?(),
+    startJob?(command, machine?, timeoutS?), jobs?(), jobOutput?(id), stopJob?(id) }`.
     `sameFile(path)` runs in `tool_call` for a sandbox `write` or `edit`,
     before any approval is asked; a text it returns blocks the call as its
     reason and nothing is written (daemon
-    `SameFile.claim`, keyed by `Workspace.fileKey`).
+    `SameFile.claim`, keyed by `Workspace.fileKey`; it holds only while the
+    other thread is busy, and `SameFile.held` gives both sides of an
+    unsettled hold, which `ChildThreads` shows as `ThreadState` `"held"` and
+    `held: { thread, title?, path }`; `ChildThreads.message` calls
+    `SameFile.messaged`, which settles it).
     `commandRules()` reads the owning project on every bash call. Forbid
     blocks in all modes and targets; Ask always prompts; Allow skips only
     sandbox mode prompts. Opaque commands ask with any forbid rule.
@@ -1309,7 +1329,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `madeSince` records the files in `/workspace` and `/shared` newer than
     it (`find` in a fresh no-network sandbox, at most 2,000 within 10
     seconds; `.git`, `node_modules`, `.lyrica` and `/workspace/repos`
-    skipped). `claudeCode()`
+    skipped). The daemon passes `madeSince` a hook that hands each file
+    found to `SameFile.changed`, which tells both threads when another
+    thread changed the file first. `claudeCode()`
     true adds `CLAUDE_CODE_LINE` to that section.
   - `read`, `write`, `edit` and `bash` take an optional `machine`. On a
     machine the call's mode is `stricterMode(settings().mode, limit)`; a
@@ -1624,6 +1646,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     (`removalPlan` and `applyRemoval` in `daemon/src/removal.ts`; uploads
     found with `PoolStore.entriesMentioning`); the `rewound` event carries
     `from` and `resend`, never text);
+  - changes: `GET /api/u/:userId/threads/:pool/:threadId/changes` →
+    `ThreadChanges`, `…/changes/commit?repo=&hash=` → `CommitChanges`,
+    `…/changes/file?repo=&path=&old=&commit=` → `FileSides` (docs/daemon.md
+    "Changes"): git run where the thread's tools run, through
+    `Workspace.checkouts(t)` and `core/src/workspace/git-changes.ts`
+    (`repositoryChanges`, `commitFiles`, `fileSides`); the open pull request
+    from `ForgeWatcher.openPull(userId, pool, thread, repo)`, the last poll's
+    number, head, URL and checks;
   - images: `GET /api/u/:userId/threads/:pool/:threadId/file?path=` serves
     sniffed regular file bytes from that thread's folder only (relative or
     `/workspace/` paths), with `no-store`, `nosniff` and a sandbox CSP.
@@ -1757,6 +1787,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     summary, author and date, case-insensitively. Differences are computed
     in the browser against the current text; Restore keeps its existing
     contract;
+    `POST …/memory/export` (`MemoryExportRequest { items: { pool, id }[] }`)
+    → `MemoryExport { name, markdown, count, skipped }`: the notes and pages
+    as one Markdown file, built in memory for the browser to save (other
+    kinds counted in `skipped`, a hidden pool 404). `POST …/memory/import`
+    (`MemoryImport { files: { name?, text }[], pool? }`, up to 16 MiB) →
+    `MemoryImportResult { imported, duplicates, renamed, linksKept,
+    linksWorded, skipped }`, through `importMemories` (memory.md, "Export
+    and import");
   - speech: `POST …/threads/:pool/:threadId/transcribe` and `POST
     /api/u/:userId/transcribe?pool=` (an `audio/wav` body, `?language=`) →
     `Transcription { text, seconds, model }`; `GET
@@ -1949,13 +1987,14 @@ settings(userId).checks(pool, project): string[] / setChecks(pool, project, chec
 // checkChecks: at most 8 commands, each one line of at most 300 characters, no control characters; blanks dropped.
 // user step 16 adds project_settings.checks, JSON default [].
 settings(userId).skillsAutoApprove() / setSkillsAutoApprove(on)   // her skills active at once; user.db setting skills.auto_approve
-forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileKey(path), madeFiles(paths), madeSince(since), fileNotes() },
+forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileKey(path), madeFiles(paths), madeSince(since, found?), fileNotes() },
 fileKey(t, path)  // one file under the same key for every thread that can write it: "<folder thread>:<path>" in a thread's folder or /shared, "grant:<path>" in a writable grant; else undefined
               // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:
   // roots(), list(dir), search(root, q), images(), read(path) → { stream, size, type }, upload(dir, name, bytes) → path,
   // mkdir(path), rename(from, to), remove(paths), zip(paths) → Readable. FilesRefused: outside the grants, a root, .lyrica, read-only.
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
+checkouts(t): { name, path, kind }[]     // where its code lives, for the changes view: worktrees, clones, writable grants (docs/daemon.md "Changes")
 targetFor(t, machine?): ExecutionTarget  // the sandbox, or an SSH machine the thread may use now (a Proxmox one is refused)
 machinesFor(t): ThreadMachine[]           // { name, kind, limit, root }: granted by it and every ancestor, of its pool
 proxmox(t, machine, action, vm?): Promise<string>  // one PROXMOX_ACTIONS call on a thread's Proxmox machine, token sent only to the pinned certificate

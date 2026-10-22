@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { EndpointInfo, MachineProbe, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary } from "../src/api.ts";
+import type { EndpointInfo, MachineProbe, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary, ThreadUsage } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 /** Whether a chat request is a child thread's: its conversation holds a message from its parent. */
@@ -199,6 +199,23 @@ describe("child threads", () => {
     expect((await messages(childPath(id)))[0]).toMatchObject({ role: "user", from: { kind: "parent", threadId: thread.id }, parts: [{ type: "text", text: "Move the backups off the old NAS." }] });
     expect((await list()).find((t) => t.id === thread.id)!.children[0]!.unseen).toBe(0);
     expect(logs.join("\n")).not.toMatch(/NAS|backups|Halfway/);
+  });
+
+  it("a child's context and tokens show while its long turn still runs, counted from its own calls", async () => {
+    const { ada, parent, child, say, childPath, path } = await setup();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    parent.push(start("Plant beds", "Plan the beds."), { text: "Started." });
+    child.push(toParent("Measuring the beds."), async () => { await gate; return { text: "Planned." }; });
+    const id = toolEnd(await say("plan the beds in their own thread")).threads![0]!.id;
+    // Its first request asked for a tool and its second waits: the turn is still going.
+    const usage = await until(() => ada.get<ThreadUsage>(`${childPath(id)}/usage`).then((r) => r.body), (u) => u.models.length > 0);
+    const settings = (await ada.get<ThreadSettings>(`${childPath(id)}/settings`)).body;
+    expect(settings.context).toMatchObject({ tokens: expect.any(Number), window: 1_048_576 });
+    const parentUsage = (await ada.get<ThreadUsage>(`${path}/usage`)).body;
+    expect(usage.tokens).toBeGreaterThan(0);
+    expect(usage.tokens).toBeLessThan(parentUsage.tokens);
+    release();
   });
 
   it("messages flow both ways, and the user talks in a child without the parent being told", async () => {
@@ -439,12 +456,20 @@ describe("a child's end, reading and stopping", () => {
     (await messages()).filter((m) => m.role === "notice").map((m) => (m.parts[0] as { text: string }).text);
   const call = (args: object): Reply => ({ tools: [{ name: "threads", args }] });
 
-  it("the parent hears of a child that finished without a report, and not of one that reported", async () => {
+  it("the parent gets a child's last message as its report when it sent none, again after a new message, and not from one that reported", async () => {
     const { parent, child, say, path, messages, idleParent } = await setup();
     parent.push(start("Silent", "Plan the beds."), { text: "Started." });
     child.push({ text: "Planned." });
     const silent = toolEnd(await say("start the silent one"))!.threads![0]!.id;
-    await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes(`[t:${silent}] finished without a report, and is idle`)));
+    const implicit = (text: string) => `Child thread [t:${silent}] ended without a report; its last message, as its report:\n${text}`;
+    await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes(implicit("Planned."))));
+
+    // The parent writes to it again; it ends without a report again, and the parent hears again.
+    await idleParent();
+    parent.push(call({ action: "message", id: silent, text: "And the paths?" }), { text: "Asked." });
+    child.push({ text: "Paths too." });
+    await say("ask it about the paths");
+    await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes(implicit("Paths too."))));
 
     await idleParent();
     parent.push(start("Loud", "Plan the paths."), { text: "Started." });
@@ -453,8 +478,8 @@ describe("a child's end, reading and stopping", () => {
     await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes("Paths planned.")));
     await new Promise((r) => setTimeout(r, 300));
     const all = (await notices(() => messages(path))).join("\n");
-    expect(all).toContain(`[t:${silent}] finished without a report`);
-    expect(all).not.toContain(`[t:${loud}] finished without a report`);
+    expect(all).not.toContain(`[t:${loud}] ended without a report`);
+    expect(all).not.toContain("finished without a report");
     expect(all).not.toContain("stopped with an error");
   });
 

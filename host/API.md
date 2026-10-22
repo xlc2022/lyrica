@@ -253,8 +253,10 @@ seconds of audio.
     (`mmproj` in its name) and an MTP draft (`mtp-…`, or anything in an
     `MTP` folder). A model finds them beside it or in its repository's
     folder one or two levels up: the projector F16 or BF16 first, the MTP
-    file whose name is closest to its own. `capabilities.vision` is true
-    while it runs with its projector (`vision` below).
+    file whose name is closest to its own. A projector picked in the
+    model's settings (`mmproj` below) replaces the one its name matches.
+    `capabilities.vision` is true while it runs with its projector
+    (`vision` below).
   - `state`: `unloaded`, `loading` or `loaded`; `gpus` lists where it is
     loaded.
   - `vram`: bytes measured on each GPU, per placement it has been loaded
@@ -315,7 +317,14 @@ embeddings and dictation receive neither parser.
   M-RoPE). `extras` says what `vision` and `mtp` can turn off: a vision
   projector, and an MTP file (`"file"`) or the model's own MTP layers
   (`"built-in"`, from `<arch>.nextn_predict_layers`), else `null`. A model
-  never set has `{ "placement": { "mode": "auto" } }`.
+  never set has `{ "placement": { "mode": "auto" } }`. A llama.cpp chat
+  model also has `projector` (the one it loads, or null),
+  `matchedProjector` (the one its name matches), `projectors` (every file
+  with `mmproj` in its name under the models folder, `{ path, size }`, its
+  own folders first) and `origin` (`{ source, repo, revision }` from the
+  download record, or null when the host didn't download it), where a
+  missing projector or MTP file can be looked up with `hub/files` and
+  downloaded beside it.
 - `PUT /host/v1/models/settings` `{ "model": "<id>", "settings": { ... },
   "anyway": true }` saves them, whole, and answers with the model's entry. A
   stretch above the factor the card documents is refused
@@ -367,7 +376,11 @@ embeddings and dictation receive neither parser.
   (`auto`, `on`, `off`), `gpuLayers` (0 to 999), `parallel` (requests
   served at once, 1 to 64; see below). A `q8_0` or `q4_0` KV cache needs
   `flashAttention` set to `on`. `vision: false` loads it without its
-  projector (less memory, no images). `mtp: false` turns off drafting with
+  projector (less memory, no images). `mmproj` is a projector picked by
+  hand, a path from `projectors`, for a fine-tune whose name doesn't match
+  its base's projector; it applies at the next load, and a path not in the
+  models folder is refused. A projector of the wrong architecture fails when
+  the model loads. `mtp: false` turns off drafting with
   MTP, which is on when the model has an MTP file or layers: llama.cpp gets
   `spec-type = draft-mtp`, `spec-draft-n-max` (`draftMax`, 1 to 6, 2 by
   default) and, for a file, `model-draft`. The fit check counts the

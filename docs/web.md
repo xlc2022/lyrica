@@ -57,7 +57,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Only projects or No projects. The sort, the checkboxes and the projects
   choice are saved per user (`Display`). Pinned threads come first under a
   **Pinned** eyebrow, whatever the sort. A thread unread for this user
-  is bold; private threads carry a small lock in the private colour; child
+  is bold; private threads carry a small lock in the private colour; a
+  thread at work (`busy`, or a project thread's `working` state) pulses its
+  pool dot or lock, steady under reduced motion; child
   threads (Lyrica's, branches, forks, copies) sit behind `›`, a child
   showing when it works or waits and a count of its unseen updates (at most
   two badges a row: waiting, then the count, then hidden).
@@ -65,7 +67,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   pool dot's place (amber-dotted when one of its threads waits on the user)
   and its threads nested under it, open by default, each with its pool dot,
   its state as a word (Working, Waiting on you, Waiting for approval,
-  Queued, Idle) and its unseen count, the ones pinned from their cards
+  Queued, Blocked, Idle; Blocked's tooltip reads "Blocked until it agrees
+  with <thread> on who changes <file>.") and its unseen count, the ones pinned from their cards
   first; resolved ones fold under a **Resolved** row with their count. The
   list's own menu (right-click or a long press on its empty space) has
   **New project** (General or Private: an empty, pinned project chat) and
@@ -145,6 +148,19 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   ✕ (Remove, `DELETE …/wakeups/:id`), never her note. Each `wakeups` stream
   event replaces the list, so one set, removed or fired shows at once; the
   fact goes when none is left.
+  **Changes** (`src/Changes.tsx`, docs/ux.md §6 "A thread's branch and pull
+  request"): after the folder, machine, repository and MCP badges, one badge
+  per checkout from `GET …/changes` (docs/daemon.md "Changes"), fetched when
+  the thread opens and again when `ShellContext.activity` moves (a finished
+  tool call or turn); a 409 (a locked home, an SSH machine) shows nothing.
+  It opens `ChangesView`, a `dialog` like the file viewer: `…/changes/commit`
+  for one commit's files, `…/changes/file` for each file's two sides, which
+  `diff.ts` compares in the browser (Myers over the lines, the middle shown
+  as replaced past 2,000 edits; a change's line pairs get `wordDiff`'s marks;
+  unchanged stretches fold past three lines of context and open twenty at a
+  time). **Unified | Side by side** is kept in `localStorage`
+  (`lyrica.changes.view`); below 1180 px it is unified. Nothing of it is
+  stored or logged: the texts come to this browser and go nowhere else.
   **Routine** (`src/Routines.tsx`, `ThreadSettings.routines`) opens the
   same style of popover listing schedules, next times in mono, Pause or
   Resume and Remove, never notes. Its fact shows the earliest active next
@@ -158,7 +174,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   (`{page:"threads"}`: `ThreadsPage`, the same groups as the popover below, each row
   its state word and its time in mono); below it a popover of the project's
   threads grouped Waiting on
-  you, Working, Queued, Idle and Resolved (each a link, with its unseen
+  you, Working, Queued, Blocked, Idle and Resolved (each a link, with its unseen
   count). The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
   This chat first, then thread links by descending tokens, and **Recent
   calls** linking to the project's filter. On a phone Tokens opens in place
@@ -182,7 +198,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `besideOnClick`: the project chat, or the thread the child was started
   from), a plain click on a child row opens it beside too, replacing what
   the panel shows. The sidebar's other rows navigate as before, and so does any other
-  modified click. The column
+  modified click. The row of the thread in the panel carries `data-beside`,
+  drawn as a thin box without the open row's fill. The column
   is 280 to 1000 px (420 to start), dragged on its divider (a `separator`
   that the arrow keys move too), the width kept in `localStorage`
   (`lyrica.panel-width`); the grid holds it short of leaving the
@@ -205,7 +222,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   phone, it is the page. `…/files/<encoded path>` opens with that file shown
   and its folders open (a folder: opened), or says it is gone. Files lists one folder at a time from
   `GET …/files?dir=` (docs/daemon.md "Files"), the thread folder open at the
-  start and each grant after it; a search runs under every root; a file,
+  start, then `/shared` for a thread with a folder of its own, such as a code thread (shown as Shared folder), then each grant; a search runs under every root; a file,
   or an image from Images (`…/files/images`, filtered by source), opens in
   the **file viewer** (below). The right-click menu (a long press, or the
   viewer's ⋯, which renders the same menu inside the viewer's dialog) attaches
@@ -257,6 +274,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   (raw HTML skipped); other names by the type `…/files/content` answers,
   text up to 512 KB as text and anything else with Download. Escape closes
   a menu inside first, then the viewer, and so does any navigation.
+- **The changes view** (`Changes.tsx`): the same kind of dialog for a
+  thread's branch, described under Chat ("Changes").
 - **Project settings page** (`…/p/<pool>/<project>/general`, `/memory` or `/files`),
   sections at the left. **General**: Goal, the Paused and **Watching
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
@@ -342,8 +361,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `…/history/memory/<pool>/<id>` lists versions newest first, with
   word differences (`wordDiff`, computed in the browser) and Restore, and
   Edit in place with a `[[` popover of pages and people (a page shows as
-  `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Forget… on a
-  selection, and Add a memory. The **Recent** layer (`kinds=entry`) lists
+  `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Export and Forget… on a
+  selection, and Add a memory with a Write | Import segment (export and
+  import in [memory.md](memory.md#export-and-import); the downloaded file
+  is made from the response in the browser and kept nowhere else). The **Recent** layer (`kinds=entry`) lists
   the logged messages written since sleep last consolidated
   (`PoolStore.recentEntries`), newest first and paged by `before`; one
   opens as a memory of kind `entry` (`GET …/memory/<pool>/e:…`), read-only
@@ -526,8 +547,13 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   else vLLM): Placement (Auto or Choose GPUs, Split ratio or Parallelism,
   Memory share, Pinned through the host's pin route, the KV cache estimate),
   Memory (Context length "of <max>", Stretch, Original context, KV cache,
-  GPU layers, Flash attention; **Look up**, `POST …/lookup`, with a
-  **Repository** popover on `need_repo`), Throughput and Template (a custom
+  GPU layers, Flash attention, **Projector** (the setting `mmproj`, picked
+  from the host's `projectors`), Vision, MTP; **Look up**, `POST …/lookup`,
+  with a **Repository** popover on `need_repo`), **Missing files**
+  (`MissingCompanions`: for a model with an `origin` that lacks a projector
+  or MTP file, `GET …/hosts/:id/hub/files` for its repository, the missing
+  companions with the one the host would pair first, and **Download**,
+  `POST …/hosts/:id/downloads`), Throughput and Template (a custom
   file read in the browser). The foot: Cancel, **Save and reload** (`POST
   …/reload`) when the model is loaded and the serving draft changed, **Save
   anyway** after `above_recommended` (it repeats the refused save, reload
