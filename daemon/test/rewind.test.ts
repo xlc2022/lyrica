@@ -120,6 +120,9 @@ describe("rewinding a thread", () => {
     await say("count the hives");
     await stream.until((e) => e.type === "delegation" && e.event.type === "started");
     const child = (stream.events.find((e) => e.event.type === "delegation")!.event as Extract<ThreadEvent, { type: "delegation" }>).event.threadId;
+    // The scout counts on its parent's chips while it works (ThreadSummary.subagents), in the parent's pool only.
+    expect(d.services!.delegation.store.liveCounts(rt.ada.id, "general").get(thread.id)).toBe(1);
+    expect(d.services!.delegation.store.liveCounts(rt.ada.id, "private").size).toBe(0);
 
     const view = d.services!.memory.openThreadView(rt.ada.id, "general");
     const note = view.own.search("bees", { kinds: ["note"] })[0]!.id;
@@ -138,6 +141,7 @@ describe("rewinding a thread", () => {
     expect(after.own.getThread(thread.id)).toBeDefined();
     after.close();
     expect(d.services!.delegation.store.runs(rt.ada.id, "general", { parent: thread.id })).toEqual([]);
+    expect(d.services!.delegation.store.liveCounts(rt.ada.id, "general").size).toBe(0);
   });
 
   it("refuses while a turn runs", async () => {

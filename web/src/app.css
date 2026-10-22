@@ -762,7 +762,7 @@ form.drawer-body { flex: 1; }
 /* The header: Threads popover and tokens; Project is a link (docs/ux.md §3) before the Settings button. */
 .tfacts .tokens { white-space: nowrap; }
 .threads-pop .picker-ep, .threads-list .picker-ep { display: flex; gap: 6px; align-items: baseline; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; font-weight: 600; }
-.threads-pop .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
+.threads-pop .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
 .threads-pop .thread-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status[data-state="working"] { background: var(--info); animation: pulse 1.4s ease-in-out infinite; }
 .status[data-state="waiting"], .status[data-state="needsYou"], .status[data-state="held"] { background: var(--warn); }
@@ -770,7 +770,7 @@ form.drawer-body { flex: 1; }
 .status[data-state="idle"], .status[data-state="queued"] { background: var(--muted); }
 .threads-pop .tokens { margin: 0; padding: 2px 6px 4px; color: var(--muted); }
 /* A project's threads as a panel page, opened by the Threads fact from the split width (docs/briefs/thread-panel.md item 1): the popover's groups; rows carry state as a dot and a word and the time in mono (docs/ux.md §5). */
-.threads-list .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
+.threads-list .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
 .threads-list .thread-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .threads-list .thread-item .when { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); white-space: nowrap; }
 /* The header's Context: the percent in warn from 80 %, danger from 95 %; the popover's bar and rows share one shade per part, all from the accent. */
@@ -800,6 +800,20 @@ form.drawer-body { flex: 1; }
 .tcard-head { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-flow: column; grid-auto-columns: auto; gap: 8px; align-items: center; font-size: 14px; }
 .tcard-head[data-dot] { grid-template-columns: 8px minmax(0, 1fr); }
 .twake { font-size: 12px; color: var(--muted); white-space: nowrap; }
+/* A project thread's chips (docs/ux.md §6, Project.tsx ThreadChips) in its rows and on its card: the checklist's count, the pull request with its checks' dot, the live subagents. Numbers in mono; the dot per §5. */
+.tchips { display: inline-flex; gap: 4px; align-items: center; white-space: nowrap; }
+/* Scoped under .tchips: Notifications' filter chips are a bare .chip of their own size. */
+.tchips > .chip { display: inline-flex; align-items: center; gap: 4px; min-height: 20px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); font-size: 12px; font-family: var(--ui); color: var(--muted); line-height: 1; text-decoration: none; }
+.tchips > .chip .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.tchips > .chip .ic { width: 12px; height: 12px; }
+.tchips > .chip.pull { color: var(--fg); }
+.tchips > .chip .dot { width: 6px; height: 6px; }
+.tchips > a.chip { position: relative; }
+.tchips > a.chip:hover { border-color: color-mix(in oklab, var(--fg) 25%, var(--line)); text-decoration: none; }
+/* The card's pull request link keeps its small look; on touch its hit area grows to 44 px like the facts line's links (ux.md: touch targets are 44 px). */
+@media (pointer: coarse) { .tchips > a.chip::after { content: ""; position: absolute; inset: -12px -4px; } }
+.tcard-head .tchips { font-weight: 400; }
+.thread-item:hover .tchips > .chip { background: var(--panel); }
 .tcard-title { color: var(--fg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tcard-line { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tcard .msg-menu { position: relative; }
@@ -827,8 +841,10 @@ form.drawer-body { flex: 1; }
 .checklist li[data-state="doing"] .step-mark { color: var(--accent); }
 /* On a phone a card's checklist opens in flow under the card's head, the card's width, as the Repositories picker does. */
 @media (max-width: 760px) {
-  .tcard-head:has(> .tcard-count) { display: flex; flex-wrap: wrap; }
-  .tcard-head:has(> .tcard-count) > .tcard-title { flex: 1 1 0; }
+  .tcard-head:has(> .tcard-count), .tcard-head:has(> .tchips) { display: flex; flex-wrap: wrap; }
+  .tcard-head:has(> .tcard-count) > .tcard-title, .tcard-head:has(> .tchips) > .tcard-title { flex: 1 1 0; }
+  /* The chips take a line of their own under the title, so the title keeps its room. */
+  .tcard-head > .tchips { order: 1; flex-basis: 100%; }
   .tcard-count { display: contents; }
   .sub-head .tcard-count > .link { margin-left: auto; }
   .tcard-count > .picker { position: static; order: 1; flex-basis: 100%; width: auto; max-height: none; margin-top: 2px; box-shadow: none; }

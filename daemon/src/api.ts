@@ -880,6 +880,10 @@ export interface ThreadSummary {
   wakeAt?: string;
   /** Her checklist for it (`threads steps`), in order; absent when it has none or Checklists is off. */
   steps?: ThreadStep[];
+  /** A project's thread: its open pull request as the forge watcher's last poll saw it (the first recorded, when it has several), for the chip on its card and rows. */
+  pull?: OpenPull;
+  /** A project's thread: how many subagents it has working or waiting on a question now; absent when none. */
+  subagents?: number;
 }
 
 /** One step of a thread's checklist: done, under way, or not started. */
