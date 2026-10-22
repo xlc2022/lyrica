@@ -136,5 +136,7 @@ Done: brief; A (background commands) merged in #444. The tool
 definitions grew by about 200 tokens, so `daemon/test/context.test.ts`'s
 edge-compaction window went from 12,500 to 12,700. B (root steps) built
 after it: `run_as_root` adds about 200 more tokens, so those windows are
-12,900 and 16,584; B is in its pull request. D (own account) is built on
-it, then C.
+12,900 and 16,584; B merged in #450 (stricter sudoers checks and a
+checked copy of the script after review). D (own account, user step 18)
+is in its pull request; C (the `model-host` built-in skill) is built after
+it.
