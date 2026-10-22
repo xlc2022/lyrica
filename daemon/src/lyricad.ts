@@ -503,7 +503,7 @@ export class Lyricad implements Drainable {
         children.turn(u, p, t, working);
         if (!working) routines.ended(u, p, t);
         const k = `${u}/${p}/${t}`;
-        if (working) { erred.delete(k); aborted.delete(k); if (byPerson) watcher.wrote(u, p, t); return watcher.turnStarted(u, p, t); }
+        if (working) { erred.delete(k); aborted.delete(k); if (byPerson) { watcher.wrote(u, p, t); children.personWrote(u, p, t); } return watcher.turnStarted(u, p, t); }
         // Only a turn the person wrote in resets the run of looks; a child's wake or a marked message isn't one.
         if (byPerson ?? true) watcher.turnEnded(u, p, t);
         const failed = erred.delete(k);

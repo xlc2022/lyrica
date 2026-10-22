@@ -84,8 +84,8 @@ export class ChildThreads implements ThreadsHost {
   private readonly rounds = new Map<string, number>();
   /** Projects whose last turn was stopped, by `user/pool/project`: the idle watch leaves them alone until a turn there ends otherwise. */
   private readonly stoppedProjects = new Set<string>();
-  /** The idle watch's wakes per project since its threads last moved, by `user/pool/project`. */
-  private readonly idleWakes = new Map<string, { moved: string; n: number }>();
+  /** The idle watch's wakes per project since the person last wrote in it, by `user/pool/project`. */
+  private readonly idleWakes = new Map<string, number>();
   /** Idle threads holding a saved message until a slot frees, by `user/pool/thread`. In memory only: the message itself is stored. */
   private readonly waiting = new Map<string, { userId: string; pool: Pool; thread: string; parent: string }>();
 
@@ -392,6 +392,14 @@ export class ChildThreads implements ThreadsHost {
     return true;
   }
 
+  /** A turn the person started (lyricad's onTurn): the idle watch may wake their project again. */
+  personWrote(userId: string, pool: Pool, thread: string): void {
+    try {
+      const view = this.o.memory.openThreadView(userId, pool);
+      try { const project = view.own.projectOf(thread); if (project) this.idleWakes.delete(`${userId}/${pool}/${project}`); } finally { view.close(); }
+    } catch { /* locked */ }
+  }
+
   /** A turn in a project ended: stopped, the idle watch leaves the project alone; any other end lets it watch again. */
   private markStopped(userId: string, pool: Pool, thread: string, stopped: boolean): void {
     let project: string | undefined;
@@ -411,8 +419,8 @@ export class ChildThreads implements ThreadsHost {
    * the person, and nothing was written for `IDLE_WATCH.ms` wakes its chat
    * with a note to carry on or say what it waits for. Never a paused or
    * hidden project, nor one whose last turn was stopped; at most
-   * `IDLE_WATCH.wakes` times until a child writes or the person writes in
-   * the chat.
+   * `IDLE_WATCH.wakes` times until the person writes in it (`personWrote`):
+   * what its threads do meanwhile never resets that, so it can't run unattended.
    */
   watchIdle(now = new Date()): void {
     const host = this.o.host();
@@ -441,13 +449,9 @@ export class ChildThreads implements ThreadsHost {
           const latest = (ts: string[]) => ts.map((t) => view.own.lastEntry(t)?.createdAt ?? "").reduce((a, b) => (a > b ? a : b), "");
           const last = latest(threads);
           if (!last || now.getTime() - Date.parse(last) < IDLE_WATCH.ms) continue;
-          // Moved since the last wakes: a child wrote, or the person wrote in the chat.
-          const said = view.own.latestEntries(p.id, 20).find((e) => e.role === "user")?.createdAt ?? "";
-          const moved = [latest(mine.map((r) => r.thread)), said].reduce((x, y) => (x > y ? x : y));
-          const w = this.idleWakes.get(key);
-          const n = w && w.moved === moved ? w.n : 0;
+          const n = this.idleWakes.get(key) ?? 0;
           if (n >= IDLE_WATCH.wakes) continue;
-          this.idleWakes.set(key, { moved, n: n + 1 });
+          this.idleWakes.set(key, n + 1);
           due.push(p.id);
         }
       } finally { view.close(); }
@@ -906,7 +910,7 @@ export class ChildThreads implements ThreadsHost {
 
   /** Drops the records of forgotten threads, and of the children they kept, which are threads of their own now. */
   forget(userId: string, pool: Pool, threads: string[]): void {
-    for (const t of threads) { this.parentWakes.delete(`${userId}/${pool}/${t}`); this.waiting.delete(`${userId}/${pool}/${t}`); this.rounds.delete(`${userId}/${pool}/${t}`); this.reports.delete(`${userId}/${pool}/${t}`); this.tasked.delete(`${userId}/${pool}/${t}`); this.noticed.delete(`${userId}/${pool}/${t}`); }
+    for (const t of threads) { this.parentWakes.delete(`${userId}/${pool}/${t}`); this.waiting.delete(`${userId}/${pool}/${t}`); this.rounds.delete(`${userId}/${pool}/${t}`); this.reports.delete(`${userId}/${pool}/${t}`); this.tasked.delete(`${userId}/${pool}/${t}`); this.noticed.delete(`${userId}/${pool}/${t}`); this.idleWakes.delete(`${userId}/${pool}/${t}`); this.stoppedProjects.delete(`${userId}/${pool}/${t}`); }
     this.db(userId, (db) => db.prepare("DELETE FROM child_threads WHERE pool = @pool AND (thread IN (SELECT value FROM json_each(@t)) OR parent IN (SELECT value FROM json_each(@t)))")
       .run({ pool, t: JSON.stringify(threads) }));
   }

@@ -526,7 +526,8 @@ question card or a needs-you thread), and nothing was written for 10
 minutes, gets a turn of its project chat with the note "Nothing in this
 project is running, and its checklist isn't finished. Carry on, or tell
 the person what you're waiting for." It wakes a project at most twice
-until a child writes or the person writes in the chat, never while the
+until the person writes in the chat or one of its threads (what the
+threads do meanwhile never resets it, so it can't run unattended), never while the
 project is paused or hidden or an update drains, and never after the
 person stopped its last turn, until a turn there ends otherwise. What it
 woke is held in memory.

@@ -777,10 +777,14 @@ describe("projects", () => {
     d.services!.children.watchIdle(later());
     await until(() => Promise.resolve(woken()), (n) => n === 1);
     await settle();
+    // Woken, the chat starts a thread, which writes without moving the checklist.
+    script("chat").push(start(["DNS", "dns: check the leases"]), { text: "Asked DNS." });
+    script("dns").push({ text: "Still blocked on the router." });
     d.services!.children.watchIdle(new Date(Date.now() + 22 * 60_000));
     await until(() => Promise.resolve(woken()), (n) => n === 2);
+    await until(() => Promise.resolve(requests.some((c) => said(c).includes("Still blocked on the router.") && who(c) === "chat")), (b) => b);
     await settle();
-    // Twice is enough until a thread moves.
+    // Twice is enough until the person writes: what the threads do doesn't count.
     d.services!.children.watchIdle(new Date(Date.now() + 33 * 60_000));
     await settle();
     expect(woken()).toBe(2);

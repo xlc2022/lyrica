@@ -853,7 +853,9 @@ Custom roles override built-ins by name.
   `noticed` prevents repeated error wakes until a child reports or the
   user writes there. `ChildThreads.watchIdle(now)`, called by the daemon
   tick unless an update drains, wakes an idle project chat with
-  `IDLE_NOTE` through `wakeChild` (see docs/delegation.md, Idle projects). A reply from a child-triggered parent to its source
+  `IDLE_NOTE` through `wakeChild` (see docs/delegation.md, Idle projects);
+  `ChildThreads.personWrote`, from lyricad's onTurn on a turn the person
+  started, resets its count for that project. A reply from a child-triggered parent to its source
   child goes through `HostedThread.appendParent`, saved after the child's
   current turn without a turn or steer; the next turn reads it.
   `message` returns a `Delivery`: `started`, `running`, `queued` (an idle
