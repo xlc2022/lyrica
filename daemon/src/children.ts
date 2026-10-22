@@ -489,6 +489,12 @@ export class ChildThreads implements ThreadsHost {
     return this.o.wakeups().cancel(from);
   }
 
+  /** A script on one of the thread's machines, for a root step's card (docs/workspace.md, "Root steps"). */
+  rootScript(from: ThreadContext, machine: string, path: string): Promise<{ bytes: Buffer; account: string }> {
+    const project = from.view.own.projectOf(from.threadId);
+    return this.o.workspace.rootScript({ userId: from.user.id, pool: from.pool, threadId: from.threadId, ...(project ? { project } : {}) }, machine, path);
+  }
+
   async asked(from: ThreadContext): Promise<void> {
     this.questionsChanged(from.user.id, from.pool, from.threadId);
     const t = from.view.own.getThread(from.threadId);

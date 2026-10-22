@@ -57,7 +57,7 @@ describe("question cards", () => {
     vi.mocked(get).mockResolvedValueOnce({ messages: [{ n: 40, parts: [] }], hasMore: true, questions: [state] })
       .mockResolvedValueOnce({ messages: [{ n: 12, parts: [{ type: "tool", name: "threads", toolCallId: "ask", args: { ...args, action: "ask" } }] }], hasMore: false });
     const result = await loadProjectQuestion("/private/thread", 12);
-    expect(result).toEqual({ args: { ...args, action: "ask" }, state });
+    expect(result).toEqual({ args: { ...args, action: "ask" }, name: "threads", state });
     expect(vi.mocked(get).mock.calls).toEqual([["/private/thread/messages"], ["/private/thread/messages?before=40"]]);
   });
   it("offers no project answers when the question call is no longer readable", async () => {

@@ -1228,7 +1228,8 @@ export type MessagePart =
   | ImagePart
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
-  | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean; threads?: ThreadRef[]; imageRefusal?: ImageRefusal }
+  /** `root`: a run_as_root card's script, hash and command, as the tool read them on the machine. */
+  | { type: "tool"; toolCallId: string; name: string; args: unknown; result?: string; isError?: boolean; threads?: ThreadRef[]; imageRefusal?: ImageRefusal; root?: RootStep }
   | { type: "recall"; ids: string[] }
   | { type: "remember"; ids: string[] }
   /**
@@ -1241,6 +1242,12 @@ export type MessagePart =
   | { type: "delegation"; text: string; runId?: string; status?: string; threads?: ThreadRef[]; told?: Told[] }
   /** The thread was compacted: tokens before and (estimated) after, and the summary that replaced the older messages. */
   | { type: "compacted"; before: number; after?: number; summary: string };
+
+/** A root step's card (core RootStep): the script she wrote on a machine, its hash, the command that checks it and runs it, and any sudoers lines offered. */
+export interface RootStep {
+  machine: string; path: string; sha256: string; command: string; script: string; why: string;
+  sudoers?: { line: string; warning?: string }[];
+}
 
 /** A `delegate` call's subagent threads, so its card can open them; a subagent's carries its role and the model it ran on. */
 export interface ThreadRef { pool: Pool; id: string; role?: string; model?: string }
@@ -1539,7 +1546,7 @@ export type ThreadEvent =
   | { type: "tool_call"; toolCallId: string; name: string }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
   /** `result` is short: the first lines of the tool's output. */
-  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart; imageRefusal?: ImageRefusal }
+  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart; imageRefusal?: ImageRefusal; root?: RootStep }
   /** Memories recalled for this turn, automatically or with recall/read_memory. */
   | { type: "recall"; ids: string[] }
   /** Notes she saved. */

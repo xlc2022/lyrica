@@ -40,6 +40,7 @@ export * from "./git-changes.ts";
 export * from "./files.ts";
 export * from "./home.ts";
 export * from "./jobs.ts";
+export * from "./root.ts";
 export * from "./machines.ts";
 export * from "./rules.ts";
 export * from "./mcp.ts";
@@ -1261,6 +1262,18 @@ export class Workspace {
   }
 
   /** One action on a thread's Proxmox machine, after its address check, sent only to the certificate the user confirmed. */
+  /**
+   * A script she wrote on one of the thread's machines, read as it is (key
+   * blocks unmasked, so its hash is the file's), for a root step's card, with
+   * the account she logs in there as.
+   */
+  async rootScript(t: WorkspaceThread, machine: string, path: string): Promise<{ bytes: Buffer; account: string }> {
+    if (!path.startsWith("/")) throw new Error("path must be the script's absolute path on the machine");
+    const target = this.targetFor(t, machine);
+    const bytes = await target.ops().edit.readFile(path);
+    return { bytes, account: this.settings(t.userId).machine(machine)!.username };
+  }
+
   async proxmox(t: WorkspaceThread, machine: string, action: ProxmoxAction, vm?: string): Promise<string> {
     this.settings(t.userId).checkInherited(t.threadId, t.pool);
     if (!this.machinesFor(t).some((m) => m.name === machine && m.kind === "proxmox")) throw new Error(`${machine} isn't one of this thread's Proxmox machines`);
