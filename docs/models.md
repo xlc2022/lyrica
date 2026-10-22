@@ -64,8 +64,11 @@ and `-`, at most 40 characters.
 - **Capabilities:** context window, tools, vision, embedding, image, edit, upscale
   and thinking levels. OpenRouter reports the context, tools, thinking and
   modalities; llama-server reports the context
-  (`meta.n_ctx`), and on `/props` (`?model=` in router mode) its chat
-  template, vision and slots, read as a model host reads a template: one
+  (`meta.n_ctx`), and on `/props` its chat template, vision and slots
+  (a router, whose list gives each model's state, is asked one at a time
+  and only about loaded models, since it may load one it's asked about; a
+  server listing one model with no state is asked once), read as a model
+  host reads a template: one
   that reads `enable_thinking` has a thinking switch (one level, medium),
   one that names `tools` takes them, and the offering is marked
   `llamaServer`; vLLM reports the context as `max_model_len`; LM Studio reports the context, vision, thinking, embedding models and tool use on its own API

@@ -89,16 +89,23 @@ describe("endpoints", () => {
   it("reads a plain llama-server's /props: the template's thinking switch and tools, vision and slots", async () => {
     const { models, ada } = await withModels();
     const template = "{%- if tools %}...{%- endif %}{%- if enable_thinking is defined and enable_thinking is false %}<think>\n\n</think>{%- endif %}";
-    const server = await fakeOpenAI({ models: [{ id: "qwen.gguf", meta: { n_ctx: 131072 } }, { id: "other.gguf" }],
-      props: { "qwen.gguf": { chat_template: template, default_generation_settings: { n_ctx: 131072 }, total_slots: 2, modalities: { vision: false } } } });
-    const ep = models.addEndpoint(ada, { name: "direct", kind: "local", baseUrl: server.baseUrl });
+    const facts = { chat_template: template, default_generation_settings: { n_ctx: 131072 }, total_slots: 2, modalities: { vision: false } };
+    // A router: asked only about the model it has loaded, since it may load one it's asked about.
+    const router = await fakeOpenAI({ models: [{ id: "qwen.gguf", meta: { n_ctx: 131072 }, status: { value: "loaded" } }, { id: "other.gguf", status: { value: "unloaded" } }],
+      props: { "qwen.gguf": facts, "other.gguf": facts } });
+    const ep = models.addEndpoint(ada, { name: "direct", kind: "local", baseUrl: router.baseUrl });
     const found = await models.discover(ada, ep.id);
     const qwen = found.find((o) => o.modelId === "qwen.gguf")!;
     expect(qwen).toMatchObject({ llamaServer: true, reasoning: ["medium"], tools: true, vision: false, parallel: 2, opensThinking: true, contextWindow: 131072 });
     expect(found.find((o) => o.modelId === "other.gguf")!.llamaServer).toBeUndefined();
+    expect(router.propsAsked).toEqual(["qwen.gguf"]);
     // Its one level is the template's switch: on at any level asked, with no note, and off when asked.
     expect(models.thinkingFor({ offering: qwen, label: "direct/qwen.gguf" }, "high")).toEqual({ level: "medium" });
     expect(models.thinkingFor({ offering: qwen, label: "direct/qwen.gguf" }, "off")).toEqual({ level: "off" });
+    // A server that lists several models without states isn't one llama-server: /props isn't asked.
+    const many = await fakeOpenAI({ models: [{ id: "a" }, { id: "b" }], props: { "": facts } });
+    await models.discover(ada, models.addEndpoint(ada, { name: "many", kind: "local", baseUrl: many.baseUrl }).id);
+    expect(many.propsAsked).toEqual([]);
   });
 
   it("keeps a model the endpoint stops listing, marked missing, and its ID when it comes back", async () => {

@@ -20,6 +20,8 @@ afterEach(async () => { await Promise.all(servers.splice(0).map((s) => new Promi
  */
 export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; label?: string; port?: number; lmStudio?: Record<string, unknown>[]; props?: Record<string, Record<string, unknown>> } = {}) {
   const requests: ChatRequest[] = [];
+  /** The models /props was asked about, "" for none named. */
+  const propsAsked: string[] = [];
   const queue: (Reply | Responder)[] = [];
   let responder: Responder | undefined;
   const label = opts.label ?? "fake";
@@ -40,7 +42,9 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
       }
       // llama-server's /props, when it plays llama-server: by model in router mode (`?model=`), else the "" entry.
       if (req.method === "GET" && req.url?.startsWith("/props") && opts.props) {
-        const props = opts.props[new URL(req.url, "http://x").searchParams.get("model") ?? ""];
+        const asked = new URL(req.url, "http://x").searchParams.get("model") ?? "";
+        propsAsked.push(asked);
+        const props = opts.props[asked];
         if (!props) { res.writeHead(404); return res.end(); }
         res.writeHead(200, { "content-type": "application/json" });
         return res.end(JSON.stringify(props));
@@ -82,6 +86,7 @@ export async function fakeOpenAI(opts: { models?: Record<string, unknown>[]; lab
     port,
     baseUrl: `http://127.0.0.1:${port}/v1`,
     requests,
+    propsAsked,
     reply: (...r: (Reply | Responder)[]) => { queue.push(...r); },
     /** Answers every request the queue doesn't. */
     respond: (fn: Responder) => { responder = fn; },

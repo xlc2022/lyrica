@@ -8,7 +8,7 @@ import type { Keyring } from "../keyring.ts";
 import { DEFAULT_THINKING, TASK_NAMES, TASKS, THINKING_LEVELS, type CallContext, type Column, type ModelRef, type Pool, type PresetScope, type Task, type ThinkingLevel } from "../types.ts";
 import { selfName } from "../persona.ts";
 import { Forbidden, type User, type Users } from "../users.ts";
-import { addressesOutside, discoverModels, llamaServerModel, modelDefaults, lmStudioLoad, lmStudioModel, lmStudioModels, probeUrl, type DiscoveredModel, type ModelDefaults, type ModelIdentity, type ModelPrice } from "./http.ts";
+import { addressesOutside, discoverModels, llamaServerModel, type LlamaServerModel, modelDefaults, lmStudioLoad, lmStudioModel, lmStudioModels, probeUrl, type DiscoveredModel, type ModelDefaults, type ModelIdentity, type ModelPrice } from "./http.ts";
 import { hostError, hostFetch, HostRefused, hostOrigin, listIn, lyricaIdentity, pair } from "./host.ts";
 import { baseName } from "./identity.ts";
 import { copyIdentity } from "./library.ts";
@@ -798,13 +798,29 @@ export class Models {
           ...(m.reasoning === undefined && l?.reasoning ? { reasoning: l.reasoning.levels, ...(l.reasoning.canTurnOff ? {} : { alwaysThinks: true }) } : {}) };
       });
       // A plain llama-server lists only IDs and context; its /props has the chat template, a projector and the slots.
-      else if (ep.kind === "local" && ep.api !== "host" && !isPlan(ep.api)) found = await Promise.all(found.map(async (m) => {
-        const l = await llamaServerModel(ep.baseUrl, ep.apiKey, m.modelId);
-        if (!l) return m;
-        return { ...m, llamaServer: true, ...(l.parallel ? { servedParallel: l.parallel } : {}), ...(l.opensThinking ? { opensThinking: true } : {}),
-          ...(m.reasoning === undefined && l.reasoning ? { reasoning: l.reasoning } : {}), ...(m.tools === undefined && l.tools ? { tools: true } : {}),
-          ...(m.vision === undefined && l.vision !== undefined ? { vision: l.vision } : {}) };
-      }));
+      // A router (its list gives each model's state) is asked only about loaded models, one at a time: it may load what it's asked about.
+      // A server serving one model is asked once, without naming it.
+      else if (ep.kind === "local" && ep.api !== "host" && !isPlan(ep.api)) {
+        const router = found.some((m) => m.routerState !== undefined);
+        const props = new Map<string, LlamaServerModel>();
+        if (router) {
+          for (const m of found) {
+            const l = m.routerState === "loaded" ? await llamaServerModel(ep.baseUrl, ep.apiKey, m.modelId) : null;
+            if (l) props.set(m.modelId, l);
+          }
+        } else if (found.length === 1) {
+          const l = await llamaServerModel(ep.baseUrl, ep.apiKey);
+          if (l) props.set(found[0]!.modelId, l);
+        }
+        found = found.map((m) => {
+          const l = props.get(m.modelId);
+          if (!l) return m;
+          return { ...m, llamaServer: true, ...(l.parallel ? { servedParallel: l.parallel } : {}), ...(l.opensThinking ? { opensThinking: true } : {}),
+            ...(m.reasoning === undefined && l.reasoning ? { reasoning: l.reasoning } : {}), ...(m.tools === undefined && l.tools ? { tools: true } : {}),
+            ...(m.vision === undefined && l.vision !== undefined ? { vision: l.vision } : {}) };
+        });
+      }
+      found = found.map(({ routerState: _, ...m }) => m);
       // A ChatGPT plan's image tool is one model of its own, not a switch on each chat model.
       if (ep.api === "chatgpt") found = [...found, PLAN_IMAGE];
     } catch (err) {
