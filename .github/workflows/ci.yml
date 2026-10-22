@@ -153,15 +153,15 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/lyrica-ci/fixed
-          key: claude-code-${{ hashFiles('flake.lock') }}
-          restore-keys: claude-code-
+          key: claude-code-2-${{ hashFiles('flake.lock') }}
+          restore-keys: claude-code-2-
       - name: Seed Claude Code's download
         run: .github/runner/seed-claude-code.sh ~/.cache/lyrica-ci/fixed
       - if: steps.claude-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: ~/.cache/lyrica-ci/fixed
-          key: claude-code-${{ hashFiles('flake.lock') }}
+          key: claude-code-2-${{ hashFiles('flake.lock') }}
       - run: nix --extra-experimental-features "nix-command flakes" flake check -L
       - run: npm ci
       - name: Sandbox tests with the NixOS sandbox tools
