@@ -13,7 +13,7 @@ import { plainCitations, poolWord, wordDiff } from "./memory.ts";
 import { readable } from "./mentions.ts";
 import { go, href, idHref, type Route } from "./route.ts";
 import { PageHead, PoolLock, type ShellContext } from "./Shell.tsx";
-import { clock, ConfirmDialog, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { clock, ConfirmDialog, dateText, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 export interface SleepState {
   overview?: SleepOverview;
@@ -213,7 +213,7 @@ export function SleepHistoryPage({ ctx, route }: { ctx: ShellContext; route?: Ex
     <div className="scroll"><div className="sleep">
       <HistoryList<SleepRunInfo> key={`${userId}/${ctx.me.display.showGeneral}/${ctx.me.display.showPrivate}`} route={route} path={u(userId, "sleep", "history")} render={(page) => {
         const days = new Map<string, SleepRunInfo[]>();
-        for (const r of page.entries) { const day = new Date(r.startedAt).toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" }); days.set(day, [...(days.get(day) ?? []), r]); }
+        for (const r of page.entries) { const day = dateText(r.startedAt, { day: "numeric", month: "long", year: "numeric" }); days.set(day, [...(days.get(day) ?? []), r]); }
         return <div className="stack">{[...days].map(([day, runs]) => <div className="sleep-day" key={day}>
           <div className="eyebrow num">{day}</div>
           <div className="list sleep-runs">{runs.map((r) => <RunRow key={`${r.pool}/${r.id}`} run={r} detail={details[`${r.pool}/${r.id}`]} userId={userId}
@@ -382,7 +382,7 @@ export function SleepTimeSection({ ctx }: { ctx: ShellContext }) {
       <div className="section-head"><h2 id="h-sleep">Sleep</h2></div>
       <ErrorText error={sleep.error || error} />
       <form className="inline" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-        <label className="field"><span>Sleep time</span><input type="time" name="sleep-time" value={time ?? sleep.data?.time ?? ""} onChange={(e) => setTime(e.target.value)} /></label>
+        <label className="field"><span title="Each user sleeps at this time in their own time zone.">Sleep time</span><input type="time" name="sleep-time" value={time ?? sleep.data?.time ?? ""} onChange={(e) => setTime(e.target.value)} /></label>
         <button className="primary" disabled={busy || !time || time === sleep.data?.time}>Save</button>
       </form>
     </section>

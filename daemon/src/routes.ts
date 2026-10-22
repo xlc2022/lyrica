@@ -7,7 +7,7 @@ import {
   citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled, modelName,
-  codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn,
+  codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf,
   ChangesUnavailable, commitFiles, fileSides, repositoryChanges, type ExecutionTarget,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
@@ -185,7 +185,20 @@ export function apiRoutes(d: Lyricad): Route[] {
     route("GET", `${u}/me`, (r) => me(d, d.userFor(r))),
     route("PATCH", `${u}/me/profile`, async (r) => {
       const user = d.userFor(r);
-      s().users.updateProfile(user, user, pick(await r.json<Api.ProfileChange>(), ["displayName", "pronouns", "accent", "monogram"]));
+      const before = zoneOf(s().users.get(user.id)!.profile);
+      const next = s().users.updateProfile(user, user, pick(await r.json<Api.ProfileChange>(), ["displayName", "pronouns", "accent", "monogram", "timeZone"]));
+      // Routines keep their wall times: each one's next run moves to the new zone.
+      if (zoneOf(next) !== before) {
+        for (const pool of ["general", "private"] as const) {
+          try {
+            const view = s().memory.openThreadView(user.id, pool);
+            try { view.own.rezoneRoutines(zoneOf(next)); } finally { view.close(); }
+          } catch (err) {
+            // The zone is saved; a routine left on the old zone moves to the new one when it next fires.
+            d.log(`moving routines to a new time zone failed: ${(err as Error).name}`);
+          }
+        }
+      }
       return me(d, user);
     }),
     route("PATCH", `${u}/me/display`, async (r) => {
@@ -1337,7 +1350,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const view = s().memory.openThreadView(user.id, pool);
       try {
         if (!view.own.getThread(r.params.threadId!)) throw new HttpError(404, "no such thread");
-        if (!view.own.pauseRoutine(r.params.threadId!, Number(r.params.id), paused)) throw new HttpError(404, "no such routine");
+        if (!view.own.pauseRoutine(r.params.threadId!, Number(r.params.id), paused, undefined, zoneOf(s().users.get(user.id)!.profile))) throw new HttpError(404, "no such routine");
       } finally { view.close(); }
       s().host.peek(user.id, pool, r.params.threadId!)?.publish({ type: "settings" });
       return routineList(d, user, pool, r.params.threadId!);
@@ -2300,6 +2313,7 @@ function me(d: Lyricad, user: User): Api.Me {
   ];
   return {
     user: card(fresh), previousNames: fresh.profile.previousNames, display: display(d, user.id), savedCredentials, stayUnlocked,
+    ...(fresh.profile.timeZone ? { timeZone: fresh.profile.timeZone } : {}), serverTimeZone: serverZone(),
     ...(warnings.length ? { warning: warnings.join(" ") } : {}),
   };
 }

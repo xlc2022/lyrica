@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import {
   adoptLocalSearxng, bootstrap, isMounted, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
   SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, jobNotice, homeWiped, homeWipePending, wipePending, wipePools,
+  localDate, localTime, serverZone, zoneOf,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
 import { Delegation, planCatalog, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
@@ -187,12 +188,18 @@ export class Lyricad implements Drainable {
   /** Her name, as last read or set: answered while locked, from a copy beside self.db. */
   private nameSeen: string | undefined;
   private readonly nightly: NodeJS.Timeout;
-  /** The day the scheduled sleep last ran, so it runs once a night. */
+  /** The server's date the night's chores last ran, so they run once a night. */
   private sleptOn = "";
+  /** Each user's own date their scheduled sleep last ran, in their time zone. */
+  private readonly userSleptOn = new Map<string, string>();
+  /** Scheduled sleeps run one at a time, whichever zones they come from. */
+  private sleeping: Promise<void> = Promise.resolve();
   /** When sleep's old phase threads were last forgotten: once an hour. */
   private prunedAt = 0;
-  /** The scheduled sleep came due during an update's drain: it runs at undrain. */
+  /** The night's chores came due during an update's drain: they run at undrain. */
   private sleepDue = false;
+  /** Users whose scheduled sleep came due during a drain: they sleep at undrain. */
+  private readonly sleepersDue = new Set<string>();
   private drainingNow = false;
   /** A memory wipe is running: new turns are refused and scheduled work waits, as while draining. */
   private wipingNow = false;
@@ -555,7 +562,7 @@ export class Lyricad implements Drainable {
     const prefs = new ThreadPrefs((id) => users.openUserDb(id));
     host.draining = this.drainingNow;
     const shares = new ThreadShares(keyring.self());
-    const routines = new Routines({ memory, host: () => host, children, log: this.log });
+    const routines = new Routines({ memory, host: () => host, children, zone: (id) => zoneOf(users.get(id)?.profile ?? {}), log: this.log });
     this.services = { routines, wakeups, forge, users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, tailnet: this.tailnet, prefs, shares };
     this.rememberName(selfName(keyring.self()));
     await web.resume();
@@ -719,16 +726,15 @@ export class Lyricad implements Drainable {
     homeWiped(self, userId);
   }
 
-  /** The nightly sleep time, `HH:MM` local time (self.db `settings`). */
+  /** The nightly sleep time, `HH:MM` (self.db `settings`): each user sleeps at it in their own time zone, the night's chores at it in the server's. */
   sleepTime(): string {
     const row = this.keyring.self().prepare("SELECT value FROM settings WHERE key = 'sleep.time'").get() as { value: string } | undefined;
     return row?.value ?? "04:00";
   }
 
-  private tick(): void {
+  private tick(now = new Date()): void {
     if (!this.services) return;
     this.push.tick();
-    const now = new Date();
     if (!this.draining && !this.wipingNow) {
       this.services.children.drainWakes();
       this.services.wakeups.tick(now);
@@ -743,14 +749,27 @@ export class Lyricad implements Drainable {
         } catch (err) { this.log(`forgetting old sleep threads failed: ${(err as Error).name}`); }
       }
     }
-    const pad = (n: number) => String(n).padStart(2, "0");
-    if (`${pad(now.getHours())}:${pad(now.getMinutes())}` !== this.sleepTime() || this.sleptOn === now.toDateString()) return;
-    this.sleptOn = now.toDateString();
-    if (this.draining || this.wipingNow) { this.sleepDue = true; return; }
-    this.night(now);
+    const time = this.sleepTime();
+    const waiting = this.draining || this.wipingNow;
+    const server = serverZone();
+    if (localTime(now, server) === time && this.sleptOn !== localDate(now, server)) {
+      this.sleptOn = localDate(now, server);
+      if (waiting) this.sleepDue = true;
+      else this.night(now);
+    }
+    const sleepers: string[] = [];
+    for (const u of this.services.users.all()) {
+      const zone = zoneOf(u.profile);
+      if (localTime(now, zone) !== time || this.userSleptOn.get(u.id) === localDate(now, zone)) continue;
+      this.userSleptOn.set(u.id, localDate(now, zone));
+      sleepers.push(u.id);
+    }
+    if (!sleepers.length) return;
+    if (waiting) for (const id of sleepers) this.sleepersDue.add(id);
+    else void this.sleepNight(sleepers);
   }
 
-  /** The night's work: model cleanup, the sweep, idle project threads, then sleep. */
+  /** The night's chores, at the sleep time in the server's zone: model cleanup, the sweep, idle project threads. */
   private night(now: Date): void {
     if (!this.services) return;
     try { this.services.models.prune(); } catch (err) { this.log(`model cleanup failed: ${(err as Error).name}`); }
@@ -759,7 +778,6 @@ export class Lyricad implements Drainable {
       if (!this.keyring.hasUserKey(u.id)) continue;
       try { this.services.children.autoResolve(u.id, now); } catch (err) { this.log(`resolving idle project threads failed: ${(err as Error).name}`); }
     }
-    void this.sleepNight();
   }
 
   /** Clears what removed turns and forgotten threads left in each mounted home workspace. Logs counts only. */
@@ -779,14 +797,26 @@ export class Lyricad implements Drainable {
   }
 
   /**
-   * The scheduled sleep: every user, each pool, one at a time. A user without
+   * The scheduled sleep: these users (every user when left out), each pool,
+   * one at a time, after any scheduled sleep still running. A user without
    * a key is skipped (no-key); one in manual mode isn't run; a pool with
    * nothing new is skipped (no-activity).
    */
-  async sleepNight(): Promise<void> {
+  sleepNight(userIds?: string[]): Promise<void> {
+    this.sleeping = this.sleeping.then(() => this.sleepUsers(userIds)).catch((err: Error) => this.log(`sleep failed: ${err.name}`));
+    return this.sleeping;
+  }
+
+  private async sleepUsers(userIds?: string[]): Promise<void> {
     const s = this.services;
     if (!s) return;
-    for (const u of s.users.all()) {
+    const due = s.users.all().filter((u) => !userIds || userIds.includes(u.id));
+    for (const [i, u] of due.entries()) {
+      // A drain or a wipe that began while earlier users slept: the rest wait for undrained().
+      if (this.draining || this.wipingNow) {
+        for (const later of due.slice(i)) this.sleepersDue.add(later.id);
+        return;
+      }
       if (this.keyring.hasUserKey(u.id) && s.sleep.mode(u.id) === "manual") continue;
       for (const pool of ["general", "private"] as const) {
         await s.sleep.run(u.id, pool, "scheduled").catch((err: Error) => this.log(`sleep failed: ${err.name}`));
@@ -808,11 +838,17 @@ export class Lyricad implements Drainable {
     if (this.wipingNow) throw new HttpError(409, "Lyrica is wiping memory");
   }
 
-  /** Back from a drain that gave up: the sleep that came due meanwhile runs now. */
+  /** Back from a drain that gave up: the chores and sleeps that came due meanwhile run now. */
   undrained(): void {
-    if (this.sleepDue && this.services) {
+    if (!this.services) return;
+    if (this.sleepDue) {
       this.sleepDue = false;
       this.night(new Date());
+    }
+    if (this.sleepersDue.size) {
+      const ids = [...this.sleepersDue];
+      this.sleepersDue.clear();
+      void this.sleepNight(ids);
     }
   }
 

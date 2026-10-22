@@ -12,7 +12,7 @@ import {
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
 import type { SameFile } from "./same-file.ts";
-import { delegateThreads, delegationPart, imagePart, imageRefusal, markersFor, plainError, shortResult, toReactions, turnRecall, type Started } from "./messages.ts";
+import { delegateThreads, delegationPart, imagePart, imageRefusal, rootPart, markersFor, plainError, shortResult, toReactions, turnRecall, type Started } from "./messages.ts";
 
 export interface HostOptions {
   users: Users;
@@ -1170,7 +1170,8 @@ export class HostedThread {
         const threads = delegateThreads(e.toolName, (e.result as { details?: unknown } | undefined)?.details, this.pool, e.toolName === "delegate" ? this.started() : undefined);
         const image = !e.isError ? imagePart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;
         const refusedImage = imageRefusal(e.toolName, (e.result as { details?: unknown } | undefined)?.details);
-        this.emit({ type: "tool_end", ...(refusedImage ? { imageRefusal: refusedImage } : {}), toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}), ...(image ? { image } : {}) });
+        const root = !e.isError ? rootPart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;
+        this.emit({ type: "tool_end", ...(refusedImage ? { imageRefusal: refusedImage } : {}), toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}), ...(image ? { image } : {}), ...(root ? { root } : {}) });
         const full = Array.isArray(content) ? content.map((p: { text?: string }) => p.text ?? "").join("\n") : String(content ?? "");
         for (const m of markersFor(e.toolName, (e as { args?: unknown }).args, full)) this.emit(m);
         break;

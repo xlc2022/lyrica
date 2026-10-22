@@ -6,7 +6,7 @@ import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { href } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { clock, ConfirmDialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { clock, ConfirmDialog, dateText, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 const WORDS: Record<UpdaterState, [string, string]> = {
   idle: ["", "Idle"], fetching: ["info", "Fetching"], building: ["info", "Building"], testing: ["info", "Testing"],
@@ -14,7 +14,7 @@ const WORDS: Record<UpdaterState, [string, string]> = {
 };
 const RUNNING: UpdaterState[] = ["fetching", "building", "testing", "draining", "switching", "probation"];
 const short = (commit: string) => commit.slice(0, 7);
-const day = (iso: string) => new Date(iso).toLocaleDateString([], { day: "numeric", month: "long" });
+const day = (iso: string) => dateText(iso, { day: "numeric", month: "long" });
 
 export function UpdatesSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;

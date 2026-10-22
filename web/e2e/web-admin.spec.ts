@@ -1041,6 +1041,30 @@ test("Custom… pronouns opens the five fields, starting from the current words"
   await expect(section.getByLabel("herself")).toHaveCount(0);
 });
 
+test("Time zone: the browser's is given at first, an unknown name is refused, and every time follows the saved one", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const me = () => page.evaluate(async (id) => (await (await fetch(`/api/u/${id}/me`)).json()) as { timeZone?: string }, userId);
+  const browserZone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+  await expect.poll(async () => (await me()).timeZone).toBe(browserZone);
+  await page.goto(`/#/u/${userId}/settings/profile`);
+  const section = page.getByRole("region", { name: "Profile" });
+  const field = section.getByLabel("Time zone");
+  await expect(field).toHaveAttribute("placeholder", browserZone);
+  await field.fill("Mars/Olympus");
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(section.getByText(/isn't a time zone/)).toBeVisible();
+  // Saved in a zone far from the browser's, the welcome page's clock moves with it.
+  const zone = browserZone === "Pacific/Kiritimati" ? "Etc/GMT+10" : "Pacific/Kiritimati";
+  await field.fill(zone);
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect.poll(async () => (await me()).timeZone).toBe(zone);
+  const there = () => page.evaluate((z) => new Intl.DateTimeFormat("en-GB", { timeZone: z, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date()), zone);
+  await page.goto(`/#/u/${userId}`);
+  const shown = page.locator(".head .cap .num").first();
+  await expect.poll(async () => (await shown.textContent()) === (await there())).toBe(true);
+  await page.evaluate(async ([id, z]) => { await fetch(`/api/u/${id}/me/profile`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ timeZone: z }) }); }, [userId, browserZone] as const);
+});
+
 test("image providers run 2: cloud switches and refusal links", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const api = async (method: string, path: string, data?: unknown) => page.evaluate(async ([method, path, data]) => {

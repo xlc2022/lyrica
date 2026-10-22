@@ -26,6 +26,7 @@ export * from "./workspace/index.ts";
 export * from "./web.ts";
 
 export * from "./routines.ts";
+export * from "./zone.ts";
 export * from "./skills.ts";
 export * from "./push.ts";
 export * from "./wipe.ts";
