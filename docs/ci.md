@@ -44,7 +44,8 @@ self-hosted runners, which no workflow uses at the moment.
   user's systemd (the running job's descend from the runner), with
   everything under them, and logs the user's thread count before and after.
 - The host-stack job removes what it installed (the stack and its volumes,
-  the egress unit and rules, Docker's daemon.json) when it ends.
+  the egress and updater units and rules, the updater's folders and deploy
+  key, Docker's daemon.json) when it ends.
 - Runner speed: the runners sit on three machines of different speed. On
   them, the `check` job (unit tests and e2e) needs the extra label `lyrica-fast` and
   so runs only on the faster machines; it timed out and flaked on the slowest
