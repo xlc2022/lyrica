@@ -241,10 +241,11 @@ test("the thread drawer's Read aloud has a Settings link opening the voice drawe
   await expect(drawer).toHaveCount(0);
 });
 
-test("the header names the version and build, and the home box starts a thread", async ({ page, baseURL }) => {
+test("the header greets the user and names the version and build, and the home box starts a thread", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}`);
-  await expect(page.getByRole("heading", { level: 1, name: /^Version \S+ · \S+$/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /^Good (night|morning|afternoon|evening), .+\.$/ })).toBeVisible();
+  await expect(page.locator(".head .ver")).toHaveAttribute("title", /^Version \S+, build \S+$/);
   await page.getByLabel("Message", { exact: true }).fill("From the home box");
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.locator(".msg.user").getByText("From the home box")).toBeVisible();

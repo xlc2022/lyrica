@@ -836,10 +836,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
 
 ## Home
 
-The header shows the word **Version**, then the version and build in mono, with
-the date and time beneath; her name is not repeated here — the sidebar's link
-carries it.
-A greeting by the hour precedes the message box. Its shared composer row has
+The header's heading is a greeting by the hour with the user's name ("Good
+evening, Ada."). Beneath it are the date, the time, then the version and build
+in mono, titled "Version 1.2, build abc1234"; her name is not repeated here —
+the sidebar's link carries it. Its shared composer row has
 the **+** menu (Attach a file, Web search, Internet for commands and Images),
 the mic, and **General / Private**; no Mode or Thinking controls. On home the
 menu opens downward, since the box sits near the top. The menu reads
