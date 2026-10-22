@@ -29,12 +29,27 @@ export const SUDOERS_HOW = `sudo visudo -f ${SUDOERS_FILE}, then sudo visudo -c`
 
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 
-/** The command on the card for a script at `path` with this hash. */
-export const rootCommand = (path: string, sha256: string): string => `echo ${quote(`${sha256}  ${path}`)} | sha256sum -c - && sudo bash ${quote(path)}`;
+/**
+ * The command on the card for a script at `path` with this hash. Her account
+ * owns the script, so it is copied first and the copy is checked and run:
+ * a change after the check can't reach root.
+ */
+export const rootCommand = (path: string, sha256: string): string =>
+  `f=$(mktemp) && cat ${quote(path)} > "$f" && echo ${quote(`${sha256}  `)}"$f" | sha256sum -c --quiet - && sudo bash "$f"; rm -f "$f"`;
 
 /** Programs a sudoers line may never name: they run anything. */
-const NEVER = new Set(["bash", "sh", "dash", "zsh", "fish", "ksh", "csh", "tcsh", "su", "sudo", "doas", "env", "vi", "vim", "nvim", "nano", "emacs", "ed", "less", "more", "man",
-  "python", "python3", "perl", "ruby", "node", "lua", "php", "awk", "gawk", "find", "xargs", "nohup", "nice", "timeout", "script", "expect", "busybox", "eval", "exec"]);
+const NEVER = new Set(["bash", "sh", "dash", "zsh", "fish", "ksh", "csh", "tcsh", "ash", "mksh", "yash", "rbash", "pwsh", "su", "sudo", "doas", "runuser", "env",
+  "vi", "vim", "nvim", "rvim", "view", "ex", "nano", "emacs", "ed", "less", "more", "man", "watch",
+  "python", "python3", "perl", "ruby", "node", "npx", "deno", "bun", "lua", "php", "tclsh", "wish", "sqlite3", "awk", "gawk", "make", "git", "journalctl",
+  "find", "xargs", "nohup", "nice", "timeout", "time", "script", "expect", "busybox", "eval", "exec",
+  "systemd-run", "chroot", "unshare", "nsenter", "setsid", "setpriv", "stdbuf", "flock", "taskset", "ionice", "chrt", "start-stop-daemon",
+  "strace", "ltrace", "gdb", "ssh", "socat", "screen", "tmux"]);
+
+/** Where a program on a sudoers line must live: folders only root can change. */
+const SYSTEM_DIRS = ["/usr/bin/", "/usr/sbin/", "/bin/", "/sbin/", "/usr/local/bin/", "/usr/local/sbin/"];
+
+/** Folders where she can write, so a file there given to a root command is hers to change. */
+const HERS = /^\/(home|tmp|var\/tmp|dev\/shm|run\/user)(\/|$)/;
 
 /** Programs that can reach root anyway, with the reason the card gives. */
 const REACHES_ROOT: Record<string, string> = {
@@ -53,10 +68,11 @@ const SYSTEMCTL_ROOT = new Set(["edit", "link", "enable", "set-property", "impor
 
 /**
  * Checks sudoers lines she offers for `account`: each is `<account>
- * ALL=(root) NOPASSWD: /absolute/program [fixed arguments]`, with no
- * wildcard, no `ALL` as the command, and no shell, editor, interpreter or
- * wrapper. Refuses the first bad line, with why; warns where the program can
- * reach root anyway.
+ * ALL=(root) NOPASSWD: /system/folder/program <fixed arguments>`, or `""`
+ * for a program run with none (a bare program allows any arguments), with
+ * no wildcard, comment, `ALL`, path she can write, or shell, editor,
+ * interpreter or wrapper. Refuses the first bad line, with why; warns where
+ * the program can reach root anyway.
  */
 export function checkSudoers(lines: unknown, account: string): SudoersLine[] {
   if (!Array.isArray(lines) || !lines.length) throw new Error("sudoers is a list of lines");
@@ -69,19 +85,26 @@ export function checkSudoers(lines: unknown, account: string): SudoersLine[] {
     if (!line.startsWith(head)) bad(`must start with "${head}"`);
     const words = line.slice(head.length).split(/\s+/);
     const program = words[0]!;
-    if (/[*?[\]\\,:=!"'`$;&|<>(){}~]/.test(words.join(" "))) bad("wildcards, quotes, commas and shell characters aren't allowed: name one command with fixed arguments");
+    // `""` alone after the program means no arguments; any other quote, a comment (#) or an alias (@) is refused.
+    const none = words.length === 2 && words[1] === '""';
+    if (/[*?[\]\\,:=!"'`$;&|<>(){}~#@]/.test((none ? words.slice(0, 1) : words).join(" "))) bad("wildcards, quotes, comments, commas and shell characters aren't allowed: name one command with fixed arguments");
     if (program === "ALL" || words.includes("ALL")) bad("ALL would let her run anything as root");
-    if (!/^\/[\w./+-]+$/.test(program) || program.includes("/../") || program.endsWith("/")) bad("the program must be an absolute path such as /usr/bin/systemctl");
+    if (!/^\/[\w./+-]+$/.test(program) || program.includes("/../") || program.includes("/./") || program.endsWith("/")) bad("the program must be an absolute path such as /usr/bin/systemctl");
+    if (!SYSTEM_DIRS.some((d) => program.startsWith(d) && !program.slice(d.length).includes("/"))) bad(`the program must be in ${SYSTEM_DIRS.join(", ")}, where she can't change it`);
     const name = program.split("/").at(-1)!;
-    const base = name.replace(/\d+(\.\d+)*$/, "");
+    // vim.basic, python3.12, bash.static: the name without a version or variant.
+    const base = name.replace(/\..*$/, "").replace(/\d+$/, "");
     if (NEVER.has(name) || NEVER.has(base)) bad(`${name} runs anything, so it can't be allowed`);
+    if (words.length === 1) bad('a program alone allows any arguments: give its fixed arguments, or "" for none');
+    if (words.slice(1).some((w) => HERS.test(w))) bad("it runs or changes a file she can change");
     if (words.some((w, j) => j > 0 && w.startsWith("-") && name === "systemctl" && w !== "--no-block")) bad("give systemctl a fixed subcommand and unit, without options");
     const warning = REACHES_ROOT[name] ?? REACHES_ROOT[base]
-      ?? (name === "systemctl" && SYSTEMCTL_ROOT.has(words[1] ?? "") ? "it changes what runs as root" : undefined)
-      ?? (words.length === 1 ? "with no arguments fixed, she can give it any" : undefined);
+      ?? (name === "systemctl" && SYSTEMCTL_ROOT.has(words[1] ?? "") ? "it changes what runs as root" : undefined);
     return { line, ...(warning ? { warning } : {}) };
   });
 }
+
+const HIDDEN = /[\x00-\x08\x0b-\x1f\x7f\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/;
 
 /** Reads what `run_as_root` read on the machine into the card: refuses a script too long, empty or not text. */
 export function rootStep(input: { machine: string; path: string; why: string; sudoers?: string[] }, bytes: Buffer, account: string): RootStep {
@@ -93,7 +116,9 @@ export function rootStep(input: { machine: string; path: string; why: string; su
   if (bytes.length > ROOT_LIMITS.scriptBytes) throw new Error(`the script is ${bytes.length} bytes; at most ${ROOT_LIMITS.scriptBytes}, so the person can read it`);
   if (bytes.includes(0)) throw new Error("the script isn't text");
   const script = bytes.toString("utf8");
-  if (script.includes("�")) throw new Error("the script isn't UTF-8 text");
+  if (script.includes("\uFFFD")) throw new Error("the script isn't UTF-8 text");
+  // What the card shows must be what bash reads: no control or invisible format characters besides tab and newline.
+  if (HIDDEN.test(script)) throw new Error("the script has control or invisible characters (other than tab and newline), so the card couldn't show what runs");
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   return {
     machine: input.machine, path: input.path, sha256, command: rootCommand(input.path, sha256), script, why,

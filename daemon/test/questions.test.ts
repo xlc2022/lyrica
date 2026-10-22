@@ -116,7 +116,7 @@ describe("root steps", () => {
     expect(part).toMatchObject({ type: "tool", root: { machine: "box", path: "/home/lyrica/prereqs.sh", script, why: "Installs Docker for the model host.", sudoers: [{ line: expect.stringContaining("systemctl restart") }] } });
     const root = (part as { root: { sha256: string; command: string } }).root;
     expect(root.sha256).toBe(createHash("sha256").update(script).digest("hex"));
-    expect(root.command).toBe(`echo '${root.sha256}  /home/lyrica/prereqs.sh' | sha256sum -c - && sudo bash '/home/lyrica/prereqs.sh'`);
+    expect(root.command).toBe(`f=$(mktemp) && cat '/home/lyrica/prereqs.sh' > "$f" && echo '${root.sha256}  '"$f" | sha256sum -c --quiet - && sudo bash "$f"; rm -f "$f"`);
     const item = (await s.ada.get<NotificationPage>(`${s.u}/notifications?type=question`)).body.items[0]!;
     expect(item).toMatchObject({ type: "question", title: "Run as root on box?" });
     expect(item.actions.map(a => a.label)).toEqual(["Done", "Not now"]);

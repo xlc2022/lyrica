@@ -1661,7 +1661,6 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .question-consequence { font-size: 13px; font-weight: 400; margin-top: 4px; }
 .question-recommended { display: block; font-size: 12px; font-weight: 400; }
 .question-result { display: flex; align-items: center; gap: 8px; }
-.root-step .warning { font-weight: 500; }
 .root-script pre { max-height: 320px; overflow: auto; }
 @media (max-width: 760px) {
   .question-options { flex-direction: column; }

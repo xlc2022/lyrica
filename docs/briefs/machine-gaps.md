@@ -68,17 +68,18 @@ tool each for A and B, prompt lines only where the thread has a machine).
   itself and her `why`. Options: **Done** (recommended) and **Not now**. A
   typed answer counts, as on any question card, so the user can paste the
   last lines.
-- The command on the card checks the hash before running: `echo '<sha256>
-  <path>' | sha256sum -c - && sudo bash <path>`, so a script changed after
-  the card was made doesn't run.
+- The command on the card copies the script, checks the copy's hash and
+  runs the copy (docs/workspace.md, "Root steps"), so a script changed
+  after the card was made, or during the run, doesn't reach root.
 - It is a question card (one open per thread, Waiting on you, Notifications,
   push, answered in words or by tap), stored like `threads ask`; the card's
   words come from the tool's stored call and result, never from her text.
 - `sudoers`: when the same root command will be needed again, she may offer
   lines for `/etc/sudoers.d/lyrica` instead. `checkSudoers` (core, pure)
-  refuses a line that isn't `<account> ALL=(root) NOPASSWD: /absolute/program
-  [fixed arguments]`, or that holds `*`, `?`, `[`, `ALL` as the command, a
-  shell, an editor, an interpreter, `sudo` or `su`. It adds a warning to a
+  refuses a line that isn't `<account> ALL=(root) NOPASSWD: <program in a
+  system folder> <fixed arguments, or "">`, or that holds a wildcard, a
+  comment, `ALL`, a path she can write, a shell, an editor, an interpreter
+  or a wrapper (the full list is in docs/workspace.md). It adds a warning to a
   line whose program can reach root anyway (package managers, `docker`,
   `systemctl edit`/`link`, `chmod`, `chown`, `cp`, `mv`, `tee`, `dd`,
   `install`, `rsync`, `tar`, `mount`). The card shows the lines, the warnings

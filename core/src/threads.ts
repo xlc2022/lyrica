@@ -70,8 +70,8 @@ export function rootAsk(args: unknown): Ask | undefined {
     question: `Run as root on ${a.machine}?`.slice(0, 300),
     context: a.why.trim().slice(0, 1200),
     options: [
-      { label: "Done", consequence: "You ran it; she checks the result and carries on." },
-      { label: "Not now", consequence: "Nothing runs; she says what waits on it." },
+      { label: "Done", consequence: "You ran it. She checks the result and carries on." },
+      { label: "Not now", consequence: "Nothing runs. She says what waits on it." },
     ],
     recommended: 0,
   };

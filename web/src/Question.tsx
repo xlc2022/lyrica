@@ -20,7 +20,7 @@ function rootQuestion(args: unknown): Question | undefined {
   if (typeof a?.machine !== "string" || typeof a.why !== "string") return undefined;
   return {
     question: `Run as root on ${a.machine}?`, recommended: 0,
-    options: [{ label: "Done", consequence: "You ran it; she checks the result and carries on." }, { label: "Not now", consequence: "Nothing runs; she says what waits on it." }],
+    options: [{ label: "Done", consequence: "You ran it. She checks the result and carries on." }, { label: "Not now", consequence: "Nothing runs. She says what waits on it." }],
   };
 }
 
@@ -41,7 +41,7 @@ function RootDetails({ root }: { root: RootStep }) {
     <div className="root-script"><Block label={root.path} text={root.script} /></div>
     {root.sudoers && <>
       <Block label="Sudoers" text={root.sudoers.map((l) => l.line).join("\n")} />
-      {root.sudoers.filter((l) => l.warning).map((l, i) => <p key={i} className="warning">{`${l.line.split(" ").slice(3).join(" ")}: ${l.warning}.`}</p>)}
+      {root.sudoers.filter((l) => l.warning).map((l, i) => <p key={i} className="warn-text">{`${l.line.split(" ").slice(3).join(" ")}: ${l.warning}.`}</p>)}
       <p className="muted mono">sudo visudo -f /etc/sudoers.d/lyrica</p>
     </>}
   </div>;
