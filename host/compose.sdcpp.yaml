@@ -1,0 +1,51 @@
+# Images on a CMP 100-210 (PCI ID 10de:1df4): install.sh adds this when
+# COMFY_GPU is one. stable-diffusion.cpp's sd-server (sdcpp/Dockerfile),
+# built to use int8, makes the images in ComfyUI's place, which isn't started.
+# It uses one GPU, COMFY_GPU, and runs only while a recipe is loaded
+# (sdcpp/gate.sh reads serving/sdcpp.json).
+volumes:
+  # gate.sh names the sd-server it is running; host-api reads it.
+  sdcpp-status: {}
+
+services:
+  host-api:
+    environment:
+      SDCPP_URL: http://sdcpp:8188
+    volumes:
+      - sdcpp-status:/sdcpp-status:ro
+
+  comfyui:
+    profiles: [comfyui]
+
+  sdcpp:
+    build:
+      context: sdcpp
+      args:
+        CUDA_ARCHS: ${CUDA_ARCHS:?run install.sh}
+    image: lyrica-host-sdcpp:cmp
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    environment:
+      CUDA_DEVICE_ORDER: PCI_BUS_ID
+      CUDA_VISIBLE_DEVICES: ${COMFY_GPU:-0}
+    networks: [models]
+    logging: { driver: none } # it would keep prompts in Docker's logs
+    depends_on:
+      host-api: { condition: service_healthy }
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - serving:/serving:ro
+      - sdcpp-status:/status
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "/app/gate.sh", "--health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

@@ -256,6 +256,20 @@ per host, and Lyrica's router filters create tiers by it.
   upscaler. ComfyUI runs them in turn and frees one stage's models when the
   next needs the room, so a recipe whose parts add up to more than the GPU
   can still run.
+- When `COMFY_GPU` is a CMP 100-210 (PCI ID `10de:1df4`), whose FP16 tensor
+  cores are throttled, `install.sh` adds `compose.sdcpp.yaml` and ComfyUI
+  isn't started. stable-diffusion.cpp's `sd-server` (`sdcpp/Dockerfile`, a
+  pinned commit built with `GGML_CUDA_FORCE_MMQ`) makes the images instead:
+  it converts the recipe's parts to Q8_0 as it loads them and runs with
+  flash attention off, so the work goes to the card's int8 units. It
+  creates only, for Z-Image, Qwen-Image, FLUX and SDXL recipes without
+  LoRAs; edit, upscale and other recipes fail saying why. It takes its model
+  as start-up arguments, so `sdcpp/gate.sh` starts it for the recipe
+  host-api names in `serving/sdcpp.json`, reports the run in the
+  `sdcpp-status` volume, and stops it when the recipe unloads. A job for
+  another recipe starts it again first. Like ComfyUI it has no route out,
+  logs nothing and saves nothing; its jobs' images stay in its memory for
+  ten minutes.
 
 ## Dictation and voice
 

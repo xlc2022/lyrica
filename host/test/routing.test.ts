@@ -362,6 +362,10 @@ describe("the compose files", () => {
       }
       expect(services.length, vendor).toBeGreaterThanOrEqual(vendor === "vulkan" ? 1 : 2);
     }
+    // stable-diffusion.cpp on a CMP: the same, and ComfyUI isn't started beside it.
+    const sdcpp = readFileSync(new URL("../compose.sdcpp.yaml", import.meta.url), "utf8");
+    expect(sdcpp).toMatch(/\n  sdcpp:\n[\s\S]*logging: \{ driver: none \}[\s\S]*tmpfs:/);
+    expect(sdcpp).toMatch(/\n  comfyui:\n    profiles: \[comfyui\]\n/);
   });
 });
 

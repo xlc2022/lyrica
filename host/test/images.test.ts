@@ -11,7 +11,8 @@ import { RecipeBook, loadStarters, type Recipe } from "../src/recipes.ts";
 import { Runtime } from "../src/runtime.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fill, loadTemplates } from "../src/templates.ts";
-import { FakeBackend, FakeGpus, PNG, fakeComfy, safetensors } from "./fakes.ts";
+import { SdCpp, sdcppArgs, sdcppJob } from "../src/sdcpp.ts";
+import { FakeBackend, FakeGpus, PNG, fakeComfy, fakeSdServer, safetensors } from "./fakes.ts";
 import { call, lyrica, pair, startHost } from "./helpers.ts";
 
 const TEMPLATES = loadTemplates(new URL("../workflows/", import.meta.url).pathname);
@@ -317,8 +318,49 @@ describe("ComfyUI jobs", () => {
   });
 });
 
+describe("stable-diffusion.cpp", () => {
+  const part = (role: string, file: string, slot: string | null = null) => ({ role, slot, file, added: false }) as Recipe["parts"][number];
+
+  it("gives sd-server each part under its own flag, and refuses what it can't run", () => {
+    expect(sdcppArgs({ template: "flux", parts: [part("checkpoint", "f/flux.safetensors")], loras: [] }, "/models")).toEqual(["-m", "/models/f/flux.safetensors"]);
+    expect(sdcppArgs({ template: "qwen-image", parts: [part("diffusion", "q/d.safetensors"), part("text_encoder", "q/te.safetensors", "qwen2.5vl"), part("vae", "q/v.safetensors")], loras: [] }, "/models"))
+      .toEqual(["--diffusion-model", "/models/q/d.safetensors", "--llm", "/models/q/te.safetensors", "--vae", "/models/q/v.safetensors"]);
+    expect(() => sdcppArgs({ template: "seedvr2", parts: [], loras: [] }, "/models")).toThrow(/no seedvr2 support/);
+    expect(() => sdcppArgs({ template: "z-image", parts: [], loras: [{ file: "l.safetensors", strength: 1 }] }, "/models")).toThrow(/LoRAs/);
+  });
+
+  it("names samplers and schedulers as sd.cpp does, and leaves out the ones it doesn't have", () => {
+    const base = { prompt: "p", negativePrompt: "", width: 512, height: 512, seed: 1, count: 1, steps: 4, cfg: 1, shift: 3, guidance: 3.5 };
+    expect(sdcppJob("flux", { ...base, sampler: "euler_ancestral", scheduler: "normal" })).toMatchObject({
+      sample_params: { sample_method: "euler_a", scheduler: "discrete", guidance: { txt_cfg: 1, distilled_guidance: 3.5 } },
+    });
+    const odd = sdcppJob("sdxl", { ...base, sampler: "uni_pc", scheduler: "ddim_uniform" }) as { sample_params: object };
+    expect(odd.sample_params).not.toHaveProperty("sample_method");
+    expect(odd.sample_params).not.toHaveProperty("scheduler");
+    expect(odd.sample_params).not.toHaveProperty("flow_shift");
+  });
+
+  it("cancels in sd-server a job whose client went away", async () => {
+    const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+    const status = join(serving, "status.json");
+    const fake = await fakeSdServer(serving, status, { hang: true });
+    open.push(fake);
+    const sdcpp = new SdCpp(fake.url, { serving, status });
+    sdcpp.prepare("recipe:a", ["--diffusion-model", "/models/a"]);
+    const abort = new AbortController();
+    const job = sdcpp.create("recipe:a", "z-image", { prompt: "p", steps: 1 }, abort.signal);
+    await new Promise((r) => setTimeout(r, 300));
+    abort.abort();
+    await expect(job).rejects.toThrow("The request was cancelled.");
+    expect(fake.seen.cancelled).toEqual(["job_1"]);
+    // sd-server stops when its recipe unloads.
+    await sdcpp.unload({ id: "recipe:a" } as never);
+    expect(JSON.parse(readFileSync(join(serving, "sdcpp.json"), "utf8"))).toEqual({ run: false });
+  });
+});
+
 describe("the image API", () => {
-  async function stack() {
+  async function stack(o: { sdcpp?: boolean } = {}) {
     const models = folder({
       [`${Z}/diffusion_models/z.safetensors`]: Z_DIFFUSION, [`${Z}/text_encoders/qwen_3_4b.safetensors`]: QWEN3, [`${Z}/vae/ae.safetensors`]: FLUX_VAE,
       "shared/flux1-schnell-fp8.safetensors": FLUX_CKPT,
@@ -332,11 +374,15 @@ describe("the image API", () => {
     const gpus = new FakeGpus([24]);
     const backend = new FakeBackend(gpus);
     const comfy = new Comfy(comfyFake.url);
-    const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp: backend, vllm: backend, comfyui: comfy }, state: h.host.state, log });
-    h.host.runtime = new Runtime({ scheduler, modelsDir: models, state: h.host.state, log });
     const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+    const sdStatus = join(serving, "sdcpp-status.json");
+    const sdFake = o.sdcpp ? await fakeSdServer(serving, sdStatus) : null;
+    if (sdFake) open.push(sdFake);
+    const sdcpp = sdFake ? new SdCpp(sdFake.url, { serving, status: sdStatus }) : null;
+    const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp: backend, vllm: backend, comfyui: sdcpp ?? comfy }, state: h.host.state, log });
+    h.host.runtime = new Runtime({ scheduler, modelsDir: models, state: h.host.state, log });
     const book = new RecipeBook(h.dataDir, TEMPLATES, STARTERS);
-    h.host.images = new Images({ book, runtime: h.host.runtime, comfy, downloads: null, modelsDir: models, serving, comfyGpu: 0, log });
+    h.host.images = new Images({ book, runtime: h.host.runtime, comfy, sdcpp, downloads: null, modelsDir: models, serving, comfyGpu: 0, log });
     h.host.runtime.afterScan = () => h.host.images!.scan();
     await h.host.runtime.start();
     const code: string = await new Promise((resolve) => {
@@ -350,8 +396,37 @@ describe("the image API", () => {
     const me = lyrica();
     const pinned = await pair(h.tls, me, code);
     const api = (path: string, init: { method?: string; body?: unknown } = {}) => call({ port: h.tls, path, identity: me, pinned, ...init });
-    return { ...h, api, lines, comfyFake, book };
+    return { ...h, api, lines, comfyFake, sdFake, book, models };
   }
+
+  it("makes images with stable-diffusion.cpp in ComfyUI's place", async () => {
+    const s = await stack({ sdcpp: true });
+    const { body } = await s.api("/host/v1/recipes?state=proposed");
+    const z: Recipe = body.recipes.find((r: Recipe) => r.arch === "z-image");
+    await s.api(`/host/v1/recipes/${z.id}/confirm`, { body: {} });
+
+    const made = await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: MARKER, count: 2, seed: 11 } });
+    expect(made.status).toBe(200);
+    expect(made.body.images).toHaveLength(2);
+    expect(Buffer.from(made.body.images[0].png, "base64")).toEqual(PNG);
+    // sd-server started with the recipe's parts, and got the recipe's defaults in its own names.
+    expect(s.sdFake!.seen.started).toEqual([[
+      "--diffusion-model", join(s.models, `${Z}/diffusion_models/z.safetensors`),
+      "--llm", join(s.models, `${Z}/text_encoders/qwen_3_4b.safetensors`),
+      "--vae", join(s.models, `${Z}/vae/ae.safetensors`),
+    ]]);
+    expect(s.sdFake!.seen.jobs[0]).toMatchObject({
+      prompt: MARKER, width: 1024, height: 1024, seed: 11, batch_count: 2, output_format: "png",
+      sample_params: { sample_steps: 8, sample_method: "res_multistep", scheduler: "simple", flow_shift: 3, guidance: { txt_cfg: 1 } },
+    });
+    // A second job for the same recipe doesn't start it again.
+    await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "again" } });
+    expect(s.sdFake!.seen.started).toHaveLength(1);
+    expect(s.comfyFake.seen.prompts).toHaveLength(0);
+
+    expect(s.lines.join("\n")).not.toContain(MARKER);
+    for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);
+  });
 
   it("makes images only from a confirmed recipe and its parameters", async () => {
     const s = await stack();

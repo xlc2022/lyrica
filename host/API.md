@@ -39,7 +39,7 @@ on `/v1`, where OpenAI clients read `error.message`.
 | 503 | `paused` | The host is paused. Lyrica uses her fallbacks. |
 | 503 | `busy` | It could fit, but not within the wait limit, because the GPU is busy. The message names what with: "The GPU is busy with a chat model." |
 | 503 | `restarting` | A restart is under way. |
-| 503 | `model_unavailable` | The server for this model (llama.cpp, vLLM, ComfyUI or the speech server) isn't running, didn't answer or couldn't load it. The host itself is up: its other models may still work. |
+| 503 | `model_unavailable` | The server for this model (llama.cpp, vLLM, ComfyUI, stable-diffusion.cpp or the speech server) isn't running, didn't answer or couldn't load it. The host itself is up: its other models may still work. |
 | 503 | `unavailable` | A part of the host itself isn't running, such as the download service. |
 | 507 | `no_space` | Not enough free space for a download. |
 
@@ -817,5 +817,11 @@ Prompts and images exist only in memory for the job: ComfyUI's folders are
 blank one and its history is cleared after each job. ComfyUI itself has no
 authentication: anything on the `models` network could call it, which is
 why only the model servers are there and none of them has a route out.
+
+On a host whose image GPU is a CMP 100-210, stable-diffusion.cpp makes the
+images instead (README.md, "Image models"): create only, for Z-Image,
+Qwen-Image, FLUX and SDXL recipes without LoRAs. Anything else is `invalid`,
+saying why. `sampler` and `scheduler` take the nearest sd.cpp names, or its
+defaults. A cancelled job is cancelled in sd-server.
 
 A recipe's memory is measured after its first job, as for text models.

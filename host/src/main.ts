@@ -11,6 +11,7 @@ import { amdMonitor, CMP_100_210, noGpus, nvidiaMonitor } from "./gpus.ts";
 import { stdoutLog } from "./log.ts";
 import { Runtime } from "./runtime.ts";
 import { Scheduler } from "./scheduler.ts";
+import { SdCpp } from "./sdcpp.ts";
 import { Speech } from "./speech.ts";
 import { Host } from "./server.ts";
 
@@ -47,6 +48,8 @@ const host = new Host({
 });
 
 const comfy = new Comfy(env.COMFYUI_URL || "http://comfyui:8188", undefined, undefined, { serving, status: env.COMFYUI_STATUS || "/comfyui-status/comfyui.json" });
+// On a CMP 100-210, install.sh adds stable-diffusion.cpp, which makes the images in ComfyUI's place.
+const sdcpp = env.SDCPP_URL ? new SdCpp(env.SDCPP_URL, { serving, status: env.SDCPP_STATUS || "/sdcpp-status/sdcpp.json" }) : null;
 const scheduler: Scheduler = new Scheduler({
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,
   gpuBackend: backend,
@@ -63,7 +66,7 @@ const scheduler: Scheduler = new Scheduler({
       slowFlash: (i): boolean => scheduler.gpusFor("llamacpp").some((g) => g.index === i && g.pciId === CMP_100_210),
     }),
     vllm: new Vllm({ url: env.VLLM_URL || "http://vllm:{port}", serving, models: modelsDir }),
-    comfyui: comfy,
+    comfyui: sdcpp ?? comfy,
     speech: new Speech({ url: env.SPEECH_URL || "http://speech:8000", models: modelsDir }),
   },
   state: host.state,
@@ -76,7 +79,7 @@ host.downloads = new Downloads({ url: env.FETCH_URL || "http://fetch:7300", runt
 await host.downloads.start();
 const dataDir = env.DATA_DIR || "/data";
 const book = new RecipeBook(dataDir, loadTemplates(new URL("../workflows/", import.meta.url).pathname), loadStarters(new URL("../recipes/", import.meta.url).pathname));
-host.images = new Images({ book, runtime: host.runtime, comfy, downloads: host.downloads, modelsDir, serving, comfyGpu: Number(env.COMFY_GPU || 0), log: stdoutLog });
+host.images = new Images({ book, runtime: host.runtime, comfy, sdcpp, downloads: host.downloads, modelsDir, serving, comfyGpu: Number(env.COMFY_GPU || 0), log: stdoutLog });
 host.runtime.afterScan = () => host.images!.scan();
 await host.runtime.start();
 // fetch shares a network with host-api (for host-api's calls to it) and may not

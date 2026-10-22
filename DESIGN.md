@@ -911,7 +911,8 @@ it's off.
     result in the thread, and leaves the saved task lists in place.
   - Exact layouts and diagrams are HTML or SVG rendered to PNG by the
     sandbox's headless Chromium with internet off, not image-model calls.
-- **Local images** run on **ComfyUI**, inside the model host on a GPU machine.
+- **Local images** run on **ComfyUI**, inside the model host on a GPU machine
+  (on a CMP 100-210, stable-diffusion.cpp in its place: host/README.md).
   ComfyUI supports new open models (Krea 2, Z-Image, Qwen-Image, SDXL, and
   editing models such as Qwen-Image-Edit) as they appear. It is contained,
   because as it ships it has no login, runs every plugin with full rights, and

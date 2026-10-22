@@ -226,6 +226,12 @@ if [[ $VENDOR == nvidia ]] && nvidia-smi --query-gpu=pci.device_id --format=csv,
   CUDA_ARCHS=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | tr -d '. ' | sort -u | sed 's/$/-real/' | paste -sd';' -)
   FILES+=:compose.cmp.yaml
   say "CMP 100-210: llama.cpp is built for it from source (CUDA $CUDA_ARCHS), which takes a while the first time."
+  # The image GPU is one: stable-diffusion.cpp makes images in ComfyUI's place (compose.sdcpp.yaml).
+  if nvidia-smi -i "${COMFY_GPU:-0}" --query-gpu=pci.device_id --format=csv,noheader 2>/dev/null | grep -qix 0x1df410de; then
+    FILES+=:compose.sdcpp.yaml
+    [[ $NVIDIA_CDI == 1 ]] && FILES+=:compose.sdcpp.cdi.yaml
+    say "CMP 100-210 for images: stable-diffusion.cpp makes them in ComfyUI's place, also built from source."
+  fi
 fi
 RENDER_GID=$(getent group render 2>/dev/null | cut -d: -f3 || true)
 [[ $WANT_LAN == 1 ]] && FILES+=:compose.lan.yaml

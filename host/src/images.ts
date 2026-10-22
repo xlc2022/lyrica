@@ -12,6 +12,7 @@ import type { Logger } from "./log.ts";
 import { scanParts, type Part, type Role } from "./parts.ts";
 import { COLOR_MATCH, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
 import type { Runtime } from "./runtime.ts";
+import { sdcppArgs, type SdCpp } from "./sdcpp.ts";
 import { fill, type Action, type Values } from "./templates.ts";
 
 const IMAGE_LIMIT = 20 * 1024 * 1024;
@@ -62,6 +63,8 @@ export class Images {
   parts: Part[] = [];
   private readonly runtime: Runtime;
   private readonly comfy: Comfy;
+  /** stable-diffusion.cpp, which makes the images in ComfyUI's place when it is set. */
+  private readonly sdcpp: SdCpp | null;
   private readonly downloads: Downloads | null;
   private readonly modelsDir: string;
   private readonly seedvr2Dir: string;
@@ -71,10 +74,11 @@ export class Images {
   /** Each SeedVR2 part's link name in its folder. */
   private seedvr2Names = new Map<string, string>();
 
-  constructor(o: { book: RecipeBook; runtime: Runtime; comfy: Comfy; downloads: Downloads | null; modelsDir: string; serving: string; comfyGpu: number; log: Logger }) {
+  constructor(o: { book: RecipeBook; runtime: Runtime; comfy: Comfy; sdcpp?: SdCpp | null; downloads: Downloads | null; modelsDir: string; serving: string; comfyGpu: number; log: Logger }) {
     this.book = o.book;
     this.runtime = o.runtime;
     this.comfy = o.comfy;
+    this.sdcpp = o.sdcpp ?? null;
     this.downloads = o.downloads;
     this.modelsDir = o.modelsDir;
     this.seedvr2Dir = join(o.serving, "seedvr2");
@@ -275,6 +279,8 @@ export class Images {
     const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
     if (!recipe || !this.book.ready(recipe, this.files())) throw notFound("No confirmed, ready recipe with that ID.");
     if (!recipe.does.includes(action)) throw invalid(`That recipe doesn't ${action} images.`);
+    if (this.sdcpp && action !== "create") throw invalid(`This host makes images with stable-diffusion.cpp, which can't ${action} images here.`);
+    const sdArgs = this.sdcpp ? sdcppArgs(recipe, this.modelsDir) : null;
     const template = this.book.templates.get(recipe.template)!;
 
     const values: Values = { ...BASE_DEFAULTS, ...recipe.defaults };
@@ -325,16 +331,18 @@ export class Images {
       if (!res.writableFinished) abort.abort();
     });
     const scheduler = this.runtime.scheduler;
+    const sdcpp = this.sdcpp;
+    if (sdcpp && sdArgs) sdcpp.prepare(model.id, sdArgs);
     const pngs = await scheduler.run(model, "image", () =>
       scheduler.measuring(model, () =>
-        this.comfy.run(uploads, (names) => {
+        sdcpp ? sdcpp.create(model.id, recipe.template, values, abort.signal) : this.comfy.run(uploads, (names) => {
           const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
           return fill(template, parts, recipe.loras, { ...values, ...names });
         }, abort.signal)),
       this.comfyGpu,
       abort.signal,
     );
-    if (!pngs.length) throw new HostError(503, "model_unavailable", "ComfyUI returned no image.");
+    if (!pngs.length) throw new HostError(503, "model_unavailable", `${sdcpp ? "stable-diffusion.cpp" : "ComfyUI"} returned no image.`);
     const seconds = (Date.now() - started) / 1000;
     this.runtime.count(recipe.id, { requests: 1, images: pngs.length, seconds });
     this.log("image", { recipe: recipe.id, action, images: pngs.length });
@@ -349,7 +357,7 @@ export class Images {
 
   /** What stops images being made on this host, for the status. */
   get problems(): string[] {
-    const p = this.comfy.problem;
+    const p = (this.sdcpp ?? this.comfy).problem;
     return p ? [`Images: ${p}`] : [];
   }
 
