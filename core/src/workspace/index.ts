@@ -480,7 +480,8 @@ export class Workspace {
 
   /**
    * The thread's Files panel: its folder, its family's /shared (unless that is
-   * its own folder's shared/: the family's top thread, a project chat) and grants, every operation in
+   * inside the folder it works in, as for the family's top thread and those
+   * working in its folder) and grants, every operation in
    * a fresh sandbox with no network. Grants are checked against the allowed
    * paths as they are now, as for her tools.
    */

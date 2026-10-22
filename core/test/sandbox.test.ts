@@ -535,11 +535,15 @@ describe.skipIf(!homeRunnable)("a project chat's uploads", () => {
       expect((await code.read.readFile("/shared/uploads/mockup.txt")).toString()).toBe("a header and three cards");
       // A file not there yet says so, not that it can't be read.
       await expect(code.read.access!("/shared/build-notes.md")).rejects.toThrow("no such file yet: /shared/build-notes.md");
-      // The thread's Files panel has /shared as a root of its own; the chat's shows it in its folder.
-      const files = workspace.files({ userId: ada.id, pool: "general", threadId: "c1" });
+      // A code thread, in a folder of its own, has /shared as a root of its own in its Files panel; the chat and a
+      // thread working in the chat's folder see it there, as shared/.
+      workspace.settings(ada.id).inheritSettings("p1", "c2", "general");
+      workspace.settings(ada.id).setThreadWork("c2", { worktrees: [] });
+      const files = workspace.files({ userId: ada.id, pool: "general", threadId: "c2" });
       expect(files.roots().map((r) => `${r.path} ${r.kind}`)).toEqual(["/workspace thread", "/shared shared"]);
       expect((await files.list("/shared/uploads")).entries.map((e) => e.name)).toEqual(["mockup.txt"]);
       expect(workspace.files(chat).roots().map((r) => r.path)).toEqual(["/workspace"]);
+      expect(workspace.files({ userId: ada.id, pool: "general", threadId: "c1" }).roots().map((r) => r.path)).toEqual(["/workspace"]);
     } finally {
       await workspace.unmountHome(ada.id);
     }
@@ -588,7 +592,7 @@ describe.skipIf(!homeRunnable)("a running child thread's folders", () => {
     await workspace.mountHome(ada.id);
     try {
       const roots = () => workspace.files(child).roots().map((r) => `${r.path} ${r.writable ? "rw" : "ro"}`);
-      expect(roots()).toEqual(["/workspace rw", "/shared rw", `${p("rw")} rw`, `${p("ro")} ro`]);
+      expect(roots()).toEqual(["/workspace rw", `${p("rw")} rw`, `${p("ro")} ro`]);
       expect((await sh(`cat ${file}`, workspace.targetFor(child) as Sandbox)).out).toContain("kept");
 
       // Read-only in the parent: the child's next run can read the folder and not write it.
@@ -600,7 +604,7 @@ describe.skipIf(!homeRunnable)("a running child thread's folders", () => {
 
       // Taken off the parent: gone from the child's panel and its next run, refused as outside its folders.
       settings.setThread("parent", "general", { grants: [{ path: p("ro"), writable: false }] });
-      expect(roots()).toEqual(["/workspace rw", "/shared rw", `${p("ro")} ro`]);
+      expect(roots()).toEqual(["/workspace rw", `${p("ro")} ro`]);
       const ops = workspace.targetFor(child).ops();
       await expect(ops.read.readFile(file)).rejects.toThrow(/outside this thread's folders/);
       expect((await sh(`cat ${file}`, workspace.targetFor(child) as Sandbox)).out).not.toContain("kept");
