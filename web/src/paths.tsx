@@ -1,6 +1,6 @@
 // Files named in a conversation (DESIGN, "Files and images"; docs/ux.md §6):
-// a path under the thread's folder is a link that opens the file in the
-// Files panel, and an image she writes from there shows in the message.
+// a path under the thread's folder or /shared, and a markdown link to a file,
+// opens the file in the Files panel, and an image she writes shows in the message.
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "./icons.tsx";
 import type { Element, Root, Text } from "hast";
@@ -10,17 +10,38 @@ import { RowMenu } from "./Machines.tsx";
 import { ErrorText } from "./ui.tsx";
 
 export const WORKDIR = "/workspace";
+export const SHARED = "/shared";
 /** A path as the panel shows it: the thread folder by name, its files without the prefix, a grant's as they are. */
-export const shown = (p: string) => (p === WORKDIR ? "Thread folder" : p === "/shared" ? "Shared folder" : p.startsWith(`${WORKDIR}/`) ? p.slice(WORKDIR.length + 1) : p);
+export const shown = (p: string) => (p === WORKDIR ? "Thread folder" : p === SHARED ? "Shared folder" : p.startsWith(`${WORKDIR}/`) ? p.slice(WORKDIR.length + 1) : p);
 
 /**
- * A path under the thread's folder, as written in prose: it starts the word (not inside `/home/ada/workspace`,
+ * A path under the thread's folder or /shared, as written in prose: it starts the word (not inside `/home/ada/workspace`,
  * `~/workspace` or a URL) and ends before a space, a quote, a bracket or trailing punctuation.
  */
-export const PATH = /(?<![\w.~/:-])\/workspace(?:\/[^\s"'`<>()[\]{}|,;]*[^\s"'`<>()[\]{}|,;:.!?])?(?![\w-])/g;
+export const PATH = /(?<![\w.~/:-])\/(?:workspace|shared)(?:\/[^\s"'`<>()[\]{}|,;]*[^\s"'`<>()[\]{}|,;:.!?])?(?![\w-])/g;
 /** Each path in a text, with where it starts. */
 export const findPaths = (text: string): { path: string; at: number }[] => [...text.matchAll(PATH)].map((m) => ({ path: m[0], at: m.index }));
 export const isUnderWorkdir = (p: string) => p === WORKDIR || p.startsWith(`${WORKDIR}/`);
+
+/**
+ * The file a markdown link or image names, as an absolute path, or nothing for a URL or an anchor: an absolute path
+ * or `file://` URL as it is, a relative one against the thread's folder. The Files panel refuses what she can't reach.
+ */
+export function fileTarget(href: string | undefined): string | undefined {
+  if (!href || /^(?:[#?]|\/\/)/.test(href)) return undefined;
+  let p = href;
+  if (/^file:\/\//i.test(p)) p = p.slice(7);
+  else if (/^[a-z][a-z\d+.-]*:/i.test(p)) return undefined;
+  p = p.replace(/[?#].*$/, "");
+  try { p = decodeURIComponent(p); } catch { /* left as written */ }
+  if (!p) return undefined;
+  const parts: string[] = [];
+  for (const s of (p.startsWith("/") ? p : `${WORKDIR}/${p}`).split("/")) {
+    if (s === "..") parts.pop();
+    else if (s && s !== ".") parts.push(s);
+  }
+  return `/${parts.join("/")}`;
+}
 
 /** Where a path in this thread leads: the Files panel with the file shown, the file's own bytes, and its thumbnail. */
 export interface FileLinks {
@@ -72,7 +93,7 @@ function walk(node: Root | Element, files: FileLinks) {
     if (c.type === "element") {
       if (c.tagName === "a" || c.tagName === "pre") continue;
       walk(c, files);
-    } else if (c.type === "text" && c.value.includes(WORKDIR)) {
+    } else if (c.type === "text" && (c.value.includes(WORKDIR) || c.value.includes(SHARED))) {
       const parts = split(c.value, files);
       if (parts) { children.splice(i, 1, ...parts); i += parts.length - 1; }
     }
@@ -92,7 +113,7 @@ function split(value: string, files: FileLinks): (Element | Text)[] | undefined 
   return out;
 }
 
-/** An image from the thread's folder, shown in the message by its thumbnail and opened large on a click; any other image stays a link. */
+/** An image she can reach, shown in the message by its thumbnail and opened large on a click; any other image stays a link. */
 export function InlineImage({ src, alt, label, files, large, onGone }: { src: string; alt: string; label?: string; files: FileLinks; large: (path: string) => void; /** The file is gone. */ onGone?: () => void }) {
   return (
     <button type="button" className="inline-img" onClick={() => large(src)} aria-label={label ?? `${alt || basename(src)}, open large`}>

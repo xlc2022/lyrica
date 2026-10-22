@@ -441,7 +441,8 @@ export function describe(tools: ThreadTools): string {
   const pves = all.filter((m) => m.kind === "proxmox").map((m) => `${m.name} (${limit(m)})`);
   return [
     `Your file and command tools run in a sandbox. ${WORKDIR} is this conversation's folder; uploads arrive in ${WORKDIR}/uploads.`,
-    s.coordinates ? READ_ONLY_CHAT : `A ${WORKDIR} path you write is a link the person can open, and an image under it that you write as markdown (![what it shows](${WORKDIR}/plot.png)) shows in your message.`,
+    ...(s.coordinates ? [READ_ONLY_CHAT] : []),
+    LINK_LINE,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
     SHARED_LINE,
     ...(s.grants.some((g) => g.writable) ? [BUILD_THERE] : []),
@@ -461,6 +462,9 @@ export function describe(tools: ThreadTools): string {
 
 /** A project chat builds nothing itself: a model building alone in its own folder, three runs running, is why. */
 export const READ_ONLY_CHAT = `Every folder here is read-only to you, ${WORKDIR} and ${SHARED} included (/tmp lasts one command): a code thread makes or changes every file, and puts what you need to see in ${SHARED}. Uploads here land in ${WORKDIR}/shared/uploads and images you make in ${WORKDIR}/shared/images, which your threads see as ${SHARED}/uploads and ${SHARED}/images.`;
+
+/** How she shows a file: a model once linked its deliverables relatively (./site/index.html), which opened nothing. */
+export const LINK_LINE = `A ${WORKDIR} or ${SHARED} path you write is a link the person can open, and an image you write as markdown (![what it shows](${WORKDIR}/plot.png)) shows in your message. Link a file by its absolute path ([the page](${SHARED}/site/index.html)), never a relative one.`;
 
 /** Threads hand files to each other through one folder: a model once planned to send a whole page as base64 chunks in messages. */
 export const SHARED_LINE = `${SHARED} is shared with your parent and child threads (in a project, with its chat and every thread): hand files over there; messages carry words, not files.`;

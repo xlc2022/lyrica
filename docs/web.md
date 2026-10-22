@@ -906,10 +906,14 @@ local/cloud chip and preset, then each model host's state as a dot and word.
 ## Chat
 
 - Her messages are prose, rendered with `react-markdown`. Raw HTML is
-  skipped and links open in a new tab. A path under `/workspace`, in her
-  prose or the person's message, is a link to `…/files/<encoded path>`,
+  skipped and links open in a new tab. A path under `/workspace` or
+  `/shared`, in her prose or the person's message, is a link to `…/files/<encoded path>`,
   which opens the Files panel with the file in the viewer (`paths.tsx`; a code block is left
-  as written). An image she writes from the thread folder shows in the
+  as written). So is a markdown link whose target is a file, not a URL or an
+  anchor: an absolute path or `file://` URL as written, a relative one against
+  `/workspace` (`fileTarget`); the panel refuses what she can't reach. In a
+  project chat, whose `/shared` is its own `shared/`, a `/shared` path opens
+  there. An image she writes from a file she can reach shows in the
   message by its thumbnail (`…/files/thumb`, or the image itself where the
   server makes none) and opens large, from `…/files/content`, in the
   shared Lightbox dialog; the conversation holds which image is open, so the
