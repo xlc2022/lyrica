@@ -146,5 +146,5 @@ Run one test suite at a time. One run peaks at about 5.4 GB of memory, but
 two side by side took about 12 GB each and froze a 30 GB machine.
 
 A test host needs `openssl` and `bash` on its PATH; tests run in UTC
-whatever the host's zone. CI runs on the owner's own runner ([docs/ci.md](docs/ci.md)); a job waiting in the
-queue means the runner is busy or offline.
+whatever the host's zone. CI runs on GitHub's hosted runners ([docs/ci.md](docs/ci.md)); the owner's own
+runners are idle for now.
