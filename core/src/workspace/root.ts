@@ -96,7 +96,7 @@ export function checkSudoers(lines: unknown, account: string): SudoersLine[] {
     const base = name.replace(/\..*$/, "").replace(/\d+$/, "");
     if (NEVER.has(name) || NEVER.has(base)) bad(`${name} runs anything, so it can't be allowed`);
     if (words.length === 1) bad('a program alone allows any arguments: give its fixed arguments, or "" for none');
-    if (words.slice(1).some((w) => HERS.test(w))) bad("it runs or changes a file she can change");
+    if (words.slice(1).some((w) => HERS.test(w) || /(^|\/)\.\.(\/|$)/.test(w))) bad("it runs or changes a file she can change");
     if (words.some((w, j) => j > 0 && w.startsWith("-") && name === "systemctl" && w !== "--no-block")) bad("give systemctl a fixed subcommand and unit, without options");
     const warning = REACHES_ROOT[name] ?? REACHES_ROOT[base]
       ?? (name === "systemctl" && SYSTEMCTL_ROOT.has(words[1] ?? "") ? "it changes what runs as root" : undefined);

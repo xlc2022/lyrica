@@ -33,6 +33,7 @@ describe("sudoers lines she offers", () => {
     refused(line("/home/lyrica/bin/tool run"), /must be in \/usr\/bin/);
     refused(line("/usr/local/bin/sub/tool run"), /must be in \/usr\/bin/);
     refused(line("/usr/bin/tee /tmp/x"), /a file she can change/);
+    refused(line("/usr/bin/cp /srv/../home/a /etc/x"), /a file she can change/);
     refused(line("/usr/bin/vim.basic /etc/hosts"), /vim.basic runs anything/);
     refused(line("/usr/bin/systemd-run /usr/bin/id"), /systemd-run runs anything/);
     refused(line("/usr/sbin/chroot /"), /chroot runs anything/);

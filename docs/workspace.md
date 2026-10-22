@@ -245,7 +245,7 @@ on a machine goes to the user on a card (`run_as_root`,
   `/sbin` or `/usr/local/{bin,sbin}` and at least one argument (`""` alone
   for none, since a bare program allows any). It refuses a wildcard, a
   quote, a comment (`#`), `@`, a comma, a shell character, `ALL`, an
-  argument under `/home`, `/tmp`, `/var/tmp`, `/dev/shm` or `/run/user`
+  argument under `/home`, `/tmp`, `/var/tmp`, `/dev/shm` or `/run/user`, or with `..`,
   (a file she can change), and a program that runs anything (a shell, an
   editor, an interpreter, a wrapper such as `sudo`, `env`, `systemd-run`,
   `chroot` or `setsid`, `git`, `make`, `journalctl`, …), with its
