@@ -38,6 +38,8 @@ Ubuntu VM or LXC container), running:
   Direct).
 - Her own `tailscaled` (`lyrica-tailscaled.service`), as the `lyrica` user
   in userspace networking, so she can be a device of her own on a tailnet.
+  It also gives her a proxy on `127.0.0.1:1056` to reach model hosts and
+  other machines on that tailnet.
   The host's own Tailscale, if it has one, is left alone.
 - The built-in Caddy (`/usr/local/bin/lyrica-caddy`) as the `lyrica-caddy`
   user, for when Web access serves a name of yours with a real certificate.

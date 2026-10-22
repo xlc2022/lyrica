@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   adoptLocalSearxng, bootstrap, isMounted, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
-  SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, jobNotice, homeWiped, homeWipePending, wipePending, wipePools,
+  SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, jobNotice, homeWiped, homeWipePending, useTailnetProxy, wipePending, wipePools,
   localDate, localTime, serverZone, zoneOf,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
 } from "@lyrica/core";
@@ -61,8 +61,12 @@ export interface LyricadOptions {
     /** The loopback port only `tailscale serve` targets (default 7342, or a free one when `port` is 0). */
     servePort?: number;
   };
-  /** Her tailscaled: the `tailscale` binary (default: on PATH) and her socket. */
-  tailnet?: { binary?: string; socket?: string };
+  /**
+   * Her tailscaled: the `tailscale` binary (default: on PATH), her socket, and
+   * its loopback proxy (`host:port`, `--outbound-http-proxy-listen`), through
+   * which calls to tailnet hosts go. No proxy: tailnet hosts are dialled directly.
+   */
+  tailnet?: { binary?: string; socket?: string; proxy?: string };
   /** The persona seed for setup. Defaults to `persona/` in the repository. */
   seed?: string;
   /** The Unix socket for local clients; false for none. Defaults to `<home>/lyricad.sock`. */
@@ -221,6 +225,13 @@ export class Lyricad implements Drainable {
     this.external = new ExternalListener(join(opts.home, "web-external.json"), (o) => this.listenExternal(o));
     this.updatePaths = { state: opts.update?.state ?? "/var/lib/lyrica-update", requests: opts.update?.requests ?? join(opts.home, "updates") };
     this.tailnet = new TailnetControl({ binary: opts.tailnet?.binary, socket: opts.tailnet?.socket, runtime: opts.home });
+    if (opts.tailnet?.proxy) {
+      useTailnetProxy(opts.tailnet.proxy, () => this.tailnet.magicDnsSuffix);
+      // The suffix is read now and every few minutes, and whenever the tailnet's status is.
+      const read = () => void this.tailnet.status().catch(() => {});
+      read();
+      setInterval(read, 5 * 60_000).unref();
+    }
   }
 
   get locked(): boolean { return !this.services; }

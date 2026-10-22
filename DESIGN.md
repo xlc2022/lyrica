@@ -1934,10 +1934,16 @@ Details in [docs/sleep.md](docs/sleep.md).
     boundaries are structural); and a Disconnect, Leave or switch asked
     for over her own tailnet address is refused (409, with the reason),
     the rule that a change never locks the administrator out. Her
-    userspace device carries inbound connections to her; her own outbound
-    traffic to tailnet peers (model hosts, machines) goes through the
-    host's network as today, so a host that should reach peers over the
-    tailnet joins it itself.
+    userspace device carries inbound connections to her, and (2026-10-22)
+    her calls to tailnet peers too: userspace networking gives the machine
+    no route to the tailnet, so her tailscaled opens an HTTP proxy on
+    loopback (`127.0.0.1:1056`) and `lyricad` sends tailnet addresses and
+    names under her tailnet's MagicDNS suffix through it, for model hosts
+    and endpoints alike. TLS runs inside the tunnel, so a model host's
+    pinned key is checked as on a direct connection. Everything else is
+    dialled directly, and so is a tailnet address when nothing listens on
+    the proxy's port (a machine with its own Tailscale). Any process on
+    the machine can use that loopback proxy to reach her tailnet as her.
   - An administrator chooses the proxy in the control panel, under **Web
     access**:
     - **Direct** (2026-10-11), the mode she starts in: `lyricad` itself

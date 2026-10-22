@@ -91,7 +91,8 @@ async function run(argv: string[]): Promise<void> {
  * passphrase); run by hand in a terminal, it asks for the passphrase instead.
  */
 async function serve(home: string, port: number): Promise<void> {
-  const daemon = new Lyricad({ home, port });
+  // Her tailscaled's proxy (lyrica-tailscaled.service): calls to tailnet hosts go through it.
+  const daemon = new Lyricad({ home, port, tailnet: { proxy: "127.0.0.1:1056" } });
   let stopping = false;
   const stop = async () => {
     if (stopping) return;
