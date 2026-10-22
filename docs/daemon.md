@@ -575,7 +575,7 @@ refused, an endpoint that didn't answer), `offline` when no model could be
 reached, the queue, `received` (a marked message that reached the turn, or
 was kept), the title, `settings`
 when the thread's settings changed (an approved plan switching its mode),
-and turn end, then the thread's `context` after each turn and a `compacted`
+and turn end, then the thread's `context` after each request that goes on with tools and after each turn, and a `compacted`
 marker when it compacts.
 A subagent run's events (started, output, tool calls, questions, notes,
 usage, finished, stopped, interrupted) go out as `delegation` to the parent

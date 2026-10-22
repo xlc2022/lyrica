@@ -69,6 +69,8 @@ export class ContextMeter {
   pending?: { summary?: string; notes?: string };
   /** The compaction now running, for `session_before_compact`. */
   running?: { summary?: string; notes?: string };
+  /** Called after each request that leaves the turn going on (it asked for tools), so a long turn reports as it runs. */
+  onProgress?: () => void;
 
   /** The prompt sections assemble made for this turn, and the tool definitions with their guidance. */
   setPrompt(report: Section[], toolChars: number): void {
@@ -77,7 +79,7 @@ export class ContextMeter {
     this.sections = s;
   }
 
-  /** At a turn's end: the measured total and the conversation, estimated. */
+  /** After a request: the measured total and the conversation, estimated. */
   measure(tokens: number | null | undefined, window: number, conversation: number, pace?: Pace): void {
     const parts: Partial<Record<ContextPartName, number>> = { conversation };
     for (const [k, v] of Object.entries(this.sections) as [ContextPartName, number][]) parts[k] = chars(v);
@@ -86,7 +88,7 @@ export class ContextMeter {
     if (pace) this.last = this.fresh = pace;
   }
 
-  /** The pace of a turn that just ended, once: lyricad records it on the call. */
+  /** The turn's pace since it was last taken, once: lyricad records it on the call. */
   takePace(): Pace | undefined {
     const p = this.fresh;
     this.fresh = undefined;
@@ -243,13 +245,18 @@ export function registerContext(pi: ExtensionAPI, meter: ContextMeter): void {
   pi.on("agent_start", () => tracker.reset());
   pi.on("before_provider_request", () => tracker.request());
   pi.on("message_update", (e) => { if (e.message.role === "assistant") tracker.token(); });
-  pi.on("message_end", (e) => { if (e.message.role === "assistant") tracker.end(e.message.usage); });
-  pi.on("agent_end", (_e, ctx) => {
+  const measure = (ctx: ExtensionContext) => {
     const window = ctx.model?.contextWindow ?? 0;
-    const pace = tracker.pace(window);
     meter.compactions = ctx.sessionManager.getBranch().filter((e) => e.type === "compaction").length;
-    meter.measure(ctx.getContextUsage()?.tokens, window, conversationTokens(ctx), pace);
+    meter.measure(ctx.getContextUsage()?.tokens, window, conversationTokens(ctx), tracker.pace(window));
+  };
+  pi.on("message_end", (e, ctx) => {
+    if (e.message.role !== "assistant") return;
+    tracker.end(e.message.usage);
+    // A turn that goes on with tools reports each request, so a long one (a child thread's task) shows its context and tokens as it runs.
+    if (e.message.stopReason === "toolUse" && meter.onProgress) { measure(ctx); meter.onProgress(); }
   });
+  pi.on("agent_end", (_e, ctx) => measure(ctx));
 
   pi.on("session_before_compact", (e) => {
     // Principle 1: keep her requested summary when the final reply crosses
