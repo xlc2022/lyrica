@@ -749,7 +749,7 @@ form.drawer-body { flex: 1; }
 .children .thread.dotted .pool-dot { width: 7px; height: 7px; }
 .tstate { font-size: 12px; font-family: var(--ui); color: var(--muted); white-space: nowrap; }
 .tstate[data-state="working"] { color: var(--info); }
-.tstate[data-state="waiting"], .tstate[data-state="needsYou"] { color: var(--warn); }
+.tstate[data-state="waiting"], .tstate[data-state="needsYou"], .tstate[data-state="held"] { color: var(--warn); }
 .tstate[data-state="resolved"] { color: var(--ok); }
 .resolved-row { border: 0; background: transparent; color: var(--muted); font-size: 12px; min-height: 28px; padding: 0 8px 0 4px; justify-content: flex-start; gap: 4px; width: 100%; border-radius: 8px; font-weight: 400; }
 .resolved-row:hover { background: color-mix(in oklab, var(--panel) 60%, transparent); border: 0; }
@@ -763,7 +763,7 @@ form.drawer-body { flex: 1; }
 .threads-pop .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
 .threads-pop .thread-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status[data-state="working"] { background: var(--info); animation: pulse 1.4s ease-in-out infinite; }
-.status[data-state="waiting"], .status[data-state="needsYou"] { background: var(--warn); }
+.status[data-state="waiting"], .status[data-state="needsYou"], .status[data-state="held"] { background: var(--warn); }
 .status[data-state="resolved"] { background: var(--ok); }
 .status[data-state="idle"], .status[data-state="queued"] { background: var(--muted); }
 .threads-pop .tokens { margin: 0; padding: 2px 6px 4px; color: var(--muted); }

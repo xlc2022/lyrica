@@ -67,7 +67,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   pool dot's place (amber-dotted when one of its threads waits on the user)
   and its threads nested under it, open by default, each with its pool dot,
   its state as a word (Working, Waiting on you, Waiting for approval,
-  Queued, Idle) and its unseen count, the ones pinned from their cards
+  Queued, Blocked, Idle; Blocked's tooltip reads "Blocked until it agrees
+  with <thread> on who changes <file>.") and its unseen count, the ones pinned from their cards
   first; resolved ones fold under a **Resolved** row with their count. The
   list's own menu (right-click or a long press on its empty space) has
   **New project** (General or Private: an empty, pinned project chat) and
@@ -173,7 +174,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   (`{page:"threads"}`: `ThreadsPage`, the same groups as the popover below, each row
   its state word and its time in mono); below it a popover of the project's
   threads grouped Waiting on
-  you, Working, Queued, Idle and Resolved (each a link, with its unseen
+  you, Working, Queued, Blocked, Idle and Resolved (each a link, with its unseen
   count). The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
   This chat first, then thread links by descending tokens, and **Recent
   calls** linking to the project's filter. On a phone Tokens opens in place

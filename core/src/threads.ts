@@ -89,7 +89,7 @@ export function lookPointer(text: string): string | undefined {
 export type ChildStatus = "working" | "waiting" | "idle";
 
 /** A project's thread, as the project chat sees it: waiting covers an approval and a question for the person (`needsYou`). */
-export type ThreadState = "working" | "waiting" | "queued" | "idle" | "resolved";
+export type ThreadState = "working" | "waiting" | "queued" | "held" | "idle" | "resolved";
 
 export interface ChildInfo { id: string; title?: string; status: ChildStatus; state?: ThreadState; needsYou?: boolean; updatedAt: string; steps?: ThreadStep[] }
 
