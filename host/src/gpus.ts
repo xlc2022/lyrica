@@ -127,7 +127,8 @@ export function amdMonitor(sys = "/sys", opts: { order?: "kfd" | "pci" } = {}): 
           const integrated = gfx !== null && AMD_APUS.has(gfx);
           let pciId: string | undefined;
           try {
-            pciId = `${read(join(dev, "vendor"))}:${read(join(dev, "device"))}`.replace(/0x/g, "").toLowerCase();
+            const [vendor, device] = ["vendor", "device"].map((f) => read(join(dev, f)).replace(/^0x/i, "").toLowerCase());
+            if (/^[0-9a-f]{4}$/.test(vendor!) && /^[0-9a-f]{4}$/.test(device!)) pciId = `${vendor}:${device}`;
           } catch {}
           const vram = { total: num(join(dev, "mem_info_vram_total")), used: num(join(dev, "mem_info_vram_used")) };
           if (!integrated) return { index, name, ...(pciId ? { pciId } : {}), vendor: "amd" as const, ...vram };
