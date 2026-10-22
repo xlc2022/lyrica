@@ -22,13 +22,25 @@ async function setup(pool: "general" | "private" = "general", window = 16_384) {
     await ada.post(`${path}/messages`, { text });
     await stream.until((e) => e.type === "turn_end" && stream.events.filter((x) => x.event.type === "turn_end").length > ends, 0, 20_000);
   };
-  return { rt, ...dm, ada, model, ref, thread, path, stream, turn };
+  /**
+   * After her first turn, sets the window to that turn's context plus `headroom`, so a boundary
+   * scenario holds whatever the machine adds to her prompt (paths, tools), which a fixed window doesn't.
+   */
+  const fitAfterFirst = (headroom: number) => {
+    const first = stream.events.find((e) => e.event.type === "context")!.event as Extract<ThreadEvent, { type: "context" }>;
+    return ada.patch(`/api/u/${rt.ada.id}/offerings/${ref.offeringId}`, { contextWindow: first.context.tokens + headroom });
+  };
+  return { rt, ...dm, ada, model, ref, thread, path, stream, turn, fitAfterFirst };
 }
 
-// Keep these boundary scenarios at the same headroom as before the new
+// Keep these boundary scenarios at the same headroom over her first turn as before the new
 // operational guidance. The fake endpoint estimates one token per four chars;
 // allow for JSON/bullet formatting and Pi's 8% reserve at the window's edge.
 const guidanceTokens = Math.ceil((JSON.stringify([...CONTINUATION_GUIDELINES, ...WORK_GUIDELINES, CODING_GUIDELINE, ...MODEL_CHOICE_TEXT, ...THREAD_MODEL_TEXT, ...RECALL_GUIDELINES, ...Object.values(SKILL_TOOL_TEXT)]).length + 96) / (4 * 0.92));
+/** The window over her first turn's context (a long message on top of her prompt) where Pi compacts by the third. */
+const TIGHT = 1406 + guidanceTokens;
+/** The window over her first turn's context where three long turns still fit, with no compaction. */
+const ROOMY = 5090 + guidanceTokens;
 
 /** A long message with a word to find it by. */
 const long = (mark: string) => `${mark} ${"the quick brown fox jumps over the lazy dog ".repeat(200)}`;
@@ -89,8 +101,9 @@ describe("her context", () => {
 
   it("is compacted by Pi at the window's edge when she doesn't, with a marker", async () => {
     // Principle 8: the window follows the seed persona and tool definitions; a turn must land between Pi's reserve and the window.
-    const { ada, path, stream, turn } = await setup("general", 12_700 + guidanceTokens);
+    const { ada, path, stream, turn, fitAfterFirst } = await setup("general", 16_384 + guidanceTokens);
     await turn(long("FIRST-MARK"));
+    await fitAfterFirst(TIGHT);
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
     expect(stream.events.some((e) => e.event.type === "compacted")).toBe(true);
@@ -100,8 +113,9 @@ describe("her context", () => {
   });
 
   it("compacts with her summary when the turn ends: the old messages go, the recent ones stay, and a marker holds the summary", async () => {
-    const { ada, model, path, stream, turn } = await setup("general", 16_384 + guidanceTokens);
+    const { ada, model, path, stream, turn, fitAfterFirst } = await setup("general", 16_384 + guidanceTokens);
     await turn(long("FIRST-MARK"));
+    await fitAfterFirst(ROOMY);
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
     expect(stream.events.filter((e) => e.event.type === "compacted")).toHaveLength(0);
@@ -134,8 +148,9 @@ describe("her context", () => {
   });
 
   it("in a private thread, compacts with its local model when her summary is too short to stand on its own", async () => {
-    const { ada, model, path, stream, turn } = await setup("private", 16_384 + guidanceTokens);
+    const { ada, model, path, stream, turn, fitAfterFirst } = await setup("private", 16_384 + guidanceTokens);
     await turn(long("FIRST-MARK"));
+    await fitAfterFirst(ROOMY);
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
     model.reply(
@@ -153,8 +168,9 @@ describe("her context", () => {
   });
 
   it("doesn't compact when the turn that asked for it was stopped", async () => {
-    const { ada, model, path, stream, turn } = await setup("general", 16_384 + guidanceTokens);
+    const { ada, model, path, stream, turn, fitAfterFirst } = await setup("general", 16_384 + guidanceTokens);
     await turn(long("FIRST-MARK"));
+    await fitAfterFirst(ROOMY);
     await turn(long("SECOND-MARK"));
     await turn(long("THIRD-MARK"));
     model.reply({ tools: [{ name: "threads", args: { action: "compact", summary: SUMMARY } }] }, { text: "Compacting now, once I finish this long thought.", slowMs: 5000 });
