@@ -9,8 +9,12 @@ host-api asks with an attempt id; /status/comfyui.json names the attempt
 once a ComfyUI started since any stop is running, so host-api never takes a
 stopping one for the new one.
 
+At start it checks that this PyTorch has kernels for the GPU. If it has
+none, ComfyUI is never started and the status says why, so host-api fails
+image jobs and shows the problem rather than a card that looks healthy.
+
 `gate.py --health` is the container's health check: healthy while ComfyUI is
-off as asked, or on and answering.
+off as asked, or on and answering; unhealthy on a GPU it can't run.
 """
 import json
 import os
@@ -35,10 +39,31 @@ def wanted():
         return None
 
 
-def report(attempt):
+# Prints why this PyTorch can't run on the GPU, or nothing. A kernel built
+# for sm_XY runs on X.Y up to X.9; PTX for compute_XY compiles on X.Y and up.
+CHECK = """
+import torch
+if torch.version.cuda and torch.cuda.is_available():
+    cap = torch.cuda.get_device_capability(0)
+    archs = [(kind, tuple(divmod(int(a.split("_")[1]), 10))) for kind, a in ((a.split("_")[0], a) for a in torch.cuda.get_arch_list())]
+    if not any((k == "sm" and a[0] == cap[0] and a[1] <= cap[1]) or (k == "compute" and a <= cap) for k, a in archs):
+        print(f"{torch.cuda.get_device_name(0)} is sm_{cap[0]}{cap[1]}, and this ComfyUI's PyTorch {torch.__version__} has kernels only for {', '.join(torch.cuda.get_arch_list())}, so it can't make images on it.")
+"""
+
+
+def unsupported():
+    """Why ComfyUI can't run on this GPU, or None (also when the check itself fails)."""
+    try:
+        out = subprocess.run([sys.executable, "-c", CHECK], capture_output=True, text=True, timeout=120)
+        return out.stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def report(attempt, problem=None):
     try:
         with open(STATUS + ".tmp", "w") as f:
-            json.dump({"attempt": attempt}, f)
+            json.dump({"attempt": attempt, "unsupported": problem} if problem else {"attempt": attempt}, f)
         os.replace(STATUS + ".tmp", STATUS)
     except OSError:
         pass
@@ -59,10 +84,13 @@ def main(command):
     child = None
     started = 0.0
     reported = None
-    report(None)
+    problem = unsupported()
+    report(None, problem)
     done = []
     signal.signal(signal.SIGTERM, lambda *_: done.append(True))
     signal.signal(signal.SIGINT, lambda *_: done.append(True))
+    while problem and not done:
+        time.sleep(0.5)
     while not done:
         attempt = wanted()
         if attempt is not None:
@@ -85,6 +113,12 @@ def main(command):
 
 
 def health():
+    try:
+        with open(STATUS) as f:
+            if json.load(f).get("unsupported"):
+                return 1
+    except (OSError, ValueError, AttributeError):
+        pass
     if wanted() is None:
         return 0
     urllib.request.urlopen(f"http://127.0.0.1:{PORT}/system_stats", timeout=5)

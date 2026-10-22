@@ -245,6 +245,17 @@ per host, and Lyrica's router filters create tiers by it.
   job, which then waits while it starts.
   A ComfyUI that is off, or doesn't answer a request within 30 seconds,
   fails that job as `unavailable`, and the next job still runs.
+- At start the gate checks that the image's PyTorch has kernels for the
+  GPU (its compute capability against `torch.cuda.get_arch_list()`), in a
+  process that holds the GPU only for those few seconds. If it
+  has none, ComfyUI never starts, the container reports unhealthy, image
+  jobs fail at once saying why, and the dashboard and status list it under
+  problems.
+- A recipe takes the memory of its largest stage plus its VAE: the text
+  encoders, or the diffusion model or checkpoint with its LoRAs, or an
+  upscaler. ComfyUI runs them in turn and frees one stage's models when the
+  next needs the room, so a recipe whose parts add up to more than the GPU
+  can still run.
 
 ## Dictation and voice
 

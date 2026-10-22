@@ -47,14 +47,26 @@ export class Comfy implements Backend {
     if (this.gate) writeAtomic(this.gate.state, JSON.stringify(attempt ? { run: true, attempt } : { run: false }));
   }
 
+  /** What gate.py says: the attempt it runs, and why ComfyUI can't run on this GPU. */
+  private status(): { attempt?: string; unsupported?: string } {
+    try {
+      return this.gate ? JSON.parse(readFileSync(this.gate.status, "utf8")) : {};
+    } catch {
+      return {};
+    }
+  }
+
   /** gate.py has a ComfyUI running for this attempt (one it started since any stop). */
   private started(attempt: string): boolean {
     if (!this.gate) return true;
-    try {
-      return (JSON.parse(readFileSync(this.gate.status, "utf8")) as { attempt?: string }).attempt === attempt;
-    } catch {
-      return false;
-    }
+    const { attempt: running, unsupported } = this.status();
+    if (unsupported) throw new HostError(503, "model_unavailable", unsupported);
+    return running === attempt;
+  }
+
+  /** Why ComfyUI can't run on its GPU (its PyTorch has no kernels for it), or null. */
+  get problem(): string | null {
+    return this.status().unsupported ?? null;
   }
 
   /** Runs jobs one after another. */

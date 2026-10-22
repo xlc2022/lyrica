@@ -65,8 +65,9 @@ async function stack(opts: Parameters<typeof fakeHub>[0] = {}) {
   return { ...h, hub, models, lines, api, fetchUrl, backend, setCallers: (c: string[]) => (callers = c) };
 }
 
+/** Waits on the clock, not a count of tries, so a busy machine only makes it slower. */
 async function finished(api: Awaited<ReturnType<typeof stack>>["api"]) {
-  for (let i = 0; i < 200; i++) {
+  for (const until = Date.now() + 20_000; Date.now() < until; ) {
     const { body } = await api("/host/v1/downloads");
     if (body.downloads.every((d: { state: string }) => !["queued", "downloading", "verifying"].includes(d.state))) return body.downloads;
     await new Promise((r) => setTimeout(r, 20));
@@ -116,9 +117,9 @@ describe("downloads through host-api", () => {
     expect((await s.api("/host/v1/models/load", { body: { model: id } })).body.state).toBe("loaded");
 
     const model = s.host.runtime!.models[0]!;
-    let release!: () => void;
+    let release: (() => void) | undefined;
     const busy = s.host.runtime!.scheduler.run(model, "chat", () => new Promise<void>((r) => (release = r)));
-    await new Promise((r) => setTimeout(r, 10));
+    while (!release) await new Promise((r) => setTimeout(r, 10));
     const refused = await s.api(`/host/v1/files?path=${encodeURIComponent(id)}`, { method: "DELETE" });
     expect(refused.body.error.code).toBe("in_use");
     release();
@@ -143,7 +144,7 @@ describe("downloads through host-api", () => {
     await s.host.downloads!.refresh();
     const id = "lyrica/huggingface/org/repo/model-Q4_K_M.gguf";
     const settings = async () => (await s.api(`/host/v1/models/settings?model=${encodeURIComponent(id)}`)).body;
-    for (let i = 0; i < 100 && !(await settings()).recommended; i++) await new Promise((r) => setTimeout(r, 20));
+    for (const until = Date.now() + 20_000; Date.now() < until && !(await settings()).recommended; ) await new Promise((r) => setTimeout(r, 20));
     expect((await settings()).recommended).toMatchObject({ native: 32768, factor: 4, originalContext: 32768, stretched: 131072, source: { hub: "huggingface", repo: "org/base", revision: "def456" } });
     // Look up names the repository it reads, which needs no hint for a downloaded model.
     const again = await s.api("/host/v1/models/lookup", { body: { model: id } });

@@ -244,7 +244,7 @@ export class Host {
       servers: this.runtime?.scheduler.servers ?? [],
       cpuServers: this.runtime?.scheduler.cpuServers ?? [],
       gpus: (await this.runtime?.scheduler.status()) ?? [],
-      problems: this.runtime?.scheduler.problems ?? [],
+      problems: [...(this.runtime?.scheduler.problems ?? []), ...(this.images?.problems ?? [])],
       downloads: { active: this.downloads?.active ?? 0 },
       modelsFolder: { path: this.opts.modelsHostPath, free },
     };
