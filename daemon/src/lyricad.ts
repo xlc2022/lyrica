@@ -236,6 +236,16 @@ export class Lyricad implements Drainable {
 
   get locked(): boolean { return !this.services; }
 
+  /**
+   * Loopback ports a sandbox never reaches, even with Local services on: hers,
+   * and her tailscaled's proxy, which would carry her commands to any peer on
+   * her tailnet past the network switches.
+   */
+  get sandboxExcluded(): number[] {
+    const proxy = this.opts.tailnet?.proxy;
+    return [this.port, this.servePort, ...(proxy ? [Number(new URL(`http://${proxy}`).port) || 80] : [])];
+  }
+
   /** Setting up: there is no self.db yet. */
   get settingUp(): boolean { return !this.services && !this.keyring.selfExists(); }
 
@@ -451,7 +461,7 @@ export class Lyricad implements Drainable {
     });
     // Where the front door is, read at every sandbox start, so a change in web access applies to the next command.
     const workspace = new Workspace(keyring, users, {
-      excludePorts: [this.port, this.servePort], frontDoor: () => web.frontDoor(), bwrap: this.opts.bwrap, pasta: this.opts.pasta,
+      excludePorts: this.sandboxExcluded, frontDoor: () => web.frontDoor(), bwrap: this.opts.bwrap, pasta: this.opts.pasta,
       // A private or local-only thread never gets Claude Code. Asked at each run, once the models below exist.
       restricted: (u, p, thread) => isRestricted(models.callContext(u, p, thread)),
       // A run's relay opened a pull request: the CI-watch poller records it (docs/briefs/ci-wakes.md).

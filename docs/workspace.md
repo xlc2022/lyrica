@@ -756,7 +756,9 @@ How it is enforced:
   - replies on connections already made;
   - nothing to `lyricad`'s own ports, on any address (`Workspace`'s
     `excludePorts`, a required option, so forgetting it can't leave them
-    open; `lyricad` passes its HTTP port);
+    open; `lyricad` passes its HTTP port, its serve port and her
+    tailscaled's proxy port, 1056, which would otherwise carry a command
+    to any peer on her tailnet past the network switches);
   - nothing to `lyricad`'s front door, read when each sandbox starts
     (`Workspace`'s `frontDoor`, which `lyricad` gives from its web access
     settings): its port (443, or the external proxy's own) on this

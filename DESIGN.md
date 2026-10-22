@@ -1943,7 +1943,9 @@ Details in [docs/sleep.md](docs/sleep.md).
     pinned key is checked as on a direct connection. Everything else is
     dialled directly, and so is a tailnet address when nothing listens on
     the proxy's port (a machine with its own Tailscale). Any process on
-    the machine can use that loopback proxy to reach her tailnet as her.
+    the machine outside her sandboxes can use that loopback proxy to reach
+    her tailnet as her; her sandboxes never get its port, even with Local
+    services on.
   - An administrator chooses the proxy in the control panel, under **Web
     access**:
     - **Direct** (2026-10-11), the mode she starts in: `lyricad` itself
