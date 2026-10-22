@@ -36,7 +36,7 @@ const PENDING = new Map<string, Set<() => void>>();
 const KEEP_MS = 30_000;
 
 /** Fetches the titles of the threads a text mentions; re-renders as they arrive. */
-function useMentionTitles(text: string, userId: string, pool: Pool): (pool: Pool, id: string) => string | null | undefined {
+export function useMentionTitles(text: string, userId: string, pool: Pool): (pool: Pool, id: string) => string | null | undefined {
   const [, setTick] = useState(0);
   // A general message never resolves a private thread, so those aren't fetched.
   const found = [...text.matchAll(THREAD_MENTION)].map((m) => ({ pool: (m[1] as Pool | undefined) ?? pool, id: m[3]! }))

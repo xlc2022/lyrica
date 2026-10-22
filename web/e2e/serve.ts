@@ -21,6 +21,7 @@
 // the model port + 20, and "mcp: <tool>" searches for that tool and calls it.
 // "ask: <question>" asks on a card; "ask twice:" replaces it in one turn.
 // "start ask: <title>" starts a project thread whose task asks on a card.
+// "tell <title>: <text>" messages that child thread (then says "Sent it.").
 import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -142,6 +143,7 @@ function fakeModel() {
       const draft = /^draft: (.+)\|(.+)/.exec(said);
       const fold = /^fold: (.+)/.exec(said)?.[1];
       const suggest = /^suggest: (.+)/.exec(said)?.[1];
+      const tell = /^tell (.+?): (.+)/.exec(said);
       const steps = /^steps: (.+)/.exec(said)?.[1]?.split(";").flatMap((x) => {
         const m = /^\s*(done|doing|todo) (.+?)\s*$/.exec(x);
         return m ? [{ state: m[1], text: m[2] }] : [];
@@ -163,13 +165,13 @@ function fakeModel() {
         const other = [...said.matchAll(/^- \[t:([^\]\s]+)\]/gm)].map((m) => m[1]).find((id) => !about.has(id));
         send({ role: "assistant", content: JSON.stringify({ tell: other ? [{ thread: other, text: "Heads up: the plan changed." }] : [] }) });
         send({}, "stop");
-      } else if ((ask || child || suggest || steps || fold || draft) && (last?.role !== "tool" || (said.startsWith("ask twice:") && chat.messages.slice(-sinceUser).filter(m => m.role === "tool").length < 2))) {
-        const args = ask ? { action: "ask", question: ask, context: "Choose the scope for the garden.", options: [{ label: "Small", consequence: "Plant a small bed first." }, { label: "Large", consequence: "Plant the whole garden." }], recommended: 0 } : draft ? { action: "draft", goal: draft[1]!.trim(), instructions: draft[2]!.trim() } : fold ? { action: "fold", ids: fold.split(",").map(t => t.trim()) } : child ? { action: "start", title: child, task } : steps ? { action: "steps", steps }
+      } else if ((ask || child || suggest || steps || fold || draft || tell) && (last?.role !== "tool" || (said.startsWith("ask twice:") && chat.messages.slice(-sinceUser).filter(m => m.role === "tool").length < 2))) {
+        const args = ask ? { action: "ask", question: ask, context: "Choose the scope for the garden.", options: [{ label: "Small", consequence: "Plant a small bed first." }, { label: "Large", consequence: "Plant the whole garden." }], recommended: 0 } : draft ? { action: "draft", goal: draft[1]!.trim(), instructions: draft[2]!.trim() } : fold ? { action: "fold", ids: fold.split(",").map(t => t.trim()) } : child ? { action: "start", title: child, task } : tell ? { action: "message", id: tell[1], text: tell[2] } : steps ? { action: "steps", steps }
           : { action: "suggest", threads: suggest!.split(",").map((t) => t.trim()).map((title) => ({ title, task: `Work on ${title}.` })) };
         send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}`, type: "function", function: { name: "threads", arguments: JSON.stringify(args) } }] });
         send({}, "tool_calls");
-      } else if (ask || child || suggest || steps || fold || draft) {
-        send({ role: "assistant", content: child ? "Started it." : steps ? "Checklist set." : "Suggested." });
+      } else if (ask || child || suggest || steps || fold || draft || tell) {
+        send({ role: "assistant", content: child ? "Started it." : tell ? "Sent it." : steps ? "Checklist set." : "Suggested." });
         send({}, "stop");
       } else if ((command || plan || skill) && last?.role !== "tool") {
         const call = command ? { name: "bash", arguments: JSON.stringify({ command }) } : skill ? { name: "save_skill", arguments: JSON.stringify({ name: skill[1]!.trim(), description: skill[2]!.trim(), body: skill[3]!.trim() }) } : { name: "propose_plan", arguments: JSON.stringify({ plan }) };

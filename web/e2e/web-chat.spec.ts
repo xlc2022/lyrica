@@ -572,6 +572,47 @@ test("a child thread nests under its parent, opens from its card, and goes with 
   await noHorizontalScroll(page);
 });
 
+test("a message to a child thread is headed by its title, cut to one line, and by \"a forgotten thread\" once it is gone", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  const title = "Seed bed by the south wall, where the morning sun reaches first, the frost lifts early and the wind from the hill never quite gets in";
+  await send(page, `start: ${title}`);
+  await expect(page.getByText("Started it.")).toBeVisible();
+  await send(page, `tell ${title}: Water it twice.`);
+  await expect(page.getByText("Sent it.")).toBeVisible();
+  const card = page.locator(".threads-card").filter({ hasText: "Water it twice." });
+  const head = card.locator(".sub-head b");
+  await expect(head).toHaveText(`Message to ${title}`);
+  await expect(head).toHaveAttribute("title", `Message to ${title}`);
+  // One line, cut with an ellipsis, and Open still beside it.
+  expect(await head.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  const open = card.getByRole("link", { name: "Open" });
+  const [h, o] = [await head.boundingBox(), await open.boundingBox()];
+  expect(Math.abs(h!.y + h!.height / 2 - (o!.y + o!.height / 2))).toBeLessThan(4);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/message-to-thread-${page.viewportSize()!.width}.png` });
+
+  // Forgotten, the card says so and has nothing to open.
+  const parentUrl = page.url();
+  const childId = threadIdOf((await open.getAttribute("href"))!);
+  await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(childId)}`);
+  await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+  const drawer = await openSettings(page);
+  await drawer.getByRole("button", { name: "Forget this thread" }).click();
+  await drawer.getByRole("button", { name: "Forget it" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: title })).toHaveCount(0);
+  await page.goto(parentUrl);
+  await page.reload();
+  await expect(head).toHaveText("Message to a forgotten thread");
+  await expect(head).not.toHaveAttribute("title");
+  await expect(card.getByRole("link", { name: "Open" })).toHaveCount(0);
+  // Forget the parent too, so later tests' recall doesn't find these words.
+  const parent = await openSettings(page);
+  await parent.getByRole("button", { name: "Forget this thread" }).click();
+  await parent.getByRole("button", { name: "Forget it" }).click();
+  await expect(page).not.toHaveURL(parentUrl);
+});
+
 test("a long message from the parent shows its first lines and Show more", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
