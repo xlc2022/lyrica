@@ -197,8 +197,47 @@ function dropDrawer(which: "page" | "panel") {
 
 /** The split view starts at this width; below it the panel's address is the page. */
 const SPLIT_WIDTH = 1180;
-const PANEL_MIN = 360, PANEL_MAX = 520, PANEL_DEFAULT = 420;
+const PANEL_MIN = 280, PANEL_MAX = 1000, PANEL_DEFAULT = 420;
 const PANEL_WIDTH_KEY = "lyrica.panel-width";
+const SIDE_MIN = 200, SIDE_MAX = 440, SIDE_DEFAULT = 248;
+const SIDE_WIDTH_KEY = "lyrica.sidebar-width";
+
+/** A column's width kept per browser; where storage is off, it starts at the default each time. */
+function useStoredWidth(key: string, min: number, max: number, start: number): [number, (w: number) => void] {
+  const [width, setWidth] = useState(() => { try { const n = Number(localStorage.getItem(key)); return n >= min && n <= max ? n : start; } catch { return start; } });
+  const resize = (w: number) => { const x = Math.round(Math.min(max, Math.max(min, w))); setWidth(x); try { localStorage.setItem(key, String(x)); } catch { /* kept for this visit only */ } };
+  return [width, resize];
+}
+
+/**
+ * The draggable edge of a column (the panel's left, the sidebar's right): a separator the arrow keys move too,
+ * Home and End to the leftmost and rightmost place. A drag or a key starts from the width the column shows,
+ * which the layout may hold under the stored one in a narrow window.
+ */
+function Divider({ label, edge, min, max, width, resize }: { label: string; edge: "left" | "right"; min: number; max: number; width: number; resize: (w: number) => void }) {
+  // Moving the edge right widens a column whose right edge it is, and narrows one whose left edge it is.
+  const dir = edge === "right" ? 1 : -1;
+  const drag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const startX = e.clientX, startW = el.parentElement!.getBoundingClientRect().width;
+    el.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => resize(startW + dir * (ev.clientX - startX));
+    const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  };
+  const keys = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? 40 : 10;
+    const shown = Math.min(width, e.currentTarget.parentElement!.getBoundingClientRect().width);
+    if (e.key === "ArrowLeft") resize(shown - dir * step);
+    else if (e.key === "ArrowRight") resize(shown + dir * step);
+    else if (e.key === "Home") resize(dir > 0 ? min : max);
+    else if (e.key === "End") resize(dir > 0 ? max : min);
+    else return;
+    e.preventDefault();
+  };
+  return <div className={`divider ${edge}`} role="separator" aria-orientation="vertical" aria-label={label} aria-valuemin={min} aria-valuemax={max} aria-valuenow={width} tabIndex={0} onPointerDown={drag} onKeyDown={keys} />;
+}
 
 /** At or above the split width: the panel can show beside a conversation. */
 export function useWide(): boolean {
@@ -287,9 +326,7 @@ export function Main(props: React.HTMLAttributes<HTMLElement>) {
 
 function PanelColumn({ route, panel, trail, threads, children }: { route: Route & { page: "thread" }; panel: Panel; trail: Trail; threads: ThreadSummary[]; children: React.ReactNode }) {
   const ref = useRef<HTMLElement>(null);
-  // The width kept per browser; where storage is off, the panel starts at the default each time.
-  const [width, setWidth] = useState(() => { try { const n = Number(localStorage.getItem(PANEL_WIDTH_KEY)); return n >= PANEL_MIN && n <= PANEL_MAX ? n : PANEL_DEFAULT; } catch { return PANEL_DEFAULT; } });
-  const resize = (w: number) => { const x = Math.round(Math.min(PANEL_MAX, Math.max(PANEL_MIN, w))); setWidth(x); try { localStorage.setItem(PANEL_WIDTH_KEY, String(x)); } catch { /* kept for this visit only */ } };
+  const [width, resize] = useStoredWidth(PANEL_WIDTH_KEY, PANEL_MIN, PANEL_MAX, PANEL_DEFAULT);
   // The grid that reads --panel-w is .app, the aside's parent (app.css), so it goes there; on the aside it never reached that rule.
   useLayoutEffect(() => {
     const app = ref.current?.parentElement;
@@ -320,25 +357,9 @@ function PanelColumn({ route, panel, trail, threads, children }: { route: Route 
     if ((e.target as Element).closest("dialog, [role='menu'], .drawer, .picker, [aria-expanded='true']")) return;
     close();
   };
-  const drag = (e: React.PointerEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    const startX = e.clientX, startW = width;
-    el.setPointerCapture(e.pointerId);
-    const move = (ev: PointerEvent) => resize(startW + (startX - ev.clientX));
-    const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); };
-    el.addEventListener("pointermove", move);
-    el.addEventListener("pointerup", up);
-  };
-  const keys = (e: React.KeyboardEvent) => {
-    const step = e.shiftKey ? 40 : 10;
-    if (e.key === "ArrowLeft") { resize(width + step); e.preventDefault(); }
-    else if (e.key === "ArrowRight") { resize(width - step); e.preventDefault(); }
-    else if (e.key === "Home") { resize(PANEL_MAX); e.preventDefault(); }
-    else if (e.key === "End") { resize(PANEL_MIN); e.preventDefault(); }
-  };
   return (
     <aside ref={ref} className="panel" role="complementary" aria-label={crumbs.map((c) => c.label).join(" › ")} onKeyDown={onKeyDown}>
-      <div className="divider" role="separator" aria-orientation="vertical" aria-label="Panel width" aria-valuemin={PANEL_MIN} aria-valuemax={PANEL_MAX} aria-valuenow={width} tabIndex={0} onPointerDown={drag} onKeyDown={keys} />
+      <Divider label="Panel width" edge="left" min={PANEL_MIN} max={PANEL_MAX} width={width} resize={resize} />
       <PanelCtx.Provider value={ctx}>{children}</PanelCtx.Provider>
     </aside>
   );
@@ -499,6 +520,15 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
   const { user, me } = ctx;
   const [run, , actionError] = useAction();
   const [query, setQuery] = useState("");
+  // Its width, dragged on its right edge, goes to .app's grid as the panel's does; a phone's slide-over keeps its own.
+  const sideRef = useRef<HTMLElement>(null);
+  const [sideWidth, resizeSide] = useStoredWidth(SIDE_WIDTH_KEY, SIDE_MIN, SIDE_MAX, SIDE_DEFAULT);
+  useLayoutEffect(() => {
+    const app = sideRef.current?.parentElement;
+    if (!app) return;
+    app.style.setProperty("--side-w", `${sideWidth}px`);
+    return () => { app.style.removeProperty("--side-w"); };
+  }, [sideWidth]);
   const now = useNow();
   const menu = useThreadMenu();
   // Open beside (docs/ux.md §6): from 1180 px up, with a thread open, a child row opens in the panel beside it.
@@ -555,7 +585,7 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
   const listMenu = useListMenu();
 
   return (
-    <aside className="side" aria-label="Threads">
+    <aside ref={sideRef} className="side" aria-label="Threads">
       <div className="side-top">
         <Brand userId={user.id} route={route} onClick={onClose} />
         <button type="button" className="icon sm side-close" aria-label="Hide threads" onClick={onClose}><Icon name="close" /></button>
@@ -628,6 +658,7 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
         <SideStatus page={ctx.models.page} checkedAt={checkedAt} />
         <UserMenu ctx={ctx} users={users} onAuthChange={onAuthChange} />
       </div>
+      <Divider label="Sidebar width" edge="right" min={SIDE_MIN} max={SIDE_MAX} width={sideWidth} resize={resizeSide} />
     </aside>
   );
 }

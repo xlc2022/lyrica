@@ -100,3 +100,4 @@ e2e test extended with all of it and the below-1180 px navigation. Next: the PR
 to review, with screenshots at 1280 and 390. Open: none — the list's rows show
 state as a word and the time in mono, no latest-message line (the overview
 gives `updatedAt`, not a message preview).
+- 2026-10-22: the panel's range widened to 280 to 1000 px at the user's ask (the grid holds it short of leaving the conversation under 48ch), and the sidebar's right edge drags too; docs/ux.md §6 and docs/web.md have both.
