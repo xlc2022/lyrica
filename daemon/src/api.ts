@@ -2160,8 +2160,10 @@ export interface HostDownload {
 
 /** Finished downloads, newest first across manageable hosts. */
 export interface DownloadHistory extends HistoryPage<{ endpointId: string; download: HostDownload }> {}
-/** GET …/threads/:pool/:id/usage: counted turns and subagents. */
-/** Tokens are `input` (every request read, cached reads included) plus `output`; totals folded before user step 17 count in `tokens` alone. */
+/**
+ * GET …/threads/:pool/:id/usage: counted turns and subagents. Tokens are `input` (every request read, cached reads included)
+ * plus `output`; totals folded before user step 17 count in `tokens` alone.
+ */
 export interface ThreadUsage {
   tokens: number;
   input: number;

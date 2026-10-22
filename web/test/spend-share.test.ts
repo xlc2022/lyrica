@@ -21,6 +21,7 @@ describe("spend share", () => {
     expect(html).toContain("By thread");
     expect(html).toContain("This chat");
     expect(html).toContain('title="Counts every request, cached reads included."');
+    expect(html).toContain('title="Tokens counted before input and output were kept apart count here alone."');
     expect(html).toContain('title="Cloud: no GPU time"');
     expect(html).toContain("?project=chat&amp;pool=general");
     expect(html).toContain('title="GPU time">1.0 s');
