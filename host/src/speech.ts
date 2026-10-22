@@ -2,7 +2,7 @@
 // unloaded through its own small API, on one GPU or the CPU. Its
 // OpenAI-compatible /v1/audio/speech is what runtime.ts passes requests to.
 import { HostError } from "./http.ts";
-import type { Backend } from "./backends.ts";
+import { poll, type Backend } from "./backends.ts";
 import type { TextModel } from "./library.ts";
 import type { Option } from "./placement.ts";
 
@@ -10,6 +10,8 @@ export interface SpeechOptions {
   url: string; // e.g. http://speech:8000
   models: string; // the models folder as the speech server sees it
   loadTimeoutMs?: number;
+  /** How long a load waits for the server to answer, while it starts again. */
+  startMs?: number;
 }
 
 const unavailable = (message = "The speech server didn't answer.") => new HostError(503, "model_unavailable", message);
@@ -18,7 +20,7 @@ export class Speech implements Backend {
   private readonly o: Required<SpeechOptions>;
 
   constructor(o: SpeechOptions) {
-    this.o = { loadTimeoutMs: 5 * 60_000, ...o };
+    this.o = { loadTimeoutMs: 5 * 60_000, startMs: 60_000, ...o };
   }
 
   private async post(path: string, body: unknown, timeoutMs = 60_000): Promise<void> {
@@ -41,6 +43,8 @@ export class Speech implements Backend {
 
   async load(model: TextModel, at: Option): Promise<void> {
     if (!model.onnx) throw new HostError(400, "invalid", "That isn't a voice model.");
+    // A server that let go of its GPU exits once nothing is loaded; Docker starts it again.
+    await poll(async () => (await fetch(`${this.o.url}/health`, { signal: AbortSignal.timeout(5_000) })).ok, this.o.startMs, "The speech server");
     await this.post("/load", { name: model.id, folder: `${this.o.models}/${model.id}`, file: model.onnx, device: at.gpus.length ? at.gpus[0] : "cpu" }, this.o.loadTimeoutMs);
   }
 

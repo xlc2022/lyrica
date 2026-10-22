@@ -564,9 +564,17 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     plain switch, not a quality floor, since models carry no quality data.
 - **Context and pace.** Lyrica and the user both see how full her context
   is and how fast her model answers.
-  - After every turn lyricad records prompt, total read and output tokens, the window,
+  - After every turn, and after each request in a turn that goes on with
+    tools, lyricad records prompt, total read and output tokens, the window,
     time to first token and generation time, in the call record. Counts and
     times only.
+  - The top of her prompt (persona core and sections) stays as the model has
+    it until a compaction rebuilds it; what changes meanwhile (topics, the
+    page index, pins, project state) comes in the turn's messages. A local
+    model would otherwise re-read the whole conversation on every change.
+    Something deleted meanwhile (an unpinned message, a forgotten note) is
+    left out of the updated section in the turn but stays in the held top
+    until that compaction.
   - lyricad assembles the prompt, so it can break the total down: persona,
     the page about the user, pinned messages, memories recalled this turn,
     tool definitions, the conversation, Pi's compaction reserve, free space.
@@ -760,6 +768,10 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   - **No Docker socket.** The host API manages VRAM through each server's own
     API: vLLM's sleep and wake, llama.cpp's model loading, and ComfyUI's
     `/free`. It never touches the Docker socket, which would amount to root.
+    A process that has used a GPU keeps a CUDA context there until it exits,
+    so ComfyUI runs only while a recipe is loaded (a small gate in its
+    container starts and stops it as host-api asks), and the speech server
+    exits once nothing is loaded, for Docker to start it again.
   - **Dashboard**, served by the host API on port 7236. It shows:
     - GPUs and VRAM, loaded and pinned models, and the queue;
     - usage statistics: requests, tokens, images and time per model. Never
@@ -850,8 +862,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       reason: GPUs that don't allow that server, too little memory even
       when empty, or vLLM tensor parallel over GPUs that don't match.
     - When a model needs room, the host unloads idle models, least recently
-      used first. It never unloads a pinned model or one in use, and asks
-      ComfyUI to free its memory after it has been idle a while.
+      used first. It never unloads a pinned model or one in use, and stops
+      ComfyUI after it has been idle a while.
     - Requests wait in a queue per GPU (a split model waits for all of its
       GPUs). Interactive chat comes first, then
       images, then background work (sleep, cheap subagents). If a request

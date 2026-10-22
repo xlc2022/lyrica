@@ -69,10 +69,12 @@ services:
     volumes:
       - ${MODELS_DIR}:/models:ro
       - serving:/serving:ro
+      - comfyui-status:/status
     tmpfs: [/tmp, "/triton:exec,mode=1777"]
     init: true
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8188/system_stats', timeout=5)"]
+      # Healthy while off as host-api asks, or on and answering.
+      test: ["CMD", "python3", "/opt/gate.py", "--health"]
       interval: 30s
       timeout: 10s
       start_period: 180s

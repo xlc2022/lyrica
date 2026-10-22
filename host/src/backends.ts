@@ -5,6 +5,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { totalmem } from "node:os";
 import { HostError } from "./http.ts";
 import type { TextModel } from "./library.ts";
 import { concurrentOf, contextOf, usesMtp, usesVision, type ModelSettings, type Option } from "./placement.ts";
@@ -21,12 +22,12 @@ export interface Backend {
 
 const unavailable = (what: string) => new HostError(503, "model_unavailable", `${what} didn't answer.`);
 
-function writeAtomic(path: string, text: string): void {
+export function writeAtomic(path: string, text: string): void {
   writeFileSync(`${path}.tmp`, text, { mode: 0o644 });
   renameSync(`${path}.tmp`, path);
 }
 
-async function poll(check: () => Promise<boolean>, timeoutMs: number, what: string, intervalMs = 500): Promise<void> {
+export async function poll(check: () => Promise<boolean>, timeoutMs: number, what: string, intervalMs = 500): Promise<void> {
   const until = Date.now() + timeoutMs;
   while (Date.now() < until) {
     // A HostError from the check is a definite answer; anything else means "not yet".
@@ -81,7 +82,13 @@ export interface LlamaCppOptions {
   models: string; // the models folder as the router sees it
   device: (gpu: number) => string; // CUDA0, ROCm0, Vulkan0
   loadTimeoutMs?: number;
+  /** The machine's memory in bytes, for the prompt cache each loaded model keeps in it. */
+  memoryBytes?: number;
 }
+
+/** llama.cpp's own prompt cache in host memory, per loaded model, in MiB. */
+const CACHE_RAM_DEFAULT = 8192;
+const CACHE_RAM_MOST = 65536;
 
 export class LlamaCpp implements Backend {
   private readonly o: Required<LlamaCppOptions>;
@@ -89,7 +96,7 @@ export class LlamaCpp implements Backend {
   private readonly templates: Templates;
 
   constructor(o: LlamaCppOptions) {
-    this.o = { loadTimeoutMs: 10 * 60_000, ...o };
+    this.o = { loadTimeoutMs: 10 * 60_000, memoryBytes: totalmem(), ...o };
     this.templates = new Templates(o.serving, "llamacpp");
     this.writePreset();
   }
@@ -100,7 +107,9 @@ export class LlamaCpp implements Backend {
 
   /** One section per placed model: its file, GPUs and serving settings. */
   private writePreset(): void {
-    const lines = ["version = 1", "", "[*]", "jinja = true", "no-webui = true", ""];
+    // Prompts kept in host memory, so threads taking turns on a model don't each re-read their whole conversation: an eighth of memory, where that is more than llama.cpp's own 8 GiB.
+    const cacheRam = Math.min(CACHE_RAM_MOST, Math.floor(this.o.memoryBytes / 8 / 2 ** 20));
+    const lines = ["version = 1", "", "[*]", "jinja = true", "no-webui = true", ...(cacheRam > CACHE_RAM_DEFAULT ? [`cache-ram = ${cacheRam}`] : []), ""];
     this.templates.begin();
     for (const { model, at, settings: s } of this.placed.values()) {
       lines.push(`[${model.id}]`, `model = ${this.o.models}/${model.id}`, `device = ${at.gpus.map(this.o.device).join(",")}`);

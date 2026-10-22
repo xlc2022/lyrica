@@ -6,7 +6,7 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
+  BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createWorkspaceExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -1063,6 +1063,8 @@ export class HostedThread {
           ...(!thread.subagent && (models.hostCopies(user, call).length || models.localCopies(user, call).length) ? [createModelsExtension(this.modelsHost())] : []),
           // Downloading models when asked: general threads only, for a user who can manage a host. Never a subagent's.
           ...(!thread.subagent && models.downloadHosts(user, call).length ? [createDownloadsExtension(this.downloadsHost())] : []),
+          // Last, after every extension that sets sections: the top stays as the model has it until a compaction, so its cache holds.
+          createTopExtension(),
         ],
       });
       const unsubscribe = session.subscribe((e) => this.forward(e));

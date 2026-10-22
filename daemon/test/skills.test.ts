@@ -108,9 +108,11 @@ describe("the model-host skill", () => {
     expect(JSON.stringify(s.model.requests.at(-1)!.messages)).toContain("Installing a model host on a machine");
 
     await s.ada.post(`${s.u}/skills`, { name: "model-host", description: "Our own way.", body: "Ask first." });
+    // The top of the prompt stays fixed, so the latest skills section is the last one.
     const prompt = await s.prompt();
-    expect(prompt).toContain('<skill name=\\"model-host\\" read=\\"s:model-host\\">Our own way.</skill>');
-    expect(prompt).not.toContain('read=\\"s:model-host\\">Install');
+    const latest = prompt.slice(prompt.lastIndexOf("<skills>"));
+    expect(latest).toContain('<skill name=\\"model-host\\" read=\\"s:model-host\\">Our own way.</skill>');
+    expect(latest).not.toContain('read=\\"s:model-host\\">Install');
     s.stream.close();
   });
 });

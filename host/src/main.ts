@@ -46,7 +46,7 @@ const host = new Host({
   log: stdoutLog,
 });
 
-const comfy = new Comfy(env.COMFYUI_URL || "http://comfyui:8188");
+const comfy = new Comfy(env.COMFYUI_URL || "http://comfyui:8188", undefined, undefined, { serving, status: env.COMFYUI_STATUS || "/comfyui-status/comfyui.json" });
 const scheduler = new Scheduler({
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,
   gpuBackend: backend,
