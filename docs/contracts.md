@@ -2009,16 +2009,16 @@ files(t): ThreadFiles                     // the Files panel, every call a fresh
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
 checkouts(t): { name, path, kind }[]     // where its code lives, for the changes view: worktrees, clones, writable grants (docs/daemon.md "Changes")
 targetFor(t, machine?): ExecutionTarget  // the sandbox, or an SSH machine the thread may use now (a Proxmox one is refused)
-machinesFor(t): ThreadMachine[]           // { name, kind, limit, root }: granted by it and every ancestor, of its pool
+machinesFor(t): ThreadMachine[]           // { name, kind, limit, root, asUser? }: granted by it and every ancestor, of its pool
 proxmox(t, machine, action, vm?): Promise<string>  // one PROXMOX_ACTIONS call on a thread's Proxmox machine, token sent only to the pinned certificate
 callMode(t, machine?): PermissionMode     // on a machine, stricterMode(effective(t).mode, its limit)
-probeMachine(userId, login, { kind?, name, address, draft? }): Promise<MachineProbe>
+probeMachine(userId, login, { kind?, name, address, draft?, asUser? }): Promise<MachineProbe>
   // SSH: a key pair kept in memory for an hour (by `draft`), its keyLine and setup steps, the host key seen,
-  // whether the login worked, offNetwork. Proxmox: the certificate's fingerprint and the pveum setup, no token sent.
+  // whether the login worked, offNetwork; asUser gives the own-account setup (no root); account root refused. Proxmox: the certificate's fingerprint and the pveum setup, no token sent.
   // Saves nothing.
-addMachine(userId, { kind?, name, address, root, pool, limit?, draft? | token?, hostKey, offNetworkConfirmed? }): Promise<MachineConfig>
+addMachine(userId, { kind?, name, address, root, pool, limit?, draft? | token?, hostKey, offNetworkConfirmed?, asUser? }): Promise<MachineConfig>
   // Proxmox: tries the token against the confirmed certificate and refuses the Proxmox running Lyrica (ownNode)
-updateMachine(userId, name, { address?, root?, limit?, pool? }): Promise  // a new pool drops the machine from every thread; Proxmox: own-node address refused
+updateMachine(userId, name, { address?, root?, limit?, pool? }): Promise  // a new pool drops the machine from every thread; an address naming another account is refused; Proxmox: own-node address refused
 setHostKey(userId, name, hostKey, token?): Promise / confirmOffNetwork(userId, name) / removeMachine(userId, name)
 grantsFor(t): Grant[]                     // { path, writable }
 folders(t): string[]                      // grants, and "<machine>:<root>" for its machines with a root
@@ -2034,7 +2034,7 @@ sharedDir(t): string | undefined          // shared/ in the folder of the family
 //   a write the tools try throws SandboxDenied naming a code thread; /tmp stays a command's scratch
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
 // MachineConfig { name, kind: "ssh" | "proxmox", host, port, username (Proxmox: token id), privateKey (Proxmox: the token),
-//   root (Proxmox: null), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,
+//   root (Proxmox: null), asUser (SSH: the user's own account; Proxmox: false), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,
 //   limit: "ask" | "acceptEdits" | "auto" (new machines "ask"), offNetwork, lastUsed,
 //   state: { kind: "online" | "unreachable" | "keyChanged", since } | null }
 // settings(userId).machines() / machine(name) / addMachine(m, confirmedHostKey) / updateMachine / setMachinePool(name, pool)
@@ -2042,7 +2042,7 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 // A thread's `machines: string[]` (the sandbox is always there); setThread refuses a machine of the other pool;
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
 // SUSPECT_COMMANDS, suspectCommand(command), onFloor(path), cleanOutput(onData), maskKeys(buf) (shares removePrivateKeys from core/src/secrets.ts),
-//   authorizedKeysLine(publicKey), machineSetup(account, keyLine): core/src/workspace/machines.ts
+//   authorizedKeysLine(publicKey), machineSetup(account, keyLine, asUser?): core/src/workspace/machines.ts
 // proxmox.ts: PROXMOX_ACTIONS (status, list, start, stop, shutdown, reboot, snapshots), PROXMOX_READS, PROXMOX_SUSPECT (stop, reboot),
 //   suspectKey(tool, input) (what Allow in this thread stores), proxmoxAction(call, action, vm?), ownNode(call, addresses, self), ownAddress(addresses, self),
 //   proxmoxSetup(), parseProxmoxAddress, tokenId, certFingerprint. ProxmoxTransport { fingerprint(host, port), call(endpoint, method,
@@ -2209,7 +2209,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   …/machines/probe` for the Test step; `POST …/machines` to confirm;
   `PATCH …/machines/:name` for address, root, pool and limit; `POST
   …/machines/:name/key` with a confirmed host key; `POST
-  …/machines/:name/confirm-off-network`; `DELETE`). A machine carries
+  …/machines/:name/confirm-off-network`; `DELETE`). The probe and the
+  confirm take `asUser` for the user's own account, and such a machine
+  carries `asUser: true`. A machine carries
   `state` (`online`, `unreachable` or `keyChanged`, with `since`) once a
   connection has been tried. Thread settings carry
   `machines`; permission events carry `machine`, `cwd`, and for a suspect

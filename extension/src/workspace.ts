@@ -431,7 +431,7 @@ export function describe(tools: ThreadTools): string {
   const grants = s.grants.map((g) => `${g.path} (${g.writable ? "read-write" : "read-only"})`);
   const all = tools.machines?.() ?? [];
   const limit = (m: ThreadMachine) => (m.limit === "auto" ? "works freely" : `asks like ${LABELS[m.limit]} at most`);
-  const machines = all.filter((m) => m.kind !== "proxmox").map((m) => `${m.name} (${limit(m)}${m.root ? `, in ${m.root}` : ""})`);
+  const machines = all.filter((m) => m.kind !== "proxmox").map((m) => `${m.name} (${limit(m)}${m.root ? `, in ${m.root}` : ""}${m.asUser ? ", logged in as the person's own account" : ""})`);
   const pves = all.filter((m) => m.kind === "proxmox").map((m) => `${m.name} (${limit(m)})`);
   return [
     `Your file and command tools run in a sandbox. ${WORKDIR} is this conversation's folder; uploads arrive in ${WORKDIR}/uploads.`,

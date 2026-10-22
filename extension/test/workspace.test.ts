@@ -483,10 +483,10 @@ describe("workspace tools on a machine", () => {
 
   it("run where the machine argument says, and are listed in the prompt", async () => {
     const { commands, system } = await run("auto", [fauxToolCall("bash", { command: "uptime", machine: "pi" }, { id: "1" })],
-      { machines: [{ name: "pi", kind: "ssh", limit: "auto", root: "/srv" }], approve: yes });
+      { machines: [{ name: "pi", kind: "ssh", limit: "auto", root: "/srv" }, { name: "laptop", kind: "ssh", limit: "ask", root: null, asUser: true }], approve: yes });
     expect(commands).toEqual(["pi: uptime"]);
     expect(asked).toEqual([]);
-    expect(system).toContain("pi (works freely, in /srv)");
+    expect(system).toContain("pi (works freely, in /srv), laptop (asks like Ask at most, logged in as the person's own account)");
   });
 
   it("refuse a machine the thread wasn't given", async () => {

@@ -200,21 +200,32 @@ export function authorizedKeysLine(publicKey: string, from: string[] = ownAddres
 /**
  * The two steps that make a machine ready, to run as root there: the key in
  * a root-owned file sshd reads for her account, so nothing she runs can add
- * one, and sudo rights that are exact commands, never a password.
+ * one, and sudo rights that are exact commands, never a password. On the
+ * user's own account (`asUser`) there is nothing to protect from her, so the
+ * user adds the key to their own keys file, without root.
  */
-export function machineSetup(account: string, keyLine: string): string {
+export function machineSetup(account: string, keyLine: string, asUser = false): string {
+  const line = keyLine.replaceAll("'", "'\\''");
+  const fingerprint = ["", "# The host key's fingerprint, to compare with the one Lyrica shows", "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"];
+  if (asUser) {
+    return [
+      `# Her key, in your own keys file: run as ${account}, not as root`,
+      "install -d -m 700 ~/.ssh",
+      `printf '%s\\n' '${line}' >> ~/.ssh/authorized_keys`,
+      "chmod 600 ~/.ssh/authorized_keys",
+      ...fingerprint,
+    ].join("\n");
+  }
   return [
     "# 1. Her key, in a file only root can change",
     "install -d -m 755 /etc/ssh/authorized_keys",
-    `printf '%s\\n' '${keyLine.replaceAll("'", "'\\''")}' > /etc/ssh/authorized_keys/${account}`,
+    `printf '%s\\n' '${line}' > /etc/ssh/authorized_keys/${account}`,
     `chmod 644 /etc/ssh/authorized_keys/${account}`,
     `printf 'Match User ${account}\\n    AuthorizedKeysFile /etc/ssh/authorized_keys/%%u\\n' > /etc/ssh/sshd_config.d/lyrica.conf`,
     "sshd -t && systemctl reload ssh",
     "",
     "# 2. Optional: sudo for exact commands only (visudo -f /etc/sudoers.d/lyrica)",
     `${account} ALL=(root) NOPASSWD: /usr/bin/systemctl restart nginx`,
-    "",
-    "# The host key's fingerprint, to compare with the one Lyrica shows",
-    "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub",
+    ...fingerprint,
   ].join("\n");
 }

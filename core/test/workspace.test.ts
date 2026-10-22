@@ -428,7 +428,7 @@ describe("modes and switches", () => {
 });
 
 const unreachable: MachineConfig = {
-  name: "nas", kind: "ssh", host: "127.0.0.1", port: 1, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null,
+  name: "nas", kind: "ssh", host: "127.0.0.1", port: 1, username: "lyrica", privateKey: generateSshKey("test").privateKey, root: null, asUser: false,
   hostKey: `SHA256:${"A".repeat(43)}`, pool: "general", limit: "ask", offNetwork: false, lastUsed: null, state: null,
 };
 /** The real client: a sandboxed helper per connection. */

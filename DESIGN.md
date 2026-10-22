@@ -1336,7 +1336,9 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
 
 - **Agentless.** Nothing of Lyrica's is installed on a machine. An SSH
   machine is reached with Lyrica's own SSH client and a dedicated account
-  there; a **Proxmox** machine is reached over its API with a token. No
+  there, or the user's own account when they choose it, after warnings
+  that it gives her everything that account can do (its files, keys,
+  signed-in tools and groups), and typing the machine's name; a **Proxmox** machine is reached over its API with a token. No
   Lyrica agent on the machine, no full-power server as VS Code and Zed
   install, unless real use hits a wall (a Windows machine, or policy that
   must be enforced on the machine itself).

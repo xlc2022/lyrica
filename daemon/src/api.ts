@@ -681,6 +681,8 @@ export interface MachineInfo {
   keyLine?: string;
   /** Proxmox: the token's id (user@realm!tokenid). The token itself is never shown. */
   tokenId?: string;
+  /** SSH: true when it logs in as the user's own account, not one made for her. */
+  asUser?: boolean;
   /**
    * The host key the user confirmed (SHA256:…), or for Proxmox the certificate's
    * fingerprint (AB:CD:…); null for a machine from before confirming, which
@@ -711,13 +713,13 @@ export interface MachineInfo {
  * reads only the certificate's fingerprint and gives the pveum setup steps;
  * the token isn't sent until Confirm.
  */
-export interface MachineProbeInput { kind?: "ssh" | "proxmox"; name: string; address: string; draft?: string }
+export interface MachineProbeInput { kind?: "ssh" | "proxmox"; name: string; address: string; draft?: string; asUser?: boolean }
 export interface MachineProbe {
   /** SSH only. */
   draft?: string;
   /** SSH only. */
   keyLine?: string;
-  /** The setup steps, to run as root on the machine (for Proxmox, on the node). */
+  /** The setup steps, to run as root on the machine (for Proxmox, on the node); with `asUser`, as the user's own account. */
   setup: string;
   /** The host key, or for Proxmox the certificate's SHA-256 fingerprint. */
   fingerprint?: string;
@@ -741,6 +743,8 @@ export interface MachineInput {
   kind?: "ssh" | "proxmox";
   name: string; address: string; root?: string; pool: Pool; limit?: MachineLimit;
   draft?: string; token?: string; hostKey: string; offNetworkConfirmed?: boolean;
+  /** SSH: `address` is the user's own account (Account: Mine). Set only when adding; the page shows its warnings first. */
+  asUser?: boolean;
 }
 /** PATCH /api/u/:userId/machines/:name → MachineInfo. A new pool takes the machine from every thread that granted it. */
 export interface MachineChange { address?: string; root?: string | null; pool?: Pool; limit?: MachineLimit }
