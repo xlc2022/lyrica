@@ -482,7 +482,8 @@ starting with `[Answer to q:`. A typed message closes the question as
 `words`, keeping the text unchanged. Replacement, the person's Stop, a
 parent's `threads stop` and Resolve close it as `withdrawn`; lock and
 project pause keep it. Closing and clearing a project's `needs_you` happen
-in one transaction, and only a question opening or closing moves it; settings events refresh cards, the sidebar and Notifications.
+in one transaction, and only a question opening or closing moves it (or,
+with no question open, the project chat messaging that thread); settings events refresh cards, the sidebar and Notifications.
 An ask in a project thread wakes its project chat through the existing
 coalesced parent wake, and the parent card can answer without navigation.
 
