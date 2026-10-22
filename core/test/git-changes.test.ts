@@ -1,7 +1,7 @@
 // The changes view's reads (git-changes.ts): a real repository on this machine, git run by argv as the sandbox
 // would run it, and what the view shows of it: the branch against its base, each commit, uncommitted work.
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -58,6 +58,8 @@ describe("the changes a thread made", () => {
     expect(await fileSides(local, dir, "moved.txt", "c.txt", "all")).toEqual({ before: "to be moved\n", after: "to be moved\n" });
     expect(await fileSides(local, dir, "untracked.txt", undefined, "all")).toEqual({ after: "not yet\nadded\n" });
     expect(await fileSides(local, dir, "pic.png", undefined, "all")).toEqual({ binary: true });
+    symlinkSync("a.txt", join(dir, "link.txt"));
+    expect(await fileSides(local, dir, "link.txt", undefined, "all")).toEqual({ after: "a.txt\n" });
     await expect(fileSides(local, dir, "../etc/passwd", undefined, "all")).rejects.toThrow("not a path");
     await expect(commitFiles(local, dir, "HEAD; rm -rf /")).rejects.toThrow("not a commit");
   });

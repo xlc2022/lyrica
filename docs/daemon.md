@@ -770,7 +770,7 @@ documented in `daemon/src/api.ts`, "The Files panel".
 ## Changes
 
 The changes view (docs/ux.md §6) reads a thread's checkouts with git where
-its tools run (`Workspace.targetFor(t).run`, fixed argv, hooks off), so no
+its tools run (`Workspace.targetFor(t).run`, fixed argv, hooks and fsmonitor off, a symlink read as its target path), so no
 host path is handled by `lyricad` and nothing is stored or logged; the texts
 go to the user's browser alone. `Workspace.checkouts(t)` names them: the
 thread's worktrees (a project thread's, or the ancestor's it works in), its

@@ -84,7 +84,7 @@ type Run = (args: string[]) => Promise<{ code: number | null; out: string }>;
 function runner(target: ExecutionTarget, repo: string): Run {
   if (!target.run) throw new ChangesUnavailable("this thread's tools run where git can't be read");
   return async (args) => {
-    const r = await target.run!(["git", "-c", "core.hooksPath=/dev/null", "-C", repo, ...args], { timeoutMs: TIMEOUT_MS });
+    const r = await target.run!(["git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-C", repo, ...args], { timeoutMs: TIMEOUT_MS });
     return { code: r.code, out: r.stdout.toString() };
   };
 }
@@ -178,20 +178,21 @@ const isBinary = (b: Buffer) => b.subarray(0, 8000).includes(0);
  */
 export async function fileSides(target: ExecutionTarget, repo: string, path: string, oldPath: string | undefined, commit: string): Promise<FileSides> {
   if (!target.run) throw new ChangesUnavailable("this thread's tools run where git can't be read");
-  if (path.startsWith("/") || path.split("/").includes("..")) throw new ChangesUnavailable("not a path in the repository");
+  for (const p of [path, oldPath ?? path]) if (p.startsWith("/") || p.split("/").includes("..")) throw new ChangesUnavailable("not a path in the repository");
   const run = runner(target, repo);
   const sideOf = async (argv: string[]): Promise<Buffer | undefined> => {
     const r = await target.run!(argv, { timeoutMs: TIMEOUT_MS });
     return r.code === 0 ? r.stdout : undefined;
   };
-  const show = (ref: string, p: string) => sideOf(["git", "-c", "core.hooksPath=/dev/null", "-C", repo, "show", `${ref}:${p}`]);
+  const show = (ref: string, p: string) => sideOf(["git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-C", repo, "show", `${ref}:${p}`]);
   let before: Buffer | undefined, after: Buffer | undefined;
   if (commit === "all" || commit === WORKING) {
     const base = commit === "all" ? await baseOf(run) : undefined;
     const mb = base ? await run(["merge-base", base, "HEAD"]) : undefined;
     const from = mb?.code === 0 && mb.out.trim() ? mb.out.trim() : "HEAD";
     before = await show(from, oldPath ?? path);
-    after = await sideOf(["cat", "--", posix.join(repo, path)]);
+    // A symlink reads as its target's path, as git keeps it, never as what it points at.
+    after = await sideOf(["sh", "-c", 'if [ -L "$1" ]; then readlink -- "$1"; else cat -- "$1"; fi', "sh", posix.join(repo, path)]);
   } else {
     if (!/^[0-9a-f]{7,40}$/.test(commit)) throw new ChangesUnavailable("not a commit");
     before = await show(`${commit}^`, oldPath ?? path);
