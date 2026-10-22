@@ -66,7 +66,8 @@ and `-`, at most 40 characters.
   modalities; llama-server reports the context
   (`meta.n_ctx`), and on `/props` its chat template, vision and slots
   (a router, whose list gives each model's state, is asked one at a time
-  and only about loaded models, since it may load one it's asked about; a
+  and only about loaded models, since it may load one it's asked about,
+  and one not loaded keeps what `/props` said of it last time; a
   server listing one model with no state is asked once), read as a model
   host reads a template: one
   that reads `enable_thinking` has a thinking switch (one level, medium),

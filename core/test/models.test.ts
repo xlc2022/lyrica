@@ -91,13 +91,19 @@ describe("endpoints", () => {
     const template = "{%- if tools %}...{%- endif %}{%- if enable_thinking is defined and enable_thinking is false %}<think>\n\n</think>{%- endif %}";
     const facts = { chat_template: template, default_generation_settings: { n_ctx: 131072 }, total_slots: 2, modalities: { vision: false } };
     // A router: asked only about the model it has loaded, since it may load one it's asked about.
-    const router = await fakeOpenAI({ models: [{ id: "qwen.gguf", meta: { n_ctx: 131072 }, status: { value: "loaded" } }, { id: "other.gguf", status: { value: "unloaded" } }],
+    const qwenListing = { id: "qwen.gguf", meta: { n_ctx: 131072 }, status: { value: "loaded" } };
+    const router = await fakeOpenAI({ models: [qwenListing, { id: "other.gguf", status: { value: "unloaded" } }],
       props: { "qwen.gguf": facts, "other.gguf": facts } });
     const ep = models.addEndpoint(ada, { name: "direct", kind: "local", baseUrl: router.baseUrl });
     const found = await models.discover(ada, ep.id);
     const qwen = found.find((o) => o.modelId === "qwen.gguf")!;
     expect(qwen).toMatchObject({ llamaServer: true, reasoning: ["medium"], tools: true, vision: false, parallel: 2, opensThinking: true, contextWindow: 131072 });
     expect(found.find((o) => o.modelId === "other.gguf")!.llamaServer).toBeUndefined();
+    expect(router.propsAsked).toEqual(["qwen.gguf"]);
+    // Unloaded at the next discovery, it isn't asked again and keeps what /props said.
+    qwenListing.status.value = "unloaded";
+    const again = (await models.discover(ada, ep.id)).find((o) => o.modelId === "qwen.gguf")!;
+    expect(again).toMatchObject({ llamaServer: true, reasoning: ["medium"], tools: true, parallel: 2, opensThinking: true });
     expect(router.propsAsked).toEqual(["qwen.gguf"]);
     // Its one level is the template's switch: on at any level asked, with no note, and off when asked.
     expect(models.thinkingFor({ offering: qwen, label: "direct/qwen.gguf" }, "high")).toEqual({ level: "medium" });

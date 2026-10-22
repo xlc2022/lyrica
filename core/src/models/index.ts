@@ -782,6 +782,8 @@ export class Models {
     const ep = this.endpoint(actor.id, endpointId);
     if (!ep) throw new Error(`no endpoint ${endpointId}`);
     let found: DiscoveredModel[];
+    // A router's models it wasn't asked about (not loaded): they keep what /props said of them last time.
+    const unasked = new Set<string>();
     try {
       if (ep.signedOut) throw new Error(`${ep.name} is signed out; sign in again`);
       found = ep.api === "host" ? await this.hostModels(ep) : isPlan(ep.api) ? this.planCatalog(ep.api) : await discoverModels(ep.baseUrl, ep.apiKey);
@@ -805,7 +807,8 @@ export class Models {
         const props = new Map<string, LlamaServerModel>();
         if (router) {
           for (const m of found) {
-            const l = m.routerState === "loaded" ? await llamaServerModel(ep.baseUrl, ep.apiKey, m.modelId) : null;
+            if (m.routerState !== "loaded") { unasked.add(m.modelId); continue; }
+            const l = await llamaServerModel(ep.baseUrl, ep.apiKey, m.modelId);
             if (l) props.set(m.modelId, l);
           }
         } else if (found.length === 1) {
@@ -833,8 +836,13 @@ export class Models {
     this.write(actor, endpointId, (db) => {
       db.transaction(() => {
         const have = new Map((db.prepare("SELECT id, model FROM offerings WHERE endpoint = ?").all(endpointId) as { id: string; model: string }[]).map((r) => [r.model, r.id]));
-        for (const m of found) {
+        for (let m of found) {
           const id = have.get(m.modelId);
+          if (id && unasked.has(m.modelId)) {
+            const prev = JSON.parse((db.prepare("SELECT found FROM offerings WHERE id = ?").get(id) as { found: string }).found) as DiscoveredModel;
+            if (prev.llamaServer) m = { ...m, llamaServer: true, ...Object.fromEntries((["reasoning", "tools", "vision", "opensThinking", "servedParallel"] as const)
+              .filter((k) => m[k] === undefined && prev[k] !== undefined).map((k) => [k, prev[k]])) };
+          }
           if (id) db.prepare("UPDATE offerings SET found = ?, missing_since = NULL WHERE id = ?").run(JSON.stringify(factsOf(m)), id);
           else {
             const added = randomUUID();
