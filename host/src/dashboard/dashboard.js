@@ -246,7 +246,7 @@ function gpus() {
     const waiting = [["chat", g.queue.chat], ["image", g.queue.image], ["background", g.queue.background]].filter(([, n]) => n).map(([k, n]) => `${n} ${k}`);
     return h("section", { class: "card" },
       h("div", { class: "gpu-line" },
-        h("h3", {}, `GPU ${g.index} · ${g.name}`),
+        h("h3", {}, "GPU ", num(g.index), ` · ${g.name}`, ...(g.pciId ? [" · ", num(g.pciId)] : [])),
         g.settings.excluded ? h("span", { class: "pill warn", title: "Nothing loads on it." }, "left out") : null,
         h("button", { type: "button", class: "sm", onclick: () => editGpu(g) }, "Edit")),
       facts(h("span", {}, num(size(g.vram.used)), " of ", num(size(g.vram.total)), " used"),
@@ -343,11 +343,11 @@ async function getStarter(s) {
   if (files.length) await post("/host/v1/downloads", { source: "huggingface", repo: s.repo, revision: listing.revision, files });
 }
 
-/** The starters this host can serve: its servers run them, with each one's state here. */
+/** The starters this host can serve: its servers run them, on a GPU or the CPU, with each one's state here. */
 function starters() {
   const { servers, cpuServers = [], gpus } = S.status;
   const room = Math.max(0, ...gpus.filter((g) => !g.settings.excluded).map((g) => g.vram.total - g.settings.keepFree));
-  const rows = STARTERS.filter((s) => servers.includes(s.server)).map((s) => {
+  const rows = STARTERS.filter((s) => servers.includes(s.server) || cpuServers.includes(s.server)).map((s) => {
     const here = S.models.some((m) => m.id === s.id);
     const coming = S.downloads.some((d) => ["queued", "downloading", "verifying"].includes(d.state) && d.path.startsWith(`lyrica/huggingface/${s.repo}/`));
     const fits = cpuServers.includes(s.server) || s.needs <= room;

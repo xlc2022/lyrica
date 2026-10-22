@@ -105,6 +105,7 @@ seconds of audio.
   "gpus": [{
     "index": 0,
     "name": "NVIDIA GeForce RTX 3090",
+    "pciId": "10de:2204",
     "vendor": "nvidia",
     "integrated": false,
     "settings": { "servers": ["llamacpp", "vllm", "images", "speech"], "keepFree": 536870912, "excluded": false },
@@ -139,6 +140,9 @@ seconds of audio.
   without CUDA (ROCm, Vulkan, or no GPU), so there it is `["speech"]` and
   `speech` isn't in `servers`. A model on the CPU isn't listed under any
   GPU.
+- `pciId`: the GPU's PCI vendor and device ID (`vendor:device`, lower-case
+  hex), so a card that names itself as another model still shows what it
+  is. Absent when the driver doesn't say.
 - `integrated`: an integrated GPU (an APU). Its `vram` counts the shared
   system memory it can use (GTT) as well as its BIOS carve-out, and
   `vram.carveOut` (`{ total, used }`) gives the carve-out alone. Which a

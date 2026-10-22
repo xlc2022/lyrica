@@ -722,6 +722,7 @@ export class Scheduler {
       return {
         index: g.index,
         name: g.name,
+        ...(g.pciId ? { pciId: g.pciId } : {}),
         vendor: g.vendor,
         integrated: g.integrated === true,
         settings: this.gpuSettings(g.index),

@@ -153,7 +153,7 @@ Under the model list, **Starters** offers models to begin with, each
 downloaded at a pinned revision: Qwen3.8 27B (Unsloth's UD-Q4_K_M with its
 vision projector, for a 24 GB GPU), Qwen3.5 9B (Q4_K_M with its projector),
 Qwen3 Embedding 0.6B (Q8_0), and the voice and dictation models named in
-docs/guides/model-hosts.md. Only those the host's servers run are listed,
+docs/guides/model-hosts.md. Only those the host's servers run are listed, on a GPU or the CPU,
 and one too big for every GPU says so.
 
 ## The models folder

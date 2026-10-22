@@ -343,6 +343,8 @@ export interface HostStatus {
   state: "running" | "pausing" | "paused" | "restarting";
   gpus: {
     index: number; name: string; vendor: string; role: "vllm" | "shared";
+    /** PCI vendor:device, as `10de:1df4`; absent from a host from before it reported one. */
+    pciId?: string;
     vram: { total: number; used: number };
     models: { id: string; kind: string; state: string; pinned: boolean; busy: boolean; vram: number | null; lastUsed: string | null }[];
     queue: { chat: number; image: number; background: number };
