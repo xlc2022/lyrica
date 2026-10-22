@@ -99,7 +99,8 @@ internet and nothing else:
 ## Who can run code on it
 
 Every job runs the code of the branch it checks, with root on the VM, and
-the workflows' token is read-only. The repository is public, so anyone can
+the workflows' token is read-only, except that the CMP images job may write
+packages (below). The repository is public, so anyone can
 open a pull request from a fork, and a pull request's run uses the
 workflow files from its own branch: a fork can name `lyrica-ci` in any
 workflow, whatever `main`'s workflows say. So the boundary is a repository
@@ -112,7 +113,24 @@ runner groups to restrict them, so while the repository is public and no
 workflow uses them, remove them from it (Settings, Actions, Runners). In
 Settings, Actions, General, keep "Workflow permissions" at "Read repository
 contents" and "Allow GitHub Actions to create and approve pull requests"
-off. No workflow uses `pull_request_target`.
+off. No workflow uses `pull_request_target`. Any branch pushed to this repository can
+carry a workflow that asks for `packages: write` and push any tag, so the
+CMP images are trusted exactly as far as pushes to the repository are, the
+same as the code hosts update from.
+
+## CMP images
+
+`cmp-images.yml` builds the CMP 100-210's llama.cpp and sd-server images
+(host/README.md) when `host/llamacpp/`, `host/sdcpp/` or `host/prebuilt.sh`
+change. A pull request only builds them. A push to `main`, or a run
+started by hand on a branch (Actions, CMP images, Run workflow), logs in to the
+registry `host/prebuilt.sh` names with the job's token, which may write
+packages there, and pushes each image whose tag isn't published yet. A
+fork's pull request gets a read-only token whatever the workflow asks. The
+first push creates each package as private: make it public once
+(the package's settings on GitHub, Change visibility), or hosts can't pull
+it and build their own. llama.cpp for six CUDA capabilities is a long
+compile on a hosted runner, so the job may run for hours.
 
 ## Switching runners
 

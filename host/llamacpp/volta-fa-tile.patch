@@ -1,0 +1,15 @@
+diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
+index bb34e01..3d1be9c 100644
+--- a/ggml/src/ggml-cuda/fattn.cu
++++ b/ggml/src/ggml-cuda/fattn.cu
+@@ -674,7 +674,9 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
+         if (can_use_vector_kernel && Q->ne[1] * gqa_ratio_eff <= 2) {
+             return BEST_FATTN_KERNEL_VEC;
+         }
+-        if (Q->ne[1] * gqa_ratio_eff <= 16) {
++        // Lyrica: a CMP 100-210's FP16 tensor cores are throttled, so its flash attention uses the tile kernel throughout.
++        static const bool volta_no_mma = getenv("GGML_CUDA_VOLTA_FA_TILE") != nullptr;
++        if (volta_no_mma || Q->ne[1] * gqa_ratio_eff <= 16) {
+             return BEST_FATTN_KERNEL_TILE; // On Volta tensor cores are only faster for sufficiently large matrices.
+         }
+         return BEST_FATTN_KERNEL_MMA_F16;

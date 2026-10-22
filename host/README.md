@@ -260,7 +260,8 @@ per host, and Lyrica's router filters create tiers by it.
 - When `COMFY_GPU` is a CMP 100-210 (PCI ID `10de:1df4`), whose FP16 tensor
   cores are throttled, `install.sh` adds `compose.sdcpp.yaml` and ComfyUI
   isn't started. stable-diffusion.cpp's `sd-server` (`sdcpp/Dockerfile`, a
-  pinned commit built with `GGML_CUDA_FORCE_MMQ`) makes the images instead:
+  pinned commit built with `GGML_CUDA_FORCE_MMQ`, pulled or built like the
+  CMP's llama.cpp below) makes the images instead:
   it converts the recipe's parts to Q8_0 as it loads them and runs with
   flash attention off, so the work goes to the card's int8 units. It
   creates only, for Z-Image, Qwen-Image, FLUX and SDXL recipes without
@@ -394,11 +395,22 @@ revoked. A revoked server must pair again.
   reservations for CDI devices. They log nothing
   (Docker's `none` log driver).
   - On a host with a CMP 100-210 (PCI ID `10de:1df4`), whose FP16 tensor
-    cores are throttled, `install.sh` adds `compose.cmp.yaml`. It builds
-    llama.cpp from source (`llamacpp/Dockerfile`), at the stock image's tag
-    and for the compute capabilities of the host's GPUs, with
-    `GGML_CUDA_FORCE_MMQ` so quantized models use int8. That changes
-    nothing on Turing and newer cards. The first build takes a while.
+    cores are throttled, `install.sh` adds `compose.cmp.yaml`. Its
+    llama.cpp (`llamacpp/Dockerfile`) is built at the stock image's tag with
+    `GGML_CUDA_FORCE_MMQ`, so quantized models use int8; that changes
+    nothing on Turing and newer cards. A patch (`volta-fa-tile.patch`) lets
+    the overlay's `GGML_CUDA_VOLTA_FA_TILE` keep flash attention on sm_70
+    off the tensor cores, and host-api reads prompts on the CMP in steps of
+    2048 tokens (`ubatch-size`); together they read prompts about three
+    times as fast as the stock image. CI publishes it and sd-server's image
+    (`.github/workflows/cmp-images.yml`) under a tag that hashes their build
+    folder and CUDA capabilities, in the registry `prebuilt.sh` names (one
+    line, or `LYRICA_HOST_REGISTRY`). `install.sh` pulls the tag that matches
+    its own code when the image covers every GPU's compute capability, and
+    checks the image's content label, then runs it by the digest it
+    checked, so a tag pushed again later changes nothing. Otherwise it adds
+    `compose.cmp.build.yaml` (or `compose.sdcpp.build.yaml`) and builds
+    the image for the host's GPUs, which takes a while, saying why.
   - llama.cpp runs in router mode. host-api writes its preset file (each
     model's file, GPU and context), then loads and unloads models through
     its API. Each loaded model keeps prompts in host memory (`cache-ram`),

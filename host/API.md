@@ -403,7 +403,8 @@ embeddings and dictation receive neither parser.
   context (llama.cpp gets `kv-unified = true`), and the model list reports
   the number as `parallel`, which the daemon never exceeds.
 - Both: `batchSize` (32 to 65536: llama.cpp's batch size, vLLM's batched
-  tokens), `chatTemplate` (a Jinja template, at most 64 kB, used instead of
+  tokens; on a CMP 100-210 llama.cpp also reads prompts in steps of up to
+  2048 of them), `chatTemplate` (a Jinja template, at most 64 kB, used instead of
   the model's own).
 - A setting for the other server, or one not listed, is `invalid`.
 

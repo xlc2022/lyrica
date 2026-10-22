@@ -389,6 +389,22 @@ it("unloads at start what llama.cpp still holds from before host-api restarted",
   expect(router.status.get("left-over.gguf")).toBe("unloaded");
 });
 
+it("reads prompts in steps of 2048 tokens on a CMP 100-210, up to the model's batch size", async () => {
+  const router = await fakeLlamaRouter();
+  open.push({ close: () => new Promise<void>((r) => router.server.close(() => r())) });
+  const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+  const backend = new LlamaCpp({ url: router.url, serving, models: "/models", device: (i) => `CUDA${i}`, cmp: (i) => i === 1 });
+  const model = scanTextModels(modelsFolder())[0]!;
+  const section = async (gpus: number[], batchSize?: number) => {
+    await backend.load(model, { gpus, split: gpus.length > 1 ? [0.5, 0.5] : null, parallel: null, share: null, need: {} }, { placement: { mode: "auto" }, batchSize });
+    return readFileSync(join(serving, "llamacpp.ini"), "utf8").split(`[${model.id}]`)[1]!;
+  };
+  expect(await section([0])).not.toContain("ubatch-size");
+  expect(await section([1])).toContain("ubatch-size = 2048\n");
+  expect(await section([0, 1], 1024)).toContain("batch-size = 1024\nubatch-size = 1024\n");
+  expect(await section([1], 4096)).toContain("batch-size = 4096\nubatch-size = 2048\n");
+});
+
 it("selects family parsers without advertising unknown tool formats", () => {
   expect(familyParsers("Qwen3_5ForConditionalGeneration")).toEqual({ toolCallParser: "hermes", reasoningParser: "qwen3" });
   expect(familyParsers("qwen2")).toEqual({ toolCallParser: "hermes" });

@@ -100,11 +100,15 @@ paths has been tried on hardware.
 ### A CMP 100-210
 
 The CMP 100-210 (PCI ID `10de:1df4`) is a mining card with throttled FP16
-tensor cores. The script detects it and builds llama.cpp from source for
-the host's GPUs so quantized models use its int8 units; the first build
-took 25 minutes on a 4-core machine. When the image GPU (`COMFY_GPU`) is
-one, ComfyUI isn't started and stable-diffusion.cpp, also built from
-source (18 minutes), makes the images instead: create only, for Z-Image,
+tensor cores. The script detects it and uses a llama.cpp built so
+quantized models use its int8 units and flash attention avoids the
+tensor cores, which reads prompts about three times as fast as the stock
+image. It downloads the image CI built
+(a few GB) when the host's GPUs are among those it covers, and otherwise
+builds it here, which took 25 minutes on a 4-core machine; it says which.
+When the image GPU (`COMFY_GPU`) is one, ComfyUI isn't started and
+stable-diffusion.cpp, downloaded the same way (or built, 18 minutes),
+makes the images instead: create only, for Z-Image,
 Qwen-Image, FLUX and SDXL recipes without LoRAs. The first image after a
 load takes about 2.5 minutes while it converts the weights to Q8_0.
 Details are in [host/README.md](../../host/README.md#image-models).

@@ -84,6 +84,8 @@ export interface LlamaCppOptions {
   loadTimeoutMs?: number;
   /** The machine's memory in bytes, for the prompt cache each loaded model keeps in it. */
   memoryBytes?: number;
+  /** Whether a GPU is a CMP 100-210, which reads prompts faster in bigger steps. */
+  cmp?: (gpu: number) => boolean;
 }
 
 /** llama.cpp's own prompt cache in host memory, per loaded model, in MiB. */
@@ -96,7 +98,7 @@ export class LlamaCpp implements Backend {
   private readonly templates: Templates;
 
   constructor(o: LlamaCppOptions) {
-    this.o = { loadTimeoutMs: 10 * 60_000, memoryBytes: totalmem(), ...o };
+    this.o = { loadTimeoutMs: 10 * 60_000, memoryBytes: totalmem(), cmp: () => false, ...o };
     this.templates = new Templates(o.serving, "llamacpp");
     this.writePreset();
   }
@@ -124,6 +126,8 @@ export class LlamaCpp implements Backend {
       const parallel = concurrentOf(model, s);
       if (parallel) lines.push(`parallel = ${parallel}`, "kv-unified = true");
       if (s.batchSize) lines.push(`batch-size = ${s.batchSize}`);
+      // A CMP reads a prompt about 6% faster in steps of 2048 tokens than in llama.cpp's 512, up to the batch size.
+      if (at.gpus.some(this.o.cmp)) lines.push(`ubatch-size = ${Math.min(s.batchSize ?? 2048, 2048)}`);
       if (s.chatTemplate) lines.push(`chat-template-file = ${this.templates.write(s.chatTemplate)}`);
       if (model.kind === "embedding") lines.push("embeddings = true");
       if (usesVision(model, s)) lines.push(`mmproj = ${this.o.models}/${model.mmproj}`);
