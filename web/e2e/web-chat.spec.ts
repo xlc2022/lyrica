@@ -606,6 +606,11 @@ test("a message to a child thread is headed by its title, cut to one line, and b
   await expect(head).toHaveText("Message to a forgotten thread");
   await expect(head).not.toHaveAttribute("title");
   await expect(card.getByRole("link", { name: "Open" })).toHaveCount(0);
+  // Forget the parent too, so later tests' recall doesn't find these words.
+  const parent = await openSettings(page);
+  await parent.getByRole("button", { name: "Forget this thread" }).click();
+  await parent.getByRole("button", { name: "Forget it" }).click();
+  await expect(page).not.toHaveURL(parentUrl);
 });
 
 test("a long message from the parent shows its first lines and Show more", async ({ page, baseURL }) => {
