@@ -138,5 +138,5 @@ of the script after review). Each grew the tool definitions by about 200
 tokens; since #451 `daemon/test/context.test.ts` sizes its windows from
 her first turn, so tool text needs no window change there. D (own account,
 user step 18) merged in #453 (the account is fixed once added; root is
-refused). C (the `model-host` built-in skill) is in its pull request: the
-last item.
+refused). C (the `model-host` built-in skill) merged in #454. All four are
+built; none has run against a real GPU machine yet.
