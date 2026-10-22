@@ -246,7 +246,7 @@ function gpus() {
     const waiting = [["chat", g.queue.chat], ["image", g.queue.image], ["background", g.queue.background]].filter(([, n]) => n).map(([k, n]) => `${n} ${k}`);
     return h("section", { class: "card" },
       h("div", { class: "gpu-line" },
-        h("h3", {}, `GPU ${g.index} · ${g.name}${g.pciId ? ` · ${g.pciId}` : ""}`),
+        h("h3", {}, "GPU ", num(g.index), ` · ${g.name}`, ...(g.pciId ? [" · ", num(g.pciId)] : [])),
         g.settings.excluded ? h("span", { class: "pill warn", title: "Nothing loads on it." }, "left out") : null,
         h("button", { type: "button", class: "sm", onclick: () => editGpu(g) }, "Edit")),
       facts(h("span", {}, num(size(g.vram.used)), " of ", num(size(g.vram.total)), " used"),
