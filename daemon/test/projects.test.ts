@@ -763,6 +763,57 @@ describe("projects", () => {
     expect(tried).toMatchObject({ isError: true, result: expect.stringMatching(/paused/) });
   });
 
+  it("wake an idle project with an unfinished checklist, twice at most, never paused or stopped", async () => {
+    const { d, ada, rt, script, say, path, requests, project } = await setup();
+    const later = () => new Date(Date.now() + 11 * 60_000);
+    const woken = () => requests.filter((c) => JSON.stringify(c.messages.at(-1)).includes("Nothing in this project is running")).length;
+    const settle = async () => { await new Promise((r) => setTimeout(r, 300)); await until(() => Promise.resolve(d.services!.host.busy(rt.ada.id, "general", project.id)), (b) => !b); };
+    script("chat").push(tool({ action: "steps", steps: [{ text: "Move DNS", state: "doing" }] }), { text: "On it." });
+    await say("move DNS");
+    // Written just now: not idle yet.
+    d.services!.children.watchIdle(new Date());
+    await settle();
+    expect(woken()).toBe(0);
+    d.services!.children.watchIdle(later());
+    await until(() => Promise.resolve(woken()), (n) => n === 1);
+    await settle();
+    d.services!.children.watchIdle(new Date(Date.now() + 22 * 60_000));
+    await until(() => Promise.resolve(woken()), (n) => n === 2);
+    await settle();
+    // Twice is enough until a thread moves.
+    d.services!.children.watchIdle(new Date(Date.now() + 33 * 60_000));
+    await settle();
+    expect(woken()).toBe(2);
+
+    // Paused: never.
+    script("chat").push(tool({ action: "steps", steps: [{ text: "Move DNS", state: "doing" }] }), { text: "Still on it." });
+    await say("go on");
+    expect((await ada.patch(path, { paused: true })).status).toBe(200);
+    d.services!.children.watchIdle(later());
+    await settle();
+    expect(woken()).toBe(2);
+    expect((await ada.patch(path, { paused: false })).status).toBe(200);
+
+    // Stopped by the person: left alone until a turn ends otherwise.
+    let release!: () => void;
+    script("chat").push(() => new Promise<Reply>((r) => (release = () => r({ text: "late" }))));
+    expect((await ada.post(`${path}/messages`, { text: "look again" })).status).toBe(200);
+    await until(() => Promise.resolve(d.services!.host.busy(rt.ada.id, "general", project.id)), (b) => b);
+    expect((await ada.post(`${path}/stop`)).status).toBe(200);
+    release();
+    await settle();
+    d.services!.children.watchIdle(new Date(Date.now() + 44 * 60_000));
+    await settle();
+    expect(woken()).toBe(2);
+
+    // A finished checklist: nothing to carry on.
+    script("chat").push(tool({ action: "steps", steps: [{ text: "Move DNS", state: "done" }] }), { text: "Done." });
+    await say("finish");
+    d.services!.children.watchIdle(new Date(Date.now() + 55 * 60_000));
+    await settle();
+    expect(woken()).toBe(2);
+  });
+
   it("suggest threads on a card, and start them from it once each", async () => {
     const { ada, script, say, path, overview } = await setup();
     script("chat").push(tool({ action: "suggest", threads: [{ title: "DNS", task: "dns: move DNS" }, { title: "Backups", task: "backups: copy backups" }] }), { text: "Shall I?" });

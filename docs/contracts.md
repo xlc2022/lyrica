@@ -836,7 +836,9 @@ Custom roles override built-ins by name.
   status `update`, and every delivery's details carry an `id`. A child on
   a task from its parent whose turn ends idle with an error, or without an
   update since the task, gets the parent the same kind of notice
-  (`ChildThreads.ended`, fed by `lyricad`'s turn events). A child's
+  (`ChildThreads.ended`, fed by `lyricad`'s turn events); without an
+  update, the notice carries the child's last assistant message (clipped
+  to 4,000 characters, never an unlogged thread's) marked as its report. A child's
   `message({ to: "parent", text, question: true })`, a project's `needsYou`,
   its report when its turn ends idle, and the daemon's failure or
   didn't-start notes wake an idle parent for one turn. Plain progress and
@@ -848,8 +850,10 @@ Custom roles override built-ins by name.
   `HostedThread.wakeChild`: a hidden custom message with `triggerTurn: true`,
   through the ordinary model preparation, turn events and storage. Pending
   wake metadata is in memory only; stored notices survive a restart.
-  `noticed` prevents repeated bad-end wakes until a child reports or the
-  user writes there. A reply from a child-triggered parent to its source
+  `noticed` prevents repeated error wakes until a child reports or the
+  user writes there. `ChildThreads.watchIdle(now)`, called by the daemon
+  tick unless an update drains, wakes an idle project chat with
+  `IDLE_NOTE` through `wakeChild` (see docs/delegation.md, Idle projects). A reply from a child-triggered parent to its source
   child goes through `HostedThread.appendParent`, saved after the child's
   current turn without a turn or steer; the next turn reads it.
   `message` returns a `Delivery`: `started`, `running`, `queued` (an idle

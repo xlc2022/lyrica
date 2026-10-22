@@ -506,14 +506,30 @@ summaries carry no steps.
 `start`, a queued start that began, or a parent's `message`; not a look's
 line) owes it a report. When its turn ends and it is idle, the parent gets
 a note that wakes the idle parent under the same guards: "stopped with an
-error" if the turn
-ended with an error, or "finished without a report" if the child sent no
-`message to: "parent"` since the task. The parent hears this once: after
-a note, the child's next bad end tells nobody until it messages the parent
-or the user writes in it, so a child that fails every time can't keep its
-parent taking turns. A stopped turn tells nobody, nor does a turn the user
+error" if the turn ended with an error. If the child sent no
+`message to: "parent"` since the task, its last message goes to the
+parent as its report, marked "ended without a report; its last message,
+as its report" (clipped to 4,000 characters; "finished without a report"
+when it has no text, and never an unlogged thread's words); this brings
+no look. Each task gets this once, so a parent that messages the child
+again hears of the next end too. An error is told once: after a note, the
+child's next error tells nobody until it messages the parent or the user
+writes in it, so a child that fails every time can't keep its parent
+taking turns. A stopped turn tells nobody, nor does a turn the user
 started in the child. Which children owe a report is
 held in memory; a restart tells the parent anyway.
+
+**Idle projects.** lyricad's 20-second tick also watches projects: one
+whose checklist (the chat's or a thread's) has a step not done, where
+nothing runs, is queued, waits for an approval or for the person (an open
+question card or a needs-you thread), and nothing was written for 10
+minutes, gets a turn of its project chat with the note "Nothing in this
+project is running, and its checklist isn't finished. Carry on, or tell
+the person what you're waiting for." It wakes a project at most twice
+until a child writes or the person writes in the chat, never while the
+project is paused or hidden or an update drains, and never after the
+person stopped its last turn, until a turn there ends otherwise. What it
+woke is held in memory.
 
 **Limits:** `start`s per message to the parent (`perRequest`, default 3;
 `cloudPerRequest`, default 6, when the thread's chat model, or code model in

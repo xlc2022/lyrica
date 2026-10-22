@@ -708,6 +708,7 @@ export class Lyricad implements Drainable {
     if (!this.draining && !this.wipingNow) {
       this.services.children.drainWakes();
       this.services.wakeups.tick(now);
+      this.services.children.watchIdle(now);
       this.services.routines.tick(now);
       this.services.forge.tick(now);
       if (now.getTime() - this.prunedAt >= 3600_000) {
