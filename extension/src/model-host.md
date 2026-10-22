@@ -17,7 +17,7 @@ Work on the machine with the machine argument. Your account there has no passwor
    - `id`, `command -v git jq iptables curl`.
    - `nvidia-smi --query-compute-apps=pid,used_memory --format=csv` and `docker ps`: whether someone else already uses the GPU. If they do, treat it as a **shared machine** (step 8).
 2. **Say what can run there.** From the card: NVIDIA runs llama.cpp, vLLM, images and voices; an AMD GPU outside ROCm's list gets Vulkan, which serves GGUF models only. Name a few model sizes that fit its memory.
-3. **List the system-wide changes and wait for a yes.** In one message: the packages to install, adding your account to the `docker` group (which is as good as root on that machine), the models folder, the egress firewall rules and their systemd unit, the updater (its units, `/etc/lyrica-host` and a deploy key), and that the stack keeps running on the GPU. Ask the person once and wait for their answer.
+3. **List the system-wide changes and wait for a yes.** In one message: the packages to install, adding your account to the `docker` group (which is as good as root on that machine), the models folder, the egress firewall rules and their root systemd unit, which runs `host/egress.sh` from your clone at every boot, the updater (its units, `/etc/lyrica-host` and a deploy key), and that the stack keeps running on the GPU. Ask the person once and wait for their answer.
 4. **Prerequisites, as a root step.** Write the script in your home folder on the machine (only what step 1 showed is missing), for example:
 
    ```sh
@@ -26,12 +26,13 @@ Work on the machine with the machine argument. Your account there has no passwor
    apt-get update
    apt-get install -y git jq iptables curl
    # Docker and NVIDIA's container toolkit only if missing, from their own apt repositories
-   nvidia-ctk runtime configure --runtime=docker && systemctl restart docker
+   # NVIDIA only: give Docker the GPU runtime
+   if command -v nvidia-ctk >/dev/null; then nvidia-ctk runtime configure --runtime=docker && systemctl restart docker; fi
    usermod -aG docker <your account>
    mkdir -p /srv/models && chown <your account> /srv/models
    ```
 
-   Then `run_as_root` with it and wait for the person's answer. A new group needs a new login: check with `docker ps` on your next call.
+   Then `run_as_root` with it and wait for the person's answer. A new group needs a new login, and your connection to the machine stays open between calls: if `docker ps` is still refused, run Docker commands as `sg docker -c '…'` (step 5's too).
 5. **Get the code and pull in the background.** Clone the repository into your home folder (`git clone https://github.com/<owner>/lyrica`, the address the person gives or the project's own). Then:
 
    ```sh
@@ -39,17 +40,20 @@ Work on the machine with the machine argument. Your account there has no passwor
    ```
 
    This checks the GPU and writes `host/.env` only. Then start `docker compose build && docker compose pull --ignore-buildable` there with `background: true`, and tell the person it is running. You're told when it ends; read its last lines then.
-6. **The install itself, as a root step.** The installer needs root for the egress rules and the updater. Write a script that runs it and gives `.env` back to your account:
+6. **The install itself, as a root step.** The installer needs root for the egress rules and the updater, and it runs your whole clone as root, so the script pins the clone to one commit and refuses changes in it. Take the commit from `git rev-parse HEAD`, then write:
 
    ```sh
    #!/usr/bin/env bash
    set -euo pipefail
-   cd /home/<your account>/lyrica/host
+   cd /home/<your account>/lyrica
+   test "$(git rev-parse HEAD)" = <commit> || { echo "the clone isn't at <commit>"; exit 1; }
+   test -z "$(git status --porcelain --untracked-files=no -- . ':!host/.env')" || { echo "the clone has changes"; exit 1; }
+   cd host
    ./install.sh --yes
    chown <your account>: .env
    ```
 
-   `run_as_root` with it. The builds are already cached, so it takes minutes. It prints a deploy key from `/etc/lyrica-host/deploy-key.pub` the first time: ask the person to add it to the repository as a read-only deploy key, for updates.
+   `run_as_root` with it, naming the commit in `why`. The builds are already cached, so it takes minutes. It prints a deploy key from `/etc/lyrica-host/deploy-key.pub` the first time: ask the person to add it to the repository as a read-only deploy key, for updates.
 7. **Smoke test.** `curl -fsS http://127.0.0.1:7236/host/v1/status` on the machine: the state is `running` and the GPUs are listed. `docker compose ps` in `host/`: every service is up. If one isn't, read its `docker compose logs <service> --tail 50` and report it.
 8. **Pause on a shared machine.** If step 1 found someone else on the GPU, pause the host now with `curl -fsS -X POST http://127.0.0.1:7236/host/v1/pause`, then check with `nvidia-smi` that no container of the host holds GPU memory. Never leave a model loaded there.
 9. **The pairing code.** `curl -fsS -X POST http://127.0.0.1:7236/dashboard/pairing` makes a code that works once, for 10 minutes. Give it to the person with the host's addresses and its key fingerprint (from `install.sh`'s output), and ask them to open **Models**, **Hosts and endpoints**, **Add model host** at once. They compare the fingerprint Lyrica shows with that one.

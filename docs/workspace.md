@@ -303,7 +303,7 @@ checking the card, driver, Docker and disk, and whether someone else uses
 the GPU; saying what can run there; listing the system-wide changes for a
 yes; the prerequisites as a root step; cloning and `install.sh --no-start`
 as her account, with the image build and pull in the background; the
-install itself as a root step; a smoke test against
+install itself as a root step, pinned to a clean commit of her clone; a smoke test against
 `127.0.0.1:7236/host/v1/status`; pausing the host on a shared machine; and
 a pairing code from `127.0.0.1:7236/dashboard/pairing` for the user to
 enter in **Add model host**. Nothing under `host/` changes for it.
