@@ -1,14 +1,28 @@
 import { createAssistantMessageEventStream, fauxAssistantMessage, isContextOverflow } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
-import { concurrentLimit, markOverflow, modelShare, sharedStream, shareModel } from "../src/model-share.ts";
+import { markOverflow, modelShare, sharedStream, shareModel } from "../src/model-share.ts";
 
 const scope = {};
 
 describe("a local model shared by threads", () => {
-  it("runs as many at once as the operator's tiers allow", () => {
-    expect([131_072, 199_999, 200_000, 262_144, 499_999, 500_000, 1_048_576].map((w) => concurrentLimit(w))).toEqual([1, 1, 2, 2, 2, 4, 4]);
-    // Never more than the server's own slots.
-    expect(concurrentLimit(1_048_576, 2)).toBe(2);
+  it("runs as many at once as the server's slots, or as fit when it reports none", async () => {
+    const key = "studio\u0000slots";
+    const held = [await shareModel(scope, key, 10_000, 262_144, undefined, 2), await shareModel(scope, key, 10_000, 262_144, undefined, 2)];
+    let third = false;
+    const c = shareModel(scope, key, 10_000, 262_144, undefined, 2).then((r) => { third = true; return r; });
+    await Promise.resolve();
+    // Two slots: the third waits though it fits.
+    expect(third).toBe(false);
+    held.pop()!();
+    await Promise.resolve();
+    expect(third).toBe(true);
+    (await c)();
+    held.pop()!();
+
+    // No slots reported: everything that fits runs at once.
+    const many = await Promise.all(Array.from({ length: 8 }, () => shareModel(scope, key, 10_000, 131_072)));
+    expect(modelShare(scope, key)).toMatchObject({ running: 8, waiting: 0 });
+    for (const r of many) r();
   });
 
   it("holds back a request that wouldn't fit beside the running ones, until one ends", async () => {
@@ -22,7 +36,7 @@ describe("a local model shared by threads", () => {
     expect(modelShare(scope, key)).toMatchObject({ running: 2, waiting: 1 });
     b();
     await Promise.resolve();
-    // Two are allowed, but 140k + 100k still fits in 262k.
+    // 140k + 100k fits in 262k.
     expect(third).toBe(true);
     (await c)();
     a();
@@ -33,7 +47,7 @@ describe("a local model shared by threads", () => {
     const key = "studio\u0000big";
     const a = await shareModel(scope, key, 30_000, 131_072);
     const stop = new AbortController();
-    const waiting = shareModel(scope, key, 20_000, 131_072, stop.signal);
+    const waiting = shareModel(scope, key, 120_000, 131_072, stop.signal);
     stop.abort();
     await expect(waiting).rejects.toBeDefined();
     expect(modelShare(scope, key).waiting).toBe(0);

@@ -111,8 +111,8 @@ export function contextOf(model: TextModel, s: ModelSettings): number {
 /**
  * Requests a chat model serves at once, sharing one cache of its context:
  * its setting (llama.cpp's parallel, vLLM's maxSeqs), else by its context:
- * 1 below 200k, 2 from 200k, 4 from 500k, as Lyrica's daemon shares a local
- * model (docs/models.md, Local servers). Null for other models.
+ * 1 below 200k, 2 from 200k, 4 from 500k, the host's own default when unset.
+ * Lyrica sends no more at once than this reports. Null for other models.
  */
 export function concurrentOf(model: TextModel, s: ModelSettings): number | null {
   if (model.kind !== "chat") return null;
