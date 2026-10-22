@@ -177,7 +177,9 @@ Each user has two pools of memory.
       it carries inline, so opening it can't carry anything out; only a
       link the user clicks still leaves;
       Markdown and SVG show rendered with their source a switch away; PDFs,
-      images, audio and video in the browser's own viewers.
+      images, audio and video in the browser's own viewers. An image steps
+      to the previous or next image of the list it was opened from
+      (decided 2026-10-22).
     - Actions are in a right-click menu (a long press on a phone, or ⋯):
       Attach to message, Show in thread, Download, Copy path, Rename and
       Delete on a file; Upload and New folder on a folder or empty space.
