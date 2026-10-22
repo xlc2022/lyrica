@@ -3,7 +3,7 @@ on:
   pull_request:
   push:
     branches: [main]
-# The jobs run on the operator's own runner (docs/ci.md), so their token can only read.
+# The jobs run on GitHub's hosted runners for now (docs/ci.md); their token can only read.
 permissions:
   contents: read
 # A newer push to a PR cancels its older runs. Main runs the newest merge
@@ -23,7 +23,7 @@ jobs:
   #   tests, and not evals/.
   # - host-stack: host/, the only directory its images and install read.
   changes:
-    runs-on: lyrica-ci
+    runs-on: ubuntu-latest
     # Reads main's last passing run.
     permissions:
       contents: read
@@ -67,8 +67,7 @@ jobs:
   check:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    # The tests and e2e time out on the slowest runners (docs/ci.md "Runner speed").
-    runs-on: [lyrica-ci, lyrica-fast]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -107,7 +106,7 @@ jobs:
   nix:
     needs: changes
     if: needs.changes.outputs.nix == 'true'
-    runs-on: lyrica-ci
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -170,7 +169,7 @@ jobs:
   host-stack:
     needs: changes
     if: needs.changes.outputs.host == 'true'
-    runs-on: lyrica-ci
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
