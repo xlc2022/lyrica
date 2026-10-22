@@ -57,21 +57,30 @@ export function useCanHover(): boolean {
 /** Hover intent for a menu whose open submenu is `open` ("" for none): handlers to spread on the menu's own element. */
 export function useFlyout<K extends string>(open: K, setOpen: (key: K) => void, enabled: boolean) {
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Where the pointer was at the last hover. When the menu moves or grows under a pointer at rest (an item that
+  // arrives late pushes a menu kept on screen upward), the browser reports a hover there that the user didn't make;
+  // it waits for the pointer's next move.
+  const at = useRef<{ x: number; y: number }>(undefined);
+  const waiting = useRef(false);
   useEffect(() => () => clearTimeout(timer.current), []);
-  const decide = (target: HoverTarget) => {
+  const decide = (e: React.PointerEvent, target: HoverTarget) => {
     if (!enabled) return;
+    waiting.current = at.current?.x === e.clientX && at.current.y === e.clientY;
+    at.current = { x: e.clientX, y: e.clientY };
+    if (waiting.current) return;
     clearTimeout(timer.current);
     const d = hoverIntent(open, target);
     if (!d) return;
     timer.current = setTimeout(() => setOpen((d.action === "open" ? d.key! : "") as K), d.delay);
   };
+  const over = (e: React.PointerEvent): HoverTarget => {
+    const el = e.target as Element;
+    return el.closest(".flyout") ? { kind: "flyout" } : { kind: "item", key: el.closest<HTMLElement>("[data-submenu]")?.dataset.submenu ?? null };
+  };
   return {
-    onPointerOver: (e: React.PointerEvent) => {
-      const el = e.target as Element;
-      if (el.closest(".flyout")) decide({ kind: "flyout" });
-      else decide({ kind: "item", key: el.closest<HTMLElement>("[data-submenu]")?.dataset.submenu ?? null });
-    },
-    onPointerLeave: () => decide({ kind: "outside" }),
+    onPointerOver: (e: React.PointerEvent) => decide(e, over(e)),
+    onPointerMove: (e: React.PointerEvent) => { if (waiting.current) decide(e, over(e)); },
+    onPointerLeave: (e: React.PointerEvent) => decide(e, { kind: "outside" }),
   };
 }
 
