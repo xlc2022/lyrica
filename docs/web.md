@@ -182,9 +182,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   from), a plain click on a child row opens it beside too, replacing what
   the panel shows. The sidebar's other rows navigate as before, and so does any other
   modified click. The column
-  is 360 to 520 px (420 to start), dragged on its divider (a `separator`
+  is 280 to 1000 px (420 to start), dragged on its divider (a `separator`
   that the arrow keys move too), the width kept in `localStorage`
-  (`lyrica.panel-width`). A link inside the panel replaces what it shows and
+  (`lyrica.panel-width`); the grid holds it short of leaving the
+  conversation under 48ch, and a conversation under 600 px wraps its
+  header as on a phone. A link inside the panel replaces what it shows and
   the breadcrumb above its title grows (each crumb goes back to that page);
   a link to the conversation's own thread closes the panel (the Thread
   settings link opens the drawer). The page in the panel is the same
@@ -1269,7 +1271,11 @@ fixed colours. The theme follows the device unless the user overrides it.
 
 From 1100 px an open thread drawer takes its width from the thread, so the
 header wraps beside it instead of under it; narrower it overlays the thread.
-Below 760 px the sidebar and drawer become overlays, and the model picker
+From 760 px up the sidebar's right edge drags it from 200 to 440 px (248
+to start), the same `Divider` as the panel's, the width kept in
+`localStorage` (`lyrica.sidebar-width`); the grid holds it to 40 % of the
+window (never under 248 px) and, beside the panel, to what leaves the
+conversation 48ch. Below 760 px the sidebar and drawer become overlays, and the model picker
 spans the screen. Touch screens get 44 px tap targets. The app is sized to the visual
 viewport (`--vvh`, for iOS) and the page asks for
 `interactive-widget=resizes-content` (for Android), so the composer stays

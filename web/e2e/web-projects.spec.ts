@@ -809,9 +809,24 @@ test("the split view: a thread from its card opens in the panel, links inside it
   await page.mouse.down();
   await page.mouse.move(dbox.x + dbox.width / 2 - 70, dbox.y + dbox.height / 2);
   await page.mouse.up();
-  await expect(divider).toHaveAttribute("aria-valuenow", "520");
+  await expect(divider).toHaveAttribute("aria-valuenow", "530");
   const dragged = (await settings.boundingBox())!;
-  expect(Math.round(dragged.width)).toBe(520);
+  expect(Math.round(dragged.width)).toBe(530);
+  // Dragged far left it stops where the conversation keeps its 48ch, and far right at 280 px.
+  const wbox = (await divider.boundingBox())!;
+  await page.mouse.move(wbox.x + wbox.width / 2, wbox.y + wbox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(wbox.x - 600, wbox.y + wbox.height / 2);
+  await page.mouse.up();
+  const conversation = (await page.getByRole("main").boundingBox())!;
+  expect(conversation.width).toBeGreaterThan(360);
+  expect((await settings.boundingBox())!.width).toBeGreaterThan(600);
+  await divider.focus();
+  await page.keyboard.press("End");
+  await expect(divider).toHaveAttribute("aria-valuenow", "280");
+  expect(Math.round((await settings.boundingBox())!.width)).toBe(280);
+  await page.keyboard.press("Shift+ArrowLeft");
+  await expect(divider).toHaveAttribute("aria-valuenow", "320");
   await settings.getByRole("link", { name: "Open as a page" }).click();
   await expect(settings).toHaveCount(0);
   await expect(page.getByRole("heading", { level: 1, name: "Project settings" })).toBeVisible();

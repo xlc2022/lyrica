@@ -21,6 +21,40 @@ test("unlock, log in, start a thread, and see a streamed reply that survives a r
   await noHorizontalScroll(page);
 });
 
+test("the sidebar's right edge drags wider or narrower, moves with the keyboard, and keeps its width; a phone's slide-over has none", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  const divider = page.getByRole("separator", { name: "Sidebar width" });
+  if (phone(page)) {
+    await expect(divider).toBeHidden();
+    return;
+  }
+  const side = page.getByRole("complementary", { name: "Threads" });
+  await expect(divider).toHaveAttribute("aria-valuenow", "248");
+  await divider.focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect(divider).toHaveAttribute("aria-valuenow", "288");
+  expect(Math.round((await side.boundingBox())!.width)).toBe(288);
+  await page.reload();
+  await expect(divider).toHaveAttribute("aria-valuenow", "288");
+  // Dragging left past the minimum stops there; Home goes there too, End to the widest.
+  const box = (await divider.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 200, box.y + box.height / 2);
+  await page.mouse.up();
+  await expect(divider).toHaveAttribute("aria-valuenow", "200");
+  expect(Math.round((await side.boundingBox())!.width)).toBe(200);
+  await divider.focus();
+  await page.keyboard.press("End");
+  await expect(divider).toHaveAttribute("aria-valuenow", "440");
+  await page.keyboard.press("Home");
+  await expect(divider).toHaveAttribute("aria-valuenow", "200");
+  await page.evaluate(() => localStorage.removeItem("lyrica.sidebar-width"));
+  await page.reload();
+  await expect(divider).toHaveAttribute("aria-valuenow", "248");
+  await noHorizontalScroll(page);
+});
+
 test("Settings → Claude Code and Codex shows Codex's own sign-in and then Signed in", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const base = `/api/u/${userId}/codex`;
