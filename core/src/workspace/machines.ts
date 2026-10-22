@@ -116,6 +116,25 @@ export function suspectCommand(command: string): string | undefined {
   return undefined;
 }
 
+/**
+ * The files a command plainly writes before it runs: the targets of its `>`
+ * and `>>` redirections and of `tee`. A name made from a variable or a
+ * substitution, or under /dev, isn't known, so it isn't listed.
+ */
+export function writtenFiles(command: string): string[] {
+  const out: string[] = [];
+  const add = (w: string | undefined) => { if (w && !w.includes("$") && !/\s/.test(w) && !w.startsWith("/dev/")) out.push(w); };
+  for (const words of simpleCommands(command)) {
+    for (let i = 0; i < words.length; i++) {
+      const m = /^(?:\d*|&)>>?(.*)$/.exec(words[i]!);
+      if (m && !m[1]!.startsWith("&")) add(m[1] || words[++i]);
+    }
+    const tee = words.indexOf("tee");
+    if (tee >= 0) for (const w of words.slice(tee + 1)) { if (/^(?:\d*|&)?[<>]/.test(w)) break; if (!w.startsWith("-")) add(w); }
+  }
+  return [...new Set(out)];
+}
+
 /** Where write and edit never go on a machine, in any mode: SSH's keys and config, and sudo's rules. */
 export function onFloor(path: string): boolean {
   return path.split("/").includes(".ssh") || within(path, "/etc/ssh") || path.startsWith("/etc/sudoers");

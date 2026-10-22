@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  decide, type CommandRule, holdsSecret, JOB_LIMITS, jobLine, type JobInfo, mcpNamespace, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, SHARED, WORKDIR, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  decide, type CommandRule, holdsSecret, JOB_LIMITS, jobLine, type JobInfo, mcpNamespace, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, SHARED, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -330,9 +330,15 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       const pve = event.toolName === "proxmox";
       const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve ? String(input.machine) : undefined;
       // A file another thread just changed is held before anyone is asked, so a held change is never one the person approved.
-      if (place === "sandbox" && (event.toolName === "write" || event.toolName === "edit") && typeof input.path === "string" && tools.sameFile) {
-        const held = tools.sameFile(posix.resolve(await tools.target().cwd(), input.path));
-        if (held) return { block: true, reason: held };
+      // A command is held the same way for the files it plainly writes (its redirections and tee); the sweep after it finds the rest.
+      if (place === "sandbox" && tools.sameFile) {
+        const paths = event.toolName === "write" || event.toolName === "edit" ? (typeof input.path === "string" ? [input.path] : [])
+          : event.toolName === "bash" ? writtenFiles(String(input.command)) : [];
+        const cwd = paths.length ? await tools.target().cwd() : "";
+        for (const path of paths) {
+          const held = tools.sameFile(posix.resolve(cwd, path));
+          if (held) return { block: true, reason: held };
+        }
       }
       const machine = place && place !== "sandbox" ? tools.machines?.().find((m) => m.name === place && (m.kind === "proxmox") === pve) : undefined;
       if (place && place !== "sandbox" && !machine) return { block: true, reason: `${place} isn't one of this thread's ${pve ? "Proxmox " : ""}machines.` };
