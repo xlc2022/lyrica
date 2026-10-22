@@ -2185,6 +2185,15 @@ export interface Skills { skills: SkillInfo[]; autoApprove: boolean }
 export interface SkillChange { name: string; description: string; body: string; pool?: Pool }
 /** PUT /api/u/:userId/skills/auto-approve → Skills. Her drafts are active at once while it is on. */
 export interface SkillsAutoApprove { autoApprove: boolean }
+/** POST /api/u/:userId/skills/export → SkillsExport: the active skills of the pools the display shows, as one Markdown file. */
+export interface SkillsExport { name: string; markdown: string; count: number }
+/**
+ * POST /api/u/:userId/skills/import → SkillsImportResult. Files as read in the browser (1 MiB in all), into `pool`,
+ * or each skill's exported pool when left out (private when the file doesn't say). Each is the person's and active;
+ * nothing is replaced: the same name with other steps takes `name-2`.
+ */
+export interface SkillsImport { files: { name?: string; text: string }[]; pool?: Pool }
+export interface SkillsImportResult { imported: { pool: Pool; name: string }[]; duplicates: number; renamed: number; skipped: number }
 // POST /api/u/:userId/skills/:pool/:name/approve and …/decline (404 when none waits) → Skills;
 // DELETE /api/u/:userId/skills/:pool/:name removes every version of it → Skills.
 

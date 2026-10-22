@@ -597,7 +597,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .mem-edit .preview-pane { min-height: 120px; }
 .mem-add { max-width: 60ch; }
 .mem-add > .seg { justify-self: start; }
-.import-memory .picked { overflow-wrap: anywhere; }
+.import-memory .picked, .import-skills .picked { overflow-wrap: anywhere; }
 /* Remembering a message: a one-line box under it, prefilled with its first line. */
 .remember-box { display: grid; gap: 6px; max-width: 72ch; }
 .remember-box label { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; }

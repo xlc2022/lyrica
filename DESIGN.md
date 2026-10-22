@@ -1694,6 +1694,10 @@ when to use it, and steps in Markdown (at most 8,000 characters).
   steps on demand: with `read_memory` and `s:<name>` for a library skill,
   or with `read` at its path for a repository's. Subagents don't get the
   list.
+- **Export and import.** Settings → Skills exports the active skills as one
+  Markdown file the browser saves, and imports such files into the person's
+  own pools as theirs and active (docs/briefs/skills.md, "Export and
+  import"). Nothing already there is replaced.
 - Skills are memory, so a wipe removes them with the pools unless
   **Keep skills** stays ticked ("Wiping memory"). The auto-approve switch,
   a user.db setting, always stays.

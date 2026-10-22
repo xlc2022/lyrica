@@ -117,6 +117,18 @@ test("her saved skill waits on a card until Approve, then shows in Settings → 
   await section.getByRole("button", { name: "Save" }).click();
   await expect(section.locator(".skill")).toHaveCount(2);
   await expect(section.locator(".skill").first()).toContainText("Yours");
+  // Export all downloads both as one file, and importing it again finds them already here.
+  await section.getByRole("button", { name: "More skill actions" }).click();
+  const saving = page.waitForEvent("download");
+  await section.getByRole("menuitem", { name: "Export all" }).click();
+  const file = await saving;
+  expect(file.suggestedFilename()).toMatch(/^lyrica-skills-.*\.md$/);
+  await section.getByRole("button", { name: "More skill actions" }).click();
+  await section.getByRole("menuitem", { name: "Import…" }).click();
+  await section.locator("form.import-skills input[type=file]").setInputFiles(await file.path());
+  await section.locator("form.import-skills").getByRole("button", { name: "Import" }).click();
+  await expect(section.getByRole("status")).toHaveText("Nothing new to import · 2 already here");
+  await section.getByRole("button", { name: "Done" }).click();
   await section.locator(".skill").first().getByRole("button", { name: "Remove" }).click();
   await section.getByRole("group", { name: "Remove" }).getByRole("button", { name: "Remove" }).click();
   await expect(section.locator(".skill")).toHaveCount(1);
