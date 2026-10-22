@@ -2596,7 +2596,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
       commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), checks: d.services!.workspace.settings(user.id).checks(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, threadsCode: settings.code, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
-    ...(mine ? { state: mine.state, ...(mine.worktreeReason ? { worktreeReason: mine.worktreeReason } : {}), ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}) } : {}),
+    ...(mine ? { state: mine.state, ...(mine.worktreeReason ? { worktreeReason: mine.worktreeReason } : {}), ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}), ...chips(d, user, pool, th.id, look) } : {}),
     ...(question ? { question: { n: question.n, asked: question.asked } } : {}),
     ...wakeAt(d.services!.wakeups.list(user.id, pool, th.id)),
     ...(look.checklists() ? stepsOf(store.steps(th.id)) : {}),
@@ -2604,6 +2604,13 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
 }
 
 const wakeAt = (list: Api.WakeupInfo[]) => (list[0] ? { wakeAt: list[0].dueAt } : {});
+
+/** A project thread's chips (docs/ux.md §6): its open pull request from the watcher's last poll, and its live subagents. Nothing is fetched. */
+function chips(d: Lyricad, user: User, pool: Pool, threadId: string, look: ReturnType<typeof lookups>): Pick<Api.ThreadSummary, "pull" | "subagents"> {
+  const pull = d.services!.forge.openPulls(user.id, pool, threadId)[0];
+  const subagents = look.subagents(pool).get(threadId);
+  return { ...(pull ? { pull } : {}), ...(subagents ? { subagents } : {}) };
+}
 const stepsOf = (steps: Api.ThreadStep[]) => (steps.length ? { steps } : {});
 
 /** Per request: the user's pins and each project's threads, read once. */
@@ -2611,9 +2618,11 @@ function lookups(d: Lyricad, user: User) {
   let pinned: Set<string> | undefined;
   let checklists: boolean | undefined;
   const projects = new Map<string, ProjectThreadInfo[] | undefined>();
+  const subagents = new Map<Pool, Map<string, number>>();
   return {
     pinned: () => (pinned ??= d.services!.projects.pinned(user.id)),
     checklists: () => (checklists ??= display(d, user.id).checklists),
+    subagents: (pool: Pool) => { if (!subagents.has(pool)) subagents.set(pool, d.services!.delegation.store.liveCounts(user.id, pool)); return subagents.get(pool)!; },
     project: (pool: Pool, parent: string, store: PoolStore) => {
       const key = `${pool}/${parent}`;
       if (!projects.has(key)) projects.set(key, store.getThread(parent)?.project ? d.services!.children.projectThreads(user.id, pool, parent) : undefined);

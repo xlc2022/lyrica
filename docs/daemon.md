@@ -778,7 +778,12 @@ thread's worktrees (a project thread's, or the ancestor's it works in), its
 cloned repositories, and the writable granted folders no worktree replaces;
 a folder that isn't a git repository is left out when read. The core module
 is `core/src/workspace/git-changes.ts`; types and routes are documented in
-`daemon/src/api.ts`, "Changes".
+`daemon/src/api.ts`, "Changes". A project thread's summary (`ThreadSummary`
+in the thread list and the project's overview) also carries `pull`, its
+open pull request from the watcher's last poll (`ForgeWatcher.openPulls`,
+the first when it has several), and `subagents`, how many subagents work
+for it or wait on a question now (`DelegationStore.liveCounts`, one query
+per pool per request); neither fetches anything.
 
 - `GET …/threads/:pool/:threadId/changes` → `ThreadChanges`: per checkout,
   the branch, the base (origin's default branch, else the first of
