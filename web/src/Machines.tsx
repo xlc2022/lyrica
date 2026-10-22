@@ -122,7 +122,7 @@ function offNetworkSentence(name: string, question: string): string {
 
 /** The row's ⋯: rare actions, Remove last and in danger text. */
 export function RowMenu({ label, items, open: shown, onOpen }: {
-  label: string; items: { label: string; danger?: boolean; onPick: () => void }[];
+  label: string; items: { label: string; danger?: boolean; title?: string; onPick: () => void }[];
   /** Held by the row instead, which can open it too (a long press on To review's rows). */
   open?: boolean; onOpen?: (open: boolean) => void;
 }) {
@@ -139,7 +139,7 @@ export function RowMenu({ label, items, open: shown, onOpen }: {
       </button>
       {open && (
         <div className="menu" role="menu">
-          {items.map((it) => <button key={it.label} type="button" role="menuitem" className={it.danger ? "danger" : ""} onClick={() => { close(); it.onPick(); }}>{it.label}</button>)}
+          {items.map((it) => <button key={it.label} type="button" role="menuitem" className={it.danger ? "danger" : ""} title={it.title} onClick={() => { close(); it.onPick(); }}>{it.label}</button>)}
         </div>
       )}
     </span>

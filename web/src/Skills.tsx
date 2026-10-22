@@ -1,7 +1,8 @@
 // Principles 3 and 6: her skills wait for the person unless they chose otherwise (docs/briefs/skills.md).
-import { useState } from "react";
-import { del, get, post, put, u, type SkillInfo, type Skills } from "./api.ts";
+import { useRef, useState } from "react";
+import { del, get, post, put, u, type Pool, type SkillInfo, type Skills, type SkillsExport, type SkillsImportResult } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { RowMenu } from "./Machines.tsx";
 import { her } from "./name.ts";
 import { Section } from "./Panel.tsx";
 import type { ShellContext } from "./Shell.tsx";
@@ -23,7 +24,7 @@ export function SkillsSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const page = useLoad(() => get<Skills>(u(userId, "skills")), [userId]);
   const [run, busy, error] = useAction();
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<"" | "skill" | "import">("");
   const act = (fn: () => Promise<Skills>) => run(async () => page.set(await fn()));
   return (
     <Section title="Skills" hint={`Procedures for jobs that come up again. ${her()} sees each one's name and description in every thread, and reads the steps when a job calls for them.`}>
@@ -48,10 +49,78 @@ export function SkillsSection({ ctx }: { ctx: ShellContext }) {
           </li>
         ))}
       </ul>
-      {adding
-        ? <AddSkill userId={userId} onDone={(saved) => { setAdding(false); if (saved) page.reload(); }} />
-        : <div className="row"><button type="button" onClick={() => setAdding(true)}>Add skill</button></div>}
+      {adding === "skill" ? <AddSkill userId={userId} onDone={(saved) => { setAdding(""); if (saved) page.reload(); }} />
+        : adding === "import" ? <ImportSkills userId={userId} onImported={() => page.reload()} onDone={() => setAdding("")} />
+        : <div className="row">
+          <button type="button" onClick={() => setAdding("skill")}>Add skill</button>
+          <RowMenu label="More skill actions" items={[
+            ...(page.data?.skills.some((x) => x.state === "active") ? [{ label: "Export all", title: "Downloads a Markdown file. It isn't encrypted.", onPick: () => void run(() => exportAll(userId)) }] : []),
+            { label: "Import…", onPick: () => setAdding("import") },
+          ]} />
+        </div>}
     </Section>
+  );
+}
+
+/** Saves every active skill the display shows as one Markdown file; the text is held only in this page while it downloads. */
+async function exportAll(userId: string): Promise<void> {
+  const out = await post<SkillsExport>(u(userId, "skills", "export"));
+  if (!out.count) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([out.markdown], { type: "text/markdown" }));
+  a.download = out.name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+}
+
+/** Import: Markdown files read here and sent to lyricad; each skill is the person's and active, and nothing is replaced. */
+function ImportSkills({ userId, onImported, onDone }: { userId: string; onImported: () => void; onDone: () => void }) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [pool, setPool] = useState<"" | Pool>("");
+  const [result, setResult] = useState<SkillsImportResult>();
+  const picker = useRef<HTMLInputElement>(null);
+  const [run, busy, error] = useAction();
+  if (result) {
+    const n = result.imported.length;
+    return (
+      <div className="stack">
+        <p role="status">
+          {n ? <>Imported <span className="num">{n}</span> {n === 1 ? "skill" : "skills"}</> : "Nothing new to import"}
+          {result.duplicates > 0 && <> · <span className="num">{result.duplicates}</span> already here</>}
+          {result.renamed > 0 && <> · <span className="num">{result.renamed}</span> renamed</>}
+          {result.skipped > 0 && <> · <span className="num">{result.skipped}</span> skipped</>}
+        </p>
+        <div className="row"><button type="button" className="primary" onClick={onDone}>Done</button></div>
+      </div>
+    );
+  }
+  return (
+    <form className="stack import-skills" onSubmit={(e) => {
+      e.preventDefault();
+      void run(async () => {
+        const read = await Promise.all(files.map(async (f) => ({ name: f.name, text: await f.text() })));
+        setResult(await post<SkillsImportResult>(u(userId, "skills", "import"), { files: read, ...(pool ? { pool } : {}) }));
+        onImported();
+      });
+    }}>
+      <div className="field"><span id="import-skill-files">Files</span>
+        <div className="row">
+          <button type="button" className="sm" aria-describedby="import-skill-files" onClick={() => picker.current?.click()}>Choose files…</button>
+          {files.length > 0 && <span className="picked mono muted">{files.map((f) => f.name).join(", ")}</span>}
+        </div>
+        <input ref={picker} type="file" multiple hidden aria-labelledby="import-skill-files" accept=".md,.markdown,.txt,text/markdown,text/plain" onChange={(e) => setFiles([...(e.target.files ?? [])])} />
+      </div>
+      <label className="field"><span>Pool</span>
+        <select value={pool} title="A file that doesn't name a pool goes to Private." onChange={(e) => setPool(e.target.value as "" | Pool)}>
+          <option value="">As exported</option><option value="general">General</option><option value="private">Private</option>
+        </select>
+      </label>
+      <ErrorText error={error} />
+      <div className="row">
+        <button type="submit" className="primary" disabled={busy || !files.length}>Import</button>
+        <button type="button" onClick={onDone}>Cancel</button>
+      </div>
+    </form>
   );
 }
 

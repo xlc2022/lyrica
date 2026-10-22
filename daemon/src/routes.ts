@@ -4,7 +4,7 @@ import { imageRetryOptions } from "./image-retry.ts";
 import { randomUUID } from "node:crypto";
 import {
   ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
-  citationsIn, exportMemories, importMemories, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
+  citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled, modelName,
   codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf,
@@ -3190,6 +3190,22 @@ function skillRoutes(d: Lyricad, u: string): Route[] {
       const p = change.pool ?? "general";
       if (p !== "general" && p !== "private") throw new HttpError(400, "a skill's pool is general or private");
       return refused(() => inPool(user.id, p, (k) => k.put(change)));
+    }),
+    // Export and import (docs/briefs/skills.md): Markdown built in memory for the browser, never written here.
+    route("POST", `${u}/skills/export`, (r): Api.SkillsExport => {
+      const user = d.userFor(r);
+      return exportSkills(shownPools(display(d, user.id)).flatMap((p) => inPool(user.id, p, (k) => k.active())));
+    }),
+    route("POST", `${u}/skills/import`, async (r): Promise<Api.SkillsImportResult> => {
+      const user = d.userFor(r);
+      const body = await r.json<Api.SkillsImport>();
+      if (!Array.isArray(body.files) || !body.files.length) throw new HttpError(400, "files lists the files to import");
+      const to = body.pool === undefined ? undefined : body.pool;
+      if (to !== undefined && to !== "general" && to !== "private") throw new HttpError(400, "the pool is general or private");
+      const o = s().memory.openOwnerView(user.id);
+      try {
+        return refused(() => importSkills({ general: o.general.skills, private: o.private.skills }, body.files.map((f) => String(f?.text ?? "")), to));
+      } finally { o.close(); }
     }),
     route("PUT", `${u}/skills/auto-approve`, async (r): Promise<Api.Skills> => {
       const user = d.userFor(r);

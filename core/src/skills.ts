@@ -1,4 +1,5 @@
 import type { Db } from "./db.ts";
+import { removeSecrets } from "./secrets.ts";
 import type { Pool } from "./types.ts";
 
 // Skills (docs/briefs/skills.md, DESIGN.md "Skills"): named procedures, kept in each pool's own database like the
@@ -138,6 +139,29 @@ export class SkillLibrary {
     })();
   }
 
+  /**
+   * An imported skill (Settings → Skills → Import), the person's and active. A name already holding the same
+   * description and steps is a duplicate; one held by anything else, her waiting draft included, takes the first free
+   * `name-2`, `name-3`… so nothing here is replaced.
+   */
+  importSkill(draft: SkillDraft): { name: string; duplicate: boolean } {
+    return this.db.transaction(() => {
+      const taken = (name: string) => this.db.prepare("SELECT description, body FROM skills WHERE name = ? AND state IN ('active', 'waiting')").all(name) as { description: string; body: string }[];
+      let name = draft.name;
+      for (let n = 2; ; n++) {
+        const rows = taken(name);
+        if (rows.some((r) => r.description === draft.description && r.body === draft.body)) return { name, duplicate: true };
+        if (!rows.length) break;
+        const suffix = `-${n}`;
+        name = `${draft.name.slice(0, SKILL_LIMITS.name - suffix.length).replace(/-+$/, "")}${suffix}`;
+      }
+      this.limit(name);
+      this.db.prepare("DELETE FROM skills WHERE name = ? AND state = 'declined'").run(name);
+      this.insert({ ...draft, name, pool: this.pool, state: "active", author: "user", at: this.now().toISOString() });
+      return { name, duplicate: false };
+    })();
+  }
+
   /** Removes a skill, every version of it. */
   remove(name: string): void {
     this.db.prepare("DELETE FROM skills WHERE name = ?").run(name);
@@ -153,4 +177,71 @@ export class SkillLibrary {
       .run(s.name, s.state, s.description, s.body, s.author, s.thread ?? null, s.call ?? null, s.at);
     return s;
   }
+}
+
+// Export and import (docs/briefs/skills.md, "Export and import"): skills as one Markdown file the browser saves, each
+// under a header with its name, pool and description, its steps as the text. Credentials are taken out both ways.
+
+const SKILL_BLOCK = /^---\r?\nlyrica: skill(?: \d+)?\r?\n/m;
+/** The most skills one import takes: two full pools. */
+export const SKILL_IMPORT_LIMIT = 2 * SKILL_LIMITS.library;
+
+/** Active skills as one Markdown file. */
+export function exportSkills(skills: Skill[], at = new Date()): { name: string; markdown: string; count: number } {
+  const blocks = skills.filter((s) => s.state === "active").map((s) => [
+    "---", "lyrica: skill 1", `name: ${s.name}`, `pool: ${s.pool}`, `description: ${JSON.stringify(removeSecrets(s.description))}`, "---", "",
+    removeSecrets(s.body).trim(), "",
+  ].join("\n"));
+  const name = blocks.length === 1 ? `${skills.find((s) => s.state === "active")!.name}.md` : `lyrica-skills-${at.toISOString().slice(0, 10)}.md`;
+  return { name, markdown: blocks.join("\n"), count: blocks.length };
+}
+
+/** The skills in one file, as written; `checkSkill` decides which fit. */
+export function parseSkills(text: string): { name: string; description: string; body: string; pool?: Pool }[] {
+  return text.replace(/^\uFEFF/, "").split(SKILL_BLOCK).slice(1).flatMap((part) => {
+    const end = /^---[ \t]*$/m.exec(part);
+    if (!end) return [];
+    const fields: Record<string, string> = {};
+    for (const line of part.slice(0, end.index).split(/\r?\n/)) {
+      const m = /^([a-z]+):\s?(.*)$/.exec(line);
+      if (!m) continue;
+      let v = m[2]!.trim();
+      try { const j: unknown = JSON.parse(v); if (typeof j === "string") v = j; } catch { /* written bare */ }
+      fields[m[1]!] = v;
+    }
+    const pool = fields.pool === "general" || fields.pool === "private" ? fields.pool : undefined;
+    return [{ name: fields.name ?? "", description: fields.description ?? "", body: part.slice(end.index + end[0].length).trim(), ...(pool ? { pool } : {}) }];
+  });
+}
+
+export interface SkillImportResult {
+  imported: { pool: Pool; name: string }[];
+  duplicates: number;
+  renamed: number;
+  /** Blocks that aren't a valid skill, or a pool already full. */
+  skipped: number;
+}
+
+/**
+ * Imports skills into the person's own libraries: each to `pool`, or the pool it was exported from (private when the
+ * file doesn't say). Each is theirs and active; nothing already there is replaced.
+ */
+export function importSkills(libraries: Record<Pool, SkillLibrary>, texts: string[], pool?: Pool): SkillImportResult {
+  const found = texts.flatMap(parseSkills);
+  if (found.length > SKILL_IMPORT_LIMIT) throw new Error(`An import takes at most ${SKILL_IMPORT_LIMIT} skills.`);
+  const result: SkillImportResult = { imported: [], duplicates: 0, renamed: 0, skipped: 0 };
+  for (const s of found) {
+    let draft: SkillDraft;
+    try {
+      draft = checkSkill({ name: s.name, description: removeSecrets(s.description), body: removeSecrets(s.body) });
+    } catch { result.skipped++; continue; }
+    const to = pool ?? s.pool ?? "private";
+    try {
+      const done = libraries[to].importSkill(draft);
+      if (done.duplicate) { result.duplicates++; continue; }
+      if (done.name !== draft.name) result.renamed++;
+      result.imported.push({ pool: to, name: done.name });
+    } catch { result.skipped++; }
+  }
+  return result;
 }

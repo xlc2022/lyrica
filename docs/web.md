@@ -787,7 +787,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   on touch). A waiting one has plain **Approve** and **Decline**
   (`POST …/skills/:pool/:name/approve|decline`); the others have **Remove**,
   confirmed in place (`DELETE`). **Add skill** opens Name, When to use it and
-  Steps with Save and Cancel (`POST …/skills`). Empty: "No skills yet." In
+  Steps with Save and Cancel (`POST …/skills`); its ⋯ holds **Export all**
+  (`POST …/skills/export`, the file made in the browser from the response)
+  and **Import…** (Choose files…, Pool, Import and Cancel, then a status
+  line and Done; `POST …/skills/import`). Empty: "No skills yet." In
   the conversation, her `save_skill` call is a card (`SkillCard`): **New
   skill**, the name in mono, the description and the folded steps, with
   Approve primary and Decline while it waits, and otherwise its outcome as a dot and

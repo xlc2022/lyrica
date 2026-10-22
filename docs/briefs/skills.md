@@ -95,11 +95,32 @@ can't open private.db, and Settings lists only the pools the display shows.
 - Nothing from a repository or from her can turn auto-approve on, or approve
   a skill.
 
+## Export and import
+
+Added 2026-10-22 at the owner's ask, on memory's pattern
+([memory.md](../memory.md#export-and-import)).
+
+- **Export all** (behind the ⋯ beside **Add skill**) sends the active skills
+  of the pools the display shows as one Markdown file, built in memory and
+  saved by the browser; nothing is written or logged on the server. Each
+  skill is a header (`lyrica: skill 1`, `name`, `pool`, `description` as
+  JSON) and its steps as the text. Credentials are taken out on the way
+  (`removeSecrets`). Waiting and declined drafts stay out.
+- **Import…** reads .md files in the browser and writes each skill through
+  the person's owner view (`importSkills`, `SkillLibrary.importSkill`):
+  theirs and active, into the pool picked (As exported, General, Private; a
+  file without a pool goes to Private). A name already holding the same
+  description and steps is a duplicate and skipped; a name held by anything
+  else, her waiting draft included, takes the first free `name-2`, so
+  nothing is replaced. A block that isn't a valid skill, or a full pool,
+  is skipped. At most 200 skills per import.
+
 ## Out of scope
 
 - Skills for sleep.
 - Skill files beyond the body (scripts, references).
-- Sharing a skill between users.
+- Sharing a skill between users inside lyricad (a user can export a file and
+  another import it; see Export and import).
 - Slash commands to run a skill.
 
 ## Principles
