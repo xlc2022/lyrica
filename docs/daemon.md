@@ -568,7 +568,8 @@ checks and the routes with fakes; the transport test uses a local receiver.
 carries text and thinking deltas, tool calls (`tool_call` with the tool's
 name as soon as the model starts writing one, from Pi's `toolcall_start`;
 `tool_start` with its arguments when it runs; `tool_end` with the first lines
-of the result), recall and remember markers, permission
+of the result, and for `delegate` its subagent threads, each with the role and
+model from its run's record), recall and remember markers, permission
 requests and their outcome, usage, errors in plain words (a model the router
 refused, an endpoint that didn't answer), `offline` when no model could be
 reached, the queue, `received` (a marked message that reached the turn, or

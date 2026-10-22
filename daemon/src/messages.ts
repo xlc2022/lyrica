@@ -29,19 +29,23 @@ export function imageRefusal(tool: string, details: unknown): import("./api.ts")
     ? { code: r.code, offeringId: r.offeringId, endpointId: r.endpointId } : undefined;
 }
 
-/** A run's subagent threads, from its records: a background run's result names only the run. */
-export type RunThreads = (runId: string) => string[];
+/** A subagent the thread started, from its run's records: a background run's result names only the run. */
+export interface Started { run: string; thread: string; role: string; model: string }
 
 /**
  * The subagent threads a `delegate` result (or a delivered result) belongs to,
- * in the parent's pool: named in its details, or found by its run.
+ * in the parent's pool: named in its details, or found by its run. Each one the
+ * thread started carries its role and the model it ran on, for its card.
  */
-export function delegateThreads(tool: string, details: unknown, pool: Pool, runThreads?: RunThreads): ThreadRef[] | undefined {
+export function delegateThreads(tool: string, details: unknown, pool: Pool, started?: Started[]): ThreadRef[] | undefined {
   if (tool !== "delegate" && tool !== "threads") return undefined;
   const d = (details ?? {}) as { threads?: unknown; runId?: unknown };
   const ids = Array.isArray(d.threads) ? d.threads.filter((id): id is string => typeof id === "string")
-    : typeof d.runId === "string" && runThreads ? runThreads(d.runId) : [];
-  return ids.length ? ids.map((id) => ({ pool, id })) : undefined;
+    : typeof d.runId === "string" && started ? started.filter((s) => s.run === d.runId).map((s) => s.thread) : [];
+  return ids.length ? ids.map((id) => {
+    const s = started?.find((x) => x.thread === id);
+    return s ? { pool, id, role: s.role, model: s.model } : { pool, id };
+  }) : undefined;
 }
 interface PiEntry { type: string; message?: PiMessage; customType?: string; content?: Content; data?: unknown }
 
@@ -109,7 +113,7 @@ export function toReactions(raw: StoredReaction[] | undefined, userId: string): 
 }
 
 /** `opts.userId`: whose view it is, so reactions show as `you` and `her`; without it they are left out. */
-export function toMessages(threadId: string, pool: Pool, entries: { n: number; data: unknown; createdAt: string; pinned?: boolean; reactions?: StoredReaction[] }[], runThreads?: RunThreads, subagent?: SubagentThread, opts: { parent?: string; userId?: string; userName?: string } = {}): Message[] {
+export function toMessages(threadId: string, pool: Pool, entries: { n: number; data: unknown; createdAt: string; pinned?: boolean; reactions?: StoredReaction[] }[], started?: Started[], subagent?: SubagentThread, opts: { parent?: string; userId?: string; userName?: string } = {}): Message[] {
   const out: Message[] = [];
   const calls = new Map<string, { part: Extract<MessagePart, { type: "tool" }>; owner: Message }>();
   let pendingRecall: string[] = [];
@@ -174,7 +178,7 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
         continue;
       }
       const part = delegationPart(e.content, details);
-      const threads = delegateThreads("delegate", details, pool, runThreads);
+      const threads = delegateThreads("delegate", details, pool, started);
       out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [threads ? { ...part, threads } : part] });
       continue;
     }
@@ -261,7 +265,7 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       call.part.result = shortResult(m.content);
       call.part.isError = !!m.isError;
       call.part.imageRefusal = imageRefusal(call.part.name, m.details);
-      const threads = delegateThreads(call.part.name, m.details, pool, runThreads);
+      const threads = delegateThreads(call.part.name, m.details, pool, started);
       if (threads) call.part.threads = threads;
       const image = !m.isError ? imagePart(call.part.name, m.details) : undefined;
       if (image) call.owner.parts.push(image);

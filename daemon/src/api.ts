@@ -1219,8 +1219,8 @@ export type MessagePart =
   /** The thread was compacted: tokens before and (estimated) after, and the summary that replaced the older messages. */
   | { type: "compacted"; before: number; after?: number; summary: string };
 
-/** A `delegate` call's subagent threads, so its card can open them. */
-export interface ThreadRef { pool: Pool; id: string }
+/** A `delegate` call's subagent threads, so its card can open them; a subagent's carries its role and the model it ran on. */
+export interface ThreadRef { pool: Pool; id: string; role?: string; model?: string }
 
 /** A thread a look at the project's threads told, and the line it sent. */
 export interface Told { threadId: string; text: string }

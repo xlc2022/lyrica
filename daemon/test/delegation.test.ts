@@ -73,7 +73,7 @@ describe("delegation in lyricad", () => {
     expect(JSON.stringify(parent.requests.at(-1)!.messages)).toContain("The seed list is in the shed.");
   });
 
-  it("names a foreground run's subagent threads on the delegate call as it ends", async () => {
+  it("names a foreground run's subagent threads, with their role and model, on the delegate call as it ends and once stored", async () => {
     const { ada, parent, sub, path } = await setup();
     parent.reply({ tools: [{ name: "delegate", args: { task: "check the shed", role: "scout" } }] }, { text: "Checked." });
     sub.reply({ text: "Seeds found." });
@@ -81,8 +81,13 @@ describe("delegation in lyricad", () => {
     await ada.post(`${path}/messages`, { text: "check" });
     await stream.until(is("turn_end"));
     const child = (stream.events.find((e) => e.event.type === "delegation")!.event as Extract<ThreadEvent, { type: "delegation" }>).event.threadId;
-    expect(stream.events.find((e) => e.event.type === "tool_end")!.event).toMatchObject({ name: "delegate", threads: [{ pool: "general", id: child }] });
+    const started = stream.events.map((e) => e.event).filter((e): e is Extract<ThreadEvent, { type: "delegation" }> => e.type === "delegation").map((e) => e.event).find((e) => e.type === "started");
+    expect(started).toMatchObject({ role: "scout", model: expect.any(String) });
+    const ref = { pool: "general", id: child, role: "scout", model: (started as { model: string }).model };
+    expect(stream.events.find((e) => e.event.type === "tool_end")!.event).toMatchObject({ name: "delegate", threads: [ref] });
     stream.close();
+    const stored = (await ada.get<MessagePage>(`${path}/messages`)).body.messages.flatMap((m) => m.parts).find((p) => p.type === "tool" && p.name === "delegate");
+    expect(stored).toMatchObject({ threads: [ref] });
   });
 
   it("Lock stops the user's runs", async () => {
@@ -294,7 +299,7 @@ describe("talking with subagents in lyricad", () => {
       [{ kind: "lyrica" }, "look around"], [{ kind: "user", userId: rt.ada.id, name: "Ada" }, marker],
     ]);
     const notes = (await ada.get<MessagePage>(`${path}/messages`)).body.messages.flatMap((m) => m.parts).filter((p) => p.type === "delegation" && p.status === "user_message");
-    expect(notes).toEqual([expect.objectContaining({ threads: [{ pool: "general", id: childId }], text: expect.stringContaining(marker) })]);
+    expect(notes).toEqual([expect.objectContaining({ threads: [{ pool: "general", id: childId, role: "scout", model: expect.any(String) }], text: expect.stringContaining(marker) })]);
 
     // Only someone who can open the parent may write there.
     const sam = await login(base, "sam", "pw2");
