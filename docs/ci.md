@@ -105,9 +105,13 @@ workflow, whatever `main`'s workflows say. So the boundary is a repository
 setting, not the workflows: Settings, Actions, General, "Approval for
 running fork pull request workflows from contributors" set to "Require
 approval for all external contributors", and whoever approves a run reads
-its changes under `.github/` first. While that isn't set, keep the runners
-offline or remove them from the repository. No workflow uses
-`pull_request_target`.
+its changes under `.github/` first. An approved run can still name the
+runners in its own copy of a workflow, and a personal repository has no
+runner groups to restrict them, so while the repository is public and no
+workflow uses them, remove them from it (Settings, Actions, Runners). In
+Settings, Actions, General, keep "Workflow permissions" at "Read repository
+contents" and "Allow GitHub Actions to create and approve pull requests"
+off. No workflow uses `pull_request_target`.
 
 ## Switching runners
 
