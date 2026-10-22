@@ -457,6 +457,9 @@ type Stretch = { type: "yarn"; factor: number; originalContext?: number };
 const VISION_TIP = "The vision projector: off saves its memory, and the model no longer sees images.";
 const PROJECTOR_TIP = "The vision projector the model loads with. By name is the one beside it whose name matches; a fine-tune may need one picked by hand. A wrong one fails when the model loads.";
 const fileName = (path: string) => path.split("/").pop() ?? path;
+/** A projector's file name, with its folder when another projector shares the name. */
+const projectorName = (path: string, all: { path: string }[]) =>
+  all.some((p) => p.path !== path && fileName(p.path) === fileName(path)) ? path.split("/").slice(-2).join("/") : fileName(path);
 
 /**
  * A downloaded model's missing vision projector or MTP file, looked up in the
@@ -468,7 +471,7 @@ function MissingCompanions({ userId, hostId, model, origin, lacks, onStarted }: 
 }) {
   const [found, setFound] = useState<FileChoice[]>();
   const [run, busy, error] = useAction();
-  const what = lacks.vision && lacks.mtp ? "a projector or MTP file" : lacks.vision ? "a projector" : "an MTP file";
+  const what = lacks.vision && lacks.mtp ? "projector or MTP file" : lacks.vision ? "projector" : "MTP file";
   const look = () => run(async () => {
     const list = await get<HubFiles>(`${u(userId, "hosts", hostId, "hub", "files")}?${new URLSearchParams({ source: origin.source, repo: origin.repo, ...(origin.revision ? { revision: origin.revision } : {}) })}`);
     const choices = fileChoices(list).choices.filter((c) => c.kind && !c.present && lacks[c.kind]);
@@ -803,7 +806,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
             <select aria-label="Projector" title={typeof draft.mmproj === "string" ? draft.mmproj : sv.matchedProjector ?? undefined}
               value={typeof draft.mmproj === "string" ? draft.mmproj : ""} onChange={(e) => set("mmproj", e.target.value || undefined)}>
               <option value="">{sv.matchedProjector ? `By name: ${fileName(sv.matchedProjector)}` : "By name: none"}</option>
-              {sv.projectors.map((p) => <option key={p.path} value={p.path}>{p.path} · {size(p.size)}</option>)}
+              {sv.projectors.map((p) => <option key={p.path} value={p.path}>{projectorName(p.path, sv.projectors ?? [])} · {size(p.size)}</option>)}
             </select>
           </SRow>
         )}
