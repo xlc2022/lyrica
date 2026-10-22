@@ -343,11 +343,11 @@ async function getStarter(s) {
   if (files.length) await post("/host/v1/downloads", { source: "huggingface", repo: s.repo, revision: listing.revision, files });
 }
 
-/** The starters this host can serve: its servers run them, with each one's state here. */
+/** The starters this host can serve: its servers run them, on a GPU or the CPU, with each one's state here. */
 function starters() {
   const { servers, cpuServers = [], gpus } = S.status;
   const room = Math.max(0, ...gpus.filter((g) => !g.settings.excluded).map((g) => g.vram.total - g.settings.keepFree));
-  const rows = STARTERS.filter((s) => servers.includes(s.server)).map((s) => {
+  const rows = STARTERS.filter((s) => servers.includes(s.server) || cpuServers.includes(s.server)).map((s) => {
     const here = S.models.some((m) => m.id === s.id);
     const coming = S.downloads.some((d) => ["queued", "downloading", "verifying"].includes(d.state) && d.path.startsWith(`lyrica/huggingface/${s.repo}/`));
     const fits = cpuServers.includes(s.server) || s.needs <= room;
