@@ -175,7 +175,14 @@ export class Comfy implements Backend {
     this.loaded.add(model.id);
     const attempt = randomUUID();
     this.ask(attempt);
-    await poll(async () => this.started(attempt) && (await fetch(`${this.base}/system_stats`, { signal: AbortSignal.timeout(5_000) })).ok, this.startMs, "ComfyUI");
+    try {
+      await poll(async () => this.started(attempt) && (await fetch(`${this.base}/system_stats`, { signal: AbortSignal.timeout(5_000) })).ok, this.startMs, "ComfyUI");
+    } catch (e) {
+      // A start that failed doesn't keep it asked for.
+      this.loaded.delete(model.id);
+      if (!this.loaded.size) this.ask(null);
+      throw e;
+    }
   }
   async unload(model: TextModel): Promise<void> {
     this.loaded.delete(model.id);

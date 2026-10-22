@@ -225,7 +225,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             with LOCK:
-                return self.send(200, {"loaded": sorted(MODELS)})
+                exiting = EXITING
+                loaded = sorted(MODELS)
+            # About to exit: not up, so host-api's next load waits for the fresh server.
+            if exiting:
+                return self.send(503, {"error": {"code": "model_unavailable", "message": "The speech server is restarting."}})
+            return self.send(200, {"loaded": loaded})
         self.send(404, {"error": {"code": "not_found", "message": "Not found."}})
 
     def do_POST(self):
@@ -248,7 +253,7 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
     def route(self, b):
-        global GPU_USED
+        global GPU_USED, EXITING
         if self.path == "/load":
             name, folder, file, device = b.get("name"), b.get("folder"), b.get("file"), b.get("device")
             if not all(isinstance(x, str) and x for x in (name, folder, file)) or not (device == "cpu" or isinstance(device, int)):
@@ -257,6 +262,8 @@ class Handler(BaseHTTPRequestHandler):
             if not real.startswith(os.path.realpath(MODELS_DIR) + os.sep) or not real.endswith(".onnx"):
                 raise Refused(400, "invalid", "The model must be an .onnx file in the models folder.")
             with LOCK:
+                if EXITING:
+                    raise Refused(503, "model_unavailable", "The speech server is restarting.")
                 loaded = name in MODELS
             if not loaded:
                 model = Model(folder, file, device)
@@ -267,21 +274,23 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/unload":
             with LOCK:
                 MODELS.pop(b.get("name"), None)
-            self.send(200, {})
-            return self.exit_if_done()
+                EXITING = EXITING or (GPU_USED and not MODELS)
+            return self.answer_then_exit()
         if self.path == "/reset":
             with LOCK:
                 MODELS.clear()
-            self.send(200, {})
-            return self.exit_if_done()
+                EXITING = EXITING or GPU_USED
+            return self.answer_then_exit()
         if self.path == "/v1/audio/speech":
             return self.speech(b)
         raise Refused(404, "not_found", "Not found.")
 
-    def exit_if_done(self):
+    def answer_then_exit(self):
+        """Answers, then exits if set to: EXITING is set before the answer leaves, so no load can slip in."""
+        self.send(200, {})
         with LOCK:
-            done = GPU_USED and not MODELS
-        if done:
+            exiting = EXITING
+        if exiting:
             self.wfile.flush()
             # A moment for the answer to leave; Docker starts a fresh server.
             threading.Timer(0.2, os._exit, (0,)).start()
@@ -321,6 +330,8 @@ class Handler(BaseHTTPRequestHandler):
 MODELS_DIR = os.environ.get("MODELS_DIR", "/models")
 # Whether this process has run a voice on a GPU (and so holds a CUDA context).
 GPU_USED = False
+# Set once it will exit: it loads nothing more and isn't healthy.
+EXITING = False
 
 if __name__ == "__main__":
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
