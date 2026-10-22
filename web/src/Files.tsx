@@ -269,7 +269,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     hits.entries.length ? <>{hits.entries.map((e) => row(e, 0))}{hits.more && <p className="empty">Only the first 200 are shown.</p>}</> : <p className="empty">No files match.</p>
   ) : roots.length ? roots.map((r) => (
     <div key={r.path} className="fentry">
-      <button type="button" className="root" aria-expanded={open.has(r.path)} onClick={() => toggle(r.path)} {...press({ kind: "folder", path: r.path, root: true })}>
+      <button type="button" className="root" aria-expanded={open.has(r.path)} title={r.kind === "shared" ? r.path : undefined} onClick={() => toggle(r.path)} {...press({ kind: "folder", path: r.path, root: true })}>
         <Icon name={open.has(r.path) ? "down" : "right"} /><span className="fname">{shown(r.path)}</span>
         {r.kind === "grant" && <span className="rw num">{r.writable ? "rw" : "ro"}</span>}
       </button>

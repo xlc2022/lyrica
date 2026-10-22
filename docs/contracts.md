@@ -836,7 +836,9 @@ Custom roles override built-ins by name.
   status `update`, and every delivery's details carry an `id`. A child on
   a task from its parent whose turn ends idle with an error, or without an
   update since the task, gets the parent the same kind of notice
-  (`ChildThreads.ended`, fed by `lyricad`'s turn events). A child's
+  (`ChildThreads.ended`, fed by `lyricad`'s turn events); without an
+  update, the notice carries the child's last assistant message (clipped
+  to 4,000 characters, never an unlogged thread's) marked as its report. A child's
   `message({ to: "parent", text, question: true })`, a project's `needsYou`,
   its report when its turn ends idle, and the daemon's failure or
   didn't-start notes wake an idle parent for one turn. Plain progress and
@@ -848,8 +850,12 @@ Custom roles override built-ins by name.
   `HostedThread.wakeChild`: a hidden custom message with `triggerTurn: true`,
   through the ordinary model preparation, turn events and storage. Pending
   wake metadata is in memory only; stored notices survive a restart.
-  `noticed` prevents repeated bad-end wakes until a child reports or the
-  user writes there. A reply from a child-triggered parent to its source
+  `noticed` prevents repeated error wakes until a child reports or the
+  user writes there. `ChildThreads.watchIdle(now)`, called by the daemon
+  tick unless an update drains, wakes an idle project chat with
+  `IDLE_NOTE` through `wakeChild` (see docs/delegation.md, Idle projects);
+  `ChildThreads.personWrote`, from lyricad's onTurn on a turn the person
+  started, resets its count for that project. A reply from a child-triggered parent to its source
   child goes through `HostedThread.appendParent`, saved after the child's
   current turn without a turn or steer; the next turn reads it.
   `message` returns a `Delivery`: `started`, `running`, `queued` (an idle
@@ -1304,7 +1310,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `madeSince` records the files in `/workspace` and `/shared` newer than
     it (`find` in a fresh no-network sandbox, at most 2,000 within 10
     seconds; `.git`, `node_modules`, `.lyrica` and `/workspace/repos`
-    skipped). `claudeCode()`
+    skipped). The daemon passes `madeSince` a hook that hands each file
+    found to `SameFile.changed`, which tells both threads when another
+    thread changed the file first. `claudeCode()`
     true adds `CLAUDE_CODE_LINE` to that section.
   - `read`, `write`, `edit` and `bash` take an optional `machine`. On a
     machine the call's mode is `stricterMode(settings().mode, limit)`; a
@@ -1941,7 +1949,7 @@ settings(userId).checks(pool, project): string[] / setChecks(pool, project, chec
 // checkChecks: at most 8 commands, each one line of at most 300 characters, no control characters; blanks dropped.
 // user step 16 adds project_settings.checks, JSON default [].
 settings(userId).skillsAutoApprove() / setSkillsAutoApprove(on)   // her skills active at once; user.db setting skills.auto_approve
-forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileKey(path), madeFiles(paths), madeSince(since), fileNotes() },
+forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileKey(path), madeFiles(paths), madeSince(since, found?), fileNotes() },
 fileKey(t, path)  // one file under the same key for every thread that can write it: "<folder thread>:<path>" in a thread's folder or /shared, "grant:<path>" in a writable grant; else undefined
               // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:

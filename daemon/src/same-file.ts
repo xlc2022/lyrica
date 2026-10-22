@@ -38,11 +38,7 @@ export class SameFile {
     if (!key) return undefined;
     const now = this.o.now?.() ?? Date.now();
     const k = `${userId}/${pool}/${key}`;
-    for (const [w, v] of this.writes) {
-      if (now - v.at < SAME_FILE_MS) continue;
-      this.writes.delete(w);
-      for (const t of this.told) if (t.startsWith(`${w}/`)) this.told.delete(t);
-    }
+    this.expire(now);
     const last = this.writes.get(k);
     const mark = last && `${k}/${thread}/${last.thread}`;
     if (last && last.thread !== thread && !this.told.has(mark!) && this.o.exists(userId, pool, last.thread)) {
@@ -57,5 +53,42 @@ export class SameFile {
     }
     this.writes.set(k, { thread, at: now });
     return undefined;
+  }
+
+  /**
+   * After `thread`'s command changed the file `key`, found by the sweep for
+   * files newer than the command's start (`since`): a command can't be held
+   * before it runs, so when another thread changed the file within
+   * SAME_FILE_MS, before the command started, both are told now. Either way
+   * the change is recorded as this thread's, so the other's next write is held.
+   * A change by another thread while the command ran is nobody's for sure: left as it is.
+   */
+  changed(userId: string, pool: Pool, thread: string, key: string | undefined, path: string, since: number): void {
+    if (!key) return;
+    const now = this.o.now?.() ?? Date.now();
+    const k = `${userId}/${pool}/${key}`;
+    this.expire(now);
+    const last = this.writes.get(k);
+    if (last && last.thread !== thread && last.at >= since) return;
+    const mark = last && `${k}/${thread}/${last.thread}`;
+    if (last && last.thread !== thread && !this.told.has(mark!) && this.o.exists(userId, pool, last.thread)) {
+      this.told.add(mark!);
+      this.told.add(`${k}/${last.thread}/${thread}`);
+      const minutes = Math.max(1, Math.round((since - last.at) / 60_000));
+      this.o.tell(userId, pool, last.thread, thread,
+        `[t:${thread}] changed ${path} with a command, which you changed ${minutes} min before. Agree with it who changes what before either of you changes the file again.`);
+      this.o.tell(userId, pool, thread, last.thread,
+        `Your command changed ${path}, which [t:${last.thread}] changed ${minutes} min before, and it has been told. `
+        + `Agree with it who changes what (in a project, message it with threads) before either of you changes the file again.`);
+    }
+    this.writes.set(k, { thread, at: now });
+  }
+
+  private expire(now: number): void {
+    for (const [w, v] of this.writes) {
+      if (now - v.at < SAME_FILE_MS) continue;
+      this.writes.delete(w);
+      for (const t of this.told) if (t.startsWith(`${w}/`)) this.told.delete(t);
+    }
   }
 }

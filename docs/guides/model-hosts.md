@@ -287,6 +287,15 @@ each setting means, and how models are placed and unloaded, is in
 [host/README.md](../../host/README.md#models-and-gpus) and
 [host/API.md](../../host/API.md#placement-and-serving-settings).
 
+A GGUF chat model loads the vision projector whose name is closest to its
+own. For a fine-tune named unlike its base, pick another in **Projector**
+in the model's drawer under Models, Text models: it lists every `mmproj`
+file on the host, and applies at the next load. A model downloaded without
+its projector or MTP file shows **Missing files** there, which downloads
+the file from the model's own Hugging Face repository beside it. A
+projector takes about its size in GPU memory, so a model that only just
+fits may need a shorter context. Hosts get both on their next update.
+
 A chat model can serve more context than it was trained for with a YaRN
 stretch, set in the model's settings on the dashboard together with the
 context to serve, for example

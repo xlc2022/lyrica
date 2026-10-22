@@ -753,4 +753,19 @@ describe("the sweep after her command", () => {
     expect(runs).toEqual([a, c, b]);
     release();
   });
+
+  it("passes what it found to the latest hook asked for (the same-file check)", async () => {
+    const { ada, workspace } = await setup();
+    const t = { userId: ada.id, pool: "general" as const, threadId: "web/a" };
+    let release!: () => void;
+    workspace.madeSince = async (_t, _since, found) => { await new Promise<void>((r) => { release = r; }); found?.(["/shared/notes.md"]); };
+    const heard: string[] = [];
+    workspace.sweepSince(t, new Date(1000), (p) => heard.push(`first ${p}`));
+    workspace.sweepSince(t, new Date(2000), (p) => heard.push(`second ${p}`));
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(heard).toEqual(["first /shared/notes.md", "second /shared/notes.md"]);
+  });
 });

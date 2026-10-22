@@ -176,7 +176,7 @@ export async function resolveHost(host: string): Promise<{ addresses: string[]; 
 export class Workspace {
   private readonly worktreeCleanup = new Map<string, Promise<string>>();
   /** Each thread's running sweep for files her command wrote, and the earliest start asked for while it runs. */
-  private readonly sweeps = new Map<string, { next?: Date }>();
+  private readonly sweeps = new Map<string, { next?: Date; found?: (paths: string[]) => void }>();
   private readonly settingsByUser = new Map<string, WorkspaceSettings>();
   private readonly changesByUser = new Map<string, FileChanges>();
   private readonly sshTargets = new Map<string, SshTarget>();
@@ -352,8 +352,8 @@ export class Workspace {
       fileKey: (path: string) => this.fileKey(t, path),
       /** Her write or edit call wrote this file (as she sees it). */
       madeFiles: (paths: string[]) => { try { this.madeFiles(t, paths); } catch { /* locked: unrecorded */ } },
-      /** Her command ran from `since`: the files it left newer are hers, found in the background (the call doesn't wait). */
-      madeSince: (since: Date) => { this.sweepSince(t, since); },
+      /** Her command ran from `since`: the files it left newer are hers, found in the background (the call doesn't wait), and passed to `found`. */
+      madeSince: (since: Date, found?: (paths: string[]) => void) => { this.sweepSince(t, since, found); },
       /** Files the panel added or removed since her last turn, names only; taking them clears them. */
       fileNotes: () => this.settings(t.userId).takeFileNotes(t.threadId),
     };
@@ -425,25 +425,26 @@ export class Workspace {
    * After a command: the files in the thread's folder and /shared changed since `since` (to the second before it),
    * found by `find` in a fresh no-network sandbox, are recorded as this thread's, keeping a record another thread
    * made while the command ran. Git's own files, node_modules, the panel's folder and repos/ (a repository's files,
-   * mounted from elsewhere for some threads) are skipped; at most NEW_FILES_LIMIT files, within 10 seconds.
+   * mounted from elsewhere for some threads) are skipped; at most NEW_FILES_LIMIT files, within 10 seconds. `found`
+   * hears of them too.
    */
   /**
    * madeSince in the background, one sweep at a time per thread: one asked for while another runs waits and takes
    * the earliest start asked for meanwhile. A failed sweep only leaves its files unrecorded.
    */
-  sweepSince(t: WorkspaceThread, since: Date): void {
+  sweepSince(t: WorkspaceThread, since: Date, found?: (paths: string[]) => void): void {
     const key = `${t.userId}/${t.threadId}`;
     const sweep = this.sweeps.get(key);
-    if (sweep) { if (!sweep.next || since < sweep.next) sweep.next = since; return; }
-    const entry: { next?: Date } = {};
+    if (sweep) { if (!sweep.next || since < sweep.next) sweep.next = since; if (found) sweep.found = found; return; }
+    const entry: { next?: Date; found?: (paths: string[]) => void } = { found };
     this.sweeps.set(key, entry);
     void (async () => {
-      for (let from: Date | undefined = since; from; from = entry.next, entry.next = undefined) await this.madeSince(t, from).catch(() => {});
+      for (let from: Date | undefined = since; from; from = entry.next, entry.next = undefined) await this.madeSince(t, from, entry.found).catch(() => {});
       this.sweeps.delete(key);
     })();
   }
 
-  async madeSince(t: WorkspaceThread, since: Date): Promise<void> {
+  async madeSince(t: WorkspaceThread, since: Date, found?: (paths: string[]) => void): Promise<void> {
     const shared = this.sharedDir(t);
     const box = new Sandbox({ workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), shared, grants: [], network: { internet: false, services: false, hosts: [] }, bwrap: this.opts.bwrap });
     const at = String(Math.floor(since.getTime() / 1000) - 1);
@@ -451,6 +452,7 @@ export class Workspace {
     const r = await box.run(["sh", "-c", script, at, WORKDIR, ...(shared ? [SHARED] : [])], { timeoutMs: 10_000 });
     const paths = r.stdout.toString().split("\0").filter(Boolean);
     if (paths.length) this.madeFiles(t, paths, since);
+    if (paths.length) found?.(paths);
   }
 
   /**
@@ -477,16 +479,20 @@ export class Workspace {
   photos(userId: string): PortraitPhotos { return new PortraitPhotos(() => this.imageHome(userId)); }
 
   /**
-   * The thread's Files panel: its folder and grants, every operation in a
-   * fresh sandbox with no network. Grants are checked against the allowed
+   * The thread's Files panel: its folder, its family's /shared (unless that is
+   * inside the folder it works in, as for the family's top thread and those
+   * working in its folder) and grants, every operation in
+   * a fresh sandbox with no network. Grants are checked against the allowed
    * paths as they are now, as for her tools.
    */
   files(t: WorkspaceThread): ThreadFiles {
     const s = this.settings(t.userId);
     s.checkInherited(t.threadId, t.pool);
     const tw = s.effective(t.threadId);
+    const family = this.sharedDir(t);
+    const shared = family === join(this.threadDir(t), "shared") ? undefined : family;
     const box = new Sandbox({
-      workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), grants: tw.grants, network: { internet: false, services: false, hosts: [] },
+      workdir: this.threadDir(t), workdirAlias: this.workdirAlias(t), shared, grants: tw.grants, network: { internet: false, services: false, hosts: [] },
       check: (g) => checkGrant(s.allowed(), t.pool, g), bwrap: this.opts.bwrap,
     });
     // What the panel uploads is the panel's thread's; what it renames or deletes takes its record along.
@@ -498,7 +504,8 @@ export class Workspace {
         else if (f) s.dropOrigins(f.folder, [f.path]);
       },
       removed: (paths) => { for (const p of paths) { const key = this.originKey(t, p); if (key) s.dropOrigins(key.folder, [key.path]); } },
-    });  }
+    }, !!shared);
+  }
 
   /** What the thread's tools may reach: its settings, or nothing while the self-test has refused network. */
   network(t: WorkspaceThread): Network {

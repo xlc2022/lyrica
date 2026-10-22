@@ -47,6 +47,12 @@ export interface ChildOptions {
   wakeups?: () => Wakeups;
 }
 
+/** The most of a child's last message that goes to its parent as its report. */
+const IMPLICIT_REPORT_CHARS = 4000;
+/** A project idle this long with its checklist unfinished wakes its chat, at most this many times until its threads move. */
+export const IDLE_WATCH = { ms: 10 * 60_000, wakes: 2 };
+const IDLE_NOTE = "Nothing in this project is running, and its checklist isn't finished. Carry on, or tell the person what you're waiting for.";
+
 export class ChildThreads implements ThreadsHost {
   readonly limits: ThreadsLimits;
   private readonly bases = new Map<string, string>();
@@ -76,6 +82,10 @@ export class ChildThreads implements ThreadsHost {
   private readonly parentWakes = new Map<string, { userId: string; pool: Pool; parent: string; children: Set<string>; running: boolean }>();
   /** Turns a child-woken parent started in each child since the person last wrote in either, by `user/pool/child`. */
   private readonly rounds = new Map<string, number>();
+  /** Projects whose last turn was stopped, by `user/pool/project`: the idle watch leaves them alone until a turn there ends otherwise. */
+  private readonly stoppedProjects = new Set<string>();
+  /** The idle watch's wakes per project since the person last wrote in it, by `user/pool/project`. */
+  private readonly idleWakes = new Map<string, number>();
   /** Idle threads holding a saved message until a slot frees, by `user/pool/thread`. In memory only: the message itself is stored. */
   private readonly waiting = new Map<string, { userId: string; pool: Pool; thread: string; parent: string }>();
 
@@ -330,13 +340,15 @@ export class ChildThreads implements ThreadsHost {
 
   /**
    * A child's turn ended and it is idle. On a task from its parent, the
-   * parent is told when it ended with an error, or without a message to the
-   * parent since the task began, as an update is delivered: once, until the
-   * child reports or the person writes in it (`noticed`). A stopped turn
-   * tells nobody: whoever stopped it knows.
+   * parent is told, as an update is delivered, when it ended without a
+   * message to the parent since the task began (its last message, as its
+   * report), or with an error: an error once, until the child reports or the
+   * person writes in it (`noticed`). A stopped turn tells nobody: whoever
+   * stopped it knows.
    */
   ended(userId: string, pool: Pool, thread: string, how: "done" | "error" | "stopped"): void {
     const key = `${userId}/${pool}/${thread}`;
+    this.markStopped(userId, pool, thread, how === "stopped");
     const wake = this.parentWakes.get(key);
     if (wake?.running) this.parentWakes.delete(key);
     const reported = this.reports.delete(key);
@@ -348,14 +360,103 @@ export class ChildThreads implements ThreadsHost {
     this.drainWakes(userId);
     if (!t) return;
     this.tasked.delete(key);
-    if (how === "stopped" || (how === "done" && t.reported) || this.noticed.has(key)) return;
+    if (how === "stopped" || (how === "done" && t.reported) || (how === "error" && this.noticed.has(key))) return;
     let row: Row | undefined;
     try { row = this.row(userId, pool, thread); } catch { return; /* locked */ }
     if (!row) return;
-    this.noticed.add(key);
+    // Her last words count as the report she didn't send, marked so the parent knows.
+    if (how === "done" && this.implicitReport(userId, pool, thread, row.parent)) return;
+    if (how === "error") this.noticed.add(key);
     this.deliver(userId, pool, row.parent, how === "error"
       ? `Child thread [t:${thread}] stopped with an error, and is idle. Read it with threads read, or message it to go on.`
       : `Child thread [t:${thread}] finished without a report, and is idle. Read it with threads read, or message it.`, thread, "update", true);
+  }
+
+  /**
+   * A tasked child ended without a report: its last reply, if it has one,
+   * goes to the parent as its report would, marked as not sent with report.
+   * It brings no look (watch.ts): the person didn't write, and the child posted nothing.
+   * Returns whether there was one.
+   */
+  private implicitReport(userId: string, pool: Pool, thread: string, parent: string): boolean {
+    const view = this.o.memory.openThreadView(userId, pool);
+    let last: string | undefined;
+    try {
+      const e = view.own.getThread(thread)?.unlogged ? undefined : view.own.latestEntries(thread, 1)[0];
+      if (e?.role === "assistant") last = e.text.trim();
+    } finally { view.close(); }
+    if (!last) return false;
+    const text = last.length > IMPLICIT_REPORT_CHARS ? `${last.slice(0, IMPLICIT_REPORT_CHARS)}…` : last;
+    this.db(userId, (db) => db.prepare("UPDATE child_threads SET unseen = unseen + 1 WHERE pool = ? AND thread = ?").run(pool, thread));
+    this.deliver(userId, pool, parent, `Child thread [t:${thread}] ended without a report; its last message, as its report:\n${text}`, thread, "update", true);
+    return true;
+  }
+
+  /** A turn the person started (lyricad's onTurn): the idle watch may wake their project again. */
+  personWrote(userId: string, pool: Pool, thread: string): void {
+    try {
+      const view = this.o.memory.openThreadView(userId, pool);
+      try { const project = view.own.projectOf(thread); if (project) this.idleWakes.delete(`${userId}/${pool}/${project}`); } finally { view.close(); }
+    } catch { /* locked */ }
+  }
+
+  /** A turn in a project ended: stopped, the idle watch leaves the project alone; any other end lets it watch again. */
+  private markStopped(userId: string, pool: Pool, thread: string, stopped: boolean): void {
+    let project: string | undefined;
+    try {
+      const view = this.o.memory.openThreadView(userId, pool);
+      try { project = view.own.projectOf(thread); } finally { view.close(); }
+    } catch { return; /* locked */ }
+    if (!project) return;
+    const key = `${userId}/${pool}/${project}`;
+    if (stopped) this.stoppedProjects.add(key);
+    else this.stoppedProjects.delete(key);
+  }
+
+  /**
+   * lyricad's tick: a project with an unfinished checklist (its chat's or a
+   * thread's) where nothing runs, waits or is queued, no question waits for
+   * the person, and nothing was written for `IDLE_WATCH.ms` wakes its chat
+   * with a note to carry on or say what it waits for. Never a paused or
+   * hidden project, nor one whose last turn was stopped; at most
+   * `IDLE_WATCH.wakes` times until the person writes in it (`personWrote`):
+   * what its threads do meanwhile never resets that, so it can't run unattended.
+   */
+  watchIdle(now = new Date()): void {
+    const host = this.o.host();
+    if (host.draining) return;
+    for (const userId of this.recovered) {
+      if (this.locking.has(userId)) continue;
+      try { this.watchUser(userId, now); } catch { /* locked meanwhile */ }
+    }
+  }
+
+  private watchUser(userId: string, now: Date): void {
+    const host = this.o.host();
+    const rows = this.rows(userId);
+    for (const pool of ["general", "private"] as const) {
+      const due: string[] = [];
+      const view = this.o.memory.openThreadView(userId, pool);
+      try {
+        for (const p of view.own.listThreads().filter((t) => t.project)) {
+          const key = `${userId}/${pool}/${p.id}`;
+          if (this.stoppedProjects.has(key) || this.o.paused?.(userId, pool, p.id) || host.busy(userId, pool, p.id) || this.parentWakes.has(key)) continue;
+          const mine = rows.filter((r) => r.pool === pool && r.parent === p.id && !r.resolved_at);
+          if (mine.some((r) => r.queued || r.needs_you || host.busy(userId, pool, r.thread) || this.waiting.has(`${userId}/${pool}/${r.thread}`))) continue;
+          const threads = [p.id, ...mine.map((r) => r.thread)];
+          if (threads.some((t) => view.own.openQuestion(t))) continue;
+          if (!threads.some((t) => view.own.steps(t).some((s) => s.state !== "done"))) continue;
+          const latest = (ts: string[]) => ts.map((t) => view.own.lastEntry(t)?.createdAt ?? "").reduce((a, b) => (a > b ? a : b), "");
+          const last = latest(threads);
+          if (!last || now.getTime() - Date.parse(last) < IDLE_WATCH.ms) continue;
+          const n = this.idleWakes.get(key) ?? 0;
+          if (n >= IDLE_WATCH.wakes) continue;
+          this.idleWakes.set(key, n + 1);
+          due.push(p.id);
+        }
+      } finally { view.close(); }
+      for (const project of due) void host.get(userId, pool, project).wakeChild(IDLE_NOTE).catch(() => {});
+    }
   }
 
   /** Stops a child's running turn, as Pause does: from its parent, or from the project chat. */
@@ -809,7 +910,7 @@ export class ChildThreads implements ThreadsHost {
 
   /** Drops the records of forgotten threads, and of the children they kept, which are threads of their own now. */
   forget(userId: string, pool: Pool, threads: string[]): void {
-    for (const t of threads) { this.parentWakes.delete(`${userId}/${pool}/${t}`); this.waiting.delete(`${userId}/${pool}/${t}`); this.rounds.delete(`${userId}/${pool}/${t}`); this.reports.delete(`${userId}/${pool}/${t}`); this.tasked.delete(`${userId}/${pool}/${t}`); this.noticed.delete(`${userId}/${pool}/${t}`); }
+    for (const t of threads) { this.parentWakes.delete(`${userId}/${pool}/${t}`); this.waiting.delete(`${userId}/${pool}/${t}`); this.rounds.delete(`${userId}/${pool}/${t}`); this.reports.delete(`${userId}/${pool}/${t}`); this.tasked.delete(`${userId}/${pool}/${t}`); this.noticed.delete(`${userId}/${pool}/${t}`); this.idleWakes.delete(`${userId}/${pool}/${t}`); this.stoppedProjects.delete(`${userId}/${pool}/${t}`); }
     this.db(userId, (db) => db.prepare("DELETE FROM child_threads WHERE pool = @pool AND (thread IN (SELECT value FROM json_each(@t)) OR parent IN (SELECT value FROM json_each(@t)))")
       .run({ pool, t: JSON.stringify(threads) }));
   }

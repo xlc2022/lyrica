@@ -338,8 +338,14 @@ takes is `lyrica@pve!agent=<that secret>`.
   mention and how long ago, and that thread is told, steered into its turn
   or kept for its next. They agree who changes what (project threads
   message each other with `threads`); after that neither is held again on
-  that file. Paths only, in memory: a restart forgets them. Commands
-  (`bash`) aren't checked.
+  that file. Paths only, in memory: a restart forgets them. A command
+  (`bash`) can't be held before it runs, since what it will change isn't
+  known: the sweep after it (`madeSince`) finds the files it changed in
+  her folder and /shared, and for one another thread changed within two
+  hours, before the command started, both threads are told at once; the
+  change counts as hers, so the other thread's next `write` or `edit` of
+  it is held. A change made while the command ran is left as it is.
+  Commands that change a writable grant aren't checked.
 - The lists live in `self.db` (`workspace_paths`, keyed by user ID), and only
   an administrator can change them, so no user can widen their own.
   `lyrica admin grants add|remove --user <u> --pool <pool> <path>` signs in as
@@ -395,7 +401,11 @@ takes is `lyrica@pve!agent=<that secret>`.
   read-only. Its Files panel can add files under `shared/` too.
 - **The Files panel** (`core/src/workspace/files.ts`, `Workspace.files(t)`)
   lists, searches, reads, uploads, renames, deletes and zips in the thread's
-  folder and its grants, every operation a fresh no-network sandbox over the
+  folder, its family's `/shared` (a root of its own, kind `shared`, for a
+  thread with a folder of its own, such as a code thread; a thread working
+  in its family's top folder, such as a project chat, sees it there as
+  `shared/`) and
+  its grants, every operation a fresh no-network sandbox over the
   thread's grants (`find`, `cat`, `stat`, `mkdir`, `mv`, `rm`), so the panel
   can reach exactly what she can and nothing else: a path outside, a symlink
   out, a root, the panel's own `.lyrica` folder, and any change in a
