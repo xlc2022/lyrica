@@ -503,7 +503,7 @@ export class Sandbox implements ExecutionTarget {
     return {
       read: {
         readFile,
-        access: async (p) => { await this.file(["sh", "-c", 'test -r "$1" || { echo "cannot read $1" >&2; exit 1; }', "sh", this.allow(p, false)]); },
+        access: async (p) => { await this.file(["sh", "-c", 'test -e "$1" || { echo "no such file yet: $1" >&2; exit 1; }; test -r "$1" || { echo "cannot read $1" >&2; exit 1; }', "sh", this.allow(p, false)]); },
         detectImageMimeType: async (p) => sniffImage(await this.file(["head", "-c", "16", "--", this.allow(p, false)])),
       },
       write: {

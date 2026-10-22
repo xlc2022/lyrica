@@ -1310,7 +1310,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `madeSince` records the files in `/workspace` and `/shared` newer than
     it (`find` in a fresh no-network sandbox, at most 2,000 within 10
     seconds; `.git`, `node_modules`, `.lyrica` and `/workspace/repos`
-    skipped). `claudeCode()`
+    skipped). The daemon passes `madeSince` a hook that hands each file
+    found to `SameFile.changed`, which tells both threads when another
+    thread changed the file first. `claudeCode()`
     true adds `CLAUDE_CODE_LINE` to that section.
   - `read`, `write`, `edit` and `bash` take an optional `machine`. On a
     machine the call's mode is `stricterMode(settings().mode, limit)`; a
@@ -1947,7 +1949,7 @@ settings(userId).checks(pool, project): string[] / setChecks(pool, project, chec
 // checkChecks: at most 8 commands, each one line of at most 300 characters, no control characters; blanks dropped.
 // user step 16 adds project_settings.checks, JSON default [].
 settings(userId).skillsAutoApprove() / setSkillsAutoApprove(on)   // her skills active at once; user.db setting skills.auto_approve
-forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileKey(path), madeFiles(paths), madeSince(since), fileNotes() },
+forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileKey(path), madeFiles(paths), madeSince(since, found?), fileNotes() },
 fileKey(t, path)  // one file under the same key for every thread that can write it: "<folder thread>:<path>" in a thread's folder or /shared, "grant:<path>" in a writable grant; else undefined
               // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:
