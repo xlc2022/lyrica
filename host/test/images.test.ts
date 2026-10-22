@@ -363,7 +363,7 @@ describe("the image API", () => {
   async function stack(o: { sdcpp?: boolean } = {}) {
     const models = folder({
       [`${Z}/diffusion_models/z.safetensors`]: Z_DIFFUSION, [`${Z}/text_encoders/qwen_3_4b.safetensors`]: QWEN3, [`${Z}/vae/ae.safetensors`]: FLUX_VAE,
-      "shared/flux1-schnell-fp8.safetensors": FLUX_CKPT,
+      "shared/flux1-schnell-fp8.safetensors": FLUX_CKPT, "shared/style.safetensors": Z_LORA,
     });
     const comfyFake = await fakeComfy();
     open.push(comfyFake);
@@ -423,6 +423,14 @@ describe("the image API", () => {
     await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "again" } });
     expect(s.sdFake!.seen.started).toHaveLength(1);
     expect(s.comfyFake.seen.prompts).toHaveLength(0);
+
+    // The list offers only what sd.cpp can run, so Lyrica's router never picks this host for the rest.
+    const copy = (await s.api(`/host/v1/recipes/${z.id}/copy`, { body: { name: "Styled" } })).body;
+    await s.api(`/host/v1/recipes/${copy.id}`, { method: "PATCH", body: { op: "addLora", file: "shared/style.safetensors", strength: 0.8 } });
+    const listed = (await s.api("/host/v1/recipes")).body.recipes;
+    expect(listed.find((r: Recipe) => r.id === z.id)).toMatchObject({ does: ["create"] });
+    expect(listed.find((r: Recipe) => r.id === z.id)).not.toHaveProperty("unsupported");
+    expect(listed.find((r: Recipe) => r.id === copy.id)).toMatchObject({ does: [], unsupported: expect.stringContaining("LoRAs aren't supported") });
 
     expect(s.lines.join("\n")).not.toContain(MARKER);
     for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);

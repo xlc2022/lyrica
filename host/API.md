@@ -820,8 +820,9 @@ why only the model servers are there and none of them has a route out.
 
 On a host whose image GPU is a CMP 100-210, stable-diffusion.cpp makes the
 images instead (README.md, "Image models"): create only, for Z-Image,
-Qwen-Image, FLUX and SDXL recipes without LoRAs. Anything else is `invalid`,
-saying why. `sampler` and `scheduler` take the nearest sd.cpp names, or its
+Qwen-Image, FLUX and SDXL recipes without LoRAs. The recipe list says so:
+`does` holds only `create`, or is empty with an `unsupported` reason for a
+recipe it can't run. A job for one is `invalid`, saying why. `sampler` and `scheduler` take the nearest sd.cpp names, or its
 defaults. A cancelled job is cancelled in sd-server.
 
 A recipe's memory is measured after its first job, as for text models.
