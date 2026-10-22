@@ -283,7 +283,7 @@ function editGpu(g) {
 // ---- Models ----
 
 const KINDS = { chat: "chat", embedding: "embedding", transcribe: "transcription", speak: "voice" };
-const SERVER_NAMES = Object.fromEntries(SERVERS);
+const SERVER_NAMES = { ...Object.fromEntries(SERVERS), whispercpp: "whisper.cpp" };
 
 function textModels() {
   const head = h("div", { class: "section-head" }, h("h2", {}, "Models"), button("Scan the folder", () => post("/host/v1/scan")));
@@ -329,6 +329,8 @@ const STARTERS = [
   { id: "lyrica/huggingface/onnx-community/Kokoro-82M-v1.1-zh-ONNX", name: "Kokoro 82M", kind: "speak", server: "speech",
     repo: "onnx-community/Kokoro-82M-v1.1-zh-ONNX", revision: "6cc0f0d2ebe369a68b0df87c2b65c1af8c0ac3e3",
     files: ["onnx/model.onnx", "config.json", "tokenizer.json", "tokenizer_config.json", "voices/zm_010.bin", "voices/zf_001.bin", "voices/af_maple.bin"], size: 0.33 * 2 ** 30, needs: 1 * 2 ** 30 },
+  { id: "lyrica/huggingface/ggerganov/whisper.cpp/ggml-large-v3-turbo-q8_0.bin", name: "Whisper large-v3 turbo", kind: "transcribe", server: "whispercpp",
+    repo: "ggerganov/whisper.cpp", revision: "5359861c739e955e79d9a303bcbc70fb988958b1", files: ["ggml-large-v3-turbo-q8_0.bin"], size: 874_188_075, needs: 1.5 * 2 ** 30 },
   { id: "lyrica/huggingface/openai/whisper-large-v3-turbo", name: "Whisper large-v3 turbo", kind: "transcribe", server: "vllm",
     repo: "openai/whisper-large-v3-turbo", revision: "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
     files: ["model.safetensors"], also: /^[^/]+\.(json|txt)$/, size: 1.6 * 2 ** 30, needs: 2.4 * 2 ** 30 },
@@ -345,9 +347,11 @@ async function getStarter(s) {
 
 /** The starters this host can serve: its servers run them, on a GPU or the CPU, with each one's state here. */
 function starters() {
-  const { servers, cpuServers = [], gpus } = S.status;
+  const { servers, cpuServers = [], gpus, dictation = "vllm" } = S.status;
   const room = Math.max(0, ...gpus.filter((g) => !g.settings.excluded).map((g) => g.vram.total - g.settings.keepFree));
-  const rows = STARTERS.filter((s) => servers.includes(s.server) || cpuServers.includes(s.server)).map((s) => {
+  // Dictation runs on one server here: whisper.cpp beside a CMP 100-210, else vLLM.
+  const serves = (s) => (s.kind !== "transcribe" || s.server === dictation) && (s.server === "whispercpp" || servers.includes(s.server) || cpuServers.includes(s.server));
+  const rows = STARTERS.filter(serves).map((s) => {
     const here = S.models.some((m) => m.id === s.id);
     const coming = S.downloads.some((d) => ["queued", "downloading", "verifying"].includes(d.state) && d.path.startsWith(`lyrica/huggingface/${s.repo}/`));
     const fits = cpuServers.includes(s.server) || s.needs <= room;

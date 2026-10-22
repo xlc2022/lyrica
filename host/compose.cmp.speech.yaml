@@ -1,0 +1,9 @@
+# The speech server on a host with a CMP 100-210, added by install.sh with
+# compose.cmp.yaml: cuDNN dropped Volta (sm_70), so this build pins the last
+# release tested with its kernels (speech/requirements.cuda-volta.txt).
+# A Blackwell card beside the CMP can't run voices with it.
+services:
+  speech:
+    build:
+      args: { FLAVOUR: cuda-volta }
+    image: lyrica-host-speech:cuda-volta

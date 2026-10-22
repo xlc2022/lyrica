@@ -107,7 +107,7 @@ export class Runtime {
   }
 
   scan(): { models: number; parts: number; proposals: number } {
-    this.models = scanTextModels(this.modelsDir);
+    this.models = scanTextModels(this.modelsDir).filter((m) => this.scheduler.serves(m));
     this.projectors = projectorFiles(this.modelsDir);
     this.matched.clear();
     for (const m of this.models) {

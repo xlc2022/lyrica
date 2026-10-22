@@ -13,6 +13,7 @@ import { CPU_OPTION, validate, type GpuSettings } from "../src/placement.ts";
 import { Runtime, wavSeconds } from "../src/runtime.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { Speech } from "../src/speech.ts";
+import { WhisperCpp } from "../src/whispercpp.ts";
 import { StateFile } from "../src/state.ts";
 import { FakeBackend, FakeGpus } from "./fakes.ts";
 import { call, lyrica, pair, startHost } from "./helpers.ts";
@@ -265,5 +266,90 @@ describe("the speech server's client", () => {
     await expect(speech.load({ ...kokoro, id: "broken" }, CPU_OPTION)).rejects.toMatchObject({ status: 503, code: "model_unavailable", message: "The voice model has no vocabulary." });
     const gone = new Speech({ url: "http://127.0.0.1:1", models: "/models" });
     await expect(gone.unload(kokoro)).rejects.toMatchObject({ status: 503, code: "model_unavailable" });
+  });
+});
+
+describe("dictation on whisper.cpp", () => {
+  const WHISPER_CPP = "lyrica/huggingface/ggerganov/whisper.cpp/ggml-large-v3-turbo-q8_0.bin";
+  /** The models folder with a whisper.cpp file, and one named like it that isn't. */
+  function withWhisperCpp(): string {
+    const dir = modelsFolder();
+    mkdirSync(join(dir, WHISPER_CPP, ".."), { recursive: true });
+    const magic = Buffer.alloc(4);
+    magic.writeUInt32LE(0x67676d6c);
+    writeFileSync(join(dir, WHISPER_CPP), Buffer.concat([magic, Buffer.alloc(60)]));
+    writeFileSync(join(dir, WHISPER_CPP, "..", "ggml-pickled.bin"), Buffer.concat([Buffer.from([0x80, 0x04]), Buffer.alloc(62)]));
+    return dir;
+  }
+
+  it("lists a whisper.cpp file by its magic, under the GPUs' speech setting", () => {
+    const models = scanTextModels(withWhisperCpp());
+    const found = models.filter((m) => m.server === "whispercpp");
+    expect(found.map((m) => [m.id, m.kind, m.format])).toEqual([[WHISPER_CPP, "transcribe", "ggml"]]);
+    expect(found[0]!.capabilities.transcribe).toBe(true);
+    const gpus = [{ index: 0, name: "GPU", vendor: "nvidia" as const, total: 16 * 1024 ** 3, used: 0 }];
+    const all = (): GpuSettings => ({ excluded: false, keepFree: 0, servers: ["llamacpp", "speech"] });
+    expect(() => validate(found[0]!, { placement: { mode: "auto" }, contextLength: 448 }, gpus, all)).toThrow("contextLength isn't a setting for a dictation model");
+  });
+
+  it("is listed only on a host that runs whisper.cpp, where it is the dictation server", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-state-"));
+    const gpus = new FakeGpus([16]);
+    const serves = (whispercpp: boolean) => {
+      const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp: new FakeBackend(gpus), vllm: new FakeBackend(gpus), ...(whispercpp ? { whispercpp: new FakeBackend(gpus) } : {}) }, state: new StateFile(dir), log: () => {} });
+      const runtime = new Runtime({ scheduler, modelsDir: withWhisperCpp(), state: new StateFile(dir), log: () => {} });
+      runtime.scan();
+      return { dictation: scheduler.dictation, listed: runtime.models.some((m) => m.id === WHISPER_CPP) };
+    };
+    expect(serves(true)).toEqual({ dictation: "whispercpp", listed: true });
+    expect(serves(false)).toEqual({ dictation: "vllm", listed: false });
+  });
+
+  it("loads a second whisper.cpp model in place of the first, and the first again when asked", async () => {
+    const dir = withWhisperCpp();
+    const second = WHISPER_CPP.replace("q8_0", "q5_0");
+    writeFileSync(join(dir, second), readFileSync(join(dir, WHISPER_CPP)));
+    const gpus = new FakeGpus([16]);
+    const whispercpp = new FakeBackend(gpus);
+    const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp: new FakeBackend(gpus), vllm: new FakeBackend(gpus), whispercpp }, state: new StateFile(mkdtempSync(join(tmpdir(), "lyrica-state-"))), log: () => {} });
+    await scheduler.start([]);
+    const [a, b] = [WHISPER_CPP, second].map((id) => scanTextModels(dir).find((m) => m.id === id)!);
+    await scheduler.pin(a!, true);
+    await scheduler.run(b!, "chat", async () => {});
+    await scheduler.run(a!, "chat", async () => {});
+    expect(whispercpp.calls).toEqual([`load ${WHISPER_CPP}@0`, `unload ${WHISPER_CPP}`, `load ${second}@0`, `unload ${second}`, `load ${WHISPER_CPP}@0`]);
+  });
+
+  it("starts whisper-server for the model and GPU, and fails a load whose server exits", async () => {
+    const server = http.createServer((req, res) => void res.writeHead(req.url === "/health" ? 200 : 404).end());
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    open.push({ close: () => server.close() });
+    const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+    const status = join(serving, "status.json");
+    const whisper = new WhisperCpp(`http://127.0.0.1:${(server.address() as AddressInfo).port}`, { serving, status, models: "/models", startMs: 3000 });
+    const model = scanTextModels(withWhisperCpp()).find((m) => m.server === "whispercpp")!;
+    const asked = () => JSON.parse(readFileSync(join(serving, "whisper.json"), "utf8"));
+    expect(asked()).toEqual({ run: false });
+    // Stands in for gate.sh: reports the attempt it started, then that it exited.
+    const gate = (exited?: number) => {
+      const timer = setInterval(() => {
+        const a = asked();
+        if (a.run) writeFileSync(status, JSON.stringify({ attempt: a.attempt, ...(exited !== undefined ? { exited } : {}) }));
+      }, 20);
+      return () => clearInterval(timer);
+    };
+    let stop = gate();
+    await whisper.load(model, { ...CPU_OPTION, gpus: [1] });
+    stop();
+    expect(asked()).toMatchObject({ run: true, args: ["-m", `/models/${WHISPER_CPP}`, "--device", "1"] });
+    expect(whisper.url(model)).toMatch(/^http:/);
+    expect(() => whisper.url({ ...model, id: "other.bin" })).toThrow("running another model");
+    writeFileSync(status, "{}");
+    await whisper.unload(model);
+    expect(asked()).toEqual({ run: false });
+    stop = gate(1);
+    await expect(whisper.load(model, { ...CPU_OPTION, gpus: [0] })).rejects.toMatchObject({ status: 503, code: "model_unavailable", message: "whisper.cpp couldn't load this model." });
+    stop();
+    expect(asked()).toEqual({ run: false });
   });
 });

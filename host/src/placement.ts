@@ -68,8 +68,9 @@ const KV_BYTES = { f16: 2, q8_0: 1.0625, q4_0: 0.5625 };
 
 export const defaultGpu = (): GpuSettings => ({ servers: [...SERVERS], keepFree: GIB / 2, excluded: false });
 
+/** The GPU setting a model's server falls under: whisper.cpp's dictation is speech. */
 export function serverOf(model: TextModel): Server {
-  return model.server === "comfyui" ? "images" : model.server;
+  return model.server === "comfyui" ? "images" : model.server === "whispercpp" ? "speech" : model.server;
 }
 
 /** The longest context a model may be served with: what it was trained for, times its stretch. */
@@ -125,6 +126,8 @@ export function concurrentOf(model: TextModel, s: ModelSettings): number | null 
 /** Bytes for the weights, and for the KV cache at the model's context. */
 export function sizes(model: TextModel, s: ModelSettings): { weights: number; kv: number } {
   if (model.kind === "image" || model.kind === "speak") return { weights: Math.round(model.size * 1.1), kv: 0 };
+  // whisper.cpp: its file, and about half a gigabyte of buffers for the audio.
+  if (model.server === "whispercpp") return { weights: Math.round(model.size * 1.1) + GIB / 2, kv: 0 };
   const context = model.kind === "embedding" ? Math.min(contextOf(model, s), 8192) : contextOf(model, s);
   const perToken = model.kvPerToken !== null ? model.kvPerToken * KV_BYTES[s.kvCacheType ?? "f16"] : (2 * GIB) / DEFAULT_CONTEXT;
   const extras = (usesVision(model, s) ? model.mmprojSize ?? 0 : 0) + (usesMtp(model, s) ? model.mtpSize ?? 0 : 0);
@@ -266,7 +269,7 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
   if (server === "images") throw invalid("Image recipes run on ComfyUI's GPU and have no settings here.");
   if (server === "speech") {
     const extra = Object.keys(body).find((k) => k !== "placement");
-    if (extra) throw invalid(`${extra} isn't a setting for a voice model; it has a placement only.`);
+    if (extra) throw invalid(`${extra} isn't a setting for a ${model.kind === "speak" ? "voice" : "dictation"} model; it has a placement only.`);
     if (onCpu && (body.placement as Placement | undefined)?.mode !== "auto") throw invalid("Voice models run on the CPU on this host: the placement is { mode: \"auto\" }.");
     if (onCpu) return body as unknown as ModelSettings;
   }
@@ -335,7 +338,7 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
         throw invalid("Tensor parallel needs matching GPUs, two, four or eight of them; use pipeline parallel.");
       }
     }
-    if (server === "speech" && chosen.length > 1) throw invalid("A voice model runs on one GPU.");
+    if (server === "speech" && chosen.length > 1) throw invalid(`A ${model.kind === "speak" ? "voice" : "dictation"} model runs on one GPU.`);
     for (const k of Object.keys(p)) if (!["mode", "gpus", "split", "parallel"].includes(k)) throw invalid(`Unknown placement field: ${k}.`);
   } else if (p.mode !== "auto" || Object.keys(p).length !== 1) {
     throw invalid("placement is { mode: \"auto\" } or { mode: \"gpus\", gpus: [...] }.");

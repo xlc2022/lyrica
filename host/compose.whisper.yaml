@@ -1,0 +1,44 @@
+# Dictation on a CMP 100-210 (PCI ID 10de:1df4): install.sh adds this when it
+# finds one, since vLLM, which runs Whisper elsewhere, has no kernels for it.
+# whisper.cpp's whisper-server (whispercpp/Dockerfile), built to use int8 by
+# CI or here, runs the whisper.cpp model host-api names in
+# serving/whisper.json (whispercpp/gate.sh), on the GPU it names.
+volumes:
+  # gate.sh names the whisper-server it is running; host-api reads it.
+  whisper-status: {}
+
+services:
+  host-api:
+    environment:
+      WHISPER_URL: http://whispercpp:8080
+    volumes:
+      - whisper-status:/whisper-status:ro
+
+  whispercpp:
+    # The image CI publishes (prebuilt.sh), or one built here (compose.whisper.build.yaml).
+    image: ${WHISPER_IMAGE:?run install.sh}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    init: true
+    environment:
+      CUDA_DEVICE_ORDER: PCI_BUS_ID
+    networks: [models]
+    logging: { driver: none } # it prints what it transcribes
+    depends_on:
+      host-api: { condition: service_healthy }
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+      - serving:/serving:ro
+      - whisper-status:/status
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "/whisper/gate.sh", "--health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

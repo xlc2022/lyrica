@@ -69,10 +69,12 @@ the model server cuts short is cut short too.
 - `POST /v1/chat/completions`
 - `POST /v1/embeddings`
 - `POST /v1/audio/transcriptions`: dictation, on a `transcribe` model
-  (Whisper or Voxtral, on vLLM). OpenAI's `multipart/form-data`: `file`
+  (Whisper or Voxtral, on vLLM; or a whisper.cpp model on whisper.cpp's
+  `whisper-server`, which takes WAV only, on a host with a CMP 100-210).
+  OpenAI's `multipart/form-data`: `file`
   (the audio), `model`, and optionally `language` (`en`, `zh`; without it
   the model detects the language), `response_format` (`json` or `text`)
-  and `temperature`. Up to 64 MB. The form is passed to vLLM unchanged;
+  and `temperature`. Up to 64 MB. The form is passed to the server unchanged;
   host-api reads `model`, checks that `file` is there, and for usage reads a
   WAV file's header. Answers `{ "text": "..." }`.
 - `POST /v1/audio/speech`: her voice, on a `speak` model.
@@ -102,6 +104,7 @@ seconds of audio.
   "backend": "cuda",
   "servers": ["llamacpp", "vllm", "images", "speech"],
   "cpuServers": [],
+  "dictation": "vllm",
   "gpus": [{
     "index": 0,
     "name": "NVIDIA GeForce RTX 3090",
@@ -139,7 +142,10 @@ seconds of audio.
   the CPU here instead. The speech server runs voices on the CPU on a host
   without CUDA (ROCm, Vulkan, or no GPU), so there it is `["speech"]` and
   `speech` isn't in `servers`. A model on the CPU isn't listed under any
-  GPU.
+  GPU. `dictation`: the server dictation models run on, `vllm`, or
+  `whispercpp` on a host with a CMP 100-210, where vLLM can't run; only
+  that server's dictation models are listed. A whisper.cpp model falls
+  under the GPUs' `speech` setting and runs on one GPU.
 - `pciId`: the GPU's PCI vendor and device ID (`vendor:device`, lower-case
   hex), so a card that names itself as another model still shows what it
   is. Absent when the driver doesn't say.
@@ -441,7 +447,8 @@ Only the repository's name and revision leave the host.
   out entirely (a GPU kept for the display, for example). Every field is
   optional; the defaults are all the servers this host runs, 512 MiB, and
   not left out (left out for an integrated GPU beside a discrete one). A
-  server the host doesn't run is `invalid`.
+  server the host doesn't run is `invalid`. A CMP 100-210 never runs vLLM,
+  whose PyTorch has no kernels for it, whatever its settings say.
   `keepFree` must be less than the GPU's memory.
   Models it may no longer hold are unloaded first (`in_use` while a request
   runs on one). Answers `{ "settings": { ... } }`.

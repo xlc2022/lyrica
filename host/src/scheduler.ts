@@ -8,7 +8,7 @@
 // with a plain reason instead of running out of memory.
 import { HostError } from "./http.ts";
 import type { Backend } from "./backends.ts";
-import type { Gpu, GpuMonitor } from "./gpus.ts";
+import { CMP_100_210, type Gpu, type GpuMonitor } from "./gpus.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import {
@@ -21,6 +21,9 @@ export type Priority = "chat" | "image" | "background";
 export const PRIORITIES: Priority[] = ["chat", "image", "background"];
 
 const RANK: Record<Priority, number> = { chat: 0, image: 1, background: 2 };
+
+/** Servers with no kernels for a CMP 100-210 (sm_70): vLLM, whose PyTorch has none. */
+const NOT_ON_CMP: Server[] = ["vllm"];
 const GIB = 1024 ** 3;
 
 export const paused = () => new HostError(503, "paused", "The model host is paused.");
@@ -59,7 +62,7 @@ interface Job {
 
 export interface SchedulerOptions {
   monitor: GpuMonitor;
-  backends: { llamacpp: Backend; vllm: Backend; comfyui?: Backend; speech?: Backend };
+  backends: { llamacpp: Backend; vllm: Backend; comfyui?: Backend; speech?: Backend; whispercpp?: Backend };
   state: StateFile;
   log: Logger;
   now?: () => number;
@@ -137,6 +140,16 @@ export class Scheduler {
     return this.o.cpuServers ?? [];
   }
 
+  /** What runs dictation here: whisper.cpp beside a CMP 100-210, else vLLM. */
+  get dictation(): "whispercpp" | "vllm" {
+    return this.o.backends.whispercpp ? "whispercpp" : "vllm";
+  }
+
+  /** Whether this host has the model's server: whisper.cpp runs only beside a CMP 100-210. */
+  serves(model: TextModel): boolean {
+    return model.server !== "whispercpp" || !!this.o.backends.whispercpp;
+  }
+
   onCpu(model: TextModel): boolean {
     return this.cpuServers.includes(serverOf(model));
   }
@@ -169,7 +182,8 @@ export class Scheduler {
     const beside = gpu?.integrated === true && this.gpus.some((g) => !g.integrated);
     const servers = gpu?.integrated && this.gpuBackend === "rocm" ? (["llamacpp"] as Server[]) : defaultGpu().servers;
     const saved = this.o.state.get().gpuSettings[index] ?? { ...defaultGpu(), servers, excluded: beside };
-    return { ...saved, servers: saved.servers.filter((s) => this.servers.includes(s)) };
+    const cmp = gpu?.pciId === CMP_100_210;
+    return { ...saved, servers: saved.servers.filter((s) => this.servers.includes(s) && !(cmp && NOT_ON_CMP.includes(s))) };
   }
 
   settings(model: TextModel): ModelSettings {
@@ -205,6 +219,10 @@ export class Scheduler {
     if (model.server === "speech") {
       if (!this.o.backends.speech) throw new HostError(503, "model_unavailable", "This host has no speech server.");
       return this.o.backends.speech;
+    }
+    if (model.server === "whispercpp") {
+      if (!this.o.backends.whispercpp) throw new HostError(503, "model_unavailable", "This host has no whisper.cpp server.");
+      return this.o.backends.whispercpp;
     }
     return model.server === "vllm" ? this.o.backends.vllm : this.o.backends.llamacpp;
   }
@@ -403,8 +421,14 @@ export class Scheduler {
     const opts = this.optionsFor(job);
     const s = this.served(model);
     if (!opts.length) {
-      return new HostError(413, "too_big", job.gpu !== undefined ? `GPU ${job.gpu} doesn't allow images.` : `No GPU allows ${SERVER_NAMES[serverOf(model)]} for this model.`);
+      const server = serverOf(model);
+      if (job.gpu !== undefined) return new HostError(413, "too_big", `GPU ${job.gpu} doesn't allow images.`);
+      const cmpOnly = NOT_ON_CMP.includes(server) && this.gpus.some((g) => g.pciId === CMP_100_210);
+      return new HostError(413, "too_big", cmpOnly ? `${SERVER_NAMES[server]} can't run on a CMP 100-210, and no other GPU here allows it.` : `No GPU allows ${SERVER_NAMES[server]} for this model.`);
     }
+    // whisper.cpp holds one model at a time: loading this one replaces any other.
+    const rivals = model.server === "whispercpp" ? [...this.loaded.values()].filter((l) => l.model.server === "whispercpp" && l.model.id !== model.id) : [];
+    if (rivals.some((l) => !l.ready || l.active > 0)) return { wait: [...new Set(rivals.flatMap((l) => l.option.gpus))] };
     const loadedOn = (g: number) => [...this.loaded.values()].filter((l) => l.option.gpus.includes(g));
     const view = this.gpusFor(serverOf(model));
     const free = (g: number) => {
@@ -423,20 +447,20 @@ export class Scheduler {
     if (!possible.length) return new HostError(413, "too_big", neverFits(model, s, opts[0]!, empty, (i) => this.gpuSettings(i))!);
     const usable = possible.filter((o) => !o.gpus.some((g) => held.has(g)));
     // A way that needs no unloading beats one that does, whatever its order.
-    const roomy = usable.find((o) => !deficitOf(o)(new Set()));
-    if (roomy) return { option: roomy, evict: [] };
+    const roomy = usable.find((o) => !deficitOf(o)(new Set(rivals)));
+    if (roomy) return { option: roomy, evict: rivals };
     let waitFor: number[] | null = null;
     for (const o of usable) {
       const deficit = deficitOf(o);
       const idle = [...new Set(o.gpus.flatMap(loadedOn))].filter((l) => l.ready && l.active === 0 && !this.pinned(l.model.id)).sort((a, b) => a.lastUsed - b.lastUsed);
-      const evict = new Set<Loaded>();
+      const evict = new Set<Loaded>(rivals);
       for (const l of idle) {
         if (!deficit(evict)) break;
         evict.add(l);
       }
       if (!deficit(evict)) return { option: o, evict: [...evict] };
       // Would it fit once the busy models are done?
-      const all = new Set([...new Set(o.gpus.flatMap(loadedOn))].filter((l) => !this.pinned(l.model.id)));
+      const all = new Set([...rivals, ...new Set(o.gpus.flatMap(loadedOn))].filter((l) => rivals.includes(l) || !this.pinned(l.model.id)));
       if (!deficit(all) && !waitFor) waitFor = o.gpus;
     }
     if (waitFor) return { wait: waitFor };

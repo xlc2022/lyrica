@@ -222,6 +222,17 @@ describe("tokens and sizes", () => {
     expect(readdirSync(join(models, "lyrica/huggingface/org/repo/voices"))).toEqual(["af_heart.bin"]);
   });
 
+  it("takes a whisper.cpp file by its magic, and refuses one without it", async () => {
+    const hub = await fakeHub();
+    const { d } = setup(hub);
+    const listing = await d.listRepo("huggingface", "org/repo", undefined);
+    expect(listing.files.find((f) => f.path === "ggml-tiny.bin")).toMatchObject({ allowed: true });
+    const [tiny, pickled] = await d.request({ source: "huggingface", repo: "org/repo", files: ["ggml-tiny.bin", "ggml-pickled.bin"] });
+    await settle(d);
+    expect(d.get(tiny!.id)).toMatchObject({ state: "done", verified: true });
+    expect(d.get(pickled!.id)).toMatchObject({ state: "failed", error: "The file isn't a valid model file, so it was deleted." });
+  });
+
   it("keeps a signed link's query out of the list and the record", async () => {
     const hub = await fakeHub();
     const { d, data } = setup(hub);

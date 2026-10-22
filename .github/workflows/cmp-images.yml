@@ -1,5 +1,5 @@
 name: CMP images
-# The CMP 100-210's llama.cpp and sd-server images (host/prebuilt.sh). A host
+# The CMP 100-210's llama.cpp, sd-server and whisper-server images (host/prebuilt.sh). A host
 # with that card pulls them instead of compiling for half an hour. A pull
 # request only builds them; main, or a run started by hand on a branch,
 # publishes each tag it doesn't have yet (a tag names its content, so a
@@ -7,10 +7,10 @@ name: CMP images
 on:
   workflow_dispatch:
   pull_request:
-    paths: ["host/llamacpp/**", "host/sdcpp/**", "host/prebuilt.sh", ".github/workflows/cmp-images.yml"]
+    paths: ["host/llamacpp/**", "host/sdcpp/**", "host/whispercpp/**", "host/prebuilt.sh", ".github/workflows/cmp-images.yml"]
   push:
     branches: [main]
-    paths: ["host/llamacpp/**", "host/sdcpp/**", "host/prebuilt.sh", ".github/workflows/cmp-images.yml"]
+    paths: ["host/llamacpp/**", "host/sdcpp/**", "host/whispercpp/**", "host/prebuilt.sh", ".github/workflows/cmp-images.yml"]
 permissions:
   contents: read
 concurrency:
@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [llamacpp, sdcpp]
+        name: [llamacpp, sdcpp, whispercpp]
     steps:
       - uses: actions/checkout@v4
         with:

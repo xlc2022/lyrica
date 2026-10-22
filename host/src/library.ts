@@ -1,7 +1,8 @@
 // The text and speech models in the models folder: GGUF files for llama.cpp,
 // safetensors folders for vLLM (Whisper and Voxtral among them, for
-// dictation), and ONNX voice models for the speech server. Reads headers only.
-import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
+// dictation), whisper.cpp files for dictation on a CMP 100-210, and ONNX
+// voice models for the speech server. Reads headers only.
+import { closeSync, existsSync, lstatSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { readGguf, type GgufValue } from "./gguf.ts";
 
@@ -38,8 +39,8 @@ export interface TextModel {
   id: string;
   kind: "chat" | "embedding" | "image" | "transcribe" | "speak";
   /** ComfyUI runs image recipes, which the scheduler places like models. */
-  server: "llamacpp" | "vllm" | "comfyui" | "speech";
-  format: "gguf" | "safetensors" | "onnx";
+  server: "llamacpp" | "vllm" | "comfyui" | "speech" | "whispercpp";
+  format: "gguf" | "safetensors" | "onnx" | "ggml";
   size: number;
   identity: Identity;
   capabilities: Capabilities;
@@ -340,6 +341,33 @@ function transcribeModel(root: string, dir: string, config: any, size: number): 
   };
 }
 
+/** A whisper.cpp model: `ggml-….bin` starting with ggml's magic (0x67676d6c, little-endian). */
+export const WHISPER_FILE = /^ggml-[\w.-]+\.bin$/;
+
+function whisperModel(root: string, path: string): TextModel | null {
+  const head = Buffer.alloc(4);
+  const fd = openSync(path, "r");
+  try {
+    readSync(fd, head, 0, 4, 0);
+  } finally {
+    closeSync(fd);
+  }
+  if (head.readUInt32LE(0) !== 0x67676d6c) return null;
+  return {
+    id: relative(root, path).split("\\").join("/"),
+    kind: "transcribe",
+    server: "whispercpp",
+    format: "ggml",
+    size: statSync(path).size,
+    identity: { basename: basename(path, ".bin").slice(5), sizeLabel: null, finetune: null, baseModels: [] },
+    capabilities: { tools: false, vision: false, embedding: false, reasoning: null, transcribe: true },
+    contextLength: null,
+    kvPerToken: null,
+    mmproj: null,
+    remoteCode: false,
+  };
+}
+
 /** The languages the speech server reads, by a Kokoro voice's first letter (a, b: English; z: Mandarin). */
 const VOICE_LANGUAGES: Record<string, Voice["language"]> = { a: "en", b: "en", z: "zh" };
 
@@ -429,6 +457,11 @@ export function scanTextModels(root: string): TextModel[] {
         }
         try {
           const model = ggufModel(root, path, entries);
+          if (model) found.push(model);
+        } catch {}
+      } else if (st.isFile() && WHISPER_FILE.test(e)) {
+        try {
+          const model = whisperModel(root, path);
           if (model) found.push(model);
         } catch {}
       }

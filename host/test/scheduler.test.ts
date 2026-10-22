@@ -481,6 +481,24 @@ describe("requests", () => {
     expect((await plain.scheduler.run(textModel("m", 10), "chat", async () => {}).catch((e) => e)).code).toBe("too_big");
   });
 
+  it("never puts vLLM on a CMP 100-210, whose sm_70 its PyTorch has no kernels for", async () => {
+    const { scheduler, gpus } = setup([16, 24]);
+    gpus.gpus[0]!.pciId = "10de:1df4";
+    await scheduler.start([]);
+    expect(scheduler.gpuSettings(0).servers).toEqual(["llamacpp", "images", "speech"]);
+    // Not even when allowed by hand.
+    await scheduler.setGpu(0, { servers: ["llamacpp", "vllm", "images", "speech"], keepFree: GIB / 2, excluded: false });
+    expect(scheduler.gpuSettings(0).servers).toEqual(["llamacpp", "images", "speech"]);
+    expect(scheduler.gpuSettings(1).servers).toContain("vllm");
+    const v = textModel("v", 4, { server: "vllm", format: "safetensors" });
+    await scheduler.loadNow(v);
+    expect(gpus.on("v")).toEqual([1]);
+    // With the other GPU closed to it, the reason names the card.
+    await scheduler.setGpu(1, { servers: ["llamacpp"], keepFree: GIB / 2, excluded: false });
+    const err = await scheduler.run(textModel("w", 4, { server: "vllm", format: "safetensors" }), "chat", async () => {}).catch((e) => e);
+    expect(err.message).toBe("vLLM can't run on a CMP 100-210, and no other GPU here allows it.");
+  });
+
   it("on a Vulkan host, offers llama.cpp only", async () => {
     const { scheduler } = setup([24], { servers: ["llamacpp"] });
     await scheduler.start([]);

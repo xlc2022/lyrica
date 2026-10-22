@@ -11,7 +11,7 @@ import {
 import { basename, dirname, join, posix, relative, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Transform } from "node:stream";
-import { VOICE_FILE, checkRepo, checkRepoPath, verdict, type Card, type Hub, type HubFile, type Source } from "./hubs.ts";
+import { VOICE_FILE, WHISPER_FILE, checkRepo, checkRepoPath, verdict, type Card, type Hub, type HubFile, type Source } from "./hubs.ts";
 import { DownloadError, plainError, type Net } from "./net.ts";
 
 export interface RecordEntry {
@@ -493,7 +493,7 @@ export class Downloader {
 
 class ChecksumMismatch extends DownloadError {}
 
-/** The file is what its name says: a GGUF header, a readable safetensors header, an ONNX file or a plain voice array. */
+/** The file is what its name says: a GGUF header, a readable safetensors header, an ONNX file, a plain voice array or a whisper.cpp file. */
 function checkFormat(path: string, name: string): void {
   const head = Buffer.alloc(8);
   const fd = openSync(path, "r");
@@ -523,6 +523,8 @@ function checkFormat(path: string, name: string): void {
       throw new ChecksumMismatch("The voice file isn't a plain array of numbers, so it was deleted.");
     }
   }
+  // whisper.cpp's ggml format starts with its magic, 0x67676d6c little-endian.
+  if (WHISPER_FILE.test(name.toLowerCase()) && head.toString("latin1", 0, 4) !== "lmgg") bad();
   // ONNX is a protocol buffer that starts with its IR version (field 1, a varint).
   if (name.endsWith(".onnx") && head[0] !== 0x08) bad();
   if (name.endsWith(".safetensors")) {
