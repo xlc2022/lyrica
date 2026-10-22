@@ -178,8 +178,9 @@ function fakeModel() {
       } else {
         const verbatim = /^reply:\s*([\s\S]+)/.exec(said)?.[1];
         const text = command ? "The command finished." : plan ? "On it." : skill ? "Saved it." : verbatim ?? `You said: ${said.slice(0, 200)}. This reply comes from the fake ${chat.model}, in a few pieces.`;
-        // A message that says "slowly" streams slowly enough to be read aloud while it is written.
-        const pace = /slowly/.test(said) ? 300 : 30;
+        // A message that says "slowly" streams slowly enough to be read aloud while it is written. Only a short
+        // one: sleep's long instructions quote the conversations, and a sleep run paced so took ~8 s of a 10 s wait.
+        const pace = said.length < 1000 && /slowly/.test(said) ? 300 : 30;
         for (const piece of text.match(/.{1,12}/gs) ?? []) {
           send({ role: "assistant", content: piece });
           await new Promise((r) => setTimeout(r, pace));
