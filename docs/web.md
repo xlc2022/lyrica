@@ -526,8 +526,13 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   else vLLM): Placement (Auto or Choose GPUs, Split ratio or Parallelism,
   Memory share, Pinned through the host's pin route, the KV cache estimate),
   Memory (Context length "of <max>", Stretch, Original context, KV cache,
-  GPU layers, Flash attention; **Look up**, `POST …/lookup`, with a
-  **Repository** popover on `need_repo`), Throughput and Template (a custom
+  GPU layers, Flash attention, **Projector** (the setting `mmproj`, picked
+  from the host's `projectors`), Vision, MTP; **Look up**, `POST …/lookup`,
+  with a **Repository** popover on `need_repo`), **Missing files**
+  (`MissingCompanions`: for a model with an `origin` that lacks a projector
+  or MTP file, `GET …/hosts/:id/hub/files` for its repository, the missing
+  companions with the one the host would pair first, and **Download**,
+  `POST …/hosts/:id/downloads`), Throughput and Template (a custom
   file read in the browser). The foot: Cancel, **Save and reload** (`POST
   …/reload`) when the model is loaded and the serving draft changed, **Save
   anyway** after `above_recommended` (it repeats the refused save, reload
