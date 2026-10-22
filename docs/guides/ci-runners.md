@@ -33,7 +33,8 @@ That is why the VM is dedicated and sits behind its own firewall. The
 repository is public, and a fork's pull request can name these runners in
 its own copy of a workflow, so before a runner is online set Settings,
 Actions, General, "Approval for running fork pull request workflows from
-contributors" to "Require approval for all external contributors"
+contributors" to "Require approval for all external contributors", and
+while no workflow uses the runners, remove them from the repository
 (docs/ci.md, "Who can run code on it").
 
 ## Set up a runner

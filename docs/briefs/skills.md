@@ -62,8 +62,8 @@ can't open private.db, and Settings lists only the pools the display shows.
   thread without any starts no sandbox for them. Each thread caches them by
   checkout and HEAD, so an unchanged checkout costs one git call a turn. An
   edit to a SKILL.md shows once it is committed.
-- `save_skill`'s words are counted in daemon/test/context.test.ts's headroom
-  (`SKILL_TOOL_TEXT`), as Agent loop asked.
+- `save_skill`'s words are counted in daemon/test/context.test.ts's guidance
+  estimate (`SKILL_TOOL_TEXT`); its windows are sized from her first turn.
 - `read_memory` takes `s:<name>` and returns the body of an active skill in
   that thread's pools.
 
