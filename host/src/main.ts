@@ -50,14 +50,17 @@ const host = new Host({
 const comfy = new Comfy(env.COMFYUI_URL || "http://comfyui:8188", undefined, undefined, { serving, status: env.COMFYUI_STATUS || "/comfyui-status/comfyui.json" });
 // On a CMP 100-210, install.sh adds stable-diffusion.cpp, which makes the images in ComfyUI's place.
 const sdcpp = env.SDCPP_URL ? new SdCpp(env.SDCPP_URL, { serving, status: env.SDCPP_STATUS || "/sdcpp-status/sdcpp.json" }) : null;
-const cmpGpus = new Set(vendor === "nvidia" ? (await nvidiaMonitor.read().catch(() => [])).filter((g) => g.pciId === CMP_100_210).map((g) => g.index) : []);
+const nvidiaGpus = vendor === "nvidia" ? await nvidiaMonitor.read().catch(() => []) : [];
+const cmpGpus = new Set(nvidiaGpus.filter((g) => g.pciId === CMP_100_210).map((g) => g.index));
+const cmpOnly = cmpGpus.size > 0 && cmpGpus.size === nvidiaGpus.length;
 const scheduler = new Scheduler({
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,
   gpuBackend: backend,
   servers: backend === "vulkan" ? ["llamacpp"] : undefined,
   // The speech server runs on an NVIDIA GPU, and on the CPU anywhere else
-  // (its ONNX runtime has no ROCm or Vulkan build).
-  cpuServers: backend === "cuda" ? [] : ["speech"],
+  // (its ONNX runtime has no ROCm or Vulkan build), and on a host whose GPUs
+  // are all CMP 100-210s, which its cuDNN can't run.
+  cpuServers: backend === "cuda" && !cmpOnly ? [] : ["speech"],
   // llama.cpp can use an integrated GPU's shared memory on Vulkan, or on ROCm
   // when install.sh turned on unified memory (an APU without a discrete GPU).
   sharedMemory: backend === "vulkan" || (backend === "rocm" && env.LLAMA_UNIFIED_MEMORY === "1") ? ["llamacpp"] : [],

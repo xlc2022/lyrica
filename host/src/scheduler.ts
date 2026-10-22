@@ -8,7 +8,7 @@
 // with a plain reason instead of running out of memory.
 import { HostError } from "./http.ts";
 import type { Backend } from "./backends.ts";
-import type { Gpu, GpuMonitor } from "./gpus.ts";
+import { CMP_100_210, type Gpu, type GpuMonitor } from "./gpus.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import {
@@ -21,6 +21,9 @@ export type Priority = "chat" | "image" | "background";
 export const PRIORITIES: Priority[] = ["chat", "image", "background"];
 
 const RANK: Record<Priority, number> = { chat: 0, image: 1, background: 2 };
+
+/** Servers with no kernels for a CMP 100-210 (sm_70): vLLM's PyTorch, and the speech server's cuDNN. */
+const NOT_ON_CMP: Server[] = ["vllm", "speech"];
 const GIB = 1024 ** 3;
 
 export const paused = () => new HostError(503, "paused", "The model host is paused.");
@@ -169,7 +172,8 @@ export class Scheduler {
     const beside = gpu?.integrated === true && this.gpus.some((g) => !g.integrated);
     const servers = gpu?.integrated && this.gpuBackend === "rocm" ? (["llamacpp"] as Server[]) : defaultGpu().servers;
     const saved = this.o.state.get().gpuSettings[index] ?? { ...defaultGpu(), servers, excluded: beside };
-    return { ...saved, servers: saved.servers.filter((s) => this.servers.includes(s)) };
+    const cmp = gpu?.pciId === CMP_100_210;
+    return { ...saved, servers: saved.servers.filter((s) => this.servers.includes(s) && !(cmp && NOT_ON_CMP.includes(s))) };
   }
 
   settings(model: TextModel): ModelSettings {
@@ -403,7 +407,10 @@ export class Scheduler {
     const opts = this.optionsFor(job);
     const s = this.served(model);
     if (!opts.length) {
-      return new HostError(413, "too_big", job.gpu !== undefined ? `GPU ${job.gpu} doesn't allow images.` : `No GPU allows ${SERVER_NAMES[serverOf(model)]} for this model.`);
+      const server = serverOf(model);
+      if (job.gpu !== undefined) return new HostError(413, "too_big", `GPU ${job.gpu} doesn't allow images.`);
+      const cmpOnly = NOT_ON_CMP.includes(server) && this.gpus.some((g) => g.pciId === CMP_100_210);
+      return new HostError(413, "too_big", cmpOnly ? `${SERVER_NAMES[server]} can't run on a CMP 100-210, and no other GPU here allows it.` : `No GPU allows ${SERVER_NAMES[server]} for this model.`);
     }
     const loadedOn = (g: number) => [...this.loaded.values()].filter((l) => l.option.gpus.includes(g));
     const view = this.gpusFor(serverOf(model));

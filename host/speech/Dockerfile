@@ -13,8 +13,10 @@ RUN set -eux; \
     python -c "import onnxruntime, espeakng_loader, en_core_web_sm; from misaki import en, zh"
 
 COPY host/speech/server.py /opt/speech/server.py
-RUN python -m compileall -q /opt/speech && useradd --uid 10003 --no-create-home --home-dir /tmp speech
-USER 10003
+# It runs as the user that downloads the models (10001), so it reads them
+# whatever the mode of the models folder's lyrica/.
+RUN python -m compileall -q /opt/speech && useradd --uid 10001 --no-create-home --home-dir /tmp speech
+USER 10001
 # /tmp is a tmpfs (see compose.yaml): the only place it can write.
 ENV HOME=/tmp PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 ENTRYPOINT ["python", "/opt/speech/server.py"]
