@@ -213,6 +213,40 @@ pair stays as it was. A test answers whatever the machine said (refused,
 timed out), so any signed-in user can learn whether an address answers on
 a port, as they could from a sandbox with network.
 
+## Root steps
+
+She never runs `sudo` with a password and never writes sudoers: a root step
+on a machine goes to the user on a card (`run_as_root`,
+`core/src/workspace/root.ts`).
+
+- She writes the script on the machine with `write`, then calls
+  `run_as_root({ machine, path, why, sudoers? })`. `lyricad` reads the file
+  there as it is (`Workspace.rootScript`, the edit read, so key blocks
+  aren't masked and the hash is the file's), at most 16 KB of UTF-8 text,
+  and takes its SHA-256.
+- The card is a question card (one open per thread, Waiting on you,
+  Notifications, push, a tap or a typed answer), asking **Run as root on
+  <machine>?** with **Done** (recommended) and **Not now**. Its question
+  comes from the call's arguments (`rootAsk`); what it shows comes from the
+  tool's result (`RootStep`): her `why`, the command, the hash and the
+  script. The command checks the hash before running it: `echo '<sha256>
+  <path>' | sha256sum -c - && sudo bash '<path>'`, so a script changed
+  after the card was made doesn't run.
+- `sudoers`, when the same root command will be needed again: at most 8
+  lines for `/etc/sudoers.d/lyrica`, which the card shows with `sudo visudo
+  -f /etc/sudoers.d/lyrica`. `checkSudoers` refuses a line that isn't
+  `<account> ALL=(root) NOPASSWD: /absolute/program [fixed arguments]` for
+  the machine's account, or that holds a wildcard, a quote, a comma, a
+  shell character, `ALL`, or a program that runs anything (a shell, an
+  editor, an interpreter, `sudo`, `su`, `env`, `find`, …), and warns where
+  the program can reach root anyway (package managers, `docker`, `chmod`,
+  `cp`, `tee`, `systemctl edit`, …) or has no arguments fixed. The floor
+  above already refuses `/etc/sudoers*` to her `write` and `edit`.
+- The answer arrives in a later turn as `[Answer to q:<n>]` with the
+  option's label or the user's words; she checks the result then.
+- Not in an ordinary child thread (it asks its parent), a subagent, or
+  Plan mode.
+
 ## Proxmox
 
 A Proxmox machine (`kind: "proxmox"`) is reached over Proxmox's HTTPS API

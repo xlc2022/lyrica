@@ -1353,6 +1353,10 @@ NAS, and Proxmox nodes. Decided 2026-10-11 from
   becomes reachable from general threads. The sandbox's
   internet switch and allowed hosts cover the sandbox only: a machine's
   network is its own.
+- **Root stays with the user.** She never runs `sudo` with a password or
+  writes sudoers. A root step is a script she writes on the machine and
+  hands over on a question card with its hash; when a root command will
+  recur, she may offer exact sudoers lines, which the user adds.
 - **A machine has a mode limit**, the loosest mode she may use there: Ask,
   Accept edits or Auto. New machines start at **Ask**; the owner loosens each one
   as she proves reliable there. A call's mode is the strictest of the

@@ -895,7 +895,9 @@ Custom roles override built-ins by name.
   arrive in later turns. Routine and wake-up turns may ask in their thread.
   Pool step 8 adds `questions(thread, n, asked, closed, answer)`: only a
   pointer to the tool call's entry and its times and outcome. Words are read
-  from the encrypted log with `PoolReader.readAsk`; `questions` lists the
+  from the encrypted log with `PoolReader.readAsk` (`askOfCall`: a `threads`
+  ask's own words, or `rootAsk` for a `run_as_root` call, which
+  `isQuestionCall` also counts as a question card); `questions` lists the
   states and `openQuestion` returns the open one. `PoolStore.askQuestion`
   withdraws a previous question; `closeQuestion` records an option index,
   `"words"` or `"withdrawn"`. At most one question is open per thread.
@@ -1282,6 +1284,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   mode and switches each say which tools their reason has off; a tool is
   active only while no reason has it off, and comes back only if a reason
   took it away.
+- **Root steps** (`run_as_root`, registered by the threads extension when
+  `ThreadsHost.rootScript?(from, machine, path): Promise<{ bytes, account }>`
+  exists, never in an ordinary child thread): `rootStep(input, bytes,
+  account)` builds the `RootStep` `{ machine, path, sha256, command, script,
+  why, sudoers?: { line, warning? }[] }` (`checkSudoers`, `rootCommand`,
+  `ROOT_LIMITS`), returned as the result's `details.root`; the daemon passes
+  it on as `root` on the tool part and the `tool_end` event (`rootPart`).
+  See [workspace.md](workspace.md#root-steps).
 - **Workspace extension** (`createWorkspaceExtension(tools: ThreadTools)`):
   - A `bash` call with no `timeout` gets `BASH_TIMEOUT_S` (600 seconds),
     and the tool's schema says so; she gives a longer one for a long build.

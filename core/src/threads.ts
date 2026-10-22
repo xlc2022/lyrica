@@ -59,6 +59,33 @@ export function cleanAsk(input: unknown): Ask {
   if (a.context !== undefined && (typeof a.context !== "string" || a.context.trim().length > ASK_LIMITS.context)) invalid("ask", "context", a.context, "must be a string of at most 1200 characters");
   return { question, options, recommended: a.recommended, ...(a.context !== undefined ? { context: a.context.trim() } : {}) };
 }
+/** The tool whose card asks the person to run a script as root (docs/workspace.md, "Root steps"). */
+export const ROOT_TOOL = "run_as_root";
+
+/** The question a root step asks, for Notifications, the project card and her stored answer: from the call's arguments. */
+export function rootAsk(args: unknown): Ask | undefined {
+  const a = args as { machine?: unknown; why?: unknown } | null;
+  if (typeof a?.machine !== "string" || !a.machine || typeof a.why !== "string") return undefined;
+  return {
+    question: `Run as root on ${a.machine}?`.slice(0, 300),
+    context: a.why.trim().slice(0, 1200),
+    options: [
+      { label: "Done", consequence: "You ran it; she checks the result and carries on." },
+      { label: "Not now", consequence: "Nothing runs; she says what waits on it." },
+    ],
+    recommended: 0,
+  };
+}
+
+/** Whether a stored tool call is a question card: `threads` ask, or a root step. */
+export const isQuestionCall = (name: unknown, args: unknown): boolean =>
+  (name === "threads" && (args as { action?: unknown } | null)?.action === "ask") || name === ROOT_TOOL;
+
+/** A question card's question, from its stored call; undefined if it doesn't hold one. */
+export function askOfCall(name: unknown, args: unknown): Ask | undefined {
+  if (name === ROOT_TOOL) return rootAsk(args);
+  try { return cleanAsk(args); } catch { return undefined; }
+}
 export const ASK_GUIDELINE = "Ask on a card (threads ask) only for a fork that changes the person's goal, an output they will notice, or a step no one can undo. Ask once, without repeating it in prose. Put the recommended option first. Keep working on it where the step can be undone; otherwise end the turn. The answer arrives in a later turn.";
 
 /** The mark lyricad puts on what it shows the project chat about its threads (daemon/src/watch.ts). */

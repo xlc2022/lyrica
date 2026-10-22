@@ -1,6 +1,6 @@
-import { FROM_PARENT, LYRICA_REACTS, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
+import { FROM_PARENT, LYRICA_REACTS, ROOT_TOOL, ROUTINE, WAKEUP, WATCHING, type Reaction as StoredReaction } from "@lyrica/core";
 import { type ChecksResult, CHECKS_NOTICE, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, PAID_FALLBACK, type PaidFallback, USER_MESSAGE } from "@lyrica/extension";
-import type { Message, MessagePart, Pool, Reaction, ThreadRef, Told } from "./api.ts";
+import type { Message, MessagePart, Pool, Reaction, RootStep, ThreadRef, Told } from "./api.ts";
 
 // Stored Pi entries as the web UI shows them, and the memory markers that both
 // stored messages and the live stream carry.
@@ -20,6 +20,16 @@ export function imagePart(tool: string, details: unknown): Extract<MessagePart, 
   if (i.type !== "image" || !Array.isArray(i.paths) || !i.paths.length || !i.paths.every(p => typeof p === "string") || typeof i.model !== "string") return undefined;
   if (i.tier !== undefined && i.tier !== "fast" && i.tier !== "quality") return undefined;
   return { type: "image", paths: i.paths, model: i.model, ...(i.tier ? { tier: i.tier } : {}) };
+}
+
+/** A root step's card (docs/workspace.md, "Root steps"): what run_as_root read on the machine, as it stored it. */
+export function rootPart(tool: string, details: unknown): RootStep | undefined {
+  const r = (details as { root?: Partial<RootStep> } | undefined)?.root;
+  if (tool !== ROOT_TOOL || !r || typeof r !== "object") return undefined;
+  const str = (v: unknown): v is string => typeof v === "string";
+  if (![r.machine, r.path, r.sha256, r.command, r.script, r.why].every(str)) return undefined;
+  const sudoers = Array.isArray(r.sudoers) ? r.sudoers.filter((l) => str(l?.line)).map((l) => ({ line: l.line, ...(str(l.warning) ? { warning: l.warning } : {}) })) : undefined;
+  return { machine: r.machine!, path: r.path!, sha256: r.sha256!, command: r.command!, script: r.script!, why: r.why!, ...(sudoers?.length ? { sudoers } : {}) };
 }
 
 /** Fixed refusal metadata only; no provider text passes into the API. */
@@ -265,6 +275,8 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       call.part.result = shortResult(m.content);
       call.part.isError = !!m.isError;
       call.part.imageRefusal = imageRefusal(call.part.name, m.details);
+      const root = !m.isError ? rootPart(call.part.name, m.details) : undefined;
+      if (root) call.part.root = root;
       const threads = delegateThreads(call.part.name, m.details, pool, started);
       if (threads) call.part.threads = threads;
       const image = !m.isError ? imagePart(call.part.name, m.details) : undefined;

@@ -2,7 +2,7 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
-  ASK_GUIDELINE, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS,
+  ASK_GUIDELINE, isQuestionCall, ROOT_LIMITS, ROOT_TOOL, rootStep, SUDOERS_HOW, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS,
   type ChildInfo, type StartRequest, type ThreadsLimits,
 } from "@lyrica/core";
 import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
@@ -36,6 +36,12 @@ export interface ThreadsHost {
    */
   model?(from: ThreadContext, name: string): { label: string; already?: boolean; goesOn?: boolean };
   asked?(from: ThreadContext): Promise<void>;
+  /**
+   * A script she wrote on one of the thread's machines, for a root step's
+   * card, and the account she logs in there as. Without it, there is no
+   * run_as_root tool.
+   */
+  rootScript?(from: ThreadContext, machine: string, path: string): Promise<{ bytes: Buffer; account: string }>;
   questionsChanged?(userId: string, pool: ThreadContext["pool"], thread: string): void;
   draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
   /**
@@ -193,7 +199,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
     });
     pi.on("agent_start", () => { asked = false; nudged = false; });
     pi.on("message_end", (e) => {
-      if (e.message.role === "assistant" && e.message.content.some(c => c.type === "toolCall" && c.name === "threads" && c.arguments.action === "ask")) asked = true;
+      if (e.message.role === "assistant" && e.message.content.some(c => c.type === "toolCall" && isQuestionCall(c.name, c.arguments))) asked = true;
     });
     pi.on("turn_end", (e) => {
       if (!host || (child && !projectThread()) || asked || nudged || store.openQuestion(thread.threadId)) return;
@@ -445,6 +451,36 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           : `Started child thread [t:${made.id}], working in the background.`, { threads: [made.id] });
       },
     });
+
+    // A root step: never in an ordinary child thread, which asks its parent instead.
+    if (host?.rootScript && (!child || projectThread())) {
+      const read = host.rootScript.bind(host);
+      pi.registerTool({
+        name: ROOT_TOOL,
+        label: "Run as root",
+        description: `Ask the person, on a card, to run as root a script you wrote with write on one of your machines; the answer comes in a later turn. Optionally offer sudoers lines for a root command needed again (one command, full path, fixed arguments).`,
+        promptSnippet: "hand a root step on a machine to the person, on a card",
+        parameters: Type.Object({
+          machine: Type.String({ description: "One of your machines, by name." }),
+          path: Type.String({ description: "The script's absolute path there." }),
+          why: Type.String({ description: `What it does and why it needs root (at most ${ROOT_LIMITS.why} characters).` }),
+          sudoers: Type.Optional(Type.Array(Type.String(), { description: "Each \"<account> ALL=(root) NOPASSWD: /usr/bin/program args\"." })),
+        }),
+        async execute(id, p: { machine: string; path: string; why: string; sudoers?: string[] }, _signal, _update, ctx) {
+          const { bytes, account } = await read(thread, p.machine, p.path);
+          const step = rootStep(p, bytes, account);
+          syncEntries(ctx.sessionManager, store, thread.threadId);
+          const n = store.questionCall(thread.threadId, id);
+          if (n === undefined) throw new Error("run_as_root needs its stored tool call");
+          store.askQuestion(thread.threadId, n);
+          await host.asked?.(thread);
+          return {
+            content: [{ type: "text" as const, text: `The root step is on a card, with the hash ${step.sha256}: \`${step.command}\`${step.sudoers ? `, and ${step.sudoers.length} sudoers line(s) to add with ${SUDOERS_HOW}` : ""}. Carry on with what doesn't depend on it, or end the turn; the answer arrives in a later turn, and then check that it worked.` }],
+            details: { root: step },
+          };
+        },
+      });
+    }
   };
 }
 

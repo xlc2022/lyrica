@@ -133,4 +133,6 @@ tool each for A and B, prompt lines only where the thread has a machine).
 
 Done: brief; A (background commands) in its pull request. The tool
 definitions grew by about 200 tokens, so `daemon/test/context.test.ts`'s
-edge-compaction window went from 12,500 to 12,700. Next: B.
+edge-compaction window went from 12,500 to 12,700. B (root steps) built
+after it: `run_as_root` adds about 200 more tokens, so those windows are
+12,900 and 16,584. Next: D.

@@ -7,7 +7,7 @@ import type { Db } from "../db.ts";
 import { render, toStored, type UserId } from "../mentions.ts";
 import type { Profile } from "../profile.ts";
 import type { Interface, Pool } from "../types.ts";
-import { cleanAsk, type Ask, FROM_PARENT, ROUTINE, WAKEUP, WATCHING, type ThreadStep } from "../threads.ts";
+import { askOfCall, isQuestionCall, type Ask, FROM_PARENT, ROUTINE, WAKEUP, WATCHING, type ThreadStep } from "../threads.ts";
 import { citationsIn, ftsQuery, holdsEnough, indexText, kindOf, queryTerms, queryWords, searchWords, snippet, stripCitations, withoutWords, type Kind } from "./refs.ts";
 
 /** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
@@ -448,15 +448,14 @@ export class PoolReader {
     const entry = this.entryPage(thread, { before: n + 1, limit: 1 }).entries.find(e => e.n === n);
     const parts = (entry?.data as { message?: { content?: unknown } } | undefined)?.message?.content;
     if (!Array.isArray(parts)) return undefined;
-    const call = parts.find(p => p.type === "toolCall" && p.name === "threads" && p.arguments?.action === "ask");
-    if (!call) return undefined;
-    try { return cleanAsk(call.arguments); } catch { return undefined; }
+    const call = parts.find(p => p.type === "toolCall" && isQuestionCall(p.name, p.arguments));
+    return call ? askOfCall(call.name, call.arguments) : undefined;
   }
   questionCall(thread: string, id: string): number | undefined {
     const rows = this.db.prepare("SELECT n, data FROM entries WHERE thread = ? AND role = 'assistant' ORDER BY n DESC").all(thread) as { n: number; data: string }[];
     return rows.find(r => {
       const parts = (json(r.data) as { message?: { content?: unknown } }).message?.content;
-      return Array.isArray(parts) && parts.some(p => p.type === "toolCall" && p.id === id && p.name === "threads" && p.arguments?.action === "ask");
+      return Array.isArray(parts) && parts.some(p => p.type === "toolCall" && p.id === id && isQuestionCall(p.name, p.arguments));
     })?.n;
   }
 
