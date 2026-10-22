@@ -138,5 +138,5 @@ edge-compaction window went from 12,500 to 12,700. B (root steps) built
 after it: `run_as_root` adds about 200 more tokens, so those windows are
 12,900 and 16,584; B merged in #450 (stricter sudoers checks and a
 checked copy of the script after review). D (own account, user step 18)
-is in its pull request; C (the `model-host` built-in skill) is built after
-it.
+merged in #453 (the account is fixed once added; root is refused). C (the
+`model-host` built-in skill) is in its pull request: the last item.
