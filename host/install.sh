@@ -223,7 +223,7 @@ UNIFIED=
 # (compose.cmp.yaml). Its image, and sd-server's, are pulled when this host's
 # GPUs are among those CI built them for (prebuilt.sh); otherwise they're
 # built here for this host's GPUs, which takes a while the first time.
-CUDA_ARCHS= LLAMACPP_CMP_IMAGE= SDCPP_IMAGE=
+CUDA_ARCHS= LLAMACPP_CMP_IMAGE= SDCPP_IMAGE= WHISPER_IMAGE=
 if [[ $VENDOR == nvidia ]] && nvidia-smi --query-gpu=pci.device_id --format=csv,noheader 2>/dev/null | grep -qix 0x1df410de; then
   # shellcheck source=prebuilt.sh
   . ./prebuilt.sh
@@ -233,6 +233,12 @@ if [[ $VENDOR == nvidia ]] && nvidia-smi --query-gpu=pci.device_id --format=csv,
   prebuilt_pick llamacpp "$CUDA_ARCHS" "$START"
   LLAMACPP_CMP_IMAGE=${PREBUILT:-lyrica-host-llamacpp:cmp}
   [[ -n $PREBUILT ]] || FILES+=:compose.cmp.build.yaml
+  # Dictation through whisper.cpp, which runs on the CMP where vLLM can't (compose.whisper.yaml).
+  FILES+=:compose.whisper.yaml
+  [[ $NVIDIA_CDI == 1 ]] && FILES+=:compose.whisper.cdi.yaml
+  prebuilt_pick whispercpp "$CUDA_ARCHS" "$START"
+  WHISPER_IMAGE=${PREBUILT:-lyrica-host-whispercpp:cmp}
+  [[ -n $PREBUILT ]] || FILES+=:compose.whisper.build.yaml
   # The image GPU is one: stable-diffusion.cpp makes images in ComfyUI's place (compose.sdcpp.yaml).
   if nvidia-smi -i "${COMFY_GPU:-0}" --query-gpu=pci.device_id --format=csv,noheader 2>/dev/null | grep -qix 0x1df410de; then
     FILES+=:compose.sdcpp.yaml
@@ -285,6 +291,7 @@ COMFY_GPU=${COMFY_GPU:-0}
 CUDA_ARCHS=$CUDA_ARCHS
 LLAMACPP_CMP_IMAGE=$LLAMACPP_CMP_IMAGE
 SDCPP_IMAGE=$SDCPP_IMAGE
+WHISPER_IMAGE=$WHISPER_IMAGE
 RENDER_GID=${RENDER_GID:-}
 COMPOSE_FILE=$FILES
 HOST_VERSION=$VERSION

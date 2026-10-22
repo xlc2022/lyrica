@@ -69,9 +69,10 @@ describe("the CMP's prebuilt images", () => {
 
   it("leave building to the build overlays, which install.sh adds only as the fallback", () => {
     const read = (f: string) => readFileSync(join(host, f), "utf8");
-    for (const f of ["compose.cmp.yaml", "compose.sdcpp.yaml"]) expect(read(f), f).not.toMatch(/\bbuild:/);
-    for (const f of ["compose.cmp.build.yaml", "compose.sdcpp.build.yaml"]) expect(read(f), f).toMatch(/build:\n\s+context: \w+\n\s+args:\n\s+CUDA_ARCHS:/);
+    for (const f of ["compose.cmp.yaml", "compose.sdcpp.yaml", "compose.whisper.yaml"]) expect(read(f), f).not.toMatch(/\bbuild:/);
+    for (const f of ["compose.cmp.build.yaml", "compose.sdcpp.build.yaml", "compose.whisper.build.yaml"]) expect(read(f), f).toMatch(/build:\n\s+context: \w+\n\s+args:\n\s+CUDA_ARCHS:/);
     expect(read("install.sh")).toMatch(/\[\[ -n \$PREBUILT \]\] \|\| FILES\+=:compose\.cmp\.build\.yaml/);
     expect(read("install.sh")).toMatch(/\[\[ -n \$PREBUILT \]\] \|\| FILES\+=:compose\.sdcpp\.build\.yaml/);
+    expect(read("install.sh")).toMatch(/\[\[ -n \$PREBUILT \]\] \|\| FILES\+=:compose\.whisper\.build\.yaml/);
   });
 });

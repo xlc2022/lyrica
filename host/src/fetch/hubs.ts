@@ -54,11 +54,16 @@ const PICKLE = [".bin", ".pt", ".pth", ".ckpt", ".pkl", ".pickle"];
  * downloaded to be neither a pickle nor a zip.
  */
 export const VOICE_FILE = /(^|\/)voices\/[\w-]+\.bin$/;
+/**
+ * A whisper.cpp model (`ggml-….bin`): ggml's own format, which holds numbers
+ * and no code. Checked when downloaded to start with ggml's magic.
+ */
+export const WHISPER_FILE = /(^|\/)ggml-[\w.-]+\.bin$/;
 
 /** Whether a file may be downloaded, and why not. */
 export function verdict(path: string): { allowed: boolean; reason: string | null } {
   const name = path.toLowerCase();
-  if (VOICE_FILE.test(name)) return { allowed: true, reason: null };
+  if (VOICE_FILE.test(name) || WHISPER_FILE.test(name)) return { allowed: true, reason: null };
   if (PICKLE.some((e) => name.endsWith(e))) return { allowed: false, reason: "Pickle files can run code when loaded." };
   if (name.endsWith(".py")) return { allowed: false, reason: "Code is never downloaded." };
   if (!ALLOWED.some((e) => name.endsWith(e))) return { allowed: false, reason: "Only GGUF, safetensors and ONNX files, and the small files a model folder needs, are downloaded." };

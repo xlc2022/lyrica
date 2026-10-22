@@ -120,9 +120,9 @@ same as the code hosts update from.
 
 ## CMP images
 
-`cmp-images.yml` builds the CMP 100-210's llama.cpp and sd-server images
-(host/README.md) when `host/llamacpp/`, `host/sdcpp/` or `host/prebuilt.sh`
-change. A pull request only builds them. A push to `main`, or a run
+`cmp-images.yml` builds the CMP 100-210's llama.cpp, sd-server and
+whisper-server images (host/README.md) when `host/llamacpp/`,
+`host/sdcpp/`, `host/whispercpp/` or `host/prebuilt.sh` change. A pull request only builds them. A push to `main`, or a run
 started by hand on a branch (Actions, CMP images, Run workflow), logs in to the
 registry `host/prebuilt.sh` names with the job's token, which may write
 packages there, and pushes each image whose tag isn't published yet. A

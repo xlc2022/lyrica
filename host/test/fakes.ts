@@ -155,6 +155,9 @@ export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?
     "fake.onnx": Buffer.alloc(1000, 7),
     "voices/af_heart.bin": Buffer.alloc(1024, 0),
     "voices/zf_pickled.bin": Buffer.concat([Buffer.from([0x80, 0x04]), Buffer.alloc(1022, 0)]),
+    // whisper.cpp's ggml format starts with its magic, 0x67676d6c little-endian.
+    "ggml-tiny.bin": Buffer.concat([Buffer.from("lmgg", "latin1"), Buffer.alloc(996, 7)]),
+    "ggml-pickled.bin": Buffer.concat([Buffer.from([0x80, 0x04]), Buffer.alloc(998, 7)]),
     ...(opts.readme !== undefined ? { "README.md": Buffer.from(opts.readme) } : {}),
   };
   const base: Record<string, Buffer> = opts.base ? { "config.json": Buffer.from(opts.base.config), "README.md": Buffer.from(opts.base.readme) } : {};

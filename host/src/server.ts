@@ -243,6 +243,7 @@ export class Host {
       backend: this.runtime?.scheduler.gpuBackend ?? null,
       servers: this.runtime?.scheduler.servers ?? [],
       cpuServers: this.runtime?.scheduler.cpuServers ?? [],
+      dictation: this.runtime?.scheduler.dictation ?? "vllm",
       gpus: (await this.runtime?.scheduler.status()) ?? [],
       problems: [...(this.runtime?.scheduler.problems ?? []), ...(this.images?.problems ?? [])],
       downloads: { active: this.downloads?.active ?? 0 },

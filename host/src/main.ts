@@ -12,6 +12,7 @@ import { stdoutLog } from "./log.ts";
 import { Runtime } from "./runtime.ts";
 import { Scheduler } from "./scheduler.ts";
 import { SdCpp } from "./sdcpp.ts";
+import { WhisperCpp } from "./whispercpp.ts";
 import { Speech } from "./speech.ts";
 import { Host } from "./server.ts";
 
@@ -50,6 +51,8 @@ const host = new Host({
 const comfy = new Comfy(env.COMFYUI_URL || "http://comfyui:8188", undefined, undefined, { serving, status: env.COMFYUI_STATUS || "/comfyui-status/comfyui.json" });
 // On a CMP 100-210, install.sh adds stable-diffusion.cpp, which makes the images in ComfyUI's place.
 const sdcpp = env.SDCPP_URL ? new SdCpp(env.SDCPP_URL, { serving, status: env.SDCPP_STATUS || "/sdcpp-status/sdcpp.json" }) : null;
+// Beside a CMP 100-210, install.sh adds whisper.cpp for dictation, which vLLM can't do there.
+const whispercpp = env.WHISPER_URL ? new WhisperCpp(env.WHISPER_URL, { serving, status: env.WHISPER_STATUS || "/whisper-status/whisper.json", models: modelsDir }) : null;
 const cmpGpus = new Set(vendor === "nvidia" ? (await nvidiaMonitor.read().catch(() => [])).filter((g) => g.pciId === CMP_100_210).map((g) => g.index) : []);
 const scheduler = new Scheduler({
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,
@@ -66,6 +69,7 @@ const scheduler = new Scheduler({
     vllm: new Vllm({ url: env.VLLM_URL || "http://vllm:{port}", serving, models: modelsDir }),
     comfyui: sdcpp ?? comfy,
     speech: new Speech({ url: env.SPEECH_URL || "http://speech:8000", models: modelsDir }),
+    ...(whispercpp ? { whispercpp } : {}),
   },
   state: host.state,
   log: stdoutLog,

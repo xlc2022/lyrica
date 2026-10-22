@@ -1,0 +1,9 @@
+# compose.whisper.yaml's whisper-server through CDI devices, as
+# compose.cdi.yaml does for the other servers: install.sh adds this after both.
+services:
+  whispercpp:
+    devices: [nvidia.com/gpu=all]
+    deploy:
+      resources:
+        reservations:
+          devices: !reset []

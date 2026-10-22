@@ -24,8 +24,9 @@ Transcripts were accurate in both languages. Flash attention off was
 
 1. **The server.** `host/whispercpp/Dockerfile` builds `whisper-server` at
    a pinned commit (v1.9.5, `d1be6fde`), static ggml, with
-   `GGML_CUDA_FORCE_MMQ=ON` for `70-real`, into the CUDA runtime image,
-   with a workdir other than `/app`. It is a third prebuilt image
+   `GGML_CUDA_FORCE_MMQ=ON`, into the CUDA runtime image. It is a third
+   prebuilt image, built for the same CUDA list as llama.cpp's since it may
+   run on any GPU of the host
    (`host/prebuilt.sh`, `cmp-images.yml`). `install.sh` adds
    `compose.whisper.yaml` on a host with a CMP. Like sd-server, it runs as
    10001, on the models network only, logs nothing and saves nothing.
@@ -36,7 +37,9 @@ Transcripts were accurate in both languages. Flash attention off was
    /v1/audio/transcriptions`, and stops it when the model unloads.
 3. **The model.** host-api lists a whisper.cpp model file (`ggml-*.bin`
    whose first four bytes are ggml's magic) as a dictation model on the
-   new `whisper` server, placed on one GPU like a voice. fetch accepts
+   `whispercpp` server, placed on one GPU like a voice and under the GPUs'
+   speech setting. Only the host's own dictation server's models are
+   listed, and the status says which it is (`dictation`). fetch accepts
    such a `.bin` after checking the magic (today every `.bin` but a
    voice is refused as a possible pickle). The starter download is
    large-v3-turbo q8_0.

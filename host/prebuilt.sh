@@ -1,4 +1,4 @@
-# The CMP 100-210's own images (llamacpp/, sdcpp/), built by CI
+# The CMP 100-210's own images (llamacpp/, sdcpp/, whispercpp/), built by CI
 # (.github/workflows/cmp-images.yml) and pulled by install.sh, which builds
 # them here only when a pull can't be had. Sourced by both, so they agree on
 # where the images are, what they're built for and what they're tagged.
@@ -7,13 +7,14 @@
 # such as a Forgejo instance's.
 PREBUILT_REGISTRY=${LYRICA_HOST_REGISTRY:-ghcr.io/xlc2022}
 
-# The CUDA capabilities each published image is built for. llama.cpp runs on
-# every GPU of the host, so its list covers the cards a CMP is likely to sit
-# beside; sd-server runs on the CMP alone.
+# The CUDA capabilities each published image is built for. llama.cpp and
+# whisper-server run on any GPU of the host, so their list covers the cards a
+# CMP is likely to sit beside; sd-server runs on the CMP alone.
 prebuilt_archs() {
   case $1 in
     llamacpp) echo "70-real;75-real;80-real;86-real;89-real;120-real" ;;
     sdcpp) echo "70-real" ;;
+    whispercpp) echo "70-real;75-real;80-real;86-real;89-real;120-real" ;;
   esac
 }
 

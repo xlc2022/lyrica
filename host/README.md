@@ -278,6 +278,19 @@ per host, and Lyrica's router filters create tiers by it.
 
 - **Dictation** models (Whisper, Voxtral) are safetensors folders, served by
   vLLM on `/v1/audio/transcriptions` and placed like any vLLM model.
+  - On a host with a CMP 100-210, whose sm_70 vLLM has no kernels for,
+    `install.sh` adds `compose.whisper.yaml` and dictation runs on
+    whisper.cpp instead: `whisper-server` (`whispercpp/Dockerfile`, v1.9.5
+    built with `GGML_CUDA_FORCE_MMQ`, pulled or built like the CMP's
+    llama.cpp) serves whisper.cpp model files (`ggml-*.bin`, checked for
+    ggml's magic when downloaded and listed) with flash attention on. It
+    takes its model as start-up arguments, so `whispercpp/gate.sh` starts
+    it for the model and GPU host-api names in `serving/whisper.json` and
+    stops it when the model unloads; one runs at a time. It takes WAV only,
+    falls under the GPUs' speech setting, runs as 10001, has no route out,
+    logs nothing and saves nothing. On danube's CMP, large-v3-turbo q8_0
+    transcribes 180 s of English in about 6 s. Only that host's own
+    dictation server's models are listed.
 - **Voice** models are Kokoro's ONNX export: a folder with its `.onnx` file,
   its vocabulary and `voices/`. The speech server (`speech/`, our image)
   reads them in English and Mandarin, including English words in Mandarin
@@ -307,7 +320,9 @@ per host, and Lyrica's router filters create tiers by it.
     `voices/*.bin` (about 330 MB with all 103 voices);
   - dictation: `openai/whisper-large-v3-turbo` at
     `41f01f3fe87f28c78e2fbf8b568835947dd65ed9`: `model.safetensors` and
-    its JSON and text files (about 1.6 GB).
+    its JSON and text files (about 1.6 GB); on a host with a CMP,
+    `ggerganov/whisper.cpp` at `5359861c739e955e79d9a303bcbc70fb988958b1`:
+    `ggml-large-v3-turbo-q8_0.bin` (about 874 MB).
 - **Keeping them loaded.** Pin both, so speaking and dictation never wait
   for a load. Whisper takes about 2.2 GB of a GPU and Kokoro about 1 GB.
   On a host with one large GPU, place both on it (Whisper with a vLLM

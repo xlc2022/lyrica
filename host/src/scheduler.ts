@@ -62,7 +62,7 @@ interface Job {
 
 export interface SchedulerOptions {
   monitor: GpuMonitor;
-  backends: { llamacpp: Backend; vllm: Backend; comfyui?: Backend; speech?: Backend };
+  backends: { llamacpp: Backend; vllm: Backend; comfyui?: Backend; speech?: Backend; whispercpp?: Backend };
   state: StateFile;
   log: Logger;
   now?: () => number;
@@ -140,6 +140,16 @@ export class Scheduler {
     return this.o.cpuServers ?? [];
   }
 
+  /** What runs dictation here: whisper.cpp beside a CMP 100-210, else vLLM. */
+  get dictation(): "whispercpp" | "vllm" {
+    return this.o.backends.whispercpp ? "whispercpp" : "vllm";
+  }
+
+  /** Whether this host has the model's server: whisper.cpp runs only beside a CMP 100-210. */
+  serves(model: TextModel): boolean {
+    return model.server !== "whispercpp" || !!this.o.backends.whispercpp;
+  }
+
   onCpu(model: TextModel): boolean {
     return this.cpuServers.includes(serverOf(model));
   }
@@ -209,6 +219,10 @@ export class Scheduler {
     if (model.server === "speech") {
       if (!this.o.backends.speech) throw new HostError(503, "model_unavailable", "This host has no speech server.");
       return this.o.backends.speech;
+    }
+    if (model.server === "whispercpp") {
+      if (!this.o.backends.whispercpp) throw new HostError(503, "model_unavailable", "This host has no whisper.cpp server.");
+      return this.o.backends.whispercpp;
     }
     return model.server === "vllm" ? this.o.backends.vllm : this.o.backends.llamacpp;
   }

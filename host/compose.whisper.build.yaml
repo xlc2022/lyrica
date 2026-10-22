@@ -1,0 +1,8 @@
+# compose.whisper.yaml's whisper-server built here, for this host's GPUs:
+# install.sh adds this when the published image can't be used.
+services:
+  whispercpp:
+    build:
+      context: whispercpp
+      args:
+        CUDA_ARCHS: ${CUDA_ARCHS:?run install.sh}
