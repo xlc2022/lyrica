@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { INTERRUPTED } from "@lyrica/extension";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
 import type { EndpointInfo, MachineProbe, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary, ThreadUsage } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
@@ -295,7 +296,7 @@ describe("child threads", () => {
     release();
   });
 
-  it("Lock stops a working child; a restart leaves one idle and tells the parent", async () => {
+  it("Lock stops a working child; a restart leaves one idle, says so in it, and tells and wakes the parent", async () => {
     const rt = await runtime();
     const first = await setup({}, rt);
     first.parent.push(start("Long job", "Work for a long time."), { text: "Started." });
@@ -303,7 +304,8 @@ describe("child threads", () => {
     const id = toolEnd(await first.say("start a long job"))!.threads![0]!.id;
     await until(first.list, (l) => l.find((t) => t.id === first.thread.id)!.children[0]?.status === "working");
 
-    // A restart while it works: idle afterwards, never resumed, and the parent is told.
+    // A restart while it works: idle afterwards, never resumed, and the parent is told and woken.
+    first.parent.push((c) => ({ text: JSON.stringify(c.messages).includes("interrupted when Lyrica restarted") ? "Heard." : "Missed it." }));
     await first.stop();
     const again = await daemon(rt);
     await browser(again.base).post("/api/unlock", { passphrase: "passphrase" });
@@ -312,6 +314,11 @@ describe("child threads", () => {
     expect(list.find((t) => t.id === first.thread.id)!.children[0]).toMatchObject({ id, status: "idle" });
     const page = (await ada.get<MessagePage>(`${first.path}/messages`)).body.messages;
     expect(page.filter((m) => m.role === "notice").map((m) => m.parts[0])).toEqual([expect.objectContaining({ text: expect.stringContaining("interrupted when Lyrica restarted") })]);
+    // The child says it was cut off, where its reply would be.
+    const cut = (await ada.get<MessagePage>(`${first.childPath(id)}/messages`)).body.messages.at(-1)!;
+    expect(cut).toMatchObject({ role: "assistant", error: INTERRUPTED });
+    // The parent's woken turn hears of it, to decide which to message on.
+    await until(async () => (await ada.get<MessagePage>(`${first.path}/messages`)).body.messages, (m) => m.some((x) => x.role === "assistant" && x.parts.some((p) => p.type === "text" && p.text === "Heard.")));
   });
 
   it("Lock stops working children, and tells the parent", async () => {

@@ -55,6 +55,16 @@ export function appendUserMessage(store: PoolStore, threadId: string, text: stri
   store.appendEntry(threadId, toStoredEntry(entry), entry.timestamp);
 }
 
+/** A shown notice of Lyrica's own (`customType`) at the end of a stored thread with no live session. */
+export function appendNotice(store: PoolStore, threadId: string, customType: string, text: string): void {
+  const last = store.loadEntries(threadId).filter((e) => (e as { type?: string }).type !== "session").at(-1) as { id: string } | undefined;
+  const entry = {
+    type: "custom_message", id: randomBytes(4).toString("hex"), parentId: last?.id ?? null, timestamp: new Date().toISOString(),
+    customType, content: text, display: true,
+  } as unknown as SessionEntry;
+  store.appendEntry(threadId, toStoredEntry(entry), entry.timestamp);
+}
+
 /**
  * Searchable text for an entry: what was said, tool calls by name and
  * arguments, and tool output. Lyrica's own per-turn context (recall, time)
