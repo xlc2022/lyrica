@@ -151,10 +151,16 @@ export function Confirm({ label, question, confirm, danger, options, onConfirm }
   );
 }
 
+/** A time of day as 24-hour HH:MM, as every time in the app is shown (docs/ux.md, "When a message was sent"). */
+export function clock(at: string | Date): string {
+  const d = new Date(at);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 export const shortTime = (iso: string) => {
   const d = new Date(iso);
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === now.toDateString()) return clock(d);
   if (now.getTime() - d.getTime() < 6 * 864e5) return d.toLocaleDateString([], { weekday: "short" });
   return d.toLocaleDateString([], { day: "numeric", month: "short" });
 };
@@ -162,7 +168,7 @@ export const shortTime = (iso: string) => {
 /** A wake-up's time in local HH:MM, with the date before it when it isn't today (docs/ux.md §6). */
 export function wakeTime(iso: string): string {
   const d = new Date(iso);
-  const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const hm = clock(d);
   return d.toDateString() === new Date().toDateString() ? hm : `${d.toLocaleDateString([], { day: "numeric", month: "short" })} ${hm}`;
 }
 

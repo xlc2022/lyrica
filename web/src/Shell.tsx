@@ -20,7 +20,7 @@ import { Flyout, useCanHover, useFlyout } from "./flyout.tsx";
 import { ProjectPage, ThreadsPage, stateWord } from "./Project.tsx";
 import { SearchGroups, searchable, useMessageSearch } from "./Search.tsx";
 import { ask, JUMP_EVENT, JUMP_KEY, keep, type JumpRequest } from "./links.ts";
-import { ErrorText, hidden, InlineRename, menuArrows, shortTime, Toast, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
+import { clock, ErrorText, hidden, InlineRename, menuArrows, shortTime, Toast, useAction, useDismiss, useLoad, useNow } from "./ui.tsx";
 
 export interface ShellContext {
   user: UserCard;
@@ -943,7 +943,7 @@ const greeting = (h: number) => (h < 5 ? "Good night" : h < 12 ? "Good morning" 
 function Welcome({ ctx }: { ctx: ShellContext }) {
   const now = useNow();
   const date = now.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
-  const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = clock(now);
   return (
     <main className="main">
       <PageHead ctx={ctx} title={<>Version <span className="ver">{ctx.build.version} · {ctx.build.build}</span></>} facts={<>{date} · <span className="num">{time}</span></>} />

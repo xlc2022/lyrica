@@ -17,7 +17,7 @@ const TYPES: Record<NotificationType, { glyph: string; label: string }> = {
   update: { glyph: "↻", label: "Thread update" },
   approval: { glyph: "✓", label: "Persona change" },
   suggestion: { glyph: "✎", label: "Persona suggestion" },
-  sleep: { glyph: "☾", label: "Last night" },
+  sleep: { glyph: "☾", label: "From sleep" },
   rollback: { glyph: "↶", label: "Update rolled back" },
 };
 const PAGE = 20;

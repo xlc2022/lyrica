@@ -2684,7 +2684,9 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     } catch (err) {
       if (!(err instanceof NoModel) && !(err instanceof CloudModelForbidden)) throw err;
       const label = override?.[0] && models.label(user.id, refId(override[0]));
-      return { ...list, ...(label ? { label } : {}), source: override?.length ? "thread" : "none", problem: (err as Error).message };
+      // An optional task nobody set says "nothing set" in its select; only the thread's own model, a choice made here, or a refusal is a problem.
+      const quiet = err instanceof NoModel && !override?.length && task !== (applies.code ? "code" : "chat");
+      return { ...list, ...(label ? { label } : {}), source: override?.length ? "thread" : "none", ...(quiet ? {} : { problem: (err as Error).message }) };
     }
   };
   const answered = threadId ? models.recentCalls(user.id, { threadId, limit: 1, speech: false })[0] : undefined;

@@ -511,7 +511,8 @@ things are".
 - **Notifications.** `GET …/notifications?type=&scope=&sort=&offset=&limit=`
   is one list over what waits for the user, built from where each thing
   lives: shares, question cards, permission requests in hosted threads,
-  child thread updates and threads waiting on them, her items from the night, her persona
+  child thread updates and threads waiting on them, her items from sleep (not a
+  persona item, which its suggestion or approval stands for), her persona
   suggestions, and, for administrators, persona changes to approve and an
   update that failed its probation and rolled back (`rollback`, for seven
   days after it, leading to Administration → Updates). Each

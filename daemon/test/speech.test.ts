@@ -139,6 +139,8 @@ describe("dictation", () => {
     // The General column names it, but without the thread's pick the Private column's model hears the clip.
     let settings = (await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body;
     expect(settings.models["speech.transcribe"]).toMatchObject({ source: "column", kind: "local" });
+    // An optional task nobody set says so in its select, with no problem beside it.
+    expect(settings.models["image.upscale"]).toEqual({ source: "none" });
     expect(settings.speech.transcribe).toMatchObject({ available: true, kind: "local" });
     expect((await s.ada.post(`${s.path}/transcribe`, wav(1), { "content-type": "audio/wav" })).status).toBe(200);
     expect(cloud.heard).toEqual([]);

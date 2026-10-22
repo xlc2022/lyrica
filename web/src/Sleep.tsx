@@ -13,7 +13,7 @@ import { plainCitations, poolWord, wordDiff } from "./memory.ts";
 import { readable } from "./mentions.ts";
 import { go, href, idHref, type Route } from "./route.ts";
 import { PageHead, PoolLock, type ShellContext } from "./Shell.tsx";
-import { ConfirmDialog, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { clock, ConfirmDialog, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 export interface SleepState {
   overview?: SleepOverview;
@@ -38,7 +38,6 @@ export function useSleepOverview(userId: string, display?: Display): SleepState 
   };
 }
 
-const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const SKIPPED: Record<NonNullable<SleepRunInfo["skipReason"]>, string> = { "no-key": "Skipped: no key", "endpoint-down": "Skipped: the endpoint was down", "no-activity": "Skipped: nothing new" };
 const PHASE_WORD = { consolidate: "consolidating", dream: "dreaming", wake: "waking" } as const;
 const KIND_WORD: Record<SleepItemInfo["kind"], string> = { thought: "thought", question: "question", persona: "persona suggestion" };
@@ -73,7 +72,7 @@ export function SleepCard({ ctx }: { ctx: ShellContext }) {
   });
   return (
     <section className="card" aria-labelledby="h-home-sleep">
-      <div className="section-head"><h2 id="h-home-sleep">Last night</h2><a href={href({ page: "sleep", userId })}>Sleep</a></div>
+      <div className="section-head"><h2 id="h-home-sleep">From sleep</h2><a href={href({ page: "sleep", userId })}>Sleep</a></div>
       <ErrorText error={ctx.sleep.error || error} />
       {o && (items.length ? <ul className="list sleep-items">{items.map((i) => (
         <li key={`${i.pool}/${i.id}`} className="sleep-item">

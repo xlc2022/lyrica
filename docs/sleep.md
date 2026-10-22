@@ -64,7 +64,10 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
 
 Along the way she keeps the few things she'd like to raise as **items** for
 the Sleep section: a question from consolidation, a thought or a persona
-suggestion from the dream.
+suggestion from the dream. She writes an item to the person ("you"), and
+`raise` turns down one that nearly repeats an item still open (`nearCopy`),
+so one subject is one item. In Notifications a persona item doesn't show:
+its suggestion or approval does.
 
 **Waking up.** A new thread starts with persona, WAKE, the page index, and how
 long it has been since she last talked in this pool. Items are not in it. A
