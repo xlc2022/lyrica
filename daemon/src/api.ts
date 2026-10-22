@@ -2160,12 +2160,17 @@ export interface HostDownload {
 
 /** Finished downloads, newest first across manageable hosts. */
 export interface DownloadHistory extends HistoryPage<{ endpointId: string; download: HostDownload }> {}
-/** GET …/threads/:pool/:id/usage: counted turns and subagents. */
+/**
+ * GET …/threads/:pool/:id/usage: counted turns and subagents. Tokens are `input` (every request read, cached reads included)
+ * plus `output`; totals folded before user step 17 count in `tokens` alone.
+ */
 export interface ThreadUsage {
   tokens: number;
+  input: number;
+  output: number;
   gpuMs?: number;
-  models: { label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[];
-  threads?: { threadId: string; tokens: number; gpuMs?: number }[];
+  models: { label: string; kind?: "local" | "cloud"; tokens: number; input: number; output: number; gpuMs?: number }[];
+  threads?: { threadId: string; tokens: number; input: number; output: number; gpuMs?: number }[];
 }
 
 /** GET/PUT/DELETE /api/u/:userId/push; POST …/push/test → 204 or 502 { status, reason }. */

@@ -45,7 +45,9 @@ describe("spend-share routes", () => {
       const usage = (await request<ThreadUsage>(`${path}/usage`)).body!;
       expect(usage.tokens).toBe(104);
       expect(usage.gpuMs).toBe(130);
-      expect(usage.threads).toEqual([{ threadId: project.id, tokens: 12, gpuMs: 30 }, { threadId: work.id, tokens: 92, gpuMs: 100 }]);
+      // Input and output split the total, except the 50 folded before the split was kept, which count in tokens alone.
+      expect(usage.threads).toEqual([{ threadId: project.id, tokens: 12, input: 10, output: 2, gpuMs: 30 }, { threadId: work.id, tokens: 92, input: 37, output: 5, gpuMs: 100 }]);
+      expect([usage.input, usage.output]).toEqual([47, 7]);
       expect((await request<ProjectOverview>(`${path}/overview`)).body?.tokens).toBe(usage.tokens);
       const calls = (await request<CallInfo[]>(`${u}/models/calls?project=${encodeURIComponent(project.id)}&pool=general`)).body!;
       expect(calls.map(c => [c.pool, c.threadId])).toEqual([["general", work.id], ["general", project.id]]);

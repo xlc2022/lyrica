@@ -198,37 +198,55 @@ export function askCompaction(meter: ContextMeter, summary: string, window: numb
 }
 
 /**
+ * One turn's counts and times, from its requests: each runs from the request
+ * (`request`) to its first token (`token`) to its end (`end`). Her meter and a
+ * subagent's call record both measure this way.
+ */
+export class PaceTracker {
+  private turn = { calls: 0, prompt: 0, read: 0, output: 0, processed: 0, ttft: 0, gen: 0 };
+  private started: number | undefined;
+  private first: number | undefined;
+
+  reset(): void { this.turn = { calls: 0, prompt: 0, read: 0, output: 0, processed: 0, ttft: 0, gen: 0 }; this.started = this.first = undefined; }
+  request(at = Date.now()): void { this.started = at; this.first = undefined; }
+  token(at = Date.now()): void { if (this.started !== undefined && this.first === undefined) this.first = at; }
+  end(u: { input: number; output: number; cacheRead: number; cacheWrite: number } | undefined, at = Date.now()): void {
+    if (this.started === undefined) return;
+    const t = this.turn;
+    const f = this.first ?? at;
+    t.calls++;
+    t.ttft += f - this.started;
+    t.gen += at - f;
+    if (u) {
+      t.output += u.output;
+      t.processed += u.input + u.cacheWrite;
+      t.prompt = u.input + u.cacheRead + u.cacheWrite;
+      t.read += t.prompt;
+    }
+    this.started = undefined;
+  }
+  /** The turn's pace so far, or none before a request ended. */
+  pace(window: number): Pace | undefined {
+    const t = this.turn;
+    return t.calls ? speeds({ promptTokens: t.prompt, readTokens: t.read, outputTokens: t.output, window, ttftMs: t.ttft, genMs: t.gen, processed: t.processed }) : undefined;
+  }
+}
+
+/**
  * Feeds the meter from Pi's events, and
  * answers `session_before_compact` with her summary when she
  * asked for one. Pi's automatic compaction (threshold or overflow) runs as Pi
  * makes it: its summary keeps the goal, progress and next steps.
  */
 export function registerContext(pi: ExtensionAPI, meter: ContextMeter): void {
-  let turn = { calls: 0, prompt: 0, read: 0, output: 0, processed: 0, ttft: 0, gen: 0 };
-  let started: number | undefined;
-  let first: number | undefined;
-  pi.on("agent_start", () => { turn = { calls: 0, prompt: 0, read: 0, output: 0, processed: 0, ttft: 0, gen: 0 }; });
-  pi.on("before_provider_request", () => { started = Date.now(); first = undefined; });
-  pi.on("message_update", (e) => { if (e.message.role === "assistant" && started !== undefined && first === undefined) first = Date.now(); });
-  pi.on("message_end", (e) => {
-    if (e.message.role !== "assistant" || started === undefined) return;
-    const end = Date.now();
-    const f = first ?? end;
-    const u = e.message.usage;
-    turn.calls++;
-    turn.ttft += f - started;
-    turn.gen += end - f;
-    if (u) {
-      turn.output += u.output;
-      turn.processed += u.input + u.cacheWrite;
-      turn.prompt = u.input + u.cacheRead + u.cacheWrite;
-      turn.read += turn.prompt;
-    }
-    started = undefined;
-  });
+  const tracker = new PaceTracker();
+  pi.on("agent_start", () => tracker.reset());
+  pi.on("before_provider_request", () => tracker.request());
+  pi.on("message_update", (e) => { if (e.message.role === "assistant") tracker.token(); });
+  pi.on("message_end", (e) => { if (e.message.role === "assistant") tracker.end(e.message.usage); });
   pi.on("agent_end", (_e, ctx) => {
     const window = ctx.model?.contextWindow ?? 0;
-    const pace = turn.calls ? speeds({ promptTokens: turn.prompt, readTokens: turn.read, outputTokens: turn.output, window, ttftMs: turn.ttft, genMs: turn.gen, processed: turn.processed }) : undefined;
+    const pace = tracker.pace(window);
     meter.compactions = ctx.sessionManager.getBranch().filter((e) => e.type === "compaction").length;
     meter.measure(ctx.getContextUsage()?.tokens, window, conversationTokens(ctx), pace);
   });

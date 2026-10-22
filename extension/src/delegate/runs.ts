@@ -8,6 +8,7 @@ import {
 } from "@lyrica/core";
 import type { ThreadContext } from "../index.ts";
 import { syncEntries, toStoredEntry } from "../record.ts";
+import { PaceTracker } from "../context.ts";
 import { openThreadSession } from "../session.ts";
 import { createMcpServersExtension } from "../mcp.ts";
 import { createWebExtension } from "../web.ts";
@@ -180,8 +181,20 @@ export class Subagent {
     usage: Usage = { inputTokens: 0, outputTokens: 0 },
   ) {
     this.usage = { ...usage };
+    // Its turns are measured as her own are, so its endpoint's speed counts them too (the sidebar's status panel).
+    const pace = new PaceTracker();
     session.subscribe((e) => {
       this.active = Date.now();
+      if (e.type === "agent_start") pace.reset();
+      // From turn_start rather than her meter's before_provider_request, which a session subscriber doesn't see:
+      // its time to first token then includes Pi's context building, so its prompt speed reads a little low.
+      else if (e.type === "turn_start") pace.request();
+      else if (e.type === "message_update" && e.message.role === "assistant") pace.token();
+      else if (e.type === "message_end" && e.message.role === "assistant") pace.end(e.message.usage);
+      else if (e.type === "agent_end") {
+        const p = pace.pace(session.model?.contextWindow ?? 0);
+        if (p) d.recordPace(this, p);
+      }
       // A build or test run can print nothing for a long while; its own timeout and timeoutMs bound it.
       if (e.type === "tool_execution_start") this.tools.add(e.toolCallId);
       else if (e.type === "tool_execution_end") this.tools.delete(e.toolCallId);
@@ -660,6 +673,12 @@ export class Delegation {
     for (const r of runs) r.stop("parent_changed", "the turns that started it were removed");
     await Promise.all(runs.map((r) => r.ended));
     this.store.forgetThreads(userId, pool, threads);
+  }
+
+  /** A subagent's finished turn's counts and times, on its call record. */
+  recordPace(sub: Subagent, pace: Parameters<Models["recordPace"]>[2]): void {
+    try { this.o.models.recordPace(sub.ctx.user.id, sub.ctx.threadId, pace, sub.role.name === "coder" ? "code" : "chat", sub.ctx.pool); }
+    catch { /* its user's database closed meanwhile */ }
   }
 
   /** Why a subagent may no longer go on, if its parent thread changed under it. */

@@ -367,6 +367,9 @@ export function speeds(p: Omit<Pace, "tokPerSec" | "promptTokPerSec">): Pace {
   return { ...p, ...(tok !== undefined ? { tokPerSec: tok } : {}), ...(prompt !== undefined ? { promptTokPerSec: prompt } : {}) };
 }
 
+/** One thread's tokens on one model: `input` and `output` split `tokens` where known; `gpuMs` for local models only. */
+export interface UsageRow { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; input: number; output: number; gpuMs?: number }
+
 /** An endpoint's call count, and its recent speeds when it has measured turns (Models.endpointUses). */
 export interface EndpointUse { endpointId: string; calls: number; tokPerSec?: number; promptTokPerSec?: number; speedCalls?: number }
 /** How many of an endpoint's latest measured turns its recent speed averages over, and how far back they may reach. */
@@ -1870,14 +1873,15 @@ export class Models {
         db.transaction(() => {
           const cutoff = (db.prepare("SELECT id FROM model_calls ORDER BY id DESC LIMIT 1 OFFSET ?").get(CALLS_KEPT) as { id: number } | undefined)?.id;
           if (cutoff === undefined) return;
-          db.prepare(`INSERT INTO call_totals (pool, thread, label, kind, tokens, gpu_ms, calls)
+          db.prepare(`INSERT INTO call_totals (pool, thread, label, kind, tokens, input_tokens, output_tokens, gpu_ms, calls)
             SELECT pool, thread, label, kind,
-              sum(coalesce(read_tokens, prompt_tokens, 0) + coalesce(output_tokens, 0)),
+              sum(coalesce(read_tokens, prompt_tokens, 0) + coalesce(output_tokens, 0)), sum(coalesce(read_tokens, prompt_tokens, 0)), sum(coalesce(output_tokens, 0)),
               sum(CASE WHEN kind = 'local' THEN coalesce(ttft_ms, 0) + coalesce(gen_ms, 0) ELSE 0 END), count(*)
             FROM model_calls WHERE id <= ? AND task IN ('chat', 'code') AND (prompt_tokens IS NOT NULL OR read_tokens IS NOT NULL OR output_tokens IS NOT NULL)
             GROUP BY pool, thread, label, kind
             ON CONFLICT (pool, thread, label, kind) DO UPDATE SET
-              tokens = tokens + excluded.tokens, gpu_ms = gpu_ms + excluded.gpu_ms, calls = calls + excluded.calls`).run(cutoff);
+              tokens = tokens + excluded.tokens, input_tokens = input_tokens + excluded.input_tokens, output_tokens = output_tokens + excluded.output_tokens,
+              gpu_ms = gpu_ms + excluded.gpu_ms, calls = calls + excluded.calls`).run(cutoff);
           db.prepare("DELETE FROM model_calls WHERE id <= ?").run(cutoff);
         })();
       });
@@ -2703,35 +2707,45 @@ export class Models {
    * doesn't make herself (Claude Code in her sandbox, counted by its relay):
    * no call record, only the count the usage view sums.
    */
-  addCallTotals(userId: string, pool: Pool, threadId: string, label: string, kind: "local" | "cloud", tokens: number): void {
-    if (!Number.isFinite(tokens) || tokens <= 0) return;
-    this.withUser(userId, (db) => db.prepare(`INSERT INTO call_totals (pool, thread, label, kind, tokens, gpu_ms, calls) VALUES (?, ?, ?, ?, ?, 0, 1)
-      ON CONFLICT (pool, thread, label, kind) DO UPDATE SET tokens = tokens + excluded.tokens, calls = calls + 1`).run(pool, threadId, label, kind, Math.round(tokens)));
+  addCallTotals(userId: string, pool: Pool, threadId: string, label: string, kind: "local" | "cloud", input: number, output: number): void {
+    const n = (v: number) => (Number.isFinite(v) && v > 0 ? Math.round(v) : 0);
+    const [i, o] = [n(input), n(output)];
+    if (!i && !o) return;
+    this.withUser(userId, (db) => db.prepare(`INSERT INTO call_totals (pool, thread, label, kind, tokens, input_tokens, output_tokens, gpu_ms, calls) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1)
+      ON CONFLICT (pool, thread, label, kind) DO UPDATE SET tokens = tokens + excluded.tokens, input_tokens = input_tokens + excluded.input_tokens,
+        output_tokens = output_tokens + excluded.output_tokens, calls = calls + 1`).run(pool, threadId, label, kind, i + o, i, o));
   }
 
-  /** Turns and recursively nested subagents, filtered by both pool and thread. */
-  usage(userId: string, pool: Pool, threadIds: string[]): { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[] {
+  /**
+   * Turns and recursively nested subagents, filtered by both pool and thread. A subagent's own turns count through its run, never its call records,
+   * so a project tree that lists it isn't counted twice; Claude Code run from a subagent's thread, which its run doesn't count, still counts there.
+   * `input` and `output` split `tokens` where it is known: totals folded before user step 17 count in `tokens` alone.
+   */
+  usage(userId: string, pool: Pool, threadIds: string[]): UsageRow[] {
     const rows = this.withUser(userId, (db) => db.prepare(`
-      SELECT thread AS threadId, label, kind, sum(tokens) AS tokens, sum(gpu_ms) AS gpuMs FROM (
+      SELECT thread AS threadId, label, kind, sum(tokens) AS tokens, sum(input) AS input, sum(output) AS output, sum(gpu_ms) AS gpuMs FROM (
         SELECT thread, label, kind, coalesce(read_tokens, prompt_tokens, 0) + coalesce(output_tokens, 0) AS tokens,
+          coalesce(read_tokens, prompt_tokens, 0) AS input, coalesce(output_tokens, 0) AS output,
           CASE WHEN kind = 'local' THEN coalesce(ttft_ms, 0) + coalesce(gen_ms, 0) ELSE 0 END AS gpu_ms
         FROM model_calls WHERE pool = @pool AND thread IN (SELECT value FROM json_each(@threads)) AND task IN ('chat', 'code')
-          AND (prompt_tokens IS NOT NULL OR read_tokens IS NOT NULL OR output_tokens IS NOT NULL)
-        UNION ALL SELECT thread, label, kind, tokens, gpu_ms FROM call_totals
+          AND (prompt_tokens IS NOT NULL OR read_tokens IS NOT NULL OR output_tokens IS NOT NULL) AND thread NOT IN (SELECT thread FROM subagent_runs WHERE pool = @pool)
+        UNION ALL SELECT thread, label, kind, tokens, input_tokens, output_tokens, gpu_ms FROM call_totals
           WHERE pool = @pool AND thread IN (SELECT value FROM json_each(@threads))
-      ) GROUP BY thread, label, kind`).all({ pool, threads: JSON.stringify(threadIds) })) as { threadId: string; label: string; kind: "local" | "cloud"; tokens: number; gpuMs: number }[];
-    const result: { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[] = rows.map(r => ({ threadId: r.threadId, label: r.label, kind: r.kind, tokens: r.tokens, ...(r.kind === "local" ? { gpuMs: r.gpuMs } : {}) }));
+            AND (label = 'Claude Code' OR thread NOT IN (SELECT thread FROM subagent_runs WHERE pool = @pool))
+      ) GROUP BY thread, label, kind`).all({ pool, threads: JSON.stringify(threadIds) })) as
+      { threadId: string; label: string; kind: "local" | "cloud"; tokens: number; input: number; output: number; gpuMs: number }[];
+    const result: UsageRow[] = rows.map(r => ({ threadId: r.threadId, label: r.label, kind: r.kind, tokens: r.tokens, input: r.input, output: r.output, ...(r.kind === "local" ? { gpuMs: r.gpuMs } : {}) }));
     const runs = this.withUser(userId, db => db.prepare(`WITH RECURSIVE descendants(root, thread) AS (
       SELECT value, value FROM json_each(@threads)
       UNION SELECT d.root, r.thread FROM descendants d JOIN subagent_runs r ON r.parent = d.thread AND r.pool = @pool
-    ) SELECT d.root AS threadId, r.model AS label, r.offering, r.input_tokens + r.output_tokens AS tokens
+    ) SELECT d.root AS threadId, r.model AS label, r.offering, r.input_tokens AS input, r.output_tokens AS output
       FROM descendants d JOIN subagent_runs r ON r.thread = d.thread AND r.pool = @pool
-      WHERE d.thread != d.root`).all({ pool, threads: JSON.stringify(threadIds) })) as { threadId: string; label: string; offering: string | null; tokens: number }[];
+      WHERE d.thread != d.root`).all({ pool, threads: JSON.stringify(threadIds) })) as { threadId: string; label: string; offering: string | null; input: number; output: number }[];
     for (const r of runs) {
       const kind = r.offering ? this.offering(userId, r.offering)?.endpoint.kind : undefined;
       const existing = result.find(x => x.threadId === r.threadId && x.label === r.label && x.kind === kind);
-      if (existing) existing.tokens += r.tokens;
-      else result.push({ threadId: r.threadId, label: r.label, ...(kind ? { kind } : {}), tokens: r.tokens });
+      if (existing) { existing.tokens += r.input + r.output; existing.input += r.input; existing.output += r.output; }
+      else result.push({ threadId: r.threadId, label: r.label, ...(kind ? { kind } : {}), tokens: r.input + r.output, input: r.input, output: r.output });
     }
     return result;
   }

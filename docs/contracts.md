@@ -469,7 +469,7 @@ class Models {                                              // new Models(keyrin
   recordPace(userId, threadId, pace, task?, pool?) / speedsByOffering(userId): Map<offeringId, { tokPerS?; promptTokPerS? }>   // medians over the last 20 calls
   usage(userId, pool, threadIds): { threadId; label; kind?: "local" | "cloud"; tokens; gpuMs? }[]
     // Calls plus durable folded counts plus subagent runs at every depth; pool AND thread filtered.
-  addCallTotals(userId, pool, threadId, label, kind, tokens): void   // adds one call to call_totals; Claude Code's, counted by its relay
+  addCallTotals(userId, pool, threadId, label, kind, input, output): void   // adds one call to call_totals; Claude Code's, counted by its relay
     // (RelaySpec/SandboxSpec.onUsage({ inputTokens, outputTokens }) → Workspace onClaudeCodeUsage(t, usage)), as label "Claude Code", kind cloud
   // Hosts and pairing
   pairHost(actor, { name, addresses, code }, { shared?, endpointId? }): Promise<Endpoint>   // endpointId: pair again, IDs kept
@@ -2215,13 +2215,17 @@ requires the addressed user's session; it returns no thread or memory text.
 ### Thread usage
 
 `GET /api/u/:userId/threads/:pool/:id/usage` → `ThreadUsage { tokens,
-gpuMs?, models: { label, kind?, tokens, gpuMs? }[], threads?: { threadId,
-tokens, gpuMs? }[] }`. Requires the addressed user's session and thread;
+input, output, gpuMs?, models: { label, kind?, tokens, input, output, gpuMs? }[],
+threads?: { threadId, tokens, input, output, gpuMs? }[] }`. `input` is every
+request's reads, cached reads included, and `output` what was written; they
+split `tokens`, except that totals folded before user step 17 count in
+`tokens` alone. Requires the addressed user's session and thread;
 missing thread is 404. Models sort by tokens descending. `threads` appears
 only for a project chat: the chat first, then descending tokens. The total
 is also `ProjectOverview.tokens`. User step 10 adds nullable
 `model_calls.read_tokens` and `call_totals` keyed by pool, thread, label,
-kind, with tokens, gpu_ms and calls. Pruning folds counted chat and code records
+kind, with tokens, gpu_ms and calls; expand-only user step 17 adds
+`input_tokens` and `output_tokens` (default 0). Pruning folds counted chat and code records
 before deleting them, in one transaction; forgetting removes their totals.
 
 ## Push notifications

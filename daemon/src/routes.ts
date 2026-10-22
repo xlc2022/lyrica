@@ -1425,13 +1425,15 @@ export function apiRoutes(d: Lyricad): Route[] {
         const rows = s().models.usage(user.id, pool, ids);
         const sum = (rs: typeof rows) => {
           const local = rs.filter(x => x.gpuMs !== undefined);
-          return { tokens: rs.reduce((n, x) => n + x.tokens, 0), ...(local.length ? { gpuMs: local.reduce((n, x) => n + x.gpuMs!, 0) } : {}) };
+          return { tokens: rs.reduce((n, x) => n + x.tokens, 0), input: rs.reduce((n, x) => n + x.input, 0), output: rs.reduce((n, x) => n + x.output, 0), ...(local.length ? { gpuMs: local.reduce((n, x) => n + x.gpuMs!, 0) } : {}) };
         };
         const models: Api.ThreadUsage["models"] = [];
         for (const row of rows) {
           let model = models.find(x => x.label === row.label && x.kind === row.kind);
-          if (!model) { model = { label: row.label, ...(row.kind ? { kind: row.kind } : {}), tokens: 0 }; models.push(model); }
+          if (!model) { model = { label: row.label, ...(row.kind ? { kind: row.kind } : {}), tokens: 0, input: 0, output: 0 }; models.push(model); }
           model.tokens += row.tokens;
+          model.input += row.input;
+          model.output += row.output;
           if (row.gpuMs !== undefined) model.gpuMs = (model.gpuMs ?? 0) + row.gpuMs;
         }
         models.sort((a, b) => b.tokens - a.tokens || a.label.localeCompare(b.label));

@@ -531,6 +531,24 @@ describe("user step 16 (project checks)", () => {
   });
 });
 
+describe("user step 17 (input and output in folded totals)", () => {
+  it("adds call_totals input and output to every released user schema, keeping folded totals and earlier readers", () => {
+    for (let version = 1; version < 17; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter((s) => s.version <= version);
+      migrate(db, "user", {}, previous);
+      const totals = version >= 10;
+      if (totals) db.prepare("INSERT INTO call_totals (pool, thread, label, kind, tokens, gpu_ms, calls) VALUES ('general', 'web/a', 'Local', 'local', 120, 30, 2)").run();
+      migrate(db, "user");
+      if (totals) expect(db.prepare("SELECT tokens, input_tokens, output_tokens, calls FROM call_totals").get(), `v${version}`).toEqual({ tokens: 120, input_tokens: 0, output_tokens: 0, calls: 2 });
+      expect(db.prepare("SELECT name FROM pragma_table_info('call_totals') WHERE name IN ('input_tokens', 'output_tokens')").all()).toHaveLength(2);
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      db.close();
+    }
+  });
+});
+
 describe("pool step 10 (skills)", () => {
   it("adds the skills table to every released pool schema, keeping earlier readers and thread data", () => {
     for (let version = 1; version < 10; version++) {

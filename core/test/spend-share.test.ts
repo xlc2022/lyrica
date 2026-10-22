@@ -31,20 +31,29 @@ describe("spend share", () => {
     run.run("general", "sub", "work", "Local", localRef.offeringId, 40, 8);
     run.run("general", "deep", "sub", "Removed", "gone", 50, 9);
     run.run("private", "other", "work", "Local", localRef.offeringId, 900, 90);
-    // Calls without counted turns never contribute, including a subagent's routing record.
-    db.prepare(`INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind) VALUES ('2026-01-01', 'general', 'sub', 'chat', 'gone', 'Removed', 'test', 'local')`).run();
+    // A subagent's own measured call record never contributes: its run counts it, so a tree listing both counts it once.
+    db.prepare(`INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, prompt_tokens, output_tokens, ttft_ms, gen_ms)
+      VALUES ('2026-01-01', 'general', 'sub', 'chat', 'gone', 'Removed', 'test', 'local', 40, 8, 100, 200)`).run();
     db.prepare("INSERT INTO call_totals (pool, thread, label, kind, tokens, gpu_ms, calls) VALUES ('general', 'chat', 'Local', 'local', 11, 30, 1)").run();
     const own = models.usage(ada.id, "general", ["work"]);
     expect(own.reduce((n, r) => n + r.tokens, 0)).toBe(27 + 48 + 59);
-    expect(own.find(r => r.label === "Removed")).toEqual({ threadId: "work", label: "Removed", tokens: 59 });
+    expect(own.find(r => r.label === "Removed")).toEqual({ threadId: "work", label: "Removed", tokens: 59, input: 50, output: 9 });
     expect(own.find(r => r.label === "Local")?.gpuMs).toBeUndefined();
+    // Input and output split the total: the work thread's own cloud turn read 20 and wrote 7.
+    expect(own.find(r => r.label === "Cloud")).toMatchObject({ tokens: 27, input: 20, output: 7 });
+    expect(models.usage(ada.id, "general", ["sub"]).reduce((n, r) => n + r.tokens, 0)).toBe(59);
+    // Claude Code run from the subagent's thread isn't in its run, so it still counts there.
+    models.addCallTotals(ada.id, "general", "sub", "Claude Code", "cloud", 30, 4);
+    expect(models.usage(ada.id, "general", ["sub"]).find((r) => r.label === "Claude Code")).toEqual({ threadId: "sub", label: "Claude Code", kind: "cloud", tokens: 34, input: 30, output: 4 });
+    db.prepare("DELETE FROM call_totals WHERE thread = 'sub'").run();
     const project = models.usage(ada.id, "general", ["chat", "work"]);
     expect(project.reduce((n, r) => n + r.tokens, 0)).toBe(180);
     expect(project.reduce((n, r) => n + (r.gpuMs ?? 0), 0)).toBe(330);
     for (let i = 0; i < 501; i++) db.prepare(`INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind) VALUES ('2026-01-01', 'general', 'unrelated', 'title', 'gone', 'Title', 'test', 'local')`).run();
     models.prune();
     expect(models.usage(ada.id, "general", ["chat", "work"])).toEqual(project);
-    expect(db.prepare("SELECT sum(calls) AS n FROM call_totals WHERE pool = 'general'").get()).toEqual({ n: 3 });
+    // The subagent's folded record is kept, and still left out of the sums.
+    expect(db.prepare("SELECT sum(calls) AS n FROM call_totals WHERE pool = 'general'").get()).toEqual({ n: 4 });
     // Holes left by forgetting calls must not trim below the latest 500.
     db.prepare(`INSERT INTO model_calls (id, at, pool, thread, task, offering, label, endpoint, kind)
       SELECT max(id) + 1000, '2026-01-01', 'general', 'unrelated', 'title', 'gone', 'Title', 'test', 'local' FROM model_calls`).run();
@@ -76,9 +85,9 @@ describe("spend share", () => {
 
   it("shows Claude Code's tokens, counted by its relay, as the thread's own cloud row", async () => {
     const { ada, models } = await withUsageModels();
-    models.addCallTotals(ada.id, "general", "work", "Claude Code", "cloud", 2112 + 34);
-    models.addCallTotals(ada.id, "general", "work", "Claude Code", "cloud", 45 + 7);
-    expect(models.usage(ada.id, "general", ["work"])).toEqual([{ threadId: "work", label: "Claude Code", kind: "cloud", tokens: 2198 }]);
+    models.addCallTotals(ada.id, "general", "work", "Claude Code", "cloud", 2112, 34);
+    models.addCallTotals(ada.id, "general", "work", "Claude Code", "cloud", 45, 7);
+    expect(models.usage(ada.id, "general", ["work"])).toEqual([{ threadId: "work", label: "Claude Code", kind: "cloud", tokens: 2198, input: 2157, output: 41 }]);
     expect(models.usage(ada.id, "private", ["work"])).toEqual([]);
   });
 });

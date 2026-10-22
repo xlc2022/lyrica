@@ -94,6 +94,8 @@ describe("delegate", () => {
     const child = parent.view.own.listThreads({ parent: parent.threadId })[0]!;
     expect(s.models.callContext(s.ada.id, "general", child.id).contextLimit).toBe(8192);
     expect(s.models.recentCalls(s.ada.id, { threadId: child.id })[0]).toMatchObject({ task: "code" });
+    // Its turn is measured on its call record, so its endpoint's speed counts it.
+    expect(s.models.recentCalls(s.ada.id, { threadId: child.id })[0]!.pace?.outputTokens).toBeGreaterThan(0);
     expect(s.cloud.requests).toHaveLength(0);
   });
 

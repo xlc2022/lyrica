@@ -284,6 +284,11 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principles 2 and 6: a project's checks, the person's commands run when a code turn ends. Adds a column only.
     version: 16,
     run(db) { addColumns(db, [["project_settings", "checks", "TEXT NOT NULL DEFAULT '[]'"]]); },
+  }, {
+    // Principle 8: folded token totals keep input and output apart, for the usage table. Adds columns only;
+    // totals folded before this step have neither, so their tokens count in Total alone.
+    version: 17,
+    run(db) { addColumns(db, [["call_totals", "input_tokens", "INTEGER NOT NULL DEFAULT 0"], ["call_totals", "output_tokens", "INTEGER NOT NULL DEFAULT 0"]]); },
   }],
   pool: [{
     version: 1, contract: true,

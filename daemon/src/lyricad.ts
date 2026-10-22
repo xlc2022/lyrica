@@ -438,7 +438,7 @@ export class Lyricad implements Drainable {
       onPullCreate: (t, pr) => forge.record(t.userId, t.pool, t.threadId, pr.repo, pr.number),
       // Claude Code's tokens, counted by the run's relay, join that thread's usage as their own row.
       onClaudeCodeUsage: (t, u) => {
-        try { models.addCallTotals(t.userId, t.pool, t.threadId, "Claude Code", "cloud", u.inputTokens + u.outputTokens); }
+        try { models.addCallTotals(t.userId, t.pool, t.threadId, "Claude Code", "cloud", u.inputTokens, u.outputTokens); }
         catch (err) { this.log(`Claude Code usage not recorded: ${(err as Error).message}`); }
       },
     });
