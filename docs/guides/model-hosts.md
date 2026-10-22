@@ -253,8 +253,8 @@ The owner chose these after the benchmark; the host's README names them
 and the exact revisions. The dashboard's Models section offers both under
 **Starters**, at these revisions, beside the chat and embedding starters;
 **Download** there is the quickest way. A starter shows only where the
-host runs its server on a GPU: the voice on NVIDIA hosts, dictation on
-hosts that run vLLM (not Vulkan). The voice starter takes three voices,
+host runs its server: the voice on every host (on the CPU except on
+NVIDIA), dictation on hosts that run vLLM (not Vulkan). The voice starter takes three voices,
 `zm_010`, `zf_001` and `af_maple`. For other voices, or where a starter
 doesn't show, do the same by hand, from the machine, where the dashboard
 port needs no password: list a repository's files first, then ask for
