@@ -1,3 +1,4 @@
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { setToolsOff } from "./gate.ts";
 
@@ -31,10 +32,16 @@ export function createTurnToolsExtension(): ExtensionFactory {
     let calls = 0, run = 0, last = "", stopped = false, notified = false, why = "";
     let wrapped = false;
     let empty = 0;
+    /** The thinking level to go back to after a retry without thinking. */
+    let thinking: ThinkingLevel | null = null;
     const repeats = new Map<string, number>();
     const refused = new Map<string, string>();
     // Back on as the run ends: the next prompt's first request is built before agent_start.
-    pi.on("agent_end", (_e, ctx) => { if (notified) setToolsOff(pi, ctx, "tool-limit", []); });
+    pi.on("agent_end", (_e, ctx) => {
+      if (notified) setToolsOff(pi, ctx, "tool-limit", []);
+      if (thinking) pi.setThinkingLevel(thinking);
+      thinking = null;
+    });
     pi.on("agent_start", () => {
       calls = run = empty = 0; last = why = ""; stopped = notified = wrapped = false;
       repeats.clear(); refused.clear();
@@ -62,6 +69,11 @@ export function createTurnToolsExtension(): ExtensionFactory {
       if (m.role === "assistant" && m.stopReason !== "error" && m.stopReason !== "aborted"
         && !m.content.some((c) => c.type === "toolCall" || (c.type === "text" && c.text.trim()))) {
         if (++empty === 1) {
+          // Thinking that ran until the reply limit would only do it again: the retry goes without it.
+          if (m.stopReason === "length" && pi.getThinkingLevel() !== "off") {
+            thinking = pi.getThinkingLevel();
+            pi.setThinkingLevel("off");
+          }
           pi.sendMessage({ customType: EMPTY_REPLY_RETRY, content: CARRY_ON, display: false }, { deliverAs: "followUp", triggerTurn: true });
           return;
         }
