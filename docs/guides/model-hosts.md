@@ -101,7 +101,9 @@ paths has been tried on hardware.
 
 The CMP 100-210 (PCI ID `10de:1df4`) is a mining card with throttled FP16
 tensor cores. The script detects it and uses a llama.cpp built so
-quantized models use its int8 units. It downloads the image CI built
+quantized models use its int8 units and flash attention avoids the
+tensor cores, which reads prompts about three times as fast as the stock
+image. It downloads the image CI built
 (a few GB) when the host's GPUs are among those it covers, and otherwise
 builds it here, which took 25 minutes on a 4-core machine; it says which.
 When the image GPU (`COMFY_GPU`) is one, ComfyUI isn't started and

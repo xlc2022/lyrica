@@ -2,6 +2,11 @@
 # Its FP16 tensor cores are throttled, so llama.cpp is built to use int8
 # (llamacpp/Dockerfile): the image CI publishes (prebuilt.sh), or one built
 # here for this host's GPUs (compose.cmp.build.yaml), as install.sh chose.
+# GGML_CUDA_VOLTA_FA_TILE (llamacpp/volta-fa-tile.patch) moves flash attention
+# on sm_70 cards to the tile kernel; other cards' kernels don't change. A V100
+# beside the CMP would get it too, for a little less speed on long prompts.
 services:
   llamacpp:
     image: ${LLAMACPP_CMP_IMAGE:?run install.sh}
+    environment:
+      GGML_CUDA_VOLTA_FA_TILE: "1"

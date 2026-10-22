@@ -398,7 +398,11 @@ revoked. A revoked server must pair again.
     cores are throttled, `install.sh` adds `compose.cmp.yaml`. Its
     llama.cpp (`llamacpp/Dockerfile`) is built at the stock image's tag with
     `GGML_CUDA_FORCE_MMQ`, so quantized models use int8; that changes
-    nothing on Turing and newer cards. CI publishes it and sd-server's image
+    nothing on Turing and newer cards. A patch (`volta-fa-tile.patch`) lets
+    the overlay's `GGML_CUDA_VOLTA_FA_TILE` keep flash attention on sm_70
+    off the tensor cores, and host-api reads prompts on the CMP in steps of
+    2048 tokens (`ubatch-size`); together they read prompts about three
+    times as fast as the stock image. CI publishes it and sd-server's image
     (`.github/workflows/cmp-images.yml`) under a tag that hashes their build
     folder and CUDA capabilities, in the registry `prebuilt.sh` names (one
     line, or `LYRICA_HOST_REGISTRY`). `install.sh` pulls the tag that matches
