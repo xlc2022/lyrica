@@ -262,7 +262,7 @@ describe("child threads", () => {
   });
 
   it("hold the limits: more per message on a cloud model, which uses no local GPU", async () => {
-    const { ada, u, path, parent, child, reply, say } = await setup({ threads: { concurrency: 8, perRequest: 3, cloudPerRequest: 6 } });
+    const { ada, u, path, parent, child, reply, say } = await setup({ threads: { concurrency: 32, perRequest: 3, cloudPerRequest: 6 } });
     const cloud = await fakeOpenAI({ models: [{ id: "gpt-cloud" }] });
     cloud.respond(reply);
     const gpt = { offeringId: (await ada.post<EndpointInfo>(`${u}/endpoints`, { name: "openrouter", kind: "cloud", baseUrl: cloud.baseUrl })).body.models[0]!.id };

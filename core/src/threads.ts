@@ -141,7 +141,7 @@ export interface ThreadsLimits {
   siblingMessages: number;
 }
 
-export const DEFAULT_THREADS_LIMITS: ThreadsLimits = { perRequest: 3, cloudPerRequest: 6, concurrency: 8, siblingMessages: 3 };
+export const DEFAULT_THREADS_LIMITS: ThreadsLimits = { perRequest: 3, cloudPerRequest: 6, concurrency: 32, siblingMessages: 3 };
 
 /** Her guidance in a thread that can start child threads, outside a project. */
 export const CHILD_THREAD_GUIDELINES = [

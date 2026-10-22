@@ -513,7 +513,7 @@ held in memory; a restart tells the parent anyway.
 `cloudPerRequest`, default 6, when the thread's chat model, or code model in
 code mode, resolves to a cloud endpoint now, since it uses no local GPU),
 counted before each start so parallel calls can't slip past. Children
-working at once per user (`concurrency`, default 8) is only a ceiling: each
+working at once per user (`concurrency`, default 32, room for several cloud models) is only a ceiling: each
 model already takes as many requests at once as it can serve and queues the
 rest (models.md, "Local servers"), so children on different backends don't wait for each
 other. It is checked by `start` and by a message that would start an idle
