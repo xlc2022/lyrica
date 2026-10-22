@@ -363,7 +363,8 @@ output_tokens`, falling back to `prompt_tokens + output_tokens` on older
 records. Local GPU time is `ttft_ms + gen_ms`, including queueing and loading;
 cloud calls and subagents have none. Subagents contribute their recorded
 input and output tokens down every depth, using the offering's kind when it
-still exists. Every lookup filters both pool and thread. Claude Code in her
+still exists; a subagent thread's own call records and folded totals are
+left out, since its run counts it. Every lookup filters both pool and thread. Claude Code in her
 sandbox makes no call records: its relay counts each message request's
 tokens and `addCallTotals` adds them to the thread's `call_totals` as
 **Claude Code**, cloud (docs/workspace.md, "Claude Code").
@@ -374,7 +375,7 @@ only the latest visible call under History; Show all beside its eyebrow
 opens Call history with server-side search and numbered pages.
 
 Once a turn ends, `recordPace` adds its counts and times to the record
-within the hosted thread's pool (`pace`): the last request's prompt tokens (the context used), total reads across
+within the hosted thread's pool (`pace`), a subagent's turns included: the last request's prompt tokens (the context used), total reads across
 every request including cached reads (`readTokens`), output tokens,
 the window, time to first token and generation time, and the prompt tokens
 the server actually read rather than took from its cache. From those come

@@ -31,20 +31,23 @@ describe("spend share", () => {
     run.run("general", "sub", "work", "Local", localRef.offeringId, 40, 8);
     run.run("general", "deep", "sub", "Removed", "gone", 50, 9);
     run.run("private", "other", "work", "Local", localRef.offeringId, 900, 90);
-    // Calls without counted turns never contribute, including a subagent's routing record.
-    db.prepare(`INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind) VALUES ('2026-01-01', 'general', 'sub', 'chat', 'gone', 'Removed', 'test', 'local')`).run();
+    // A subagent's own measured call record never contributes: its run counts it, so a tree listing both counts it once.
+    db.prepare(`INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, prompt_tokens, output_tokens, ttft_ms, gen_ms)
+      VALUES ('2026-01-01', 'general', 'sub', 'chat', 'gone', 'Removed', 'test', 'local', 40, 8, 100, 200)`).run();
     db.prepare("INSERT INTO call_totals (pool, thread, label, kind, tokens, gpu_ms, calls) VALUES ('general', 'chat', 'Local', 'local', 11, 30, 1)").run();
     const own = models.usage(ada.id, "general", ["work"]);
     expect(own.reduce((n, r) => n + r.tokens, 0)).toBe(27 + 48 + 59);
     expect(own.find(r => r.label === "Removed")).toEqual({ threadId: "work", label: "Removed", tokens: 59 });
     expect(own.find(r => r.label === "Local")?.gpuMs).toBeUndefined();
+    expect(models.usage(ada.id, "general", ["sub"]).reduce((n, r) => n + r.tokens, 0)).toBe(59);
     const project = models.usage(ada.id, "general", ["chat", "work"]);
     expect(project.reduce((n, r) => n + r.tokens, 0)).toBe(180);
     expect(project.reduce((n, r) => n + (r.gpuMs ?? 0), 0)).toBe(330);
     for (let i = 0; i < 501; i++) db.prepare(`INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind) VALUES ('2026-01-01', 'general', 'unrelated', 'title', 'gone', 'Title', 'test', 'local')`).run();
     models.prune();
     expect(models.usage(ada.id, "general", ["chat", "work"])).toEqual(project);
-    expect(db.prepare("SELECT sum(calls) AS n FROM call_totals WHERE pool = 'general'").get()).toEqual({ n: 3 });
+    // The subagent's folded record is kept, and still left out of the sums.
+    expect(db.prepare("SELECT sum(calls) AS n FROM call_totals WHERE pool = 'general'").get()).toEqual({ n: 4 });
     // Holes left by forgetting calls must not trim below the latest 500.
     db.prepare(`INSERT INTO model_calls (id, at, pool, thread, task, offering, label, endpoint, kind)
       SELECT max(id) + 1000, '2026-01-01', 'general', 'unrelated', 'title', 'gone', 'Title', 'test', 'local' FROM model_calls`).run();

@@ -2687,7 +2687,7 @@ export class Models {
       ON CONFLICT (pool, thread, label, kind) DO UPDATE SET tokens = tokens + excluded.tokens, calls = calls + 1`).run(pool, threadId, label, kind, Math.round(tokens)));
   }
 
-  /** Turns and recursively nested subagents, filtered by both pool and thread. */
+  /** Turns and recursively nested subagents, filtered by both pool and thread. A subagent counts through its run, never its own call records, so a project tree that lists it isn't counted twice. */
   usage(userId: string, pool: Pool, threadIds: string[]): { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[] {
     const rows = this.withUser(userId, (db) => db.prepare(`
       SELECT thread AS threadId, label, kind, sum(tokens) AS tokens, sum(gpu_ms) AS gpuMs FROM (
@@ -2697,7 +2697,7 @@ export class Models {
           AND (prompt_tokens IS NOT NULL OR read_tokens IS NOT NULL OR output_tokens IS NOT NULL)
         UNION ALL SELECT thread, label, kind, tokens, gpu_ms FROM call_totals
           WHERE pool = @pool AND thread IN (SELECT value FROM json_each(@threads))
-      ) GROUP BY thread, label, kind`).all({ pool, threads: JSON.stringify(threadIds) })) as { threadId: string; label: string; kind: "local" | "cloud"; tokens: number; gpuMs: number }[];
+      ) WHERE thread NOT IN (SELECT thread FROM subagent_runs WHERE pool = @pool) GROUP BY thread, label, kind`).all({ pool, threads: JSON.stringify(threadIds) })) as { threadId: string; label: string; kind: "local" | "cloud"; tokens: number; gpuMs: number }[];
     const result: { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; gpuMs?: number }[] = rows.map(r => ({ threadId: r.threadId, label: r.label, kind: r.kind, tokens: r.tokens, ...(r.kind === "local" ? { gpuMs: r.gpuMs } : {}) }));
     const runs = this.withUser(userId, db => db.prepare(`WITH RECURSIVE descendants(root, thread) AS (
       SELECT value, value FROM json_each(@threads)
