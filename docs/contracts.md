@@ -1511,7 +1511,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - **Tailnet.** Through the `tailscale` CLI against her own
     tailscaled's socket (`lyrica-tailscaled.service`, userspace networking,
     the `lyrica` user; `daemon/src/tailnet.ts`, `Services.tailnet`,
-    `LyricadOptions.tailnet { binary?, socket? }`): `GET
+    `LyricadOptions.tailnet { binary?, socket?, proxy? }`; `lyrica serve`
+    passes `proxy: "127.0.0.1:1056"`, her tailscaled's
+    `--outbound-http-proxy-listen`, and `useTailnetProxy` in `core/models`
+    sends tailnet destinations through it, from every fetch and every model
+    host connection, by HTTP CONNECT): `GET
     /api/u/:userId/admin/tailnet` → `Tailnet { state, tailnet?, address?,
     dnsName?, hostname?, controlServer?, version?, reason? }`; `PUT` with
     `TailnetJoin { authKey, hostname?, controlServer?, leave? }` (409 when

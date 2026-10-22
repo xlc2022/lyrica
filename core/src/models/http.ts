@@ -4,6 +4,7 @@
 
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
+import { viaTailnet } from "./tailnet.ts";
 
 // the operator's own network: loopback, private ranges, and the Tailscale tailnet.
 const OWN_NETWORK = new BlockList();
@@ -15,11 +16,13 @@ export const inOwnNetwork = (address: string): boolean => OWN_NETWORK.check(addr
 
 /**
  * The addresses a base URL's host resolves to that are outside the operator's own
- * network (loopback, RFC 1918, fd00::/8, or the tailnet). `*.ts.net` names
- * resolve through the host's normal resolver.
+ * network (loopback, RFC 1918, fd00::/8, or the tailnet). Names in her own
+ * tailnet go through her tailscaled, which resolves them to its peers; other
+ * names resolve through the host's normal resolver.
  */
 export async function addressesOutside(baseUrl: string): Promise<string[]> {
   const host = new URL(baseUrl).hostname.replace(/^\[|\]$/g, "");
+  if (!isIP(host) && viaTailnet(host)) return [];
   const addresses = isIP(host) ? [host] : (await lookup(host, { all: true })).map((a) => a.address);
   return addresses.filter((a) => !inOwnNetwork(a));
 }

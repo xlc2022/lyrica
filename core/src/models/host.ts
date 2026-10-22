@@ -8,6 +8,7 @@ import { request } from "node:http";
 import { connect, type TLSSocket } from "node:tls";
 import { EventEmitter } from "node:events";
 import { Agent, Client, Pool, fetch as undiciFetch, type Dispatcher } from "undici";
+import { tailnetSocket } from "./tailnet.ts";
 import type { Db } from "../db.ts";
 
 /** The host presented a key other than the pinned one. The connection is closed before anything is sent. */
@@ -222,9 +223,11 @@ export function hostFetch(id: Identity, host: { addresses: string[]; pin: string
 function open(id: Identity, origin: string): Promise<{ socket: TLSSocket; fingerprint: string }> {
   const u = new URL(origin);
   const host = u.hostname.replace(/^\[|\]$/g, "");
-  return new Promise((resolve, reject) => {
+  const port = Number(u.port) || HOST_PORT;
+  // A tailnet host is reached through her tailscaled's proxy; TLS and the pin run inside the tunnel as on any connection.
+  return tailnetSocket(host, port).then((raw) => new Promise((resolve, reject) => {
     const socket = connect({
-      host, port: Number(u.port) || HOST_PORT, ...(isIP(host) ? {} : { servername: host }),
+      ...(raw ? { socket: raw } : { host, port }), ...(isIP(host) ? {} : { servername: host }),
       key: id.key, cert: id.cert, minVersion: "TLSv1.3", rejectUnauthorized: false, ALPNProtocols: ["http/1.1"],
     });
     socket.setTimeout(10_000, () => socket.destroy(new Error(`connect ETIMEDOUT ${host}`)));
@@ -235,7 +238,7 @@ function open(id: Identity, origin: string): Promise<{ socket: TLSSocket; finger
       resolve({ socket, fingerprint: fingerprint(peer) });
     });
     socket.once("error", reject);
-  });
+  }));
 }
 
 /** POST of a JSON body on an open socket. */
