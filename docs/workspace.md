@@ -1070,8 +1070,7 @@ her account is general.
   4. A ruleset that lets her account create and update only `lyrica/*`
      branches and `update/*` tags.
   5. She pushes to the repository, never a fork, so her pull requests run
-     CI on the `lyrica-ci` runners like Claude's, with no
-     first-time-contributor approval.
+     CI like Claude's (docs/ci.md), with no fork approval.
 - **`.github/CODEOWNERS`** names the owner for the boundary code: keys and users
   (each user's key and its recovery wrap), database migrations, the model
   router, the workspace (sandbox and grants), `openThreadView`,
