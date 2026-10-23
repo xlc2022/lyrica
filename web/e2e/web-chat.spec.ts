@@ -353,7 +353,8 @@ test("a read call's card lays out the file it read: code keeps its indentation, 
   const read = run.locator(".read-text");
   await expect(read.nth(0).locator("pre")).toHaveText(code);
   expect(await read.nth(0).locator("pre").evaluate((e) => getComputedStyle(e).whiteSpace)).toBe("pre");
-  await expect(read.nth(0).getByText("Showing lines 1-6 of 90", { exact: true })).toBeVisible();
+  await expect(read.nth(0).locator(".read-note")).toHaveText("Showing lines 1-6 of 90");
+  await expect(read.nth(0).locator(".read-note .num")).toHaveText(["1", "6", "90"]);
   await expect(read.nth(0).getByRole("link", { name: "add.ts" })).toBeVisible();
   await expect(read.nth(1).getByRole("heading", { name: "Plan" })).toBeVisible();
   await expect(read.nth(1).locator("strong")).toHaveText("Build");

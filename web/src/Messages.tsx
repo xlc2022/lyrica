@@ -595,7 +595,7 @@ function ReadText({ path, text, note, kind, local, env }: { path: string; text: 
         <CopyButton text={text} label="Copy" ariaLabel="Copy file text" className="code-copy" />
       </div>
       {kind === "markdown" ? <div className="read-body prose small"><Prose text={text} /></div> : <pre className="read-body">{text}</pre>}
-      {note && <p className="cap read-note">{note}</p>}
+      {note && <p className="cap read-note">{note.split(/(\d+)/).map((t, i) => (i % 2 ? <span key={i} className="num">{t}</span> : t))}</p>}
     </div>
   );
 }
