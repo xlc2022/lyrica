@@ -78,6 +78,7 @@ export function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string;
   if (ep.pausedAt) return { dot: "away", word: "Paused" };
   if (unpaired(host)) return { dot: "down", word: "Unpaired" };
   if (ep.signedOut) return { dot: "down", word: "Signed out" };
+  if (ep.limitedUntil && Date.parse(ep.limitedUntil) > Date.now()) return { dot: "away", word: "Limit reached, resets in", since: duration(Date.parse(ep.limitedUntil) - Date.now()) };
   if (ep.state === "up") return { dot: "up", word: ep.api === "host" ? "Online" : "Up" };
   return { dot: "down", word: "Unreachable", since };
 }

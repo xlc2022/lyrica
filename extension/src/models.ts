@@ -2,7 +2,7 @@ import { createAssistantMessageEventStream, type Api, type AssistantMessageEvent
 import { estimateTokens, ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { PlanCredentials, planProvider } from "./plans.ts";
-import { acceptedSettings, DEFAULT_CONTEXT, replyCap, isPlan, CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
+import { acceptedSettings, DEFAULT_CONTEXT, replyCap, isPlan, planLimitReset, CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
 import { streamWithInlineThinking } from "./inline-thinking.ts";
 import { capToolCalls, objectTools } from "./tool-stream.ts";
 import { markOverflow, sharedStream, shareModel } from "./model-share.ts";
@@ -94,7 +94,8 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
   for (const { endpoint, offerings: list } of allowed) {
     if (!list.length) continue;
     if (isPlan(endpoint.api)) {
-      runtime.registerNativeProvider(planProvider({ ...endpoint, api: endpoint.api }, list.map((m) => m.modelId)));
+      // A reply on the plan's usage limit, from anything on this runtime, makes the router skip the plan until it resets.
+      runtime.registerNativeProvider(planProvider({ ...endpoint, api: endpoint.api }, list.map((m) => m.modelId), (message) => models.reportPlanLimit(endpoint.id, planLimitReset(message))));
       continue;
     }
     runtime.registerProvider(endpoint.id, {

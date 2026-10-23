@@ -959,10 +959,17 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   A context window set by hand on a plan model replaces the catalogue's
   from its next request (some plans allow more than they list, at a
   higher rate).
-- A plan is up while signed in; nothing is probed. When its usage limit is
-  reached (`isPlanLimit`), the turn ends with the provider's message and
-  the router skips the plan for an hour (`reportPlanLimit`), so the next
-  turn falls back to the next model in the list.
+- A plan is up while signed in; nothing is probed. When any reply on it
+  (a thread's, a subagent's, a job's) ends on its usage limit
+  (`isPlanLimit`, heard in `planProvider`), the router skips the plan
+  until it resets (`reportPlanLimit`, with `planLimitReset` reading
+  OpenAI's `resets_at`, else an hour), and the Models page shows "Limit
+  reached, resets in" with the time left. In a thread, the person gets one
+  notice a turn saying when it resets. When Pi would retry the reply, the
+  retry goes to the next model in the list, as for a machine that is away;
+  a turn the limit ends instead carries on by itself (`PLAN_LIMIT_RESUME`,
+  a wake-up outside her own limits): at once on the next model in the
+  list, or once the plan resets when none is left.
 - Removing a plan deletes its sign-in; Lyrica stays connected in the
   provider's account settings until it is disconnected there.
 

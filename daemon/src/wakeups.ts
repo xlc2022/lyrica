@@ -77,6 +77,18 @@ export class Wakeups {
     return { dueAt };
   }
 
+  /** A wake-up lyricad sets for a thread (a plan's limit cut its turn off), outside her own wake-up limits. */
+  resume(userId: string, pool: Pool, thread: string, dueAt: Date, note: string): void {
+    const view = this.o.memory.openThreadView(userId, pool);
+    try {
+      const id = view.own.addWakeup(thread, dueAt.toISOString(), note, new Date().toISOString());
+      this.due.set(userId, [...this.due.get(userId) ?? [], { id, dueAt: dueAt.toISOString(), pool, thread }]);
+    } finally {
+      view.close();
+    }
+    this.changed(userId, pool, thread);
+  }
+
   /** Her `threads later` with `cancel`: the thread's pending wake-ups go. */
   cancel(from: ThreadContext): number {
     const n = from.view.own.removeWakeups(from.threadId);

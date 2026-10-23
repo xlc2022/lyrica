@@ -1,7 +1,7 @@
-import { InMemoryCredentialStore, type Api, type ProviderAuthInteraction, type AuthOperationOptions, type Credential, type CredentialInfo, type CredentialStore, type Model, type Provider } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream, InMemoryCredentialStore, type Api, type AssistantMessageEventStream, type ProviderAuthInteraction, type AuthOperationOptions, type Credential, type CredentialInfo, type CredentialStore, type Model, type Provider } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
-import { HostRefused } from "@lyrica/core";
+import { HostRefused, isPlanLimit } from "@lyrica/core";
 import type { DiscoveredModel, Endpoint, Models, PlanCredential, PlanKind } from "@lyrica/core";
 
 // Subscription plans (docs/models.md, "Subscription plans"): Pi's sign-in and
@@ -19,15 +19,38 @@ export function planCatalog(kind: PlanKind): DiscoveredModel[] {
   }));
 }
 
-/** Pi's provider for the plan under its endpoint ID, offering only the plan's listed models, signing in only with the plan. */
-export function planProvider(ep: Endpoint & { api: PlanKind }, modelIds: string[]): Provider {
+/**
+ * Pi's provider for the plan under its endpoint ID, offering only the plan's
+ * listed models, signing in only with the plan. `onLimit` hears every reply
+ * that ends on the plan's usage limit, from any thread, subagent or job.
+ */
+export function planProvider(ep: Endpoint & { api: PlanKind }, modelIds: string[], onLimit?: (message: string) => void): Provider {
   const base = PROVIDERS[ep.api]();
   const wanted = new Set(modelIds);
   const models = base.getModels().filter((m) => wanted.has(m.id)).map((m) => ({ ...m, provider: ep.id }) as Model<Api>);
+  const watch = (source: AssistantMessageEventStream) => onLimit ? limits(source, onLimit) : source;
   return {
     ...base, id: ep.id, name: `${ep.name} (cloud)`, auth: { oauth: base.auth.oauth! },
+    stream: (model, context, options) => watch(base.stream(model, context, options)),
+    streamSimple: (model, context, options) => watch(base.streamSimple(model, context, options)),
     getModels: () => models, getAllModels: () => models, filterModels: undefined, filterAllModels: undefined, refreshModels: undefined,
   };
+}
+
+/** Passes a stream through, telling `onLimit` when it ends on a usage limit. */
+function limits(source: AssistantMessageEventStream, onLimit: (message: string) => void): AssistantMessageEventStream {
+  const out = createAssistantMessageEventStream();
+  void (async () => {
+    try {
+      for await (const event of source) {
+        if (event.type === "error" && isPlanLimit(event.error.errorMessage)) onLimit(event.error.errorMessage!);
+        out.push(event);
+      }
+    } finally {
+      out.end();
+    }
+  })();
+  return out;
 }
 
 /** OpenAI or xAI refused the refresh token: the sign-in is over, not just unreachable. */
