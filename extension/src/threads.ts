@@ -395,12 +395,18 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
             { threads: rows.map((r) => r.id) });
         }
         if (p.action === "read") {
-          if (child && !inProject) throw new Error("a child thread can't read other threads");
           if (!p.id) throw new Error("read needs the thread's id or title");
-          const rows = host.list(thread);
+          // Her own subagents' threads read like any other: delegate wait gives a run's result too.
+          const sub = store.getThread(pickThread(p.id, []));
+          const own = sub?.subagent && sub.parent === thread.threadId;
+          if (child && !inProject && !own) throw new Error("a child thread can't read other threads");
+          const rows = own ? [{ id: sub!.id }] : host.list(thread);
           const id = pickThread(p.id, rows);
           if (inProject && id === self.parent) throw new Error(`[t:${id}] is your project chat: it can't be read from here, but you can message it with to: "parent"`);
-          if (!rows.some((r) => r.id === id)) throw new Error(`[t:${id}] isn't ${inProject ? "another thread of this project" : "a child thread of this one"}`);
+          if (!rows.some((r) => r.id === id)) {
+            const other = store.getThread(id);
+            throw new Error(`[t:${id}] isn't ${inProject ? "another thread of this project" : "a child thread of this one"}${other?.subagent ? "; for a subagent's result, use delegate with action wait and its run ID" : ""}`);
+          }
           if (store.getThread(id)?.unlogged) throw new Error(`[t:${id}] isn't logged, so it can't be read from here`);
           const last = Math.min(READ_MAX, Math.max(1, Math.round(p.last ?? READ_DEFAULT)));
           // Read as from another thread, so entries written unlogged are left out; so are tool results and empty tool calls.

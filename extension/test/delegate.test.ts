@@ -736,6 +736,18 @@ describe("talking with subagents", () => {
     await picked.run.ended;
   });
 
+  it("gives an ended run's last replies to a wait, and nothing for a live run or another thread's", async () => {
+    const s = await setup();
+    s.cloud.respond(async () => ({ text: "The trowel is in the shed." }));
+    const parent = s.thread();
+    const run = await s.run(parent, { task: "find the trowel", role: "scout" });
+    await run.ended;
+    const [row] = s.delegation.status(parent);
+    expect(s.delegation.ended(parent, run.id)).toBe(`Subagent run ${run.id} has ended.\n\nscout (t:${row!.thread}), finished:\n\nThe trowel is in the shed.`);
+    expect(s.delegation.ended(s.thread(), run.id)).toBeUndefined();
+    expect(s.delegation.ended(parent, "r-none")).toBeUndefined();
+  });
+
   it("continues a subagent interrupted by a restart from its thread", async () => {
     const s = await setup();
     const g = gate();

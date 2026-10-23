@@ -287,7 +287,7 @@ describe("the forge watcher", () => {
   });
 
   it("ends the watch with one note when the pull is merged or closed, silently when she merged it, and with one note on a 403", async () => {
-    const ends: [object, string | undefined][] = [
+    const ends: [Record<string, unknown>, string | undefined][] = [
       [{ state: "closed", merged: true, merged_at: "2026-01-01T00:00:00Z", merged_by: { login: "sam" } }, `PR #12 (${HEAD_A.slice(0, 7)}): merged, so I've stopped watching.`],
       [{ state: "closed", merged: false, merged_at: null }, `PR #12 (${HEAD_A.slice(0, 7)}): closed without merging, so I've stopped watching.`],
       [{ state: "closed", merged: true, merged_at: "2026-01-01T00:00:00Z", merged_by: { login: "lyrica-bot" } }, undefined],

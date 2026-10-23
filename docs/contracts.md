@@ -804,7 +804,7 @@ Custom roles override built-ins by name.
   (`pickThread`; a title two threads share is refused), or `to: "parent"`
   from a child; a child's message with no `to` and no `id`, or whose `id`
   names its parent, goes to the parent), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
-  `last`: the latest messages of a listed, logged thread (`PoolReader.latestEntries`), `READ_DEFAULT`
+  `last`: the latest messages of a listed, logged thread, or of one of her own subagents' threads (`PoolReader.latestEntries`), `READ_DEFAULT`
   10, `READ_MAX` 30, formatted by `formatEntry`) and `stop` (`id`: a
   parent's child, `ThreadsHost.stop`), and `routine` (above). `later` (`minutes`, clamped to 1 to
   `WAKEUP_LIMITS.maxMinutes`, and `note`; or `cancel: true`) sets a

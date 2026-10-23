@@ -193,6 +193,9 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
               : `${who} continues in its thread, in the background. Its reply will arrive as a message.`, { runId: run.id, status: run.status, threads: [sent.threadId] });
           }
         } else {
+          // A wait on a run that has already ended gives what its subagents last said.
+          const ended = action === "wait" && p.id ? delegation.ended(thread, p.id) : undefined;
+          if (ended) return text(ended, { runId: p.id });
           run = delegation.get(thread, p.id);
         }
         if (action === "stop") {
