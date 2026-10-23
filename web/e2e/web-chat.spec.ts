@@ -323,6 +323,54 @@ test("an image tool result shows inline, opens large, starts an edit with Images
   await noHorizontalScroll(page);
 });
 
+test("a read call's card lays out the file it read: code keeps its indentation, Markdown renders, an image shows small", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "Look at my files");
+  await expect(page.getByText("You said: Look at my files")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  const code = "export function add(a: number, b: number) {\n    if (a < 0) {\n        return b;\n    }\n    return a + b;\n}";
+  const md = "# Plan\n\n- **Build** the page\n- Test it";
+  const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='640' height='360'><rect width='640' height='360' fill='#2b6cb0'/><circle cx='320' cy='180' r='120' fill='#f3f5f5'/></svg>";
+  await page.route(`**${base}/messages`, (route) => route.fulfill({ json: {
+    messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-10-12T12:00:00Z", parts: [
+      { type: "tool", toolCallId: "r-code", name: "read", args: { path: "src/add.ts" }, result: `${code}\n\n[Showing lines 1-6 of 90. Use offset=7 to continue.]`, isError: false },
+      { type: "tool", toolCallId: "r-md", name: "read", args: { path: "/workspace/plan.md" }, result: md, isError: false },
+      { type: "tool", toolCallId: "r-png", name: "read", args: { path: "/workspace/view2/final_z.png" }, result: "Read image file [image/png]", isError: false },
+      { type: "tool", toolCallId: "r-gone", name: "read", args: { path: "/workspace/old.png" }, result: "Read image file [image/png]", isError: false },
+    ] }], hasMore: false,
+  } }));
+  await page.route(`**${base}/files/thumb?*`, (route) => route.fulfill({ status: 404 }));
+  await page.route(`**${base}/files/content?*`, (route) => new URL(route.request().url()).searchParams.get("path") === "/workspace/old.png"
+    ? route.fulfill({ status: 404, json: { error: "/workspace/old.png is not a file" } })
+    : route.fulfill({ contentType: "image/svg+xml", body: svg }));
+  await page.reload();
+  const run = page.locator(".marker.tool-run");
+  await run.getByRole("button", { name: /tool calls/ }).click();
+  for (const name of [/src\/add\.ts/, /plan\.md/, /final_z\.png/, /old\.png/]) await run.getByRole("button", { name }).click();
+  // Code keeps its lines and indentation, with pi's note under it and the file's name linking into Files.
+  const read = run.locator(".read-text");
+  await expect(read.nth(0).locator("pre")).toHaveText(code);
+  expect(await read.nth(0).locator("pre").evaluate((e) => getComputedStyle(e).whiteSpace)).toBe("pre");
+  await expect(read.nth(0).locator(".read-note")).toHaveText("Showing lines 1-6 of 90");
+  await expect(read.nth(0).locator(".read-note .num")).toHaveText(["1", "6", "90"]);
+  await expect(read.nth(0).getByRole("link", { name: "add.ts" })).toBeVisible();
+  await expect(read.nth(1).getByRole("heading", { name: "Plan" })).toBeVisible();
+  await expect(read.nth(1).locator("strong")).toHaveText("Build");
+  const image = run.getByRole("button", { name: "final_z.png", exact: true });
+  await expect(image.getByRole("img")).toHaveAttribute("src", `${base}/files/content?path=${encodeURIComponent("/workspace/view2/final_z.png")}`);
+  await expect(run.getByText("No longer in Files")).toBeVisible();
+  if (process.env.SCREENSHOTS) {
+    const calls = run.locator(".run-body > .marker");
+    for (const [i, name] of ["code", "markdown", "image"].entries()) await calls.nth(i).screenshot({ path: `${process.env.SCREENSHOTS}/read-${name}-${page.viewportSize()!.width}.png` });
+  }
+  await image.click();
+  await expect(page.getByRole("dialog", { name: "final_z.png" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await noHorizontalScroll(page);
+});
+
 test("a message's menu regenerates, edits, deletes with Undo, and branches", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

@@ -1118,6 +1118,16 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .inline-img:hover { border-color: var(--muted); }
 .inline-img img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; }
 .message-images { display: grid; gap: 12px; }
+/* A read call's text (docs/ux.md §6): the code block's strip, then the file as it is laid out, scrolling past 320 px. */
+.read-text { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; min-width: 0; }
+.read-text .code-head { padding-bottom: 2px; }
+.read-text a.code-lang { color: var(--accent); }
+.marker-body .read-text pre.read-body { padding: 2px 12px 10px; white-space: pre; overflow-wrap: normal; tab-size: 4; max-height: 320px; overflow: auto; }
+.marker-body .read-text[data-kind="wrapped"] pre.read-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.read-text .read-body.prose { padding: 2px 12px 10px; max-height: 320px; overflow: auto; }
+.read-text .read-note { padding: 0 12px 8px; }
+.read-image .inline-img { max-width: min(100%, 240px); }
+.read-image .inline-img img { max-height: 160px; }
 .message-image { width: fit-content; max-width: min(100%, 420px); }
 .message-image .inline-img { min-width: var(--tap); }
 .image-facts { display: flex; align-items: center; gap: 8px; margin-top: 4px; }

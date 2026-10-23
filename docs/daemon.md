@@ -577,7 +577,8 @@ checks and the routes with fakes; the transport test uses a local receiver.
 carries text and thinking deltas, tool calls (`tool_call` with the tool's
 name as soon as the model starts writing one, from Pi's `toolcall_start`;
 `tool_start` with its arguments when it runs; `tool_end` with the first lines
-of the result, and for `delegate` its subagent threads, each with the role and
+of the result (6 lines or 600 characters; 60 lines or 6,000 characters for
+a `read`, so its card can show the file; stored messages keep the same), and for `delegate` its subagent threads, each with the role and
 model from its run's record), recall and remember markers, permission
 requests and their outcome, usage, errors in plain words (a model the router
 refused, an endpoint that didn't answer), `offline` when no model could be
@@ -757,7 +758,10 @@ documented in `daemon/src/api.ts`, "The Files panel".
   ImageMagick (`magick`, or `convert` on ImageMagick 6) inside the sandbox
   and kept under `.lyrica/thumbs` mirroring the image's path, remade when
   the image is newer; a delete or rename takes the copies under its path
-  along. Only a file named `.png`, `.jpg`, `.jpeg`, `.gif` or `.webp`, decoded
+  along. An image she deletes or moves with a command takes its copy too:
+  asking for that copy deletes it, and listing the thread's folder or its
+  images sweeps out every copy whose image is gone (`pruneThumbs`), so the
+  panel's reload after each tool call keeps them clean. Only a file named `.png`, `.jpg`, `.jpeg`, `.gif` or `.webp`, decoded
   as that format and nothing else (so a renamed MVG or SVG fails instead of
   running), under ImageMagick's memory, area and size limits and a 20 s
   timeout. For a grant's file, or on a

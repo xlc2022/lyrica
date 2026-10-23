@@ -20,7 +20,8 @@ import { findThread } from "./Thread.tsx";
 import { EditBox, MessageActions, MessageMenu, type Rewinder } from "./Rewind.tsx";
 import { shortModel } from "./ModelLabel.tsx";
 import { ConfirmDialog, ErrorText, fullTime, Prose, useAction, useDismiss, wakeTime } from "./ui.tsx";
-import { basename, InlineImage, Lightbox, PathText, useFileLinks, type FileLinks } from "./paths.tsx";
+import { basename, fileTarget, InlineImage, isImagePath, isUnderWorkdir, Lightbox, PathText, SHARED, useFileLinks, type FileLinks } from "./paths.tsx";
+import { CopyButton } from "./CopyButton.tsx";
 import type { ReactNode } from "react";
 import { foldLooks, raisedIn, toldIn, type Told } from "./looks.ts";
 import { her } from "./name.ts";
@@ -538,7 +539,8 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       body = (
         <>
           <pre>{JSON.stringify(part.args, null, 2)}</pre>
-          {part.result !== undefined && <pre className={part.isError ? "tool-error" : ""}>{part.result}</pre>}
+          {part.result !== undefined && (readText(part) ? <ReadText {...readText(part)!} env={env} /> : <pre className={part.isError ? "tool-error" : ""}>{part.result}</pre>)}
+          {readImage(part) && <ReadImage path={readImage(part)!} env={env} />}
         </>
       );
       break;
@@ -549,6 +551,69 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       <button type="button" aria-expanded={open} onClick={toggle}>{label}</button>
       {open && <div className="marker-body">{body}</div>}
       {part.type === "tool" && part.name === "image" && part.imageRefusal && <ImageRefusalLinks part={part} env={env} />}
+    </div>
+  );
+}
+
+/** The file a `read` call showed her as an image, in this thread's folders; not on a machine, whose files the panel can't reach. */
+export function readImage(part: Extract<MessagePart, { type: "tool" }>): string | undefined {
+  if (part.name !== "read" || part.isError || !part.result?.startsWith("Read image file") || machineOf(part.args)) return undefined;
+  const path = (part.args as { path?: unknown } | null)?.path;
+  if (typeof path !== "string" || path.startsWith("~")) return undefined;
+  const target = fileTarget(path);
+  return target && isImagePath(target) ? target : undefined;
+}
+
+/** Files whose text reads as prose: rendered as Markdown, or wrapped. */
+const MARKDOWN = /\.(md|markdown|mdx)$/i;
+const WRAPPED = /\.(txt|text|log|csv|tsv)$/i;
+/** Pi's note after a read that stopped short ("[Showing lines 1-200 of 950. Use offset=201 to continue.]"). */
+const READ_NOTE = /\n\n\[((?:Showing lines|\d+ more lines in file)[^\]\n]*)\]$/;
+
+/** A `read` call's text, the file's path and how to show it; nothing for an image, a failed read or another tool. */
+export function readText(part: Extract<MessagePart, { type: "tool" }>): { path: string; text: string; note?: string; kind: "markdown" | "wrapped" | "code"; /** In this thread's sandbox, not on a machine. */ local: boolean } | undefined {
+  if (part.name !== "read" || part.isError || part.result === undefined || part.result.startsWith("Read image file")) return undefined;
+  const path = (part.args as { path?: unknown } | null)?.path;
+  if (typeof path !== "string") return undefined;
+  const note = READ_NOTE.exec(part.result);
+  const text = note ? part.result.slice(0, note.index) : part.result;
+  return { path, text, note: note?.[1]!.replace(/\. Use .*$/, ""), kind: MARKDOWN.test(path) ? "markdown" : WRAPPED.test(path) ? "wrapped" : "code", local: !machineOf(part.args) };
+}
+
+/**
+ * What a `read` call read, laid out as the file is (docs/ux.md §6): code and HTML keep their lines and indentation and
+ * scroll sideways, Markdown is rendered, plain text wraps. A strip names the file (a link into Files when the thread
+ * can reach it) and copies the text; pi's note on a partial read sits under it.
+ */
+function ReadText({ path, text, note, kind, local, env }: { path: string; text: string; note?: string; kind: "markdown" | "wrapped" | "code"; local: boolean; env: Env }) {
+  const files = useFileLinks(env.userId, env.pool, env.threadId);
+  const target = local ? fileTarget(path) : undefined;
+  return (
+    <div className="read-text" data-kind={kind}>
+      <div className="code-head">
+        {target && (isUnderWorkdir(target) || target.startsWith(`${SHARED}/`)) ? <a className="code-lang" href={files.href(target)}>{basename(path)}</a> : <span className="code-lang">{basename(path)}</span>}
+        <CopyButton text={text} label="Copy" ariaLabel="Copy file text" className="code-copy" />
+      </div>
+      {kind === "markdown" ? <div className="read-body prose small"><Prose text={text} /></div> : <pre className="read-body">{text}</pre>}
+      {note && <p className="cap read-note">{note.split(/(\d+)/).map((t, i) => (i % 2 ? <span key={i} className="num">{t}</span> : t))}</p>}
+    </div>
+  );
+}
+
+/**
+ * The image a `read` call looked at, as a small thumbnail under its result that opens large (docs/ux.md §6), served
+ * like any file in the thread's folders, so a file she can't reach there isn't shown. Gone: the muted line; any other
+ * failure: no preview, the result line stays.
+ */
+function ReadImage({ path, env }: { path: string; env: Env }) {
+  const files = useFileLinks(env.userId, env.pool, env.threadId);
+  const [state, setState] = useState<"shown" | "gone" | "broken">("shown");
+  if (state === "broken") return null;
+  if (state === "gone") return <p className="message-image-gone muted">{GONE}</p>;
+  return (
+    <div className="read-image">
+      <InlineImage src={path} alt={basename(path)} label={basename(path)} files={files} large={(p) => env.large(p, files)}
+        onGone={() => setState("gone")} onBroken={() => setState("broken")} />
     </div>
   );
 }

@@ -80,6 +80,8 @@ export class ThreadFiles {
   /** One folder's entries, folders first, stopping at the cap. */
   async list(dir: string): Promise<FileListing> {
     const d = this.allow(dir, false);
+    // The panel lists the thread's folder again after each of her tool calls: the moment to drop what she deleted.
+    if (d === WORKDIR) void this.pruneThumbs().catch(() => {});
     const out = await this.find(["find", d, "-mindepth", "1", "-maxdepth", "1", "!", "-name", PANEL_DIR, "-printf", PRINTF], LIST_LIMIT);
     out.entries.sort((a, b) => Number(b.kind === "folder") - Number(a.kind === "folder") || a.name.localeCompare(b.name));
     return out;
@@ -97,6 +99,7 @@ export class ThreadFiles {
   /** Every image in the thread's folder, uploaded ones told from hers. */
   async images(): Promise<ImageEntry[]> {
     const names = IMAGE_EXTENSIONS.flatMap((e, i) => [...(i ? ["-o"] : []), "-iname", `*.${e}`]);
+    void this.pruneThumbs().catch(() => {});
     const { entries } = await this.find(["find", WORKDIR, "-name", PANEL_DIR, "-prune", "-o", "-type", "f", "(", ...names, ")", "-printf", PRINTF], LIST_LIMIT);
     return entries.map((e) => ({ ...e, source: e.path.startsWith(`${WORKDIR}/uploads/`) ? "uploaded" : "made" }));
   }
@@ -120,7 +123,9 @@ export class ThreadFiles {
    * A small copy of an image in the thread's folder, at most THUMB_BOX on a
    * side, made by ImageMagick inside the sandbox and kept under
    * `.lyrica/thumbs/<its path>.png` (or `.jpg` for a JPEG) until the image
-   * is newer; a deleted or renamed image takes its copy with it. Only a
+   * is newer; a deleted or renamed image takes its copy with it, at once
+   * from the panel, otherwise when its copy is next asked for or the panel
+   * next lists the thread's folder (pruneThumbs). Only a
    * file named like an image, decoded as what its name says (a `.png`
    * holding something else fails rather than runs), within memory, size
    * and time limits. Without ImageMagick, for a file outside the thread's
@@ -135,7 +140,7 @@ export class ThreadFiles {
     const jpeg = ext === "jpg" || ext === "jpeg";
     const coder = jpeg ? "jpeg" : ext;
     // ImageMagick 7 answers to `magick`; 6, Debian's, to `convert`. The limits bound a decompression bomb.
-    const script = 'src=$1; c=$2; test -f "$src" || { echo "$src is not a file" >&2; exit 1; }; ' +
+    const script = 'src=$1; c=$2; test -f "$src" || { rm -f -- "$c"; echo "$src is not a file" >&2; exit 1; }; ' +
       'if command -v magick >/dev/null; then im=magick; elif command -v convert >/dev/null; then im=convert; else exit 3; fi; ' +
       'if [ ! "$c" -nt "$src" ]; then mkdir -p -- "$(dirname -- "$c")" && ' +
       '"$im" -limit memory 256MiB -limit map 512MiB -limit area 64MP -limit disk 1GiB -limit width 16KP -limit height 16KP ' +
@@ -150,6 +155,17 @@ export class ThreadFiles {
   private thumbPath(p: string): string | undefined {
     const base = `${this.workdir}/`;
     return p.startsWith(base) && !p.startsWith(`${base}${PANEL_DIR}/`) ? posix.join(this.workdir, PANEL_DIR, "thumbs", p.slice(base.length)) : undefined;
+  }
+
+  /**
+   * Deletes the thumbnails whose image is no longer in the thread's folder (she deleted or moved it with a command,
+   * which the panel never sees), and folders left empty for over a minute (a newer one may be a thumbnail being made).
+   */
+  async pruneThumbs(): Promise<void> {
+    const script = 't=$1/$2/thumbs; [ -d "$t" ] || exit 0; ' +
+      'find "$t" -type f -exec sh -c \'w=$1; t=$2; shift 2; for c; do s=$w/${c#"$t"/}; s=${s%.*}; [ -f "$s" ] || rm -f -- "$c"; done\' sh "$1" "$t" {} + && ' +
+      'find "$t" -mindepth 1 -type d -empty -mmin +1 -delete';
+    await this.file(["sh", "-c", script, "sh", this.workdir, PANEL_DIR]);
   }
 
   /** The thumbnails of files under `paths` (a file's own, or everything under a folder), to go with them. */
