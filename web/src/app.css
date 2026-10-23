@@ -357,6 +357,8 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .prose p, .prose ul, .prose ol { margin: 0 0 10px; }
 .prose ul, .prose ol { padding-left: 20px; }
 .prose h1, .prose h2, .prose h3, .prose h4 { font-size: 1em; margin: 16px 0 6px; }
+/* A Markdown file in the viewer is a document: its title keeps the page-title size. */
+.viewer-prose h1 { font-size: 22px; margin-bottom: 10px; }
 .prose > :first-child { margin-top: 0; }
 .prose > :last-child { margin-bottom: 0; }
 .prose pre { background: var(--tool); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; overflow-x: auto; max-width: 100%; }

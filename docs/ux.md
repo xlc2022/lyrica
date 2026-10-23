@@ -49,7 +49,8 @@ Work through these in order. Most additions end at step 1 or 2.
   hover or focus, because a border on every message would outweigh the text.
 - **Spacing:** a 16 px gutter on phones; cards and drawers share one radius.
 - **Prose** (her messages, memories, WAKE, Markdown files): paragraphs and
-  lists 10 px apart; a heading inside prose is a section head (15/600).
+  lists 10 px apart; a heading inside prose is a section head (15/600). A
+  Markdown file in the viewer keeps its title: its `h1` is 22/600.
 - **A label that changes shows a result, not a caption:** Copy reads Copied
   for two seconds, as Read aloud reads Stop reading while it plays.
 
