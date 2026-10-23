@@ -885,12 +885,12 @@ export class Workspace {
     return `${userId}/${a.name}/${a.host}/${a.account}`;
   }
 
-  /** Asks the host once for the account's own no-reply address (GitHub's needs its numeric id); a failure keeps the guessed one. */
+  /** Asks GitHub once for the account's numeric id, which its no-reply address needs; a failure keeps the address without it. */
   private async learnGitEmail(userId: string, a: GitAccountConfig): Promise<void> {
     const key = this.gitEmailKey(userId, a);
-    if (a.kind === "other" || this.gitEmails.has(key)) return;
+    if (a.kind !== "github" || this.gitEmails.has(key)) return;
     try {
-      const me = await this.forgeApi(a, "/user") as { id?: unknown; email?: unknown };
+      const me = await this.forgeApi(a, "/user") as { id?: unknown };
       this.gitEmails.set(key, noReplyEmail(a, me));
     } catch {
       // The guessed address still lets her commit.
@@ -1482,14 +1482,13 @@ function refuseRoot(username: string): void {
 }
 
 /**
- * The address an account's commits carry: GitHub's no-reply address (with the
- * account's id when the host gave it), the email Gitea or Forgejo gives (its
- * no-reply one when the account keeps it private), or a no-reply address on
- * the host.
+ * The address an account's commits carry, never its real email: GitHub's
+ * no-reply address (with the account's id when the host gave it), or
+ * `<login>@noreply.<host>`, Gitea's and Forgejo's default placeholder. Their
+ * `/user` gives the account its real email even when it is hidden from others.
  */
-export function noReplyEmail(a: Pick<GitAccountConfig, "kind" | "host" | "account">, me: { id?: unknown; email?: unknown } = {}): string {
+export function noReplyEmail(a: Pick<GitAccountConfig, "kind" | "host" | "account">, me: { id?: unknown } = {}): string {
   const host = parseHost(a.host).host;
   if (a.kind === "github") return `${typeof me.id === "number" ? `${me.id}+` : ""}${a.account}@users.noreply.${host}`;
-  if (typeof me.email === "string" && me.email.includes("@")) return me.email;
   return `${a.account}@noreply.${host}`;
 }

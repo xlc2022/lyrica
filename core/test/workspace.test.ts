@@ -319,8 +319,9 @@ describe("Git accounts and repositories", () => {
   it("gives each host's no-reply address for an account's commits", () => {
     expect(noReplyEmail({ kind: "github", host: "github.com", account: "lyrica-bot" }, { id: 42 })).toBe("42+lyrica-bot@users.noreply.github.com");
     expect(noReplyEmail({ kind: "github", host: "github.com", account: "lyrica-bot" })).toBe("lyrica-bot@users.noreply.github.com");
-    expect(noReplyEmail({ kind: "forgejo", host: "forge.lan:3000", account: "ada" }, { email: "ada@noreply.forge.lan" })).toBe("ada@noreply.forge.lan");
-    expect(noReplyEmail({ kind: "gitea", host: "forge.lan:3000", account: "ada" }, { email: "" })).toBe("ada@noreply.forge.lan");
+    // Gitea's /user gives the account its real email even when it is hidden: never that.
+    expect(noReplyEmail({ kind: "forgejo", host: "forge.lan:3000", account: "ada" }, { email: "ada@example.test" } as { id?: unknown })).toBe("ada@noreply.forge.lan");
+    expect(noReplyEmail({ kind: "gitea", host: "forge.lan:3000", account: "ada" })).toBe("ada@noreply.forge.lan");
   });
 
   it("lists what an account can see, and records a rejected token", async () => {

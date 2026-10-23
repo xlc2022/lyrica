@@ -928,11 +928,12 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
 - **Commits** carry the first repository's account as author and
   committer (`GIT_AUTHOR_*` and `GIT_COMMITTER_*` in the run's
   environment), so a fresh clone commits without a name she picks: the
-  account's login, and its no-reply address. For GitHub that is
-  `<id>+<login>@users.noreply.github.com`, with the id asked of `/user`
-  once per daemon run when the thread's clones are fetched. Gitea and
-  Forgejo give the email from `/user`, which is the no-reply one when the
-  account keeps its email private.
+  account's login, and a no-reply address, never its real email. For
+  GitHub that is `<id>+<login>@users.noreply.github.com`, with the id asked
+  of `/user` once per daemon run when the thread's clones are fetched; for
+  Gitea, Forgejo and Other it is `<login>@noreply.<host>`, Gitea's default
+  placeholder (their `/user` shows the account its real email even when it
+  is hidden).
 - **`gh` and `tea`** are wrapped (`core/src/workspace/forge.sh`, mounted at
   `/run/lyrica/bin`, first on the PATH of a run with repositories): each
   takes the placeholder of the account whose repository the current
