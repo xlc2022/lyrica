@@ -1056,9 +1056,10 @@ her account is general.
 - **The repository's settings**, the owner's to set, once:
   1. Her GitHub account as a collaborator with **Write**.
   2. Under her account, a fine-grained token for this repository only,
-     with **Contents** and **Pull requests** read and write and
-     **Actions** read, added in Settings → Git accounts as a GitHub
-     account. Actions read lets her see why a check failed
+     with **Contents**, **Issues** and **Pull requests** read and write
+     and **Actions** read, added in Settings → Git accounts as a GitHub
+     account. Issues lets her claim an issue and file the Friction log's
+     issues (docs/briefs/lyrica-project.md). Actions read lets her see why a check failed
      (`gh pr checks`, `gh run view --log-failed`); re-running a job stays
      with the reviewers. GitHub serves a job's log from storage hosts
      that change, so reading logs needs the thread's internet on, not
