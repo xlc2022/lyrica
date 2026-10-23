@@ -190,6 +190,8 @@ export interface SearchOptions {
   current?: boolean;
   /** Leave out entries of this thread (already in context). */
   excludeThread?: string;
+  /** With `excludeThread`: keep its entries numbered below this, which a compaction took out of context. */
+  keepBefore?: number;
   /** The thread searching. In a project, what belongs to it (notes citing its threads, its page, its threads' entries) ranks higher. */
   fromThread?: string;
   /** Keep only project items (fromThread) or notes with this whole about tag. Empty project membership matches nothing. */
@@ -409,6 +411,11 @@ export class PoolReader {
   /** Pi entry IDs already stored for the thread. */
   storedPiIds(threadId: string): Set<string> {
     return new Set((this.db.prepare("SELECT pi_id FROM entries WHERE thread = ?").all(threadId) as { pi_id: string }[]).map((r) => r.pi_id));
+  }
+
+  /** The number a thread's entry was stored under, by its Pi entry ID. */
+  entryNumber(threadId: string, piId: string): number | undefined {
+    return (this.db.prepare("SELECT n FROM entries WHERE thread = ? AND pi_id = ?").get(threadId, piId) as { n: number } | undefined)?.n;
   }
 
   /** The ID an entry goes by: its own, or the original's for a copy. */
@@ -866,7 +873,7 @@ export class PoolReader {
 
   private hit(id: string, kind: Kind, words: string[], terms: string[][], score: number, opts: SearchOptions): Hit | undefined {
     if (kind === "entry") {
-      if (opts.excludeThread && id.startsWith(`e:${opts.excludeThread}#`)) return undefined;
+      if (opts.excludeThread && id.startsWith(`e:${opts.excludeThread}#`) && !(Number(id.slice(opts.excludeThread.length + 3)) < (opts.keepBefore ?? 0))) return undefined;
       // Indexed before sleep's threads weren't.
       if (id.startsWith("e:sleep/")) return undefined;
       const [entry] = this.entryWindow(id, 0);

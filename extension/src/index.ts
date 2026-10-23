@@ -3,7 +3,7 @@ import { isThreadView, type CallContext, type Interface, type Persona, type Pool
 import { assemble, type Budgets, type Section } from "./assemble.ts";
 import { dropNudges, frameMidTurn, contextLines, registerContext, type ContextMeter } from "./context.ts";
 import { setToolsOff } from "./gate.ts";
-import { memorySections } from "./memory.ts";
+import { earlierText, keptFrom, memorySections } from "./memory.ts";
 import { CODE_GUIDELINES, CODING_GUIDELINE, CODE_TOOLS_OFF, codeTaskText } from "./code.ts";
 import { RULES_IN_ALL } from "./code-repositories.ts";
 import { registerSkillTool, SKILLS_IN_ALL, type SkillToolOptions } from "./skills.ts";
@@ -136,6 +136,12 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
           report.push({ name: "project", text: rules, budget: RULES_IN_ALL, truncated: false, place: "system" });
         } else delete options.sections.repo_rules;
       } else { delete options.sections.code_task; delete options.sections.repo_rules; }
+      // After a compaction, where the messages it took out of her context are.
+      const kept = ctx.sessionManager ? keptFrom(view, ctx.sessionManager.getBranch(), thread.threadId) : undefined;
+      if (kept && kept > 1) {
+        options.sections.earlier = earlierText(thread.threadId, kept);
+        report.push({ name: "recall", text: options.sections.earlier, budget: options.sections.earlier.length, truncated: false, place: "system" });
+      } else delete options.sections.earlier;
       const skills = await opts.skills?.index();
       if (skills) {
         options.sections.skills = skills;
