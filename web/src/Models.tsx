@@ -23,7 +23,7 @@ import {
 import { go, href, type ModelsPageUnder, type ModelsTab, type Route } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
 import { TextModels } from "./TextModels.tsx";
-import { ConfirmDialog, ErrorText, hidden, shortTime, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { clock, ConfirmDialog, ErrorText, hidden, shortTime, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 /** The sidebar's Clean up count, from GET …/models/cleanup: a plain read, so the shell can poll it without probing any endpoint. */
 export function useCleanupCount(userId: string): { count: number; reload: () => void } {
@@ -78,7 +78,7 @@ export function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string;
   if (ep.pausedAt) return { dot: "away", word: "Paused" };
   if (unpaired(host)) return { dot: "down", word: "Unpaired" };
   if (ep.signedOut) return { dot: "down", word: "Signed out" };
-  if (ep.limitedUntil && Date.parse(ep.limitedUntil) > Date.now()) return { dot: "away", word: "Limit reached, resets in", since: duration(Date.parse(ep.limitedUntil) - Date.now()) };
+  if (ep.limitedUntil && Date.parse(ep.limitedUntil) > Date.now()) return { dot: "away", word: "Limit reached until", since: clock(ep.limitedUntil) };
   if (ep.state === "up") return { dot: "up", word: ep.api === "host" ? "Online" : "Up" };
   return { dot: "down", word: "Unreachable", since };
 }

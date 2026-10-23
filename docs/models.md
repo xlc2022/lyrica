@@ -964,7 +964,7 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   (`isPlanLimit`, heard in `planProvider`), the router skips the plan
   until it resets (`reportPlanLimit`, with `planLimitReset` reading
   OpenAI's `resets_at`, else an hour), and the Models page shows "Limit
-  reached, resets in" with the time left. In a thread, the person gets one
+  reached until" with the reset time. In a thread, the person gets one
   notice a turn saying when it resets. When Pi would retry the reply, the
   retry goes to the next model in the list, as for a machine that is away;
   a turn the limit ends instead carries on by itself (`PLAN_LIMIT_RESUME`,
