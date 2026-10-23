@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import ssh2 from "ssh2";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { testMcpServer } from "./mcp-server.ts";
-import { gitEnv, keepResult, MCP_RESULT_BYTES, generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, migrate, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig, type SandboxSpec } from "../src/index.ts";
+import { gitEnv, keepResult, noReplyEmail, MCP_RESULT_BYTES, generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, migrate, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig, type SandboxSpec } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -314,6 +314,13 @@ describe("Git accounts and repositories", () => {
     settings.setThread("project", "general", { repositories: [{ ...scratch, account: "robot" }, { name: "ada/notes", account: "gitea" }] });
     settings.updateGitAccount("gitea", { pool: "private" });
     expect(settings.effective("project").repositories).toEqual([{ ...scratch, account: "robot" }]);
+  });
+
+  it("gives each host's no-reply address for an account's commits", () => {
+    expect(noReplyEmail({ kind: "github", host: "github.com", account: "lyrica-bot" }, { id: 42 })).toBe("42+lyrica-bot@users.noreply.github.com");
+    expect(noReplyEmail({ kind: "github", host: "github.com", account: "lyrica-bot" })).toBe("lyrica-bot@users.noreply.github.com");
+    expect(noReplyEmail({ kind: "forgejo", host: "forge.lan:3000", account: "ada" }, { email: "ada@noreply.forge.lan" })).toBe("ada@noreply.forge.lan");
+    expect(noReplyEmail({ kind: "gitea", host: "forge.lan:3000", account: "ada" }, { email: "" })).toBe("ada@noreply.forge.lan");
   });
 
   it("lists what an account can see, and records a rejected token", async () => {

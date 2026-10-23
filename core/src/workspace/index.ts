@@ -189,6 +189,8 @@ export class Workspace {
   private readonly sshTargets = new Map<string, SshTarget>();
   /** Private Git accounts whose host has newly left her network, by `<userId>/<name>`: no token goes out until the user confirms. */
   private readonly gitRefused = new Set<string>();
+  /** The email each account's commits carry, asked of its host once per daemon run, by `user/account/host/login`. */
+  private readonly gitEmails = new Map<string, string>();
   /**
    * Private MCP servers whose host passed the own-network check in this
    * process, by `<userId>/<name>/<url>`. A private server is used only once
@@ -818,8 +820,11 @@ export class Workspace {
   credentialsFor(t: WorkspaceThread): Credentials {
     const s = this.settings(t.userId);
     const forge = this.repositoriesFor(t).filter((r) => r.reachable).map((r) => ({ name: r.name, account: s.gitAccount(r.account)! }));
+    // Her commits carry the first repository's account, so a fresh clone can commit without her picking a name.
+    const a = forge[0]?.account;
     return {
       forge,
+      ...a ? { identity: { name: a.account, email: this.gitEmails.get(this.gitEmailKey(t.userId, a)) ?? noReplyEmail(a) } } : {},
       ...this.claudeCodeFor(t) ? { anthropic: s.claudeCodeToken()! } : {},
       ...this.opts.upstreams ? { upstreams: this.opts.upstreams } : {},
     };
@@ -842,6 +847,7 @@ export class Workspace {
       if (!a || a.pool !== t.pool) continue;
       const refused = await this.checkGitHost(t.userId, a).then(() => undefined, (err: Error) => err.message);
       if (refused) problems.push(refused);
+      else await this.learnGitEmail(t.userId, a);
     }
     // The daemon fetches even a project chat's clones, which are read-only to the chat itself.
     const box = this.targetFor(t, undefined, true) as Sandbox;
@@ -873,6 +879,22 @@ export class Workspace {
     const s = this.settings(t.userId);
     const now = s.thread(t.threadId).repositories;
     return s.setThread(t.threadId, t.pool, { repositories: [...now, { name: repositoryName(r.name), account: r.account }] }).repositories;
+  }
+
+  private gitEmailKey(userId: string, a: Pick<GitAccountConfig, "name" | "host" | "account">): string {
+    return `${userId}/${a.name}/${a.host}/${a.account}`;
+  }
+
+  /** Asks the host once for the account's own no-reply address (GitHub's needs its numeric id); a failure keeps the guessed one. */
+  private async learnGitEmail(userId: string, a: GitAccountConfig): Promise<void> {
+    const key = this.gitEmailKey(userId, a);
+    if (a.kind === "other" || this.gitEmails.has(key)) return;
+    try {
+      const me = await this.forgeApi(a, "/user") as { id?: unknown; email?: unknown };
+      this.gitEmails.set(key, noReplyEmail(a, me));
+    } catch {
+      // The guessed address still lets her commit.
+    }
   }
 
   /**
@@ -1457,4 +1479,17 @@ export function codexSandbox(home: string, o: Pick<SandboxSpec, "exclude" | "fro
 /** Root is never her account, a dedicated one's or the user's: root steps go to the user on a card. */
 function refuseRoot(username: string): void {
   if (username === "root") throw new Error("she never logs in as root: use a dedicated account, or your own");
+}
+
+/**
+ * The address an account's commits carry: GitHub's no-reply address (with the
+ * account's id when the host gave it), the email Gitea or Forgejo gives (its
+ * no-reply one when the account keeps it private), or a no-reply address on
+ * the host.
+ */
+export function noReplyEmail(a: Pick<GitAccountConfig, "kind" | "host" | "account">, me: { id?: unknown; email?: unknown } = {}): string {
+  const host = parseHost(a.host).host;
+  if (a.kind === "github") return `${typeof me.id === "number" ? `${me.id}+` : ""}${a.account}@users.noreply.${host}`;
+  if (typeof me.email === "string" && me.email.includes("@")) return me.email;
+  return `${a.account}@noreply.${host}`;
 }
