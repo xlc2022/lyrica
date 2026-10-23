@@ -1227,7 +1227,7 @@ export class HostedThread {
     const until = this.o.models.planLimitedUntil(endpointId) ?? Date.now();
     const name = this.o.models.endpoint(this.userId, endpointId)?.name ?? "The plan";
     const minutes = Math.max(1, Math.round((until - Date.now()) / 60_000));
-    return `${name} reached its plan's usage limit; it resets in about ${minutes < 90 ? `${minutes} min` : `${Math.round(minutes / 60)} h`}. This thread waits and carries on then.`;
+    return `${name} reached its plan's usage limit. It resets in about ${minutes < 90 ? `${minutes} min` : `${Math.round(minutes / 60)} h`}. This thread waits and carries on then.`;
   }
 
   /** A turn a plan's usage limit ended carries on a minute after the plan resets. */

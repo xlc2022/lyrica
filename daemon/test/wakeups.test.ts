@@ -133,7 +133,7 @@ describe("a plan's usage limit", () => {
         s.replies.push({ text: "The local model answered." });
         const events = await s.say("build it");
         expect(events.filter((e) => e.type === "notice")).toHaveLength(1);
-        expect(events.find((e) => e.type === "notice")).toMatchObject({ text: expect.stringMatching(/^chatgpt reached its plan's usage limit; it resets in about \d+ (min|h)\. This thread waits and carries on then\.$/), status: "limit" });
+        expect(events.find((e) => e.type === "notice")).toMatchObject({ text: expect.stringMatching(/^chatgpt reached its plan's usage limit\. It resets in about \d+ (min|h)\. This thread waits and carries on then\.$/), status: "limit" });
         expect(events).not.toContainEqual({ type: "text", delta: "The local model answered." });
         const until = s.models.planLimitedUntil(s.plan.id)!;
         if ("resets_at" in error) {
