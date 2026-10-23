@@ -218,7 +218,7 @@ export interface Edited {
 }
 
 export type SleepStatus = "running" | "complete" | "partial" | "skipped";
-export type SkipReason = "no-key" | "endpoint-down" | "no-activity";
+export type SkipReason = "no-key" | "endpoint-down" | "no-activity" | "plan-limit";
 export type SleepPhase = "consolidate" | "dream" | "wake";
 /** The limit a sleep phase stopped at. */
 export type SleepLimit = "turns" | "tokens" | "time";

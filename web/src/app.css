@@ -1574,13 +1574,17 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 }
 
 /* Tokens shares the existing header picker; phone rows open in place. */
-.usage-pop { width: min(460px, calc(100vw - 32px)); }
-.usage-row, .usage-head { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, 4.2em) 5.6em; gap: 8px; padding: 6px 0; align-items: baseline; }
+.usage-pop { width: min(520px, calc(100vw - 32px)); }
+.usage-row, .usage-head { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, 4.2em) 3.6em 5.6em; gap: 8px; padding: 6px 0; align-items: baseline; }
 .usage-row > :first-child { overflow-wrap: anywhere; min-width: 0; }
 .usage-row > .num, .usage-head > :not(:first-child) { text-align: right; }
+.usage-row > .num { white-space: nowrap; }
 .usage-inline { display: block; margin-top: 12px; }
 .usage-inline > button.link { min-height: var(--tap); }
 .usage-rows { font-size: 13px; white-space: normal; }
+@media (max-width: 480px) {
+  .usage-row, .usage-head { grid-template-columns: minmax(0, 1fr) repeat(3, 3.3em) 3.6em 5em; gap: 6px; }
+}
 
 /* Project commands use the existing fixed-choice buttons; rows wrap at phone width. */
 .command-rule { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
@@ -1710,3 +1714,10 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 
 .nquestion .actions { grid-column: 2 / -1; }
 .nquestion .actions button { height: auto; white-space: normal; overflow-wrap: anywhere; flex-direction: column; gap: 2px; }
+
+/* A plan's usage limit: the threads waiting for it, under a toggle, scroll past ten. */
+.nthreads-toggle { justify-self: start; }
+.nthreads { list-style: none; margin: 4px 0 0; padding: 0; max-height: 240px; overflow-y: auto; display: grid; gap: 4px; }
+.nthreads a { overflow-wrap: anywhere; }
+.plan-wait { display: grid; gap: 8px; justify-items: start; margin: 12px 0; }
+.plan-wait p { margin: 0; }

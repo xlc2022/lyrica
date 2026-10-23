@@ -4,11 +4,12 @@
 import type { Pool, PoolStore, User } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { BUILD, type Lyricad } from "./lyricad.ts";
+import { planWaits } from "./plan-waits.ts";
 import { readUpdates } from "./updates.ts";
 
 const POOLS: Pool[] = ["general", "private"];
 const DETAIL = 160;
-const TYPE_ORDER: Api.NotificationType[] = ["question", "permission", "share", "update", "approval", "suggestion", "sleep", "rollback"];
+const TYPE_ORDER: Api.NotificationType[] = ["question", "permission", "limit", "share", "update", "approval", "suggestion", "sleep", "rollback"];
 /** A failed probation is told for this long; Administration → Updates keeps it after. */
 const ROLLBACK_DAYS = 7;
 
@@ -107,6 +108,26 @@ function collect(d: Lyricad, user: User, show: Api.Display): Api.Notification[] 
         scope: c.pool, decision: c.needsYou, thread: { pool: c.pool, id: c.thread }, at: last?.createdAt ?? th.createdAt,
         actions: c.needsYou ? [] : [{ label: "Dismiss", method: "POST", path: `${t(c.pool, c.thread)}/seen` }],
       });
+    }
+    // A plan out of usage: one item for the threads waiting for it, one for sleep, each offering to fall back until it resets.
+    for (const w of planWaits(d, user.id)) {
+      const fall: Api.NotificationAction = {
+        label: "Fall back", method: "POST", path: `${u}/endpoints/${encodeURIComponent(w.endpointId)}/fall-back`,
+        title: `Every thread and sleep waiting on ${w.name} uses its next model until it resets.`,
+      };
+      const threads = w.threads.filter((x) => shownThread(x.pool, x.thread)).map((x) => ({ pool: x.pool, id: x.thread, title: titleOf(o[x.pool], x.thread) }));
+      if (threads.length) {
+        out.push({
+          id: `limit:${w.endpointId}/threads`, type: "limit",
+          title: threads.length === 1 ? `${threads[0]!.title} waits for ${w.name}'s usage limit` : `${threads.length} threads wait for ${w.name}'s usage limit`,
+          scope: threads.every((x) => x.pool === "private") ? "private" : "general", decision: true, until: w.until, at: w.until,
+          ...(threads.length === 1 ? { thread: { pool: threads[0]!.pool, id: threads[0]!.id } } : { threads }),
+          actions: [fall],
+        });
+      }
+      for (const pool of w.sleep.filter(shownPool)) {
+        out.push({ id: `limit:${w.endpointId}/sleep/${pool}`, type: "limit", title: `Sleep waits for ${w.name}'s usage limit`, scope: pool, decision: true, until: w.until, at: w.until, actions: [fall] });
+      }
     }
     // Her items from the night, in the pools the display shows.
     for (const pool of pools) {

@@ -15,9 +15,10 @@ import { RoutinesFact } from "./Routines.tsx";
 import { ChecklistButton } from "./Checklist.tsx";
 import { ChangesFact } from "./Changes.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
+import { shortModel } from "./ModelLabel.tsx";
 import { Crumbs, Main, PanelButtons, usePanel, useWide, type ShellContext } from "./Shell.tsx";
 import { ThreadMenu, type MenuAt } from "./ThreadMenu.tsx";
-import { ErrorText, InlineRename, useAction, useDismiss, useInView, useLoad, wakeTime } from "./ui.tsx";
+import { clock, ErrorText, InlineRename, useAction, useDismiss, useInView, useLoad, wakeTime } from "./ui.tsx";
 import { stopReading } from "./Voice.tsx";
 import { Tombstone } from "./Tombstone.tsx";
 
@@ -100,6 +101,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const setWakeups = useCallback((wakeups: WakeupInfo[]) => { if (settings.data) settings.set({ ...settings.data, wakeups }); }, [settings.data, settings.set]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (t.live.wakeups) setWakeups(t.live.wakeups); }, [t.live.wakeups]);
+  // A turn a plan's usage limit cut off: the card needs the plan and the next model, which only settings carry.
+  useEffect(() => { if (t.live.wakeups?.some((w) => w.planLimit)) refreshSettings(); }, [t.live.wakeups, refreshSettings]);
   // A rewind may take pinned messages with it.
   useEffect(() => { if (t.live.reload) pins.reload(); }, [t.live.reload, pins.reload]);
   useEffect(() => {
@@ -336,6 +339,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         {s?.project && settings.data && t.loaded && !t.messages.length && !t.live.items.length && <ProjectWelcome userId={userId} pool={pool} project={s} settings={settings.data} onChange={() => { summary.reload(); settings.reload(); overview.reload(); refreshThreads(); }} />}
         <Conversation ctx={ctx} pool={pool} base={base} threadId={threadId} subagent={!!s?.subagent} thread={t} rewinder={rewinder} hideFrom={pending?.hide} parentTitle={s?.child ? parent?.title : undefined}
           speech={settings.data?.speech} onError={setSendError} project={projectEnv} />
+        {settings.data?.planWait && settings.data.wakeups.some((w) => w.planLimit) && <PlanWaitCard wait={settings.data.planWait} userId={userId} onDone={refreshSettings} />}
         <ErrorText error={sendError} />
       </div>
       {!t.connected && <p className="offline" role="status">Reconnecting…</p>}
@@ -518,4 +522,20 @@ function useStickyScroll(deps: unknown[]) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   return ref;
+}
+
+/**
+ * A turn waits for its plan's usage limit to reset (docs/ux.md §6): when it carries on, and a button to
+ * fall back to the next model in the list until then, for every thread and job waiting on the plan.
+ */
+function PlanWaitCard({ wait, userId, onDone }: { wait: NonNullable<ThreadSettings["planWait"]>; userId: string; onDone: () => void }) {
+  const [run, busy, error] = useAction();
+  return (
+    <div className="card plan-wait" role="status">
+      <p>{wait.name} reached its plan's usage limit. This thread carries on when it resets at <span className="num">{clock(wait.until)}</span>.</p>
+      {wait.next && <button type="button" className="sm" disabled={busy} title={`Every thread and sleep waiting on ${wait.name} uses ${wait.next} until it resets.`}
+        onClick={() => void run(async () => { await post(`${u(userId, "endpoints")}/${encodeURIComponent(wait.endpointId)}/fall-back`, {}); onDone(); })}>Use {shortModel(wait.next)} until then</button>}
+      <ErrorText error={error} />
+    </div>
+  );
 }

@@ -23,7 +23,7 @@ if [ -z "$real" ]; then
 fi
 unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
 export CLAUDE_CONFIG_DIR=/run/lyrica/claude
-# It runs as root inside the sandbox, which Claude Code allows only when told it's sandboxed.
+# Claude Code skips its permission prompts as root only when told it's sandboxed: she runs as lyricad's own uid, which may be root.
 export IS_SANDBOX=1
 # No update checks, telemetry or error reports: only the calls its work needs.
 export DISABLE_AUTOUPDATER=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1

@@ -13,6 +13,10 @@ import type { ThreadHost } from "./hosted.ts";
 
 interface Due extends WakeupInfo { pool: Pool; thread: string }
 
+/** The note of a turn a plan's usage limit cut off: it carries on once the plan resets, or when the user falls back. */
+export const PLAN_LIMIT_RESUME = "Your model's plan reached its usage limit, which cut your last turn off. Carry on with what you were doing.";
+const limitMark = (note: string) => (note === PLAN_LIMIT_RESUME ? { planLimit: true as const } : {});
+
 /** A wake-up this much past its time says when it was due. */
 const LATE_MS = 2 * 60_000;
 const DAY_MS = 86_400_000;
@@ -38,7 +42,7 @@ export class Wakeups {
     for (const pool of ["general", "private"] as const) {
       const view = this.o.memory.openThreadView(userId, pool);
       try {
-        for (const w of view.own.wakeups()) all.push({ id: w.id, dueAt: w.dueAt, pool, thread: w.thread });
+        for (const w of view.own.wakeups()) all.push({ id: w.id, dueAt: w.dueAt, pool, thread: w.thread, ...limitMark(w.note) });
       } finally {
         view.close();
       }
@@ -54,7 +58,19 @@ export class Wakeups {
   /** A thread's pending wake-ups, soonest first. */
   list(userId: string, pool: Pool, thread: string): WakeupInfo[] {
     return (this.due.get(userId) ?? []).filter((d) => d.pool === pool && d.thread === thread)
-      .sort((a, b) => a.dueAt.localeCompare(b.dueAt) || a.id - b.id).map(({ id, dueAt }) => ({ id, dueAt }));
+      .sort((a, b) => a.dueAt.localeCompare(b.dueAt) || a.id - b.id).map(({ id, dueAt, planLimit }) => ({ id, dueAt, ...(planLimit ? { planLimit } : {}) }));
+  }
+
+  /** The user's threads waiting for a plan's usage limit to reset. */
+  waitingForPlans(userId: string): { pool: Pool; thread: string; dueAt: string }[] {
+    return (this.due.get(userId) ?? []).filter((d) => d.planLimit).map(({ pool, thread, dueAt }) => ({ pool, thread, dueAt }));
+  }
+
+  /** The user fell back from a limited plan: these threads' waiting turns carry on now. */
+  resumeNow(userId: string, threads: { pool: Pool; thread: string }[], now = new Date()): void {
+    for (const d of this.due.get(userId) ?? []) {
+      if (d.planLimit && threads.some((t) => t.pool === d.pool && t.thread === d.thread)) { d.dueAt = now.toISOString(); void this.fire(userId, d, now); }
+    }
   }
 
   /** Her `threads later`: a wake-up for the thread she's in, `minutes` from now. */
@@ -81,8 +97,11 @@ export class Wakeups {
   resume(userId: string, pool: Pool, thread: string, dueAt: Date, note: string): void {
     const view = this.o.memory.openThreadView(userId, pool);
     try {
+      // One such resume per thread: a later cut-off moves it rather than adding another.
+      const moved = view.own.wakeups(thread).filter((w) => w.note === note).map((w) => (view.own.removeWakeups(thread, w.id), w.id));
       const id = view.own.addWakeup(thread, dueAt.toISOString(), note, new Date().toISOString());
-      this.due.set(userId, [...this.due.get(userId) ?? [], { id, dueAt: dueAt.toISOString(), pool, thread }]);
+      const due = (this.due.get(userId) ?? []).filter((d) => d.pool !== pool || !moved.includes(d.id));
+      this.due.set(userId, [...due, { id, dueAt: dueAt.toISOString(), pool, thread, ...limitMark(note) }]);
     } finally {
       view.close();
     }

@@ -67,6 +67,27 @@ describe("spend share", () => {
     db.close();
   });
 
+  it("keeps the cache's share of input from the calls that measured it, a subagent's under its parent", async () => {
+    const { users, ada, models, localRef } = await withUsageModels();
+    const db = users.openUserDb(ada.id);
+    const call = db.prepare(`INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, prompt_tokens, read_tokens, processed, output_tokens)
+      VALUES ('2026-01-01', 'general', ?, 'chat', ?, 'Local', 'test', 'local', 10, ?, ?, 5)`);
+    call.run("work", localRef.offeringId, 1000, 100);
+    call.run("work", localRef.offeringId, 1000, 300);
+    // An older record that never measured it is left out of the share, not counted as a miss.
+    call.run("work", localRef.offeringId, null, null);
+    db.prepare(`INSERT INTO subagent_runs (pool, thread, run, parent, role, model, offering, background, status, input_tokens, output_tokens, started_at)
+      VALUES ('general', 'sub', 'run', 'work', 'worker', 'Local', ?, 0, 'done', 2000, 10, '2026-01-01')`).run(localRef.offeringId);
+    call.run("sub", localRef.offeringId, 2000, 1600);
+    const [work] = models.usage(ada.id, "general", ["work"]);
+    expect(work).toMatchObject({ cached: 900 + 700 + 400, measured: 4000 });
+    // Listing the subagent's thread too doesn't count its calls twice.
+    const both = models.usage(ada.id, "general", ["work", "sub"]);
+    expect(both.reduce((n, r) => n + (r.measured ?? 0), 0)).toBe(4000);
+    expect(models.usage(ada.id, "general", ["sub"]).some(r => r.measured)).toBe(false);
+    db.close();
+  });
+
   it("records read tokens independently of context size and filters recent calls by pool", async () => {
     const { users, ada, models, localRef } = await withUsageModels();
     const db = users.openUserDb(ada.id);

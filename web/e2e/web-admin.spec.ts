@@ -1227,7 +1227,7 @@ test("spend share popovers and Call history project filter", async ({ page, base
   await page.getByRole("button", { name: /^[\d.,]+[kM]? tokens$/ }).click();
   await expect(page.getByTitle("Counts every request, cached reads included.").first()).toBeVisible();
   // Input, output and total tokens, then GPU time.
-  await expect(page.locator(".usage-head").first()).toHaveText(/^ModelInputOutputTotalGPU time$/);
+  await expect(page.locator(".usage-head").first()).toHaveText(/^ModelInputOutputTotalCachedGPU time$/);
   await expect(page.getByText("By thread", { exact: true })).toBeVisible();
   await expect(page.getByText("This chat", { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

@@ -190,7 +190,10 @@ restart in between loses the record.
 
 - **`extension/src/sleep.ts`**: `Sleep.run(userId, pool, reason)` returns the
   run (`SleepRunRecord`): `complete`, `partial` or `skipped` with `no-key`,
-  `endpoint-down` or `no-activity`. Runs queue, so pools and users sleep one
+  `endpoint-down`, `no-activity` or `plan-limit`. A run whose phase model is
+  a plan out of usage is skipped, and one a plan's limit cuts off ends
+  partial; either waits (`planWaits`) and runs again from lyricad's tick
+  once the plan resets or the user falls back (`resumeWaiting`). Runs queue, so pools and users sleep one
   at a time. `check()` says at once what would stop a run, for `/sleep`.
   `stop(userId)` (Lock, shutdown) aborts the phase and marks the run partial.
 - **`core/src/store/sleep-prompt.ts`**: what each phase is told

@@ -473,7 +473,7 @@ class Models {                                              // new Models(keyrin
   callHistory(userId, { limit, offset, q, pools, threadIds? }): { entries: CallRecord[]; total }
     // GET models/calls/history?project=&pool= restricts both pool and project threads; hidden project pool is 404.
   recordPace(userId, threadId, pace, task?, pool?) / speedsByOffering(userId): Map<offeringId, { tokPerS?; promptTokPerS? }>   // medians over the last 20 calls
-  usage(userId, pool, threadIds): { threadId; label; kind?: "local" | "cloud"; tokens; gpuMs? }[]
+  usage(userId, pool, threadIds): { threadId; label; kind?: "local" | "cloud"; tokens; input; output; gpuMs?; cached?; measured? }[]
     // Calls plus durable folded counts plus subagent runs at every depth; pool AND thread filtered.
   addCallTotals(userId, pool, threadId, label, kind, input, output): void   // adds one call to call_totals; Claude Code's, counted by its relay
     // (RelaySpec/SandboxSpec.onUsage({ inputTokens, outputTokens }) → Workspace onClaudeCodeUsage(t, usage)), as label "Claude Code", kind cloud
@@ -945,6 +945,17 @@ Custom roles override built-ins by name.
   answer route with `{ option }`, recommended first, then the others in
   order; its `thread` supplies Open thread. There is no bulk question action.
   Display filters apply as to other decisions, including the private pool.
+  `NotificationType` gains `limit` (daemon/src/plan-waits.ts): id
+  `limit:<endpoint>/threads` for the threads waiting on a limited plan (its
+  `thread` when there is one, else `threads: { pool, id, title }[]`) and
+  `limit:<endpoint>/sleep/<pool>` for sleep, each with `until` (the reset)
+  and one action, **Fall back** (with a `title` tooltip; `NotificationAction.title?` is new): `POST …/endpoints/:id/fall-back` →
+  `{ ok }` (404 for no such plan, 409 when it isn't limited), which makes
+  the router skip the plan until it resets (`Models.fallBackFromLimit`,
+  `planFallingBack`) and carries the waiting turns (`Wakeups.resumeNow`)
+  and sleep (`Sleep.resumeWaiting`) on at once. `WakeupInfo.planLimit` marks
+  a turn waiting for its plan; `ThreadSettings.planWait { endpointId,
+  name, until, next? }` names the plan and the model the thread would use.
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
   in Plan mode itself.
@@ -1991,7 +2002,7 @@ One entry point with subcommands: `serve`, `admin`, `dev`, `version` and
 new Sleep({ users, memory, models, persona, proposals, hasKey, cwd, limits? })
 sleep.run(userId, pool, reason: "scheduled" | "manual"): Promise<SleepRun>  // queued: one run at a time
 // status: "complete" | "partial" | "skipped"
-// skipReason: "no-key" | "endpoint-down" | "no-activity"
+// skipReason: "no-key" | "endpoint-down" | "no-activity" | "plan-limit"
 sleep.check(userId, pool)          // what would stop a run now, without recording anything
 sleep.stop(userId)                 // Lock: the run is marked partial
 sleep.prune(now?): number          // forgets phase threads older than 36 hours, memories kept
@@ -2363,11 +2374,14 @@ requires the addressed user's session; it returns no thread or memory text.
 ### Thread usage
 
 `GET /api/u/:userId/threads/:pool/:id/usage` → `ThreadUsage { tokens,
-input, output, gpuMs?, models: { label, kind?, tokens, input, output, gpuMs? }[],
-threads?: { threadId, tokens, input, output, gpuMs? }[] }`. `input` is every
+input, output, gpuMs?, cacheHit?, models: { label, kind?, tokens, input, output, gpuMs?, cacheHit? }[],
+threads?: { threadId, tokens, input, output, gpuMs?, cacheHit? }[] }`. `input` is every
 request's reads, cached reads included, and `output` what was written; they
 split `tokens`, except that totals folded before user step 17 count in
-`tokens` alone. Requires the addressed user's session and thread;
+`tokens` alone. `cacheHit` (0 to 1) is the share of input the server said it
+read from its cache (`read_tokens - processed` over `read_tokens`), over the
+kept call records that measured it, a subagent's under its parent's thread;
+absent where none did. Requires the addressed user's session and thread;
 missing thread is 404. Models sort by tokens descending. `threads` appears
 only for a project chat: the chat first, then descending tokens. The total
 is also `ProjectOverview.tokens`. User step 10 adds nullable

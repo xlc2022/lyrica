@@ -14,6 +14,7 @@ import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
+import { fallBack, threadPlanWait, type ThreadPlanWait } from "./plan-waits.ts";
 import { DEFAULT_BUDGETS, OPENING, OPENROUTER_URL, pinnedBlock, pinnedOf, reserveFor, startOpenRouterSignIn, startPlanSignIn, type OpenRouterSignIn, type PlanSignIn } from "@lyrica/extension";
 import type { ProjectThreadInfo } from "./children.ts";
 import { Busy } from "./hosted.ts";
@@ -383,6 +384,10 @@ export function apiRoutes(d: Lyricad): Route[] {
         ...(c.paused !== undefined ? { paused: c.paused === true } : {}),
       });
       return endpointInfo(d, user.id, r.params.endpointId!);
+    }),
+    route("POST", `${u}/endpoints/:endpointId/fall-back`, (r) => {
+      fallBack(d, d.userFor(r).id, r.params.endpointId!);
+      return { ok: true };
     }),
     route("POST", `${u}/endpoints/:endpointId/reset-ids`, (r) => {
       const user = d.userFor(r);
@@ -1455,7 +1460,7 @@ export function apiRoutes(d: Lyricad): Route[] {
         const rows = s().models.usage(user.id, pool, ids);
         const sum = (rs: typeof rows) => {
           const local = rs.filter(x => x.gpuMs !== undefined);
-          return { tokens: rs.reduce((n, x) => n + x.tokens, 0), input: rs.reduce((n, x) => n + x.input, 0), output: rs.reduce((n, x) => n + x.output, 0), ...(local.length ? { gpuMs: local.reduce((n, x) => n + x.gpuMs!, 0) } : {}) };
+          return { tokens: rs.reduce((n, x) => n + x.tokens, 0), input: rs.reduce((n, x) => n + x.input, 0), output: rs.reduce((n, x) => n + x.output, 0), ...(local.length ? { gpuMs: local.reduce((n, x) => n + x.gpuMs!, 0) } : {}), ...cacheHit(rs) };
         };
         const models: Api.ThreadUsage["models"] = [];
         for (const row of rows) {
@@ -1466,6 +1471,7 @@ export function apiRoutes(d: Lyricad): Route[] {
           model.output += row.output;
           if (row.gpuMs !== undefined) model.gpuMs = (model.gpuMs ?? 0) + row.gpuMs;
         }
+        for (const model of models) Object.assign(model, cacheHit(rows.filter(x => x.label === model.label && x.kind === model.kind)));
         models.sort((a, b) => b.tokens - a.tokens || a.label.localeCompare(b.label));
         const threads = ids.map(threadId => ({ threadId, ...sum(rows.filter(x => x.threadId === threadId)) }));
         if (thread.project) threads.sort((a, b) => a.threadId === thread.id ? -1 : b.threadId === thread.id ? 1 : b.tokens - a.tokens || a.threadId.localeCompare(b.threadId));
@@ -2801,6 +2807,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
     wakeups: d.services!.wakeups.list(user.id, pool, threadId),
+    ...(threadId && d.services!.wakeups.list(user.id, pool, threadId).some((w) => w.planLimit) ? planWaitOf(threadPlanWait(d, user.id, pool, threadId)) : {}),
     routines: routineList(d, user, pool, threadId),
   };
 }
@@ -3235,4 +3242,15 @@ function skillRoutes(d: Lyricad, u: string): Route[] {
 /** A plan's usage limit, while the router skips it. */
 function limitOf(until: number | undefined): { limitedUntil?: string } {
   return until ? { limitedUntil: new Date(until).toISOString() } : {};
+}
+
+/** The cache's share of the input that measured it, if any did. */
+function cacheHit(rows: { cached?: number; measured?: number }[]): { cacheHit?: number } {
+  const measured = rows.reduce((n, x) => n + (x.measured ?? 0), 0);
+  return measured ? { cacheHit: rows.reduce((n, x) => n + (x.cached ?? 0), 0) / measured } : {};
+}
+
+/** A thread's wait for a plan's usage limit, while it has one. */
+function planWaitOf(w: ThreadPlanWait | undefined): { planWait?: ThreadPlanWait } {
+  return w ? { planWait: w } : {};
 }

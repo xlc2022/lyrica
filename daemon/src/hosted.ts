@@ -52,7 +52,8 @@ export interface HostOptions {
 }
 
 /** Her next turn after a plan's usage limit cut one off, on another model now or once the plan resets. */
-export const PLAN_LIMIT_RESUME = "Your model's plan reached its usage limit, which cut your last turn off. Carry on with what you were doing.";
+export { PLAN_LIMIT_RESUME } from "./wakeups.ts";
+import { PLAN_LIMIT_RESUME } from "./wakeups.ts";
 
 const CHILD_WAKE = "lyrica-child-wake";
 /** Events kept for reconnecting streams. Older ones reload from stored entries. */
@@ -1141,7 +1142,7 @@ export class HostedThread {
           if (m.stopReason === "error" && m.errorMessage) {
             // A machine that is off or away: the next turn falls back past it, and when none is left the views say so.
             const provider = this.opened?.session.model?.provider ?? "";
-            // A plan out of usage: the router skips it until it resets, the person hears so once a turn, and a turn it ends carries on.
+            // A plan out of usage: the thread waits for it to reset, the person hears so once a turn, and a turn it ends carries on then.
             const limited = this.planLimit(provider, m.errorMessage);
             this.limitCut = limited ? provider : undefined;
             const offline = isUnreachable(m.errorMessage) && this.opened ? this.wentAway(provider) : undefined;
@@ -1175,11 +1176,18 @@ export class HostedThread {
         break;
       }
       case "auto_retry_start": {
-        // Pi is about to retry a model whose machine couldn't be reached, or a plan out of usage: send the retry to the next model in the list instead.
+        // Pi is about to retry a model whose machine couldn't be reached: send the retry to the next model in the list instead.
         // Pi doesn't wait for listeners, but pauses two seconds before retrying; prepare probes for at most one, so it's done first.
+        // A plan out of usage is never retried or passed over: the turn ends, and carries on once it resets.
+        if (this.planLimit(this.opened?.session.model?.provider ?? "", e.errorMessage)) {
+          // Pi makes the retry's abort controller just after this event, so the abort waits a microtask for it.
+          const session = this.opened?.session;
+          queueMicrotask(() => session?.abortRetry());
+          break;
+        }
         const away = isUnreachable(e.errorMessage);
-        if ((away || this.planLimit(this.opened?.session.model?.provider ?? "", e.errorMessage)) && this.opened) {
-          if (away) this.o.models.reportDown(this.opened.session.model?.provider ?? "");
+        if (away && this.opened) {
+          this.o.models.reportDown(this.opened.session.model?.provider ?? "");
           // With no model left to try, retrying the one that's away only keeps her waiting: the turn ends, and says so.
           const session = this.opened.session;
           this.retrying = this.opened.prepare({ retry: true }).catch((err) => { if (err instanceof Offline) session.abortRetry(); });
@@ -1215,29 +1223,18 @@ export class HostedThread {
     return true;
   }
 
-  /** The model the thread's chat goes to now, if any is left. */
-  private nextChat(): string | undefined {
-    try {
-      return this.o.models.resolve(this.chatTask(), this.o.models.callContext(this.userId, this.pool, this.threadId)).label;
-    } catch {
-      return undefined;
-    }
-  }
-
-  /** What the person hears when a plan's usage limit stops a reply: when it resets, and what the thread does meanwhile. */
+  /** What the person hears when a plan's usage limit stops a reply: when it resets, and that the thread waits for it. */
   private limitNotice(endpointId: string): string {
     const until = this.o.models.planLimitedUntil(endpointId) ?? Date.now();
     const name = this.o.models.endpoint(this.userId, endpointId)?.name ?? "The plan";
     const minutes = Math.max(1, Math.round((until - Date.now()) / 60_000));
-    const resets = `${name} reached its plan's usage limit; it resets in about ${minutes < 90 ? `${minutes} min` : `${Math.round(minutes / 60)} h`}.`;
-    const next = this.nextChat();
-    return next ? `${resets} This thread carries on with ${next}.` : `${resets} No other model is left for this thread, so it carries on then.`;
+    return `${name} reached its plan's usage limit. It resets in about ${minutes < 90 ? `${minutes} min` : `${Math.round(minutes / 60)} h`}. This thread waits and carries on then.`;
   }
 
-  /** A turn a plan's usage limit ended carries on: at once on the next model in the list, or once the plan resets if none is left. */
+  /** A turn a plan's usage limit ended carries on a minute after the plan resets. */
   private resumeAfterLimit(endpointId: string): void {
     const until = this.o.models.planLimitedUntil(endpointId) ?? Date.now();
-    this.o.resume?.(this.userId, this.pool, this.threadId, new Date(this.nextChat() ? Date.now() : until + 60_000), PLAN_LIMIT_RESUME);
+    this.o.resume?.(this.userId, this.pool, this.threadId, new Date(until + 60_000), PLAN_LIMIT_RESUME);
   }
 
   /** The endpoint couldn't be reached: marks it down, and returns the chat's Offline when no model is left. */

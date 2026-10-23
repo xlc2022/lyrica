@@ -756,6 +756,14 @@ describe.skipIf(!netRunnable || !lan)("a sandbox's network switches", () => {
     expect((await sh("cat /etc/resolv.conf", box({ internet: true }))).out).toMatch(/^nameserver /m);
   });
 
+  it("runs commands as lyricad's own user with network on, as with it off, never as root", async () => {
+    const me = `${process.getuid!()}:${process.getgid!()}`;
+    for (const network of [{}, { internet: true }]) {
+      const r = await sh("echo $(id -u):$(id -g); echo x > owned && stat -c %u:%g owned; chown 0 owned 2>/dev/null && echo CHOWNED; rm owned", box(network));
+      expect(r.out, JSON.stringify(network)).toBe(`${me}\n${me}\n`);
+    }
+  });
+
   it("with this machine's services only, reaches its loopback but nothing else", async () => {
     expect(await reach({ services: true }, "127.0.0.1", port)).toContain("hello from the host");
     expect(await reach({ services: true }, lan!, peer)).not.toContain("PEER");

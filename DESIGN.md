@@ -311,8 +311,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   the provider instead of giving an API key, so general threads answer
   from that plan. It is always cloud and always their own, never shared.
   Its sign-in is kept in their `user.db` and refreshed by Pi; when the
-  plan's limit runs out the thread carries on with the next model in its
-  list, or once the plan resets. Claude and Gemini plans
+  plan's limit runs out the thread waits and carries on once the plan
+  resets, rather than falling back to another model; so do subagents and
+  background jobs. Claude and Gemini plans
   aren't offered: Anthropic and Google don't permit other apps to use
   their sign-in, so they stay on API keys.
 - **Tasks.** Different tasks use different models: chat, cheap and strong
@@ -595,7 +596,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     net.
   - **Tokens** follows Checklist once a thread has a counted turn. Its
     popover sums every request's reads (cached reads included) as input and
-    its outputs as output, each with their total, by model, with **GPU time** for local calls (first-token plus generation
+    its outputs as output, each with their total, by model, with the share
+    of input read from the server's cache (**Cached**) and **GPU time** for local calls (first-token plus generation
     time, including queueing and loading). Pruned call counts are retained.
     On a phone Tokens opens rows at the foot of Context.
   - Recent calls and the text library show measured speed; nothing acts on

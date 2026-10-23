@@ -371,7 +371,10 @@ kind, summing retained calls and folded totals, with `input` (reads) and
 totals folded before it count in `tokens` alone. Tokens are `read_tokens +
 output_tokens`, falling back to `prompt_tokens + output_tokens` on older
 records. Local GPU time is `ttft_ms + gen_ms`, including queueing and loading;
-cloud calls and subagents have none. Subagents contribute their recorded
+cloud calls and subagents have none. `cached` of `measured` input tokens came
+from the server's cache (`read_tokens - processed`), over kept call records
+with both: a subagent's own records count under its parent, as its tokens
+do, and folded totals never measured it. Subagents contribute their recorded
 input and output tokens down every depth, using the offering's kind when it
 still exists; a subagent thread's own call records and folded totals are
 left out, since its run counts them, except Claude Code's totals, which its
@@ -961,15 +964,21 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   higher rate).
 - A plan is up while signed in; nothing is probed. When any reply on it
   (a thread's, a subagent's, a job's) ends on its usage limit
-  (`isPlanLimit`, heard in `planProvider`), the router skips the plan
-  until it resets (`reportPlanLimit`, with `planLimitReset` reading
-  OpenAI's `resets_at`, else an hour), and the Models page shows "Limit
-  reached until" with the reset time. In a thread, the person gets one
-  notice a turn saying when it resets. When Pi would retry the reply, the
-  retry goes to the next model in the list, as for a machine that is away;
-  a turn the limit ends instead carries on by itself (`PLAN_LIMIT_RESUME`,
-  a wake-up outside her own limits): at once on the next model in the
-  list, or once the plan resets when none is left.
+  (`isPlanLimit`, heard in `planProvider`), Lyrica notes when it resets
+  (`reportPlanLimit`, with `planLimitReset` reading OpenAI's `resets_at`,
+  else an hour), and the Models page shows "Limit reached until" with the
+  reset time. The router still picks the plan for every task, so nothing
+  falls back (the owner's call: a model set to a plan is set so for a
+  reason). A subagent's or background job's call fails until the reset,
+  and the job runs again when it next would; sleep waits and runs again
+  at the reset. The user can fall back instead, until the reset, from the
+  thread's card or the notification (`POST …/endpoints/:id/fall-back`,
+  docs/contracts.md). Pi doesn't retry the reply, the person gets one
+  notice a turn saying when it resets, and the turn carries on by itself
+  a minute after the reset (`PLAN_LIMIT_RESUME`, a wake-up outside her own
+  limits, one per thread: a later cut-off moves it). Claude Code in her sandbox is the same:
+  when it reports its plan's limit, she sets a wake-up for the reset
+  (`CLAUDE_CODE_LINE`).
 - Removing a plan deletes its sign-in; Lyrica stays connected in the
   provider's account settings until it is disconnected there.
 

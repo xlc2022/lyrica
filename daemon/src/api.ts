@@ -1037,9 +1037,13 @@ export interface AcceptShare { pool: Pool }
 // her items from the night, and, for administrators, persona changes to approve.
 // Not yet in it: downloads, clean-up items, image models to review, host problems.
 
-export type NotificationType = "question" | "share" | "permission" | "update" | "sleep" | "suggestion" | "approval" | "rollback";
+export type NotificationType = "question" | "share" | "permission" | "update" | "sleep" | "suggestion" | "approval" | "rollback" | "limit";
 /** An action on an item: a request the UI sends as it is. `opens`: the answer is a ThreadSummary to go to. */
-export interface NotificationAction { label: string; method: "POST" | "DELETE"; path: string; body?: unknown; danger?: boolean; opens?: boolean }
+export interface NotificationAction {
+  label: string; method: "POST" | "DELETE"; path: string; body?: unknown; danger?: boolean; opens?: boolean;
+  /** A tooltip, for an action that changes more than its row shows. */
+  title?: string;
+}
 export interface Notification {
   /** Unique across types: `<type>:<id>`. */
   id: string;
@@ -1053,6 +1057,9 @@ export interface Notification {
   /** Where it leads, if anywhere: a thread, or a section of Settings or Administration. */
   thread?: { pool: Pool; id: string };
   section?: "settings/suggestions" | "settings/skills" | "admin/persona" | "admin/updates";
+  /** A plan's usage limit: the threads waiting for it, and when it resets. */
+  threads?: { pool: Pool; id: string; title: string }[];
+  until?: string;
   actions: NotificationAction[];
   at: string;
 }
@@ -1089,6 +1096,11 @@ export interface ThreadSettings {
   models: Record<ThreadTask, TaskModel>;
   /** Wake-ups waiting, soonest first; the user may remove each (`DELETE …/wakeups/:id`). */
   wakeups: WakeupInfo[];
+  /**
+   * While a turn waits for its plan's usage limit to reset: the plan, when it resets, and the model the
+   * thread would use instead (`next`, absent when none is left). `POST …/endpoints/:id/fall-back` falls back until then.
+   */
+  planWait?: { endpointId: string; name: string; until: string; next?: string };
   /** Recurring schedules, including paused ones; never notes. */
   routines: RoutineInfo[];
   /** The preset that applies now, by name (or "Custom" for a column's own table). */
@@ -2043,7 +2055,7 @@ export interface ProposalDecision { approve: boolean; overwrite?: boolean }
 
 export type SleepMode = "scheduled" | "manual";
 export type SleepPhase = "consolidate" | "dream" | "wake";
-export type SkipReason = "no-key" | "endpoint-down" | "no-activity";
+export type SkipReason = "no-key" | "endpoint-down" | "no-activity" | "plan-limit";
 
 export interface SleepRunInfo {
   pool: Pool;
@@ -2170,7 +2182,8 @@ export interface RollbackRequest { commit: string }
 /** POST …/admin/updates/check → Updates: fetches, so the newest update note shows. */
 
 /** A thread's wake-up, waiting: her note to herself stays in the pool, so only its time and ID are shown. */
-export interface WakeupInfo { id: number; dueAt: string }
+/** `planLimit`: the turn a plan's usage limit cut off, carrying on once it resets. */
+export interface WakeupInfo { id: number; dueAt: string; planLimit?: true }
 
 /** Settings → Claude Code: whether a token is saved (never the token) and whether the program is installed on this server. */
 export interface ClaudeCodeStatus { token: boolean; installed: boolean }
@@ -2255,15 +2268,17 @@ export interface HostDownload {
 export interface DownloadHistory extends HistoryPage<{ endpointId: string; download: HostDownload }> {}
 /**
  * GET …/threads/:pool/:id/usage: counted turns and subagents. Tokens are `input` (every request read, cached reads included)
- * plus `output`; totals folded before user step 17 count in `tokens` alone.
+ * plus `output`; totals folded before user step 17 count in `tokens` alone. `cacheHit` is the share (0 to 1) of input the
+ * server read from its cache, over the kept call records that measured it; absent where none did.
  */
 export interface ThreadUsage {
   tokens: number;
   input: number;
   output: number;
   gpuMs?: number;
-  models: { label: string; kind?: "local" | "cloud"; tokens: number; input: number; output: number; gpuMs?: number }[];
-  threads?: { threadId: string; tokens: number; input: number; output: number; gpuMs?: number }[];
+  cacheHit?: number;
+  models: { label: string; kind?: "local" | "cloud"; tokens: number; input: number; output: number; gpuMs?: number; cacheHit?: number }[];
+  threads?: { threadId: string; tokens: number; input: number; output: number; gpuMs?: number; cacheHit?: number }[];
 }
 
 /** GET/PUT/DELETE /api/u/:userId/push; POST …/push/test → 204 or 502 { status, reason }. */

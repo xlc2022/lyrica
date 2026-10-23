@@ -100,16 +100,19 @@ describe("a ChatGPT plan", () => {
     expect(s.models.resolve("chat", s.ctx()).endpoint.id).toBe(s.plan.id);
   });
 
-  it("is skipped for a while once its usage limit is reached, so the next turn falls back", async () => {
+  it("stays a thread's model once its usage limit is reached, for every task, so nothing falls back", async () => {
     const s = await setup();
     s.models.setColumnTask(s.ada.id, "general", "chat", [s.offerings[0]!.id, s.cloudRef.offeringId].map((offeringId) => ({ offeringId })));
     s.models.reportPlanLimit(s.plan.id);
     const r = s.models.resolve("chat", s.ctx());
-    expect(r.endpoint.id).toBe(s.openrouter.id);
-    expect(r.skipped[0]!.reason).toMatch(/reached its plan's limit/);
+    expect(r.endpoint.id).toBe(s.plan.id);
+    expect(r.skipped).toEqual([]);
+    // So does a subagent's or a background job's: none falls back.
+    s.models.setColumnTask(s.ada.id, "general", "title", [s.offerings[0]!.id, s.cloudRef.offeringId].map((offeringId) => ({ offeringId })));
+    expect(s.models.resolve("title", s.ctx()).endpoint.id).toBe(s.plan.id);
   });
 
-  it("is skipped until its limit resets, from any reply that hits it, and says so once", async () => {
+  it("knows when its limit resets, from any reply that hits it, and says so once", async () => {
     const s = await setup();
     const resetsAt = Math.floor(Date.now() / 1000) + 30 * 60;
     globalThis.fetch = (async () => Response.json({ error: { code: "usage_limit_reached", plan_type: "plus", resets_at: resetsAt } }, { status: 429 })) as typeof fetch;
