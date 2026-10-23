@@ -81,8 +81,11 @@ export class Wakeups {
   resume(userId: string, pool: Pool, thread: string, dueAt: Date, note: string): void {
     const view = this.o.memory.openThreadView(userId, pool);
     try {
+      // One such resume per thread: a later cut-off moves it rather than adding another.
+      const moved = view.own.wakeups(thread).filter((w) => w.note === note).map((w) => (view.own.removeWakeups(thread, w.id), w.id));
       const id = view.own.addWakeup(thread, dueAt.toISOString(), note, new Date().toISOString());
-      this.due.set(userId, [...this.due.get(userId) ?? [], { id, dueAt: dueAt.toISOString(), pool, thread }]);
+      const due = (this.due.get(userId) ?? []).filter((d) => d.pool !== pool || !moved.includes(d.id));
+      this.due.set(userId, [...due, { id, dueAt: dueAt.toISOString(), pool, thread }]);
     } finally {
       view.close();
     }

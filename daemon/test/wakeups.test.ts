@@ -152,6 +152,17 @@ describe("a plan's usage limit", () => {
     }
   });
 
+  it("keeps one resume however many turns the limit cuts off before it resets", async () => {
+    const s = await planFirst({ code: "usage_limit_reached", resets_at: Math.floor(Date.now() / 1000) + 40 * 60 });
+    try {
+      await s.say("build it");
+      await s.say("and the tests");
+      expect(await s.wakeups()).toHaveLength(1);
+    } finally {
+      s.restore();
+    }
+  });
+
   it("carries the turn on by itself once the plan resets, and not before", async () => {
     const s = await planFirst({ code: "usage_limit_reached", resets_at: Math.floor(Date.now() / 1000) + 40 * 60 });
     try {

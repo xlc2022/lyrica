@@ -1664,9 +1664,9 @@ export class Models {
 
   /**
    * A plan answered that its usage limit is reached, until it resets
-   * (`until`, or an hour). The router still picks it: a thread waits for the
-   * reset rather than falling back. True when it wasn't already known, so
-   * the owner is told once.
+   * (`until`, or an hour). A thread's conversation still picks it and waits
+   * for the reset; other tasks fall back (`limitedFor`). True when it wasn't
+   * already known, so the owner is told once.
    */
   reportPlanLimit(endpointId: string, until?: number): boolean {
     const known = this.planLimitedUntil(endpointId) !== undefined;
@@ -2413,7 +2413,7 @@ export class Models {
       }
       // Unfit first: a model that couldn't take the call even with its machine up doesn't make the task offline.
       const why = this.unfit(task, o, ep, need) ?? (freeOnly && o.price && !o.price.free ? "it costs money, and Free models only is on" : undefined);
-      const reason = why ?? this.away(ep, opts, o);
+      const reason = why ?? this.away(ep, opts, o) ?? this.limitedFor(task, ep);
       if (reason) {
         skipped.push({ label, reason });
         if (!why) away = true;
@@ -2535,7 +2535,7 @@ export class Models {
       if (!endpoint) continue;
       if (endpoint.id === afterEndpoint) { passed = true; continue; }
       if (!passed || (isRestricted(ctx) || noCloud) && endpoint.kind !== "local") continue;
-      if (this.unfit(task, offering, endpoint, need) || this.away(endpoint, {}, offering)) continue;
+      if (this.unfit(task, offering, endpoint, need) || this.away(endpoint, {}, offering) || this.limitedFor(task, endpoint)) continue;
       return { ref: { offeringId: offering.id }, endpoint, offering, label: labelOf(endpoint, offering),
         profile: found.profile, source: found.source, skipped: [], remaining: 0 };
     }
@@ -2901,6 +2901,15 @@ export class Models {
       };
       return of(task) ?? (OWN_LIST_ONLY.includes(task) ? undefined : of("chat", task !== "code"));
     });
+  }
+
+  /**
+   * A plan out of usage, for a task that doesn't wait for it: a thread's own
+   * conversation (chat, code) waits for the reset, as the owner asked, while
+   * subagents and background jobs, which have no turn to carry on, fall back.
+   */
+  private limitedFor(task: Task, ep: Endpoint): string | undefined {
+    return task !== "chat" && task !== "code" && (this.limited.get(ep.id) ?? 0) > Date.now() ? `${ep.name} has reached its plan's limit` : undefined;
   }
 
   /** Why a model's machine is away now, if it is: stale, or down in the health cache. */

@@ -312,7 +312,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   from that plan. It is always cloud and always their own, never shared.
   Its sign-in is kept in their `user.db` and refreshed by Pi; when the
   plan's limit runs out the thread waits and carries on once the plan
-  resets, rather than falling back to another model. Claude and Gemini plans
+  resets, rather than falling back to another model; subagents and
+  background jobs fall back meanwhile. Claude and Gemini plans
   aren't offered: Anthropic and Google don't permit other apps to use
   their sign-in, so they stay on API keys.
 - **Tasks.** Different tasks use different models: chat, cheap and strong
