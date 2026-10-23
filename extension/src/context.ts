@@ -271,7 +271,7 @@ export function registerContext(pi: ExtensionAPI, meter: ContextMeter): void {
   });
 }
 
-const NUDGES = new Set(["lyrica-ask-nudge", "lyrica-empty-reply-retry"]);
+const NUDGES = new Set(["lyrica-ask-nudge", "lyrica-empty-reply-retry", "lyrica-text-tool-call-retry"]);
 
 /** A hidden nudge belongs only to the agent run that consumed it. */
 export function dropNudges<T extends { role: string; customType?: string }>(messages: T[]): T[] {

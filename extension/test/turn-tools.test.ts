@@ -5,7 +5,7 @@ import { fauxAssistantMessage, fauxProvider, fauxThinking, fauxToolCall, type Js
 import { createAgentSession, DefaultResourceLoader, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { expect, it } from "vitest";
-import { CARRY_ON, createTurnToolsExtension, EMPTY_REPLY, MAX_TURN_TOOL_CALLS, TURN_TOOL_NOTICE, WRAP_UP } from "../src/turn-tools.ts";
+import { CALL_THE_TOOL, CARRY_ON, createTurnToolsExtension, EMPTY_REPLY, TEXT_TOOL_CALL, MAX_TURN_TOOL_CALLS, TURN_TOOL_NOTICE, WRAP_UP } from "../src/turn-tools.ts";
 import { createImageExtension, type ImageTools } from "../src/images.ts";
 import { toMessages } from "../../daemon/src/messages.ts";
 
@@ -164,4 +164,28 @@ it("fails the turn visibly when the retry has only thinking too", async () => {
   const r = await replies([fauxAssistantMessage(fauxThinking("Planning.")), fauxAssistantMessage(fauxThinking("Still planning.")), fauxAssistantMessage("never asked")]);
   expect(r.asked).toHaveLength(2);
   expect(r.shown.at(-1)).toMatchObject({ role: "assistant", error: EMPTY_REPLY });
+});
+
+const AS_TEXT = "Merging now.\n<tool_call>\n<function=bash>\n<parameter=command>\ngit merge main\n</parameter>\n</function>\n</tool_call>";
+
+it("asks her once to make a tool call she wrote as text, instead of ending the turn", async () => {
+  const r = await replies([fauxAssistantMessage(AS_TEXT), fauxAssistantMessage("Merged.")]);
+  expect(r.asked).toHaveLength(2);
+  expect(r.asked[1]).toContain(CALL_THE_TOOL);
+  const shown = JSON.stringify(r.shown);
+  expect(shown).toContain("Merged.");
+  expect(shown).not.toContain(CALL_THE_TOOL);
+  expect(r.shown.some((m) => m.error)).toBe(false);
+});
+
+it("fails the turn visibly when the retry writes its call as text too, and leaves ordinary replies alone", async () => {
+  const twice = await replies([fauxAssistantMessage(AS_TEXT), fauxAssistantMessage(AS_TEXT)]);
+  expect(twice.asked).toHaveLength(2);
+  expect(JSON.stringify(twice.shown)).toContain(TEXT_TOOL_CALL);
+  const plain = await replies([fauxAssistantMessage("Use `<tool_call>` tags only when the model needs them.")]);
+  expect(plain.asked).toHaveLength(1);
+  // A call she quotes in code is her answer, not a call.
+  const quoted = await replies([fauxAssistantMessage(`The leak looks like this:\n\n\`\`\`\n${AS_TEXT}\n\`\`\`\n\nand \`<function=x><parameter=a>1</parameter></function>\` inline.`)]);
+  expect(quoted.asked).toHaveLength(1);
+  expect(quoted.shown.some((m) => m.error)).toBe(false);
 });
