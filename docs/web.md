@@ -969,6 +969,14 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   following the newest while the turn streams. Its open state is keyed by
   the first call's ID, so it survives the stored copy replacing the live
   one.
+- An expanded `read` call whose result says it read an image (`readImage`:
+  "Read image file …", not on a machine, a path that resolves under the
+  thread's folders) shows that image under the result as a thumbnail at
+  most 160 px tall (`ReadImage`, `.read-image`), served by `…/files/thumb`
+  and `…/files/content` as any file in Files is, so a path the panel
+  refuses shows nothing. A tap opens the Lightbox. A 404 shows the muted
+  "No longer in Files"; any other failure drops the thumbnail and leaves
+  the result line.
 - In a project chat, a look at its threads (a message with `from.kind ===
   "watching"`) is the marker **Checked the other threads**, with "· told 2"
   (the count in mono) when it messaged threads. A look made by one model

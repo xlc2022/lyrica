@@ -1118,6 +1118,8 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .inline-img:hover { border-color: var(--muted); }
 .inline-img img { display: block; max-width: 100%; max-height: 320px; object-fit: contain; }
 .message-images { display: grid; gap: 12px; }
+.read-image .inline-img { max-width: min(100%, 240px); }
+.read-image .inline-img img { max-height: 160px; }
 .message-image { width: fit-content; max-width: min(100%, 420px); }
 .message-image .inline-img { min-width: var(--tap); }
 .image-facts { display: flex; align-items: center; gap: 8px; margin-top: 4px; }

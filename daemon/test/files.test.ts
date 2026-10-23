@@ -2,7 +2,7 @@
 // (core/test/sandbox.test.ts covers those where bubblewrap runs): shapes,
 // refusals, who may reach a thread's files, and the served bytes and zip.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -245,7 +245,7 @@ describe("the zip the panel streams", () => {
 
 /** Thumbnails over the same stand-in, where ImageMagick is on the host; made in the sandbox, kept beside the thread's files, gone with them. */
 describe("the thumbnails the panel serves", () => {
-  it("makes a small copy once, keeps it until the image changes, and deletes it with the image", async () => {
+  it("makes a small copy once, keeps it until the image changes, and deletes it with the image, however it goes", async () => {
     try { execFileSync("convert", ["-version"]); } catch { return; /* no ImageMagick here */ }
     const { ThreadFiles } = await import("@lyrica/core");
     const dir = mkdtempSync(join(tmpdir(), "lyrica-thumbs-"));
@@ -286,6 +286,18 @@ describe("the thumbnails the panel serves", () => {
       await files.rename(join(dir, "small.jpg"), join(dir, "moved.jpg"));
       expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual([]);
       expect(readdirSync(dir).sort()).toEqual([".lyrica", "fake.png", "moved.jpg", "notes.txt"]);
+      // An image deleted or moved by a command, outside the panel: its copy goes when the panel next lists or asks.
+      mkdirSync(join(dir, "art"));
+      execFileSync("convert", ["-size", "40x40", "xc:red", join(dir, "art", "a.png")]);
+      execFileSync("convert", ["-size", "40x40", "xc:red", join(dir, "kept.png")]);
+      await files.thumb(join(dir, "art", "a.png"));
+      await files.thumb(join(dir, "kept.png"));
+      rmSync(join(dir, "art"), { recursive: true });
+      await files.pruneThumbs();
+      expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual(["kept.png.png"]);
+      rmSync(join(dir, "kept.png"));
+      await expect(files.thumb(join(dir, "kept.png"))).rejects.toThrow("is not a file");
+      expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual([]);
       void cache;
     } finally {
       rmSync(dir, { recursive: true, force: true });

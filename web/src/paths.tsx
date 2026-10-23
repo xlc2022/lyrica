@@ -114,19 +114,19 @@ function split(value: string, files: FileLinks): (Element | Text)[] | undefined 
 }
 
 /** An image she can reach, shown in the message by its thumbnail and opened large on a click; any other image stays a link. */
-export function InlineImage({ src, alt, label, files, large, onGone }: { src: string; alt: string; label?: string; files: FileLinks; large: (path: string) => void; /** The file is gone. */ onGone?: () => void }) {
+export function InlineImage({ src, alt, label, files, large, onGone, onBroken }: { src: string; alt: string; label?: string; files: FileLinks; large: (path: string) => void; /** The file is gone. */ onGone?: () => void; /** It won't load for another reason. */ onBroken?: () => void }) {
   return (
     <button type="button" className="inline-img" onClick={() => large(src)} aria-label={label ?? `${alt || basename(src)}, open large`}>
-      <Thumb path={src} alt={alt || basename(src)} files={files} onGone={onGone} />
+      <Thumb path={src} alt={alt || basename(src)} files={files} onGone={onGone} onBroken={onBroken} />
     </button>
   );
 }
 
 /** The thumbnail, or the image itself where the server makes none. */
-export function Thumb({ path, alt, files, onGone }: { path: string; alt: string; files: FileLinks; /** Neither the thumbnail nor the image loads, and the server says the file isn't there. */ onGone?: () => void }) {
+export function Thumb({ path, alt, files, onGone, onBroken }: { path: string; alt: string; files: FileLinks; /** Neither the thumbnail nor the image loads, and the server says the file isn't there. */ onGone?: () => void; /** Neither loads, for any other reason (refused, offline). */ onBroken?: () => void }) {
   const [full, setFull] = useState(false);
   // Both failing may only mean the network or the server is down: it's gone only when the server says so.
-  const gone = () => void fetch(files.url(path)).then((r) => { void r.body?.cancel(); if (r.status === 404) onGone?.(); }, () => {});
+  const gone = () => void fetch(files.url(path)).then((r) => { void r.body?.cancel(); if (r.status === 404) onGone?.(); else onBroken?.(); }, () => onBroken?.());
   return <img src={full ? files.url(path) : files.thumb(path)} alt={alt} loading="lazy" onError={() => (full ? gone() : setFull(true))} />;
 }
 
