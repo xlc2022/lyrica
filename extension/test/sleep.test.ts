@@ -285,6 +285,28 @@ describe("a night's sleep", () => {
     p.close();
   });
 
+  it("waits for a plan out of usage, and runs once the user falls back", async () => {
+    const s = await setup();
+    const v = s.view();
+    s.talk(v, "Hello there.", "{user} said hello");
+    const plan = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "a", refresh: "r", expires: Date.now() + 3_600_000 } });
+    s.models.setColumnTask(s.ada.id, "general", "sleep.dream", { offeringId: s.models.addModel(s.ada, plan.id, { modelId: "gpt-5" }).id });
+    s.models.reportPlanLimit(plan.id, Date.now() + 40 * 60_000);
+    expect(await s.sleep.run(s.ada.id, "general", "scheduled")).toMatchObject({ status: "skipped", skipReason: "plan-limit" });
+    expect(s.sleep.planWaits(s.ada.id)).toEqual([{ pool: "general", endpointId: plan.id }]);
+    // Still limited: the tick leaves it waiting.
+    s.sleep.resumeWaiting();
+    expect(s.sleep.planWaits(s.ada.id)).toHaveLength(1);
+    // The user falls back, so the dream goes to the next model and the run goes ahead.
+    s.models.setColumnTask(s.ada.id, "general", "sleep.dream", [{ offeringId: s.models.addModel(s.ada, plan.id, { modelId: "gpt-5.1" }).id }, s.cloudRef]);
+    expect(s.models.fallBackFromLimit(plan.id)).toBe(true);
+    s.script({});
+    s.sleep.resumeWaiting();
+    expect(s.sleep.planWaits(s.ada.id)).toEqual([]);
+    await vi.waitFor(() => expect(v.own.listSleepRuns(5)[0]).toMatchObject({ status: "complete" }), { timeout: 20_000 });
+    v.close();
+  });
+
   it("skips when the endpoint is offline without moving the watermark, and resumes a partial run", async () => {
     const s = await setup();
     const v = s.view();
