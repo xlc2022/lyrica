@@ -91,7 +91,7 @@ const ENCODED = /[A-Za-z0-9+/=_-]{400,}/;
 export function checkWords(text: string, max = Infinity): void {
   const file = ENCODED.test(text.replace(/[\r\n]/g, ""));
   if (file || text.length > max) {
-    throw new Error(`${file ? "That looks like an encoded file" : `That message is over ${max.toLocaleString("en-US")} characters`}. Files don't travel by message: put it in /shared, which your parent, child and project threads all see, or commit it to a repository you share, and say where.`);
+    throw new Error(`${file ? "That looks like an encoded file" : `That message is ${text.length.toLocaleString("en-US")} characters, over ${max.toLocaleString("en-US")}`}. Files don't travel by message: put it in /shared, which your parent, child and project threads all see, or commit it to a repository you share, and say where.`);
   }
 }
 
@@ -187,6 +187,8 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
   const project = () => store.projectOf(thread.threadId);
   const inProjectChat = () => !!store.getThread(thread.threadId)?.project;
   const projectThread = () => child && project() === self.parent;
+  /** Whether `ref` names this child's parent, by its ID or its current title. */
+  const pickParent = (ref: string) => pickThread(ref, [{ id: self.parent!, title: store.getThread(self.parent!)?.title }]) === self.parent;
   const steps = !!host?.stepsChanged && host.checklistsOn?.(thread) !== false;
   return (pi) => {
     let asked = false;
@@ -364,6 +366,8 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           if (p.question !== undefined && typeof p.question !== "boolean") throw new Error("message question must be true or false");
           if (!p.text?.trim()) throw new Error("message needs text");
           checkWords(p.text, MESSAGE_MAX);
+          // A child's message with no recipient, or naming its parent, goes to the parent.
+          if (child && p.to === undefined && (!p.id || (self.parent && pickParent(p.id)))) p.to = "parent";
           if (child && p.to === "parent") {
             if (p.needsYou && !inProject) throw new Error("needsYou is for a project's thread");
             const d = await host.message(thread, "parent", p.text, { needsYou: !!p.needsYou, question: !!p.question });
@@ -375,11 +379,12 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           const id = pickThread(p.id, host.list(thread));
           if (inProject) {
             // Counted before sending, so calls made at once can't all slip under the limit.
-            if (siblings >= host.limits.siblingMessages) throw new Error(`one turn can message the project's other threads at most ${host.limits.siblingMessages} times`);
+            const max = host.limits.siblingMessages;
+            if (siblings >= max) throw new Error(`This turn has sent its ${max} messages to the project's other threads, so this one wasn't sent. Put what's left in one message next turn, or send it to the project chat (to: "parent").`);
             siblings++;
             let d: Delivery;
             try { d = await host.message(thread, id, p.text); } catch (err) { siblings--; throw err; }
-            return text(sentTo(id, d), { threads: [id] });
+            return text(`${sentTo(id, d)} (${max - siblings} of ${max} messages to other threads left this turn.)`, { threads: [id] });
           }
           return text(sentTo(id, await host.message(thread, id, p.text)), { threads: [id] });
         }
