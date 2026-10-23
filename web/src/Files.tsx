@@ -84,23 +84,30 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     return () => removeEventListener("focus", on);
   }, [reloadShown]);
   // A linked file: its folders open and it is shown; a folder is only opened. Where the family's /shared is the
-  // thread's own `shared/` (a project chat), a /shared path opens there.
+  // thread's own `shared/` (a project chat), a /shared path opens there. A link she wrote relative to her folder
+  // that isn't in it is looked for at the same place in /shared, then in each grant, before it is called missing.
   useEffect(() => {
     if (!path) return;
     let live = true;
     (async () => {
-      let p = path;
-      let l = await load(parent(p));
-      if (under(p, SHARED) && !l.roots.some((r) => r.kind === "shared")) l = await load(parent(p = `${WORKDIR}/shared${p.slice(SHARED.length)}`));
-      const root = l.roots.find((r) => under(p, r.path))?.path ?? WORKDIR;
+      // The path's listing, or nothing where its folder isn't there or can't be read.
+      const look = async (q: string) => { try { const l = await load(parent(q)); return { q, l, entry: l.entries.find((e) => e.path === q) }; } catch { return undefined; } };
+      let roots = (await load(WORKDIR)).roots;
+      const own = (q: string) => (under(q, SHARED) && !roots.some((r) => r.kind === "shared") ? `${WORKDIR}/shared${q.slice(SHARED.length)}` : q);
+      const rest = path.slice(WORKDIR.length);
+      const tries = [path, ...(path !== WORKDIR && under(path, WORKDIR) ? [SHARED, ...roots.filter((r) => r.kind === "grant").map((r) => r.path)].map((r) => `${r}${rest}`) : [])].map(own);
+      let found: Awaited<ReturnType<typeof look>>;
+      for (const q of tries) if ((found = await look(q))?.entry) break;
+      if (!live) return;
+      if (!found?.entry) { setError(`${shown(own(path))} wasn't found.`); return; }
+      const { q: p, l, entry } = found;
+      roots = l.roots;
+      const root = roots.find((r) => under(p, r.path))?.path ?? WORKDIR;
       const dirs: string[] = [];
       for (let d = parent(p); d.length >= root.length && under(d, root); d = parent(d)) dirs.unshift(d);
-      const entry = l.entries.find((e) => e.path === p);
-      if (!live) return;
-      setOpen((s) => new Set([...s, ...dirs, ...(entry?.kind === "folder" ? [p] : [])]));
-      if (entry?.kind === "folder") { setCwd(p); if (!listings[p]) load(p).catch(fail); }
-      else if (entry) view(entry);
-      else setError(`There is no ${shown(p)} any more.`);
+      setOpen((s) => new Set([...s, ...dirs, ...(entry.kind === "folder" ? [p] : [])]));
+      if (entry.kind === "folder") { setCwd(p); if (!listings[p]) load(p).catch(fail); }
+      else view(entry);
     })().catch(fail);
     return () => { live = false; };
   }, [path, load]); // eslint-disable-line react-hooks/exhaustive-deps
