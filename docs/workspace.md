@@ -1052,7 +1052,8 @@ it adds no tool.
   thread's mode. Plan mode has no `bash`, so no Claude Code.
 - **The prompt** has one line for such a thread (`CLAUDE_CODE_LINE`):
   `claude -p` is for coding and repository jobs worth the user's plan, never
-  conversation.
+  conversation, and when it reports the plan's usage limit she waits for the
+  reset with a wake-up rather than doing the job another way.
 
 ## Her own code
 

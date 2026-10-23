@@ -964,15 +964,16 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   higher rate).
 - A plan is up while signed in; nothing is probed. When any reply on it
   (a thread's, a subagent's, a job's) ends on its usage limit
-  (`isPlanLimit`, heard in `planProvider`), the router skips the plan
-  until it resets (`reportPlanLimit`, with `planLimitReset` reading
-  OpenAI's `resets_at`, else an hour), and the Models page shows "Limit
-  reached until" with the reset time. In a thread, the person gets one
-  notice a turn saying when it resets. When Pi would retry the reply, the
-  retry goes to the next model in the list, as for a machine that is away;
-  a turn the limit ends instead carries on by itself (`PLAN_LIMIT_RESUME`,
-  a wake-up outside her own limits): at once on the next model in the
-  list, or once the plan resets when none is left.
+  (`isPlanLimit`, heard in `planProvider`), Lyrica notes when it resets
+  (`reportPlanLimit`, with `planLimitReset` reading OpenAI's `resets_at`,
+  else an hour), and the Models page shows "Limit reached until" with the
+  reset time. The router still picks the plan: a thread waits for it
+  rather than falling back (the owner's call). Pi doesn't retry the reply,
+  the person gets one notice a turn saying when it resets, and the turn
+  carries on by itself a minute after the reset (`PLAN_LIMIT_RESUME`, a
+  wake-up outside her own limits). Claude Code in her sandbox is the same:
+  when it reports its plan's limit, she sets a wake-up for the reset
+  (`CLAUDE_CODE_LINE`).
 - Removing a plan deletes its sign-in; Lyrica stays connected in the
   provider's account settings until it is disconnected there.
 

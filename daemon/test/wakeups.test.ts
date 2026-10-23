@@ -125,35 +125,47 @@ describe("a plan's usage limit", () => {
     return { ...s, models, plan, restore: () => { globalThis.fetch = realFetch; } };
   }
 
-  it("sends the retry to the next model, says once when the plan resets, and shows it on the Models page", async () => {
+  it("waits for the plan to reset rather than falling back, says when once, and carries the turn on then", async () => {
     const resetsAt = Math.floor(Date.now() / 1000) + 40 * 60;
-    const s = await planFirst({ code: "usage_limit_reached", resets_at: resetsAt });
-    try {
-      s.replies.push({ text: "Carrying on." });
-      const events = await s.say("build it");
-      expect(events.filter((e) => e.type === "notice")).toEqual([{ type: "notice", text: "chatgpt reached its plan's usage limit; it resets in about 40 min. This thread carries on with gpu/qwen3.8-27b.", status: "limit" }]);
-      expect(events).toContainEqual({ type: "text", delta: "Carrying on." });
-      expect(s.models.planLimitedUntil(s.plan.id)).toBe(resetsAt * 1000);
-      // The turn went on, so no wake-up is needed.
-      expect(await s.wakeups()).toEqual([]);
-      const info = (await s.ada.get<{ id: string; limitedUntil?: string }[]>(`/api/u/${s.rt.ada.id}/endpoints`)).body;
-      expect(info.find((e) => e.id === s.plan.id)?.limitedUntil).toBe(new Date(resetsAt * 1000).toISOString());
-    } finally {
-      s.restore();
+    for (const error of [{ code: "usage_limit_reached", resets_at: resetsAt }, { code: "subscription_sharing_usage_limit_exceeded", message: "usage limit" }]) {
+      const s = await planFirst(error);
+      try {
+        s.replies.push({ text: "The local model answered." });
+        const events = await s.say("build it");
+        expect(events.filter((e) => e.type === "notice")).toHaveLength(1);
+        expect(events.find((e) => e.type === "notice")).toMatchObject({ text: expect.stringMatching(/^chatgpt reached its plan's usage limit; it resets in about \d+ (min|h)\. This thread waits and carries on then\.$/), status: "limit" });
+        expect(events).not.toContainEqual({ type: "text", delta: "The local model answered." });
+        const until = s.models.planLimitedUntil(s.plan.id)!;
+        if ("resets_at" in error) {
+          expect(until).toBe(resetsAt * 1000);
+          const info = (await s.ada.get<{ id: string; limitedUntil?: string }[]>(`/api/u/${s.rt.ada.id}/endpoints`)).body;
+          expect(info.find((e) => e.id === s.plan.id)?.limitedUntil).toBe(new Date(resetsAt * 1000).toISOString());
+        }
+        // One wake-up, a minute after the reset; the plan is still the thread's model.
+        const wakeups = await s.wakeups();
+        expect(wakeups).toHaveLength(1);
+        expect(Date.parse((wakeups[0] as { dueAt: string }).dueAt)).toBe(until + 60_000);
+        expect(s.models.resolve("chat", s.models.callContext(s.rt.ada.id, "general", s.thread.id)).endpoint.id).toBe(s.plan.id);
+      } finally {
+        s.restore();
+      }
     }
   });
 
-  it("carries a turn the limit ended on by itself, on the next model", async () => {
-    const s = await planFirst({ code: "subscription_sharing_usage_limit_exceeded", message: "usage limit" });
+  it("carries the turn on by itself once the plan resets, and not before", async () => {
+    const s = await planFirst({ code: "usage_limit_reached", resets_at: Math.floor(Date.now() / 1000) + 40 * 60 });
     try {
-      const events = await s.say("build it");
-      expect(events.some((e) => e.type === "notice")).toBe(true);
-      expect(await s.wakeups()).toHaveLength(1);
-      s.replies.push({ text: "Carrying on." });
+      await s.say("build it");
+      const [first] = await s.wakeups() as { id: number }[];
+      s.tick(39);
+      expect(await s.wakeups()).toEqual([first]);
       const from = s.stream.events.length;
-      s.tick(0);
+      s.tick(42);
       await s.stream.until((e) => e.type === "turn_end", from);
-      expect(s.asked.at(-1)).toContain("Your model's plan reached its usage limit");
+      // It fired; this fake plan is limited still, so the turn waits again with a wake-up of its own.
+      const after = await s.wakeups() as { id: number }[];
+      expect(after).toHaveLength(1);
+      expect(after[0]!.id).not.toBe(first!.id);
     } finally {
       s.restore();
     }

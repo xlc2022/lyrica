@@ -1663,9 +1663,10 @@ export class Models {
   }
 
   /**
-   * A plan answered that its usage limit is reached: the router skips it
-   * until it resets (`until`, or an hour), so the next call falls back. True
-   * when it wasn't already known, so the owner is told once.
+   * A plan answered that its usage limit is reached, until it resets
+   * (`until`, or an hour). The router still picks it: a thread waits for the
+   * reset rather than falling back. True when it wasn't already known, so
+   * the owner is told once.
    */
   reportPlanLimit(endpointId: string, until?: number): boolean {
     const known = this.planLimitedUntil(endpointId) !== undefined;
@@ -1673,7 +1674,7 @@ export class Models {
     return !known;
   }
 
-  /** When a plan that reached its usage limit is used again, while it is skipped. */
+  /** When a plan that reached its usage limit resets, while it is limited. */
   planLimitedUntil(endpointId: string): number | undefined {
     const until = this.limited.get(endpointId);
     return until !== undefined && until > Date.now() ? until : undefined;
@@ -2907,7 +2908,6 @@ export class Models {
     if (ep.stale) return `${ep.name} hasn't answered for ${STALE_DAYS} days`;
     if (ep.signedOut) return `${ep.name} is signed out`;
     if (ep.pausedAt) return `${ep.name} is paused`;
-    if ((this.limited.get(ep.id) ?? 0) > Date.now()) return `${ep.name} has reached its plan's limit`;
     const m = this.modelDown.get(o.id);
     if (m !== undefined && Date.now() - m < HEALTH_MS) return `${ep.name} couldn't run it`;
     if (opts.except?.has(ep.id)) return `${ep.name} is down`;
