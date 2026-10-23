@@ -7,6 +7,9 @@ import type { Message, MessagePart, Pool, Reaction, RootStep, ThreadRef, Told } 
 
 const RESULT_LINES = 6;
 const RESULT_CHARS = 600;
+/** A `read` of a text file keeps more, so its card shows the file as she read it (docs/ux.md §6). */
+const READ_LINES = 60;
+const READ_CHARS = 6000;
 
 type Content = string | { type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: unknown }[];
 interface PiMessage { role: string; content?: Content; toolCallId?: string; toolName?: string; isError?: boolean; model?: string; stopReason?: string; errorMessage?: string; customType?: string; details?: unknown }
@@ -60,11 +63,12 @@ export function delegateThreads(tool: string, details: unknown, pool: Pool, star
 interface PiEntry { type: string; message?: PiMessage; customType?: string; content?: Content; data?: unknown }
 
 /** The first few lines of a tool's output. */
-export function shortResult(content: unknown): string {
+export function shortResult(content: unknown, tool?: string): string {
   const text = textOf(content as Content);
   const lines = text.split("\n");
-  let short = lines.slice(0, RESULT_LINES).join("\n");
-  if (short.length > RESULT_CHARS) short = short.slice(0, RESULT_CHARS);
+  const [max, chars] = tool === "read" ? [READ_LINES, READ_CHARS] : [RESULT_LINES, RESULT_CHARS];
+  let short = lines.slice(0, max).join("\n");
+  if (short.length > chars) short = short.slice(0, chars);
   return short.length < text.length ? `${short}…` : short;
 }
 
@@ -280,7 +284,7 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
     } else if (m.role === "toolResult" && m.toolCallId) {
       const call = calls.get(m.toolCallId);
       if (!call) continue;
-      call.part.result = shortResult(m.content);
+      call.part.result = shortResult(m.content, call.part.name);
       call.part.isError = !!m.isError;
       call.part.imageRefusal = imageRefusal(call.part.name, m.details);
       const root = !m.isError ? rootPart(call.part.name, m.details) : undefined;

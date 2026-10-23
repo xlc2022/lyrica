@@ -969,6 +969,14 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   following the newest while the turn streams. Its open state is keyed by
   the first call's ID, so it survives the stored copy replacing the live
   one.
+- An expanded `read` call of a text file (`readText`) shows its result as
+  `ReadText`: the code block's strip with the file's name (a Files link
+  when its path resolves under the thread's folders and the call isn't on a
+  machine) and Copy, then the text in a `pre` that keeps its whitespace and
+  scrolls sideways (`white-space: pre`), wrapped for `.txt`, `.log`, `.csv`
+  and `.tsv`, or rendered with `Prose` for Markdown; at most 320 px tall.
+  Pi's trailing "[Showing lines …]" or "[… more lines in file …]" note is
+  taken off and shown as a caption without its "Use offset" advice.
 - An expanded `read` call whose result says it read an image (`readImage`:
   "Read image file …", not on a machine, a path that resolves under the
   thread's folders) shows that image under the result as a thumbnail at

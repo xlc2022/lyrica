@@ -294,10 +294,12 @@ describe("the thumbnails the panel serves", () => {
       await files.thumb(join(dir, "kept.png"));
       rmSync(join(dir, "art"), { recursive: true });
       await files.pruneThumbs();
-      expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual(["kept.png.png"]);
+      // Its emptied folder stays a minute, since a thumbnail being made may have just made it.
+      expect(readdirSync(join(dir, ".lyrica", "thumbs")).sort()).toEqual(["art", "kept.png.png"]);
+      expect(readdirSync(join(dir, ".lyrica", "thumbs", "art"))).toEqual([]);
       rmSync(join(dir, "kept.png"));
       await expect(files.thumb(join(dir, "kept.png"))).rejects.toThrow("is not a file");
-      expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual([]);
+      expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual(["art"]);
       void cache;
     } finally {
       rmSync(dir, { recursive: true, force: true });

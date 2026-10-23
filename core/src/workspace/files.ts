@@ -159,12 +159,12 @@ export class ThreadFiles {
 
   /**
    * Deletes the thumbnails whose image is no longer in the thread's folder (she deleted or moved it with a command,
-   * which the panel never sees), and the folders that leaves empty.
+   * which the panel never sees), and folders left empty for over a minute (a newer one may be a thumbnail being made).
    */
   async pruneThumbs(): Promise<void> {
     const script = 't=$1/$2/thumbs; [ -d "$t" ] || exit 0; ' +
       'find "$t" -type f -exec sh -c \'w=$1; t=$2; shift 2; for c; do s=$w/${c#"$t"/}; s=${s%.*}; [ -f "$s" ] || rm -f -- "$c"; done\' sh "$1" "$t" {} + && ' +
-      'find "$t" -mindepth 1 -type d -empty -delete';
+      'find "$t" -mindepth 1 -type d -empty -mmin +1 -delete';
     await this.file(["sh", "-c", script, "sh", this.workdir, PANEL_DIR]);
   }
 

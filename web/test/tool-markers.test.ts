@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readImage, summarizeArgs } from "../src/Messages.tsx";
+import { readImage, readText, summarizeArgs } from "../src/Messages.tsx";
 
 describe("a tool call's marker line", () => {
   it("is empty for a call she is still writing, and the main argument once it runs", () => {
@@ -25,5 +25,21 @@ describe("the image a read call previews", () => {
     expect(read({ path: "/home/ada/a.png", machine: "nas" })).toBeUndefined();
     expect(read({ path: "~/a.png" })).toBeUndefined();
     expect(readImage({ type: "tool", toolCallId: "c1", name: "bash", args: { path: "/workspace/a.png" }, result: "Read image file [image/png]" })).toBeUndefined();
+  });
+});
+
+describe("the text a read call shows", () => {
+  const read = (path: string, result: string, extra: Record<string, unknown> = {}) =>
+    readText({ type: "tool", toolCallId: "c1", name: "read", args: { path, ...extra }, result, isError: false });
+  it("keeps the file's text as it is, takes pi's note off the end, and picks a layout by the name", () => {
+    expect(read("src/a.ts", "  if (x) {\n\treturn 1;\n  }")).toEqual({ path: "src/a.ts", text: "  if (x) {\n\treturn 1;\n  }", note: undefined, kind: "code", local: true });
+    expect(read("/workspace/notes.md", "# Notes\n\n[Showing lines 1-60 of 900. Use offset=61 to continue.]")).toMatchObject({ text: "# Notes", note: "Showing lines 1-60 of 900", kind: "markdown" });
+    expect(read("/workspace/page.html", "<p>hi</p>\n\n[12 more lines in file. Use offset=40 to continue.]")).toMatchObject({ text: "<p>hi</p>", note: "12 more lines in file", kind: "code" });
+    expect(read("/var/log/app.log", "line", { machine: "nas" })).toMatchObject({ kind: "wrapped", local: false });
+  });
+  it("is nothing for an image, a failed read or another tool", () => {
+    expect(read("/workspace/a.png", "Read image file [image/png]")).toBeUndefined();
+    expect(readText({ type: "tool", toolCallId: "c1", name: "read", args: { path: "a.ts" }, result: "ENOENT", isError: true })).toBeUndefined();
+    expect(readText({ type: "tool", toolCallId: "c1", name: "bash", args: { path: "a.ts" }, result: "x" })).toBeUndefined();
   });
 });
