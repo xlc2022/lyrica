@@ -14,7 +14,7 @@ import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { VoiceDrawer } from "./ModelsFrame.tsx";
 import { go } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { Confirm, ConfirmDialog, ErrorText, Switch, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { Confirm, ConfirmDialog, ErrorText, Switch, useAction, useDismiss, useInView, useLoad } from "./ui.tsx";
 
 export const CODE_MODE_HINT = "Focus on the code: a coding model, a short persona, and only this project's memory and your working preferences.";
 
@@ -54,6 +54,7 @@ export function ModelBadge({ base, settings, onChange, readOnly }: {
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);
+  useInView(anchor, open);
   const task = settings.code ? "code" : "chat";
   const chat = settings.models[task];
   const label = (

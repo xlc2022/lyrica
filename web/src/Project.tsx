@@ -19,7 +19,7 @@ import { McpServers } from "./Mcp.tsx";
 import { FilesSection } from "./ProjectFiles.tsx";
 import { CODE_MODE_HINT, Folders, Machines, TaskSelect } from "./Settings.tsx";
 import { Main, PageHead, useWide, type ShellContext } from "./Shell.tsx";
-import { ConfirmDialog, Dialog, ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useLoad, wakeTime } from "./ui.tsx";
+import { ConfirmDialog, Dialog, ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useInView, useLoad, wakeTime } from "./ui.tsx";
 import { modelName } from "./ModelLabel.tsx";
 
 /**
@@ -106,6 +106,7 @@ export function ThreadsFact({ userId, pool, threadId, overview, footer }: { user
   const anchor = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);
+  useInView(anchor, open);
   const wide = useWide();
   // The panel showing this project's list: the fact is pressed, and its click closes it again.
   const here = parse(location.hash);
