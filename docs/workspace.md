@@ -438,7 +438,11 @@ takes is `lyrica@pve!agent=<that secret>`.
   other, both show as **Blocked** (`state: "held"` with `held` naming the other
   thread and the file, in place of idle; `SameFile.held`). If the other
   thread isn't working, there is no one to agree with: the write goes
-  through, and that thread is told for its next turn, once. Paths only, in memory: a restart forgets them. A command
+  through, and that thread is told for its next turn, once. An `edit`
+  that only adds text (each replacement keeps its old text whole, at the
+  start or end of the new) changes nothing the other thread wrote: it is
+  never held, the other thread is told once, and a later edit that changes
+  text is held as before. Paths only, in memory: a restart forgets them. A command
   (`bash`) is held the same way for the files it plainly writes
   (`writtenFiles`: its `>` and `>>` redirections and `tee`, by names known
   before it runs). What else it changes isn't known until it has run:

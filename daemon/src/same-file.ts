@@ -45,13 +45,25 @@ export class SameFile {
    * `path`: the text it gets instead, or undefined to go ahead (and the write
    * is recorded as its own).
    */
-  claim(userId: string, pool: Pool, thread: string, key: string | undefined, path: string): string | undefined {
+  claim(userId: string, pool: Pool, thread: string, key: string | undefined, path: string, inserts = false): string | undefined {
     if (!key) return undefined;
     const now = this.o.now?.() ?? Date.now();
     const k = `${userId}/${pool}/${key}`;
     this.expire(now);
     const last = this.writes.get(k);
     const mark = last && `${k}/${thread}/${last.thread}`;
+    // An edit that only adds text changes nothing the other thread wrote: it goes through, and the other is told
+    // once; a later edit that changes its text is still held.
+    if (inserts && last && last.thread !== thread && !this.told.has(mark!) && this.o.exists(userId, pool, last.thread)) {
+      if (!this.told.has(`${mark}/inserts`)) {
+        this.told.add(`${mark}/inserts`);
+        const minutes = Math.max(1, Math.round((now - last.at) / 60_000));
+        this.o.tell(userId, pool, last.thread, thread,
+          `[t:${thread}] added to ${path}, which you changed ${minutes} min ago, keeping what was there. Check it still fits your work before you change the file again.`);
+      }
+      this.writes.set(k, { thread, at: now });
+      return undefined;
+    }
     if (last && last.thread !== thread && !this.told.has(mark!) && this.o.exists(userId, pool, last.thread)) {
       // Told once each way: the other side may now go on too, without being held or told again for this one.
       this.told.add(mark!);

@@ -23,6 +23,21 @@ describe("two threads changing one file", () => {
     expect(told).toHaveLength(1);
   });
 
+  it("lets an edit that only adds text through, telling the other thread once, and still holds one that changes text", () => {
+    const { s, told, later } = setup();
+    s.claim("u", "general", "a", "folder:shared/notes.md", "/shared/notes.md");
+    later(4 * 60_000);
+    expect(s.claim("u", "general", "b", "folder:shared/notes.md", "/shared/notes.md", true)).toBeUndefined();
+    s.claim("u", "general", "a", "folder:shared/notes.md", "/shared/notes.md", true);
+    expect(s.claim("u", "general", "b", "folder:shared/notes.md", "/shared/notes.md", true)).toBeUndefined();
+    expect(told).toEqual([
+      { to: "a", from: "b", text: expect.stringMatching(/^\[t:b\] added to \/shared\/notes\.md, which you changed 4 min ago, keeping what was there/) },
+      { to: "b", from: "a", text: expect.stringMatching(/^\[t:a\] added to/) },
+    ]);
+    // B's addition was the last change: a rewriting the file is held.
+    expect(s.claim("u", "general", "a", "folder:shared/notes.md", "/shared/notes.md")).toMatch(/^Not changed yet: \[t:b\]/);
+  });
+
   it("leaves a thread alone in its own files, in another pool, after a while, or once the other thread is gone", () => {
     const { s, told, later } = setup(["gone"]);
     s.claim("u", "general", "a", "grant:/repo/app.ts", "/repo/app.ts");

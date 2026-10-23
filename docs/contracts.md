@@ -1354,10 +1354,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - `ThreadTools` is `{ commandRules?(), target(machine?), settings(), network(),
     claudeCode?(), machines?(), allowedInThread?(machine, command), proxmox?(machine, action, vm?),
     mcpServers?(), toolAllowedInThread?(server, tool), approve?, setMode?,
-    proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path), madeFiles?(paths), madeSince?(since), fileNotes?(),
+    proposePlan?(PlanRequest), recordChange?(NewChange), sameFile?(path, inserts?), madeFiles?(paths), madeSince?(since), fileNotes?(),
     startJob?(command, machine?, timeoutS?), jobs?(), jobOutput?(id), stopJob?(id) }`.
-    `sameFile(path)` runs in `tool_call` for a sandbox `write` or `edit`,
-    and for each file a sandbox `bash` plainly writes (`writtenFiles`),
+    `sameFile(path, inserts)` runs in `tool_call` for a sandbox `write` or `edit`
+    (`inserts` when `insertsOnly`: every replacement of the edit keeps its
+    old text whole at the start or end of the new), and for each file a sandbox `bash` plainly writes (`writtenFiles`),
     before any approval is asked; a text it returns blocks the call as its
     reason and nothing is written (daemon
     `SameFile.claim`, keyed by `Workspace.fileKey`; it holds only while the
