@@ -85,7 +85,7 @@ function Row({ n, ctx, picked, onPick, act, busy }: {
       </div>
       <div className="actions">
         {n.type !== "question" && <Where n={n} userId={ctx.user.id} />}
-        {n.actions.map((a, i) => <button key={a.label} type="button" className={`sm${n.type === "question" && i === 0 ? " primary" : ""}${a.danger ? " danger" : ""}`} disabled={busy} onClick={() => act([a])}>{a.label}{n.type === "question" && i === 0 && <span className="question-recommended">Recommended</span>}</button>)}
+        {n.actions.map((a, i) => <button key={a.label} type="button" className={`sm${n.type === "question" && i === 0 ? " primary" : ""}${a.danger ? " danger" : ""}`} disabled={busy} title={a.title} onClick={() => act([a])}>{a.label}{n.type === "question" && i === 0 && <span className="question-recommended">Recommended</span>}</button>)}
         {n.type === "question" && <Where n={n} userId={ctx.user.id} />}
       </div>
     </li>

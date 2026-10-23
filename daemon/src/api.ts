@@ -1039,7 +1039,11 @@ export interface AcceptShare { pool: Pool }
 
 export type NotificationType = "question" | "share" | "permission" | "update" | "sleep" | "suggestion" | "approval" | "rollback" | "limit";
 /** An action on an item: a request the UI sends as it is. `opens`: the answer is a ThreadSummary to go to. */
-export interface NotificationAction { label: string; method: "POST" | "DELETE"; path: string; body?: unknown; danger?: boolean; opens?: boolean }
+export interface NotificationAction {
+  label: string; method: "POST" | "DELETE"; path: string; body?: unknown; danger?: boolean; opens?: boolean;
+  /** A tooltip, for an action that changes more than its row shows. */
+  title?: string;
+}
 export interface Notification {
   /** Unique across types: `<type>:<id>`. */
   id: string;

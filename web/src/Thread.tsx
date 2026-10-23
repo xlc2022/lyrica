@@ -15,6 +15,7 @@ import { RoutinesFact } from "./Routines.tsx";
 import { ChecklistButton } from "./Checklist.tsx";
 import { ChangesFact } from "./Changes.tsx";
 import { ModelBadge, SettingsDrawer } from "./Settings.tsx";
+import { shortModel } from "./ModelLabel.tsx";
 import { Crumbs, Main, PanelButtons, usePanel, useWide, type ShellContext } from "./Shell.tsx";
 import { ThreadMenu, type MenuAt } from "./ThreadMenu.tsx";
 import { clock, ErrorText, InlineRename, useAction, useDismiss, useInView, useLoad, wakeTime } from "./ui.tsx";
@@ -532,8 +533,8 @@ function PlanWaitCard({ wait, userId, onDone }: { wait: NonNullable<ThreadSettin
   return (
     <div className="card plan-wait" role="status">
       <p>{wait.name} reached its plan's usage limit. This thread carries on when it resets at <span className="num">{clock(wait.until)}</span>.</p>
-      {wait.next && <button type="button" className="sm" disabled={busy}
-        onClick={() => void run(async () => { await post(`${u(userId, "endpoints")}/${encodeURIComponent(wait.endpointId)}/fall-back`, {}); onDone(); })}>Use {wait.next} until then</button>}
+      {wait.next && <button type="button" className="sm" disabled={busy} title={`Every thread and sleep waiting on ${wait.name} uses ${wait.next} until it resets.`}
+        onClick={() => void run(async () => { await post(`${u(userId, "endpoints")}/${encodeURIComponent(wait.endpointId)}/fall-back`, {}); onDone(); })}>Use {shortModel(wait.next)} until then</button>}
       <ErrorText error={error} />
     </div>
   );

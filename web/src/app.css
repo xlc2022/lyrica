@@ -1716,7 +1716,7 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .nquestion .actions button { height: auto; white-space: normal; overflow-wrap: anywhere; flex-direction: column; gap: 2px; }
 
 /* A plan's usage limit: the threads waiting for it, under a toggle, scroll past ten. */
-.nthreads-toggle { align-self: flex-start; }
+.nthreads-toggle { justify-self: start; }
 .nthreads { list-style: none; margin: 4px 0 0; padding: 0; max-height: 240px; overflow-y: auto; display: grid; gap: 4px; }
 .nthreads a { overflow-wrap: anywhere; }
 .plan-wait { display: grid; gap: 8px; justify-items: start; margin: 12px 0; }

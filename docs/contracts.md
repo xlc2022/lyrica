@@ -949,7 +949,7 @@ Custom roles override built-ins by name.
   `limit:<endpoint>/threads` for the threads waiting on a limited plan (its
   `thread` when there is one, else `threads: { pool, id, title }[]`) and
   `limit:<endpoint>/sleep/<pool>` for sleep, each with `until` (the reset)
-  and one action, **Fall back**: `POST …/endpoints/:id/fall-back` →
+  and one action, **Fall back** (with a `title` tooltip; `NotificationAction.title?` is new): `POST …/endpoints/:id/fall-back` →
   `{ ok }` (404 for no such plan, 409 when it isn't limited), which makes
   the router skip the plan until it resets (`Models.fallBackFromLimit`,
   `planFallingBack`) and carries the waiting turns (`Wakeups.resumeNow`)
