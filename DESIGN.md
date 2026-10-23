@@ -595,7 +595,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     net.
   - **Tokens** follows Checklist once a thread has a counted turn. Its
     popover sums every request's reads (cached reads included) as input and
-    its outputs as output, each with their total, by model, with **GPU time** for local calls (first-token plus generation
+    its outputs as output, each with their total, by model, with the share
+    of input read from the server's cache (**Cached**) and **GPU time** for local calls (first-token plus generation
     time, including queueing and loading). Pruned call counts are retained.
     On a phone Tokens opens rows at the foot of Context.
   - Recent calls and the text library show measured speed; nothing acts on

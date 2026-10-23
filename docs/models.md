@@ -371,7 +371,10 @@ kind, summing retained calls and folded totals, with `input` (reads) and
 totals folded before it count in `tokens` alone. Tokens are `read_tokens +
 output_tokens`, falling back to `prompt_tokens + output_tokens` on older
 records. Local GPU time is `ttft_ms + gen_ms`, including queueing and loading;
-cloud calls and subagents have none. Subagents contribute their recorded
+cloud calls and subagents have none. `cached` of `measured` input tokens came
+from the server's cache (`read_tokens - processed`), over kept call records
+with both: a subagent's own records count under its parent, as its tokens
+do, and folded totals never measured it. Subagents contribute their recorded
 input and output tokens down every depth, using the offering's kind when it
 still exists; a subagent thread's own call records and folded totals are
 left out, since its run counts them, except Claude Code's totals, which its

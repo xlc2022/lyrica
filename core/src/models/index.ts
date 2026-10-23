@@ -391,8 +391,11 @@ export function speeds(p: Omit<Pace, "tokPerSec" | "promptTokPerSec">): Pace {
   return { ...p, ...(tok !== undefined ? { tokPerSec: tok } : {}), ...(prompt !== undefined ? { promptTokPerSec: prompt } : {}) };
 }
 
-/** One thread's tokens on one model: `input` and `output` split `tokens` where known; `gpuMs` for local models only. */
-export interface UsageRow { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; input: number; output: number; gpuMs?: number }
+/**
+ * One thread's tokens on one model: `input` and `output` split `tokens` where known; `gpuMs` for local models only.
+ * `cached` of `measured` input tokens were read from the server's cache, over the call records still kept that measured it.
+ */
+export interface UsageRow { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; input: number; output: number; gpuMs?: number; cached?: number; measured?: number }
 
 /** An endpoint's call count, and its recent speeds when it has measured turns (Models.endpointUses). */
 export interface EndpointUse { endpointId: string; calls: number; tokPerSec?: number; promptTokPerSec?: number; speedCalls?: number }
@@ -2815,6 +2818,19 @@ export class Models {
       const existing = result.find(x => x.threadId === r.threadId && x.label === r.label && x.kind === kind);
       if (existing) { existing.tokens += r.input + r.output; existing.input += r.input; existing.output += r.output; }
       else result.push({ threadId: r.threadId, label: r.label, ...(kind ? { kind } : {}), tokens: r.input + r.output, input: r.input, output: r.output });
+    }
+    // The cache's share, from call records that measured it, counted where their tokens are: a subagent's under its parent. Folded totals never measured it.
+    const cache = this.withUser(userId, db => db.prepare(`WITH RECURSIVE descendants(root, thread) AS (
+      SELECT value, value FROM json_each(@threads)
+      UNION SELECT d.root, r.thread FROM descendants d JOIN subagent_runs r ON r.parent = d.thread AND r.pool = @pool
+    ) SELECT d.root AS threadId, c.label, c.kind, sum(max(c.read_tokens - c.processed, 0)) AS cached, sum(c.read_tokens) AS measured
+      FROM descendants d JOIN model_calls c ON c.thread = d.thread AND c.pool = @pool
+      WHERE c.task IN ('chat', 'code') AND c.read_tokens > 0 AND c.processed IS NOT NULL
+        AND (d.thread != d.root OR d.thread NOT IN (SELECT thread FROM subagent_runs WHERE pool = @pool))
+      GROUP BY d.root, c.label, c.kind`).all({ pool, threads: JSON.stringify(threadIds) })) as { threadId: string; label: string; kind: "local" | "cloud"; cached: number; measured: number }[];
+    for (const c of cache) {
+      const row = result.find(x => x.threadId === c.threadId && x.label === c.label && (x.kind === undefined || x.kind === c.kind));
+      if (row) { row.cached = (row.cached ?? 0) + c.cached; row.measured = (row.measured ?? 0) + c.measured; }
     }
     return result;
   }

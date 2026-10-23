@@ -2255,15 +2255,17 @@ export interface HostDownload {
 export interface DownloadHistory extends HistoryPage<{ endpointId: string; download: HostDownload }> {}
 /**
  * GET …/threads/:pool/:id/usage: counted turns and subagents. Tokens are `input` (every request read, cached reads included)
- * plus `output`; totals folded before user step 17 count in `tokens` alone.
+ * plus `output`; totals folded before user step 17 count in `tokens` alone. `cacheHit` is the share (0 to 1) of input the
+ * server read from its cache, over the kept call records that measured it; absent where none did.
  */
 export interface ThreadUsage {
   tokens: number;
   input: number;
   output: number;
   gpuMs?: number;
-  models: { label: string; kind?: "local" | "cloud"; tokens: number; input: number; output: number; gpuMs?: number }[];
-  threads?: { threadId: string; tokens: number; input: number; output: number; gpuMs?: number }[];
+  cacheHit?: number;
+  models: { label: string; kind?: "local" | "cloud"; tokens: number; input: number; output: number; gpuMs?: number; cacheHit?: number }[];
+  threads?: { threadId: string; tokens: number; input: number; output: number; gpuMs?: number; cacheHit?: number }[];
 }
 
 /** GET/PUT/DELETE /api/u/:userId/push; POST …/push/test → 204 or 502 { status, reason }. */
