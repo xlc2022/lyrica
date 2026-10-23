@@ -100,18 +100,16 @@ describe("a ChatGPT plan", () => {
     expect(s.models.resolve("chat", s.ctx()).endpoint.id).toBe(s.plan.id);
   });
 
-  it("stays a thread's model once its usage limit is reached, so the thread waits, while other tasks fall back", async () => {
+  it("stays a thread's model once its usage limit is reached, for every task, so nothing falls back", async () => {
     const s = await setup();
     s.models.setColumnTask(s.ada.id, "general", "chat", [s.offerings[0]!.id, s.cloudRef.offeringId].map((offeringId) => ({ offeringId })));
     s.models.reportPlanLimit(s.plan.id);
     const r = s.models.resolve("chat", s.ctx());
     expect(r.endpoint.id).toBe(s.plan.id);
     expect(r.skipped).toEqual([]);
-    // A subagent or background job has no turn to carry on, so it falls back.
+    // So does a subagent's or a background job's: none falls back.
     s.models.setColumnTask(s.ada.id, "general", "title", [s.offerings[0]!.id, s.cloudRef.offeringId].map((offeringId) => ({ offeringId })));
-    const title = s.models.resolve("title", s.ctx());
-    expect(title.endpoint.id).toBe(s.openrouter.id);
-    expect(title.skipped[0]!.reason).toMatch(/reached its plan's limit/);
+    expect(s.models.resolve("title", s.ctx()).endpoint.id).toBe(s.plan.id);
   });
 
   it("knows when its limit resets, from any reply that hits it, and says so once", async () => {

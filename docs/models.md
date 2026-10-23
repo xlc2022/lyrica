@@ -967,10 +967,10 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   (`isPlanLimit`, heard in `planProvider`), Lyrica notes when it resets
   (`reportPlanLimit`, with `planLimitReset` reading OpenAI's `resets_at`,
   else an hour), and the Models page shows "Limit reached until" with the
-  reset time. A thread's conversation (chat, code) still picks the plan
-  and waits for it rather than falling back (the owner's call); subagents
-  and background jobs, which have no turn to carry on, skip it until it
-  resets (`limitedFor`). Pi doesn't retry the reply, the person gets one
+  reset time. The router still picks the plan for every task, so nothing
+  falls back (the owner's call: a model set to a plan is set so for a
+  reason). A subagent's or background job's call fails until the reset,
+  and the job runs again when it next would. Pi doesn't retry the reply, the person gets one
   notice a turn saying when it resets, and the turn carries on by itself
   a minute after the reset (`PLAN_LIMIT_RESUME`, a wake-up outside her own
   limits, one per thread: a later cut-off moves it). Claude Code in her sandbox is the same:
