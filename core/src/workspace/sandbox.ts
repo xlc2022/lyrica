@@ -8,6 +8,7 @@ import { randomBytes } from "node:crypto";
 import { openRelay, type ClaudeCodeUsage, type Relay } from "./relay.ts";
 import { hostAddresses, nftRules, pastaArgs, reachesHost, resolveAddresses, resolveHosts, SANDBOX_GATEWAY } from "./net.ts";
 import { cleanPath, repositoryUrl, within, type GitAccountConfig, type Grant, type Network } from "./settings.ts";
+import { libraryDirs, LIBS } from "./page.ts";
 
 /** The thread's folder in the home workspace, as she sees it. */
 export const WORKDIR = "/workspace";
@@ -306,6 +307,11 @@ export class Sandbox implements ExecutionTarget {
       return p;
     }
     const grant = [...this.grants].reverse().find((g) => within(p, g.path));
+    // The offline libraries (page.ts) are there for every thread, read-only.
+    if (!grant && within(p, LIBS)) {
+      if (write) throw new SandboxDenied(`${LIBS} is read-only`);
+      return p;
+    }
     if (!grant) throw new SandboxDenied(`${p} is outside this thread's folders`);
     if (write && !grant.writable) throw new SandboxDenied(`${grant.path} is read-only in this thread`);
     return p;
@@ -480,6 +486,7 @@ export class Sandbox implements ExecutionTarget {
     if (this.spec.shared) mount(cleanPath(this.spec.shared), !this.spec.readOnly, SHARED);
     for (const g of this.grants) mount(g.path, g.writable, g.path, () => this.spec.check?.(g));
     for (const f of this.spec.files ?? []) args.push("--ro-bind", f, f);
+    for (const l of libraryDirs()) args.push("--ro-bind", l.dir, `${LIBS}/${l.name}`);
 
     const visible = (this.spec.workdir && (within(cwd, WORKDIR) || (this.spec.workdirAlias && within(cwd, this.spec.workdirAlias)))) || (this.spec.shared && within(cwd, SHARED)) || this.grants.some((g) => within(cwd, g.path));
     args.push("--chdir", visible ? cwd : this.spec.workdir ? WORKDIR : "/");

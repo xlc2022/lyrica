@@ -47,6 +47,7 @@ export * from "./mcp.ts";
 export * from "./net.ts";
 export * from "./paths.ts";
 export * from "./ops.ts";
+export * from "./page.ts";
 export * from "./proxmox.ts";
 export * from "./relay.ts";
 export * from "./sandbox.ts";
@@ -363,6 +364,8 @@ export class Workspace {
       madeFiles: (paths: string[]) => { try { this.madeFiles(t, paths); } catch { /* locked: unrecorded */ } },
       /** Her command ran from `since`: the files it left newer are hers, found in the background (the call doesn't wait), and passed to `found`. */
       madeSince: (since: Date, found?: (paths: string[]) => void) => { this.sweepSince(t, since, found); },
+      /** A sandbox for page preview: no network or credentials, folders read-only (previewTargetFor). */
+      previewTarget: () => this.previewTargetFor(t),
       /** Files the panel added or removed since her last turn, names only; taking them clears them. */
       fileNotes: () => this.settings(t.userId).takeFileNotes(t.threadId),
       ...(this.opts.onJobEnd ? {
@@ -763,6 +766,28 @@ export class Workspace {
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,
       pasta: this.opts.pasta,
+    });
+  }
+
+  /**
+   * Where page preview runs a page's code (page.ts): the thread's folders and clones, all read-only, with no network
+   * and no credentials or relay, whatever the thread's own sandbox has. A page's requests are failed as well, but that
+   * only reports them: this sandbox is what keeps its code from reaching anything.
+   */
+  previewTargetFor(t: WorkspaceThread): ExecutionTarget {
+    const s = this.settings(t.userId);
+    s.checkInherited(t.threadId, t.pool);
+    return new Sandbox({
+      workdir: this.threadDir(t),
+      workdirAlias: this.workdirAlias(t),
+      shared: this.sharedDir(t),
+      grants: ownGrants(t, s.effective(t.threadId).grants).map((g) => ({ ...g, writable: false })),
+      network: { internet: false, services: false, hosts: [] },
+      repos: this.reposDir(t),
+      reposReadOnly: true,
+      readOnly: true,
+      check: (g) => checkGrant(s.allowed(), t.pool, g),
+      bwrap: this.opts.bwrap,
     });
   }
 

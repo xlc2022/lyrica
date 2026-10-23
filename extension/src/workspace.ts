@@ -5,11 +5,12 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  decide, type CommandRule, holdsSecret, JOB_LIMITS, jobLine, type JobInfo, mcpNamespace, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, SHARED, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  decide, type CommandRule, holdsSecret, librariesLine, JOB_LIMITS, jobLine, type JobInfo, mcpNamespace, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, SHARED, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
 import { proxmoxTool } from "./proxmox.ts";
+import { bundleOut, pageTool } from "./page.ts";
 
 /** What the workspace tools need for one thread. `Workspace` from core provides it. */
 export interface ThreadTools {
@@ -62,6 +63,8 @@ export interface ThreadTools {
    * `inserts`: an edit that only adds text beside text it keeps, which goes through with a notice instead.
    */
   sameFile?(path: string, inserts?: boolean): string | undefined;
+  /** Where page preview runs a page: the thread's folders read-only, no network, no credentials. Without it, there is no preview. */
+  previewTarget?(): ExecutionTarget;
   /** Records that this thread wrote these files in the sandbox (paths as she sees them), for the file viewer's thread beside a file. */
   madeFiles?(paths: string[]): void;
   /** The same for a command: the files in her folder and /shared newer than `since`, its start, found in the background. */
@@ -154,7 +157,7 @@ const MACHINE = Type.Optional(Type.String({ description: "One of your machines, 
 
 /** What an approval covered: anything run that differs is denied. */
 const shown = (tool: string, input: Record<string, unknown>, machine: string | undefined, cwd: string | undefined) =>
-  JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" || tool === "proxmox" ? suspectKey(tool, input) : input.path]);
+  JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" || tool === "proxmox" ? suspectKey(tool, input) : tool === "page" ? [input.action, input.path, input.out] : input.path]);
 
 /**
  * Lyrica's read, write, edit and bash: Pi's own tools, with every operation
@@ -229,6 +232,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       });
     }
 
+    pi.registerTool(pageTool(tools, (id, input) => bound(id, "page", input)));
     if (tools.proxmox) pi.registerTool(proxmoxTool(tools.proxmox, (id, { machine, ...rest }) => bound(id, "proxmox", rest, machine as string)));
 
     if (tools.startJob && tools.jobs && tools.jobOutput && tools.stopJob) {
@@ -329,12 +333,14 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         return allowed ? undefined : { block: true, reason: "Not approved. Ask what to do instead." };
       }
       const pve = event.toolName === "proxmox";
-      const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve ? String(input.machine) : undefined;
+      const page = event.toolName === "page";
+      const place = event.toolName in TOOLS ? (input.machine as string | undefined) || "sandbox" : pve ? String(input.machine) : page ? "sandbox" : undefined;
       // A file another thread just changed is held before anyone is asked, so a held change is never one the person approved.
       // A command is held the same way for the files it plainly writes (its redirections and tee); the sweep after it finds the rest.
       if (place === "sandbox" && tools.sameFile) {
         const paths = event.toolName === "write" || event.toolName === "edit" ? (typeof input.path === "string" ? [input.path] : [])
-          : event.toolName === "bash" ? writtenFiles(String(input.command)) : [];
+          : event.toolName === "bash" ? writtenFiles(String(input.command))
+          : page && input.action === "bundle" && typeof input.path === "string" ? [bundleOut(input.path, input.out as string | undefined)] : [];
         const cwd = paths.length ? await tools.target().cwd() : "";
         const inserts = event.toolName === "edit" && insertsOnly(input);
         for (const path of paths) {
@@ -349,7 +355,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
       // A Proxmox action that reads asks like read, and one that powers like bash; Plan mode only reads.
       const reads = pve && PROXMOX_READS.has(input.action as ProxmoxAction);
       if (pve && mode === "plan" && !reads) return { block: true, reason: "Plan mode only reads: proxmox status, list and snapshots." };
-      const as = pve ? (reads ? "read" : "bash") : event.toolName;
+      const as = pve ? (reads ? "read" : "bash") : page ? (input.action === "bundle" ? "write" : "read") : event.toolName;
       // Anything that reaches outside and changes things there can't be undone from here: it always asks.
       const a = pi.getAllTools().find((t) => t.name === event.toolName)?.annotations;
       const irreversible = !!a?.openWorldHint && !a.readOnlyHint && !OWN_CARD.has(event.toolName);
@@ -454,7 +460,7 @@ export function describe(tools: ThreadTools): string {
       ...(s.threadWork.worktrees.length ? [`Work and commit only in these worktrees for their repositories, never in the original checkout:\n${s.threadWork.worktrees.map((w) => `${w.repo}: worktree ${w.path}, branch ${w.branch}`).join("\n")}`] : []),
     ] : []),
     network(tools.network()),
-    ...[toolsLine()].filter(Boolean),
+    ...[toolsLine(), librariesLine()].filter(Boolean),
     ...(machines.length ? [`Machines you can work on over SSH, with the machine argument: ${machines.join(", ")}. The sandbox's network settings don't apply there.`] : []),
     ...(pves.length ? [`Proxmox machines you can manage with the proxmox tool: ${pves.join(", ")}.`] : []),
     ...(tools.claudeCode?.() ? [CLAUDE_CODE_LINE] : []),
@@ -480,7 +486,7 @@ export const CLAUDE_CODE_LINE = "Claude Code is in your sandbox: `claude -p \"<t
 /** The sandbox's programs on this host (sandboxTools in core), and how to use its Chromium when it has one. */
 export function toolsLine(t: { programs: string[]; browser?: string } = sandboxTools()): string {
   const parts = t.programs.length ? [`The sandbox has bash, ${t.programs.join(", ")}${t.browser ? " and headless Chromium" : ""}.`] : [];
-  if (t.browser) parts.push("To render or check a page: `\"$CHROME_PATH\" --headless --no-sandbox --disable-gpu --user-data-dir=/tmp/chromium` plus `--screenshot=<png>` or `--dump-dom`, on a `file://` path; local files need no network. Playwright and Puppeteer use the same browser, never their own download: `executablePath: process.env.CHROME_PATH` and `args: [\"--no-sandbox\"]`. A static page is checked once it parses and one screenshot looks right.");
+  if (t.browser) parts.push("To check a page, use page preview. To script a browser (clicks, several pages), Playwright and Puppeteer use the same Chromium, never their own download: `executablePath: process.env.CHROME_PATH` and `args: [\"--no-sandbox\"]`. A static page is checked once it parses and one preview looks right.");
   return parts.join(" ");
 }
 
