@@ -1379,9 +1379,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `madeSince` records the files in `/workspace` and `/shared` newer than
     it (`find` in a fresh no-network sandbox, at most 2,000 within 10
     seconds; `.git`, `node_modules`, `.lyrica` and `/workspace/repos`
-    skipped). The daemon passes `madeSince` a hook that hands each file
-    found to `SameFile.changed`, which tells both threads when another
-    thread changed the file first. `claudeCode()`
+    skipped). The daemon passes `madeSince` a hook that hands the files
+    found to `SameFile.changed` together, which tells both threads, once
+    per other thread and naming its files, when another thread changed
+    them first. `claudeCode()`
     true adds `CLAUDE_CODE_LINE` to that section.
   - `read`, `write`, `edit` and `bash` take an optional `machine`. On a
     machine the call's mode is `stricterMode(settings().mode, limit)`; a

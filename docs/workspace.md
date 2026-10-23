@@ -444,8 +444,9 @@ takes is `lyrica@pve!agent=<that secret>`.
   before it runs). What else it changes isn't known until it has run:
   the sweep after it (`madeSince`) finds the files it changed in
   her folder and /shared, and for one another thread changed within two
-  hours, before the command started, both threads are told at once; the
-  change counts as hers, so the other thread's next `write` or `edit` of
+  hours, before the command started, both threads are told at once, in
+  one notice each way naming all of that thread's files (at most five,
+  then how many more); the change counts as hers, so the other thread's next `write` or `edit` of
   it is held. A change made while the command ran is left as it is.
   Commands that change a writable grant, and background commands, get no
   sweep afterwards.

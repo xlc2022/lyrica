@@ -1035,7 +1035,7 @@ export class HostedThread {
             sameFile: (path) => this.o.sameFile?.claim(this.userId, this.pool, this.threadId, tools.fileKey(path), path),
             // A command's changes can't be held before it runs: the sweep after it tells both threads instead.
             madeSince: (since) => tools.madeSince(since, (paths) => {
-              for (const p of paths) this.o.sameFile?.changed(this.userId, this.pool, this.threadId, tools.fileKey(p), p, since.getTime());
+              this.o.sameFile?.changed(this.userId, this.pool, this.threadId, paths.map((p) => ({ key: tools.fileKey(p), path: p })), since.getTime());
             }),
             approve: (r) => this.approve(r),
             proposePlan: (r) => this.proposePlan(r),
