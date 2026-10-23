@@ -1,7 +1,7 @@
 import type { BuildSystemPromptOptions, ExtensionCommandContext, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { isThreadView, type CallContext, type Interface, type Persona, type Pool, type PoolView, type Profile, type User } from "@lyrica/core";
 import { assemble, type Budgets, type Section } from "./assemble.ts";
-import { dropNudges, contextLines, registerContext, type ContextMeter } from "./context.ts";
+import { dropNudges, frameMidTurn, contextLines, registerContext, type ContextMeter } from "./context.ts";
 import { setToolsOff } from "./gate.ts";
 import { memorySections } from "./memory.ts";
 import { CODE_GUIDELINES, CODING_GUIDELINE, CODE_TOOLS_OFF, codeTaskText } from "./code.ts";
@@ -100,11 +100,11 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
     if (opts.meter) registerContext(pi, opts.meter);
     if (opts.sleep) pi.registerCommand("sleep", { description: "Sleep now: consolidate, dream and wake, for this pool", handler: (_args, ctx) => opts.sleep!(ctx) });
     pi.on("context_with_system", event => {
-      const messages = dropNudges(event.messages);
+      const messages = frameMidTurn(dropNudges(event.messages));
       const recentWork = opts.recentWork?.();
       if (recentWork) return { messages: [...messages, { role: "system" as const, content: `Selected recent work for this turn:\n\n${recentWork}`, timestamp: Date.now() }] };
-      // Leave Pi's request alone unless an earlier turn's nudge was removed.
-      return messages.length !== event.messages.length ? { messages } : undefined;
+      // Leave Pi's request alone unless a nudge was removed or a message framed.
+      return messages !== event.messages ? { messages } : undefined;
     });
     pi.on("before_agent_start", async (event, ctx) => {
       const code = turnCode = opts.code?.() ?? false;

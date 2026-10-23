@@ -180,6 +180,25 @@ describe("hidden nudge context", () => {
   });
 });
 
+describe("a marked message mid-turn", () => {
+  it("says it arrived while she was working, only after a tool result and only in the request", async () => {
+    const { frameMidTurn, MID_TURN } = await import("../src/context.ts");
+    const from = { role: "user", content: [{ type: "text", text: "[From t:abc]\n\nFYI: the tests pass." }] };
+    const tool = { role: "toolResult", content: [{ type: "text", text: "ok\n" }] };
+    const ask = { role: "user", content: [{ type: "text", text: "Fix the login bug." }] };
+    const messages: { role: string; content?: unknown }[] = [from, { role: "assistant" }, tool, from, tool, ask];
+    const framed = frameMidTurn(messages);
+    // A turn it starts, and a person's message, are left as they are.
+    expect(framed[0]).toBe(from);
+    expect(framed[5]).toBe(ask);
+    expect(framed[3]!.content).toEqual([{ type: "text", text: `[From t:abc]\n\n${MID_TURN}FYI: the tests pass.` }]);
+    expect(from.content[0]!.text).toBe("[From t:abc]\n\nFYI: the tests pass.");
+    expect(frameMidTurn([ask, tool, ask])).toEqual([ask, tool, ask]);
+    const plain = [ask, tool, ask];
+    expect(frameMidTurn(plain)).toBe(plain);
+  });
+});
+
 describe("code mode nudge", () => {
   it("tells her once, on her first edit with code mode off, and never with it on", async () => {
     const { CODE_NUDGE } = await import("../src/code.ts");

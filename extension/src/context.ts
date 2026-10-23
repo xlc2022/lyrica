@@ -1,5 +1,5 @@
 import { buildSessionContext, estimateTokens, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { speeds, type Pace } from "@lyrica/core";
+import { FROM_PARENT, ROUTINE, speeds, WAKEUP, WATCHING, type Pace } from "@lyrica/core";
 import type { Section } from "./assemble.ts";
 
 // Context and pace: how full her context is and how fast her model answers,
@@ -276,5 +276,32 @@ const NUDGES = new Set(["lyrica-ask-nudge", "lyrica-empty-reply-retry"]);
 /** A hidden nudge belongs only to the agent run that consumed it. */
 export function dropNudges<T extends { role: string; customType?: string }>(messages: T[]): T[] {
   const boundary = messages.findLastIndex(m => m.role === "user" || m.customType === "lyrica-turn");
-  return messages.filter((m, i) => !NUDGES.has(m.customType ?? "") || i > boundary);
+  const kept = messages.filter((m, i) => !NUDGES.has(m.customType ?? "") || i > boundary);
+  return kept.length === messages.length ? messages : kept;
+}
+
+/** Marks only lyricad writes: another thread's message, a watch, a wake-up, a routine. */
+const MARKS = [FROM_PARENT, WATCHING, WAKEUP, ROUTINE];
+export const MID_TURN = "This arrived while you were working. It doesn't replace your task unless it says so.\n\n";
+
+/**
+ * A marked message that reaches her mid-turn (after a tool result) is stored
+ * as a user message. Hours into a long turn it can be the newest user-role
+ * message while her ask sits far back or in a summary, and a model then
+ * reads it as the user's whole request. Said where it arrived, in the
+ * request only: the same each time, so the prompt stays cacheable.
+ */
+export function frameMidTurn<T extends { role: string; content?: unknown }>(messages: T[]): T[] {
+  let changed = false;
+  const out = messages.map((m, i) => {
+    if (m.role !== "user" || messages[i - 1]?.role !== "toolResult") return m;
+    const parts = typeof m.content === "string" ? [{ type: "text", text: m.content }] : (m.content as { type: string; text?: string }[] | undefined);
+    const first = parts?.[0];
+    const mark = first?.type === "text" ? MARKS.map((r) => r.exec(first.text ?? "")).find(Boolean) : undefined;
+    if (!mark) return m;
+    changed = true;
+    const text = `${mark[0]}${MID_TURN}${first!.text!.slice(mark[0].length)}`;
+    return { ...m, content: typeof m.content === "string" ? text : [{ ...first, text }, ...parts!.slice(1)] };
+  });
+  return changed ? out : messages;
 }

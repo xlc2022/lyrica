@@ -220,6 +220,25 @@ describe("in a Pi session", () => {
     expect(seen[1]!.turn).not.toContain("These sections");
   });
 
+  it("tells her a message from another thread arrived mid-turn, without changing what is stored", async () => {
+    const thread = (await withMemory()).thread().context;
+    let steer!: () => void;
+    const { session: s, seen } = await session(thread, [
+      () => { steer(); return fauxAssistantMessage([fauxToolCall("recall", { query: "login" })]); },
+      () => fauxAssistantMessage("ok"),
+    ]);
+    steer = () => s.agent.steer({ role: "user", content: [{ type: "text", text: "[From t:abc]\n\nFYI: the tests pass." }], timestamp: Date.now() });
+    try {
+      await s.prompt("Fix the login bug.");
+    } finally {
+      s.dispose();
+    }
+    expect(seen[1]!.last).toContain("[From t:abc]\\n\\nThis arrived while you were working.");
+    const stored = JSON.stringify(s.messages.filter((m) => m.role === "user"));
+    expect(stored).toContain("[From t:abc]\\n\\nFYI");
+    expect(stored).not.toContain("arrived while");
+  });
+
   it("keeps the tools' own prompt guidance", async () => {
     const { session: s, seen } = await session((await withMemory()).thread().context);
     try {

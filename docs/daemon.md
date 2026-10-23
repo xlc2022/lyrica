@@ -195,7 +195,11 @@ Each active thread is one Pi session from `openThreadSession`, with
   (from another thread, `[From t:…]`, or a look, `[Watching threads]`) joins
   the running turn instead: Pi takes it as a steer after the current tool
   call, or after the reply being written, and stores it as a user message
-  with its mark; the stream gets `received` when it lands. One that came
+  with its mark; the stream gets `received` when it lands. When it lands
+  after a tool result, her request (not the stored entry) adds a line after
+  the mark saying it arrived while she was working and doesn't replace her
+  task unless it says so: hours into a turn it is otherwise the newest
+  user-role message and reads as her whole ask. One that came
   too late for the turn goes as the next one. **Stop** aborts the turn,
   denies waiting permission requests and drops the person's queue. A marked
   message the turn didn't take, because it was stopped or failed, the
