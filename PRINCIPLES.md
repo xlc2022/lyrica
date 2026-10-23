@@ -190,6 +190,6 @@ hand or scripted against a model:
 - Does she avoid bringing up facts that were corrected or have gone stale?
 - Does she sound like herself, and not like a generic assistant?
 
-Next to the evals, keep a **friction log**: one line every time she forgot
+Next to the evals, keep a **[friction log](evals/friction.md)**: one line every time she forgot
 something, got something wrong, or couldn't do what the user asked. The evals and the
 friction log are what decide the next piece of work.
