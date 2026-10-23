@@ -8,6 +8,7 @@ import { setToolsOff } from "../gate.ts";
 import { toolGuidance, WORK_GUIDELINES, type ThreadContext } from "../index.ts";
 import { syncEntries } from "../record.ts";
 import { registerMemoryTools } from "../tools.ts";
+import { registerExitCodes } from "../exit-codes.ts";
 import { registerVisionGuard } from "../vision.ts";
 import { subagentPrompt } from "./roles.ts";
 import { DELEGATE_MESSAGE, outcome, Stopped, type Delegation, type Deliver, type Request, type Run, type SubagentHooks } from "./runs.ts";
@@ -192,6 +193,9 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
               : `${who} continues in its thread, in the background. Its reply will arrive as a message.`, { runId: run.id, status: run.status, threads: [sent.threadId] });
           }
         } else {
+          // A wait on a run that has already ended gives what its subagents last said.
+          const ended = action === "wait" && p.id ? delegation.ended(thread, p.id) : undefined;
+          if (ended) return text(ended, { runId: p.id });
           run = delegation.get(thread, p.id);
         }
         if (action === "stop") {
@@ -221,6 +225,7 @@ export function createSubagentExtension(thread: ThreadContext, role: Role, hooks
   return (pi) => {
     registerMemoryTools(pi, thread.view, who, { readOnly: true });
     registerVisionGuard(pi);
+    registerExitCodes(pi);
     pi.registerTool({
       name: "ask_parent",
       label: `Ask ${name}`,

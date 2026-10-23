@@ -112,12 +112,15 @@ describe("decideWatch", () => {
     });
   });
 
-  it("ends the watch silently when the pull is merged or closed", () => {
+  it("ends the watch with one note when someone else merges or closes the pull, and silently when she merged it", () => {
     for (const state of ["merged", "closed"] as const) {
-      const out = run(fresh(), pull({ state }));
+      const out = run(fresh({ head: HEAD_A }), pull({ state, mergedBy: state === "merged" ? "sam" : undefined }));
       expect(out.stop).toBe(true);
-      expect(out.note).toBeNull();
+      expect(out.note).toMatchObject({ ended: state, ci: null, reviews: [] });
     }
+    const own = run(fresh({ head: HEAD_A }), pull({ state: "merged", mergedBy: "Lyrica-Bot" }));
+    expect(own.stop).toBe(true);
+    expect(own.note).toBeNull();
   });
 
   it("ends the watch with one note when the token can't read the pull", () => {

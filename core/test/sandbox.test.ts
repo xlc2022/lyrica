@@ -100,6 +100,15 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect(r).toEqual({ code: 0, out: "hellosong.txt\n" });
   });
 
+  it("commits in a fresh clone as the repository's account, without a git config of her own", async () => {
+    const git = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [], credentials: {
+      forge: [{ name: "ada/home", account: { kind: "forgejo", host: "forge.lan", account: "ada", token: "forge-token" } }],
+      identity: { name: "ada", email: "ada@noreply.forge.lan" },
+    } });
+    const r = await sh("git init -q fresh && cd fresh && git commit -q --allow-empty -m one && git log -1 --format='%an <%ae> / %cn <%ce>'; cd .. && rm -rf fresh", git);
+    expect(r).toEqual({ code: 0, out: "ada <ada@noreply.forge.lan> / ada <ada@noreply.forge.lan>\n" });
+  });
+
   it("puts the gh and tea wrappers first on a run with repositories, and tea's login, with a placeholder, only on that run's /tmp", async () => {
     const git = new Sandbox({ workdir: p("work"), grants: grants(), network: OFF, self: [],
       credentials: { forge: [{ name: "ada/home", account: { kind: "forgejo", host: "forge.lan", account: "ada", token: "forge-token" } }] } });

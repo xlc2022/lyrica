@@ -280,6 +280,9 @@ secrets, and does not rewrite memory already stored. A secret-named label follow
     reports how many. A count that stays high means she is noting too little
     in conversation, which is a signal to adjust her instructions;
   - the continuity evals include "was it noted at all?" scenarios.
+- **A note that something doesn't work** (a tool, a token, an access)
+  says what failed and why, and before she treats one as still true she
+  tries the thing once, correcting the note if it works now.
 - In conversation, Lyrica writes only notes. Pages change during sleep, or
   when a user edits them. See [sleep.md](sleep.md) and
   [Editing memories](#editing-memories).

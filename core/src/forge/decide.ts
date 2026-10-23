@@ -16,8 +16,11 @@ export const decideWatch: ForgeDecide = ({ number, account, now, last, poll }) =
   }
 
   const pull = poll.pull;
-  // Merged or closed ends the watch without a turn (brief step 7).
-  if (pull.state !== "open") return { next: last, stop: true, note: null };
+  // Merged or closed ends the watch with one note, unless she merged it herself.
+  if (pull.state !== "open") {
+    const own = pull.state === "merged" && pull.mergedBy?.toLowerCase() === account.toLowerCase();
+    return { next: last, stop: true, note: own ? null : { number, head: pull.head, ci: null, reviews: [], tokenUnreadable: false, ended: pull.state } };
+  }
 
   // A new head — the first sight counts as one — starts the wait again.
   const headSince = last.head === pull.head ? last.headSince : now;

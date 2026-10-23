@@ -925,6 +925,15 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   (`Sandbox.secrets`, `secretMasker`; `edit` reads the file as it is), and
   a `web_search`, `web_fetch` or MCP call whose input holds one is
   refused.
+- **Commits** carry the first repository's account as author and
+  committer (`GIT_AUTHOR_*` and `GIT_COMMITTER_*` in the run's
+  environment), so a fresh clone commits without a name she picks: the
+  account's login, and a no-reply address, never its real email. For
+  GitHub that is `<id>+<login>@users.noreply.github.com`, with the id asked
+  of `/user` once per daemon run when the thread's clones are fetched; for
+  Gitea, Forgejo and Other it is `<login>@noreply.<host>`, Gitea's default
+  placeholder (their `/user` shows the account its real email even when it
+  is hidden).
 - **`gh` and `tea`** are wrapped (`core/src/workspace/forge.sh`, mounted at
   `/run/lyrica/bin`, first on the PATH of a run with repositories): each
   takes the placeholder of the account whose repository the current
@@ -1113,7 +1122,8 @@ her account is general.
   Gitea account whose host resolves into her own network also gets a
   signed tailnet webhook (Settings → Git accounts, **Webhook**) that nudges
   a poll at once, with polling as the fallback. A merged or closed pull
-  request ends the watch without a turn.
+  request ends the watch with one note saying so, unless her own account
+  merged it.
 - **Screenshots.** After `npm run build`, `npx tsx web/e2e/shot.ts
   [page]...` starts a throwaway `lyricad` with ada signed in (the e2e one,
   web/e2e/serve.ts), saves each page at 390×844 and 1280×800, light and

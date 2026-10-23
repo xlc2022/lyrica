@@ -780,7 +780,8 @@ Custom roles override built-ins by name.
   transaction, and the note fires as `HostedThread.send(note, { wakeup:
   wakeupMark(setAt) })` through the existing wake-up guards — never a body,
   never comment or log text. A merged or closed pull stops the watch
-  without a turn. One request at a time per token; `Retry-After` and
+  with one note (`ended`), or silently when the watching account merged
+  it (`mergedBy`). One request at a time per token; `Retry-After` and
   GitHub's `x-ratelimit-reset` are honoured; polling slows to 10 minutes
   while fewer than a fifth of the token's hourly requests remain, or after
   a webhook for that repository in the last 24 hours.
@@ -803,7 +804,7 @@ Custom roles override built-ins by name.
   (`pickThread`; a title two threads share is refused), or `to: "parent"`
   from a child; a child's message with no `to` and no `id`, or whose `id`
   names its parent, goes to the parent), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
-  `last`: the latest messages of a listed, logged thread (`PoolReader.latestEntries`), `READ_DEFAULT`
+  `last`: the latest messages of a listed, logged thread, or of one of her own subagents' threads (`PoolReader.latestEntries`), `READ_DEFAULT`
   10, `READ_MAX` 30, formatted by `formatEntry`) and `stop` (`id`: a
   parent's child, `ThreadsHost.stop`), and `routine` (above). `later` (`minutes`, clamped to 1 to
   `WAKEUP_LIMITS.maxMinutes`, and `note`; or `cancel: true`) sets a
@@ -1189,6 +1190,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   the next turn like the others) asking her to make the call. A second
   stores a `lyrica-empty-reply` message with `TEXT_TOOL_CALL`, so the
   turn fails visibly instead of sitting idle.
+- **Exit codes** (`extension/src/exit-codes.ts`, threads and subagents):
+  a bash result that ends "Command exited with code N" says what a
+  well-known code means for the command that ended the line, such as
+  "(rg: no matches, not a failure)" or gh pr checks' 8 for pending.
+  The codes that aren't failures (rg or grep 1, diff 1, test 1, gh pr
+  checks 8) clear the result's error.
 - **Paid fallback** (`extension/src/models.ts`): when `Resolution.paidAfter`
   is set, `prepareTurn` appends a `lyrica-paid-fallback` custom entry
   (`PaidFallback`: `model`, `from`, `reason`), outside her context, and a

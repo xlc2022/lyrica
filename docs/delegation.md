@@ -94,7 +94,9 @@ continued. Off by default: each fork costs the whole conversation again.
 The other actions take a run `id`:
 - `status`: this thread's runs (role, status, thread, model, tokens),
   any open questions, which can be continued, and the total for the thread;
-- `wait`: until the run asks a question or ends;
+- `wait`: until the run asks a question or ends; on a run that has
+  already ended, how it ended and each subagent's last reply, from its
+  thread;
 - `stop`: aborts its subagents' model calls and tools, including a command
   running in the sandbox;
 - `message`: talks to one of its subagents (below).

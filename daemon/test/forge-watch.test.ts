@@ -286,13 +286,18 @@ describe("the forge watcher", () => {
     expect(s.fake.asked).toHaveLength(asked); // within the ten-minute ease
   });
 
-  it("ends the watch silently when the pull is merged or closed, and with one note on a 403", async () => {
-    for (const over of [{ state: "closed", merged: true, merged_at: "2026-01-01T00:00:00Z" }, { state: "closed", merged: false, merged_at: null }]) {
+  it("ends the watch with one note when the pull is merged or closed, silently when she merged it, and with one note on a 403", async () => {
+    const ends: [Record<string, unknown>, string | undefined][] = [
+      [{ state: "closed", merged: true, merged_at: "2026-01-01T00:00:00Z", merged_by: { login: "sam" } }, `PR #12 (${HEAD_A.slice(0, 7)}): merged, so I've stopped watching.`],
+      [{ state: "closed", merged: false, merged_at: null }, `PR #12 (${HEAD_A.slice(0, 7)}): closed without merging, so I've stopped watching.`],
+      [{ state: "closed", merged: true, merged_at: "2026-01-01T00:00:00Z", merged_by: { login: "lyrica-bot" } }, undefined],
+    ];
+    for (const [over, text] of ends) {
       const s = await setupForge();
       routeForgejo(s.fake, { pull: pullBody(over) });
       s.watch();
       await s.tick(0);
-      expect(s.sent).toEqual([]);
+      expect(s.sent.map((m) => m.text)).toEqual(text ? [text] : []);
       expect(s.watches()).toEqual([]);
     }
 

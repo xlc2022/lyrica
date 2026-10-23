@@ -464,6 +464,22 @@ export class Delegation {
     return run;
   }
 
+  /**
+   * A run of this thread that has ended and isn't live: how it ended, and
+   * each subagent's last reply from its thread. Undefined for a live run or
+   * none.
+   */
+  ended(thread: ThreadContext, id: string): string | undefined {
+    if (this.live.get(id)?.parent.threadId === thread.threadId) return undefined;
+    const rows = this.store.runs(thread.user.id, thread.pool, { run: id }).filter((r) => r.parent === thread.threadId);
+    if (!rows.length) return undefined;
+    const replies = rows.map((r) => {
+      const said = thread.view.own.lastEntry(r.thread, ["assistant"])?.text.trim();
+      return `${r.role} (t:${r.thread}), ${r.status}:\n\n${said || "(no reply)"}`;
+    });
+    return `Subagent run ${id} has ended.\n\n${replies.join("\n\n")}`;
+  }
+
   /** This thread's subagents, newest first, from the records. */
   status(thread: ThreadContext): SubagentRecord[] {
     return this.store.runs(thread.user.id, thread.pool, { parent: thread.threadId });
