@@ -103,32 +103,47 @@ export class SameFile {
   }
 
   /**
-   * After `thread`'s command changed the file `key`, found by the sweep for
-   * files newer than the command's start (`since`): a command can't be held
-   * before it runs, so when another thread changed the file within
-   * SAME_FILE_MS, before the command started, both are told now. Either way
-   * the change is recorded as this thread's, so the other's next write is held.
-   * A change by another thread while the command ran is nobody's for sure: left as it is.
+   * After `thread`'s command changed `files` (Workspace.fileKey and the path
+   * shown to it), found by the sweep for files newer than the command's start
+   * (`since`): a command can't be held before it runs, so for each other
+   * thread that changed some of them within SAME_FILE_MS, before the command
+   * started, both are told now, once, naming all its files (a build that
+   * rewrote 25 files is one notice each way, not 25). Either way each change
+   * is recorded as this thread's, so the other's next write is held. A
+   * change by another thread while the command ran is nobody's for sure:
+   * left as it is.
    */
-  changed(userId: string, pool: Pool, thread: string, key: string | undefined, path: string, since: number): void {
-    if (!key) return;
+  changed(userId: string, pool: Pool, thread: string, files: { key: string | undefined; path: string }[], since: number): void {
     const now = this.o.now?.() ?? Date.now();
-    const k = `${userId}/${pool}/${key}`;
     this.expire(now);
-    const last = this.writes.get(k);
-    if (last && last.thread !== thread && last.at >= since) return;
-    const mark = last && `${k}/${thread}/${last.thread}`;
-    if (last && last.thread !== thread && !this.told.has(mark!) && this.o.exists(userId, pool, last.thread)) {
-      this.told.add(mark!);
-      this.told.add(`${k}/${last.thread}/${thread}`);
-      const minutes = Math.max(1, Math.round((since - last.at) / 60_000));
-      this.o.tell(userId, pool, last.thread, thread,
-        `[t:${thread}] changed ${path} with a command, which you changed ${minutes} min before. Agree with it who changes what before either of you changes the file again.`);
-      this.o.tell(userId, pool, thread, last.thread,
-        `Your command changed ${path}, which [t:${last.thread}] changed ${minutes} min before, and it has been told. `
-        + `Agree with it who changes what (in a project, message it with threads) before either of you changes the file again.`);
+    const others = new Map<string, { paths: string[]; at: number }>();
+    for (const { key, path } of files) {
+      if (!key) continue;
+      const k = `${userId}/${pool}/${key}`;
+      const last = this.writes.get(k);
+      if (last && last.thread !== thread && last.at >= since) continue;
+      const mark = last && `${k}/${thread}/${last.thread}`;
+      if (last && last.thread !== thread && !this.told.has(mark!) && this.o.exists(userId, pool, last.thread)) {
+        this.told.add(mark!);
+        this.told.add(`${k}/${last.thread}/${thread}`);
+        const o = others.get(last.thread) ?? { paths: [], at: last.at };
+        o.paths.push(path);
+        o.at = Math.min(o.at, last.at);
+        others.set(last.thread, o);
+      }
+      this.writes.set(k, { thread, at: now });
     }
-    this.writes.set(k, { thread, at: now });
+    for (const [other, { paths, at }] of others) {
+      const minutes = Math.max(1, Math.round((since - at) / 60_000));
+      const one = paths.length === 1;
+      const what = one ? paths[0] : `${paths.length} files (${listed(paths)})`;
+      const them = one ? "the file" : "them";
+      this.o.tell(userId, pool, other, thread,
+        `[t:${thread}] changed ${what} with a command, which you changed ${minutes} min before. Agree with it who changes what before either of you changes ${them} again.`);
+      this.o.tell(userId, pool, thread, other,
+        `Your command changed ${what}, which [t:${other}] changed ${minutes} min before, and it has been told. `
+        + `Agree with it who changes what (in a project, message it with threads) before either of you changes ${them} again.`);
+    }
   }
 
   private expire(now: number): void {
@@ -139,3 +154,6 @@ export class SameFile {
     }
   }
 }
+
+/** At most five paths, then how many more. */
+const listed = (paths: string[]) => paths.length > 5 ? `${paths.slice(0, 5).join(", ")} and ${paths.length - 5} more` : paths.join(", ");
