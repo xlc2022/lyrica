@@ -157,6 +157,23 @@ describe("handing files over", () => {
     await expect(call({ action: "read", id: project.id })).rejects.toThrow(`[t:${project.id}] is your project chat: it can't be read from here, but you can message it with to: "parent"`);
   });
 
+  it("reads question: \"False\" as false and a written-out question as the message, asked", async () => {
+    const s = await withMemory();
+    const t = s.thread();
+    const project = t.view.own.createThread({ interface: "web", project: true, title: "Homelab" });
+    const dns = t.view.own.createThread({ interface: "web", parent: project.id, child: true, title: "DNS" });
+    const sent: { text: string; question?: boolean }[] = [];
+    const host: ThreadsHost = { limits: DEFAULT_THREADS_LIMITS, start: async () => { throw new Error("unused"); }, message: async (_t, _to, text, opts) => { sent.push({ text, question: opts?.question }); return "started" as const; }, list: () => [] };
+    let tool!: Parameters<ExtensionAPI["registerTool"]>[0];
+    createThreadsExtension({ ...t.context, threadId: dns.id }, host)({ on: () => {}, registerTool: (v: typeof tool) => { tool = v; } } as unknown as ExtensionAPI);
+    const call = (args: object) => tool.execute("call", args, undefined, undefined, {} as never);
+    // A tool format that makes every value text sends booleans as words.
+    await call({ action: "message", to: "parent", text: "Done.", question: "False" });
+    await call({ action: "message", to: "parent", text: "Which zone?", question: " yes " });
+    await call({ action: "message", to: "parent", question: "Which flowers?" });
+    expect(sent).toEqual([{ text: "Done.", question: false }, { text: "Which zone?", question: true }, { text: "Which flowers?", question: true }]);
+  });
+
   it("lets ordinary prose, links and hashes through", () => {
     expect(() => checkWords("See https://example.com/a/b?c=d and commit 3f9c2e4b1d7a8f6e5d4c3b2a1908f7e6d5c4b3a2 for the fix.", MESSAGE_MAX)).not.toThrow();
   });
