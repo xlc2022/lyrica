@@ -1,7 +1,8 @@
+import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { PoolView } from "@lyrica/core";
 import { Type } from "typebox";
-import { codeMemoryThread, formatHit, formatRead, search, type MemoryContext } from "./memory.ts";
+import { codeMemoryThread, formatHit, formatRead, keptFrom, search, type MemoryContext } from "./memory.ts";
 import { syncEntries } from "./record.ts";
 
 // The Memory component's model-facing tools: remember, recall, read_memory.
@@ -61,9 +62,11 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       query: Type.String({ description: "Words to look for." }),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })),
     }),
-    async execute(_id, params) {
+    async execute(_id, params, _signal, _update, toolCtx) {
       const c = ctx();
-      const hits = search(view, params.query, { limit: params.limit ?? 8, excludeThread: c.threadId, fromThread: c.code ? codeMemoryThread(view, c.threadId) : c.threadId, ...(c.code && !params.everywhere ? { only: { project: true, about: "working" } } : {}) }, c.hide);
+      // Her own thread's entries that a compaction took out of context are found like any other conversation's.
+      const keepBefore = toolCtx?.sessionManager ? keptFrom(view, toolCtx.sessionManager.getBranch(), c.threadId) : undefined;
+      const hits = search(view, params.query, { limit: params.limit ?? 8, excludeThread: c.threadId, keepBefore, fromThread: c.code ? codeMemoryThread(view, c.threadId) : c.threadId, ...(c.code && !params.everywhere ? { only: { project: true, about: "working" } } : {}) }, c.hide);
       return text(hits.length ? hits.map((h) => formatHit(h, c.user)).join("\n") : "Nothing found.");
     },
   });
@@ -71,13 +74,16 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
   pi.registerTool({
     name: "read_memory",
     label: "Read memory",
-    description: "Open a page or note by ID, a skill (s:…), or read the conversation around an entry (e:…) or the start of a thread (t:…).",
+    description: "Open a page or note by ID, a skill (s:…), or read the conversation around an entry (e:…) or the start of a thread (t:…); page reads the messages just before or after an entry.",
     promptSnippet: "open a memory, or a past conversation, by its ID",
     promptGuidelines: ["Use read_memory with an ID from a citation or a recall hit to see the whole memory, or what was said around it."],
-    parameters: Type.Object({ id: Type.String({ description: "For example p:homelab, n:20261009-a1b2c3d4 or e:web/3f7a2c#41." }) }),
+    parameters: Type.Object({
+      id: Type.String({ description: "For example p:homelab, n:20261009-a1b2c3d4 or e:web/3f7a2c#41." }),
+      page: Type.Optional(StringEnum(["back", "on"] as const, { description: "With an entry (e:…): the nine messages just before it, or just after it." })),
+    }),
     async execute(_id, params) {
       if (opts.skill && params.id.startsWith("s:")) return text(opts.skill(params.id.slice(2)) ?? `No skill ${params.id.slice(2)}.`);
-      return text(formatRead(view, params.id, ctx()));
+      return text(formatRead(view, params.id, ctx(), params.page));
     },
   });
 }

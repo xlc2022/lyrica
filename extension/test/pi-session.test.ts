@@ -251,6 +251,36 @@ describe("in a Pi session", () => {
     expect(seen[0]!.system).toContain("write {user} where");
   });
 
+  it("after a compaction, finds and pages through her own thread's earlier messages, and is told where they are", async () => {
+    const m = await withMemory();
+    const thread = m.thread();
+    let after = "";
+    const { session: s, seen } = await session(thread.context, [
+      () => fauxAssistantMessage("ok"), () => fauxAssistantMessage("ok"), () => fauxAssistantMessage("ok"),
+      // The compaction's summary requests.
+      () => fauxAssistantMessage("summary"), () => fauxAssistantMessage("summary"),
+      () => fauxAssistantMessage([fauxToolCall("recall", { query: "pistachio" })]),
+      (ctx) => { after = JSON.stringify(ctx.messages.at(-1)); return fauxAssistantMessage([fauxToolCall("read_memory", { id: `e:${thread.threadId}#7`, page: "back" })]); },
+      (ctx) => { after += JSON.stringify(ctx.messages.at(-1)); return fauxAssistantMessage("found it"); },
+    ]);
+    try {
+      await s.prompt("The cake flavour is pistachio.");
+      await s.prompt("And the frosting is lemon.");
+      await s.prompt("Candles: seven.");
+      await s.compact();
+      await s.prompt("What flavour was the cake?");
+    } finally {
+      s.dispose();
+    }
+    const asked = seen.at(-3)!;
+    expect(asked.system).toContain(`This thread's messages before the summary are stored as e:${thread.threadId}#1 to e:${thread.threadId}#`);
+    expect(seen[0]!.system).not.toContain("before the summary");
+    // recall finds the compacted message in her own thread; paging back from it reads what came before, without it.
+    expect(after).toContain(`[e:${thread.threadId}#7] (entry by Ada`);
+    expect(after).toContain(`[e:${thread.threadId}#6]`);
+    expect(after.split("read_memory")[1]).not.toContain(`[e:${thread.threadId}#7]`);
+  });
+
   it("brings back in a new session what she remembered in an earlier one", async () => {
     const m = await withMemory();
     const first = m.thread();

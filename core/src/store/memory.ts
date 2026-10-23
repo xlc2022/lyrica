@@ -155,12 +155,17 @@ export function resolve(view: PoolView, id: string): { store: PoolReader; id: st
   return store && { store, id: ref.id };
 }
 
-/** A memory, or a window of a past thread around an entry, as a view may read it. */
-export function readView(view: PoolView, id: string, fromThread?: string): { item?: Item; entries?: StoredEntry[] } | undefined {
+/**
+ * A memory, or a window of a past thread around an entry, as a view may read
+ * it. `page` reads the window just before or just after the entry instead.
+ */
+export function readView(view: PoolView, id: string, fromThread?: string, page?: "back" | "on"): { item?: Item; entries?: StoredEntry[] } | undefined {
   const found = resolve(view, id);
   if (!found) return undefined;
   if (/^[et]:/.test(found.id)) {
-    const entry = found.id.startsWith("t:") ? `e:${found.id.slice(2)}#1` : found.id;
+    let entry = found.id.startsWith("t:") ? `e:${found.id.slice(2)}#1` : found.id;
+    const at = /^(e:.+#)(\d+)$/.exec(entry);
+    if (page && at) entry = `${at[1]}${Number(at[2]) + (page === "back" ? -5 : 5)}`;
     const entries = found.store.entryWindow(entry, 4, found.store === view.own ? fromThread : undefined);
     return entries.length ? { entries } : undefined;
   }

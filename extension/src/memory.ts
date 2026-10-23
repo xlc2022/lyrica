@@ -102,9 +102,9 @@ function authorLabel(author: string | undefined, user: MemoryContext["user"]): s
 }
 
 /** A memory or a stretch of a past thread, as `read_memory` shows it. */
-export function formatRead(view: PoolView, id: string, ctx: Pick<MemoryContext, "threadId" | "user" | "hide">): string {
+export function formatRead(view: PoolView, id: string, ctx: Pick<MemoryContext, "threadId" | "user" | "hide">, page?: "back" | "on"): string {
   if (ctx.hide?.(id.trim())) return `Nothing found for ${id}.`;
-  const found = readView(view, id, ctx.threadId);
+  const found = readView(view, id, ctx.threadId, page);
   if (!found) return `Nothing found for ${id}.`;
   if (found.entries) return found.entries.filter((e) => !ctx.hide?.(e.id)).map(formatEntry).join("\n\n") || `Nothing found for ${id}.`;
   const item = found.item as Item;
@@ -132,3 +132,16 @@ export function codeMemoryThread(view: PoolView, threadId: string): string {
   while (thread?.subagent && thread.parent) thread = view.own.getThread(thread.parent);
   return thread?.id ?? threadId;
 }
+
+/**
+ * The first of this thread's stored entries still in her context: entries
+ * before it went into a compaction's summary. Undefined before any compaction.
+ */
+export function keptFrom(view: PoolView, branch: { type: string; firstKeptEntryId?: string }[], threadId: string): number | undefined {
+  const compaction = branch.findLast((e) => e.type === "compaction");
+  return compaction?.firstKeptEntryId ? view.own.entryNumber(threadId, compaction.firstKeptEntryId) : undefined;
+}
+
+/** Her pointer to what a compaction took out of context, in her prompt until the next one. */
+export const earlierText = (threadId: string, kept: number) =>
+  `This thread's messages before the summary are stored as e:${threadId}#1 to e:${threadId}#${kept - 1}. recall searches them; read_memory opens one with what was said around it, and pages back or on from it.`;

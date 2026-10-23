@@ -213,7 +213,12 @@ The cheapest mechanism comes first:
    `evals/drop-topic.eval.ts` checks this with a real model.
 3. **Deliberate lookup** through tools. `recall(query)` searches.
    `read_memory(id)` opens a page, a note, or a window of a past thread around an
-   entry.
+   entry (four either side); with `page: "back"` or `"on"` it reads the nine
+   entries just before or just after it.
+   After a compaction, her own thread's entries before the first one it kept
+   are out of her context, so `recall` searches them too (`keepBefore`), and
+   her prompt gets an `earlier` section naming them
+   (`e:<thread>#1` to the last one summarized) until the next compaction.
 
 Search is FTS5 (BM25). A query is its words, minus common stopwords and
 greetings, OR'd together; a user's name in it adds that user's token as one more alternative.
@@ -222,7 +227,8 @@ tool calls, and the first 2,000 characters of each tool result). Not indexed:
 entries written unlogged, copied entries (exports and forks, `copyEntries`),
 the per-turn context message, and
 calls to the memory tools themselves, so recall never finds its own echoes.
-Automatic recall leaves out superseded notes and the current thread.
+Automatic recall leaves out superseded notes and the current thread; the
+`recall` tool leaves out the current thread's entries still in her context.
 There are no embeddings.
 
 Core search accepts `only: { project: true, about: "working" }` to retain
