@@ -37,8 +37,8 @@ and carries its children into a new project. The interface is built under
    `github.com`, `api.github.com` and `registry.npmjs.org` works for
    everything else). Her account goes in **Settings → Git accounts**
    first: kind GitHub, her login, and her fine-grained token with
-   Contents and Pull requests read and write and Actions read, so she
-   can read why her CI failed (docs/workspace.md, "Her own code"). The
+   Contents, Issues and Pull requests read and write and Actions read,
+   so she can claim issues and read why her CI failed (docs/workspace.md, "Her own code"). The
    token never enters her sandbox: git, `gh` and `tea` hold a placeholder
    and reach GitHub through the run's relay in `lyricad`, which swaps it in
    for `xlc2022/lyrica` and GitHub's API only. For
