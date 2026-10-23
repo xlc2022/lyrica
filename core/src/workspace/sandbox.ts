@@ -458,8 +458,11 @@ export class Sandbox implements ExecutionTarget {
   private args(fds: number[], cwd: string, networked: boolean): string[] {
     const args = ["--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL"];
     // With network on, bwrap runs inside the namespace pasta serves and keeps it.
-    // The host's network is never shared.
-    if (networked) args.push("--share-net");
+    // The host's network is never shared. That namespace makes lyricad's user
+    // root, so a nested one gives commands lyricad's own uid and gid back, as
+    // without network: tools that act differently as root (npm's install
+    // scripts chown what they unpack) see an ordinary user.
+    if (networked) args.push("--share-net", "--unshare-user", "--uid", String(process.getuid?.() ?? 1000), "--gid", String(process.getgid?.() ?? 1000));
 
     const nix = tools();
     if (nix) {

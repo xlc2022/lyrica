@@ -1105,11 +1105,11 @@ her account is general.
   failed probation, a GitHub issue linked to the tag holds the post-mortem.
 - **Her checks.** `npm run typecheck` and `npm test` run in her sandbox
   with the thread's internet on, after `npm ci --ignore-scripts`. With the
-  internet on she is root in the sandbox's own user namespace, where only
-  her own uid is mapped, so the install scripts' `node-gyp rebuild` fails
-  extracting Node's headers (`TAR_ENTRY_ERROR EINVAL … fchown`), and the
-  sandbox has no compiler anyway. Nothing needs those scripts: the SQLite
-  binding loads its prebuilt `prebuilds/linux-x64.node`. The tests that need FUSE or a tun device
+  internet on she runs as `lyricad`'s own uid, as with it off (a nested
+  user namespace inside the networked one), so files she writes in a
+  grant stay the user's to change. The install scripts stay skipped since
+  the sandbox has no compiler for `node-gyp rebuild`, and nothing needs
+  them: the SQLite binding loads its prebuilt `prebuilds/linux-x64.node`. The tests that need FUSE or a tun device
   (encrypted homes, rewind, uploads, network switches, the SSH helper)
   skip there, since her sandbox has neither; CI runs them with
   `LYRICA_SANDBOX_TESTS=require`, so they can't skip.
