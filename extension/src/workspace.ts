@@ -59,8 +59,9 @@ export interface ThreadTools {
   /**
    * Called before her write or edit in the sandbox (the path as she sees it): a text when another thread changed the
    * file lately and hasn't heard from this one, so the call is held once while the two agree who changes what.
+   * `inserts`: an edit that only adds text beside text it keeps, which goes through with a notice instead.
    */
-  sameFile?(path: string): string | undefined;
+  sameFile?(path: string, inserts?: boolean): string | undefined;
   /** Records that this thread wrote these files in the sandbox (paths as she sees them), for the file viewer's thread beside a file. */
   madeFiles?(paths: string[]): void;
   /** The same for a command: the files in her folder and /shared newer than `since`, its start, found in the background. */
@@ -335,8 +336,9 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
         const paths = event.toolName === "write" || event.toolName === "edit" ? (typeof input.path === "string" ? [input.path] : [])
           : event.toolName === "bash" ? writtenFiles(String(input.command)) : [];
         const cwd = paths.length ? await tools.target().cwd() : "";
+        const inserts = event.toolName === "edit" && insertsOnly(input);
         for (const path of paths) {
-          const held = tools.sameFile(posix.resolve(cwd, path));
+          const held = tools.sameFile(posix.resolve(cwd, path), inserts);
           if (held) return { block: true, reason: held };
         }
       }
@@ -509,4 +511,15 @@ function network(n: Network): string {
   if (n.hosts.length) parts.push(`Hosts you may reach: ${n.hosts.join(", ")}.`);
   if (!n.internet) parts.push(OFFLINE_LINE);
   return parts.join(" ");
+}
+
+/**
+ * Whether an edit call only adds text: each replacement keeps its old text whole at the start or the end of the new,
+ * so nothing another thread wrote there changes (docs/workspace.md, "Same file").
+ */
+export function insertsOnly(input: Record<string, unknown>): boolean {
+  const raw = Array.isArray(input.edits) ? input.edits : typeof input.oldText === "string" ? [{ oldText: input.oldText, newText: input.newText }] : [];
+  const edits = raw as { oldText?: unknown; newText?: unknown }[];
+  return edits.length > 0 && edits.every((e) => typeof e?.oldText === "string" && typeof e.newText === "string" && e.oldText.length > 0
+    && e.newText.length > e.oldText.length && (e.newText.startsWith(e.oldText) || e.newText.endsWith(e.oldText)));
 }

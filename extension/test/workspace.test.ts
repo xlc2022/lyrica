@@ -7,7 +7,7 @@ import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServ
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { BASH_TIMEOUT_S, createDownloadsExtension, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
-import { BUILD_THERE, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
+import { BUILD_THERE, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { Users, Workspace } from "@lyrica/core";
@@ -68,7 +68,7 @@ interface Run {
   /** Whether the thread's runs have Claude Code. */
   claudeCode?: boolean;
   /** Before a sandbox write or edit: a text to hold it with. */
-  sameFile?: (path: string) => string | undefined;
+  sameFile?: (path: string, inserts?: boolean) => string | undefined;
   /** Background commands started, as "<place>: <command>"; with it, the thread has background commands. */
   jobs?: string[];
 }
@@ -249,6 +249,22 @@ describe("workspace tools in a Pi session", () => {
     expect(seen).toEqual(["/shared/notes.md"]);
     expect(held.commands).toEqual([]);
     expect(held.results[0]).toContain("Not changed yet: [t:other]");
+  });
+
+  it("tell an edit that only adds text from one that changes it", async () => {
+    const seen: [string, boolean | undefined][] = [];
+    await run("auto", [fauxToolCall("edit", { path: "notes.txt", edits: [{ oldText: "two\n", newText: "two\nthree\n" }] }, { id: "1" })],
+      { sameFile: (path, inserts) => { seen.push([path, inserts]); return undefined; } });
+    expect(seen).toEqual([["/workspace/notes.txt", true]]);
+    const add = (oldText: string, newText: string) => insertsOnly({ edits: [{ oldText, newText }] });
+    expect(add("## Life\n", "## Life\nKoi.\n")).toBe(true);
+    expect(add("## Life\n", "Intro.\n## Life\n")).toBe(true);
+    expect(insertsOnly({ oldText: "a", newText: "ab" })).toBe(true);
+    expect(add("## Life\n", "## Lives\n")).toBe(false);
+    expect(add("two", "two")).toBe(false);
+    expect(add("", "new")).toBe(false);
+    expect(insertsOnly({ edits: [{ oldText: "a", newText: "ab" }, { oldText: "c", newText: "d" }] })).toBe(false);
+    expect(insertsOnly({ path: "x" })).toBe(false);
   });
 
   it("ask before commands only", async () => {

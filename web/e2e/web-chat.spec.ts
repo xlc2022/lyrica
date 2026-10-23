@@ -635,8 +635,12 @@ test("a message to a child thread is headed by its title, cut to one line, and b
   // One line, cut with an ellipsis, and Open still beside it.
   expect(await head.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
   const open = card.getByRole("link", { name: "Open" });
-  const [h, o] = [await head.boundingBox(), await open.boundingBox()];
-  expect(Math.abs(h!.y + h!.height / 2 - (o!.y + o!.height / 2))).toBeLessThan(4);
+  await expect(open).toBeVisible();
+  // Measured in one step: the list can redraw the card between two boundingBox calls, and a detached element has none.
+  expect(await card.evaluate((el) => {
+    const middle = (e: Element) => { const r = e.getBoundingClientRect(); return r.y + r.height / 2; };
+    return Math.abs(middle(el.querySelector(".sub-head b")!) - middle(el.querySelector(".sub-head a[href]")!));
+  })).toBeLessThan(4);
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/message-to-thread-${page.viewportSize()!.width}.png` });
 
