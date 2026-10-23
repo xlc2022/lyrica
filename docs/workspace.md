@@ -918,7 +918,7 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   the environment learns only values that die with the run; what a token
   can do on its own host is still up to the token, so tokens stay
   fine-grained where the host allows it, for the repositories she works
-  on, with no admin rights (her own repository's exception is under
+  on, with no admin rights (this repository's exception is under
   "Her own code").
   What she sees has them hidden too: `bash` output, `read` and `web_fetch`
   pages show "[credential hidden]" for a run's tokens and placeholders
@@ -1061,7 +1061,8 @@ her account is general.
      scope, added in Settings → Git accounts as a GitHub account. A
      fine-grained token can't write to a repository another personal
      account owns, even with Write access; it reads only because the
-     repository is public. If the repository moves to an organisation, use
+     repository is public. It covers every public repository her account
+     can write to, so keep her account a collaborator here only. If the repository moves to an organisation, use
      a fine-grained token for it instead, with **Contents**, **Issues** and
      **Pull requests** read and write and **Actions** read. Either way she
      can push, open pull requests, claim an issue and file the Friction

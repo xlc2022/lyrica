@@ -2159,10 +2159,11 @@ from Monika's runbooks.
   code goes to the forge and CI. She works like a feature thread: one
   branch and one pull request per piece of work, typecheck and tests in
   her sandbox.
-- **Her own GitHub account**, a collaborator with a token for this
-  repository (classic `public_repo`, since a fine-grained token can't
-  write to another personal account's repository), is one of her Git
-  accounts. She pushes branches to the repository itself, never a fork, so her pull
+- **Her own GitHub account**, a collaborator here and nowhere else, with
+  a classic `public_repo` token (a fine-grained token can't write to
+  another personal account's repository), is one of her Git accounts.
+  That token reaches every public repository her account can write to,
+  so the account stays a collaborator on this repository only. She pushes branches to the repository itself, never a fork, so her pull
   requests run the same CI as Claude's (docs/ci.md), with
   no first-time-contributor approval. `main` is protected: pull requests
   only, green CI, one approval from someone other than the author; nothing
