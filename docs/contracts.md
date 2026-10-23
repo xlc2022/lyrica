@@ -671,7 +671,15 @@ thinking; read/write/edit/bash/recall/read_memory). It uses the parent's
 through its existing thread view, without persona. A step's optional
 `done` accompanies its task in the Code task section. Without a role, a
 write-capable step in a repository thread selects coder; otherwise worker.
-Custom roles override built-ins by name.
+Custom roles override built-ins by name, except `claude`.
+- The built-in `claude` role is Claude Code, not a Pi session
+  (`extension/src/delegate/claude.ts`; docs/delegation.md, "Claude Code"):
+  listed and allowed only where `delegation.claudeCode(thread)` (the
+  thread's `claudeCode()`, and a `workspace.claudeDir`), refused with
+  `internet: false`, always in the background. A `Subagent` works through a
+  `SubagentBody` (`send`, `steer`, `abort`, `reply`, `dispose`): a Pi
+  session's, or `claudeBody`'s one `claude -p --output-format json` run
+  per turn through `ExecutionTarget.run`, resumed with `--resume`.
 - The default action runs work: `task` with an optional `role` and `tier`;
   or `tasks: [...]` (parallel), `chain: [...]`, `loop`, `council`, or
   `workflow: name`. Any of these can be `background: true` (always, in a
@@ -1385,7 +1393,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     call is approved like any `bash`, then `startJob(command, machine?,
     timeoutS?)` returns a `JobInfo` at once (docs/workspace.md, Background
     commands).
-  - `ExecutionTarget.run?(argv, { signal?, timeoutMs? })` runs argv with no
+  - `ExecutionTarget.run?(argv, { signal?, timeoutMs?, cwd? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
   - `ExecutionTarget.secrets?()` is the sandbox's tokens and placeholders
     (core/src/workspace/ops.ts): `bash` output (`secretMasker`), `read` and
@@ -2068,7 +2076,7 @@ interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   cwd(): Promise<string>;
   ops(): { read; write; edit; bash };     // Pi's tool operations
   folders(): string[];                    // host folders, or "<ssh name>:<root>"
-  run?(argv, { signal?, timeoutMs? });    // the sandbox's
+  run?(argv, { signal?, timeoutMs?, cwd? });  // the sandbox's
   secrets?(): string[];                   // the sandbox's tokens and placeholders, hidden in output
 }
 new SshTarget(cfg, { transport: SshTransport, address?, connected? })  // the host key must be cfg.hostKey

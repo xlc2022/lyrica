@@ -104,7 +104,7 @@ describe("the claude wrapper", () => {
   // A stand-in that prints what it was given.
   writeFileSync(join(real, "claude"), '#!/bin/sh\necho "args=$*"\necho "config=$CLAUDE_CONFIG_DIR sandbox=$IS_SANDBOX key=${ANTHROPIC_API_KEY:-none} token=$CLAUDE_CODE_OAUTH_TOKEN base=$ANTHROPIC_BASE_URL"\n');
   chmodSync(join(real, "claude"), 0o755);
-  const run = (path: string) => execFileSync("/bin/sh", [WRAPPER, "-p", "fix the tests"], {
+  const run = (path: string, args = ["-p", "fix the tests"]) => execFileSync("/bin/sh", [WRAPPER, ...args], {
     encoding: "utf8", env: { PATH: path, CLAUDE_CODE_OAUTH_TOKEN: "capability", ANTHROPIC_BASE_URL: "http://127.0.0.1:4100", ANTHROPIC_API_KEY: "sk-other" },
   });
 
@@ -113,6 +113,10 @@ describe("the claude wrapper", () => {
     expect(out).toContain("args=--permission-mode bypassPermissions -p fix the tests");
     // The run's capability and relay, never another key that would bill elsewhere.
     expect(out).toContain("config=/run/lyrica/claude sandbox=1 key=none token=capability base=http://127.0.0.1:4100");
+  });
+
+  it("leaves a delegate run's own permission mode, Claude Code's read-only plan mode, as it is", () => {
+    expect(run(`/run/lyrica/bin:${real}`, ["-p", "look", "--permission-mode", "plan"])).toContain("args=-p look --permission-mode plan\n");
   });
 
   it("says so when Claude Code isn't installed", () => {

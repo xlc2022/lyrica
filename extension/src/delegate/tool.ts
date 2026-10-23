@@ -11,6 +11,7 @@ import { registerMemoryTools } from "../tools.ts";
 import { registerExitCodes } from "../exit-codes.ts";
 import { registerVisionGuard } from "../vision.ts";
 import { subagentPrompt } from "./roles.ts";
+import { CLAUDE_ROLE } from "./claude.ts";
 import { DELEGATE_MESSAGE, outcome, Stopped, type Delegation, type Deliver, type Request, type Run, type SubagentHooks } from "./runs.ts";
 
 const text = (t: string, details?: unknown) => ({ content: [{ type: "text" as const, text: t }], details });
@@ -68,6 +69,12 @@ function request(p: Params): Request {
   return { ...narrowing, [k]: p[k] } as Request;
 }
 
+/** Whether a request has Claude Code do any of its steps. */
+function usesClaude(req: Request): boolean {
+  const steps = "tasks" in req ? req.tasks : "chain" in req ? req.chain : "task" in req ? [req] : [];
+  return steps.some((s) => s.role === CLAUDE_ROLE) || ("loop" in req && [req.loop.worker, req.loop.reviewer].includes(CLAUDE_ROLE));
+}
+
 /** One line per subagent: its run, role, status, thread and usage. */
 function formatStatus(rows: SubagentRecord[], live: (id: string) => Run | undefined): string {
   if (!rows.length) return "No subagent runs in this thread.";
@@ -118,7 +125,8 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
     pi.on("session_shutdown", () => detach?.());
     pi.on("before_agent_start", (event) => {
       if (!budget) requestBudget = delegation.newBudget();
-      const roles = delegation.roles(userId).map((r) => `- ${r.name} (${r.tier}${r.readOnly ? ", read-only" : ""}): ${r.description}`);
+      const claude = delegation.claudeCode(thread);
+      const roles = delegation.roles(userId).filter((r) => claude || r.name !== CLAUDE_ROLE).map((r) => `- ${r.name} (${r.tier}${r.readOnly ? ", read-only" : ""}): ${r.description}`);
       const flows = delegation.workflows(userId).map((w) => `- ${w.name}: ${w.description}`);
       const o = event.systemPromptOptions;
       o.sections = { ...o.sections, delegation: [SHARED_SANDBOX, `Subagent roles:\n${roles.join("\n")}`, flows.length ? `Saved workflows:\n${flows.join("\n")}` : ""].filter(Boolean).join("\n\n") };
@@ -160,9 +168,12 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
           syncEntries(ctx.sessionManager, thread.view.own, thread.threadId);
           // A project chat never waits on a subagent: the person hears from it while the work runs.
           const projectChat = !!thread.view.own.getThread(thread.threadId)?.project;
-          const run = delegation.start(thread, req, { background: !!p.background || projectChat, budget: requestBudget, workers: p.workers });
+          // Claude Code's jobs run long, so they never hold her turn.
+          const claude = usesClaude(req);
+          const run = delegation.start(thread, req, { background: !!p.background || projectChat || claude, budget: requestBudget, workers: p.workers });
           if (run.background) {
-            return text(`Started run ${run.id} in the background${p.background ? "" : ", as every run in a project chat is"}. Its result will arrive as a message.${p.background ? "" : " Tell the person what you started."}`, { runId: run.id, status: run.status });
+            const why = p.background ? "" : claude ? ", as Claude Code always runs" : ", as every run in a project chat is";
+            return text(`Started run ${run.id} in the background${why}. Its result will arrive as a message.${p.background ? "" : " Tell the person what you started."}`, { runId: run.id, status: run.status });
           }
           const stop = () => run.stop();
           signal?.addEventListener("abort", stop, { once: true });

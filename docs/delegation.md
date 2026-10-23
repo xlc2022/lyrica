@@ -186,6 +186,7 @@ tool in the subagent's thread only.
 | reviewer | cheap | read, bash, recall, read_memory | no |
 | worker | strong | read, write, edit, bash, recall, read_memory | yes |
 | oracle | strong | read, recall, read_memory | no |
+| claude | Claude Code ([below](#claude-code)) | Claude Code's own | yes |
 
 Prompts are adapted from `pi-subagents` 0.76.1 (MIT, credited in
 `roles.ts`; coder uses the five code-mode guidelines). A task with no role
@@ -219,6 +220,36 @@ less, so a brief asks for the result rather than a way to verify it.
 `DelegationStore` (`setRole`, `removeRole`, `setWorkflow`,
 `removeWorkflow`). A custom role sets its prompt, tier, tools, read-only flag
 and thinking level, and one with a built-in's name overrides it.
+
+## Claude Code
+
+The `claude` role is Claude Code (docs/workspace.md, "Claude Code"), not a
+Pi session: `extension/src/delegate/claude.ts`. A subagent works through a
+`SubagentBody`, a Pi session's or this one's.
+
+- **Where:** listed in her roles, and allowed, only where the thread's
+  runs have Claude Code (`delegation.claudeCode`). Elsewhere, or with
+  `internet: false`, the run fails before any thread is made. A user's own
+  role can't be named `claude`.
+- **A turn** is one `claude -p … --output-format json` run in the
+  parent's sandbox through the `claude` wrapper and the run's relay, in the
+  sandbox's working folder, so the user's token never enters it.
+  `readOnly` runs it in Claude Code's plan mode. It always runs in the
+  background, since such jobs run long; while it runs it counts as a tool at
+  work, so the idle check leaves it alone, and `stop` kills it.
+- **Brief in, report out:** the first turn's task goes in `BRIEF.md`, in a
+  folder for the subagent (`delegate/<thread>`) in the thread's Claude Code
+  folder, in the encrypted home workspace. Claude Code is told to read it
+  and to write `REPORT.md` there before it ends: what changed, what's left,
+  the checks run. The result is the report, or Claude Code's last reply
+  without one. The subagent's thread keeps the task and the result.
+- **Continuing:** `message` resumes its Claude Code session (`--resume`,
+  the id it gave) with the message, and asks for a fresh report. A message
+  while it runs waits for the run to end.
+- **Its tokens** are the run's, from Claude Code's answer; the relay counts
+  them in the thread's usage as for her bash's `claude`.
+- **The Claude plan's usage limit** fails the run, saying so, for her to set
+  a wake-up and continue it with `message` once the plan resets.
 
 ## Parallel writers
 

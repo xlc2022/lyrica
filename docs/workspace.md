@@ -1047,13 +1047,16 @@ it adds no tool.
   to the thread, `claude -c` continues the thread's last job, and the
   sweep removes it with the thread. It drops any other Anthropic key, turns off
   Claude Code's update checks and telemetry, and skips its permission
-  prompts (`--permission-mode bypassPermissions`, as the owner chose): the
+  prompts (`--permission-mode bypassPermissions`, as the owner chose, unless
+  the call gives its own mode, as a read-only delegate run does): the
   sandbox is the fence, and her `bash` call already went through the
   thread's mode. Plan mode has no `bash`, so no Claude Code.
-- **The prompt** has one line for such a thread (`CLAUDE_CODE_LINE`):
-  `claude -p` is for coding and repository jobs worth the user's plan, never
-  conversation, and when it reports the plan's usage limit she waits for the
-  reset with a wake-up rather than doing the job another way.
+- **The prompt** has one line for such a thread (`CLAUDE_CODE_LINE`): she
+  hands coding and repository jobs worth the user's plan, never
+  conversation, to the `claude` delegate role (docs/delegation.md, "Claude
+  Code"), or `claude -p` with bash where she has no `delegate`, and when it
+  reports the plan's usage limit she waits for the reset with a wake-up
+  rather than doing the job another way.
 
 ## Her own code
 
