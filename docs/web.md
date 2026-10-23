@@ -226,7 +226,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   header is a link to `…/t/<pool>/<thread>/files`, which the split view opens
   in the panel column (and the same link closes it); below 1180 px, or on a
   phone, it is the page. `…/files/<encoded path>` opens with that file shown
-  and its folders open (a folder: opened), or says it is gone. Files lists one folder at a time from
+  and its folders open (a folder: opened), or says it wasn't found. A path in the thread folder
+  that isn't there, as a relative link resolves, is looked for at the same place under `/shared`, then
+  under each grant, first. Files lists one folder at a time from
   `GET …/files?dir=` (docs/daemon.md "Files"), the thread folder open at the
   start, then `/shared` for a thread with a folder of its own, such as a code thread (shown as Shared folder), then each grant; a search runs under every root; a file,
   or an image from Images (`…/files/images`, filtered by source), opens in
