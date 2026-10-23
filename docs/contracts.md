@@ -849,7 +849,8 @@ Custom roles override built-ins by name.
   update, the notice carries the child's last assistant message (clipped
   to 4,000 characters, never an unlogged thread's) marked as its report. A child's
   `message({ to: "parent", text, question: true })` (a string `question` is
-  sent as the message, after any `text`, and asked), a project's `needsYou`,
+  sent as the message, after any `text`, and asked, except true, false, yes
+  or no in any case, which are that boolean), a project's `needsYou`,
   its report when its turn ends idle, and the daemon's failure or
   didn't-start notes wake an idle parent for one turn. Plain progress and
   subagent results don't wake an idle parent. Child deliveries carry
