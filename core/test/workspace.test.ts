@@ -5,9 +5,9 @@ import { networkInterfaces, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ssh2 from "ssh2";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { testMcpServer } from "./mcp-server.ts";
-import { gitEnv, keepResult, MCP_RESULT_BYTES, generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, migrate, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig } from "../src/index.ts";
+import { gitEnv, keepResult, MCP_RESULT_BYTES, generateSshKey, helperSandbox, nftRules, resolveAddresses, sandboxedTransport, SshTarget, migrate, Users, Workspace, WorkspaceSettings, type HelperSandbox, type MachineConfig, type SandboxSpec } from "../src/index.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -253,6 +253,16 @@ describe("Git accounts and repositories", () => {
 
     settings.setThread("code", "general", { repositories: [{ name: "xlc2022/lyrica", account: "ada" }, { name: "lyrica-bot/scratch.git", account: "bot" }] });
     const env = forgeEnv(thread("code"));
+    // Page preview runs a page's code with none of it: no credentials, no network, every folder read-only.
+    const spec = (target: unknown) => (target as { spec: SandboxSpec }).spec;
+    const folder = mkdtempSync(join(tmpdir(), "lyrica-preview-"));
+    // Its folders, which need a mounted home here: only the spec is looked at.
+    for (const dir of ["threadDir", "sharedDir", "reposDir", "workdirAlias"]) vi.spyOn(workspace as unknown as Record<string, () => string>, dir).mockReturnValue(folder);
+    expect(spec(workspace.targetFor(thread("code"))).credentials?.forge.length).toBe(2);
+    expect(spec(workspace.previewTargetFor(thread("code")))).toMatchObject({ network: { internet: false, services: false, hosts: [] }, readOnly: true, reposReadOnly: true });
+    expect(spec(workspace.previewTargetFor(thread("code"))).credentials).toBeUndefined();
+    vi.restoreAllMocks();
+    rmSync(folder, { recursive: true, force: true });
     const helpers = Object.entries(env).filter(([k]) => k.startsWith("GIT_CONFIG_KEY_")).map(([k, v]) => [v, env[k.replace("KEY", "VALUE")]]);
     expect(helpers.map(([k]) => k)).toEqual([
       "credential.https://github.com.useHttpPath", "credential.https://github.com/xlc2022/lyrica.git.helper", "credential.https://github.com/lyrica-bot/scratch.git.helper",

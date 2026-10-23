@@ -63,6 +63,8 @@ export interface ThreadTools {
    * `inserts`: an edit that only adds text beside text it keeps, which goes through with a notice instead.
    */
   sameFile?(path: string, inserts?: boolean): string | undefined;
+  /** Where page preview runs a page: the thread's folders read-only, no network, no credentials. Without it, there is no preview. */
+  previewTarget?(): ExecutionTarget;
   /** Records that this thread wrote these files in the sandbox (paths as she sees them), for the file viewer's thread beside a file. */
   madeFiles?(paths: string[]): void;
   /** The same for a command: the files in her folder and /shared newer than `since`, its start, found in the background. */

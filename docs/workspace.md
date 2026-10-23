@@ -1285,18 +1285,21 @@ is `read_memory`, so it doesn't clash with `read`.
 **`page`** (`extension/src/page.ts`, `core/src/workspace/page.ts`) works on
 an HTML page in the sandbox, so a thread doesn't write its own screenshot
 script, PNG decoder or bundler:
-- `preview` opens the page in the sandbox's Chromium through its `node`
-  (the DevTools protocol over a pipe; no package), with WebGL in software
-  (SwiftShader) and every request that isn't a local file failed. It takes
-  a window size (1280×800 by default), URL parameters and a wait after the
+- `preview` opens the page in Chromium through the sandbox's `node` (the
+  DevTools protocol over a pipe; no package), with WebGL in software
+  (SwiftShader). The page's code runs in a sandbox of its own
+  (`Workspace.previewTargetFor`): the thread's folders and clones
+  read-only, no network and no credentials or relay, whatever the
+  thread's own sandbox has. Every request that isn't a local file is also
+  failed, so it can be reported. It takes a window size (1280×800 by
+  default, 2048 at most each way), URL parameters and a wait after the
   load event (1 s; it captures anyway after 20 s). She gets the screenshot
   as an image, the page's errors and console messages, the requests it
   blocked, its canvases, and pixel stats lyricad works out from the PNG
   itself (8-bit RGB or RGBA): the share of pixels that differ from the
   background (the commonest corner colour) and the five commonest colours.
-  An almost empty page is called blank. The screenshot is also saved as
-  `/workspace/previews/<name>-<w>x<h>.png`, except in a project chat, whose
-  folder is read-only.
+  An almost empty page is called blank. Nothing is written: the screenshot
+  is only in the result.
 - `bundle` makes one self-contained file (`<name>.single.html` beside the
   page, or `out`): classic scripts are inlined as they are, module scripts
   are bundled with their imports by esbuild (minified), stylesheets with

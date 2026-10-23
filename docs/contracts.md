@@ -1313,11 +1313,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     height?, query?, wait? })` (`extension/src/page.ts`, registered by the
     workspace extension), in the sandbox only. `preview` runs
     `PREVIEW_SCRIPT` with the sandbox's `node` through the target's `run`
-    and returns a text (load state, title, errors, console, blocked
-    requests, canvases, `pixelStats`) and the screenshot as
-    `{ type: "image", mimeType: "image/png" }`, saved as
-    `/workspace/previews/<name>-<w>x<h>.png` when the folder is writable;
-    without Chromium and `node` in the sandbox it fails saying so.
+    in `ThreadTools.previewTarget()` (`Workspace.previewTargetFor(t)`: the
+    thread's folders, grants and clones read-only, no network, no
+    credentials), never the thread's own target, and returns a text (load
+    state, title, errors, console, blocked requests, canvases,
+    `pixelStats`) and the screenshot as `{ type: "image", mimeType:
+    "image/png" }`, writing nothing; width and height are 2048 at most.
+    Without `previewTarget`, or Chromium and `node` in the sandbox, it
+    fails saying so.
     `bundle` writes `bundlePage`'s file to `out` (relative to the folder,
     like `path`; `bundleOut`: `<name>.single.html` beside the page) through
     `recording`, refuses to write over the page, and adds `describeCheck`.
@@ -2064,7 +2067,7 @@ settings(userId).checks(pool, project): string[] / setChecks(pool, project, chec
 // checkChecks: at most 8 commands, each one line of at most 300 characters, no control characters; blanks dropped.
 // user step 16 adds project_settings.checks, JSON default [].
 settings(userId).skillsAutoApprove() / setSkillsAutoApprove(on)   // her skills active at once; user.db setting skills.auto_approve
-forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileKey(path), madeFiles(paths), madeSince(since, found?), fileNotes() },
+forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), previewTarget(), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileKey(path), madeFiles(paths), madeSince(since, found?), fileNotes() },
 fileKey(t, path)  // one file under the same key for every thread that can write it: "<folder thread>:<path>" in a thread's folder or /shared, "grant:<path>" in a writable grant; else undefined
               // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:

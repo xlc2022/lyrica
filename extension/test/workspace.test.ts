@@ -882,18 +882,18 @@ describe("the page tool", () => {
     expect(system).toMatch(/Offline libraries, read-only in \/opt\/libs: three\.js \d+\.\d+\.\d+ \(\\"three\\"\)/);
   });
 
-  it("previews a page: what it said, its canvases and pixels, and the screenshot, shown and saved", async () => {
+  it("previews a page in its own sandbox: what it said, its canvases and pixels, and the screenshot", async () => {
     // A 4×4 screenshot: a dark page with one red pixel.
     const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAAAAAAAAAAEElEQVR4nGNgQAP/0QUwAQAjEQEAAAAAAAAAAABJRU5EAAAAAA==", "base64");
     const files = new Map([["/workspace/site/index.html", "<canvas></canvas>"]]);
     const argv: string[][] = [];
-    const target: ExecutionTarget = { ...fakeTarget(files, []), secrets: () => ["sekrit-token"],
+    const target: ExecutionTarget = { ...fakeTarget(files, []), secrets: () => ["sekrit-token"] };
+    // The page runs in its own sandbox (no network, no credentials), never the thread's.
+    const box: ExecutionTarget = { ...fakeTarget(files, []),
       run: async (a) => { argv.push(a); return { code: 0, stderr: Buffer.alloc(0), stdout: Buffer.from(`${JSON.stringify({
         console: [{ level: "log", text: "ready with sekrit-token" }], errors: ["TypeError: x is undefined (app.js:3)"], blocked: ["https://cdn.example/a.js"],
         loaded: true, title: "Isle", canvases: [[640, 400]], text: 0, png: png.toString("base64") })}\n`) }; } };
-    const saved = new Map<string, Buffer | string>();
-    target.ops().write.writeFile = async (p, c) => { saved.set(p, c); };
-    const tool = pageTool({ target: () => target, madeFiles: () => {} } as unknown as ThreadTools, () => {}, () => true);
+    const tool = pageTool({ target: () => target, previewTarget: () => box } as unknown as ThreadTools, () => {}, () => true);
     const r = await tool.execute("1", { action: "preview", path: "site/index.html", width: 640, height: 400, query: "?seed=3" }, undefined, undefined, undefined as never);
     expect(argv[0]!.slice(0, 2)).toEqual(["node", "-e"]);
     expect(argv[0]!.slice(3)).toEqual(["file:///workspace/site/index.html?seed=3", "640", "400", "1000", "20000"]);
@@ -905,12 +905,10 @@ describe("the page tool", () => {
       "Blocked network requests: https://cdn.example/a.js.",
       "Canvases: 640×400.",
       "6.3% of pixels differ from the background #000000. Commonest colours: #000000 94%, #ff0000 6.3%.",
-      "Screenshot saved as /workspace/previews/index-640x400.png.",
     ].join("\n"));
     expect(image).toEqual({ type: "image", data: png.toString("base64"), mimeType: "image/png" });
-    expect(saved.get("/workspace/previews/index-640x400.png")).toEqual(png);
     // Without Chromium and node in the sandbox, it says so.
-    const none = pageTool({ target: () => target } as unknown as ThreadTools, () => {}, () => false);
+    const none = pageTool({ target: () => target, previewTarget: () => box } as unknown as ThreadTools, () => {}, () => false);
     await expect(none.execute("2", { action: "preview", path: "site/index.html" }, undefined, undefined, undefined as never)).rejects.toThrow(/needs Chromium and Node/);
   });
 });

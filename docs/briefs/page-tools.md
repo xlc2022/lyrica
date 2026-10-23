@@ -27,12 +27,13 @@ turns on the page itself (principle 1: do what was asked, well).
 
 1. **One tool, `page`** (`extension/src/page.ts`), sandbox only, with three
    actions:
-   - `preview`: opens an HTML file in the sandbox's Chromium (SwiftShader
-     WebGL, network blocked) at a given size, with optional URL parameters
-     and a wait after load. It returns the screenshot as an image, saved
-     under `/workspace/previews/`, plus console messages, uncaught errors,
-     blocked network requests, the canvases on the page, the share of pixels
-     that differ from the background, and the dominant colours.
+   - `preview`: opens an HTML file in Chromium (SwiftShader WebGL) at a
+     given size (2048 at most each way), with optional URL parameters and a
+     wait after load, in a sandbox of its own with no network, no
+     credentials and every folder read-only. It returns the screenshot as
+     an image, plus console messages, uncaught errors, blocked network
+     requests, the canvases on the page, the share of pixels that differ
+     from the background, and the dominant colours. It writes nothing.
    - `bundle`: turns a page and its local scripts (module imports included),
      stylesheets and images into one self-contained HTML file, then checks it.
    - `check`: lists what a page would still load from elsewhere (http(s)
@@ -58,13 +59,17 @@ turns on the page itself (principle 1: do what was asked, well).
   sandbox (its `read`), so a page can't reach a file outside the thread's
   folders and `/opt/libs`. esbuild is already in Lyrica's dependencies
   through tsx.
+- **The page's code reaches nothing** (PR review): failing its requests
+  over the DevTools protocol misses WebSockets, workers and IP addresses,
+  so preview runs in its own sandbox with no network and no credentials,
+  and the request blocking only reports.
 - **Modes:** `bundle` writes, so it asks where `write` asks and is held by
-  the same-file check; `preview` and `check` only read. None of them run in
-  Plan mode.
+  the same-file check; `preview` and `check` only read, and preview saves
+  nothing. None of them run in Plan mode.
 
 ## Out of scope
 
 - The planning nudge (item 4): parked in the roadmap until the owner says.
 - Showing the screenshot in the tool card: the image-preview thread is
-  changing tool cards; the result names the saved file meanwhile.
+  changing tool cards; until then the image is only in her tool result.
 - More libraries: add them by the same pattern once a run shows the need.
