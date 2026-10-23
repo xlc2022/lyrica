@@ -780,7 +780,8 @@ Custom roles override built-ins by name.
   transaction, and the note fires as `HostedThread.send(note, { wakeup:
   wakeupMark(setAt) })` through the existing wake-up guards — never a body,
   never comment or log text. A merged or closed pull stops the watch
-  without a turn. One request at a time per token; `Retry-After` and
+  with one note (`ended`), or silently when the watching account merged
+  it (`mergedBy`). One request at a time per token; `Retry-After` and
   GitHub's `x-ratelimit-reset` are honoured; polling slows to 10 minutes
   while fewer than a fifth of the token's hourly requests remain, or after
   a webhook for that repository in the last 24 hours.

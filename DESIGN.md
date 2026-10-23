@@ -1334,7 +1334,8 @@ project page and the web part are built. Recent calls can be filtered by project
   log or comment text). GitHub is polled every 2 minutes; a Forgejo or
   Gitea account whose host resolves into her own network also gets a signed
   tailnet webhook that nudges a poll at once, and polling stays as its
-  fallback. A merged or closed pull request ends the watch without a turn.
+  fallback. A merged or closed pull request ends the watch with one more
+  turn saying so (2026-10-23), unless her own account merged it.
   Watches are stored in the thread's pool like wake-ups, at most 10 per
   thread, and share the wake-up guards: the at-once limit, paused projects,
   and the 24-a-day cap. `threads later` stays for everything else.

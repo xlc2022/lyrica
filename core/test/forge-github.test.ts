@@ -66,6 +66,8 @@ describe("the GitHub module", () => {
     ]);
     const merged = githubPullRequest(answers({ pull: { number: 7, state: "closed", merged: true, merged_at: "2026-10-12T12:00:00Z", head: { sha: HEAD } } }));
     expect(merged.state).toBe("merged");
+    expect(merged.mergedBy).toBeUndefined();
+    expect(githubPullRequest(answers({ pull: { number: 7, state: "closed", merged: true, merged_by: { login: "sam" }, head: { sha: HEAD } } })).mergedBy).toBe("sam");
     const closed = githubPullRequest(answers({ pull: { number: 7, state: "closed", merged: false, merged_at: null, head: { sha: HEAD } } }));
     expect(closed.state).toBe("closed");
   });

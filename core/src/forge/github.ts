@@ -143,8 +143,15 @@ export function githubPullRequest(answers: GitHubAnswers): ForgePullRequest {
   return {
     number: numOf(pull, "number", "pull"),
     state: merged ? "merged" : rawState,
+    ...mergedByOf(pull.merged_by),
     head: strOf(asObj(pull.head, "pull.head"), "sha", "pull.head"),
     checks: [...checks.values()],
     reviews,
   };
+}
+
+/** Who merged the pull, when the forge says; anything else reads as unknown. */
+function mergedByOf(user: unknown): { mergedBy?: string } {
+  const login = user && typeof user === "object" ? (user as { login?: unknown }).login : undefined;
+  return typeof login === "string" && login ? { mergedBy: login } : {};
 }

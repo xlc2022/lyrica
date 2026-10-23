@@ -108,7 +108,8 @@ notices.
    wake, and a check result and a review in the same poll share it.
 7. **When it stops.** The pull request is merged or closed, the thread is
    deleted, or the repository leaves the thread. Merged or closed ends the
-   watch without a turn.
+   watch with one note (since 2026-10-23; before, without a turn), unless
+   her own account merged it.
 8. **Guards.** The wake-up guards hold: nothing while the project is
    paused, the at-once limit, and the 24-a-day cap per thread shared with
    wake-ups and routines. At most 10 watches per thread; an eleventh
@@ -153,7 +154,7 @@ for adding the webhook (tell Operator docs). The PR body says which.
   wrong signature gets 401 and polls nothing; the body isn't kept.
 - A 429 or `Retry-After` delays the next request as the forge says;
   low remaining requests slow polling to 10 minutes.
-- Merged or closed ends the watch with no turn. A 403 ends it with one note.
+- Merged or closed ends the watch with one note, silently if she merged it. A 403 ends it with one note.
 - A paused project, a locked user and the daily cap hold the wake.
 - Watches survive a restart and aren't polled while their user is locked.
 
