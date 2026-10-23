@@ -724,8 +724,12 @@ unless you confirm adding it anyway.
 Make each token fine-grained, for the repositories she works on, with no
 admin rights: **Contents** and **Pull requests** read and write for most
 work. For her own repository she also needs **Issues** read and write and
-**Actions** read
-([workspace.md](../workspace.md#her-own-code)). The token stays in
+**Actions** read. A fine-grained token can't write to a repository owned
+by another personal account, so when hers belongs to yours, use a classic
+token with only `public_repo` for a public repository
+([workspace.md](../workspace.md#her-own-code)). That token reaches every
+public repository her account can write to, so keep her account a
+collaborator on that one repository only. The token stays in
 `lyricad` and never enters her sandbox, but every command in a thread
 that has the repository can use it on that host.
 
