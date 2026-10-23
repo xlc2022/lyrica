@@ -1215,10 +1215,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   and fills in its arguments in place at `tool_start`.
 - **Shared local models** (`extension/src/model-share.ts`, around every
   local endpoint's stream in `modelRuntimeFor`): `shareModel(scope, key, need,
-  window, signal?, slots?)` waits until a request fits beside the ones running on
+  window, signal?, slots?, holder?)` waits until a request fits beside the ones running on
   that model (its tokens in the window, and at most `slots`, the offering's
-  `parallel`, at once; no limit when the server reports none) and returns its
-  release, which an abort also calls; `scope` is the daemon's `Models`, so a
+  `parallel`, at once, kept slots counted; no limit when the server reports none) and returns its
+  release, which an abort also calls. With `slots` and a `holder` (the
+  session's model runtime), a released slot stays kept for that holder for
+  `KEEP_WARM_MS` (15 s), with its room in the window, and the holder's next
+  request takes it ahead of the queue; no slot is kept after an abort, or
+  while the head of the queue has waited `MAX_PASSED_MS` (2 min); `scope` is the daemon's `Models`, so a
   daemon started again in the same process holds nothing; `markOverflow` adds a known
   overflow text to LM Studio's "Context size has been exceeded" so Pi
   compacts and retries (docs/models.md, Local servers).

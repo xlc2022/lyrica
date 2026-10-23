@@ -117,7 +117,8 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
           usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
           stopReason: reason, errorMessage: message, timestamp: Date.now() } });
         const slots = models.offering(ctx.userId, offerings.get(`${endpoint.id}\u0000${model.id}`)?.offering.id ?? "")?.offering.parallel;
-        return sharedStream(shareModel(models, `${endpoint.baseUrl}\u0000${model.id}`, need, model.contextWindow, options?.signal, slots), send, failed);
+        // This session's runtime marks its calls, so its slot can stay warm between them.
+        return sharedStream(shareModel(models, `${endpoint.baseUrl}\u0000${model.id}`, need, model.contextWindow, options?.signal, slots, runtime), send, failed);
       },
     });
     // A runtime key is used literally; a key in the provider config would be read as `$ENV` or `!command`.

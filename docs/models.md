@@ -1011,7 +1011,13 @@ from its model list; all into the offering's `parallel`). A server that
 reports no slots has no limit but the cache. A model host picks a chat
 model's slots by its context unless set by hand, with one shared cache
 (host/API.md, "Placement and serving settings"). A request alone always
-runs, and requests start in the order they asked. A wait the turn aborts
+runs, and requests start in the order they asked. With fewer slots than
+busy threads, the server keeps only a few prompts cached, so after each
+call a thread's slot stays kept for it for 15 s: its next call (once its
+tools have run) finds its prompt still cached instead of reading its whole
+context again at prefill speed. The keep ends early when that call comes,
+and no slot is kept while a waiting request has already waited 2 minutes,
+so threads switch per burst of calls and nobody waits for ever. A wait the turn aborts
 ends as an aborted reply. LM Studio's "Context size has been exceeded" is
 marked as an overflow, so Pi compacts and retries instead of failing. Image
 jobs on a host take turns with its chat models in the host's own queue for
