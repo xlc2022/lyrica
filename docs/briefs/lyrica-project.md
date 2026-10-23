@@ -122,9 +122,9 @@ characters, the limit on project instructions.
 >
 > **Review.** Message the Review thread with the PR and commit when it's
 > ready, and UI review too if a user would see it. Fix what they send
-> back. When both say verified and CI is green, the PR goes to Claude's
-> review, which approves and merges it; answer its comments on the PR.
-> Never ask anyone to merge past a red check.
+> back. After required exact-head verification and green CI, request
+> Claude's approval/merge via a `claude`-labelled issue; answer PR comments.
+> Never self-merge or merge past red CI.
 >
 > **Boundary code needs the owner**: keys, the privacy boundary, the model
 > router, the sandbox, authentication, deployment, the updater and CI
@@ -204,8 +204,12 @@ Claude's project can't see her project. It learns about her work from
 GitHub: a routine in Claude's project checks for new PRs from her account
 and issues labelled `claude`, sends all her PRs to its PR review thread (even docs-only or
 `web/`-only ones, which Claude's own PRs may merge without it) and
-the issues to the project chat. The project chat sets that routine up when
-her account exists.
+the issues to the project chat. After her project's required reviewers
+verify the exact PR head and CI is green, she opens an issue labelled
+`claude` linking the PR, the verified head and review results, requesting
+Claude's PR review and merge. She fixes findings and sends each new head
+for recheck; she never merges her own PR. The project chat sets that routine
+up when her account exists.
 
 Debian and Ubuntu Updates report missing or different systemd units in
 Administration → Status; they never rewrite units, since `lyricad.service`
