@@ -100,6 +100,14 @@ jobs:
       - run: npx playwright install --with-deps chromium
         working-directory: web
       - run: npm run e2e -w @lyrica/web
+      # A failed test's trace (only made-up test data), so an intermittent failure can be read rather than re-run.
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-traces-${{ github.run_attempt }}
+          path: web/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
   # The flake (docs/daemon.md, "On NixOS"): the package and a NixOS system with the module
   # build, and the sandbox tests pass with the module's sandbox tools as /usr
   # and only their closure in /nix/store.
