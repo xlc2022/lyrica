@@ -78,6 +78,15 @@ describe("a project chat's sandbox", () => {
   });
 });
 
+describe("the offline libraries", () => {
+  it("are readable in every sandbox and never writable", () => {
+    const sandbox = new Sandbox({ workdir: "/tmp/never-mounted", grants: [], network: OFF, self: [] });
+    expect(sandbox.allow("/opt/libs/three/build/three.module.js", false)).toBe("/opt/libs/three/build/three.module.js");
+    expect(() => sandbox.allow("/opt/libs/three/build/three.module.js", true)).toThrow(/\/opt\/libs is read-only/);
+    expect(() => sandbox.allow("/opt/other", false)).toThrow(/outside this thread's folders/);
+  });
+});
+
 describe.skipIf(!runnable)("the sandbox", () => {
   it("lets her work in her folder and her grants", async () => {
     const ops = box().ops();
@@ -185,7 +194,11 @@ describe.skipIf(!runnable)("the sandbox", () => {
     }
     const top = (await sh("ls /")).out.split("\n");
     expect(top).toContain("workspace");
-    for (const d of ["home", "root", "var", "srv", "opt", "run", "mnt", "boot"]) expect(top).not.toContain(d);
+    for (const d of ["home", "root", "var", "srv", "run", "mnt", "boot"]) expect(top).not.toContain(d);
+    // /opt holds only the offline libraries, read-only.
+    expect((await sh("ls /opt")).out).toBe("libs\n");
+    expect((await sh("ls /opt/libs/three/build/three.module.js")).code).toBe(0);
+    expect((await sh("touch /opt/libs/three/x")).code).not.toBe(0);
   });
 
   it("can't see or signal lyricad's process", async () => {

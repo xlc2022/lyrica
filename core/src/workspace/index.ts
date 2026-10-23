@@ -47,6 +47,7 @@ export * from "./mcp.ts";
 export * from "./net.ts";
 export * from "./paths.ts";
 export * from "./ops.ts";
+export * from "./page.ts";
 export * from "./proxmox.ts";
 export * from "./relay.ts";
 export * from "./sandbox.ts";

@@ -41,21 +41,24 @@ database files. A command that could see either one could read everything.
   files (certificates, `resolv.conf`, `hosts`, `passwd`, `group`, the loader
   cache), `/proc`, `/dev`, an empty `/tmp`, its family's shared folder at
   `/shared` (below, "Handing files over"), the thread's folder at
-  `/workspace`, and each grant at its own host path. Its environment is a
+  `/workspace`, each grant at its own host path, and the offline libraries
+  at `/opt/libs`, read-only ([Tools](#tools)). Its environment is a
   fixed minimal set; nothing of `lyricad`'s is passed in.
 - On NixOS (`LYRICA_SANDBOX_TOOLS` set, docs/daemon.md "On NixOS") the
   system is the module's sandbox tools instead: they are `/usr`, with `/bin`
   and `/sbin` linking to `usr/bin`, and only the store paths listed in
   `LYRICA_SANDBOX_CLOSURE` (the tools' closure, Node's and the CA bundle's)
   are in `/nix/store`, never the whole store, which holds the system's
-  generated configs. Lyrica's own package isn't among them. Both must be
+  generated configs. Lyrica's own package isn't among them; only the
+  offline libraries' folders in its `node_modules` are mounted, at
+  `/opt/libs`. Both must be
   store paths and the list must contain the tools, or the sandbox refuses
   to start. Their `bin` is also first on the `PATH` lyricad starts `pasta`,
   `nft` and `bwrap` with.
 - **Every operation is a fresh sandbox**, file reads and writes included, so
   paths and symlinks always resolve inside it. `read`, `write` and `edit`
-  first refuse paths outside `/workspace` and the grants (and writes to
-  read-only grants). The mounts confine her anyway: `bash` has no path checks.
+  first refuse paths outside `/workspace`, the grants and `/opt/libs` (and
+  writes to read-only grants and `/opt/libs`). The mounts confine her anyway: `bash` has no path checks.
 - **Writes are atomic for files she owns.** `write` and `edit` write a temp
   file in the same folder, give it the old file's mode and group (or the
   usual mode for a new file), and rename it over the target. A read running
@@ -1262,10 +1265,11 @@ once. Commands typed with `!` in the terminal run in the sandbox. A short
 `workspace` prompt section tells her where she works, what she was given,
 whether she has internet, and her machines. It also lists the programs the
 sandbox has on this host (`sandboxTools` in `sandbox.ts`) and, only when it
-finds Chromium, gives its command, how Playwright or Puppeteer use that
-browser, and that a static page is checked once it parses and one screenshot
-looks right. Subagents and child threads get the same
-section. Every run's environment has `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`
+finds Chromium, points her to `page preview` for checking a page, says how
+Playwright or Puppeteer use that browser, and that a static page is checked
+once it parses and one preview looks right. It then names the offline
+libraries with their versions (`librariesLine`). Subagents and child threads
+get the same section. Every run's environment has `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`
 and `REQUESTS_CA_BUNDLE` set to the real path of the host's
 `/etc/ssl/certs/ca-certificates.crt` (on NixOS its store path, which the
 sandbox mounts; never the `/etc/static` link, which it doesn't), and `CHROME_PATH` and `PUPPETEER_EXECUTABLE_PATH` set to the
@@ -1277,6 +1281,43 @@ mirror or proxy CDNs or registries, but to say what she couldn't check or ask
 for Internet or an allowed host. `proxmox` is the tool for
 Proxmox machines ([above](#proxmox)). The memory tool
 is `read_memory`, so it doesn't clash with `read`.
+
+**`page`** (`extension/src/page.ts`, `core/src/workspace/page.ts`) works on
+an HTML page in the sandbox, so a thread doesn't write its own screenshot
+script, PNG decoder or bundler:
+- `preview` opens the page in the sandbox's Chromium through its `node`
+  (the DevTools protocol over a pipe; no package), with WebGL in software
+  (SwiftShader) and every request that isn't a local file failed. It takes
+  a window size (1280×800 by default), URL parameters and a wait after the
+  load event (1 s; it captures anyway after 20 s). She gets the screenshot
+  as an image, the page's errors and console messages, the requests it
+  blocked, its canvases, and pixel stats lyricad works out from the PNG
+  itself (8-bit RGB or RGBA): the share of pixels that differ from the
+  background (the commonest corner colour) and the five commonest colours.
+  An almost empty page is called blank. The screenshot is also saved as
+  `/workspace/previews/<name>-<w>x<h>.png`, except in a project chat, whose
+  folder is read-only.
+- `bundle` makes one self-contained file (`<name>.single.html` beside the
+  page, or `out`): classic scripts are inlined as they are, module scripts
+  are bundled with their imports by esbuild (minified), stylesheets with
+  their `@import`s and `url()`s, and images and media as data URLs. Bare
+  names resolve through the page's import map, then the offline libraries.
+  Every file is read through the sandbox's `read`, so a page can't pull in
+  a file outside the thread's folders and `/opt/libs`. It writes like
+  `write`: it asks where `write` asks, is held by the same-file check, and
+  can be undone with its turn.
+- `check` lists what a page would still load: http(s) addresses in `src`,
+  `href` (not links), `url()`, `@import` and imports; network calls such as
+  `fetch` and `WebSocket`; and local files one file can't carry. `bundle`
+  ends with the same check.
+
+`preview` and `check` only read; none of the three run in Plan mode.
+
+**Offline libraries.** three.js (with its addons), simplex-noise and
+tween.js come with Lyrica (core's dependencies) and are mounted read-only
+at `/opt/libs/<package>` in every sandbox, so a page can use them with
+internet off. Her prompt names them with their versions and tells her to
+use one rather than write an engine.
 
 ## Host requirements
 

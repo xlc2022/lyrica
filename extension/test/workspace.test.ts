@@ -6,7 +6,7 @@ import { createAgentSession, DefaultResourceLoader, SessionManager, type AgentSe
 import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServer, ThreadRepository, ThreadWorkspace, ToolOps } from "@lyrica/core";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
-import { BASH_TIMEOUT_S, createDownloadsExtension, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
+import { BASH_TIMEOUT_S, createDownloadsExtension, pageTool, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
 import { BUILD_THERE, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
@@ -71,6 +71,8 @@ interface Run {
   sameFile?: (path: string, inserts?: boolean) => string | undefined;
   /** Background commands started, as "<place>: <command>"; with it, the thread has background commands. */
   jobs?: string[];
+  /** More files in the sandbox, by path. */
+  files?: Record<string, string>;
 }
 
 /** Tools any thread has besides the workspace's: memory, and the switched ones, which do nothing here. */
@@ -83,7 +85,7 @@ const others: ExtensionFactory = (pi) => {
 async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxToolCall>[], o: Run = {}) {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-ws-"));
   dirs.push(dir);
-  const files = new Map([["/workspace/notes.txt", "one\ntwo\n"]]);
+  const files = new Map([["/workspace/notes.txt", "one\ntwo\n"], ...Object.entries(o.files ?? {})]);
   const commands: string[] = [];
   const system: string[] = [];
   /** The tools on offer at each model call. */
@@ -836,5 +838,79 @@ describe("where she builds", () => {
     } as unknown as ThreadTools);
     expect(chat).toContain(LINK_LINE);
     expect(prompt(false)).toContain(LINK_LINE);
+  });
+});
+
+describe("the page tool", () => {
+  const site = {
+    "/workspace/site/index.html": `<!doctype html><link rel="stylesheet" href="style.css"><script src="app.js"></script><img src="https://cdn.example/logo.png">`,
+    "/workspace/site/style.css": "body { color: red }",
+    "/workspace/site/app.js": "fetch('/api');",
+  };
+
+  it("checks and bundles a page; bundle asks where write asks and is held by the same-file check", async () => {
+    const asked: ApprovalRequest[] = [];
+    const held: string[] = [];
+    const { files, results } = await run("ask", [
+      fauxToolCall("page", { action: "check", path: "site/index.html" }, { id: "1" }),
+      fauxToolCall("page", { action: "bundle", path: "site/index.html" }, { id: "2" }),
+    ], { files: site, approve: async (r) => { asked.push(r); return true; }, sameFile: (path) => { held.push(path); return undefined; } });
+    expect(asked.map((r) => [r.tool, r.input.action])).toEqual([["page", "bundle"]]);
+    expect(held).toEqual(["/workspace/site/index.single.html"]);
+    const bundled = files.get("/workspace/site/index.single.html")!;
+    expect(bundled).toContain("<style>body{color:red}</style>");
+    expect(bundled).toContain("<script>fetch('/api');</script>");
+    expect(results[0]).toBe("page: /workspace/site/index.html: Loads from the network: https://cdn.example/logo.png.\nRefers to local files one file can't carry: style.css, app.js.");
+    expect(results[1]).toMatch(/^page: Bundled \/workspace\/site\/index.html into \/workspace\/site\/index.single.html \(1 KB\), inlining style.css, app.js.\nLoads from the network: https:\/\/cdn.example\/logo.png.\nNetwork calls in its code: fetch/);
+  });
+
+  it("holds a bundle another thread is changing, and refuses to write over the page", async () => {
+    const { files, results } = await run("auto", [
+      fauxToolCall("page", { action: "bundle", path: "site/index.html", out: "site/one.html" }, { id: "1" }),
+      fauxToolCall("page", { action: "bundle", path: "site/index.html", out: "site/index.html" }, { id: "2" }),
+    ], { files: site, sameFile: (path) => (path === "/workspace/site/one.html" ? "Not changed yet: [t:other] changed it." : undefined) });
+    expect(files.has("/workspace/site/one.html")).toBe(false);
+    expect(results).toEqual(["page: Not changed yet: [t:other] changed it.", "page: bundle would write over the page itself: give another out."]);
+  });
+
+  it("isn't offered in Plan mode, and the prompt names the libraries", async () => {
+    const { offered } = await run("plan", [fauxToolCall("read", { path: "notes.txt" }, { id: "1" })]);
+    expect(offered[0]).not.toContain("page");
+    const { offered: auto, system } = await run("auto", [fauxToolCall("read", { path: "notes.txt" }, { id: "1" })]);
+    expect(auto[0]).toContain("page");
+    // Her prompt names the offline libraries, so she uses one rather than writing an engine.
+    expect(system).toMatch(/Offline libraries, read-only in \/opt\/libs: three\.js \d+\.\d+\.\d+ \(\\"three\\"\)/);
+  });
+
+  it("previews a page: what it said, its canvases and pixels, and the screenshot, shown and saved", async () => {
+    // A 4×4 screenshot: a dark page with one red pixel.
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAAAAAAAAAAEElEQVR4nGNgQAP/0QUwAQAjEQEAAAAAAAAAAABJRU5EAAAAAA==", "base64");
+    const files = new Map([["/workspace/site/index.html", "<canvas></canvas>"]]);
+    const argv: string[][] = [];
+    const target: ExecutionTarget = { ...fakeTarget(files, []), secrets: () => ["sekrit-token"],
+      run: async (a) => { argv.push(a); return { code: 0, stderr: Buffer.alloc(0), stdout: Buffer.from(`${JSON.stringify({
+        console: [{ level: "log", text: "ready with sekrit-token" }], errors: ["TypeError: x is undefined (app.js:3)"], blocked: ["https://cdn.example/a.js"],
+        loaded: true, title: "Isle", canvases: [[640, 400]], text: 0, png: png.toString("base64") })}\n`) }; } };
+    const saved = new Map<string, Buffer | string>();
+    target.ops().write.writeFile = async (p, c) => { saved.set(p, c); };
+    const tool = pageTool({ target: () => target, madeFiles: () => {} } as unknown as ThreadTools, () => {}, () => true);
+    const r = await tool.execute("1", { action: "preview", path: "site/index.html", width: 640, height: 400, query: "?seed=3" }, undefined, undefined, undefined as never);
+    expect(argv[0]!.slice(0, 2)).toEqual(["node", "-e"]);
+    expect(argv[0]!.slice(3)).toEqual(["file:///workspace/site/index.html?seed=3", "640", "400", "1000", "20000"]);
+    const [text, image] = r.content as [{ text: string }, { type: string; data: string; mimeType: string }];
+    expect(text.text).toBe([
+      "Previewed /workspace/site/index.html?seed=3 at 640×400: loaded, titled \"Isle\".",
+      "Errors (1):", "- TypeError: x is undefined (app.js:3)",
+      "Console (1):", "- [log] ready with [credential hidden]",
+      "Blocked network requests: https://cdn.example/a.js.",
+      "Canvases: 640×400.",
+      "6.3% of pixels differ from the background #000000. Commonest colours: #000000 94%, #ff0000 6.3%.",
+      "Screenshot saved as /workspace/previews/index-640x400.png.",
+    ].join("\n"));
+    expect(image).toEqual({ type: "image", data: png.toString("base64"), mimeType: "image/png" });
+    expect(saved.get("/workspace/previews/index-640x400.png")).toEqual(png);
+    // Without Chromium and node in the sandbox, it says so.
+    const none = pageTool({ target: () => target } as unknown as ThreadTools, () => {}, () => false);
+    await expect(none.execute("2", { action: "preview", path: "site/index.html" }, undefined, undefined, undefined as never)).rejects.toThrow(/needs Chromium and Node/);
   });
 });

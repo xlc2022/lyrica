@@ -1309,6 +1309,22 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     they never ask;
   - `proxmox` (Machines; see [core/workspace](#coreworkspace)) and
     `add_repository` (Repositories; see [core/workspace](#coreworkspace));
+  - `page({ action: "preview" | "bundle" | "check", path, out?, width?,
+    height?, query?, wait? })` (`extension/src/page.ts`, registered by the
+    workspace extension), in the sandbox only. `preview` runs
+    `PREVIEW_SCRIPT` with the sandbox's `node` through the target's `run`
+    and returns a text (load state, title, errors, console, blocked
+    requests, canvases, `pixelStats`) and the screenshot as
+    `{ type: "image", mimeType: "image/png" }`, saved as
+    `/workspace/previews/<name>-<w>x<h>.png` when the folder is writable;
+    without Chromium and `node` in the sandbox it fails saying so.
+    `bundle` writes `bundlePage`'s file to `out` (relative to the folder,
+    like `path`; `bundleOut`: `<name>.single.html` beside the page) through
+    `recording`, refuses to write over the page, and adds `describeCheck`.
+    `check` returns `describeCheck(checkPage(html))`. The `tool_call` gate
+    treats `bundle` as `write` (it asks where `write` asks, and its `out`
+    goes through `sameFile`) and the others as `read`; it isn't in
+    `PLAN_TOOLS`, and an approval binds its action, path and out;
   - `models`, with `lookup { offering, repo? }` and `propose { offering,
     stretch, contextLength, originalContext? }`, in general threads only (Context stretching;
     see [docs/briefs/context-stretch.md](briefs/context-stretch.md));
@@ -2091,6 +2107,13 @@ settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overr
 //   inheritSettings takes a subset; effective() keeps only machines every ancestor grants.
 // SUSPECT_COMMANDS, suspectCommand(command), writtenFiles(command) (the targets of its redirections and tee), onFloor(path), cleanOutput(onData), maskKeys(buf) (shares removePrivateKeys from core/src/secrets.ts),
 //   authorizedKeysLine(publicKey), machineSetup(account, keyLine, asUser?): core/src/workspace/machines.ts
+// page.ts: LIBS ("/opt/libs"), LIBRARIES (three, simplex-noise, @tweenjs/tween.js), libraryDirs() (each found in Lyrica's node_modules,
+//   with its version; the sandbox mounts each read-only at LIBS/<name>, and allow() lets reads there), librariesLine(),
+//   PREVIEW_SCRIPT (page-preview.cjs: Chromium over the DevTools pipe, SwiftShader WebGL, every non-file request failed; prints
+//   PreviewOutput { console, errors, blocked, loaded, title?, canvases?, text?, png?, fail? }), decodePng(png) (8-bit RGB or RGBA,
+//   non-interlaced), pixelStats(img) { background, drawn, colours }, checkPage(html): PageCheck { loads, calls, local },
+//   describeCheck(c), bundlePage(entry, read): { html, inlined } (esbuild in lyricad, every file through `read`; bare names by the
+//   page's import map, then LIBRARIES).
 // proxmox.ts: PROXMOX_ACTIONS (status, list, start, stop, shutdown, reboot, snapshots), PROXMOX_READS, PROXMOX_SUSPECT (stop, reboot),
 //   suspectKey(tool, input) (what Allow in this thread stores), proxmoxAction(call, action, vm?), ownNode(call, addresses, self), ownAddress(addresses, self),
 //   proxmoxSetup(), parseProxmoxAddress, tokenId, certFingerprint. ProxmoxTransport { fingerprint(host, port), call(endpoint, method,
