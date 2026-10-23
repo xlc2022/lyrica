@@ -14,6 +14,7 @@ import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
 import { Sessions } from "./auth.ts";
 import { HttpError, route, type Request, type Route } from "./http.ts";
+import { fallBack, threadPlanWait, type ThreadPlanWait } from "./plan-waits.ts";
 import { DEFAULT_BUDGETS, OPENING, OPENROUTER_URL, pinnedBlock, pinnedOf, reserveFor, startOpenRouterSignIn, startPlanSignIn, type OpenRouterSignIn, type PlanSignIn } from "@lyrica/extension";
 import type { ProjectThreadInfo } from "./children.ts";
 import { Busy } from "./hosted.ts";
@@ -383,6 +384,10 @@ export function apiRoutes(d: Lyricad): Route[] {
         ...(c.paused !== undefined ? { paused: c.paused === true } : {}),
       });
       return endpointInfo(d, user.id, r.params.endpointId!);
+    }),
+    route("POST", `${u}/endpoints/:endpointId/fall-back`, (r) => {
+      fallBack(d, d.userFor(r).id, r.params.endpointId!);
+      return { ok: true };
     }),
     route("POST", `${u}/endpoints/:endpointId/reset-ids`, (r) => {
       const user = d.userFor(r);
@@ -2802,6 +2807,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     fallback: models.threadFallback(user.id, threadId), fallbackOn: ctx.fallback !== false,
     allowed: models.allowed(ctx).map(({ endpoint }) => endpointInfo(d, user.id, endpoint.id)),
     wakeups: d.services!.wakeups.list(user.id, pool, threadId),
+    ...(threadId && d.services!.wakeups.list(user.id, pool, threadId).some((w) => w.planLimit) ? planWaitOf(threadPlanWait(d, user.id, pool, threadId)) : {}),
     routines: routineList(d, user, pool, threadId),
   };
 }
@@ -3242,4 +3248,9 @@ function limitOf(until: number | undefined): { limitedUntil?: string } {
 function cacheHit(rows: { cached?: number; measured?: number }[]): { cacheHit?: number } {
   const measured = rows.reduce((n, x) => n + (x.measured ?? 0), 0);
   return measured ? { cacheHit: rows.reduce((n, x) => n + (x.cached ?? 0), 0) / measured } : {};
+}
+
+/** A thread's wait for a plan's usage limit, while it has one. */
+function planWaitOf(w: ThreadPlanWait | undefined): { planWait?: ThreadPlanWait } {
+  return w ? { planWait: w } : {};
 }

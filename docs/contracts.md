@@ -945,6 +945,17 @@ Custom roles override built-ins by name.
   answer route with `{ option }`, recommended first, then the others in
   order; its `thread` supplies Open thread. There is no bulk question action.
   Display filters apply as to other decisions, including the private pool.
+  `NotificationType` gains `limit` (daemon/src/plan-waits.ts): id
+  `limit:<endpoint>/threads` for the threads waiting on a limited plan (its
+  `thread` when there is one, else `threads: { pool, id, title }[]`) and
+  `limit:<endpoint>/sleep/<pool>` for sleep, each with `until` (the reset)
+  and one action, **Fall back**: `POST …/endpoints/:id/fall-back` →
+  `{ ok }` (404 for no such plan, 409 when it isn't limited), which makes
+  the router skip the plan until it resets (`Models.fallBackFromLimit`,
+  `planFallingBack`) and carries the waiting turns (`Wakeups.resumeNow`)
+  and sleep (`Sleep.resumeWaiting`) on at once. `WakeupInfo.planLimit` marks
+  a turn waiting for its plan; `ThreadSettings.planWait { endpointId,
+  name, until, next? }` names the plan and the model the thread would use.
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
   in Plan mode itself.
@@ -1991,7 +2002,7 @@ One entry point with subcommands: `serve`, `admin`, `dev`, `version` and
 new Sleep({ users, memory, models, persona, proposals, hasKey, cwd, limits? })
 sleep.run(userId, pool, reason: "scheduled" | "manual"): Promise<SleepRun>  // queued: one run at a time
 // status: "complete" | "partial" | "skipped"
-// skipReason: "no-key" | "endpoint-down" | "no-activity"
+// skipReason: "no-key" | "endpoint-down" | "no-activity" | "plan-limit"
 sleep.check(userId, pool)          // what would stop a run now, without recording anything
 sleep.stop(userId)                 // Lock: the run is marked partial
 sleep.prune(now?): number          // forgets phase threads older than 36 hours, memories kept

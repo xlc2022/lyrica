@@ -52,7 +52,8 @@ export interface HostOptions {
 }
 
 /** Her next turn after a plan's usage limit cut one off, on another model now or once the plan resets. */
-export const PLAN_LIMIT_RESUME = "Your model's plan reached its usage limit, which cut your last turn off. Carry on with what you were doing.";
+export { PLAN_LIMIT_RESUME } from "./wakeups.ts";
+import { PLAN_LIMIT_RESUME } from "./wakeups.ts";
 
 const CHILD_WAKE = "lyrica-child-wake";
 /** Events kept for reconnecting streams. Older ones reload from stored entries. */

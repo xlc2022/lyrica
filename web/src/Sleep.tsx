@@ -38,7 +38,7 @@ export function useSleepOverview(userId: string, display?: Display): SleepState 
   };
 }
 
-const SKIPPED: Record<NonNullable<SleepRunInfo["skipReason"]>, string> = { "no-key": "Skipped: no key", "endpoint-down": "Skipped: the endpoint was down", "no-activity": "Skipped: nothing new" };
+const SKIPPED: Record<NonNullable<SleepRunInfo["skipReason"]>, string> = { "no-key": "Skipped: no key", "endpoint-down": "Skipped: the endpoint was down", "no-activity": "Skipped: nothing new", "plan-limit": "Waiting: the plan's usage limit" };
 const PHASE_WORD = { consolidate: "consolidating", dream: "dreaming", wake: "waking" } as const;
 const KIND_WORD: Record<SleepItemInfo["kind"], string> = { thought: "thought", question: "question", persona: "persona suggestion" };
 const plural = (n: number, one: string, many: string) => <><span className="num">{n}</span> {n === 1 ? one : many}</>;

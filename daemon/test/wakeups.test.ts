@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { MessagePage, ThreadEvent, ThreadSettings, ThreadSummary, WakeupInfo } from "../src/api.ts";
+import type { MessagePage, NotificationPage, ThreadEvent, ThreadSettings, ThreadSummary, WakeupInfo } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 
 const said = (c: ChatRequest) => JSON.stringify(c.messages);
@@ -158,6 +158,27 @@ describe("a plan's usage limit", () => {
       await s.say("build it");
       await s.say("and the tests");
       expect(await s.wakeups()).toHaveLength(1);
+    } finally {
+      s.restore();
+    }
+  });
+
+  it("shows the wait in the thread and the notifications, and falls back to the next model when the user asks", async () => {
+    const s = await planFirst({ code: "usage_limit_reached", resets_at: Math.floor(Date.now() / 1000) + 40 * 60 });
+    try {
+      await s.say("build it");
+      const settings = (await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body;
+      expect(settings.planWait).toMatchObject({ endpointId: s.plan.id, name: "chatgpt", next: "gpu/qwen3.8-27b" });
+      const notes = (await s.ada.get<NotificationPage>(`/api/u/${s.rt.ada.id}/notifications`)).body.items.filter((n) => n.type === "limit");
+      expect(notes).toEqual([expect.objectContaining({ title: "Build waits for chatgpt's usage limit", thread: { pool: "general", id: s.thread.id }, decision: true })]);
+      s.replies.push({ text: "Carrying on." });
+      const from = s.stream.events.length;
+      expect((await s.ada.post(notes[0]!.actions[0]!.path, {})).status).toBe(200);
+      await s.stream.until((e) => e.type === "turn_end", from);
+      expect(s.asked.at(-1)).toContain("Your model's plan reached its usage limit");
+      expect(s.stream.events.slice(from).map((e) => e.event)).toContainEqual({ type: "text", delta: "Carrying on." });
+      expect((await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body.planWait).toBeUndefined();
+      expect((await s.ada.get<NotificationPage>(`/api/u/${s.rt.ada.id}/notifications`)).body.items.some((n) => n.type === "limit")).toBe(false);
     } finally {
       s.restore();
     }

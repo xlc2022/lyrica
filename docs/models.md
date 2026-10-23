@@ -970,7 +970,10 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   reset time. The router still picks the plan for every task, so nothing
   falls back (the owner's call: a model set to a plan is set so for a
   reason). A subagent's or background job's call fails until the reset,
-  and the job runs again when it next would. Pi doesn't retry the reply, the person gets one
+  and the job runs again when it next would; sleep waits and runs again
+  at the reset. The user can fall back instead, until the reset, from the
+  thread's card or the notification (`POST …/endpoints/:id/fall-back`,
+  docs/contracts.md). Pi doesn't retry the reply, the person gets one
   notice a turn saying when it resets, and the turn carries on by itself
   a minute after the reset (`PLAN_LIMIT_RESUME`, a wake-up outside her own
   limits, one per thread: a later cut-off moves it). Claude Code in her sandbox is the same:

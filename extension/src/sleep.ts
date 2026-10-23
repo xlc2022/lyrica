@@ -76,6 +76,8 @@ export class Sleep {
   private readonly running = new Map<string, { stopped: boolean; abort?: () => Promise<void>; done: Promise<unknown> }>();
   /** Runs in progress, so a check doesn't take one for a run cut short by a restart. */
   private readonly active = new Set<string>();
+  /** Sleep that waits for a plan's usage limit to reset, by user and pool: it runs again then, or when the user falls back. */
+  private readonly waiting = new Map<string, { userId: string; pool: Pool; endpointId: string }>();
   /** No-key skips, written into the pool the next time its key is here. */
   private readonly unrecorded: { userId: string; pool: Pool; reason: SleepRun["reason"]; at: string }[] = [];
 
@@ -196,6 +198,12 @@ export class Sleep {
         return view.own.getSleepRun(id)!;
       };
       if (!plan) return skip("no-activity");
+      this.waiting.delete(`${userId}/${pool}`);
+      const held = this.limitedPlan(userId, pool, plan.phases);
+      if (held) {
+        this.waiting.set(`${userId}/${pool}`, { userId, pool, endpointId: held });
+        return skip("plan-limit");
+      }
       if (await this.probe(userId, pool, plan.phases)) return skip("endpoint-down");
 
       const runId = plan.resume?.id ?? view.own.startSleepRun(reason, plan.until);
@@ -214,6 +222,9 @@ export class Sleep {
         if (!result.ok) { ok = false; break; }
       }
       const status = ok ? "complete" : "partial";
+      // A phase the plan's usage limit cut off: the rest waits for the reset, as a skipped run would.
+      const cut = !ok && !state.stopped ? this.limitedPlan(userId, pool, plan.phases) : undefined;
+      if (cut) this.waiting.set(`${userId}/${pool}`, { userId, pool, endpointId: cut });
       view.own.updateSleepRun(runId, { status, finished: true });
       this.log(`sleep ${pool}: ${status} in ${Math.round((Date.now() - started) / 1000)} s`);
       this.emit({ type: "finished", userId, pool, runId, status });
@@ -223,6 +234,34 @@ export class Sleep {
       view.close();
       this.running.delete(userId);
       finish();
+    }
+  }
+
+  /** The plan a phase's model is on, while its usage limit holds and the user hasn't chosen to fall back. */
+  private limitedPlan(userId: string, pool: Pool, phases: SleepPhase[]): string | undefined {
+    for (const p of phases) {
+      let ep: string;
+      try {
+        ep = this.o.models.resolve(`sleep.${p}`, { userId, pool, localOnly: pool === "private", fallback: this.fallback(userId) }).endpoint.id;
+      } catch {
+        continue;
+      }
+      if (this.o.models.planLimitedUntil(ep) !== undefined && !this.o.models.planFallingBack(ep)) return ep;
+    }
+    return undefined;
+  }
+
+  /** Sleep waiting for a plan, for the user's notifications. */
+  planWaits(userId: string): { pool: Pool; endpointId: string }[] {
+    return [...this.waiting.values()].filter((w) => w.userId === userId).map(({ pool, endpointId }) => ({ pool, endpointId }));
+  }
+
+  /** lyricad's tick: sleep that waited for a plan runs once it resets, or once the user falls back. */
+  resumeWaiting(): void {
+    for (const [key, w] of this.waiting) {
+      if (this.o.models.planLimitedUntil(w.endpointId) !== undefined && !this.o.models.planFallingBack(w.endpointId)) continue;
+      this.waiting.delete(key);
+      void this.run(w.userId, w.pool, "scheduled").catch((err: Error) => this.log(`sleep failed: ${err.name}`));
     }
   }
 

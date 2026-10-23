@@ -8,7 +8,7 @@ import { get, request, u, type Notification, type NotificationAction, type Notif
 import { Icon } from "./icons.tsx";
 import { go, href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
-import { ErrorText, shortTime, useAction, useLoad } from "./ui.tsx";
+import { clock, ErrorText, shortTime, useAction, useLoad } from "./ui.tsx";
 
 const TYPES: Record<NotificationType, { glyph: string; label: string }> = {
   question: { glyph: "?", label: "Question" },
@@ -19,6 +19,7 @@ const TYPES: Record<NotificationType, { glyph: string; label: string }> = {
   suggestion: { glyph: "✎", label: "Persona suggestion" },
   sleep: { glyph: "☾", label: "From sleep" },
   rollback: { glyph: "↶", label: "Update rolled back" },
+  limit: { glyph: "⏸", label: "Plan limit" },
 };
 const PAGE = 20;
 type Sort = "newest" | "oldest" | "type" | "scope";
@@ -65,6 +66,7 @@ function Row({ n, ctx, picked, onPick, act, busy }: {
   n: Notification; ctx: ShellContext; picked?: boolean; onPick?: (v: boolean) => void; act: (a: NotificationAction[]) => Promise<boolean>; busy: boolean;
 }) {
   const t = TYPES[n.type];
+  const [open, setOpen] = useState(false);
   return (
     <li className={`nrow${onPick ? "" : " nopick"}${n.type === "question" ? " nquestion" : ""}${n.type === "sleep" ? " nsleep" : ""}`}>
       {onPick && <input type="checkbox" className="npick" checked={!!picked} onChange={(e) => onPick(e.target.checked)} aria-label={`Select ${n.title}`} />}
@@ -72,6 +74,13 @@ function Row({ n, ctx, picked, onPick, act, busy }: {
       <div className="main-col">
         <span className="name">{n.title}</span>
         {n.detail && <span className="meta">{numFirst(n.detail)}</span>}
+        {n.until && <span className="meta">Carries on when it resets at <span className="num">{clock(n.until)}</span>.</span>}
+        {n.threads && <>
+          <button type="button" className="link nthreads-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+            <span className="caret" aria-hidden="true">{open ? "▾" : "▸"}</span> Waiting threads
+          </button>
+          {open && <ul className="nthreads">{n.threads.map((x) => <li key={`${x.pool}/${x.id}`}><a href={href({ page: "thread", userId: ctx.user.id, pool: x.pool, threadId: x.id })}>{x.title}</a></li>)}</ul>}
+        </>}
         <span className="nkind">{t.label} · <span className={`k${n.scope === "private" ? " private" : ""}`}>{n.scope}</span> · <span className="when">{shortTime(n.at)}</span></span>
       </div>
       <div className="actions">

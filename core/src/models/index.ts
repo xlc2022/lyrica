@@ -545,6 +545,8 @@ export class Models {
   private readonly discovered = new Set<string>();
   /** Plans that reached their usage limit, until when they're skipped. */
   private readonly limited = new Map<string, number>();
+  /** Limited plans the user chose to fall back from until they reset. */
+  private readonly fallingBack = new Set<string>();
   /** Offerings whose provider refused a request with thinking off (mustThink). */
   private readonly alwaysThinks = new Set<string>();
   /** Models seen thinking though their server lists no thinking levels: they think on their own, so nothing says they can't. */
@@ -1666,13 +1668,32 @@ export class Models {
    * A plan answered that its usage limit is reached, until it resets
    * (`until`, or an hour). The router still picks it for every task: a model
    * set to a plan is set so for a reason, so its callers wait for the reset
-   * rather than falling back. True when it wasn't already known, so the
-   * owner is told once.
+   * rather than falling back, unless the user chooses to (`fallBackFromLimit`).
+   * True when it wasn't already known, so the owner is told once.
    */
   reportPlanLimit(endpointId: string, until?: number): boolean {
     const known = this.planLimitedUntil(endpointId) !== undefined;
+    if (!known) this.fallingBack.delete(endpointId);
     this.limited.set(endpointId, until && until > Date.now() ? until : Date.now() + PLAN_LIMIT_MS);
     return !known;
+  }
+
+  /**
+   * The user chose to fall back from a limited plan: until it resets, the
+   * router skips it, as for a machine that is away. False when it isn't
+   * limited now.
+   */
+  fallBackFromLimit(endpointId: string): boolean {
+    if (this.planLimitedUntil(endpointId) === undefined) return false;
+    this.fallingBack.add(endpointId);
+    return true;
+  }
+
+  /** Whether the router skips a limited plan for the user's choice, until it resets. */
+  planFallingBack(endpointId: string): boolean {
+    if (this.planLimitedUntil(endpointId) !== undefined) return this.fallingBack.has(endpointId);
+    this.fallingBack.delete(endpointId);
+    return false;
   }
 
   /** When a plan that reached its usage limit resets, while it is limited. */
@@ -2909,6 +2930,7 @@ export class Models {
     if (ep.stale) return `${ep.name} hasn't answered for ${STALE_DAYS} days`;
     if (ep.signedOut) return `${ep.name} is signed out`;
     if (ep.pausedAt) return `${ep.name} is paused`;
+    if (this.planFallingBack(ep.id)) return `${ep.name} has reached its plan's limit`;
     const m = this.modelDown.get(o.id);
     if (m !== undefined && Date.now() - m < HEALTH_MS) return `${ep.name} couldn't run it`;
     if (opts.except?.has(ep.id)) return `${ep.name} is down`;
