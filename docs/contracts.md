@@ -801,7 +801,8 @@ Custom roles override built-ins by name.
   ... })`: `start` (`title`, `task`, optional narrower `folders`,
   `readOnly`, `internet`, `base: true` for a project’s original checkout, and `code: true` to start it in code mode), `message` (to a child, by ID or current title
   (`pickThread`; a title two threads share is refused), or `to: "parent"`
-  from a child), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
+  from a child; a child's message with no `to` and no `id`, or whose `id`
+  names its parent, goes to the parent), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
   `last`: the latest messages of a listed, logged thread (`PoolReader.latestEntries`), `READ_DEFAULT`
   10, `READ_MAX` 30, formatted by `formatEntry`) and `stop` (`id`: a
   parent's child, `ThreadsHost.stop`), and `routine` (above). `later` (`minutes`, clamped to 1 to
@@ -984,7 +985,8 @@ Custom roles override built-ins by name.
   thread of the same project, marked with the same `[From t:<sender>]` line
   (`HostedThread.send(text, { fromThread })`; only `lyricad` writes it, and
   `Message.from.kind` is `thread`), at most `ThreadsLimits.siblingMessages`
-  (3) per turn. A `message` text is at most `MESSAGE_MAX` (8,000)
+  (3) per turn; each sent one says how many are left this turn, and the
+  refusal past it points to one message next turn or the project chat. A `message` text is at most `MESSAGE_MAX` (8,000)
   characters, and a `message` or `start` text holding a run of 400 base64
   characters (line breaks aside) is refused (`checkWords`): the refusal
   sends files to `/shared` or a shared repository. `read` of a project

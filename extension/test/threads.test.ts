@@ -150,7 +150,7 @@ describe("handing files over", () => {
     const call = (args: object) => tool.execute("call", args, undefined, undefined, {} as never);
     const page = Buffer.from("<html>".repeat(200)).toString("base64").replace(/.{76}/g, "$&\n");
     await expect(call({ action: "message", to: "parent", text: `Part 1 of 3:\n${page}` })).rejects.toThrow(/encoded file.*\/shared/);
-    await expect(call({ action: "message", to: "parent", text: "word ".repeat(MESSAGE_MAX / 4) })).rejects.toThrow(/over 8,000 characters.*\/shared/);
+    await expect(call({ action: "message", to: "parent", text: "word ".repeat(MESSAGE_MAX / 4) })).rejects.toThrow(/10,000 characters, over 8,000.*\/shared/);
     await call({ action: "message", to: "parent", text: "The page is at /shared/pagoda.html." });
     expect(sent).toEqual(["The page is at /shared/pagoda.html."]);
     // Its own project chat can't be read from a project thread, and the error names what works.
@@ -172,6 +172,27 @@ describe("handing files over", () => {
     await call({ action: "message", to: "parent", text: "Which zone?", question: " yes " });
     await call({ action: "message", to: "parent", question: "Which flowers?" });
     expect(sent).toEqual([{ text: "Done.", question: false }, { text: "Which zone?", question: true }, { text: "Which flowers?", question: true }]);
+  });
+
+  it("sends a child's message with no recipient, or naming its parent, to the parent, and counts what's left for siblings", async () => {
+    const s = await withMemory();
+    const t = s.thread();
+    const project = t.view.own.createThread({ interface: "web", project: true, title: "Homelab" });
+    const dns = t.view.own.createThread({ interface: "web", parent: project.id, child: true, title: "DNS" });
+    const web = t.view.own.createThread({ interface: "web", parent: project.id, child: true, title: "Web" });
+    const sent: string[] = [];
+    const host: ThreadsHost = { limits: { ...DEFAULT_THREADS_LIMITS, siblingMessages: 2 }, start: async () => { throw new Error("unused"); }, message: async (_t, to) => { sent.push(to); return "started" as const; }, list: () => [{ id: web.id, title: "Web", status: "idle" } as never] };
+    let tool!: Parameters<ExtensionAPI["registerTool"]>[0];
+    createThreadsExtension({ ...t.context, threadId: dns.id }, host)({ on: () => {}, registerTool: (v: typeof tool) => { tool = v; } } as unknown as ExtensionAPI);
+    const call = (args: object) => tool.execute("call", args, undefined, undefined, {} as never);
+    await call({ action: "message", text: "Report." });
+    await call({ action: "message", id: "homelab", text: "Report." });
+    await call({ action: "message", id: `[t:${project.id}]`, text: "Report." });
+    const first = await call({ action: "message", id: "Web", text: "Zone is ready." });
+    expect(JSON.stringify(first.content)).toContain("1 of 2 messages to other threads left this turn");
+    await call({ action: "message", id: web.id, text: "And the cert." });
+    await expect(call({ action: "message", id: web.id, text: "One more." })).rejects.toThrow(/sent its 2 messages.*to: "parent"/);
+    expect(sent).toEqual(["parent", "parent", "parent", web.id, web.id]);
   });
 
   it("lets ordinary prose, links and hashes through", () => {

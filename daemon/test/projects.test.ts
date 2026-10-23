@@ -724,7 +724,7 @@ describe("projects", () => {
     await ada.post(`${threadPath(dns!)}/messages`, { text: "say hello elsewhere" });
     const results = await until(() => messages(threadPath(dns!)), (m) => m.some((x) => x.role === "assistant" && JSON.stringify(x).includes("Tried.")));
     const text = JSON.stringify(results);
-    expect(text).toMatch(/at most 3 times/);
+    expect(text).toMatch(/sent its 3 messages to the project.s other threads/);
     expect(text).toMatch(/isn't a child thread of this one, or another thread of this project/);
     expect((await messages(`${u}/threads/general/${enc(outside.id)}`)).length).toBe(0);
     // A user can't send the mark.
