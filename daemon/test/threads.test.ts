@@ -210,9 +210,10 @@ describe("permission prompts", () => {
   it("denies when nobody answers in time", async () => {
     const { ada, model, path } = await setup({ permissionMs: 300 });
     await ada.patch(`${path}/settings`, { mode: "ask" });
-    model.reply({ tools: [{ name: "write", args: { path: "/workspace/a.txt", content: "x" } }] }, { text: "ok" });
+    // bash, not write: write checks the encrypted home is mounted before it asks, and a sandbox without FUSE has none.
+    model.reply({ tools: [{ name: "bash", args: { command: "echo hi" } }] }, { text: "ok" });
     const stream = ada.events(`${path}/events`);
-    await ada.post(`${path}/messages`, { text: "write a file" });
+    await ada.post(`${path}/messages`, { text: "say hi" });
     await stream.until(is("turn_end"));
     expect(stream.events.find((e) => e.event.type === "permission_end")!.event).toMatchObject({ allowed: false, reason: "timeout" });
     stream.close();
