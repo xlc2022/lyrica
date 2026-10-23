@@ -16,6 +16,13 @@ export const CARRY_ON = "Your last reply had only thinking in it: no text and no
 /** Shown, and reported as the turn's error, when the retry came back empty too. */
 export const EMPTY_REPLY_NOTICE = "lyrica-empty-reply";
 export const EMPTY_REPLY = "The model replied with only its thinking, twice: no answer and no tool call.";
+/** Told to her, unseen, after a reply whose tool call came through as text, so nothing ran. */
+export const TEXT_TOOL_CALL_RETRY = "lyrica-text-tool-call-retry";
+export const CALL_THE_TOOL = "Your last reply wrote a tool call as text, so it didn't run. Make that call as a tool call, or write your reply without it.";
+/** Shown, as a `lyrica-empty-reply` notice, when the retry wrote its call as text too. */
+export const TEXT_TOOL_CALL = "The model wrote its tool call as text, twice, so it didn't run.";
+/** A tool call in Qwen's or Hermes' format, closed, that a local server left in the reply's text. */
+const TEXT_CALL = /<tool_call>[\s\S]*?<\/tool_call>|<function=[\w.-]+>[\s\S]*?<\/function>/;
 /** Written into a thread whose turn a restart cut off, shown as that turn's error. */
 export const INTERRUPTED_NOTICE = "lyrica-interrupted";
 export const INTERRUPTED = "Interrupted when Lyrica restarted, before this turn finished. Send a message to go on.";
@@ -31,7 +38,7 @@ export function createTurnToolsExtension(): ExtensionFactory {
   return pi => {
     let calls = 0, run = 0, last = "", stopped = false, notified = false, why = "";
     let wrapped = false;
-    let empty = 0;
+    let empty = 0, asText = 0;
     /** The thinking level to go back to after a retry without thinking. */
     let thinking: ThinkingLevel | null = null;
     const repeats = new Map<string, number>();
@@ -43,7 +50,7 @@ export function createTurnToolsExtension(): ExtensionFactory {
       thinking = null;
     });
     pi.on("agent_start", () => {
-      calls = run = empty = 0; last = why = ""; stopped = notified = wrapped = false;
+      calls = run = empty = asText = 0; last = why = ""; stopped = notified = wrapped = false;
       repeats.clear(); refused.clear();
     });
     // This event precedes schema validation, so malformed and unknown calls count too.
@@ -78,6 +85,15 @@ export function createTurnToolsExtension(): ExtensionFactory {
           return;
         }
         if (empty === 2) return { entries: [{ type: "custom_message", customType: EMPTY_REPLY_NOTICE, content: EMPTY_REPLY, display: true }] };
+      }
+      // A tool call left in the text would end the run as her reply: once, she makes it as a call; again, the turn fails visibly.
+      if (m.role === "assistant" && m.stopReason !== "error" && m.stopReason !== "aborted" && !stopped
+        && !m.content.some((c) => c.type === "toolCall") && m.content.some((c) => c.type === "text" && TEXT_CALL.test(c.text))) {
+        if (++asText === 1) {
+          pi.sendMessage({ customType: TEXT_TOOL_CALL_RETRY, content: CALL_THE_TOOL, display: false }, { deliverAs: "followUp", triggerTurn: true });
+          return;
+        }
+        if (asText === 2) return { entries: [{ type: "custom_message", customType: EMPTY_REPLY_NOTICE, content: TEXT_TOOL_CALL, display: true }] };
       }
       if (!stopped) return;
       // Her wrap-up came back with tool calls anyway: end there.

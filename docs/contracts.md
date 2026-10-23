@@ -1176,6 +1176,15 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `lyrica-empty-reply` message (`EMPTY_REPLY`); the daemon emits it as the
   turn's `error` event, so a project's thread fails as it would on a model
   error, and after reload it shows as that reply's error.
+- **Tool calls written as text** (same extension): a local server can
+  leave a closed tool call in the reply's text (Qwen's
+  `<tool_call><function=…>…</function></tool_call>`, or a bare
+  `<function=…>…</function>`), and the run would end on it as her reply.
+  The first in a run, with no real tool call beside it, gets one hidden
+  follow-up (`lyrica-text-tool-call-retry`, `CALL_THE_TOOL`, dropped at
+  the next turn like the others) asking her to make the call. A second
+  stores a `lyrica-empty-reply` message with `TEXT_TOOL_CALL`, so the
+  turn fails visibly instead of sitting idle.
 - **Paid fallback** (`extension/src/models.ts`): when `Resolution.paidAfter`
   is set, `prepareTurn` appends a `lyrica-paid-fallback` custom entry
   (`PaidFallback`: `model`, `from`, `reason`), outside her context, and a
