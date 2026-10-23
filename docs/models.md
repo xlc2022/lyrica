@@ -959,10 +959,17 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   A context window set by hand on a plan model replaces the catalogue's
   from its next request (some plans allow more than they list, at a
   higher rate).
-- A plan is up while signed in; nothing is probed. When its usage limit is
-  reached (`isPlanLimit`), the turn ends with the provider's message and
-  the router skips the plan for an hour (`reportPlanLimit`), so the next
-  turn falls back to the next model in the list.
+- A plan is up while signed in; nothing is probed. When any reply on it
+  (a thread's, a subagent's, a job's) ends on its usage limit
+  (`isPlanLimit`, heard in `planProvider`), the router skips the plan
+  until it resets (`reportPlanLimit`, with `planLimitReset` reading
+  OpenAI's `resets_at`, else an hour), and the Models page shows "Limit
+  reached until" with the reset time. In a thread, the person gets one
+  notice a turn saying when it resets. When Pi would retry the reply, the
+  retry goes to the next model in the list, as for a machine that is away;
+  a turn the limit ends instead carries on by itself (`PLAN_LIMIT_RESUME`,
+  a wake-up outside her own limits): at once on the next model in the
+  list, or once the plan resets when none is left.
 - Removing a plan deletes its sign-in; Lyrica stays connected in the
   provider's account settings until it is disconnected there.
 
@@ -1011,7 +1018,13 @@ from its model list; all into the offering's `parallel`). A server that
 reports no slots has no limit but the cache. A model host picks a chat
 model's slots by its context unless set by hand, with one shared cache
 (host/API.md, "Placement and serving settings"). A request alone always
-runs, and requests start in the order they asked. A wait the turn aborts
+runs, and requests start in the order they asked. With fewer slots than
+busy threads, the server keeps only a few prompts cached, so after each
+call a thread's slot stays kept for it for 15 s: its next call (once its
+tools have run) finds its prompt still cached instead of reading its whole
+context again at prefill speed. The keep ends early when that call comes,
+and no slot is kept while a waiting request has already waited 2 minutes,
+so threads switch per burst of calls and nobody waits for ever. A wait the turn aborts
 ends as an aborted reply. LM Studio's "Context size has been exceeded" is
 marked as an overflow, so Pi compacts and retries instead of failing. Image
 jobs on a host take turns with its chat models in the host's own queue for

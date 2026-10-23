@@ -281,6 +281,8 @@ export interface EndpointInfo {
   downSince?: string;
   /** A plan whose sign-in lapsed: Sign in again. Fallbacks skip it. */
   signedOut?: boolean;
+  /** A plan that reached its usage limit: when it resets. Fallbacks skip it until then. */
+  limitedUntil?: string;
   /** When a plain endpoint or plan was paused by hand. Fallbacks skip it until it is resumed. */
   pausedAt?: string;
   models: OfferingInfo[];

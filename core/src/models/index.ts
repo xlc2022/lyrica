@@ -77,8 +77,18 @@ export function isUnreachable(err: unknown): boolean {
 
 /** A plan's usage limit, as OpenAI reports it: it resets after hours, not seconds. */
 export const isPlanLimit = (message: string | undefined): boolean => /subscription_sharing_usage_limit_exceeded|usage.?limit/i.test(message ?? "");
-/** How long a plan that reached its limit is skipped. */
+/** How long a plan that reached its limit is skipped when it doesn't say when it resets. */
 const PLAN_LIMIT_MS = 60 * 60_000;
+/** When a plan's limit resets, from its error (OpenAI's `resets_at` or `resets_in_seconds`, or Pi's "Try again in ~N min."); undefined when it doesn't say. */
+export function planLimitReset(message: string | undefined, now = Date.now()): number | undefined {
+  const text = message ?? "";
+  const at = /"?resets_at"?\s*[:=]\s*(\d{9,})/.exec(text);
+  if (at) return Number(at[1]) * 1000;
+  const after = /"?resets_in_seconds"?\s*[:=]\s*(\d+)/.exec(text);
+  if (after) return now + Number(after[1]) * 1000;
+  const minutes = /try again in ~?(\d+)\s*min/i.exec(text);
+  return minutes ? now + Number(minutes[1]) * 60_000 : undefined;
+}
 
 /** An endpoint unreachable this long is stale; a model missing this long is gone. */
 export const STALE_DAYS = 14;
@@ -1649,9 +1659,21 @@ export class Models {
     }), ...recipes];
   }
 
-  /** A plan answered that its usage limit is reached: the router skips it for an hour, so the next turn falls back. */
-  reportPlanLimit(endpointId: string): void {
-    this.limited.set(endpointId, Date.now() + PLAN_LIMIT_MS);
+  /**
+   * A plan answered that its usage limit is reached: the router skips it
+   * until it resets (`until`, or an hour), so the next call falls back. True
+   * when it wasn't already known, so the owner is told once.
+   */
+  reportPlanLimit(endpointId: string, until?: number): boolean {
+    const known = this.planLimitedUntil(endpointId) !== undefined;
+    this.limited.set(endpointId, until && until > Date.now() ? until : Date.now() + PLAN_LIMIT_MS);
+    return !known;
+  }
+
+  /** When a plan that reached its usage limit is used again, while it is skipped. */
+  planLimitedUntil(endpointId: string): number | undefined {
+    const until = this.limited.get(endpointId);
+    return until !== undefined && until > Date.now() ? until : undefined;
   }
 
   /** A call to the endpoint failed to connect or was refused as away: the router skips it for HEALTH_MS. */

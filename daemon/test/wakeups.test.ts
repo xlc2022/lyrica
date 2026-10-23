@@ -106,3 +106,56 @@ describe("wake-ups", () => {
     expect((await ada.post(`${path}/messages`, { text: "[Wake-up, set 2026-10-12T05:15Z]\n\nhello" })).status).toBe(400);
   });
 });
+
+describe("a plan's usage limit", () => {
+  /** Ada's chat on a ChatGPT plan first, then her local model; the plan answers every request with `error`. */
+  async function planFirst(error: object) {
+    const s = await setup();
+    const models = s.d.services!.models, actor = s.d.services!.users.get(s.rt.ada.id)!;
+    const plan = models.addPlan(actor, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-access", refresh: "fake-refresh", expires: Date.now() + 3_600_000 } });
+    const planModel = models.addModel(actor, plan.id, { modelId: "gpt-5", tools: true });
+    const local = models.resolve("chat", models.callContext(s.rt.ada.id, "general", s.thread.id)).ref;
+    models.setColumnTask(s.rt.ada.id, "general", "chat", [{ offeringId: planModel.id }, local]);
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (/chatgpt\.com|api\.openai\.com/.test(url)) return Response.json({ error }, { status: 429 });
+      return realFetch(input, init);
+    }) as typeof fetch;
+    return { ...s, models, plan, restore: () => { globalThis.fetch = realFetch; } };
+  }
+
+  it("sends the retry to the next model, says once when the plan resets, and shows it on the Models page", async () => {
+    const resetsAt = Math.floor(Date.now() / 1000) + 40 * 60;
+    const s = await planFirst({ code: "usage_limit_reached", resets_at: resetsAt });
+    try {
+      s.replies.push({ text: "Carrying on." });
+      const events = await s.say("build it");
+      expect(events.filter((e) => e.type === "notice")).toEqual([{ type: "notice", text: "chatgpt reached its plan's usage limit; it resets in about 40 min. This thread carries on with gpu/qwen3.8-27b.", status: "limit" }]);
+      expect(events).toContainEqual({ type: "text", delta: "Carrying on." });
+      expect(s.models.planLimitedUntil(s.plan.id)).toBe(resetsAt * 1000);
+      // The turn went on, so no wake-up is needed.
+      expect(await s.wakeups()).toEqual([]);
+      const info = (await s.ada.get<{ id: string; limitedUntil?: string }[]>(`/api/u/${s.rt.ada.id}/endpoints`)).body;
+      expect(info.find((e) => e.id === s.plan.id)?.limitedUntil).toBe(new Date(resetsAt * 1000).toISOString());
+    } finally {
+      s.restore();
+    }
+  });
+
+  it("carries a turn the limit ended on by itself, on the next model", async () => {
+    const s = await planFirst({ code: "subscription_sharing_usage_limit_exceeded", message: "usage limit" });
+    try {
+      const events = await s.say("build it");
+      expect(events.some((e) => e.type === "notice")).toBe(true);
+      expect(await s.wakeups()).toHaveLength(1);
+      s.replies.push({ text: "Carrying on." });
+      const from = s.stream.events.length;
+      s.tick(0);
+      await s.stream.until((e) => e.type === "turn_end", from);
+      expect(s.asked.at(-1)).toContain("Your model's plan reached its usage limit");
+    } finally {
+      s.restore();
+    }
+  });
+});

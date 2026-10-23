@@ -2369,7 +2369,7 @@ function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo 
     ...(ep.kind === "cloud" ? { cloudCapabilities } : {}),
     id: ep.id, name: ep.name, kind: ep.kind, api: ep.api, baseUrl: redactUrl(ep.baseUrl), hasApiKey: !!ep.apiKey, shared: ep.shared,
     ...(ep.addresses ? { addresses: ep.addresses } : {}), ...(ep.fingerprint ? { fingerprint: ep.fingerprint } : {}),
-    unencrypted: ep.unencrypted, stale: ep.stale, ...(ep.downSince ? { downSince: ep.downSince } : {}), ...(ep.signedOut ? { signedOut: true } : {}), ...(ep.pausedAt ? { pausedAt: ep.pausedAt } : {}),
+    unencrypted: ep.unencrypted, stale: ep.stale, ...(ep.downSince ? { downSince: ep.downSince } : {}), ...(ep.signedOut ? { signedOut: true } : {}), ...limitOf(d.services!.models.planLimitedUntil(ep.id)), ...(ep.pausedAt ? { pausedAt: ep.pausedAt } : {}),
     models: models.map((o) => toOfferingInfo(ep, o)),
   };
 }
@@ -3230,4 +3230,9 @@ function skillRoutes(d: Lyricad, u: string): Route[] {
       return page(user.id);
     }),
   ];
+}
+
+/** A plan's usage limit, while the router skips it. */
+function limitOf(until: number | undefined): { limitedUntil?: string } {
+  return until ? { limitedUntil: new Date(until).toISOString() } : {};
 }

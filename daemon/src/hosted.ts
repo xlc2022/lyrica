@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
-  ANSWER, answerMark, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
+  ANSWER, answerMark, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, planLimitReset, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
@@ -47,7 +47,12 @@ export interface HostOptions {
   onTurn?: (userId: string, pool: Pool, threadId: string, working: boolean, byPerson?: boolean) => void;
   /** Every event the thread's stream carries, as it goes out (the watcher hears of errors and approvals from it). */
   onEvent?: (userId: string, pool: Pool, threadId: string, event: ThreadEvent) => void;
+  /** A wake-up lyricad sets for the thread, outside her own limits: a turn a plan's usage limit cut off carries on. */
+  resume?: (userId: string, pool: Pool, threadId: string, dueAt: Date, note: string) => void;
 }
+
+/** Her next turn after a plan's usage limit cut one off, on another model now or once the plan resets. */
+export const PLAN_LIMIT_RESUME = "Your model's plan reached its usage limit, which cut your last turn off. Carry on with what you were doing.";
 
 const CHILD_WAKE = "lyrica-child-wake";
 /** Events kept for reconnecting streams. Older ones reload from stored entries. */
@@ -232,6 +237,10 @@ export class HostedThread {
   private steering: Steer[] = [];
   /** The latest model reply of the running turn ended in an error. */
   private failed = false;
+  /** The plan whose usage limit ended the latest reply, while no later reply has started. */
+  private limitCut: string | undefined;
+  /** Plans whose usage limit the person has heard of this turn. */
+  private readonly limitNoticed = new Set<string>();
   private idle: NodeJS.Timeout | undefined;
   /** No model could be reached: the queued messages wait, and this asks again until one answers. */
   private held: NodeJS.Timeout | undefined;
@@ -577,6 +586,8 @@ export class HostedThread {
         // Marked messages that came while no session was open: Pi takes them after this turn's first message.
         for (const s of this.steering) if (!s.handed && !s.prompt) this.hand(opened, s);
         this.emit({ type: "turn_start" });
+        this.limitNoticed.clear();
+        this.limitCut = undefined;
         // A compaction belongs to the turn that asked for it, even one that failed.
         opened.meter.pending = undefined;
         this.failed = false;
@@ -597,6 +608,8 @@ export class HostedThread {
         this.untake(opened);
         if (aborted || this.failed) this.keep();
         this.emit({ type: "turn_end", aborted });
+        if (this.limitCut && !aborted) this.resumeAfterLimit(this.limitCut);
+        this.limitCut = undefined;
         this.aborted = false;
         void this.maybeTitle(opened);
         if (this.stale) this.dispose();
@@ -1096,7 +1109,7 @@ export class HostedThread {
   private forward(e: AgentSessionEvent): void {
     switch (e.type) {
       case "message_start": {
-        if (e.message.role === "assistant") this.emit({ type: "message_start", model: e.message.model });
+        if (e.message.role === "assistant") { this.limitCut = undefined; this.emit({ type: "message_start", model: e.message.model }); }
         if (e.message.role === "user") this.took(textOf(e.message.content));
         break;
       }
@@ -1128,11 +1141,16 @@ export class HostedThread {
           if (m.stopReason === "error" && m.errorMessage) {
             // A machine that is off or away: the next turn falls back past it, and when none is left the views say so.
             const provider = this.opened?.session.model?.provider ?? "";
-            // A plan out of usage: this turn ends with OpenAI's words, and the next falls back past it.
-            if (isPlanLimit(m.errorMessage) && isPlan(this.o.models.endpoint(this.userId, provider)?.api)) this.o.models.reportPlanLimit(provider);
+            // A plan out of usage: the router skips it until it resets, the person hears so once a turn, and a turn it ends carries on.
+            const limited = this.planLimit(provider, m.errorMessage);
+            this.limitCut = limited ? provider : undefined;
             const offline = isUnreachable(m.errorMessage) && this.opened ? this.wentAway(provider) : undefined;
             if (offline) this.emit({ type: "offline", task: offline.task, tried: offline.tried });
             else this.emit({ type: "error", message: plainError(m.errorMessage) });
+            if (limited && !this.limitNoticed.has(provider)) {
+              this.limitNoticed.add(provider);
+              this.emit({ type: "notice", text: this.limitNotice(provider), status: "limit" });
+            }
           }
         }
         break;
@@ -1157,10 +1175,11 @@ export class HostedThread {
         break;
       }
       case "auto_retry_start": {
-        // Pi is about to retry a model whose machine couldn't be reached: send the retry to the next model in the list instead.
+        // Pi is about to retry a model whose machine couldn't be reached, or a plan out of usage: send the retry to the next model in the list instead.
         // Pi doesn't wait for listeners, but pauses two seconds before retrying; prepare probes for at most one, so it's done first.
-        if (isUnreachable(e.errorMessage) && this.opened) {
-          this.o.models.reportDown(this.opened.session.model?.provider ?? "");
+        const away = isUnreachable(e.errorMessage);
+        if ((away || this.planLimit(this.opened?.session.model?.provider ?? "", e.errorMessage)) && this.opened) {
+          if (away) this.o.models.reportDown(this.opened.session.model?.provider ?? "");
           // With no model left to try, retrying the one that's away only keeps her waiting: the turn ends, and says so.
           const session = this.opened.session;
           this.retrying = this.opened.prepare({ retry: true }).catch((err) => { if (err instanceof Offline) session.abortRetry(); });
@@ -1183,6 +1202,42 @@ export class HostedThread {
         break;
       }
     }
+  }
+
+  /**
+   * Whether `message` is a plan's usage limit. The router then skips the
+   * plan until it resets: plans.ts reports it as the reply ends, and a reply
+   * that didn't come through there is reported here.
+   */
+  private planLimit(endpointId: string, message: string | undefined): boolean {
+    if (!isPlanLimit(message) || !isPlan(this.o.models.endpoint(this.userId, endpointId)?.api)) return false;
+    if (this.o.models.planLimitedUntil(endpointId) === undefined) this.o.models.reportPlanLimit(endpointId, planLimitReset(message));
+    return true;
+  }
+
+  /** The model the thread's chat goes to now, if any is left. */
+  private nextChat(): string | undefined {
+    try {
+      return this.o.models.resolve(this.chatTask(), this.o.models.callContext(this.userId, this.pool, this.threadId)).label;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** What the person hears when a plan's usage limit stops a reply: when it resets, and what the thread does meanwhile. */
+  private limitNotice(endpointId: string): string {
+    const until = this.o.models.planLimitedUntil(endpointId) ?? Date.now();
+    const name = this.o.models.endpoint(this.userId, endpointId)?.name ?? "The plan";
+    const minutes = Math.max(1, Math.round((until - Date.now()) / 60_000));
+    const resets = `${name} reached its plan's usage limit; it resets in about ${minutes < 90 ? `${minutes} min` : `${Math.round(minutes / 60)} h`}.`;
+    const next = this.nextChat();
+    return next ? `${resets} This thread carries on with ${next}.` : `${resets} No other model is left for this thread, so it carries on then.`;
+  }
+
+  /** A turn a plan's usage limit ended carries on: at once on the next model in the list, or once the plan resets if none is left. */
+  private resumeAfterLimit(endpointId: string): void {
+    const until = this.o.models.planLimitedUntil(endpointId) ?? Date.now();
+    this.o.resume?.(this.userId, this.pool, this.threadId, new Date(this.nextChat() ? Date.now() : until + 60_000), PLAN_LIMIT_RESUME);
   }
 
   /** The endpoint couldn't be reached: marks it down, and returns the chat's Offline when no model is left. */
