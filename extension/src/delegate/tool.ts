@@ -8,6 +8,7 @@ import { setToolsOff } from "../gate.ts";
 import { toolGuidance, WORK_GUIDELINES, type ThreadContext } from "../index.ts";
 import { syncEntries } from "../record.ts";
 import { registerMemoryTools } from "../tools.ts";
+import { registerExitCodes } from "../exit-codes.ts";
 import { registerVisionGuard } from "../vision.ts";
 import { subagentPrompt } from "./roles.ts";
 import { DELEGATE_MESSAGE, outcome, Stopped, type Delegation, type Deliver, type Request, type Run, type SubagentHooks } from "./runs.ts";
@@ -221,6 +222,7 @@ export function createSubagentExtension(thread: ThreadContext, role: Role, hooks
   return (pi) => {
     registerMemoryTools(pi, thread.view, who, { readOnly: true });
     registerVisionGuard(pi);
+    registerExitCodes(pi);
     pi.registerTool({
       name: "ask_parent",
       label: `Ask ${name}`,

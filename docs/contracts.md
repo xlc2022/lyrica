@@ -1190,6 +1190,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   the next turn like the others) asking her to make the call. A second
   stores a `lyrica-empty-reply` message with `TEXT_TOOL_CALL`, so the
   turn fails visibly instead of sitting idle.
+- **Exit codes** (`extension/src/exit-codes.ts`, threads and subagents):
+  a bash result that ends "Command exited with code N" says what a
+  well-known code means for the command that ended the line, such as
+  "(rg: no matches, not a failure)" or gh pr checks' 8 for pending.
+  The codes that aren't failures (rg or grep 1, diff 1, test 1, gh pr
+  checks 8) clear the result's error.
 - **Paid fallback** (`extension/src/models.ts`): when `Resolution.paidAfter`
   is set, `prepareTurn` appends a `lyrica-paid-fallback` custom entry
   (`PaidFallback`: `model`, `from`, `reason`), outside her context, and a
