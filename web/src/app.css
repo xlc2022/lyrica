@@ -44,6 +44,7 @@ h1, h2, h3, h4 { font-weight: 600; margin: 0; text-wrap: balance; }
 h1 { font-size: 22px; }
 h2 { font-size: 15px; }
 h3 { font-size: 14px; }
+/* Interface text spaces with its container's gap, so a paragraph has no margin of its own; .prose (rendered Markdown) gives it back. */
 p { margin: 0; }
 code, pre, .num, .mono, kbd { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 code, pre { font-size: 13px; }
@@ -122,7 +123,6 @@ textarea { resize: vertical; }
 /* ---- Unlock and login ---- */
 .gate { height: 100%; display: flex; padding: 16px; overflow-y: auto; }
 .gate-card { margin: auto; width: min(380px, 100%); display: grid; gap: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }
-.gate-card p { margin: 0; }
 .loading { padding: 24px; }
 
 /* ---- The shell: sidebar and page ---- */
@@ -271,7 +271,6 @@ button.badge:hover:not(:disabled) { border-color: var(--accent); }
 .section-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
 .section-head h2, .section-head h3 { margin-right: auto; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 12px; max-width: 900px; min-width: 0; scroll-margin-top: 12px; }
-.card p { margin: 0; }
 .sub-card { border-top: 1px solid var(--line); padding-top: 14px; }
 /* Lists: one bordered container, 1 px dividers, rows 48 px and up. */
 .list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr); max-width: 900px; }
@@ -354,6 +353,12 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .msg.user.queued { opacity: 0.65; }
 .turn { display: grid; gap: 8px; min-width: 0; }
 .prose { font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
+.prose p, .prose ul, .prose ol { margin: 0 0 10px; }
+.prose ul, .prose ol { padding-left: 20px; }
+.prose h1, .prose h2, .prose h3, .prose h4 { font-size: 1em; margin: 16px 0 6px; }
+/* A Markdown file in the viewer is a document: its title keeps the page-title size. */
+.viewer-prose h1 { font-size: 22px; margin-bottom: 10px; }
+.viewer-prose h3, .viewer-prose h4 { font-size: 14px; }
 .prose > :first-child { margin-top: 0; }
 .prose > :last-child { margin-bottom: 0; }
 .prose pre { background: var(--tool); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; overflow-x: auto; max-width: 100%; }
@@ -397,16 +402,14 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 /* A message's head names its thread on one line, cut with an ellipsis; Open stays beside it. Width 0, so a long title never widens the card. */
 .sub-head b.to-thread { flex: 1 1 0; width: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub-head .open { margin-left: auto; }
-.subagent p { margin: 0; font-size: 14px; }
+.subagent p { font-size: 14px; }
 .status { width: 8px; height: 8px; border-radius: 50%; background: var(--local); }
 .status[data-state="running"] { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 .status[data-state="failed"] { background: var(--danger); }
 .permission { border: 1px solid var(--accent); border-radius: var(--radius); background: var(--panel); padding: 12px 14px; display: grid; gap: 8px; }
-.permission p { margin: 0; }
 .permission pre { margin: 0; background: var(--tool); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* A skill: its steps folded under Steps, wrapped like a tool result. */
 .skill-body { margin: 6px 0 0; background: var(--tool); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; max-height: 320px; overflow: auto; }
-.skill-card p, .skill p { margin: 0; }
 .skill-head { gap: 10px; align-items: center; }
 .skill-fold { justify-content: flex-start; gap: 4px; border: 0; background: transparent; padding: 0; min-height: 28px; color: var(--accent); }
 .skill-fold:hover { border: 0; background: transparent; text-decoration: underline; }
@@ -485,7 +488,6 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .folder .path { overflow-wrap: anywhere; }
 /* Confirming in place (the drawer's Forget) and the floating removal confirmation. */
 .confirm { display: grid; gap: 8px; border: 1px solid var(--danger); border-radius: 10px; padding: 10px 12px; flex-basis: 100%; }
-.confirm p { margin: 0; }
 .confirm.removal { position: fixed; z-index: 21; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(560px, calc(100% - 32px)); max-height: 70vh; overflow-y: auto; background: var(--panel); box-shadow: 0 8px 30px rgb(0 0 0 / 0.2); border: none; }
 .removal-list { display: grid; gap: 2px; }
 .removal-list h4 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 6px 0 2px; }
@@ -779,7 +781,6 @@ form.drawer-body { flex: 1; }
 .ctx-pct[data-level="warn"] { color: var(--warn); }
 .ctx-pct[data-level="danger"] { color: var(--danger); }
 .ctx-pop { gap: 8px; padding: 10px 12px; }
-.ctx-pop p { margin: 0; }
 .ctx-total, .ctx-foot { font-size: 13px; color: var(--muted); }
 .ctx-bar { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--tool); box-shadow: inset 0 0 0 1px var(--line); }
 .ctx-bar span { height: 100%; flex: none; }
@@ -863,7 +864,7 @@ form.drawer-body { flex: 1; }
 .suggestion-text { display: grid; gap: 2px; min-width: 0; }
 .suggestion-text .prose.small { font-size: 14px; line-height: 1.5; }
 .resolved-box { padding-block: 12px; }
-.resolved-box p { margin: 0; display: flex; gap: 6px; align-items: center; }
+.resolved-box p { display: flex; gap: 6px; align-items: center; }
 .project-form h3 { font-size: 15px; margin: 8px 0 0; }
 .project-form .switches { gap: 20px; }
 .project-form .workspace { display: grid; gap: 14px; max-width: 520px; }
@@ -1421,7 +1422,6 @@ button.star[aria-pressed="true"] .ic { fill: currentColor; }
 .lrow-main[aria-expanded="true"] .lchev { transform: rotate(90deg); }
 .ldetail { grid-column: 1 / -1; display: grid; gap: 8px; min-width: 0; padding: 4px 0 6px; }
 .ldetail .tablewrap:has(.row-menu .menu) { overflow: visible; }
-.ldetail p { margin: 0; }
 .ldetail .note .meta { align-self: center; }
 code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .models td.differs { background: color-mix(in oklab, var(--accent) 7%, var(--panel)); }
