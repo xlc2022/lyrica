@@ -23,6 +23,8 @@ export const CALL_THE_TOOL = "Your last reply wrote a tool call as text, so it d
 export const TEXT_TOOL_CALL = "The model wrote its tool call as text, twice, so it didn't run.";
 /** A tool call in Qwen's or Hermes' format, closed, that a local server left in the reply's text. */
 const TEXT_CALL = /<tool_call>[\s\S]*?<\/tool_call>|<function=[\w.-]+>[\s\S]*?<\/function>/;
+/** Text outside code: a call she quotes in a fenced block or an inline span is meant as text. */
+const outsideCode = (text: string) => text.replace(/```[\s\S]*?(```|$)/g, "").replace(/`[^`\n]*`/g, "");
 /** Written into a thread whose turn a restart cut off, shown as that turn's error. */
 export const INTERRUPTED_NOTICE = "lyrica-interrupted";
 export const INTERRUPTED = "Interrupted when Lyrica restarted, before this turn finished. Send a message to go on.";
@@ -88,7 +90,7 @@ export function createTurnToolsExtension(): ExtensionFactory {
       }
       // A tool call left in the text would end the run as her reply: once, she makes it as a call; again, the turn fails visibly.
       if (m.role === "assistant" && m.stopReason !== "error" && m.stopReason !== "aborted" && !stopped
-        && !m.content.some((c) => c.type === "toolCall") && m.content.some((c) => c.type === "text" && TEXT_CALL.test(c.text))) {
+        && !m.content.some((c) => c.type === "toolCall") && m.content.some((c) => c.type === "text" && TEXT_CALL.test(outsideCode(c.text)))) {
         if (++asText === 1) {
           pi.sendMessage({ customType: TEXT_TOOL_CALL_RETRY, content: CALL_THE_TOOL, display: false }, { deliverAs: "followUp", triggerTurn: true });
           return;

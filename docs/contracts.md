@@ -1179,7 +1179,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Tool calls written as text** (same extension): a local server can
   leave a closed tool call in the reply's text (Qwen's
   `<tool_call><function=…>…</function></tool_call>`, or a bare
-  `<function=…>…</function>`), and the run would end on it as her reply.
+  `<function=…>…</function>`, outside fenced or inline code), and the
+  run would end on it as her reply.
   The first in a run, with no real tool call beside it, gets one hidden
   follow-up (`lyrica-text-tool-call-retry`, `CALL_THE_TOOL`, dropped at
   the next turn like the others) asking her to make the call. A second

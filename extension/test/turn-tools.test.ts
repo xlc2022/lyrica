@@ -184,4 +184,8 @@ it("fails the turn visibly when the retry writes its call as text too, and leave
   expect(JSON.stringify(twice.shown)).toContain(TEXT_TOOL_CALL);
   const plain = await replies([fauxAssistantMessage("Use `<tool_call>` tags only when the model needs them.")]);
   expect(plain.asked).toHaveLength(1);
+  // A call she quotes in code is her answer, not a call.
+  const quoted = await replies([fauxAssistantMessage(`The leak looks like this:\n\n\`\`\`\n${AS_TEXT}\n\`\`\`\n\nand \`<function=x><parameter=a>1</parameter></function>\` inline.`)]);
+  expect(quoted.asked).toHaveLength(1);
+  expect(quoted.shown.some((m) => m.error)).toBe(false);
 });
