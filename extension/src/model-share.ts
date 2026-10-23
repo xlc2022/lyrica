@@ -95,6 +95,8 @@ export function shareModel(scope: object, key: string, need: number, window: num
     if (signal?.aborted) return leave();
     signal?.addEventListener("abort", leave, { once: true });
     s.queue.push(entry);
+    // A kept slot it gave up without fitting may leave room for those ahead of it.
+    next(shares, key, s);
   });
 }
 

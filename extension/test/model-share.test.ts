@@ -147,6 +147,35 @@ describe("a local model with fewer slots than busy threads", () => {
     }
   });
 
+  it("gives the room of a kept slot to the next in line when its thread's next call doesn't fit", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const key = "studio\u0000refit";
+      const [ada, ben, cy] = [{}, {}, {}];
+      const ask = (holder: object, need = 10_000) => shareModel(scope, key, need, 262_144, undefined, 2, holder);
+      const adaFirst = await ask(ada);
+      const benRun = await ask(ben);
+      let cyIn = false;
+      const cyWait = ask(cy).then((r) => { cyIn = true; return r; });
+      adaFirst();
+      await Promise.resolve();
+      expect(modelShare(scope, key)).toMatchObject({ running: 1, kept: 1, waiting: 1 });
+      // Ada's next call is too big beside Ben's: she gives up her slot and Cy, ahead of her, starts.
+      const adaBig = ask(ada, 255_000);
+      await Promise.resolve();
+      expect(cyIn).toBe(true);
+      expect(modelShare(scope, key)).toMatchObject({ running: 2, kept: 0, waiting: 1 });
+      benRun();
+      (await cyWait)();
+      vi.advanceTimersByTime(KEEP_WARM_MS);
+      (await adaBig)();
+      vi.advanceTimersByTime(KEEP_WARM_MS);
+      expect(modelShare(scope, key)).toEqual({ running: 0, waiting: 0, used: 0, kept: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps no slot for an aborted call, or where the server reports no slots", async () => {
     const key = "studio\u0000nokeep";
     const ada = {};
