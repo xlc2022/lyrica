@@ -917,7 +917,9 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   for `gh` on GitHub) (`Workspace.credentialsFor`). A command that reads
   the environment learns only values that die with the run; what a token
   can do on its own host is still up to the token, so tokens stay
-  fine-grained, for the repositories she works on, with no admin rights.
+  fine-grained where the host allows it, for the repositories she works
+  on, with no admin rights (her own repository's exception is under
+  "Her own code").
   What she sees has them hidden too: `bash` output, `read` and `web_fetch`
   pages show "[credential hidden]" for a run's tokens and placeholders
   (`Sandbox.secrets`, `secretMasker`; `edit` reads the file as it is), and
@@ -1055,13 +1057,18 @@ her account is general.
 
 - **The repository's settings**, the owner's to set, once:
   1. Her GitHub account as a collaborator with **Write**.
-  2. Under her account, a fine-grained token for this repository only,
-     with **Contents**, **Issues** and **Pull requests** read and write
-     and **Actions** read, added in Settings → Git accounts as a GitHub
-     account. Issues lets her claim an issue and file the Friction log's
-     issues (docs/briefs/lyrica-project.md). Actions read lets her see why a check failed
-     (`gh pr checks`, `gh run view --log-failed`); re-running a job stays
-     with the reviewers. GitHub serves a job's log from storage hosts
+  2. Under her account, a classic token with only the `public_repo`
+     scope, added in Settings → Git accounts as a GitHub account. A
+     fine-grained token can't write to a repository another personal
+     account owns, even with Write access; it reads only because the
+     repository is public. If the repository moves to an organisation, use
+     a fine-grained token for it instead, with **Contents**, **Issues** and
+     **Pull requests** read and write and **Actions** read. Either way she
+     can push, open pull requests, claim an issue and file the Friction
+     log's issues (docs/briefs/lyrica-project.md), and see why a check
+     failed (`gh pr checks`, `gh run view --log-failed`); re-running a job
+     stays with the reviewers. The relay only swaps the token in for this
+     repository and GitHub's API. GitHub serves a job's log from storage hosts
      that change, so reading logs needs the thread's internet on, not
      only allowed hosts.
   3. A branch protection rule (or ruleset) on `main`: pull requests only,
