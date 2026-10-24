@@ -92,6 +92,30 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   await rename("gpu", "gpu-box");
   await rename("gpu-box", "gpu");
 
+  // A model router no longer lists has Remove in its model list, which asks first and then drops it.
+  const endpoints = await page.evaluate(async (path) => (await fetch(path)).json(), `/api/u/${userId}/endpoints`) as { id: string; name: string }[];
+  const routerId = endpoints.find((e) => e.name === "router")!.id;
+  await page.evaluate(async (path) => { await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ modelId: "old-model" }) }); }, `/api/u/${userId}/endpoints/${routerId}/models`);
+  await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
+    const body = await (await fetchReal(route)).json() as ModelsPage;
+    for (const ep of body.endpoints) for (const m of ep.models) if (m.modelId === "old-model") m.status = "missing";
+    await route.fulfill({ json: body });
+  });
+  await page.reload();
+  const routerRow = page.locator("li.ep-row").filter({ hasText: /^router / });
+  await routerRow.getByRole("button", { name: /^\d+ models?$/ }).click();
+  const old = routerRow.locator("li[data-offering]").filter({ hasText: "old-model" });
+  await expect(old.locator(".pill")).toHaveText("missing");
+  await expect(routerRow.locator("li[data-offering]").filter({ hasText: "cloud-model" }).getByRole("button", { name: "Remove" })).toHaveCount(0);
+  await noHorizontalScroll(page);
+  await shot("missing-model");
+  await old.getByRole("button", { name: "Remove old-model" }).click();
+  const ask = page.getByRole("dialog", { name: "Remove old-model?" });
+  await ask.getByRole("button", { name: "Remove" }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(old).toHaveCount(0);
+  await page.unroute(/\/api\/u\/[^/]+\/models\/page$/);
+
   // Add endpoint: the plain-HTTP warning for a local endpoint off this machine.
   await page.getByRole("button", { name: "Add endpoint" }).click();
   const add = page.getByRole("complementary", { name: "Add endpoint" });
