@@ -899,7 +899,8 @@ test("after a reply the header's Context shows the percent, and its popover list
 
 test("her compaction's card and the stored marker open to the summary, closed until tapped", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
-  await newThread(page, "General");
+  // Private, so the general threads of later tests don't recall these messages.
+  await newThread(page, "Private");
   await send(page, "Plant the tomatoes first");
   await expect(page.getByText("You said: Plant the tomatoes first")).toBeVisible();
   // Over the 20k tokens Pi keeps, so the first exchange is compacted.
