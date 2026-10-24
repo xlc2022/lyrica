@@ -101,8 +101,13 @@ function renderNote(n: ForgeWakeNote): string {
   if (n.ci?.kind === "finished") parts.push(`checks finished — ${n.ci.checks.map((c) => `${c.name}: ${c.result}`).join(", ")}`);
   else if (n.ci?.kind === "noChecks") parts.push("no checks reported 15 minutes after the head commit");
   if (n.reviews.length) parts.push(n.reviews.map((g) => `${g.author} ${kindWord(g.kind)}${g.count > 1 ? ` (${g.count})` : ""}`).join(", "));
-  return `${pr}: ${parts.join("; ")}.`;
+  // Principle 6: a red run is hers to fix before she calls it blocked.
+  const red = n.ci?.kind === "finished" && n.ci.checks.some((c) => c.result !== "passed");
+  return `${pr}: ${parts.join("; ")}.${red ? ` ${CI_RED}` : ""}`;
 }
+
+/** Added to a note whose checks didn't all pass. */
+export const CI_RED = "Read the failing check's log (on GitHub, gh run view <run> --log-failed), then fix and push at least once before calling it blocked; if the same check fails on the base branch too, say so instead.";
 
 export class ForgeWatcher {
   /** Unlocked users whose watches are polled. */

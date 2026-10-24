@@ -14,6 +14,9 @@ export const CHECK_ROUNDS = 3;
 export const CHECK_TIMEOUT_MS = 10 * 60_000;
 const TAIL_LINES = 60;
 const TAIL_CHARS = 4000;
+/** The most of each failing output the thread's parent is told when the rounds run out. */
+const REPORT_LINES = 20;
+const REPORT_CHARS = 1500;
 
 export interface ChecksOptions {
   /** The project's checks now; none outside a project or in its chat. */
@@ -25,12 +28,23 @@ export interface ChecksOptions {
   /** Where its code lives (checkoutsOf); none runs each check once in its folder. */
   checkouts(): string[];
   target(): ExecutionTarget;
+  /** The checks still fail after the last round: lyricad tells the thread's parent, if it has one (docs/delegation.md). */
+  exhausted?(report: string): void;
 }
 
 /** The last lines of a check's output, within the character limit. */
-export function tail(output: string): string {
-  const lines = output.trimEnd().split("\n").slice(-TAIL_LINES).join("\n");
-  return lines.length > TAIL_CHARS ? lines.slice(-TAIL_CHARS) : lines;
+export function tail(output: string, maxLines = TAIL_LINES, maxChars = TAIL_CHARS): string {
+  const lines = output.trimEnd().split("\n").slice(-maxLines).join("\n");
+  return lines.length > maxChars ? lines.slice(-maxChars) : lines;
+}
+
+/** A checkout's short head commit, for the parent's report; none when it isn't one. */
+async function headOf(target: ExecutionTarget, dir: string | undefined, signal?: AbortSignal): Promise<string | undefined> {
+  if (!target.run) return undefined;
+  try {
+    const r = await target.run(dir ? ["git", "-C", dir, "rev-parse", "--short", "HEAD"] : ["git", "rev-parse", "--short", "HEAD"], { timeoutMs: 10_000, signal });
+    return r.code === 0 ? r.stdout.toString().trim() || undefined : undefined;
+  } catch { return undefined; }
 }
 
 async function runCheck(target: ExecutionTarget, dir: string | undefined, command: string, signal?: AbortSignal): Promise<{ ok: boolean; output: string }> {
@@ -97,6 +111,13 @@ export function createChecksExtension(o: ChecksOptions): ExtensionFactory {
         ? `The project's checks still fail after ${CHECK_ROUNDS} rounds, so they won't run again this turn. Stop here and tell the person plainly what fails and why: the work isn't done.`
         : "The project's checks failed. Fix what they report, then finish: they run again when you end your turn.";
       pi.sendMessage({ customType: CHECKS_FAILED, content: `${ask}\n\n${detail}`, display: false }, { deliverAs: "followUp", triggerTurn: true });
+      if (last && o.exhausted) {
+        // lyricad, not her, tells the parent: a thread told to stop may not report (docs/delegation.md).
+        const heads = new Map<string | undefined, string | undefined>();
+        for (const f of failed) if (!heads.has(f.dir)) heads.set(f.dir, await headOf(target, f.dir, ctx.signal));
+        const where = (f: { dir?: string }) => [f.dir && `in ${f.dir}`, heads.get(f.dir) && `at ${heads.get(f.dir)}`].filter(Boolean).join(", ");
+        o.exhausted(failed.map((f) => `$ ${f.command}${where(f) ? ` (${where(f)})` : ""}\n${tail(f.output, REPORT_LINES, REPORT_CHARS)}`).join("\n\n"));
+      }
       const details: ChecksResult = { ok: false, failed: [...new Set(failed.map((f) => f.command))], passed };
       return { entries: [{ type: "custom_message", customType: CHECKS_NOTICE, content: `Checks failed: ${list(details.failed)}${passed.length ? `. Passed: ${list(passed)}` : ""}`, display: true, details }] };
     });

@@ -785,7 +785,7 @@ its commands under **Checks** in Project settings → General, for example
 turn that changed files, each check runs in her sandbox in each checkout,
 with 10 minutes each, and the thread shows **Checks** passed or failed. A
 failure goes back to her to fix, up to 3 rounds; after that she reports it
-as not done. Details are in
+as not done, and in a project the project chat is told which checks fail. Details are in
 [docs/workspace.md](../workspace.md#project-checks).
 
 For her own code, the one-time setup on GitHub (her account as a

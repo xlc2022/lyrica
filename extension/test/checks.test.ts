@@ -16,6 +16,7 @@ async function scenario(o: { passFrom?: number; edit?: boolean; thinking?: boole
   const seen: string[] = [];
   let round = 0;
   const target = { secrets: () => ["sekret-token"], run: async (argv: string[]) => {
+    if (argv[0] === "git") return { code: 0, stdout: Buffer.from("abc1234\n"), stderr: Buffer.alloc(0) };
     runs.push(argv);
     if (o.reject) throw new Error(o.reject);
     const ok = !!o.passFrom && round >= o.passFrom;
@@ -63,11 +64,14 @@ describe("project checks", () => {
     expect(r.round).toBe(2);
   });
 
-  it(`stop after ${CHECK_ROUNDS} failing rounds and ask her to say plainly it isn't done`, async () => {
-    const r = await scenario({ passFrom: 0 });
+  it(`stop after ${CHECK_ROUNDS} failing rounds, ask her to say plainly it isn't done, and report it for her parent`, async () => {
+    const reports: string[] = [];
+    const r = await scenario({ passFrom: 0, options: { exhausted: (report) => reports.push(report) } });
     expect(r.notices).toHaveLength(CHECK_ROUNDS);
     expect(r.seen[CHECK_ROUNDS]).toContain("still fail after 3 rounds");
     expect(r.round).toBe(CHECK_ROUNDS + 1);
+    // Once, on the last round: which command failed, where, at which commit, and how.
+    expect(reports).toEqual(["$ npm test (in /workspace/repos/game, at abc1234)\nFAIL track.test.ts\nexpected surface"]);
   });
 
   it("don't run without a change, outside code mode, in Plan mode or without checks", async () => {

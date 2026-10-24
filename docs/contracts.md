@@ -1078,7 +1078,7 @@ plus up to 20 nested instruction paths; `checkoutsOf(settings, clones,
 worktrees?)` lists worktrees, clones and writable grants no worktree
 replaces. Coder subagents get the same section
 (`createSubagentExtension(…, codingTask?, repoRules?)`).
-`createChecksExtension({ checks(), code(), plan(), checkouts(), target() })`
+`createChecksExtension({ checks(), code(), plan(), checkouts(), target(), exhausted? })`
 runs the project's checks with `sh -c` in each checkout (10 minutes each)
 when a code-mode reply without tool calls ends a run in which `edit`,
 `write`, `bash` or `delegate` succeeded, and not in Plan mode, once her tools
@@ -1089,7 +1089,12 @@ with `ChecksResult` details that the daemon turns into a `delegation` part
 with status `checks-passed` or `checks-failed`)
 and, on a failure, sends the last 60 lines (4,000 characters) of each
 failing output as a hidden `lyrica-checks-failed` follow-up, at most 3
-rounds a run.
+rounds a run. On the last failing round it calls `exhausted(report)` with each
+failing command, its checkout and short head commit, and the last 20 lines
+(1,500 characters) of its output; the daemon passes it to
+`ThreadsHost.checksExhausted?(userId, pool, thread, report)`, and
+`ChildThreads` delivers it to a child's parent when the turn ends, waking
+it at once, in place of the turn's other end notice.
 Code turns use SOUL only, no topic routing, WAKE, about-user, page index or
 sleep opening; project, folders and pins remain. `setToolsOff` with reason
 `code` removes `models`, `download_model`, `model_files`, `image`, `react`.

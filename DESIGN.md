@@ -1338,7 +1338,10 @@ project page and the web part are built. Recent calls can be filtered by project
   Gitea account whose host resolves into her own network also gets a signed
   tailnet webhook that nudges a poll at once, and polling stays as its
   fallback. A merged or closed pull request ends the watch with one more
-  turn saying so (2026-10-23), unless her own account merged it.
+  turn saying so (2026-10-23), unless her own account merged it. A note
+  whose checks didn't all pass asks her to read the failing log and push at
+  least one fix before calling it blocked, or to say it fails on the base
+  branch too (2026-10-24).
   Watches are stored in the thread's pool like wake-ups, at most 10 per
   thread, and share the wake-up guards: the at-once limit, paused projects,
   and the 24-a-day cap. `threads later` stays for everything else.
@@ -1586,6 +1589,9 @@ listed, so she follows each repository's rules as Claude Code and Codex do
 Project settings, run in her sandbox when a code turn that changed something
 ends; a failure goes back to her to fix, at most three rounds, and the thread
 shows which checks passed or failed (docs/workspace.md, "Project checks").
+When a child thread's rounds run out, `lyricad`, not the model, tells its
+parent at once which checks fail, where and at which commit, so the parent
+can tell the thread's work from its environment (2026-10-24).
 Coder subagents use that project's filtered memory through their existing
 thread view, their role prompt without persona, and their step's task and
 optional progress.

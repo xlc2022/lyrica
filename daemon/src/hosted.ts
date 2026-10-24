@@ -1079,7 +1079,8 @@ export class HostedThread {
           createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target() }),
           // The project's checks, run when a code turn that changed something ends.
           createChecksExtension({ checks: () => tools.checks(), code: () => tools.settings().code, plan: () => tools.settings().mode === "plan",
-            checkouts: () => checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId })), target: () => tools.target() }),
+            checkouts: () => checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId })), target: () => tools.target(),
+            exhausted: (report) => this.o.threads?.checksExhausted?.(this.userId, this.pool, this.threadId, report) }),
           // Pi's MCP client and tool_search, only while the thread has a server: a change of grants reopens the session.
           ...(tools.settings().mcpServers.length ? [createMcpServersExtension(tools)] : []),
           ...(canDelegate ? [createDelegateExtension(ctx, delegation)] : []),
