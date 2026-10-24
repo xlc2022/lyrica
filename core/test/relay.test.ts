@@ -283,6 +283,19 @@ describe("a relayed pull request create", () => {
     }
   });
 
+  it("streams a GraphQL body past the read limit on to the forge whole, unrecorded", async () => {
+    const relay = await openRecord();
+    try {
+      // Larger than the 256 KB read limit, and a create in its words, so only the limit keeps it from being read whole.
+      const big = JSON.stringify({ query: "mutation { createPullRequest(input: {}) { pullRequest { url } } }", pad: "x".repeat(1024 * 1024) });
+      expect((await postThrough(relay, "api.github.com:443", "/graphql", "token lyrica_placeholder_github", big, GH)).status).toBe(200);
+      expect(got.at(-1)!.body).toBe(big);
+      expect(created).toEqual([]);
+    } finally {
+      relay.close();
+    }
+  });
+
   it("records none for a GET, a non-create path, a foreign repository, or a non-integer number", async () => {
     const relay = await openRecord();
     try {
