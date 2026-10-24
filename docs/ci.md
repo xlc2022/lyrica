@@ -16,7 +16,9 @@ self-hosted runners, which no workflow uses at the moment.
   -l +100%FREE /dev/ubuntu-vg/ubuntu-lv` gives it the rest.
 - Any machine that runs the tests (the runner, a developer's, a NixOS test
   host) needs `openssl` and `bash` on its PATH; `vitest.config.ts`
-  runs them in UTC.
+  runs them in UTC, and `test-env.ts` clears the `GIT_AUTHOR_*` and
+  `GIT_COMMITTER_*` identity a Lyrica sandbox sets, so commits the tests
+  make carry the tests' own names there too.
 - `.github/runner/setup.sh TOKEN`, run as root, installs Docker, a `runner`
   user with passwordless sudo, and the runner as a systemd service. TOKEN comes
   from the repository's Settings, Actions, Runners, New self-hosted runner.

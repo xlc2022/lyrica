@@ -5,5 +5,5 @@ import { defineConfig } from "vitest/config";
 // failed a run on main when the runner was loaded.
 export default defineConfig({
   // Tests that print times expect UTC, as on the runners; a host in another zone (a developer's machine) gets it too.
-  test: { include: ["*/test/**/*.test.ts"], testTimeout: 30_000, hookTimeout: 60_000, env: { TZ: "UTC" } },
+  test: { include: ["*/test/**/*.test.ts"], testTimeout: 30_000, hookTimeout: 60_000, env: { TZ: "UTC" }, setupFiles: ["./test-env.ts"] },
 });
