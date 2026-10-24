@@ -252,7 +252,8 @@ Pi session: `extension/src/delegate/claude.ts`. A subagent works through a
   them in the thread's usage as for her bash's `claude`.
 - **The Claude plan's usage limit** fails the run, saying so, and lyricad
   wakes the parent a minute after the reset (`CLAUDE_LIMIT_RESUME`, from
-  the relay's or Claude Code's reset time, else an hour) to continue it, as
+  the relay's or Claude Code's reset time, else the guess that backs off
+  from an hour, docs/models.md) to continue it, as
   a cut-off turn waits for its plan (docs/models.md). The thread shows the
   wait card and the notification; Fall back has the thread carry on at once
   and hand the job to the coder role. Until the plan resets the claude role

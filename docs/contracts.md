@@ -563,8 +563,10 @@ class Models {                                              // new Models(keyrin
   null)` (null signs it out), `setPlanCatalog(list)` (discovery, from Pi's
   catalogue; set by `lyricad`), `setCodexImages(run)` (ChatGPT Images'
   runner, installed by lyricad: `codexImage` in the user's
-  `Workspace.codexBox`), `reportPlanLimit(id)` (skipped for an
-  hour) and `installationId()` (self.db). The
+  `Workspace.codexBox`), `reportPlanLimit(id, until?)` (limited
+  until `until`; without one, an hour, doubled each time the plan is still
+  limited within 15 minutes of the guess running out, up to six; a refusal
+  during the wait keeps the guess) and `installationId()` (self.db). The
   sign-in is kept in the plan's `api_key` column as JSON; its tokens never leave
   core except into Pi's credential store (`PlanCredentials`, extension);
   image calls consume the resolved access token inside core/models.
