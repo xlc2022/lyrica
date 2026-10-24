@@ -606,6 +606,12 @@ the Private column too, unless a thread picks its own model, so its
   lyrica admin models preset list --user ada
   ```
 
+  Lyrica reads an endpoint's model list when it is added or edited and on
+  Refresh. **Read model lists daily**, a switch in the Hosts and endpoints
+  header, on by default, also reads each list once a day, so new models
+  appear and dropped ones go to Clean up; no model is called. Shared
+  endpoints are read this way only for an administrator who leaves it on.
+
 - **A model host** (a GPU machine of your own running the host stack):
   [model-hosts.md](model-hosts.md).
 - **llama-server, LM Studio, KoboldCpp** on your network are plain local
