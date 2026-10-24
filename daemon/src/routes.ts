@@ -623,6 +623,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (c.sleepFallback !== undefined) s().sleep.setFallback(user.id, c.sleepFallback);
       if (c.readAloudLive !== undefined) s().models.setDefaultReadAloudLive(user.id, c.readAloudLive);
       if (c.freeOnly !== undefined) s().models.setFreeOnly(user.id, c.freeOnly);
+      if (c.readDaily !== undefined) s().models.setReadDaily(user.id, c.readDaily);
       return presets(d, user.id);
     }),
     route("POST", `${u}/presets`, async (r): Promise<Api.Presets> => {
@@ -2426,7 +2427,7 @@ function presets(d: Lyricad, userId: string): Api.Presets {
     columns: { private: m.column(userId, "private"), general: m.column(userId, "general") },
     thinking: m.defaultThinking(userId),
     fallback: m.defaultFallback(userId), sleepFallback: d.services!.sleep.fallback(userId),
-    readAloudLive: m.defaultReadAloudLive(userId), freeOnly: m.freeOnly(userId),
+    readAloudLive: m.defaultReadAloudLive(userId), freeOnly: m.freeOnly(userId), readDaily: m.readDaily(userId),
   };
 }
 

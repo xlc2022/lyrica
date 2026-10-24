@@ -607,6 +607,8 @@ export interface Presets {
   readAloudLive: boolean;
   /** Free models only: every list skips a model whose price is known and isn't free. Off by default. */
   freeOnly: boolean;
+  /** Read model lists daily: each of the user's endpoints (shared ones too, for an administrator) is read again once a day. On by default. */
+  readDaily: boolean;
 }
 /**
  * PUT /api/u/:userId/columns/:column/:task → Presets. A private column takes
@@ -616,7 +618,7 @@ export interface Presets {
  */
 export type ColumnTaskChange = { models: ModelRef[] | null } | { same: Task } | { model: ModelRef | null };
 /** PATCH /api/u/:userId/presets → Presets */
-export interface PresetsChange { thinking?: ThinkingLevel; fallback?: boolean; sleepFallback?: boolean; readAloudLive?: boolean; freeOnly?: boolean }
+export interface PresetsChange { thinking?: ThinkingLevel; fallback?: boolean; sleepFallback?: boolean; readAloudLive?: boolean; freeOnly?: boolean; readDaily?: boolean }
 
 /**
  * One turn's counts and times. `promptTokens` is the whole prompt of its last

@@ -973,14 +973,17 @@ function Hosts({ ctx }: { ctx: MCtx }) {
   const [voice, setVoice] = useState<OfferingInfo>();
   const close = useCallback(() => { setAdding(false); setEditing(undefined); setEditingHost(undefined); setSignIn(false); }, []);
   const closeVoice = useCallback(() => setVoice(undefined), []);
+  const [run, , error] = useAction();
   const facts = p && <>{plural(hosts.length, "paired host", "paired hosts")} · {plural(plain.length, "plain endpoint", "plain endpoints")}</>;
   const actions = <>
+    {p && <Switch label="Read model lists daily" hint={`Once a day Lyrica reads the model list of ${ctx.user.admin ? "every endpoint, shared ones included" : "each of your own endpoints"}, so new models appear and dropped ones go to Clean up. No model is called.`}
+      checked={p.presets.readDaily} onChange={(readDaily) => run(async () => { const next = await patch<Presets>(u(ctx.user.id, "presets"), { readDaily }); const cur = ctx.models.page; if (cur) ctx.models.set({ ...cur, presets: next }); })} />}
     <button type="button" onClick={() => setAdding(true)}>Add endpoint</button>
     <button type="button" className="primary" onClick={() => go({ page: "models", userId: ctx.user.id, tab: "hosts", add: "host" })}>Add model host</button>
   </>;
   return (
     <Frame ctx={ctx} tab="hosts" title="Hosts and endpoints" facts={facts} actions={actions}>
-      <ErrorText error={ctx.models.error} />
+      <ErrorText error={ctx.models.error || error} />
       {p && hosts.length > 0 && (
         <section className="section" aria-labelledby="h-model-hosts">
           <div className="section-head">

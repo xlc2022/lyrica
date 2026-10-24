@@ -41,6 +41,29 @@ describe("endpoints", () => {
     expect(models.find(ada.id, "gpu/qwen3.8-27b")).toEqual({ offeringId: qwen!.id });
   });
 
+  it("reads every endpoint's list again once a day, unless the user turned it off", async () => {
+    const { models, ada } = await withModels();
+    const list: Record<string, unknown>[] = [{ id: "flint:free" }, { id: "dropped:free" }];
+    const router = await fakeOpenAI({ models: list });
+    const ep = models.addEndpoint(ada, { name: "router", kind: "cloud", baseUrl: router.baseUrl, apiKey: "k" });
+    await models.discover(ada, ep.id);
+    const status = (id: string) => models.offerings(ada.id, ep.id).find((o) => o.modelId === id)?.status;
+    // The endpoint drops one model: it waits for the day to pass, then is marked missing, as by Refresh.
+    list.splice(1, 1, { id: "new:free" });
+    const day = 86_400_000;
+    await models.rereadDaily(Date.now() + day / 2);
+    expect(status("dropped:free")).toBe("listed");
+    expect(models.readDaily(ada.id)).toBe(true);
+    await models.rereadDaily(Date.now() + day + 1000);
+    expect(status("dropped:free")).toBe("missing");
+    expect(status("new:free")).toBe("listed");
+    // Off, nothing is read.
+    models.setReadDaily(ada.id, false);
+    list.push({ id: "later:free" });
+    await models.rereadDaily(Date.now() + 3 * day);
+    expect(status("later:free")).toBeUndefined();
+  });
+
   it("reads OpenRouter's thinking, prices, retirement and reply limit", async () => {
     const { models, ada, gpu, localRef } = await withModels();
     const router = await fakeOpenAI({ models: [

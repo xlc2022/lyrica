@@ -788,6 +788,8 @@ export class Lyricad implements Drainable {
       this.services.forge.tick(now);
       if (now.getTime() - this.prunedAt >= 3600_000) {
         this.prunedAt = now.getTime();
+        // Model lists, once a day each: a model an endpoint drops is marked missing, as by Refresh.
+        void this.services.models.rereadDaily(now.getTime()).catch(() => {});
         try {
           const n = this.services.sleep.prune(now);
           if (n) this.log(`sleep: ${n} old phase threads forgotten`);

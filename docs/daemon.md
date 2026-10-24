@@ -938,7 +938,9 @@ Lock and shutdown stop a running sleep before the key goes; the run is
 recorded as partial and resumes next time.
 
 Once an hour, `lyricad` forgets sleep's phase threads older than 36 hours in
-every pool whose key is here (`Sleep.prune`), logging only how many went.
+every pool whose key is here (`Sleep.prune`), logging only how many went,
+and reads again each model list not read for a day (`Models.rereadDaily`,
+[models.md](models.md)).
 
 ## Wiping memory
 
