@@ -278,6 +278,12 @@ describe("Git accounts and repositories", () => {
     settings.setThread("chat", "general", { repositories: [lyrica] });
     expect(settings.effective("scout").repositories).toEqual([{ ...lyrica, readOnly: true }]);
     expect(settings.effective("review").repositories).toEqual([lyrica]);
+    // A child started before the marker existed may have been read-only: it gains nothing, rather than a writable repository.
+    settings.setThread("chat", "general", { repositories: [] });
+    settings.inheritSettings("chat", "old", "general", { repositories: [] });
+    (settings as unknown as { db: { prepare(sql: string): { run(...a: unknown[]): void } } }).db.prepare("DELETE FROM settings WHERE key = ?").run("workspace.readOnlyRepos.old");
+    settings.setThread("chat", "general", { repositories: [lyrica] });
+    expect(settings.effective("old").repositories).toEqual([]);
   });
 
   it("keeps a read-only repository read-only in a child, its children and its relay credential, whatever it's changed to", async () => {

@@ -253,7 +253,7 @@ test("a message waiting behind her turn has Steer now while she works, and it se
   const steered: string[] = [];
   await page.route(`**${base}/events`, (route) => route.fulfill({ contentType: "text/event-stream",
     body: `event: hello\ndata: ${JSON.stringify({ type: "hello", busy, queued: ["Use the blue tiles instead"], permissions: [] })}\n\n` }));
-  await page.route(`**${base}/queue/*/steer`, (route) => { steered.push(new URL(route.request().url()).pathname); return route.fulfill({ json: { ok: true } }); });
+  await page.route(`**${base}/queue/*/steer`, (route) => { steered.push(`${new URL(route.request().url()).pathname} ${route.request().postDataJSON().text}`); return route.fulfill({ json: { ok: true } }); });
   await page.reload();
   const waiting = page.locator(".msg.user.queued");
   await expect(waiting).toContainText("Use the blue tiles instead");
@@ -264,7 +264,7 @@ test("a message waiting behind her turn has Steer now while she works, and it se
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/steer-now-${page.viewportSize()!.width}.png` });
   await steer.click();
-  await expect.poll(() => steered).toEqual([`${base}/queue/0/steer`]);
+  await expect.poll(() => steered).toEqual([`${base}/queue/0/steer Use the blue tiles instead`]);
   // With no turn running, the message just waits: nothing to steer.
   busy = false;
   await page.reload();

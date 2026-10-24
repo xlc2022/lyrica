@@ -600,8 +600,10 @@ export class WorkspaceSettings {
       if (depth > 100) return;
       for (const { thread_id: child } of this.db.prepare("SELECT thread_id FROM thread_workspaces WHERE parent = ?").all(id) as { thread_id: string }[]) {
         const own = this.thread(child);
-        if (keys(own.repositories) !== keys(had)) continue;
-        const readOnly = this.setting(`workspace.readOnlyRepos.${child}`) === "1";
+        // A child from before the marker existed may have been started read-only: it gains nothing, as before.
+        const marker = this.setting(`workspace.readOnlyRepos.${child}`);
+        if (marker === undefined || keys(own.repositories) !== keys(had)) continue;
+        const readOnly = marker === "1";
         this.write(child, { ...own, repositories: [...own.repositories, ...added.map((r) => (readOnly ? { ...r, readOnly: true } : r))] });
         follow(child, own.repositories, depth + 1);
       }
@@ -649,9 +651,8 @@ export class WorkspaceSettings {
     const parent = this.effective(parentThreadId);
     const net = this.network(parentThreadId, pool);
     // Given only read-only repositories (a read-only or narrowed child's), repositories its parent gains later reach it read-only too.
-    if (narrower.repositories?.every((r) => r.readOnly)) {
-      this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, '1')").run(`workspace.readOnlyRepos.${childThreadId}`);
-    }
+    const readOnly = !!narrower.repositories?.every((r) => r.readOnly);
+    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.readOnlyRepos.${childThreadId}`, readOnly ? "1" : "0");
     // Start from nothing, so a refused narrowing leaves the child with no access at all.
     this.write(childThreadId, {
       grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, claudeCode: false, code: false, machines: [], repositories: [], mcpServers: [], parent: parentThreadId,

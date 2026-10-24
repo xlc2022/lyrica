@@ -203,8 +203,9 @@ Each active thread is one Pi session from `openThreadSession`, with
   too late for the turn goes as the next one. **Steer now** on a waiting
   follow-up (`POST threads/:id/queue/:i/steer`, `steerQueued`) moves it
   into the running turn the same way, unmarked, and it counts as the
-  person's own text; with no turn running it answers 409 and the message
-  stays queued. **Stop** aborts the turn,
+  person's own text; with no turn running, or when the follow-up at that
+  place is no longer the text sent with it, it answers 409 and the queue
+  stays as it is. **Stop** aborts the turn,
   denies waiting permission requests and drops the person's queue. A marked
   or steered message the turn didn't take, because it was stopped or failed, the
   thread closed, or no model answered, is appended to the stored thread as

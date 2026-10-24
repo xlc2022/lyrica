@@ -111,7 +111,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
             <span>{ctx.user.displayName} · waiting</span>
             {/* While she works: into her turn after her current step, rather than after the turn. */}
             {live.busy && <button type="button" className="link sm steer" title={`Sends this into ${her()}'s turn after her current step, instead of when the turn ends.`}
-              onClick={() => post(`${base}/queue/${i}/steer`).catch((err: Error) => (onError ?? (() => {}))(err.message))}>Steer now</button>}
+              onClick={() => post(`${base}/queue/${i}/steer`, { text: q }).catch((err: Error) => (onError ?? (() => {}))(err.message))}>Steer now</button>}
           </div>
           <div className="body">{q}</div>
         </div>

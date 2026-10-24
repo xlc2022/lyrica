@@ -1679,8 +1679,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `settled()`; a `received` thread event (`text`) when a message from
     another thread or a look reaches the running turn, or is kept in the
     stored thread because no turn took it; `POST threads/:id/queue/:i/steer`
-    (`HostedThread.steerQueued`) moves the person's waiting follow-up at
-    index `i` into the running turn, `409` with no turn running, and the
+    `{ text }` (`HostedThread.steerQueued`) moves the person's waiting
+    follow-up at index `i` into the running turn, `409` with no turn running
+    or when the follow-up there is no longer `text`, and the
     `queue` event's `steered: true` marks the update it causes;
   - **projects** (`daemon/src/projects.ts`, `children.ts`): thread pins,
     per user: `user.db` `pinned_threads` (pool, thread; no text), `PUT`/`DELETE
@@ -2253,7 +2254,8 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   and a parent's change narrows its running children, moving a repository
   it moves to another account and adding one it gains to children that
   had all of its (read-only where `inheritSettings` was given only
-  read-only ones, kept as the `workspace.readOnlyRepos.<thread>` setting). `ForgeCredential.readOnly` has the relay
+  read-only ones, kept as the `workspace.readOnlyRepos.<thread>` setting,
+  "1" or "0"; a child without it, from before it existed, gains nothing). `ForgeCredential.readOnly` has the relay
   refuse `git-receive-pack` and every API request but GET, HEAD and a
   GraphQL query. `Workspace`: `probeGitAccount({ kind, host,
   account, token })` checks the token against the host and saves nothing

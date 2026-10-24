@@ -456,11 +456,11 @@ export class HostedThread {
   /**
    * The person moves a waiting follow-up into the running turn: Pi takes it
    * after the current tool call, or after the reply being written, as it
-   * takes a marked message. False when no turn is running to take it.
+   * takes a marked message. False when no turn is running to take it, or
+   * the follow-up at `index` is no longer `text` (sent, or the queue moved).
    */
-  steerQueued(index: number): boolean {
-    const text = this.queued[index];
-    if (text === undefined || !this.busy || !this.opened) return false;
+  steerQueued(index: number, text: string): boolean {
+    if (this.queued[index] !== text || !this.busy || !this.opened) return false;
     this.queued.splice(index, 1);
     this.emit({ type: "queue", queued: [...this.queued], steered: true });
     this.steer(text, true);

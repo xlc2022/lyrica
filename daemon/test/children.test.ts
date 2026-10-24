@@ -127,10 +127,13 @@ describe("messages to a busy thread", () => {
     await view.ready;
     expect((await ada.post<{ queued: boolean }>(`${childPath(id)}/messages`, { text: "and roses" })).body.queued).toBe(true);
     await view.until((e) => e.type === "queue");
-    expect((await ada.post(`${childPath(id)}/queue/0/steer`)).status).toBe(200);
+    // The text must still be the one at that place: one that went or moved isn't steered by mistake.
+    expect((await ada.post(`${childPath(id)}/queue/0/steer`, { text: "and tulips" })).status).toBe(409);
+    expect((await ada.post(`${childPath(id)}/queue/0/steer`, { text: "and roses" })).status).toBe(200);
+    await view.until((e) => e.type === "queue" && "steered" in e);
     expect(view.events.map((e) => e.event)).toContainEqual({ type: "queue", queued: [], steered: true });
     // Nothing is left to steer, so a second press says so.
-    expect((await ada.post(`${childPath(id)}/queue/0/steer`)).status).toBe(409);
+    expect((await ada.post(`${childPath(id)}/queue/0/steer`, { text: "and roses" })).status).toBe(409);
     turn.release();
 
     // It reached the turn after its tool call: two calls, not a third turn for it.
@@ -140,7 +143,7 @@ describe("messages to a busy thread", () => {
     await view.until((e) => e.type === "turn_end");
     expect(view.events.map((e) => e.event)).toContainEqual({ type: "received", text: "and roses" });
     // With no turn running, it refuses: the message goes as the next one anyway.
-    expect((await ada.post(`${childPath(id)}/queue/0/steer`)).status).toBe(409);
+    expect((await ada.post(`${childPath(id)}/queue/0/steer`, { text: "and roses" })).status).toBe(409);
   });
 
   it("a parent's message to a child whose turn fails is kept in the child's thread", async () => {
