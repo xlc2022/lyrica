@@ -1,6 +1,6 @@
 # Brief: Jump to latest
 
-**Status:** In progress. **Branch:** `lyrica/jump-to-latest`. Built by Lyrica (Ada) on the test machine.
+**Status:** In progress. **Branch:** `lyrica/jump-to-latest`.
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md, docs/contracts.md, docs/ux.md, docs/web.md, docs/briefs/chat-view.md.
 
 ## Goal

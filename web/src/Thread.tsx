@@ -520,25 +520,30 @@ function PendingBar({ scroller, deps }: { scroller: React.RefObject<HTMLDivEleme
  * Keeps the conversation scrolled to the bottom while new text arrives, unless she has scrolled up.
  * Whether she was at the bottom is judged against the height before this update, not from the
  * last scroll event, which may not have fired yet when an update lands right after she scrolls.
- * Reports whether the content grew while she was scrolled up, for the jump-to-latest control.
+ * Reports whether new tail content arrived while she was scrolled up, for the jump-to-latest control:
+ * only a tail that grew counts, so opening older history above her isn't an arrival.
  */
 function useStickyScroll(deps: unknown[]) {
   const ref = useRef<HTMLDivElement>(null);
   const height = useRef(0);
+  const last = useRef<HTMLElement | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const [arrivedUp, setArrivedUp] = useState(false);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const wasBottom = height.current - el.scrollTop - el.clientHeight < 80;
-    const grew = el.scrollHeight > height.current;
+    const before = last.current;
+    const after = el.lastElementChild as HTMLElement | null;
+    const grewTail = !!after && (after !== before || (before?.textContent ?? "") !== (after.textContent ?? ""));
+    last.current = after;
     height.current = el.scrollHeight;
     const nowBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     if (wasBottom) el.scrollTop = el.scrollHeight;
     setAtBottom(nowBottom);
-    // Content that grew while the person was scrolled up is one they can't see yet; being at the bottom ends the offer.
+    // Content that grew at the tail while the person was scrolled up is one they can't see yet; being at the bottom ends the offer.
     if (nowBottom) setArrivedUp(false);
-    else if (grew && !wasBottom) setArrivedUp(true);
+    else if (grewTail && !wasBottom) setArrivedUp(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   useEffect(() => {
