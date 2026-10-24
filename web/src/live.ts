@@ -69,7 +69,10 @@ export function tailKey(messages: Message[], live: Live): string {
   if (!last) return "∅";
   const parts = "parts" in last ? last.parts : [{ type: "text" as const, text: "text" in last && last.text ? last.text : "" }];
   const body = parts.map((p) => partKey(p)).join("|");
-  return `${last.role}:${body}`;
+  // Stored tails carry their entry identity, so a second identical message is a new arrival; live tails
+  // carry the count they were appended at, which only grows.
+  const who = "id" in last ? `${last.id}#${last.n}` : `#${items.length}`;
+  return `${who}:${last.role}:${body}`;
 }
 
 /** A subagent's events that mean its thread has new stored messages. */

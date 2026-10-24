@@ -36,7 +36,7 @@ nothing happened.
   when they reach the bottom by scrolling, by the follow, or by the jump itself.
 - The button is the secondary look (1 px border, panel background, 13 px text, `--tap` tall) with the
   existing `arrow-down` icon from the one icon set beside the noun label, which is short (§4).
-- Clicking scrolls the conversation to the bottom smoothly; the control then leaves.
+- Clicking scrolls the conversation to the bottom at once; the control then leaves.
 
 ## Done when
 

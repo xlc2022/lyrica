@@ -259,8 +259,11 @@ describe("the conversation's tail key", () => {
 
   it("grows when a user or notice lands below the tail, and stays put when older history is prepended", () => {
     expect(tailKey([assistant(2, "hi")], initialLive)).not.toBe(tailKey([user(3, "you there?")], initialLive));
+    // A second identical message is still a new arrival: stored tails carry their entry identity.
+    expect(tailKey([user(3, "ping")], initialLive)).not.toBe(tailKey([user(4, "ping")], initialLive));
     const withNotice = liveWith([{ role: "assistant", parts: [{ type: "text", text: "Hello." }] }, { role: "notice", text: "A subagent finished." }]);
-    expect(tailKey([], withNotice)).not.toBe(tailKey([], initialLive));
+    const bare = liveWith([{ role: "assistant", parts: [{ type: "text", text: "Hello." }] }]);
+    expect(tailKey([], withNotice)).not.toBe(tailKey([], bare));
     expect(tailKey([assistant(4, "old"), assistant(3, "hi")], initialLive)).toBe(tailKey([assistant(3, "hi")], initialLive));
   });
 });
