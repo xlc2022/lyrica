@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialLive, liveReducer, storedLiveCopies, storedUserItems, type Live, type LiveAction } from "../src/live.ts";
+import { initialLive, liveReducer, storedLiveCopies, storedUserItems, tailKey, type Live, type LiveAction, type LiveItem } from "../src/live.ts";
 
 import type { Message } from "../src/api.ts";
 
@@ -244,5 +244,23 @@ describe("stored messages the stream is also showing", () => {
   it("hides nothing once the turn's end has replaced the live copy", () => {
     const live = run([{ type: "turn_start" }, { type: "tool_call", toolCallId: "call_1", name: "threads" }, { type: "turn_end", aborted: false }, { type: "stored" }]);
     expect(storedLiveCopies(live.items, [ask(2, "call_1")])).toEqual(new Set());
+  });
+});
+
+// An arrival is new tail content while scrolled up; the key follows the real ordered tail, not just her reply.
+describe("the conversation's tail key", () => {
+  const assistant = (n: number, text: string): Message => ({ id: `e:web/test#${n}`, n, role: "assistant", parts: [{ type: "text", text }], createdAt: "2026-10-12T10:00:00Z" });
+  const user = (n: number, text: string): Message => ({ id: `e:web/test#${n}`, n, role: "user", parts: [{ type: "text", text }], createdAt: "2026-10-12T10:00:00Z" });
+  const liveWith = (items: LiveItem[]): Live => ({ ...initialLive, items });
+
+  it("grows while a reply streams into the same tail, so a scrolled-up person is offered the jump", () => {
+    expect(tailKey([], liveWith([{ role: "assistant", parts: [{ type: "text", text: "Hel" }] }]))).not.toBe(tailKey([], liveWith([{ role: "assistant", parts: [{ type: "text", text: "Hello" }] }])));
+  });
+
+  it("grows when a user or notice lands below the tail, and stays put when older history is prepended", () => {
+    expect(tailKey([assistant(2, "hi")], initialLive)).not.toBe(tailKey([user(3, "you there?")], initialLive));
+    const withNotice = liveWith([{ role: "assistant", parts: [{ type: "text", text: "Hello." }] }, { role: "notice", text: "A subagent finished." }]);
+    expect(tailKey([], withNotice)).not.toBe(tailKey([], initialLive));
+    expect(tailKey([assistant(4, "old"), assistant(3, "hi")], initialLive)).toBe(tailKey([assistant(3, "hi")], initialLive));
   });
 });

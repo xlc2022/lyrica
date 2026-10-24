@@ -7,7 +7,7 @@ import { JUMP_EVENT, JUMP_KEY, SHOW_EVENT, SHOW_KEY, take, type JumpRequest, typ
 import { go, href, parse } from "./route.ts";
 import { ProjectWelcome, ThreadsFact, useOverview, type ProjectEnv } from "./Project.tsx";
 import { useThread } from "./stream.ts";
-import { type Live } from "./live.ts";
+import { type Live, tailKey } from "./live.ts";
 import { Conversation, MessageBox } from "./Messages.tsx";
 import { Composer } from "./Composer.tsx";
 import { ContextFact, newerContext } from "./ContextMeter.tsx";
@@ -555,29 +555,6 @@ function useStickyScroll(messages: Message[], live: Live) {
     return () => el.removeEventListener("scroll", on);
   }, []);
   return { ref, atBottom, arrivedUp };
-}
-
-/**
- * The conversation's tail as an immutable fingerprint: what grew at the end is a new arrival, what was
- * prepended above the reader isn't. Read from the message and live data, so a reply streaming into an
- * existing assistant tail counts, and opening older history does not.
- */
-function tailKey(messages: Message[], live: Live): string {
-  const items = live.items.length > 0 ? live.items : messages;
-  const last = items.filter((m) => m.role === "assistant").at(-1) ?? items[items.length - 1];
-  const parts = last && "parts" in last ? last.parts : [];
-  let key = "∅";
-  for (const p of parts) {
-    switch (p.type) {
-      case "text": key += `t:${p.text};`; break;
-      case "thinking": key += `h:${p.text};`; break;
-      case "recall": case "remember": key += `${p.type}:${p.ids.join(",")};`; break;
-      case "tool": key += `o:${p.toolCallId}:${p.name}:${JSON.stringify(p.args)}:${p.result ?? ""}:${p.isError ?? false};`; break;
-      case "image": key += `i:${p.paths.join(",")};`; break;
-      default: key += `${p.type}:${JSON.stringify(p)};`;
-    }
-  }
-  return `${last?.role ?? "∅"}:${key}`;
 }
 
 /**

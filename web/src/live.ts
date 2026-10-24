@@ -45,6 +45,33 @@ export interface Live {
 
 export const initialLive: Live = { busy: false, queued: [], permissions: [], items: [], errors: [], reload: 0, tools: 0, ended: 0, subagents: {}, settings: 0, children: 0 };
 
+/** One part's identity and content, so a tail that grew is told from one that didn't. */
+function partKey(p: MessagePart): string {
+  if (p.type === "text") return `t:${p.text}`;
+  if (p.type === "thinking") return `h:${p.text}`;
+  if (p.type === "tool") return `o:${p.toolCallId}:${p.name}:${JSON.stringify(p.args)}:${p.result ?? ""}:${p.isError ?? false}`;
+  if (p.type === "recall" || p.type === "remember") return `${p.type}:${p.ids.join(",")}`;
+  if (p.type === "image") return `i:${p.paths.join(",")}`;
+  if (p.type === "delegation") return `d:${p.text}:${p.status ?? ""}:${p.runId ?? ""}`;
+  if (p.type === "compacted") return `c:${p.summary}`;
+  return `u:${JSON.stringify(p)}`;
+}
+
+/**
+ * The conversation's tail as one key: the last message in order, with what it holds. An arrival is a
+ * different key from the last one seen, so a reply streaming into an existing tail counts, a message
+ * another tab appended while she was scrolled up counts, and opening older history above the reader
+ * does not.
+ */
+export function tailKey(messages: Message[], live: Live): string {
+  const items = live.items.length > 0 ? live.items : messages;
+  const last = items[items.length - 1];
+  if (!last) return "∅";
+  const parts = "parts" in last ? last.parts : [{ type: "text" as const, text: "text" in last && last.text ? last.text : "" }];
+  const body = parts.map((p) => partKey(p)).join("|");
+  return `${last.role}:${body}`;
+}
+
 /** A subagent's events that mean its thread has new stored messages. */
 const STORED: string[] = ["started", "usage", "question", "note", "finished", "stopped", "interrupted"];
 
