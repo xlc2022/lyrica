@@ -14,6 +14,9 @@ import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 const isChild = (c: ChatRequest) => JSON.stringify(c.messages).includes("[From t:");
 const said = (c: ChatRequest) => JSON.stringify(c.messages);
 
+/** How long a poll waits for a turn to end or start: a code child's turn starts by cloning or making worktrees, which takes seconds on a slow or nested sandbox, past expect.poll's default second. */
+const TURN = { timeout: 15_000 };
+
 /**
  * Ada with a local model and a general thread. The fake model answers the
  * parent from `parent` and children from `child`, in order, so their turns
@@ -49,7 +52,7 @@ async function setup(opts: Parameters<typeof daemon>[1] = {}, rt?: Awaited<Retur
   const childPath = (id: string) => `${u}/threads/general/${enc(id)}`;
   const messages = async (p: string) => (await ada.get<MessagePage>(`${p}/messages`)).body.messages;
   const idleParent = async () => {
-    await expect.poll(() => dm.d.services!.host.busy(rt!.ada.id, "general", thread.id)).toBe(false);
+    await expect.poll(() => dm.d.services!.host.busy(rt!.ada.id, "general", thread.id), TURN).toBe(false);
   };
   return { rt, ...dm, ada, model, reply, parent, child, thread, u, path, stream, say, list, childPath, messages, idleParent };
 }
@@ -762,11 +765,11 @@ describe("code thread worktrees", () => {
       await s.idleParent();
       return result;
     };
-    const idle = async (id: string) => { await expect.poll(() => s.d.services!.host.busy(s.rt.ada.id, "general", id)).toBe(false); };
+    const idle = async (id: string) => { await expect.poll(() => s.d.services!.host.busy(s.rt.ada.id, "general", id), TURN).toBe(false); };
     // A child that ends without a report wakes its parent: that turn ends too before the next start, so it can't take the start's script.
     const settled = async (id: string) => {
       await idle(id);
-      await expect.poll(async () => JSON.stringify(await s.messages(s.path))).toContain(`[t:${id}] ended without a report`);
+      await expect.poll(async () => JSON.stringify(await s.messages(s.path)), TURN).toContain(`[t:${id}] ended without a report`);
       await s.idleParent();
     };
     const pair = async () => {
@@ -867,7 +870,7 @@ describe("code thread worktrees", () => {
     // A resolved queued scaffold must not run later alongside its replacement base holder.
     s.d.services!.children.limits.concurrency = 1;
     s.d.services!.children.resume(s.rt.ada.id);
-    await expect.poll(() => s.model.requests.filter(isChild).map(said).join("\n")).toContain("Build Merge.");
+    await expect.poll(() => s.model.requests.filter(isChild).map(said).join("\n"), TURN).toContain("Build Merge.");
     const db = s.d.services!.users.openUserDb(s.rt.ada.id);
     try { expect(db.prepare("SELECT queued FROM child_threads WHERE thread = ?").get(a)).toEqual({ queued: 1 }); }
     finally { db.close(); }
