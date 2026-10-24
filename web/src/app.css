@@ -350,8 +350,9 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .who .sep { white-space: pre; margin: 0 2px; }
 .msg { display: grid; gap: 4px; min-width: 0; }
 .msg.user .body { background: var(--user-block); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.5; }
-.msg.user.queued { opacity: 0.65; }
-.msg.user.queued .steer { min-height: 0; margin-left: 8px; font-size: 13px; }
+/* The waiting parts fade; Steer now, the one thing to press, stays full strength. */
+.msg.user.queued .body, .msg.user.queued .who > span { opacity: 0.65; }
+.msg.user.queued .steer { min-height: 0; font-size: 13px; position: relative; }
 .turn { display: grid; gap: 8px; min-width: 0; }
 .prose { font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
 .prose p, .prose ul, .prose ol { margin: 0 0 10px; }
@@ -654,7 +655,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 @media (pointer: coarse) {
   button.badge, .chev, .chips button, .check, .marker > button, .from-head, .compaction > button.sub-head, .picker-item, .showing > summary, .showing label { min-height: 44px; }
   .preset-button { min-height: var(--tap); }
-  .tfacts .link::after, .tcard-count .link::after, .threads-pill > .link::after, .tcard .row a.sm::after { content: ""; position: absolute; inset: -9px -6px; }
+  .tfacts .link::after, .tcard-count .link::after, .threads-pill > .link::after, .tcard .row a.sm::after, .msg.user.queued .steer::after { content: ""; position: absolute; inset: -9px -6px; }
   .chev { width: 32px; height: 44px; }
   .threads .trow { grid-template-columns: 32px minmax(0, 1fr); }
   button.icon-btn, button.icon.sm { width: 44px; height: 44px; min-height: 44px; }
