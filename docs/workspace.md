@@ -1136,7 +1136,10 @@ her account is general.
   them: the SQLite binding loads its prebuilt `prebuilds/linux-x64.node`. The tests that need FUSE or a tun device
   (encrypted homes, rewind, uploads, network switches, the SSH helper)
   skip there, since her sandbox has neither; CI runs them with
-  `LYRICA_SANDBOX_TESTS=require`, so they can't skip.
+  `LYRICA_SANDBOX_TESTS=require`, so they can't skip. The e2e tests use
+  Playwright's own Chromium where it is downloaded and can run, and the
+  sandbox's (`CHROME_PATH`) where it isn't or can't: on NixOS, which has
+  no `/lib64/ld-linux-x86-64.so.2`, the download can't start.
 - **CI wakes.** A pull request she opens through the run's relay
   (`gh pr create`, `tea pr create`, or the REST create) is watched (DESIGN.md "CI wakes"): when every check on its head commit
   finishes, or someone else reviews or comments, the thread gets one turn,

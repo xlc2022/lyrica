@@ -1,4 +1,5 @@
-import { defineConfig, devices } from "@playwright/test";
+import { existsSync } from "node:fs";
+import { chromium, defineConfig, devices } from "@playwright/test";
 
 // Each project gets its own lyricad (web/e2e/serve.ts), so every one starts locked, and the projects run side by
 // side, one worker each: each web-*.spec.ts file at phone and at desktop size, and the setup page. Keep one spec
@@ -18,6 +19,15 @@ const servers = [
   { name: "setup", port: BASE + SPECS.length * 2, use: { viewport: { width: 1280, height: 800 } }, testMatch: /setup\.spec\.ts/, setup: true },
 ];
 
+/**
+ * Playwright's own Chromium where it can run; a Lyrica sandbox's (CHROME_PATH) where it can't: none downloaded (the
+ * sandbox skips the download when it has one), or no glibc loader at the usual path, as on NixOS. CI sets no CHROME_PATH.
+ */
+function browser(): string | undefined {
+  const own = existsSync(chromium.executablePath()) && existsSync("/lib64/ld-linux-x86-64.so.2");
+  return own ? undefined : process.env.CHROME_PATH || undefined;
+}
+
 export default defineConfig({
   testDir: "e2e",
   workers: servers.length,
@@ -30,7 +40,7 @@ export default defineConfig({
     trace: "retain-on-failure",
     // Dictation records from a fake microphone, and Read aloud plays without a gesture.
     permissions: ["microphone"],
-    launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"] },
+    launchOptions: { executablePath: browser(), args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"] },
   },
   projects: servers.map((s) => ({ name: s.name, testMatch: s.testMatch, use: { ...s.use, baseURL: `http://127.0.0.1:${s.port}` } })),
   webServer: servers.map((s) => ({
