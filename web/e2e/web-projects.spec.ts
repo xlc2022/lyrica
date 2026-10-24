@@ -446,11 +446,17 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await expect(page.getByText("Suggested.")).toBeVisible();
   const card = page.getByRole("group", { name: "Suggested threads" });
   await expect(card.getByRole("listitem")).toHaveCount(2);
+  // On a failure the message lists the start requests the page made and what each got back (seen once in CI:
+  // Beta never started after Start all, with no error shown, and Start then Start all never fails locally).
+  const starts: string[] = [];
+  page.on("response", async (r) => {
+    if (r.url().includes("/suggestions/")) starts.push(`${r.status()} ${r.request().postData()}${r.ok() ? "" : ` ${await r.text().catch(() => "")}`}`);
+  });
   await card.getByRole("button", { name: "Start" }).first().click();
   await expect(page.locator(".tcard")).toHaveCount(1);
   await expect(page.locator(".tcard").first()).toContainText("Alpha");
   await card.getByRole("button", { name: "Start all" }).click();
-  await expect(page.locator(".tcard")).toHaveCount(2);
+  await expect(page.locator(".tcard")).toHaveCount(2).catch((err: Error) => { throw new Error(`${err.message}\nStart requests: ${starts.join("; ") || "none"}`); });
   await expect(card.getByRole("link", { name: "Open" })).toHaveCount(2);
   const fact = page.getByRole("button", { name: /^Threads/ });
   await expect(fact).toContainText("2");
