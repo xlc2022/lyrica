@@ -243,6 +243,22 @@ describe("Git accounts and repositories", () => {
     expect(settings.gitAccount("home")!.state?.kind).toBe("signedIn");
   });
 
+  it("moves a repository its parent moves to another account in the children, rather than taking it away", async () => {
+    const { settings } = await withAccounts();
+    const lyrica = (account: string) => ({ name: "xlc2022/lyrica", account });
+    settings.setThread("chat", "general", { repositories: [lyrica("ada"), { name: "ada/notes", account: "ada" }] });
+    settings.inheritSettings("chat", "review", "general", {});
+    settings.inheritSettings("review", "sub", "general", {});
+    settings.inheritSettings("chat", "narrow", "general", { repositories: [{ name: "ada/notes", account: "ada" }] });
+    settings.setThread("chat", "general", { repositories: [lyrica("bot"), { name: "ada/notes", account: "ada" }] });
+    for (const id of ["review", "sub"]) expect(settings.effective(id).repositories).toEqual([lyrica("bot"), { name: "ada/notes", account: "ada" }]);
+    // A child that didn't have it doesn't get it.
+    expect(settings.effective("narrow").repositories).toEqual([{ name: "ada/notes", account: "ada" }]);
+    // Taken away is still taken away.
+    settings.setThread("chat", "general", { repositories: [] });
+    expect(settings.effective("review").repositories).toEqual([]);
+  });
+
   it("gives a repository's token only to a sandbox of its pool, in a thread that has it, that can reach its host, and each account only its own", async () => {
     const { workspace, settings, thread } = await withAccounts();
     // What each run's relay holds, as gitEnv shows it with the real tokens (a run gets placeholders).

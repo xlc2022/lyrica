@@ -874,7 +874,9 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   granted like folders: the Repositories row in the thread drawer and
   under This chat on Project settings, so a project's threads get the
   project chat's list or fewer. A child or subagent gets a subset, never
-  more, and a parent's change narrows its running children at once. She can
+  more, and a parent's change narrows its running children at once. A
+  repository the parent moves to another Git account moves in its
+  children too, rather than leaving them. She can
   add one herself with `add_repository`, from an account of the thread's
   pool; it always asks the user with a permission card, and is off in Plan
   mode or when the pool has no Git account.

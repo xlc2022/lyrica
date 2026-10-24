@@ -846,6 +846,19 @@ describe("code thread worktrees", () => {
     expect(s.model.requests.filter(isChild).map(said).join("\n")).toContain("No worktree");
   });
 
+  it("gives no reason for a thread that has only repositories, since it works in its own clones", async () => {
+    const s = await projectRepo();
+    s.ws.addGitAccount({ name: "ada", kind: "github", host: "github.com", account: "ada", token: "ada-token", pool: "general", offNetwork: true });
+    s.ws.setThread(s.thread.id, "general", { grants: [], repositories: [{ name: "ada/track", account: "ada" }] });
+    const cloned = (await s.make("Cloned")).threads![0]!.id;
+    await s.idle(cloned);
+    expect(s.ws.threadWork(cloned)?.reason).toBeUndefined();
+    s.ws.setThread(s.thread.id, "general", { repositories: [] });
+    const bare = (await s.make("Bare")).threads![0]!.id;
+    await s.idle(bare);
+    expect(s.ws.threadWork(bare)?.reason).toContain("no writable host folders");
+  });
+
   it.each(["mid-merge", "no sandbox"])("starts with a reason when there is %s", async (why) => {
     const s = await projectRepo();
     if (why === "mid-merge") writeFileSync(join(s.repo, ".git", "MERGE_HEAD"), s.git("rev-parse", "HEAD"));

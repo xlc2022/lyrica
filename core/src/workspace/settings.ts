@@ -505,6 +505,7 @@ export class WorkspaceSettings {
    * folders for `pool`, and a subagent's settings against its parent's.
    */
   setThread(threadId: string, pool: Pool, change: Partial<Omit<ThreadWorkspace, "parent">>): ThreadWorkspace {
+    const before = this.thread(threadId).repositories;
     const next = { ...this.thread(threadId), ...change };
     // Folders, machines, repositories and MCP servers a parent has since taken away go with any other change, rather than refusing it.
     if (next.parent && (change.grants === undefined || change.machines === undefined || change.repositories === undefined || change.mcpServers === undefined)) {
@@ -539,8 +540,39 @@ export class WorkspaceSettings {
     }
     if (next.parent) this.checkNarrower(next.parent, pool, next);
     this.write(threadId, next);
+    this.carryAccounts(threadId, before, next.repositories);
     this.narrowChildren(threadId);
     return next;
+  }
+
+  /**
+   * A repository moved to another Git account keeps its place in the
+   * thread's subagents and child threads: theirs moves too, rather than
+   * being taken away for not matching.
+   */
+  private carryAccounts(threadId: string, before: ThreadRepository[], after: ThreadRepository[]): void {
+    const moved = new Map<string, { from: string; to: string }>();
+    for (const r of before) {
+      if (after.some((a) => sameRepository(a, r))) continue;
+      const to = after.find((a) => a.name === r.name);
+      if (to) moved.set(`${r.name}\n${r.account}`, { from: r.account, to: to.account });
+    }
+    if (!moved.size) return;
+    const carry = (id: string, depth: number): void => {
+      if (depth > 100) return;
+      for (const { thread_id: child } of this.db.prepare("SELECT thread_id FROM thread_workspaces WHERE parent = ?").all(id) as { thread_id: string }[]) {
+        const own = this.thread(child);
+        const repositories: ThreadRepository[] = [];
+        for (const r of own.repositories) {
+          const m = moved.get(`${r.name}\n${r.account}`);
+          const repo = m ? { name: r.name, account: m.to } : r;
+          if (!repositories.some((o) => sameRepository(o, repo))) repositories.push(repo);
+        }
+        if (JSON.stringify(repositories) !== JSON.stringify(own.repositories)) this.write(child, { ...own, repositories });
+        carry(child, depth + 1);
+      }
+    };
+    carry(threadId, 0);
   }
 
   /**
