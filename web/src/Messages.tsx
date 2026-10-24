@@ -249,7 +249,8 @@ function StoredMessage({ m, env, you, cards, told, folded, shown }: { m: Message
   if (m.role === "notice") {
     return <>{m.parts.map((p, i) => (p.type === "delegation"
       ? <Notice key={i} text={p.text} status={p.status} threads={p.threads} env={env} />
-      : <Notice key={i} text={p.type === "text" ? p.text : p.type === "compacted" ? compactedLabel(p) : ""} env={env} />))}{after}</>;
+      : p.type === "compacted" ? <CompactedMarker key={i} part={p} env={env} />
+      : <Notice key={i} text={p.type === "text" ? p.text : ""} env={env} />))}{after}</>;
   }
   return (
     <>
@@ -705,7 +706,8 @@ const THREADS_HEADS: Record<string, string> = {
 
 /** A `threads` call: a child thread started (with its checklist's count and current step), messaged or listed, linking to it. */
 function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {
-  const args = (part.args ?? {}) as { action?: string; title?: string; task?: string; text?: string; to?: string };
+  const args = (part.args ?? {}) as { action?: string; title?: string; task?: string; text?: string; to?: string; summary?: string };
+  if (args.action === "compact" && args.summary) return <CompactionCard part={part} summary={args.summary} env={env} />;
   const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
   // A message names the thread it went to (known once it's sent) by its current title: "a thread" until then, and a forgotten one has no Open.
   const to = args.action === "message" && args.to !== "parent" ? part.threads?.[0] : undefined;
@@ -730,6 +732,39 @@ function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" 
       {child?.steps && child.state !== "resolved" && <StepLine steps={child.steps} />}
       {(args.task ?? args.text) && <div className="prose"><HerProse text={(args.task ?? args.text)!} env={env} /></div>}
       {part.isError && <ToolError text={String(part.result ?? "")} env={env} />}
+    </div>
+  );
+}
+
+/**
+ * Her compaction (docs/ux.md §6): the card's head opens to the summary she wrote, read from her stored call,
+ * in a box that scrolls past 320 px. Closed until tapped.
+ */
+function CompactionCard({ part, summary, env }: { part: Extract<MessagePart, { type: "tool" }>; summary: string; env: Env }) {
+  const open = env.openTools.has(part.toolCallId);
+  const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
+  return (
+    <div className="subagent threads-card compaction">
+      <button type="button" className="sub-head" aria-expanded={open} onClick={() => env.toggleTool(part.toolCallId)}>
+        <span className="status" data-state={state} aria-label={state} />
+        <b className="as-is">Compaction</b>
+        <Icon name="down" />
+      </button>
+      {open && <div className="compaction-summary prose small"><HerProse text={summary} env={env} /></div>}
+      {part.isError && <ToolError text={String(part.result ?? "")} env={env} />}
+    </div>
+  );
+}
+
+/** A stored compaction, hers or Pi's at the window's edge: a marker, Compacted · 41k → 6k, that opens to the summary that replaced the older messages. */
+function CompactedMarker({ part, env }: { part: Extract<MessagePart, { type: "compacted" }>; env: Env }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="marker" data-type="compacted">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span>{compactedLabel(part)}</span>{part.summary && <Icon name="down" />}
+      </button>
+      {open && part.summary && <div className="marker-body compaction-summary"><div className="prose small"><HerProse text={part.summary} env={env} /></div></div>}
     </div>
   );
 }
@@ -1109,7 +1144,7 @@ function useCountdown(iso: string) {
 }
 
 const tokens = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
-/** A compaction as one line until the Web UI 2 thread's marker, which expands to the summary. */
-function compactedLabel(p: { before: number; after?: number }): string {
-  return `Compacted · ${tokens(p.before)}${p.after !== undefined ? ` → ${tokens(p.after)}` : ""}`;
+/** A stored compaction's marker label: tokens before and, when known, after, in mono. */
+function compactedLabel(p: { before: number; after?: number }): ReactNode {
+  return <>Compacted · <span className="num">{tokens(p.before)}</span>{p.after !== undefined && <> → <span className="num">{tokens(p.after)}</span></>}</>;
 }

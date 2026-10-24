@@ -1050,7 +1050,10 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   ("No model can be reached. Your message goes when one is back."), with
   the models tried in its tooltip; the message shows as waiting, not as
   sent, until a turn starts.
-- A stored compaction shows as a one-line notice, **Compacted · 41k → 6k**.
+- A stored compaction shows as a one-line marker, **Compacted · 41k → 6k**,
+  that opens to the summary stored with it. Her own `threads` compact call
+  is a **Compaction** card whose head opens to the summary in its arguments.
+  Both read what the session already holds; nothing else is written.
 - A message sent during a turn waits as a follow-up and shows as waiting.
   Stop aborts the turn; `lyricad` drops the waiting follow-ups, so their text
   goes back into the composer. A message from another thread or a look
