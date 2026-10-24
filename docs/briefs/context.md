@@ -98,8 +98,9 @@ compaction marker shown as one line in the web UI.
 - **Pinned messages** are built: they are read from the store word for word
   into a `pinned` section, so compaction can't summarise them away, and the
   breakdown's `pinned` part counts them (`extension/src/assemble.ts`).
-- **A compaction marker that expands**: Web UI 2. (The context meter, the
-  facts line's Context and its popover, is built.)
+- **A compaction marker that expands** is built: the stored marker and her
+  Compaction card both open to the summary (docs/web.md). The context meter,
+  the facts line's Context and its popover, is built too.
 - **Speed in the web UI**, which the API already sends: the tok/s and prompt
   tok/s columns in Recent calls (each call's `pace`), and each copy's median
   speed in the text library (a library copy's `speed`). Web UI 2.

@@ -896,6 +896,35 @@ test("after a reply the header's Context shows the percent, and its popover list
   }
 });
 
+test("her compaction's card and the stored marker open to the summary, closed until tapped", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "Plant the tomatoes first");
+  await expect(page.getByText("You said: Plant the tomatoes first")).toBeVisible();
+  // Over the 20k tokens Pi keeps, so the first exchange is compacted.
+  await send(page, `Notes on the beds. ${"The beds are by the fence. ".repeat(4500)}`);
+  await expect(page.getByText("You said: Notes on the beds.")).toBeVisible();
+  // Long enough (400 characters) to be hers rather than notes for Pi's own.
+  const summary = `We are planning the garden. ${"The tomatoes go in the sunny bed by the fence, and the beans follow. ".repeat(7)}Open question: when to water.`;
+  await send(page, `compact: ${summary}`);
+  await expect(page.getByText("Compacting.")).toBeVisible();
+  const card = page.locator(".compaction");
+  const head = card.getByRole("button", { name: "Compaction" });
+  await expect(head).toHaveAttribute("aria-expanded", "false");
+  await expect(card.getByText("Open question: when to water.")).toHaveCount(0);
+  await head.click();
+  await expect(head).toHaveAttribute("aria-expanded", "true");
+  await expect(card.getByText("Open question: when to water.")).toBeVisible();
+  // The stored compaction, once the messages reload after the turn.
+  const marker = page.locator('.marker[data-type="compacted"] > button');
+  await expect(marker).toHaveText(/^Compacted · \S+/);
+  await expect(marker).toHaveAttribute("aria-expanded", "false");
+  await marker.click();
+  await expect(page.locator('.marker[data-type="compacted"] .marker-body')).toContainText("Open question: when to water.");
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/compaction-${page.viewportSize()!.width}.png`, fullPage: true });
+});
+
 test("a thread's checklist: Checklist and its count after Context, a popover of the steps with their marks that a new list redraws in place, the child's card in its parent, and Checklists off in Appearance hides it", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");
