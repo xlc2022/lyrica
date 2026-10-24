@@ -868,8 +868,12 @@ Custom roles override built-ins by name, except `claude`.
   didn't-start notes wake an idle parent for one turn. Plain progress and
   subagent results don't wake an idle parent. Child deliveries carry
   `childDelivery: true` so `deliverVia` appends them with `triggerTurn: false`;
-  during a child-triggered parent turn `joinRunning: true` steers them into
-  that turn. `ChildThreads` coalesces pending/running wakes per parent,
+  during a child-triggered parent turn `joinRunning: true` steers a question,
+  `needsYou` or failure note into that turn; a report that comes during it
+  wakes the parent again after. A report's wake waits `CHILD_WAKE_MS`
+  (60 s, `LyricadOptions.childWakeMs`) from the first one, so reports close
+  together wake it once; a question, `needsYou` or failure note starts it at
+  once. `ChildThreads` coalesces pending/running wakes per parent,
   reserves an at-once slot, waits through project pause/hidden, and invokes
   `HostedThread.wakeChild`: a hidden custom message with `triggerTurn: true`,
   through the ordinary model preparation, turn events and storage. Pending

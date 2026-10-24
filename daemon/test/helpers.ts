@@ -41,7 +41,8 @@ export async function daemon(rt: Awaited<ReturnType<typeof runtime>>, opts: Part
       if (!secret) throw new Error("bad sealed credential");
       return Buffer.from(secret);
     }, (line) => logs.push(line)),
-    log: (l) => logs.push(l), ...opts,
+    // A child's report wakes its parent at once unless a test is about batching them.
+    log: (l) => logs.push(l), childWakeMs: 0, ...opts,
   });
   await d.start();
   let stopped = false;

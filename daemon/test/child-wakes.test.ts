@@ -8,7 +8,7 @@ import type { ThreadHost } from "../src/hosted.ts";
 const close: (() => void)[] = [];
 afterEach(() => { for (const fn of close.splice(0)) fn(); });
 
-async function setup() {
+async function setup(wakeMs = 0) {
   const keyring = await freshKeyring();
   const users = new Users(keyring);
   const user = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
@@ -24,6 +24,7 @@ async function setup() {
   const busy = new Set<string>();
   const wakes: string[] = [];
   const notices: string[] = [];
+  const joined: boolean[] = [];
   const replies: string[] = [];
   const sends: string[] = [];
   let childWakeTurn = false;
@@ -39,14 +40,14 @@ async function setup() {
   } as unknown as ThreadHost;
   let paused = false;
   const children = new ChildThreads({ users, memory, models, workspace, host: () => host,
-    delegation: { deliver: (_ref: unknown, text: string) => notices.push(text) } as unknown as Delegation,
-    paused: () => paused, limits: { concurrency: 1 } });
+    delegation: { deliver: (_ref: unknown, text: string, d: { joinRunning: boolean }) => { notices.push(text); joined.push(d.joinRunning); } } as unknown as Delegation,
+    paused: () => paused, limits: { concurrency: 1 }, wakeMs });
   children.adopt(user.id, "general", child.id, parent.id, undefined);
   const from = { user, pool: "general", threadId: child.id, interface: "web", view } as ThreadContext;
   const flush = async () => { await new Promise<void>(r => setImmediate(r)); };
   const end = () => { busy.delete(parent.id); children.turn(user.id, "general", parent.id, false); children.ended(user.id, "general", parent.id, "done"); };
   const parentFrom = { ...from, threadId: parent.id } as ThreadContext;
-  return { children, parentFrom, users, user, parent, child, from, busy, wakes, notices, replies, sends, host, flush, end, pause: (p: boolean) => { paused = p; } };
+  return { children, parentFrom, users, user, parent, child, from, busy, wakes, notices, joined, replies, sends, host, flush, end, pause: (p: boolean) => { paused = p; } };
 }
 
 describe("child wake guards", () => {
@@ -115,6 +116,35 @@ describe("child wake guards", () => {
     s.children.ended(s.user.id, "general", s.child.id, "done");
     await s.flush();
     expect(s.wakes).toEqual([s.parent.id]);
+  });
+
+  it("batches reports close together into one wake, while a question or an error wakes at once", async () => {
+    const s = await setup(80);
+    const other = s.parentFrom.view.own.createThread({ interface: "web", parent: s.parent.id, child: true });
+    s.children.adopt(s.user.id, "general", other.id, s.parent.id, undefined);
+    const report = async (from: ThreadContext, text: string) => {
+      await s.children.message(from, "parent", text);
+      s.children.ended(s.user.id, "general", from.threadId, "done");
+      await s.flush();
+    };
+    const otherFrom = { ...s.from, threadId: other.id } as ThreadContext;
+    await report(s.from, "Beds planned.");
+    await report(otherFrom, "Seeds ordered.");
+    expect(s.wakes).toEqual([]);
+    await expect.poll(() => s.wakes).toEqual([s.parent.id]);
+    // A report during that wake's turn doesn't join it (a model call of its own): it wakes the parent again after, batched.
+    await report(s.from, "Beds dug.");
+    expect(s.joined.at(-1)).toBe(false);
+    s.end();
+    expect(s.wakes).toHaveLength(1);
+    await expect.poll(() => s.wakes).toHaveLength(2);
+    s.end();
+    // A question wakes at once, and joins a running wake's turn.
+    expect(await s.children.message(otherFrom, "parent", "Which seeds?", { question: true })).toBe("wakes");
+    await s.flush();
+    expect(s.wakes).toHaveLength(3);
+    await s.children.message(s.from, "parent", "Tulips or roses?", { question: true });
+    expect(s.joined.at(-1)).toBe(true);
   });
 
   it("a bad end wakes once until the user writes in the child", async () => {
