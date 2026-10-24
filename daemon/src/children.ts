@@ -97,7 +97,7 @@ export class ChildThreads implements ThreadsHost {
    * `at`: when it may start (a report waits `CHILD_WAKE_MS`). While it runs, `unseen`: children whose notices were
    * stored without joining its turn; `late`: those of them that reported, which wake it again after.
    */
-  private readonly parentWakes = new Map<string, { userId: string; pool: Pool; parent: string; children: Set<string>; running: boolean; at: number; unseen: Set<string>; late: Set<string> }>();
+  private readonly parentWakes = new Map<string, { userId: string; pool: Pool; parent: string; children: Set<string>; running: boolean; at: number; timer?: NodeJS.Timeout; unseen: Set<string>; late: Set<string> }>();
   /** Turns a child-woken parent started in each child since the person last wrote in either, by `user/pool/child`. */
   private readonly rounds = new Map<string, number>();
   /** Projects whose last turn was stopped, by `user/pool/project`: the idle watch leaves them alone until a turn there ends otherwise. */
@@ -576,14 +576,24 @@ export class ChildThreads implements ThreadsHost {
   /**
    * Whether a wake-up may start a turn in the thread now. A child waits for
    * a slot under the at-once limit, unless its turn is running; a queued
-   * thread waits for its start, and a paused or hidden project's thread for
-   * the project to resume.
+   * thread waits for its start, and a paused or hidden project's thread, or
+   * its project chat, for the project to resume.
    */
   mayWake(userId: string, pool: Pool, thread: string): boolean {
     const row = this.row(userId, pool, thread);
-    if (!row) return true;
+    if (!row) return !this.pausedProject(userId, pool, thread);
     if (row.queued || this.o.paused?.(userId, pool, row.parent)) return false;
     return this.o.host().busy(userId, pool, thread) || this.workingCount(userId) < this.limits.concurrency;
+  }
+
+  /** A project chat whose project is paused or hidden; false for any other thread. Locked counts as paused: nothing starts. */
+  private pausedProject(userId: string, pool: Pool, thread: string): boolean {
+    if (!this.o.paused) return false;
+    try {
+      const view = this.o.memory.openThreadView(userId, pool);
+      try { if (!view.own.getThread(thread)?.project) return false; } finally { view.close(); }
+    } catch { return true; }
+    return this.o.paused(userId, pool, thread);
   }
 
   /** Routine turns share the child at-once budget, including standalone chats. */
@@ -1052,7 +1062,6 @@ export class ChildThreads implements ThreadsHost {
     } else {
       const ms = wake === "now" ? 0 : this.o.wakeMs ?? CHILD_WAKE_MS;
       this.parentWakes.set(key, { userId, pool, parent, children: new Set([child]), running: false, at: Date.now() + ms, unseen: new Set(), late: new Set() });
-      if (ms > 0) setTimeout(() => this.drainWakes(userId), ms).unref();
     }
     this.drainWakes(userId);
   }
@@ -1060,7 +1069,13 @@ export class ChildThreads implements ThreadsHost {
   /** Pending notices wait for a slot or project resume; only metadata lives here. */
   drainWakes(userId?: string): void {
     for (const [key, wake] of this.parentWakes) {
-      if (wake.running || wake.at > Date.now() || this.locking.has(wake.userId) || (userId && wake.userId !== userId)) continue;
+      if (wake.running || this.locking.has(wake.userId) || (userId && wake.userId !== userId)) continue;
+      const wait = wake.at - Date.now();
+      if (wait > 0) {
+        // A timer can fire a little early by the clock: it checks again, and sets another for what is left.
+        wake.timer ??= setTimeout(() => { wake.timer = undefined; this.drainWakes(wake.userId); }, wait).unref();
+        continue;
+      }
       try {
         if (this.o.host().draining || this.o.paused?.(wake.userId, wake.pool, wake.parent)) continue;
         if (this.o.host().busy(wake.userId, wake.pool, wake.parent)) continue;

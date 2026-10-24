@@ -655,7 +655,10 @@ A project chat's child threads are the project's threads
   field is silently applied. Selected recent work is a bounded read for
   one turn, and never widens `threads read` beyond project membership.
 - **Paused** (or hidden): working threads stop, nothing new starts, and
-  messages to its threads are refused.
+  messages to its threads are refused. Its threads and its project chat
+  take no wake-up, routine, background command's wake or plan-limit resume
+  (`ChildThreads.mayWake`); those wait, and their notices stay stored, until
+  it resumes. The person's own message to the project chat still runs.
 - A rewind of the project chat that removes a thread's anchor leaves the
   thread, unanchored.
 - **Watching threads** (`daemon/src/watch.ts`; the project setting

@@ -71,6 +71,19 @@ describe("child wake guards", () => {
     db.close();
   });
 
+  it("a paused project's chat takes no wake-up, plan-limit resume or job wake until it resumes", async () => {
+    const s = await setup();
+    const other = s.parentFrom.view.own.createThread({ interface: "web" });
+    expect(s.children.mayWake(s.user.id, "general", s.parent.id)).toBe(true);
+    s.pause(true);
+    expect(s.children.mayWake(s.user.id, "general", s.parent.id)).toBe(false);
+    expect(s.children.mayWake(s.user.id, "general", s.child.id)).toBe(false);
+    // A thread outside any project isn't held.
+    expect(s.children.mayWake(s.user.id, "general", other.id)).toBe(true);
+    s.pause(false);
+    expect(s.children.mayWake(s.user.id, "general", s.parent.id)).toBe(true);
+  });
+
   it("needsYou waits while paused, then wakes on resume", async () => {
     const s = await setup();
     s.pause(true);
