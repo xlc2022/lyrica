@@ -139,12 +139,12 @@ export async function noHorizontalScroll(page: Page) {
   expect(found.past).toEqual([]);
 }
 
-/** route.fetch, tried once more if a kept-alive connection to lyricad was reset, as a browser retries such a GET itself. */
+/** route.fetch, tried once more if lyricad closed a kept-alive connection under it (ECONNRESET, or "socket hang up" when no byte came back), as a browser retries such a GET itself. */
 export async function fetchReal(route: Route) {
   try {
     return await route.fetch();
   } catch (err) {
-    if (!String(err).includes("ECONNRESET")) throw err;
+    if (!/ECONNRESET|socket hang up/.test(String(err))) throw err;
     return route.fetch();
   }
 }
