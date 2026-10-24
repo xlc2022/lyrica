@@ -829,7 +829,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **SearXNG address** in mono, without its password (a basic-auth password
   is kept when the user@host is unchanged), one Save, and Reachable or Unreachable as a
   dot and a word, what failed as its tooltip; `GET`/`PUT …/admin/web-search`),
-  **Updates**, **Persona**: the persona changes that users sent on
+  **Updates**, **Persona**: the persona changes that users sent on, the
+  file now and the proposed text side by side, rendered as Markdown
   (who sent them, whether they edited them, and a confirmation when the file
   changed since), and **Reset** (`src/Wipe.tsx`): **Wipe memory…** opens a
   dialog with its sentence, **Keep everyone's skills** (ticked; `keepSkills`), an unticked "I understand this can't be undone",

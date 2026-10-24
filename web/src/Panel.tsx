@@ -27,7 +27,7 @@ import { PageHead, type ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
 import { WebSearchSection } from "./WebSearch.tsx";
 import { WipeSection } from "./Wipe.tsx";
-import { browserZone, Confirm, ErrorText, Switch, useAction, useLoad } from "./ui.tsx";
+import { browserZone, Confirm, ErrorText, Prose, Switch, useAction, useLoad } from "./ui.tsx";
 
 export const PRESETS: Record<string, Pronouns> = {
   "she/her": { subj: "she", obj: "her", poss: "her", possPro: "hers", refl: "herself" },
@@ -567,8 +567,8 @@ function ProposalsSection({ ctx }: { ctx: ShellContext }) {
             {p.edited && <p className="meta muted">{who(p.sentBy)} changed its text before sending it: the words are theirs.</p>}
             <p>{p.reason}</p>
             <div className="diff">
-              <div><h4>Now</h4><pre>{p.current || "(new topic)"}</pre></div>
-              <div><h4>Proposed</h4><pre>{p.text}</pre></div>
+              <div><h4>Now</h4>{p.current ? <div className="prose small"><Prose text={p.current} /></div> : <p className="muted">(new topic)</p>}</div>
+              <div><h4>Proposed</h4><div className="prose small"><Prose text={p.text} /></div></div>
             </div>
             {p.stale ? (
               <div className="stack">
