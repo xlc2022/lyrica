@@ -48,8 +48,8 @@ test("a reply that lands while scrolled up shows a jump-to-latest control that t
   await jump.click();
   // Ends at the bottom, where the control is gone.
   await expect.poll(async () => scroll.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThanOrEqual(2);
-  await shot("jump-to-latest-bottom");
   await expect(jump).toHaveCount(0);
+  await shot("jump-to-latest-bottom");
   await noHorizontalScroll(page);
 });
 
