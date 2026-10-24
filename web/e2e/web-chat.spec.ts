@@ -591,7 +591,7 @@ test("removing turns that did things asks first, with what goes", async ({ page,
 });
 
 test("a child thread nests under its parent, opens from its card, and goes with its parent when asked", async ({ page, baseURL }) => {
-  await enter(page, baseURL!);
+  const userId = await enter(page, baseURL!);
   await newThread(page, "General");
   await send(page, "start: Seed list");
   await expect(page.getByText("Started it.")).toBeVisible();
@@ -616,7 +616,10 @@ test("a child thread nests under its parent, opens from its card, and goes with 
   await expect(drawer.getByLabel("Also forget its child thread")).toBeChecked();
   await drawer.getByRole("button", { name: "Forget it" }).click();
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
-  await expect(page.locator(".side").getByText("Seed list")).toHaveCount(0);
+  // On a failure the message says whether the server still lists the child, or only the sidebar does.
+  const listed = async () => ((await page.evaluate(async (path) => (await fetch(path)).json(), `/api/u/${userId}/threads`)) as { title?: string; state?: string; parent?: string }[])
+    .filter((t) => t.title === "Seed list");
+  await expect(page.locator(".side").getByText("Seed list")).toHaveCount(0).catch(async (e: Error) => { throw new Error(`${e.message}\nThe server lists: ${JSON.stringify(await listed())}`); });
   await noHorizontalScroll(page);
 });
 
@@ -632,8 +635,13 @@ test("a message to a child thread is headed by its title, cut to one line, and b
   const head = card.locator(".sub-head b");
   await expect(head).toHaveText(`Message to ${title}`);
   await expect(head).toHaveAttribute("title", `Message to ${title}`);
-  // One line, cut with an ellipsis, and Open still beside it.
-  expect(await head.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  // One line, cut with an ellipsis, and Open still beside it. On a failure the message says how the head was laid out.
+  const cut = await head.evaluate((el) => {
+    const s = getComputedStyle(el), hidden = el.closest("[hidden], details:not([open])");
+    return { cut: el.scrollWidth > el.clientWidth, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, className: el.className, whiteSpace: s.whiteSpace,
+      width: s.width, height: el.getBoundingClientRect().height, card: el.closest(".threads-card")?.getBoundingClientRect().width, hidden: !!hidden, html: el.parentElement?.outerHTML.slice(0, 600) };
+  });
+  expect(cut.cut, JSON.stringify(cut)).toBe(true);
   const open = card.getByRole("link", { name: "Open" });
   await expect(open).toBeVisible();
   // Measured in one step: the list can redraw the card between two boundingBox calls, and a detached element has none.
