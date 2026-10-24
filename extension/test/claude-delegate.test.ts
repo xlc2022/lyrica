@@ -6,6 +6,7 @@ import { Memory, Workspace, type ExecutionTarget, type ToolOps, type WorkspaceTh
 import { afterEach, describe, expect, it } from "vitest";
 import { withModels } from "../../core/test/helpers.ts";
 import { CLAUDE_CODE_LINE, Delegation, type Request, type ThreadContext } from "../src/index.ts";
+import { limited } from "../src/delegate/claude.ts";
 
 // The claude role (docs/delegation.md, "Claude Code"): a subagent that is
 // Claude Code in the parent's sandbox. A stand-in `claude` plays it: it reads
@@ -129,6 +130,8 @@ describe("the claude role", () => {
     expect(run.status).toBe("failed");
     expect(run.result).toMatch(/usage limit.*woken to continue it once the plan resets/);
     expect(s.limits).toEqual([1761300000 * 1000]);
+    // Only Claude Code's own words count, not a build's that mention a limit.
+    expect(limited("npm ERR! retry limit reached")).toBe(false);
   });
 
   it("is refused where the thread's runs don't have Claude Code, or with the internet cut off", async () => {

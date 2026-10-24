@@ -21,8 +21,8 @@ const SANDBOX_DIR = "/run/lyrica/claude";
 export interface ClaudeRun {
   /** Runs in the parent's sandbox, with Claude Code on. */
   target: ExecutionTarget;
-  /** The thread's Claude Code folder on the host (Workspace.claudeDir). */
-  dir: string;
+  /** The thread's Claude Code folder on the host (Workspace.claudeDir, which refuses while the home isn't mounted). */
+  dir: () => string;
   /** Claude Code's read-only mode, for a read-only run. */
   readOnly: boolean;
   /** Her set name, in place of Lyrica. */
@@ -47,12 +47,14 @@ export function brief(task: string, name: string): string {
 /** A Claude Code process per turn, resumed from its session for the next. Its work is stored in its thread as it streams. */
 export function claudeBody(sub: Subagent, o: ClaudeRun): SubagentBody {
   const { ctx } = sub;
-  const { host, seen } = folders(o.dir, ctx.threadId);
-  const sessionFile = join(host, "session");
+  const { seen } = folders("", ctx.threadId);
   let aborter = new AbortController();
   let last: { text: string; error?: string } = { text: "" };
   return {
     async send(said: Said) {
+      let host: string;
+      try { host = folders(o.dir(), ctx.threadId).host; } catch (err) { last = { text: "", error: `Claude Code didn't start: ${(err as Error).message}` }; return; }
+      const sessionFile = join(host, "session");
       mkdirSync(host, { recursive: true, mode: 0o700 });
       rmSync(join(host, "REPORT.md"), { force: true });
       const session = existsSync(sessionFile) ? readFileSync(sessionFile, "utf8").trim() : "";
@@ -103,7 +105,7 @@ export function claudeBody(sub: Subagent, o: ClaudeRun): SubagentBody {
       }
       last = { text: reply };
       // Its last words are in its thread already; a report goes there too, as its result.
-      if (report) appendPiMessage(ctx.view.own, ctx.threadId, claudeMessage(report));
+      if (report) appendPiMessage(ctx.view.own, ctx.threadId, claudeMessage(report), stream.parent);
     },
     // A message mid-run waits for the run to end, then resumes its session.
     steer: () => false,
@@ -133,6 +135,8 @@ class Stream {
   result?: Result;
   session?: string;
   readonly other: string[] = [];
+  /** Its thread's last entry, so each message appends without reloading the thread. */
+  parent?: string | null;
   private held = "";
   private readonly names = new Map<string, string>();
   constructor(private readonly sub: Subagent) {}
@@ -162,15 +166,15 @@ class Stream {
         const content = blocks.flatMap((b): object[] => b.type === "text" && b.text ? [{ type: "text", text: b.text }]
           : b.type === "tool_use" ? [{ type: "toolCall", id: b.id, name: b.name, arguments: b.input ?? {} }] : []);
         for (const b of blocks) if (b.type === "tool_use" && b.id && b.name) { this.names.set(b.id, b.name); this.sub.emit({ type: "tool_call", toolName: b.name, args: b.input }); }
-        if (content.length) appendPiMessage(ctx.view.own, ctx.threadId, claudeMessage("", content));
+        if (content.length) this.parent = appendPiMessage(ctx.view.own, ctx.threadId, claudeMessage("", content), this.parent);
       } else if (e.type === "user") {
         for (const b of blocks) {
           if (b.type !== "tool_result") continue;
           const text = typeof b.content === "string" ? b.content : Array.isArray(b.content) ? (b.content as Block[]).map((c) => c.text ?? "").join("\n") : "";
-          appendPiMessage(ctx.view.own, ctx.threadId, {
+          this.parent = appendPiMessage(ctx.view.own, ctx.threadId, {
             role: "toolResult", toolCallId: b.tool_use_id, toolName: this.names.get(b.tool_use_id ?? "") ?? "tool", isError: !!b.is_error, timestamp: Date.now(),
             content: [{ type: "text", text: text.length > RESULT_CHARS ? `${text.slice(0, RESULT_CHARS)}\n[… cut]` : text }],
-          });
+          }, this.parent);
         }
       } else return;
     } catch { return; /* its thread closed meanwhile */ }
@@ -179,7 +183,7 @@ class Stream {
   }
 }
 
-/** Whether Claude Code stopped on the Claude plan's usage limit. */
-export const limited = (why: string) => /usage limit|hit your limit|limit reached/i.test(why);
+/** Whether Claude Code stopped on the Claude plan's usage limit, in its own words, not a build's that happen to say "limit". */
+export const limited = (why: string) => /^(Claude AI usage limit reached|You've hit your (usage )?limit)/i.test(why.trim());
 /** When the plan resets, where Claude Code's message gives it (`…|<seconds>`). */
 const resetOf = (why: string) => { const m = /\|(\d{10})\b/.exec(why); return m ? Number(m[1]) * 1000 : undefined; };

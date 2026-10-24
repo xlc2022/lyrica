@@ -1067,7 +1067,9 @@ export class Delegation {
           // Claude Code in its sandbox, in place of a Pi session: no extensions of ours.
           if (!tools.claudeCode() || !workspace.claudeDir) throw new Error(CLAUDE_OFF);
           const target = tools.target();
-          const dir = workspace.claudeDir({ ...p, threadId: child.id, reposOf: parent.threadId });
+          const claudeDir = workspace.claudeDir.bind(workspace);
+          // Asked again at each turn, so a turn can't write into the home's bare mount point once it's locked.
+          const dir = () => claudeDir({ ...p, threadId: child.id, reposOf: parent.threadId });
           sub = new Subagent(this, run, ctx, role, CLAUDE_MODEL, true,
             (me) => claudeBody(me, {
               target, dir, readOnly: !!narrowing.readOnly, name: this.o.name?.() ?? "Lyrica",
