@@ -70,6 +70,8 @@ describe("the GitHub module", () => {
     expect(githubPullRequest(answers({ pull: { number: 7, state: "closed", merged: true, merged_by: { login: "sam" }, head: { sha: HEAD } } })).mergedBy).toBe("sam");
     const closed = githubPullRequest(answers({ pull: { number: 7, state: "closed", merged: false, merged_at: null, head: { sha: HEAD } } }));
     expect(closed.state).toBe("closed");
+    expect(closed.draft).toBeUndefined();
+    expect(githubPullRequest(answers({ pull: { number: 7, state: "open", draft: true, head: { sha: HEAD } } })).draft).toBe(true);
   });
 
   it("collects reviews and both comment kinds, keeping her own for decide to exclude", () => {

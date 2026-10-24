@@ -1447,8 +1447,8 @@ export interface RewindResponse { removed: number; subagents: number; pins: numb
 
 // --- Changes: a thread's branch against its base ---
 
-/** A thread's open pull request on a repository, as the forge watcher last saw it (docs/briefs/ci-wakes.md). */
-export interface OpenPull { repo: string; number: number; head: string; url: string; checks: { name: string; result: CheckResult | null }[] }
+/** A thread's open pull request on a repository, as the forge watcher last saw it (docs/briefs/ci-wakes.md). `draft`: marked a draft there. */
+export interface OpenPull { repo: string; number: number; head: string; url: string; draft?: true; checks: { name: string; result: CheckResult | null }[] }
 /** One checkout's changes with its pull request where the watcher knows one. `worktree`: a project thread's own checkout. */
 export interface RepositoryChangesInfo extends RepositoryChanges { pull?: OpenPull; worktree?: boolean }
 /**

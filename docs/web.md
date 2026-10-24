@@ -179,8 +179,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   count). Each row carries the thread's **chips** (`ThreadChips`, root `.tchips`, docs/ux.md
   §6 "A project's threads at a glance"), plain spans inside the row's link:
   its checklist's count from `ThreadSummary.steps`, its open pull request
-  from `ThreadSummary.pull` (the number, and the checks' dot as the changes
-  badge colours it), and `ThreadSummary.subagents`, the subagents working
+  from `ThreadSummary.pull` (the number, **Draft** muted while
+  `OpenPull.draft`, and the checks' dot as the changes badge colours it,
+  with the checks in a word for screen readers), and `ThreadSummary.subagents`, the subagents working
   for it now; a chip without anything to say is left out. The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
   This chat first, then thread links by descending tokens, and **Recent
   calls** linking to the project's filter. On a phone Tokens opens in place

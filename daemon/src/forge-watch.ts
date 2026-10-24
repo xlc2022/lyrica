@@ -256,7 +256,7 @@ export class ForgeWatcher {
     if (poll.kind === "snapshot" && poll.pull.state === "open") {
       this.codeState.set(id, {
         thread: w.thread, line: `${w.repo} PR #${w.number}: ${poll.pull.checks.map(c => `${c.name}: ${c.result ?? "pending"}`).join(", ") || "no checks reported"}`,
-        pull: { repo: w.repo, number: w.number, head: poll.pull.head, url: pullUrl(a, w), checks: poll.pull.checks.map((c) => ({ name: c.name, result: c.result })) },
+        pull: { repo: w.repo, number: w.number, head: poll.pull.head, url: pullUrl(a, w), ...(poll.pull.draft ? { draft: true as const } : {}), checks: poll.pull.checks.map((c) => ({ name: c.name, result: c.result })) },
       });
     } else this.codeState.delete(id);
     const lastState: ForgeWatchState = { head: w.head, headSince: w.headSince, notifiedHeads: w.notifiedHeads, seenReviews: w.seenReviews };

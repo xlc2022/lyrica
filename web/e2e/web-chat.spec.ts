@@ -1480,14 +1480,14 @@ test("Fallback is on by default and turns off per thread, with Use default to fo
 
 // The changes view (docs/ux.md §6): the daemon's git reads need a sandbox, so the routes are answered here with a
 // branch as a thread would have it; what the badge and the dialog make of them is the real UI.
-test("a project thread's chips: its checklist's count, its pull request with the checks' dot and its subagents, in the threads list's rows and on its card", async ({ page, baseURL }) => {
+test("a project thread's chips: its checklist's count, its pull request with Draft and the checks' dot and its subagents, in the threads list's rows and on its card", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const project = await page.evaluate(async (userId) => {
     const res = await fetch(`/api/u/${userId}/threads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pool: "general", project: true, title: "Herb garden" }) });
     return (await res.json()) as { id: string };
   }, userId);
   // The overview as the daemon would send it once the forge watcher polled a pull request and a delegate call ran: the fake model does neither.
-  const pull = { repo: "garden/controller", number: 430, head: "f50fa8601e5b4c9d8a3f2e1d0c9b8a7f6e5d4c3b", url: "https://github.com/garden/controller/pull/430", checks: [{ name: "tests", result: "passed" }, { name: "typecheck", result: null }] };
+  const pull = { repo: "garden/controller", number: 430, head: "f50fa8601e5b4c9d8a3f2e1d0c9b8a7f6e5d4c3b", url: "https://github.com/garden/controller/pull/430", draft: true, checks: [{ name: "tests", result: "passed" }, { name: "typecheck", result: null }] };
   const steps = [{ text: "Read the brief", state: "done" }, { text: "Write the plan", state: "doing" }, { text: "Check it", state: "todo" }];
   await page.route("**/overview", async (route) => {
     // The page reloads the overview on its own; one still in flight when the test ends must not fail it.
@@ -1506,7 +1506,9 @@ test("a project thread's chips: its checklist's count, its pull request with the
   await expect(card.locator(".tcard-count .link")).toHaveText("1 of 3");
   await expect(card.locator(".tchips .chip")).toHaveCount(2);
   const link = card.locator("a.chip.pull");
-  await expect(link).toHaveText("#430");
+  await expect(link).toHaveText("#430 Draft, checks running");
+  await expect(link).toHaveAccessibleName("Pull request #430, draft, checks running");
+  await expect(link.locator(".draft")).toBeVisible();
   await expect(link).toHaveAttribute("href", pull.url);
   await expect(link).toHaveAttribute("title", "Pull request #430 on garden/controller\ntests: passed\ntypecheck: running");
   await expect(link.locator(".dot")).toHaveClass(/away/);
@@ -1518,7 +1520,7 @@ test("a project thread's chips: its checklist's count, its pull request with the
   const row = page.locator(phone(page) ? ".threads-pop .thread-item" : ".threads-list .thread-item").first();
   await expect(row.locator(".chip")).toHaveCount(3);
   await expect(row.locator(".chip").nth(0)).toHaveText("1 of 3 steps done");
-  await expect(row.locator(".chip").nth(1)).toHaveText("Pull request #430");
+  await expect(row.locator(".chip").nth(1)).toHaveText("Pull request #430 Draft, checks running");
   await expect(row.locator(".chip").nth(2)).toHaveText("2 subagents");
   await expect(row.locator("a, button")).toHaveCount(0);
   await noHorizontalScroll(page);

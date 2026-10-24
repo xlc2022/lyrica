@@ -129,6 +129,7 @@ export function forgejoPullRequest(kind: Extract<ForgeKind, "forgejo" | "gitea">
     number: numOf(pull, "number", "pull"),
     state: merged ? "merged" : rawState,
     ...mergedByOf(pull.merged_by),
+    ...(pull.draft === true ? { draft: true as const } : {}),
     head: strOf(asObj(pull.head, "pull.head"), "sha", "pull.head"),
     checks: [...checks.values()],
     reviews,

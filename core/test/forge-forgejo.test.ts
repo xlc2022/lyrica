@@ -85,6 +85,8 @@ describe("the Forgejo/Gitea module", () => {
   it("reads a merged pull from the flag or the timestamp, and refuses what it can't classify", () => {
     const byFlag = forgejoPullRequest("forgejo", answers({ pull: { number: 7, state: "closed", merged: true, head: { sha: HEAD } } }));
     expect(byFlag.state).toBe("merged");
+    expect(byFlag.draft).toBeUndefined();
+    expect(forgejoPullRequest("forgejo", answers({ pull: { number: 7, state: "open", draft: true, head: { sha: HEAD } } })).draft).toBe(true);
     const byStamp = forgejoPullRequest("gitea", answers({ pull: { number: 7, state: "closed", merged: false, merged_at: "2026-10-12T12:00:00Z", head: { sha: HEAD } } }));
     expect(byStamp.state).toBe("merged");
     expect(() => forgejoPullRequest("forgejo", answers({ status: { state: "", statuses: [{ id: 1, context: "ci", status: "half-done" }] } })))

@@ -30,6 +30,8 @@ export interface ForgePullRequest {
   state: "open" | "closed" | "merged";
   /** Who merged it, when the forge says. */
   mergedBy?: string;
+  /** Marked a draft on the forge. */
+  draft?: true;
   /** Full commit hash; checks belong only to this head. */
   head: string;
   checks: ForgeCheck[];
