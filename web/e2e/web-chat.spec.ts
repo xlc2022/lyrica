@@ -668,11 +668,17 @@ test("a message to a child thread is headed by its title, cut to one line, and b
   await expect(head).toHaveText(`Message to ${title}`);
   await expect(head).toHaveAttribute("title", `Message to ${title}`);
   // One line, cut with an ellipsis, and Open still beside it. On a failure the message says how the head was laid out.
-  const cut = await head.evaluate((el) => {
-    const s = getComputedStyle(el), hidden = el.closest("[hidden], details:not([open])");
-    return { cut: el.scrollWidth > el.clientWidth, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, className: el.className, whiteSpace: s.whiteSpace,
-      width: s.width, height: el.getBoundingClientRect().height, card: el.closest(".threads-card")?.getBoundingClientRect().width, hidden: !!hidden, html: el.parentElement?.outerHTML.slice(0, 600) };
-  });
+  // Measured again while the list has just replaced the head: the stored turn takes the live one's place after
+  // "Sent it.", and a detached element measures 0 with no computed style, which read as "not cut".
+  let cut: Record<string, unknown> = {};
+  await expect(async () => {
+    cut = await head.evaluate((el) => {
+      const s = getComputedStyle(el), hidden = el.closest("[hidden], details:not([open])");
+      return { connected: el.isConnected, cut: el.scrollWidth > el.clientWidth, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, className: el.className, whiteSpace: s.whiteSpace,
+        width: s.width, height: el.getBoundingClientRect().height, card: el.closest(".threads-card")?.getBoundingClientRect().width, hidden: !!hidden, html: el.parentElement?.outerHTML.slice(0, 600) };
+    });
+    expect(cut.connected, JSON.stringify(cut)).toBe(true);
+  }).toPass({ timeout: 5000 });
   expect(cut.cut, JSON.stringify(cut)).toBe(true);
   const open = card.getByRole("link", { name: "Open" });
   await expect(open).toBeVisible();
