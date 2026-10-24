@@ -1356,7 +1356,8 @@ The machine running `lyricad` needs:
 - gocryptfs;
 - FUSE (`/dev/fuse` and `fusermount3`);
 - passt (for `pasta`), nftables, `unshare` and bash, and `/dev/net/tun`;
-- unprivileged user namespaces.
+- unprivileged user namespaces, nested (a networked run opens one inside
+  another).
 
 On NixOS the module brings them, refuses to build while
 `security.allowUserNamespaces` is off, and `nix/check-host.sh` checks the
@@ -1379,7 +1380,9 @@ nothing special.
 4. As the service user, `bwrap --unshare-all --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 -- /bin/true`
    succeeds. On Ubuntu 24.04 or later, if it fails with "Permission denied",
    set `kernel.apparmor_restrict_unprivileged_userns=0` on the Proxmox host.
-5. As the service user, `pasta --config-net -- true` succeeds.
+5. As the service user, `pasta --config-net -- true` succeeds, and so does
+   `unshare -r unshare -r true` (nested user namespaces). If the nested one
+   fails, check `user.max_user_namespaces` isn't 1 or 0.
 6. Check the self-test passes: if it fails, `lyricad` logs "network is off
    for every thread" with the reason when it unlocks (`journalctl -u
    lyricad`), and the control panel shows it. Until it's fixed, her tools
