@@ -56,12 +56,12 @@ function tunnel(relay: Relay, to: string, capability = relay.capability): Promis
 }
 
 /** An HTTPS request to `to` through the relay, trusting only the run's authority. */
-async function through(relay: Relay, to: string, path: string, authorization?: string): Promise<{ status: number; body: string }> {
+async function through(relay: Relay, to: string, path: string, authorization?: string, more: Record<string, string> = {}): Promise<{ status: number; body: string }> {
   const { socket } = await tunnel(relay, to);
   return new Promise((resolve, reject) => {
     const servername = to.replace(/:\d+$/, "");
     const req = httpsRequest({
-      host: servername, path, headers: authorization ? { authorization } : {},
+      host: servername, path, headers: { ...(authorization ? { authorization } : {}), ...more },
       createConnection: () => tlsConnect({ socket: socket!, servername, ca: relay.ca }),
     }, (res) => {
       let body = "";
@@ -137,6 +137,37 @@ describe("a run's relay for Git", () => {
       // A request with no placeholder goes as it is: a public repository's clone, say.
       expect((await through(relay, "github.com:443", "/ada/other.git/info/refs", "Bearer sk-something-else")).status).toBe(404);
       expect(seen.at(-1)!.headers.authorization).toBe("Bearer sk-something-else");
+    } finally {
+      relay.close();
+    }
+  });
+
+  it("lets a read-only repository's credential fetch and read, and refuses a push or a write through the API", async () => {
+    const relay = await openRelay({ forge: [credential({ readOnly: true })], reaches: () => true, internet: true, upstreams: { "github.com": base, "api.github.com": base } });
+    try {
+      seen.length = 0;
+      const basic = `Basic ${Buffer.from("ada:lyrica_placeholder_github").toString("base64")}`;
+      const token = "token lyrica_placeholder_github";
+      const read = [
+        await through(relay, "github.com:443", "/ada/lyrica.git/info/refs?service=git-upload-pack", basic),
+        await postThrough(relay, "github.com:443", "/ada/lyrica.git/git-upload-pack", basic, "0000"),
+        await through(relay, "api.github.com:443", "/repos/ada/lyrica/pulls", token),
+        await postThrough(relay, "api.github.com:443", "/graphql", token, JSON.stringify({ query: "query { viewer { login } }" })),
+      ];
+      expect(read.map((r) => r.status)).toEqual([404, 404, 404, 404]);
+      expect(seen.map((s) => s.url)).toEqual(["/ada/lyrica.git/info/refs?service=git-upload-pack", "/ada/lyrica.git/git-upload-pack", "/repos/ada/lyrica/pulls", "/graphql"]);
+      const refused = [
+        await through(relay, "github.com:443", "/ada/lyrica.git/info/refs?service=git-receive-pack", basic),
+        await postThrough(relay, "github.com:443", "/ada/lyrica.git/git-receive-pack", basic, "0000"),
+        await postThrough(relay, "api.github.com:443", "/repos/ada/lyrica/pulls", token, "{}"),
+        await postThrough(relay, "api.github.com:443", "/graphql", token, JSON.stringify({ query: "mutation { mergePullRequest(input: {}) { clientMutationId } }" })),
+        await postThrough(relay, "api.github.com:443", "/graphql", token, JSON.stringify([{ query: "query { viewer { login } }" }, { query: "mutation M { x }" }])),
+        await postThrough(relay, "api.github.com:443", "/graphql", token, "not json"),
+        await through(relay, "api.github.com:443", "/repos/ada/lyrica/pulls/1", token, { "x-http-method-override": "PATCH" }),
+      ];
+      expect(refused.map((r) => r.status)).toEqual([403, 403, 403, 403, 403, 403, 403]);
+      expect(refused[0]!.body).toContain("can only read ada/lyrica");
+      expect(seen).toHaveLength(4);
     } finally {
       relay.close();
     }

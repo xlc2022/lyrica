@@ -173,8 +173,10 @@ export class ChildThreads implements ThreadsHost {
         .map((g) => (req.readOnly ? { ...g, writable: false } : g));
       if (req.folders && grants.length < req.folders.length) throw new Error("a child thread can only have folders its parent has");
       // Machines are reached through bash, which no folder, read-only or network narrowing covers: a narrowed child gets none.
+      // Its repositories stay, read-only at the relay, so it can still clone, fetch and read the forge but never push.
       const noMachines = !!req.readOnly || !!req.folders || req.internet === false;
-      ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: [], mcpServers: [], claudeCode: false } : {}) });
+      const readRepos = () => ws.effective(parent.threadId).repositories.map((r) => ({ ...r, readOnly: true }));
+      ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: readRepos(), mcpServers: [], claudeCode: false } : {}) });
       if (req.code || (project && this.o.project?.(userId, parent.pool, parent.threadId)?.code)) {
         ws.setThreadWork(child.id, { ...(req.base ? { base: true } : {}), worktrees: [] });
         if (!req.base) {

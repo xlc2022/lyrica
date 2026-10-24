@@ -259,6 +259,22 @@ describe("Git accounts and repositories", () => {
     expect(settings.effective("review").repositories).toEqual([]);
   });
 
+  it("keeps a read-only repository read-only in a child, its children and its relay credential, whatever it's changed to", async () => {
+    const { settings, workspace, thread } = await withAccounts();
+    const lyrica = { name: "xlc2022/lyrica", account: "ada" };
+    settings.setThread("chat", "general", { repositories: [lyrica] });
+    settings.inheritSettings("chat", "review", "general", { repositories: [{ ...lyrica, readOnly: true }] });
+    settings.inheritSettings("review", "sub", "general", {});
+    expect(settings.effective("review").repositories).toEqual([{ ...lyrica, readOnly: true }]);
+    // Its own child can't make it writable, and nor can a change to the child itself.
+    settings.setThread("sub", "general", { repositories: [lyrica] });
+    expect(settings.effective("sub").repositories).toEqual([{ ...lyrica, readOnly: true }]);
+    settings.setThread("review", "general", { repositories: [lyrica] });
+    expect(settings.effective("review").repositories).toEqual([{ ...lyrica, readOnly: true }]);
+    expect(workspace.credentialsFor(thread("review")).forge.map((f) => f.readOnly)).toEqual([true]);
+    expect(workspace.credentialsFor(thread("chat")).forge.map((f) => f.readOnly)).toEqual([undefined]);
+  });
+
   it("gives a repository's token only to a sandbox of its pool, in a thread that has it, that can reach its host, and each account only its own", async () => {
     const { workspace, settings, thread } = await withAccounts();
     // What each run's relay holds, as gitEnv shows it with the real tokens (a run gets placeholders).

@@ -695,7 +695,8 @@ Custom roles override built-ins by name, except `claude`.
   `folders` narrows granted host folders only, not sandbox repository paths;
   an invalid folder returns that distinction and advises omitting `folders`
   to read the parent's checkouts. Read-only roles, narrowed runs and writers
-  in a worktree share those clones read-only with no forge credentials; an
+  in a worktree share those clones read-only, with the parent's repositories
+  marked `readOnly` (the relay refuses a push or an API write); an
   unnarrowed writer keeps the parent's repositories. This does not change
   repository inheritance.
 - The other actions are `status`, `wait`, `stop` and `message`, each on a
@@ -2237,11 +2238,15 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   "signedIn" | "rejected" | "unreachable", since } | null }`; `kind:
   "github"` is general only; a private account's host must resolve on this
   machine's network, checked when added and on every use. A thread's row
-  carries `repositories: { name, account }[]`; `setThread` refuses a
+  carries `repositories: { name, account, readOnly? }[]`; `setThread` refuses a
   repository whose account is missing or of the other pool, and two with
-  the same clone folder; `inheritSettings` takes a subset; `effective()`
-  keeps only repositories every ancestor grants, and a parent's change
-  narrows its running children. `Workspace`: `probeGitAccount({ kind, host,
+  the same clone folder, and keeps a child's read-only repository
+  read-only; `inheritSettings` takes a subset; `effective()` keeps only
+  repositories every ancestor grants, read-only where any ancestor's is,
+  and a parent's change narrows its running children, moving a repository
+  it moves to another account. `ForgeCredential.readOnly` has the relay
+  refuse `git-receive-pack` and every API request but GET, HEAD and a
+  GraphQL query. `Workspace`: `probeGitAccount({ kind, host,
   account, token })` checks the token against the host and saves nothing
   (`GitAccountProblem` with the state when it fails); `addGitAccount(userId,
   { …, offNetworkConfirmed? })`, `updateGitAccount`, `setGitToken`,

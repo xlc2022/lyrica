@@ -33,6 +33,8 @@ export interface ForgeCredential {
   token: string;
   /** What the run holds instead. */
   placeholder: string;
+  /** Reading only: clone, fetch and the API's reads; a push or a write through the API is refused here, whatever the token allows. */
+  readOnly?: boolean;
 }
 
 export interface RelaySpec {
@@ -108,6 +110,38 @@ function allowed(c: ForgeCredential, to: string, path: string): boolean {
   if (c.kind === "github") return host !== "github.com" && p.startsWith("/api/");
   return (c.kind === "gitea" || c.kind === "forgejo") && p.startsWith("/api/v1/");
 }
+
+/**
+ * Whether a read-only credential's request only reads: a fetch on the
+ * repository's Git paths (never `git-receive-pack`, which is a push), and on
+ * an API GET or HEAD, or a GraphQL query (checked from its body).
+ */
+function readsOnly(c: ForgeCredential, to: string, method: string, path: string): "yes" | "no" | "graphql" {
+  const p = path.toLowerCase();
+  const [route = "", query = ""] = p.split("?");
+  if (to === target(c.host) && route.startsWith(`/${c.repo.toLowerCase()}.git/`)) {
+    if (route.endsWith("/git-receive-pack") || /(^|&)service=git-receive-pack(&|$)/.test(query)) return "no";
+    if (method === "GET" || method === "HEAD") return "yes";
+    return method === "POST" && route.endsWith("/git-upload-pack") ? "yes" : "no";
+  }
+  if (method === "GET" || method === "HEAD") return "yes";
+  return method === "POST" && (route === "/graphql" || route === "/api/graphql") ? "graphql" : "no";
+}
+
+/** Whether a GraphQL request only queries: one JSON body (or a batch) whose documents hold no mutation. A body that doesn't parse is a write. */
+function graphqlReads(body: Buffer): boolean {
+  let parsed: unknown;
+  try { parsed = JSON.parse(body.toString("utf8")); } catch { return false; }
+  const docs = (Array.isArray(parsed) ? parsed : [parsed]).map((x) => (x as { query?: unknown } | null)?.query);
+  // Strings and comments can't hide an operation keyword from this: any "mutation" or "subscription" word refuses it.
+  return docs.length > 0 && docs.every((q) => typeof q === "string" && !/\b(mutation|subscription)\b/.test(q));
+}
+
+/** Headers some servers take as the real method. */
+const METHOD_OVERRIDES = ["x-http-method-override", "x-http-method", "x-method-override"];
+
+/** A GraphQL query's body is read before it goes on; anything larger is refused for a read-only credential. */
+const GRAPHQL_LIMIT = 256 * 1024;
 
 /** The Git hosts a credential is used on: its own, and GitHub's API hosts. */
 const hostsOf = (c: ForgeCredential) => target(c.host) === "github.com" && c.kind === "github"
@@ -232,7 +266,7 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
   const track = (s: Socket) => { sockets.add(s); s.on("close", () => sockets.delete(s)); s.on("error", () => s.destroy()); return s; };
 
   const forward = (to: string, path: string, req: IncomingMessage, res: ServerResponse, headers: IncomingHttpHeaders, capture?: (body: Buffer) => void,
-    onUsage?: (usage: ClaudeCodeUsage) => void) => {
+    onUsage?: (usage: ClaudeCodeUsage) => void, body?: Buffer) => {
     const base = new URL(spec.upstreams?.[to] ?? `https://${to}`);
     const request = base.protocol === "https:" ? httpsRequest : httpRequest;
     const out = request({ protocol: base.protocol, hostname: hostname(base.host), port: base.port || undefined, method: req.method, path, headers,
@@ -264,7 +298,7 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
       up.on("error", () => res.destroy());
     });
     out.on("error", () => { if (!res.headersSent) res.writeHead(502).end(); else res.destroy(); });
-    req.pipe(out);
+    if (body) out.end(body); else req.pipe(out);
   };
   const refuse = (req: IncomingMessage, res: ServerResponse, status: number, body: string, type = "text/plain") => {
     req.resume();
@@ -306,6 +340,24 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
         return refuse(req, res, 403, `This run's Git credential isn't for ${to}${path.split("?")[0]}.\n`);
       }
       if (c) headers.authorization = basic === undefined ? `${scheme} ${c.token}` : `Basic ${Buffer.from(`${basic.slice(0, basic.indexOf(":"))}:${c.token}`).toString("base64")}`;
+    }
+    if (c?.readOnly) {
+      const reads = readsOnly(c, to, String(req.method ?? "GET").toUpperCase(), path);
+      const no = () => refuse(req, res, 403, `This run can only read ${c!.repo}: ${req.method} ${to}${path.split("?")[0]} would change it.\n`);
+      // A method override would make a GET a write upstream: refused, so "GET reads" holds here, not by the forge's grace.
+      if (reads === "no" || METHOD_OVERRIDES.some((h) => req.headers[h] !== undefined)) return no();
+      if (reads === "graphql") {
+        if (req.headers["content-encoding"]) return no();
+        const chunks: Buffer[] = [];
+        let size = 0;
+        req.on("data", (d: Buffer) => { size += d.length; if (size <= GRAPHQL_LIMIT) chunks.push(d); });
+        req.on("end", () => {
+          const body = Buffer.concat(chunks);
+          if (size > GRAPHQL_LIMIT || !graphqlReads(body)) return no();
+          forward(to, path, req, res, headers, undefined, undefined, body);
+        });
+        return;
+      }
     }
     if (c && spec.onPullCreate && pullCreatePath(c, req.method, path)) forward(to, path, req, res, headers, (body) => notePullCreate(c!, body, spec.onPullCreate!));
     else forward(to, path, req, res, headers);

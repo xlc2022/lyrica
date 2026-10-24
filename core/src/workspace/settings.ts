@@ -113,7 +113,12 @@ export interface MachineConfig {
 export interface MachineState { kind: "online" | "unreachable" | "keyChanged"; since: string }
 
 /** A repository a thread clones: `owner/name` on its account's host (a path with more parts on some hosts), and the account's name. */
-export interface ThreadRepository { name: string; account: string }
+export interface ThreadRepository {
+  name: string;
+  account: string;
+  /** Reading only, held at the relay: a read-only or narrowed child's (docs/workspace.md, "Git accounts and repositories"). */
+  readOnly?: boolean;
+}
 
 /** What a Git account's host runs: its API and command-line client follow (`gh` for GitHub, `tea` for Gitea and Forgejo, plain git for Other). */
 export type GitKind = "github" | "forgejo" | "gitea" | "other";
@@ -493,7 +498,10 @@ export class WorkspaceSettings {
       t.claudeCode &&= up.claudeCode;
       t.grants = narrowGrants(t.grants, up.grants);
       t.machines = t.machines.filter((m) => up.machines.includes(m));
-      t.repositories = t.repositories.filter((r) => up.repositories.some((u) => sameRepository(r, u)));
+      t.repositories = t.repositories.flatMap((r) => {
+        const u = up.repositories.find((x) => sameRepository(r, x));
+        return !u ? [] : u.readOnly && !r.readOnly ? [{ ...r, readOnly: true }] : [r];
+      });
       t.mcpServers = t.mcpServers.filter((m) => up.mcpServers.includes(m));
       id = up.parent;
     }
@@ -531,6 +539,8 @@ export class WorkspaceSettings {
       if (!m) throw new Error(`no machine ${name}`);
       if (m.pool !== pool) throw new Error(`${name} is a ${m.pool} machine; a ${pool} thread can't use it`);
     }
+    // A child's read-only repository stays read-only: like a folder taken away, a change to the thread doesn't give it back.
+    if (next.parent) next.repositories = next.repositories.map((r) => (!r.readOnly && before.some((b) => b.readOnly && sameRepository(b, r)) ? { ...r, readOnly: true } : r));
     next.repositories = this.checkRepositories(next.repositories, pool);
     next.mcpServers = [...new Set((next.mcpServers ?? []).map(String))];
     for (const name of next.mcpServers) {
@@ -565,7 +575,7 @@ export class WorkspaceSettings {
         const repositories: ThreadRepository[] = [];
         for (const r of own.repositories) {
           const m = moved.get(`${r.name}\n${r.account}`);
-          const repo = m ? { name: r.name, account: m.to } : r;
+          const repo = m ? { ...r, account: m.to } : r;
           if (!repositories.some((o) => sameRepository(o, repo))) repositories.push(repo);
         }
         if (JSON.stringify(repositories) !== JSON.stringify(own.repositories)) this.write(child, { ...own, repositories });
@@ -689,7 +699,7 @@ export class WorkspaceSettings {
   private checkRepositories(list: ThreadRepository[], pool: Pool): ThreadRepository[] {
     const out: ThreadRepository[] = [];
     for (const r of list) {
-      const repo = { name: repositoryName(String(r.name ?? "")), account: String(r.account ?? "") };
+      const repo: ThreadRepository = { name: repositoryName(String(r.name ?? "")), account: String(r.account ?? ""), ...(r.readOnly ? { readOnly: true } : {}) };
       const a = this.gitAccount(repo.account);
       if (!a) throw new Error(`no Git account ${repo.account}`);
       if (a.pool !== pool) throw new Error(`${a.name} is a ${a.pool} Git account; a ${pool} thread can't use it`);

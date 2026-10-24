@@ -75,9 +75,10 @@ in the background, with its result delivered as a message.
 `folders` narrows granted **host folders**, not paths inside the sandbox such
 as `/workspace/repos/<name>`. Omit it when a scout needs to read the parent's
 repository checkouts. Read-only roles, narrowed runs (folders, read-only or
-no internet) and writers in a worktree share those clones read-only, with no
-forge credentials; an unnarrowed writer keeps the parent's repositories and
-their credentials. An invalid folder is refused with
+no internet) and writers in a worktree share those clones read-only, and
+their forge credentials are read-only at the relay (fetch and the API's
+reads; a push or an API write is refused); an unnarrowed writer keeps the
+parent's repositories and their credentials. An invalid folder is refused with
 this distinction and the omitted-`folders` alternative; it is never turned
 into a host grant.
 
