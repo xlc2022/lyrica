@@ -348,7 +348,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         <ErrorText error={sendError} />
         {/* A reply that arrived while the person was scrolled up (docs/ux.md §6): the small button that takes them back down. */}
         {showJump && (
-          <button type="button" className="jump-latest" onClick={() => { const el = scroller.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); }}>
+          <button type="button" className="jump-latest" onClick={() => { const el = scroller.current; if (el) el.scrollTop = el.scrollHeight; }}>
             <Icon name="arrow-down" /> Jump to latest
           </button>
         )}
