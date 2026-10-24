@@ -715,6 +715,12 @@ describe("code thread worktrees", () => {
       return result;
     };
     const idle = async (id: string) => { await expect.poll(() => s.d.services!.host.busy(s.rt.ada.id, "general", id)).toBe(false); };
+    // A child that ends without a report wakes its parent: that turn ends too before the next start, so it can't take the start's script.
+    const settled = async (id: string) => {
+      await idle(id);
+      await expect.poll(async () => JSON.stringify(await s.messages(s.path))).toContain(`[t:${id}] ended without a report`);
+      await s.idleParent();
+    };
     const pair = async () => {
       const services = s.d.services!;
       const view = services.memory.openThreadView(s.rt.ada.id, "general");
@@ -727,7 +733,7 @@ describe("code thread worktrees", () => {
         ]);
       } finally { view.close(); }
     };
-    return { ...s, root, repo, git, ws, workspace, make, idle, pair };
+    return { ...s, root, repo, git, ws, workspace, make, idle, settled, pair };
   }
 
   it.each([true, false])("isolates two writers and restores a resolved checkout (project: %s)", async (project) => {
@@ -851,11 +857,11 @@ describe("code thread worktrees", () => {
     s.ws.addGitAccount({ name: "ada", kind: "github", host: "github.com", account: "ada", token: "ada-token", pool: "general", offNetwork: true });
     s.ws.setThread(s.thread.id, "general", { grants: [], repositories: [{ name: "ada/track", account: "ada" }] });
     const cloned = (await s.make("Cloned")).threads![0]!.id;
-    await s.idle(cloned);
+    await s.settled(cloned);
     expect(s.ws.threadWork(cloned)?.reason).toBeUndefined();
     // A read-only child keeps the repository, read-only at the relay.
     const reader = (await s.make("Reader", { readOnly: true })).threads![0]!.id;
-    await s.idle(reader);
+    await s.settled(reader);
     expect(s.ws.effective(reader).repositories).toEqual([{ name: "ada/track", account: "ada", readOnly: true }]);
     s.ws.setThread(s.thread.id, "general", { repositories: [] });
     const bare = (await s.make("Bare")).threads![0]!.id;
