@@ -628,7 +628,7 @@ A project chat's child threads are the project's threads
   frees. The queued task is held in memory only; after a restart the project
   chat is told the thread didn't start, and a message starts it.
 - A project's thread can **message another thread of the same project**
-  (`message({ id, text })`, at most 3 per turn), marked with the sender's
+  (`message({ id, text })`, at most 3 per turn to any one thread), marked with the sender's
   `[From t:<sender>]` line, and `list` shows it the project's other threads.
   A thread outside the project is refused.
 - `ask({ question, options, recommended, context? })` asks the user on a

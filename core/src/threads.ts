@@ -173,7 +173,10 @@ export interface ThreadsLimits {
    * already takes as many requests at once as it can serve (models.md).
    */
   concurrency: number;
-  /** Messages one turn of a project's thread may send to the project's other threads. */
+  /**
+   * Messages one turn of a project's thread may send to any one of the project's other threads: a bound on
+   * flooding one thread, counted per thread so news for several (a new head for two reviewers) all goes.
+   */
   siblingMessages: number;
 }
 

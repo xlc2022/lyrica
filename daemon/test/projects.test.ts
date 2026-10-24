@@ -697,7 +697,7 @@ describe("projects", () => {
     expect((await ada.get<CallInfo[]>(`${u}/models/calls`)).body.filter((c) => c.task === "watching").map((c) => [c.pool, c.kind])).toEqual([["private", "local"], ["general", "cloud"]]);
   });
 
-  it("let a project's threads message each other, at most 3 a turn, and never a thread outside", async () => {
+  it("let a project's threads message each other, at most 3 a turn to one thread, and never a thread outside", async () => {
     const { ada, u, script, say, messages, threadPath } = await setup({ threads: { concurrency: 5 } });
     script("chat").push(start(["DNS", "dns: move DNS"], ["Backups", "backups: copy backups"]), { text: "Started." });
     script("dns").push({ text: "ready" });
@@ -724,7 +724,7 @@ describe("projects", () => {
     await ada.post(`${threadPath(dns!)}/messages`, { text: "say hello elsewhere" });
     const results = await until(() => messages(threadPath(dns!)), (m) => m.some((x) => x.role === "assistant" && JSON.stringify(x).includes("Tried.")));
     const text = JSON.stringify(results);
-    expect(text).toMatch(/sent its 3 messages to the project.s other threads/);
+    expect(text).toMatch(/sent \[t:[^\]]+\] its 3 messages, so this one wasn.t sent/);
     expect(text).toMatch(/isn't a child thread of this one, or another thread of this project/);
     expect((await messages(`${u}/threads/general/${enc(outside.id)}`)).length).toBe(0);
     // A user can't send the mark.
