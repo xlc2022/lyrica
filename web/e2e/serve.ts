@@ -9,7 +9,7 @@
 // doing <b>; todo <c>" sets the thread's checklist (then says "Checklist set."), "plan: <plan>"
 // calls propose_plan with that plan (then says "On it."), "skill: <name> | <description> | <steps>"
 // calls save_skill (then says "Saved it."), "recall: <n>" calls
-// recall n times in a row before the echo, "reply: <markdown>"
+// recall n times in a row before the echo (spaced out with "slowly"), "reply: <markdown>"
 // answers with that markdown as written (the echo's "You said: " would put a
 // fence mid-line, where it is not a fence), a look at a project's
 // threads (the `watching` call) tells the first thread it wasn't about "Heads up:
@@ -129,6 +129,8 @@ function fakeModel() {
         const since = chat.messages.length - 1 - chat.messages.map((m) => m.role).lastIndexOf("user");
         const done = since ? chat.messages.slice(-since).filter((m) => m.role === "tool").length : 0;
         if (done < recalls) {
+          // "slowly" spaces the calls out, so a test can scroll the run's box while she works.
+          if (/slowly/.test(said)) await new Promise((r) => setTimeout(r, 250));
           send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}_${done}`, type: "function", function: { name: "recall", arguments: JSON.stringify({ query: `thing ${done + 1}` }) } }] });
           send({}, "tool_calls");
           res.write(`data: ${JSON.stringify({ ...base, choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}\n\n`);

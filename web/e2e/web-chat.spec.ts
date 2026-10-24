@@ -510,6 +510,29 @@ test("a run of tool calls folds into one marker that opens to a scrolling box, a
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/message-actions-${page.viewportSize()!.width}.png` });
 });
 
+test("an open run of tool calls follows her newest call only while its box is at the bottom", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "recall: 24 slowly");
+  const run = page.locator(".marker.tool-run");
+  await run.getByRole("button", { name: /tool calls running/ }).click();
+  const box = run.locator(".run-body");
+  const calls = run.locator(".run-body .marker[data-type='tool']");
+  await expect.poll(() => box.evaluate((el) => el.scrollHeight > el.clientHeight + 40)).toBe(true);
+  // At the bottom, the box follows.
+  await expect.poll(() => box.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThanOrEqual(2);
+  // Scrolled up, new calls land below without moving it.
+  await box.evaluate((el) => { el.scrollTop = 0; });
+  const seen = await calls.count();
+  await expect.poll(() => calls.count()).toBeGreaterThan(seen + 2);
+  expect(await box.evaluate((el) => el.scrollTop)).toBe(0);
+  // Back at the bottom, it follows again.
+  await box.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  const back = await calls.count();
+  await expect.poll(() => calls.count()).toBeGreaterThan(back + 1);
+  await expect.poll(() => box.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThanOrEqual(2);
+});
+
 test("a code block in her reply shows its language and Copy, which copies its text and reads Copied, then Copy failed where the clipboard refuses", async ({ page, baseURL, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await enter(page, baseURL!);

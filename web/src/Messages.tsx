@@ -219,8 +219,14 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
   const running = streaming || tools.some((p) => p.type === "tool" && p.result === undefined);
   const failed = tools.some((p) => p.type === "tool" && p.isError);
   const body = useRef<HTMLDivElement>(null);
-  // While she works, an open box follows the newest call.
-  useEffect(() => { if (open && streaming && body.current) body.current.scrollTop = body.current.scrollHeight; }, [open, streaming, parts.length]);
+  // Whether the person left the box at its bottom; growth fires no scroll event, so this holds until they scroll.
+  const stick = useRef(true);
+  // While she works, an open box follows the newest call, but only while it sits at its bottom: scrolled up, it stays put.
+  useLayoutEffect(() => {
+    const el = body.current;
+    if (!el) { stick.current = true; return; }
+    if (streaming && stick.current) el.scrollTop = el.scrollHeight;
+  });
   const n = tools.length || parts.length;
   const word = tools.length ? (n === 1 ? "tool call" : "tool calls") : (n === 1 ? "step" : "steps");
   return (
@@ -231,7 +237,7 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
         <Icon name="down" />
       </button>
       {open && (
-        <div ref={body} className="marker-body run-body">
+        <div ref={body} className="marker-body run-body" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24; }}>
           {runs.map((r) => r.parts.map((p, i) => (p.type === "text" || p.type === "image" ? null : <Marker key={`${r.key}-${i}`} part={p} env={env} />)))}
           {streaming && <span className="writing-dots" aria-hidden="true"><i /><i /><i /></span>}
         </div>
