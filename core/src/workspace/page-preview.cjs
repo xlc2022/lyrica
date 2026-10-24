@@ -12,8 +12,15 @@ const chrome = spawn(process.env.CHROME_PATH, [
   "--allow-file-access-from-files",
   "--host-resolver-rules=MAP * ~NOTFOUND", "--disable-background-networking", "--no-first-run", "--disable-extensions",
   "--hide-scrollbars", "--mute-audio", `--window-size=${W},${H}`, "about:blank",
-], { stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"] });
+], { stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] });
 const toChrome = chrome.stdio[3], fromChrome = chrome.stdio[4];
+// The end of what Chromium printed, to say why it stopped if it does.
+let said = "";
+chrome.stderr.on("data", (d) => { said = (said + d.toString()).slice(-4000); });
+const why = () => {
+  const lines = said.split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines.length ? `: ${lines.slice(-6).join(" | ").slice(-800)}` : "";
+};
 const out = { console: [], errors: [], blocked: [], loaded: false };
 let next = 1, session;
 const waiting = new Map(), events = [];
@@ -58,7 +65,10 @@ fromChrome.on("data", (d) => {
   }
 });
 const done = (result) => { process.stdout.write(JSON.stringify(result) + "\n"); chrome.kill("SIGKILL"); process.exit(0); };
-chrome.on("exit", (code) => done({ fail: `Chromium exited (${code}) before the page was captured.` }));
+chrome.on("exit", (code, signal) => done({ ...out, fail: `Chromium exited (${code ?? signal}) before the page was captured${why()}` }));
+// A Chromium that dies resets its pipe before its exit is seen: wait a moment for the exit, rather than crash on the reset.
+const lost = () => setTimeout(() => done({ ...out, fail: `Chromium closed its connection before the page was captured${why()}` }), 2000).unref();
+for (const p of [toChrome, fromChrome]) p.on("error", lost);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   const { targetId } = await send("Target.createTarget", { url: "about:blank" });
