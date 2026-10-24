@@ -490,6 +490,26 @@ describe("delegate", () => {
     fg.stop();
   });
 
+  it("ends a subagent whose question goes unanswered, doesn't hold an update's drain while it waits, and a message continues it", async () => {
+    const s = await setup({ limits: { answerMs: 300 } });
+    s.cloud.respond((r) => (told(r).includes("Blue.") ? { text: "Painted it blue." } : { tools: [{ name: "ask_parent", args: { question: "Which colour?" } }] }));
+    const parent = s.thread();
+    const run = await s.run(parent, { task: "paint the shed" }, true);
+    expect(run.status).toBe("question");
+    // Waiting on an answer isn't work an update waits for.
+    expect(s.delegation.working()).toEqual([]);
+    await run.ended;
+    expect(run.status).toBe("stopped");
+    expect(run.result).toContain("no answer to its question after");
+    expect(s.delegation.status(parent)[0]!.status).toBe("stopped");
+    await until(() => JSON.stringify(parent.view.own.loadEntries(parent.threadId)).includes("no answer to its question"));
+
+    const more = s.delegation.message(parent, run.id, { text: "Blue." }, { budget: s.delegation.newBudget() });
+    expect(more.how).toBe("continued");
+    await more.run.ended;
+    expect(more.run.result).toBe("Painted it blue.");
+  });
+
   it("gives parallel writers in a git folder their own worktrees, and otherwise runs them one at a time", async () => {
     const host = tempDir();
     const scratch = tempDir();

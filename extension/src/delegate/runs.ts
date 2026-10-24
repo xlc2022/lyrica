@@ -38,9 +38,11 @@ export interface Limits {
   notes: number;
   /** Longest a foreground run holds its parent's turn, in milliseconds; after that it carries on in the background. */
   foregroundMs: number;
+  /** Longest a subagent waits for an answer to its question, in milliseconds; then it ends, and a message continues it. */
+  answerMs: number;
 }
 // A local model working through a large task can take an hour; one that has stopped answering shows within minutes.
-export const DEFAULT_LIMITS: Limits = { depth: 1, concurrency: 2, runsPerRequest: 8, timeoutMs: 90 * 60_000, idleMs: 5 * 60_000, notes: 3, foregroundMs: 5 * 60_000 };
+export const DEFAULT_LIMITS: Limits = { depth: 1, concurrency: 2, runsPerRequest: 8, timeoutMs: 90 * 60_000, idleMs: 5 * 60_000, notes: 3, foregroundMs: 5 * 60_000, answerMs: 60 * 60_000 };
 
 export type DelegateWorkspace = Pick<Workspace, "inheritSettings" | "forThread" | "settings"> & Partial<Pick<Workspace, "imageFiles" | "claudeDir">>;
 
@@ -401,10 +403,20 @@ export class Run {
     if (status !== "running") for (const w of this.waiters.splice(0)) w();
   }
 
-  /** Waits for an answer to a subagent's question. */
-  waitForAnswer(sub: Subagent): Promise<Said> {
+  /**
+   * Waits for an answer to a subagent's question, for up to `ms`. Unanswered,
+   * the subagent ends, so it doesn't hold its session, its folders or an
+   * update's drain; a message later continues it in its thread.
+   */
+  waitForAnswer(sub: Subagent, ms: number): Promise<Said> {
     return new Promise((answer, fail) => {
-      this.asking.push({ sub, answer, fail });
+      const timer = setTimeout(() => {
+        const why = `no answer to its question after ${Math.round(ms / 60_000)} min`;
+        sub.stop("timeout", why);
+        this.cancel(sub, why);
+      }, ms);
+      timer.unref?.();
+      this.asking.push({ sub, answer: (said) => { clearTimeout(timer); answer(said); }, fail: (err) => { clearTimeout(timer); fail(err); } });
       this.set("question");
     });
   }
@@ -691,9 +703,13 @@ export class Delegation {
     }
   }
 
-  /** The parent thread of every live run: what an update's drain waits for. */
+  /**
+   * The parent thread of every live run: what an update's drain waits for.
+   * A run whose subagents only wait for answers isn't working: a restart
+   * ends them, and a message continues them.
+   */
   working(): { userId: string; pool: Pool; threadId: string }[] {
-    return [...this.live.values()].map((r) => ({ userId: r.parent.user.id, pool: r.parent.pool, threadId: r.parent.threadId }));
+    return [...this.live.values()].filter((r) => r.status !== "question" || r.subagents.some((s) => s.status === "running")).map((r) => ({ userId: r.parent.user.id, pool: r.parent.pool, threadId: r.parent.threadId }));
   }
 
   /** Stops every live run, or one user's, and waits until they have ended. For Lock and shutdown. */
@@ -844,7 +860,7 @@ export class Delegation {
           this.deliver(sub.run.parent, `${asks(sub, reply)}\n\n${answerWith(sub)}`, { runId: sub.run.id, status: "question", threads: [sub.ctx.threadId] });
         } catch { /* locked */ }
       }
-      const answer = await sub.run.waitForAnswer(sub);
+      const answer = await sub.run.waitForAnswer(sub, this.limits.answerMs);
       reply = await sub.turn(answer);
     }
     return reply;

@@ -817,7 +817,10 @@ Custom roles override built-ins by name, except `claude`.
   wakeupMark(setAt) })` through the existing wake-up guards — never a body,
   never comment or log text. A merged or closed pull stops the watch
   with one note (`ended`), or silently when the watching account merged
-  it (`mergedBy`). One request at a time per token; `Retry-After` and
+  it (`mergedBy`). A merged pull that was its thread's last watch first
+  calls `ForgeWatchOptions.merged` → `ChildThreads.merged`: an idle project
+  thread holding the base checkout is resolved and its project chat told,
+  and the end then has no wake. One request at a time per token; `Retry-After` and
   GitHub's `x-ratelimit-reset` are honoured; polling slows to 10 minutes
   while fewer than a fifth of the token's hourly requests remain, or after
   a webhook for that repository in the last 24 hours.
@@ -841,7 +844,7 @@ Custom roles override built-ins by name, except `claude`.
   from a child; a child's message with no `to` and no `id`, or whose `id`
   names its parent, goes to the parent), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
   `last`: the latest messages of a listed, logged thread, or of one of her own subagents' threads (`PoolReader.latestEntries`), `READ_DEFAULT`
-  10, `READ_MAX` 30, formatted by `formatEntry`) and `stop` (`id`: a
+  10, `READ_MAX` 30, formatted by `formatEntry`; a parent's read of a child still working ends with `CHILD_WAKES`, as does `turn-tools`' refusal of a third identical `threads read`) and `stop` (`id`: a
   parent's child, `ThreadsHost.stop`), and `routine` (above). `later` (`minutes`, clamped to 1 to
   `WAKEUP_LIMITS.maxMinutes`, and `note`; or `cancel: true`) sets a
   wake-up for the calling thread through `ThreadsHost.later` /

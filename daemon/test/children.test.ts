@@ -854,7 +854,7 @@ describe("code thread worktrees", () => {
     expect(s.ws.threadWork(a)).toMatchObject({ base: true, worktrees: [] });
     expect(s.ws.effective(a).grants).toEqual([{ path: s.repo, writable: true }]);
     const refused = await s.make("Another scaffold", { base: true });
-    expect(refused).toMatchObject({ isError: true, result: expect.stringContaining("Scaffold") });
+    expect(refused).toMatchObject({ isError: true, result: expect.stringContaining(`the base checkout is held by [t:${a}]; resolve that thread first`) });
     await s.ada.post(`${s.childPath(a)}/resolve`);
     const b = (await s.make("Merge", { base: true })).threads![0]!.id;
     await s.idle(b);

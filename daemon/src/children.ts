@@ -785,6 +785,19 @@ export class ChildThreads implements ThreadsHost {
     return this.cleanupWorktrees(userId, pool, thread);
   }
 
+  /**
+   * A pull request of an idle project thread holding the base checkout
+   * merged, and it watches no other: the thread is resolved, freeing the
+   * checkout, and the project chat is told without a wake. False otherwise.
+   */
+  merged(userId: string, pool: Pool, thread: string, number: number): boolean {
+    const row = this.row(userId, pool, thread);
+    if (!row || row.resolved_at || !this.o.workspace.settings(userId).threadWork(thread)?.base || this.o.host().busy(userId, pool, thread)) return false;
+    void this.setResolved(userId, pool, thread, true);
+    this.deliver(userId, pool, row.parent, `Pull request #${number} of [t:${thread}] merged, so the thread is resolved and the base checkout is free.`, thread);
+    return true;
+  }
+
   /** Why the user can't write in this thread now: it is a resolved base thread, and another thread holds the base checkout. Checked before anything is sent. */
   baseHeld(userId: string, pool: Pool, thread: string): string | undefined {
     const row = this.row(userId, pool, thread);
@@ -983,9 +996,8 @@ export class ChildThreads implements ThreadsHost {
     if (pending) throw new Error(`the base checkout is held by ${JSON.stringify(pending)}`);
     const holder = this.rows(userId).find((r) => r.pool === pool && r.parent === project && r.thread !== except && !r.resolved_at && this.o.workspace.settings(userId).threadWork(r.thread)?.base);
     if (!holder) return;
-    const view = this.o.memory.openThreadView(userId, pool);
-    try { throw new Error(`the base checkout is held by ${JSON.stringify(view.own.getThread(holder.thread)?.title ?? holder.thread)} [t:${holder.thread}]; resolve it first`); }
-    finally { view.close(); }
+    // The link shows the thread's title, so the message doesn't repeat it.
+    throw new Error(`the base checkout is held by [t:${holder.thread}]; resolve that thread first`);
   }
 
   /**

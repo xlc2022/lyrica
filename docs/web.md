@@ -1160,9 +1160,10 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   a tooltip saying the oldest reach her as their first line only.
 - A `threads` call is a card headed by what it did: "Child thread: <title>"
   for a start, "Update to the parent thread" or "Message to <title>" for a
-  message (the thread's current title, on one line with an ellipsis and in
-  full as the head's tooltip; "a thread" until it is sent, and "a forgotten
-  thread", with no Open, once that thread is gone), and "Thread read", "Thread stopped", "Thread resolved",
+  message and "Read <title>" for a read (the thread's current title, on one
+  line with an ellipsis and in full as the head's tooltip; "a thread" until
+  it runs, and "a forgotten thread", with no Open, once that thread is
+  gone), and "Thread read" before a read runs, "Thread stopped", "Thread resolved",
   "Threads" (list) and the like for the rest (`THREADS_HEADS`); a failed
   `ask` is "Question not asked" with its error, never a question card; it links
   to the thread — one **Open** link in its head, or when the run made

@@ -1339,7 +1339,10 @@ project page and the web part are built. Recent calls can be filtered by project
   Gitea account whose host resolves into her own network also gets a signed
   tailnet webhook that nudges a poll at once, and polling stays as its
   fallback. A merged or closed pull request ends the watch with one more
-  turn saying so (2026-10-23), unless her own account merged it. A note
+  turn saying so (2026-10-23), unless her own account merged it. An idle
+  project thread holding the base checkout whose last watched pull request
+  merges is resolved instead, freeing the checkout, and the project chat is
+  told (2026-10-24). A note
   whose checks didn't all pass asks her to read the failing log and push at
   least one fix before calling it blocked, or to say it fails on the base
   branch too (2026-10-24).
@@ -2066,7 +2069,7 @@ from Monika's runbooks.
 - **An update**, in order: build the release as an unprivileged build
   user; **smoke test** it on a spare port with a scratch home and a test
   user, never real data; **drain**: stop taking new turns and wait until no
-  turn, sleep run, subagent or child thread is working (new messages get
+  turn, sleep run, subagent or child thread is working (a subagent only waiting for an answer doesn't count; new messages get
   "Updating", scheduled sleep waits, and what a running turn starts, such as a child thread, finishes first), giving up after 10 minutes with nothing changed, so a restart
   never cuts a turn in half; **snapshot** her databases and settings (copies
   of encrypted files; homes are left to the operator's backup), keeping the

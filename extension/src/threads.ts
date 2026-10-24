@@ -2,7 +2,7 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
-  ASK_GUIDELINE, isQuestionCall, ROOT_LIMITS, ROOT_TOOL, rootStep, SUDOERS_HOW, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS, WATCH_GUIDELINE,
+  ASK_GUIDELINE, CHILD_WAKES, isQuestionCall, ROOT_LIMITS, ROOT_TOOL, rootStep, SUDOERS_HOW, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS, WATCH_GUIDELINE,
   type ChildInfo, type StartRequest, type ThreadsLimits,
 } from "@lyrica/core";
 import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
@@ -430,7 +430,10 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           const last = Math.min(READ_MAX, Math.max(1, Math.round(p.last ?? READ_DEFAULT)));
           // Read as from another thread, so entries written unlogged are left out; so are tool results and empty tool calls.
           const entries = store.latestEntries(id, last);
-          return text(entries.length ? entries.map(formatEntry).join("\n\n") : `[t:${id}] has no messages to read.`, { threads: [id] });
+          const read = entries.length ? entries.map(formatEntry).join("\n\n") : `[t:${id}] has no messages to read.`;
+          // Its parent is woken when it ends: say so, so she ends her turn rather than sleeping to read again.
+          const working = !child && !own && rows.find((r) => r.id === id && "status" in r && r.status === "working");
+          return text(working ? `${read}\n\n[t:${id}] is still working. ${CHILD_WAKES}` : read, { threads: [id] });
         }
         if (p.action === "stop") {
           if (child) throw new Error("a thread stops only its own child threads");

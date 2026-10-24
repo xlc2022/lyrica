@@ -139,7 +139,11 @@ once, and the reply is delivered.
 
 **Questions.** A subagent calls `ask_parent({ question })` and stops. Its run
 waits for a message, which becomes the subagent's next one; time spent
-waiting doesn't count against the timeout or hold a concurrency slot.
+waiting doesn't count against the timeout or hold a concurrency slot. A
+question unanswered after `answerMs` (default 60 minutes) ends the
+subagent as stopped, freeing its session and folders; a message later
+continues it in its thread. An update's drain doesn't wait for a run whose
+subagents only wait for answers.
 
 **Notes.** `ask_parent({ question, wait: false })` sends a note and the
 subagent keeps working. The note is delivered like a background result, and
@@ -307,7 +311,9 @@ the thread's scratch folder (`/workspace`).
   past either is stopped, with the reason in its result;
 - `notes`: notes per stretch of work, default 3;
 - `foregroundMs`: how long a foreground run holds its parent's turn,
-  default 5 minutes.
+  default 5 minutes;
+- `answerMs`: how long a subagent waits for an answer to its question,
+  default 60 minutes.
 
 The journal gets one line when a subagent starts (run, thread, role and
 model), finishes or is stopped (with the reason), never its text.
@@ -618,7 +624,9 @@ The merge thread merges each branch, tests after each merge, sends conflicts
 or red tests to the owning thread, and deletes merged branches. The project
 chat remains read-only and gets no merge tool. Only one base thread may be
 open in a project, enforced by `children.ts`, including queued starts and
-reopening. A resolved queued thread does not start until reopened. Resolving or forgetting a part calls the shared cleanup: its branch
+reopening; the refusal names the holder as `[t:<id>]`. When an idle base
+thread's last watched pull request merges, it is resolved and the project
+chat told, without a wake, so the checkout is free. A resolved queued thread does not start until reopened. Resolving or forgetting a part calls the shared cleanup: its branch
 stays, and a worktree with uncommitted changes stays with its path reported.
 
 A project chat's child threads are the project's threads

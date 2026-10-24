@@ -102,7 +102,8 @@ and carries its children into a new project. The interface is built under
    while the at-once limit is full waits for a slot, and the tool says so.
    Every thread must end with a message to its parent: the result,
    or what blocked it; she reads its latest
-   messages with `threads read` and stops a thread that went wrong with
+   messages with `threads read` (a child still working says its end wakes
+   her, so she ends her turn rather than waiting) and stops a thread that went wrong with
    `threads stop` (docs/delegation.md, "Child threads"). CI and reviews
    wake her without a turn being blocked: a pull request she opens through
    the run's relay is watched, and `lyricad` gives the thread one turn when

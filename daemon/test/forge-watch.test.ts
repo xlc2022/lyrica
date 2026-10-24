@@ -111,10 +111,12 @@ async function setupForge(kind: ForgeKind = "forgejo", opts: { project?: boolean
     changed: () => {},
   } as unknown as ThreadHost;
   let paused = false;
-  const children = new ChildThreads({ users, memory, models, workspace, delegation: {} as Delegation, host: () => hostStub, paused: () => paused, limits: { concurrency: 2 } });
+  const delivered: { thread: string; text: string }[] = [];
+  const delegation = { deliver: (to: { threadId: string }, text: string) => { delivered.push({ thread: to.threadId, text }); } } as unknown as Delegation;
+  const children = new ChildThreads({ users, memory, models, workspace, delegation, host: () => hostStub, paused: () => paused, limits: { concurrency: 2 } });
   const logs: string[] = [];
   const wakeups = new Wakeups({ memory, host: () => hostStub, children, log: (line) => logs.push(line) });
-  const forge = new ForgeWatcher({ memory, workspace, wakeups, log: (line) => logs.push(line) });
+  const forge = new ForgeWatcher({ memory, workspace, wakeups, merged: (u, p, t, n) => children.merged(u, p, t, n), log: (line) => logs.push(line) });
   forge.load(user.id);
 
   const watch = (number = 12) => own(s => s.addWatch(thread.id, { repo: "ada/lyrica", kind, host, account: accountName, number }));
@@ -124,6 +126,8 @@ async function setupForge(kind: ForgeKind = "forgejo", opts: { project?: boolean
     wakeupsOf: () => own(s => s.wakeups(thread.id)),
     tick: (minutes: number) => pump(forge, at(minutes)),
     pause: (value: boolean) => { paused = value; },
+    delivered,
+    childRow: () => { const db = users.openUserDb(user.id); try { return db.prepare("SELECT resolved_at FROM child_threads WHERE thread = ?").get(thread.id) as { resolved_at: string | null } | undefined; } finally { db.close(); } },
     logs };
 }
 
@@ -354,6 +358,26 @@ describe("the forge watcher", () => {
     expect(s.sent).toHaveLength(1);
     expect(s.sent[0]!.text).toBe("PR #12: the account's token can't read the checks, so I've stopped watching.");
     expect(s.watches()).toEqual([]);
+  });
+
+  it("resolves an idle project thread holding the base checkout when its last pull request merges, telling the project chat rather than waking it", async () => {
+    for (const base of [true, false]) {
+      const s = await setupForge("forgejo", { project: true });
+      if (base) s.settings.setThreadWork(s.thread.id, { base: true, worktrees: [] });
+      routeForgejo(s.fake, { pull: pullBody({ state: "closed", merged: true, merged_at: "2026-01-01T00:00:00Z", merged_by: { login: "sam" } }) });
+      s.watch();
+      await s.tick(0);
+      expect(s.watches()).toEqual([]);
+      const resolved = s.childRow();
+      if (base) {
+        expect(s.sent.filter((m) => m.thread === s.thread.id)).toEqual([]);
+        expect(resolved?.resolved_at).toBeTruthy();
+        expect(s.delivered).toEqual([{ thread: s.project!.id, text: `Pull request #12 of [t:${s.thread.id}] merged, so the thread is resolved and the base checkout is free.` }]);
+      } else {
+        expect(s.sent.map((m) => m.text)).toEqual([`PR #12 (${HEAD_A.slice(0, 7)}): merged, so I've stopped watching.`]);
+        expect(resolved?.resolved_at).toBeFalsy();
+      }
+    }
   });
 
   it("holds the wake while the project is paused, and fires it once the project resumes", async () => {
