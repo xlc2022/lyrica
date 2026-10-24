@@ -1144,7 +1144,7 @@ function useCountdown(iso: string) {
 }
 
 const tokens = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
-/** A stored compaction's marker label: tokens before and, when known, after. */
-function compactedLabel(p: { before: number; after?: number }): string {
-  return `Compacted · ${tokens(p.before)}${p.after !== undefined ? ` → ${tokens(p.after)}` : ""}`;
+/** A stored compaction's marker label: tokens before and, when known, after, in mono. */
+function compactedLabel(p: { before: number; after?: number }): ReactNode {
+  return <>Compacted · <span className="num">{tokens(p.before)}</span>{p.after !== undefined && <> → <span className="num">{tokens(p.after)}</span></>}</>;
 }

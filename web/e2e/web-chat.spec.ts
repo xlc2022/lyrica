@@ -919,6 +919,7 @@ test("her compaction's card and the stored marker open to the summary, closed un
   const marker = page.locator('.marker[data-type="compacted"] > button');
   await expect(marker).toHaveText(/^Compacted · \S+/);
   await expect(marker).toHaveAttribute("aria-expanded", "false");
+  await expect(marker.locator(".num").first()).toHaveCSS("font-family", /Plex Mono|monospace/);
   await marker.click();
   await expect(page.locator('.marker[data-type="compacted"] .marker-body')).toContainText("Open question: when to water.");
   await noHorizontalScroll(page);

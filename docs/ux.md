@@ -159,7 +159,7 @@ Rules:
   Stay, Auth key, Hostname, Control server, Skip, Remove,
   Use a host outside your network?, Add anyway, Save anyway, Keep, Look up,
   Web search, SearXNG address, Reachable, Context, About, Recall, Tools,
-  Conversation, Reserve, Free, Used, Measured, Last turn, Compacted, Copy code, Copied,
+  Conversation, Reserve, Free, Used, Measured, Last turn, Compacted, Compaction, Copy code, Copied,
   Copy failed, Star, Unstar, Rename, Ungroup, Add to group, Remove from the
   group, Delete from host…, Separated from, Undo, Yours, Everyone's, Save and
   reload, Stretch, Original context, Repository, recommended, Download
