@@ -1056,7 +1056,11 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   Both read what the session already holds; nothing else is written.
 - A message sent during a turn waits as a follow-up and shows as waiting.
   Stop aborts the turn; `lyricad` drops the waiting follow-ups, so their text
-  goes back into the composer. A message from another thread or a look
+  goes back into the composer. While she works, a waiting one has **Steer
+  now** in its header line, which sends it into her turn after her current
+  step; the `queue` event marked `steered` takes it out of the waiting list
+  without showing it as sent, until `received` shows where it landed. A
+  message from another thread or a look
   never waits there: it shows where it reached the turn (`received`).
 - `src/live.ts` turns stream events into the in-progress turn. When a turn
   ends, the stored messages are reloaded and the live copy is dropped. A sent

@@ -70,7 +70,7 @@ type Done = (allowed: boolean, reason: Outcome, mode?: GoAhead) => void;
  * turn: `handed` once it is in Pi's steering queue, `prompt` while it is the
  * message a turn starts with.
  */
-interface Steer { text: string; handed: boolean; prompt: boolean }
+interface Steer { text: string; handed: boolean; prompt: boolean; /** The person's own follow-up, moved in with Steer now. */ person?: true }
 
 interface Opened { session: AgentSession; view: PoolView; meter: ContextMeter; dispose(): void; title(): Promise<string | undefined>; prepare(opts?: { retry?: boolean }): Promise<unknown> }
 
@@ -453,9 +453,23 @@ export class HostedThread {
     return { queued: false };
   }
 
-  /** A marked message for the running turn: into Pi's steering queue if the session is open, else at the next turn's start. */
-  private steer(text: string): void {
-    const s: Steer = { text, handed: false, prompt: false };
+  /**
+   * The person moves a waiting follow-up into the running turn: Pi takes it
+   * after the current tool call, or after the reply being written, as it
+   * takes a marked message. False when no turn is running to take it.
+   */
+  steerQueued(index: number): boolean {
+    const text = this.queued[index];
+    if (text === undefined || !this.busy || !this.opened) return false;
+    this.queued.splice(index, 1);
+    this.emit({ type: "queue", queued: [...this.queued], steered: true });
+    this.steer(text, true);
+    return true;
+  }
+
+  /** A message for the running turn: into Pi's steering queue if the session is open, else at the next turn's start. */
+  private steer(text: string, person?: true): void {
+    const s: Steer = { text, handed: false, prompt: false, ...(person && { person }) };
     this.steering.push(s);
     if (this.opened) this.hand(this.opened, s);
   }
@@ -653,7 +667,7 @@ export class HostedThread {
     const s = this.steering[0];
     if (!s) return { person: false };
     s.prompt = true;
-    return { text: s.text, person: false };
+    return { text: s.text, person: !!s.person };
   }
 
   /**

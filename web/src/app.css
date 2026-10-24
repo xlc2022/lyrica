@@ -351,6 +351,7 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .msg { display: grid; gap: 4px; min-width: 0; }
 .msg.user .body { background: var(--user-block); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.5; }
 .msg.user.queued { opacity: 0.65; }
+.msg.user.queued .steer { min-height: 0; margin-left: 8px; font-size: 13px; }
 .turn { display: grid; gap: 8px; min-width: 0; }
 .prose { font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
 .prose p, .prose ul, .prose ol { margin: 0 0 10px; }

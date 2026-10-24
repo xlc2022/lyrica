@@ -1674,7 +1674,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `delivered`, `HostedThread.waiting`, `send(text, { fromParent })` and
     `settled()`; a `received` thread event (`text`) when a message from
     another thread or a look reaches the running turn, or is kept in the
-    stored thread because no turn took it;
+    stored thread because no turn took it; `POST threads/:id/queue/:i/steer`
+    (`HostedThread.steerQueued`) moves the person's waiting follow-up at
+    index `i` into the running turn, `409` with no turn running, and the
+    `queue` event's `steered: true` marks the update it causes;
   - **projects** (`daemon/src/projects.ts`, `children.ts`): thread pins,
     per user: `user.db` `pinned_threads` (pool, thread; no text), `PUT`/`DELETE
     threads/:id/pin`, `ThreadSummary.pinned`, pinned first in the list;

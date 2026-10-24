@@ -1509,6 +1509,12 @@ export function apiRoutes(d: Lyricad): Route[] {
       });
     }),
     route("POST", `${t}/messages/:n/rewind`, async (r) => rewind(d, d.userFor(r), r, await r.json<Api.RewindRequest>())),
+    route("POST", `${t}/queue/:i/steer`, async (r) => {
+      const user = d.userFor(r);
+      const thread = owner(d, user, (o) => threadOf(o, r));
+      if (!s().host.get(user.id, poolOf(r), thread.id).steerQueued(Number(r.params.i))) throw new HttpError(409, "No turn is running to take it, so it goes as the next message.");
+      return { ok: true };
+    }),
     route("POST", `${t}/stop`, async (r) => {
       const user = d.userFor(r);
       const thread = owner(d, user, (o) => threadOf(o, r));

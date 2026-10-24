@@ -1576,7 +1576,7 @@ export type ThreadEvent =
   | { type: "permission_end"; requestId: string; allowed: boolean; reason: "answered" | "timeout" | "stopped" }
   | { type: "usage"; input: number; output: number; cacheRead: number; cacheWrite: number; total: number }
   /** Messages waiting as follow-ups. */
-  | { type: "queue"; queued: string[] }
+  | { type: "queue"; queued: string[]; /** One left to join the running turn: it shows when Pi takes it (`received`). */ steered?: true }
   /**
    * A message from another thread (`[From t:…]`) or a look (`[Watching
    * threads]`) that reached the running turn, or was kept in the stored

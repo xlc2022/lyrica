@@ -116,6 +116,33 @@ describe("messages to a busy thread", () => {
     expect(seen.filter((e) => e.type === "queue").every((e) => !JSON.stringify(e).includes("tulips"))).toBe(true);
   });
 
+  it("Steer now sends the person's waiting message into the running turn", async () => {
+    const { ada, model, parent, child, say, childPath, messages } = await setup();
+    const turn = held();
+    parent.push(start("Garden", "Plan the beds."), { text: "Started." });
+    child.push(turn.first, { text: "Roses added." });
+    const id = toolEnd(await say("plan the garden in its own thread"))!.threads![0]!.id;
+    await turn.busy;
+    const view = ada.events(`${childPath(id)}/events`);
+    await view.ready;
+    expect((await ada.post<{ queued: boolean }>(`${childPath(id)}/messages`, { text: "and roses" })).body.queued).toBe(true);
+    await view.until((e) => e.type === "queue");
+    expect((await ada.post(`${childPath(id)}/queue/0/steer`)).status).toBe(200);
+    expect(view.events.map((e) => e.event)).toContainEqual({ type: "queue", queued: [], steered: true });
+    // Nothing is left to steer, so a second press says so.
+    expect((await ada.post(`${childPath(id)}/queue/0/steer`)).status).toBe(409);
+    turn.release();
+
+    // It reached the turn after its tool call: two calls, not a third turn for it.
+    const stored = await until(() => messages(childPath(id)), (m) => m.filter((x) => x.role === "assistant").length === 2);
+    expect(stored.map((m) => m.role === "user" ? (m.parts[0] as { text: string }).text : m.role)).toEqual(["Plan the beds.", "assistant", "and roses", "assistant"]);
+    expect(model.requests.filter(isChild).map(said)[1]).toContain("and roses");
+    await view.until((e) => e.type === "turn_end");
+    expect(view.events.map((e) => e.event)).toContainEqual({ type: "received", text: "and roses" });
+    // With no turn running, it refuses: the message goes as the next one anyway.
+    expect((await ada.post(`${childPath(id)}/queue/0/steer`)).status).toBe(409);
+  });
+
   it("a parent's message to a child whose turn fails is kept in the child's thread", async () => {
     const { ada, model, parent, child, say, childPath, messages } = await setup();
     const turn = held({ status: 400 });

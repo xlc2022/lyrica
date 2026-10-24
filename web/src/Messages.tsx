@@ -107,7 +107,12 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
       )}
       {live.queued.map((q, i) => (
         <div key={`q-${i}`} className="msg user queued">
-          <div className="who">{ctx.user.displayName} · waiting</div>
+          <div className="who">
+            {ctx.user.displayName} · waiting
+            {/* While she works: into her turn after her current step, rather than after the turn. */}
+            {live.busy && <button type="button" className="link sm steer" title={`Sends this into ${her()}'s turn after her current step, instead of when the turn ends.`}
+              onClick={() => post(`${base}/queue/${i}/steer`).catch((err: Error) => (onError ?? (() => {}))(err.message))}>Steer now</button>}
+          </div>
           <div className="body">{q}</div>
         </div>
       ))}
@@ -151,7 +156,7 @@ interface Env {
 /** Her messages that hold only markers, waiting to be drawn together once the run ends. */
 interface Quiet { key: string; n?: number; parts: MessagePart[]; streaming: boolean }
 
-/** A part that is one of her inner workings (docs/ux.md §6): a marker, never text, an image or a card. */
+/** A part that is one of her inner workings: a marker, never text, an image or a card. */
 function isMarker(p: MessagePart): boolean {
   if (p.type === "thinking" || p.type === "recall" || p.type === "remember") return true;
   if (p.type !== "tool") return false;
@@ -200,7 +205,7 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
 }
 
 /**
- * A run of her tool calls as one marker (docs/ux.md §6): "<n> tool calls", running while the turn goes on, which opens
+ * A run of her tool calls as one marker: "<n> tool calls", running while the turn goes on, which opens
  * to a box that scrolls, every marker in it opening as before. Open state follows the first call's ID, so it survives
  * the stored copy replacing the live one.
  */
@@ -347,7 +352,7 @@ function UserMessage({ text, you, n, at, rewinder, env, hers, reactions }: { tex
 
 /**
  * Remember this: a note in the User introduced collection, in the thread's pool,
- * prefilled with the message's first line and citing the message (docs/ux.md §6).
+ * prefilled with the message's first line and citing the message.
  */
 function RememberBox({ text, n, env, onClose }: { text: string; n: number; env: Pick<Env, "userId" | "pool" | "threadId">; onClose: () => void }) {
   const [value, setValue] = useState(() => text.split("\n").find((l) => l.trim()) ?? "");
@@ -373,7 +378,7 @@ function RememberBox({ text, n, env, onClose }: { text: string; n: number; env: 
 }
 
 /**
- * When a message was sent (docs/ux.md §6): muted and mono after the name (and the model), its full date and time as the
+ * When a message was sent: muted and mono after the name (and the model), its full date and time as the
  * tooltip. Only a stored message has a time, so a reply that is still streaming shows none.
  */
 function SentAt({ at }: { at: string }) {
@@ -416,7 +421,7 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
     out.push(p.type === "image" ? <MessageImages key={i} part={p} env={env} /> : <Marker key={i} part={p} env={env} />);
   });
   flush(parts.length);
-  // The one indicator while she writes (docs/ux.md §6): three muted dots fading in turn, at the end of the live reply and only when its last part isn't text.
+  // The one indicator while she writes: three muted dots fading in turn, at the end of the live reply and only when its last part isn't text.
   if (streaming && parts.at(-1)?.type !== "text") out.push(
     <span key="dots" className="writing-dots" aria-hidden="true"><i /><i /><i /></span>,
   );
@@ -582,7 +587,7 @@ export function readText(part: Extract<MessagePart, { type: "tool" }>): { path: 
 }
 
 /**
- * What a `read` call read, laid out as the file is (docs/ux.md §6): code and HTML keep their lines and indentation and
+ * What a `read` call read, laid out as the file is: code and HTML keep their lines and indentation and
  * scroll sideways, Markdown is rendered, plain text wraps. A strip names the file (a link into Files when the thread
  * can reach it) and copies the text; pi's note on a partial read sits under it.
  */
@@ -602,7 +607,7 @@ function ReadText({ path, text, note, kind, local, env }: { path: string; text: 
 }
 
 /**
- * The image a `read` call looked at, as a small thumbnail under its result that opens large (docs/ux.md §6), served
+ * The image a `read` call looked at, as a small thumbnail under its result that opens large, served
  * like any file in the thread's folders, so a file she can't reach there isn't shown. Gone: the muted line; any other
  * failure: no preview, the result line stays.
  */
@@ -772,7 +777,7 @@ function CompactedMarker({ part, env }: { part: Extract<MessagePart, { type: "co
 /**
  * A message written in another thread (the parent's, or a sibling's in a project): collapsed
  * to one line, since it was said elsewhere, and expanded on tap; a long one shows its first lines
- * and Show more (docs/ux.md §6).
+ * and Show more.
  */
 function FromThread({ text, from, env, n }: { text: string; from: { kind: "parent" | "thread"; threadId: string }; env: Env; n?: number }) {
   const [open, setOpen] = useState(false);
@@ -808,7 +813,7 @@ function FromThread({ text, from, env, n }: { text: string; from: { kind: "paren
 }
 
 /**
- * Her scheduled note (docs/ux.md §6): Routine ran with its schedule, or Woke up with when it was set
+ * Her scheduled note: Routine ran with its schedule, or Woke up with when it was set
  * (and when it was due, if it fired late), opening to the note as a tinted block, as Message received does.
  */
 export function ScheduledMarker({ text, setAt, dueAt, schedule, env, n }: { text: string; setAt?: string; dueAt?: string; schedule?: string; env: Env; n?: number }) {
