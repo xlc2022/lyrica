@@ -12,7 +12,12 @@ const chrome = spawn(process.env.CHROME_PATH, [
   "--allow-file-access-from-files",
   "--host-resolver-rules=MAP * ~NOTFOUND", "--disable-background-networking", "--no-first-run", "--disable-extensions",
   "--hide-scrollbars", "--mute-audio", `--window-size=${W},${H}`, "about:blank",
-], { stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] });
+], {
+  stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"],
+  // Its home (the thread's folder) is read-only here, and Chromium's crash reporter dies at start where it can't
+  // make its folders under ~/.config: everything it writes goes under /tmp, the sandbox's own.
+  env: { ...process.env, HOME: "/tmp/chromium", XDG_CONFIG_HOME: "/tmp/chromium/.config", XDG_CACHE_HOME: "/tmp/chromium/.cache" },
+});
 const toChrome = chrome.stdio[3], fromChrome = chrome.stdio[4];
 // The end of what Chromium printed, to say why it stopped if it does.
 let said = "";
