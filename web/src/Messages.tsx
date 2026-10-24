@@ -425,6 +425,8 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
   if (streaming && parts.at(-1)?.type !== "text") out.push(
     <span key="dots" className="writing-dots" aria-hidden="true"><i /><i /><i /></span>,
   );
+  // Read aloud only where she wrote words: a turn of cards and markers has nothing to read.
+  const worded = parts.some((p) => p.type === "text" && p.text.trim());
   // A turn with nothing to show (a project chat's thread start, whose card stands under the message) takes no room.
   if (!out.length && !streaming) return null;
   if (bare) return <>{out}</>;
@@ -443,11 +445,11 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
       {n !== undefined && <ReactionChips n={n} reactions={reactions} reactor={env.rewinder} her={who} />}
       {env.rewinder && n !== undefined && (
         <MessageActions n={n} role="assistant" rewinder={env.rewinder} text={parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} onRemember={() => setRemembering(true)}
-          readAloud={<ReadAloudButton url={`${env.base}/messages/${n}/speech`} also={n === env.lastHers ? `${env.base}/messages/live/speech` : undefined} speech={env.speech} onError={env.onError} />}
+          readAloud={worded && <ReadAloudButton url={`${env.base}/messages/${n}/speech`} also={n === env.lastHers ? `${env.base}/messages/live/speech` : undefined} speech={env.speech} onError={env.onError} />}
           react={<ReactButton n={n} reactions={reactions} reactor={env.rewinder} />} />
       )}
-      {/* With Read aloud while agent writes on, the reply she is writing has the one button in its row. */}
-      {env.rewinder && n === undefined && streaming && env.speech?.readAloudLive && (
+      {/* With Read aloud while agent writes on, the reply she is writing has the one button in its row, once it has words. */}
+      {env.rewinder && n === undefined && streaming && worded && env.speech?.readAloudLive && (
         <div className="msg-actions" role="group" aria-label="Message actions"><ReadAloudButton url={`${env.base}/messages/live/speech`} speech={env.speech} onError={env.onError} /></div>
       )}
       {remembering && n !== undefined && <RememberBox text={parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} n={n} env={env} onClose={() => setRemembering(false)} />}

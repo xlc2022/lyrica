@@ -1065,7 +1065,8 @@ local-only threads use local speech models only.
 - **Read aloud** on one of her messages reads it sentence by sentence as the
   audio arrives, skipping code, tables and links. Stop reading, the mic,
   sending, another Read aloud or leaving the thread stops it; only one thing
-  plays at a time.
+  plays at a time. A message with no words of hers (only cards and markers)
+  has no Read aloud.
 - **Read aloud while agent writes** is a per-user setting, off by default:
   speech may not keep up with her on every host. With it on, Read aloud
   also appears on the reply she is still writing and follows it to its end;
