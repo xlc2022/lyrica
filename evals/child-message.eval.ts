@@ -104,8 +104,8 @@ function check(e: Evidence) {
   ]);
   expect(e.results).toEqual([
     { error: false, text: expect.stringContaining("Sent to the parent thread as an update") },
-    { error: false, text: expect.stringContaining("1 of 2 messages to other threads left this turn") },
-    { error: false, text: expect.stringContaining("0 of 2 messages to other threads left this turn") },
+    { error: false, text: expect.stringContaining(`(1 more to [t:${e.sibling}] this turn.)`) },
+    { error: false, text: expect.stringContaining(`(0 more to [t:${e.sibling}] this turn.)`) },
   ]);
 }
 
