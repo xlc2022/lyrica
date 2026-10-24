@@ -492,7 +492,8 @@ test("a run of tool calls folds into one marker that opens to a scrolling box, a
   await expect(page.locator(".marker", { hasText: "recall" })).toHaveCount(0);
   await expect(page.locator(".turn.quiet")).toHaveCount(0);
   await run.getByRole("button", { name: /tool calls/ }).click();
-  const calls = run.locator(".run-body .marker");
+  // The box holds each call's own marker: the tool-call markers, not the recall results a call can bring into the same run.
+  const calls = run.locator(".run-body .marker[data-type='tool']");
   await expect(calls).toHaveCount(4);
   await expect(calls.first()).toContainText("recall");
   await noHorizontalScroll(page);
