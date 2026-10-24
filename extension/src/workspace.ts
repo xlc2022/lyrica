@@ -449,6 +449,7 @@ export function describe(tools: ThreadTools): string {
   const pves = all.filter((m) => m.kind === "proxmox").map((m) => `${m.name} (${limit(m)})`);
   return [
     `Your file and command tools run in a sandbox. ${WORKDIR} is this conversation's folder; uploads arrive in ${WORKDIR}/uploads.`,
+    SERVER_LINE,
     ...(s.coordinates ? [READ_ONLY_CHAT] : []),
     LINK_LINE,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
@@ -477,6 +478,8 @@ export const LINK_LINE = `A ${WORKDIR} or ${SHARED} path you write is a link the
 /** Threads hand files to each other through one folder: a model once planned to send a whole page as base64 chunks in messages. */
 export const SHARED_LINE = `${SHARED} is shared with your parent and child threads (in a project, with its chat and every thread): hand files over there; messages carry words, not files.`;
 
+/** Each command is its own sandbox, network too: a model once started a server in one call and curled it from the next. */
+const SERVER_LINE = "Each command, and each background job, runs in its own sandbox with its own network, so a server you start answers only inside that command or job: start it and whatever talks to it (curl, tests) in the same one.";
 /** With a read-write folder given, work for it goes there: a model once built a whole project in the sandbox's own folder instead. */
 export const BUILD_THERE = `Build, edit and save the work in a read-write folder you were given (or a repository in ${WORKDIR}/repos), never as loose files in ${WORKDIR}, which is for scratch and things to show the person.`;
 

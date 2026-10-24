@@ -1401,13 +1401,12 @@ turns animations off.
   sharing `web/e2e/helpers.ts`, plus `setup.spec.ts`. Each runs its tests in
   order. Each project in `playwright.config.ts` (every `web-*` spec at phone
   390×844 with touch and at desktop 1280×800, and a desktop one for
-  first-run setup, on ports 7341 to 7347) gets its own real `lyricad` from
+  first-run setup, on ports 17341 to 17347, clear of `lyricad`'s own
+  ports, which a sandbox can't reach even on its loopback) gets its own real `lyricad` from
   `web/e2e/serve.ts`, on a temporary runtime with a fake model server, which
   also serves a fake speech endpoint (whisper and kokoro, under `/speech/v1`,
   and `/speech/down` to make it fail). Its nightly sleep time is set half a
   day from its start, so no run reaches it. Chromium runs with a fake microphone.
-  The desktop-chat project listens on 7342, `lyricad`'s own loopback port for
-  `tailscale serve`, so e2e can't run on a machine where `lyricad` runs.
 - Push e2e checks cover Save, masked saved credentials across reload, Send a
   test, inline receiver failure and recovery, and Turn off at both widths.
   Browser API interception supplies the Push contract and forwards test

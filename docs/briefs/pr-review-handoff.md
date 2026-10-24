@@ -21,7 +21,8 @@ AGENTS.md, Workflow, is the rule; read it first. In short:
 - Own PRINCIPLES.md, DESIGN.md, docs/contracts.md and docs/ux.md; record
   settled decisions in docs PRs.
 - The routine "Lyrica GitHub pickup" fires into this thread every 2 h at
-  :46. It lists open, non-draft PRs on `lyrica/*` branches and open issues labelled
+  :46. It lists open, non-draft PRs on `lyrica/*` branches or by her account,
+  `lyrica-lunasa`, and open issues labelled
   `claude`, skips items with a "Picked up by Claude's project" comment,
   reviews new PRs (never merges `[dry run]` ones), sends new issues to the
   coordinator, and comments "Picked up by Claude's project" with the
@@ -29,6 +30,10 @@ AGENTS.md, Workflow, is the rule; read it first. In short:
 
 ## How reviews were done
 
+- Read every file a finding cites at the PR's head (`git show pr/N:<path>`
+  or a worktree of `pr/N`), never in the local checkout: on #504 a stale
+  checkout gave a false blocking finding. The owner set this rule on
+  2026-10-24.
 - `git fetch -q origin main '+refs/pull/N/head:refs/remotes/pr/N'`, then
   `git diff origin/main...pr/N`; a new head is checked as
   `git diff <old head> pr/N`, and a merge of main with

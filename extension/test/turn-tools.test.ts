@@ -178,12 +178,28 @@ it("asks her once to make a tool call she wrote as text, instead of ending the t
   expect(r.shown.some((m) => m.error)).toBe(false);
 });
 
+it.each([
+  ["GLM's arg_key and arg_value, closed", "Checking.\n<tool_call>bash\n<arg_key>command</arg_key>\n<arg_value>git status</arg_value>\n</tool_call>"],
+  ["GLM's arg_key and arg_value, cut off", "Checking.\n<tool_call>bash<arg_key>command</arg_key><arg_value>npm test"],
+  ["GLM's arg_key and arg_value, unwrapped", "Checking.\nbash<arg_key>command</arg_key><arg_value>ls</arg_value>"],
+  ["Hermes' JSON, cut off", 'Checking.\n<tool_call>\n{"name": "bash", "arguments": {"command": "ls"'],
+  ["Qwen's function, cut off in its tool_call", "Checking.\n<tool_call>\n<function=bash>\n<parameter=command>\nls"],
+  ["a bare function, cut off", "Checking.\n<function=bash>\n<parameter=command>\nls"],
+])("counts %s as a call written as text", async (_name, text) => {
+  const r = await replies([fauxAssistantMessage(text), fauxAssistantMessage("Done.")]);
+  expect(r.asked).toHaveLength(2);
+  expect(r.asked[1]).toContain(CALL_THE_TOOL);
+});
+
 it("fails the turn visibly when the retry writes its call as text too, and leaves ordinary replies alone", async () => {
   const twice = await replies([fauxAssistantMessage(AS_TEXT), fauxAssistantMessage(AS_TEXT)]);
   expect(twice.asked).toHaveLength(2);
   expect(JSON.stringify(twice.shown)).toContain(TEXT_TOOL_CALL);
   const plain = await replies([fauxAssistantMessage("Use `<tool_call>` tags only when the model needs them.")]);
   expect(plain.asked).toHaveLength(1);
+  // A tag named in prose, with no call after it, is text too.
+  const prose = await replies([fauxAssistantMessage("Some servers leave a <tool_call> tag in the reply.")]);
+  expect(prose.asked).toHaveLength(1);
   // A call she quotes in code is her answer, not a call.
   const quoted = await replies([fauxAssistantMessage(`The leak looks like this:\n\n\`\`\`\n${AS_TEXT}\n\`\`\`\n\nand \`<function=x><parameter=a>1</parameter></function>\` inline.`)]);
   expect(quoted.asked).toHaveLength(1);

@@ -21,8 +21,17 @@ export const TEXT_TOOL_CALL_RETRY = "lyrica-text-tool-call-retry";
 export const CALL_THE_TOOL = "Your last reply wrote a tool call as text, so it didn't run. Make that call as a tool call, or write your reply without it.";
 /** Shown, as a `lyrica-empty-reply` notice, when the retry wrote its call as text too. */
 export const TEXT_TOOL_CALL = "The model wrote its tool call as text, twice, so it didn't run.";
-/** A tool call in Qwen's or Hermes' format, closed, that a local server left in the reply's text. */
-const TEXT_CALL = /<tool_call>[\s\S]*?<\/tool_call>|<function=[\w.-]+>[\s\S]*?<\/function>/;
+/**
+ * A tool call a server left in the reply's text: closed in any format; GLM's `<arg_key>…</arg_key><arg_value>`
+ * pairs, wrapped or not; or a call cut off unclosed at the reply's end (Hermes' JSON, Qwen's `<function=`).
+ */
+const TEXT_CALL = new RegExp([
+  /<tool_call>[\s\S]*?<\/tool_call>/,
+  /<function=[\w.-]+>[\s\S]*?<\/function>/,
+  /<arg_key>[^<]*<\/arg_key>\s*<arg_value>/,
+  /<tool_call>\s*(?:\{|<function=)/,
+  /<function=[\w.-]+>\s*<parameter=/,
+].map((r) => r.source).join("|"));
 /** Text outside code: a call she quotes in a fenced block or an inline span is meant as text. */
 const outsideCode = (text: string) => text.replace(/```[\s\S]*?(```|$)/g, "").replace(/`[^`\n]*`/g, "");
 /** Written into a thread whose turn a restart cut off, shown as that turn's error. */

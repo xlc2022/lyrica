@@ -778,7 +778,11 @@ Custom roles override built-ins by name, except `claude`.
   `SandboxSpec` and `RelaySpec` gain `onPullCreate(pr: { repo, number })`,
   called once after a relayed `POST /repos/{owner}/{repo}/pulls` (GitHub)
   or `POST /api/v1/repos/{owner}/{repo}/pulls` (Forgejo/Gitea) succeeds,
-  passing only those two facts — never the request or response body.
+  or a GitHub GraphQL `createPullRequest` mutation (`gh pr create`) whose
+  answer's `pullRequest.url` is the credential's repository, passing only
+  those two facts — never the request or response body. The relay asks
+  upstream for an uncompressed answer on these requests, since gh's client
+  asks for gzip.
   `Workspace.onPullCreate` routes it to `ForgeWatcher.record`, which stores
   a watch in pool step 7's `watches` table (thread, repo, kind, host,
   account, number, head, head_since, notified_heads, seen_reviews,
@@ -1219,10 +1223,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   turn's `error` event, so a project's thread fails as it would on a model
   error, and after reload it shows as that reply's error.
 - **Tool calls written as text** (same extension): a local server can
-  leave a closed tool call in the reply's text (Qwen's
-  `<tool_call><function=…>…</function></tool_call>`, or a bare
-  `<function=…>…</function>`, outside fenced or inline code), and the
-  run would end on it as her reply.
+  leave a tool call in the reply's text, outside fenced or inline code:
+  closed in any format (Qwen's
+  `<tool_call><function=…>…</function></tool_call>`, Hermes' JSON in
+  `<tool_call>`, or a bare `<function=…>…</function>`), GLM's
+  `<arg_key>…</arg_key><arg_value>…` pairs wrapped or not, or a call cut
+  off unclosed (`<tool_call>` then `{` or `<function=`, or
+  `<function=…>` then `<parameter=`). The run would end on it as her
+  reply.
   The first in a run, with no real tool call beside it, gets one hidden
   follow-up (`lyrica-text-tool-call-retry`, `CALL_THE_TOOL`, dropped at
   the next turn like the others) asking her to make the call. A second

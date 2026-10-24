@@ -9,11 +9,13 @@ const sizes = [
   { size: "phone", use: { ...devices["iPhone 13"], viewport: { width: 390, height: 844 }, defaultBrowserType: "chromium" as const } },
   { size: "desktop", use: { viewport: { width: 1280, height: 800 } } },
 ];
-// Ports from 7341, each lyricad's fake model server 10 above its own (web/e2e/helpers.ts enter()).
+// Ports from 17341, each lyricad's fake model server 10 above its own (web/e2e/helpers.ts enter()). Not lyricad's
+// own 7341 and 7342: a sandbox can't reach those ports even on its own loopback, so the tests run inside one too.
+const BASE = 17341;
 const servers = [
-  ...SPECS.flatMap((spec, i) => sizes.map((s, j) => ({ name: `${s.size}-${spec}`, port: 7341 + i * 2 + j, use: s.use, testMatch: new RegExp(`web-${spec}\\.spec\\.ts`), setup: false }))),
+  ...SPECS.flatMap((spec, i) => sizes.map((s, j) => ({ name: `${s.size}-${spec}`, port: BASE + i * 2 + j, use: s.use, testMatch: new RegExp(`web-${spec}\\.spec\\.ts`), setup: false }))),
   // A lyricad with no self.db, for the setup page (setup.spec.ts).
-  { name: "setup", port: 7341 + SPECS.length * 2, use: { viewport: { width: 1280, height: 800 } }, testMatch: /setup\.spec\.ts/, setup: true },
+  { name: "setup", port: BASE + SPECS.length * 2, use: { viewport: { width: 1280, height: 800 } }, testMatch: /setup\.spec\.ts/, setup: true },
 ];
 
 export default defineConfig({

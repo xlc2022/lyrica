@@ -37,7 +37,7 @@ export const PASSPHRASE = "correct horse";
 const LONG_MODEL = "a-very-long-model-name-70b-instruct-q4_k_m-20261012";
 const ARGON2 = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
 const KDF_ITER = 1;
-const [port = 7341, modelPort = 7351] = process.argv.slice(2, 4).map(Number);
+const [port = 17341, modelPort = 17351] = process.argv.slice(2, 4).map(Number);
 /** `setup`: no self.db, so lyricad starts setting up; its one-time code is copied to setupCodeFile(port) for setup.spec.ts. */
 const settingUp = process.argv[4] === "setup";
 const setupCodeFile = (port: number) => join(tmpdir(), `lyrica-e2e-setup-code-${port}`);

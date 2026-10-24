@@ -17,10 +17,12 @@ import { png } from "./fake-images.ts";
 
 const has = (cmd: string) => { try { execFileSync("sh", ["-c", `command -v ${cmd}`]); return true; } catch { return false; } };
 const root = process.getuid?.() === 0;
-const runnable = !root && has("bwrap");
+// Inside a Lyrica sandbox a nested one can't see the tools its /usr links to (on NixOS, the store), so these skip there too.
+const nested = process.env.LYRICA_SANDBOX === "1";
+const runnable = !root && !nested && has("bwrap");
 const homeRunnable = runnable && has("gocryptfs") && has("fusermount3") && existsSync("/dev/fuse");
 if (process.env.LYRICA_SANDBOX_TESTS === "require" && !homeRunnable) {
-  throw new Error(`sandbox tests required but can't run here (${root ? "running as root" : "bwrap, gocryptfs, fusermount3 or /dev/fuse missing"})`);
+  throw new Error(`sandbox tests required but can't run here (${root ? "running as root" : nested ? "running inside a Lyrica sandbox" : "bwrap, gocryptfs, fusermount3 or /dev/fuse missing"})`);
 }
 
 // Each test starts real sandboxes, often several at once, and a CI runner
@@ -98,6 +100,8 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await ops.read.readFile(p("ro", "song.txt"))).toString()).toBe("la la la\n");
     const r = await sh(`cat draft.md && ls ${p("ro")}`);
     expect(r).toEqual({ code: 0, out: "hellosong.txt\n" });
+    // Marked, so tests that would nest a sandbox skip in here.
+    expect(await sh("echo $LYRICA_SANDBOX")).toEqual({ code: 0, out: "1\n" });
   });
 
   it("commits in a fresh clone as the repository's account, without a git config of her own", async () => {

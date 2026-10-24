@@ -427,7 +427,8 @@ export class Sandbox implements ExecutionTarget {
       cmd = ["unshare", "--user", "--map-root-user", "--net", "--", "bash", "--norc", "-c", HOLD, "bash", rules, String(ready), String(ready + 1), ...cmd];
     }
     const child = spawn(cmd[0]!, cmd.slice(1), {
-      env: { ...runEnv, ...env(), ...forge || claude ? { PATH: `${FORGE_BIN}:${env().PATH}` } : {} },
+      // LYRICA_SANDBOX tells a command it is in here, as the sandbox tests check before nesting one.
+      env: { ...runEnv, ...env(), LYRICA_SANDBOX: "1", ...forge || claude ? { PATH: `${FORGE_BIN}:${env().PATH}` } : {} },
       stdio: ["pipe", "pipe", "pipe", ...fds, ...data.map(() => "pipe" as const), ...(networked ? ["pipe", "pipe"] as const : [])],
     });
     child.on("error", () => {}); // reported to the caller's own listener; never an uncaught error
