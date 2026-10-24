@@ -2181,8 +2181,11 @@ from Monika's runbooks.
   administrator, because Claude's threads work through it and could
   never approve their own PRs.
 - **Review is the project's.** Her PRs go through the same PR review (and
-  UI review) as Claude's, which approves and merges them, so the owner doesn't
-  read every change. **Boundary code needs the owner** (the owner chose a rule over
+  UI review) as Claude's, so the owner doesn't read every change. Claude's
+  PR review approves her PR naming its head, or requests changes, and she
+  merges it herself once that approval, her own reviewers' verifieds and
+  green CI cover the same head (the owner, 2026-10-24: she merges her own
+  work rather than relying on Claude). **Boundary code needs the owner** (the owner chose a rule over
   a gate, 2026-10-11): keys, the privacy boundary, the model router, the
   sandbox, authentication, deployment, the updater and CI. `CODEOWNERS`
   names the owner for those paths, so GitHub asks for the owner's review on any PR

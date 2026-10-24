@@ -68,8 +68,10 @@ She fixes findings and sends each new head for recheck. Once the required
 reviewers verify the exact head and CI is green, she records that head and
 the review results on the PR and marks it ready for review. Claude's routine
 skips drafts and automatically picks up ready PRs (lyrica-project.md,
-"Claude's side"). Claude's PR review verifies and merges it; she never
-self-merges. The guardian is not a reviewer and gives no merge go-ahead.
+"Claude's side"). Claude's PR review approves it on GitHub, naming the
+head, or requests changes; since 2026-10-24 she merges it herself once that
+approval covers the head her reviewers verified and CI is green. The
+guardian is not a reviewer and gives no merge go-ahead.
 
 ## The guardian
 

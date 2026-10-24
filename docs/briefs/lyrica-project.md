@@ -142,9 +142,9 @@ characters, the limit on project instructions.
 > **Review.** Send a draft PR and its head to Review and, for UI,
 > UI review. Fix findings; get rechecked. After required reviewers verify
 > the exact head and CI is green, record head/results on the PR and mark it
-> ready for review. Claude's PR review picks it up, verifies and merges it.
-> Answer PR comments. Never self-merge. Reach Claude only on GitHub: PRs,
-> PR comments and `claude` issues.
+> ready for review. Claude's PR review approves or asks for changes; once
+> its approval names that head, merge it yourself. Answer PR comments.
+> Reach Claude only on GitHub: PRs, PR comments and `claude` issues.
 >
 > **Boundary code** (CODEOWNERS paths) needs the owner: a PR touching it
 > says so in its first line and waits for the owner's own approval.
@@ -224,8 +224,13 @@ head for recheck. After all required reviewers verify the exact head and
 CI is green, she records the head and review results in the PR description
 or a comment and marks it ready for review. That is the pickup signal:
 the routine sends every ready PR, including docs-only and `web/`-only ones,
-to Claude's PR review, which verifies and merges it. She answers findings
-on the PR and never self-merges. Issues labelled `claude` are separate
+to Claude's PR review, which checks it and approves it on GitHub, naming
+the head, or requests changes; it never merges her PRs. She merges it
+herself, with a merge commit, once the required reviewers verified that
+head, CI is green and Claude's approval names it; a push after the approval
+needs all three again, and boundary code (CODEOWNERS) also waits for the
+owner's own approval. She answers findings
+on the PR. Issues labelled `claude` are separate
 requests to Claude's project chat, not per-PR merge requests. The project
 chat sets that routine up when her account exists.
 
