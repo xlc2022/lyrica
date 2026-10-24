@@ -1179,8 +1179,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   of an image carrying Pi's "does not support images" note) gets `NO_VISION` appended, telling her she
   saw nothing and must not describe it; a `read` of an image then fails.
   A subagent's guard gets a `VisionFallback` (`createSubagentExtension`'s
-  `vision`): the first local chat model with vision the subagent may use,
-  set as its thread's model; the guard switches to it with `pi.setModel`,
+  `vision`): the subagent's thread takes the local chat models with vision
+  it may use as its list, and the first whose machine is up becomes its
+  model, in its record and card too; the guard switches to it with `pi.setModel`,
   keeps the image and drops Pi's note, appending `SWITCHED`. With none, or
   a switch that fails, it warns as above.
   `delegate({ action: "models" })` marks the models with vision, for a look

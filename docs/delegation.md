@@ -38,8 +38,8 @@ subagent:
   `delegate({ action: "models" })` lists the chat models she may name, each
   marked local or cloud, and vision where it has it. A subagent whose model
   has no vision switches, on a tool result holding an image, to the first
-  local chat model with vision she may use, which becomes its model and
-  sees the image; with none, it is told it saw nothing (contracts.md,
+  local chat model with vision she may use whose machine is up, which
+  becomes its model (its card says so) and sees the image; with none, it is told it saw nothing (contracts.md,
   `registerVisionGuard`). In a private or local-only thread it is always a
   local model. A refused model fails the run before any thread is made;
 - gets its workspace from `inheritSettings`: the parent's folders (or the
