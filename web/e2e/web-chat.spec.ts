@@ -632,8 +632,9 @@ test("a message to a child thread is headed by its title, cut to one line, and b
   const head = card.locator(".sub-head b");
   await expect(head).toHaveText(`Message to ${title}`);
   await expect(head).toHaveAttribute("title", `Message to ${title}`);
-  // One line, cut with an ellipsis, and Open still beside it.
-  expect(await head.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  // One line, cut with an ellipsis, and Open still beside it. Polled: toHaveText doesn't wait for the card's layout.
+  await expect(head).toBeVisible();
+  await expect.poll(() => head.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
   const open = card.getByRole("link", { name: "Open" });
   await expect(open).toBeVisible();
   // Measured in one step: the list can redraw the card between two boundingBox calls, and a detached element has none.
