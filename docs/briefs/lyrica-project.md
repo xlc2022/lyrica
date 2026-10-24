@@ -79,6 +79,10 @@ and carries its children into a new project. The interface is built under
    - **Friction log**: keeps the list of what went wrong in use, one line
      each, and turns the top items into GitHub issues assigned to her.
 
+   Then tell the project chat these three exist, naming each, so it routes
+   work to them instead of starting its own: a project chat told only the
+   roles starts a second Review or Friction log.
+
 4. Leave the project's `watchThreads` setting on (the default): the
    project chat then takes a batched look at its threads 30 s after one
    ends a turn the owner started or posts an update, marked `[Watching threads]`,
