@@ -24,7 +24,8 @@ AGENTS.md, Workflow, is the rule; read it first. In short:
   :46. It lists open, non-draft PRs on `lyrica/*` branches or by her account,
   `lyrica-lunasa`, and open issues labelled
   `claude`, skips items with a "Picked up by Claude's project" comment,
-  reviews new PRs (never merges `[dry run]` ones), sends new issues to the
+  reviews new PRs and approves or requests changes on GitHub, naming the
+  head, but never merges them (she merges her own, 2026-10-24), sends new issues to the
   coordinator, and comments "Picked up by Claude's project" with the
   footer. With nothing new it posts nothing.
 
