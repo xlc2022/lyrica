@@ -1219,10 +1219,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   turn's `error` event, so a project's thread fails as it would on a model
   error, and after reload it shows as that reply's error.
 - **Tool calls written as text** (same extension): a local server can
-  leave a closed tool call in the reply's text (Qwen's
-  `<tool_call><function=…>…</function></tool_call>`, or a bare
-  `<function=…>…</function>`, outside fenced or inline code), and the
-  run would end on it as her reply.
+  leave a tool call in the reply's text, outside fenced or inline code:
+  closed in any format (Qwen's
+  `<tool_call><function=…>…</function></tool_call>`, Hermes' JSON in
+  `<tool_call>`, or a bare `<function=…>…</function>`), GLM's
+  `<arg_key>…</arg_key><arg_value>…` pairs wrapped or not, or a call cut
+  off unclosed (`<tool_call>` then `{` or `<function=`, or
+  `<function=…>` then `<parameter=`). The run would end on it as her
+  reply.
   The first in a run, with no real tool call beside it, gets one hidden
   follow-up (`lyrica-text-tool-call-retry`, `CALL_THE_TOOL`, dropped at
   the next turn like the others) asking her to make the call. A second
