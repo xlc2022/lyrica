@@ -54,8 +54,7 @@ the thread shows the job. This brief makes Claude Code one of her
   Claude Code needs Anthropic. Plan mode has no `delegate` writers, so no
   Claude Code, as today.
 - **Plan limits:** a run stopped by the Claude plan's usage limit fails
-  saying so, and she sets a wake-up and continues it with `message` after
-  the reset, as her prompt line already says.
+  saying so, and its thread waits for the reset like any plan's (below).
 - **The prompt line** (`CLAUDE_CODE_LINE`) points at the role instead of
   `bash`. The `claude` command stays on the sandbox's PATH, so a
   repository's own scripts and the person can still call it.
@@ -79,11 +78,15 @@ the thread shows the job. This brief makes Claude Code one of her
 - Tests: `extension/test/claude-delegate.test.ts`, the wrapper's mode in
   `core/test/claude-code.test.ts`.
 
-## Left
+## Built after (the owner's word, 2026-10-24)
 
-- The plan-limit card and notification for Claude Code's own plan, which
-  needs the relay to read Claude's limit and its reset time.
-- Live output on the run card (`--output-format stream-json`).
+- **Live output:** `--output-format stream-json`; its words, tool calls and
+  cut tool results go into the subagent's thread as they come, and the run
+  card reloads on each.
+- **The Claude plan's wait:** the relay reports Anthropic's usage-limit
+  refusal with its reset; a stopped run makes its parent wait with the
+  plan-limit card and notification ("Claude Code"), and Fall back hands
+  the job to the coder role. The claude role is refused until the reset.
 
 ## Out of scope
 

@@ -1099,8 +1099,9 @@ export interface ThreadSettings {
   /**
    * While a turn waits for its plan's usage limit to reset: the plan, when it resets, and the model the
    * thread would use instead (`next`, absent when none is left). `POST …/endpoints/:id/fall-back` falls back until then.
+   * `claudeCode`: the Claude plan, which stopped one of the thread's claude delegate runs; `next` is then the coder role.
    */
-  planWait?: { endpointId: string; name: string; until: string; next?: string };
+  planWait?: { endpointId: string; name: string; until: string; next?: string; claudeCode?: true };
   /** Recurring schedules, including paused ones; never notes. */
   routines: RoutineInfo[];
   /** The preset that applies now, by name (or "Custom" for a column's own table). */
@@ -2181,9 +2182,11 @@ export interface UpdateRequest { tag: string }
 export interface RollbackRequest { commit: string }
 /** POST …/admin/updates/check → Updates: fetches, so the newest update note shows. */
 
-/** A thread's wake-up, waiting: her note to herself stays in the pool, so only its time and ID are shown. */
-/** `planLimit`: the turn a plan's usage limit cut off, carrying on once it resets. */
-export interface WakeupInfo { id: number; dueAt: string; planLimit?: true }
+/**
+ * A thread's wake-up, waiting: her note to herself stays in the pool, so only its time and ID are shown.
+ * `planLimit`: the resume of a turn a plan's usage limit cut off; with `claudeCode`, of a claude delegate run the Claude plan's limit stopped.
+ */
+export interface WakeupInfo { id: number; dueAt: string; planLimit?: true; claudeCode?: true }
 
 /** Settings → Claude Code: whether a token is saved (never the token) and whether the program is installed on this server. */
 export interface ClaudeCodeStatus { token: boolean; installed: boolean }

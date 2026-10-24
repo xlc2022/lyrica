@@ -64,6 +64,10 @@ export interface DelegationOptions {
   name?: () => string;
   /** The server's SearXNG address, for a subagent's web_search. */
   searxng?: () => string | null;
+  /** The Claude plan's usage limit stopped a claude run, with when it resets if Claude Code said: lyricad wakes its parent then. */
+  onClaudeLimit?: (parent: Parent, until?: number) => void;
+  /** Why the claude role is refused for now, if it is: the user fell back from the Claude plan until it resets. */
+  claudeRefused?: (userId: string) => string | undefined;
 }
 
 /** A subagent's tool call waiting for approval: which subagent, and what exactly. */
@@ -1065,7 +1069,10 @@ export class Delegation {
           const target = tools.target();
           const dir = workspace.claudeDir({ ...p, threadId: child.id, reposOf: parent.threadId });
           sub = new Subagent(this, run, ctx, role, CLAUDE_MODEL, true,
-            (me) => claudeBody(me, { target, dir, readOnly: !!narrowing.readOnly, name: this.o.name?.() ?? "Lyrica" }), release, usedBefore(earlier));
+            (me) => claudeBody(me, {
+              target, dir, readOnly: !!narrowing.readOnly, name: this.o.name?.() ?? "Lyrica",
+              ...(this.o.onClaudeLimit ? { onLimit: (until?: number) => this.o.onClaudeLimit!(parent, until) } : {}),
+            }), release, usedBefore(earlier));
           return this.begin(run, sub, child, pick, narrowing, earlier);
         }
         extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }));
@@ -1130,6 +1137,8 @@ export class Delegation {
   /** Refuses the claude role where the thread's runs don't have Claude Code, or with the internet cut off, which it needs. */
   private claudeAllowed(run: Run, narrowing: Narrowing): void {
     if (!this.claudeCode(run.parent)) throw new Error(CLAUDE_OFF);
+    const refused = this.o.claudeRefused?.(run.parent.user.id);
+    if (refused) throw new Error(refused);
     if (narrowing.internet === false) throw new Error("Claude Code needs the internet to reach Anthropic, so it can't run with internet: false");
   }
 }

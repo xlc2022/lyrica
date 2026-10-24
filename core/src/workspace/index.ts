@@ -109,6 +109,8 @@ export interface WorkspaceOptions {
   onPullCreate?: (t: WorkspaceThread, pr: { repo: string; number: number }) => void;
   /** A run's Claude Code token counts, one message request at a time, for that run's thread: the usage view's "Claude Code" row. */
   onClaudeCodeUsage?: (t: WorkspaceThread, usage: ClaudeCodeUsage) => void;
+  /** A run's Claude Code was refused for the user's Claude plan's usage limit, with when it resets if Anthropic said. */
+  onClaudeCodeLimit?: (t: WorkspaceThread, until?: number) => void;
   /** A background command ended (docs/workspace.md, "Background commands"): lyricad tells its thread. Without it, threads get no background commands. */
   onJobEnd?: (t: WorkspaceThread, job: JobInfo, output: string) => void;
 }
@@ -764,6 +766,7 @@ export class Workspace {
       ...credentials.anthropic ? { claudeDir: this.claudeDir(t) } : {},
       onPullCreate: this.opts.onPullCreate && ((pr) => this.opts.onPullCreate!(t, pr)),
       onUsage: this.opts.onClaudeCodeUsage && ((u) => this.opts.onClaudeCodeUsage!(t, u)),
+      onLimit: this.opts.onClaudeCodeLimit && ((until) => this.opts.onClaudeCodeLimit!(t, until)),
       ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,

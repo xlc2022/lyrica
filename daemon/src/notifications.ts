@@ -113,7 +113,7 @@ function collect(d: Lyricad, user: User, show: Api.Display): Api.Notification[] 
     for (const w of planWaits(d, user.id)) {
       const fall: Api.NotificationAction = {
         label: "Fall back", method: "POST", path: `${u}/endpoints/${encodeURIComponent(w.endpointId)}/fall-back`,
-        title: `Every thread and sleep waiting on ${w.name} uses its next model until it resets.`,
+        title: w.claudeCode ? `Every thread waiting on ${w.name} hands its job to the coder role until it resets.` : `Every thread and sleep waiting on ${w.name} uses its next model until it resets.`,
       };
       const threads = w.threads.filter((x) => shownThread(x.pool, x.thread)).map((x) => ({ pool: x.pool, id: x.thread, title: titleOf(o[x.pool], x.thread) }));
       if (threads.length) {

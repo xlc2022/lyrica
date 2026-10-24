@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExecutionTarget } from "@lyrica/core";
-import { appendReply, appendUserMessage } from "../record.ts";
+import { appendPiMessage, appendUserMessage } from "../record.ts";
 import type { Said, Subagent, SubagentBody } from "./runs.ts";
 
 // The claude role (docs/delegation.md, "Claude Code"): a subagent that is one
@@ -27,6 +27,8 @@ export interface ClaudeRun {
   readOnly: boolean;
   /** Her set name, in place of Lyrica. */
   name: string;
+  /** The Claude plan's usage limit stopped it, with when it resets if Claude Code said: lyricad wakes the parent to continue it then. */
+  onLimit?: (until?: number) => void;
 }
 
 /** The subagent's own folder in the thread's Claude Code folder: host path and the path Claude Code sees. */
@@ -42,7 +44,7 @@ export function brief(task: string, name: string): string {
   return `# Brief\n\n${task}\n\nYou are working for ${name}, who handed you this task. You see none of her conversation, only this brief. Follow the repository's own instructions (AGENTS.md, CLAUDE.md) and run its checks before you report.\n`;
 }
 
-/** A Claude Code process per turn, resumed from its session for the next. */
+/** A Claude Code process per turn, resumed from its session for the next. Its work is stored in its thread as it streams. */
 export function claudeBody(sub: Subagent, o: ClaudeRun): SubagentBody {
   const { ctx } = sub;
   const { host, seen } = folders(o.dir, ctx.threadId);
@@ -63,23 +65,25 @@ export function claudeBody(sub: Subagent, o: ClaudeRun): SubagentBody {
         prompt = `Read ${seen}/BRIEF.md and do what it asks. ${reportAsk(seen, o.name)}`;
       }
       appendUserMessage(ctx.view.own, ctx.threadId, text);
-      const argv = [WRAPPER, "-p", prompt, "--output-format", "json", ...(session ? ["--resume", session] : []), ...(o.readOnly ? ["--permission-mode", "plan"] : [])];
+      const argv = [WRAPPER, "-p", prompt, "--output-format", "stream-json", "--verbose", ...(session ? ["--resume", session] : []), ...(o.readOnly ? ["--permission-mode", "plan"] : [])];
       aborter = new AbortController();
-      // A run prints nothing until it ends; it counts as a tool at work, so the idle check leaves it be.
+      // While it runs it counts as a tool at work, so a long build inside it doesn't trip the idle check.
       const busy = `claude-${Date.now()}`;
       sub.tools.add(busy);
-      let r: { code: number | null; stdout: Buffer; stderr: Buffer };
+      const stream = new Stream(sub);
+      let code: number | null;
       try {
-        r = await o.target.run!(argv, { signal: aborter.signal, cwd: await o.target.cwd() });
+        ({ code } = await o.target.run!(argv, { signal: aborter.signal, cwd: await o.target.cwd(), onData: (d) => stream.push(d) }));
       } catch (err) {
         last = { text: "", error: `Claude Code didn't finish: ${(err as Error).message}` };
         return;
       } finally {
+        stream.end();
         sub.tools.delete(busy);
         sub.active = Date.now();
       }
-      const out = parse(r.stdout.toString("utf8"));
-      if (out?.session_id) writeFileSync(sessionFile, out.session_id, { mode: 0o600 });
+      const out = stream.result;
+      if (stream.session) writeFileSync(sessionFile, stream.session, { mode: 0o600 });
       if (out?.usage) {
         const u = out.usage;
         sub.usage.inputTokens += (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
@@ -88,13 +92,18 @@ export function claudeBody(sub: Subagent, o: ClaudeRun): SubagentBody {
       }
       const report = existsSync(join(host, "REPORT.md")) ? readFileSync(join(host, "REPORT.md"), "utf8").trim() : "";
       const reply = report || out?.result?.trim() || "";
-      if (out?.is_error || r.code !== 0) {
-        const why = out?.result?.trim() || r.stderr.toString("utf8").trim().split("\n").slice(-5).join("\n") || `exit code ${r.code}`;
-        last = { text: reply, error: limited(why) ? `Claude Code reached the Claude plan's usage limit: ${why}. Continue this run with delegate action message once it resets; set a wake-up for then.` : `Claude Code failed: ${why}` };
+      if (out?.is_error || code !== 0) {
+        const why = out?.result?.trim() || stream.other.join("\n").trim() || `exit code ${code}`;
+        if (!limited(why)) last = { text: reply, error: `Claude Code failed: ${why}` };
+        else {
+          o.onLimit?.(resetOf(why));
+          last = { text: reply, error: `Claude Code reached the Claude plan's usage limit (${why}). ${o.onLimit ? "This thread is woken to continue it once the plan resets." : "Continue this run with delegate action message once it resets; set a wake-up for then."}` };
+        }
         return;
       }
       last = { text: reply };
-      if (reply) appendReply(ctx.view.own, ctx.threadId, reply, CLAUDE_MODEL);
+      // Its last words are in its thread already; a report goes there too, as its result.
+      if (report) appendPiMessage(ctx.view.own, ctx.threadId, claudeMessage(report));
     },
     // A message mid-run waits for the run to end, then resumes its session.
     steer: () => false,
@@ -104,18 +113,73 @@ export function claudeBody(sub: Subagent, o: ClaudeRun): SubagentBody {
   };
 }
 
-interface Result { type?: string; is_error?: boolean; result?: string; session_id?: string; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+const ZERO = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+/** An assistant message of Claude Code's, as Pi stores one. */
+const claudeMessage = (text: string, content: object[] = [{ type: "text", text }]) =>
+  ({ role: "assistant", content, api: "claude-code", provider: "claude-code", model: CLAUDE_MODEL, usage: ZERO, stopReason: "stop", timestamp: Date.now() });
+/** How much of a tool's output its thread keeps: enough to follow the work, not every file it read. */
+const RESULT_CHARS = 4000;
 
-/** Claude Code's `--output-format json` answer: one JSON object, perhaps after other lines. */
-function parse(stdout: string): Result | undefined {
-  for (const line of stdout.trim().split("\n").reverse()) {
-    try {
-      const v = JSON.parse(line) as Result;
-      if (v && typeof v === "object") return v;
-    } catch { /* not this line */ }
+interface Result { type?: string; is_error?: boolean; result?: string; session_id?: string; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+type Block = { type: string; text?: string; id?: string; name?: string; input?: unknown; tool_use_id?: string; content?: unknown; is_error?: boolean };
+
+/**
+ * Claude Code's `--output-format stream-json`, a JSON event a line: its
+ * messages go into the subagent's thread as they come (text and tool calls,
+ * tool results cut short), each one telling the run card to reload; its
+ * session and its result are kept. Other lines are kept for an error.
+ */
+class Stream {
+  result?: Result;
+  session?: string;
+  readonly other: string[] = [];
+  private held = "";
+  private readonly names = new Map<string, string>();
+  constructor(private readonly sub: Subagent) {}
+
+  push(data: Buffer): void {
+    const lines = (this.held + data.toString("utf8")).split("\n");
+    this.held = lines.pop()!;
+    for (const line of lines) this.line(line);
   }
-  return undefined;
+
+  end(): void {
+    if (this.held) this.line(this.held);
+    this.held = "";
+  }
+
+  private line(line: string): void {
+    if (!line.trim()) return;
+    let e: { type?: string; session_id?: string; message?: { content?: Block[] } } & Result;
+    try { e = JSON.parse(line); } catch { this.other.splice(0, Math.max(0, this.other.length - 19), line); return; }
+    const { ctx } = this.sub;
+    this.sub.active = Date.now();
+    if (e.session_id) this.session = e.session_id;
+    if (e.type === "result") { this.result = e; return; }
+    const blocks = Array.isArray(e.message?.content) ? e.message.content : [];
+    try {
+      if (e.type === "assistant") {
+        const content = blocks.flatMap((b): object[] => b.type === "text" && b.text ? [{ type: "text", text: b.text }]
+          : b.type === "tool_use" ? [{ type: "toolCall", id: b.id, name: b.name, arguments: b.input ?? {} }] : []);
+        for (const b of blocks) if (b.type === "tool_use" && b.id && b.name) { this.names.set(b.id, b.name); this.sub.emit({ type: "tool_call", toolName: b.name, args: b.input }); }
+        if (content.length) appendPiMessage(ctx.view.own, ctx.threadId, claudeMessage("", content));
+      } else if (e.type === "user") {
+        for (const b of blocks) {
+          if (b.type !== "tool_result") continue;
+          const text = typeof b.content === "string" ? b.content : Array.isArray(b.content) ? (b.content as Block[]).map((c) => c.text ?? "").join("\n") : "";
+          appendPiMessage(ctx.view.own, ctx.threadId, {
+            role: "toolResult", toolCallId: b.tool_use_id, toolName: this.names.get(b.tool_use_id ?? "") ?? "tool", isError: !!b.is_error, timestamp: Date.now(),
+            content: [{ type: "text", text: text.length > RESULT_CHARS ? `${text.slice(0, RESULT_CHARS)}\n[… cut]` : text }],
+          });
+        }
+      } else return;
+    } catch { return; /* its thread closed meanwhile */ }
+    // The card reloads its thread on a usage event; the counts themselves come with the result.
+    this.sub.emit({ type: "usage", ...this.sub.usage });
+  }
 }
 
 /** Whether Claude Code stopped on the Claude plan's usage limit. */
 export const limited = (why: string) => /usage limit|hit your limit|limit reached/i.test(why);
+/** When the plan resets, where Claude Code's message gives it (`…|<seconds>`). */
+const resetOf = (why: string) => { const m = /\|(\d{10})\b/.exec(why); return m ? Number(m[1]) * 1000 : undefined; };

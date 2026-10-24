@@ -25,8 +25,14 @@ const fs = require("node:fs");
 const report = /(\\S+)\\/REPORT\\.md/.exec(prompt)[1] + "/REPORT.md";
 const brief = /(\\S+\\/BRIEF\\.md)/.exec(prompt);
 const asked = brief ? fs.readFileSync(brief[1], "utf8") : prompt;
-const answer = (o, code = 0) => { console.log("starting"); console.log(JSON.stringify({ type: "result", session_id: "s-1", usage: { input_tokens: 10, cache_read_input_tokens: 90, output_tokens: 5 }, ...o })); process.exit(code); };
+const say = (e) => console.log(JSON.stringify(e));
+const answer = (o, code = 0) => { say({ type: "result", session_id: "s-1", usage: { input_tokens: 10, cache_read_input_tokens: 90, output_tokens: 5 }, ...o }); process.exit(code); };
+console.log("starting");
+say({ type: "system", subtype: "init", session_id: "s-1" });
+say({ type: "assistant", message: { content: [{ type: "text", text: "Looking at the tests." }, { type: "tool_use", id: "tu-1", name: "Bash", input: { command: "npm test" } }] } });
+say({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "tu-1", content: "x".repeat(5000) }] } });
 if (asked.includes("limit")) answer({ is_error: true, result: "Claude AI usage limit reached|1761300000" }, 1);
+say({ type: "assistant", message: { content: [{ type: "text", text: "Done, in short." }] } });
 if (!asked.includes("skip the report")) fs.writeFileSync(report, "Report: " + asked.split("\\n").find((l) => l.startsWith("Task:")) + " resume=" + resume + " mode=" + mode + " pwd=" + process.cwd());
 answer({ is_error: false, result: "Done, in short." });
 `;
@@ -48,8 +54,10 @@ async function setup() {
       const args = argv.slice(1).map((a) => a.replaceAll("/run/lyrica/claude", claudeDir));
       const child = execFile(process.execPath, [fake, ...args], { cwd: o?.cwd, encoding: "buffer" }, (err, stdout, stderr) => {
         if (err && o?.signal?.aborted) reject(new Error("aborted"));
-        else resolve({ code: err ? (err as { code?: number }).code ?? 1 : 0, stdout, stderr });
+        else resolve({ code: err ? (err as { code?: number }).code ?? 1 : 0, stdout: o?.onData ? Buffer.alloc(0) : stdout, stderr });
       });
+      // As the sandbox does: with onData, the output goes there as it comes.
+      if (o?.onData) child.stdout!.on("data", (d: Buffer) => o.onData!(d));
       o?.signal?.addEventListener("abort", () => child.kill("SIGKILL"), { once: true });
     }),
   };
@@ -59,7 +67,8 @@ async function setup() {
     override claudeCodeFor(_t: WorkspaceThread) { return on.claude; }
     override claudeDir(_t: WorkspaceThread) { return claudeDir; }
   })(m.keyring, m.users, { excludePorts: [] });
-  const delegation = new Delegation({ users: m.users, memory, models: m.models, cwd: scratch, workspace: ws });
+  const limits: (number | undefined)[] = [];
+  const delegation = new Delegation({ users: m.users, memory, models: m.models, cwd: scratch, workspace: ws, onClaudeLimit: (_p, until) => { limits.push(until); } });
   const thread = (): ThreadContext => {
     const view = memory.openThreadView(m.ada.id, "general");
     const { id } = view.own.createThread({ interface: "cli" });
@@ -70,7 +79,7 @@ async function setup() {
     await r.ended;
     return r;
   };
-  return { ...m, delegation, thread, run, ran, on, claudeDir, scratch };
+  return { ...m, delegation, thread, run, ran, on, claudeDir, scratch, limits };
 }
 
 describe("the claude role", () => {
@@ -90,6 +99,13 @@ describe("the claude role", () => {
     expect(parent.view.own.lastEntry(row!.thread, ["user"])?.text).toBe("Task: fix the flaky test");
     expect(parent.view.own.lastEntry(row!.thread, ["assistant"])?.text).toContain("Report:");
     expect(s.ran[0]!.slice(0, 2)).toEqual(["/run/lyrica/bin/claude", "-p"]);
+    expect(s.ran[0]).toEqual(expect.arrayContaining(["--output-format", "stream-json", "--verbose"]));
+    // Its work streamed into its thread as it went: its words, its tool call, the tool's output cut short.
+    const page = parent.view.own.entryPage(row!.thread, { limit: 50 }).entries.map((e) => e.data as { message?: { role: string; content: { type: string; name?: string; text?: string }[] } });
+    const roles = page.flatMap((e) => (e.message ? [e.message.role] : []));
+    expect(roles).toEqual(["user", "assistant", "toolResult", "assistant", "assistant"]);
+    expect(page[1]!.message!.content).toEqual([expect.objectContaining({ type: "text", text: "Looking at the tests." }), expect.objectContaining({ type: "toolCall", name: "Bash" })]);
+    expect(page[2]!.message!.content[0]!.text!.length).toBeLessThan(4100);
 
     const more = s.delegation.message(parent, run.id, { text: "Task: and the other one" }, { budget: s.delegation.newBudget() });
     await more.opened;
@@ -111,7 +127,8 @@ describe("the claude role", () => {
     const s = await setup();
     const run = await s.run(s.thread(), { task: "hit the limit", role: "claude" });
     expect(run.status).toBe("failed");
-    expect(run.result).toMatch(/usage limit.*once it resets/);
+    expect(run.result).toMatch(/usage limit.*woken to continue it once the plan resets/);
+    expect(s.limits).toEqual([1761300000 * 1000]);
   });
 
   it("is refused where the thread's runs don't have Claude Code, or with the internet cut off", async () => {

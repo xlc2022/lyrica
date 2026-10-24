@@ -231,7 +231,7 @@ Pi session: `extension/src/delegate/claude.ts`. A subagent works through a
   runs have Claude Code (`delegation.claudeCode`). Elsewhere, or with
   `internet: false`, the run fails before any thread is made. A user's own
   role can't be named `claude`.
-- **A turn** is one `claude -p … --output-format json` run in the
+- **A turn** is one `claude -p … --output-format stream-json` run in the
   parent's sandbox through the `claude` wrapper and the run's relay, in the
   sandbox's working folder, so the user's token never enters it.
   `readOnly` runs it in Claude Code's plan mode. It always runs in the
@@ -242,14 +242,21 @@ Pi session: `extension/src/delegate/claude.ts`. A subagent works through a
   folder, in the encrypted home workspace. Claude Code is told to read it
   and to write `REPORT.md` there before it ends: what changed, what's left,
   the checks run. The result is the report, or Claude Code's last reply
-  without one. The subagent's thread keeps the task and the result.
+  without one. The subagent's thread keeps the task, its work as it streams
+  (its words and tool calls, each tool's output cut to 4,000 characters),
+  and the report, so its card follows along.
 - **Continuing:** `message` resumes its Claude Code session (`--resume`,
   the id it gave) with the message, and asks for a fresh report. A message
   while it runs waits for the run to end.
 - **Its tokens** are the run's, from Claude Code's answer; the relay counts
   them in the thread's usage as for her bash's `claude`.
-- **The Claude plan's usage limit** fails the run, saying so, for her to set
-  a wake-up and continue it with `message` once the plan resets.
+- **The Claude plan's usage limit** fails the run, saying so, and lyricad
+  wakes the parent a minute after the reset (`CLAUDE_LIMIT_RESUME`, from
+  the relay's or Claude Code's reset time, else an hour) to continue it, as
+  a cut-off turn waits for its plan (docs/models.md). The thread shows the
+  wait card and the notification; Fall back has the thread carry on at once
+  and hand the job to the coder role. Until the plan resets the claude role
+  is refused: she waits, or after a fall back uses coder.
 
 ## Parallel writers
 

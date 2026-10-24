@@ -963,7 +963,17 @@ Custom roles override built-ins by name, except `claude`.
   `planFallingBack`) and carries the waiting turns (`Wakeups.resumeNow`)
   and sleep (`Sleep.resumeWaiting`) on at once. `WakeupInfo.planLimit` marks
   a turn waiting for its plan; `ThreadSettings.planWait { endpointId,
-  name, until, next? }` names the plan and the model the thread would use.
+  name, until, next?, claudeCode? }` names the plan and the model the thread would use.
+  The user's Claude plan, which only Claude Code uses, has no endpoint: its
+  limit is kept under `claudePlanId(userId)` (`claude-code:<user>`), set by
+  the relay (`RelaySpec.onLimit`, a 429 with
+  `anthropic-ratelimit-unified-status: rejected`; `Workspace` option
+  `onClaudeCodeLimit`) or by a stopped claude run (`DelegationOptions.onClaudeLimit`).
+  A thread waits for it with `WakeupInfo.claudeCode` (`CLAUDE_LIMIT_RESUME`);
+  its wait and notification are named "Claude Code" with `next` "the coder
+  role" and `claudeCode: true`, and its fall-back resumes only those
+  wake-ups. `DelegationOptions.claudeRefused` refuses the claude role while
+  the plan is limited.
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
   in Plan mode itself.

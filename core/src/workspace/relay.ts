@@ -49,6 +49,8 @@ export interface RelaySpec {
   onPullCreate?: (pr: { repo: string; number: number }) => void;
   /** Called after each Claude Code message request with its token counts only, never its text: for the usage view. */
   onUsage?: (usage: ClaudeCodeUsage) => void;
+  /** Called when Anthropic refuses a Claude Code request because the user's Claude plan reached its usage limit, with when it resets if it says. */
+  onLimit?: (until?: number) => void;
 }
 
 /** One Claude Code request's tokens: `inputTokens` counts every prompt token read, cached or not. */
@@ -236,6 +238,11 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
     const out = request({ protocol: base.protocol, hostname: hostname(base.host), port: base.port || undefined, method: req.method, path, headers,
       ...base.protocol === "https:" ? { ca: upstreamCAs() } : {} }, (up) => {
       res.writeHead(up.statusCode ?? 502, up.headers);
+      // The plan's usage limit: a 429 whose unified rate limit is rejected, with its reset in seconds.
+      if (to === ANTHROPIC_HOST && up.statusCode === 429 && up.headers["anthropic-ratelimit-unified-status"] === "rejected") {
+        const reset = Number(up.headers["anthropic-ratelimit-unified-reset"]);
+        try { spec.onLimit?.(reset > 0 ? reset * 1000 : undefined); } catch { /* telling never breaks the answer */ }
+      }
       if (onUsage && up.statusCode === 200 && !up.headers["content-encoding"]) {
         // Each chunk goes on as it comes; the counts are read beside it.
         const usage = usageReader(String(up.headers["content-type"] ?? ""), onUsage);

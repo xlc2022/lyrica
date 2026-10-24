@@ -47,16 +47,11 @@ export function recordEntries(session: AgentSession, store: PoolStore, threadId:
  * stores one: her next session on the thread loads it with the rest.
  */
 export function appendUserMessage(store: PoolStore, threadId: string, text: string): void {
-  appendMessage(store, threadId, { role: "user", content: [{ type: "text", text }], timestamp: Date.now() });
+  appendPiMessage(store, threadId, { role: "user", content: [{ type: "text", text }], timestamp: Date.now() });
 }
 
-/** Appends a reply no Pi session made (Claude Code's, in its subagent thread), as Pi stores an assistant's. */
-export function appendReply(store: PoolStore, threadId: string, text: string, model: string): void {
-  const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
-  appendMessage(store, threadId, { role: "assistant", content: [{ type: "text", text }], api: "claude-code", provider: "claude-code", model, usage, stopReason: "stop", timestamp: Date.now() });
-}
-
-function appendMessage(store: PoolStore, threadId: string, message: object): void {
+/** Appends what no Pi session said (Claude Code's work, in its subagent thread) as Pi stores a message: an assistant's text and tool calls, or a tool's result. */
+export function appendPiMessage(store: PoolStore, threadId: string, message: object): void {
   const last = store.loadEntries(threadId).filter((e) => (e as { type?: string }).type !== "session").at(-1) as { id: string } | undefined;
   const entry = { type: "message", id: randomBytes(4).toString("hex"), parentId: last?.id ?? null, timestamp: new Date().toISOString(), message } as unknown as SessionEntry;
   store.appendEntry(threadId, toStoredEntry(entry), entry.timestamp);

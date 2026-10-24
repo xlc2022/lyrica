@@ -155,4 +155,24 @@ describe("the relay", () => {
       upstream.close();
     }
   });
+  it("tells lyricad when Anthropic refuses for the Claude plan's usage limit, with its reset, and only then", async () => {
+    let answer = { status: 429, headers: { "anthropic-ratelimit-unified-status": "rejected", "anthropic-ratelimit-unified-reset": "1761300000" } as Record<string, string> };
+    const upstream = createServer((req, res) => { req.resume(); req.on("end", () => res.writeHead(answer.status, { "content-type": "application/json", ...answer.headers }).end("{}")); });
+    await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
+    try {
+      const limits: (number | undefined)[] = [];
+      const relay = await openRelay({ anthropic: TOKEN, reaches: () => true, internet: true, onLimit: (until) => limits.push(until),
+        upstreams: { "api.anthropic.com": `http://127.0.0.1:${(upstream.address() as AddressInfo).port}` } });
+      const send = () => fetch(`http://127.0.0.1:${relay.port}/v1/messages`, { method: "POST", headers: { authorization: `Bearer ${relay.capability}` }, body: "{}" });
+      expect((await send()).status).toBe(429);
+      expect(limits).toEqual([1761300000 * 1000]);
+      // A 429 that isn't the plan's limit (a short rate limit) says nothing.
+      answer = { status: 429, headers: { "anthropic-ratelimit-unified-status": "allowed_warning" } };
+      await send();
+      expect(limits).toHaveLength(1);
+      relay.close();
+    } finally {
+      upstream.close();
+    }
+  });
 });
