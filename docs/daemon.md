@@ -257,7 +257,8 @@ Each active thread is one Pi session from `openThreadSession`, with
   - The compaction is stored, and the stream gets a `compacted` event with the
     tokens before and (estimated) after and the summary. Her compaction's
     after is her prompt and tools, the kept messages and the summary, each
-    estimated; the next request measures the real figure. The message list
+    estimated, or that estimate's share of the measured total when it is
+    smaller; the next request measures the real figure. The message list
     shows it as a `notice` with a `compacted` part.
   - If the final reply reaches Pi’s automatic threshold with a compaction
     already requested, it waits for the host’s end-of-turn compaction, so

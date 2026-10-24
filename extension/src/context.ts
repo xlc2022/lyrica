@@ -270,10 +270,13 @@ export function registerContext(pi: ExtensionAPI, meter: ContextMeter): void {
     const summary = e.reason === "manual" ? meter.running?.summary : undefined;
     if (!summary) return undefined;
     const p = e.preparation;
-    // What's left, estimated on one basis: her prompt and tools, the kept messages and the summary. Taking the
-    // dropped estimate from the measured total instead missed what the estimate can't see, such as a model's reasoning.
+    // What's left, estimated: her prompt and tools, the kept messages and the summary. Taking the dropped estimate
+    // from the measured total kept what the estimate can't see (a model's reasoning); the estimate alone can run over
+    // a model that counts fewer tokens than it. So the smaller of it and its share of the measured total.
     const dropped = [...p.messagesToSummarize, ...p.turnPrefixMessages].reduce((a, m) => a + estimateTokens(m), 0);
-    const after = meter.fixedTokens() + Math.max(0, conversationTokens(ctx) - dropped) + chars(summary.length);
+    const fixed = meter.fixedTokens(), conversation = conversationTokens(ctx);
+    const kept = fixed + Math.max(0, conversation - dropped) + chars(summary.length);
+    const after = Math.min(kept, Math.round((p.tokensBefore * kept) / Math.max(1, fixed + conversation + chars(summary.length))));
     return { compaction: { summary, firstKeptEntryId: p.firstKeptEntryId, tokensBefore: p.tokensBefore, estimatedTokensAfter: after, details: { after } } };
   });
 }
