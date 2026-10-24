@@ -16,7 +16,8 @@ import {
 import { Delegation, planCatalog, Sleep, type Limits, type SleepLimits } from "@lyrica/extension";
 import { ChildThreads } from "./children.ts";
 import { Routines } from "./routines.ts";
-import { Wakeups } from "./wakeups.ts";
+import { CLAUDE_LIMIT_RESUME, Wakeups } from "./wakeups.ts";
+import { claudePlanId } from "./plan-waits.ts";
 import { ForgeWatcher } from "./forge-watch.ts";
 import { Projects } from "./projects.ts";
 import { Watcher } from "./watch.ts";
@@ -467,6 +468,8 @@ export class Lyricad implements Drainable {
       // A run's relay opened a pull request: the CI-watch poller records it (docs/briefs/ci-wakes.md).
       onPullCreate: (t, pr) => forge.record(t.userId, t.pool, t.threadId, pr.repo, pr.number),
       // Claude Code's tokens, counted by the run's relay, join that thread's usage as their own row.
+      // Anthropic refused a run's Claude Code for the Claude plan's usage limit: kept with the plans' limits, for the wait card and notification.
+      onClaudeCodeLimit: (t, until) => { models.reportPlanLimit(claudePlanId(t.userId), until); },
       onClaudeCodeUsage: (t, u) => {
         try { models.addCallTotals(t.userId, t.pool, t.threadId, "Claude Code", "cloud", u.inputTokens, u.outputTokens); }
         catch (err) { this.log(`Claude Code usage not recorded: ${(err as Error).message}`); }
@@ -501,7 +504,26 @@ export class Lyricad implements Drainable {
     // A subagent's approvals are asked in its thread and its parent's, through the host built next.
     let host!: ThreadHost;
     let forge!: ForgeWatcher;
-    const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal), name: () => selfName(keyring.self()), searxng: () => searxngAddress(keyring.self()) });
+    const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal), name: () => selfName(keyring.self()), searxng: () => searxngAddress(keyring.self()),
+      // The Claude plan's usage limit stopped a claude run: its parent carries on a minute after the reset, as a cut-off turn does for its plan.
+      onClaudeLimit: (parent, until) => {
+        const id = claudePlanId(parent.user.id);
+        if (until || models.planLimitedUntil(id) === undefined) models.reportPlanLimit(id, until);
+        const at = models.planLimitedUntil(id) ?? Date.now();
+        try { wakeups.resume(parent.user.id, parent.pool, parent.threadId, new Date(at + 60_000), CLAUDE_LIMIT_RESUME); }
+        catch (err) { this.log(`a claude run's resume wasn't set: ${(err as Error).name}`); }
+      },
+      claudeRefused: (userId) => {
+        const id = claudePlanId(userId);
+        const until = models.planLimitedUntil(id);
+        if (until === undefined) return undefined;
+        const at = `${new Date(until).toISOString().slice(11, 16)}Z`;
+        // Until it resets a run would only stop again: she waits, or hands the job on if the user fell back.
+        return models.planFallingBack(id)
+          ? `The Claude plan is out until ${at}, and the user chose to fall back until then: hand this job to the coder role instead`
+          : `The Claude plan is out until ${at}: don't do the job another way; set a wake-up (threads, later) for then and start it then`;
+      },
+    });
     const projects = new Projects(users);
     // A hidden project stops as a paused one does.
     const stopped = (u: string, p: Pool, project: string) => projects.paused(u, p, project) || hiddenThread(memory, u, p, project);
@@ -550,6 +572,7 @@ export class Lyricad implements Drainable {
       users, memory, models, workspace, persona, delegation, cwd, log: this.log, sameFile, searxng: () => searxngAddress(keyring.self()), name: () => selfName(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       codePulls: (u, p, t) => forge.codePulls(u, p, t),
+      resume: (u, p, t, at, note) => wakeups.resume(u, p, t, at, note),
       threads: children, onTurn: (u, p, t, working, byPerson) => {
         children.turn(u, p, t, working);
         if (!working) routines.ended(u, p, t);
@@ -759,6 +782,7 @@ export class Lyricad implements Drainable {
     if (!this.draining && !this.wipingNow) {
       this.services.children.drainWakes();
       this.services.wakeups.tick(now);
+      this.services.sleep.resumeWaiting();
       this.services.children.watchIdle(now);
       this.services.routines.tick(now);
       this.services.forge.tick(now);

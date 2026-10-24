@@ -36,9 +36,10 @@ and carries its children into a new project. The interface is built under
    the internet on, which reading CI logs needs (allowing only
    `github.com`, `api.github.com` and `registry.npmjs.org` works for
    everything else). Her account goes in **Settings → Git accounts**
-   first: kind GitHub, her login, and her fine-grained token with
-   Contents, Issues and Pull requests read and write and Actions read,
-   so she can claim issues and read why her CI failed (docs/workspace.md, "Her own code"). The
+   first: kind GitHub, her login, and her token: a classic one with only
+   `public_repo`, since a fine-grained token can't write to a repository
+   another personal account owns, so she can push, claim issues and read
+   why her CI failed (docs/workspace.md, "Her own code"). The
    token never enters her sandbox: git, `gh` and `tea` hold a placeholder
    and reach GitHub through the run's relay in `lyricad`, which swaps it in
    for `xlc2022/lyrica` and GitHub's API only. For
@@ -50,7 +51,9 @@ and carries its children into a new project. The interface is built under
    token from `claude setup-token` in **Settings → Claude Code** and turn
    on the project chat's **Claude Code** switch in Thread settings, so the
    project's threads inherit it (docs/workspace.md, "Claude Code"); with
-   the internet off, also allow `api.anthropic.com`.
+   the internet off, also allow `api.anthropic.com`. She then delegates
+   those jobs to the `claude` role, in the background, and gets its report
+   back (docs/delegation.md, "Claude Code").
    Project settings → General → **Commands** can save trusted checks as
    Allow rules, pushes as Ask, and commands she must leave to the user as
    Forbid. These apply to the project chat, its threads and subagents;

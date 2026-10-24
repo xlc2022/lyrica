@@ -28,6 +28,8 @@ export interface ForgeReview {
 export interface ForgePullRequest {
   number: number;
   state: "open" | "closed" | "merged";
+  /** Who merged it, when the forge says. */
+  mergedBy?: string;
   /** Full commit hash; checks belong only to this head. */
   head: string;
   checks: ForgeCheck[];
@@ -73,12 +75,14 @@ export interface ForgeWakeNote {
   /** Counts grouped by author and kind, never comment text. */
   reviews: { author: string; kind: ForgeReview["kind"]; count: number }[];
   tokenUnreadable: boolean;
+  /** The pull was merged or closed by someone else, which ends the watch. */
+  ended?: "merged" | "closed";
 }
 
 /** Save next state and queue the note together; wake-up guards may defer delivery. */
 export interface ForgeDecideOutput {
   next: ForgeWatchState;
-  /** Closed/merged pulls stop silently; unreadable tokens stop with one note. */
+  /** Closed/merged pulls and unreadable tokens stop with one note; her own merge stops silently. */
   stop: boolean;
   note: ForgeWakeNote | null;
 }

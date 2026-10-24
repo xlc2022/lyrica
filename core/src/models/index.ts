@@ -77,8 +77,18 @@ export function isUnreachable(err: unknown): boolean {
 
 /** A plan's usage limit, as OpenAI reports it: it resets after hours, not seconds. */
 export const isPlanLimit = (message: string | undefined): boolean => /subscription_sharing_usage_limit_exceeded|usage.?limit/i.test(message ?? "");
-/** How long a plan that reached its limit is skipped. */
+/** How long a plan that reached its limit is skipped when it doesn't say when it resets. */
 const PLAN_LIMIT_MS = 60 * 60_000;
+/** When a plan's limit resets, from its error (OpenAI's `resets_at` or `resets_in_seconds`, or Pi's "Try again in ~N min."); undefined when it doesn't say. */
+export function planLimitReset(message: string | undefined, now = Date.now()): number | undefined {
+  const text = message ?? "";
+  const at = /"?resets_at"?\s*[:=]\s*(\d{9,})/.exec(text);
+  if (at) return Number(at[1]) * 1000;
+  const after = /"?resets_in_seconds"?\s*[:=]\s*(\d+)/.exec(text);
+  if (after) return now + Number(after[1]) * 1000;
+  const minutes = /try again in ~?(\d+)\s*min/i.exec(text);
+  return minutes ? now + Number(minutes[1]) * 60_000 : undefined;
+}
 
 /** An endpoint unreachable this long is stale; a model missing this long is gone. */
 export const STALE_DAYS = 14;
@@ -381,8 +391,11 @@ export function speeds(p: Omit<Pace, "tokPerSec" | "promptTokPerSec">): Pace {
   return { ...p, ...(tok !== undefined ? { tokPerSec: tok } : {}), ...(prompt !== undefined ? { promptTokPerSec: prompt } : {}) };
 }
 
-/** One thread's tokens on one model: `input` and `output` split `tokens` where known; `gpuMs` for local models only. */
-export interface UsageRow { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; input: number; output: number; gpuMs?: number }
+/**
+ * One thread's tokens on one model: `input` and `output` split `tokens` where known; `gpuMs` for local models only.
+ * `cached` of `measured` input tokens were read from the server's cache, over the call records still kept that measured it.
+ */
+export interface UsageRow { threadId: string; label: string; kind?: "local" | "cloud"; tokens: number; input: number; output: number; gpuMs?: number; cached?: number; measured?: number }
 
 /** An endpoint's call count, and its recent speeds when it has measured turns (Models.endpointUses). */
 export interface EndpointUse { endpointId: string; calls: number; tokPerSec?: number; promptTokPerSec?: number; speedCalls?: number }
@@ -532,6 +545,8 @@ export class Models {
   private readonly discovered = new Set<string>();
   /** Plans that reached their usage limit, until when they're skipped. */
   private readonly limited = new Map<string, number>();
+  /** Limited plans the user chose to fall back from until they reset. */
+  private readonly fallingBack = new Set<string>();
   /** Offerings whose provider refused a request with thinking off (mustThink). */
   private readonly alwaysThinks = new Set<string>();
   /** Models seen thinking though their server lists no thinking levels: they think on their own, so nothing says they can't. */
@@ -1649,9 +1664,42 @@ export class Models {
     }), ...recipes];
   }
 
-  /** A plan answered that its usage limit is reached: the router skips it for an hour, so the next turn falls back. */
-  reportPlanLimit(endpointId: string): void {
-    this.limited.set(endpointId, Date.now() + PLAN_LIMIT_MS);
+  /**
+   * A plan answered that its usage limit is reached, until it resets
+   * (`until`, or an hour). The router still picks it for every task: a model
+   * set to a plan is set so for a reason, so its callers wait for the reset
+   * rather than falling back, unless the user chooses to (`fallBackFromLimit`).
+   * True when it wasn't already known, so the owner is told once.
+   */
+  reportPlanLimit(endpointId: string, until?: number): boolean {
+    const known = this.planLimitedUntil(endpointId) !== undefined;
+    if (!known) this.fallingBack.delete(endpointId);
+    this.limited.set(endpointId, until && until > Date.now() ? until : Date.now() + PLAN_LIMIT_MS);
+    return !known;
+  }
+
+  /**
+   * The user chose to fall back from a limited plan: until it resets, the
+   * router skips it, as for a machine that is away. False when it isn't
+   * limited now.
+   */
+  fallBackFromLimit(endpointId: string): boolean {
+    if (this.planLimitedUntil(endpointId) === undefined) return false;
+    this.fallingBack.add(endpointId);
+    return true;
+  }
+
+  /** Whether the router skips a limited plan for the user's choice, until it resets. */
+  planFallingBack(endpointId: string): boolean {
+    if (this.planLimitedUntil(endpointId) !== undefined) return this.fallingBack.has(endpointId);
+    this.fallingBack.delete(endpointId);
+    return false;
+  }
+
+  /** When a plan that reached its usage limit resets, while it is limited. */
+  planLimitedUntil(endpointId: string): number | undefined {
+    const until = this.limited.get(endpointId);
+    return until !== undefined && until > Date.now() ? until : undefined;
   }
 
   /** A call to the endpoint failed to connect or was refused as away: the router skips it for HEALTH_MS. */
@@ -2794,6 +2842,19 @@ export class Models {
       if (existing) { existing.tokens += r.input + r.output; existing.input += r.input; existing.output += r.output; }
       else result.push({ threadId: r.threadId, label: r.label, ...(kind ? { kind } : {}), tokens: r.input + r.output, input: r.input, output: r.output });
     }
+    // The cache's share, from call records that measured it, counted where their tokens are: a subagent's under its parent. Folded totals never measured it.
+    const cache = this.withUser(userId, db => db.prepare(`WITH RECURSIVE descendants(root, thread) AS (
+      SELECT value, value FROM json_each(@threads)
+      UNION SELECT d.root, r.thread FROM descendants d JOIN subagent_runs r ON r.parent = d.thread AND r.pool = @pool
+    ) SELECT d.root AS threadId, c.label, c.kind, sum(max(c.read_tokens - c.processed, 0)) AS cached, sum(c.read_tokens) AS measured
+      FROM descendants d JOIN model_calls c ON c.thread = d.thread AND c.pool = @pool
+      WHERE c.task IN ('chat', 'code') AND c.read_tokens > 0 AND c.processed IS NOT NULL
+        AND (d.thread != d.root OR d.thread NOT IN (SELECT thread FROM subagent_runs WHERE pool = @pool))
+      GROUP BY d.root, c.label, c.kind`).all({ pool, threads: JSON.stringify(threadIds) })) as { threadId: string; label: string; kind: "local" | "cloud"; cached: number; measured: number }[];
+    for (const c of cache) {
+      const row = result.find(x => x.threadId === c.threadId && x.label === c.label && (x.kind === undefined || x.kind === c.kind));
+      if (row) { row.cached = (row.cached ?? 0) + c.cached; row.measured = (row.measured ?? 0) + c.measured; }
+    }
     return result;
   }
 
@@ -2869,7 +2930,7 @@ export class Models {
     if (ep.stale) return `${ep.name} hasn't answered for ${STALE_DAYS} days`;
     if (ep.signedOut) return `${ep.name} is signed out`;
     if (ep.pausedAt) return `${ep.name} is paused`;
-    if ((this.limited.get(ep.id) ?? 0) > Date.now()) return `${ep.name} has reached its plan's limit`;
+    if (this.planFallingBack(ep.id)) return `${ep.name} has reached its plan's limit`;
     const m = this.modelDown.get(o.id);
     if (m !== undefined && Date.now() - m < HEALTH_MS) return `${ep.name} couldn't run it`;
     if (opts.except?.has(ep.id)) return `${ep.name} is down`;

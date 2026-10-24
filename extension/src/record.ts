@@ -47,12 +47,18 @@ export function recordEntries(session: AgentSession, store: PoolStore, threadId:
  * stores one: her next session on the thread loads it with the rest.
  */
 export function appendUserMessage(store: PoolStore, threadId: string, text: string): void {
-  const last = store.loadEntries(threadId).filter((e) => (e as { type?: string }).type !== "session").at(-1) as { id: string } | undefined;
-  const entry = {
-    type: "message", id: randomBytes(4).toString("hex"), parentId: last?.id ?? null, timestamp: new Date().toISOString(),
-    message: { role: "user", content: [{ type: "text", text }], timestamp: Date.now() },
-  } as unknown as SessionEntry;
+  appendPiMessage(store, threadId, { role: "user", content: [{ type: "text", text }], timestamp: Date.now() });
+}
+
+/**
+ * Appends what no Pi session said (Claude Code's work, in its subagent thread) as Pi stores a message: an assistant's text and tool calls, or a tool's result.
+ * Returns its id, for a caller appending many to pass as the next one's parent instead of the thread being reloaded each time.
+ */
+export function appendPiMessage(store: PoolStore, threadId: string, message: object, parentId?: string | null): string {
+  if (parentId === undefined) parentId = (store.loadEntries(threadId).filter((e) => (e as { type?: string }).type !== "session").at(-1) as { id: string } | undefined)?.id ?? null;
+  const entry = { type: "message", id: randomBytes(4).toString("hex"), parentId, timestamp: new Date().toISOString(), message } as unknown as SessionEntry;
   store.appendEntry(threadId, toStoredEntry(entry), entry.timestamp);
+  return entry.id;
 }
 
 /** A shown notice of Lyrica's own (`customType`) at the end of a stored thread with no live session. */

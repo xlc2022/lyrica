@@ -480,7 +480,12 @@ Two things to look at once she is unlocked:
   journalctl -u lyricad _SYSTEMD_INVOCATION_ID=$(systemctl show -p InvocationID --value lyricad) | grep 'network is off'
   ```
 
-  must print nothing.
+  must print nothing. A networked command runs in a user namespace inside
+  the one `pasta` makes, so the host must allow nested user namespaces;
+  where it doesn't, the reason reads "a networked sandbox didn't start".
+  `sudo -u lyrica unshare -r unshare -r true` checks that alone: in a
+  Proxmox LXC container it needs the `nesting` feature, and a
+  `user.max_user_namespaces` of 0 refuses it.
 
 ### Save the passphrase
 
@@ -724,10 +729,14 @@ unless you confirm adding it anyway.
 Make each token fine-grained, for the repositories she works on, with no
 admin rights: **Contents** and **Pull requests** read and write for most
 work. For her own repository she also needs **Issues** read and write and
-**Actions** read
-([workspace.md](../workspace.md#her-own-code)). The token stays in
-`lyricad` and never enters her sandbox, but every command in a thread
-that has the repository can use it on that host.
+**Actions** read. A fine-grained token can't write to a repository that
+another personal account owns, such as her own code under your account:
+for a public one, use a classic token with only `public_repo`
+([workspace.md](../workspace.md#her-own-code)). That token reaches every
+public repository her account can write to, so keep her account a
+collaborator on that one repository only. The token stays in `lyricad`
+and never enters her sandbox, but every command in a thread that has the
+repository can use it on that host.
 
 A Forgejo or Gitea needs a publicly trusted certificate, such as one
 from Let's Encrypt or from `tailscale cert` (Tailscale Serve uses it).
@@ -1062,8 +1071,9 @@ item 5 once she has been unlocked: see step 10 of "On NixOS"), and item
 
 1. The LXC features and tun device from "In a Proxmox LXC container", then
    the proofs in [docs/workspace.md](../workspace.md#host-requirements):
-   `bwrap … /bin/true` and `pasta --config-net -- true` as the `lyrica`
-   user. On Ubuntu 24.04 or later, a bubblewrap "Permission denied" means
+   `bwrap … /bin/true`, `pasta --config-net -- true` and `unshare -r
+   unshare -r true` as the `lyrica` user. On Ubuntu 24.04 or later, a
+   bubblewrap "Permission denied" means
    `kernel.apparmor_restrict_unprivileged_userns=0` on the Proxmox host.
 2. `install.sh` runs to the end on a fresh system. Expected soft spots: the
    Node check, the release build and the Caddy build (each prints the tail

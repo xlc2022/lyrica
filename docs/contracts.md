@@ -473,7 +473,7 @@ class Models {                                              // new Models(keyrin
   callHistory(userId, { limit, offset, q, pools, threadIds? }): { entries: CallRecord[]; total }
     // GET models/calls/history?project=&pool= restricts both pool and project threads; hidden project pool is 404.
   recordPace(userId, threadId, pace, task?, pool?) / speedsByOffering(userId): Map<offeringId, { tokPerS?; promptTokPerS? }>   // medians over the last 20 calls
-  usage(userId, pool, threadIds): { threadId; label; kind?: "local" | "cloud"; tokens; gpuMs? }[]
+  usage(userId, pool, threadIds): { threadId; label; kind?: "local" | "cloud"; tokens; input; output; gpuMs?; cached?; measured? }[]
     // Calls plus durable folded counts plus subagent runs at every depth; pool AND thread filtered.
   addCallTotals(userId, pool, threadId, label, kind, input, output): void   // adds one call to call_totals; Claude Code's, counted by its relay
     // (RelaySpec/SandboxSpec.onUsage({ inputTokens, outputTokens }) → Workspace onClaudeCodeUsage(t, usage)), as label "Claude Code", kind cloud
@@ -671,7 +671,15 @@ thinking; read/write/edit/bash/recall/read_memory). It uses the parent's
 through its existing thread view, without persona. A step's optional
 `done` accompanies its task in the Code task section. Without a role, a
 write-capable step in a repository thread selects coder; otherwise worker.
-Custom roles override built-ins by name.
+Custom roles override built-ins by name, except `claude`.
+- The built-in `claude` role is Claude Code, not a Pi session
+  (`extension/src/delegate/claude.ts`; docs/delegation.md, "Claude Code"):
+  listed and allowed only where `delegation.claudeCode(thread)` (the
+  thread's `claudeCode()`, and a `workspace.claudeDir`), refused with
+  `internet: false`, always in the background. A `Subagent` works through a
+  `SubagentBody` (`send`, `steer`, `abort`, `reply`, `dispose`): a Pi
+  session's, or `claudeBody`'s one `claude -p --output-format json` run
+  per turn through `ExecutionTarget.run`, resumed with `--resume`.
 - The default action runs work: `task` with an optional `role` and `tier`;
   or `tasks: [...]` (parallel), `chain: [...]`, `loop`, `council`, or
   `workflow: name`. Any of these can be `background: true` (always, in a
@@ -780,7 +788,8 @@ Custom roles override built-ins by name.
   transaction, and the note fires as `HostedThread.send(note, { wakeup:
   wakeupMark(setAt) })` through the existing wake-up guards — never a body,
   never comment or log text. A merged or closed pull stops the watch
-  without a turn. One request at a time per token; `Retry-After` and
+  with one note (`ended`), or silently when the watching account merged
+  it (`mergedBy`). One request at a time per token; `Retry-After` and
   GitHub's `x-ratelimit-reset` are honoured; polling slows to 10 minutes
   while fewer than a fifth of the token's hourly requests remain, or after
   a webhook for that repository in the last 24 hours.
@@ -803,7 +812,7 @@ Custom roles override built-ins by name.
   (`pickThread`; a title two threads share is refused), or `to: "parent"`
   from a child; a child's message with no `to` and no `id`, or whose `id`
   names its parent, goes to the parent), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
-  `last`: the latest messages of a listed, logged thread (`PoolReader.latestEntries`), `READ_DEFAULT`
+  `last`: the latest messages of a listed, logged thread, or of one of her own subagents' threads (`PoolReader.latestEntries`), `READ_DEFAULT`
   10, `READ_MAX` 30, formatted by `formatEntry`) and `stop` (`id`: a
   parent's child, `ThreadsHost.stop`), and `routine` (above). `later` (`minutes`, clamped to 1 to
   `WAKEUP_LIMITS.maxMinutes`, and `note`; or `cancel: true`) sets a
@@ -944,6 +953,27 @@ Custom roles override built-ins by name.
   answer route with `{ option }`, recommended first, then the others in
   order; its `thread` supplies Open thread. There is no bulk question action.
   Display filters apply as to other decisions, including the private pool.
+  `NotificationType` gains `limit` (daemon/src/plan-waits.ts): id
+  `limit:<endpoint>/threads` for the threads waiting on a limited plan (its
+  `thread` when there is one, else `threads: { pool, id, title }[]`) and
+  `limit:<endpoint>/sleep/<pool>` for sleep, each with `until` (the reset)
+  and one action, **Fall back** (with a `title` tooltip; `NotificationAction.title?` is new): `POST …/endpoints/:id/fall-back` →
+  `{ ok }` (404 for no such plan, 409 when it isn't limited), which makes
+  the router skip the plan until it resets (`Models.fallBackFromLimit`,
+  `planFallingBack`) and carries the waiting turns (`Wakeups.resumeNow`)
+  and sleep (`Sleep.resumeWaiting`) on at once. `WakeupInfo.planLimit` marks
+  a turn waiting for its plan; `ThreadSettings.planWait { endpointId,
+  name, until, next?, claudeCode? }` names the plan and the model the thread would use.
+  The user's Claude plan, which only Claude Code uses, has no endpoint: its
+  limit is kept under `claudePlanId(userId)` (`claude-code:<user>`), set by
+  the relay (`RelaySpec.onLimit`, a 429 with
+  `anthropic-ratelimit-unified-status: rejected`; `Workspace` option
+  `onClaudeCodeLimit`) or by a stopped claude run (`DelegationOptions.onClaudeLimit`).
+  A thread waits for it with `WakeupInfo.claudeCode` (`CLAUDE_LIMIT_RESUME`);
+  its wait and notification are named "Claude Code" with `next` "the coder
+  role" and `claudeCode: true`, and its fall-back resumes only those
+  wake-ups. `DelegationOptions.claudeRefused` refuses the claude role while
+  the plan is limited.
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
   in Plan mode itself.
@@ -1189,6 +1219,12 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   the next turn like the others) asking her to make the call. A second
   stores a `lyrica-empty-reply` message with `TEXT_TOOL_CALL`, so the
   turn fails visibly instead of sitting idle.
+- **Exit codes** (`extension/src/exit-codes.ts`, threads and subagents):
+  a bash result that ends "Command exited with code N" says what a
+  well-known code means for the command that ended the line, such as
+  "(rg: no matches, not a failure)" or gh pr checks' 8 for pending.
+  The codes that aren't failures (rg or grep 1, diff 1, test 1, gh pr
+  checks 8) clear the result's error.
 - **Paid fallback** (`extension/src/models.ts`): when `Resolution.paidAfter`
   is set, `prepareTurn` appends a `lyrica-paid-fallback` custom entry
   (`PaidFallback`: `model`, `from`, `reason`), outside her context, and a
@@ -1208,10 +1244,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   and fills in its arguments in place at `tool_start`.
 - **Shared local models** (`extension/src/model-share.ts`, around every
   local endpoint's stream in `modelRuntimeFor`): `shareModel(scope, key, need,
-  window, signal?, slots?)` waits until a request fits beside the ones running on
+  window, signal?, slots?, holder?)` waits until a request fits beside the ones running on
   that model (its tokens in the window, and at most `slots`, the offering's
-  `parallel`, at once; no limit when the server reports none) and returns its
-  release, which an abort also calls; `scope` is the daemon's `Models`, so a
+  `parallel`, at once, kept slots counted; no limit when the server reports none) and returns its
+  release, which an abort also calls. With `slots` and a `holder` (the
+  session's model runtime), a released slot stays kept for that holder for
+  `KEEP_WARM_MS` (15 s), with its room in the window, and the holder's next
+  request takes it ahead of the queue; no slot is kept after an abort, or
+  while the head of the queue has waited `MAX_PASSED_MS` (2 min); `scope` is the daemon's `Models`, so a
   daemon started again in the same process holds nothing; `markOverflow` adds a known
   overflow text to LM Studio's "Context size has been exceeded" so Pi
   compacts and retries (docs/models.md, Local servers).
@@ -1363,7 +1403,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     call is approved like any `bash`, then `startJob(command, machine?,
     timeoutS?)` returns a `JobInfo` at once (docs/workspace.md, Background
     commands).
-  - `ExecutionTarget.run?(argv, { signal?, timeoutMs? })` runs argv with no
+  - `ExecutionTarget.run?(argv, { signal?, timeoutMs?, cwd? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
   - `ExecutionTarget.secrets?()` is the sandbox's tokens and placeholders
     (core/src/workspace/ops.ts): `bash` output (`secretMasker`), `read` and
@@ -1980,7 +2020,7 @@ One entry point with subcommands: `serve`, `admin`, `dev`, `version` and
 new Sleep({ users, memory, models, persona, proposals, hasKey, cwd, limits? })
 sleep.run(userId, pool, reason: "scheduled" | "manual"): Promise<SleepRun>  // queued: one run at a time
 // status: "complete" | "partial" | "skipped"
-// skipReason: "no-key" | "endpoint-down" | "no-activity"
+// skipReason: "no-key" | "endpoint-down" | "no-activity" | "plan-limit"
 sleep.check(userId, pool)          // what would stop a run now, without recording anything
 sleep.stop(userId)                 // Lock: the run is marked partial
 sleep.prune(now?): number          // forgets phase threads older than 36 hours, memories kept
@@ -2046,7 +2086,7 @@ interface ExecutionTarget {               // name: "sandbox" | "ssh:<name>"
   cwd(): Promise<string>;
   ops(): { read; write; edit; bash };     // Pi's tool operations
   folders(): string[];                    // host folders, or "<ssh name>:<root>"
-  run?(argv, { signal?, timeoutMs? });    // the sandbox's
+  run?(argv, { signal?, timeoutMs?, cwd? });  // the sandbox's
   secrets?(): string[];                   // the sandbox's tokens and placeholders, hidden in output
 }
 new SshTarget(cfg, { transport: SshTransport, address?, connected? })  // the host key must be cfg.hostKey
@@ -2352,11 +2392,14 @@ requires the addressed user's session; it returns no thread or memory text.
 ### Thread usage
 
 `GET /api/u/:userId/threads/:pool/:id/usage` → `ThreadUsage { tokens,
-input, output, gpuMs?, models: { label, kind?, tokens, input, output, gpuMs? }[],
-threads?: { threadId, tokens, input, output, gpuMs? }[] }`. `input` is every
+input, output, gpuMs?, cacheHit?, models: { label, kind?, tokens, input, output, gpuMs?, cacheHit? }[],
+threads?: { threadId, tokens, input, output, gpuMs?, cacheHit? }[] }`. `input` is every
 request's reads, cached reads included, and `output` what was written; they
 split `tokens`, except that totals folded before user step 17 count in
-`tokens` alone. Requires the addressed user's session and thread;
+`tokens` alone. `cacheHit` (0 to 1) is the share of input the server said it
+read from its cache (`read_tokens - processed` over `read_tokens`), over the
+kept call records that measured it, a subagent's under its parent's thread;
+absent where none did. Requires the addressed user's session and thread;
 missing thread is 404. Models sort by tokens descending. `threads` appears
 only for a project chat: the chat first, then descending tokens. The total
 is also `ProjectOverview.tokens`. User step 10 adds nullable

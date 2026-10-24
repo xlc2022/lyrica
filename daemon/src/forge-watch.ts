@@ -96,6 +96,7 @@ function renderNote(n: ForgeWakeNote): string {
   const head = n.head ? n.head.slice(0, 7) : "";
   const pr = `PR #${n.number}${head ? ` (${head})` : ""}`;
   if (n.tokenUnreadable) return `${pr}: the account's token can't read the checks, so I've stopped watching.`;
+  if (n.ended) return `${pr}: ${n.ended === "merged" ? "merged" : "closed without merging"}, so I've stopped watching.`;
   const parts: string[] = [];
   if (n.ci?.kind === "finished") parts.push(`checks finished — ${n.ci.checks.map((c) => `${c.name}: ${c.result}`).join(", ")}`);
   else if (n.ci?.kind === "noChecks") parts.push("no checks reported 15 minutes after the head commit");

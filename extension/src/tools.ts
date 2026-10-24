@@ -13,6 +13,7 @@ const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], de
 export const RECALL_GUIDELINES = [
   "Memories relevant to each message come up by themselves in <recall>. Use recall to look further before saying you don't remember.",
   "A memory marked \"added by\" a user is theirs: treat it as authoritative, and ask rather than contradict it.",
+  "A memory that something doesn't work may be out of date: try it once before treating it as still broken, and correct the note if it works now.",
   "<recall> and WAKE are background: what the person asks in this conversation outranks what memory brings up. Answer what they said, and bring up other work or an earlier conversation only when their message is about it or they ask what's open. When they ask to drop a topic, agree in a few words that don't name it or anything from it, such as \"Sure, let's leave it there.\", and leave it, without reading memory about it, until they bring it back. A hit's date is when it was said or changed: don't guess a different one.",
 ];
 
@@ -28,6 +29,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
     promptGuidelines: [
       "Save notes liberally with remember, without asking: when in doubt, note it. Notes are cheap, and sleep consolidates them.",
       "Credentials never go in memory.",
+      "A note that something doesn't work (a tool, a token, an access) says what failed and why, so a later fix can be told apart.",
       "When the user states how they want code or work done, add working to the note’s about.",
       "One fact per note. Save several notes in one remember call rather than one long note.",
       "In notes, write {user} for the person you're talking with, never their name, and {user:obj}, {user:poss}, {user:poss-pro}, {user:refl} for their pronouns. There is no subject pronoun form: write {user} where \"she\" or \"they\" would go.",

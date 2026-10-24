@@ -155,6 +155,11 @@ describe("handing files over", () => {
     expect(sent).toEqual(["The page is at /shared/pagoda.html."]);
     // Its own project chat can't be read from a project thread, and the error names what works.
     await expect(call({ action: "read", id: project.id })).rejects.toThrow(`[t:${project.id}] is your project chat: it can't be read from here, but you can message it with to: "parent"`);
+    // Her own subagent's thread reads; another thread's subagent points to delegate wait.
+    const scout = own.createThread({ interface: "web", parent: dns.id, subagent: true });
+    expect((await call({ action: "read", id: `t:${scout.id}` })).content).toEqual([{ type: "text", text: `[t:${scout.id}] has no messages to read.` }]);
+    const theirs = own.createThread({ interface: "web", parent: project.id, subagent: true });
+    await expect(call({ action: "read", id: theirs.id })).rejects.toThrow("for a subagent's result, use delegate with action wait and its run ID");
   });
 
   it("reads question: \"False\" as false and a written-out question as the message, asked", async () => {

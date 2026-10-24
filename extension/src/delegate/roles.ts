@@ -1,5 +1,6 @@
 import { CODE_GUIDELINES } from "../code.ts";
 import type { Role } from "@lyrica/core";
+import { CLAUDE_ROLE } from "./claude.ts";
 
 // The built-in role prompts are adapted from pi-subagents 0.76.1 (agents/*.md),
 // Copyright (c) 2026 Nico Bailon, MIT License. Changed for Lyrica: no
@@ -79,11 +80,17 @@ First reconstruct the decisions, constraints and open questions the task carries
 Then look for what's being missed: contradictions, hidden assumptions, drift from earlier decisions, simpler paths. Prefer narrow corrections to broad pivots; if you do recommend a pivot, say which earlier decision it revises and why.
 Reply with: the decisions you're holding to; what's actually going on; your recommendation and why; the risks; and any decision still needed.`,
   },
+  {
+    // Not a Pi session: Claude Code in the sandbox (claude.ts), so no prompt, tier or tools of ours apply.
+    name: CLAUDE_ROLE,
+    description: "Claude Code on the user's Claude plan, for big coding and repository jobs worth the plan. Runs in the background from a brief and reports what it changed.",
+    tier: "strong", tools: [], readOnly: false, thinking: "high", prompt: "",
+  },
 ];
 
-/** The user's roles: the built-ins, with the user's own overriding any of the same name. */
+/** The user's roles: the built-ins, with the user's own overriding any of the same name but claude, which is Claude Code itself. */
 export function rolesFor(custom: Role[]): Role[] {
   const byName = new Map(BUILTIN_ROLES.map((r) => [r.name, r]));
-  for (const r of custom) byName.set(r.name, r);
+  for (const r of custom) if (r.name !== CLAUDE_ROLE) byName.set(r.name, r);
   return [...byName.values()];
 }

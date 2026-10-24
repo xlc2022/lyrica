@@ -109,6 +109,8 @@ export interface WorkspaceOptions {
   onPullCreate?: (t: WorkspaceThread, pr: { repo: string; number: number }) => void;
   /** A run's Claude Code token counts, one message request at a time, for that run's thread: the usage view's "Claude Code" row. */
   onClaudeCodeUsage?: (t: WorkspaceThread, usage: ClaudeCodeUsage) => void;
+  /** A run's Claude Code was refused for the user's Claude plan's usage limit, with when it resets if Anthropic said. */
+  onClaudeCodeLimit?: (t: WorkspaceThread, until?: number) => void;
   /** A background command ended (docs/workspace.md, "Background commands"): lyricad tells its thread. Without it, threads get no background commands. */
   onJobEnd?: (t: WorkspaceThread, job: JobInfo, output: string) => void;
 }
@@ -189,6 +191,8 @@ export class Workspace {
   private readonly sshTargets = new Map<string, SshTarget>();
   /** Private Git accounts whose host has newly left her network, by `<userId>/<name>`: no token goes out until the user confirms. */
   private readonly gitRefused = new Set<string>();
+  /** The email each account's commits carry, asked of its host once per daemon run, by `user/account/host/login`. */
+  private readonly gitEmails = new Map<string, string>();
   /**
    * Private MCP servers whose host passed the own-network check in this
    * process, by `<userId>/<name>/<url>`. A private server is used only once
@@ -762,6 +766,7 @@ export class Workspace {
       ...credentials.anthropic ? { claudeDir: this.claudeDir(t) } : {},
       onPullCreate: this.opts.onPullCreate && ((pr) => this.opts.onPullCreate!(t, pr)),
       onUsage: this.opts.onClaudeCodeUsage && ((u) => this.opts.onClaudeCodeUsage!(t, u)),
+      onLimit: this.opts.onClaudeCodeLimit && ((until) => this.opts.onClaudeCodeLimit!(t, until)),
       ...this.door(),
       check: (g) => checkGrant(s.allowed(), t.pool, g),
       bwrap: this.opts.bwrap,
@@ -818,8 +823,11 @@ export class Workspace {
   credentialsFor(t: WorkspaceThread): Credentials {
     const s = this.settings(t.userId);
     const forge = this.repositoriesFor(t).filter((r) => r.reachable).map((r) => ({ name: r.name, account: s.gitAccount(r.account)! }));
+    // Her commits carry the first repository's account, so a fresh clone can commit without her picking a name.
+    const a = forge[0]?.account;
     return {
       forge,
+      ...a ? { identity: { name: a.account, email: this.gitEmails.get(this.gitEmailKey(t.userId, a)) ?? noReplyEmail(a) } } : {},
       ...this.claudeCodeFor(t) ? { anthropic: s.claudeCodeToken()! } : {},
       ...this.opts.upstreams ? { upstreams: this.opts.upstreams } : {},
     };
@@ -842,6 +850,7 @@ export class Workspace {
       if (!a || a.pool !== t.pool) continue;
       const refused = await this.checkGitHost(t.userId, a).then(() => undefined, (err: Error) => err.message);
       if (refused) problems.push(refused);
+      else await this.learnGitEmail(t.userId, a);
     }
     // The daemon fetches even a project chat's clones, which are read-only to the chat itself.
     const box = this.targetFor(t, undefined, true) as Sandbox;
@@ -873,6 +882,22 @@ export class Workspace {
     const s = this.settings(t.userId);
     const now = s.thread(t.threadId).repositories;
     return s.setThread(t.threadId, t.pool, { repositories: [...now, { name: repositoryName(r.name), account: r.account }] }).repositories;
+  }
+
+  private gitEmailKey(userId: string, a: Pick<GitAccountConfig, "name" | "host" | "account">): string {
+    return `${userId}/${a.name}/${a.host}/${a.account}`;
+  }
+
+  /** Asks GitHub once for the account's numeric id, which its no-reply address needs; a failure keeps the address without it. */
+  private async learnGitEmail(userId: string, a: GitAccountConfig): Promise<void> {
+    const key = this.gitEmailKey(userId, a);
+    if (a.kind !== "github" || this.gitEmails.has(key)) return;
+    try {
+      const me = await this.forgeApi(a, "/user") as { id?: unknown };
+      this.gitEmails.set(key, noReplyEmail(a, me));
+    } catch {
+      // The guessed address still lets her commit.
+    }
   }
 
   /**
@@ -1457,4 +1482,16 @@ export function codexSandbox(home: string, o: Pick<SandboxSpec, "exclude" | "fro
 /** Root is never her account, a dedicated one's or the user's: root steps go to the user on a card. */
 function refuseRoot(username: string): void {
   if (username === "root") throw new Error("she never logs in as root: use a dedicated account, or your own");
+}
+
+/**
+ * The address an account's commits carry, never its real email: GitHub's
+ * no-reply address (with the account's id when the host gave it), or
+ * `<login>@noreply.<host>`, Gitea's and Forgejo's default placeholder. Their
+ * `/user` gives the account its real email even when it is hidden from others.
+ */
+export function noReplyEmail(a: Pick<GitAccountConfig, "kind" | "host" | "account">, me: { id?: unknown } = {}): string {
+  const host = parseHost(a.host).host;
+  if (a.kind === "github") return `${typeof me.id === "number" ? `${me.id}+` : ""}${a.account}@users.noreply.${host}`;
+  return `${a.account}@noreply.${host}`;
 }

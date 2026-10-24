@@ -917,12 +917,23 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   for `gh` on GitHub) (`Workspace.credentialsFor`). A command that reads
   the environment learns only values that die with the run; what a token
   can do on its own host is still up to the token, so tokens stay
-  fine-grained, for the repositories she works on, with no admin rights.
+  fine-grained where the host allows it, for the repositories she works
+  on, with no admin rights (this repository's exception is under
+  "Her own code").
   What she sees has them hidden too: `bash` output, `read` and `web_fetch`
   pages show "[credential hidden]" for a run's tokens and placeholders
   (`Sandbox.secrets`, `secretMasker`; `edit` reads the file as it is), and
   a `web_search`, `web_fetch` or MCP call whose input holds one is
   refused.
+- **Commits** carry the first repository's account as author and
+  committer (`GIT_AUTHOR_*` and `GIT_COMMITTER_*` in the run's
+  environment), so a fresh clone commits without a name she picks: the
+  account's login, and a no-reply address, never its real email. For
+  GitHub that is `<id>+<login>@users.noreply.github.com`, with the id asked
+  of `/user` once per daemon run when the thread's clones are fetched; for
+  Gitea, Forgejo and Other it is `<login>@noreply.<host>`, Gitea's default
+  placeholder (their `/user` shows the account its real email even when it
+  is hidden).
 - **`gh` and `tea`** are wrapped (`core/src/workspace/forge.sh`, mounted at
   `/run/lyrica/bin`, first on the PATH of a run with repositories): each
   takes the placeholder of the account whose repository the current
@@ -1036,12 +1047,16 @@ it adds no tool.
   to the thread, `claude -c` continues the thread's last job, and the
   sweep removes it with the thread. It drops any other Anthropic key, turns off
   Claude Code's update checks and telemetry, and skips its permission
-  prompts (`--permission-mode bypassPermissions`, as the owner chose): the
+  prompts (`--permission-mode bypassPermissions`, as the owner chose, unless
+  the call gives its own mode, as a read-only delegate run does): the
   sandbox is the fence, and her `bash` call already went through the
   thread's mode. Plan mode has no `bash`, so no Claude Code.
-- **The prompt** has one line for such a thread (`CLAUDE_CODE_LINE`):
-  `claude -p` is for coding and repository jobs worth the user's plan, never
-  conversation.
+- **The prompt** has one line for such a thread (`CLAUDE_CODE_LINE`): she
+  hands coding and repository jobs worth the user's plan, never
+  conversation, to the `claude` delegate role (docs/delegation.md, "Claude
+  Code"), or `claude -p` with bash where she has no `delegate`, and when it
+  reports the plan's usage limit she waits for the reset with a wake-up
+  rather than doing the job another way.
 
 ## Her own code
 
@@ -1055,13 +1070,19 @@ her account is general.
 
 - **The repository's settings**, the owner's to set, once:
   1. Her GitHub account as a collaborator with **Write**.
-  2. Under her account, a fine-grained token for this repository only,
-     with **Contents**, **Issues** and **Pull requests** read and write
-     and **Actions** read, added in Settings → Git accounts as a GitHub
-     account. Issues lets her claim an issue and file the Friction log's
-     issues (docs/briefs/lyrica-project.md). Actions read lets her see why a check failed
-     (`gh pr checks`, `gh run view --log-failed`); re-running a job stays
-     with the reviewers. GitHub serves a job's log from storage hosts
+  2. Under her account, a classic token with only the `public_repo`
+     scope, added in Settings → Git accounts as a GitHub account. A
+     fine-grained token can't write to a repository another personal
+     account owns, even with Write access; it reads only because the
+     repository is public. It covers every public repository her account
+     can write to, so keep her account a collaborator here only. If the repository moves to an organisation, use
+     a fine-grained token for it instead, with **Contents**, **Issues** and
+     **Pull requests** read and write and **Actions** read. Either way she
+     can push, open pull requests, claim an issue and file the Friction
+     log's issues (docs/briefs/lyrica-project.md), and see why a check
+     failed (`gh pr checks`, `gh run view --log-failed`); re-running a job
+     stays with the reviewers. The relay only swaps the token in for this
+     repository and GitHub's API. GitHub serves a job's log from storage hosts
      that change, so reading logs needs the thread's internet on, not
      only allowed hosts.
   3. A branch protection rule (or ruleset) on `main`: pull requests only,
@@ -1088,11 +1109,11 @@ her account is general.
   failed probation, a GitHub issue linked to the tag holds the post-mortem.
 - **Her checks.** `npm run typecheck` and `npm test` run in her sandbox
   with the thread's internet on, after `npm ci --ignore-scripts`. With the
-  internet on she is root in the sandbox's own user namespace, where only
-  her own uid is mapped, so the install scripts' `node-gyp rebuild` fails
-  extracting Node's headers (`TAR_ENTRY_ERROR EINVAL … fchown`), and the
-  sandbox has no compiler anyway. Nothing needs those scripts: the SQLite
-  binding loads its prebuilt `prebuilds/linux-x64.node`. The tests that need FUSE or a tun device
+  internet on she runs as `lyricad`'s own uid, as with it off (a nested
+  user namespace inside the networked one), so files she writes in a
+  grant stay the user's to change. The install scripts stay skipped since
+  the sandbox has no compiler for `node-gyp rebuild`, and nothing needs
+  them: the SQLite binding loads its prebuilt `prebuilds/linux-x64.node`. The tests that need FUSE or a tun device
   (encrypted homes, rewind, uploads, network switches, the SSH helper)
   skip there, since her sandbox has neither; CI runs them with
   `LYRICA_SANDBOX_TESTS=require`, so they can't skip.
@@ -1105,7 +1126,8 @@ her account is general.
   Gitea account whose host resolves into her own network also gets a
   signed tailnet webhook (Settings → Git accounts, **Webhook**) that nudges
   a poll at once, with polling as the fallback. A merged or closed pull
-  request ends the watch without a turn.
+  request ends the watch with one note saying so, unless her own account
+  merged it.
 - **Screenshots.** After `npm run build`, `npx tsx web/e2e/shot.ts
   [page]...` starts a throwaway `lyricad` with ada signed in (the e2e one,
   web/e2e/serve.ts), saves each page at 390×844 and 1280×800, light and
@@ -1334,7 +1356,8 @@ The machine running `lyricad` needs:
 - gocryptfs;
 - FUSE (`/dev/fuse` and `fusermount3`);
 - passt (for `pasta`), nftables, `unshare` and bash, and `/dev/net/tun`;
-- unprivileged user namespaces.
+- unprivileged user namespaces, nested (a networked run opens one inside
+  another).
 
 On NixOS the module brings them, refuses to build while
 `security.allowUserNamespaces` is off, and `nix/check-host.sh` checks the
@@ -1357,7 +1380,9 @@ nothing special.
 4. As the service user, `bwrap --unshare-all --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 -- /bin/true`
    succeeds. On Ubuntu 24.04 or later, if it fails with "Permission denied",
    set `kernel.apparmor_restrict_unprivileged_userns=0` on the Proxmox host.
-5. As the service user, `pasta --config-net -- true` succeeds.
+5. As the service user, `pasta --config-net -- true` succeeds, and so does
+   `unshare -r unshare -r true` (nested user namespaces). If the nested one
+   fails, check `user.max_user_namespaces` isn't 1 or 0.
 6. Check the self-test passes: if it fails, `lyricad` logs "network is off
    for every thread" with the reason when it unlocks (`journalctl -u
    lyricad`), and the control panel shows it. Until it's fixed, her tools

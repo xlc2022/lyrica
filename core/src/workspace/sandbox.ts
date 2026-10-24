@@ -60,6 +60,8 @@ export interface SandboxSpec {
   onPullCreate?: (pr: { repo: string; number: number }) => void;
   /** Claude Code's token counts per message request, passed straight through (relay.ts). */
   onUsage?: (usage: ClaudeCodeUsage) => void;
+  /** Claude Code's plan reached its usage limit, passed straight through (relay.ts). */
+  onLimit?: (until?: number) => void;
   bwrap?: string;
   pasta?: string;
 }
@@ -68,6 +70,8 @@ export interface SandboxSpec {
 export interface Credentials {
   forge: { name: string; account: Pick<GitAccountConfig, "kind" | "host" | "account" | "token"> }[];
   anthropic?: string;
+  /** The name and email her commits carry, from the first repository's account. */
+  identity?: { name: string; email: string };
   /** Where the relay sends a host's requests instead of https://host: tests. */
   upstreams?: Record<string, string>;
 }
@@ -229,6 +233,11 @@ export function gitEnv(repos: { name: string; account: Pick<GitAccountConfig, "k
   return env;
 }
 
+/** Git's author and committer, as environment, so a fresh clone commits without a config of its own. */
+export function gitIdentityEnv(id: { name: string; email: string }): Record<string, string> {
+  return { GIT_AUTHOR_NAME: id.name, GIT_AUTHOR_EMAIL: id.email, GIT_COMMITTER_NAME: id.name, GIT_COMMITTER_EMAIL: id.email };
+}
+
 export class SandboxDenied extends Error {}
 
 /** A process started in a sandbox, with its three pipes. */
@@ -358,6 +367,7 @@ export class Sandbox implements ExecutionTarget {
       upstreams: c.upstreams,
       onPullCreate: this.spec.onPullCreate,
       onUsage: this.spec.onUsage,
+      onLimit: this.spec.onLimit,
     }) : undefined;
     try {
       return await this.launch(argv, cwd, forward, relay);
@@ -384,6 +394,7 @@ export class Sandbox implements ExecutionTarget {
     const runEnv = {
       ...forge ? gitEnv(c!.forge.map((r, i) => ({ name: r.name, account: { ...r.account, token: this.placeholders[i]! } })),
         { url: `http://lyrica:${relay!.capability}@127.0.0.1:${relay!.port}`, ca: `${CERTS}/run.pem` }) : {},
+      ...forge && c!.identity ? gitIdentityEnv(c!.identity) : {},
       ...claude ? { CLAUDE_CODE_OAUTH_TOKEN: relay!.capability, ANTHROPIC_BASE_URL: `http://127.0.0.1:${relay!.port}` } : {},
     };
     const data: (readonly [string, string, string?])[] = [
@@ -450,8 +461,11 @@ export class Sandbox implements ExecutionTarget {
   private args(fds: number[], cwd: string, networked: boolean): string[] {
     const args = ["--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL"];
     // With network on, bwrap runs inside the namespace pasta serves and keeps it.
-    // The host's network is never shared.
-    if (networked) args.push("--share-net");
+    // The host's network is never shared. That namespace makes lyricad's user
+    // root, so a nested one gives commands lyricad's own uid and gid back, as
+    // without network: tools that act differently as root (npm's install
+    // scripts chown what they unpack) see an ordinary user.
+    if (networked) args.push("--share-net", "--unshare-user", "--uid", String(process.getuid?.() ?? 1000), "--gid", String(process.getgid?.() ?? 1000));
 
     const nix = tools();
     if (nix) {

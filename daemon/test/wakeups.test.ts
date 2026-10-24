@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
-import type { MessagePage, ThreadEvent, ThreadSettings, ThreadSummary, WakeupInfo } from "../src/api.ts";
+import type { MessagePage, NotificationPage, ThreadEvent, ThreadSettings, ThreadSummary, WakeupInfo } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
+import type { DelegationOptions } from "@lyrica/extension";
+import { claudePlanId } from "../src/plan-waits.ts";
+import { CLAUDE_LIMIT_RESUME } from "../src/wakeups.ts";
 
 const said = (c: ChatRequest) => JSON.stringify(c.messages);
 const later = (args: object): Reply => ({ tools: [{ name: "threads", args: { action: "later", ...args } }] });
@@ -104,5 +107,131 @@ describe("wake-ups", () => {
   it("can't be typed: the person's message can't carry the mark", async () => {
     const { ada, path } = await setup();
     expect((await ada.post(`${path}/messages`, { text: "[Wake-up, set 2026-10-12T05:15Z]\n\nhello" })).status).toBe(400);
+  });
+});
+
+describe("a plan's usage limit", () => {
+  /** Ada's chat on a ChatGPT plan first, then her local model; the plan answers every request with `error`. */
+  async function planFirst(error: object) {
+    const s = await setup();
+    const models = s.d.services!.models, actor = s.d.services!.users.get(s.rt.ada.id)!;
+    const plan = models.addPlan(actor, { name: "chatgpt", plan: "chatgpt", credential: { access: "fake-access", refresh: "fake-refresh", expires: Date.now() + 3_600_000 } });
+    const planModel = models.addModel(actor, plan.id, { modelId: "gpt-5", tools: true });
+    const local = models.resolve("chat", models.callContext(s.rt.ada.id, "general", s.thread.id)).ref;
+    models.setColumnTask(s.rt.ada.id, "general", "chat", [{ offeringId: planModel.id }, local]);
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (/chatgpt\.com|api\.openai\.com/.test(url)) return Response.json({ error }, { status: 429 });
+      return realFetch(input, init);
+    }) as typeof fetch;
+    return { ...s, models, plan, restore: () => { globalThis.fetch = realFetch; } };
+  }
+
+  it("waits for the plan to reset rather than falling back, says when once, and carries the turn on then", async () => {
+    const resetsAt = Math.floor(Date.now() / 1000) + 40 * 60;
+    for (const error of [{ code: "usage_limit_reached", resets_at: resetsAt }, { code: "subscription_sharing_usage_limit_exceeded", message: "usage limit" }]) {
+      const s = await planFirst(error);
+      try {
+        s.replies.push({ text: "The local model answered." });
+        const events = await s.say("build it");
+        expect(events.filter((e) => e.type === "notice")).toHaveLength(1);
+        expect(events.find((e) => e.type === "notice")).toMatchObject({ text: expect.stringMatching(/^chatgpt reached its plan's usage limit\. It resets in about \d+ (min|h)\. This thread waits and carries on then\.$/), status: "limit" });
+        expect(events).not.toContainEqual({ type: "text", delta: "The local model answered." });
+        const until = s.models.planLimitedUntil(s.plan.id)!;
+        if ("resets_at" in error) {
+          expect(until).toBe(resetsAt * 1000);
+          const info = (await s.ada.get<{ id: string; limitedUntil?: string }[]>(`/api/u/${s.rt.ada.id}/endpoints`)).body;
+          expect(info.find((e) => e.id === s.plan.id)?.limitedUntil).toBe(new Date(resetsAt * 1000).toISOString());
+        }
+        // One wake-up, a minute after the reset; the plan is still the thread's model.
+        const wakeups = await s.wakeups();
+        expect(wakeups).toHaveLength(1);
+        expect(Date.parse((wakeups[0] as { dueAt: string }).dueAt)).toBe(until + 60_000);
+        expect(s.models.resolve("chat", s.models.callContext(s.rt.ada.id, "general", s.thread.id)).endpoint.id).toBe(s.plan.id);
+      } finally {
+        s.restore();
+      }
+    }
+  });
+
+  it("keeps one resume however many turns the limit cuts off before it resets", async () => {
+    const s = await planFirst({ code: "usage_limit_reached", resets_at: Math.floor(Date.now() / 1000) + 40 * 60 });
+    try {
+      await s.say("build it");
+      await s.say("and the tests");
+      expect(await s.wakeups()).toHaveLength(1);
+    } finally {
+      s.restore();
+    }
+  });
+
+  it("shows the wait in the thread and the notifications, and falls back to the next model when the user asks", async () => {
+    const s = await planFirst({ code: "usage_limit_reached", resets_at: Math.floor(Date.now() / 1000) + 40 * 60 });
+    try {
+      await s.say("build it");
+      const settings = (await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body;
+      expect(settings.planWait).toMatchObject({ endpointId: s.plan.id, name: "chatgpt", next: "gpu/qwen3.8-27b" });
+      const notes = (await s.ada.get<NotificationPage>(`/api/u/${s.rt.ada.id}/notifications`)).body.items.filter((n) => n.type === "limit");
+      expect(notes).toEqual([expect.objectContaining({ title: "Build waits for chatgpt's usage limit", thread: { pool: "general", id: s.thread.id }, decision: true })]);
+      s.replies.push({ text: "Carrying on." });
+      const from = s.stream.events.length;
+      expect((await s.ada.post(notes[0]!.actions[0]!.path, {})).status).toBe(200);
+      await s.stream.until((e) => e.type === "turn_end", from);
+      expect(s.asked.at(-1)).toContain("Your model's plan reached its usage limit");
+      expect(s.stream.events.slice(from).map((e) => e.event)).toContainEqual({ type: "text", delta: "Carrying on." });
+      expect((await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body.planWait).toBeUndefined();
+      expect((await s.ada.get<NotificationPage>(`/api/u/${s.rt.ada.id}/notifications`)).body.items.some((n) => n.type === "limit")).toBe(false);
+    } finally {
+      s.restore();
+    }
+  });
+
+  it("carries the turn on by itself once the plan resets, and not before", async () => {
+    const s = await planFirst({ code: "usage_limit_reached", resets_at: Math.floor(Date.now() / 1000) + 40 * 60 });
+    try {
+      await s.say("build it");
+      const [first] = await s.wakeups() as { id: number }[];
+      s.tick(39);
+      expect(await s.wakeups()).toEqual([first]);
+      const from = s.stream.events.length;
+      s.tick(42);
+      await s.stream.until((e) => e.type === "turn_end", from);
+      // It fired; this fake plan is limited still, so the turn waits again with a wake-up of its own.
+      const after = await s.wakeups() as { id: number }[];
+      expect(after).toHaveLength(1);
+      expect(after[0]!.id).not.toBe(first!.id);
+    } finally {
+      s.restore();
+    }
+  });
+});
+
+describe("the Claude plan's usage limit", () => {
+  it("makes a thread whose claude run it stopped wait for the reset, shows it, and falls back to the coder role when the user asks", async () => {
+    const s = await setup();
+    const { models, delegation } = s.d.services!;
+    // What a claude run's body reports when Claude Code stops on the limit (extension/src/delegate/claude.ts).
+    const o = (delegation as unknown as { o: DelegationOptions }).o;
+    const until = Date.now() + 30 * 60_000;
+    o.onClaudeLimit!({ user: s.d.services!.users.get(s.rt.ada.id)!, pool: "general", interface: "web", threadId: s.thread.id }, until);
+    expect(models.planLimitedUntil(claudePlanId(s.rt.ada.id))).toBe(until);
+    const wakeups = await s.wakeups();
+    expect(wakeups).toEqual([expect.objectContaining({ planLimit: true, claudeCode: true, dueAt: new Date(until + 60_000).toISOString() })]);
+    expect(o.claudeRefused!(s.rt.ada.id)).toContain("set a wake-up");
+
+    const settings = (await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body;
+    expect(settings.planWait).toMatchObject({ name: "Claude Code", next: "the coder role", claudeCode: true });
+    const notes = (await s.ada.get<NotificationPage>(`/api/u/${s.rt.ada.id}/notifications`)).body.items.filter((n) => n.type === "limit");
+    expect(notes).toEqual([expect.objectContaining({ title: "Build waits for Claude Code's usage limit" })]);
+    expect(notes[0]!.actions[0]!.title).toContain("coder role");
+
+    // Falling back carries the thread on now, told to hand the job to the coder role, which the claude role now says too.
+    const from = s.stream.events.length;
+    expect((await s.ada.post(notes[0]!.actions[0]!.path, {})).status).toBe(200);
+    await s.stream.until((e) => e.type === "turn_end", from);
+    expect(s.asked.at(-1)).toContain(CLAUDE_LIMIT_RESUME);
+    expect(o.claudeRefused!(s.rt.ada.id)).toContain("hand this job to the coder role");
+    expect((await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body.planWait).toBeUndefined();
   });
 });

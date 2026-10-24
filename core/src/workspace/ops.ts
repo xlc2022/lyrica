@@ -39,7 +39,7 @@ export interface ExecutionTarget {
   /** Host folders, or `<ssh name>:<path>`, for pages about them. */
   folders(): string[];
   /** Runs argv, no shell, under the target's own network rules (the sandbox has it; web_fetch uses it). */
-  run?(argv: string[], o?: { signal?: AbortSignal; timeoutMs?: number }): Promise<{ code: number | null; stdout: Buffer; stderr: Buffer }>;
+  run?(argv: string[], o?: { signal?: AbortSignal; timeoutMs?: number; cwd?: string; onData?: (data: Buffer) => void }): Promise<{ code: number | null; stdout: Buffer; stderr: Buffer }>;
   /** The credentials its runs hold (the sandbox's tokens), so they can be hidden in output and kept out of calls that leave. */
   secrets?(): string[];
 }

@@ -311,7 +311,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
   the provider instead of giving an API key, so general threads answer
   from that plan. It is always cloud and always their own, never shared.
   Its sign-in is kept in their `user.db` and refreshed by Pi; when the
-  plan's limit runs out the next turn falls back. Claude and Gemini plans
+  plan's limit runs out the thread waits and carries on once the plan
+  resets, rather than falling back to another model; so do subagents and
+  background jobs. Claude and Gemini plans
   aren't offered: Anthropic and Google don't permit other apps to use
   their sign-in, so they stay on API keys.
 - **Tasks.** Different tasks use different models: chat, cheap and strong
@@ -594,7 +596,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     net.
   - **Tokens** follows Checklist once a thread has a counted turn. Its
     popover sums every request's reads (cached reads included) as input and
-    its outputs as output, each with their total, by model, with **GPU time** for local calls (first-token plus generation
+    its outputs as output, each with their total, by model, with the share
+    of input read from the server's cache (**Cached**) and **GPU time** for local calls (first-token plus generation
     time, including queueing and loading). Pruned call counts are retained.
     On a phone Tokens opens rows at the foot of Context.
   - Recent calls and the text library show measured speed; nothing acts on
@@ -1334,7 +1337,8 @@ project page and the web part are built. Recent calls can be filtered by project
   log or comment text). GitHub is polled every 2 minutes; a Forgejo or
   Gitea account whose host resolves into her own network also gets a signed
   tailnet webhook that nudges a poll at once, and polling stays as its
-  fallback. A merged or closed pull request ends the watch without a turn.
+  fallback. A merged or closed pull request ends the watch with one more
+  turn saying so (2026-10-23), unless her own account merged it.
   Watches are stored in the thread's pool like wake-ups, at most 10 per
   thread, and share the wake-up guards: the at-once limit, paused projects,
   and the 24-a-day cap. `threads later` stays for everything else.
@@ -2159,10 +2163,12 @@ from Monika's runbooks.
   code goes to the forge and CI. She works like a feature thread: one
   branch and one pull request per piece of work, typecheck and tests in
   her sandbox.
-- **Her own GitHub account**, a collaborator with a fine-grained token for
-  this repository (contents, pull requests), is one of her Git accounts.
-  She pushes branches to the repository itself, never a fork, so her pull
-  requests run the same CI as Claude's on the owner's runners (docs/ci.md), with
+- **Her own GitHub account**, a collaborator here and nowhere else, with
+  a classic `public_repo` token (a fine-grained token can't write to
+  another personal account's repository), is one of her Git accounts.
+  That token reaches every public repository her account can write to,
+  so the account stays a collaborator on this repository only. She pushes branches to the repository itself, never a fork, so her pull
+  requests run the same CI as Claude's (docs/ci.md), with
   no first-time-contributor approval. `main` is protected: pull requests
   only, green CI, one approval from someone other than the author; nothing
   of hers merges without both. The owner's own account may bypass the rules as
