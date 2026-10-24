@@ -565,8 +565,10 @@ class Models {                                              // new Models(keyrin
   null)` (null signs it out), `setPlanCatalog(list)` (discovery, from Pi's
   catalogue; set by `lyricad`), `setCodexImages(run)` (ChatGPT Images'
   runner, installed by lyricad: `codexImage` in the user's
-  `Workspace.codexBox`), `reportPlanLimit(id)` (skipped for an
-  hour) and `installationId()` (self.db). The
+  `Workspace.codexBox`), `reportPlanLimit(id, until?)` (limited
+  until `until`; without one, an hour, doubled each time the plan is still
+  limited within 15 minutes of the guess running out, up to six; a refusal
+  during the wait keeps the guess) and `installationId()` (self.db). The
   sign-in is kept in the plan's `api_key` column as JSON; its tokens never leave
   core except into Pi's credential store (`PlanCredentials`, extension);
   image calls consume the resolved access token inside core/models.
@@ -695,7 +697,8 @@ Custom roles override built-ins by name, except `claude`.
   `folders` narrows granted host folders only, not sandbox repository paths;
   an invalid folder returns that distinction and advises omitting `folders`
   to read the parent's checkouts. Read-only roles, narrowed runs and writers
-  in a worktree share those clones read-only with no forge credentials; an
+  in a worktree share those clones read-only, with the parent's repositories
+  marked `readOnly` (the relay refuses a push or an API write); an
   unnarrowed writer keeps the parent's repositories. This does not change
   repository inheritance.
 - The other actions are `status`, `wait`, `stop` and `message`, each on a
@@ -2237,11 +2240,15 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   "signedIn" | "rejected" | "unreachable", since } | null }`; `kind:
   "github"` is general only; a private account's host must resolve on this
   machine's network, checked when added and on every use. A thread's row
-  carries `repositories: { name, account }[]`; `setThread` refuses a
+  carries `repositories: { name, account, readOnly? }[]`; `setThread` refuses a
   repository whose account is missing or of the other pool, and two with
-  the same clone folder; `inheritSettings` takes a subset; `effective()`
-  keeps only repositories every ancestor grants, and a parent's change
-  narrows its running children. `Workspace`: `probeGitAccount({ kind, host,
+  the same clone folder, and keeps a child's read-only repository
+  read-only; `inheritSettings` takes a subset; `effective()` keeps only
+  repositories every ancestor grants, read-only where any ancestor's is,
+  and a parent's change narrows its running children, moving a repository
+  it moves to another account. `ForgeCredential.readOnly` has the relay
+  refuse `git-receive-pack` and every API request but GET, HEAD and a
+  GraphQL query. `Workspace`: `probeGitAccount({ kind, host,
   account, token })` checks the token against the host and saves nothing
   (`GitAccountProblem` with the state when it fails); `addGitAccount(userId,
   { …, offNetworkConfirmed? })`, `updateGitAccount`, `setGitToken`,

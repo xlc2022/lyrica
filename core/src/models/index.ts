@@ -77,8 +77,11 @@ export function isUnreachable(err: unknown): boolean {
 
 /** A plan's usage limit, as OpenAI reports it: it resets after hours, not seconds. */
 export const isPlanLimit = (message: string | undefined): boolean => /subscription_sharing_usage_limit_exceeded|usage.?limit/i.test(message ?? "");
-/** How long a plan that reached its limit is skipped when it doesn't say when it resets. */
+/** How long a plan that reached its limit is skipped when it doesn't say when it resets: an hour, doubled each time it's still limited at the guess, up to six. */
 const PLAN_LIMIT_MS = 60 * 60_000;
+const PLAN_LIMIT_MAX_MS = 6 * PLAN_LIMIT_MS;
+/** A refusal this soon after a guessed reset means the guess was early. */
+const PLAN_LIMIT_AGAIN_MS = 15 * 60_000;
 /** When a plan's limit resets, from its error (OpenAI's `resets_at` or `resets_in_seconds`, or Pi's "Try again in ~N min."); undefined when it doesn't say. */
 export function planLimitReset(message: string | undefined, now = Date.now()): number | undefined {
   const text = message ?? "";
@@ -545,6 +548,8 @@ export class Models {
   private readonly discovered = new Set<string>();
   /** Plans that reached their usage limit, until when they're skipped. */
   private readonly limited = new Map<string, number>();
+  /** The last guessed wait for a plan that didn't say when it resets, and when that guess ran out. */
+  private readonly guessed = new Map<string, { ms: number; until: number }>();
   /** Limited plans the user chose to fall back from until they reset. */
   private readonly fallingBack = new Set<string>();
   /** Offerings whose provider refused a request with thinking off (mustThink). */
@@ -1701,7 +1706,19 @@ export class Models {
   reportPlanLimit(endpointId: string, until?: number): boolean {
     const known = this.planLimitedUntil(endpointId) !== undefined;
     if (!known) this.fallingBack.delete(endpointId);
-    this.limited.set(endpointId, until && until > Date.now() ? until : Date.now() + PLAN_LIMIT_MS);
+    const now = Date.now();
+    if (until && until > now) {
+      this.guessed.delete(endpointId);
+      this.limited.set(endpointId, until);
+      return !known;
+    }
+    // No reset given: still limited right after the last guess ran out waits twice as long, so waiting threads don't retry every hour.
+    const last = this.guessed.get(endpointId);
+    const ms = known ? last?.ms ?? PLAN_LIMIT_MS
+      : last && now - last.until < PLAN_LIMIT_AGAIN_MS ? Math.min(PLAN_LIMIT_MAX_MS, last.ms * 2) : PLAN_LIMIT_MS;
+    const at = known ? this.limited.get(endpointId)! : now + ms;
+    this.guessed.set(endpointId, { ms, until: at });
+    this.limited.set(endpointId, at);
     return !known;
   }
 

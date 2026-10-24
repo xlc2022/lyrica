@@ -874,7 +874,10 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   granted like folders: the Repositories row in the thread drawer and
   under This chat on Project settings, so a project's threads get the
   project chat's list or fewer. A child or subagent gets a subset, never
-  more, and a parent's change narrows its running children at once. She can
+  more (a read-only or narrowed one gets them read-only, below), and a
+  parent's change narrows its running children at once. A
+  repository the parent moves to another Git account moves in its
+  children too, rather than leaving them. She can
   add one herself with `add_repository`, from an account of the thread's
   pool; it always asks the user with a permission card, and is off in Plan
   mode or when the pool has no Git account.
@@ -905,7 +908,14 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   Git paths (`/<owner>/<name>.git/…`) and its host's API (`api.github.com`
   and `uploads.github.com` for GitHub, `/api/` on GitHub Enterprise,
   `/api/v1/` on Forgejo and Gitea). A placeholder anywhere else is
-  refused, and a request without one goes as it is. The relay goes only
+  refused, and a request without one goes as it is. A **read-only**
+  repository (a read-only, narrowed or offline child's or subagent's) is
+  held to reading at the relay, whatever the token allows: fetches
+  (`git-upload-pack`) and the API's GET and HEAD pass, and so does a
+  GraphQL query whose body names no `mutation` or `subscription`; a push
+  (`git-receive-pack`), any other API write, a method-override header,
+  and a GraphQL body that doesn't parse are refused with "This run can only read …". A child's
+  read-only repository stays read-only through any change to the child. The relay goes only
   to hosts the run's network reaches, trusting the system's certificate
   authorities as well as Node's (Node before 22.15: Node's only), and with
   internet on it also passes
@@ -1158,9 +1168,9 @@ settings:
   offline or folder-narrowed subagent or child thread, or to a writer in a
   worktree, since bash on a machine follows none of those narrowings.
 - **Repositories:** a subagent works in its parent's clones. One that gets
-  no machines gets no repositories or credentials either, and its sandbox
+  no machines keeps the parent's repositories read-only: its sandbox
   mounts those clones read-only, so it can't change their working trees or
-  commits.
+  commits, and its relay refuses a push or an API write.
 
 A subagent can never widen what its parent was given. `inheritSettings`
 copies the parent's settings, or the narrower ones it is given, and the

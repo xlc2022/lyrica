@@ -460,7 +460,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   again…; the endpoint actions). One facts line: the first address and "+n",
   "version" and the version, for its managers "models folder", its path and
   free space, shared or only you, "N models" opening its model list (a
-  speaking model's **Settings** there) and **Dashboard** (a link, `GET
+  speaking model's **Settings** there, and for its managers a missing or
+  gone model's **Remove**, `DELETE …/offerings/:id` after a confirm dialog) and **Dashboard** (a link, `GET
   …/dashboard`, a new tab). **Edit** opens the host's drawer: Name (`PATCH
   …/endpoints/:id`), Addresses (`PUT …/addresses`) and Models folder (`POST
   …/models-folder` after a confirm dialog, enabled only when the host's
@@ -1049,7 +1050,10 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   ("No model can be reached. Your message goes when one is back."), with
   the models tried in its tooltip; the message shows as waiting, not as
   sent, until a turn starts.
-- A stored compaction shows as a one-line notice, **Compacted · 41k → 6k**.
+- A stored compaction shows as a one-line marker, **Compacted · 41k → 6k**,
+  that opens to the summary stored with it. Her own `threads` compact call
+  is a **Compaction** card whose head opens to the summary in its arguments.
+  Both read what the session already holds; nothing else is written.
 - A message sent during a turn waits as a follow-up and shows as waiting.
   Stop aborts the turn; `lyricad` drops the waiting follow-ups, so their text
   goes back into the composer. A message from another thread or a look
@@ -1434,4 +1438,5 @@ the drafts. Model settings use the current preset API.
 
 A project thread card shows a muted “No worktree: <reason>” line when a code
 thread could not isolate a granted host folder (docs/ux.md §6, existing thread
-card). This adds no control.
+card). A thread with repositories and no writable host folder shows none,
+since it works in its own clones. This adds no control.

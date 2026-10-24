@@ -822,7 +822,7 @@ export class Workspace {
    */
   credentialsFor(t: WorkspaceThread): Credentials {
     const s = this.settings(t.userId);
-    const forge = this.repositoriesFor(t).filter((r) => r.reachable).map((r) => ({ name: r.name, account: s.gitAccount(r.account)! }));
+    const forge = this.repositoriesFor(t).filter((r) => r.reachable).map((r) => ({ name: r.name, account: s.gitAccount(r.account)!, ...(r.readOnly ? { readOnly: true } : {}) }));
     // Her commits carry the first repository's account, so a fresh clone can commit without her picking a name.
     const a = forge[0]?.account;
     return {

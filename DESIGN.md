@@ -2190,9 +2190,12 @@ from Monika's runbooks.
   takes what she notices in use (the friction log from PRINCIPLES.md's
   Evaluation, small features, her own tooling), Claude's threads take
   briefs. Her branches are `lyrica/*`, Claude's `feature/*` and `claude/*`. Whoever
-  merges second merges `main` in first. She can't reach Claude's threads;
-  an issue labelled `claude` is how she asks for something, and a PR
-  comment how she answers a review. Design changes go through the design
+  merges second merges `main` in first. GitHub is the only channel
+  between them, both ways: she can't reach Claude's threads, and Claude
+  doesn't message hers, even on a deployment where an operator session
+  could. An issue labelled `claude` is how she asks for something and a PR
+  comment how she answers a review; Claude answers on the PR or issue and
+  asks her for work as an issue assigned to her. Design changes go through the design
   owner as they do now, and the owner decides. An update note covers everything
   merged since the running version, Claude's PRs included.
 - **Her own project.** She starts with no memory of how this project
@@ -2202,7 +2205,8 @@ from Monika's runbooks.
   standing threads, Review, UI review and Friction log, that review her
   work before it reaches Claude's review
   ([briefs/lyrica-project.md](docs/briefs/lyrica-project.md)). A routine
-  in Claude's project picks up her PRs and `claude` issues from GitHub.
+  in Claude's project picks up her ready (not draft) PRs and `claude`
+  issues from GitHub.
 - **GitHub is replaceable.** She reaches the forge only through git and
   its command-line client in her sandbox (`gh` today), with no tool of
   her own; the updater needs only git and a read-only key; update notes

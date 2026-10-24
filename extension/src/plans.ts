@@ -28,13 +28,31 @@ export function planProvider(ep: Endpoint & { api: PlanKind }, modelIds: string[
   const base = PROVIDERS[ep.api]();
   const wanted = new Set(modelIds);
   const models = base.getModels().filter((m) => wanted.has(m.id)).map((m) => ({ ...m, provider: ep.id }) as Model<Api>);
-  const watch = (source: AssistantMessageEventStream) => onLimit ? limits(source, onLimit) : source;
+  // A refusal that comes as a stream event (Codex over SSE or a WebSocket) keeps its reset time only in the raw event, so it's read there.
+  const call = <O extends { onProviderStreamEvent?: (event: unknown, model: Model<Api>) => unknown }>(run: (o: O | undefined) => AssistantMessageEventStream, options: O | undefined) => {
+    if (!onLimit) return run(options);
+    const reset: { at?: string } = {};
+    const own = options?.onProviderStreamEvent;
+    const stream = run({ ...options, onProviderStreamEvent: (event: unknown, model: Model<Api>) => { reset.at ??= resetIn(event); return own?.(event, model); } } as O);
+    return limits(stream, (message) => onLimit(reset.at ? `${message} ${reset.at}` : message));
+  };
   return {
     ...base, id: ep.id, name: `${ep.name} (cloud)`, auth: { oauth: base.auth.oauth! },
-    stream: (model, context, options) => watch(base.stream(model, context, options)),
-    streamSimple: (model, context, options) => watch(base.streamSimple(model, context, options)),
+    stream: (model, context, options) => call((o) => base.stream(model, context, o), options),
+    streamSimple: (model, context, options) => call((o) => base.streamSimple(model, context, o), options),
     getModels: () => models, getAllModels: () => models, filterModels: undefined, filterAllModels: undefined, refreshModels: undefined,
   };
+}
+
+/** A raw provider event's reset time, as planLimitReset reads it (`resets_at=<seconds>` or `resets_in_seconds=<n>`), from an error event only. */
+function resetIn(event: unknown): string | undefined {
+  const e = event as { type?: unknown; error?: Record<string, unknown>; response?: { error?: Record<string, unknown> } } | null;
+  if (!e || (e.type !== "error" && e.type !== "response.failed")) return undefined;
+  for (const o of [e as Record<string, unknown>, e.error, e.response?.error]) {
+    if (typeof o?.resets_at === "number") return `resets_at=${Math.round(o.resets_at)}`;
+    if (typeof o?.resets_in_seconds === "number") return `resets_in_seconds=${Math.round(o.resets_in_seconds)}`;
+  }
+  return undefined;
 }
 
 /** Passes a stream through, telling `onLimit` when it ends on a usage limit. */

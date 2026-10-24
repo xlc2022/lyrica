@@ -173,8 +173,10 @@ export class ChildThreads implements ThreadsHost {
         .map((g) => (req.readOnly ? { ...g, writable: false } : g));
       if (req.folders && grants.length < req.folders.length) throw new Error("a child thread can only have folders its parent has");
       // Machines are reached through bash, which no folder, read-only or network narrowing covers: a narrowed child gets none.
+      // Its repositories stay, read-only at the relay, so it can still clone, fetch and read the forge but never push.
       const noMachines = !!req.readOnly || !!req.folders || req.internet === false;
-      ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: [], mcpServers: [], claudeCode: false } : {}) });
+      const readRepos = () => ws.effective(parent.threadId).repositories.map((r) => ({ ...r, readOnly: true }));
+      ws.inheritSettings(parent.threadId, child.id, parent.pool, { grants, ...(req.internet === false ? { internet: false } : {}), ...(noMachines ? { machines: [], repositories: readRepos(), mcpServers: [], claudeCode: false } : {}) });
       if (req.code || (project && this.o.project?.(userId, parent.pool, parent.threadId)?.code)) {
         ws.setThreadWork(child.id, { ...(req.base ? { base: true } : {}), worktrees: [] });
         if (!req.base) {
@@ -193,7 +195,8 @@ export class ChildThreads implements ThreadsHost {
                 if (typeof made === "string") reasons.push(made); else worktrees.push(...made.flat());
               } catch (err) { reasons.push((err as Error).message); }
             }
-            if (!grants.some((g) => g.writable)) reasons.push("this thread has no writable host folders");
+            // A thread with repositories works in its own clones, so having no host folder to isolate isn't worth a reason.
+            if (!grants.some((g) => g.writable) && !ws.effective(child.id).repositories.length) reasons.push("this thread has no writable host folders");
             ws.setThread(child.id, parent.pool, { grants: worktreeGrants(grants, worktrees, true), ...(worktrees.length ? { machines: [], mcpServers: [], claudeCode: false } : {}) });
             ws.setThreadWork(child.id, { worktrees, ...(reasons.length ? { reason: reasons.join("; ") } : {}) });
           } catch (err) {

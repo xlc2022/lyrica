@@ -2,9 +2,9 @@
 
 **For:** the coordinator, who launches it; the guardian, a Claude thread
 that watches; Lyrica on lunasa, who builds. **Model:** hers is the local
-model she runs on lunasa; the guardian is Opus.
-**Status:** scaffolding only. Nothing starts until the owner picks a task
-and says go.
+model the owner picks (gpt-6.1-sol for the first trial); the guardian is
+Opus. **Status:** first trial done (#503, #504, #505 merged); she now picks
+her own work from her issues, and the guardian only monitors.
 
 **Read first:** AGENTS.md, [lyrica-project.md](lyrica-project.md) (how her
 project is set up and how her work reaches review), docs/workspace.md "Her
@@ -77,33 +77,26 @@ self-merges. The guardian is not a reviewer and gives no merge go-ahead.
 
 - **GitHub**, directly: her issue comments, branch commits, the pull
   request, CI results and review replies.
-- **Her threads**, through the Lunasa thread's session on lunasa, which
-  reads her project's threads in the web UI as the operator. At each
-  checkpoint (below) the guardian asks it for: the tool calls since the
-  last checkpoint (name, the file or command, the result or error), turn
-  count, tokens in and out, wall time, and any thread that stopped,
-  stalled or waited. It answers by message, never a file.
+- **Her threads**, read-only, through the Lunasa thread's session on
+  lunasa, for the report only: tool calls, turn counts, tokens and stalls,
+  answered by message, never a file. This is dev-only: her real deployment
+  has no such view, so nothing the guardian learns this way is sent to her.
+- **Talking to her** is GitHub only, as on a real deployment: a PR comment,
+  or an issue assigned to her. Never a message into her threads.
 - The guardian doesn't read her private threads or memory; the project is
   in the general pool and that is all it looks at.
 
-Checkpoints: when she claims the issue, after her first commit, when her
-Review thread first answers, when the pull request opens, after each CI
-result and review round, and every 30 minutes of work in between.
+Checkpoints: when a pull request of hers opens and when it merges.
 
 ### When it steps in
 
-The guardian watches and records; it doesn't steer her work. It asks the
-owner in its own thread (with what it saw and what it suggests) before
-anything reaches her, and stops her thread through the Lunasa session
-only for one of these, then tells the owner at once:
-
-- She is about to change boundary code, push outside `lyrica/*`, push to
-  `main`, delete files she didn't download, or put memory or a
-  conversation into code, an issue or a pull request.
-- She loops: the same failing command or edit three times with no change
-  in approach, or 30 minutes with no commit and no new file read.
-- She runs a model job, a long test run beside another one on lunasa, or
-  anything that spends the owner's plan quota without the owner's yes.
+After the first trial (23–24 Oct, three PRs merged), the owner's rule is
+to let her do her own thing. The guardian monitors and records, and
+steers nothing. It stops her thread through the Lunasa session only for
+something destructive and hard to undo, such as deleting the codebase,
+pushing to `main`, or putting memory or a conversation into code, an
+issue or a pull request. It tells the owner at once when it does. Her
+own Review, CI and Claude's PR review are the checks on her work.
 
 ### What it records
 
