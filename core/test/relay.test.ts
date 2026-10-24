@@ -56,12 +56,12 @@ function tunnel(relay: Relay, to: string, capability = relay.capability): Promis
 }
 
 /** An HTTPS request to `to` through the relay, trusting only the run's authority. */
-async function through(relay: Relay, to: string, path: string, authorization?: string): Promise<{ status: number; body: string }> {
+async function through(relay: Relay, to: string, path: string, authorization?: string, more: Record<string, string> = {}): Promise<{ status: number; body: string }> {
   const { socket } = await tunnel(relay, to);
   return new Promise((resolve, reject) => {
     const servername = to.replace(/:\d+$/, "");
     const req = httpsRequest({
-      host: servername, path, headers: authorization ? { authorization } : {},
+      host: servername, path, headers: { ...(authorization ? { authorization } : {}), ...more },
       createConnection: () => tlsConnect({ socket: socket!, servername, ca: relay.ca }),
     }, (res) => {
       let body = "";
@@ -163,8 +163,9 @@ describe("a run's relay for Git", () => {
         await postThrough(relay, "api.github.com:443", "/graphql", token, JSON.stringify({ query: "mutation { mergePullRequest(input: {}) { clientMutationId } }" })),
         await postThrough(relay, "api.github.com:443", "/graphql", token, JSON.stringify([{ query: "query { viewer { login } }" }, { query: "mutation M { x }" }])),
         await postThrough(relay, "api.github.com:443", "/graphql", token, "not json"),
+        await through(relay, "api.github.com:443", "/repos/ada/lyrica/pulls/1", token, { "x-http-method-override": "PATCH" }),
       ];
-      expect(refused.map((r) => r.status)).toEqual([403, 403, 403, 403, 403, 403]);
+      expect(refused.map((r) => r.status)).toEqual([403, 403, 403, 403, 403, 403, 403]);
       expect(refused[0]!.body).toContain("can only read ada/lyrica");
       expect(seen).toHaveLength(4);
     } finally {

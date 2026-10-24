@@ -913,8 +913,8 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   held to reading at the relay, whatever the token allows: fetches
   (`git-upload-pack`) and the API's GET and HEAD pass, and so does a
   GraphQL query whose body names no `mutation` or `subscription`; a push
-  (`git-receive-pack`), any other API write, and a GraphQL body that
-  doesn't parse are refused with "This run can only read …". A child's
+  (`git-receive-pack`), any other API write, a method-override header,
+  and a GraphQL body that doesn't parse are refused with "This run can only read …". A child's
   read-only repository stays read-only through any change to the child. The relay goes only
   to hosts the run's network reaches, trusting the system's certificate
   authorities as well as Node's (Node before 22.15: Node's only), and with

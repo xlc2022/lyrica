@@ -137,6 +137,9 @@ function graphqlReads(body: Buffer): boolean {
   return docs.length > 0 && docs.every((q) => typeof q === "string" && !/\b(mutation|subscription)\b/.test(q));
 }
 
+/** Headers some servers take as the real method. */
+const METHOD_OVERRIDES = ["x-http-method-override", "x-http-method", "x-method-override"];
+
 /** A GraphQL query's body is read before it goes on; anything larger is refused for a read-only credential. */
 const GRAPHQL_LIMIT = 256 * 1024;
 
@@ -341,7 +344,8 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
     if (c?.readOnly) {
       const reads = readsOnly(c, to, String(req.method ?? "GET").toUpperCase(), path);
       const no = () => refuse(req, res, 403, `This run can only read ${c!.repo}: ${req.method} ${to}${path.split("?")[0]} would change it.\n`);
-      if (reads === "no") return no();
+      // A method override would make a GET a write upstream: refused, so "GET reads" holds here, not by the forge's grace.
+      if (reads === "no" || METHOD_OVERRIDES.some((h) => req.headers[h] !== undefined)) return no();
       if (reads === "graphql") {
         if (req.headers["content-encoding"]) return no();
         const chunks: Buffer[] = [];
