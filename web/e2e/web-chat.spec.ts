@@ -408,6 +408,9 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await send(page, "second question");
   await expect(page.getByText("You said: second question")).toBeVisible();
   const menu = (i: number) => page.getByRole("button", { name: "More actions" }).nth(i);
+  // The second turn shows live before its stored copy loads; until then her first reply looks like the last turn,
+  // so Regenerate goes at once instead of waiting for Undo. Stored, every message has its menu.
+  await expect(page.getByRole("button", { name: "More actions" })).toHaveCount(4);
 
   // Regenerate with another model: her first reply and what followed are replaced, after the Undo delay.
   await menu(1).click();
