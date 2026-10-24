@@ -6,6 +6,7 @@ import type { AddressInfo, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { connect as tlsConnect } from "node:tls";
+import { gzipSync } from "node:zlib";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { gitEnv, openRelay, type ForgeCredential, type Relay } from "../src/index.ts";
 
@@ -74,13 +75,13 @@ async function through(relay: Relay, to: string, path: string, authorization?: s
 }
 
 /** A POST to `to` through the relay, with a JSON body. */
-async function postThrough(relay: Relay, to: string, path: string, authorization: string, body: string): Promise<{ status: number; body: string }> {
+async function postThrough(relay: Relay, to: string, path: string, authorization: string, body: string, more: Record<string, string> = {}): Promise<{ status: number; body: string }> {
   const { socket } = await tunnel(relay, to);
   return new Promise((resolve, reject) => {
     const servername = to.replace(/:\d+$/, "");
     const req = httpsRequest({
       host: servername, path, method: "POST",
-      headers: { authorization, "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      headers: { authorization, "content-type": "application/json", "content-length": Buffer.byteLength(body), ...more },
       createConnection: () => tlsConnect({ socket: socket!, servername, ca: relay.ca }),
     }, (res) => {
       let out = "";
@@ -196,22 +197,37 @@ describe("a relayed pull request create", () => {
   let upstream: Server;
   let base: string;
   let githubBody: string;
+  let graphqlBody: string;
   const created: { repo: string; number: number }[] = [];
+  /** What the upstream got: each request's body, and the encoding it was asked for. */
+  const got: { body: string; encoding?: string }[] = [];
 
   beforeAll(async () => {
     upstream = createServer((req, res) => {
-      req.resume();
-      const isForge = req.url?.includes("/api/v1/repos/ada/notes/pulls");
-      const body = isForge ? '{"number": 7, "title": "a secret title", "user": {"login": "ada"}}'
-        : req.url?.includes("/ada/lyrica/pulls") ? githubBody : '{"number": 404}';
-      res.writeHead(200, { "content-type": "application/json" }).end(body);
+      let sent = "";
+      req.on("data", (d) => { sent += d; });
+      req.on("end", () => {
+        const encoding = req.headers["accept-encoding"];
+        got.push({ body: sent, encoding });
+        const isForge = req.url?.includes("/api/v1/repos/ada/notes/pulls");
+        const body = isForge ? '{"number": 7, "title": "a secret title", "user": {"login": "ada"}}'
+          : req.url === "/graphql" ? graphqlBody
+          : req.url?.includes("/ada/lyrica/pulls") ? githubBody : '{"number": 404}';
+        // As GitHub does: gzip for a client that accepts it (Go's, so gh's, always does).
+        if (encoding?.includes("gzip")) res.writeHead(200, { "content-type": "application/json", "content-encoding": "gzip" }).end(gzipSync(body));
+        else res.writeHead(200, { "content-type": "application/json" }).end(body);
+      });
     });
     await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
     base = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`;
   });
   afterAll(() => { upstream.close(); });
 
-  beforeEach(() => { created.length = 0; githubBody = '{"number": 42, "title": "a secret title", "body": "never kept"}'; });
+  beforeEach(() => {
+    created.length = 0; got.length = 0;
+    githubBody = '{"number": 42, "title": "a secret title", "body": "never kept"}';
+    graphqlBody = '{"data":{"createPullRequest":{"pullRequest":{"id":"PR_kwDOA","url":"https://github.com/ada/lyrica/pull/43"}}}}';
+  });
 
   const openRecord = () => openRelay({
     forge: [credential({}), credential({ repo: "ada/notes", kind: "forgejo", host: "forge.lan:3000", token: FORGE_TOKEN, placeholder: "lyrica_placeholder_forge" })],
@@ -226,6 +242,42 @@ describe("a relayed pull request create", () => {
       expect((await postThrough(relay, "api.github.com:443", "/repos/ada/lyrica/pulls", "token lyrica_placeholder_github", "{}")).status).toBe(200);
       expect((await postThrough(relay, "forge.lan:3000", "/api/v1/repos/ada/notes/pulls", "token lyrica_placeholder_forge", "{}")).status).toBe(200);
       expect(created).toEqual([{ repo: "ada/lyrica", number: 42 }, { repo: "ada/notes", number: 7 }]);
+    } finally {
+      relay.close();
+    }
+  });
+
+  // gh's own shapes: Go asks for gzip on every request, and gh pr create is a GraphQL mutation that asks for the id and url.
+  const GH = { "accept-encoding": "gzip" };
+  const CREATE = JSON.stringify({ query: "mutation PullRequestCreate($input: CreatePullRequestInput!) { createPullRequest(input: $input) { pullRequest { id url } } }", variables: { input: { repositoryId: "R_kgDOA", baseRefName: "main", headRefName: "feature", title: "a secret title", draft: true } } });
+
+  it("records gh's creates: a REST create its client asks to gzip, and its GraphQL createPullRequest", async () => {
+    const relay = await openRecord();
+    try {
+      expect((await postThrough(relay, "api.github.com:443", "/repos/ada/lyrica/pulls", "token lyrica_placeholder_github", "{}", GH)).status).toBe(200);
+      expect((await postThrough(relay, "api.github.com:443", "/graphql", "token lyrica_placeholder_github", CREATE, GH)).status).toBe(200);
+      expect(created).toEqual([{ repo: "ada/lyrica", number: 42 }, { repo: "ada/lyrica", number: 43 }]);
+      // Both asked upstream uncompressed, and the mutation went on as sent.
+      expect(got.map((g) => g.encoding)).toEqual(["identity", "identity"]);
+      expect(got[1]!.body).toBe(CREATE);
+    } finally {
+      relay.close();
+    }
+  });
+
+  it("records no GraphQL create for another repository, a query, or an answer without a url, and passes other GraphQL on compressed", async () => {
+    const relay = await openRecord();
+    try {
+      graphqlBody = '{"data":{"createPullRequest":{"pullRequest":{"id":"PR_kwDOB","url":"https://github.com/ada/other/pull/9"}}}}';
+      await postThrough(relay, "api.github.com:443", "/graphql", "token lyrica_placeholder_github", CREATE, GH);
+      graphqlBody = '{"data":{"createPullRequest":{"pullRequest":{"id":"PR_kwDOA","number":43}}}}';
+      await postThrough(relay, "api.github.com:443", "/graphql", "token lyrica_placeholder_github", CREATE, GH);
+      graphqlBody = '{"data":{"createPullRequest":{"pullRequest":{"url":"https://github.com/ada/lyrica/pull/43"}}}}';
+      const query = JSON.stringify({ query: "query { repository(owner: \"ada\", name: \"lyrica\") { createPullRequest: id } }" });
+      await postThrough(relay, "api.github.com:443", "/graphql", "token lyrica_placeholder_github", query, GH);
+      expect(created).toEqual([]);
+      expect(got.map((g) => g.encoding)).toEqual(["identity", "identity", "gzip"]);
+      expect(got[2]!.body).toBe(query);
     } finally {
       relay.close();
     }
