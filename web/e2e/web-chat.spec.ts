@@ -1559,9 +1559,15 @@ test("a project thread's chips: its checklist's count, its pull request with Dra
   // Both lists are narrow: the chips go under the title rather than cutting it to a letter. The title may still end in an
   // ellipsis beside a long state word, so what's checked is that it keeps most of the row.
   await expect(row.locator(".title")).toHaveText("Plan the herb beds and the watering");
-  const [rowBox, title, chips] = await Promise.all([row.boundingBox(), row.locator(".title").boundingBox(), row.locator(".tchips").boundingBox()]);
-  expect(title!.width).toBeGreaterThan(rowBox!.width / 2);
-  expect(chips!.y).toBeGreaterThan(title!.y + title!.height - 1);
+  // Measured in one go on an attached row: the plan's thread moving between the popover's state groups (Working to Idle as
+  // its turn ends) remounts its row, and three separate measurements could straddle that and read a detached one.
+  let box: { connected: boolean; row: number; title: DOMRect; chips: DOMRect } | undefined;
+  await expect(async () => {
+    box = await row.evaluate((el) => ({ connected: el.isConnected, row: el.getBoundingClientRect().width, title: el.querySelector(".title")!.getBoundingClientRect().toJSON(), chips: el.querySelector(".tchips")!.getBoundingClientRect().toJSON() }));
+    expect(box.connected).toBe(true);
+  }).toPass({ timeout: 5000 });
+  expect(box!.title.width, JSON.stringify(box)).toBeGreaterThan(box!.row / 2);
+  expect(box!.chips.y, JSON.stringify(box)).toBeGreaterThan(box!.title.y + box!.title.height - 1);
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/chips-rows-${page.viewportSize()!.width}.png` });
   await page.unrouteAll({ behavior: "ignoreErrors" });
