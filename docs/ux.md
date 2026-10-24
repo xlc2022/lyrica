@@ -287,6 +287,7 @@ and model host cards keep the existing rule.
 | A message waiting behind her turn | a faded **user message** after the conversation, its header "<name> · waiting"; while she works, **Steer now** (a small link in that header, tooltip "Sends this into <name>'s turn after her current step, instead of when the turn ends.") moves it into the turn, where it shows once she takes it |
 | The message box | one box holding the textarea and Send as a plain icon (Stop while she works); under it, a row with "+" (Attach and the tool switches), the mic, and, at its end, the mode word with a caret. An image the person attached shows above the box as a thumbnail (its path is a line of the draft) with an ✕ (Remove <name>) that takes the line out; a file that is not an image is its path alone |
 | Anything in the conversation waiting for an answer (a plan, a permission, a question, a question from a subagent) | a **card** in the conversation, with its actions at its foot and one primary action at most. When the latest such card has scrolled out of view, a thin bar in the accent colour across the top of the chat names it and jumps to it; it is the one bar the chat may show |
+| Messages or streamed text arriving while the person has scrolled up | a small secondary **Jump to latest** button at the foot of the conversation (ux §3's secondary button, §4's noun label), which takes the person back down to the latest text; it appears only while new content landed below the fold, and goes away once the person is at the bottom again |
 | A subagent | a **card** in the conversation that expands to its work and takes messages, headed by its role with the model's short name muted beside it (the full label as its tooltip); a `delegate` call that starts nothing is a card headed by what it is (Subagent status, Subagent wait, Subagent run stopped, Subagent models, Message to the <role>), status and models showing what came back, and a failed call its error |
 | Dictating a message | the mic in the message box's row; the box's placeholder while listening |
 | Hearing a message read aloud | **Read aloud** in her message's action row; with **Read aloud while agent writes** on, also on the reply she is still writing |
@@ -409,3 +410,6 @@ Say in the PR which rule each new control follows, and confirm:
 - [ ] a screenshot at 1280 wide and at 390 wide, with no horizontal
       scroll;
 - [ ] docs/web.md describes what changed.
+- [ ] each new control says which rule it follows; the jump-to-latest
+      button follows section 6's new row, section 3's secondary button and
+      section 4's noun label.

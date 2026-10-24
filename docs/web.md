@@ -1327,6 +1327,11 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   plan, an approval or a question) has scrolled out of view, a thin accent bar across the
   top of the conversation says "Plan waiting for your answer" (or
   "Approval…") and scrolls to it.
+- **Jump to latest:** when new messages or streamed text land while the person
+  has scrolled up, a small secondary **Jump to latest** button at the foot of the
+  conversation offers to take them back down to the latest text
+  (`useStickyScroll` in `src/Thread.tsx`; docs/ux.md §6). Clicking it scrolls to the
+  bottom, and it is gone once the person is at the bottom again by any means.
 
 A content refusal's image marker says "The model declined this image." (never
 the code) and the small text
