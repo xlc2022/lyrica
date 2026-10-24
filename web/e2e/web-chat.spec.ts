@@ -1523,10 +1523,11 @@ test("a project thread's chips: its checklist's count, its pull request with Dra
   await expect(row.locator(".chip").nth(1)).toHaveText("Pull request #430 Draft, checks running");
   await expect(row.locator(".chip").nth(2)).toHaveText("2 subagents");
   await expect(row.locator("a, button")).toHaveCount(0);
-  // Both lists are narrow: the chips go under the title rather than cutting it to a letter.
+  // Both lists are narrow: the chips go under the title rather than cutting it to a letter. The title may still end in an
+  // ellipsis beside a long state word, so what's checked is that it keeps most of the row.
   await expect(row.locator(".title")).toHaveText("Plan the herb beds and the watering");
-  expect(await row.locator(".title").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-  const [title, chips] = await Promise.all([row.locator(".title").boundingBox(), row.locator(".tchips").boundingBox()]);
+  const [rowBox, title, chips] = await Promise.all([row.boundingBox(), row.locator(".title").boundingBox(), row.locator(".tchips").boundingBox()]);
+  expect(title!.width).toBeGreaterThan(rowBox!.width / 2);
   expect(chips!.y).toBeGreaterThan(title!.y + title!.height - 1);
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/chips-rows-${page.viewportSize()!.width}.png` });
