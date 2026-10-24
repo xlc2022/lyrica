@@ -334,6 +334,11 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
   .scroll > .pending-bar { --h: 26px; }
   .scroll > .pending-bar::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 44px; }
 }
+/* A reply that arrived while the person was scrolled up: the small secondary button at the foot of the conversation
+   that takes them back down to the latest text (docs/ux.md §6). It takes its own row of the conversation, sticky to
+   the bottom of the scroll area, and the messages keep their places while it is there. */
+.scroll > .jump-latest { position: sticky; bottom: 0; z-index: 6; width: auto; max-width: none; justify-self: center; }
+button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .older { justify-self: center; width: auto; }
 .who { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 /* The eyebrow carries names; the facts after them read as written. */

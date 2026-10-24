@@ -261,7 +261,9 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const resolved = s?.state === "resolved";
   const reopen = () => post<ThreadSummary>(`${base}/reopen`).then((x) => { summary.set(x); refreshThreads(); }, (e: Error) => setSendError(e.message));
   const resolve = () => post<ThreadSummary>(`${base}/resolve`).then((x) => { summary.set(x); refreshThreads(); }, (e: Error) => setSendError(e.message));
-  const scroller = useStickyScroll([t.messages, t.live]);
+  const { ref: scroller, atBottom, arrivedUp } = useStickyScroll([t.messages, t.live]);
+  // A reply that landed while the person was scrolled up is one they can't see: offer to take them back down to it.
+  const showJump = arrivedUp && !atBottom;
   // On a phone the tokens move into the Threads popover, so the facts line stays at two rows.
   const phone = usePhone();
   // The stream's reading after a turn, or the one the settings brought (the open session's, else the last call's).
@@ -343,6 +345,12 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
           speech={settings.data?.speech} onError={setSendError} project={projectEnv} />
         {settings.data?.planWait && settings.data.wakeups.some((w) => w.planLimit) && <PlanWaitCard wait={settings.data.planWait} userId={userId} onDone={refreshSettings} />}
         <ErrorText error={sendError} />
+        {/* A reply that arrived while the person was scrolled up (docs/ux.md §6): the small button that takes them back down. */}
+        {showJump && (
+          <button type="button" className="jump-latest" onClick={() => { const el = scroller.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); }}>
+            <Icon name="arrow-down" /> Jump to latest
+          </button>
+        )}
       </div>
       {!t.connected && <p className="offline" role="status">Reconnecting…</p>}
       {removal && (
@@ -512,18 +520,36 @@ function PendingBar({ scroller, deps }: { scroller: React.RefObject<HTMLDivEleme
  * Keeps the conversation scrolled to the bottom while new text arrives, unless she has scrolled up.
  * Whether she was at the bottom is judged against the height before this update, not from the
  * last scroll event, which may not have fired yet when an update lands right after she scrolls.
+ * Reports whether the content grew while she was scrolled up, for the jump-to-latest control.
  */
 function useStickyScroll(deps: unknown[]) {
   const ref = useRef<HTMLDivElement>(null);
   const height = useRef(0);
+  const [atBottom, setAtBottom] = useState(true);
+  const [arrivedUp, setArrivedUp] = useState(false);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (height.current - el.scrollTop - el.clientHeight < 80) el.scrollTop = el.scrollHeight;
+    const wasBottom = height.current - el.scrollTop - el.clientHeight < 80;
+    const grew = el.scrollHeight > height.current;
     height.current = el.scrollHeight;
+    const nowBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (wasBottom) el.scrollTop = el.scrollHeight;
+    setAtBottom(nowBottom);
+    // Content that grew while the person was scrolled up is one they can't see yet; being at the bottom ends the offer.
+    if (nowBottom) setArrivedUp(false);
+    else if (grew && !wasBottom) setArrivedUp(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
-  return ref;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const on = () => { const at = el.scrollHeight - el.scrollTop - el.clientHeight < 80; setAtBottom(at); if (at) setArrivedUp(false); };
+    el.addEventListener("scroll", on, { passive: true });
+    on();
+    return () => el.removeEventListener("scroll", on);
+  }, []);
+  return { ref, atBottom, arrivedUp };
 }
 
 /**

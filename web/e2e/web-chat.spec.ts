@@ -21,6 +21,37 @@ test("unlock, log in, start a thread, and see a streamed reply that survives a r
   await noHorizontalScroll(page);
 });
 
+test("a reply that lands while scrolled up shows a jump-to-latest control that takes the person down to the bottom", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  // A reply long enough to scroll the conversation, so scrolling up means something.
+  await send(page, `reply: ${Array.from({ length: 20 }, (_, i) => `Paragraph ${i + 1} of the reply, which keeps going past one line on the way down.`).join("\n\n")}`);
+  const scroll = page.locator(".scroll").first();
+  const stop = page.getByRole("button", { name: "Stop" });
+  await expect(stop).toBeVisible();
+  await expect(stop).toBeHidden();
+  await page.locator(".scroll").first().evaluate((el) => { el.scrollTop = 0; });
+  // Deliver a message while scrolled up; its reply lands below the fold.
+  await send(page, "Hello there");
+  await expect(page.getByText("You said: Hello there")).toBeVisible();
+  const jump = page.getByRole("button", { name: "Jump to latest" });
+  const shot = async (name: string) => {
+    if (!process.env.SCREENSHOTS) return;
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/${name}-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  };
+  await expect(jump).toBeInViewport();
+  await shot("jump-to-latest");
+  await jump.click();
+  await expect(jump).toHaveCount(0);
+  // Ends at the bottom, where the control is gone.
+  await expect.poll(async () => scroll.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight)).toBeLessThanOrEqual(2);
+  await noHorizontalScroll(page);
+});
+
 test("the sidebar's right edge drags wider or narrower, moves with the keyboard, and keeps its width; a phone's slide-over has none", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   const divider = page.getByRole("separator", { name: "Sidebar width" });
