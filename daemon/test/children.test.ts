@@ -19,6 +19,9 @@ const said = (c: ChatRequest) => JSON.stringify(c.messages);
  * parent from `parent` and children from `child`, in order, so their turns
  * can run at once.
  */
+/** How long a poll waits for a turn to end: a code child's turn starts by cloning or making worktrees, which takes seconds on a slow or nested sandbox, past expect.poll's default second. */
+const TURN = { timeout: 15_000 };
+
 async function setup(opts: Parameters<typeof daemon>[1] = {}, rt?: Awaited<ReturnType<typeof runtime>>) {
   rt ??= await runtime();
   const dm = await daemon(rt, opts);
@@ -49,7 +52,7 @@ async function setup(opts: Parameters<typeof daemon>[1] = {}, rt?: Awaited<Retur
   const childPath = (id: string) => `${u}/threads/general/${enc(id)}`;
   const messages = async (p: string) => (await ada.get<MessagePage>(`${p}/messages`)).body.messages;
   const idleParent = async () => {
-    await expect.poll(() => dm.d.services!.host.busy(rt!.ada.id, "general", thread.id)).toBe(false);
+    await expect.poll(() => dm.d.services!.host.busy(rt!.ada.id, "general", thread.id), TURN).toBe(false);
   };
   return { rt, ...dm, ada, model, reply, parent, child, thread, u, path, stream, say, list, childPath, messages, idleParent };
 }
@@ -762,11 +765,11 @@ describe("code thread worktrees", () => {
       await s.idleParent();
       return result;
     };
-    const idle = async (id: string) => { await expect.poll(() => s.d.services!.host.busy(s.rt.ada.id, "general", id)).toBe(false); };
+    const idle = async (id: string) => { await expect.poll(() => s.d.services!.host.busy(s.rt.ada.id, "general", id), TURN).toBe(false); };
     // A child that ends without a report wakes its parent: that turn ends too before the next start, so it can't take the start's script.
     const settled = async (id: string) => {
       await idle(id);
-      await expect.poll(async () => JSON.stringify(await s.messages(s.path))).toContain(`[t:${id}] ended without a report`);
+      await expect.poll(async () => JSON.stringify(await s.messages(s.path)), TURN).toContain(`[t:${id}] ended without a report`);
       await s.idleParent();
     };
     const pair = async () => {
