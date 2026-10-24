@@ -98,8 +98,9 @@ notices.
    each check's name and result (passed, failed, cancelled, timed out). No
    log text; she reads logs herself with `gh run view --log-failed`. One
    wake per head commit and set of results: a new push starts the wait
-   again, and a re-run on the same commit wakes her again only when its
-   results differ (since 2026-10-24; before, never). A GitHub check suite
+   again, and a re-run that finishes on the same commit wakes her again
+   (since 2026-10-24; before, never): a GitHub re-run is a new check run,
+   and a commit status counts only when its result changes. A GitHub check suite
    that has started but not finished counts as a pending check, so the
    gap between a workflow's jobs isn't read as finished. No checks reported 15 minutes after
    the head commit changed: one note saying so.

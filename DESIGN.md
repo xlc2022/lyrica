@@ -1342,8 +1342,9 @@ project page and the web part are built. Recent calls can be filtered by project
   whose checks didn't all pass asks her to read the failing log and push at
   least one fix before calling it blocked, or to say it fails on the base
   branch too (2026-10-24).
-  A re-run that finishes on the same head with different results wakes
-  her again; an unfinished check suite counts as a pending check, so a
+  A re-run that finishes on the same head wakes her again (a GitHub
+  re-run is a new check run; a commit status counts only when its result
+  changes); an unfinished check suite counts as a pending check, so a
   workflow between its jobs doesn't read as finished. A pull request a
   subagent opens wakes the thread that delegated to it. `threads watch`
   with `pr` (`owner/repo#number`) watches an open pull request in one of

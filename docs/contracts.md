@@ -800,8 +800,10 @@ Custom roles override built-ins by name, except `claude`.
   repositories with a usable account, and returns the line she is told;
   the action is offered only while `ThreadsHost.watchable(from)` is true.
   `notified_heads` holds keys `head:hash` of the finished checks' ids and
-  results (or `head:none`), the last 50, so a re-run with different
-  results on the same head wakes again; a bare head stored before counts
+  results (or `head:none`), the last 50, so a re-run that finishes on the
+  same head wakes again (a GitHub re-run is a new check-run id; a commit
+  status, `gh:status:<context>`, keeps its id and counts only when its
+  result changes); a bare head stored before counts
   as the set it next finds. GitHub snapshots also read
   `/commits/{sha}/check-suites`: a suite not yet completed that has runs
   is a pending check, and a `stale` conclusion reads as cancelled.

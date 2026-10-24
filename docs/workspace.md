@@ -1153,8 +1153,8 @@ her account is general.
   signed tailnet webhook (Settings → Git accounts, **Webhook**) that nudges
   a poll at once, with polling as the fallback. A merged or closed pull
   request ends the watch with one note saying so, unless her own account
-  merged it. A re-run on the same head wakes her again when its results
-  differ, and a pull request a subagent opens wakes the thread that
+  merged it. A re-run that finishes on the same head wakes her again (a
+  commit status only when its result changes), and a pull request a subagent opens wakes the thread that
   delegated to it. `threads watch` with `pr` (`owner/repo#number`)
   watches an open pull request of one of the thread's repositories that
   wasn't opened through the relay.
