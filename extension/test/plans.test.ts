@@ -130,6 +130,43 @@ describe("a ChatGPT plan", () => {
     expect(planLimitReset("The usage limit has been reached")).toBeUndefined();
   });
 
+  it("reads the reset from a refusal that comes as a stream event", async () => {
+    const s = await setup();
+    const resetsAt = Math.floor(Date.now() / 1000) + 40 * 60;
+    const event = { type: "error", code: "usage_limit_reached", message: "The usage limit has been reached", resets_at: resetsAt };
+    globalThis.fetch = (async () => new Response(`data: ${JSON.stringify(event)}\n\n`, { status: 200, headers: { "content-type": "text/event-stream" } })) as typeof fetch;
+    const runtime = await modelRuntimeFor(s.models, s.ctx());
+    const model = runtime.getModel(s.plan.id, "gpt-5")!;
+    for await (const _ of runtime.streamSimple(model, { messages: [{ role: "user", content: "Hello.", timestamp: 0 }] }));
+    expect(s.models.planLimitedUntil(s.plan.id)).toBe(resetsAt * 1000);
+  });
+
+  it("waits longer each time it's still limited when its guess of the reset runs out", async () => {
+    const s = await setup();
+    vi.useFakeTimers({ now: 0, toFake: ["Date"] });
+    try {
+      const hour = 3_600_000;
+      s.models.reportPlanLimit(s.plan.id);
+      expect(s.models.planLimitedUntil(s.plan.id)).toBe(hour);
+      // Refused again during the wait: the guess stands.
+      vi.setSystemTime(hour / 2);
+      s.models.reportPlanLimit(s.plan.id);
+      expect(s.models.planLimitedUntil(s.plan.id)).toBe(hour);
+      // Refused again just after it: two hours, then four, then at most six.
+      let at = hour + 60_000;
+      for (const wait of [2, 4, 6, 6]) {
+        vi.setSystemTime(at);
+        s.models.reportPlanLimit(s.plan.id);
+        expect(s.models.planLimitedUntil(s.plan.id)! - at).toBe(wait * hour);
+        at += wait * hour + 60_000;
+      }
+      // A limit long after the last guess starts again at an hour, and a known reset is used as it is.
+      vi.setSystemTime(at + 24 * hour);
+      s.models.reportPlanLimit(s.plan.id);
+      expect(s.models.planLimitedUntil(s.plan.id)! - (at + 24 * hour)).toBe(hour);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("keeps a network failure from signing it out", async () => {
     const s = await setup(Date.now() - 1000);
     tokenEndpoint(503);

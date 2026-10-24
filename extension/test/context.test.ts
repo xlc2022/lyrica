@@ -126,4 +126,21 @@ describe("requested compaction at Pi’s threshold", () => {
       expect(compact({ reason: "manual" })).toBeUndefined();
     }
   });
+
+  it("estimates what's left from her prompt, the kept messages and the summary, not from the measured total", async () => {
+    const { registerContext } = await import("../src/context.ts");
+    const handlers = new Map<string, (...args: any[]) => any>();
+    const meter = new ContextMeter();
+    registerContext({ on: (name: string, fn: (...args: any[]) => any) => handlers.set(name, fn) } as any, meter);
+    meter.setPrompt([], 4000);
+    meter.measure(219_000, 272_000, 0);
+    const say = (id: string, parentId: string | null, text: string) => ({ type: "message", id, parentId, timestamp: new Date(0).toISOString(), message: { role: "user", content: [{ type: "text", text }], timestamp: 0 } });
+    const old = say("a", null, "x".repeat(40_000));
+    const kept = say("b", "a", "y".repeat(8_000));
+    const ctx = { sessionManager: { getEntries: () => [old, kept], getLeafId: () => "b" } };
+    meter.running = { summary: "z".repeat(400) };
+    const r = handlers.get("session_before_compact")!({ reason: "manual", preparation: { messagesToSummarize: [old.message], turnPrefixMessages: [], firstKeptEntryId: "b", tokensBefore: 219_000 } }, ctx);
+    // Tools 1000, the kept message 2000, the summary 100: the measured total's unseen tokens (a model's reasoning) don't stay behind.
+    expect(r.compaction.details.after).toBe(1000 + 2000 + 100);
+  });
 });

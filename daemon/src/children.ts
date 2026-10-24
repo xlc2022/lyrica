@@ -193,7 +193,8 @@ export class ChildThreads implements ThreadsHost {
                 if (typeof made === "string") reasons.push(made); else worktrees.push(...made.flat());
               } catch (err) { reasons.push((err as Error).message); }
             }
-            if (!grants.some((g) => g.writable)) reasons.push("this thread has no writable host folders");
+            // A thread with repositories works in its own clones, so having no host folder to isolate isn't worth a reason.
+            if (!grants.some((g) => g.writable) && !ws.effective(child.id).repositories.length) reasons.push("this thread has no writable host folders");
             ws.setThread(child.id, parent.pool, { grants: worktreeGrants(grants, worktrees, true), ...(worktrees.length ? { machines: [], mcpServers: [], claudeCode: false } : {}) });
             ws.setThreadWork(child.id, { worktrees, ...(reasons.length ? { reason: reasons.join("; ") } : {}) });
           } catch (err) {

@@ -95,12 +95,17 @@ export class ContextMeter {
     return p;
   }
 
+  /** Her prompt and tools as last measured, estimated: what a compaction leaves besides the conversation. */
+  fixedTokens(): number {
+    const parts = this.snapshot?.parts ?? {};
+    return ESTIMATED.filter((k) => k !== "conversation").reduce((a, k) => a + (parts[k] ?? 0), 0);
+  }
+
   /** After a compaction: the total is the estimate until the next response measures it. */
   compacted(after: number): void {
     if (!this.snapshot) return;
     const { parts } = this.snapshot;
-    const rest = ESTIMATED.filter((k) => k !== "conversation").reduce((a, k) => a + (parts[k] ?? 0), 0);
-    this.snapshot = { ...this.snapshot, parts: { ...parts, conversation: Math.max(0, after - rest) }, tokens: after, at: new Date().toISOString() };
+    this.snapshot = { ...this.snapshot, parts: { ...parts, conversation: Math.max(0, after - this.fixedTokens()) }, tokens: after, at: new Date().toISOString() };
     this.compactions++;
   }
 
@@ -258,15 +263,20 @@ export function registerContext(pi: ExtensionAPI, meter: ContextMeter): void {
   });
   pi.on("agent_end", (_e, ctx) => measure(ctx));
 
-  pi.on("session_before_compact", (e) => {
+  pi.on("session_before_compact", (e, ctx) => {
     // Principle 1: keep her requested summary when the final reply crosses
     // Pi's threshold. The host runs it after the turn, preserving Stop.
     if (e.reason === "threshold" && meter.pending) return { cancel: true };
     const summary = e.reason === "manual" ? meter.running?.summary : undefined;
     if (!summary) return undefined;
     const p = e.preparation;
+    // What's left, estimated: her prompt and tools, the kept messages and the summary. Taking the dropped estimate
+    // from the measured total kept what the estimate can't see (a model's reasoning); the estimate alone can run over
+    // a model that counts fewer tokens than it. So the smaller of it and its share of the measured total.
     const dropped = [...p.messagesToSummarize, ...p.turnPrefixMessages].reduce((a, m) => a + estimateTokens(m), 0);
-    const after = Math.max(0, p.tokensBefore - dropped + chars(summary.length));
+    const fixed = meter.fixedTokens(), conversation = conversationTokens(ctx);
+    const kept = fixed + Math.max(0, conversation - dropped) + chars(summary.length);
+    const after = Math.min(kept, Math.round((p.tokensBefore * kept) / Math.max(1, fixed + conversation + chars(summary.length))));
     return { compaction: { summary, firstKeptEntryId: p.firstKeptEntryId, tokensBefore: p.tokensBefore, estimatedTokensAfter: after, details: { after } } };
   });
 }

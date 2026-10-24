@@ -966,7 +966,9 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   (a thread's, a subagent's, a job's) ends on its usage limit
   (`isPlanLimit`, heard in `planProvider`), Lyrica notes when it resets
   (`reportPlanLimit`, with `planLimitReset` reading OpenAI's `resets_at`,
-  else an hour), and the Models page shows "Limit reached until" with the
+  from the refusal or, for Codex's stream events, the raw event; else a
+  guess: an hour, doubled each time the plan is still limited when the
+  guess runs out, up to six), and the Models page shows "Limit reached until" with the
   reset time. The router still picks the plan for every task, so nothing
   falls back (the owner's call: a model set to a plan is set so for a
   reason). A subagent's or background job's call fails until the reset,
@@ -976,7 +978,8 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   docs/contracts.md). Pi doesn't retry the reply, the person gets one
   notice a turn saying when it resets, and the turn carries on by itself
   a minute after the reset (`PLAN_LIMIT_RESUME`, a wake-up outside her own
-  limits, one per thread: a later cut-off moves it). Claude Code's plan is
+  limits, one per thread: a later cut-off moves it). Only that timer
+  resumes it; another call succeeding doesn't. Claude Code's plan is
   the same: a claude delegate run it stops makes its thread wait, with the
   same card and notification (docs/delegation.md, "Claude Code"); her own
   `claude -p` in bash tells her to set a wake-up for the reset

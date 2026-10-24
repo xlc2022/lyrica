@@ -1434,4 +1434,5 @@ the drafts. Model settings use the current preset API.
 
 A project thread card shows a muted “No worktree: <reason>” line when a code
 thread could not isolate a granted host folder (docs/ux.md §6, existing thread
-card). This adds no control.
+card). A thread with repositories and no writable host folder shows none,
+since it works in its own clones. This adds no control.
