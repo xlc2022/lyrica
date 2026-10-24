@@ -1,6 +1,6 @@
 # Brief: The changes view
 
-**Status:** The changes view merged (#436). The thread chips: built; in review.
+**Status:** The changes view merged (#436). The thread chips merged. Draft on the chip: built; in review.
 
 **Thread:** Changes view for PRs. **Branch:** `claude/project-thread-h16cf8`.
 **Model:** Opus.
@@ -36,7 +36,7 @@ commits and checks reached her prompt only.
    repositories: `GET …/changes`, `…/changes/commit`, `…/changes/file`.
    The diff is computed in the browser (`diff.ts`); nothing is stored.
 4. **The pull request** from the forge watcher's last poll
-   (`ForgeWatcher.openPull`): number, head, URL, checks.
+   (`ForgeWatcher.openPull`): number, head, URL, draft flag, checks.
 5. **Docs:** DESIGN.md, docs/ux.md, docs/web.md, docs/daemon.md,
    docs/contracts.md, the `api.ts` comments, the app mockup.
 
@@ -63,6 +63,20 @@ last poll, `ForgeWatcher.openPulls`) and `ThreadSummary.subagents`
 count in `daemon/test/rewind.test.ts`, an e2e in `web-chat.spec.ts` ("a
 project thread's chips") with the overview answered from a fixture.
 
+## Draft on the pull request chip (third ask, 2026-10-24)
+
+A draft pull request with red checks went unnoticed, so the user asked for
+CI status on the chip. The checks' dot was already there; that pull request
+had no chip because it was opened with `gh` before the relay watched those
+(#530). What was missing is the chip's word: the forge parsers read the
+pull's `draft` flag (`ForgePullRequest.draft`, GitHub and Forgejo/Gitea
+alike), the watcher passes it on as `OpenPull.draft`, and the chip shows
+**Draft** muted after "#n". The dot's meaning is now spoken too ("checks
+failed"), on the card's link and in the rows. Out of scope: a chip that
+stays as **Merged** after the merge (the watcher only keeps open pull
+requests, in memory; keeping merged ones takes a pool migration), and the
+changes view's badge, which keeps the number and dot alone.
+
 ## Handoff
 
 Done: the back end (core `git-changes.ts`, routes, the watcher's `openPull`),
@@ -73,3 +87,6 @@ The changes view merged as #436 (91566de). The thread chips are the second
 pull request from this thread.
 Next: UI review's verified, PR review (`daemon/src/routes.ts`, the store),
 merge.
+Draft chip: built on `claude/project-thread-sqgk3u`. Next: UI review's
+verified (both widths, a draft and a non-draft chip), PR review (core forge
+parsers), merge.

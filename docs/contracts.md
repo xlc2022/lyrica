@@ -1800,7 +1800,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `Workspace.checkouts(t)` and `core/src/workspace/git-changes.ts`
     (`repositoryChanges`, `commitFiles`, `fileSides`); the open pull request
     from `ForgeWatcher.openPull(userId, pool, thread, repo)`, the last poll's
-    number, head, URL and checks; `ForgeWatcher.openPulls(userId, pool,
+    number, head, URL, draft flag and checks; `ForgeWatcher.openPulls(userId, pool,
     thread)` lists them all for a project thread's `ThreadSummary.pull`, and
     `DelegationStore.liveCounts(userId, pool)` counts its running or asking
     subagents by parent thread for `ThreadSummary.subagents`;

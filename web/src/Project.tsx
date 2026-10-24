@@ -24,25 +24,29 @@ import { modelName } from "./ModelLabel.tsx";
 
 /**
  * A project thread's chips (docs/ux.md §6, "A thread of a project at a glance"): its checklist's count, its open pull
- * request with the checks' dot, and how many subagents work for it now. In a row that is itself a link they are plain
- * spans; on a card (`link`) the pull request is a link to it, and the checklist is the card's own button, so left out.
+ * request with Draft while it is one and the checks' dot, and how many subagents work for it now. In a row that is
+ * itself a link they are plain spans; on a card (`link`) the pull request is a link to it, and the checklist is the
+ * card's own button, so left out.
  */
 export function ThreadChips({ t, link }: { t: Pick<ThreadSummary, "steps" | "pull" | "subagents">; link?: boolean }) {
   const list = !link && t.steps?.length ? checklistOf(t.steps) : undefined;
   const checks = t.pull && checksState(t.pull.checks);
   if (!list && !t.pull && !t.subagents) return null;
+  const said = checks && checks.tone !== "none" ? `checks ${checks.tone === "ok" ? "passed" : checks.tone === "bad" ? "failed" : "running"}` : "";
   const pull = t.pull && (
     <>
       <Icon name="pull" /><span className="num">#{t.pull.number}</span>
-      {checks && checks.tone !== "none" && <span className={`dot ${checks.tone === "ok" ? "up" : checks.tone === "bad" ? "down" : "away"}`} />}
+      {t.pull.draft && <>{" "}<span className="draft">Draft</span></>}
+      {said && <><span className={`dot ${checks!.tone === "ok" ? "up" : checks!.tone === "bad" ? "down" : "away"}`} /><span className="sr-only">, {said}</span></>}
     </>
   );
-  const pullTitle = t.pull && `Pull request #${t.pull.number} on ${t.pull.repo}${checks && checks.tone !== "none" ? `\n${checks.text}` : ""}`;
+  const pullTitle = t.pull && `Pull request #${t.pull.number} on ${t.pull.repo}${said ? `\n${checks!.text}` : ""}`;
+  const pullLabel = t.pull && `Pull request #${t.pull.number}${t.pull.draft ? ", draft" : ""}${said ? `, ${said}` : ""}`;
   return (
     <span className="tchips">
       {list && <span className="chip" title="Checklist"><span className="num">{list.done}</span> of <span className="num">{list.total}</span><span className="sr-only"> steps done</span></span>}
       {t.pull && (link
-        ? <a className="chip pull" href={t.pull.url} target="_blank" rel="noreferrer" title={pullTitle} aria-label={`Pull request #${t.pull.number}`}>{pull}</a>
+        ? <a className="chip pull" href={t.pull.url} target="_blank" rel="noreferrer" title={pullTitle} aria-label={pullLabel}>{pull}</a>
         : <span className="chip pull" title={pullTitle}><span className="sr-only">Pull request </span>{pull}</span>)}
       {!!t.subagents && <span className="chip" title={`${t.subagents} subagent${t.subagents === 1 ? "" : "s"} working`}><Icon name="agents" /><span className="num">{t.subagents}</span><span className="sr-only"> subagents</span></span>}
     </span>
