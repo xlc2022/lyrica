@@ -185,8 +185,10 @@ describe("handing files over", () => {
     const project = t.view.own.createThread({ interface: "web", project: true, title: "Homelab" });
     const dns = t.view.own.createThread({ interface: "web", parent: project.id, child: true, title: "DNS" });
     const web = t.view.own.createThread({ interface: "web", parent: project.id, child: true, title: "Web" });
+    const api = t.view.own.createThread({ interface: "web", parent: project.id, child: true, title: "API" });
     const sent: string[] = [];
-    const host: ThreadsHost = { limits: { ...DEFAULT_THREADS_LIMITS, siblingMessages: 2 }, start: async () => { throw new Error("unused"); }, message: async (_t, to) => { sent.push(to); return "started" as const; }, list: () => [{ id: web.id, title: "Web", status: "idle" } as never] };
+    const host: ThreadsHost = { limits: { ...DEFAULT_THREADS_LIMITS, siblingMessages: 2 }, start: async () => { throw new Error("unused"); }, message: async (_t, to) => { sent.push(to); return "started" as const; },
+      list: () => [{ id: web.id, title: "Web", status: "idle" } as never, { id: api.id, title: "API", status: "idle" } as never] };
     let tool!: Parameters<ExtensionAPI["registerTool"]>[0];
     createThreadsExtension({ ...t.context, threadId: dns.id }, host)({ on: () => {}, registerTool: (v: typeof tool) => { tool = v; } } as unknown as ExtensionAPI);
     const call = (args: object) => tool.execute("call", args, undefined, undefined, {} as never);
@@ -194,10 +196,13 @@ describe("handing files over", () => {
     await call({ action: "message", id: "homelab", text: "Report." });
     await call({ action: "message", id: `[t:${project.id}]`, text: "Report." });
     const first = await call({ action: "message", id: "Web", text: "Zone is ready." });
-    expect(JSON.stringify(first.content)).toContain("1 of 2 messages to other threads left this turn");
+    expect(JSON.stringify(first.content)).toContain(`1 more to [t:${web.id}] this turn`);
     await call({ action: "message", id: web.id, text: "And the cert." });
-    await expect(call({ action: "message", id: web.id, text: "One more." })).rejects.toThrow(/sent its 2 messages.*to: "parent"/);
-    expect(sent).toEqual(["parent", "parent", "parent", web.id, web.id]);
+    await expect(call({ action: "message", id: web.id, text: "One more." })).rejects.toThrow(/sent \[t:.*\] its 2 messages.*to: "parent"/);
+    // The limit is per thread: the same news still reaches another one.
+    await call({ action: "message", id: "API", text: "Zone is ready." });
+    await call({ action: "message", id: api.id, text: "And the cert." });
+    expect(sent).toEqual(["parent", "parent", "parent", web.id, web.id, api.id, api.id]);
   });
 
   it("lets ordinary prose, links and hashes through", () => {

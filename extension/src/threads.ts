@@ -214,10 +214,11 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       pi.sendMessage({ customType: "lyrica-ask-nudge", content: ASK_NUDGE, display: false }, { deliverAs: "followUp", triggerTurn: true });
     });
     let started = 0;
-    let siblings = 0;
+    /** Messages this turn to each of the project's other threads, by thread. */
+    const siblings = new Map<string, number>();
     pi.on("before_agent_start", (event) => {
       started = 0;
-      siblings = 0;
+      siblings.clear();
       if (!child) return;
       const parent = store.getThread(self.parent ?? "");
       const o = event.systemPromptOptions;
@@ -378,13 +379,15 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           if (!p.id) throw new Error("message needs the thread's id or title");
           const id = pickThread(p.id, host.list(thread));
           if (inProject) {
-            // Counted before sending, so calls made at once can't all slip under the limit.
+            // Per thread, so a turn can tell several threads the same news; counted before sending, so calls made at once can't all slip under it.
             const max = host.limits.siblingMessages;
-            if (siblings >= max) throw new Error(`This turn has sent its ${max} messages to the project's other threads, so this one wasn't sent. Put what's left in one message next turn, or send it to the project chat (to: "parent").`);
-            siblings++;
+            const sent = siblings.get(id) ?? 0;
+            if (sent >= max) throw new Error(`This turn has sent [t:${id}] its ${max} messages, so this one wasn't sent. Put what's left in one message next turn, or send it to the project chat (to: "parent").`);
+            siblings.set(id, sent + 1);
             let d: Delivery;
-            try { d = await host.message(thread, id, p.text); } catch (err) { siblings--; throw err; }
-            return text(`${sentTo(id, d)} (${max - siblings} of ${max} messages to other threads left this turn.)`, { threads: [id] });
+            try { d = await host.message(thread, id, p.text); } catch (err) { siblings.set(id, siblings.get(id)! - 1); throw err; }
+            const left = max - siblings.get(id)!;
+            return text(`${sentTo(id, d)} (${left} more to [t:${id}] this turn.)`, { threads: [id] });
           }
           return text(sentTo(id, await host.message(thread, id, p.text)), { threads: [id] });
         }
