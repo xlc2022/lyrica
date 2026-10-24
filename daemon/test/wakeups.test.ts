@@ -83,6 +83,29 @@ describe("wake-ups", () => {
     expect(await wakeups()).toEqual([]);
   });
 
+  it("keep CI and review wakes apart from her daily cap: they fire past it, she can't drop them, and they don't use hers up", async () => {
+    const { d, rt, thread, replies, asked, stream, say } = await setup();
+    const view = d.services!.memory.openThreadView(rt.ada.id, "general");
+    let ci: number;
+    try {
+      // Her 24 for the day are used up.
+      for (let i = 0; i < 24; i++) view.own.fireWakeup(view.own.addWakeup(thread.id, new Date().toISOString(), "", new Date().toISOString()));
+      ci = view.own.addWakeup(thread.id, new Date().toISOString(), "PR #12 (aaaaaaa): checks finished — build: passed.", new Date().toISOString(), "forge");
+    } finally { view.close(); }
+    replies.push(later({ cancel: true }), { text: "Nothing to drop." });
+    expect(toolEnd(await say("drop your wake-ups"))).toMatchObject({ isError: false, result: "This thread has no wake-up waiting." });
+
+    replies.push({ text: "Looking at the build." });
+    const from = stream.events.length;
+    d.services!.wakeups.wake(rt.ada.id, "general", thread.id, ci);
+    await stream.until((e) => e.type === "turn_end", from);
+    expect(asked.at(-1)).toContain("PR #12 (aaaaaaa): checks finished");
+
+    // Her own cap still holds for her, unchanged by the CI wake.
+    replies.push(later({ minutes: 5, note: "Again." }), { text: "Can't." });
+    expect(toolEnd(await say("check again in five minutes"))).toMatchObject({ isError: true, result: expect.stringContaining("fired 24 times in the last day") });
+  });
+
   it("survive a restart, and fire late at unlock saying when they were due", async () => {
     const rt = await runtime();
     const first = await setup(rt);

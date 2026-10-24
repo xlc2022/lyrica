@@ -1342,9 +1342,19 @@ project page and the web part are built. Recent calls can be filtered by project
   whose checks didn't all pass asks her to read the failing log and push at
   least one fix before calling it blocked, or to say it fails on the base
   branch too (2026-10-24).
+  A re-run that finishes on the same head wakes her again (a GitHub
+  re-run is a new check run; a commit status counts only when its result
+  changes); an unfinished check suite counts as a pending check, so a
+  workflow between its jobs doesn't read as finished. A pull request a
+  subagent opens wakes the thread that delegated to it. `threads watch`
+  with `pr` (`owner/repo#number`) watches an open pull request in one of
+  the thread's repositories that her sandbox didn't open, such as one
+  opened by hand or whose watch ended (2026-10-24).
   Watches are stored in the thread's pool like wake-ups, at most 10 per
-  thread, and share the wake-up guards: the at-once limit, paused projects,
-  and the 24-a-day cap. `threads later` stays for everything else.
+  thread, and share the at-once limit and paused projects with wake-ups,
+  but have their own cap of 48 wakes a day per thread, so a busy pull
+  request neither spends her 24 nor waits on them (2026-10-24).
+  `threads later` stays for everything else.
 - **Not in projects:** moving an existing thread into a project, and
   sharing a project (Share with copies one thread).
 

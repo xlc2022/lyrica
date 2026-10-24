@@ -74,6 +74,26 @@ describe("the GitHub module", () => {
     expect(githubPullRequest(answers({ pull: { number: 7, state: "open", draft: true, head: { sha: HEAD } } })).draft).toBe(true);
   });
 
+  it("reads a stale run as cancelled, and an unfinished suite with runs as one pending check", () => {
+    const pull = githubPullRequest(answers({
+      checkRuns: { total_count: 2, check_runs: [
+        { id: 18, name: "changes", status: "completed", conclusion: "success" },
+        { id: 19, name: "old", status: "completed", conclusion: "stale" },
+      ] },
+      // The workflow's later jobs aren't created yet; another app's suite never reports any runs.
+      checkSuites: [
+        { id: 31, status: "in_progress", latest_check_runs_count: 2, app: { name: "GitHub Actions" } },
+        { id: 32, status: "queued", latest_check_runs_count: 0, app: { name: "Some App" } },
+        { id: 33, status: "completed", latest_check_runs_count: 1, app: { name: "Done App" } },
+      ],
+    }));
+    expect(pull.checks).toEqual([
+      { id: "gh:check-run:18", name: "changes", result: "passed" },
+      { id: "gh:check-run:19", name: "old", result: "cancelled" },
+      { id: "gh:check-suite:31", name: "GitHub Actions", result: null },
+    ]);
+  });
+
   it("collects reviews and both comment kinds, keeping her own for decide to exclude", () => {
     const pull = githubPullRequest(answers({
       reviews: [

@@ -1153,7 +1153,11 @@ her account is general.
   signed tailnet webhook (Settings → Git accounts, **Webhook**) that nudges
   a poll at once, with polling as the fallback. A merged or closed pull
   request ends the watch with one note saying so, unless her own account
-  merged it.
+  merged it. A re-run that finishes on the same head wakes her again (a
+  commit status only when its result changes), and a pull request a subagent opens wakes the thread that
+  delegated to it. `threads watch` with `pr` (`owner/repo#number`)
+  watches an open pull request of one of the thread's repositories that
+  wasn't opened through the relay.
 - **Screenshots.** After `npm run build`, `npx tsx web/e2e/shot.ts
   [page]...` starts a throwaway `lyricad` with ada signed in (the e2e one,
   web/e2e/serve.ts), saves each page at 390×844 and 1280×800, light and

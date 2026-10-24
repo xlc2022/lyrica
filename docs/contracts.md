@@ -746,7 +746,12 @@ Custom roles override built-ins by name, except `claude`.
   `advanceRoutine` store and advance them. A fire sets `last_at` and adds a
   note-free fired row to `wakeups`, the shared rolling-day ledger:
   `wakeupsFired` counts both kinds against `WAKEUP_LIMITS.perDay`
-  (24 per source thread).
+  (24 per source thread). Expand-only pool step 11 adds nullable
+  `wakeups.source`: `addWakeup(…, source?)` and `settleWatch` store CI and
+  review wakes as `forge`, `Wakeup.source` carries it,
+  `wakeupsFired(thread, since, source?)` counts one kind (unset: hers and
+  routines'), forge wakes fire under their own `FORGE_WAKES_PER_DAY` (48),
+  and `removeWakeups(thread)` without an id keeps them.
   `Routines.load` / `drop` enable / disable a user's firing at unlock / Lock;
   the daemon tick calls both schedulers unless an update drains. It sends
   `HostedThread.send(note, { routine: "[Routine, <describe>]\n\n" })`;
@@ -787,7 +792,21 @@ Custom roles override built-ins by name, except `claude`.
   a watch in pool step 7's `watches` table (thread, repo, kind, host,
   account, number, head, head_since, notified_heads, seen_reviews,
   webhook_at, created_at) through `PoolStore.addWatch`, at most 10 per
-  thread (an eleventh is not watched; the thread is told once).
+  thread (an eleventh is not watched; the thread is told once). A run in
+  a subagent's thread records it for the thread that delegated to it, and
+  a pull request already watched isn't added twice. `threads watch` with
+  `pr` calls `ThreadsHost.watch(from, repo, number)` → `ForgeWatcher.watch`,
+  which accepts only an open pull request of one of the thread's
+  repositories with a usable account, and returns the line she is told;
+  the action is offered only while `ThreadsHost.watchable(from)` is true.
+  `notified_heads` holds keys `head:hash` of the finished checks' ids and
+  results (or `head:none`), the last 50, so a re-run that finishes on the
+  same head wakes again (a GitHub re-run is a new check-run id; a commit
+  status, `gh:status:<context>`, keeps its id and counts only when its
+  result changes); a bare head stored before counts
+  as the set it next finds. GitHub snapshots also read
+  `/commits/{sha}/check-suites`: a suite not yet completed that has runs
+  is a pending check, and a `stale` conclusion reads as cancelled.
   `ForgeWatcher.load` / `drop` enable / disable polling at unlock / Lock;
   the daemon tick calls it unless an update drains. Each poll turns the
   forge's API pages into one snapshot with `githubPullRequest` or

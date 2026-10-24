@@ -384,7 +384,9 @@ Each active thread is one Pi session from `openThreadSession`, with
   for the thread she's in, in its pool, so it is as encrypted as the thread
   and survives a restart; a thread has at most 3 waiting, and wake-ups
   and routines share a cap of 24 fires per thread in a rolling day. At the
-  cap, pending wake-ups wait and new ones are refused. At unlock `lyricad`
+  cap, pending wake-ups wait and new ones are refused. CI and review wakes
+  (`source` `forge`) have their own cap, `FORGE_WAKES_PER_DAY` (48), and
+  her cancel leaves them. At unlock `lyricad`
   loads the due times (never the notes) into
   memory, and Lock drops them. Its 20-second tick fires what is due: the
   note becomes the thread's next turn, or joins the running one, marked

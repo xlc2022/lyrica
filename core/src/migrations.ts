@@ -354,6 +354,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principles 3 and 6: skills, the person's and hers, in the pool they belong to (docs/briefs/skills.md). Adds a table only.
     version: 10,
     run(db) { db.exec(SKILLS_SCHEMA); },
+  }, {
+    // Principle 6: CI and review wakes are marked, so her own wake-up cap doesn't hold them back (DESIGN.md, CI wakes). Expand only.
+    version: 11,
+    run(db) { db.exec("ALTER TABLE wakeups ADD COLUMN source TEXT"); },
   }],
 };
 

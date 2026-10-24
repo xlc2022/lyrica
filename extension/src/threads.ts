@@ -2,7 +2,7 @@ import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import {
-  ASK_GUIDELINE, isQuestionCall, ROOT_LIMITS, ROOT_TOOL, rootStep, SUDOERS_HOW, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS,
+  ASK_GUIDELINE, isQuestionCall, ROOT_LIMITS, ROOT_TOOL, rootStep, SUDOERS_HOW, normalizeThreadArguments, cleanAsk, CHILD_THREAD_GUIDELINES, cleanSteps, MENTION_GUIDELINE, pickThread, PROJECT_CHAT_GUIDELINES, PROJECT_THREAD_GUIDELINES, STEPS_GUIDELINE, STEPS_LIMITS, threadLine, describe, parseSchedule, ROUTINE_GUIDELINE, WAKEUP_GUIDELINE, WAKEUP_LIMITS, WATCH_GUIDELINE,
   type ChildInfo, type StartRequest, type ThreadsLimits,
 } from "@lyrica/core";
 import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
@@ -43,6 +43,10 @@ export interface ThreadsHost {
    */
   rootScript?(from: ThreadContext, machine: string, path: string): Promise<{ bytes: Buffer; account: string }>;
   questionsChanged?(userId: string, pool: ThreadContext["pool"], thread: string): void;
+  /** Her `threads watch`: watch an open pull request on one of the thread's repositories for CI and reviews. Returns what she is told. */
+  watch?(from: ThreadContext, repo: string, number: number): Promise<string>;
+  /** Whether the thread has a repository whose pull requests can be watched (a GitHub, Forgejo or Gitea account's). */
+  watchable?(from: ThreadContext): boolean;
   /** A child's checks still fail after the last round (checks.ts): its parent is told when the turn ends. */
   checksExhausted?(userId: string, pool: ThreadContext["pool"], thread: string, report: string): void;
   draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
@@ -98,7 +102,7 @@ export function checkWords(text: string, max = Infinity): void {
 }
 
 const Params = Type.Object({
-  action: StringEnum(["code", "model", "ask", "start", "message", "list", "read", "stop", "later", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"] as const),
+  action: StringEnum(["code", "model", "ask", "start", "message", "list", "read", "stop", "later", "watch", "routine", "steps", "suggest", "fold", "draft", "resolve", "reopen", "compact"] as const),
   on: Type.Optional(Type.Boolean()),
   model: Type.Optional(Type.String({ description: MODEL_PARAM })),
   done: Type.Optional(Type.String({ maxLength: 1200 })),
@@ -126,6 +130,7 @@ const Params = Type.Object({
   }, { description: "For routine add: the recurring schedule." })),
   newThread: Type.Optional(Type.Boolean({ description: "For routine add: open a fresh thread each time; false (default) runs here." })),
   cancel: Type.Optional(Type.Literal(true, { description: "For later: drop this thread's pending wake-ups instead." })),
+  pr: Type.Optional(Type.String({ description: "For watch: the pull request, as owner/repo#number or its URL, on one of this thread's repositories." })),
   steps: Type.Optional(Type.Array(Type.Object({ text: Type.String(), state: StringEnum(["todo", "doing", "done"] as const) }),
     { description: `For steps: this thread's whole checklist, at most ${STEPS_LIMITS.steps} steps of a few words each; an empty list clears it.` })),
   last: Type.Optional(Type.Number({ description: `For read: how many of its latest messages, ${READ_DEFAULT} by default, at most ${READ_MAX}.` })),
@@ -148,7 +153,7 @@ const FIELD_ACTIONS: Record<Exclude<Field, "action">, string[]> = {
   goal: ["draft"], instructions: ["draft"], ids: ["fold"], threads: ["suggest"],
   title: ["start"], task: ["start", "code"], folders: ["start"], readOnly: ["start"], internet: ["start"], code: ["start"], base: ["start"],
   id: ["message", "read", "stop", "resolve", "reopen"], text: ["message"], to: ["message"], question: ["message", "ask"], options: ["ask"], recommended: ["ask"], context: ["ask"], needsYou: ["message"], last: ["read"],
-  minutes: ["later"], cancel: ["later"], note: ["later", "routine"],
+  minutes: ["later"], cancel: ["later"], note: ["later", "routine"], pr: ["watch"],
   routineAction: ["routine"], routineId: ["routine"], schedule: ["routine"], newThread: ["routine"],
   steps: ["steps"], summary: ["compact"],
 };
@@ -192,6 +197,8 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
   /** Whether `ref` names this child's parent, by its ID or its current title. */
   const pickParent = (ref: string) => pickThread(ref, [{ id: self.parent!, title: store.getThread(self.parent!)?.title }]) === self.parent;
   const steps = !!host?.stepsChanged && host.checklistsOn?.(thread) !== false;
+  // Only a thread with a repository on a forge it can watch is offered watch (principle 8).
+  const watching = !!host?.watch && !!host.watchable?.(thread);
   return (pi) => {
     let asked = false;
     let nudged = false;
@@ -246,6 +253,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       host?.model ? MODEL_ACTION : "",
       host && (!child || projectThread()) ? "ask: one question on a card for the person." : "",
       host?.later ? "later: a wake-up that starts a turn here with your note." : "",
+      watching ? "watch: a pull request's CI results and reviews wake this thread." : "",
       host ? "routine: this thread's routines, at most 10 including paused ones." : "",
       steps ? "steps: this thread's checklist, shown on its card." : "",
       meter ? "compact: when this turn ends, your summary replaces the older part of this conversation; recent messages stay." : "",
@@ -258,7 +266,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
         : ["start", "message", "list", "read", ...(host.stop ? ["stop"] : []),
           ...(inProjectChat() ? ["suggest", "fold", ...(host.draft ? ["draft"] : []), ...(host.resolve ? ["resolve", "reopen"] : [])] : [])]),
       ...(host && (!child || projectThread()) ? ["ask"] : []),
-      ...(host?.later ? ["later"] : []), ...(host ? ["routine"] : []), ...(steps ? ["steps"] : []), ...(meter ? ["compact"] : []),
+      ...(host?.later ? ["later"] : []), ...(watching ? ["watch"] : []), ...(host ? ["routine"] : []), ...(steps ? ["steps"] : []), ...(meter ? ["compact"] : []),
     ];
     // to and question are a child's, needsYou a project thread's; a child outside a project messages only its parent.
     const drop: Field[] = [...(inProjectChat() ? [] : ["base"] as const), ...(child ? [] : ["to"] as const), ...(projectThread() ? [] : ["needsYou"] as const), ...(child && !projectThread() ? ["id"] as const : [])];
@@ -271,7 +279,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       promptGuidelines: [
         ...(!host ? [] : projectThread() ? PROJECT_THREAD_GUIDELINES : child ? [] : inProjectChat() ? PROJECT_CHAT_GUIDELINES : CHILD_THREAD_GUIDELINES),
         ...(host && (!child || projectThread()) ? [ASK_GUIDELINE] : []),
-        ...(host?.later ? [WAKEUP_GUIDELINE] : []), ...(host ? [ROUTINE_GUIDELINE] : []), ...(steps ? [STEPS_GUIDELINE] : []), ...(host || meter ? [MENTION_GUIDELINE] : []), ...(meter ? COMPACT_GUIDELINES : []),
+        ...(host?.later ? [WAKEUP_GUIDELINE] : []), ...(watching ? [WATCH_GUIDELINE] : []), ...(host ? [ROUTINE_GUIDELINE] : []), ...(steps ? [STEPS_GUIDELINE] : []), ...(host || meter ? [MENTION_GUIDELINE] : []), ...(meter ? COMPACT_GUIDELINES : []),
       ],
       parameters: paramsFor(actions, drop),
       prepareArguments(input) {
@@ -360,6 +368,12 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           const minutes = Math.min(WAKEUP_LIMITS.maxMinutes, Math.max(1, asked));
           const { dueAt } = host.later(thread, minutes, p.note.trim());
           return text(`This thread wakes at ${dueAt.slice(0, 16)}Z (in ${minutes} minute${minutes === 1 ? "" : "s"}${minutes !== asked ? `; ${asked} is out of range` : ""}), with your note.`);
+        }
+        if (p.action === "watch") {
+          if (!watching || !host.watch) throw new Error("watching pull requests isn't available here");
+          const m = /([\w.-]+\/[\w.-]+?)(?:\.git)?(?:#|\/pulls?\/)(\d+)\s*$/.exec(p.pr?.trim() ?? "");
+          if (!m) throw new Error("watch needs pr as owner/repo#number, or the pull request's URL");
+          return text(await host.watch(thread, m[1]!, Number(m[2])));
         }
         const inProject = projectThread();
         if (p.action === "message") {

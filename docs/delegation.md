@@ -477,7 +477,9 @@ show how well a given model uses both, with a fake model by default or a
 real one through `LYRICA_EVAL_*` (`LYRICA_EVAL_KIND=local` for a local
 server).
 
-The tool also has `later`, `routine` and `steps` (below), and `suggest`,
+The tool also has `later`, `routine` and `steps` (below), `watch` (a pull
+request's CI results and reviews wake the thread; DESIGN.md "CI wakes"),
+offered only to a thread with a repository and a usable Git account, and `suggest`,
 `resolve` and `reopen` in projects. Each thread is sent only the actions it
 can use, with their fields, so a definition resent with every reply carries
 nothing it can't call: an ordinary child's tool has no `start`, `list` or
