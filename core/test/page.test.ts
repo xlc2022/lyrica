@@ -1,8 +1,10 @@
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
 import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { bundlePage, checkPage, decodePng, describeCheck, libraryDirs, librariesLine, LIBS, pixelStats } from "../src/index.ts";
+import { bundlePage, checkPage, decodePng, describeCheck, libraryDirs, librariesLine, LIBS, pixelStats, PREVIEW_SCRIPT } from "../src/index.ts";
 
 /** A PNG of `rows` (each [r, g, b(, a)] per pixel), each row written with the filter in `filters` (0 to 4). */
 function encodePng(rows: number[][][], channels: 3 | 4, filters: number[]): Buffer {
@@ -53,6 +55,25 @@ describe("a preview's screenshot", () => {
     expect(stats.background).toBe("#102030");
     expect(stats.drawn).toBe(0.25);
     expect(stats.colours.map((c) => [c.colour, c.share])).toEqual([["#102030", 0.75], ["#ff0000", 0.25]]);
+  });
+});
+
+describe("the preview script", () => {
+  // A Chromium that died at start reset its pipe, and the script crashed on the reset with node's stack trace instead of saying why.
+  it("says why Chromium stopped when it dies before the screenshot", () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-preview-"));
+    try {
+      const chrome = join(dir, "chromium");
+      writeFileSync(chrome, '#!/bin/sh\necho "FATAL: no usable GPU process" >&2\nsleep 0.3\nkill -SEGV $$\n');
+      chmodSync(chrome, 0o755);
+      const r = spawnSync(process.execPath, ["-e", PREVIEW_SCRIPT, "file:///nowhere.png", "1280", "800", "0", "5000"], { env: { ...process.env, CHROME_PATH: chrome }, encoding: "utf8", timeout: 20_000 });
+      expect(r.status).toBe(0);
+      const out = JSON.parse(r.stdout.trim());
+      expect(out.png).toBeUndefined();
+      expect(out.fail).toMatch(/^Chromium (exited \(SIGSEGV\)|closed its connection) before the page was captured: FATAL: no usable GPU process$/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

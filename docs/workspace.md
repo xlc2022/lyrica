@@ -1363,7 +1363,10 @@ script, PNG decoder or bundler:
   itself (8-bit RGB or RGBA): the share of pixels that differ from the
   background (the commonest corner colour) and the five commonest colours.
   An almost empty page is called blank. Nothing is written: the screenshot
-  is only in the result.
+  is only in the result. Chromium's home and config go under `/tmp`, since
+  the folders are read-only there and its crash reporter dies at start
+  without a writable home. If Chromium stops before the screenshot, the
+  preview fails with the end of what Chromium printed.
 - `bundle` makes one self-contained file (`<name>.single.html` beside the
   page, or `out`): classic scripts are inlined as they are, module scripts
   are bundled with their imports by esbuild (minified), stylesheets with
