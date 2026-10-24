@@ -73,6 +73,22 @@ the work, with fixed roles:
 
 Review and merge:
 
+**Lyrica's own PRs take the stricter path.** Every PR she builds, including
+docs-only and small `web/` changes, opens as a **draft** and goes to her
+project's Review thread with the PR and head commit, and to UI review too
+if a user would see the change. She fixes findings and sends the new head
+for recheck. Only after every required reviewer says **verified** with the
+exact head commit and CI is green does she record that head and the review
+results on the PR and mark it **ready for review**. Claude's routine skips
+drafts and automatically picks up ready `lyrica/*` PRs; Claude's PR review
+verifies and merges them. She answers review comments on the PR, not through
+a separate `claude` issue. The Lyrica building thread never merges its own
+PR. After Claude merges,
+she reports it as in step 4 below. See
+[the project handoff](docs/briefs/lyrica-project.md#claudes-side).
+
+For other contributors, the existing path remains:
+
 1. The building thread sends the pull request and its head commit to PR
    review, and to UI review too if a user would see the change. PR review
    isn't needed when the pull request changes only docs and briefs (but not
@@ -82,7 +98,7 @@ Review and merge:
    own docs against this file's "Docs never drift" rule and merges on green
    CI and UI review's verified, if it needs one. Everything else goes to PR
    review, including the daemon, `core/`, `host/`, `nix/`, `extension/`,
-   `persona/`, migrations, CI and her own pull requests.
+   `persona/`, migrations and CI.
 2. A reviewer sends findings back; the building thread fixes them and sends
    the new commit; the reviewer checks it. A reviewer says **verified**,
    naming the commit, only when the PR meets its brief and the docs.
