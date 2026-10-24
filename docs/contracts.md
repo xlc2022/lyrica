@@ -778,7 +778,11 @@ Custom roles override built-ins by name, except `claude`.
   `SandboxSpec` and `RelaySpec` gain `onPullCreate(pr: { repo, number })`,
   called once after a relayed `POST /repos/{owner}/{repo}/pulls` (GitHub)
   or `POST /api/v1/repos/{owner}/{repo}/pulls` (Forgejo/Gitea) succeeds,
-  passing only those two facts — never the request or response body.
+  or a GitHub GraphQL `createPullRequest` mutation (`gh pr create`) whose
+  answer's `pullRequest.url` is the credential's repository, passing only
+  those two facts — never the request or response body. The relay asks
+  upstream for an uncompressed answer on these requests, since gh's client
+  asks for gzip.
   `Workspace.onPullCreate` routes it to `ForgeWatcher.record`, which stores
   a watch in pool step 7's `watches` table (thread, repo, kind, host,
   account, number, head, head_since, notified_heads, seen_reviews,

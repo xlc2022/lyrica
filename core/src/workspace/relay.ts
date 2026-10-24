@@ -167,6 +167,34 @@ function notePullCreate(c: ForgeCredential, body: Buffer, onPullCreate: NonNulla
   onPullCreate({ repo: c.repo, number });
 }
 
+/** Whether a GitHub GraphQL request body holds a createPullRequest mutation, as `gh pr create` sends. */
+function graphqlCreatesPull(body: Buffer): boolean {
+  let parsed: unknown;
+  try { parsed = JSON.parse(body.toString("utf8")); } catch { return false; }
+  const query = (parsed as { query?: unknown } | null)?.query;
+  return typeof query === "string" && /\bmutation\b/.test(query) && /\bcreatePullRequest\b/.test(query);
+}
+
+/**
+ * The number from a GraphQL create's answer: `pullRequest.number`, or the
+ * number in its `url` (gh asks only for the id and url). The mutation names
+ * the repository by node ID, so the answer's url must be this credential's
+ * repository; nothing else is kept.
+ */
+function noteGraphqlPullCreate(c: ForgeCredential, body: Buffer, onPullCreate: NonNullable<RelaySpec["onPullCreate"]>): void {
+  let parsed: unknown;
+  try { parsed = JSON.parse(body.toString("utf8")); } catch { return; }
+  const pull = (parsed as { data?: { createPullRequest?: { pullRequest?: { number?: unknown; url?: unknown } } } } | null)?.data?.createPullRequest?.pullRequest;
+  if (!pull || typeof pull.url !== "string") return;
+  let url: URL;
+  try { url = new URL(pull.url); } catch { return; }
+  const m = /^\/([^/]+\/[^/]+)\/pull\/(\d+)\/?$/.exec(url.pathname);
+  if (!m || m[1]!.toLowerCase() !== c.repo.toLowerCase()) return;
+  const number = typeof pull.number === "number" ? pull.number : Number(m[2]);
+  if (!Number.isInteger(number) || number !== Number(m[2])) return;
+  onPullCreate({ repo: c.repo, number });
+}
+
 /** A JSON answer's usage is its last field, and a stream's usage event is short: no more than this is held to read them. */
 const USAGE_LIMIT = 16 * 1024;
 const USAGE_EVENTS = new Set(["message_start", "message_delta"]);
@@ -266,7 +294,7 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
   const track = (s: Socket) => { sockets.add(s); s.on("close", () => sockets.delete(s)); s.on("error", () => s.destroy()); return s; };
 
   const forward = (to: string, path: string, req: IncomingMessage, res: ServerResponse, headers: IncomingHttpHeaders, capture?: (body: Buffer) => void,
-    onUsage?: (usage: ClaudeCodeUsage) => void, body?: Buffer) => {
+    onUsage?: (usage: ClaudeCodeUsage) => void, body?: Buffer, rest = false) => {
     const base = new URL(spec.upstreams?.[to] ?? `https://${to}`);
     const request = base.protocol === "https:" ? httpsRequest : httpRequest;
     const out = request({ protocol: base.protocol, hostname: hostname(base.host), port: base.port || undefined, method: req.method, path, headers,
@@ -289,7 +317,8 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
         up.on("error", () => res.destroy());
         return;
       }
-      if (!capture) { up.pipe(res); return; }
+      // A create's answer is asked for uncompressed; one that comes compressed anyway is passed on unread.
+      if (!capture || up.headers["content-encoding"]) { up.pipe(res); return; }
       // A create's answer is small and worth a look; anything larger is piped on without a record.
       const chunks: Buffer[] = [];
       let size = 0;
@@ -298,7 +327,8 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
       up.on("error", () => res.destroy());
     });
     out.on("error", () => { if (!res.headersSent) res.writeHead(502).end(); else res.destroy(); });
-    if (body) out.end(body); else req.pipe(out);
+    // `rest`: the body so far was read first, and the rest of the request follows it.
+    if (body && rest) { out.write(body); req.pipe(out); } else if (body) out.end(body); else req.pipe(out);
   };
   const refuse = (req: IncomingMessage, res: ServerResponse, status: number, body: string, type = "text/plain") => {
     req.resume();
@@ -359,8 +389,33 @@ export async function openRelay(spec: RelaySpec): Promise<Relay> {
         return;
       }
     }
-    if (c && spec.onPullCreate && pullCreatePath(c, req.method, path)) forward(to, path, req, res, headers, (body) => notePullCreate(c!, body, spec.onPullCreate!));
-    else forward(to, path, req, res, headers);
+    // A pull request create is recorded for CI wakes; its answer is asked for uncompressed, as gh's client would gzip it.
+    if (c && spec.onPullCreate && pullCreatePath(c, req.method, path)) {
+      headers["accept-encoding"] = "identity";
+      return forward(to, path, req, res, headers, (body) => notePullCreate(c!, body, spec.onPullCreate!));
+    }
+    if (c && spec.onPullCreate && c.kind === "github" && req.method === "POST" && readsOnly(c, to, "POST", path) === "graphql") {
+      // gh pr create is a GraphQL mutation: its body is read first and sent on as it came. One past the limit isn't
+      // a create gh sends: what was read goes on, with the rest of the request streamed after it.
+      const chunks: Buffer[] = [];
+      let size = 0;
+      const data = (d: Buffer) => {
+        chunks.push(d);
+        size += d.length;
+        if (size <= GRAPHQL_LIMIT) return;
+        req.off("data", data).off("end", end).pause();
+        forward(to, path, req, res, headers, undefined, undefined, Buffer.concat(chunks), true);
+      };
+      const end = () => {
+        const body = Buffer.concat(chunks);
+        if (req.headers["content-encoding"] || !graphqlCreatesPull(body)) return forward(to, path, req, res, headers, undefined, undefined, body);
+        headers["accept-encoding"] = "identity";
+        forward(to, path, req, res, headers, (answer) => noteGraphqlPullCreate(c!, answer, spec.onPullCreate!), undefined, body);
+      };
+      req.on("data", data).on("end", end);
+      return;
+    }
+    forward(to, path, req, res, headers);
   });
 
   server.on("connect", (req: IncomingMessage, socket: Socket, head: Buffer) => {

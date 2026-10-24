@@ -59,6 +59,12 @@ database files. A command that could see either one could read everything.
   paths and symlinks always resolve inside it. `read`, `write` and `edit`
   first refuse paths outside `/workspace`, the grants and `/opt/libs` (and
   writes to read-only grants and `/opt/libs`). The mounts confine her anyway: `bash` has no path checks.
+  Its network is fresh too, so a server one command or job starts answers
+  only inside it, and her prompt says to start a server and its client in
+  one. Commands carry `LYRICA_SANDBOX=1`; the sandbox tests skip under it,
+  since a nested sandbox can't see what its `/usr` links to. `lyricad`'s
+  own ports stay closed even on a sandbox's loopback, so the e2e servers
+  use 17341 and up.
 - **Writes are atomic for files she owns.** `write` and `edit` write a temp
   file in the same folder, give it the old file's mode and group (or the
   usual mode for a new file), and rename it over the target. A read running
@@ -1131,8 +1137,8 @@ her account is general.
   (encrypted homes, rewind, uploads, network switches, the SSH helper)
   skip there, since her sandbox has neither; CI runs them with
   `LYRICA_SANDBOX_TESTS=require`, so they can't skip.
-- **CI wakes.** A pull request she opens through the run's relay is
-  watched (DESIGN.md "CI wakes"): when every check on its head commit
+- **CI wakes.** A pull request she opens through the run's relay
+  (`gh pr create`, `tea pr create`, or the REST create) is watched (DESIGN.md "CI wakes"): when every check on its head commit
   finishes, or someone else reviews or comments, the thread gets one turn,
   marked as a wake-up, with a note `lyricad` writes — the pull request
   number, the commit's short hash, each check's name and result, and who
