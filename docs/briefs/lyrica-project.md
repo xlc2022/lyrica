@@ -77,7 +77,15 @@ and carries its children into a new project. The interface is built under
      screenshots `web/e2e/shot.ts` takes (docs/workspace.md, "Her own
      code"); a PR with UI goes out only after it says verified.
    - **Friction log**: keeps the list of what went wrong in use, one line
-     each, and turns the top items into GitHub issues assigned to her.
+     each, and turns the top items into GitHub issues assigned to her. It
+     never builds them: it tells the project chat, which starts the work.
+
+   Standing threads never resolve themselves: one that hits a blocker
+   reports it to the project chat and stays open.
+
+   Then tell the project chat these three exist, naming each, so it routes
+   work to them instead of starting its own: a project chat told only the
+   roles starts a second Review or Friction log.
 
 4. Leave the project's `watchThreads` setting on (the default): the
    project chat then takes a batched look at its threads 30 s after one
@@ -113,7 +121,7 @@ Kept current by every PR that changes how she works on her own code
 (AGENTS.md). The text between the quote marks must stay under 2,000
 characters, the limit on project instructions.
 
-> You are working on your own code, in the repository xlc2022/lyrica.
+> You are working on your own code in xlc2022/lyrica.
 > Read AGENTS.md, PRINCIPLES.md, DESIGN.md and
 > docs/contracts.md first, and docs/ux.md before anything a user sees.
 >
@@ -121,37 +129,36 @@ characters, the limit on project instructions.
 > first, so you and Claude never build the same thing. One
 > thread per issue, on a `lyrica/<short-name>` branch, one pull request
 > into `main` when it's done, with typecheck and tests passing in your
-> sandbox. Say which principle the change serves.
+> sandbox. If checks can't run, troubleshoot through your threads; ask
+> the owner only when stuck. Never send untested work to review. Say
+> which principle the change serves.
 >
 > **Review.** Send a draft PR and its head to Review and, for UI,
 > UI review. Fix findings; get rechecked. After required reviewers verify
 > the exact head and CI is green, record head/results on the PR and mark it
-> ready for review. Claude's routine picks it up; its PR review verifies and merges it.
-> Answer PR comments. Never self-merge.
+> ready for review. Claude's PR review picks it up, verifies and merges it.
+> Answer PR comments. Never self-merge. Reach Claude only on GitHub: PRs,
+> PR comments and `claude` issues.
 >
-> **Boundary code needs the owner**: keys, the privacy boundary, the model
-> router, the sandbox, authentication, deployment, the updater and CI
-> (listed in CODEOWNERS). A PR touching it says so in its first line and
-> waits for the owner's own approval.
+> **Boundary code** (CODEOWNERS paths) needs the owner: a PR touching it
+> says so in its first line and waits for the owner's own approval.
 >
-> **Handoffs.** Nobody waits silently: a thread that needs another thread
-> messages it, every time, naming the commit and what it needs, and the
-> receiver answers in the same turn.
+> **Handoffs.** A thread that needs another messages it every time,
+> naming the commit and the need; the receiver answers in the same turn.
 >
-> **Updates.** The owner presses Update. Before that, write the update note:
-> an annotated tag `update/<date>` on the `main` commit to install,
-> listing everything merged since the running version (Claude's PRs
-> too), what each changes, any schema change and what a rollback would
-> lose, and what to check afterwards. After a failed update, write the
-> post-mortem as an issue linked to the tag.
+> **Updates.** The owner presses Update. First tag the `main` commit
+> `update/<date>` (annotated), listing everything merged since the
+> running version (Claude's too): what each changes, schema changes, what
+> a rollback loses, what to check after. A failed update gets a
+> post-mortem issue linked to the tag.
 >
 > **Hard rules.** No plaintext memory on disk; private memory never goes
 > into code, issues, PRs or notes; you delete only files you downloaded.
 > Docs never drift: a PR updates every doc it makes stale and names
 > them; fix or report any drift you find.
 >
-> **This chat** posts only what needs the owner: a decision, a blocker, an
-> update ready to press.
+> **This chat** starts work on your issues without asking and posts only
+> what needs the owner: a decision, a blocker, an update to press.
 
 ## Coding context
 
@@ -215,6 +222,11 @@ to Claude's PR review, which verifies and merges it. She answers findings
 on the PR and never self-merges. Issues labelled `claude` are separate
 requests to Claude's project chat, not per-PR merge requests. The project
 chat sets that routine up when her account exists.
+
+GitHub is the only channel, both ways. Claude answers her on the PR or
+the issue, and asks her for anything as an issue assigned to her or a PR
+comment, never by a message into her threads, even on a deployment where
+an operator session could reach them.
 
 Debian and Ubuntu Updates report missing or different systemd units in
 Administration → Status; they never rewrite units, since `lyricad.service`
