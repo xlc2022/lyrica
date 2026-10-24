@@ -460,7 +460,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   again…; the endpoint actions). One facts line: the first address and "+n",
   "version" and the version, for its managers "models folder", its path and
   free space, shared or only you, "N models" opening its model list (a
-  speaking model's **Settings** there) and **Dashboard** (a link, `GET
+  speaking model's **Settings** there, and for its managers a missing or
+  gone model's **Remove**, `DELETE …/offerings/:id` after a confirm dialog) and **Dashboard** (a link, `GET
   …/dashboard`, a new tab). **Edit** opens the host's drawer: Name (`PATCH
   …/endpoints/:id`), Addresses (`PUT …/addresses`) and Models folder (`POST
   …/models-folder` after a confirm dialog, enabled only when the host's

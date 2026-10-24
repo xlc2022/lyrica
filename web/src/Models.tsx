@@ -1018,19 +1018,30 @@ function Hosts({ ctx }: { ctx: MCtx }) {
   );
 }
 
-/** An endpoint's models, each by its ID; a speaking model has its Settings. */
+/** An endpoint's models, each by its ID; a speaking model has its Settings, and a missing or gone one Remove. */
 function ModelList({ ctx, ep, onVoice }: { ctx: MCtx; ep: EndpointInfo; onVoice: (m: OfferingInfo) => void }) {
+  const [run, busy, error] = useAction();
+  const [removing, setRemoving] = useState<OfferingInfo>();
   if (!ep.models.length) return <p className="muted small wide">No models yet.</p>;
   return (
-    <ul className="model-list wide" aria-label={`${ep.name} models`}>
-      {ep.models.map((m) => (
-        <li key={m.id} data-offering={m.id}>
-          <ModelLabel model={m.modelId} endpoint={ep.name} raw />
-          {m.status !== "listed" && <span className="pill warn">{m.status}</span>}
-          {m.speak?.voices.length ? <button type="button" className="link sm" aria-label={`${m.modelId} settings`} onClick={() => onVoice(m)}>Settings</button> : null}
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="model-list wide" aria-label={`${ep.name} models`}>
+        {ep.models.map((m) => (
+          <li key={m.id} data-offering={m.id}>
+            <ModelLabel model={m.modelId} endpoint={ep.name} raw />
+            {m.status !== "listed" && <span className="pill warn">{m.status}</span>}
+            {m.speak?.voices.length ? <button type="button" className="link sm" aria-label={`${m.modelId} settings`} onClick={() => onVoice(m)}>Settings</button> : null}
+            {m.status !== "listed" && canEdit(ctx, ep) && <button type="button" className="link sm" aria-label={`Remove ${m.modelId}`} disabled={busy} onClick={() => setRemoving(m)}>Remove</button>}
+          </li>
+        ))}
+      </ul>
+      <ErrorText error={error} />
+      {removing && (
+        <ConfirmDialog title={`Remove ${removing.modelId}?`} sentence="Every list that names it drops it."
+          confirm="Remove" danger onCancel={() => setRemoving(undefined)}
+          onConfirm={() => { const m = removing; setRemoving(undefined); void run(async () => { await del(u(ctx.user.id, "offerings", m.id)); ctx.models.reload(); }); }} />
+      )}
+    </>
   );
 }
 
