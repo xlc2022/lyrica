@@ -2247,7 +2247,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   read-only; `inheritSettings` takes a subset; `effective()` keeps only
   repositories every ancestor grants, read-only where any ancestor's is,
   and a parent's change narrows its running children, moving a repository
-  it moves to another account. `ForgeCredential.readOnly` has the relay
+  it moves to another account and adding one it gains to children that
+  had all of its (read-only where `inheritSettings` was given only
+  read-only ones, kept as the `workspace.readOnlyRepos.<thread>` setting). `ForgeCredential.readOnly` has the relay
   refuse `git-receive-pack` and every API request but GET, HEAD and a
   GraphQL query. `Workspace`: `probeGitAccount({ kind, host,
   account, token })` checks the token against the host and saves nothing

@@ -486,7 +486,8 @@ export class WorkspaceSettings {
    * each switch off where any ancestor's is, only the folders, machines,
    * repositories and MCP servers every ancestor grants, and a folder read-only where any ancestor has it
    * read-only. A parent changed after its subagent or child thread started
-   * narrows it at once; a parent gaining something gives the child nothing.
+   * narrows it at once; a parent gaining something gives the child nothing
+   * (but a repository, `followParent`, which writes it into the child's own row).
    */
   effective(threadId: string): ThreadWorkspace {
     const t = this.thread(threadId);
@@ -551,6 +552,7 @@ export class WorkspaceSettings {
     if (next.parent) this.checkNarrower(next.parent, pool, next);
     this.write(threadId, next);
     this.carryAccounts(threadId, before, next.repositories);
+    this.followParent(threadId, before, next.repositories);
     this.narrowChildren(threadId);
     return next;
   }
@@ -586,9 +588,31 @@ export class WorkspaceSettings {
   }
 
   /**
+   * A repository the thread gains reaches its subagents and child threads
+   * that had all of its repositories (so weren't narrowed to fewer), and
+   * theirs in turn: read-only for one started read-only (`inheritSettings`).
+   */
+  private followParent(threadId: string, before: ThreadRepository[], after: ThreadRepository[]): void {
+    const added = after.filter((a) => !before.some((b) => b.name === a.name));
+    if (!added.length) return;
+    const keys = (list: ThreadRepository[]) => list.map((r) => `${r.name}\n${r.account}`).sort().join("\n\n");
+    const follow = (id: string, had: ThreadRepository[], depth: number): void => {
+      if (depth > 100) return;
+      for (const { thread_id: child } of this.db.prepare("SELECT thread_id FROM thread_workspaces WHERE parent = ?").all(id) as { thread_id: string }[]) {
+        const own = this.thread(child);
+        if (keys(own.repositories) !== keys(had)) continue;
+        const readOnly = this.setting(`workspace.readOnlyRepos.${child}`) === "1";
+        this.write(child, { ...own, repositories: [...own.repositories, ...added.map((r) => (readOnly ? { ...r, readOnly: true } : r))] });
+        follow(child, own.repositories, depth + 1);
+      }
+    };
+    follow(threadId, before, 0);
+  }
+
+  /**
    * Writes what `effective` already applies into the rows of the thread's
    * subagents and child threads, so a folder, machine, repository or MCP server taken away stays
-   * away: the parent getting it back later gives them nothing.
+   * away: the parent getting it back later gives them nothing (a repository, unless they still had all of the parent's: `followParent`).
    */
   private narrowChildren(threadId: string, depth = 0): void {
     if (depth > 100) return;
@@ -624,6 +648,10 @@ export class WorkspaceSettings {
     narrower: Partial<Pick<ThreadWorkspace, "grants" | "mode" | "webSearch" | "images" | "claudeCode" | "machines" | "repositories" | "mcpServers">> & Partial<Network> = {}): ThreadWorkspace {
     const parent = this.effective(parentThreadId);
     const net = this.network(parentThreadId, pool);
+    // Given only read-only repositories (a read-only or narrowed child's), repositories its parent gains later reach it read-only too.
+    if (narrower.repositories?.every((r) => r.readOnly)) {
+      this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, '1')").run(`workspace.readOnlyRepos.${childThreadId}`);
+    }
     // Start from nothing, so a refused narrowing leaves the child with no access at all.
     this.write(childThreadId, {
       grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, claudeCode: false, code: false, machines: [], repositories: [], mcpServers: [], parent: parentThreadId,

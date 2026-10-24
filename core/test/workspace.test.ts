@@ -259,6 +259,27 @@ describe("Git accounts and repositories", () => {
     expect(settings.effective("review").repositories).toEqual([]);
   });
 
+  it("gives a repository its parent gains to the children that had all of the parent's, read-only to a read-only one", async () => {
+    const { settings } = await withAccounts();
+    const notes = { name: "ada/notes", account: "ada" }, lyrica = { name: "xlc2022/lyrica", account: "ada" };
+    settings.setThread("chat", "general", { repositories: [notes] });
+    settings.inheritSettings("chat", "review", "general", {});
+    settings.inheritSettings("review", "sub", "general", {});
+    settings.inheritSettings("chat", "reader", "general", { repositories: [{ ...notes, readOnly: true }] });
+    settings.inheritSettings("chat", "narrow", "general", { repositories: [] });
+    settings.setThread("chat", "general", { repositories: [notes, lyrica] });
+    for (const id of ["review", "sub"]) expect(settings.effective(id).repositories).toEqual([notes, lyrica]);
+    expect(settings.effective("reader").repositories).toEqual([{ ...notes, readOnly: true }, { ...lyrica, readOnly: true }]);
+    // One narrowed to fewer keeps its narrowing.
+    expect(settings.effective("narrow").repositories).toEqual([]);
+    // A scout started while the parent had none gets the first one read-only.
+    settings.setThread("chat", "general", { repositories: [] });
+    settings.inheritSettings("chat", "scout", "general", { repositories: [] });
+    settings.setThread("chat", "general", { repositories: [lyrica] });
+    expect(settings.effective("scout").repositories).toEqual([{ ...lyrica, readOnly: true }]);
+    expect(settings.effective("review").repositories).toEqual([lyrica]);
+  });
+
   it("keeps a read-only repository read-only in a child, its children and its relay credential, whatever it's changed to", async () => {
     const { settings, workspace, thread } = await withAccounts();
     const lyrica = { name: "xlc2022/lyrica", account: "ada" };
@@ -333,12 +354,12 @@ describe("Git accounts and repositories", () => {
     expect(() => settings.setThread("thread", "general", { repositories: [lyrica, scratch, { name: "ada/other", account: "ada" }] })).toThrow(/isn't in the parent thread's repositories/);
     settings.setThread("project", "general", { repositories: [lyrica] });
     expect(settings.effective("thread").repositories).toEqual([lyrica]);
-    // Given back to the project, it doesn't come back to the thread.
+    // Given back to the project, it comes back to the thread, which still had all the project's.
     settings.setThread("project", "general", { repositories: [lyrica, scratch] });
-    expect(settings.effective("thread").repositories).toEqual([lyrica]);
+    expect(settings.effective("thread").repositories).toEqual([lyrica, scratch]);
     settings.removeGitAccount("ada");
     expect(settings.effective("project").repositories).toEqual([scratch]);
-    expect(settings.effective("thread").repositories).toEqual([]);
+    expect(settings.effective("thread").repositories).toEqual([scratch]);
     // A new pool, or a new name, follows too.
     settings.updateGitAccount("bot", { name: "robot" });
     expect(settings.effective("project").repositories).toEqual([{ ...scratch, account: "robot" }]);
