@@ -5,7 +5,7 @@
 
 import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
-import { inOwnNetwork, Memory, Models, Users, WAKEUP_LIMITS, Workspace, type ForgeKind, type Pool, type PoolStore } from "@lyrica/core";
+import { inOwnNetwork, Memory, Models, Users, FORGE_WAKES_PER_DAY, WAKEUP_LIMITS, Workspace, type ForgeKind, type Pool, type PoolStore } from "@lyrica/core";
 import type { Delegation } from "@lyrica/extension";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { ChildThreads } from "../src/children.ts";
@@ -234,6 +234,51 @@ describe("the forge watcher", () => {
     expect(s.fake.asked.filter((a) => a.path === p.pull)[1]!.headers["If-None-Match"]).toBe("abc");
   });
 
+  it("waits for a workflow's later jobs: an unfinished suite with runs keeps the head pending", async () => {
+    const s = await setupForge("github");
+    const p = forgejoPaths(GITHUB_PREFIX);
+    const commit = `${GITHUB_PREFIX}/repos/ada/lyrica/commits/${HEAD_A}`;
+    s.fake.route("GET", p.pull, { status: 200, body: pullBody() });
+    // Only the first job has a run yet; the jobs that need it come when it ends.
+    s.fake.route("GET", `${commit}/check-runs`, { status: 200, body: { check_runs: [{ id: 11, name: "changes", status: "completed", conclusion: "success" }] } });
+    s.fake.route("GET", `${commit}/status`, { status: 200, body: { state: "pending", statuses: [] } });
+    s.fake.route("GET", `${commit}/check-suites`, { status: 200, body: { check_suites: [{ id: 5, status: "in_progress", latest_check_runs_count: 1, app: { name: "GitHub Actions" } }] } });
+    for (const path of ["pulls/12/reviews", "pulls/12/comments", "issues/12/comments"]) s.fake.route("GET", `${GITHUB_PREFIX}/repos/ada/lyrica/${path}`, { status: 200, body: [] });
+    s.watch();
+    await s.tick(0);
+    expect(s.sent).toHaveLength(0);
+    s.fake.route("GET", `${commit}/check-runs`, { status: 200, body: { check_runs: [
+      { id: 11, name: "changes", status: "completed", conclusion: "success" },
+      { id: 12, name: "check", status: "completed", conclusion: "failure" },
+    ] } });
+    s.fake.route("GET", `${commit}/check-suites`, { status: 200, body: { check_suites: [{ id: 5, status: "completed", latest_check_runs_count: 2, app: { name: "GitHub Actions" } }] } });
+    await s.tick(2);
+    expect(s.sent.map((m) => m.text)).toEqual([`PR #12 (aaaaaaa): checks finished — changes: passed, check: failed. ${CI_RED}`]);
+  });
+
+  it("watches an open pull request her relay didn't see opened, once, and refuses one it can't watch", async () => {
+    const s = await setupForge();
+    const p = forgejoPaths(FORGEJO_PREFIX);
+    const watch = (repo: string, n: number) => s.forge.watch(s.user.id, "general", s.thread.id, repo, n);
+    expect(s.forge.watchable(s.user.id, s.thread.id)).toBe(true);
+    s.fake.route("GET", p.pull, { status: 200, body: pullBody() });
+    expect(await watch("ada/lyrica", 12)).toContain("Watching #12 (ada/lyrica)");
+    expect(await watch("Ada/Lyrica", 12)).toContain("already watched");
+    expect(s.watches().map((w) => [w.thread, w.repo, w.number])).toEqual([[s.thread.id, "ada/lyrica", 12]]);
+    await expect(watch("sam/other", 3)).rejects.toThrow("isn't one of this thread's repositories");
+    await expect(watch("ada/lyrica", 99)).rejects.toThrow("has no pull request #99");
+    s.fake.route("GET", `${FORGEJO_PREFIX}/repos/ada/lyrica/pulls/13`, { status: 200, body: pullBody({ number: 13, state: "closed" }) });
+    await expect(watch("ada/lyrica", 13)).rejects.toThrow("only an open pull request is watched");
+    expect(s.watches()).toHaveLength(1);
+  });
+
+  it("records a pull request a subagent's run opened for the thread that delegated to it", async () => {
+    const s = await setupForge();
+    const sub = s.own((st) => st.createThread({ interface: "web", parent: s.thread.id, subagent: true, title: "coder" }));
+    s.forge.record(s.user.id, "general", sub.id, "ada/lyrica", 21);
+    expect(s.watches().map((w) => [w.thread, w.number])).toEqual([[s.thread.id, 21]]);
+  });
+
   it("honours Retry-After: a 429 pauses that token's next request", async () => {
     const s = await setupForge();
     const p = forgejoPaths(FORGEJO_PREFIX);
@@ -325,7 +370,7 @@ describe("the forge watcher", () => {
     expect(s.sent).toHaveLength(1);
   });
 
-  it("holds the wake when the shared daily cap is already spent", async () => {
+  it("wakes past her own spent daily cap, and holds only past its own", async () => {
     const s = await setupForge();
     s.own(o => {
       for (let n = 0; n < WAKEUP_LIMITS.perDay; n++) o.fireWakeup(o.addWakeup(s.thread.id, at(0).toISOString(), "", at(0).toISOString()), at(0).toISOString());
@@ -333,8 +378,21 @@ describe("the forge watcher", () => {
     routeForgejo(s.fake, { status: statusBody(finishedChecks()) });
     s.watch();
     await s.tick(0);
-    expect(s.sent).toEqual([]);
-    expect(s.wakeupsOf()).toHaveLength(1);
+    expect(s.sent).toHaveLength(1);
+
+    // CI and review wakes have a cap of their own.
+    s.own(o => {
+      for (let n = 0; n < FORGE_WAKES_PER_DAY; n++) o.fireWakeup(o.addWakeup(s.thread.id, at(0).toISOString(), "", at(0).toISOString(), "forge"), at(0).toISOString());
+    });
+    s.busy.clear();
+    s.watch(13);
+    routeForgejo(s.fake, { pull: pullBody({ number: 13 }), status: statusBody(finishedChecks()) });
+    s.fake.route("GET", `${FORGEJO_PREFIX}/repos/ada/lyrica/pulls/13`, { status: 200, body: pullBody({ number: 13 }) });
+    s.fake.route("GET", `${FORGEJO_PREFIX}/repos/ada/lyrica/pulls/13/reviews`, { status: 200, body: [] });
+    s.fake.route("GET", `${FORGEJO_PREFIX}/repos/ada/lyrica/issues/13/comments`, { status: 200, body: [] });
+    await s.tick(2);
+    expect(s.sent).toHaveLength(1);
+    expect(s.wakeupsOf().map((w) => w.source)).toEqual(["forge"]);
   });
 
   it("keeps watches across a restart and doesn't poll them while their user is locked", async () => {

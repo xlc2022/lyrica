@@ -17,6 +17,9 @@ const pull = (over: Partial<ForgePullRequest> = {}): ForgePollResult =>
 const fresh = (over: Partial<ForgeWatchState> = {}): ForgeWatchState =>
   ({ head: null, headSince: "2026-10-12T10:00:00Z", notifiedHeads: [], seenReviews: [], ...over });
 
+/** A finished CI wake's notified key: the head and its finished set. */
+const ran = (head: string) => expect.stringMatching(new RegExp(`^${head}:[0-9a-f]+$`));
+
 const run = (last: ForgeWatchState, poll: ForgePollResult, now = "2026-10-12T10:05:00Z") =>
   decideWatch({ number: 7, account: "lyrica-bot", now, last, poll });
 
@@ -31,10 +34,10 @@ describe("decideWatch", () => {
       reviews: [],
       tokenUnreadable: false,
     });
-    expect(out.next).toEqual({ head: HEAD_A, headSince: "2026-10-12T10:05:00Z", notifiedHeads: [HEAD_A], seenReviews: [] });
+    expect(out.next).toEqual({ head: HEAD_A, headSince: "2026-10-12T10:05:00Z", notifiedHeads: [ran(HEAD_A)], seenReviews: [] });
   });
 
-  it("waits while a check still runs, and never wakes twice for one head", () => {
+  it("waits while a check still runs, never wakes twice for one finished run, and wakes again for a re-run", () => {
     const waiting = run(fresh(), pull({ checks: [check("build", "passed"), check("e2e", null)] }));
     expect(waiting.note).toBeNull();
     expect(waiting.next.head).toBe(HEAD_A);
@@ -42,23 +45,38 @@ describe("decideWatch", () => {
     const finished = run(waiting.next, pull({ checks: [check("build", "passed"), check("e2e", "cancelled")] }), "2026-10-12T10:10:00Z");
     expect(finished.note?.ci).toEqual({ kind: "finished", checks: [{ name: "build", result: "passed" }, { name: "e2e", result: "cancelled" }] });
 
-    // A re-run on the same commit, finished again, doesn't wake her twice.
-    const rerun = run(finished.next, pull({ checks: [check("build", "passed"), check("e2e", "passed")] }), "2026-10-12T10:20:00Z");
-    expect(rerun.note).toBeNull();
+    // The same finished run seen again wakes nothing.
+    expect(run(finished.next, pull({ checks: [check("build", "passed"), check("e2e", "cancelled")] }), "2026-10-12T10:12:00Z").note).toBeNull();
+
+    // A re-run on the same commit: GitHub gives the job a new run, pending and then finished, which wakes her again.
+    const rerunning = run(finished.next, pull({ checks: [check("build", "passed"), { id: "t:e2e-2", name: "e2e", result: null }] }), "2026-10-12T10:15:00Z");
+    expect(rerunning.note).toBeNull();
+    const rerun = run(rerunning.next, pull({ checks: [check("build", "passed"), { id: "t:e2e-2", name: "e2e", result: "passed" }] }), "2026-10-12T10:20:00Z");
+    expect(rerun.note?.ci).toEqual({ kind: "finished", checks: [{ name: "build", result: "passed" }, { name: "e2e", result: "passed" }] });
+    expect(rerun.next.notifiedHeads).toEqual([ran(HEAD_A), ran(HEAD_A)]);
+    expect(run(rerun.next, pull({ checks: [check("build", "passed"), { id: "t:e2e-2", name: "e2e", result: "passed" }] }), "2026-10-12T10:22:00Z").note).toBeNull();
+  });
+
+  it("takes a head notified before re-runs counted as notified for the run it has now, once", () => {
+    const old = run(fresh({ head: HEAD_A, notifiedHeads: [HEAD_A] }), pull({ checks: [check("build", "passed")] }));
+    expect(old.note).toBeNull();
+    expect(old.next.notifiedHeads).toEqual([HEAD_A, ran(HEAD_A)]);
+    const rerun = run(old.next, pull({ checks: [{ id: "t:build-2", name: "build", result: "failed" }] }), "2026-10-12T10:20:00Z");
+    expect(rerun.note?.ci).toEqual({ kind: "finished", checks: [{ name: "build", result: "failed" }] });
   });
 
   it("starts the wait again on a new head", () => {
     const done = run(fresh(), pull({ checks: [check("build", "passed")] }));
     const pushed = run(done.next, pull({ head: HEAD_B, checks: [check("build", null)] }), "2026-10-12T10:30:00Z");
     expect(pushed.note).toBeNull(); // the new head's checks are still running
-    expect(pushed.next).toEqual({ head: HEAD_B, headSince: "2026-10-12T10:30:00Z", notifiedHeads: [HEAD_A], seenReviews: [] });
+    expect(pushed.next).toEqual({ head: HEAD_B, headSince: "2026-10-12T10:30:00Z", notifiedHeads: [ran(HEAD_A)], seenReviews: [] });
 
     const finished = run(pushed.next, pull({ head: HEAD_B, checks: [check("build", "passed")] }), "2026-10-12T10:40:00Z");
     expect(finished.note?.head).toBe(HEAD_B);
-    expect(finished.next.notifiedHeads).toEqual([HEAD_A, HEAD_B]);
+    expect(finished.next.notifiedHeads).toEqual([ran(HEAD_A), ran(HEAD_B)]);
   });
 
-  it("notes no checks fifteen minutes after a head appears, once", () => {
+  it("notes no checks fifteen minutes after a head appears, once, and still wakes when checks finish later", () => {
     const early = run(fresh(), pull(), "2026-10-12T10:14:00Z"); // first sight restarts the clock at now
     expect(early.note).toBeNull();
 
@@ -67,11 +85,12 @@ describe("decideWatch", () => {
 
     const late = run({ ...fresh(), head: HEAD_A }, pull(), "2026-10-12T10:15:00Z");
     expect(late.note?.ci).toEqual({ kind: "noChecks" });
-    expect(late.next.notifiedHeads).toEqual([HEAD_A]);
+    expect(late.next.notifiedHeads).toEqual([`${HEAD_A}:none`]);
+    expect(run(late.next, pull(), "2026-10-12T10:20:00Z").note).toBeNull();
 
-    // Checks that turn up late on a head already noted don't wake her again.
+    // Checks that turn up late and finish are news.
     const later = run(late.next, pull({ checks: [check("build", "passed")] }), "2026-10-12T10:40:00Z");
-    expect(later.note).toBeNull();
+    expect(later.note?.ci).toEqual({ kind: "finished", checks: [{ name: "build", result: "passed" }] });
   });
 
   it("gives one turn for a review or comment from another account, grouped by author and kind", () => {

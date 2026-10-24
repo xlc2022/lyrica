@@ -1,4 +1,4 @@
-import { WAKEUP_LIMITS, wakeupMark, type Memory, type Pool } from "@lyrica/core";
+import { FORGE_WAKES_PER_DAY, WAKEUP_LIMITS, wakeupMark, type Memory, type Pool } from "@lyrica/core";
 import type { ThreadContext } from "@lyrica/extension";
 import type { WakeupInfo } from "./api.ts";
 import type { ChildThreads } from "./children.ts";
@@ -78,7 +78,7 @@ export class Wakeups {
   /** Her `threads later`: a wake-up for the thread she's in, `minutes` from now. */
   set(from: ThreadContext, minutes: number, note: string, now = new Date()): { dueAt: string } {
     const own = from.view.own;
-    const pending = own.wakeups(from.threadId);
+    const pending = own.wakeups(from.threadId).filter((w) => !w.source);
     if (pending.length >= WAKEUP_LIMITS.pending) {
       throw new Error(`this thread has ${pending.length} wake-ups waiting already (${pending.map((w) => `${w.dueAt.slice(0, 16)}Z`).join(", ")}); drop them with cancel: true, or wait for one`);
     }
@@ -112,8 +112,11 @@ export class Wakeups {
 
   /** Her `threads later` with `cancel`: the thread's pending wake-ups go. */
   cancel(from: ThreadContext): number {
+    // CI and review wakes stay: they aren't hers to drop.
+    const kept = new Set(from.view.own.wakeups(from.threadId).filter((w) => w.source).map((w) => w.id));
     const n = from.view.own.removeWakeups(from.threadId);
-    this.forget(from.user.id, from.pool, [from.threadId]);
+    const list = this.due.get(from.user.id);
+    if (list) this.due.set(from.user.id, list.filter((d) => d.pool !== from.pool || d.thread !== from.threadId || kept.has(d.id)));
     this.changed(from.user.id, from.pool, from.threadId);
     return n;
   }
@@ -166,7 +169,8 @@ export class Wakeups {
       let w;
       try {
         w = view.own.getThread(d.thread) ? view.own.wakeups(d.thread).find((x) => x.id === d.id) : undefined;
-        if (w && view.own.wakeupsFired(d.thread, new Date(now.getTime() - DAY_MS).toISOString()).length >= WAKEUP_LIMITS.perDay) return;
+        // Hers and routines' share one cap; CI and review wakes have their own, so a busy pull request can't use hers up or wait on it.
+        if (w && view.own.wakeupsFired(d.thread, new Date(now.getTime() - DAY_MS).toISOString(), w.source).length >= (w.source ? FORGE_WAKES_PER_DAY : WAKEUP_LIMITS.perDay)) return;
         if (w) view.own.fireWakeup(d.id, now.toISOString());
       } finally {
         view.close();

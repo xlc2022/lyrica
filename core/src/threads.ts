@@ -111,6 +111,8 @@ const minute = (iso: string) => `${iso.slice(0, 16)}Z`;
 
 /** A thread's wake-ups: pending at once, fired in a day, and how far ahead, in minutes. */
 export const WAKEUP_LIMITS = { pending: 3, perDay: 24, maxMinutes: 7 * 24 * 60 };
+/** CI and review wakes a thread may get a day, apart from WAKEUP_LIMITS: past it, one waits until an older one is a day old. */
+export const FORGE_WAKES_PER_DAY = 48;
 
 /**
  * A look as memory shows it: which threads it pointed at, never what it
@@ -223,6 +225,10 @@ export const PROJECT_THREAD_GUIDELINES = [
 /** Her guidance on wake-ups, in every thread with the threads tool. */
 export const WAKEUP_GUIDELINE = "To come back to something later without waiting in this turn (CI to finish, a review to land), set a wake-up: threads later with minutes and a note to yourself. "
   + "At that time the note starts a turn here, marked [Wake-up, set …]. One wakes only this thread; at most 3 wait at once and wake-ups and routines together fire at most 24 times a day.";
+
+/** Her guidance on CI wakes, where she can watch a pull request. */
+export const WATCH_GUIDELINE = "A pull request you open is watched: when its checks finish on a head, or someone else reviews or comments, this thread wakes. "
+  + "To watch one opened another way or earlier (yours by hand, or after its watch ended), use threads watch with pr (owner/repo#number).";
 
 /** Her guidance on recurring turns requested by the user. */
 export const ROUTINE_GUIDELINE = "Use threads routine for what the user asked to happen regularly; a one-off later is a wake-up.";

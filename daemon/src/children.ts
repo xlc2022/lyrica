@@ -43,6 +43,9 @@ export interface ChildOptions {
   project?: (userId: string, pool: Pool, project: string) => ProjectSettings;
   /** A project's thread posted to the project chat. */
   updated?: (userId: string, pool: Pool, project: string, thread: string) => void;
+  /** Her `threads watch` (forge-watch.ts), and whether the thread has a repository it can watch. */
+  watch?: (userId: string, pool: Pool, thread: string, repo: string, number: number) => Promise<string>;
+  watchable?: (userId: string, thread: string) => boolean;
   /** Wake-ups, which her `threads later` sets. */
   wakeups?: () => Wakeups;
   /** The thread's unsettled same-file hold (same-file.ts), shown as Blocked while it is idle. */
@@ -547,6 +550,15 @@ export class ChildThreads implements ThreadsHost {
   later(from: ThreadContext, minutes: number, note: string): { dueAt: string } {
     if (!this.o.wakeups) throw new Error("wake-ups aren't available here");
     return this.o.wakeups().set(from, minutes, note);
+  }
+
+  watch(from: ThreadContext, repo: string, number: number): Promise<string> {
+    if (!this.o.watch) throw new Error("watching pull requests isn't available here");
+    return this.o.watch(from.user.id, from.pool, from.threadId, repo, number);
+  }
+
+  watchable(from: ThreadContext): boolean {
+    return !!this.o.watchable?.(from.user.id, from.threadId);
   }
 
   /** Her `threads later` with `cancel`. */

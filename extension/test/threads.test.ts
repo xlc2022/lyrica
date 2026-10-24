@@ -135,6 +135,33 @@ describe("threads definition", () => {
   });
 });
 
+describe("threads watch", () => {
+  it("is offered only where a repository can be watched, and takes owner/repo#number or the pull request's URL", async () => {
+    const s = await withMemory();
+    const t = s.thread();
+    const asked: [string, number][] = [];
+    const host = (watchable: boolean): ThreadsHost => ({
+      limits: DEFAULT_THREADS_LIMITS, start: async () => { throw new Error("unused"); }, message: async () => "started" as const, list: () => [],
+      watch: async (_from, repo, n) => { asked.push([repo, n]); return `Watching #${n} (${repo}).`; }, watchable: () => watchable,
+    });
+    const toolOf = (h: ThreadsHost) => {
+      let tool!: Parameters<ExtensionAPI["registerTool"]>[0];
+      createThreadsExtension(t.context, h)({ on: () => {}, registerTool: (v: typeof tool) => { tool = v; } } as unknown as ExtensionAPI);
+      return tool;
+    };
+    const actions = (tool: ReturnType<typeof toolOf>) => (tool.parameters as unknown as { properties: { action: { enum: string[] } } }).properties.action.enum;
+    expect(actions(toolOf(host(false)))).not.toContain("watch");
+    const tool = toolOf(host(true));
+    expect(actions(tool)).toContain("watch");
+    const call = (pr: string) => tool.execute("call", { action: "watch", pr }, undefined, undefined, {} as never);
+    await call("ada/lyrica#12");
+    await call("https://github.com/ada/lyrica/pull/13");
+    await call("https://forge.example/ada/lyrica.git/pulls/14");
+    expect(asked).toEqual([["ada/lyrica", 12], ["ada/lyrica", 13], ["ada/lyrica", 14]]);
+    await expect(call("#12")).rejects.toThrow("owner/repo#number");
+  });
+});
+
 describe("handing files over", () => {
   // A model once planned to send a whole page to another thread as base64 chunks in messages.
   it("refuses a file or an over-long text in a message, naming /shared", async () => {

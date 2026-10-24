@@ -97,8 +97,11 @@ notices.
    `lyricad` writes: the pull request number, the commit's short hash, and
    each check's name and result (passed, failed, cancelled, timed out). No
    log text; she reads logs herself with `gh run view --log-failed`. One
-   wake per head commit: a new push starts the wait again, a re-run on the
-   same commit doesn't wake her twice. No checks reported 15 minutes after
+   wake per head commit and set of results: a new push starts the wait
+   again, and a re-run on the same commit wakes her again only when its
+   results differ (since 2026-10-24; before, never). A GitHub check suite
+   that has started but not finished counts as a pending check, so the
+   gap between a workflow's jobs isn't read as finished. No checks reported 15 minutes after
    the head commit changed: one note saying so.
 6. **Reviews wake her too.** A review (approved, changes requested,
    commented), a review comment or a comment on the pull request from
@@ -111,8 +114,9 @@ notices.
    watch with one note (since 2026-10-23; before, without a turn), unless
    her own account merged it.
 8. **Guards.** The wake-up guards hold: nothing while the project is
-   paused, the at-once limit, and the 24-a-day cap per thread shared with
-   wake-ups and routines. At most 10 watches per thread; an eleventh
+   paused and the at-once limit. CI and review wakes have their own cap,
+   48 a day per thread, apart from the 24 her wake-ups and routines share
+   (since 2026-10-24), and her `threads later` cancel doesn't drop them. At most 10 watches per thread; an eleventh
    pull request isn't watched and her next turn there is told so once.
    A token the API refuses (401, 403, 404) ends the watch with one note
    saying the account's token can't read the checks.

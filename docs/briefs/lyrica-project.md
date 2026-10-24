@@ -106,7 +106,8 @@ and carries its children into a new project. The interface is built under
    `threads stop` (docs/delegation.md, "Child threads"). CI and reviews
    wake her without a turn being blocked: a pull request she opens through
    the run's relay is watched, and `lyricad` gives the thread one turn when
-   its checks finish or someone reviews it (DESIGN.md, "CI wakes"). A red
+   its checks finish or someone reviews it (DESIGN.md, "CI wakes"); one she
+   opened another way she watches with `threads watch`. A red
    run asks her to read the failing log and push at least one fix before
    calling it blocked. When a thread's project checks still fail after
    three rounds, `lyricad` tells the project chat at once, which runs the

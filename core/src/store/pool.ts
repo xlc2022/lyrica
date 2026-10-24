@@ -83,7 +83,8 @@ export interface StoredEntry {
 }
 
 /** A thread's note to itself, for `dueAt` (DESIGN.md, Projects). */
-export interface Wakeup { id: number; thread: string; dueAt: string; note: string; setAt: string }
+/** `source` "forge": a CI or review wake (forge-watch.ts), outside her own wake-up limits; none for hers and routines'. */
+export interface Wakeup { id: number; thread: string; dueAt: string; note: string; setAt: string; source?: "forge" }
 
 export interface Routine { id: number; thread: string; schedule: Schedule; note: string; newThread: boolean; paused: boolean; nextAt: string; lastAt?: string; createdAt: string }
 
@@ -480,8 +481,8 @@ export class PoolReader {
   /** A thread's wake-ups not yet fired, soonest first; or every thread's. */
   wakeups(threadId?: string): Wakeup[] {
     const rows = this.db.prepare(`SELECT * FROM wakeups WHERE fired_at IS NULL ${threadId ? "AND thread = ?" : ""} ORDER BY due_at, id`)
-      .all(...(threadId ? [threadId] : [])) as { id: number; thread: string; due_at: string; note: string; set_at: string }[];
-    return rows.map((r) => ({ id: r.id, thread: r.thread, dueAt: r.due_at, note: r.note, setAt: r.set_at }));
+      .all(...(threadId ? [threadId] : [])) as { id: number; thread: string; due_at: string; note: string; set_at: string; source: string | null }[];
+    return rows.map((r) => ({ id: r.id, thread: r.thread, dueAt: r.due_at, note: r.note, setAt: r.set_at, ...(r.source === "forge" ? { source: "forge" as const } : {}) }));
   }
 
   /** Recurring turns belonging to this pool, including paused ones. */
@@ -493,8 +494,9 @@ export class PoolReader {
   }
 
   /** When a thread's wake-ups or routines fired since `since`, oldest first. */
-  wakeupsFired(threadId: string, since: string): string[] {
-    return (this.db.prepare("SELECT fired_at FROM wakeups WHERE thread = ? AND fired_at >= ? ORDER BY fired_at").all(threadId, since) as { fired_at: string }[]).map((r) => r.fired_at);
+  wakeupsFired(threadId: string, since: string, source?: "forge"): string[] {
+    return (this.db.prepare(`SELECT fired_at FROM wakeups WHERE thread = ? AND fired_at >= ? AND source IS ${source ? "'forge'" : "NULL"} ORDER BY fired_at`)
+      .all(threadId, since) as { fired_at: string }[]).map((r) => r.fired_at);
   }
 
   /** A thread's watched pull requests, oldest first; or every thread's. */
@@ -1295,9 +1297,9 @@ export class PoolStore extends PoolReader {
   }
 
   /** A wake-up for the thread at `dueAt`, with its note. Returns its ID. */
-  addWakeup(threadId: string, dueAt: string, note: string, at = now()): number {
+  addWakeup(threadId: string, dueAt: string, note: string, at = now(), source?: "forge"): number {
     this.mustThread(threadId);
-    return Number(this.db.prepare("INSERT INTO wakeups (thread, due_at, note, set_at) VALUES (?, ?, ?, ?)").run(threadId, dueAt, note, at).lastInsertRowid);
+    return Number(this.db.prepare("INSERT INTO wakeups (thread, due_at, note, set_at, source) VALUES (?, ?, ?, ?, ?)").run(threadId, dueAt, note, at, source ?? null).lastInsertRowid);
   }
 
   /** A wake-up fired: kept a day for the daily cap, without its note. Older fired ones go. */
@@ -1308,9 +1310,9 @@ export class PoolStore extends PoolReader {
     });
   }
 
-  /** Removes a thread's pending wake-ups: one, or all. Returns how many. */
+  /** Removes a thread's pending wake-ups: one, or all of hers (not CI and review wakes). Returns how many. */
   removeWakeups(threadId: string, id?: number): number {
-    return this.db.prepare(`DELETE FROM wakeups WHERE thread = ? AND fired_at IS NULL ${id !== undefined ? "AND id = ?" : ""}`)
+    return this.db.prepare(`DELETE FROM wakeups WHERE thread = ? AND fired_at IS NULL ${id !== undefined ? "AND id = ?" : "AND source IS NULL"}`)
       .run(threadId, ...(id !== undefined ? [id] : [])).changes;
   }
 
@@ -1342,7 +1344,7 @@ export class PoolStore extends PoolReader {
       if (!this.db.prepare("SELECT 1 FROM watches WHERE id = ?").get(id)) return undefined; // gone since the poll began
       if (stop) this.removeWatch(id);
       else this.updateWatch(id, next);
-      return note ? this.addWakeup(note.thread, note.dueAt, note.text, note.dueAt) : undefined;
+      return note ? this.addWakeup(note.thread, note.dueAt, note.text, note.dueAt, "forge") : undefined;
     });
   }
 

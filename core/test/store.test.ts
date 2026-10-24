@@ -642,7 +642,7 @@ describe("watches", () => {
     const wakeId = own.settleWatch(id, state, true, { thread: t.id, dueAt: "2026-01-03T00:00:00.000Z", text: "PR #12: checks finished." });
     expect(typeof wakeId).toBe("number");
     expect(own.watches()).toEqual([]);
-    expect(own.wakeups(t.id)).toEqual([{ id: wakeId, thread: t.id, dueAt: "2026-01-03T00:00:00.000Z", note: "PR #12: checks finished.", setAt: "2026-01-03T00:00:00.000Z" }]);
+    expect(own.wakeups(t.id)).toEqual([{ id: wakeId, thread: t.id, dueAt: "2026-01-03T00:00:00.000Z", note: "PR #12: checks finished.", setAt: "2026-01-03T00:00:00.000Z", source: "forge" }]);
     // Settling a watch that is gone changes nothing.
     expect(own.settleWatch(id, state, false, null)).toBeUndefined();
 

@@ -7,7 +7,7 @@
 
 import type { CheckResult, ForgeCheck, ForgePullRequest, ForgeReview } from "./types.ts";
 
-/** The parsed bodies of the six calls (brief step 3), lists already joined across pages. */
+/** The parsed bodies of the calls (brief step 3), lists already joined across pages. */
 export interface GitHubAnswers {
   /** GET /repos/{owner}/{repo}/pulls/{number} */
   pull: unknown;
@@ -15,6 +15,11 @@ export interface GitHubAnswers {
   checkRuns: unknown;
   /** GET /repos/{owner}/{repo}/commits/{head}/status, the combined status */
   status: unknown;
+  /**
+   * GET /repos/{owner}/{repo}/commits/{head}/check-suites, its `check_suites` list. A workflow whose
+   * later jobs wait on an earlier one has no runs for them yet; its suite stays unfinished until they end.
+   */
+  checkSuites?: unknown;
   /** GET /repos/{owner}/{repo}/pulls/{number}/reviews */
   reviews: unknown;
   /** GET /repos/{owner}/{repo}/pulls/{number}/comments — inline review comments */
@@ -69,6 +74,7 @@ function runResult(conclusion: string): CheckResult | null {
     case "failure": return "failed";
     case "cancelled": return "cancelled";
     case "timed_out": return "timedOut";
+    case "stale": return "cancelled"; // GitHub gave up on a run left incomplete: it won't finish
     case "action_required": return null; // waiting on a person, not finished
     default: throw new Error(`unknown check-run conclusion "${conclusion}"`);
   }
@@ -123,6 +129,15 @@ export function githubPullRequest(answers: GitHubAnswers): ForgePullRequest {
       name: strOf(o, "name", "check run"),
       result: conclusion === null || conclusion === undefined ? null : runResult(conclusion),
     });
+  }
+  // An unfinished suite with runs is pending as a whole, so a poll between a workflow's jobs isn't "all finished".
+  // Suites with no runs (an installed app that never reports) are left out: they stay queued for ever.
+  for (const entry of asList(answers.checkSuites ?? [], "check suites")) {
+    const o = asObj(entry, "check suite");
+    if (o.status === "completed" || !(typeof o.latest_check_runs_count === "number" && o.latest_check_runs_count > 0)) continue;
+    const id = `gh:check-suite:${numOf(o, "id", "check suite")}`;
+    const app = o.app && typeof o.app === "object" ? (o.app as { name?: unknown }).name : undefined;
+    checks.set(id, { id, name: typeof app === "string" && app ? app : "check suite", result: null });
   }
   for (const entry of asList(asObj(answers.status, "combined status").statuses ?? [], "combined status")) {
     const o = asObj(entry, "commit status");

@@ -555,6 +555,8 @@ export class Lyricad implements Drainable {
       draft: (u, p, project, change) => { projects.set(u, p, project, { draftGoal: change.goal, draftInstructions: change.instructions }); },
       updated: (u, p, project, thread) => watcher.updated(u, p, project, thread),
       wakeups: (): Wakeups => wakeups,
+      watch: (u, p, t, repo, n) => forge.watch(u, p, t, repo, n),
+      watchable: (u, t) => forge.watchable(u, t),
     });
     const wakeups: Wakeups = new Wakeups({ memory, host: () => host, children, log: this.log });
     forge = new ForgeWatcher({ memory, workspace, wakeups, log: this.log });

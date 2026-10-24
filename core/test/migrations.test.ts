@@ -585,3 +585,20 @@ describe("pool step 10 (skills)", () => {
     }
   });
 });
+
+describe("pool step 11 (wake-up sources)", () => {
+  it("marks no existing wake-up as a CI wake, from every released pool schema with wake-ups, keeping earlier readers", () => {
+    for (let version = 4; version < 11; version++) {
+      const db = scratchDb();
+      const previous = STEPS.pool.filter((s) => s.version <= version);
+      migrate(db, "pool", {}, previous);
+      SEED.pool(db);
+      db.prepare("INSERT INTO wakeups (thread, due_at, note, set_at) VALUES ('web/a', '2026-01-02', 'Check the build.', '2026-01-01')").run();
+      migrate(db, "pool");
+      expect(db.prepare("SELECT note, source FROM wakeups").all(), `v${version}`).toEqual([{ note: "Check the build.", source: null }]);
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.pool, minReader: MIN_READER.pool });
+      expect(() => checkReadable(db, "pool", previous)).not.toThrow();
+      db.close();
+    }
+  });
+});

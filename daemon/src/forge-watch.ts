@@ -157,23 +157,78 @@ export class ForgeWatcher {
    * not watched and the thread is told once.
    */
   record(userId: string, pool: Pool, threadId: string, repo: string, number: number): void {
+    const r = this.add(userId, pool, threadId, repo, number);
+    if (r.kind !== "full") return;
+    const key = `${userId}/${pool}/${r.thread}`;
+    if (this.toldFull.has(key)) return;
+    this.toldFull.add(key);
+    const view = this.o.memory.openThreadView(userId, pool);
+    let id: number;
+    try {
+      id = view.own.addWakeup(r.thread, new Date().toISOString(), `You've opened more than ${MAX_WATCHES} pull requests; #${number} (${repo}) isn't watched.`, new Date().toISOString(), "forge");
+    } finally {
+      view.close();
+    }
+    this.o.wakeups.wake(userId, pool, r.thread, id);
+  }
+
+  /**
+   * Her `threads watch`: watch a pull request on one of the thread's repositories that her relay didn't see opened
+   * (opened by hand, elsewhere, before its watch existed, or after its watch ended). Returns what she is told.
+   */
+  async watch(userId: string, pool: Pool, threadId: string, repo: string, number: number): Promise<string> {
+    const thread = this.ownerOf(userId, pool, threadId);
     const s = this.o.workspace.settings(userId);
-    const r = s.effective(threadId).repositories.find((x) => x.name === repo);
-    if (!r) return;
-    const a = s.gitAccount(r.account);
-    if (!a || (a.kind !== "github" && a.kind !== "forgejo" && a.kind !== "gitea")) return; // "other" isn't watched
+    const r = s.effective(thread).repositories.find((x) => x.name.toLowerCase() === repo.toLowerCase());
+    if (!r) throw new Error(`${repo} isn't one of this thread's repositories`);
+    const a = this.accountFor(userId, { account: r.account } as Watch);
+    if (!a) throw new Error(`${repo}'s account isn't a GitHub, Forgejo or Gitea account, so its pull requests can't be watched`);
+    if (!(await this.o.workspace.forgeAccountUsable(userId, a.name))) throw new Error(`${repo}'s account can't be reached from here now`);
+    // One look first, so a wrong number fails here rather than as an unreadable watch later.
+    const pull = await this.api(`${userId}/${a.name}`, a, `/repos/${r.name}/pulls/${number}`);
+    if (pull.status === 404) throw new Error(`${r.name} has no pull request #${number} that this account can see`);
+    if (pull.status !== 200) throw new Error(`the forge answered ${pull.status || "nothing"}; try again later`);
+    const state = (pull.body as { state?: unknown; merged?: unknown } | undefined);
+    if (state?.state !== "open") throw new Error(`#${number} is ${state?.merged ? "merged" : "closed"}; only an open pull request is watched`);
+    const added = this.add(userId, pool, thread, r.name, number);
+    if (added.kind === "already") return `#${number} (${r.name}) is already watched: its CI results and reviews wake this thread.`;
+    if (added.kind === "full") throw new Error(`this thread watches ${MAX_WATCHES} pull requests already`);
+    if (added.kind === "no") throw new Error(`${r.name}'s pull requests can't be watched`);
+    return `Watching #${number} (${r.name}): this thread wakes when its checks finish on a head, and on others' reviews and comments.`;
+  }
+
+  /** Whether a thread has a repository on an account whose pull requests can be watched. */
+  watchable(userId: string, threadId: string): boolean {
+    const s = this.o.workspace.settings(userId);
+    return s.effective(threadId).repositories.some((r) => !!this.accountFor(userId, { account: r.account } as Watch));
+  }
+
+  /** The thread a watch belongs to: a subagent's run works for the thread that delegated to it. */
+  private ownerOf(userId: string, pool: Pool, threadId: string): string {
     const view = this.o.memory.openThreadView(userId, pool);
     try {
-      const own = view.own;
-      if (own.watches(threadId).length >= MAX_WATCHES) {
-        const key = `${userId}/${pool}/${threadId}`;
-        if (this.toldFull.has(key)) return;
-        this.toldFull.add(key);
-        const id = own.addWakeup(threadId, new Date().toISOString(), `You've opened more than ${MAX_WATCHES} pull requests; #${number} (${repo}) isn't watched.`, new Date().toISOString());
-        this.o.wakeups.wake(userId, pool, threadId, id);
-        return;
-      }
-      own.addWatch(threadId, { repo, kind: a.kind, host: a.host, account: a.name, number });
+      let t = view.own.getThread(threadId);
+      for (let i = 0; t?.subagent && t.parent && i < 10; i++) t = view.own.getThread(t.parent);
+      return t?.id ?? threadId;
+    } finally {
+      view.close();
+    }
+  }
+
+  private add(userId: string, pool: Pool, threadId: string, repo: string, number: number): { kind: "added" | "already" | "full" | "no"; thread: string } {
+    const thread = this.ownerOf(userId, pool, threadId);
+    const s = this.o.workspace.settings(userId);
+    const r = s.effective(thread).repositories.find((x) => x.name === repo);
+    if (!r) return { kind: "no", thread };
+    const a = s.gitAccount(r.account);
+    if (!a || (a.kind !== "github" && a.kind !== "forgejo" && a.kind !== "gitea")) return { kind: "no", thread }; // "other" isn't watched
+    const view = this.o.memory.openThreadView(userId, pool);
+    try {
+      const own = view.own.watches(thread);
+      if (own.some((w) => w.repo === repo && w.number === number)) return { kind: "already", thread };
+      if (own.length >= MAX_WATCHES) return { kind: "full", thread };
+      view.own.addWatch(thread, { repo, kind: a.kind, host: a.host, account: a.name, number });
+      return { kind: "added", thread };
     } finally {
       view.close();
     }
@@ -290,10 +345,12 @@ export class ForgeWatcher {
     if (a.kind === "github") {
       const checkRuns = await this.githubPages(key, a, `/repos/${w.repo}/commits/${sha}/check-runs`);
       const statuses = await this.githubPages(key, a, `/repos/${w.repo}/commits/${sha}/status`);
+      // Without the suites (a forge that refuses them), a poll between a workflow's jobs could read as all finished; the rest still works.
+      const checkSuites = await this.githubPages(key, a, `/repos/${w.repo}/commits/${sha}/check-suites`).catch(() => []);
       const reviews = await this.githubPages(key, a, `/repos/${w.repo}/pulls/${w.number}/reviews`);
       const reviewComments = await this.githubPages(key, a, `/repos/${w.repo}/pulls/${w.number}/comments`);
       const issueComments = await this.githubPages(key, a, `/repos/${w.repo}/issues/${w.number}/comments`);
-      return { kind: "snapshot", pull: githubPullRequest({ pull: pull.body, checkRuns: { check_runs: checkRuns }, status: { statuses }, reviews, reviewComments, issueComments }) };
+      return { kind: "snapshot", pull: githubPullRequest({ pull: pull.body, checkRuns: { check_runs: checkRuns }, status: { statuses }, checkSuites, reviews, reviewComments, issueComments }) };
     }
     const status = await this.api(key, a, `/repos/${w.repo}/commits/${sha}/status`);
     if (status.status !== 200 || status.body === undefined) throw new Error(`the combined status answered ${status.status}`);
@@ -302,7 +359,7 @@ export class ForgeWatcher {
     return { kind: "snapshot", pull: forgejoPullRequest(a.kind, { pull: pull.body, status: status.body, reviews, comments }) };
   }
 
-  /** GitHub pages joined by their Link header; a page is a list or an object with `check_runs`/`statuses`. */
+  /** GitHub pages joined by their Link header; a page is a list or an object with `check_runs`, `check_suites` or `statuses`. */
   private async githubPages(key: string, a: Account, path: string): Promise<unknown[]> {
     const out: unknown[] = [];
     let url: string | undefined = `${path}${path.includes("?") ? "&" : "?"}per_page=${PAGE}`;
@@ -311,8 +368,8 @@ export class ForgeWatcher {
       if (res.status !== 200 || res.body === undefined) throw new Error(`GitHub answered ${res.status}`);
       if (Array.isArray(res.body)) out.push(...res.body);
       else {
-        const obj = res.body as { check_runs?: unknown; statuses?: unknown };
-        const page = obj.check_runs ?? obj.statuses;
+        const obj = res.body as { check_runs?: unknown; check_suites?: unknown; statuses?: unknown };
+        const page = obj.check_runs ?? obj.check_suites ?? obj.statuses;
         if (Array.isArray(page)) out.push(...page);
       }
       url = nextLink(res.link);
