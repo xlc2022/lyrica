@@ -203,6 +203,8 @@ if (!settingUp) {
   await keyring.initSelf(PASSPHRASE);
   new PersonaStore(keyring.self()).importSeed(fileURLToPath(new URL("../../persona", import.meta.url)));
   await new Users(keyring).createUser("ada", "pw", { displayName: "Ada", pronouns: PRONOUN_PRESETS.she }, { admin: true });
+  // Nightly sleep half a day away, so no run reaches it: at the default 04:00 a run that crossed it slept every user and filled their History.
+  keyring.self().prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('sleep.time', ?)").run(new Date(Date.now() + 12 * 3600_000).toISOString().slice(11, 16));
   keyring.self().close();
 }
 
