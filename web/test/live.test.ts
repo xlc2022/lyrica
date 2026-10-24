@@ -85,6 +85,15 @@ describe("the live view of a thread's stream", () => {
     expect(run([{ type: "turn_end", aborted: false }, { type: "stored" }], s).items).toEqual([]);
   });
 
+  it("a steered follow-up leaves the queue but shows only when she takes it", () => {
+    const s = run([
+      { type: "hello", busy: true, queued: [], permissions: [] },
+      { type: "queue", queued: ["one", "two"] },
+      { type: "queue", queued: ["two"], steered: true },
+    ]);
+    expect([s.queued, s.items]).toEqual([["two"], []]);
+  });
+
   it("shows a follow-up once it leaves the queue", () => {
     const s = run([
       { type: "turn_start" },

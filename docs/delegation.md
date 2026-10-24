@@ -402,12 +402,18 @@ checks it reaches her, and with a real model which she picks. Code:
   its stored thread. Plain progress updates start no turn. `question: true`
   (a question needing an answer), or a project's `needsYou: true`, wakes an
   idle parent. When a child ends idle after messaging its parent, that report
-  also wakes it, including when the user started the child's turn. The
+  also wakes it, including when the user started the child's turn, after a
+  minute (`CHILD_WAKE_MS`), so reports from several children close together
+  wake it once; a question, `needsYou` or a failure note wakes it at once
+  and takes them along. The
   parent runs with `triggerTurn: true`; subagent results keep their existing
   delivery behaviour.
 
-  One pending or running child wake per parent coalesces further notices;
-  messages during that wake join its running turn as Pi steers. Wakes wait
+  One pending or running child wake per parent coalesces further notices.
+  A question, `needsYou` or failure note during that wake joins its running
+  turn as a Pi steer; anything else is stored without costing the turn a
+  model call, and a report among them wakes the parent again, batched,
+  once that turn ends. Wakes wait
   while the project is paused or hidden, and take no child slot: a parent
   waiting for a slot its own children hold would never answer them. A
   parent's reply to a child that woke it starts the child's turn, for up to
@@ -649,7 +655,10 @@ A project chat's child threads are the project's threads
   field is silently applied. Selected recent work is a bounded read for
   one turn, and never widens `threads read` beyond project membership.
 - **Paused** (or hidden): working threads stop, nothing new starts, and
-  messages to its threads are refused.
+  messages to its threads are refused. Its threads and its project chat
+  take no wake-up, routine, background command's wake or plan-limit resume
+  (`ChildThreads.mayWake`); those wait, and their notices stay stored, until
+  it resumes. The person's own message to the project chat still runs.
 - A rewind of the project chat that removes a thread's anchor leaves the
   thread, unanchored.
 - **Watching threads** (`daemon/src/watch.ts`; the project setting

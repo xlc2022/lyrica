@@ -868,8 +868,12 @@ Custom roles override built-ins by name, except `claude`.
   didn't-start notes wake an idle parent for one turn. Plain progress and
   subagent results don't wake an idle parent. Child deliveries carry
   `childDelivery: true` so `deliverVia` appends them with `triggerTurn: false`;
-  during a child-triggered parent turn `joinRunning: true` steers them into
-  that turn. `ChildThreads` coalesces pending/running wakes per parent,
+  during a child-triggered parent turn `joinRunning: true` steers a question,
+  `needsYou` or failure note into that turn; a report that comes during it
+  wakes the parent again after. A report's wake waits `CHILD_WAKE_MS`
+  (60 s, `LyricadOptions.childWakeMs`) from the first one, so reports close
+  together wake it once; a question, `needsYou` or failure note starts it at
+  once. `ChildThreads` coalesces pending/running wakes per parent,
   reserves an at-once slot, waits through project pause/hidden, and invokes
   `HostedThread.wakeChild`: a hidden custom message with `triggerTurn: true`,
   through the ordinary model preparation, turn events and storage. Pending
@@ -1674,7 +1678,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `delivered`, `HostedThread.waiting`, `send(text, { fromParent })` and
     `settled()`; a `received` thread event (`text`) when a message from
     another thread or a look reaches the running turn, or is kept in the
-    stored thread because no turn took it;
+    stored thread because no turn took it; `POST threads/:id/queue/:i/steer`
+    `{ text }` (`HostedThread.steerQueued`) moves the person's waiting
+    follow-up at index `i` into the running turn, `409` with no turn running
+    or when the follow-up there is no longer `text`, and the
+    `queue` event's `steered: true` marks the update it causes;
   - **projects** (`daemon/src/projects.ts`, `children.ts`): thread pins,
     per user: `user.db` `pinned_threads` (pool, thread; no text), `PUT`/`DELETE
     threads/:id/pin`, `ThreadSummary.pinned`, pinned first in the list;
@@ -2244,7 +2252,10 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   read-only; `inheritSettings` takes a subset; `effective()` keeps only
   repositories every ancestor grants, read-only where any ancestor's is,
   and a parent's change narrows its running children, moving a repository
-  it moves to another account. `ForgeCredential.readOnly` has the relay
+  it moves to another account and adding one it gains to children that
+  had all of its (read-only where `inheritSettings` was given only
+  read-only ones, kept as the `workspace.readOnlyRepos.<thread>` setting,
+  "1" or "0"; a child without it, from before it existed, gains nothing). `ForgeCredential.readOnly` has the relay
   refuse `git-receive-pack` and every API request but GET, HEAD and a
   GraphQL query. `Workspace`: `probeGitAccount({ kind, host,
   account, token })` checks the token against the host and saves nothing

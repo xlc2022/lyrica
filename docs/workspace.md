@@ -877,7 +877,11 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   more (a read-only or narrowed one gets them read-only, below), and a
   parent's change narrows its running children at once. A
   repository the parent moves to another Git account moves in its
-  children too, rather than leaving them. She can
+  children too, rather than leaving them. One the parent gains reaches
+  the children that had all of the parent's repositories, and theirs in
+  turn (`followParent`): read-only for a child started read-only, while one
+  narrowed to fewer keeps its narrowing. A child started before this
+  existed gains nothing, since it may have been read-only. She can
   add one herself with `add_repository`, from an account of the thread's
   pool; it always asks the user with a permission card, and is off in Plan
   mode or when the pool has no Git account.

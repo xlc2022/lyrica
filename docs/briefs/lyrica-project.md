@@ -95,7 +95,8 @@ and carries its children into a new project. The interface is built under
    stops with an error, or finishes a task without an update, is reported
    to the project chat whatever the setting. Questions (`question: true`),
    `needsYou`, final reports at idle turn end and failure notes wake the
-   project chat once, obeying pause. Progress updates only append. A woken
+   project chat once, obeying pause; reports wait a minute so several
+   close together wake it once. Progress updates only append. A woken
    chat's answer starts its source thread's turn for up to three rounds;
    past that it is saved until the user writes. A message to an idle thread
    while the at-once limit is full waits for a slot, and the tool says so.

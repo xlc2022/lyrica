@@ -95,6 +95,8 @@ export interface LyricadOptions {
   threads?: Partial<ThreadsLimits>;
   /** How long after the first trigger a project chat looks at its threads (default 30 s). */
   watchMs?: number;
+  /** How long a child's report waits before waking its parent, batching reports close together (default 60 s). */
+  childWakeMs?: number;
   /** Sleep's per-phase limits and retries. Sleep's defaults otherwise. */
   sleep?: Partial<SleepLimits>;
   /** Largest upload, in bytes. Default 50 MB. */
@@ -545,7 +547,7 @@ export class Lyricad implements Drainable {
     /** Threads whose last turn was stopped, by `user/pool/thread`. */
     const aborted = new Set<string>();
     const children = new ChildThreads({
-      users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads,
+      users, memory, models, workspace, delegation, host: () => host, limits: this.opts.threads, wakeMs: this.opts.childWakeMs,
       paused: stopped,
       project: (u, p, project) => projects.settings(u, p, project),
       held: (u, p, t) => sameFile.held(u, p, t),

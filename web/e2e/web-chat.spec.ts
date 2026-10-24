@@ -243,6 +243,35 @@ test("the portrait permission card names the resolved model and offers only dail
   expect(answers).toEqual([{ allow: true }, { allow: false }]);
 });
 
+test("a message waiting behind her turn has Steer now while she works, and it sends it into the turn", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "Plan the garden");
+  await expect(page.getByText("You said: Plan the garden")).toBeVisible();
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadIdOf(page.url()))}`;
+  let busy = true;
+  const steered: string[] = [];
+  await page.route(`**${base}/events`, (route) => route.fulfill({ contentType: "text/event-stream",
+    body: `event: hello\ndata: ${JSON.stringify({ type: "hello", busy, queued: ["Use the blue tiles instead"], permissions: [] })}\n\n` }));
+  await page.route(`**${base}/queue/*/steer`, (route) => { steered.push(`${new URL(route.request().url()).pathname} ${route.request().postDataJSON().text}`); return route.fulfill({ json: { ok: true } }); });
+  await page.reload();
+  const waiting = page.locator(".msg.user.queued");
+  await expect(waiting).toContainText("Use the blue tiles instead");
+  const steer = waiting.getByRole("button", { name: "Steer now" });
+  await expect(steer).toHaveAttribute("title", /turn after her current step, instead of when the turn ends\.$/);
+  // Only the waiting parts fade: the link stays full strength.
+  expect(await steer.evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/steer-now-${page.viewportSize()!.width}.png` });
+  await steer.click();
+  await expect.poll(() => steered).toEqual([`${base}/queue/0/steer Use the blue tiles instead`]);
+  // With no turn running, the message just waits: nothing to steer.
+  busy = false;
+  await page.reload();
+  await expect(page.locator(".msg.user.queued")).toContainText("Use the blue tiles instead");
+  await expect(page.getByRole("button", { name: "Steer now" })).toHaveCount(0);
+});
+
 test("an image tool result shows inline, opens large, starts an edit with Images enabled, and deletes after asking", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");
@@ -379,6 +408,9 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await send(page, "second question");
   await expect(page.getByText("You said: second question")).toBeVisible();
   const menu = (i: number) => page.getByRole("button", { name: "More actions" }).nth(i);
+  // The second turn shows live before its stored copy loads; until then her first reply looks like the last turn,
+  // so Regenerate goes at once instead of waiting for Undo. Stored, every message has its menu.
+  await expect(page.getByRole("button", { name: "More actions" })).toHaveCount(4);
 
   // Regenerate with another model: her first reply and what followed are replaced, after the Undo delay.
   await menu(1).click();

@@ -200,9 +200,14 @@ Each active thread is one Pi session from `openThreadSession`, with
   the mark saying it arrived while she was working and doesn't replace her
   task unless it says so: hours into a turn it is otherwise the newest
   user-role message and reads as her whole ask. One that came
-  too late for the turn goes as the next one. **Stop** aborts the turn,
+  too late for the turn goes as the next one. **Steer now** on a waiting
+  follow-up (`POST threads/:id/queue/:i/steer`, `steerQueued`) moves it
+  into the running turn the same way, unmarked, and it counts as the
+  person's own text; with no turn running, or when the follow-up at that
+  place is no longer the text sent with it, it answers 409 and the queue
+  stays as it is. **Stop** aborts the turn,
   denies waiting permission requests and drops the person's queue. A marked
-  message the turn didn't take, because it was stopped or failed, the
+  or steered message the turn didn't take, because it was stopped or failed, the
   thread closed, or no model answered, is appended to the stored thread as
   that user message, never dropped.
 - Before each turn the chat model is chosen again (`prepare`,

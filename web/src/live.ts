@@ -106,6 +106,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "permission_end":
       return { ...s, permissions: s.permissions.filter((p) => p.requestId !== e.requestId) };
     case "queue": {
+      // Steered into the running turn: it shows where Pi takes it (received).
+      if (e.steered) return { ...s, queued: e.queued };
       // A follow-up that leaves the queue is now being answered.
       const taken = s.queued.slice(0, Math.max(0, s.queued.length - e.queued.length));
       return { ...s, queued: e.queued, items: [...s.items, ...taken.map((text) => ({ role: "user" as const, text }))] };
