@@ -1126,11 +1126,12 @@ export class Delegation {
         const call = () => models.callContext(parent.user.id, parent.pool, child.id);
         const locals = models.textModels(call()).filter((m) => m.vision && m.local);
         if (!locals.length) return undefined;
-        const before = models.resolve(task, call(), {}, { evenIfDown: true }).ref;
-        models.setThreadModel(parent.user.id, parent.pool, child.id, task, locals.map((m) => ({ offeringId: m.id })));
+        const list = locals.map((m) => ({ offeringId: m.id }));
+        // Tried before anything is saved, so with none up the thread keeps its own list, or none.
+        const tried = { ...call(), overrides: { ...call().overrides, [task]: list } };
         let picked;
-        try { picked = models.resolve(task, call()); }
-        catch { models.setThreadModel(parent.user.id, parent.pool, child.id, task, [before]); return undefined; }
+        try { picked = models.resolve(task, tried); } catch { return undefined; }
+        models.setThreadModel(parent.user.id, parent.pool, child.id, task, list);
         const { model } = piModelFor(opened.runtime, models, task, call(), picked);
         if (sub) { sub.model = picked.label; sub.cloud = false; }
         this.store.update(parent.user.id, parent.pool, child.id, { model: picked.label, offeringId: picked.ref.offeringId });
