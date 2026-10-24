@@ -493,6 +493,8 @@ class Models {                                              // new Models(keyrin
                                           contextWindow: { value; source: "host" | "hand" | "discovered" | "assumed" } }   // assumed: DEFAULT_CONTEXT, 131,072
   refreshServed(userId, offeringId, timeoutMs = 1500): Promise<void>   // LM Studio's loaded context, parallel slots, vision and thinking, read again (before each turn, on Settings)
   rereadLocal(actor): Promise<void>   // the user's local endpoints discovered again, once per daemon run (lyricad, on the first unlock); shared ones as an administrator
+  rereadDaily(now?): Promise<void>   // each endpoint not read for a day discovered again, for unlocked users with readDaily on; shared ones by an administrator (lyricad, hourly)
+  readDaily(userId): boolean / setReadDaily(userId, on)   // Read model lists daily; on by default
   setOfferingSettings(actor, offeringId, change, scope: "shared" | "mine" = "mine")   // null clears a value
   // Library, tokens, downloads, delete
   textLibrary(userId, { search?, kind?, endpointId?, capability?, groupsOnly?, offset?, limit? }): { total; entries: LibraryEntry[] }
@@ -1850,14 +1852,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
       (`usedIn`, `deleted`, `left`), `ServingSettings`.
     - **Groups and presets:** `GET`/`POST groups`; `GET groups/suggestions`;
       `GET`/`PATCH`/`DELETE groups/:id`; `GET`/`PATCH presets` (`thinking`,
-      `fallback`, `sleepFallback`, `readAloudLive`, `freeOnly`); `POST presets`
+      `fallback`, `sleepFallback`, `readAloudLive`, `freeOnly`, `readDaily`); `POST presets`
       (`{ name, column }`); `PATCH`/`DELETE presets/:id` (`{ name }`);
       `PUT columns/:column` (`{ preset }`); `PUT columns/:column/:task`
       (`{ models }`, `{ same }` or `{ model }`); `POST columns/:column/save`
       (`{ preset }` or `{ name }`). Types: `GroupInfo`, `GroupInput`,
       `GroupChange`, `GroupDetail`, `GroupSuggestion`, `PresetInfo`,
       `Presets` (the presets, the two columns, `thinking`, `fallback`,
-      `sleepFallback`, `readAloudLive` and `freeOnly`), `ColumnTaskChange`,
+      `sleepFallback`, `readAloudLive`, `freeOnly` and `readDaily`), `ColumnTaskChange`,
       `PresetsChange`.
     - **Models page, library, tokens:** `GET models/page` (→ `ModelsPage`:
       endpoints with `pageStatus` and each starred offering marked `starred`, hosts' status or error (`unpaired` when the

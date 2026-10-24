@@ -1611,10 +1611,13 @@ test("Sleep History and Came from: the sidebar link opens it empty, the mode is 
   const save = page.getByRole("button", { name: "Save" });
   await expect(time).not.toHaveValue("");
   await expect(save).toBeDisabled();
-  await time.fill(await time.inputValue() === "04:30" ? "05:15" : "04:30");
+  // Another time half a day away, as serve.ts sets it, so later tests in this run don't reach it either.
+  const later = new Date(Date.now() + 13 * 3600_000).toISOString().slice(11, 16);
+  const next = await time.inputValue() === later ? new Date(Date.now() + 14 * 3600_000).toISOString().slice(11, 16) : later;
+  await time.fill(next);
   await expect(save).toBeEnabled();
   await save.click();
   await expect(save).toBeDisabled();
   await page.reload();
-  await expect(page.getByLabel("Sleep time")).toHaveValue(/^(04:30|05:15)$/);
+  await expect(page.getByLabel("Sleep time")).toHaveValue(next);
 });

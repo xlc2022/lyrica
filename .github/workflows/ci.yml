@@ -108,6 +108,9 @@ jobs:
           path: web/test-results/
           retention-days: 7
           if-no-files-found: ignore
+      # The page as each failed test left it, in the log itself: the artifact needs a download that not every reader has.
+      - if: failure()
+        run: for f in web/test-results/*/error-context.md; do [ -f "$f" ] && { echo "::group::$f"; head -c 20000 "$f"; echo "::endgroup::"; }; done; true
   # The flake (docs/daemon.md, "On NixOS"): the package and a NixOS system with the module
   # build, and the sandbox tests pass with the module's sandbox tools as /usr
   # and only their closure in /nix/store.

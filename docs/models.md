@@ -60,7 +60,15 @@ and `-`, at most 40 characters.
   (`rereadLocal`), so an offering stored before discovery learned to read
   something gets it after the next restart. A shared one is read as an
   administrator; one that doesn't answer is tried at the next user's unlock.
-  Cloud and plan endpoints aren't re-read.
+- **Read model lists daily** (`readDaily`, `setReadDaily`; `settings.read_daily`
+  in `user.db`, on by default): once an hour `lyricad` calls `rereadDaily`,
+  which discovers again, one at a time, each endpoint whose list hasn't been
+  read for a day, for each unlocked user with it on: their own endpoints,
+  and the shared ones when they are an administrator. Only the list is read,
+  never a model, so a model an endpoint drops goes the usual way: missing,
+  then gone and in Clean up. Paused and signed-out endpoints wait; one that
+  doesn't answer is tried a day later. The day is counted in memory from the
+  last read or try, so a restart reads every list once more.
 - **Capabilities:** context window, tools, vision, embedding, image, edit, upscale
   and thinking levels. OpenRouter reports the context, tools, thinking and
   modalities; llama-server reports the context

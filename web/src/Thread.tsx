@@ -211,7 +211,9 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const rewind = (n: number, req: RewindRequest) => post(`${base}/messages/${n}/rewind`, req).catch((e: Error) => setSendError(e.message));
   const rewinder: Rewinder | undefined = s && !s.subagent ? {
     settings: settings.data,
-    busy: t.live.busy,
+    // A turn that ended but isn't stored yet counts too: its messages aren't in t.messages, so the last turn and the
+    // Undo decision would be read from the turn before it.
+    busy: t.live.busy || t.live.ended > 0,
     lastTurn: t.messages.findLast((m) => m.role === "user")?.n,
     pinned: new Set(pins.data?.pins.map((p) => p.n)),
     pin: (n, on) => {

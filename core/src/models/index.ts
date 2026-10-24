@@ -866,6 +866,7 @@ export class Models {
       throw err;
     }
     this.seen(ep, true, actor.id);
+    this.readAt.set(ep.id, Date.now());
     const now = new Date().toISOString();
     let planImage: string | undefined;
     this.write(actor, endpointId, (db) => {
@@ -1309,6 +1310,32 @@ export class Models {
       this.reread.add(ep.id);
       await this.discover(as, ep.id).catch(() => this.reread.delete(ep.id));
     }
+  }
+
+  /** When each endpoint's list was last read this run, by discovery or `rereadDaily`. */
+  private readonly readAt = new Map<string, number>();
+  private readingDaily?: Promise<void>;
+
+  /**
+   * Reads again, one at a time, every endpoint whose list hasn't been read
+   * for a day, for each unlocked user with Read model lists daily on: their
+   * own endpoints, and the shared ones when they are an administrator. Only
+   * the list is read, never a model: one no longer listed is marked missing,
+   * as by Refresh, and goes to Clean up when it's gone. Paused and signed-out
+   * endpoints wait. One that doesn't answer is tried again a day later.
+   */
+  rereadDaily(now = Date.now()): Promise<void> {
+    this.readingDaily ??= (async () => {
+      for (const u of this.users.all()) {
+        if (!this.keyring.hasUserKey(u.id) || !this.readDaily(u.id)) continue;
+        for (const ep of this.endpoints(u.id)) {
+          if (ep.pausedAt || ep.signedOut || (ep.shared && !u.admin) || now - (this.readAt.get(ep.id) ?? 0) < DAY) continue;
+          this.readAt.set(ep.id, now);
+          await this.discover(u, ep.id).catch(() => {});
+        }
+      }
+    })().finally(() => { this.readingDaily = undefined; });
+    return this.readingDaily;
   }
 
   /**
@@ -2253,6 +2280,16 @@ export class Models {
   setFreeOnly(userId: string, on: boolean): void {
     if (typeof on !== "boolean") throw new Error("freeOnly is true or false");
     this.setSetting(userId, "free_only", on ? "on" : "off");
+  }
+
+  /** Read model lists daily: `rereadDaily` reads each of the user's endpoints again once a day. On by default. */
+  readDaily(userId: string): boolean {
+    return this.setting(userId, "read_daily") !== "off";
+  }
+
+  setReadDaily(userId: string, on: boolean): void {
+    if (typeof on !== "boolean") throw new Error("readDaily is true or false");
+    this.setSetting(userId, "read_daily", on ? "on" : "off");
   }
 
   /** A thread's own Fallback switch; null follows the user's default. */
