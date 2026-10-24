@@ -77,12 +77,12 @@ self-merges. The guardian is not a reviewer and gives no merge go-ahead.
 
 - **GitHub**, directly: her issue comments, branch commits, the pull
   request, CI results and review replies.
-- **Her threads**, through the Lunasa thread's session on lunasa, which
-  reads her project's threads in the web UI as the operator. At each
-  checkpoint (below) the guardian asks it for: the tool calls since the
-  last checkpoint (name, the file or command, the result or error), turn
-  count, tokens in and out, wall time, and any thread that stopped,
-  stalled or waited. It answers by message, never a file.
+- **Her threads**, read-only, through the Lunasa thread's session on
+  lunasa, for the report only: tool calls, turn counts, tokens and stalls,
+  answered by message, never a file. This is dev-only: her real deployment
+  has no such view, so nothing the guardian learns this way is sent to her.
+- **Talking to her** is GitHub only, as on a real deployment: a PR comment,
+  or an issue assigned to her. Never a message into her threads.
 - The guardian doesn't read her private threads or memory; the project is
   in the general pool and that is all it looks at.
 
