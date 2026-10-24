@@ -42,6 +42,9 @@ export const INTERRUPTED = "Interrupted when Lyrica restarted, before this turn 
 /** A `threads read`: reading a working child again only waits for what its end will bring anyway. */
 const isThreadRead = (tool: string, args: unknown) => tool === "threads" && (args as { action?: unknown } | null)?.action === "read";
 
+/** A bash call that only waits, as polling does (allowed: a wake is the main signal, polling its backup). */
+const isSleep = (tool: string, args: unknown) => tool === "bash" && /^\s*sleep\s+\d+(\.\d+)?[smh]?\s*;?\s*$/.test(String((args as { command?: unknown } | null)?.command ?? ""));
+
 function normalized(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(normalized).join(",")}]`;
   if (value && typeof value === "object") return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${normalized((value as Record<string, unknown>)[k])}`).join(",")}}`;
@@ -75,6 +78,9 @@ export function createTurnToolsExtension(): ExtensionFactory {
       run = e.toolName === last ? run + 1 : 1;
       last = e.toolName;
       const key = `${e.toolName}:${normalized(e.args)}`;
+      // After a plain sleep, time has passed: a sleep, or a call made again after one (polling a file, say), may not return the same thing.
+      // The caps on calls still bound a loop of them.
+      if (isSleep(e.toolName, e.args)) repeats.clear();
       const count = (repeats.get(key) ?? 0) + 1;
       repeats.set(key, count);
       if (count >= MAX_IDENTICAL_TOOL_CALLS) refused.set(e.toolCallId, isThreadRead(e.toolName, e.args)

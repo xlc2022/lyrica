@@ -79,6 +79,20 @@ export async function removeWorktrees(target: ExecutionTarget, mine: Worktree[],
   return lines.join("\n");
 }
 
+/**
+ * What a checkout holds that no remote has: files changed and not committed,
+ * and commits on no remote (counted only when it has one). Undefined when
+ * there's nothing, or it isn't a repository.
+ */
+export async function unsaved(target: ExecutionTarget, path: string): Promise<string | undefined> {
+  const r = await sh(target, `cd ${quote(path)} && echo "CHANGED=$(git status --porcelain | wc -l) AHEAD=$(if test -n "$(git remote)"; then git rev-list --count HEAD --not --remotes; else echo 0; fi)"`);
+  const m = /CHANGED=\s*(\d+) AHEAD=\s*(\d+)/.exec(r.out);
+  if (!r.ok || !m) return undefined;
+  const [changed, ahead] = [Number(m[1]), Number(m[2])];
+  const parts = [...(changed ? [`${changed} file${changed === 1 ? "" : "s"} not committed`] : []), ...(ahead ? [`${ahead} commit${ahead === 1 ? "" : "s"} not pushed`] : [])];
+  return parts.length ? parts.join(", ") : undefined;
+}
+
 export function worktreeNote(mine: Worktree[]): string {
   return mine.map((w) => `${w.repo}: worktree ${w.path}, branch ${w.branch}`).join("\n");
 }

@@ -7,7 +7,7 @@ import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServ
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { BASH_TIMEOUT_S, createDownloadsExtension, pageTool, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
-import { BUILD_THERE, editArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
+import { BUILD_THERE, editArguments, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { Users, Workspace } from "@lyrica/core";
@@ -490,6 +490,13 @@ describe("edit arguments", () => {
     expect(editArguments({ path: "x", edits: [JSON.stringify(edit)] })).toEqual({ path: "x", edits: [edit] });
     expect(editArguments({ path: "x", edits: [edit] })).toEqual({ path: "x", edits: [edit] });
     expect(() => editArguments({ path: "x", edits: ["oldText: a"] })).toThrow('edits[0] came as a string; each edit must be an object, {"oldText"');
+  });
+
+  it("refuses an edit or write without a path, naming the file she last read, without filling it in", () => {
+    expect(pathArguments("edit", { path: "x", edits: [] })).toEqual({ path: "x", edits: [] });
+    expect(() => pathArguments("edit", { edits: [] }, { verb: "read", path: "/workspace/web/src/Panel.tsx" }))
+      .toThrow("edit needs `path`, the file to change; you last read /workspace/web/src/Panel.tsx this turn: add `path`");
+    expect(() => pathArguments("write", { path: " ", content: "" })).toThrow("write needs `path`, the file to write; add `path`");
   });
 });
 

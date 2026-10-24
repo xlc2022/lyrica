@@ -839,10 +839,10 @@ Custom roles override built-ins by name, except `claude`.
 - **Child threads** (`createThreadsExtension(thread, host?: ThreadsHost, meter?)`,
   never in a subagent's thread): one model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,
-  `readOnly`, `internet`, `base: true` for a project’s original checkout, and `code: true` to start it in code mode), `message` (to a child, by ID or current title
+  `readOnly`, `internet`, `base: true` for a project’s original checkout, and `code: true` to start it in code mode; in a project a title matching an open thread's is refused, naming it), `message` (to a child, by ID or current title
   (`pickThread`; a title two threads share is refused), or `to: "parent"`
   from a child; a child's message with no `to` and no `id`, or whose `id`
-  names its parent, goes to the parent), `list` (`ChildInfo` with `ChildStatus`), `read` (`id`,
+  names its parent, goes to the parent), `list` (`ChildInfo` with `ChildStatus`, and `branches` for a project thread's worktrees), `read` (`id`,
   `last`: the latest messages of a listed, logged thread, or of one of her own subagents' threads (`PoolReader.latestEntries`), `READ_DEFAULT`
   10, `READ_MAX` 30, formatted by `formatEntry`; a parent's read of a child still working ends with `CHILD_WAKES`, as does `turn-tools`' refusal of a third identical `threads read`) and `stop` (`id`: a
   parent's child, `ThreadsHost.stop`), and `routine` (above). `later` (`minutes`, clamped to 1 to
@@ -1033,7 +1033,11 @@ Custom roles override built-ins by name, except `claude`.
   and ancestor narrowing. `prepareWorktrees` restores resolved parts on their
   saved branches before tools run (from current HEAD if a merged branch was
   deleted), waiting for `Workspace.removeThreadWorktrees` if an earlier cleanup
-  is still running. Resolution runs cleanup (deferred to the end of a running
+  is still running. `Workspace.unsavedWork` lists a project thread's
+  checkouts (its worktrees, or the base checkout it holds) with files not
+  committed or commits on no remote (`unsaved` in worktree.ts); her
+  `resolve` (`ThreadsHost.resolve(from, id, resolved, force?)`) refuses while
+  it lists any, unless forced. Resolution runs cleanup (deferred to the end of a running
   turn) and keeps dirty checkouts; forgetting runs it with `force`, removing
   dirty ones too, silently.
   `ProjectThreadInfo.worktreeReason` and `ThreadSummary.worktreeReason` expose
@@ -1174,6 +1178,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   when its model has no vision, a tool result holding an image (or a `read`
   of an image carrying Pi's "does not support images" note) gets `NO_VISION` appended, telling her she
   saw nothing and must not describe it; a `read` of an image then fails.
+  A subagent's guard gets a `VisionFallback` (`createSubagentExtension`'s
+  `vision`): the first local chat model with vision the subagent may use,
+  set as its thread's model; the guard switches to it with `pi.setModel`,
+  keeps the image and drops Pi's note, appending `SWITCHED`. With none, or
+  a switch that fails, it warns as above.
   `delegate({ action: "models" })` marks the models with vision, for a look
   she hands on.
 - Memory sections include `opening`: the sleep item a thread was started
@@ -1231,7 +1240,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   and later calls to the same tool with identical JSON arguments (object
   keys sorted recursively; array order preserved) return an error telling
   the model it already has the result and should answer or try something
-  different. A run of 25 calls to one tool, with any arguments, also stops
+  different. A plain `sleep` (a `bash` call that only sleeps) starts the
+  count over for every call, so polling isn't refused. A run of 25 calls to one tool, with any arguments, also stops
   the turn. Calls beyond either limit in a batch are refused. After the
   batch's results her tools turn off and a hidden `lyrica-tool-limit-wrap-up`
   message (`WRAP_UP`) asks for one reply on what she did, where things

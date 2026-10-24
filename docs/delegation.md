@@ -37,7 +37,9 @@ subagent:
   closest few, for her to ask the person which they meant;
   `delegate({ action: "models" })` lists the chat models she may name, each
   marked local or cloud, and vision where it has it. A subagent whose model
-  has no vision is told so on a tool result holding an image (contracts.md,
+  has no vision switches, on a tool result holding an image, to the first
+  local chat model with vision she may use, which becomes its model and
+  sees the image; with none, it is told it saw nothing (contracts.md,
   `registerVisionGuard`). In a private or local-only thread it is always a
   local model. A refused model fails the run before any thread is made;
 - gets its workspace from `inheritSettings`: the parent's folders (or the
@@ -270,7 +272,10 @@ The helpers `makeWorktrees`, `worktreeGrants` and `removeWorktrees` live in
 `core/src/workspace/worktree.ts` and serve both delegate writers and
 code child threads. Code children use their own thread folder, checkout and branch;
 In projects, `base: true` keeps the original checkout for a single open
-scaffold or merge thread. Other threads and delegate writers retain the rules below.
+scaffold or merge thread. A start whose title matches an open thread of the
+project (ignoring case and spaces at the ends) is refused, telling her to
+message that thread, which has the work so far; `list` names the branch each
+thread works on in its own worktree. Other threads and delegate writers retain the rules below.
 
 Two delegate writers never share a folder. A writer takes its parent thread's folders
 for as long as it lives, so writers from any runs of that thread go one at a
@@ -495,7 +500,9 @@ A subagent's thread never gets the tool. An ordinary child can message its
 parent, set wake-ups, manage routines, keep a checklist and compact itself;
 her prompt says it
 is a child thread and to post updates at milestones, not after every step,
-and always end with a message to the parent: the result, or what blocked it.
+and always end with a message to the parent: the result, or what blocked it
+(a project's thread, after code work, also names its branch and what isn't
+committed or pushed yet).
 **Depth 1:** the store refuses a child of a child; a child can
 delegate. The user talks in a child like any thread, and the parent isn't
 told. Its approvals work as in any thread.
@@ -650,7 +657,9 @@ A project chat's child threads are the project's threads
   is open: it decided, so the thread no longer waits on the user.
 - **States:** working, waiting (an approval, or `needsYou`), queued, idle,
   resolved. `resolve` (her tool; a thread resolves only itself, the project
-  chat any of its threads), the API, and the nightly tick for a thread idle
+  chat any of its threads; it stops at work no remote has, files not
+  committed or commits not pushed in the thread's worktrees or the base
+  checkout it holds, unless `force: true`), the API, and the nightly tick for a thread idle
   7 days resolve it; `reopen`, the API, any message in it, or a sibling's
   message reopen it. `child_threads` keeps `anchor`, `resolved_at`,
   `needs_you` and `queued` (no text).

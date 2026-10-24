@@ -10,6 +10,8 @@ import type { ThreadContext } from "../index.ts";
 import { syncEntries, toStoredEntry } from "../record.ts";
 import { PaceTracker } from "../context.ts";
 import { openThreadSession } from "../session.ts";
+import { piModelFor } from "../models.ts";
+import type { VisionFallback } from "../vision.ts";
 import { createMcpServersExtension } from "../mcp.ts";
 import { createWebExtension } from "../web.ts";
 import { checkoutsOf, repoRules } from "../code-repositories.ts";
@@ -1117,7 +1119,15 @@ export class Delegation {
       // tool_search loads the MCP tools, which register after its role's tools are set, so the role doesn't turn them off.
       const allowed = new Set([...role.tools, "ask_parent", ...(nested ? ["delegate"] : []), ...(mcp ? ["tool_search"] : [])]);
       // First: it must run before the MCP extension registers anything, else the role gate turns loaded MCP tools off.
-      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica", !earlier && role.name === "coder" ? { task, done } : undefined, rules));
+      // A model without vision that reads an image goes on, for the rest of this subagent, on a local model that can see it.
+      const vision: VisionFallback = async () => {
+        const local = models.textModels(models.callContext(parent.user.id, parent.pool, child.id)).find((m) => m.vision && m.local);
+        if (!local) return undefined;
+        models.setThreadModel(parent.user.id, parent.pool, child.id, role.name === "coder" ? "code" : "chat", [{ offeringId: local.id }]);
+        const { model } = piModelFor(opened.runtime, models, role.name === "coder" ? "code" : "chat", models.callContext(parent.user.id, parent.pool, child.id));
+        return { model, label: local.label };
+      };
+      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica", !earlier && role.name === "coder" ? { task, done } : undefined, rules, vision));
       const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions, task: () => role.name === "coder" ? "code" : "chat" });
       opened.session.setThinkingLevel(role.thinking);
       // Passes over a model whose machine is away, and records the call. The role keeps its own thinking level.

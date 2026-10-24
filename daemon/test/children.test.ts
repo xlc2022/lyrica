@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createLocalBashOperations } from "@earendil-works/pi-coding-agent";
-import { Sandbox, pickThread, type ExecutionTarget, type ToolOps } from "@lyrica/core";
+import { Sandbox, pickThread, threadLine, type ExecutionTarget, type ToolOps } from "@lyrica/core";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -854,7 +854,7 @@ describe("code thread worktrees", () => {
     expect(s.ws.threadWork(a)).toMatchObject({ base: true, worktrees: [] });
     expect(s.ws.effective(a).grants).toEqual([{ path: s.repo, writable: true }]);
     const refused = await s.make("Another scaffold", { base: true });
-    expect(refused).toMatchObject({ isError: true, result: expect.stringContaining(`the base checkout is held by [t:${a}]; resolve that thread first`) });
+    expect(refused).toMatchObject({ isError: true, result: expect.stringContaining(`the base checkout is held by [t:${a}]: to go on with that work, send it what to do next`) });
     await s.ada.post(`${s.childPath(a)}/resolve`);
     const b = (await s.make("Merge", { base: true })).threads![0]!.id;
     await s.idle(b);
@@ -876,13 +876,36 @@ describe("code thread worktrees", () => {
     finally { db.close(); }
   });
 
+  it("sends a second start for an open thread's task to that thread, and lists the branch a thread works on", async () => {
+    const s = await projectRepo();
+    const a = (await s.make("Physics")).threads![0]!.id;
+    await s.settled(a);
+    // Refused before anything runs, so only the parent takes a script.
+    s.parent.push(start("physics ", "Build physics.", { code: true }), { text: "Asked it." });
+    const again = toolEnd(await s.say("Start physics again."));
+    await s.idleParent();
+    expect(again).toMatchObject({ isError: true, result: expect.stringContaining(`[t:${a}] is already open for this task`) });
+    const row = s.d.services!.children.projectThreads(s.rt.ada.id, "general", s.thread.id).find((t) => t.id === a)!;
+    expect(row.branches).toEqual([s.ws.threadWork(a)!.worktrees[0]!.branch]);
+    expect(threadLine(row)).toContain(`works on ${row.branches![0]} in its own worktree`);
+  });
+
   it("keeps a dirty worktree on resolve and reports where, and removes it when the thread is deleted", async () => {
     const s = await projectRepo();
     const id = (await s.make("Track")).threads![0]!.id;
     await s.idle(id);
     const w = s.ws.threadWork(id)!.worktrees[0]!;
     writeFileSync(join(w.path, "track.ts"), "export const laps = 2;\n");
-    await s.ada.post(`${s.childPath(id)}/resolve`);
+    // Her resolve stops at work no remote has, and goes through only when forced.
+    await s.settled(id);
+    s.parent.push({ tools: [{ name: "threads", args: { action: "resolve", id } }] }, { text: "Kept it." });
+    // Worded apart from the child's task, so recall doesn't bring the child's messages into this turn.
+    expect(toolEnd(await s.say("Tidy up the list."))).toMatchObject({ isError: true, result: expect.stringContaining(`[t:${id}] has work no remote has:\n${w.path}: 1 file not committed`) });
+    await s.idleParent();
+    expect(s.d.services!.children.projectThreads(s.rt.ada.id, "general", s.thread.id).find((t) => t.id === id)?.state).not.toBe("resolved");
+    s.parent.push({ tools: [{ name: "threads", args: { action: "resolve", id, force: true } }] }, { text: "Set aside." });
+    expect(toolEnd(await s.say("Tidy up the list anyway."))).toMatchObject({ isError: false });
+    await s.idleParent();
     expect(existsSync(w.path)).toBe(true);
     expect(JSON.stringify(await s.messages(s.path))).toContain("was kept");
     await s.ada.del(s.childPath(id));
