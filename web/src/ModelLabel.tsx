@@ -13,6 +13,12 @@ export const modelName = (m: { modelId: string; recipe?: string }) => m.recipe ?
  */
 export const shortModel = (id: string) => id.split("/").pop()!.replace(/\.(gguf|safetensors|bin)$/i, "") || id;
 
+/** Whether every word of a search is in a model's name, ID, endpoint or kind. */
+export const matchesModel = (q: string, m: { modelId: string; recipe?: string }, ep: { name: string; kind: string }) => {
+  const hay = `${modelName(m)} ${m.modelId} ${ep.name} ${ep.kind}`.toLowerCase();
+  return q.trim().toLowerCase().split(/\s+/).every((w) => hay.includes(w));
+};
+
 export function ModelLabel({ model, endpoint, raw = false }: { model: string; endpoint: string; raw?: boolean }) {
   const short = shortModel(model);
   const title = short === model ? undefined : model;

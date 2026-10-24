@@ -1,5 +1,5 @@
 // The model badge and its picker, and the thread settings drawer.
-import { isChatModel, ModelLabel, modelName, shortModel } from "./ModelLabel.tsx";
+import { isChatModel, matchesModel, ModelLabel, modelName, shortModel } from "./ModelLabel.tsx";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   del, get, patch, u, THREAD_TASKS,
@@ -52,6 +52,7 @@ export function ModelBadge({ base, settings, onChange, readOnly }: {
 }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(anchor, open, close);
   useInView(anchor, open);
@@ -67,27 +68,45 @@ export function ModelBadge({ base, settings, onChange, readOnly }: {
   if (readOnly) return <span className="badge model" data-kind={chat.kind}>{label}</span>;
   return (
     <span className="picker-anchor" ref={anchor}>
-      <button type="button" className="badge model" data-kind={chat.kind} aria-haspopup="dialog" aria-expanded={open}
+      <button ref={button} type="button" className="badge model" data-kind={chat.kind} aria-haspopup="dialog" aria-expanded={open}
         aria-label={`Model: ${chat.model ? (chat.modelId ? `${chat.modelId}, ${chat.kind}, ${chat.endpointName}` : named(chat)) : "none"}. Change`}
         onClick={() => setOpen(!open)}>{label}</button>
-      {open && <ModelPicker base={base} settings={settings} task={task} onChange={(s) => { onChange(s); setOpen(false); }} />}
+      {open && <ModelPicker base={base} settings={settings} task={task} onChange={(s) => { onChange(s); setOpen(false); }}
+        onEscape={() => { close(); button.current?.focus(); }} />}
     </span>
   );
 }
 
-function ModelPicker({ base, settings, task, onChange }: {
-  base: string; settings: ThreadSettings; task: ThreadTask; onChange: (s: ThreadSettings) => void;
+function ModelPicker({ base, settings, task, onChange, onEscape }: {
+  base: string; settings: ThreadSettings; task: ThreadTask; onChange: (s: ThreadSettings) => void; onEscape: () => void;
 }) {
   const [run, busy, error] = useAction();
+  const [q, setQ] = useState("");
   const current = settings.models[task];
   const choose = (model: ModelRef | null) => run(async () => onChange(await patch<ThreadSettings>(`${base}/settings`, { models: { [task]: model } })));
+  const eps = settings.allowed.map((ep) => ({ ep, models: ep.models.filter((m) => fits(task, m)) }));
+  const count = eps.reduce((n, x) => n + x.models.length, 0);
+  const shown = q.trim() ? eps.map((x) => ({ ...x, models: x.models.filter((m) => matchesModel(q, m, x.ep)) })).filter((x) => x.models.length) : eps;
+  // Down and Up move between the search box and the models; Enter in the box picks the first match.
+  const move = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") { e.stopPropagation(); onEscape(); return; }
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const stops = [...e.currentTarget.querySelectorAll<HTMLElement>("input, .picker-item:not(:disabled)")];
+    const i = stops.indexOf(document.activeElement as HTMLElement);
+    const next = stops[e.key === "ArrowDown" ? Math.min(i + 1, stops.length - 1) : Math.max(i - 1, 0)];
+    if (next) { e.preventDefault(); next.focus(); }
+  };
   return (
-    <div className="picker" role="dialog" aria-label={`Model for ${TASK_LABELS[task].toLowerCase()}`}>
+    <div className="picker model-pick" role="dialog" aria-label={`Model for ${TASK_LABELS[task].toLowerCase()}`} onKeyDown={move}>
       {settings.localOnly && <p className="muted small">Only local models: this thread is {settings.parent ? "under a local-only thread" : "local-only"}.</p>}
-      {settings.allowed.map((ep) => (
+      {count > 0 && (
+        <input type="search" aria-label="Search models" placeholder={`Search ${count} models`} autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const first = shown[0]?.models[0]; if (first && !busy) choose({ offeringId: first.id }); } }} />
+      )}
+      {shown.map(({ ep, models }) => (
         <div key={ep.id} className="picker-group">
           <div className="picker-ep"><span className={`k ${ep.kind}`}>{ep.kind}</span> {ep.name}</div>
-          {ep.models.filter((m) => fits(task, m)).map((m) => {
+          {models.map((m) => {
             const ref_ = { offeringId: m.id };
             const on = current.source === "thread" && refKey(current.model) === refKey(ref_);
             return (
@@ -99,6 +118,7 @@ function ModelPicker({ base, settings, task, onChange }: {
           {!ep.models.length && <p className="muted small">No models. Add one in the control panel.</p>}
         </div>
       ))}
+      {q.trim() && !shown.length && <p className="muted small">No models match.</p>}
       {!settings.allowed.length && <p className="muted small">No endpoints yet. Add one in the control panel.</p>}
       <button type="button" className="picker-item" aria-pressed={current.source !== "thread"} disabled={busy} onClick={() => choose(null)}>
         Use the preset's choice
