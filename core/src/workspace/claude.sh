@@ -27,4 +27,8 @@ export CLAUDE_CONFIG_DIR=/run/lyrica/claude
 export IS_SANDBOX=1
 # No update checks, telemetry or error reports: only the calls its work needs.
 export DISABLE_AUTOUPDATER=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+# A read-only delegate run asks for Claude Code's own plan mode instead.
+for arg in "$@"; do
+  [ "$arg" = --permission-mode ] && exec "$real" "$@"
+done
 exec "$real" --permission-mode bypassPermissions "$@"

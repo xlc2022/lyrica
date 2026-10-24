@@ -51,7 +51,9 @@ and carries its children into a new project. The interface is built under
    token from `claude setup-token` in **Settings → Claude Code** and turn
    on the project chat's **Claude Code** switch in Thread settings, so the
    project's threads inherit it (docs/workspace.md, "Claude Code"); with
-   the internet off, also allow `api.anthropic.com`.
+   the internet off, also allow `api.anthropic.com`. She then delegates
+   those jobs to the `claude` role, in the background, and gets its report
+   back (docs/delegation.md, "Claude Code").
    Project settings → General → **Commands** can save trusted checks as
    Allow rules, pushes as Ask, and commands she must leave to the user as
    Forbid. These apply to the project chat, its threads and subagents;

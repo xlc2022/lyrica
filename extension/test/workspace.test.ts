@@ -677,7 +677,7 @@ describe("Git in a thread", () => {
 
   it("tells her about Claude Code in one line only where her runs have it, with no tool of its own", async () => {
     const on = await run("auto", [], { claudeCode: true });
-    expect(on.system).toContain("Claude Code is in your sandbox");
+    expect(on.system).toContain("delegate a coding or repository job to role claude");
     expect(on.offered[0]).not.toContain("claude");
     expect((await run("auto", [])).system).not.toContain("Claude Code");
   });

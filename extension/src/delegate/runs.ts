@@ -16,6 +16,7 @@ import { checkoutsOf, repoRules } from "../code-repositories.ts";
 import { createImageExtension } from "../images.ts";
 import { createWorkspaceExtension, type ApprovalRequest } from "../workspace.ts";
 import { rolesFor } from "./roles.ts";
+import { CLAUDE_MODEL, CLAUDE_ROLE, claudeBody } from "./claude.ts";
 import { createDelegateExtension, createSubagentExtension } from "./tool.ts";
 import { makeWorktrees, removeWorktrees, worktreeGrants, worktreeNote, type Worktree } from "./worktree.ts";
 
@@ -41,7 +42,7 @@ export interface Limits {
 // A local model working through a large task can take an hour; one that has stopped answering shows within minutes.
 export const DEFAULT_LIMITS: Limits = { depth: 1, concurrency: 2, runsPerRequest: 8, timeoutMs: 90 * 60_000, idleMs: 5 * 60_000, notes: 3, foregroundMs: 5 * 60_000 };
 
-export type DelegateWorkspace = Pick<Workspace, "inheritSettings" | "forThread" | "settings"> & Partial<Pick<Workspace, "imageFiles">>;
+export type DelegateWorkspace = Pick<Workspace, "inheritSettings" | "forThread" | "settings"> & Partial<Pick<Workspace, "imageFiles" | "claudeDir">>;
 
 export interface DelegationOptions {
   users: Users;
@@ -63,6 +64,10 @@ export interface DelegationOptions {
   name?: () => string;
   /** The server's SearXNG address, for a subagent's web_search. */
   searxng?: () => string | null;
+  /** The Claude plan's usage limit stopped a claude run, with when it resets if Claude Code said: lyricad wakes its parent then. */
+  onClaudeLimit?: (parent: Parent, until?: number) => void;
+  /** Why the claude role is refused for now, if it is: the user fell back from the Claude plan until it resets. */
+  claudeRefused?: (userId: string) => string | undefined;
 }
 
 /** A subagent's tool call waiting for approval: which subagent, and what exactly. */
@@ -155,7 +160,19 @@ export const DELEGATE_MESSAGE = "lyrica-delegate";
 /** Why a subagent was stopped: on request, by the timeout, or because its parent thread changed under it. */
 export type StopReason = "stopped" | "timeout" | "parent_changed";
 
-/** One subagent: its thread, its session, and the tokens it has used. */
+/** What a subagent works through: a Pi session in this process, or Claude Code in the sandbox (claude.ts). */
+export interface SubagentBody {
+  /** One message, as a turn; settles when the turn ends. */
+  send(said: Said): Promise<void>;
+  /** Joins the turn in progress; false when there is none, so the message waits for the next turn. */
+  steer(said: Said): Promise<unknown> | false;
+  abort(): void;
+  /** The last turn's reply, or why it failed. */
+  reply(): { text: string; error?: string };
+  dispose(): void;
+}
+
+/** One subagent: its thread, what it works through, and the tokens it has used. */
 export class Subagent {
   status: SubagentStatus = "running";
   question?: string;
@@ -166,6 +183,7 @@ export class Subagent {
   approving = 0;
   readonly tools = new Set<string>();
   readonly usage: Usage;
+  private readonly body: SubagentBody;
   private stopped?: { reason: StopReason; message: string };
   /** Messages that arrived between its turns; they go next, in order. */
   private readonly queued: Said[] = [];
@@ -174,43 +192,14 @@ export class Subagent {
   constructor(
     private readonly d: Delegation, readonly run: Run, readonly ctx: ThreadContext, readonly role: Role, readonly model: string,
     /** Whether its model is on a cloud endpoint. */
-    readonly cloud: boolean, readonly session: AgentSession, private readonly dispose: () => void,
+    readonly cloud: boolean, body: (sub: Subagent) => SubagentBody,
     /** Releases the parent's folders, for a writer without worktrees. */
     private readonly releaseFolders: () => void,
     /** Tokens it used before, for a subagent that is continued. */
     usage: Usage = { inputTokens: 0, outputTokens: 0 },
   ) {
     this.usage = { ...usage };
-    // Its turns are measured as her own are, so its endpoint's speed counts them too (the sidebar's status panel).
-    const pace = new PaceTracker();
-    session.subscribe((e) => {
-      this.active = Date.now();
-      if (e.type === "agent_start") pace.reset();
-      // From turn_start rather than her meter's before_provider_request, which a session subscriber doesn't see:
-      // its time to first token then includes Pi's context building, so its prompt speed reads a little low.
-      else if (e.type === "turn_start") pace.request();
-      else if (e.type === "message_update" && e.message.role === "assistant") pace.token();
-      else if (e.type === "message_end" && e.message.role === "assistant") pace.end(e.message.usage);
-      else if (e.type === "agent_end") {
-        const p = pace.pace(session.model?.contextWindow ?? 0);
-        if (p) d.recordPace(this, p);
-      }
-      // A build or test run can print nothing for a long while; its own timeout and timeoutMs bound it.
-      if (e.type === "tool_execution_start") this.tools.add(e.toolCallId);
-      else if (e.type === "tool_execution_end") this.tools.delete(e.toolCallId);
-      // What it was told is stored at once (Pi saves it just after this event), so a subagent cut off by a restart can be continued with it.
-      if (e.type === "message_end" && e.message.role !== "assistant") {
-        setImmediate(() => { try { syncEntries(session.sessionManager, ctx.view.own, ctx.threadId); } catch { /* closed meanwhile */ } });
-      }
-      if (e.type === "message_update" && e.assistantMessageEvent.type === "text_delta") this.emit({ type: "output", delta: e.assistantMessageEvent.delta });
-      else if (e.type === "tool_execution_start") this.emit({ type: "tool_call", toolName: e.toolName, args: e.args });
-      else if (e.type === "message_end" && e.message.role === "assistant") {
-        const u = e.message.usage;
-        this.usage.inputTokens += u.input + u.cacheRead + u.cacheWrite;
-        this.usage.outputTokens += u.output;
-        this.emit({ type: "usage", ...this.usage });
-      }
-    });
+    this.body = body(this);
   }
 
   get ref(): RunRef {
@@ -242,11 +231,11 @@ export class Subagent {
       else if (Date.now() - this.active >= idleMs) this.stop("timeout", `stopped after ${Math.round(idleMs / 1000)} s with no sign of work from its model`);
     }, Math.min(idleMs / 4, 30_000));
     try {
-      await this.send(said);
+      await this.body.send(said);
       // Messages that came between turns go next, each after the same check.
       while (this.queued.length && !this.stopped && this.question === undefined) {
         this.guard();
-        await this.send(this.queued.shift()!);
+        await this.body.send(this.queued.shift()!);
       }
     } finally {
       clearTimeout(timer);
@@ -259,36 +248,26 @@ export class Subagent {
       this.emit({ type: "question", question: this.question });
       return this.question;
     }
-    const last = this.session.messages.findLast((m) => m.role === "assistant") as { stopReason?: string; errorMessage?: string } | undefined;
-    const reply = lastText(this.session);
-    if (last?.stopReason === "error" || (!reply && last?.errorMessage)) throw new Error(`the subagent's model failed: ${last.errorMessage ?? "unknown error"}`);
-    return reply || "(The subagent finished without a reply.)";
+    const { text, error } = this.body.reply();
+    if (error) throw new Error(error);
+    return text || "(The subagent finished without a reply.)";
   }
 
   stop(reason: StopReason, message: string = reason): void {
     if (LIVE_STATUSES.includes(this.status) && !this.stopped) {
       this.stopped = { reason, message };
       this.aborter.abort(new Stopped(message));
-      void this.session.abort();
+      this.body.abort();
     }
-  }
-
-  private async send(said: Said): Promise<void> {
-    if (!said.from) return this.session.prompt(said.text);
-    await this.session.sendCustomMessage(userMessage(said), { triggerTurn: true });
-    await this.session.waitForIdle();
   }
 
   /** A message while it works: joins the turn in progress, or waits for its next turn. */
   tell(said: Said): void {
     this.guard();
     if (this.status !== "running") throw new Error("that subagent isn't working right now");
-    if (!this.session.isStreaming) {
-      this.queued.push(said);
-      return;
-    }
-    const sent = said.from ? this.session.sendCustomMessage(userMessage(said), { deliverAs: "steer" }) : this.session.steer(said.text);
-    sent.catch(() => this.queued.push(said));
+    const sent = this.body.steer(said);
+    if (!sent) this.queued.push(said);
+    else sent.catch(() => this.queued.push(said));
   }
 
   /** Stops the run if the parent thread is gone, stopped being logged, or went local-only while this runs on a cloud model. */
@@ -304,7 +283,7 @@ export class Subagent {
     if (!LIVE_STATUSES.includes(this.status)) return;
     this.set(status === "stopped" || this.stopped ? "stopped" : status);
     this.releaseFolders();
-    this.dispose();
+    this.body.dispose();
     this.ctx.view.close();
     if (this.status === "stopped") this.emit({ type: "stopped", reason: this.stopped?.reason ?? "stopped" });
     else this.emit({ type: "finished", status: this.status as "finished" | "failed" });
@@ -314,6 +293,60 @@ export class Subagent {
     this.status = status;
     this.d.store.update(this.ctx.user.id, this.ctx.pool, this.ctx.threadId, { status, usage: this.usage });
   }
+}
+
+/** A subagent's Pi session in this process: its turns, measured as her own are, and stored as they go. */
+function piBody(d: Delegation, sub: Subagent, session: AgentSession, dispose: () => void): SubagentBody {
+  const { ctx } = sub;
+  // Its turns are measured as her own are, so its endpoint's speed counts them too (the sidebar's status panel).
+  const pace = new PaceTracker();
+  session.subscribe((e) => {
+    sub.active = Date.now();
+    if (e.type === "agent_start") pace.reset();
+    // From turn_start rather than her meter's before_provider_request, which a session subscriber doesn't see:
+    // its time to first token then includes Pi's context building, so its prompt speed reads a little low.
+    else if (e.type === "turn_start") pace.request();
+    else if (e.type === "message_update" && e.message.role === "assistant") pace.token();
+    else if (e.type === "message_end" && e.message.role === "assistant") pace.end(e.message.usage);
+    else if (e.type === "agent_end") {
+      const p = pace.pace(session.model?.contextWindow ?? 0);
+      if (p) d.recordPace(sub, p);
+    }
+    // A build or test run can print nothing for a long while; its own timeout and timeoutMs bound it.
+    if (e.type === "tool_execution_start") sub.tools.add(e.toolCallId);
+    else if (e.type === "tool_execution_end") sub.tools.delete(e.toolCallId);
+    // What it was told is stored at once (Pi saves it just after this event), so a subagent cut off by a restart can be continued with it.
+    if (e.type === "message_end" && e.message.role !== "assistant") {
+      setImmediate(() => { try { syncEntries(session.sessionManager, ctx.view.own, ctx.threadId); } catch { /* closed meanwhile */ } });
+    }
+    if (e.type === "message_update" && e.assistantMessageEvent.type === "text_delta") sub.emit({ type: "output", delta: e.assistantMessageEvent.delta });
+    else if (e.type === "tool_execution_start") sub.emit({ type: "tool_call", toolName: e.toolName, args: e.args });
+    else if (e.type === "message_end" && e.message.role === "assistant") {
+      const u = e.message.usage;
+      sub.usage.inputTokens += u.input + u.cacheRead + u.cacheWrite;
+      sub.usage.outputTokens += u.output;
+      sub.emit({ type: "usage", ...sub.usage });
+    }
+  });
+  return {
+    async send(said) {
+      if (!said.from) return session.prompt(said.text);
+      await session.sendCustomMessage(userMessage(said), { triggerTurn: true });
+      await session.waitForIdle();
+    },
+    steer(said) {
+      if (!session.isStreaming) return false;
+      return said.from ? session.sendCustomMessage(userMessage(said), { deliverAs: "steer" }) : session.steer(said.text);
+    },
+    abort() { void session.abort(); },
+    reply() {
+      const last = session.messages.findLast((m) => m.role === "assistant") as { stopReason?: string; errorMessage?: string } | undefined;
+      const text = lastText(session);
+      if (last?.stopReason === "error" || (!text && last?.errorMessage)) return { text, error: `the subagent's model failed: ${last.errorMessage ?? "unknown error"}` };
+      return { text };
+    },
+    dispose,
+  };
 }
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -972,11 +1005,13 @@ export class Delegation {
     if (workspace && !role.readOnly && workspace.forThread({ userId: parent.user.id, pool: parent.pool, threadId: parent.threadId }).settings().mode === "plan") {
       throw new Error(`the thread is in Plan mode, where only read-only roles run; ${role.name} isn't one`);
     }
+    const claude = role.name === CLAUDE_ROLE;
+    if (claude) this.claudeAllowed(run, narrowing);
     let parentCall = this.parentCall(run);
     // A subagent that started local-only (a fork of a local-only conversation, say) stays local-only.
     if (earlier && isRestricted(models.callContext(parent.user.id, parent.pool, earlier.thread))) parentCall = { ...parentCall, localOnly: true };
-    // Refuse a model before anything is written.
-    if ("tier" in pick) models.resolveModel(role.name === "coder" ? "code" : `subagent.${pick.tier}`, parentCall);
+    // Refuse a model before anything is written. Claude Code has none of ours.
+    if (claude) { /* its own */ } else if ("tier" in pick) models.resolveModel(role.name === "coder" ? "code" : `subagent.${pick.tier}`, parentCall);
     else if ("offeringId" in pick.model && !models.allowed(parentCall).some((a) => a.offerings.some((m) => "offeringId" in pick.model && m.id === pick.model.offeringId))) {
       throw new Error(`${models.label(parent.user.id, refId(pick.model)) ?? refId(pick.model)} isn't one of this thread's models`);
     }
@@ -1021,13 +1056,27 @@ export class Delegation {
         // Offline means web_search too: SearXNG is asked from lyricad, not the sandbox.
         workspace.inheritSettings(p, child.id, {
           grants, ...(narrowing.internet === false ? { internet: false, webSearch: false } : {}),
-          ...(noMachines ? { machines: [], repositories: [], mcpServers: [], claudeCode: false } : {}),
+          ...(noMachines ? { machines: [], repositories: [], mcpServers: [], ...(claude ? {} : { claudeCode: false }) } : {}),
         });
         // Its settings follow its parent's as they are now (the stricter mode, switches off where theirs are); it can't leave Plan mode itself.
         // It works in its parent's clones, which the parent fetched at its turn's start; read-only when it gets
         // no repositories, so a narrowed or read-only subagent, or a writer in a worktree, can't change them.
         // A project chat's subagent is read-only as the chat is, so delegating can't make what the chat may not.
         const { setMode: _own, cloneRepositories: _fetched, addRepository: _asks, startJob: _bg, jobs: _jobs, jobOutput: _out, stopJob: _stop, ...tools } = workspace.forThread({ ...p, threadId: child.id, reposOf: parent.threadId, reposReadOnly: noMachines || coordinates, ...(coordinates ? { coordinates } : {}) });
+        if (claude) {
+          // Claude Code in its sandbox, in place of a Pi session: no extensions of ours.
+          if (!tools.claudeCode() || !workspace.claudeDir) throw new Error(CLAUDE_OFF);
+          const target = tools.target();
+          const claudeDir = workspace.claudeDir.bind(workspace);
+          // Asked again at each turn, so a turn can't write into the home's bare mount point once it's locked.
+          const dir = () => claudeDir({ ...p, threadId: child.id, reposOf: parent.threadId });
+          sub = new Subagent(this, run, ctx, role, CLAUDE_MODEL, true,
+            (me) => claudeBody(me, {
+              target, dir, readOnly: !!narrowing.readOnly, name: this.o.name?.() ?? "Lyrica",
+              ...(this.o.onClaudeLimit ? { onLimit: (until?: number) => this.o.onClaudeLimit!(parent, until) } : {}),
+            }), release, usedBefore(earlier));
+          return this.begin(run, sub, child, pick, narrowing, earlier);
+        }
         extensions.push(createWorkspaceExtension({ ...tools, approve: (r) => this.approve(sub!, r) }));
         // A coder works in its parent's checkouts or its own worktrees, under their repositories' own instructions.
         if (role.name === "coder") rules = () => repoRules(tools.target(), checkoutsOf(tools.settings(), tools.repositories?.() ?? [], worktrees));
@@ -1055,28 +1104,49 @@ export class Delegation {
       opened.session.setThinkingLevel(role.thinking);
       // Passes over a model whose machine is away, and records the call. The role keeps its own thinking level.
       const chat = await opened.prepare({ thinking: false }).catch((err) => { opened.dispose(); throw err; });
-      const before = earlier ? { inputTokens: earlier.inputTokens, outputTokens: earlier.outputTokens } : undefined;
-      sub = new Subagent(this, run, ctx, role, chat.label, chat.endpoint.kind !== "local", opened.session, opened.dispose, release, before);
-      run.subagents.push(sub);
-      if (earlier) {
-        this.store.update(parent.user.id, parent.pool, child.id, { status: "running", model: sub.model, offeringId: chat.ref.offeringId });
-      } else {
-        this.store.record(parent.user.id, {
-          pool: parent.pool, thread: child.id, run: run.id, parent: parent.threadId, role: role.name, model: sub.model, offeringId: chat.ref.offeringId,
-          background: run.background, status: "running", startedAt: new Date().toISOString(),
-          pick: "tier" in pick ? pick : { model: refId(pick.model) }, narrowing: compact(narrowing),
-        });
-      }
-      sub.emit({ type: "started", role: role.name, model: sub.model, title: child.title ?? "" });
-      if (run.abort.signal.aborted) sub.stop("stopped", stopped(run.abort.signal).message);
-      return sub;
+      sub = new Subagent(this, run, ctx, role, chat.label, chat.endpoint.kind !== "local", (me) => piBody(this, me, opened.session, opened.dispose), release, usedBefore(earlier));
+      return this.begin(run, sub, child, pick, narrowing, earlier, chat.ref.offeringId);
     } catch (err) {
       release();
       view.close();
       throw err;
     }
   }
+
+  /** A new or continued subagent joins its run: recorded, announced, and stopped at once if the run already was. */
+  private begin(run: Run, sub: Subagent, child: { id: string; title?: string | null }, pick: ModelPick, narrowing: Narrowing, earlier: SubagentRecord | undefined, offeringId?: string): Subagent {
+    const { parent } = run;
+    run.subagents.push(sub);
+    if (earlier) {
+      this.store.update(parent.user.id, parent.pool, child.id, { status: "running", model: sub.model, ...(offeringId ? { offeringId } : {}) });
+    } else {
+      this.store.record(parent.user.id, {
+        pool: parent.pool, thread: child.id, run: run.id, parent: parent.threadId, role: sub.role.name, model: sub.model, ...(offeringId ? { offeringId } : {}),
+        background: run.background, status: "running", startedAt: new Date().toISOString(),
+        pick: "tier" in pick ? pick : { model: refId(pick.model) }, narrowing: compact(narrowing),
+      });
+    }
+    sub.emit({ type: "started", role: sub.role.name, model: sub.model, title: child.title ?? "" });
+    if (run.abort.signal.aborted) sub.stop("stopped", stopped(run.abort.signal).message);
+    return sub;
+  }
+
+  /** Whether this thread's runs have Claude Code now: the claude role is listed, and runs, only then. */
+  claudeCode(parent: Pick<Parent, "user" | "pool" | "threadId">): boolean {
+    return !!this.o.workspace?.claudeDir && this.o.workspace.forThread({ userId: parent.user.id, pool: parent.pool, threadId: parent.threadId }).claudeCode();
+  }
+
+  /** Refuses the claude role where the thread's runs don't have Claude Code, or with the internet cut off, which it needs. */
+  private claudeAllowed(run: Run, narrowing: Narrowing): void {
+    if (!this.claudeCode(run.parent)) throw new Error(CLAUDE_OFF);
+    const refused = this.o.claudeRefused?.(run.parent.user.id);
+    if (refused) throw new Error(refused);
+    if (narrowing.internet === false) throw new Error("Claude Code needs the internet to reach Anthropic, so it can't run with internet: false");
+  }
 }
+
+const CLAUDE_OFF = "Claude Code isn't on in this thread: it needs a general thread that isn't local-only, its Claude Code switch on, the user's Claude token in Settings, and a network that reaches Anthropic";
+const usedBefore = (earlier: SubagentRecord | undefined): Usage | undefined => earlier ? { inputTokens: earlier.inputTokens, outputTokens: earlier.outputTokens } : undefined;
 
 /** What `message` did, and on which subagent. */
 export interface Messaged {

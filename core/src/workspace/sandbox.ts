@@ -60,6 +60,8 @@ export interface SandboxSpec {
   onPullCreate?: (pr: { repo: string; number: number }) => void;
   /** Claude Code's token counts per message request, passed straight through (relay.ts). */
   onUsage?: (usage: ClaudeCodeUsage) => void;
+  /** Claude Code's plan reached its usage limit, passed straight through (relay.ts). */
+  onLimit?: (until?: number) => void;
   bwrap?: string;
   pasta?: string;
 }
@@ -365,6 +367,7 @@ export class Sandbox implements ExecutionTarget {
       upstreams: c.upstreams,
       onPullCreate: this.spec.onPullCreate,
       onUsage: this.spec.onUsage,
+      onLimit: this.spec.onLimit,
     }) : undefined;
     try {
       return await this.launch(argv, cwd, forward, relay);

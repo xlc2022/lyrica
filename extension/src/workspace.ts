@@ -481,7 +481,7 @@ export const SHARED_LINE = `${SHARED} is shared with your parent and child threa
 export const BUILD_THERE = `Build, edit and save the work in a read-write folder you were given (or a repository in ${WORKDIR}/repos), never as loose files in ${WORKDIR}, which is for scratch and things to show the person.`;
 
 /** The one prompt line for a thread with Claude Code (docs/workspace.md, "Claude Code"). */
-export const CLAUDE_CODE_LINE = "Claude Code is in your sandbox: `claude -p \"<task>\"` with bash, in this folder or a clone, hands a coding or repository job to Anthropic's coding agent, which works here and reports back; `claude -c -p \"<more>\"` continues its last job. It spends the person's own Claude plan, so use it for jobs big or hard enough to need it, never for conversation. If it says the plan's usage limit is reached, don't do the job another way: set a wake-up (threads, later) for when it resets and carry on then.";
+export const CLAUDE_CODE_LINE = "Claude Code, Anthropic's coding agent, is on here: delegate a coding or repository job to role claude. It works in this sandbox, in the background, and its report arrives as a message; delegate message continues it. With no delegate tool, `claude -p \"<task>\"` with bash does the same. It spends the person's own Claude plan, so use it for jobs big or hard enough to need it, never for conversation. If it says the plan's usage limit is reached, don't do the job another way: set a wake-up (threads, later) for when it resets and carry on then.";
 
 /** The sandbox's programs on this host (sandboxTools in core), and how to use its Chromium when it has one. */
 export function toolsLine(t: { programs: string[]; browser?: string } = sandboxTools()): string {

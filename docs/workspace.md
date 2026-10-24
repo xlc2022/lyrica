@@ -1047,13 +1047,16 @@ it adds no tool.
   to the thread, `claude -c` continues the thread's last job, and the
   sweep removes it with the thread. It drops any other Anthropic key, turns off
   Claude Code's update checks and telemetry, and skips its permission
-  prompts (`--permission-mode bypassPermissions`, as the owner chose): the
+  prompts (`--permission-mode bypassPermissions`, as the owner chose, unless
+  the call gives its own mode, as a read-only delegate run does): the
   sandbox is the fence, and her `bash` call already went through the
   thread's mode. Plan mode has no `bash`, so no Claude Code.
-- **The prompt** has one line for such a thread (`CLAUDE_CODE_LINE`):
-  `claude -p` is for coding and repository jobs worth the user's plan, never
-  conversation, and when it reports the plan's usage limit she waits for the
-  reset with a wake-up rather than doing the job another way.
+- **The prompt** has one line for such a thread (`CLAUDE_CODE_LINE`): she
+  hands coding and repository jobs worth the user's plan, never
+  conversation, to the `claude` delegate role (docs/delegation.md, "Claude
+  Code"), or `claude -p` with bash where she has no `delegate`, and when it
+  reports the plan's usage limit she waits for the reset with a wake-up
+  rather than doing the job another way.
 
 ## Her own code
 
@@ -1353,7 +1356,8 @@ The machine running `lyricad` needs:
 - gocryptfs;
 - FUSE (`/dev/fuse` and `fusermount3`);
 - passt (for `pasta`), nftables, `unshare` and bash, and `/dev/net/tun`;
-- unprivileged user namespaces.
+- unprivileged user namespaces, nested (a networked run opens one inside
+  another).
 
 On NixOS the module brings them, refuses to build while
 `security.allowUserNamespaces` is off, and `nix/check-host.sh` checks the
@@ -1376,7 +1380,9 @@ nothing special.
 4. As the service user, `bwrap --unshare-all --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlink usr/lib64 /lib64 -- /bin/true`
    succeeds. On Ubuntu 24.04 or later, if it fails with "Permission denied",
    set `kernel.apparmor_restrict_unprivileged_userns=0` on the Proxmox host.
-5. As the service user, `pasta --config-net -- true` succeeds.
+5. As the service user, `pasta --config-net -- true` succeeds, and so does
+   `unshare -r unshare -r true` (nested user namespaces). If the nested one
+   fails, check `user.max_user_namespaces` isn't 1 or 0.
 6. Check the self-test passes: if it fails, `lyricad` logs "network is off
    for every thread" with the reason when it unlocks (`journalctl -u
    lyricad`), and the control panel shows it. Until it's fixed, her tools

@@ -15,7 +15,9 @@ interface Due extends WakeupInfo { pool: Pool; thread: string }
 
 /** The note of a turn a plan's usage limit cut off: it carries on once the plan resets, or when the user falls back. */
 export const PLAN_LIMIT_RESUME = "Your model's plan reached its usage limit, which cut your last turn off. Carry on with what you were doing.";
-const limitMark = (note: string) => (note === PLAN_LIMIT_RESUME ? { planLimit: true as const } : {});
+/** The note of a thread whose claude delegate run the Claude plan's usage limit stopped: it carries on once that plan resets, or when the user falls back. */
+export const CLAUDE_LIMIT_RESUME = "The Claude plan reached its usage limit, which stopped a claude delegate run of yours. Carry on with it now: continue the run with delegate action message (delegate status lists it). If the user chose to fall back until the plan resets, the claude role is refused, so hand its job to the coder role instead, with what its thread shows so far.";
+const limitMark = (note: string) => (note === PLAN_LIMIT_RESUME ? { planLimit: true as const } : note === CLAUDE_LIMIT_RESUME ? { planLimit: true as const, claudeCode: true as const } : {});
 
 /** A wake-up this much past its time says when it was due. */
 const LATE_MS = 2 * 60_000;
@@ -58,18 +60,18 @@ export class Wakeups {
   /** A thread's pending wake-ups, soonest first. */
   list(userId: string, pool: Pool, thread: string): WakeupInfo[] {
     return (this.due.get(userId) ?? []).filter((d) => d.pool === pool && d.thread === thread)
-      .sort((a, b) => a.dueAt.localeCompare(b.dueAt) || a.id - b.id).map(({ id, dueAt, planLimit }) => ({ id, dueAt, ...(planLimit ? { planLimit } : {}) }));
+      .sort((a, b) => a.dueAt.localeCompare(b.dueAt) || a.id - b.id).map(({ id, dueAt, planLimit, claudeCode }) => ({ id, dueAt, ...(planLimit ? { planLimit } : {}), ...(claudeCode ? { claudeCode } : {}) }));
   }
 
   /** The user's threads waiting for a plan's usage limit to reset. */
-  waitingForPlans(userId: string): { pool: Pool; thread: string; dueAt: string }[] {
-    return (this.due.get(userId) ?? []).filter((d) => d.planLimit).map(({ pool, thread, dueAt }) => ({ pool, thread, dueAt }));
+  waitingForPlans(userId: string): { pool: Pool; thread: string; dueAt: string; claudeCode?: true }[] {
+    return (this.due.get(userId) ?? []).filter((d) => d.planLimit).map(({ pool, thread, dueAt, claudeCode }) => ({ pool, thread, dueAt, ...(claudeCode ? { claudeCode } : {}) }));
   }
 
-  /** The user fell back from a limited plan: these threads' waiting turns carry on now. */
-  resumeNow(userId: string, threads: { pool: Pool; thread: string }[], now = new Date()): void {
+  /** The user fell back from a limited plan: these threads' waiting turns (or, for Claude Code's plan, their claude runs') carry on now. */
+  resumeNow(userId: string, threads: { pool: Pool; thread: string }[], claudeCode = false, now = new Date()): void {
     for (const d of this.due.get(userId) ?? []) {
-      if (d.planLimit && threads.some((t) => t.pool === d.pool && t.thread === d.thread)) { d.dueAt = now.toISOString(); void this.fire(userId, d, now); }
+      if (d.planLimit && !d.claudeCode === !claudeCode && threads.some((t) => t.pool === d.pool && t.thread === d.thread)) { d.dueAt = now.toISOString(); void this.fire(userId, d, now); }
     }
   }
 

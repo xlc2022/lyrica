@@ -976,8 +976,10 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   docs/contracts.md). Pi doesn't retry the reply, the person gets one
   notice a turn saying when it resets, and the turn carries on by itself
   a minute after the reset (`PLAN_LIMIT_RESUME`, a wake-up outside her own
-  limits, one per thread: a later cut-off moves it). Claude Code in her sandbox is the same:
-  when it reports its plan's limit, she sets a wake-up for the reset
+  limits, one per thread: a later cut-off moves it). Claude Code's plan is
+  the same: a claude delegate run it stops makes its thread wait, with the
+  same card and notification (docs/delegation.md, "Claude Code"); her own
+  `claude -p` in bash tells her to set a wake-up for the reset
   (`CLAUDE_CODE_LINE`).
 - Removing a plan deletes its sign-in; Lyrica stays connected in the
   provider's account settings until it is disconnected there.

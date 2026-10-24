@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
 import type { MessagePage, NotificationPage, ThreadEvent, ThreadSettings, ThreadSummary, WakeupInfo } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
+import type { DelegationOptions } from "@lyrica/extension";
+import { claudePlanId } from "../src/plan-waits.ts";
+import { CLAUDE_LIMIT_RESUME } from "../src/wakeups.ts";
 
 const said = (c: ChatRequest) => JSON.stringify(c.messages);
 const later = (args: object): Reply => ({ tools: [{ name: "threads", args: { action: "later", ...args } }] });
@@ -201,5 +204,34 @@ describe("a plan's usage limit", () => {
     } finally {
       s.restore();
     }
+  });
+});
+
+describe("the Claude plan's usage limit", () => {
+  it("makes a thread whose claude run it stopped wait for the reset, shows it, and falls back to the coder role when the user asks", async () => {
+    const s = await setup();
+    const { models, delegation } = s.d.services!;
+    // What a claude run's body reports when Claude Code stops on the limit (extension/src/delegate/claude.ts).
+    const o = (delegation as unknown as { o: DelegationOptions }).o;
+    const until = Date.now() + 30 * 60_000;
+    o.onClaudeLimit!({ user: s.d.services!.users.get(s.rt.ada.id)!, pool: "general", interface: "web", threadId: s.thread.id }, until);
+    expect(models.planLimitedUntil(claudePlanId(s.rt.ada.id))).toBe(until);
+    const wakeups = await s.wakeups();
+    expect(wakeups).toEqual([expect.objectContaining({ planLimit: true, claudeCode: true, dueAt: new Date(until + 60_000).toISOString() })]);
+    expect(o.claudeRefused!(s.rt.ada.id)).toContain("set a wake-up");
+
+    const settings = (await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body;
+    expect(settings.planWait).toMatchObject({ name: "Claude Code", next: "the coder role", claudeCode: true });
+    const notes = (await s.ada.get<NotificationPage>(`/api/u/${s.rt.ada.id}/notifications`)).body.items.filter((n) => n.type === "limit");
+    expect(notes).toEqual([expect.objectContaining({ title: "Build waits for Claude Code's usage limit" })]);
+    expect(notes[0]!.actions[0]!.title).toContain("coder role");
+
+    // Falling back carries the thread on now, told to hand the job to the coder role, which the claude role now says too.
+    const from = s.stream.events.length;
+    expect((await s.ada.post(notes[0]!.actions[0]!.path, {})).status).toBe(200);
+    await s.stream.until((e) => e.type === "turn_end", from);
+    expect(s.asked.at(-1)).toContain(CLAUDE_LIMIT_RESUME);
+    expect(o.claudeRefused!(s.rt.ada.id)).toContain("hand this job to the coder role");
+    expect((await s.ada.get<ThreadSettings>(`${s.path}/settings`)).body.planWait).toBeUndefined();
   });
 });

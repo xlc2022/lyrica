@@ -533,7 +533,7 @@ function PlanWaitCard({ wait, userId, onDone }: { wait: NonNullable<ThreadSettin
   return (
     <div className="card plan-wait" role="status">
       <p>{wait.name} reached its plan's usage limit. This thread carries on when it resets at <span className="num">{clock(wait.until)}</span>.</p>
-      {wait.next && <button type="button" className="sm" disabled={busy} title={`Every thread and sleep waiting on ${wait.name} uses ${wait.next} until it resets.`}
+      {wait.next && <button type="button" className="sm" disabled={busy} title={wait.claudeCode ? `Every thread waiting on ${wait.name} hands its job to ${wait.next} until it resets.` : `Every thread and sleep waiting on ${wait.name} uses ${wait.next} until it resets.`}
         onClick={() => void run(async () => { await post(`${u(userId, "endpoints")}/${encodeURIComponent(wait.endpointId)}/fall-back`, {}); onDone(); })}>Use {shortModel(wait.next)} until then</button>}
       <ErrorText error={error} />
     </div>
