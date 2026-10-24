@@ -99,7 +99,8 @@ test("Models: the sidebar link opens Overview, Hosts and endpoints lists the end
   await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
     const body = await (await fetchReal(route)).json() as ModelsPage;
     for (const ep of body.endpoints) for (const m of ep.models) if (m.modelId === "old-model") m.status = "missing";
-    await route.fulfill({ json: body });
+    // The page before the reload may still be asking: the reload drops that request, so there is nothing left to answer.
+    await route.fulfill({ json: body }).catch((err: Error) => { if (!String(err).includes("Route is already handled")) throw err; });
   });
   await page.reload();
   const routerRow = page.locator("li.ep-row").filter({ hasText: /^router / });
