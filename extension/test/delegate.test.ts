@@ -209,10 +209,10 @@ describe("delegate", () => {
     const scout = await s.run(parent, { task: "read the checkout", role: "scout" });
     expect(scout.status).toBe("finished");
     const child = s.delegation.status(parent).find((r) => r.status === "finished")!;
-    // The shared clone mount is independent of repository grants: no forge credentials for a scout.
+    // A scout reads the parent's clones, and its forge credentials are read-only: the relay refuses a push or an API write.
     expect(opened).toEqual([expect.objectContaining({ threadId: child.thread, reposOf: parent.threadId, reposReadOnly: true })]);
-    expect(settings.effective(child.thread)).toMatchObject({ grants: [], repositories: [] });
-    expect(ws.credentialsFor({ userId: s.ada.id, pool: "general", threadId: child.thread }).forge).toEqual([]);
+    expect(settings.effective(child.thread)).toMatchObject({ grants: [], repositories: [{ name: "example/project", account: "bot", readOnly: true }] });
+    expect(ws.credentialsFor({ userId: s.ada.id, pool: "general", threadId: child.thread }).forge.map((f) => f.readOnly)).toEqual([true]);
   });
 
   it("gives an offline researcher neither web_search nor web_fetch", async () => {

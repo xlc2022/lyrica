@@ -68,7 +68,7 @@ export interface SandboxSpec {
 
 /** Tokens a sandbox's runs may use: its repositories' accounts', and Claude Code's. */
 export interface Credentials {
-  forge: { name: string; account: Pick<GitAccountConfig, "kind" | "host" | "account" | "token"> }[];
+  forge: { name: string; account: Pick<GitAccountConfig, "kind" | "host" | "account" | "token">; readOnly?: boolean }[];
   anthropic?: string;
   /** The name and email her commits carry, from the first repository's account. */
   identity?: { name: string; email: string };
@@ -361,7 +361,7 @@ export class Sandbox implements ExecutionTarget {
     const c = this.spec.credentials;
     const relay = c && (c.forge.length || c.anthropic) ? await openRelay({
       anthropic: c.anthropic,
-      forge: c.forge.map((r, i) => ({ repo: r.name, kind: r.account.kind, host: r.account.host, token: r.account.token, placeholder: this.placeholders[i]! })),
+      forge: c.forge.map((r, i) => ({ repo: r.name, kind: r.account.kind, host: r.account.host, token: r.account.token, placeholder: this.placeholders[i]!, ...(r.readOnly ? { readOnly: true } : {}) })),
       reaches: (host) => reachesHost(this.spec.network, host),
       internet: this.spec.network.internet,
       upstreams: c.upstreams,

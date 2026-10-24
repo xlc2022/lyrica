@@ -853,6 +853,10 @@ describe("code thread worktrees", () => {
     const cloned = (await s.make("Cloned")).threads![0]!.id;
     await s.idle(cloned);
     expect(s.ws.threadWork(cloned)?.reason).toBeUndefined();
+    // A read-only child keeps the repository, read-only at the relay.
+    const reader = (await s.make("Reader", { readOnly: true })).threads![0]!.id;
+    await s.idle(reader);
+    expect(s.ws.effective(reader).repositories).toEqual([{ name: "ada/track", account: "ada", readOnly: true }]);
     s.ws.setThread(s.thread.id, "general", { repositories: [] });
     const bare = (await s.make("Bare")).threads![0]!.id;
     await s.idle(bare);

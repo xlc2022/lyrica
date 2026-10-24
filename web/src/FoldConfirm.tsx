@@ -31,7 +31,7 @@ export function FoldConfirm({ chosen, tree, settings, base, projectName, move, o
       const grants = [...p.grants]; const repositories = [...p.repositories];
       for (const { settings: c } of chosen) {
         for (const g of c.grants) { const i = grants.findIndex(x => x.path === g.path); if (i < 0) grants.push(g); else if (g.writable) grants[i] = g; }
-        for (const r of c.repositories) if (!repositories.some(x => x.name === r.name && x.account === r.account)) repositories.push(r);
+        for (const r of c.repositories) if (!repositories.some(x => x.name === r.name && x.account === r.account)) repositories.push({ name: r.name, account: r.account });
       }
       await patch<ThreadSettings>(`${base}/settings`, {
         grants, repositories, machines: [...new Set([...p.machines, ...chosen.flatMap(c => c.settings.machines)])], hosts: [...new Set([...p.network.hosts, ...chosen.flatMap(c => c.settings.network.hosts)])],
