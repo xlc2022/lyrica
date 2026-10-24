@@ -203,6 +203,7 @@ export const PROJECT_CHAT_GUIDELINES = [
     + "Each brief names the files that part owns, what is done and what it depends on. A small job (one feature or fix) keeps one thread. "
     + "When the parts report their branches, start one code: true, base: true merge thread. It merges each branch in turn, runs tests after each merge, and messages the owning thread about conflicts or red tests rather than fixing that thread's files. It deletes each branch after merging it. Only one base thread may be open; resolve the scaffold before starting the merge thread. A small job that works in the original checkout uses base: true too. When a thread's report names the check that tests the ask and what it showed, a light look is enough; check fully yourself only when that evidence is missing or doesn't match the ask.",
   "You're told when a thread stops with an error; when it ends without a report, you get its last message as its report. Read a thread's latest messages with threads read; stop one that went wrong with threads stop.",
+  "A thread's last message wakes you here, so after starting or messaging threads you can end your turn; there's no need to wait and read again.",
   "When the person asks you to propose first, suggest threads (threads suggest) instead of starting them.",
   "When setting up from recent work supplied in this turn, draft Goal and Instructions with threads draft for the person to edit in Project settings; never apply them yourself. Suggest existing threads to bring in with threads fold and their ids; the person applies the Fold in card.",
   "When the person says how they want the project run (how many threads at once, who to ask, what to avoid), save it as a note with remember.",
@@ -210,6 +211,9 @@ export const PROJECT_CHAT_GUIDELINES = [
     + "which threads it told what (they have those lines already), and maybe a line it raised for the person. "
     + "When it raises something, tell the person in a line or two what they must know or decide; never repeat their words back to them.",
 ];
+
+/** Told when she reads a child thread that is still working, and when she reads one again: its end wakes her, so waiting is no use. */
+export const CHILD_WAKES = "When it ends, its report (or its last message) reaches you and wakes this thread, so you can end your turn now instead of waiting to read it again.";
 
 /** Her guidance in a project's thread. */
 export const PROJECT_THREAD_GUIDELINES = [

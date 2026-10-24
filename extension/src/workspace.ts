@@ -165,6 +165,27 @@ const shown = (tool: string, input: Record<string, unknown>, machine: string | u
  * also enforces the thread's mode and switches: what they turn off isn't
  * offered, and a call to it is refused.
  */
+/**
+ * `edit`'s arguments, before validation: Pi takes `edits` sent as one JSON
+ * string; some models send each edit as a JSON string too, which is parsed
+ * here. An edit that is still not an object fails with what came and the
+ * shape wanted, rather than only "must be object".
+ */
+export function editArguments(input: unknown): unknown {
+  const args = input as { edits?: unknown } | null;
+  if (!args || !Array.isArray(args.edits)) return input;
+  const edits = args.edits.map((e) => {
+    if (typeof e !== "string") return e;
+    try { return JSON.parse(e) as unknown; } catch { return e; }
+  });
+  edits.forEach((e, i) => {
+    if (!e || typeof e !== "object" || Array.isArray(e)) {
+      throw new Error(`edits[${i}] came as ${Array.isArray(e) ? "an array" : e === null ? "null" : `a ${typeof e}`}; each edit must be an object, {"oldText": "<exact text in the file>", "newText": "<its replacement>"}, inside the edits array, not a string`);
+    }
+  });
+  return { ...args, edits };
+}
+
 export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
   return (pi) => {
     /** An MCP tool's server (one of the thread's, or none) and its own name there, and whether the server marks it read-only. */
@@ -200,6 +221,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           ...(name === "bash" ? { timeout: BASH_TIMEOUT, ...(tools.startJob ? { background: BACKGROUND } : {}) } : {}),
           machine: MACHINE,
         }) as typeof template.parameters,
+        ...(name === "edit" ? { prepareArguments: (input: unknown) => editArguments(template.prepareArguments ? template.prepareArguments(input) : input) } : {}),
         async execute(id, params, signal, onUpdate, ctx) {
           const { machine: named, background, ...rest } = params as Record<string, unknown>;
           if (name === "bash" && background === true && tools.startJob) {

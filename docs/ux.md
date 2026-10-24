@@ -182,6 +182,7 @@ Rules:
   Wipe my memory…, Wipe your memory?, Keep everyone's skills, Keep my skills, Your password, Stopping everything, Stopping your work, Everything has stopped, running, Reply, Subagent,
   Subagent status, Subagent wait, Subagent run stopped, Subagent models, Message to the <role>,
   Message to a subagent, Message to <title>, Message to a thread, Message to a forgotten thread,
+  Read <title>, Read a thread, Read a forgotten thread,
   Show <role> <n>.
 - Numbers get units beside the field (GB, %, tokens), and a maximum shown
   where one exists ("of 128k").

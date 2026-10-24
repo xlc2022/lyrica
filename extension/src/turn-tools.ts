@@ -1,5 +1,6 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { CHILD_WAKES } from "@lyrica/core";
 import { setToolsOff } from "./gate.ts";
 
 // Principles 1 and 2: stop real tool loops in the runtime, independently of the prompt.
@@ -38,6 +39,9 @@ const outsideCode = (text: string) => text.replace(/```[\s\S]*?(```|$)/g, "").re
 export const INTERRUPTED_NOTICE = "lyrica-interrupted";
 export const INTERRUPTED = "Interrupted when Lyrica restarted, before this turn finished. Send a message to go on.";
 
+/** A `threads read`: reading a working child again only waits for what its end will bring anyway. */
+const isThreadRead = (tool: string, args: unknown) => tool === "threads" && (args as { action?: unknown } | null)?.action === "read";
+
 function normalized(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(normalized).join(",")}]`;
   if (value && typeof value === "object") return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${normalized((value as Record<string, unknown>)[k])}`).join(",")}}`;
@@ -73,7 +77,9 @@ export function createTurnToolsExtension(): ExtensionFactory {
       const key = `${e.toolName}:${normalized(e.args)}`;
       const count = (repeats.get(key) ?? 0) + 1;
       repeats.set(key, count);
-      if (count >= MAX_IDENTICAL_TOOL_CALLS) refused.set(e.toolCallId, "You already have this result: this tool was called with identical arguments twice. Answer or try something different.");
+      if (count >= MAX_IDENTICAL_TOOL_CALLS) refused.set(e.toolCallId, isThreadRead(e.toolName, e.args)
+        ? `You already read this thread twice with these arguments. If it is still working: ${CHILD_WAKES}`
+        : "You already have this result: this tool was called with identical arguments twice. Answer or try something different.");
       if (calls >= MAX_TURN_TOOL_CALLS) { stopped = true; why = `Turn stopped after \`${calls}\` tool calls.`; }
       else if (run >= MAX_SAME_TOOL_RUN) { stopped = true; why = `Turn stopped after \`${run}\` calls in a row to \`${e.toolName}\`.`; }
     });

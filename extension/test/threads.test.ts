@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { DEFAULT_THREADS_LIMITS, ROUTINE_GUIDELINE } from "@lyrica/core";
+import { CHILD_WAKES, DEFAULT_THREADS_LIMITS, ROUTINE_GUIDELINE } from "@lyrica/core";
 import { checkWords, createThreadsExtension, MESSAGE_MAX, type ThreadsHost } from "../src/threads.ts";
 import { ContextMeter } from "../src/context.ts";
 import { withMemory } from "./helpers.ts";
@@ -187,6 +187,21 @@ describe("handing files over", () => {
     expect((await call({ action: "read", id: `t:${scout.id}` })).content).toEqual([{ type: "text", text: `[t:${scout.id}] has no messages to read.` }]);
     const theirs = own.createThread({ interface: "web", parent: project.id, subagent: true });
     await expect(call({ action: "read", id: theirs.id })).rejects.toThrow("for a subagent's result, use delegate with action wait and its run ID");
+  });
+
+  it("says a child that is still working wakes the thread when it ends, so a read needn't be repeated", async () => {
+    const s = await withMemory();
+    const t = s.thread();
+    const child = t.view.own.createThread({ interface: "web", parent: t.threadId, child: true, title: "Seeds" });
+    let status: "working" | "idle" = "working";
+    const host: ThreadsHost = { limits: DEFAULT_THREADS_LIMITS, start: async () => { throw new Error("unused"); }, message: async () => "started" as const,
+      list: () => [{ id: child.id, title: "Seeds", status, updatedAt: "" }] };
+    let tool!: Parameters<ExtensionAPI["registerTool"]>[0];
+    createThreadsExtension(t.context, host)({ on: () => {}, registerTool: (v: typeof tool) => { tool = v; } } as unknown as ExtensionAPI);
+    const read = async () => ((await tool.execute("call", { action: "read", id: child.id }, undefined, undefined, {} as never)).content[0] as { text: string }).text;
+    expect(await read()).toBe(`[t:${child.id}] has no messages to read.\n\n[t:${child.id}] is still working. ${CHILD_WAKES}`);
+    status = "idle";
+    expect(await read()).toBe(`[t:${child.id}] has no messages to read.`);
   });
 
   it("reads question: \"False\" as false and a written-out question as the message, asked", async () => {

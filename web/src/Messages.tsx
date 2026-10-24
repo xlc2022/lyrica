@@ -714,13 +714,14 @@ function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" 
   const args = (part.args ?? {}) as { action?: string; title?: string; task?: string; text?: string; to?: string; summary?: string };
   if (args.action === "compact" && args.summary) return <CompactionCard part={part} summary={args.summary} env={env} />;
   const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
-  // A message names the thread it went to (known once it's sent) by its current title: "a thread" until then, and a forgotten one has no Open.
-  const to = args.action === "message" && args.to !== "parent" ? part.threads?.[0] : undefined;
+  // A message names the thread it went to, and a read the thread it read (known once it runs), by its current title: "a thread" until then, and a forgotten one has no Open.
+  const to = (args.action === "message" && args.to !== "parent") || args.action === "read" ? part.threads?.[0] : undefined;
   const titleOf = useMentionTitles(to ? `[${to.pool === env.pool ? "" : `${to.pool}/`}t:${to.id}]` : "", env.userId, env.pool);
   const toTitle = to && (env.pool === "general" && to.pool === "private" ? null : titleOf(to.pool, to.id));
   // No action yet while she writes the call: the tool's own name, until it runs. The head names what the call does, never more.
   const head = args.action === "start" ? `Child thread: ${args.title ?? ""}`
     : args.action === "message" ? (args.to === "parent" ? "Update to the parent thread" : `Message to ${toTitle === null ? "a forgotten thread" : toTitle ?? "a thread"}`)
+    : args.action === "read" && to ? `Read ${toTitle === null ? "a forgotten thread" : toTitle ?? "a thread"}`
     : args.action === "ask" && part.isError ? "Question not asked"
     : (args.action && THREADS_HEADS[args.action]) ?? "Threads";
   const started = args.action === "start" ? part.threads?.[0] : undefined;

@@ -15,6 +15,9 @@ Lyrica uses Pi's standard `read`, `write`, `edit` and `bash` tools. Pi lets each
 tool's file and process operations be swapped for another backend
 (`createReadTool(cwd, { operations })` and so on). Lyrica's versions send every
 operation to an **execution target**. Nothing runs inside `lyricad`'s process.
+`edit` also takes each of its `edits` sent as a JSON string, as some models
+send them (`editArguments`); an edit still not an object fails saying what
+came and the shape wanted.
 A `bash` call with no `timeout` gets `BASH_TIMEOUT_S` (600 seconds), so a
 command that never ends (a test whose browser never closes) can't hold the
 thread; she gives a longer one for a long build, or runs it in the

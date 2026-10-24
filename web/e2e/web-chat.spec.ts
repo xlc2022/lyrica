@@ -688,7 +688,7 @@ test("a child thread nests under its parent, opens from its card, and goes with 
   await noHorizontalScroll(page);
 });
 
-test("a message to a child thread is headed by its title, cut to one line, and by \"a forgotten thread\" once it is gone", async ({ page, baseURL }) => {
+test("a message to a child thread, and a read of it, are headed by its title, cut to one line, and by \"a forgotten thread\" once it is gone", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");
   const title = "Seed bed by the south wall, where the morning sun reaches first, the frost lifts early and the wind from the hill never quite gets in";
@@ -700,6 +700,10 @@ test("a message to a child thread is headed by its title, cut to one line, and b
   const head = card.locator(".sub-head b");
   await expect(head).toHaveText(`Message to ${title}`);
   await expect(head).toHaveAttribute("title", `Message to ${title}`);
+  await send(page, `read ${title}`);
+  await expect(page.getByText("Read it.")).toBeVisible();
+  const readHead = page.locator(".threads-card .sub-head b").filter({ hasText: /^Read / });
+  await expect(readHead).toHaveText(`Read ${title}`);
   // One line, cut with an ellipsis, and Open still beside it. On a failure the message says how the head was laid out.
   // Measured again while the list has just replaced the head: the stored turn takes the live one's place after
   // "Sent it.", and a detached element measures 0 with no computed style, which read as "not cut".
@@ -735,6 +739,7 @@ test("a message to a child thread is headed by its title, cut to one line, and b
   await page.goto(parentUrl);
   await page.reload();
   await expect(head).toHaveText("Message to a forgotten thread");
+  await expect(readHead).toHaveText("Read a forgotten thread");
   await expect(head).not.toHaveAttribute("title");
   await expect(card.getByRole("link", { name: "Open" })).toHaveCount(0);
   // Forget the parent too, so later tests' recall doesn't find these words.

@@ -7,7 +7,7 @@ import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServ
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { BASH_TIMEOUT_S, createDownloadsExtension, pageTool, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
-import { BUILD_THERE, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
+import { BUILD_THERE, editArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { Users, Workspace } from "@lyrica/core";
@@ -481,6 +481,15 @@ describe("workspace tools in a Pi session", () => {
     const images = await run("auto", [], { settings: { images: false } });
     expect(images.offered[0]).not.toContain("image");
     expect(images.offered[0]).toContain("web_search");
+  });
+});
+
+describe("edit arguments", () => {
+  it("parses edits a model sent as JSON strings, and says what came and the shape wanted when an edit still isn't an object", () => {
+    const edit = { oldText: "a", newText: "b" };
+    expect(editArguments({ path: "x", edits: [JSON.stringify(edit)] })).toEqual({ path: "x", edits: [edit] });
+    expect(editArguments({ path: "x", edits: [edit] })).toEqual({ path: "x", edits: [edit] });
+    expect(() => editArguments({ path: "x", edits: ["oldText: a"] })).toThrow('edits[0] came as a string; each edit must be an object, {"oldText"');
   });
 });
 

@@ -32,7 +32,7 @@ async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1
   const loader = new DefaultResourceLoader({ cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
     extensionFactories: [createTurnToolsExtension(), pi => {
       pi.registerProvider(faux.provider);
-      for (const name of ["search", "other"]) pi.registerTool({ name, label: name, description: name,
+      for (const name of ["search", "other", "threads"]) pi.registerTool({ name, label: name, description: name,
         parameters: Type.Object({ query: Type.String(), nested: Type.Optional(Type.Object({ a: Type.Number(), b: Type.Number() })) }),
         execute: async () => { executed++; return { content: [{ type: "text", text: "result" }], details: {} }; } });
     }, createImageExtension({ enabled: () => { executed++; throw new Error("must not execute"); } } as unknown as ImageTools)] });
@@ -76,6 +76,14 @@ it("refuses the third identical call despite different object key order", async 
   expect(r.results[2]).toContain("already have this result");
   expect(r.requested).toBe(4);
   expect(r.notices).toHaveLength(0);
+});
+
+it("refuses a third identical threads read by saying the thread's end wakes her", async () => {
+  const read = { name: "threads", args: { query: "t:seeds", action: "read" } };
+  const r = await scenario([read, read, read]);
+  expect(r.executed).toBe(2);
+  expect(r.results[2]).toContain("You already read this thread twice");
+  expect(r.results[2]).toContain("wakes this thread, so you can end your turn now");
 });
 
 it("ends after 25 consecutive calls to the same tool with changing arguments", async () => {
