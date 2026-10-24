@@ -770,6 +770,9 @@ form.drawer-body { flex: 1; }
 .threads-pop .picker-ep, .threads-list .picker-ep { display: flex; gap: 6px; align-items: baseline; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; font-weight: 600; }
 .threads-pop .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
 .threads-pop .thread-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The popover is always narrow: a row's chips take a line of their own under the title, as in a narrow panel. */
+.threads-pop .thread-item:has(> .tchips) { grid-template-columns: 8px minmax(0, 1fr) auto; row-gap: 4px; }
+.threads-pop .thread-item > .tchips { grid-row: 2; grid-column: 2 / -1; flex-wrap: wrap; }
 .status[data-state="working"] { background: var(--info); animation: pulse 1.4s ease-in-out infinite; }
 .status[data-state="waiting"], .status[data-state="needsYou"], .status[data-state="held"] { background: var(--warn); }
 .status[data-state="resolved"] { background: var(--ok); }
@@ -779,6 +782,12 @@ form.drawer-body { flex: 1; }
 .threads-list .thread-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto auto; gap: 8px; align-items: center; color: var(--fg); text-decoration: none; }
 .threads-list .thread-item .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .threads-list .thread-item .when { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); white-space: nowrap; }
+/* In a narrow list (the panel, a phone) a row's chips take a line of their own under the title, so the title never shrinks to a letter. */
+.threads-list { container: tlist / inline-size; }
+@container tlist (max-width: 520px) {
+  .threads-list .thread-item:has(> .tchips) { grid-template-columns: 8px minmax(0, 1fr) auto auto; row-gap: 4px; }
+  .threads-list .thread-item > .tchips { grid-row: 2; grid-column: 2 / -1; flex-wrap: wrap; }
+}
 /* The header's Context: the percent in warn from 80 %, danger from 95 %; the popover's bar and rows share one shade per part, all from the accent. */
 .ctx-pct[data-level="warn"] { color: var(--warn); }
 .ctx-pct[data-level="danger"] { color: var(--danger); }

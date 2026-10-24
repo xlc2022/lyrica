@@ -182,7 +182,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   from `ThreadSummary.pull` (the number, **Draft** muted while
   `OpenPull.draft`, and the checks' dot as the changes badge colours it,
   with the checks in a word for screen readers), and `ThreadSummary.subagents`, the subagents working
-  for it now; a chip without anything to say is left out. The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
+  for it now; a chip without anything to say is left out. In the popover, and where the
+  panel's list is under 520 px wide (container `tlist`), the chips wrap onto
+  a second line under the title. The facts line also carries **Tokens** for the whole project. Its rows add **By thread**,
   This chat first, then thread links by descending tokens, and **Recent
   calls** linking to the project's filter. On a phone Tokens opens in place
   at the foot of the Threads popover. The header has a **Project**
