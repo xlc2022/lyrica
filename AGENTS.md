@@ -82,7 +82,10 @@ exact head commit and CI is green does she record that head and the review
 results on the PR and mark it **ready for review**. Claude's routine skips
 drafts and automatically picks up ready `lyrica/*` PRs; Claude's PR review
 verifies and merges them. She answers review comments on the PR, not through
-a separate `claude` issue. The Lyrica building thread never merges its own
+a separate `claude` issue. GitHub is the only channel between her and
+Claude, both ways: she asks Claude with a `claude` issue, and Claude answers
+on the PR or issue and asks her for work with an issue assigned to her,
+never with a message into her threads. The Lyrica building thread never merges its own
 PR. After Claude merges,
 she reports it as in step 4 below. See
 [the project handoff](docs/briefs/lyrica-project.md#claudes-side).
