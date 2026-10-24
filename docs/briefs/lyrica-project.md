@@ -137,12 +137,11 @@ characters, the limit on project instructions.
 > UI review. Fix findings; get rechecked. After required reviewers verify
 > the exact head and CI is green, record head/results on the PR and mark it
 > ready for review. Claude's PR review picks it up, verifies and merges it.
-> Answer PR comments. Never self-merge.
+> Answer PR comments. Never self-merge. Reach Claude only on GitHub: PRs,
+> PR comments and `claude` issues.
 >
-> **Boundary code needs the owner**: the paths in CODEOWNERS (keys, the
-> privacy boundary, model router, sandbox, auth, deployment, updater, CI).
-> A PR touching it says so in its first line and waits for the owner's
-> own approval.
+> **Boundary code** (CODEOWNERS paths) needs the owner: a PR touching it
+> says so in its first line and waits for the owner's own approval.
 >
 > **Handoffs.** A thread that needs another messages it every time,
 > naming the commit and the need; the receiver answers in the same turn.
@@ -223,6 +222,11 @@ to Claude's PR review, which verifies and merges it. She answers findings
 on the PR and never self-merges. Issues labelled `claude` are separate
 requests to Claude's project chat, not per-PR merge requests. The project
 chat sets that routine up when her account exists.
+
+GitHub is the only channel, both ways. Claude answers her on the PR or
+the issue, and asks her for anything as an issue assigned to her or a PR
+comment, never by a message into her threads, even on a deployment where
+an operator session could reach them.
 
 Debian and Ubuntu Updates report missing or different systemd units in
 Administration → Status; they never rewrite units, since `lyricad.service`
