@@ -1,12 +1,13 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTombstone, type ThreadUsage, type WakeupInfo } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Message, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTombstone, type ThreadUsage, type WakeupInfo } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { hasConsequences, jumpTo, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { JUMP_EVENT, JUMP_KEY, SHOW_EVENT, SHOW_KEY, take, type JumpRequest, type ShowRequest } from "./links.ts";
 import { go, href, parse } from "./route.ts";
 import { ProjectWelcome, ThreadsFact, useOverview, type ProjectEnv } from "./Project.tsx";
 import { useThread } from "./stream.ts";
+import { type Live } from "./live.ts";
 import { Conversation, MessageBox } from "./Messages.tsx";
 import { Composer } from "./Composer.tsx";
 import { ContextFact, newerContext } from "./ContextMeter.tsx";
@@ -261,7 +262,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const resolved = s?.state === "resolved";
   const reopen = () => post<ThreadSummary>(`${base}/reopen`).then((x) => { summary.set(x); refreshThreads(); }, (e: Error) => setSendError(e.message));
   const resolve = () => post<ThreadSummary>(`${base}/resolve`).then((x) => { summary.set(x); refreshThreads(); }, (e: Error) => setSendError(e.message));
-  const { ref: scroller, atBottom, arrivedUp } = useStickyScroll([t.messages, t.live]);
+  const { ref: scroller, atBottom, arrivedUp } = useStickyScroll(t.messages, t.live);
   // A reply that landed while the person was scrolled up is one they can't see: offer to take them back down to it.
   const showJump = arrivedUp && !atBottom;
   // On a phone the tokens move into the Threads popover, so the facts line stays at two rows.
@@ -523,29 +524,28 @@ function PendingBar({ scroller, deps }: { scroller: React.RefObject<HTMLDivEleme
  * Reports whether new tail content arrived while she was scrolled up, for the jump-to-latest control:
  * only a tail that grew counts, so opening older history above her isn't an arrival.
  */
-function useStickyScroll(deps: unknown[]) {
+function useStickyScroll(messages: Message[], live: Live) {
   const ref = useRef<HTMLDivElement>(null);
   const height = useRef(0);
-  const last = useRef<HTMLElement | null>(null);
+  const tail = useRef<string>("∅");
   const [atBottom, setAtBottom] = useState(true);
   const [arrivedUp, setArrivedUp] = useState(false);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const wasBottom = height.current - el.scrollTop - el.clientHeight < 80;
-    const before = last.current;
-    const after = el.lastElementChild as HTMLElement | null;
-    const grewTail = !!after && (after !== before || (before?.textContent ?? "") !== (after.textContent ?? ""));
-    last.current = after;
+    const now = tailKey(messages, live);
+    const grew = now !== tail.current;
+    tail.current = now;
     height.current = el.scrollHeight;
     const nowBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     if (wasBottom) el.scrollTop = el.scrollHeight;
     setAtBottom(nowBottom);
     // Content that grew at the tail while the person was scrolled up is one they can't see yet; being at the bottom ends the offer.
     if (nowBottom) setArrivedUp(false);
-    else if (grewTail && !wasBottom) setArrivedUp(true);
+    else if (grew && !wasBottom) setArrivedUp(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [messages, live]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -555,6 +555,29 @@ function useStickyScroll(deps: unknown[]) {
     return () => el.removeEventListener("scroll", on);
   }, []);
   return { ref, atBottom, arrivedUp };
+}
+
+/**
+ * The conversation's tail as an immutable fingerprint: what grew at the end is a new arrival, what was
+ * prepended above the reader isn't. Read from the message and live data, so a reply streaming into an
+ * existing assistant tail counts, and opening older history does not.
+ */
+function tailKey(messages: Message[], live: Live): string {
+  const items = live.items.length > 0 ? live.items : messages;
+  const last = items.filter((m) => m.role === "assistant").at(-1) ?? items[items.length - 1];
+  const parts = last && "parts" in last ? last.parts : [];
+  let key = "∅";
+  for (const p of parts) {
+    switch (p.type) {
+      case "text": key += `t:${p.text};`; break;
+      case "thinking": key += `h:${p.text};`; break;
+      case "recall": case "remember": key += `${p.type}:${p.ids.join(",")};`; break;
+      case "tool": key += `o:${p.toolCallId}:${p.name}:${JSON.stringify(p.args)}:${p.result ?? ""}:${p.isError ?? false};`; break;
+      case "image": key += `i:${p.paths.join(",")};`; break;
+      default: key += `${p.type}:${JSON.stringify(p)};`;
+    }
+  }
+  return `${last?.role ?? "∅"}:${key}`;
 }
 
 /**
