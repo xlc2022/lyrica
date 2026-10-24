@@ -120,11 +120,11 @@ characters, the limit on project instructions.
 > into `main` when it's done, with typecheck and tests passing in your
 > sandbox. Say which principle the change serves.
 >
-> **Review.** Message the Review thread with the PR and commit when it's
-> ready, and UI review too if a user would see it. Fix what they send
-> back. After required exact-head verification and green CI, request
-> Claude's approval/merge via a `claude`-labelled issue; answer PR comments.
-> Never self-merge or merge past red CI.
+> **Review.** Send a draft PR and its head to Review and, for UI,
+> UI review. Fix findings; get rechecked. After required reviewers verify
+> the exact head and CI is green, record head/results on the PR and mark it
+> ready for review. Claude's routine picks it up; its PR review verifies and merges it.
+> Answer PR comments. Never self-merge.
 >
 > **Boundary code needs the owner**: keys, the privacy boundary, the model
 > router, the sandbox, authentication, deployment, the updater and CI
@@ -201,15 +201,17 @@ request. CI watches above are an existing mechanism, not a new timer to set.
 ## Claude's side
 
 Claude's project can't see her project. It learns about her work from
-GitHub: a routine in Claude's project checks for new PRs from her account
-and issues labelled `claude`, sends all her PRs to its PR review thread (even docs-only or
-`web/`-only ones, which Claude's own PRs may merge without it) and
-the issues to the project chat. After her project's required reviewers
-verify the exact PR head and CI is green, she opens an issue labelled
-`claude` linking the PR, the verified head and review results, requesting
-Claude's PR review and merge. She fixes findings and sends each new head
-for recheck; she never merges her own PR. The project chat sets that routine
-up when her account exists.
+GitHub: a routine in Claude's project finds open `lyrica/*` PRs and skips
+drafts. She opens a draft PR, sends it and its head to her project's Review
+thread (and UI review when applicable), fixes findings and sends each new
+head for recheck. After all required reviewers verify the exact head and
+CI is green, she records the head and review results in the PR description
+or a comment and marks it ready for review. That is the pickup signal:
+the routine sends every ready PR, including docs-only and `web/`-only ones,
+to Claude's PR review, which verifies and merges it. She answers findings
+on the PR and never self-merges. Issues labelled `claude` are separate
+requests to Claude's project chat, not per-PR merge requests. The project
+chat sets that routine up when her account exists.
 
 Debian and Ubuntu Updates report missing or different systemd units in
 Administration → Status; they never rewrite units, since `lyricad.service`

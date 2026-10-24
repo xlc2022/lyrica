@@ -74,13 +74,16 @@ the work, with fixed roles:
 Review and merge:
 
 **Lyrica's own PRs take the stricter path.** Every PR she builds, including
-docs-only and small `web/` changes, goes to her project's Review thread
-with the PR and head commit, and to UI review too if a user would see the
-change. She fixes findings and sends the new head for recheck. Only after
-every required reviewer says **verified** with the exact head commit and
-CI is green does she send it to Claude's PR review for approval and merge,
-using an issue labelled `claude`; she answers review comments on the PR.
-The Lyrica building thread never merges its own PR. After Claude merges,
+docs-only and small `web/` changes, opens as a **draft** and goes to her
+project's Review thread with the PR and head commit, and to UI review too
+if a user would see the change. She fixes findings and sends the new head
+for recheck. Only after every required reviewer says **verified** with the
+exact head commit and CI is green does she record that head and the review
+results on the PR and mark it **ready for review**. Claude's routine skips
+drafts and automatically picks up ready `lyrica/*` PRs; Claude's PR review
+verifies and merges them. She answers review comments on the PR, not through
+a separate `claude` issue. The Lyrica building thread never merges its own
+PR. After Claude merges,
 she reports it as in step 4 below. See
 [the project handoff](docs/briefs/lyrica-project.md#claudes-side).
 

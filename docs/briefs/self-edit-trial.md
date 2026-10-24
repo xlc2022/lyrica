@@ -62,13 +62,14 @@ Start with 1 or 2. Take 3 only if the first goes well.
 ## How the work flows
 
 As lyrica-project.md says: she claims the issue, works on a
-`lyrica/<short-name>` branch in one thread, opens the pull request, and
+`lyrica/<short-name>` branch in one thread, opens a draft pull request, and
 sends it with its head commit to her Review thread (and UI review, for UI).
 She fixes findings and sends each new head for recheck. Once the required
-reviewers verify the exact head and CI is green, she requests Claude's PR
-review and merge through an issue labelled `claude` (lyrica-project.md,
-"Claude's side"). Claude approves and merges it; she never self-merges.
-The guardian is not a reviewer and gives no merge go-ahead.
+reviewers verify the exact head and CI is green, she records that head and
+the review results on the PR and marks it ready for review. Claude's routine
+skips drafts and automatically picks up ready PRs (lyrica-project.md,
+"Claude's side"). Claude's PR review verifies and merges it; she never
+self-merges. The guardian is not a reviewer and gives no merge go-ahead.
 
 ## The guardian
 
