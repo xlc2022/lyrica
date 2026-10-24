@@ -14,14 +14,14 @@ import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
 const isChild = (c: ChatRequest) => JSON.stringify(c.messages).includes("[From t:");
 const said = (c: ChatRequest) => JSON.stringify(c.messages);
 
+/** How long a poll waits for a turn to end or start: a code child's turn starts by cloning or making worktrees, which takes seconds on a slow or nested sandbox, past expect.poll's default second. */
+const TURN = { timeout: 15_000 };
+
 /**
  * Ada with a local model and a general thread. The fake model answers the
  * parent from `parent` and children from `child`, in order, so their turns
  * can run at once.
  */
-/** How long a poll waits for a turn to end: a code child's turn starts by cloning or making worktrees, which takes seconds on a slow or nested sandbox, past expect.poll's default second. */
-const TURN = { timeout: 15_000 };
-
 async function setup(opts: Parameters<typeof daemon>[1] = {}, rt?: Awaited<ReturnType<typeof runtime>>) {
   rt ??= await runtime();
   const dm = await daemon(rt, opts);
@@ -870,7 +870,7 @@ describe("code thread worktrees", () => {
     // A resolved queued scaffold must not run later alongside its replacement base holder.
     s.d.services!.children.limits.concurrency = 1;
     s.d.services!.children.resume(s.rt.ada.id);
-    await expect.poll(() => s.model.requests.filter(isChild).map(said).join("\n")).toContain("Build Merge.");
+    await expect.poll(() => s.model.requests.filter(isChild).map(said).join("\n"), TURN).toContain("Build Merge.");
     const db = s.d.services!.users.openUserDb(s.rt.ada.id);
     try { expect(db.prepare("SELECT queued FROM child_threads WHERE thread = ?").get(a)).toEqual({ queued: 1 }); }
     finally { db.close(); }
