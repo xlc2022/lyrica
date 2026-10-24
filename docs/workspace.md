@@ -1145,7 +1145,10 @@ her account is general.
   finishes, or someone else reviews or comments, the thread gets one turn,
   marked as a wake-up, with a note `lyricad` writes — the pull request
   number, the commit's short hash, each check's name and result, and who
-  reviewed, never log or comment text. GitHub is polled; a Forgejo or
+  reviewed, never log or comment text. When a check didn't pass, the note
+  asks her to read its log (`gh run view <run> --log-failed`) and push at
+  least one fix before calling it blocked, or to say the same check fails
+  on the base branch. GitHub is polled; a Forgejo or
   Gitea account whose host resolves into her own network also gets a
   signed tailnet webhook (Settings → Git accounts, **Webhook**) that nudges
   a poll at once, with polling as the fallback. A merged or closed pull
@@ -1221,7 +1224,14 @@ or failed, listing the commands. A failure gives her the last 60 lines of
 each failing output, unseen and with the thread's secrets masked as her
 `bash` output is, so she fixes it and the
 checks run again when she ends; after 3 failing rounds they stop and she is
-told to report the failure as not done. The output stays in the encrypted
+told to report the failure as not done. In a child thread, `lyricad` then
+tells the parent itself when the turn ends, waking it at once: each failing
+command, its checkout and short head commit, and the last 20 lines of its
+output, with her last reply if she owed a report, and asks the parent to run
+the command on the base branch. If it fails there too, the parent tells the
+thread to carry on with CI as the judge, saves the known failure with
+`remember` and tells the person; otherwise it sends the thread back to fix
+it (`daemon/src/children.ts`, `checksReport`). The output stays in the encrypted
 conversation and is never logged (`extension/src/checks.ts`).
 
 ## Project command rules

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import {
   makeWorktrees, zoneOf, worktreeGrants, removeWorktrees, DEFAULT_THREADS_LIMITS, matchModel, unmatched, type ChildInfo, type Memory, type Models, type Pool, type StartRequest, type ThreadsLimits, type ThreadState, type ThreadStep, type Users, type Workspace,
 } from "@lyrica/core";
-import { appendNotice, INTERRUPTED, INTERRUPTED_NOTICE, type Delegation, type Delivery, type ThreadContext, type ThreadsHost } from "@lyrica/extension";
+import { appendNotice, CHECK_ROUNDS, INTERRUPTED, INTERRUPTED_NOTICE, type Delegation, type Delivery, type ThreadContext, type ThreadsHost } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
 import type { ProjectSettings } from "./projects.ts";
 import type { Wakeups } from "./wakeups.ts";
@@ -89,6 +89,8 @@ export class ChildThreads implements ThreadsHost {
    * fails every time can't keep its parent taking turns.
    */
   private readonly noticed = new Set<string>();
+  /** Children whose checks still failed after the last round this turn (checks.ts): the report their parent gets when the turn ends. */
+  private readonly exhausted = new Map<string, string>();
   /** A report in this turn, including a turn started by the user. */
   private readonly reports = new Set<string>();
   private readonly locking = new Set<string>();
@@ -365,6 +367,11 @@ export class ChildThreads implements ThreadsHost {
     this.tasked.set(`${userId}/${pool}/${thread}`, { reported: false });
   }
 
+  /** A child's checks still fail after the last round: its parent hears when the turn ends, from lyricad rather than from her. */
+  checksExhausted(userId: string, pool: Pool, thread: string, report: string): void {
+    if (this.row(userId, pool, thread)) this.exhausted.set(`${userId}/${pool}/${thread}`, report);
+  }
+
   /**
    * A child's turn ended and it is idle. On a task from its parent, the
    * parent is told, as an update is delivered, when it ended without a
@@ -388,6 +395,13 @@ export class ChildThreads implements ThreadsHost {
       const row = this.row(userId, pool, thread);
       if (row) this.queueParentWake(userId, pool, row.parent, thread, "batch");
     }
+    const checks = this.exhausted.get(key);
+    this.exhausted.delete(key);
+    if (checks && how !== "stopped" && this.checksReport(userId, pool, thread, checks, t && !t.reported, how === "error")) {
+      this.tasked.delete(key);
+      if (how === "error") this.noticed.add(key);
+      return;
+    }
     this.drainWakes(userId);
     if (!t) return;
     this.tasked.delete(key);
@@ -404,20 +418,46 @@ export class ChildThreads implements ThreadsHost {
   }
 
   /**
-   * A tasked child ended without a report: its last reply, if it has one,
-   * goes to the parent as its report would, marked as not sent with report.
-   * It brings no look (watch.ts): the person didn't write, and the child posted nothing.
-   * Returns whether there was one.
+   * A child ended a turn whose checks ran out of rounds: the parent is told at
+   * once which checks fail and how to tell the thread's work from its
+   * environment, with the child's last reply when it owed a report. Returns
+   * whether it was delivered.
    */
-  private implicitReport(userId: string, pool: Pool, thread: string, parent: string): boolean {
+  private checksReport(userId: string, pool: Pool, thread: string, checks: string, owed: boolean | undefined, error: boolean): boolean {
+    let row: Row | undefined;
+    try { row = this.row(userId, pool, thread); } catch { return false; /* locked */ }
+    if (!row) return false;
+    const last = owed ? this.lastReply(userId, pool, thread) : undefined;
+    const text = `Child thread [t:${thread}]'s checks still fail after ${CHECK_ROUNDS} rounds, so they stopped for this turn${error ? ", and it then stopped with an error" : ""}:\n\n${checks}\n\n`
+      + "Find out whether the failure is the thread's work or its environment: run the failing command here on the base branch. "
+      + "If it fails there too, tell the thread to carry on with CI as the judge, save the known failure with remember, and tell the person; otherwise send the thread back to fix it."
+      + (last ? `\n\nIts last message:\n${last}` : "");
+    this.db(userId, (db) => db.prepare("UPDATE child_threads SET unseen = unseen + 1 WHERE pool = ? AND thread = ?").run(pool, thread));
+    this.deliver(userId, pool, row.parent, text, thread, "update", "now");
+    return true;
+  }
+
+  /** A thread's last reply, capped as a report; none in an unlogged thread. */
+  private lastReply(userId: string, pool: Pool, thread: string): string | undefined {
     const view = this.o.memory.openThreadView(userId, pool);
     let last: string | undefined;
     try {
       const e = view.own.getThread(thread)?.unlogged ? undefined : view.own.latestEntries(thread, 1)[0];
       if (e?.role === "assistant") last = e.text.trim();
     } finally { view.close(); }
-    if (!last) return false;
-    const text = last.length > IMPLICIT_REPORT_CHARS ? `${last.slice(0, IMPLICIT_REPORT_CHARS)}…` : last;
+    if (!last) return undefined;
+    return last.length > IMPLICIT_REPORT_CHARS ? `${last.slice(0, IMPLICIT_REPORT_CHARS)}…` : last;
+  }
+
+  /**
+   * A tasked child ended without a report: its last reply, if it has one,
+   * goes to the parent as its report would, marked as not sent with report.
+   * It brings no look (watch.ts): the person didn't write, and the child posted nothing.
+   * Returns whether there was one.
+   */
+  private implicitReport(userId: string, pool: Pool, thread: string, parent: string): boolean {
+    const text = this.lastReply(userId, pool, thread);
+    if (!text) return false;
     this.db(userId, (db) => db.prepare("UPDATE child_threads SET unseen = unseen + 1 WHERE pool = ? AND thread = ?").run(pool, thread));
     this.deliver(userId, pool, parent, `Child thread [t:${thread}] ended without a report; its last message, as its report:\n${text}`, thread, "update", "batch");
     return true;

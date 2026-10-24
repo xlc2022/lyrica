@@ -530,6 +530,24 @@ describe("a child's end, reading and stopping", () => {
     expect(got.join("\n")).not.toContain("finished without a report");
   });
 
+  it("the parent hears at once, from lyricad, when a child's checks run out of rounds, with its last message", async () => {
+    const { rt, d, thread, parent, child, say, path, messages } = await setup();
+    parent.push(start("Track", "Fix the track."), { text: "Started." });
+    // The checks extension's last round, as hosted.ts passes it on (extension/test/checks.test.ts covers the rounds).
+    child.push(() => {
+      const { children } = d.services!;
+      for (const c of children.children(rt.ada.id, "general", thread.id)) children.checksExhausted(rt.ada.id, "general", c.id, "$ npm test (at abc1234)\nFAIL track.test.ts");
+      return { text: "The track test still fails." };
+    });
+    const id = toolEnd(await say("fix the track in its own thread"))!.threads![0]!.id;
+    const got = (await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes("checks still fail")))).join("\n");
+    expect(got).toContain(`Child thread [t:${id}]'s checks still fail after 3 rounds, so they stopped for this turn:\n\n$ npm test (at abc1234)\nFAIL track.test.ts`);
+    expect(got).toContain("run the failing command here on the base branch");
+    expect(got).toContain("Its last message:\nThe track test still fails.");
+    // One notice: no separate report of its last message.
+    expect(got).not.toContain("ended without a report");
+  });
+
   it("the parent hears of a child that fails every time only once, until it reports", async () => {
     const { parent, child, say, path, messages } = await setup();
     parent.push(start("Garden", "Plan the beds."), { text: "Started." });

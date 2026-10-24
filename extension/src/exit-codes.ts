@@ -15,7 +15,7 @@ export function exitMeaning(command: string, code: number): { text: string; ok: 
   if (code === 1 && ["test", "["].includes(name)) return { text: "the test was false", ok: true };
   if (name === "gh" && words[1] === "pr" && words[2] === "checks") {
     if (code === 8) return { text: "gh pr checks: some checks are still pending", ok: true };
-    if (code === 1) return { text: "gh pr checks: a check failed, or gh itself did", ok: false };
+    if (code === 1) return { text: "gh pr checks: a check failed, or gh itself did; read a failed check's log (gh run view <run> --log-failed) and fix it", ok: false };
   }
   if (code === 124 && name === "timeout") return { text: "timeout: the command ran out of time", ok: false };
   if (code === 127) return { text: "command not found", ok: false };

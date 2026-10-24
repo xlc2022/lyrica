@@ -43,6 +43,8 @@ export interface ThreadsHost {
    */
   rootScript?(from: ThreadContext, machine: string, path: string): Promise<{ bytes: Buffer; account: string }>;
   questionsChanged?(userId: string, pool: ThreadContext["pool"], thread: string): void;
+  /** A child's checks still fail after the last round (checks.ts): its parent is told when the turn ends. */
+  checksExhausted?(userId: string, pool: ThreadContext["pool"], thread: string, report: string): void;
   draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
   /**
    * Creates a child of `parent`, with its settings or narrower ones, and

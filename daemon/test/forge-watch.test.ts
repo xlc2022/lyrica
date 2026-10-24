@@ -9,7 +9,7 @@ import { inOwnNetwork, Memory, Models, Users, WAKEUP_LIMITS, Workspace, type For
 import type { Delegation } from "@lyrica/extension";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { ChildThreads } from "../src/children.ts";
-import { ForgeWatcher } from "../src/forge-watch.ts";
+import { CI_RED, ForgeWatcher } from "../src/forge-watch.ts";
 import type { ThreadHost } from "../src/hosted.ts";
 import { Wakeups } from "../src/wakeups.ts";
 import { browser, daemon, login, runtime } from "./helpers.ts";
@@ -154,7 +154,7 @@ describe("the forge watcher", () => {
     s.watch();
     await s.tick(0);
     expect(s.sent).toHaveLength(1);
-    expect(s.sent[0]!.text).toBe("PR #12 (aaaaaaa): checks finished — build: passed, e2e: failed.");
+    expect(s.sent[0]!.text).toBe(`PR #12 (aaaaaaa): checks finished — build: passed, e2e: failed. ${CI_RED}`);
     expect(typeof s.sent[0]!.opts.wakeup).toBe("string");
 
     // The same finished head re-polled: nothing new.
@@ -169,7 +169,7 @@ describe("the forge watcher", () => {
     routeForgejo(s.fake, { pull: pullBody({ head: { sha: HEAD_B } }), status: statusBody(finishedChecks()) }, HEAD_B);
     await s.tick(6);
     expect(s.sent).toHaveLength(2);
-    expect(s.sent[1]!.text).toBe("PR #12 (bbbbbbb): checks finished — build: passed, e2e: failed.");
+    expect(s.sent[1]!.text).toBe(`PR #12 (bbbbbbb): checks finished — build: passed, e2e: failed. ${CI_RED}`);
   });
 
   it("still running gives no turn; a review from another account gives one, and her own gives none", async () => {
@@ -198,7 +198,7 @@ describe("the forge watcher", () => {
     s.watch();
     await s.tick(0);
     expect(s.sent).toHaveLength(1);
-    expect(s.sent[0]!.text).toBe("PR #12 (aaaaaaa): checks finished — build: passed, e2e: failed; sam approved.");
+    expect(s.sent[0]!.text).toBe(`PR #12 (aaaaaaa): checks finished — build: passed, e2e: failed; sam approved. ${CI_RED}`);
   });
 
   it("polls the five GitHub endpoints and caches unchanged answers by ETag", async () => {
@@ -219,7 +219,7 @@ describe("the forge watcher", () => {
     s.watch();
     await s.tick(0);
     expect(s.sent).toHaveLength(1);
-    expect(s.sent[0]!.text).toBe("PR #12 (aaaaaaa): checks finished — build: passed, e2e: failed.");
+    expect(s.sent[0]!.text).toBe(`PR #12 (aaaaaaa): checks finished — build: passed, e2e: failed. ${CI_RED}`);
     expect(s.fake.asked.map((a) => a.path)).toEqual(expect.arrayContaining([
       `${GITHUB_PREFIX}/repos/ada/lyrica/pulls/12`,
       `${GITHUB_PREFIX}/repos/ada/lyrica/commits/${head}/check-runs`,
