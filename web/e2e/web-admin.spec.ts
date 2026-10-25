@@ -1778,15 +1778,20 @@ test("Reset: Wipe memory asks for the box and the password, stops what runs, the
 test("Status model facts preserve existing facts and render empty, measured and missing data without phone overflow", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const displayPath = `/api/u/${userId}/me/display`;
-  const original = (await (await page.request.get(`/api/u/${userId}/me`)).json()).display;
+  // The browser holds the session cookie; use its fetch as the other UI tests do.
+  const original = await page.evaluate(async (path) => (await (await fetch(path)).json()).display, `/api/u/${userId}/me`);
+  const show = (change: unknown) => page.evaluate(async ([path, data]) => {
+    const response = await fetch(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
+    if (!response.ok) throw new Error(`display: ${response.status} ${await response.text()}`);
+  }, [displayPath, change] as const);
   try {
-    expect((await page.request.patch(displayPath, { data: { showGeneral: false, showPrivate: false }, headers: { origin: baseURL! } })).ok()).toBe(true);
+    await show({ showGeneral: false, showPrivate: false });
     await page.goto(`/#/u/${userId}/admin/status`);
     const facts = page.getByRole("region", { name: "Model calls", exact: true });
     await expect(facts).toContainText("No retained calls in the last 24 hours.");
     await expect(facts).toContainText("No pools shown");
     await noHorizontalScroll(page);
-    expect((await page.request.patch(displayPath, { data: { showGeneral: true, showPrivate: false }, headers: { origin: baseURL! } })).ok()).toBe(true);
+    await show({ showGeneral: true, showPrivate: false });
     const modelPort = Number(new URL(baseURL!).port) + 10;
     const seeded = await page.request.post(`http://127.0.0.1:${modelPort}/model-facts-fixture`, { data: { userId } });
     expect(seeded.ok()).toBe(true);
@@ -1797,15 +1802,17 @@ test("Status model facts preserve existing facts and render empty, measured and 
     await expect(facts).toContainText("Retained history · General · pruned to latest 500 records per user");
     await expect(page.getByText("Her tools' network", { exact: true })).toBeVisible();
     await expect(page.getByText("Sleep time", { exact: true })).toBeVisible();
-    await expect(page.locator("dt").getByText("Start unlocked", { exact: true })).toBeVisible();
+    await expect(page.locator("dt").filter({ hasText: "Start unlocked" })).toBeVisible();
     await noHorizontalScroll(page);
     // Changing pool visibility while Status stays open must discard its old aggregate.
     if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
     await page.locator(".showing summary").click();
-    await page.locator(".showing").getByLabel("General", { exact: true }).uncheck();
+    const general = page.locator(".showing").getByLabel("General", { exact: true });
+    await general.click();
+    await expect(general).not.toBeChecked();
     if (phone(page)) await page.getByRole("button", { name: "Hide threads" }).click();
     await expect(facts).toContainText("No pools shown");
     await expect(facts).toContainText("No retained calls in the last 24 hours.");
     await expect(facts).not.toContainText("fixture-measured");
-  } finally { await page.request.patch(displayPath, { data: original, headers: { origin: baseURL! } }); }
+  } finally { await show(original); }
 });
