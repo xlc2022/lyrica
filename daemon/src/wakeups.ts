@@ -166,9 +166,11 @@ export class Wakeups {
     this.firing.add(key);
     try {
       const view = this.o.memory.openThreadView(userId, d.pool);
-      let w;
+      let w, dropped = false;
       try {
         w = view.own.getThread(d.thread) ? view.own.wakeups(d.thread).find((x) => x.id === d.id) : undefined;
+        // One she set before resolving the thread goes with it, rather than reopening finished work; CI and review wakes still reopen it.
+        if (w && !w.source && this.o.children.resolved(userId, d.pool, d.thread)) { view.own.removeWakeups(d.thread, d.id); w = undefined; dropped = true; }
         // Hers and routines' share one cap; CI and review wakes have their own, so a busy pull request can't use hers up or wait on it.
         if (w && view.own.wakeupsFired(d.thread, new Date(now.getTime() - DAY_MS).toISOString(), w.source).length >= (w.source ? FORGE_WAKES_PER_DAY : WAKEUP_LIMITS.perDay)) return;
         if (w) view.own.fireWakeup(d.id, now.toISOString());
@@ -176,7 +178,7 @@ export class Wakeups {
         view.close();
       }
       this.due.set(userId, (this.due.get(userId) ?? []).filter((x) => x !== d));
-      if (!w) return;
+      if (!w) { if (dropped) this.changed(userId, d.pool, d.thread); return; }
       this.changed(userId, d.pool, d.thread);
       this.o.children.woke(userId, d.pool, d.thread);
       const late = now.getTime() - Date.parse(w.dueAt) > LATE_MS ? w.dueAt : undefined;

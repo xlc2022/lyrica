@@ -1152,9 +1152,11 @@ her account is general.
   marked as a wake-up, with a note `lyricad` writes — the pull request
   number, the commit's short hash, each check's name and result, and who
   reviewed, never log or comment text. When a check didn't pass, the note
-  asks her to read its log (`gh run view <run> --log-failed`) and push at
-  least one fix before calling it blocked, or to say the same check fails
-  on the base branch. GitHub is polled; a Forgejo or
+  asks her to read its log (`gh run view <run> --log-failed`) and treat the
+  failure as hers unless she shows otherwise: flaky only once a re-run of
+  just the failed jobs passes, not hers only once a base-branch run's log
+  shows the same test failing; otherwise she pushes at least one fix before
+  calling it blocked (`CI_RED`; `git.md` says the same). GitHub is polled; a Forgejo or
   Gitea account whose host resolves into her own network also gets a
   signed tailnet webhook (Settings → Git accounts, **Webhook**) that nudges
   a poll at once, with polling as the fallback. A merged or closed pull

@@ -1345,8 +1345,10 @@ project page and the web part are built. Recent calls can be filtered by project
   merges is resolved instead, freeing the checkout, and the project chat is
   told (2026-10-24). A note
   whose checks didn't all pass asks her to read the failing log and push at
-  least one fix before calling it blocked, or to say it fails on the base
-  branch too (2026-10-24).
+  least one fix before calling it blocked (2026-10-24). She may call a
+  failure flaky only once re-running just the failed jobs passes, and not
+  hers only once a base-branch run's log shows the same test failing
+  (2026-10-25).
   A re-run that finishes on the same head wakes her again (a GitHub
   re-run is a new check run; a commit status counts only when its result
   changes); an unfinished check suite counts as a pending check, so a

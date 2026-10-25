@@ -113,7 +113,7 @@ function renderNote(n: ForgeWakeNote): string {
 }
 
 /** Added to a note whose checks didn't all pass. */
-export const CI_RED = "Read the failing check's log (on GitHub, gh run view <run> --log-failed), then fix and push at least once before calling it blocked; if the same check fails on the base branch too, say so instead.";
+export const CI_RED = "Read the failing check's log (on GitHub, gh run view <run> --log-failed). It's yours to fix unless you show otherwise: call it flaky only once a re-run of just the failed jobs (gh run rerun <run> --failed) passes, and not yours only once a base-branch run's log shows the same test failing (a base run that failed on other tests doesn't count). Otherwise fix and push at least once before calling it blocked.";
 
 export class ForgeWatcher {
   /** Unlocked users whose watches are polled. */
