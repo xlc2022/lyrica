@@ -797,9 +797,14 @@ describe("code thread worktrees", () => {
     };
     const idle = async (id: string) => { await expect.poll(() => s.d.services!.host.busy(s.rt.ada.id, "general", id), TURN).toBe(false); };
     // A child that ends without a report wakes its parent: that turn ends too before the next start, so it can't take the start's script.
+    // The notice can land while the parent's own turn is still ending, and its wake turn starts only after: so it waits for her answer to it.
     const settled = async (id: string) => {
       await idle(id);
-      await expect.poll(async () => JSON.stringify(await s.messages(s.path)), TURN).toContain(`[t:${id}] ended without a report`);
+      await expect.poll(async () => {
+        const all = await s.messages(s.path);
+        const notice = all.findIndex((m) => JSON.stringify(m).includes(`[t:${id}] ended without a report`));
+        return notice >= 0 && all.slice(notice + 1).some((m) => m.role === "assistant");
+      }, TURN).toBe(true);
       await s.idleParent();
     };
     const pair = async () => {
