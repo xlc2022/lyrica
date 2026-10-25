@@ -113,7 +113,10 @@ and carries its children into a new project. The interface is built under
    its checks finish or someone reviews it (DESIGN.md, "CI wakes"); one she
    opened another way she watches with `threads watch`. A red
    run asks her to read the failing log and push at least one fix before
-   calling it blocked. When a thread's project checks still fail after
+   calling it blocked. She may call it flaky only after re-running just the
+   failed jobs once and seeing them pass, and unrelated only when a main run's
+   log shows the same test failing; a list of main's red conclusions isn't
+   enough (#549, 2026-10-25). When a thread's project checks still fail after
    three rounds, `lyricad` tells the project chat at once, which runs the
    failing command on the base branch to tell real failures from her
    sandbox's (docs/workspace.md, "Project checks").

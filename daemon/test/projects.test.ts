@@ -544,6 +544,21 @@ describe("projects", () => {
     expect(requests.filter((c) => who(c) === "watching")).toHaveLength(0);
   });
 
+  it("drop a wake-up she set before resolving the thread, rather than reopening it", async () => {
+    const { d, rt, script, requests, say, threadPath, messages } = await setup({ threads: { concurrency: 5 } });
+    script("chat").push(start(["DNS", "dns: move DNS to the router"]), { text: "Started." });
+    script("dns").push(tool({ action: "later", minutes: 5, note: "Check the leases." }), tool({ action: "resolve" }), { text: "Done." });
+    const dns = ends((await say("move DNS")).events).flatMap((e) => e.threads ?? [])[0]!.id;
+    await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant" && x.parts.some((p) => p.type === "text" && p.text === "Done.")));
+    const asked = requests.length;
+    d.services!.wakeups.tick(new Date(Date.now() + 10 * 60_000));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(requests.length).toBe(asked);
+    expect((await messages(threadPath(dns))).some((x) => x.from?.kind === "wakeup")).toBe(false);
+    expect(d.services!.children.resolved(rt.ada.id, "general", dns)).toBe(true);
+    expect(d.services!.wakeups.list(rt.ada.id, "general", dns)).toEqual([]);
+  });
+
   it("keep a quiet look that answers during a turn Ada started for after that turn, starting no other", async () => {
     const { ada, path, script, requests, say, threadPath, messages, stream } = await setup({ threads: { concurrency: 5 }, watchMs: 100 });
     const asked = () => requests.filter((c) => who(c) === "watching");

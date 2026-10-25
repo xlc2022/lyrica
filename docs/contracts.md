@@ -839,7 +839,7 @@ Custom roles override built-ins by name, except `claude`.
 - **Child threads** (`createThreadsExtension(thread, host?: ThreadsHost, meter?)`,
   never in a subagent's thread): one model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,
-  `readOnly`, `internet`, `base: true` for a project’s original checkout, and `code: true` to start it in code mode; in a project a title matching an open thread's is refused, naming it), `message` (to a child, by ID or current title
+  `readOnly`, `internet`, `base: true` for a project’s original checkout, and `code: true` to start it in code mode; in a project a title matching an open thread's, or naming the same `#number`, is refused, naming it), `message` (to a child, by ID or current title
   (`pickThread`; a title two threads share is refused), or `to: "parent"`
   from a child; a child's message with no `to` and no `id`, or whose `id`
   names its parent, goes to the parent), `list` (`ChildInfo` with `ChildStatus`, and `branches` for a project thread's worktrees), `read` (`id`,

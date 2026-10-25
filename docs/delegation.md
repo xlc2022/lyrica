@@ -273,7 +273,8 @@ The helpers `makeWorktrees`, `worktreeGrants` and `removeWorktrees` live in
 code child threads. Code children use their own thread folder, checkout and branch;
 In projects, `base: true` keeps the original checkout for a single open
 scaffold or merge thread. A start whose title matches an open thread of the
-project (ignoring case and spaces at the ends) is refused, telling her to
+project (ignoring case and spaces at the ends), or names the same `#number`
+as one (a pull request or issue), is refused, telling her to
 message that thread, which has the work so far; `list` names the branch each
 thread works on in its own worktree. Other threads and delegate writers retain the rules below.
 
@@ -518,7 +519,9 @@ the thread's pool (step 4, `wakeups`), so it is encrypted and survives a
 restart; due times are held in memory while the user is unlocked, and
 lyricad's 20-second tick fires them, not while an update drains. A child
 past the at-once limit, a queued thread and a paused or hidden project's
-thread wait; a resolved project thread reopens. A locked user's wake-ups
+thread wait. A CI or review wake reopens a resolved project thread; a
+wake-up she set herself is dropped once the thread is resolved, so
+finished work isn't reopened by an old reminder. A locked user's wake-ups
 fire at the first tick after unlock, marked with when they were due. The
 views get times and IDs only, never the note; the user removes one from
 the facts line.
