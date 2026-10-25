@@ -2,9 +2,9 @@
 import { isChatModel, matchesModel, ModelLabel, modelName, shortModel } from "./ModelLabel.tsx";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
-  del, get, patch, u, THREAD_TASKS,
+  del, get, patch, u,
   type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type MachineInfo, type OfferingInfo, type Presets,
-  type TaskModel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
+  type TaskModel, type ThinkingLevel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
 } from "./api.ts";
 import { Repositories } from "./Git.tsx";
 import { McpServers } from "./Mcp.tsx";
@@ -31,6 +31,12 @@ export const TASK_LABELS: Record<ThreadTask, string> = {
   "speech.transcribe": "Dictation",
   "speech.speak": "Read aloud",
 };
+/** The drawer's Models section after Conversation, Thinking and Fallback: its two quiet groups. */
+const HELPER_TASKS: readonly ThreadTask[] = ["subagent.cheap", "subagent.strong", "title", "watching"];
+const MEDIA_TASKS: readonly ThreadTask[] = ["image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak"];
+const levelName = (l: ThinkingLevel) => l[0]!.toUpperCase() + l.slice(1);
+/** What answers after the shown model: a thread's pick is a list of one, so it replaces the preset's whole list. */
+const fallbackCount = (n: number) => (n ? `+${n} fallback${n === 1 ? "" : "s"}` : "no fallback");
 /** Whether a model can do a thread task: the image and speech tasks need their capability; every other one is text. */
 const fits = (task: ThreadTask, m: EndpointInfo["models"][number]) => (task === "image.create" ? !!m.image : task === "image.edit" ? !!m.edit : task === "image.upscale" ? !!m.upscale
   : task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : isChatModel(m));
@@ -169,6 +175,17 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
     return () => removeEventListener("keydown", key);
   }, []);
 
+  const talk = settings.code ? "code" : "chat";
+  const taskRow = (task: ThreadTask) => {
+    const select = <TaskSelect key={task} task={task} value={settings.models[task]} allowed={settings.allowed} onChange={(m) => change({ models: { [task]: m } })} />;
+    return task === "speech.speak" && speaking ? (
+      <div key={task} className="inline speak-row">
+        {select}
+        <button ref={voiceLink} type="button" className="link sm" aria-label={`${speaking.modelId} settings`} onClick={() => setVoice(speaking)}>Settings</button>
+      </div>
+    ) : select;
+  };
+
   return (<>
     <aside id={id} ref={ref} tabIndex={-1} className="drawer" aria-label="Thread settings">
       <div className="drawer-head">
@@ -179,7 +196,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
         {sub && <p className="muted">A subagent inherits its parent's settings and can only narrow them, so they're shown read-only here.</p>}
         <ErrorText error={error} />
         <fieldset className="group" disabled={sub || busy}>
-          <legend>Models</legend>
+          <legend title={summary.project ? "New threads copy these." : undefined}>Models</legend>
           <label className="field">
             <span>Preset</span>
             <select value={chosenPreset} onChange={(e) => change({ preset: e.target.value || null })}>
@@ -187,18 +204,26 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
               {usablePresets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </label>
-          {/* Watching threads only in a project chat, the one thread that makes looks; it comes after Titles. */}
-          {THREAD_TASKS.filter((task) => task !== "watching" || summary.project).map((task) => {
-            const select = <TaskSelect key={task} task={task} value={settings.models[task]} allowed={settings.allowed} onChange={(m) => change({ models: { [task]: m } })} />;
-            return task === "speech.speak" && speaking ? (
-              <div key={task} className="inline speak-row">
-                {select}
-                <button ref={voiceLink} type="button" className="link sm" aria-label={`${speaking.modelId} settings`} onClick={() => setVoice(speaking)}>Settings</button>
-              </div>
-            ) : select;
-          })}
+          {/* One select for what she talks on: Coding in Code mode, Main conversation otherwise, as the header's badge. */}
+          <TaskSelect task={talk} label="Conversation" value={settings.models[talk]} allowed={settings.allowed} onChange={(m) => change({ models: { [talk]: m } })} />
+          <label className="field" title="How long the conversation model thinks before it answers.">
+            <span>Thinking</span>
+            <select value={settings.thinkingSet ? settings.thinking : ""} onChange={(e) => change({ thinking: (e.target.value || null) as ThinkingLevel | null })}>
+              <option value="">{settings.thinkingSet ? "Default" : `Default (${levelName(settings.thinking)})`}</option>
+              {[...new Set([...settings.thinkingLevels, ...(settings.thinkingSet ? [settings.thinking] : [])])].map((l) => <option key={l} value={l}>{levelName(l)}</option>)}
+            </select>
+          </label>
           <NetSwitch label="Fallback" hint="When off, only the first model in each list answers; if it can't, the message waits for it." value={settings.fallback} effective={settings.fallbackOn}
             onChange={(v) => change({ fallback: v })} />
+          <fieldset className="subgroup">
+            <legend>Helpers</legend>
+            {/* Watching threads only in a project chat, the one thread that makes looks. */}
+            {HELPER_TASKS.filter((task) => task !== "watching" || summary.project).map((task) => taskRow(task))}
+          </fieldset>
+          <fieldset className="subgroup">
+            <legend>Images and speech</legend>
+            {MEDIA_TASKS.map((task) => taskRow(task))}
+          </fieldset>
         </fieldset>
 
         <fieldset className="group" disabled={sub || busy}>
@@ -281,11 +306,16 @@ export function TaskSelect({ task, label, value, allowed, onChange }: {
     ? `${value.kind ? `${value.kind} · ` : ""}${value.modelId ? `${value.name ?? shortModel(value.modelId)} · ${value.endpointName}` : named(value)}` : "nothing set";
   // Picking a cloud Dictation model is the consent to send this thread's voice to the cloud, so it asks first.
   const [cloudPick, setCloudPick] = useState<{ id: string; name: string }>();
+  // The count describes the select rather than naming it, so the select keeps the task's name.
+  const countId = useId();
+  const counted = value.fallbacks !== undefined;
   return (<>
     <label className="field">
-      <span>{label ?? TASK_LABELS[task]}</span>
+      <span className="with-count">{label ?? TASK_LABELS[task]}{counted && (
+        <span id={countId} className="fallbacks" aria-hidden="true" title={value.source === "thread" ? "A pick here replaces the preset's whole list." : undefined}>{fallbackCount(value.fallbacks!)}</span>
+      )}</span>
       {/* An option can't carry a tooltip, so the select's holds the chosen model's whole ID. */}
-      <select value={current} title={(current ? allowed.flatMap((x) => x.models).find((m) => m.id === current)?.modelId : value.modelId) ?? undefined} onChange={(e) => {
+      <select value={current} aria-describedby={counted ? countId : undefined} title={(current ? allowed.flatMap((x) => x.models).find((m) => m.id === current)?.modelId : value.modelId) ?? undefined} onChange={(e) => {
         const id = e.target.value;
         const ep = allowed.find((x) => x.models.some((m) => m.id === id));
         const m = ep?.models.find((x) => x.id === id);

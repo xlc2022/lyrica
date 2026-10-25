@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   del, get, patch, post, put, threadPath, u,
-  type CommandRule, type AllowedPaths, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type PermissionMode, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
+  type CommandRule, type AllowedPaths, type GitRepository, type Grant, type MachineInfo, type MessagePart, type ModelRef, type Pool, type ProjectOverview, type ThinkingLevel, type ThreadChange, type ThreadSettings, type ThreadSummary,
 } from "./api.ts";
 import { ProjectQuestion } from "./Question.tsx";
 import { FoldConfirm, foldLosses, foldLossNames } from "./FoldConfirm.tsx";
@@ -12,12 +12,11 @@ import { ChecklistButton, checklistOf, StepLine } from "./Checklist.tsx";
 import { checksState } from "./Changes.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
-import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { go, href, parse } from "./route.ts";
 import { Repositories } from "./Git.tsx";
 import { McpServers } from "./Mcp.tsx";
 import { FilesSection } from "./ProjectFiles.tsx";
-import { CODE_MODE_HINT, Folders, Machines, TaskSelect } from "./Settings.tsx";
+import { CODE_MODE_HINT, Folders, Machines } from "./Settings.tsx";
 import { Main, PageHead, useWide, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, Dialog, ErrorText, Prose, shortTime, Switch, useAction, useDismiss, useInView, useLoad, wakeTime } from "./ui.tsx";
 import { modelName } from "./ModelLabel.tsx";
@@ -328,7 +327,7 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   );
 }
 
-/** Goal, Paused and Watching threads; New threads (Model, Code mode, Thinking, Fallback); This chat (Model, Mode, Group, Folders, Machines, Repositories, MCP servers); Commands; Checks; one Save. */
+/** Goal, Paused and Watching threads; New threads (Model, Code mode, Thinking, Fallback); Workspace (Group, Folders, Machines, Repositories, MCP servers); Commands; Checks; one Save. */
 export function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
 }) {
@@ -344,8 +343,6 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
   const [code, setCode] = useState(ps?.threadsCode ?? settings.code);
   const [thinking, setThinking] = useState<ThinkingLevel | "">(ps?.threadsThinking ?? "");
   const [fallback, setFallback] = useState<"" | "on" | "off">(ps?.threadsFallback === undefined ? "" : ps.threadsFallback ? "on" : "off");
-  const [chat, setChat] = useState<{ offeringId: string } | null | undefined>(undefined);
-  const [mode, setMode] = useState<PermissionMode>(settings.mode);
   const [group, setGroup] = useState(summary.group ?? "");
   // The chat's workspace, which every thread of the project inherits; undefined until changed here.
   const [grants, setGrants] = useState<Grant[]>();
@@ -372,12 +369,11 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
     setRules(updated.projectSettings?.commandRules ?? rules);
     setChecks(updated.projectSettings?.checks ?? checks);
     onSummary(updated);
-    if (chat !== undefined || mode !== settings.mode || grants || granted || repositories || mcpServers) {
+    if (grants || granted || repositories || mcpServers) {
       onSettings(await patch<ThreadSettings>(`${base}/settings`, {
-        ...(chat !== undefined ? { models: { chat } } : {}), ...(mode !== settings.mode ? { mode } : {}),
         ...(grants ? { grants } : {}), ...(granted ? { machines: granted } : {}), ...(repositories ? { repositories } : {}), ...(mcpServers ? { mcpServers } : {}),
       }));
-      setChat(undefined); setGrants(undefined); setGranted(undefined); setRepositories(undefined); setMcpServers(undefined);
+      setGrants(undefined); setGranted(undefined); setRepositories(undefined); setMcpServers(undefined);
     }
     setSaved(true);
   });
@@ -389,6 +385,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
   const checkError = checks.some(c => c.trim().length > 300 || /[\x00-\x1f\x7f-\x9f]/.test(c))
     ? "A check is one line of at most 300 characters, with no control characters." : "";
   const newThreadsHint = `Threads ${her()} starts from this chat. Each one can be changed after it starts.`;
+  const sameHint = `${newThreadsHint} Other models come from this chat's settings.`;
   return (
     <form className="card project-form" aria-labelledby="h-general" onSubmit={(e) => { e.preventDefault(); void save(); }}>
       <h2 id="h-general">General</h2>
@@ -402,12 +399,12 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
         <Switch label="Check in on threads" hint={`While its threads work, ${her()} can wait in this chat and look in on them. Off, the chat ends its turn and their reports wake it, which takes far fewer tokens on a long chat.`} checked={checkIn} onChange={setCheckIn} />
       </div>
 
-      <h3 title={newThreadsHint}>New threads</h3>
+      <h3 title={sameHint}>New threads</h3>
       <div className="row top defaults">
-        <label className="field" title={newThreadsHint}>
+        <label className="field" title={`The model a new thread talks on: Coding in Code mode, Main conversation otherwise. ${newThreadsHint}`}>
           <span>Model</span>
           <select value={model} onChange={(e) => setModel(e.target.value)}>
-            <option value="">This chat's model</option>
+            <option value="">Same as this chat</option>
             {settings.allowed.map((ep) => (
               <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
                 {ep.models.map((m) => <option key={m.id} value={m.id}>{ep.kind} · {modelName(m)} · {ep.name}</option>)}
@@ -420,29 +417,22 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
         <label className="field" title={newThreadsHint}>
           <span>Thinking</span>
           <select value={thinking} onChange={(e) => setThinking(e.target.value as ThinkingLevel | "")}>
-            <option value="">This chat's thinking</option>
+            <option value="">Same as this chat</option>
             {THINKING.map((l) => <option key={l} value={l}>{l === "off" ? "Off" : l[0]!.toUpperCase() + l.slice(1)}</option>)}
           </select>
         </label>
         <label className="field" title={newThreadsHint}>
           <span>Fallback</span>
           <select value={fallback} onChange={(e) => setFallback(e.target.value as "" | "on" | "off")}>
-            <option value="">This chat's fallback</option>
+            <option value="">Same as this chat</option>
             <option value="on">On</option>
             <option value="off">Off</option>
           </select>
         </label>
       </div>
 
-      <h3>This chat</h3>
+      <h3 title="This chat's. Every thread it starts gets these or fewer.">Workspace</h3>
       <div className="row top defaults">
-        <TaskSelect task="chat" label="Model" value={chat === undefined ? settings.models.chat : { ...settings.models.chat, source: chat ? "thread" : "preset", model: chat ?? undefined }} allowed={settings.allowed} onChange={(m) => setChat(m && "offeringId" in m ? m : null)} />
-        <label className="field">
-          <span>Mode</span>
-          <select value={mode} onChange={(e) => setMode(e.target.value as PermissionMode)}>
-            {MODE_ORDER.map((m) => <option key={m} value={m}>{MODES[m].label}</option>)}
-          </select>
-        </label>
         <label className="field">
           <span>Group</span>
           <select value={group} onChange={(e) => setGroup(e.target.value)}>
@@ -473,8 +463,8 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
         <ErrorText error={paths.error || machines.error} />
       </div>
 
-      {/* Network, local-only, the other task models and speech stay in the chat's own drawer. */}
-      <p className="small"><a href={href({ page: "thread", userId: ctx.user.id, pool: summary.pool, threadId: summary.id, drawer: true })} title="Network, local-only and the other task models, in the chat's drawer.">Thread settings</a></p>
+      {/* The chat's own models, mode, network and local-only stay in its drawer, the header badge and the composer. */}
+      <p className="small"><a href={href({ page: "thread", userId: ctx.user.id, pool: summary.pool, threadId: summary.id, drawer: true })} title="This chat's models, network and local-only, in its drawer.">Thread settings</a></p>
 
       <h3>Commands</h3>
       {!rules.length && <p className="muted">No rules: commands ask as the mode says.</p>}

@@ -772,7 +772,9 @@ Thread settings GET/PATCH carry `code`. The `threads` action `code` takes
 `on`, optional `task` (300 characters) and `done` (1,200 characters); it
 emits `settings` and applies from the next turn. Subagents cannot call it.
 A project's `threadsCode` API choice applies to child and routine threads,
-with `threadsModel`; unset, they inherit their parent's code preference.
+with `threadsModel`, which sets the thread's Coding model when it starts in
+code mode and its Main conversation otherwise; unset, they inherit their
+parent's code preference.
 The choice lives in encrypted user settings as `project.code.<pool>/<id>`,
 and forgetting the project removes it. No additional migration is needed.
 Code turns read branch and at most ten commit subjects since origin's
@@ -916,7 +918,7 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   repositories from every thread at once.
 - **A thread's repositories** (`owner/name` and the account each uses) are
   granted like folders: the Repositories row in the thread drawer and
-  under This chat on Project settings, so a project's threads get the
+  under Workspace on Project settings, so a project's threads get the
   project chat's list or fewer. A child or subagent gets a subset, never
   more (a read-only or narrowed one gets them read-only, below), and a
   parent's change narrows its running children at once. A
@@ -1033,7 +1035,7 @@ gives her its tools through Pi's own MCP client (DESIGN.md, "MCP servers").
   prevented, as for private Git accounts. Each use records Online, Token
   rejected (401 or 403) or Unreachable.
 - **A thread's servers** are granted like repositories: the MCP servers
-  row in the thread drawer and under This chat on Project settings, so a
+  row in the thread drawer and under Workspace on Project settings, so a
   project's threads get the project chat's servers or fewer. A private or
   local-only thread takes only private servers, a general thread only
   general ones. A new pool, removing a server, or taking it off a project
@@ -1308,7 +1310,7 @@ edits prompts in the sandbox only. Machine limits, suspect commands, moving
 to a machine and irreversible calls still ask. The user's `user_bash` is
 unaffected. `WorkspaceThread.project` follows delegation at every depth.
 
-Project settings → General has Commands after This chat, with prefix,
+Project settings → General has Commands after Workspace, with prefix,
 Allow | Ask | Forbid, Remove and Add rule, applied by the page's one Save.
 For a single plain sandbox command in a project, the card offers Always allow
 with lyricad's computed prefix. Shells, interpreters and wrappers get no such

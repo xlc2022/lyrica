@@ -150,6 +150,35 @@ describe("projects", () => {
     expect(s.d.services!.workspace.settings(s.rt.ada.id).thread(next).code).toBe(false);
   });
 
+  it("gives a new thread the New threads model as Coding in Code mode and as Main conversation otherwise", async () => {
+    const s = await setup();
+    const other = await fakeOpenAI({ label: "box", models: [{ id: "gemma-5-12b" }] });
+    other.respond(() => ({ text: "From gemma." }));
+    const box = (await s.ada.post<EndpointInfo>(`${s.u}/endpoints`, { name: "box", kind: "local", baseUrl: other.baseUrl })).body;
+    const gemma = box.models[0]!.id;
+    await s.ada.patch(s.path, { threadsCode: true, threadsModel: { offeringId: gemma } });
+    s.script("chat").push(start(["Fixture", "fixture: fix addition"]), { text: "Started." });
+    const child = ends((await s.say("Fix the fixture")).events).flatMap(e => e.threads ?? [])[0]!.id;
+    await expect.poll(() => other.requests.length).toBeGreaterThan(0);
+    const models = async (id: string) => (await s.ada.get<ThreadSettings>(`${s.threadPath(id)}/settings`)).body.models;
+    expect((await models(child)).code).toMatchObject({ source: "thread", model: { offeringId: gemma } });
+    expect((await models(child)).chat.source).not.toBe("thread");
+    expect(s.d.services!.models.recentCalls(s.rt.ada.id, { threadId: child, limit: 10 }).some(c => c.task === "code")).toBe(true);
+    const routine = await s.d.services!.children.routineThread(s.rt.ada.id, "general", s.project.id, "Routine fixture");
+    expect((await models(routine)).code).toMatchObject({ source: "thread", model: { offeringId: gemma } });
+    await s.ada.patch(s.path, { threadsCode: false });
+    const plain = await s.d.services!.children.routineThread(s.rt.ada.id, "general", s.project.id, "Plain fixture");
+    expect((await models(plain)).chat).toMatchObject({ source: "thread", model: { offeringId: gemma } });
+    expect((await models(plain)).code.source).not.toBe("thread");
+    // A thread's pick replaces the preset's whole list, so it has no fallback; the column's list keeps its own.
+    const qwen = (await models(s.project.id)).chat.model!.offeringId;
+    await s.ada.put(`${s.u}/columns/general/chat`, { models: [{ offeringId: qwen }, { offeringId: gemma }] });
+    expect((await models(s.project.id)).chat).toMatchObject({ source: "column", fallbacks: 1 });
+    expect((await models(plain)).chat).toMatchObject({ source: "thread", fallbacks: 0 });
+    await s.ada.patch(`${s.path}/settings`, { fallback: false });
+    expect((await models(s.project.id)).chat.fallbacks).toBe(0);
+  });
+
   it("starts a child in code mode, with the Coding model and its task as the Code task, when she asks", async () => {
     const s = await setup();
     s.script("chat").push({ tools: [{ name: "threads", args: { action: "start", title: "Racing sim", task: "Build the racing sim in the repository", code: true } }] }, { text: "Started." });

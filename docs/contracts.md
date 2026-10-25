@@ -631,7 +631,11 @@ class Models {                                              // new Models(keyrin
   are thread tasks too: a thread can choose its own model for each, as for
   the text tasks, and a private or local-only thread only local ones.
   `TaskModel.name` is what to call the model (a recipe's name, else its
-  model ID).
+  model ID). `TaskModel.fallbacks` counts the models after the shown one
+  in its list that could still answer (0 while Fallback is off); a thread's
+  own pick is a list of one, so it replaces the preset's whole list.
+  `ThreadSettings.thinkingSet` says whether the thread chose its
+  `thinking`; false follows the user's default.
 - **Speech.** `speech.transcribe` and `speech.speak` have lists of their
   own (neither follows chat) and take models with the `transcribe` or
   `speak` capability, reported by a host or set by hand. `transcribe` and
@@ -2156,6 +2160,8 @@ several is refused with the closest; subagents are refused.
 Project settings carry optional `threadsCode`, stored in encrypted user
 settings (`project.code.<pool>/<id>`), removed on forget. New child and
 routine threads apply it beside `threadsModel`; unset inherits the parent.
+`threadsModel` becomes a new thread's own `code` model when that thread
+starts in code mode, and its own `chat` model otherwise.
 The watcher exposes cached open PR checks via `codePulls`, without a new
 network call, and drops that cache on Lock.
 

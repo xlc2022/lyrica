@@ -772,7 +772,7 @@ add that URL and secret as a webhook on the repository:
 
 GitHub stays on polling, and its account drawer has no Webhook section.
 
-A project's **Repositories** row (Project settings, under This chat) and
+A project's **Repositories** row (Project settings, under Workspace) and
 the thread drawer list which repositories a thread has. Each thread clones
 its own copy into `/workspace/repos`, and `gh` and `tea` there use the
 right account by themselves. Details are in
