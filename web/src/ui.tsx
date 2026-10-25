@@ -144,14 +144,18 @@ export function Switch({ label, hint, checked, disabled, onChange }: {
 export interface ConfirmOption { label: string; ticked: boolean }
 
 /** The ticked state of a confirm's options, starting from their defaults. */
+/** Each option's state: what the user set it to, else its default. Keyed by label, so an option that appears after the confirm opened (a child count that loaded late) still starts at its default. */
+export const tickStates = (options: ConfirmOption[] | undefined, changed: Readonly<Record<string, boolean>>): boolean[] =>
+  (options ?? []).map((o) => changed[o.label] ?? o.ticked);
+
 function useTicks(options: ConfirmOption[] | undefined): [boolean[], (i: number, v: boolean) => void] {
-  const [ticks, setTicks] = useState(() => (options ?? []).map((o) => o.ticked));
-  return [ticks, (i, v) => setTicks((t) => t.map((x, j) => (j === i ? v : x)))];
+  const [changed, setChanged] = useState<Record<string, boolean>>({});
+  return [tickStates(options, changed), (i, v) => { const label = options?.[i]?.label; if (label !== undefined) setChanged((c) => ({ ...c, [label]: v })); }];
 }
 
 function Options({ options, ticks, set }: { options?: ConfirmOption[]; ticks: boolean[]; set: (i: number, v: boolean) => void }) {
   return <>{options?.map((o, i) => (
-    <label key={o.label} className="check"><input type="checkbox" checked={ticks[i] ?? o.ticked} onChange={(e) => set(i, e.target.checked)} />{" "}{o.label}</label>
+    <label key={o.label} className="check"><input type="checkbox" checked={ticks[i]} onChange={(e) => set(i, e.target.checked)} />{" "}{o.label}</label>
   ))}</>;
 }
 
