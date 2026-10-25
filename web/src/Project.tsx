@@ -432,7 +432,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
         </label>
       </div>
 
-      <h3 title="This chat's. Every thread it starts gets these or fewer.">Workspace</h3>
+      <h3 title="The coordinator's. Every thread it starts gets these or fewer.">Workspace</h3>
       <div className="row top defaults">
         <label className="field">
           <span>Group</span>
@@ -464,8 +464,8 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
         <ErrorText error={paths.error || machines.error} />
       </div>
 
-      {/* The chat's own models, mode, network and local-only stay in its drawer, the header badge and the composer. */}
-      <p className="small"><a href={href({ page: "thread", userId: ctx.user.id, pool: summary.pool, threadId: summary.id, drawer: true })} title="This chat's models, network and local-only, in its drawer.">Thread settings</a></p>
+      {/* The coordinator's own models, mode, network and local-only stay in its drawer, the header badge and the composer. */}
+      <p className="small"><a href={href({ page: "thread", userId: ctx.user.id, pool: summary.pool, threadId: summary.id, drawer: true })} title="The coordinator's models, network and local-only, in its drawer.">Thread settings</a></p>
 
       <h3>Commands</h3>
       {!rules.length && <p className="muted">No rules: commands ask as the mode says.</p>}

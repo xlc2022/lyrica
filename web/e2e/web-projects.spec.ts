@@ -577,6 +577,9 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await expect(machinesRow.getByRole("button", { name: "Add machine" })).toBeVisible();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Saved.")).toBeVisible();
+  // Both tooltips name the coordinator outright: this page opens on its own, with no chat in view.
+  await expect(page.getByRole("heading", { name: "Workspace", exact: true })).toHaveAttribute("title", "The coordinator's. Every thread it starts gets these or fewer.");
+  await expect(page.getByRole("link", { name: "Thread settings" })).toHaveAttribute("title", "The coordinator's models, network and local-only, in its drawer.");
   // The chat keeps its own drawer for network and local-only: the page links to it open.
   await page.getByRole("link", { name: "Thread settings" }).click();
   const chatDrawer = page.getByRole("complementary", { name: "Thread settings" });
