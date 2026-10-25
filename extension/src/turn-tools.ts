@@ -54,6 +54,19 @@ function normalized(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 
+/** Told to her when a project chat that waits for its threads' reports tries to wait in its turn instead. */
+export const WAIT_FOR_REPORTS = "This project waits for its threads' reports instead of checking in on them: end your turn now. A thread's report, question or error wakes you.";
+
+/**
+ * In a project chat whose Check in on threads is off (`off`), a bare sleep is refused: each one would
+ * be followed by another request rereading her whole context, while a thread's report wakes her anyway.
+ */
+export function createWaitForReportsExtension(off: () => boolean): ExtensionFactory {
+  return pi => {
+    pi.on("tool_call", e => (isSleep(e.toolName, e.input) && off() ? { block: true, reason: WAIT_FOR_REPORTS } : undefined));
+  };
+}
+
 /** One budget per prompt/agent run, including every model continuation and nested tool call. */
 export function createTurnToolsExtension(): ExtensionFactory {
   return pi => {

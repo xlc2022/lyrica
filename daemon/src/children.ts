@@ -376,9 +376,11 @@ export class ChildThreads implements ThreadsHost {
    * message to the parent since the task began (its last message, as its
    * report), or with an error: an error once, until the child reports or the
    * person writes in it (`noticed`). A stopped turn tells nobody: whoever
-   * stopped it knows.
+   * stopped it knows. A turn the tool limits stopped (`limited`) wakes the
+   * parent at once, task or none, so it looks and nudges the child on if
+   * its work isn't done, instead of waiting on a thread that is idle.
    */
-  ended(userId: string, pool: Pool, thread: string, how: "done" | "error" | "stopped"): void {
+  ended(userId: string, pool: Pool, thread: string, how: "done" | "error" | "stopped" | "limited"): void {
     const key = `${userId}/${pool}/${thread}`;
     this.markStopped(userId, pool, thread, how === "stopped");
     const wake = this.parentWakes.get(key);
@@ -389,7 +391,7 @@ export class ChildThreads implements ThreadsHost {
     }
     const reported = this.reports.delete(key);
     const t = this.tasked.get(key);
-    if (how === "done" && reported) {
+    if (how !== "error" && how !== "stopped" && reported) {
       const row = this.row(userId, pool, thread);
       if (row) this.queueParentWake(userId, pool, row.parent, thread, "batch");
     }
@@ -398,6 +400,16 @@ export class ChildThreads implements ThreadsHost {
     if (checks && how !== "stopped" && this.checksReport(userId, pool, thread, checks, t && !t.reported, how === "error")) {
       this.tasked.delete(key);
       if (how === "error") this.noticed.add(key);
+      return;
+    }
+    if (how === "limited") {
+      this.tasked.delete(key);
+      let row: Row | undefined;
+      try { row = this.row(userId, pool, thread); } catch { return; /* locked */ }
+      if (!row) return;
+      const last = this.lastReply(userId, pool, thread);
+      this.deliver(userId, pool, row.parent, `Child thread [t:${thread}] stopped at its turn's tool limit, so its work may not be finished, and is idle. `
+        + "Read it with threads read, and message it to go on if it isn't done." + (last ? `\n\nIts last message:\n${last}` : ""), thread, "update", "now");
       return;
     }
     this.drainWakes(userId);

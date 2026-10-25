@@ -924,6 +924,8 @@ export interface ProjectSettingsInfo {
   threadsFallback?: boolean;
   /** After the person writes in a thread, or a thread posts an update, the project chat looks and tells the threads it affects. */
   watchThreads: boolean;
+  /** The project chat may wait within a turn for its working threads; off, it ends its turn and their reports wake it. */
+  checkInOnThreads: boolean;
 }
 
 /**
@@ -949,7 +951,7 @@ export interface ThreadChange {
   commandRules?: CommandRule[];
   checks?: string[];
   threadsCode?: boolean;
-  paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; threadsFallback?: boolean | null; watchThreads?: boolean;
+  paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; threadsFallback?: boolean | null; watchThreads?: boolean; checkInOnThreads?: boolean;
 }
 /** PUT and DELETE /api/u/:userId/threads/:pool/:threadId/pin → ThreadSummary. The user's own pin, in user.db. */
 /**

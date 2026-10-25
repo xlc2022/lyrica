@@ -598,6 +598,20 @@ taking turns. A stopped turn tells nobody, nor does a turn the user
 started in the child. Which children owe a report is
 held in memory; a restart tells the parent anyway.
 
+A turn the turn tool limits stopped (extension/src/turn-tools.ts) wakes
+the parent at once, whether or not the child owed a report: "stopped at
+its turn's tool limit, so its work may not be finished, and is idle",
+with its last message (its wrap-up), so the parent looks and messages it
+to go on rather than waiting on an idle thread.
+
+**Check in on threads** (the project setting `checkInOnThreads`, on by
+default; a settings row `project.checkIn.<pool>/<project>`). Off, the
+project chat can't wait within a turn: a bare `sleep` there is refused
+with `WAIT_FOR_REPORTS` (`createWaitForReportsExtension`), which tells it
+to end its turn, since each sleep is followed by another request that
+rereads its whole context. Its threads' reports, questions and errors
+wake it as above. Commands that do more than sleep are untouched.
+
 **Idle projects.** lyricad's 20-second tick also watches projects: one
 whose checklist (the chat's or a thread's) has a step not done, where
 nothing runs, is queued, waits for an approval or for the person (an open

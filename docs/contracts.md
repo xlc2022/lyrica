@@ -1748,7 +1748,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Web UI 2's thread menu uses them. `POST threads` with `project` (and
     `PATCH` making one) also pins the thread; `Display.projects: "all" |
     "only" | "none"` filters the list; `PATCH threads/:id` with `project`,
-    `goal`, `paused`, `threadsModel`, `threadsThinking`, `threadsFallback` and `watchThreads`
+    `goal`, `paused`, `threadsModel`, `threadsThinking`, `threadsFallback`, `watchThreads` and `checkInOnThreads`
     (`user.db` `project_settings`, settings and unsaved drafts), and
     `projectSettings.pageId` names the project page's memory ID; a project chat's
     look at its threads is marked `[Watching threads]` (`WATCHING_MARK`,

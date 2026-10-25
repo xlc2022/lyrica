@@ -69,15 +69,15 @@ and carries its children into a new project. The interface is built under
 3. Start three standing threads in the project chat (**Start a thread**
    on a message; they sit under the project row) and pick each one's
    model:
-   - **Review** (the strongest cloud model allowed): says yes to a brief
-     before its code starts (goal, smallest version, which docs/ux.md rule
+   - **Review** (the strongest cloud model allowed): reads a brief
+     before its code starts, when there is one (goal, smallest version, which docs/ux.md rule
      each new control follows, what it reuses, what it adds against
      PRINCIPLES 8's budgets), then reviews every PR she opens before it
      goes to Claude, against the brief or issue, AGENTS.md and the docs;
      sends fixes to the building thread; says verified.
    - **UI review** (the model the project uses for anything a user sees):
-     says yes to a UI brief's mockup or written layout before its code
-     starts, then judges every change a user sees against docs/ux.md, from
+     reads a UI brief's mockup or written layout before its code
+     starts, when there is one, then judges every change a user sees against docs/ux.md, from
      the screenshots `web/e2e/shot.ts` takes (docs/workspace.md, "Her own
      code"); a PR with UI goes out only after it says verified.
    - **Friction log**: keeps the list of what went wrong in use, one line
@@ -147,10 +147,11 @@ characters, the limit on project instructions.
 > **Work.** One issue, assigned to you and claimed first, per piece of
 > work: what you saw (with evidence), the smallest change a user would
 > notice, what it reuses, the principle it serves; bigger ideas under
-> "Later". Anything a user sees, a new API or a new dependency first gets
-> a short brief in docs/briefs/, and code starts once Review (and UI
-> review, with a mockup) says yes; a small fix needs only the issue. One
-> thread per issue on a `lyrica/<short-name>` branch, one PR into `main`,
+> "Later". Start small and grow it once it works: big drafts cost review
+> rounds. Before UI work, a new API or dependency, a short brief in
+> docs/briefs/ for Review (UI review sees a mockup) usually comes first;
+> skip it with a stated reason. One thread per issue on a
+> `lyrica/<short-name>` branch, one PR into `main`,
 > tested in your sandbox.
 >
 > **Review.** Send a draft PR and its head to Review and, for UI,

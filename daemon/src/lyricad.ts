@@ -596,7 +596,7 @@ export class Lyricad implements Drainable {
         // Only a turn the person wrote in resets the run of looks; a child's wake or a marked message isn't one.
         if (byPerson ?? true) watcher.turnEnded(u, p, t);
         const failed = erred.delete(k);
-        children.ended(u, p, t, failed ? "error" : aborted.delete(k) ? "stopped" : "done");
+        children.ended(u, p, t, failed ? "error" : aborted.delete(k) ? "stopped" : host.get(u, p, t).toolLimited ? "limited" : "done");
         if (!failed) return;
         const project = projectOf(u, p, t);
         if (project) watcher.failed(u, p, project, t);
@@ -614,6 +614,7 @@ export class Lyricad implements Drainable {
         }
       },
       projectThreads: (u, p, project) => children.projectLines(u, p, project),
+      waitsForReports: (u, p, project) => !projects.settings(u, p, project).checkIn,
     });
     const proposals = new PersonaProposals(keyring.self(), users, persona);
     const sleep = new Sleep({ users, memory, models, persona, proposals, hasKey: (id) => keyring.hasUserKey(id), cwd, limits: this.opts.sleep, log: this.log });

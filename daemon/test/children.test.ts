@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { INTERRUPTED } from "@lyrica/extension";
+import { INTERRUPTED, MAX_SAME_TOOL_RUN } from "@lyrica/extension";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
 import type { EndpointInfo, MachineProbe, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary, ThreadUsage } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
@@ -521,6 +521,18 @@ describe("a child's end, reading and stopping", () => {
     expect(all).not.toContain(`[t:${loud}] ended without a report`);
     expect(all).not.toContain("finished without a report");
     expect(all).not.toContain("stopped with an error");
+  });
+
+  it("the parent is woken at once, with its last message, when a child's turn stops at the tool limit, even after it reported", async () => {
+    const { parent, child, say, path, messages } = await setup();
+    parent.push(start("Status", "Record the call facts."), { text: "Started." });
+    // It reports early, then runs into the limit of calls in a row to one tool, and writes where things stand.
+    child.push(toParent("Started on the facts."), ...Array.from({ length: MAX_SAME_TOOL_RUN }, (_, i) => ({ tools: [{ name: "recall", args: { query: `fact ${i}` } }] })), { text: "Halfway: the tests still need fixing." });
+    const id = toolEnd(await say("record the call facts in their own thread"))!.threads![0]!.id;
+    const got = await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes("tool limit")));
+    const text = got.find((t) => t.includes("tool limit"))!;
+    expect(text).toContain(`Child thread [t:${id}] stopped at its turn's tool limit`);
+    expect(text).toContain("Halfway: the tests still need fixing.");
   });
 
   it("the parent hears of a child whose model call fails", async () => {

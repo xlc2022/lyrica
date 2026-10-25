@@ -2,14 +2,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxProvider, fauxThinking, fauxToolCall, type JsonObject } from "@earendil-works/pi-ai";
-import { createAgentSession, DefaultResourceLoader, SessionManager } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, DefaultResourceLoader, SessionManager, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { expect, it } from "vitest";
-import { CALL_THE_TOOL, CARRY_ON, createTurnToolsExtension, CUT_OFF, CUT_WRAP_UP, EMPTY_REPLY, TEXT_TOOL_CALL, MAX_TURN_TOOL_CALLS, TURN_TOOL_NOTICE, WRAP_UP } from "../src/turn-tools.ts";
+import { CALL_THE_TOOL, CARRY_ON, createTurnToolsExtension, createWaitForReportsExtension, CUT_OFF, CUT_WRAP_UP, WAIT_FOR_REPORTS, EMPTY_REPLY, TEXT_TOOL_CALL, MAX_TURN_TOOL_CALLS, TURN_TOOL_NOTICE, WRAP_UP } from "../src/turn-tools.ts";
 import { createImageExtension, type ImageTools } from "../src/images.ts";
 import { toMessages } from "../../daemon/src/messages.ts";
 
-async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1, batch = false, stopReason: "toolUse" | "length" = "toolUse") {
+async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1, batch = false, stopReason: "toolUse" | "length" = "toolUse", extra: ExtensionFactory[] = []) {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-tool-limit-"));
   const faux = fauxProvider({ provider: "faux", models: [{ id: "loop" }] });
   let executed = 0, requested = 0;
@@ -30,7 +30,7 @@ async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1
   const responses = calls.map(c => (ctx: { messages: unknown[] }) => { requested++; return wrapUp(ctx) ?? fauxAssistantMessage(fauxToolCall(c.name, c.args), { stopReason }); }).concat([() => { requested++; return fauxAssistantMessage("Done"); }]);
   faux.setResponses(batch ? [() => { requested++; return fauxAssistantMessage(calls.map(c => fauxToolCall(c.name, c.args)), { stopReason: "toolUse" }); }, (ctx: { messages: unknown[] }) => { requested++; return wrapUp(ctx) ?? fauxAssistantMessage("tools still on"); }] : responses);
   const loader = new DefaultResourceLoader({ cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
-    extensionFactories: [createTurnToolsExtension(), pi => {
+    extensionFactories: [createTurnToolsExtension(), ...extra, pi => {
       pi.registerProvider(faux.provider);
       for (const name of ["search", "other", "threads", "bash"]) pi.registerTool({ name, label: name, description: name,
         parameters: Type.Object({ query: Type.Optional(Type.String()), command: Type.Optional(Type.String()), nested: Type.Optional(Type.Object({ a: Type.Number(), b: Type.Number() })) }),
@@ -74,6 +74,15 @@ it("stops the turn when a tool call is cut off at the reply limit twice in a row
   expect(r.asked).toHaveLength(1);
   expect(r.asked[0]).toContain(CUT_WRAP_UP);
   expect(JSON.stringify(r.shown)).toContain(CUT_OFF);
+});
+
+it("refuses a bare sleep in a project chat that waits for its threads' reports, and lets a command that does more than sleep through", async () => {
+  const sleep = { name: "bash", args: { command: "sleep 120" } };
+  const waits = await scenario([sleep, { name: "bash", args: { command: "sleep 5 && tail -n 3 build.log" } }], 1, false, "toolUse", [createWaitForReportsExtension(() => true)]);
+  expect(waits.executed).toBe(1);
+  expect(waits.results[0]).toContain(WAIT_FOR_REPORTS);
+  const checks = await scenario([sleep], 1, false, "toolUse", [createWaitForReportsExtension(() => false)]);
+  expect(checks.executed).toBe(1);
 });
 
 it("refuses the third identical call despite different object key order", async () => {
