@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { CHILD_WAKES } from "@lyrica/core";
@@ -74,7 +75,10 @@ export function createTurnToolsExtension(): ExtensionFactory {
     let empty = 0, asText = 0, cut = 0;
     /** The thinking level to go back to after a retry without thinking. */
     let thinking: ThinkingLevel | null = null;
-    const repeats = new Map<string, number>();
+    /** By tool and arguments, a digest of each result those calls returned this run. */
+    const repeats = new Map<string, string[]>();
+    /** Calls running, by ID: their tool and arguments. */
+    const running = new Map<string, string>();
     const refused = new Map<string, string>();
     // Back on as the run ends: the next prompt's first request is built before agent_start.
     pi.on("agent_end", (_e, ctx) => {
@@ -84,7 +88,7 @@ export function createTurnToolsExtension(): ExtensionFactory {
     });
     pi.on("agent_start", () => {
       calls = empty = asText = cut = 0; why = ""; stopped = notified = wrapped = false;
-      repeats.clear(); refused.clear();
+      repeats.clear(); running.clear(); refused.clear();
     });
     // This event precedes schema validation, so malformed and unknown calls count too.
     pi.on("tool_execution_start", e => {
@@ -94,16 +98,27 @@ export function createTurnToolsExtension(): ExtensionFactory {
       // After a plain sleep, time has passed: a sleep, or a call made again after one (polling a file, say), may not return the same thing.
       // The caps on calls still bound a loop of them.
       if (isSleep(e.toolName, e.args)) repeats.clear();
-      const count = (repeats.get(key) ?? 0) + 1;
-      repeats.set(key, count);
-      if (count >= MAX_IDENTICAL_TOOL_CALLS) refused.set(e.toolCallId, isThreadRead(e.toolName, e.args)
+      // A call made again whose last results were all the same would only return that again; one whose result changed
+      // (a running job's output, a log that grows) can still tell her something.
+      const seen = repeats.get(key) ?? [];
+      const last = seen.slice(-(MAX_IDENTICAL_TOOL_CALLS - 1));
+      if (last.length === MAX_IDENTICAL_TOOL_CALLS - 1 && last.every((r) => r === last[0])) refused.set(e.toolCallId, isThreadRead(e.toolName, e.args)
         ? `You already read this thread twice with these arguments. If it is still working: ${CHILD_WAKES}`
-        : "You already have this result: this tool was called with identical arguments twice. Answer or try something different.");
+        : "You already have this result: this tool was called with identical arguments twice and returned the same both times. Answer or try something different.");
+      else running.set(e.toolCallId, key);
       if (calls >= MAX_TURN_TOOL_CALLS) { stopped = true; why = `Turn stopped after \`${calls}\` tool calls.`; }
     });
     pi.on("tool_call", e => {
       const reason = refused.get(e.toolCallId);
       if (reason) return { block: true, reason };
+    });
+    // Only a digest of the result is kept, never its text.
+    pi.on("tool_execution_end", e => {
+      const key = running.get(e.toolCallId);
+      if (key === undefined) return;
+      running.delete(e.toolCallId);
+      const digest = createHash("sha256").update(`${e.isError}:${JSON.stringify((e.result as { content?: unknown } | undefined)?.content ?? null)}`).digest("base64");
+      repeats.set(key, [...(repeats.get(key) ?? []), digest]);
     });
     pi.on("turn_end", (e, ctx) => {
       // A reply with only thinking ends the run with nothing said or done: once, she carries on; again, the turn fails visibly.

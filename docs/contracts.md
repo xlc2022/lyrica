@@ -1250,11 +1250,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Turn tool limits** (`extension/src/turn-tools.ts`, installed first by
   `openThreadSession`): one prompt/agent run, including model continuations
   and nested tool calls, permits at most 100 attempted tool calls. Invalid
-  calls count too. Subagent sessions have independent budgets. The third
-  and later calls to the same tool with identical JSON arguments (object
-  keys sorted recursively; array order preserved) return an error telling
-  the model it already has the result and should answer or try something
-  different. A plain `sleep` (a `bash` call that only sleeps) starts the
+  calls count too. Subagent sessions have independent budgets. A call to
+  the same tool with identical JSON arguments (object keys sorted
+  recursively; array order preserved) whose last two such calls returned
+  the same result returns an error telling the model it already has the
+  result and should answer or try something different; while the result
+  keeps changing (a running job's output, say) the call runs. Only a digest
+  of each result is kept, in memory, for the run. A plain `sleep` (a `bash` call that only sleeps) starts the
   count over for every call, so polling isn't refused. Two replies in a row
   cut off at the reply limit with a tool call in them also stop the turn (Pi
   refuses a cut-off call and asks for it again, which on a full window is

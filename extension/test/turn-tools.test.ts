@@ -32,9 +32,10 @@ async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1
   const loader = new DefaultResourceLoader({ cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
     extensionFactories: [createTurnToolsExtension(), ...extra, pi => {
       pi.registerProvider(faux.provider);
-      for (const name of ["search", "other", "threads", "bash"]) pi.registerTool({ name, label: name, description: name,
+      // `log` is a running job's output: each call returns more of it.
+      for (const name of ["search", "other", "threads", "bash", "log"]) pi.registerTool({ name, label: name, description: name,
         parameters: Type.Object({ query: Type.Optional(Type.String()), command: Type.Optional(Type.String()), nested: Type.Optional(Type.Object({ a: Type.Number(), b: Type.Number() })) }),
-        execute: async () => { executed++; return { content: [{ type: "text", text: "result" }], details: {} }; } });
+        execute: async () => { executed++; return { content: [{ type: "text", text: name === "log" ? `line ${executed}` : "result" }], details: {} }; } });
     }, createImageExtension({ enabled: () => { executed++; throw new Error("must not execute"); } } as unknown as ImageTools)] });
   try {
     await loader.reload();
@@ -113,6 +114,11 @@ it("lets a plain sleep repeat, and a call made again after one, since time has p
   expect((await scenario([cat, cat, cat])).executed).toBe(2);
   const status = { name: "bash", args: { command: "sleep 60 && git status" } };
   expect((await scenario([status, status, status])).executed).toBe(2);
+});
+
+it("lets a call be made again while its result keeps changing, as a running job's output does", async () => {
+  const log = { name: "log", args: { query: "j3" } };
+  expect((await scenario([log, log, log, log])).executed).toBe(4);
 });
 
 it("lets one tool run with changing arguments up to the turn's cap", async () => {
