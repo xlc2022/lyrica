@@ -10,7 +10,7 @@ export function ModelCallFacts({ facts }: { facts: Facts }) {
       {facts.models.map((m) => <Fragment key={m.offeringId}>
         <dt style={{ overflowWrap: "anywhere" }}>{m.label} <span className="muted">· {m.endpointName}</span></dt>
         <dd>
-          <span className="num">{m.calls}</span> calls
+          <span className="num">{m.calls}</span> {m.calls === 1 ? "call" : "calls"}
           {" · "}<span title="Median recorded output tokens per second of generation, with positive output and at least 50 ms. Missing measurements are excluded.">Median speed</span>{" "}
           {m.medianTokPerSec === undefined ? "Unavailable" : <><span className="num">{m.medianTokPerSec.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span> tok/s</>}
           {" · "}<span className="num">{m.speedSamples}</span> measured

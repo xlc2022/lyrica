@@ -17,6 +17,8 @@ it("renders populated per-model facts with explicit retained scope and sample co
 it("keeps missing speed unavailable, distinct from a measured zero or zero recorded fallbacks", () => {
   const html = render(facts([{ offeringId: "one", label: "Unmeasured", endpointName: "fixture", calls: 1, speedSamples: 0, fallbacks: 0 }, { offeringId: "two", label: "Measured", endpointName: "fixture", calls: 1, medianTokPerSec: 0, speedSamples: 1, fallbacks: 0 }]));
   expect(html.match(/Unavailable/g)).toHaveLength(1);
+  expect(html).toContain(">1</span> call ·");
+  expect(html).not.toContain(">1</span> calls");
   expect(html).toContain(">0</span> tok/s");
   expect(html).toContain(">0</span> measured");
   expect(html.match(/Recorded fallbacks/g)).toHaveLength(2);
