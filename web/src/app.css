@@ -890,7 +890,7 @@ form.drawer-body { flex: 1; }
 .resolved-box { padding-block: 12px; }
 .resolved-box p { display: flex; gap: 6px; align-items: center; }
 .project-form h3 { font-size: 15px; margin: 8px 0 0; }
-.project-form .switches { gap: 20px; }
+.project-form .switches { gap: 8px 20px; }
 .project-form .workspace { display: grid; gap: 14px; max-width: 520px; }
 /* A look at the project's threads: a marker like a tool call's, with a dot in the info colour. */
 .marker[data-type="watching"] > button::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--info); }
