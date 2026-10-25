@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
-  DelegationStore, isRestricted, LIVE_STATUSES, matchModel, refId, renderThreadMentions, sameModel, singledOut, unmatched,
+  DelegationStore, isRestricted, LIVE_STATUSES, matchModel, refId, renderThreadMentions, sameModelName, singledOut, unmatched,
   type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
   type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
@@ -957,7 +957,7 @@ export class Delegation {
     }
     const picked = list.find((x) => x.id === refId(ref));
     if (!preferLocal || !picked || picked.local) return ref;
-    const twin = list.find((x) => x.local && sameModel(x.label, picked.label));
+    const twin = list.find((x) => x.local && sameModelName(x.label, picked.label));
     return twin && !singledOut(this.personSaid(run), picked, list) ? { offeringId: twin.id } : ref;
   }
 

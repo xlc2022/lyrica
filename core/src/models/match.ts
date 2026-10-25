@@ -13,7 +13,7 @@ const modelPart = (label: string) => label.slice(label.indexOf("/") + 1);
 const own = (label: string) => compact(label.slice(label.lastIndexOf("/") + 1));
 
 /** Whether two labels name the same model on different endpoints: "router/qwen/qwen3.8-27b" and "gpu/qwen3.8-27b". */
-export function sameModel(a: string, b: string): boolean {
+export function sameModelName(a: string, b: string): boolean {
   return !!own(a) && own(a) === own(b);
 }
 

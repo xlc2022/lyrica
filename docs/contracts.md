@@ -693,7 +693,7 @@ Custom roles override built-ins by name, except `claude`.
   She picks a tier; a step's `model` is only one the person or a saved
   workflow named, resolved by `Models.find`, else `matchModel` over
   `Models.textModels(ctx)`; a name that fits no one model fails with the
-  closest; a cloud one with a local `sameModel` twin runs on the twin unless
+  closest; a cloud one with a local `sameModelName` twin runs on the twin unless
   `singledOut(the person's latest message, it, all)`. `action: "models"` lists
   them local first, each local or cloud, with vision and paid where they apply.
   `folders` narrows granted host folders only, not sandbox repository paths;

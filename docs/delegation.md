@@ -35,7 +35,7 @@ subagent:
   the one chat model the parent may use whose model ID or label holds every
   word of it. A name that fits none, or several, fails the run with the
   closest few, for her to ask the person which they meant. A cloud model
-  that a local endpoint also serves under the same model name (`sameModel`)
+  that a local endpoint also serves under the same model name (`sameModelName`)
   runs on the local copy, unless the person's latest message singles out the
   cloud one (`singledOut`: its whole label, or its own model name when no
   other model shares it). The person's latest message is the newest user
