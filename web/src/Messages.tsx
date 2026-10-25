@@ -154,7 +154,7 @@ interface Env {
 }
 
 /** Her messages that hold only markers, waiting to be drawn together once the run ends. */
-interface Quiet { key: string; n?: number; parts: MessagePart[]; streaming: boolean }
+export interface Quiet { key: string; n?: number; parts: MessagePart[]; streaming: boolean }
 
 /** A part that is one of her inner workings: a marker, never text, an image or a card. */
 function isMarker(p: MessagePart): boolean {
@@ -179,7 +179,7 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
   const flush = () => {
     if (!quiet.length) return;
     const markers = quiet.reduce((a, q) => a + q.parts.length, 0);
-    if (markers >= 3) nodes.push(<ToolRun key={`run-${quiet[0]!.key}`} runs={quiet} env={env} />);
+    if (markers >= 3) nodes.push(<ToolRun key={runKey(quiet)} runs={quiet} env={env} />);
     else for (const q of quiet) nodes.push(<section key={q.key} className="turn quiet" id={q.n !== undefined ? `m-${q.n}` : undefined}><Parts parts={q.parts} env={env} bare streaming={q.streaming} /></section>);
     quiet = [];
   };
@@ -205,14 +205,22 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
 }
 
 /**
+ * A run's identity: its first call's ID, which stays put while the live copy's keys shift and the stored copy replaces
+ * it. Keyed by it, the run's box isn't remounted mid-turn, which would lose where the person had scrolled it.
+ */
+export function runKey(runs: Quiet[]): string {
+  const first = runs.flatMap((r) => r.parts).find((p) => p.type === "tool");
+  return `run:${first?.type === "tool" ? first.toolCallId : runs[0]!.key}`;
+}
+
+/**
  * A run of her tool calls as one marker: "<n> tool calls", running while the turn goes on, which opens
  * to a box that scrolls, every marker in it opening as before. Open state follows the first call's ID, so it survives
  * the stored copy replacing the live one.
  */
 function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
   const parts = runs.flatMap((r) => r.parts);
-  const first = parts.find((p) => p.type === "tool");
-  const key = `run:${first?.type === "tool" ? first.toolCallId : runs[0]!.key}`;
+  const key = runKey(runs);
   const open = env.openTools.has(key);
   const tools = parts.filter((p) => p.type === "tool");
   const streaming = runs.at(-1)!.streaming;
@@ -221,11 +229,15 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
   const body = useRef<HTMLDivElement>(null);
   // Whether the person left the box at its bottom; growth fires no scroll event, so this holds until they scroll.
   const stick = useRef(true);
+  // Where the box was last pinned to its bottom.
+  const pinned = useRef<number | undefined>(undefined);
   // While she works, an open box follows the newest call, but only while it sits at its bottom: scrolled up, it stays put.
   useLayoutEffect(() => {
     const el = body.current;
-    if (!el) { stick.current = true; return; }
-    if (streaming && stick.current) el.scrollTop = el.scrollHeight;
+    if (!el) { stick.current = true; pinned.current = undefined; return; }
+    // A scroll up lands before its scroll event does: below where the box was last pinned, the person has moved it.
+    if (stick.current && pinned.current !== undefined && el.scrollTop < pinned.current - 1) stick.current = false;
+    if (streaming && stick.current) { el.scrollTop = el.scrollHeight; pinned.current = el.scrollTop; }
   });
   const n = tools.length || parts.length;
   const word = tools.length ? (n === 1 ? "tool call" : "tool calls") : (n === 1 ? "step" : "steps");

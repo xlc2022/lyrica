@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readImage, readText, summarizeArgs } from "../src/Messages.tsx";
+import { readImage, readText, runKey, summarizeArgs, type Quiet } from "../src/Messages.tsx";
 
 describe("a tool call's marker line", () => {
   it("is empty for a call she is still writing, and the main argument once it runs", () => {
@@ -41,5 +41,18 @@ describe("the text a read call shows", () => {
     expect(read("/workspace/a.png", "Read image file [image/png]")).toBeUndefined();
     expect(readText({ type: "tool", toolCallId: "c1", name: "read", args: { path: "a.ts" }, result: "ENOENT", isError: true })).toBeUndefined();
     expect(readText({ type: "tool", toolCallId: "c1", name: "bash", args: { path: "a.ts" }, result: "x" })).toBeUndefined();
+  });
+});
+
+describe("a run of tool calls' identity", () => {
+  const call = (id: string) => ({ type: "tool" as const, toolCallId: id, name: "recall", args: {}, result: "", isError: false });
+  const run = (keys: string[]): Quiet[] => keys.map((key, i) => ({ key, parts: [call(`c${i + 1}`)], streaming: false }));
+  it("stays the same while the live copy's keys shift and the stored copy replaces it, so its box keeps its scroll", () => {
+    const live = runKey(run(["live-1", "live-2", "live-3"]));
+    expect(runKey(run(["live-0", "live-1", "live-2"]))).toBe(live);
+    expect(runKey(run(["e:t#2", "e:t#3", "live-0"]))).toBe(live);
+  });
+  it("falls back to its first message's key when none of its markers is a tool call", () => {
+    expect(runKey([{ key: "live-1", parts: [{ type: "thinking", text: "hm" }], streaming: true }])).toBe("run:live-1");
   });
 });
