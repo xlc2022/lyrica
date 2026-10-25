@@ -607,6 +607,8 @@ export class HostedThread {
           if (err instanceof PlanWaiting) this.planWaiting(err.endpointId, err.until);
           break;
         }
+        // The turn reads the notices a held wake was for.
+        this.heldWake = undefined;
         // Marked messages that came while no session was open: Pi takes them after this turn's first message.
         for (const s of this.steering) if (!s.handed && !s.prompt) this.hand(opened, s);
         this.emit({ type: "turn_start" });
@@ -681,15 +683,11 @@ export class HostedThread {
   }
 
   /**
-   * No model for the thread's chat can be reached: the person's text waits in
-   * the queue (marked messages wait apart), the views are told once, and
-   * every HEALTH_MS lyricad asks the machines again (resolveLive), sending it
-   * as soon as one answers. Stop, or a new message (which goes with it), ends
-   * the wait.
-   */
-  /**
-   * Nothing can answer now: the messages wait, and go in one turn once a model can. Offline asks again
-   * every little while; a plan at its usage limit waits for its reset, and says so once.
+   * Nothing can answer now: the person's text waits in the queue (marked
+   * messages wait apart, a wake waits as `heldWake`) and goes in one turn once
+   * a model can. Offline is told once and asks the machines again every
+   * HEALTH_MS (resolveLive); a plan at its usage limit says so once and waits
+   * for its reset. Stop, or a new message (which goes with it), ends the wait.
    */
   private hold(text: string | undefined, err: Offline | PlanWaiting): void {
     this.queued = text !== undefined ? [text] : [];
@@ -822,6 +820,7 @@ export class HostedThread {
     }
 
     this.unhold();
+    this.heldWake = undefined;
     this.imageRetryAbort?.abort();
     for (const p of [...this.pending.values()]) p.done(false, "stopped");
     if (this.queued.length) {

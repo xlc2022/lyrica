@@ -465,9 +465,9 @@ export class Lyricad implements Drainable {
       httpsPort: w.httpsPort ?? 443, upstream: this.port, reserved: [this.port, this.servePort], addresses: w.addresses,
       external: this.external, certWaitMs: w.certWaitMs, trustCa: w.trustCa, log: this.log,
     });
-    // Where the front door is, read at every sandbox start, so a change in web access applies to the next command.
     // A pending wake for background jobs that ended, by `user/pool/thread`: those ending close together wake it once.
     const jobWakes = new Map<string, NodeJS.Timeout>();
+    // Where the front door is, read at every sandbox start, so a change in web access applies to the next command.
     const workspace = new Workspace(keyring, users, {
       excludePorts: this.sandboxExcluded, frontDoor: () => web.frontDoor(), bwrap: this.opts.bwrap, pasta: this.opts.pasta,
       // A private or local-only thread never gets Claude Code. Asked at each run, once the models below exist.
