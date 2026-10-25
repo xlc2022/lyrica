@@ -447,7 +447,7 @@ class Models {                                              // new Models(keyrin
   callWithFallback(task, ctx, need, call: (r) => Promise<T>, { probeMs? }?): Promise<T>   // the next model on isUnreachable; Offline when none answers
   resolveModel(task, ctx, need?): { offeringId }             // resolve(…).ref
   allowed(ctx): { endpoint; offerings }[]                   // local endpoints only when restricted
-  textModels(ctx): { id; label; local }[]                   // allowed listed chat models, for her to name
+  textModels(ctx): { id; label; local; vision; paid }[]    // allowed listed chat models, for her to name; paid: a known price that isn't free
   nextImageModel(ctx, action, need, afterEndpoint, noCloud?): Resolution | undefined // current task list; no probes; next eligible endpoint
   // Images (memory only; caller stores and records results)
   image(ctx, request: ImageRequest, { signal?, beforeSend?: (resolution) => Promise<void> }?): Promise<{ images: GeneratedImage[]; resolution }>
@@ -693,7 +693,9 @@ Custom roles override built-ins by name, except `claude`.
   She picks a tier; a step's `model` is only one the person or a saved
   workflow named, resolved by `Models.find`, else `matchModel` over
   `Models.textModels(ctx)`; a name that fits no one model fails with the
-  closest. `action: "models"` lists those models, each local or cloud, and vision where it has it.
+  closest; a cloud one with a local `sameModelName` twin runs on the twin unless
+  `singledOut(the person's latest message, it, all)`. `action: "models"` lists
+  them local first, each local or cloud, with vision and paid where they apply.
   `folders` narrows granted host folders only, not sandbox repository paths;
   an invalid folder returns that distinction and advises omitting `folders`
   to read the parent's checkouts. Read-only roles, narrowed runs and writers
@@ -839,7 +841,7 @@ Custom roles override built-ins by name, except `claude`.
 - **Child threads** (`createThreadsExtension(thread, host?: ThreadsHost, meter?)`,
   never in a subagent's thread): one model-facing tool, `threads({ action,
   ... })`: `start` (`title`, `task`, optional narrower `folders`,
-  `readOnly`, `internet`, `base: true` for a project’s original checkout, and `code: true` to start it in code mode; in a project a title matching an open thread's is refused, naming it), `message` (to a child, by ID or current title
+  `readOnly`, `internet`, `base: true` for a project’s original checkout, and `code: true` to start it in code mode; in a project a title matching an open thread's, or naming the same `#number`, is refused, naming it), `message` (to a child, by ID or current title
   (`pickThread`; a title two threads share is refused), or `to: "parent"`
   from a child; a child's message with no `to` and no `id`, or whose `id`
   names its parent, goes to the parent), `list` (`ChildInfo` with `ChildStatus`, and `branches` for a project thread's worktrees), `read` (`id`,

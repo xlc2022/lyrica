@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createLocalBashOperations } from "@earendil-works/pi-coding-agent";
 import { generateSshKey, Memory, PRONOUN_PRESETS, Workspace, type ExecutionTarget, type Persona, type Pool, type ToolOps, type WorkspaceThread } from "@lyrica/core";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ChatRequest } from "../../core/test/fake-openai.ts";
+import { fakeOpenAI, type ChatRequest } from "../../core/test/fake-openai.ts";
 import { withModels } from "../../core/test/helpers.ts";
 import {
   createDelegateExtension, createLyricaExtension, Delegation, openThreadSession,
@@ -287,6 +287,34 @@ describe("delegate", () => {
     const local = await s.run(s.thread("general", { localOnly: true }), { task: "e", role: "scout", model: "openrouter/deepseek/deepseek-4.1-flash" });
     expect(local.status).toBe("failed");
     expect(s.delegation.models(s.thread("general", { localOnly: true })).map((m) => m.label)).toEqual(["gpu/qwen3.8-27b"]);
+  });
+
+  it("runs a cloud model the person also hosts locally on the local copy, unless they named the cloud one", async () => {
+    const s = await setup();
+    s.cloud.respond(async () => ({ text: "seen" }));
+    s.local.respond(async () => ({ text: "seen" }));
+    const paidServer = await fakeOpenAI({ label: "paid", models: [{ id: "qwen/qwen3.8-27b", pricing: { prompt: "0.0000002", completion: "0.0000025" } }] });
+    paidServer.respond(async () => ({ text: "seen" }));
+    const router = s.models.addEndpoint(s.ada, { name: "router", kind: "cloud", baseUrl: paidServer.baseUrl, apiKey: "sk-test" });
+    s.models.setCapabilities(s.ada, (await s.models.discover(s.ada, router.id))[0]!.id, { tools: true });
+    const parent = s.thread();
+    // Local first, and a priced one says so.
+    expect(s.delegation.models(parent).map((m) => `${m.label}${m.paid ? " paid" : ""}`)).toEqual(["gpu/qwen3.8-27b", "openrouter/deepseek/deepseek-4.1-flash", "router/qwen/qwen3.8-27b paid"]);
+    const say = (text: string) => parent.view.own.appendEntry(parent.threadId, { piId: `u${Math.random()}`, role: "user", data: {}, text });
+    say("Use qwen3.8-27b to look at it.");
+    expect((await s.run(parent, { task: "look", role: "scout", model: "router/qwen/qwen3.8-27b" })).status).toBe("finished");
+    expect(s.delegation.status(parent)[0]).toMatchObject({ model: "gpu/qwen3.8-27b" });
+    // The person names the cloud copy by its whole label: it runs there.
+    say("Use router/qwen/qwen3.8-27b for it.");
+    expect((await s.run(parent, { task: "look", role: "scout", model: "router/qwen/qwen3.8-27b" })).status).toBe("finished");
+    expect(s.delegation.status(parent)[0]).toMatchObject({ model: "router/qwen/qwen3.8-27b" });
+    // Named only in another thread's message, it isn't the person's word: the local copy runs.
+    say("[From t:web/other]\n\nUse router/qwen/qwen3.8-27b for it.");
+    expect((await s.run(parent, { task: "look", role: "scout", model: "router/qwen/qwen3.8-27b" })).status).toBe("finished");
+    expect(s.delegation.status(parent)[0]).toMatchObject({ model: "gpu/qwen3.8-27b" });
+    // A cloud model with no local copy runs as named.
+    expect((await s.run(parent, { task: "check", role: "scout", model: "deepseek flash" })).status).toBe("finished");
+    expect(s.delegation.status(parent)[0]).toMatchObject({ model: "openrouter/deepseek/deepseek-4.1-flash" });
   });
 
   it("runs a project chat's subagents in the background, and moves a long foreground run there", async () => {

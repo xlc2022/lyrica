@@ -878,13 +878,15 @@ describe("code thread worktrees", () => {
 
   it("sends a second start for an open thread's task to that thread, and lists the branch a thread works on", async () => {
     const s = await projectRepo();
-    const a = (await s.make("Physics")).threads![0]!.id;
+    const a = (await s.make("#7 Physics")).threads![0]!.id;
     await s.settled(a);
-    // Refused before anything runs, so only the parent takes a script.
-    s.parent.push(start("physics ", "Build physics.", { code: true }), { text: "Asked it." });
-    const again = toolEnd(await s.say("Start physics again."));
-    await s.idleParent();
-    expect(again).toMatchObject({ isError: true, result: expect.stringContaining(`[t:${a}] is already open for this task`) });
+    // Refused before anything runs, so only the parent takes a script: the same title, or another naming the same #7.
+    for (const title of ["#7 physics ", "Implement the engine for #7"]) {
+      s.parent.push(start(title, "Build physics.", { code: true }), { text: "Asked it." });
+      const again = toolEnd(await s.say("Start that again."));
+      await s.idleParent();
+      expect(again).toMatchObject({ isError: true, result: expect.stringContaining(`[t:${a}] is already open for this task`) });
+    }
     const row = s.d.services!.children.projectThreads(s.rt.ada.id, "general", s.thread.id).find((t) => t.id === a)!;
     expect(row.branches).toEqual([s.ws.threadWork(a)!.worktrees[0]!.branch]);
     expect(threadLine(row)).toContain(`works on ${row.branches![0]} in its own worktree`);

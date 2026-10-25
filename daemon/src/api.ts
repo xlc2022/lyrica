@@ -1586,8 +1586,12 @@ export type ThreadEvent =
    * user message with its mark.
    */
   | { type: "received"; text: string }
-  /** In plain words: a model the router refused, an endpoint that's down, a failed tool setup. */
-  | { type: "error"; message: string }
+  /**
+   * In plain words: a model the router refused, an endpoint that's down, a failed tool setup.
+   * `reply`: the error of the reply that just ended (as stored, the reply's own `error`), so a view
+   * shows it under that reply, where it stays when Pi retries and the turn goes on.
+   */
+  | { type: "error"; message: string; reply?: true }
   /**
    * No model for the task could be reached: every machine in its list is down,
    * paused or stale. For a chat turn the message waits in `queue` and is sent
