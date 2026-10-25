@@ -523,7 +523,7 @@ class Models {                                              // new Models(keyrin
   downloadHosts(actor, ctx): { id, name }[]                 // hosts her model_files and download_model reach; [] for a private or local-only ctx
   hostDashboard(userId, hostId): string                     // a direct link, at the address that last answered
 }
-// Also exported: CloudModelForbidden, NoModel, Offline (a NoModel: code "offline", task, tried), isUnreachable(err),
+// Also exported: CloudModelForbidden, NoModel, Offline (a NoModel: code "offline", task, tried), PlanWaiting (endpointId, until), isUnreachable(err),
 // HostRefused (with `code`), PairingFailed, HostIdentityChanged, voiceContext(ctx);
 // SPEECH_FORMAT (s16le, 24 kHz, mono), SPEECH_CONTENT_TYPE, MAX_CLIP_SECONDS (600), MAX_CLIP_BYTES, MAX_SPEAK_CHARS, wavData, wavSeconds, pcmSeconds, LANGUAGE;
 // STALE_DAYS, GONE_DAYS, HEALTH_MS, CAPABILITIES, ANSWER_SETTINGS, TASKS, TASK_NAMES (each task in words, for messages), THINKING_LEVELS; isRestricted,
@@ -1010,6 +1010,12 @@ Custom roles override built-ins by name, except `claude`.
   role" and `claudeCode: true`, and its fall-back resumes only those
   wake-ups. `DelegationOptions.claudeRefused` refuses the claude role while
   the plan is limited.
+  While a plan is limited and not falling back, `prepareTurn` throws
+  `PlanWaiting(endpointId, until)` (core models) before any request; the
+  hosted thread says the wait once, holds wakes and messages until just
+  after `until`, and tells its parent through
+  `ThreadsHost.planWaiting(userId, pool, thread, plan, until)`, once and
+  with no wake.
 - **Modes:** a thread in Plan mode starts only read-only roles; anything
   else is refused before a thread is made. A read-only subagent there runs
   in Plan mode itself.
@@ -1465,8 +1471,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   - With `startJob`, `bash` takes `background: true` and there is a `jobs`
     tool (`list`, `output`, `stop`); a subagent has neither. A background
     call is approved like any `bash`, then `startJob(command, machine?,
-    timeoutS?)` returns a `JobInfo` at once (docs/workspace.md, Background
-    commands).
+    timeoutS?)` returns a `JobInfo` (with the job's `cwd`) at once
+    (docs/workspace.md, Background commands). Jobs that end within
+    `jobWakeMs` (5 s) of each other wake the thread once.
   - `ExecutionTarget.run?(argv, { signal?, timeoutMs?, cwd? })` runs argv with no
     shell under the target's own rules; the sandbox has it.
   - `ExecutionTarget.secrets?()` is the sandbox's tokens and placeholders
