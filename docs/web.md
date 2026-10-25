@@ -1090,6 +1090,10 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   from New thread) can still load a message the stream then shows too, so a
   stored message that shares a tool call with a live one is hidden until the
   turn's end replaces the live copy (`storedLiveCopies` in `src/live.ts`).
+  An `error` marked `reply` is the error of the reply that just ended, and
+  shows under that reply as its stored copy does, so a retry Pi makes goes
+  on below it; the turn's other errors show after the live turn until the
+  next turn starts.
 - **Each message has an action row** under it (`MessageActions` in
   `src/Rewind.tsx`, after the reaction chips; docs/ux.md §6, A message's
   actions): quiet icon buttons, Copy (the message's text; Copied or Copy

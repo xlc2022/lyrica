@@ -37,6 +37,27 @@ describe("the live view of a thread's stream", () => {
     expect(next.items).toEqual([{ role: "user", text: "again" }]);
   });
 
+  it("keeps a failed reply's error under that reply, so a retry's output follows it", () => {
+    const s = run([
+      { type: "sent", text: "hi" },
+      { type: "turn_start" },
+      { type: "message_start", model: "m" },
+      { type: "error", message: "502: Provider returned error", reply: true },
+      { type: "message_start", model: "m" },
+      { type: "text", delta: "Back." },
+    ]);
+    expect(s.errors).toEqual([]);
+    expect(s.items).toEqual([
+      { role: "user", text: "hi" },
+      { role: "assistant", model: "m", parts: [], error: "502: Provider returned error" },
+      { role: "assistant", model: "m", parts: [{ type: "text", text: "Back." }] },
+    ]);
+    // With no reply of this turn to hang it on, and for a turn's own errors, it stays the turn's.
+    const early = run([{ type: "sent", text: "hi" }, { type: "error", message: "No model", reply: true }]);
+    expect(early.errors).toEqual(["No model"]);
+    expect(run([{ type: "error", message: "The thread couldn't compact." }], s).errors).toEqual(["The thread couldn't compact."]);
+  });
+
   it("shows a call as soon as the model starts writing it, and fills in its arguments in place when it runs", () => {
     const s = run([
       { type: "turn_start" },
