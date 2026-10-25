@@ -106,6 +106,120 @@ const latencyBarPathBuilder = (percentiles: number[], labels: string[]): uPlot.S
   };
 };
 
+function createDonutChart(root: HTMLDivElement, values: number[], labels: string[], uplots: uPlot[]) {
+  const data: uPlot.AlignedData = [
+    toCategoryArray(labels),
+    toTypedArray(values),
+  ];
+  const opts: uPlot.Options = {
+    width: 200,
+    height: 200,
+    title: "Assignments by Task",
+    series: [
+      {},
+      {
+        label: "Count",
+        stroke: "var(--accent)",
+        width: 2,
+        fill: "color-mix(in oklab, var(--accent) 15%, transparent)",
+        paths: donutPathBuilder(values),
+        points: { show: false },
+      },
+    ],
+  };
+  const plot = new uPlot(opts, data, root);
+  uplots.push(plot);
+}
+
+function createLatencyChart(root: HTMLDivElement, task: Task, p50: number, p95: number, p99: number, uplots: uPlot[]) {
+  const percentiles = [p50, p95, p99];
+  const labels = ["p50", "p95", "p99"];
+  const data: uPlot.AlignedData = [
+    toCategoryArray(labels),
+    toTypedArray(percentiles),
+  ];
+  const opts: uPlot.Options = {
+    width: 320,
+    height: 100,
+    title: `${task} latency percentiles (ms)`,
+    axes: [
+      { space: 0 },
+      { space: 30, size: 40, grid: { stroke: "var(--line)" }, ticks: { size: 4 } },
+    ],
+    series: [
+      {},
+      {
+        stroke: "var(--accent)",
+        width: 1,
+        fill: "color-mix(in oklab, var(--accent) 20%, transparent)",
+        paths: latencyBarPathBuilder(percentiles, labels),
+        points: { show: false },
+      },
+    ],
+    scales: { x: { time: false }, y: { min: 0 } },
+    cursor: { show: false },
+  };
+  const plot = new uPlot(opts, data, root);
+  uplots.push(plot);
+}
+
+function createThroughputChart(root: HTMLDivElement, labels: string[], input: number[], output: number[], uplots: uPlot[]) {
+  const data: uPlot.AlignedData = [
+    toCategoryArray(labels),
+    toTypedArray(input),
+    toTypedArray(output),
+  ];
+  const opts: uPlot.Options = {
+    width: 320,
+    height: 160,
+    title: "Token Throughput (tok/s)",
+    axes: [
+      { space: 0 },
+      { space: 30, size: 50, grid: { stroke: "var(--line)" }, ticks: { size: 4 } },
+    ],
+    series: [
+      {},
+      { label: "Input", stroke: "var(--info)", width: 2, fill: "color-mix(in oklab, var(--info) 15%, transparent)" },
+      { label: "Output", stroke: "var(--accent)", width: 2, fill: "color-mix(in oklab, var(--accent) 15%, transparent)" },
+    ],
+    scales: { x: { time: false }, y: { min: 0 } },
+    cursor: { show: false },
+  };
+  const plot = new uPlot(opts, data, root);
+  uplots.push(plot);
+}
+
+function createErrorRateChart(root: HTMLDivElement, labels: string[], rates: number[], uplots: uPlot[]) {
+  const data: uPlot.AlignedData = [
+    toCategoryArray(labels),
+    toTypedArray(rates),
+  ];
+  const opts: uPlot.Options = {
+    width: 320,
+    height: 160,
+    title: "Error Rate by Model (%)",
+    axes: [
+      { space: 0, size: 80 },
+      { space: 30, size: 40, grid: { stroke: "var(--line)" }, ticks: { size: 4 } },
+    ],
+    series: [
+      {},
+      {
+        label: "Error %",
+        stroke: "var(--danger)",
+        width: 1,
+        fill: "color-mix(in oklab, var(--danger) 20%, transparent)",
+        paths: barPathBuilder(rates, labels),
+        points: { show: false },
+      },
+    ],
+    scales: { x: { time: false }, y: { min: 0, max: 100 } },
+    cursor: { show: false },
+  };
+  const plot = new uPlot(opts, data, root);
+  uplots.push(plot);
+}
+
 export function ModelTelemetryCard({ userId }: { userId: string }) {
   const [range, setRange] = useState<TelemetryRange>("24h");
   const path = `${u(userId, "admin", "telemetry", "models")}?range=${range}`;
@@ -115,148 +229,65 @@ export function ModelTelemetryCard({ userId }: { userId: string }) {
   const areaRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const uplots = useRef<uPlot[]>([]);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (!telemetry.data) return;
+    setMounted(true);
+    return () => { setMounted(false); };
+  }, []);
+
+  // Defer chart creation to next frame to avoid blocking paint
+  useEffect(() => {
+    if (!mounted || !telemetry.data) return;
     const { assignments, latency, throughput, errors } = telemetry.data;
 
-    // Donut: assignments by task
-    if (donutRef.current) {
-      const taskCounts = new Map<string, number>();
-      for (const a of assignments) taskCounts.set(a.task, (taskCounts.get(a.task) ?? 0) + 1);
-      const labels = Array.from(taskCounts.keys());
-      const values = labels.map((t) => taskCounts.get(t)!);
-      const data: uPlot.AlignedData = [
-        toCategoryArray(labels),
-        toTypedArray(values),
-      ];
-      const opts: uPlot.Options = {
-        width: 200,
-        height: 200,
-        title: "Assignments by Task",
-        series: [
-          {},
-          {
-            label: "Count",
-            stroke: "var(--accent)",
-            width: 2,
-            fill: "color-mix(in oklab, var(--accent) 15%, transparent)",
-            paths: donutPathBuilder(values),
-            points: { show: false },
-          },
-        ],
-      };
-      const plot = new uPlot(opts, data, donutRef.current);
-      uplots.current.push(plot);
-    }
+    let cancelled = false;
+    const runNextFrame = () => {
+      if (cancelled) return;
 
-    // Latency percentiles bar chart per task
-    for (let i = 0; i < latency.length; i++) {
-      const l = latency[i];
-      if (!l) continue;
-      const ref = latencyRefs.current[i];
-      if (ref) {
-        const percentiles = [l.p50, l.p95, l.p99];
-        const labels = ["p50", "p95", "p99"];
-        const data: uPlot.AlignedData = [
-          toCategoryArray(labels),
-          toTypedArray(percentiles),
-        ];
-        const opts: uPlot.Options = {
-          width: 320,
-          height: 100,
-          title: `${l.task} latency percentiles (ms)`,
-          axes: [
-            { space: 0 },
-            { space: 30, size: 40, grid: { stroke: "var(--line)" }, ticks: { size: 4 } },
-          ],
-          series: [
-            {},
-            {
-              stroke: "var(--accent)",
-              width: 1,
-              fill: "color-mix(in oklab, var(--accent) 20%, transparent)",
-              paths: latencyBarPathBuilder(percentiles, labels),
-              points: { show: false },
-            },
-          ],
-          scales: { x: { time: false }, y: { min: 0 } },
-          cursor: { show: false },
-        };
-        const plot = new uPlot(opts, data, ref);
-        uplots.current.push(plot);
+      // Donut: assignments by task
+      if (donutRef.current) {
+        const taskCounts = new Map<string, number>();
+        for (const a of assignments) taskCounts.set(a.task, (taskCounts.get(a.task) ?? 0) + 1);
+        const labels = Array.from(taskCounts.keys());
+        const values = labels.map((t) => taskCounts.get(t)!);
+        createDonutChart(donutRef.current!, values, labels, uplots.current);
       }
-    }
 
-    // Area chart: throughput in/out per task
-    if (areaRef.current && throughput.length > 0) {
-      const labels = throughput.map((t) => t.task);
-      const input = throughput.map((t) => t.inputPerSec);
-      const output = throughput.map((t) => t.outputPerSec);
-      const data: uPlot.AlignedData = [
-        toCategoryArray(labels),
-        toTypedArray(input),
-        toTypedArray(output),
-      ];
-      const opts: uPlot.Options = {
-        width: 320,
-        height: 160,
-        title: "Token Throughput (tok/s)",
-        axes: [
-          { space: 0 },
-          { space: 30, size: 50, grid: { stroke: "var(--line)" }, ticks: { size: 4 } },
-        ],
-        series: [
-          {},
-          { label: "Input", stroke: "var(--info)", width: 2, fill: "color-mix(in oklab, var(--info) 15%, transparent)" },
-          { label: "Output", stroke: "var(--accent)", width: 2, fill: "color-mix(in oklab, var(--accent) 15%, transparent)" },
-        ],
-        scales: { x: { time: false }, y: { min: 0 } },
-        cursor: { show: false },
-      };
-      const plot = new uPlot(opts, data, areaRef.current);
-      uplots.current.push(plot);
-    }
+      // Latency percentiles bar chart per task
+      for (let i = 0; i < latency.length; i++) {
+        const l = latency[i];
+        if (!l) continue;
+        const ref = latencyRefs.current[i];
+        if (ref) {
+          createLatencyChart(ref, l.task, l.p50, l.p95, l.p99, uplots.current);
+        }
+      }
 
-    // Stacked bar: error rate by model
-    if (barRef.current && errors.length > 0) {
-      const labels = errors.map((e) => e.model);
-      const rates = errors.map((e) => e.rate * 100);
-      const data: uPlot.AlignedData = [
-        toCategoryArray(labels),
-        toTypedArray(rates),
-      ];
-      const opts: uPlot.Options = {
-        width: 320,
-        height: 160,
-        title: "Error Rate by Model (%)",
-        axes: [
-          { space: 0, size: 80 },
-          { space: 30, size: 40, grid: { stroke: "var(--line)" }, ticks: { size: 4 } },
-        ],
-        series: [
-          {},
-          {
-            label: "Error %",
-            stroke: "var(--danger)",
-            width: 1,
-            fill: "color-mix(in oklab, var(--danger) 20%, transparent)",
-            paths: barPathBuilder(rates, labels),
-            points: { show: false },
-          },
-        ],
-        scales: { x: { time: false }, y: { min: 0, max: 100 } },
-        cursor: { show: false },
-      };
-      const plot = new uPlot(opts, data, barRef.current);
-      uplots.current.push(plot);
-    }
+      // Area chart: throughput in/out per task
+      if (areaRef.current && throughput.length > 0) {
+        const labels = throughput.map((t) => t.task);
+        const input = throughput.map((t) => t.inputPerSec);
+        const output = throughput.map((t) => t.outputPerSec);
+        createThroughputChart(areaRef.current!, labels, input, output, uplots.current);
+      }
+
+      // Stacked bar: error rate by model
+      if (barRef.current && errors.length > 0) {
+        const labels = errors.map((e) => e.model);
+        const rates = errors.map((e) => e.rate * 100);
+        createErrorRateChart(barRef.current!, labels, rates, uplots.current);
+      }
+    };
+
+    requestAnimationFrame(runNextFrame);
 
     return () => {
+      cancelled = true;
       for (const p of uplots.current) p.destroy?.();
       uplots.current = [];
     };
-  }, [telemetry.data]);
+  }, [mounted, telemetry.data]);
 
   if (telemetry.error) return <div className="telemetry-card"><p className="error">{telemetry.error}</p></div>;
   if (!telemetry.data) return <div className="telemetry-card"><p className="muted">Loading…</p></div>;
