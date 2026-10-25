@@ -508,15 +508,20 @@ test("a project: New project, suggested threads start into cards, the Threads po
   const alphaView = phone(page) ? page : page.getByRole("complementary");
   await expect(alphaView.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
   await expect(alphaView.getByLabel("Message", { exact: true })).toHaveCount(0);
-  await expect(alphaView.getByRole("button", { name: "Resolve", exact: true })).toHaveCount(0);
+  // Resolved, the header's Resolve stays, pressed.
+  const resolveBtn = alphaView.getByRole("button", { name: "Resolve", exact: true });
+  await expect(resolveBtn).toHaveAttribute("aria-pressed", "true");
   await alphaView.getByRole("button", { name: "Reopen" }).click();
   await expect(alphaView.getByLabel("Message", { exact: true })).toBeVisible();
-  // Open again, its header carries Resolve: one press resolves it, and Reopen puts it back.
-  await alphaView.getByRole("button", { name: "Resolve", exact: true }).click();
+  await expect(resolveBtn).toHaveAttribute("aria-pressed", "false");
+  // Open again, its header's Resolve toggles: one press resolves it, a second press reopens it.
+  await resolveBtn.click();
   await expect(alphaView.getByLabel("Message", { exact: true })).toHaveCount(0);
-  await expect(alphaView.getByRole("button", { name: "Resolve", exact: true })).toHaveCount(0);
-  await alphaView.getByRole("button", { name: "Reopen" }).click();
+  await expect(resolveBtn).toHaveAttribute("aria-pressed", "true");
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/resolve-toggle-${page.viewportSize()!.width}.png` });
+  await resolveBtn.click();
   await expect(alphaView.getByLabel("Message", { exact: true })).toBeVisible();
+  await expect(resolveBtn).toHaveAttribute("aria-pressed", "false");
 
   // The project settings page: Goal and Paused save together; Memory keeps the instructions.
   if (phone(page)) await page.getByText("Child thread of").getByRole("link").click();

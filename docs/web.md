@@ -103,8 +103,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   on a focused thread opens it under the row; the arrows move between items
   and Escape closes it. The thread header's ⋯ (Thread actions) opens the
   same menu under it, and pressing it again closes it; in the panel,
-  Delete closes the panel. A project's thread that isn't resolved also has
-  **Resolve** in its header before the ⋯ (`POST …/resolve`). The user menu works the same way. Groups and unread marks are
+  Delete closes the panel. A project's thread also has a **Resolve** toggle
+  in its header before the ⋯: a press resolves it (`POST …/resolve`); while
+  resolved it stays, filled in the ok color, reads **Resolved** with the
+  tooltip "Reopen", and a second press reopens it (`POST …/reopen`). The user menu works the same way. Groups and unread marks are
   the user's own (`thread_groups`, `thread_prefs` in `user.db`); opening a
   thread clears its unread mark.
 - **Hidden pools:** with Show general or Show private off, a thread or

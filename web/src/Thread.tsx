@@ -319,8 +319,12 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls={drawerId} onClick={() => setDrawer(!drawer)}>
               <Icon name="gear" /><span className="long">{s?.project ? "Settings (this thread)" : "Settings"}</span>
             </button>
-            {/* A project's thread resolves in one press (docs/ux.md §6); once resolved, its message box carries Reopen. */}
-            {s?.state !== undefined && !resolved && <button type="button" className="sm" aria-label="Resolve" title="Resolve" onClick={() => void resolve()}><Icon name="check" /><span className="long">Resolve</span></button>}
+            {/* A project's thread resolves in one press (docs/ux.md §6); the button stays, filled while resolved, and a second press reopens it. */}
+            {s?.state !== undefined && (
+              <button type="button" className="sm resolve-btn" aria-label="Resolve" aria-pressed={resolved} title={resolved ? "Reopen" : "Resolve"} onClick={() => void (resolved ? reopen() : resolve())}>
+                <Icon name="check" /><span className="long">{resolved ? "Resolved" : "Resolve"}</span>
+              </button>
+            )}
             {/* Its pointerdown stays here, so a press while the menu is open closes it rather than closing and reopening. */}
             {listed && (
               <button ref={moreBtn} type="button" className="icon sm" aria-label="Thread actions" title="Thread actions" aria-haspopup="menu" aria-expanded={!!menuAt}
