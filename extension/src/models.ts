@@ -2,10 +2,11 @@ import { createAssistantMessageEventStream, type Api, type AssistantMessageEvent
 import { estimateTokens, ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { PlanCredentials, planProvider } from "./plans.ts";
-import { acceptedSettings, DEFAULT_CONTEXT, replyCap, isPlan, planLimitReset, CloudModelForbidden, isRestricted, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
+import { acceptedSettings, DEFAULT_CONTEXT, replyCap, isPlan, planLimitReset, CloudModelForbidden, isRestricted, NoModel, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
 import { streamWithInlineThinking } from "./inline-thinking.ts";
 import { capToolCalls, objectTools } from "./tool-stream.ts";
 import { markOverflow, sharedStream, shareModel } from "./model-share.ts";
+import { reserveFor } from "./context.ts";
 
 const FREE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
@@ -18,6 +19,12 @@ const LOCAL_COMPAT = { supportsDeveloperRole: false, supportsStore: false, suppo
 // A thread's context limit narrows the window it plans by (compaction, the meter, the reply cap).
 const windowOf = (m: Offering, limit?: number) => Math.min(m.contextWindow ?? DEFAULT_CONTEXT, limit ?? Infinity);
 const replyRoom = (ep: Pick<Endpoint, "kind">, m: Offering, contextWindow: number) => replyCap(contextWindow, { local: ep.kind === "local", ...(m.maxOutput ? { maxOutput: m.maxOutput } : {}) });
+/** Keeps a runtime model's window and reply cap on its copy as it is now (a context set by hand, or a load at another one). */
+function follow(model: Model<Api>, ep: Pick<Endpoint, "kind">, now: Offering, limit?: number): void {
+  const contextWindow = windowOf(now, limit);
+  const maxTokens = replyRoom(ep, now, contextWindow);
+  if (model.contextWindow !== contextWindow || model.maxTokens !== maxTokens) Object.assign(model, { contextWindow, maxTokens });
+}
 // A shared local cache keeps room for the reply a request usually gives, not the longest it may.
 const SHARE_REPLY = 32_768;
 
@@ -73,11 +80,7 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
     // The window follows the copy as it is now (a context set by hand, or a load at another one), even mid-turn:
     // the session plans by this same model object, so compaction, the meter and the reply cap follow it.
     const now = found && models.offering(ctx.userId, found.offering.id)?.offering;
-    if (now) {
-      const contextWindow = windowOf(now, ctx.contextLimit);
-      const maxTokens = replyRoom(found.endpoint, now, contextWindow);
-      if (model.contextWindow !== contextWindow || model.maxTokens !== maxTokens) Object.assign(model, { contextWindow, maxTokens });
-    }
+    if (now) follow(model, found.endpoint, now, ctx.contextLimit);
     if (found) {
       const values = models.offeringSettings(ctx.userId, found.offering.id).values;
       if (Object.keys(values).length) {
@@ -230,12 +233,29 @@ export async function prepareTurn(o: {
   const tokens = o.session.getContextUsage()?.tokens ?? undefined;
   // Tools are asked for only when the thread has them, so a model without tools can still chat.
   const tools = o.session.getActiveToolNames().length > 0;
-  const r = await o.models.resolveLive(task, o.call, { ...(tools ? { tools } : {}), ...(tokens ? { tokens } : {}) }, o.retry ? { probeMs: 1000 } : {});
+  const live = (need: { tokens?: number }) => o.models.resolveLive(task, o.call, { ...(tools ? { tools } : {}), ...need }, o.retry ? { probeMs: 1000 } : {});
+  // A model the conversation outgrew is passed over for one it fits; when none fits, the first takes it compacted (below).
+  const r = await live(tokens ? { tokens } : {}).catch((err) => { if (tokens && err instanceof NoModel) return live({}); throw err; });
   // A model LM Studio loaded at another context since the endpoint was read plans by that from this turn.
   if (!o.retry) await o.models.refreshServed(o.call.userId, r.ref.offeringId).catch(() => {});
   const { model } = piModelFor(o.runtime, o.models, task, o.call, r);
   const current = o.session.model;
-  if (!current || current.provider !== model.provider || current.id !== model.id) await o.session.setModel(model);
+  const switching = !current || current.provider !== model.provider || current.id !== model.id;
+  // The session holds its own copy of the model: both follow the copy as it is now, so compaction plans by it from here.
+  const now = o.models.offering(o.call.userId, r.offering.id)?.offering ?? r.offering;
+  for (const m of switching ? [model] : [model, current!]) follow(m, r.endpoint, now, o.call.contextLimit);
+  // Pi compacts only after a reply, and a reply on a full window has no room left to ask for it: a conversation over
+  // this model's compaction edge (after a switch to a smaller window, or a load at one) compacts before it is sent.
+  // First on the model it came from, which holds it whole; else on this one. A retry is mid-turn, so it can't.
+  const over = () => { const t = o.session.getContextUsage()?.tokens; return !!t && t > model.contextWindow - reserveFor(model.contextWindow); };
+  const compact = () => o.session.compact().then(() => true, () => false);
+  let compacted = false;
+  // Only on one that costs nothing (local, or free): a model left behind over its price or a plan limit isn't called again.
+  const was = current && o.models.endpoint(o.call.userId, current.provider);
+  const costless = !!was && (was.kind === "local" || !!o.models.offerings(o.call.userId, was.id).find((x) => x.modelId === current!.id)?.price?.free);
+  if (!o.retry && over() && switching && current && costless && current.contextWindow > model.contextWindow) compacted = await compact();
+  if (switching) await o.session.setModel(model);
+  if (!o.retry && !compacted && over()) await compact();
   let note: string | undefined;
   if (o.thinking !== false) {
     const t = o.models.thinkingFor(r, o.call.thinking, o.call.thinkingUnset);

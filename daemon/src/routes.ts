@@ -1091,7 +1091,7 @@ export function apiRoutes(d: Lyricad): Route[] {
           s().projects.pin(user.id, pool, thread.id, true);
         }
         const project = !!store.getThread(thread.id)!.project;
-        const settings = change.threadsCode !== undefined || change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.commandRules !== undefined || change.checks !== undefined;
+        const settings = change.threadsCode !== undefined || change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.checkInOnThreads !== undefined || change.commandRules !== undefined || change.checks !== undefined;
         if ((change.goal !== undefined || change.instructions !== undefined || change.discardDraft !== undefined || settings) && !project) {
           throw new HttpError(400, "only a project has a goal, instructions and project settings");
         }
@@ -1122,6 +1122,7 @@ export function apiRoutes(d: Lyricad): Route[] {
             ...(change.threadsThinking !== undefined ? { thinking: change.threadsThinking } : {}),
             ...(change.threadsFallback !== undefined ? { fallback: change.threadsFallback } : {}),
             ...(change.watchThreads !== undefined ? { watch: !!change.watchThreads } : {}),
+            ...(change.checkInOnThreads !== undefined ? { checkIn: !!change.checkInOnThreads } : {}),
           });
         }
         return { thread: thread.id, project, made: !!change.project && !thread.project };
@@ -1277,8 +1278,6 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, o => threadOf(o, r));
       const project = owner(d, user, o => o[pool].projectOf(thread.id));
       if (project && project !== thread.id && s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden");
-      const held = s().children.baseHeld(user.id, pool, thread.id);
-      if (held) throw new HttpError(409, held);
       const n = Number(r.params.n);
       const label = owner(d, user, o => {
         const store = o[pool];
@@ -1318,8 +1317,6 @@ export function apiRoutes(d: Lyricad): Route[] {
           }
         } finally { view.close(); }
       }
-      const held = thread.child ? s().children.baseHeld(user.id, poolOf(r), thread.id) : undefined;
-      if (held) throw new HttpError(409, held);
       const result = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")), { recentThreadIds });
       // The user wrote: the thread no longer waits on them, and a resolved one reopens.
       if (thread.child) s().children.userWrote(user.id, poolOf(r), thread.id);
@@ -2654,7 +2651,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
     ...(settings ? { projectSettings: {
       ...(settings.draftGoal !== undefined ? { draftGoal: settings.draftGoal } : {}),
       ...(settings.draftInstructions !== undefined ? { draftInstructions: settings.draftInstructions } : {}),
-      commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), checks: d.services!.workspace.settings(user.id).checks(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, threadsCode: settings.code, watchThreads: settings.watch, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
+      commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), checks: d.services!.workspace.settings(user.id).checks(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, threadsCode: settings.code, watchThreads: settings.watch, checkInOnThreads: settings.checkIn, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
     ...(mine ? { state: mine.state, ...(mine.held ? { held: mine.held } : {}), ...(mine.worktreeReason ? { worktreeReason: mine.worktreeReason } : {}), ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}), ...chips(d, user, pool, th.id, look) } : {}),

@@ -415,10 +415,10 @@ export function checkTask(task: string): Task {
 }
 
 /** What a task needs: text models, embeddings, images or speech. `same` stays within one. */
-const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "image.create" ? "image" : t === "image.edit" ? "edit" : t === "image.upscale" ? "upscale"
+const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "vision" ? "vision" : t === "image.create" ? "image" : t === "image.edit" ? "edit" : t === "image.upscale" ? "upscale"
   : t === "speech.transcribe" ? "transcribe" : t === "speech.speak" ? "speak" : "text");
 /** Tasks with no list of their own follow chat, except these. */
-const OWN_LIST_ONLY: readonly Task[] = ["embedding", "image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak"];
+const OWN_LIST_ONLY: readonly Task[] = ["embedding", "vision", "image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak"];
 /** A new preset starts with these following other tasks. */
 const NEW_PRESET: Partial<Record<Task, { same: Task }>> = {
   code: { same: "subagent.strong" },
@@ -3000,6 +3000,7 @@ export class Models {
   private unfit(task: Task, o: Offering, ep: Endpoint, need: Need): string | undefined {
     if (o.status === "gone") return `it has been missing from ${ep.name} for ${GONE_DAYS} days`;
     if (task === "image.create" && !o.image) return "it doesn't make images";
+    if (task === "vision" && !o.vision) return "it can't see images";
     // Cloud adapters constrain their tasks; local endpoints keep capability-based routing.
     if (task.startsWith("image.") && ep.kind === "cloud") {
       const provider = CLOUD_IMAGE_PROVIDERS[ep.api];
@@ -3025,7 +3026,7 @@ export class Models {
   private checkList(userId: string, list: ModelRef[], opts: { kind?: "local"; task: Task }): ModelRef[] {
     const c = this.catalog(userId);
     const out: ModelRef[] = [];
-    const fits = (o: Offering) => (opts.task === "image.create" ? !!o.image : opts.task === "image.edit" ? !!o.edit : opts.task === "image.upscale" ? !!o.upscale
+    const fits = (o: Offering) => (opts.task === "vision" ? !!o.vision : opts.task === "image.create" ? !!o.image : opts.task === "image.edit" ? !!o.edit : opts.task === "image.upscale" ? !!o.upscale
       : opts.task === "speech.transcribe" ? !!o.transcribe : opts.task === "speech.speak" ? !!o.speak?.voices.length : true);
     for (const ref of list) {
       const id = ref && typeof ref === "object" ? refId(ref) : undefined;

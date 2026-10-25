@@ -70,7 +70,9 @@ and `-`, at most 40 characters.
   doesn't answer is tried a day later. The day is counted in memory from the
   last read or try, so a restart reads every list once more.
 - **Capabilities:** context window, tools, vision, embedding, image, edit, upscale
-  and thinking levels. OpenRouter reports the context, tools, thinking and
+  and thinking levels. OpenRouter reports the context (the lesser of the
+  model's `context_length` and the provider's `top_provider.context_length`,
+  since a free provider often serves less), tools, thinking and
   modalities; llama-server reports the context
   (`meta.n_ctx`), and on `/props` its chat template, vision and slots
   (a router, whose list gives each model's state, is asked one at a time
@@ -502,6 +504,17 @@ stays in memory; the caller stores results and records the call without prompts.
 `beforeSend(resolution)` runs before each provider attempt, including fallbacks;
 a refusal stops the call. The image tool uses it for portrait-photo permission
 against the model that would actually receive the bytes.
+The task `vision` (Look at images) has its own ordered list of models with
+vision, in each column and preset; nothing follows it and it follows
+nothing. A subagent whose model can't see an image it reads switches, for
+the rest of its work, to the first model in that list whose machine is up
+(and that uses tools), else to the first local chat model with vision
+(`visionList`). The subagent's own context decides the column, so a private
+or local-only one reads the Private column and stays local. A switch to a
+cloud model sends that model the subagent's whole conversation so far, not
+only the image, at that model's price: a cloud model is in the list only if
+the person put it there. With no list set, only local models are tried.
+
 The tasks `image.create`, `image.edit` and `image.upscale` have their own
 ordered lists and require `image`, `edit` and `upscale` capabilities respectively.
 Local endpoints resolve by these capabilities; the cloud provider table does
@@ -926,6 +939,14 @@ xAI provider instead (below).
   reserve reaches the window, and Lyrica's two lines start 17 and 2 points
   before that edge (at most 75% and 90%); and a kept tail of a quarter of the window (at
   most 20,000). A caller's own compaction settings win.
+- Before each turn (`prepareTurn`), a conversation over the turn's model's
+  compaction edge compacts before it is sent: Pi checks only after a reply,
+  and a reply on a full window has no room left to ask for it. That happens
+  after a switch to a model with a smaller window, or when a copy is loaded
+  at a smaller context. On a switch it summarises first on the model the
+  conversation came from, which holds it whole, when that one costs
+  nothing (local or free); otherwise, or failing that, on the new one. A model the conversation has outgrown is passed over for one it
+  fits; when none fits, the first takes it compacted.
 
 `openThreadSession` hosts one thread with that runtime and its chat model.
 

@@ -69,6 +69,9 @@ export interface WorkspaceThread {
   coordinates?: boolean;
 }
 
+/** Where each family member's folder is mounted for the others, and a code thread's own alias: `${FAMILY_ROOT}/<id>`. */
+export const FAMILY_ROOT = "/thread-workspaces";
+
 /** Grants as the thread itself sees them: read-only in a project chat. */
 const ownGrants = (t: WorkspaceThread, grants: Grant[]): Grant[] => (t.coordinates ? grants.map((g) => ({ ...g, writable: false })) : grants);
 
@@ -103,6 +106,12 @@ export interface WorkspaceOptions {
    * restricted, so Claude Code is never given by mistake.
    */
   restricted?: (userId: string, pool: Pool, threadId: string) => boolean;
+  /**
+   * Which threads are only in `pool`, read once per sandbox start: a family
+   * member's folder is mounted only when it is (familyFolders), so nothing of
+   * a private thread reaches a general one. Without it, no member's is.
+   */
+  onlyIn?: (userId: string, pool: Pool) => (threadId: string) => boolean;
   /** Where a run's relay sends a host's requests instead of https://host: tests. */
   upstreams?: Record<string, string>;
   /** A pull request the run's relay opened, for that run's thread: watched for CI and reviews (docs/briefs/ci-wakes.md). */
@@ -320,6 +329,61 @@ export class Workspace {
   }
 
   /**
+   * The thread's own part of /shared (docs/workspace.md, "Handing files
+   * over"): `shared/<id>/`, made for it, the one part of /shared it writes.
+   * Whatever another thread left at that name is replaced by the folder.
+   */
+  sharedOwn(t: WorkspaceThread, shared: string): string {
+    const name = encodeURIComponent(t.threadId);
+    const dir = join(shared, name);
+    try { if (!lstatSync(dir).isDirectory()) rmSync(dir, { force: true }); } catch { /* not there yet */ }
+    try { mkdirSync(dir, { mode: 0o700 }); } catch (err) { if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err; }
+    return name;
+  }
+
+  /**
+   * The other members of the thread's family whose folders it may read, each
+   * mounted read-only where that thread sees its own folder's alias
+   * (`/thread-workspaces/<id>`), so a path one reports works in the others.
+   * A local-only member's folder (it, or a thread between it and the top,
+   * local-only under a top that may call the cloud) reaches only a member
+   * that is local-only too, as with /shared (sharesFamilyFolder).
+   */
+  familyFolders(t: WorkspaceThread): { path: string; dest: string }[] {
+    const s = this.settings(t.userId);
+    const home = this.homeDir(t.userId);
+    const root = s.familyRoot(t.threadId);
+    const restricted = this.opts.restricted ?? (() => true);
+    const allLocal = restricted(t.userId, t.pool, root);
+    const local = (thread: string) => {
+      if (allLocal) return true;
+      for (let id: string | null = thread, i = 0; id && id !== root && i < 100; id = s.thread(id).parent, i++) if (restricted(t.userId, t.pool, id)) return true;
+      return false;
+    };
+    // A member started narrowed (fewer folders or repositories) mustn't read what it was narrowed away from.
+    if (s.narrowed(t.threadId)) return [];
+    const own = s.folderThread(t.threadId);
+    const mayRead = local(t.threadId) ? () => true : (id: string) => !local(id);
+    const inPool = this.opts.onlyIn?.(t.userId, t.pool) ?? (() => false);
+    const folders = new Set(s.family(root).map((id) => s.folderThread(id)));
+    folders.delete(own);
+    return [...folders].filter((id) => inPool(id) && mayRead(id)).flatMap((id) => {
+      const path = join(home, "threads", encodeURIComponent(id));
+      try { if (!lstatSync(path).isDirectory()) return []; } catch { return []; }
+      return [{ path, dest: `${FAMILY_ROOT}/${encodeURIComponent(id)}` }];
+    });
+  }
+
+  /** A project chat's /tmp, which lasts between commands: its own folder in the home, outside the thread folder, gone when the thread is forgotten. */
+  tmpDir(t: WorkspaceThread): string {
+    const home = this.homeDir(t.userId);
+    if (!isMounted(home)) throw new Locked("the home workspace is not mounted");
+    const dir = join(home, "tmp", encodeURIComponent(t.threadId));
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return dir;
+  }
+
+  /**
    * One thread's target, settings, internet switch and folders, each read
    * fresh when called. Its settings are what applies now: the strictest mode
    * and switches of it and its ancestors.
@@ -331,6 +395,11 @@ export class Workspace {
       /** The project's checks, read when a code turn ends; none outside a project or in its read-only chat. */
       checks: () => t.project && !t.coordinates ? this.settings(t.userId).checks(t.pool, t.project) : [],
       target: (machine?: string) => this.targetFor(t, machine),
+      /** Where its family reads its folder, and the one part of /shared it writes (none in a project chat, or without /shared). */
+      family: () => ({
+        folder: `${FAMILY_ROOT}/${encodeURIComponent(this.settings(t.userId).folderThread(t.threadId))}`,
+        ...!t.coordinates && this.sharesFamilyFolder(t) ? { handover: `${SHARED}/${encodeURIComponent(t.threadId)}` } : {},
+      }),
       settings: () => { const s = this.settings(t.userId).effective(t.threadId); return { ...s, grants: ownGrants(t, s.grants), ...(t.coordinates ? { coordinates: true } : {}) }; },
       machines: () => this.machinesFor(t),
       /** The thread's repositories, where each is cloned and whether its token reaches the sandbox now. */
@@ -704,7 +773,7 @@ export class Workspace {
   private workdirAlias(t: WorkspaceThread): string | undefined {
     const settings = this.settings(t.userId);
     const id = settings.folderThread(t.threadId);
-    return settings.threadWork(id) ? `/thread-workspaces/${encodeURIComponent(id)}` : undefined;
+    return settings.threadWork(id) ? `${FAMILY_ROOT}/${encodeURIComponent(id)}` : undefined;
   }
 
   /** Serialize cleanup with reopening, so a new turn cannot lose its checkout to an earlier resolve. */
@@ -769,10 +838,14 @@ export class Workspace {
       return this.ssh(t.userId, machine);
     }
     const credentials = this.credentialsFor(t);
+    const shared = this.sharedDir(t);
     return new Sandbox({
       workdir: this.threadDir(t),
       workdirAlias: this.workdirAlias(t),
-      shared: this.sharedDir(t),
+      shared,
+      ...shared && !t.coordinates ? { sharedOwn: this.sharedOwn(t, shared) } : {},
+      family: this.familyFolders(t),
+      ...t.coordinates ? { tmp: this.tmpDir(t) } : {},
       grants: ownGrants(t, s.effective(t.threadId).grants),
       network: this.network(t),
       repos: this.reposDir(t),

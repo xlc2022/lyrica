@@ -17,6 +17,8 @@ export interface ProjectSettings {
   fallback?: boolean;
   /** The project chat looks at what the person and its threads said (watch.ts). On unless turned off. */
   watch: boolean;
+  /** The project chat may wait in a turn for its working threads (a bare sleep). On unless turned off; off, it waits for their wakes. */
+  checkIn: boolean;
 }
 
 export class Projects {
@@ -44,6 +46,7 @@ export class Projects {
         return saved ? saved.value === "true" : undefined;
       }),
       watch: row?.watch !== 0,
+      checkIn: this.db(userId, db => (db.prepare("SELECT value FROM settings WHERE key = ?").get(`project.checkIn.${pool}/${project}`) as { value: string } | undefined)?.value !== "false"),
       ...(row?.draft_goal !== null && row?.draft_goal !== undefined ? { draftGoal: row.draft_goal } : {}),
       ...(row?.draft_instructions !== null && row?.draft_instructions !== undefined ? { draftInstructions: row.draft_instructions } : {}),
       ...(row?.model ? { model: JSON.parse(row.model) as ModelRef | ModelRef[] } : {}),
@@ -53,12 +56,16 @@ export class Projects {
   }
 
   /** Changes some of a project's settings; `null` clears the model, thinking or Fallback. */
-  set(userId: string, pool: Pool, project: string, change: { code?: boolean; paused?: boolean; model?: ModelRef | ModelRef[] | null; thinking?: ThinkingLevel | null; fallback?: boolean | null; watch?: boolean; draftGoal?: string | null; draftInstructions?: string | null }): ProjectSettings {
+  set(userId: string, pool: Pool, project: string, change: { code?: boolean; checkIn?: boolean; paused?: boolean; model?: ModelRef | ModelRef[] | null; thinking?: ThinkingLevel | null; fallback?: boolean | null; watch?: boolean; draftGoal?: string | null; draftInstructions?: string | null }): ProjectSettings {
     if (change.fallback !== undefined && change.fallback !== null && typeof change.fallback !== "boolean") throw new Error("fallback is true, false or null");
     for (const value of [change.draftGoal, change.draftInstructions]) if (value !== undefined && value !== null && (typeof value !== "string" || value.length > 2000)) throw new Error("project drafts have at most 2000 characters");
     if (change.code !== undefined) {
       if (typeof change.code !== "boolean") throw new Error("code is true or false");
       this.db(userId, db => db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`project.code.${pool}/${project}`, String(change.code)));
+    }
+    if (change.checkIn !== undefined) {
+      if (typeof change.checkIn !== "boolean") throw new Error("checkIn is true or false");
+      this.db(userId, db => db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`project.checkIn.${pool}/${project}`, String(change.checkIn)));
     }
     const now = this.settings(userId, pool, project);
     const model = change.model === undefined ? now.model : change.model ?? undefined;

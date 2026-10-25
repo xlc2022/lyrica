@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -187,14 +187,25 @@ describe("the sweep of change records", () => {
     const { home, ws, write, changes } = await setup();
     writeFileSync(join(ws, "f.txt"), "before");
     await write("c1", join(ws, "f.txt"), "after");
-    for (const dir of ["threads/web%2Ft/docs", "claude/web%2Ft", "threads/web%2Fu"]) mkdirSync(join(home, dir), { recursive: true });
+    for (const dir of ["threads/web%2Ft/docs", "claude/web%2Ft", "threads/web%2Fu/shared/web%2Ft", "threads/web%2Fu/shared/notes", "tmp/web%2Ft"]) mkdirSync(join(home, dir), { recursive: true });
     writeFileSync(join(home, "threads/web%2Ft/docs/notes.md"), "x");
     expect(readdirSync(join(home, "snapshots"))).toHaveLength(1);
 
-    expect(forgetFiles(home, changes, "general", ["web/t"], [], () => false)).toBe(2);
+    // Its folder, its Claude Code folder, its lasting /tmp and its own part of its family's /shared.
+    expect(forgetFiles(home, changes, "general", ["web/t"], [], () => false)).toBe(4);
+    expect(readdirSync(join(home, "threads/web%2Fu/shared"))).toEqual(["notes"]);
+    expect(readdirSync(join(home, "tmp"))).toEqual([]);
+    // A `shared` a thread made a link is never followed.
+    const outside = mkdtempSync(join(tmpdir(), "lyrica-outside-"));
+    mkdirSync(join(outside, "web%2Fv"));
+    mkdirSync(join(home, "threads/web%2Fw"));
+    symlinkSync(outside, join(home, "threads/web%2Fw/shared"));
+    forgetFiles(home, changes, "general", ["web/v"], [], () => false);
+    expect(existsSync(join(outside, "web%2Fv"))).toBe(true);
+    rmSync(outside, { recursive: true, force: true });
     expect(changes.forThreads("general", ["web/t"])).toEqual([]);
     expect(readdirSync(join(home, "snapshots"))).toEqual([]);
-    expect(readdirSync(join(home, "threads"))).toEqual(["web%2Fu"]);
+    expect(readdirSync(join(home, "threads"))).toEqual(["web%2Fu", "web%2Fw"]);
     expect(readdirSync(join(home, "claude"))).toEqual([]);
   });
 

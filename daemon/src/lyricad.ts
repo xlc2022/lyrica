@@ -467,6 +467,17 @@ export class Lyricad implements Drainable {
       excludePorts: this.sandboxExcluded, frontDoor: () => web.frontDoor(), bwrap: this.opts.bwrap, pasta: this.opts.pasta,
       // A private or local-only thread never gets Claude Code. Asked at each run, once the models below exist.
       restricted: (u, p, thread) => isRestricted(models.callContext(u, p, thread)),
+      // A family member's folder is mounted only when its thread is in the reader's pool and not the other one (folders are named by ID alone).
+      onlyIn: (u, p) => {
+        const o = memory.openOwnerView(u);
+        try {
+          const ids = (pool: Pool) => new Set(o[pool].listThreads({ includeHidden: true }).map((t) => t.id));
+          const mine = ids(p), other = ids(p === "general" ? "private" : "general");
+          return (id) => mine.has(id) && !other.has(id);
+        } finally {
+          o.close();
+        }
+      },
       // A run's relay opened a pull request: the CI-watch poller records it (docs/briefs/ci-wakes.md).
       onPullCreate: (t, pr) => forge.record(t.userId, t.pool, t.threadId, pr.repo, pr.number),
       // Claude Code's tokens, counted by the run's relay, join that thread's usage as their own row.
@@ -559,7 +570,7 @@ export class Lyricad implements Drainable {
       watchable: (u, t) => forge.watchable(u, t),
     });
     const wakeups: Wakeups = new Wakeups({ memory, host: () => host, children, log: this.log });
-    forge = new ForgeWatcher({ memory, workspace, wakeups, merged: (u, p, t, n) => children.merged(u, p, t, n), log: this.log });
+    forge = new ForgeWatcher({ memory, workspace, wakeups, log: this.log });
     // Two threads on one file: the second is held once and the first is told, steered into its turn or kept for its next.
     const sameFile = new SameFile({
       exists: (u, p, t) => { const v = memory.openThreadView(u, p); try { return !!v.own.getThread(t); } finally { v.close(); } },
@@ -585,7 +596,7 @@ export class Lyricad implements Drainable {
         // Only a turn the person wrote in resets the run of looks; a child's wake or a marked message isn't one.
         if (byPerson ?? true) watcher.turnEnded(u, p, t);
         const failed = erred.delete(k);
-        children.ended(u, p, t, failed ? "error" : aborted.delete(k) ? "stopped" : "done");
+        children.ended(u, p, t, failed ? "error" : aborted.delete(k) ? "stopped" : host.get(u, p, t).toolLimited ? "limited" : "done");
         if (!failed) return;
         const project = projectOf(u, p, t);
         if (project) watcher.failed(u, p, project, t);
@@ -603,6 +614,7 @@ export class Lyricad implements Drainable {
         }
       },
       projectThreads: (u, p, project) => children.projectLines(u, p, project),
+      waitsForReports: (u, p, project) => !projects.settings(u, p, project).checkIn,
     });
     const proposals = new PersonaProposals(keyring.self(), users, persona);
     const sleep = new Sleep({ users, memory, models, persona, proposals, hasKey: (id) => keyring.hasUserKey(id), cwd, limits: this.opts.sleep, log: this.log });

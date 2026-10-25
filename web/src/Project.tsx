@@ -339,6 +339,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
   useEffect(() => { if (ps?.draftGoal !== undefined) setGoal(ps.draftGoal); }, [ps?.draftGoal]);
   const [paused, setPaused] = useState(!!ps?.paused);
   const [watch, setWatch] = useState(ps?.watchThreads !== false);
+  const [checkIn, setCheckIn] = useState(ps?.checkInOnThreads !== false);
   const [model, setModel] = useState(refOf(ps?.threadsModel));
   const [code, setCode] = useState(ps?.threadsCode ?? settings.code);
   const [thinking, setThinking] = useState<ThinkingLevel | "">(ps?.threadsThinking ?? "");
@@ -360,6 +361,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
     const change: ThreadChange = {
       goal, paused, commandRules: rules.filter(r => r.prefix.trim()), checks: checks.map(c => c.trim()).filter(Boolean),
       ...(watch !== (ps?.watchThreads !== false) ? { watchThreads: watch } : {}),
+      ...(checkIn !== (ps?.checkInOnThreads !== false) ? { checkInOnThreads: checkIn } : {}),
       threadsModel: model ? { offeringId: model } : null,
       ...(code !== (ps?.threadsCode ?? settings.code) ? { threadsCode: code } : {}),
       threadsThinking: thinking || null,
@@ -397,6 +399,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
       <div className="row switches">
         <Switch label="Paused" hint="Running threads stop and queued ones wait." checked={paused} onChange={setPaused} />
         <Switch label="Watching threads" hint={`After you write in a thread or one posts an update, ${her()} checks whether the other threads are affected and tells them.`} checked={watch} onChange={setWatch} />
+        <Switch label="Check in on threads" hint={`While its threads work, ${her()} can wait in this chat and look in on them. Off, the chat ends its turn and their reports wake it, which takes far fewer tokens on a long chat.`} checked={checkIn} onChange={setCheckIn} />
       </div>
 
       <h3 title={newThreadsHint}>New threads</h3>

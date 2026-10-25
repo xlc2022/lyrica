@@ -69,12 +69,16 @@ and carries its children into a new project. The interface is built under
 3. Start three standing threads in the project chat (**Start a thread**
    on a message; they sit under the project row) and pick each one's
    model:
-   - **Review** (the strongest cloud model allowed): reviews every PR she
-     opens before it goes to Claude, against the brief or issue, AGENTS.md
-     and the docs; sends fixes to the building thread; says verified.
+   - **Review** (the strongest cloud model allowed): reads a brief
+     before its code starts, when there is one (goal, smallest version, which docs/ux.md rule
+     each new control follows, what it reuses, what it adds against
+     PRINCIPLES 8's budgets), then reviews every PR she opens before it
+     goes to Claude, against the brief or issue, AGENTS.md and the docs;
+     sends fixes to the building thread; says verified.
    - **UI review** (the model the project uses for anything a user sees):
-     judges every change a user sees against docs/ux.md, from the
-     screenshots `web/e2e/shot.ts` takes (docs/workspace.md, "Her own
+     reads a UI brief's mockup or written layout before its code
+     starts, when there is one, then judges every change a user sees against docs/ux.md, from
+     the screenshots `web/e2e/shot.ts` takes (docs/workspace.md, "Her own
      code"); a PR with UI goes out only after it says verified.
    - **Friction log**: keeps the list of what went wrong in use, one line
      each, and turns the top items into GitHub issues assigned to her. It
@@ -105,8 +109,9 @@ and carries its children into a new project. The interface is built under
    messages with `threads read` (a child still working says its end wakes
    her, so she ends her turn rather than waiting) and stops a thread that went wrong with
    `threads stop` (docs/delegation.md, "Child threads"). A second start
-   for an open thread's task, or for the base checkout another thread
-   holds, tells her to message that thread instead, and `resolve` stops at
+   for an open thread's task tells her to message that thread instead,
+   whose folder and worktree she can read (docs/workspace.md, "Handing
+   files over"), and `resolve` stops at
    a thread's work no remote has unless she passes `force: true`. CI and reviews
    wake her without a turn being blocked: a pull request she opens through
    the run's relay is watched, and `lyricad` gives the thread one turn when
@@ -139,13 +144,15 @@ characters, the limit on project instructions.
 > Read AGENTS.md, PRINCIPLES.md, DESIGN.md and
 > docs/contracts.md first, and docs/ux.md before anything a user sees.
 >
-> **Work.** One GitHub issue, assigned to you, per piece of work; claim it
-> first, so you and Claude never build the same thing. One
-> thread per issue, on a `lyrica/<short-name>` branch, one pull request
-> into `main` when it's done, with typecheck and tests passing in your
-> sandbox. If checks can't run, troubleshoot through your threads; ask
-> the owner only when stuck. Never send untested work to review. Say
-> which principle the change serves.
+> **Work.** One issue, assigned to you and claimed first, per piece of
+> work: what you saw (with evidence), the smallest change a user would
+> notice, what it reuses, the principle it serves; bigger ideas under
+> "Later". Start small and grow it once it works: big drafts cost review
+> rounds. Before UI work, a new API or dependency, a short brief in
+> docs/briefs/ for Review (UI review sees a mockup) usually comes first;
+> skip it with a stated reason. One thread per issue on a
+> `lyrica/<short-name>` branch, one PR into `main`,
+> tested in your sandbox.
 >
 > **Review.** Send a draft PR and its head to Review and, for UI,
 > UI review. Fix findings; get rechecked. After required reviewers verify
@@ -156,9 +163,6 @@ characters, the limit on project instructions.
 >
 > **Boundary code** (CODEOWNERS paths) needs the owner: a PR touching it
 > says so in its first line and waits for the owner's own approval.
->
-> **Handoffs.** A thread that needs another messages it every time,
-> naming the commit and the need; the receiver answers in the same turn.
 >
 > **Updates.** The owner presses Update. First tag the `main` commit
 > `update/<date>` (annotated), listing everything merged since the

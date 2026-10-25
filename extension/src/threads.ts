@@ -97,7 +97,7 @@ const ENCODED = /[A-Za-z0-9+/=_-]{400,}/;
 export function checkWords(text: string, max = Infinity): void {
   const file = ENCODED.test(text.replace(/[\r\n]/g, ""));
   if (file || text.length > max) {
-    throw new Error(`${file ? "That looks like an encoded file" : `That message is ${text.length.toLocaleString("en-US")} characters, over ${max.toLocaleString("en-US")}`}. Files don't travel by message: put it in /shared, which your parent, child and project threads all see, or commit it to a repository you share, and say where.`);
+    throw new Error(`${file ? "That looks like an encoded file" : `That message is ${text.length.toLocaleString("en-US")} characters, over ${max.toLocaleString("en-US")}`}. Files don't travel by message: write it in your own folder, which your parent, child and project threads can read, and say its path.`);
   }
 }
 

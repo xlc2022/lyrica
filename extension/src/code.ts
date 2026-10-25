@@ -1,6 +1,6 @@
 /** Principle 8: five lines shared by code-mode turns and the coder role. */
 export const CODE_GUIDELINES = `Read the repository instructions and relevant files before editing.
-Run the repository’s checks after each change; start servers in the background with a time limit.
+Run the repository’s checks after each change, each kind of test with the runner its instructions name (npm test may not run them all); start servers in the background with a time limit.
 Read a failing log before changing anything.
 Keep diffs small and focused on the task: put screenshots, logs and other check output in your scratch folder (/workspace, outside worktrees/), never in a repository, and commit only the work asked for. Before saying done, run git status in each repository or worktree you changed: commit what belongs to the work, or say what is left uncommitted and why.
 Check what the request literally asked for (a single-file page opened from disk with no network, say); report which check ran, what it showed and what remains unchecked: a check that failed, never ran or ran before your last change isn't done.`;

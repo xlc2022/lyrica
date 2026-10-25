@@ -30,7 +30,8 @@ subagent:
   parent's `subagent.cheap` or `subagent.strong` model (the coder instead
   inherits the parent's `code` list and context limit). She picks a tier,
   and names a model only when the person named one (or a saved workflow,
-  which a user writes, does). A step's `model` is an offering ID, an
+  which a user writes, does); a look at an image her model can't see goes
+  to a subagent with no model named, which switches as below. A step's `model` is an offering ID, an
   `<endpoint>/<model>` label, or the person's own words: `matchModel` takes
   the one chat model the parent may use whose model ID or label holds every
   word of it. A name that fits none, or several, fails the run with the
@@ -46,7 +47,8 @@ subagent:
   models she may name, local first, each marked local or cloud, and vision
   and paid where they apply. A subagent whose model
   has no vision switches, on a tool result holding an image, to the first
-  local chat model with vision she may use whose machine is up, which
+  model up in the person's Look at images list (task `vision`), else the
+  first local chat model with vision she may use whose machine is up, which
   becomes its model (its card says so) and sees the image; with none, it is told it saw nothing (contracts.md,
   `registerVisionGuard`). In a private or local-only thread it is always a
   local model. A refused model fails the run before any thread is made;
@@ -279,12 +281,13 @@ Pi session: `extension/src/delegate/claude.ts`. A subagent works through a
 The helpers `makeWorktrees`, `worktreeGrants` and `removeWorktrees` live in
 `core/src/workspace/worktree.ts` and serve both delegate writers and
 code child threads. Code children use their own thread folder, checkout and branch;
-In projects, `base: true` keeps the original checkout for a single open
-scaffold or merge thread. A start whose title matches an open thread of the
+In projects, `base: true` keeps the original checkout for scaffold or merge
+work, with no exclusive hold: several base threads may be open. A start whose title matches an open thread of the
 project (ignoring case and spaces at the ends), or names the same `#number`
 as one (a pull request or issue), is refused, telling her to
-message that thread, which has the work so far; `list` names the branch each
-thread works on in its own worktree. Other threads and delegate writers retain the rules below.
+message that thread, which has the work so far; `list` names each thread's
+own worktrees, branch and path, which every thread of the family can read
+(docs/workspace.md, "Handing files over"). Other threads and delegate writers retain the rules below.
 
 Two delegate writers never share a folder. A writer takes its parent thread's folders
 for as long as it lives, so writers from any runs of that thread go one at a
@@ -595,6 +598,20 @@ taking turns. A stopped turn tells nobody, nor does a turn the user
 started in the child. Which children owe a report is
 held in memory; a restart tells the parent anyway.
 
+A turn the turn tool limits stopped (extension/src/turn-tools.ts) wakes
+the parent at once, whether or not the child owed a report: "stopped at
+its turn's tool limit, so its work may not be finished, and is idle",
+with its last message (its wrap-up), so the parent looks and messages it
+to go on rather than waiting on an idle thread.
+
+**Check in on threads** (the project setting `checkInOnThreads`, on by
+default; a settings row `project.checkIn.<pool>/<project>`). Off, the
+project chat can't wait within a turn: a bare `sleep` there is refused
+with `WAIT_FOR_REPORTS` (`createWaitForReportsExtension`), which tells it
+to end its turn, since each sleep is followed by another request that
+rereads its whole context. Its threads' reports, questions and errors
+wake it as above. Commands that do more than sleep are untouched.
+
 **Idle projects.** lyricad's 20-second tick also watches projects: one
 whose checklist (the chat's or a thread's) has a step not done, where
 nothing runs, is queued, waits for an approval or for the person (an open
@@ -640,11 +657,7 @@ reports, start `code: true` parts together in their own worktrees, then start
 one `code: true, base: true` merge thread once the parts report their branches.
 The merge thread merges each branch, tests after each merge, sends conflicts
 or red tests to the owning thread, and deletes merged branches. The project
-chat remains read-only and gets no merge tool. Only one base thread may be
-open in a project, enforced by `children.ts`, including queued starts and
-reopening; the refusal names the holder as `[t:<id>]`. When an idle base
-thread's last watched pull request merges, it is resolved and the project
-chat told, without a wake, so the checkout is free. A resolved queued thread does not start until reopened. Resolving or forgetting a part calls the shared cleanup: its branch
+chat remains read-only and gets no merge tool. A resolved queued thread does not start until reopened. Resolving or forgetting a part calls the shared cleanup: its branch
 stays, and a worktree with uncommitted changes stays with its path reported.
 
 A project chat's child threads are the project's threads

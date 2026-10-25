@@ -164,7 +164,7 @@ describe("threads watch", () => {
 
 describe("handing files over", () => {
   // A model once planned to send a whole page to another thread as base64 chunks in messages.
-  it("refuses a file or an over-long text in a message, naming /shared", async () => {
+  it("refuses a file or an over-long text in a message, pointing at her own folder", async () => {
     const s = await withMemory();
     const t = s.thread();
     const own = t.view.own;
@@ -176,8 +176,8 @@ describe("handing files over", () => {
     createThreadsExtension({ ...t.context, threadId: dns.id }, host)({ on: () => {}, registerTool: (v: typeof tool) => { tool = v; } } as unknown as ExtensionAPI);
     const call = (args: object) => tool.execute("call", args, undefined, undefined, {} as never);
     const page = Buffer.from("<html>".repeat(200)).toString("base64").replace(/.{76}/g, "$&\n");
-    await expect(call({ action: "message", to: "parent", text: `Part 1 of 3:\n${page}` })).rejects.toThrow(/encoded file.*\/shared/);
-    await expect(call({ action: "message", to: "parent", text: "word ".repeat(MESSAGE_MAX / 4) })).rejects.toThrow(/10,000 characters, over 8,000.*\/shared/);
+    await expect(call({ action: "message", to: "parent", text: `Part 1 of 3:\n${page}` })).rejects.toThrow(/encoded file.*your own folder/);
+    await expect(call({ action: "message", to: "parent", text: "word ".repeat(MESSAGE_MAX / 4) })).rejects.toThrow(/10,000 characters, over 8,000.*your own folder/);
     await call({ action: "message", to: "parent", text: "The page is at /shared/pagoda.html." });
     expect(sent).toEqual(["The page is at /shared/pagoda.html."]);
     // Its own project chat can't be read from a project thread, and the error names what works.

@@ -9,9 +9,9 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 const PI_NOTE = "[Current model does not support images. The image will be omitted from this request.]";
 
 /** Added to a tool result holding an image her model can't see. */
-export const NO_VISION = "You can't see this image: your model has no vision. Don't describe it or say you checked it. Say you couldn't look, or delegate the look to a local model with vision (delegate action models marks them; a cloud one only if the person agrees).";
+export const NO_VISION = "You can't see this image: your model has no vision. Don't describe it or say you checked it. Say you couldn't look, or delegate the look without naming a model: a subagent that meets the image switches to one that can see it, from the person's Look at images list.";
 
-/** A model with vision to switch to, and its label: a subagent's fallback (local only, since a cloud one needs the person's yes). */
+/** A model with vision to switch to, and its label: a subagent's fallback (the person's Look at images list, else a local model with vision). */
 export type VisionFallback = () => Promise<{ model: Model<Api>; label: string } | undefined>;
 
 /** Told when the subagent was switched to a model that can see the image. */

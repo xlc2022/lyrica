@@ -112,6 +112,28 @@ describe("her context", () => {
     stream.close();
   });
 
+  it("compacts before a turn the conversation no longer fits, after the window shrank, instead of sending it whole", async () => {
+    const { rt, ada, model, ref, stream, turn, fitAfterFirst } = await setup("general", 16_384 + guidanceTokens);
+    await turn(long("FIRST-MARK"));
+    await fitAfterFirst(ROOMY);
+    await turn(long("SECOND-MARK"));
+    await turn(long("THIRD-MARK"));
+    expect(stream.events.some((e) => e.event.type === "compacted")).toBe(false);
+    // The copy now runs at a window the conversation fills (a switch to a smaller model, or a load at a smaller context).
+    const last = stream.events.filter((e) => e.event.type === "context").at(-1)!.event as Extract<ThreadEvent, { type: "context" }>;
+    await ada.patch(`/api/u/${rt.ada.id}/offerings/${ref.offeringId}`, { contextWindow: last.context.tokens });
+    const before = model.requests.length;
+    await turn("go on");
+    expect(stream.events.some((e) => e.event.type === "compacted")).toBe(true);
+    // The summary was written first; the turn's own request went without the old messages.
+    const asked = model.requests.slice(before);
+    expect(asked[0]!.tools?.length ?? 0).toBe(0);
+    const chat = asked.find((r) => r.tools?.length)!;
+    expect(sent(chat)).not.toContain("FIRST-MARK");
+    expect(sent(chat)).toContain("go on");
+    stream.close();
+  });
+
   it("compacts with her summary when the turn ends: the old messages go, the recent ones stay, and a marker holds the summary", async () => {
     const { ada, model, path, stream, turn, fitAfterFirst } = await setup("general", 16_384 + guidanceTokens);
     await turn(long("FIRST-MARK"));

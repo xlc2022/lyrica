@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { INTERRUPTED } from "@lyrica/extension";
+import { INTERRUPTED, MAX_SAME_TOOL_RUN } from "@lyrica/extension";
 import { fakeOpenAI, type ChatRequest, type Reply } from "../../core/test/fake-openai.ts";
 import type { EndpointInfo, MachineProbe, MessagePage, ThreadEvent, ThreadSettings, ThreadSummary, ThreadUsage } from "../src/api.ts";
 import { browser, daemon, enc, localModel, login, runtime } from "./helpers.ts";
@@ -523,6 +523,18 @@ describe("a child's end, reading and stopping", () => {
     expect(all).not.toContain("stopped with an error");
   });
 
+  it("the parent is woken at once, with its last message, when a child's turn stops at the tool limit, even after it reported", async () => {
+    const { parent, child, say, path, messages } = await setup();
+    parent.push(start("Status", "Record the call facts."), { text: "Started." });
+    // It reports early, then runs into the limit of calls in a row to one tool, and writes where things stand.
+    child.push(toParent("Started on the facts."), ...Array.from({ length: MAX_SAME_TOOL_RUN }, (_, i) => ({ tools: [{ name: "recall", args: { query: `fact ${i}` } }] })), { text: "Halfway: the tests still need fixing." });
+    const id = toolEnd(await say("record the call facts in their own thread"))!.threads![0]!.id;
+    const got = await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes("tool limit")));
+    const text = got.find((t) => t.includes("tool limit"))!;
+    expect(text).toContain(`Child thread [t:${id}] stopped at its turn's tool limit`);
+    expect(text).toContain("Halfway: the tests still need fixing.");
+  });
+
   it("the parent hears of a child whose model call fails", async () => {
     const { parent, child, say, path, messages } = await setup();
     parent.push(start("Garden", "Plan the beds."), { text: "Started." });
@@ -846,34 +858,28 @@ describe("code thread worktrees", () => {
     expect(s.ws.effective(a).grants.every((g) => !g.writable)).toBe(true);
   });
 
-  it("allows only one open base thread, including queued starts and reopening", async () => {
+  it("lets several base threads be open at once, and doesn't run a resolved queued one", async () => {
     const s = await projectRepo({ threads: { concurrency: 0 } });
     const a = (await s.make("Scaffold", { base: true })).threads![0]!.id;
     await s.idle(a);
     expect(s.d.services!.children.projectThreads(s.rt.ada.id, "general", s.thread.id).find((t) => t.id === a)?.state).toBe("queued");
     expect(s.ws.threadWork(a)).toMatchObject({ base: true, worktrees: [] });
     expect(s.ws.effective(a).grants).toEqual([{ path: s.repo, writable: true }]);
-    const refused = await s.make("Another scaffold", { base: true });
-    expect(refused).toMatchObject({ isError: true, result: expect.stringContaining(`the base checkout is held by [t:${a}]: to go on with that work, send it what to do next`) });
-    await s.ada.post(`${s.childPath(a)}/resolve`);
+    // No hold: a second base thread starts while the first is open.
     const b = (await s.make("Merge", { base: true })).threads![0]!.id;
     await s.idle(b);
-    expect((await s.ada.post(`${s.childPath(a)}/reopen`)).status).not.toBe(200);
     expect(s.ws.threadWork(b)?.base).toBe(true);
-    // Writing in the resolved scaffold is refused before anything is sent, and the draft stays.
-    await s.ada.put(`${s.childPath(a)}/draft`, { text: "one more stub" });
-    const asked = s.model.requests.length;
-    expect((await s.ada.post(`${s.childPath(a)}/messages`, { text: "one more stub" })).status).toBe(409);
-    expect(s.model.requests.length).toBe(asked);
-    expect((await s.ada.get<{ text: string }>(`${s.childPath(a)}/draft`)).body.text).toBe("one more stub");
+    await s.ada.post(`${s.childPath(a)}/resolve`);
     expect(s.d.services!.children.projectThreads(s.rt.ada.id, "general", s.thread.id).find((t) => t.id === a)?.state).toBe("resolved");
-    // A resolved queued scaffold must not run later alongside its replacement base holder.
+    // A resolved queued thread doesn't run when slots free up.
     s.d.services!.children.limits.concurrency = 1;
     s.d.services!.children.resume(s.rt.ada.id);
     await expect.poll(() => s.model.requests.filter(isChild).map(said).join("\n"), TURN).toContain("Build Merge.");
     const db = s.d.services!.users.openUserDb(s.rt.ada.id);
     try { expect(db.prepare("SELECT queued FROM child_threads WHERE thread = ?").get(a)).toEqual({ queued: 1 }); }
     finally { db.close(); }
+    // Reopening a base thread is allowed with another open.
+    expect((await s.ada.post(`${s.childPath(a)}/reopen`)).status).toBe(200);
   });
 
   it("sends a second start for an open thread's task to that thread, and lists the branch a thread works on", async () => {
@@ -888,8 +894,9 @@ describe("code thread worktrees", () => {
       expect(again).toMatchObject({ isError: true, result: expect.stringContaining(`[t:${a}] is already open for this task`) });
     }
     const row = s.d.services!.children.projectThreads(s.rt.ada.id, "general", s.thread.id).find((t) => t.id === a)!;
-    expect(row.branches).toEqual([s.ws.threadWork(a)!.worktrees[0]!.branch]);
-    expect(threadLine(row)).toContain(`works on ${row.branches![0]} in its own worktree`);
+    const w = s.ws.threadWork(a)!.worktrees[0]!;
+    expect(row.worktrees).toEqual([{ branch: w.branch, path: w.path }]);
+    expect(threadLine(row)).toContain(`works on ${w.branch} in ${w.path} (readable to you`);
   });
 
   it("keeps a dirty worktree on resolve and reports where, and removes it when the thread is deleted", async () => {

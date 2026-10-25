@@ -32,14 +32,16 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
   const allowed = allowedOf(s, userId);
   const forgetRun = (runDir: string) => forgetRunWorktrees(runDir, allowed);
   const live = new Set((["general", "private"] as const).flatMap((pool) => s.delegation.store.liveRuns(userId, pool)));
-  // Claude Code's folders (Workspace.claudeDir) go with their thread too.
-  const claudeDir = join(home, "claude");
-  for (const name of existsSync(claudeDir) ? readdirSync(claudeDir) : []) {
-    let id: string;
-    try { id = decodeURIComponent(name); } catch { continue; }
-    if (exists(id) || statSync(join(claudeDir, name)).mtimeMs >= now.getTime() - 60_000) continue;
-    rmSync(join(claudeDir, name), { recursive: true, force: true });
-    counts.folders++;
+  // Claude Code's folders (Workspace.claudeDir) and a project chat's lasting /tmp (Workspace.tmpDir) go with their thread too.
+  for (const kept of ["claude", "tmp"]) {
+    const keptDir = join(home, kept);
+    for (const name of existsSync(keptDir) ? readdirSync(keptDir) : []) {
+      let id: string;
+      try { id = decodeURIComponent(name); } catch { continue; }
+      if (exists(id) || statSync(join(keptDir, name)).mtimeMs >= now.getTime() - 60_000) continue;
+      rmSync(join(keptDir, name), { recursive: true, force: true });
+      counts.folders++;
+    }
   }
   for (const name of readdirSync(threadsDir)) {
     const dir = join(threadsDir, name);
@@ -107,8 +109,22 @@ export function forgetFiles(home: string, changes: FileChanges, pool: Pool, thre
     if (!name || name === "." || name === "..") continue;
     const dir = join(home, "threads", name);
     if (existsSync(dir) && removeThreadFolder(dir, allowed)) n++;
-    const claude = join(home, "claude", name);
-    if (existsSync(claude)) { rmSync(claude, { recursive: true, force: true }); n++; }
+    for (const kept of ["claude", "tmp"]) {
+      const d = join(home, kept, name);
+      if (existsSync(d)) { rmSync(d, { recursive: true, force: true }); n++; }
+    }
+    // Its own part of its family's /shared (Workspace.sharedOwn), under whichever top thread's folder holds it. A thread
+    // can make `shared` a link, so it must be a real folder that resolves where it is, and so must the part.
+    for (const top of existsSync(join(home, "threads")) ? readdirSync(join(home, "threads")) : []) {
+      const shared = join(home, "threads", top, "shared");
+      const d = join(shared, name);
+      try {
+        if (!lstatSync(shared).isDirectory() || realpathSync(shared) !== join(realpathSync(join(home, "threads", top)), "shared")) continue;
+        if (!lstatSync(d).isDirectory()) continue;
+      } catch { continue; }
+      rmSync(d, { recursive: true, force: true });
+      n++;
+    }
   }
   return n;
 }
@@ -125,7 +141,7 @@ export function wipeHome(s: Services, userId: string): boolean {
   const allowed = allowedOf(s, userId);
   const threads = join(home, "threads");
   if (existsSync(threads)) for (const name of readdirSync(threads)) removeThreadFolder(join(threads, name), allowed);
-  for (const dir of ["claude", "snapshots"]) {
+  for (const dir of ["claude", "tmp", "snapshots"]) {
     const d = join(home, dir);
     if (existsSync(d)) for (const name of readdirSync(d)) rmSync(join(d, name), { recursive: true, force: true });
   }

@@ -337,8 +337,10 @@ read through `searchView`; only matching notes then pass.
 
 ```ts
 type Task = "chat" | "code" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "watching"
-          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit" | "image.upscale"
+          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "vision" | "image.create" | "image.edit" | "image.upscale"
           | "speech.transcribe" | "speech.speak";
+// vision (Look at images): its own list only, of models with vision; no task follows it. A subagent whose model can't see
+// an image switches to its first model up (with tools), else to a local model with vision (visionList, extension/src/delegate/runs.ts).
 // code (Coding) defaults to { same: "subagent.strong" } in new tables and
 // populated saved presets missing it, subject to the one-level Same as rule.
 // A thread's code list wins; its chat override never supplies code's fallback.
@@ -819,10 +821,7 @@ Custom roles override built-ins by name, except `claude`.
   wakeupMark(setAt) })` through the existing wake-up guards — never a body,
   never comment or log text. A merged or closed pull stops the watch
   with one note (`ended`), or silently when the watching account merged
-  it (`mergedBy`). A merged pull that was its thread's last watch first
-  calls `ForgeWatchOptions.merged` → `ChildThreads.merged`: an idle project
-  thread holding the base checkout is resolved and its project chat told,
-  and the end then has no wake. One request at a time per token; `Retry-After` and
+  it (`mergedBy`). One request at a time per token; `Retry-After` and
   GitHub's `x-ratelimit-reset` are honoured; polling slows to 10 minutes
   while fewer than a fifth of the token's hourly requests remain, or after
   a webhook for that repository in the last 24 hours.
@@ -844,7 +843,7 @@ Custom roles override built-ins by name, except `claude`.
   `readOnly`, `internet`, `base: true` for a project’s original checkout, and `code: true` to start it in code mode; in a project a title matching an open thread's, or naming the same `#number`, is refused, naming it), `message` (to a child, by ID or current title
   (`pickThread`; a title two threads share is refused), or `to: "parent"`
   from a child; a child's message with no `to` and no `id`, or whose `id`
-  names its parent, goes to the parent), `list` (`ChildInfo` with `ChildStatus`, and `branches` for a project thread's worktrees), `read` (`id`,
+  names its parent, goes to the parent), `list` (`ChildInfo` with `ChildStatus`, and `worktrees` (branch and path) for a project thread's own worktrees), `read` (`id`,
   `last`: the latest messages of a listed, logged thread, or of one of her own subagents' threads (`PoolReader.latestEntries`), `READ_DEFAULT`
   10, `READ_MAX` 30, formatted by `formatEntry`; a parent's read of a child still working ends with `CHILD_WAKES`, as does `turn-tools`' refusal of a third identical `threads read`) and `stop` (`id`: a
   parent's child, `ThreadsHost.stop`), and `routine` (above). `later` (`minutes`, clamped to 1 to
@@ -1181,13 +1180,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   of an image carrying Pi's "does not support images" note) gets `NO_VISION` appended, telling her she
   saw nothing and must not describe it; a `read` of an image then fails.
   A subagent's guard gets a `VisionFallback` (`createSubagentExtension`'s
-  `vision`): the subagent's thread takes the local chat models with vision
-  it may use as its list, and the first whose machine is up becomes its
-  model, in its record and card too; the guard switches to it with `pi.setModel`,
+  `vision`): the subagent's thread takes `visionList(models, its context)`
+  as its list (the first model up in the Look at images list, task
+  `vision`, else the local chat models with vision it may use), and the
+  first whose machine is up becomes its model, in its record and card too; the guard switches to it with `pi.setModel`,
   keeps the image and drops Pi's note, appending `SWITCHED`. With none, or
   a switch that fails, it warns as above.
-  `delegate({ action: "models" })` marks the models with vision, for a look
-  she hands on.
+  `NO_VISION` and the delegate guideline tell her to delegate a look
+  without naming a model, so the subagent switches by that list.
 - Memory sections include `opening`: the sleep item a thread was started
   from. It comes from `itemForThread`, so no other thread ever has it.
 - Memory sections include `pinned` (`pinnedOf(store, threadId)`: the
@@ -1245,7 +1245,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   the model it already has the result and should answer or try something
   different. A plain `sleep` (a `bash` call that only sleeps) starts the
   count over for every call, so polling isn't refused. A run of 25 calls to one tool, with any arguments, also stops
-  the turn. Calls beyond either limit in a batch are refused. After the
+  the turn, and so do two replies in a row cut off at the reply limit with a
+  tool call in them (Pi refuses a cut-off call and asks for it again, which
+  on a full window is only cut again): that turn's notice reads `CUT_OFF`
+  and its wrap-up `CUT_WRAP_UP`. Calls beyond either limit in a batch are refused. After the
   batch's results her tools turn off and a hidden `lyrica-tool-limit-wrap-up`
   message (`WRAP_UP`) asks for one reply on what she did, where things
   stand and what's left, so the person never gets only the notice; if that
@@ -1637,7 +1640,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `forgetThreadFiles(services, userId, pool, threads)` does the same for
   threads just forgotten, at once and with no age limit, and drops their
   change records and snapshots too, keeping a folder whose id a thread in
-  either pool still has; `DELETE …/threads/:pool/:threadId` calls it.
+  either pool still has, and removes its `tmp/<id>` and each
+  `threads/*/shared/<id>` directory (not following a link there);
+  `DELETE …/threads/:pool/:threadId` calls it.
 - **Web access** (`LyricadOptions.web`): built-in Caddy, configured through
   its admin socket `/run/lyrica-caddy/admin.sock`, or an external proxy, with
   an extra listener whose settings and TLS key are in
@@ -1743,7 +1748,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Web UI 2's thread menu uses them. `POST threads` with `project` (and
     `PATCH` making one) also pins the thread; `Display.projects: "all" |
     "only" | "none"` filters the list; `PATCH threads/:id` with `project`,
-    `goal`, `paused`, `threadsModel`, `threadsThinking`, `threadsFallback` and `watchThreads`
+    `goal`, `paused`, `threadsModel`, `threadsThinking`, `threadsFallback`, `watchThreads` and `checkInOnThreads`
     (`user.db` `project_settings`, settings and unsaved drafts), and
     `projectSettings.pageId` names the project page's memory ID; a project chat's
     look at its threads is marked `[Watching threads]` (`WATCHING_MARK`,
@@ -2209,10 +2214,20 @@ claudeCodeFor(t): boolean                 // Claude Code for a run: general, not
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
 // Project code threads have their own folder; other child threads share their parent's (folderThread).
 sharedDir(t): string | undefined          // shared/ in the folder of the family's topmost thread (settings.familyRoot; the project chat in a project):
-  // SandboxSpec.shared, mounted read-write at /shared (SHARED) for the whole family; undefined when a thread made it a file or link,
+  // SandboxSpec.shared, mounted at /shared (SHARED) for the whole family; undefined when a thread made it a file or link,
   // or when sharesFamilyFolder(t) is false: a local-only thread (or ancestor below the top) under a top that isn't restricted
+sharedOwn(t, shared): string              // the thread's own shared/<id>/ (made, replacing a file or link there): SandboxSpec.sharedOwn,
+  // mounted read-write at /shared/<id> over a read-only /shared; a write elsewhere in /shared throws SandboxDenied. Not for t.coordinates.
+  // In the top thread, whose WORKDIR holds shared/, WORKDIR/shared (and its alias's) is mounted read-only over it too
+familyFolders(t): { path, dest }[]        // SandboxSpec.family: every other family member's folder (settings.family(root), by folderThread),
+  // mounted read-only at /thread-workspaces/<id> (FAMILY_ROOT); a local-only member's only for a local-only reader; a write throws SandboxDenied.
+  // Only members WorkspaceOptions.onlyIn(userId, t.pool) passes (in the reader's pool and not the other; without it, none), and none at all
+  // when settings.narrowed(t.threadId): it or a thread above it was started by inheritSettings with fewer folders or repositories.
+  // settings.family(root): root and every thread below it in thread_workspaces. Worked out at every sandbox start.
+tmpDir(t): string                         // a project chat's lasting /tmp, tmp/<id> in the home (SandboxSpec.tmp); the sweep and forgetting remove it
+// forThread(t).family() → { folder, handover? }: where its family reads its folder, and its own /shared/<id> (ThreadTools.family, familyLine)
 // SandboxSpec.readOnly (t.coordinates, a project chat and its subagents): /workspace, its alias and /shared mount read-only and
-//   a write the tools try throws SandboxDenied naming a code thread; /tmp stays a command's scratch
+//   a write the tools try throws SandboxDenied naming a code thread; its /tmp is SandboxSpec.tmp, which lasts between commands
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
 // MachineConfig { name, kind: "ssh" | "proxmox", host, port, username (Proxmox: token id), privateKey (Proxmox: the token),
 //   root (Proxmox: null), asUser (SSH: the user's own account; Proxmox: false), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,

@@ -368,7 +368,7 @@ Each active thread is one Pi session from `openThreadSession`, with
   `deleted: true`.
   Its files go at once while the home is mounted (`forgetThreadFiles`,
   daemon/src/sweep.ts): the change records of what its calls did and their
-  snapshots, its folder under `threads/` and its Claude Code folder. The
+  snapshots, its folder under `threads/`, its lasting `/tmp`, its own `/shared/<id>/` and its Claude Code folder. The
   nightly sweep takes any folder left behind.
 - **Child threads** (`ChildThreads`, [delegation.md](delegation.md#child-threads)):
   every hosted thread gets the `threads` tool. A child is hosted like any
@@ -417,8 +417,8 @@ Each active thread is one Pi session from `openThreadSession`, with
   (kept on the project page apart from sleep's text), `paused`,
   `threadsModel`, `threadsThinking` and `threadsFallback` (the model,
   thinking and Fallback its new threads start with; each null follows the
-  project chat), and `watchThreads` (on unless turned off; see
-  [delegation.md](delegation.md#child-threads)). A **look** at the threads
+  project chat), `watchThreads` and `checkInOnThreads` (each on unless
+  turned off; see [delegation.md](delegation.md#child-threads)). A **look** at the threads
   (`watch.ts`) is one call to the `watching` task, through
   `callWithFallback` and `completeSimple` in a model runtime built from the
   project chat's `CallContext` (so local models only for a private or
