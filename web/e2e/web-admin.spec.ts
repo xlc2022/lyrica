@@ -1678,7 +1678,22 @@ test("Code mode: thread switch, Coding model and project defaults", async ({ pag
   await drawer.getByRole("checkbox", { name: "Code mode", exact: true }).click();
   await expect.poll(async () => (await api("GET", `${path}/settings`)).code).toBe(true);
   await expect(drawer.getByRole("combobox", { name: "Mode", exact: true })).toHaveValue(mode);
-  await expect(drawer.getByRole("combobox", { name: "Coding", exact: true })).toHaveValue(local);
+  // One Conversation select edits what answers now: Coding here. A thread's pick replaces the preset's list.
+  const conversation = drawer.getByRole("combobox", { name: "Conversation", exact: true });
+  await expect(conversation).toHaveValue(local);
+  await expect(conversation).toHaveAccessibleDescription("no fallback");
+  await expect(drawer.getByRole("combobox", { name: "Main conversation" })).toHaveCount(0);
+  await expect(drawer.getByRole("group", { name: "Helpers" }).getByRole("combobox", { name: "Watching threads" })).toBeVisible();
+  await expect(drawer.getByRole("group", { name: "Images and speech" }).getByRole("combobox", { name: "Dictation" })).toBeVisible();
+  // Thinking: the user's default until the thread picks a level.
+  const thinking = drawer.getByRole("combobox", { name: "Thinking", exact: true });
+  await expect(thinking.locator("option:checked")).toHaveText("Default (Medium)");
+  await thinking.selectOption("off");
+  await expect.poll(async () => (await api("GET", `${path}/settings`)).thinkingSet).toBe(true);
+  await thinking.selectOption("");
+  await expect.poll(async () => (await api("GET", `${path}/settings`)).thinkingSet).toBe(false);
+  await drawer.locator(".drawer-body").evaluate((el) => el.scrollTo(0, 0));
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/code-mode-drawer-models-${page.viewportSize()!.width}.png` });
   await drawer.getByRole("checkbox", { name: "Code mode", exact: true }).scrollIntoViewIfNeeded();
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/code-mode-thread-${page.viewportSize()!.width}.png` });
@@ -1693,6 +1708,11 @@ test("Code mode: thread switch, Coding model and project defaults", async ({ pag
   await expect(page.getByRole("button", { name: /^Model:/ })).toContainText("cloud-model");
 
   await openProjectSettings(page);
+  // New threads say what new threads get; the chat's own Model and Mode live in its header, drawer and composer.
+  await expect(page.getByRole("combobox", { name: "Model", exact: true }).locator("option").first()).toHaveText("Same as this chat");
+  await expect(page.getByRole("heading", { name: "Workspace", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This chat", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Mode", exact: true })).toHaveCount(0);
   await page.getByRole("checkbox", { name: "Code mode", exact: true }).click();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(async () => (await api("GET", path)).projectSettings.threadsCode).toBe(true);

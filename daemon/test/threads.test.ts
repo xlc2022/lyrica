@@ -405,12 +405,12 @@ describe("the thread's model", () => {
     await stream.until(is("turn_end"));
     stream.close();
     const settings = (await ada.get<ThreadSettings>(`${path}/settings`)).body;
-    expect(settings).toMatchObject({ profile: "Custom", preset: null, thinking: "medium", thinkingLevels: ["off"], answered: { label: "gpu/qwen3.8-27b", kind: "local", task: "chat" } });
+    expect(settings).toMatchObject({ profile: "Custom", preset: null, thinking: "medium", thinkingSet: false, thinkingLevels: ["off"], answered: { label: "gpu/qwen3.8-27b", kind: "local", task: "chat" } });
     const calls = (await ada.get<CallInfo[]>(`/api/u/${rt.ada.id}/models/calls`)).body;
     expect(calls[0]).toMatchObject({ threadId: thread.id, label: "gpu/qwen3.8-27b" });
     expect(JSON.stringify(calls)).not.toMatch(/Miso/);
 
-    expect((await ada.patch<ThreadSettings>(`${path}/settings`, { thinking: "high", preset: "builtin.cloud" })).body).toMatchObject({ thinking: "high", profile: "Cloud", preset: "builtin.cloud" });
+    expect((await ada.patch<ThreadSettings>(`${path}/settings`, { thinking: "high", preset: "builtin.cloud" })).body).toMatchObject({ thinking: "high", thinkingSet: true, profile: "Cloud", preset: "builtin.cloud" });
     const priv = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "private" })).body;
     const privPath = `/api/u/${rt.ada.id}/threads/private/${enc(priv.id)}/settings`;
     expect((await ada.patch(privPath, { preset: "builtin.cloud" })).status).toBe(400);

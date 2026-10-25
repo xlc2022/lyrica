@@ -2788,7 +2788,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
       if (task === (applies.code ? "code" : "chat")) thinkingLevels = ["off", ...(r.offering.reasoning ?? [])];
       return {
         model: r.ref, ...list, kind: r.endpoint.kind, endpointName: r.endpoint.name, label: r.label, modelId: r.offering.modelId, name: modelName(r.offering),
-        source: r.source,
+        source: r.source, fallbacks: r.remaining,
       };
     } catch (err) {
       if (!(err instanceof NoModel) && !(err instanceof CloudModelForbidden)) throw err;
@@ -2805,7 +2805,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
   const effective = chosen && (!restricted || chosen.scope === "private") ? chosen : columnPreset;
   return {
     models: Object.fromEntries(THREAD_TASKS.map((task) => [task, taskModel(task)])) as Api.ThreadSettings["models"],
-    profile: effective?.name ?? "Custom", preset: ctx.preset ?? null, thinking: ctx.thinking ?? DEFAULT_THINKING, thinkingLevels,
+    profile: effective?.name ?? "Custom", preset: ctx.preset ?? null, thinking: ctx.thinking ?? DEFAULT_THINKING, thinkingSet: !ctx.thinkingUnset, thinkingLevels,
     ...(answered ? { answered } : {}),
     ...(threadId ? contextOf(d, user, pool, threadId, answered) ?? {} : {}),
     code: applies.code, localOnly: ctx.localOnly,

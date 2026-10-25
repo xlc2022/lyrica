@@ -553,7 +553,7 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await sections.getByRole("link", { name: "General" }).click();
   await expect(page.getByLabel("Goal")).toHaveValue("Ship the garden plan.");
   await expect(page.getByRole("checkbox", { name: "Paused" })).toBeChecked();
-  // Folders and Machines are the drawer's own two controls, under This chat.
+  // Folders and Machines are the drawer's own two controls, under Workspace.
   await expect(page.getByRole("group", { name: "Folders" })).toContainText("An administrator hasn't allowed any folders for this pool.");
   const machinesRow = page.getByRole("group", { name: "Machines" });
   await expect(machinesRow).toContainText("sandbox");

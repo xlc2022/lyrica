@@ -1091,6 +1091,8 @@ export interface TaskModel {
   endpointName?: string;
   /** "thread" when overridden here, "preset" or "column" when following one of those, "none" when nothing is set. */
   source: "thread" | "preset" | "column" | "none";
+  /** How many models after `model` in its list could still answer; 0 while Fallback is off. Absent when nothing is set. */
+  fallbacks?: number;
   /** Why nothing usable is set here, in plain words: the thread's own model unset, a choice made here that can't be used, or a cloud model in a private thread. Absent for any other task nobody set. */
   problem?: string;
 }
@@ -1113,6 +1115,8 @@ export interface ThreadSettings {
   /** The preset the thread chose by id, or null when it follows its column. */
   preset: string | null;
   thinking: ThinkingLevel;
+  /** Whether the thread chose `thinking`; false follows the user's default. */
+  thinkingSet: boolean;
   /** The levels the current chat model offers (always including off). */
   thinkingLevels: ThinkingLevel[];
   /** The last call in this thread: which model answered, and any fallback. */

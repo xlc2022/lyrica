@@ -303,13 +303,14 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
 - **Project settings page** (`…/p/<pool>/<project>/general`, `/memory` or `/files`),
   sections at the left. **General**: Goal, the Paused and **Watching
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
-  threads** (Model, Thinking and Fallback the project's threads start with;
-  "This chat's model", "This chat's fallback" follow the project chat), **This chat** (Model, Mode,
-  Group, then **Folders**, **Machines**, **Repositories** and **MCP
+  threads** (Model, Code mode, Thinking and Fallback the project's threads start with;
+  "Same as this chat" follows the project chat; Model becomes a new thread's
+  Coding in Code mode and its Main conversation otherwise), **Workspace**
+  (Group, then **Folders**, **Machines**, **Repositories** and **MCP
   servers**, the drawer's own controls,
   then a **Thread settings** link that opens the project chat with its
-  drawer showing, `…/t/<pool>/<thread>/settings`, for network, local-only
-  and the other task models), then **Commands**: a mono prefix field per
+  drawer showing, `…/t/<pool>/<thread>/settings`, for its own models, network
+  and local-only; the chat's model and Mode are not on this page), then **Commands**: a mono prefix field per
   rule, an Allow | Ask | Forbid segment, Remove, and **Add rule**. Empty
   reads "No rules: commands ask as the mode says." Empty rows are ignored and dropped on Save, and duplicate prefixes (spaces collapsed) fail validation.
   Then **Checks**: a mono command field per check, Remove, and **Add check**
@@ -317,7 +318,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   a multi-line or over-long check fails validation. The page has one Save, which patches the thread
   (`goal`, `paused`, `commandRules`, `checks`, `watchThreads` when it changed, `threadsModel`,
   `threadsThinking`, `threadsFallback`, `group`) and, when they changed, its
-  settings (`grants`, `machines`, `repositories`, `mcpServers` among them); `lyricad`'s
+  settings (`grants`, `machines`, `repositories`, `mcpServers`); `lyricad`'s
   reason shows when it refuses. Every thread the project starts gets these
   folders, machines and repositories or fewer. A folder, machine or
   repository taken off here leaves the
@@ -333,9 +334,15 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   moves) and Delete… with its dialog. Images is the panel's grid with its
   filter, a tile opening the image in the file viewer. It reloads when any thread finishes a tool call or a turn, and on
   focus.
-- **Thread settings drawer:** a preset and a model per task, including **Coding** (each option says cloud or local first; **Watching threads**, under
-  Titles, only in a project chat; then **Images**, **Image edits** and
+- **Thread settings drawer:** Models has the preset, **Conversation** (the
+  `code` task in Code mode, else `chat`, as `ModelBadge`), **Thinking**
+  (`thinking`, Default while `thinkingSet` is false), Fallback, then the
+  nested groups **Helpers** (subagents, Titles, and **Watching threads** only in
+  a project chat) and **Images and speech** (**Images**, **Image edits** and
   **Image upscaling**, offering the models that do each, recipes by name;
+  Dictation, Read aloud). Each option says cloud or local first, and each
+  model select's label shows `TaskModel.fallbacks` as "+N fallbacks" or "no
+  fallback" (its description, not its name);
   a task's problem shows in red under its select only for the thread's own
   model, a choice made in the thread, or a refusal, never for an optional
   task nobody set), local-only, the internet and
@@ -1303,11 +1310,11 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   message's button owns that reading (Stop reading until it ends). In a
   split view each pane's buttons are its own, and still only one plays.
 - **Fallback** is a switch in the thread settings drawer's Models section,
-  under the task models, following the user's default until changed (Use
+  after Thinking, following the user's default until changed (Use
   default goes back); tooltip "When off, only the first model in each list
   answers; if it can't, the message waits for it."
 - **Dictation** and **Read aloud** are selects in the thread settings
-  drawer's Models section, under Titles, offering only models that
+  drawer's Models section, under Images and speech, offering only models that
   transcribe or speak; "Preset (…)" names what applies without a pick
   (for Dictation, always the Private column's). A cloud pick for Dictation
   first asks in a dialog naming the model (Use cloud dictation or Cancel);

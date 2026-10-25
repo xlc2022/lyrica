@@ -233,7 +233,8 @@ export class ChildThreads implements ThreadsHost {
         ws.setThread(child.id, parent.pool, { code: true });
         own.setCodeTask(child.id, req.task.slice(0, 300));
       }
-      if (chosen?.model) this.o.models.setThreadModel(userId, parent.pool, child.id, "chat", chosen.model);
+      // New threads › Model is the model it talks on: Coding in Code mode, Main conversation otherwise.
+      if (chosen?.model) this.o.models.setThreadModel(userId, parent.pool, child.id, ws.effective(child.id).code ? "code" : "chat", chosen.model);
       if (chosen?.thinking) this.o.models.setThinking(userId, child.id, chosen.thinking);
       if (chosen?.fallback !== undefined) this.o.models.setThreadFallback(userId, child.id, chosen.fallback);
     } catch (err) {
@@ -718,7 +719,7 @@ export class ChildThreads implements ThreadsHost {
         this.o.models.setThreadModel(userId, pool, made.id, "speech.transcribe");
         const chosen = project ? this.o.project?.(userId, pool, project) : undefined;
         if (chosen?.code !== undefined) this.o.workspace.settings(userId).setThread(made.id, pool, { code: chosen.code });
-        if (chosen?.model) this.o.models.setThreadModel(userId, pool, made.id, "chat", chosen.model);
+        if (chosen?.model) this.o.models.setThreadModel(userId, pool, made.id, this.o.workspace.settings(userId).effective(made.id).code ? "code" : "chat", chosen.model);
         if (chosen?.thinking) this.o.models.setThinking(userId, made.id, chosen.thinking);
         if (chosen?.fallback !== undefined) this.o.models.setThreadFallback(userId, made.id, chosen.fallback);
         if (project) this.db(userId, db => db.prepare("INSERT INTO child_threads (pool, thread, parent, started_at) VALUES (?, ?, ?, ?)").run(pool, made.id, project, new Date().toISOString()));
