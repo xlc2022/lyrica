@@ -100,9 +100,11 @@ export function createTurnToolsExtension(): ExtensionFactory {
       if (isSleep(e.toolName, e.args)) repeats.clear();
       // A call made again whose last results were all the same would only return that again; one whose result changed
       // (a running job's output, a log that grows) can still tell her something.
+      // Identical calls in one batch run at the same moment, so they count as the same result.
       const seen = repeats.get(key) ?? [];
       const last = seen.slice(-(MAX_IDENTICAL_TOOL_CALLS - 1));
-      if (last.length === MAX_IDENTICAL_TOOL_CALLS - 1 && last.every((r) => r === last[0])) refused.set(e.toolCallId, isThreadRead(e.toolName, e.args)
+      const together = [...running.values()].filter((k) => k === key).length;
+      if (together >= MAX_IDENTICAL_TOOL_CALLS - 1 || (last.length === MAX_IDENTICAL_TOOL_CALLS - 1 && last.every((r) => r === last[0]))) refused.set(e.toolCallId, isThreadRead(e.toolName, e.args)
         ? `You already read this thread twice with these arguments. If it is still working: ${CHILD_WAKES}`
         : "You already have this result: this tool was called with identical arguments twice and returned the same both times. Answer or try something different.");
       else running.set(e.toolCallId, key);

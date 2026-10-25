@@ -116,6 +116,11 @@ it("lets a plain sleep repeat, and a call made again after one, since time has p
   expect((await scenario([status, status, status])).executed).toBe(2);
 });
 
+it("refuses the third identical call in one batch", async () => {
+  const cat = { name: "bash", args: { command: "cat package.json" } };
+  expect((await scenario([cat, cat, cat], 1, true)).executed).toBe(2);
+});
+
 it("lets a call be made again while its result keeps changing, as a running job's output does", async () => {
   const log = { name: "log", args: { query: "j3" } };
   expect((await scenario([log, log, log, log])).executed).toBe(4);
