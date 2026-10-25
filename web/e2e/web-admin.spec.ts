@@ -1797,7 +1797,15 @@ test("Status model facts preserve existing facts and render empty, measured and 
     await expect(facts).toContainText("Retained history · General · pruned to latest 500 records per user");
     await expect(page.getByText("Her tools' network", { exact: true })).toBeVisible();
     await expect(page.getByText("Sleep time", { exact: true })).toBeVisible();
-    await expect(page.getByText("Start unlocked", { exact: true })).toBeVisible();
+    await expect(page.locator("dt").getByText("Start unlocked", { exact: true })).toBeVisible();
     await noHorizontalScroll(page);
+    // Changing pool visibility while Status stays open must discard its old aggregate.
+    if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+    await page.locator(".showing summary").click();
+    await page.locator(".showing").getByLabel("General", { exact: true }).uncheck();
+    if (phone(page)) await page.getByRole("button", { name: "Hide threads" }).click();
+    await expect(facts).toContainText("No pools shown");
+    await expect(facts).toContainText("No retained calls in the last 24 hours.");
+    await expect(facts).not.toContainText("fixture-measured");
   } finally { await page.request.patch(displayPath, { data: original, headers: { origin: baseURL! } }); }
 });

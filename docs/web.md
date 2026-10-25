@@ -827,7 +827,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `ModelCallFacts.tsx` renders plain facts per offering ID from GET Status's
   `modelFacts`: recorded label/endpoint, calls, median generation tok/s,
   measured sample count and recorded fallbacks. All model copies are shown;
-  facts wrap on a phone, no timer or new control. The scope line names the
+  facts wrap on a phone, no timer or new control. Changing shown pools drops
+  the old aggregate and loads Status again. The scope line names the
   displayed pools and latest-500-record retention per user, not a complete
   day's activity. No measured speed reads Unavailable; empty reads No retained
   calls in the last 24 hours. Tooltips explain scope, pace and fallback

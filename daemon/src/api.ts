@@ -1859,7 +1859,7 @@ export interface MemoryImportResult {
 // --- Administrators: /api/u/:userId/admin/… ---
 
 /** Retained model call records in the authenticated user's displayed pools, in [since, until].
- * Not a complete day: the store keeps only the latest 500 records per user across pools. */
+ * Not a complete day: nightly pruning keeps the latest 500 records per user across pools. */
 export interface ModelCallFacts {
   since: string; until: string; pools: Pool[];
   models: {

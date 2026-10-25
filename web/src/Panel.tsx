@@ -59,7 +59,7 @@ const SETTINGS: SectionDef[] = [
   { key: "reset", label: "Reset", body: (ctx) => <WipeSection ctx={ctx} mine /> },
 ];
 const ADMIN: SectionDef[] = [
-  { key: "status", label: "Status", body: (ctx) => <StatusSection ctx={ctx} /> },
+  { key: "status", label: "Status", body: (ctx) => <StatusSection key={`${ctx.user.id}:${ctx.me.display.showGeneral}:${ctx.me.display.showPrivate}`} ctx={ctx} /> },
   { key: "name", label: "Her name", body: (ctx) => <Section title="Her name"><NameForm ctx={ctx} /></Section> },
   { key: "users", label: "Users", body: (ctx) => <UsersSection ctx={ctx} /> },
   { key: "sleep", label: "Sleep", body: (ctx) => <SleepTimeSection ctx={ctx} /> },
