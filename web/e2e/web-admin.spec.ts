@@ -1738,6 +1738,8 @@ test("Settings → Reset: Wipe my memory asks for the box and the password, then
   await newThread(page, "General");
   await send(page, "Something of mine to forget");
   await expect(page.getByText("You said: Something of mine to forget")).toBeVisible();
+  // The reply shows before its turn ends; a wipe sent while it runs stops it first and asks again (the next test covers that).
+  await expect.poll(async () => page.evaluate(async (path) => ((await (await fetch(path)).json()) as { busy: boolean }[]).some((t) => t.busy), `/api/u/${userId}/threads`)).toBe(false);
   await page.goto(`/#/u/${userId}/settings/reset`);
   await page.getByRole("button", { name: "Wipe my memory…" }).click();
   const dialog = page.getByRole("dialog", { name: "Wipe your memory?" });
