@@ -308,6 +308,10 @@ describe("delegate", () => {
     say("Use router/qwen/qwen3.8-27b for it.");
     expect((await s.run(parent, { task: "look", role: "scout", model: "router/qwen/qwen3.8-27b" })).status).toBe("finished");
     expect(s.delegation.status(parent)[0]).toMatchObject({ model: "router/qwen/qwen3.8-27b" });
+    // Named only in another thread's message, it isn't the person's word: the local copy runs.
+    say("[From t:web/other]\n\nUse router/qwen/qwen3.8-27b for it.");
+    expect((await s.run(parent, { task: "look", role: "scout", model: "router/qwen/qwen3.8-27b" })).status).toBe("finished");
+    expect(s.delegation.status(parent)[0]).toMatchObject({ model: "gpu/qwen3.8-27b" });
     // A cloud model with no local copy runs as named.
     expect((await s.run(parent, { task: "check", role: "scout", model: "deepseek flash" })).status).toBe("finished");
     expect(s.delegation.status(parent)[0]).toMatchObject({ model: "openrouter/deepseek/deepseek-4.1-flash" });

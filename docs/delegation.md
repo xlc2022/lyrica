@@ -38,7 +38,11 @@ subagent:
   that a local endpoint also serves under the same model name (`sameModel`)
   runs on the local copy, unless the person's latest message singles out the
   cloud one (`singledOut`: its whole label, or its own model name when no
-  other model shares it). `delegate({ action: "models" })` lists the chat
+  other model shares it). The person's latest message is the newest user
+  entry of the thread that owns the run, and counts only without a mark
+  (another thread's message, a wake-up, a routine): so a person naming the
+  cloud copy in the project chat doesn't reach a run in a project thread,
+  which then uses the local copy. `delegate({ action: "models" })` lists the chat
   models she may name, local first, each marked local or cloud, and vision
   and paid where they apply. A subagent whose model
   has no vision switches, on a tool result holding an image, to the first

@@ -961,12 +961,24 @@ export class Delegation {
     return twin && !singledOut(this.personSaid(run), picked, list) ? { offeringId: twin.id } : ref;
   }
 
-  /** The latest message from the person, in the thread that owns the run (past any subagents). */
+  /**
+   * The latest message from the person, in the thread that owns the run (past any subagents). Empty when the
+   * latest user entry carries a mark (another thread's message, a wake-up, a routine, a watch note): those
+   * are her own words, and an answer to her question is the only marked one the person writes.
+   */
   private personSaid(run: Run): string {
-    const own = this.o.memory.openThreadView(run.parent.user.id, run.parent.pool).own;
-    let owner = run.parent.threadId;
-    while (own.getThread(owner)?.subagent && own.getThread(owner)?.parent) owner = own.getThread(owner)!.parent!;
-    return own.lastEntry(owner, ["user"])?.text ?? "";
+    const view = this.o.memory.openThreadView(run.parent.user.id, run.parent.pool);
+    try {
+      const own = view.own;
+      let owner = run.parent.threadId;
+      while (own.getThread(owner)?.subagent && own.getThread(owner)?.parent) owner = own.getThread(owner)!.parent!;
+      const text = own.lastEntry(owner, ["user"])?.text ?? "";
+      const answer = /^\[Answer to q:\d+\]\n\n/.exec(text);
+      if (answer) return text.slice(answer[0].length);
+      return /^\[[^\]\n]+\]\n\n/.test(text) ? "" : text;
+    } finally {
+      view.close();
+    }
   }
 
   /** Up to three distinct models: the thread's subagent models first, then others it allows. */
@@ -998,10 +1010,15 @@ export class Delegation {
    * so to the subagents it delegates to as well: a change goes through one of its threads.
    */
   private coordinates(run: Run): boolean {
-    const own = this.o.memory.openThreadView(run.parent.user.id, run.parent.pool).own;
-    let owner = run.parent.threadId;
-    while (own.getThread(owner)?.subagent && own.getThread(owner)?.parent) owner = own.getThread(owner)!.parent!;
-    return !!own.getThread(owner)?.project;
+    const view = this.o.memory.openThreadView(run.parent.user.id, run.parent.pool);
+    try {
+      const own = view.own;
+      let owner = run.parent.threadId;
+      while (own.getThread(owner)?.subagent && own.getThread(owner)?.parent) owner = own.getThread(owner)!.parent!;
+      return !!own.getThread(owner)?.project;
+    } finally {
+      view.close();
+    }
   }
 
   /** The parent's grants as they apply now, narrowed to `folders` if given; read-only under a project chat. */
