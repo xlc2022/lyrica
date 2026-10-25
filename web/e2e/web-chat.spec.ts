@@ -510,6 +510,54 @@ test("a run of tool calls folds into one marker that opens to a scrolling box, a
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/message-actions-${page.viewportSize()!.width}.png` });
 });
 
+test("her waiting (sleeps that only echo, reads of a thread, a refused read) folds into one run, and a sleep that printed more stays out", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "Watch the build");
+  await expect(page.getByText("You said: Watch the build")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  let n = 0;
+  const at = () => `2026-10-25T04:00:${String(n).padStart(2, "0")}Z`;
+  const user = (text: string) => ({ id: `e:${threadId}#${++n}`, n, role: "user", createdAt: at(), parts: [{ type: "text", text }] });
+  const hers = (...parts: unknown[]) => ({ id: `e:${threadId}#${++n}`, n, role: "assistant", model: "fake", createdAt: at(), parts });
+  const think = { type: "thinking", text: "The child is still working." };
+  const bash = (id: string, command: string, result: string) => ({ type: "tool", toolCallId: id, name: "bash", args: { command }, result, isError: false });
+  const read = (id: string, result: string, isError = false) => ({ type: "tool", toolCallId: id, name: "threads", args: { action: "read", id: threadId }, result, isError });
+  const messages = [
+    user("Watch the build"),
+    hers(think, bash("s1", "sleep 60 && echo \"done\"", "done")),
+    hers(think, read("r1", "Working.")),
+    hers(think, bash("s2", "sleep 120 && echo \"done\"", "done")),
+    hers(think, read("r2", "You already read this thread twice with these arguments.", true)),
+    hers({ type: "text", text: "The build passed." }),
+    user("Check the log"),
+    hers(bash("s3", "sleep 1; echo done; tail -1 build.log", "done\nok: 412 tests")),
+    hers({ type: "text", text: "All 412 passed." }),
+  ];
+  await page.route(`**${base}/messages`, (route) => route.fulfill({ json: { hasMore: false, messages } }));
+  await page.reload();
+  await expect(page.getByText("All 412 passed.")).toBeVisible();
+  const run = page.locator(".marker.tool-run");
+  await expect(run).toHaveCount(1);
+  await expect(run).toContainText("4 tool calls");
+  // The guard turning a read away is about her waiting: the run isn't failed, and no card shows outside it.
+  await expect(run).not.toContainText("failed");
+  await expect(page.locator(".threads-card")).toHaveCount(0);
+  await expect(page.locator(".marker", { hasText: "sleep 60" })).toHaveCount(0);
+  // Only her answer has a name line before the person's next message.
+  await expect(page.locator(".turn .who-name").filter({ hasText: "fake" })).toHaveCount(2);
+  await expect(page.locator(".turn.quiet .marker", { hasText: "tail -1 build.log" })).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/waiting-closed-${page.viewportSize()!.width}.png` });
+  await run.getByRole("button", { name: /tool calls/ }).click();
+  await expect(run.locator(".run-body .marker[data-type='tool']")).toHaveCount(2);
+  await expect(run.locator(".run-body .threads-card")).toHaveCount(2);
+  await expect(run.locator(".run-body .threads-card .status[data-state='failed']")).toHaveCount(0);
+  await expect(run.locator(".run-body .threads-card p.muted")).toContainText("You already read this thread");
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/waiting-open-${page.viewportSize()!.width}.png` });
+});
+
 test("an open run of tool calls follows her newest call only while its box is at the bottom", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

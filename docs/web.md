@@ -972,14 +972,19 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   while open. An expanded tool call stays open when the turn ends
   and the stored copy replaces the live one. A reply made only of markers
   (`isMarker` on every part: thinking, recall, remember, and tools other
-  than delegate, propose_plan, image and a threads look) renders bare, with
-  no header line or action row (`.turn.quiet`); consecutive ones are
-  grouped, and three or more markers fold into one **<n> tool calls**
-  marker (`ToolRun`, "steps" when none is a tool call) that opens to a
+  than delegate, propose_plan, image and a threads card other than steps
+  or a poll) renders bare, with no header line or action row
+  (`.turn.quiet`); consecutive ones are grouped, and three or more markers,
+  or any run with a sleep or refused read in it (`waits`), fold into one
+  **<n> tool calls** marker (`ToolRun`, "steps" when none is a tool call) that opens to a
   320 px box which scrolls (`.run-body`), each call its own marker inside,
   following the newest while the turn streams. Its open state is keyed by
   the first call's ID, so it survives the stored copy replacing the live
-  one.
+  one. A poll (`isPoll`) is a call that only waits: a bash `sleep N`,
+  optionally followed by `echo` of plain words, whose output is empty or
+  only that echo (running counts); a `threads read`; or the turn guard's
+  refusal of a read made again. The guard's refusal doesn't mark the run
+  failed, and its card shows the done dot with the sentence muted. The calls themselves stay allowed: polling is a wake's backup.
 - An expanded `read` call of a text file (`readText`) shows its result as
   `ReadText`: the code block's strip with the file's name (a Files link
   when its path resolves under the thread's folders and the call isn't on a

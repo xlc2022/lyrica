@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
-  DelegationStore, isRestricted, LIVE_STATUSES, matchModel, refId, renderThreadMentions, unmatched,
+  DelegationStore, isRestricted, LIVE_STATUSES, matchModel, refId, renderThreadMentions, sameModelName, singledOut, unmatched,
   type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
   type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
@@ -632,7 +632,8 @@ export class Delegation {
     let sub: Subagent;
     try {
       const role = this.role(run.parent.user.id, row.role, "worker");
-      const pick: ModelPick = row.pick && "model" in row.pick ? { model: this.named(run, row.pick.model) } : { tier: row.pick?.tier ?? role.tier };
+      // A model it already ran on was allowed then.
+      const pick: ModelPick = row.pick && "model" in row.pick ? { model: this.named(run, row.pick.model, false) } : { tier: row.pick?.tier ?? role.tier };
       sub = await this.open(run, role, pick, row.narrowing ?? {}, row);
       opened.resolve();
     } catch (err) {
@@ -941,14 +942,43 @@ export class Delegation {
    * A model a saved workflow or the person names: by offering ID, as
    * `endpoint/model`, or in plain words that fit one of the thread's models.
    * Otherwise the error lists the closest, for her to ask which was meant.
+   * A cloud model the person's machines also serve, under the same model
+   * name, runs there instead, unless the person's latest message singles out
+   * the cloud copy (`singledOut`).
    */
-  private named(run: Run, name: string): ModelRef {
+  private named(run: Run, name: string, preferLocal = true): ModelRef {
     const { models } = this.o;
-    const ref = models.find(run.parent.user.id, name);
-    if (ref) return ref;
-    const m = matchModel(name, models.textModels(this.parentCall(run)));
-    if ("closest" in m) throw new Error(unmatched(name, m));
-    return { offeringId: m.model.id };
+    const list = models.textModels(this.parentCall(run));
+    let ref = models.find(run.parent.user.id, name);
+    if (!ref) {
+      const m = matchModel(name, list);
+      if ("closest" in m) throw new Error(unmatched(name, m));
+      ref = { offeringId: m.model.id };
+    }
+    const picked = list.find((x) => x.id === refId(ref));
+    if (!preferLocal || !picked || picked.local) return ref;
+    const twin = list.find((x) => x.local && sameModelName(x.label, picked.label));
+    return twin && !singledOut(this.personSaid(run), picked, list) ? { offeringId: twin.id } : ref;
+  }
+
+  /**
+   * The latest message from the person, in the thread that owns the run (past any subagents). Empty when the
+   * latest user entry carries a mark (another thread's message, a wake-up, a routine, a watch note): those
+   * are her own words, and an answer to her question is the only marked one the person writes.
+   */
+  private personSaid(run: Run): string {
+    const view = this.o.memory.openThreadView(run.parent.user.id, run.parent.pool);
+    try {
+      const own = view.own;
+      let owner = run.parent.threadId;
+      while (own.getThread(owner)?.subagent && own.getThread(owner)?.parent) owner = own.getThread(owner)!.parent!;
+      const text = own.lastEntry(owner, ["user"])?.text ?? "";
+      const answer = /^\[Answer to q:\d+\]\n\n/.exec(text);
+      if (answer) return text.slice(answer[0].length);
+      return /^\[[^\]\n]+\]\n\n/.test(text) ? "" : text;
+    } finally {
+      view.close();
+    }
   }
 
   /** Up to three distinct models: the thread's subagent models first, then others it allows. */
@@ -964,10 +994,10 @@ export class Delegation {
     return picks.filter((r) => !seen.has(r.offeringId) && !!seen.add(r.offeringId)).slice(0, 3);
   }
 
-  /** The chat models this thread may name for its subagents, as it is now. */
-  models(parent: ThreadContext): { id: string; label: string; local: boolean; vision: boolean }[] {
+  /** The chat models this thread may name for its subagents, as it is now, local first. */
+  models(parent: ThreadContext): { id: string; label: string; local: boolean; vision: boolean; paid: boolean }[] {
     const { models } = this.o;
-    return models.textModels(models.callContext(parent.user.id, parent.pool, parent.threadId));
+    return models.textModels(models.callContext(parent.user.id, parent.pool, parent.threadId)).sort((a, b) => Number(b.local) - Number(a.local));
   }
 
   /** The parent's CallContext as it is now: local-only may have been switched on since the run started. */
@@ -980,10 +1010,15 @@ export class Delegation {
    * so to the subagents it delegates to as well: a change goes through one of its threads.
    */
   private coordinates(run: Run): boolean {
-    const own = this.o.memory.openThreadView(run.parent.user.id, run.parent.pool).own;
-    let owner = run.parent.threadId;
-    while (own.getThread(owner)?.subagent && own.getThread(owner)?.parent) owner = own.getThread(owner)!.parent!;
-    return !!own.getThread(owner)?.project;
+    const view = this.o.memory.openThreadView(run.parent.user.id, run.parent.pool);
+    try {
+      const own = view.own;
+      let owner = run.parent.threadId;
+      while (own.getThread(owner)?.subagent && own.getThread(owner)?.parent) owner = own.getThread(owner)!.parent!;
+      return !!own.getThread(owner)?.project;
+    } finally {
+      view.close();
+    }
   }
 
   /** The parent's grants as they apply now, narrowed to `folders` if given; read-only under a project chat. */

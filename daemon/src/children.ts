@@ -703,6 +703,11 @@ export class ChildThreads implements ThreadsHost {
     } finally { view.close(); }
   }
 
+  /** Whether a project's thread is resolved. */
+  resolved(userId: string, pool: Pool, thread: string): boolean {
+    return !!this.row(userId, pool, thread)?.resolved_at;
+  }
+
   /** A wake-up fired in the thread: a resolved project thread reopens, as a message reopens it. */
   woke(userId: string, pool: Pool, thread: string): void {
     if (this.row(userId, pool, thread)?.resolved_at) this.setResolved(userId, pool, thread, false);
@@ -1007,7 +1012,10 @@ export class ChildThreads implements ThreadsHost {
 
   /** A project thread for the same task (its title) that is still open goes on there, keeping its work, rather than starting over beside it. */
   private checkSameTask(userId: string, parent: ThreadContext, title: string): void {
-    const same = (t: string | undefined) => !!t && t.trim().toLowerCase() === title.trim().toLowerCase();
+    // The same title, or one naming the same pull request or issue (#542), however the rest is worded.
+    const refs = (t: string) => new Set(t.match(/#\d+\b/g) ?? []);
+    const mine = refs(title);
+    const same = (t: string | undefined) => !!t && (t.trim().toLowerCase() === title.trim().toLowerCase() || [...refs(t)].some((r) => mine.has(r)));
     const open = this.rows(userId).find((r) => r.pool === parent.pool && r.parent === parent.threadId && !r.resolved_at && same(parent.view.own.getThread(r.thread)?.title));
     if (open) throw new Error(`[t:${open.thread}] is already open for this task, with its work so far: send it what to do next with threads message`);
   }

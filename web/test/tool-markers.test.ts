@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readImage, readText, runKey, summarizeArgs, type Quiet } from "../src/Messages.tsx";
+import { isPoll, readImage, readText, runKey, summarizeArgs, type Quiet } from "../src/Messages.tsx";
 
 describe("a tool call's marker line", () => {
   it("is empty for a call she is still writing, and the main argument once it runs", () => {
@@ -41,6 +41,27 @@ describe("the text a read call shows", () => {
     expect(read("/workspace/a.png", "Read image file [image/png]")).toBeUndefined();
     expect(readText({ type: "tool", toolCallId: "c1", name: "read", args: { path: "a.ts" }, result: "ENOENT", isError: true })).toBeUndefined();
     expect(readText({ type: "tool", toolCallId: "c1", name: "bash", args: { path: "a.ts" }, result: "x" })).toBeUndefined();
+  });
+});
+
+describe("a call that only waits", () => {
+  const bash = (command: string, result?: string, isError = false) => isPoll({ type: "tool", toolCallId: "c1", name: "bash", args: { command }, result, isError });
+  const read = (result?: string, isError = false) => isPoll({ type: "tool", toolCallId: "c1", name: "threads", args: { action: "read", id: "t1" }, result, isError });
+  it("is a sleep that printed only its echo, running or done, and a thread read or the guard's refusal of one", () => {
+    expect(bash("sleep 120 && echo \"done\"", "done\n")).toBe(true);
+    expect(bash("sleep 60; echo 'still waiting'", "still waiting")).toBe(true);
+    expect(bash("sleep 5m", "")).toBe(true);
+    expect(bash("sleep 180 && echo done")).toBe(true);
+    expect(read("Working: step 2 of 4")).toBe(true);
+    expect(read("You already read this thread twice with these arguments. If it is still working: ...", true)).toBe(true);
+  });
+  it("is not a sleep that printed something else or failed, a sleep with more after it, or a read that failed otherwise", () => {
+    expect(bash("sleep 60 && echo done", "done\nTerminated")).toBe(false);
+    expect(bash("sleep 60 && echo done", "done", true)).toBe(false);
+    expect(bash("sleep 60 && tail -5 build.log", "ok")).toBe(false);
+    expect(bash("sleep 60 && echo $(cat status)", "ready")).toBe(false);
+    expect(read("No thread t1.", true)).toBe(false);
+    expect(isPoll({ type: "thinking", text: "Let me wait." })).toBe(false);
   });
 });
 

@@ -34,9 +34,17 @@ subagent:
   `<endpoint>/<model>` label, or the person's own words: `matchModel` takes
   the one chat model the parent may use whose model ID or label holds every
   word of it. A name that fits none, or several, fails the run with the
-  closest few, for her to ask the person which they meant;
-  `delegate({ action: "models" })` lists the chat models she may name, each
-  marked local or cloud, and vision where it has it. A subagent whose model
+  closest few, for her to ask the person which they meant. A cloud model
+  that a local endpoint also serves under the same model name (`sameModelName`)
+  runs on the local copy, unless the person's latest message singles out the
+  cloud one (`singledOut`: its whole label, or its own model name when no
+  other model shares it). The person's latest message is the newest user
+  entry of the thread that owns the run, and counts only without a mark
+  (another thread's message, a wake-up, a routine): so a person naming the
+  cloud copy in the project chat doesn't reach a run in a project thread,
+  which then uses the local copy. `delegate({ action: "models" })` lists the chat
+  models she may name, local first, each marked local or cloud, and vision
+  and paid where they apply. A subagent whose model
   has no vision switches, on a tool result holding an image, to the first
   local chat model with vision she may use whose machine is up, which
   becomes its model (its card says so) and sees the image; with none, it is told it saw nothing (contracts.md,
@@ -273,7 +281,8 @@ The helpers `makeWorktrees`, `worktreeGrants` and `removeWorktrees` live in
 code child threads. Code children use their own thread folder, checkout and branch;
 In projects, `base: true` keeps the original checkout for a single open
 scaffold or merge thread. A start whose title matches an open thread of the
-project (ignoring case and spaces at the ends) is refused, telling her to
+project (ignoring case and spaces at the ends), or names the same `#number`
+as one (a pull request or issue), is refused, telling her to
 message that thread, which has the work so far; `list` names the branch each
 thread works on in its own worktree. Other threads and delegate writers retain the rules below.
 
@@ -518,7 +527,9 @@ the thread's pool (step 4, `wakeups`), so it is encrypted and survives a
 restart; due times are held in memory while the user is unlocked, and
 lyricad's 20-second tick fires them, not while an update drains. A child
 past the at-once limit, a queued thread and a paused or hidden project's
-thread wait; a resolved project thread reopens. A locked user's wake-ups
+thread wait. A CI or review wake reopens a resolved project thread; a
+wake-up she set herself is dropped once the thread is resolved, so
+finished work isn't reopened by an old reminder. A locked user's wake-ups
 fire at the first tick after unlock, marked with when they were due. The
 views get times and IDs only, never the note; the user removes one from
 the facts line.
