@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -195,9 +195,17 @@ describe("the sweep of change records", () => {
     expect(forgetFiles(home, changes, "general", ["web/t"], [], () => false)).toBe(4);
     expect(readdirSync(join(home, "threads/web%2Fu/shared"))).toEqual(["notes"]);
     expect(readdirSync(join(home, "tmp"))).toEqual([]);
+    // A `shared` a thread made a link is never followed.
+    const outside = mkdtempSync(join(tmpdir(), "lyrica-outside-"));
+    mkdirSync(join(outside, "web%2Fv"));
+    mkdirSync(join(home, "threads/web%2Fw"));
+    symlinkSync(outside, join(home, "threads/web%2Fw/shared"));
+    forgetFiles(home, changes, "general", ["web/v"], [], () => false);
+    expect(existsSync(join(outside, "web%2Fv"))).toBe(true);
+    rmSync(outside, { recursive: true, force: true });
     expect(changes.forThreads("general", ["web/t"])).toEqual([]);
     expect(readdirSync(join(home, "snapshots"))).toEqual([]);
-    expect(readdirSync(join(home, "threads"))).toEqual(["web%2Fu"]);
+    expect(readdirSync(join(home, "threads"))).toEqual(["web%2Fu", "web%2Fw"]);
     expect(readdirSync(join(home, "claude"))).toEqual([]);
   });
 

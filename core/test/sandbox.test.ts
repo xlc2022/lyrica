@@ -167,6 +167,14 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect(existsSync(p("fam-shared", "web%2Fa", "y"))).toBe(true);
     await expect(a.ops().write.writeFile("/thread-workspaces/web%2Fb/z", "no")).rejects.toThrow("another thread's folder");
     await expect(a.ops().write.writeFile("/shared/z", "no")).rejects.toThrow("you write only in your own /shared/web%2Fa");
+    // The top thread keeps the family's shared folder in its own: there too it writes only its own part.
+    mkdirSync(p("top", "shared", "web%2Fa"), { recursive: true });
+    mkdirSync(p("top", "shared", "web%2Ftop"), { recursive: true });
+    const top = new Sandbox({ workdir: p("top"), grants: [], network: OFF, self: [], shared: p("top", "shared"), sharedOwn: "web%2Ftop" });
+    expect((await sh("touch '/workspace/shared/web%2Fa/x' 2>&1; touch '/shared/web%2Fa/x' 2>&1; touch '/shared/web%2Ftop/y' && touch /workspace/mine && echo TOP-OK", top)).out)
+      .toMatch(/Read-only file system[\s\S]*Read-only file system[\s\S]*TOP-OK/);
+    expect(existsSync(p("top", "shared", "web%2Fa", "x"))).toBe(false);
+    await expect(top.ops().write.writeFile("/workspace/shared/web%2Fa/z", "no")).rejects.toThrow("you write only in your own /shared/web%2Ftop");
     const chat = new Sandbox({ workdir: p("work"), grants: [], network: OFF, self: [], readOnly: true, tmp: p("chat-tmp") });
     await sh("echo body > /tmp/issue.md", chat);
     expect((await sh("cat /tmp/issue.md", chat)).out).toBe("body\n");

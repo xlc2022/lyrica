@@ -1159,7 +1159,7 @@ export class Delegation {
       const vision: VisionFallback = async () => {
         const task = role.name === "coder" ? "code" : "chat";
         const call = () => models.callContext(parent.user.id, parent.pool, child.id);
-        const list = visionList(models, call());
+        const list = visionList(models, call(), this.parentCall(run));
         if (!list.length) return undefined;
         // Tried before anything is saved, so with none up the thread keeps its own list, or none.
         const tried = { ...call(), overrides: { ...call().overrides, [task]: list } };
@@ -1259,13 +1259,14 @@ function withInput(spec: WorkflowSpec, input: string): WorkflowSpec {
   return JSON.parse(JSON.stringify(spec), (_k, v: unknown) => (typeof v === "string" ? v.replaceAll("{input}", input) : v));
 }
 
-/** What a finished run tells the parent. */
 /**
  * The models a subagent whose model can't see an image switches to: the first up in the person's Look at images
- * list (task `vision`, with tools), else every local chat model with vision. `ctx` is the subagent's own, so a private
- * or local-only one reads the Private column and gets local models only.
+ * list (task `vision`, with tools), else every local chat model with vision. `ctx` is the subagent's own and `parent`
+ * its parent's as it is now (switched to local-only since the run started, say): if either is restricted, the
+ * Private column decides and only local models come back.
  */
-export function visionList(models: Models, ctx: CallContext): { offeringId: string }[] {
+export function visionList(models: Models, own: CallContext, parent?: CallContext): { offeringId: string }[] {
+  const ctx = parent && isRestricted(parent) && !isRestricted(own) ? { ...own, localOnly: true } : own;
   try {
     return [models.resolve("vision", ctx, { tools: true }).ref];
   } catch {
@@ -1273,6 +1274,7 @@ export function visionList(models: Models, ctx: CallContext): { offeringId: stri
   }
 }
 
+/** What a finished run tells the parent. */
 export function outcome(run: Run): string {
   const head = `Subagent run ${run.id}`;
   if (run.status === "finished") return `${head} finished:\n\n${run.result}`;

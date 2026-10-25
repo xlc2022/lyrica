@@ -500,7 +500,7 @@ export function describe(tools: ThreadTools): string {
     ...(tools.family ? [familyLine(tools.family())] : []),
     ...(s.grants.some((g) => g.writable) ? [BUILD_THERE] : []),
     ...(s.threadWork ? [
-      ...(s.threadWork.base ? ["You hold the project's base checkout: scaffold or merge here, then resolve this thread to release it."] : []),
+      ...(s.threadWork.base ? ["You work in the project's base checkout, not a worktree of your own: scaffold or merge here. Other base threads can write it too, so check with them before a large change."] : []),
       ...(s.threadWork.reason ? [`No worktree for some folders: ${s.threadWork.reason}. Those folders keep their listed grants.`] : []),
       ...(s.threadWork.worktrees.length ? [`Work and commit only in these worktrees for their repositories, never in the original checkout:\n${s.threadWork.worktrees.map((w) => `${w.repo}: worktree ${w.path}, branch ${w.branch}`).join("\n")}`] : []),
     ] : []),

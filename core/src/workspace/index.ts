@@ -69,10 +69,10 @@ export interface WorkspaceThread {
   coordinates?: boolean;
 }
 
-/** Grants as the thread itself sees them: read-only in a project chat. */
 /** Where each family member's folder is mounted for the others, and a code thread's own alias: `${FAMILY_ROOT}/<id>`. */
 export const FAMILY_ROOT = "/thread-workspaces";
 
+/** Grants as the thread itself sees them: read-only in a project chat. */
 const ownGrants = (t: WorkspaceThread, grants: Grant[]): Grant[] => (t.coordinates ? grants.map((g) => ({ ...g, writable: false })) : grants);
 
 export interface FrontDoor { ports: number[]; hosts: string[]; exclude: number[] }

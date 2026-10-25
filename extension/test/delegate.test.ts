@@ -332,6 +332,11 @@ describe("delegate", () => {
     expect(visionList(s.models, s.thread().call)).toEqual([planRef]);
     // A local-only thread reads the Private column, which has no list: the cloud model in General never reaches it.
     expect(visionList(s.models, s.thread("general", { localOnly: true }).call)).toEqual([boxRef]);
+    // A parent switched to local-only after its subagent started: the subagent's own context is still general.
+    const parent = s.thread();
+    const sub = s.thread();
+    s.models.setLocalOnly(s.ada.id, "general", parent.threadId, true);
+    expect(visionList(s.models, s.models.callContext(s.ada.id, "general", sub.threadId), s.models.callContext(s.ada.id, "general", parent.threadId))).toEqual([boxRef]);
   });
 
   it("runs a project chat's subagents in the background, and moves a long foreground run there", async () => {

@@ -601,7 +601,9 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
   folder, mounted at `/shared` in every sandbox of the family
   (`Workspace.sharedDir`, `SandboxSpec.shared`). Each thread writes only in
   its own `/shared/<id>/`, made for it and mounted read-write over the
-  read-only rest (`Workspace.sharedOwn`, `SandboxSpec.sharedOwn`); a
+  read-only rest (`Workspace.sharedOwn`, `SandboxSpec.sharedOwn`), and the
+  top thread, whose own folder holds `shared/`, sees that copy read-only
+  too (`/workspace/shared`); a
   project chat's is read-only throughout, and what `lyricad` puts there
   for it (uploads, images) stays at the top. In a project that is
   `shared/` in the project folder, so the person sees it in Project

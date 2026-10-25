@@ -113,10 +113,15 @@ export function forgetFiles(home: string, changes: FileChanges, pool: Pool, thre
       const d = join(home, kept, name);
       if (existsSync(d)) { rmSync(d, { recursive: true, force: true }); n++; }
     }
-    // Its own part of its family's /shared (Workspace.sharedOwn), under whichever top thread's folder holds it.
+    // Its own part of its family's /shared (Workspace.sharedOwn), under whichever top thread's folder holds it. A thread
+    // can make `shared` a link, so it must be a real folder that resolves where it is, and so must the part.
     for (const top of existsSync(join(home, "threads")) ? readdirSync(join(home, "threads")) : []) {
-      const d = join(home, "threads", top, "shared", name);
-      try { if (!lstatSync(d).isDirectory()) continue; } catch { continue; }
+      const shared = join(home, "threads", top, "shared");
+      const d = join(shared, name);
+      try {
+        if (!lstatSync(shared).isDirectory() || realpathSync(shared) !== join(realpathSync(join(home, "threads", top)), "shared")) continue;
+        if (!lstatSync(d).isDirectory()) continue;
+      } catch { continue; }
       rmSync(d, { recursive: true, force: true });
       n++;
     }

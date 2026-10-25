@@ -844,13 +844,13 @@ export class WorkspaceSettings {
     throw new Error(`thread ${threadId} has too many ancestors`);
   }
 
-  /** Every thread of the family under this topmost thread, itself included. */
   /** Whether the thread, or one between it and its family's top, was started narrowed (`inheritSettings`). */
   narrowed(threadId: string): boolean {
     for (let id: string | null = threadId, i = 0; id && i < 100; id = this.thread(id).parent, i++) if (this.setting(`workspace.narrowed.${id}`) === "1") return true;
     return false;
   }
 
+  /** Every thread of the family under this topmost thread, itself included. */
   family(root: string): string[] {
     return (this.db.prepare("WITH RECURSIVE f(id) AS (SELECT ? UNION SELECT t.thread_id FROM thread_workspaces t JOIN f ON t.parent = f.id) SELECT id FROM f")
       .all(root) as { id: string }[]).map((r) => r.id);

@@ -2205,7 +2205,8 @@ sharedDir(t): string | undefined          // shared/ in the folder of the family
   // SandboxSpec.shared, mounted at /shared (SHARED) for the whole family; undefined when a thread made it a file or link,
   // or when sharesFamilyFolder(t) is false: a local-only thread (or ancestor below the top) under a top that isn't restricted
 sharedOwn(t, shared): string              // the thread's own shared/<id>/ (made, replacing a file or link there): SandboxSpec.sharedOwn,
-  // mounted read-write at /shared/<id> over a read-only /shared; a write elsewhere in /shared throws SandboxDenied. Not for t.coordinates
+  // mounted read-write at /shared/<id> over a read-only /shared; a write elsewhere in /shared throws SandboxDenied. Not for t.coordinates.
+  // In the top thread, whose WORKDIR holds shared/, WORKDIR/shared (and its alias's) is mounted read-only over it too
 familyFolders(t): { path, dest }[]        // SandboxSpec.family: every other family member's folder (settings.family(root), by folderThread),
   // mounted read-only at /thread-workspaces/<id> (FAMILY_ROOT); a local-only member's only for a local-only reader; a write throws SandboxDenied.
   // Only members WorkspaceOptions.onlyIn(userId, t.pool) passes (in the reader's pool and not the other; without it, none), and none at all

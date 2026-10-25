@@ -314,9 +314,22 @@ export class Sandbox implements ExecutionTarget {
       .filter((v) => v.length >= 8).sort((a, b) => b.length - a.length);
   }
 
+  /**
+   * Where the family's shared folder also shows inside this thread's own folder (the top thread of a family keeps it
+   * there): `${WORKDIR}/shared` and the alias's, mounted read-only over the folder so it writes only its own part.
+   */
+  private sharedInWorkdir(): string[] {
+    const { shared, workdir, sharedOwn, workdirAlias } = this.spec;
+    if (!shared || !workdir || !sharedOwn || cleanPath(shared) !== join(cleanPath(workdir), "shared")) return [];
+    return [`${WORKDIR}/shared`, ...workdirAlias ? [`${workdirAlias}/shared`] : []];
+  }
+
   /** Refuses paths outside the thread's folder and grants (SandboxDenied). The mounts confine her regardless. */
   allow(path: string, write: boolean): string {
     const p = cleanPath(path);
+    if (write && this.sharedInWorkdir().some((d) => within(p, d))) {
+      throw new SandboxDenied(`${p} is the family's shared folder, read-only here: you write only in your own ${SHARED}/${this.spec.sharedOwn}`);
+    }
     if (within(p, WORKDIR) || (this.spec.workdirAlias && within(p, this.spec.workdirAlias)) || (this.spec.shared && within(p, SHARED))) {
       if (write && this.spec.readOnly) throw new SandboxDenied(`${p} is read-only in a project chat: start a code thread to make or change files, and it hands them back in its folder or /shared`);
       if (write && this.spec.sharedOwn && within(p, SHARED) && !within(p, `${SHARED}/${this.spec.sharedOwn}`)) {
@@ -512,6 +525,7 @@ export class Sandbox implements ExecutionTarget {
     if (this.spec.workdir) mount(cleanPath(this.spec.workdir), !this.spec.readOnly, WORKDIR);
     if (this.spec.workdir && this.spec.workdirAlias) mount(cleanPath(this.spec.workdir), !this.spec.readOnly, this.spec.workdirAlias);
     if (this.spec.workdir && this.spec.repos) mount(cleanPath(this.spec.repos), !this.spec.reposReadOnly, `${WORKDIR}/repos`);
+    for (const dest of this.sharedInWorkdir()) mount(cleanPath(this.spec.shared!), false, dest);
     if (this.spec.claudeDir) mount(cleanPath(this.spec.claudeDir), true, CLAUDE_DIR);
     if (this.spec.shared) mount(cleanPath(this.spec.shared), !this.spec.readOnly && !this.spec.sharedOwn, SHARED);
     if (this.spec.shared && this.spec.sharedOwn) mount(cleanPath(join(this.spec.shared, this.spec.sharedOwn)), !this.spec.readOnly, `${SHARED}/${this.spec.sharedOwn}`);

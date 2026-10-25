@@ -41,6 +41,10 @@ chat and its threads, or a plain thread and its children.
 - Tokens and keys stay outside the sandbox; page preview keeps no network.
 - Everything mounted from another thread is read-only, so she still
   changes and deletes only her own files.
+- A member started with fewer folders or repositories reads no one
+  else's folder. One with fewer machines or MCP servers still does: what
+  those left in a member's folder stays inside the family, which already
+  shares a persona, memory and `/shared`.
 - Out of scope: cleaning up `/shared/<id>/` when a thread resolves or its pull
   request merges.
 
