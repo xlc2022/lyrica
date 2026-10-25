@@ -55,8 +55,8 @@ export interface RelaySpec {
   onLimit?: (until?: number) => void;
 }
 
-/** One Claude Code request's tokens: `inputTokens` counts every prompt token read, cached or not. */
-export interface ClaudeCodeUsage { inputTokens: number; outputTokens: number }
+/** One Claude Code request's tokens: `inputTokens` counts every prompt token read, cached or not. `model` is the model that answered, when it said. */
+export interface ClaudeCodeUsage { inputTokens: number; outputTokens: number; model?: string }
 
 export interface Relay {
   /** The loopback port the relay listens on, forwarded into the run's sandbox. */
@@ -208,21 +208,31 @@ function mergeUsage(into: Record<string, number>, u: unknown): void {
   }
 }
 
-const totalUsage = (u: Record<string, number>): ClaudeCodeUsage | undefined => (Object.keys(u).length ? {
+const totalUsage = (u: Record<string, number>, model: string | undefined): ClaudeCodeUsage | undefined => (Object.keys(u).length ? {
   inputTokens: (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0),
   outputTokens: u.output_tokens ?? 0,
+  ...(model ? { model } : {}),
 } : undefined);
+
+/** A model ID as an answer names it, or nothing: only a short ID's characters are kept. */
+const modelId = (v: unknown): string | undefined => (typeof v === "string" && /^[A-Za-z0-9._:-]{1,80}$/.test(v) ? v : undefined);
+
+/** A JSON answer names its model near its start, before its content: no more than this is held to read it. */
+const MODEL_HEAD = 1024;
 
 /**
  * Reads a /v1/messages answer's token counts beside it as it passes, never
  * holding it back. A stream's come from its message_start and message_delta
  * events only, and every other event's data (where the text is) is skipped
  * unread; a JSON answer's come from the `usage` object at its end, of which
- * only a short tail is held. Nothing is kept once the counts are out.
+ * only a short tail is held. The model comes from message_start, or from a
+ * JSON answer's `model` field ahead of its content in a short head. Nothing
+ * is kept once the counts are out.
  */
 function usageReader(type: string, done: (usage: ClaudeCodeUsage) => void): { data(chunk: Buffer): void; end(): void } {
   const counts: Record<string, number> = {};
-  const finish = () => { const u = totalUsage(counts); if (u) done(u); };
+  let model: string | undefined;
+  const finish = () => { const u = totalUsage(counts, model); if (u) done(u); };
   if (/^text\/event-stream/i.test(type)) {
     let line = "", event = "", skipping = false;
     const wanted = (l: string) => l.startsWith("event:") || (l.startsWith("data:") && USAGE_EVENTS.has(event));
@@ -230,8 +240,9 @@ function usageReader(type: string, done: (usage: ClaudeCodeUsage) => void): { da
       if (l === "") { event = ""; return; }
       if (l.startsWith("event:")) { event = l.slice(6).trim(); return; }
       if (!l.startsWith("data:") || !USAGE_EVENTS.has(event)) return;
-      let data: { message?: { usage?: unknown }; usage?: unknown };
+      let data: { message?: { usage?: unknown; model?: unknown }; usage?: unknown };
       try { data = JSON.parse(l.slice(5)); } catch { return; }
+      if (event === "message_start") model = modelId(data.message?.model) ?? model;
       mergeUsage(counts, event === "message_start" ? data.message?.usage : data.usage);
     };
     return {
@@ -254,12 +265,18 @@ function usageReader(type: string, done: (usage: ClaudeCodeUsage) => void): { da
     };
   }
   if (!/^application\/json/i.test(type)) return { data() {}, end() {} };
-  let tail = Buffer.alloc(0);
+  let tail = Buffer.alloc(0), head = "";
   return {
-    data(chunk) { tail = Buffer.concat([tail, chunk]); if (tail.length > USAGE_LIMIT) tail = tail.subarray(tail.length - USAGE_LIMIT); },
+    data(chunk) {
+      if (head.length < MODEL_HEAD) head += chunk.subarray(0, MODEL_HEAD - head.length).toString("latin1");
+      tail = Buffer.concat([tail, chunk]); if (tail.length > USAGE_LIMIT) tail = tail.subarray(tail.length - USAGE_LIMIT); },
     end() {
       const s = tail.toString("utf8");
       tail = Buffer.alloc(0);
+      const named = /"model"\s*:\s*"([^"]*)"/.exec(head);
+      const content = head.indexOf('"content"');
+      if (named && (content < 0 || named.index < content)) model = modelId(named[1]);
+      head = "";
       const open = s.indexOf("{", s.lastIndexOf('"usage"'));
       if (s.lastIndexOf('"usage"') < 0 || open < 0) return;
       let depth = 0;

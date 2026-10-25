@@ -319,11 +319,11 @@ describe("Claude Code's usage through the relay", () => {
   // Made-up answers in the shapes the Messages API sends: a stream's counts in message_start and
   // message_delta, a JSON answer's in its closing usage object. The text ("usage" in it too) is never counted.
   const SSE = [
-    'event: message_start\ndata: {"type":"message_start","message":{"id":"m1","type":"message","role":"assistant","content":[],"usage":{"input_tokens":12,"cache_creation_input_tokens":100,"cache_read_input_tokens":2000,"output_tokens":1}}}\n\n',
+    'event: message_start\ndata: {"type":"message_start","message":{"id":"m1","type":"message","role":"assistant","model":"claude-made-up-1","content":[],"usage":{"input_tokens":12,"cache_creation_input_tokens":100,"cache_read_input_tokens":2000,"output_tokens":1}}}\n\n',
     'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Ada\'s plan: \\"usage\\":{\\"output_tokens\\":999999}"}}\n\n',
     'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":34}}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n',
   ].join("");
-  const JSON_ANSWER = '{"id":"m2","type":"message","role":"assistant","content":[{"type":"text","text":"\\"usage\\": {\\"input_tokens\\": 999999}"}],' +
+  const JSON_ANSWER = '{"id":"m2","type":"message","role":"assistant","model":"claude-made-up-2","content":[{"type":"text","text":"\\"model\\":\\"not-this\\" \\"usage\\": {\\"input_tokens\\": 999999}"}],' +
     '"stop_reason":"end_turn","usage":{"input_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":40,"output_tokens":7,"server_tool_use":{"web_search_requests":0}}}';
   let api: Server;
   let apiBase: string;
@@ -357,15 +357,15 @@ describe("Claude Code's usage through the relay", () => {
     req.end("{}");
   });
 
-  it("counts a streamed and a JSON answer's tokens, passes both on unchanged, and holds the stream back for none of it", async () => {
+  it("counts a streamed and a JSON answer's tokens and model, passes both on unchanged, and holds the stream back for none of it", async () => {
     const used: unknown[] = [];
     const relay = await openRelay({ anthropic: "sk-ant-made-up", reaches: () => true, internet: true, upstreams: { "api.anthropic.com": apiBase }, onUsage: (u) => used.push(u) });
     try {
       // The stream ends only once its first piece has reached the client: a relay that held it back would never finish.
       expect(await ask(relay, "/v1/messages?beta=true", "text/event-stream")).toEqual({ status: 200, body: SSE });
-      expect(used).toEqual([{ inputTokens: 2112, outputTokens: 34 }]);
+      expect(used).toEqual([{ inputTokens: 2112, outputTokens: 34, model: "claude-made-up-1" }]);
       expect((await ask(relay, "/v1/messages", "application/json")).body).toBe(JSON_ANSWER);
-      expect(used).toEqual([{ inputTokens: 2112, outputTokens: 34 }, { inputTokens: 45, outputTokens: 7 }]);
+      expect(used).toEqual([{ inputTokens: 2112, outputTokens: 34, model: "claude-made-up-1" }, { inputTokens: 45, outputTokens: 7, model: "claude-made-up-2" }]);
       // Anything else Claude Code asks for isn't a message, and isn't counted.
       await ask(relay, "/v1/messages/count_tokens", "application/json");
       expect(used).toHaveLength(2);

@@ -116,7 +116,7 @@ export interface WorkspaceOptions {
   upstreams?: Record<string, string>;
   /** A pull request the run's relay opened, for that run's thread: watched for CI and reviews (docs/briefs/ci-wakes.md). */
   onPullCreate?: (t: WorkspaceThread, pr: { repo: string; number: number }) => void;
-  /** A run's Claude Code token counts, one message request at a time, for that run's thread: the usage view's "Claude Code" row. */
+  /** A run's Claude Code token counts, one message request at a time, for that run's thread: the usage view's "Claude Code/<model>" rows. */
   onClaudeCodeUsage?: (t: WorkspaceThread, usage: ClaudeCodeUsage) => void;
   /** A run's Claude Code was refused for the user's Claude plan's usage limit, with when it resets if Anthropic said. */
   onClaudeCodeLimit?: (t: WorkspaceThread, until?: number) => void;

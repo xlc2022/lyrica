@@ -478,7 +478,8 @@ class Models {                                              // new Models(keyrin
   usage(userId, pool, threadIds): { threadId; label; kind?: "local" | "cloud"; tokens; input; output; gpuMs?; cached?; measured? }[]
     // Calls plus durable folded counts plus subagent runs at every depth; pool AND thread filtered.
   addCallTotals(userId, pool, threadId, label, kind, input, output): void   // adds one call to call_totals; Claude Code's, counted by its relay
-    // (RelaySpec/SandboxSpec.onUsage({ inputTokens, outputTokens }) → Workspace onClaudeCodeUsage(t, usage)), as label "Claude Code", kind cloud
+    // (RelaySpec/SandboxSpec.onUsage({ inputTokens, outputTokens, model? }) → Workspace onClaudeCodeUsage(t, usage)), as label
+    // "Claude Code/<model>" ("Claude Code" when the answer named none), kind cloud
   // Hosts and pairing
   pairHost(actor, { name, addresses, code }, { shared?, endpointId? }): Promise<Endpoint>   // endpointId: pair again, IDs kept
   setHostAddresses(actor, id, addresses): Endpoint / fetchFor(endpoint): typeof fetch | undefined   // undefined for a plain endpoint

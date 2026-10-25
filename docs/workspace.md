@@ -1089,13 +1089,16 @@ it adds no tool.
   other bearer and any path outside `/v1/`, drops the run's own keys,
   swaps in the user's token, and passes the request to
   `https://api.anthropic.com`.
-- **Its tokens** show in the thread's usage as a **Claude Code** row
-  (cloud). The relay asks for a `POST /v1/messages` answer uncompressed and
+- **Its tokens** show in the thread's usage as a **Claude Code/<model>**
+  row (cloud), one per Claude model that answered, or **Claude Code** when
+  an answer named none. The relay asks for a `POST /v1/messages` answer uncompressed and
   reads its counts as it passes, holding nothing back: a stream's from its
   `message_start` and `message_delta` events only, skipping the others
-  unread, a JSON answer's from the `usage` object at its end. It never keeps
-  the text. `RelaySpec.onUsage` hands each request's input tokens (cached
-  reads and writes included) and output tokens, through `SandboxSpec` and
+  unread, a JSON answer's from the `usage` object at its end. The model is
+  `message_start`'s, or a JSON answer's `model` field ahead of its content
+  in the first 1 KB. It never keeps the text. `RelaySpec.onUsage` hands each
+  request's input tokens (cached reads and writes included), output tokens
+  and model, through `SandboxSpec` and
   the Workspace's `onClaudeCodeUsage`, to `Models.addCallTotals`, which adds
   them to the thread's `call_totals`.
 - **The wrapper** (`core/src/workspace/claude.sh`) is at
