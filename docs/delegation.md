@@ -279,12 +279,13 @@ Pi session: `extension/src/delegate/claude.ts`. A subagent works through a
 The helpers `makeWorktrees`, `worktreeGrants` and `removeWorktrees` live in
 `core/src/workspace/worktree.ts` and serve both delegate writers and
 code child threads. Code children use their own thread folder, checkout and branch;
-In projects, `base: true` keeps the original checkout for a single open
-scaffold or merge thread. A start whose title matches an open thread of the
+In projects, `base: true` keeps the original checkout for scaffold or merge
+work, with no exclusive hold: several base threads may be open. A start whose title matches an open thread of the
 project (ignoring case and spaces at the ends), or names the same `#number`
 as one (a pull request or issue), is refused, telling her to
-message that thread, which has the work so far; `list` names the branch each
-thread works on in its own worktree. Other threads and delegate writers retain the rules below.
+message that thread, which has the work so far; `list` names each thread's
+own worktrees, branch and path, which every thread of the family can read
+(docs/workspace.md, "Handing files over"). Other threads and delegate writers retain the rules below.
 
 Two delegate writers never share a folder. A writer takes its parent thread's folders
 for as long as it lives, so writers from any runs of that thread go one at a
@@ -640,11 +641,7 @@ reports, start `code: true` parts together in their own worktrees, then start
 one `code: true, base: true` merge thread once the parts report their branches.
 The merge thread merges each branch, tests after each merge, sends conflicts
 or red tests to the owning thread, and deletes merged branches. The project
-chat remains read-only and gets no merge tool. Only one base thread may be
-open in a project, enforced by `children.ts`, including queued starts and
-reopening; the refusal names the holder as `[t:<id>]`. When an idle base
-thread's last watched pull request merges, it is resolved and the project
-chat told, without a wake, so the checkout is free. A resolved queued thread does not start until reopened. Resolving or forgetting a part calls the shared cleanup: its branch
+chat remains read-only and gets no merge tool. A resolved queued thread does not start until reopened. Resolving or forgetting a part calls the shared cleanup: its branch
 stays, and a worktree with uncommitted changes stays with its path reported.
 
 A project chat's child threads are the project's threads

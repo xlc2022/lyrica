@@ -105,8 +105,9 @@ and carries its children into a new project. The interface is built under
    messages with `threads read` (a child still working says its end wakes
    her, so she ends her turn rather than waiting) and stops a thread that went wrong with
    `threads stop` (docs/delegation.md, "Child threads"). A second start
-   for an open thread's task, or for the base checkout another thread
-   holds, tells her to message that thread instead, and `resolve` stops at
+   for an open thread's task tells her to message that thread instead,
+   whose folder and worktree she can read (docs/workspace.md, "Handing
+   files over"), and `resolve` stops at
    a thread's work no remote has unless she passes `force: true`. CI and reviews
    wake her without a turn being blocked: a pull request she opens through
    the run's relay is watched, and `lyricad` gives the thread one turn when

@@ -368,7 +368,7 @@ Each active thread is one Pi session from `openThreadSession`, with
   `deleted: true`.
   Its files go at once while the home is mounted (`forgetThreadFiles`,
   daemon/src/sweep.ts): the change records of what its calls did and their
-  snapshots, its folder under `threads/` and its Claude Code folder. The
+  snapshots, its folder under `threads/`, its lasting `/tmp`, its own `/shared/<id>/` and its Claude Code folder. The
   nightly sweep takes any folder left behind.
 - **Child threads** (`ChildThreads`, [delegation.md](delegation.md#child-threads)):
   every hosted thread gets the `threads` tool. A child is hosted like any

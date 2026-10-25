@@ -129,7 +129,7 @@ export type ChildStatus = "working" | "waiting" | "idle";
 /** A project's thread, as the project chat sees it: waiting covers an approval and a question for the person (`needsYou`). */
 export type ThreadState = "working" | "waiting" | "queued" | "held" | "idle" | "resolved";
 
-export interface ChildInfo { id: string; title?: string; status: ChildStatus; branches?: string[]; state?: ThreadState; needsYou?: boolean; updatedAt: string; steps?: ThreadStep[] }
+export interface ChildInfo { id: string; title?: string; status: ChildStatus; worktrees?: { branch: string; path: string }[]; state?: ThreadState; needsYou?: boolean; updatedAt: string; steps?: ThreadStep[] }
 
 /** One step of a thread's checklist (`threads steps`), which the person follows on its card: done, under way, or not started. */
 export interface ThreadStep { text: string; state: "done" | "doing" | "todo" }
@@ -201,7 +201,7 @@ export const PROJECT_CHAT_GUIDELINES = [
   "A coding build with several parts (say physics and its tests, rendering, track and lap logic) splits even when the parts fit together: "
     + "first one code: true, base: true thread sets up the repository and the interfaces the parts share (stubs, conventions) and reports and resolves, then one code: true thread per part starts, together, each in its own worktree. "
     + "Each brief names the files that part owns, what is done and what it depends on. A small job (one feature or fix) keeps one thread. "
-    + "When the parts report their branches, start one code: true, base: true merge thread. It merges each branch in turn, runs tests after each merge, and messages the owning thread about conflicts or red tests rather than fixing that thread's files. It deletes each branch after merging it. Only one base thread may be open; resolve the scaffold before starting the merge thread. A small job that works in the original checkout uses base: true too. When a thread's report names the check that tests the ask and what it showed, a light look is enough; check fully yourself only when that evidence is missing or doesn't match the ask.",
+    + "When the parts report their branches, start one code: true, base: true merge thread. It merges each branch in turn, runs tests after each merge, and messages the owning thread about conflicts or red tests rather than fixing that thread's files. It deletes each branch after merging it. A small job that works in the original checkout uses base: true too. When a thread's report names the check that tests the ask and what it showed, a light look is enough; check fully yourself only when that evidence is missing or doesn't match the ask.",
   "You're told when a thread stops with an error; when it ends without a report, you get its last message as its report. Read a thread's latest messages with threads read; stop one that went wrong with threads stop.",
   "A thread's last message wakes you here, so after starting or messaging threads you can end your turn; there's no need to wait and read again.",
   "When the person asks you to propose first, suggest threads (threads suggest) instead of starting them.",
@@ -257,7 +257,7 @@ export function pickThread(ref: string, rows: { id: string; title?: string }[]):
 
 /** One line of the threads tool's list. */
 export const threadLine = (r: ChildInfo) =>
-  `[t:${r.id}] ${r.title ? JSON.stringify(r.title) : "(untitled)"}: ${r.state ?? r.status}${r.needsYou ? " (waiting on the person)" : ""}, last ${r.updatedAt}${r.branches?.length ? `; works on ${r.branches.join(", ")} in its own worktree` : ""}${r.steps?.length ? `; ${stepsNote(r.steps)}` : ""}`;
+  `[t:${r.id}] ${r.title ? JSON.stringify(r.title) : "(untitled)"}: ${r.state ?? r.status}${r.needsYou ? " (waiting on the person)" : ""}, last ${r.updatedAt}${r.worktrees?.length ? `; works on ${r.worktrees.map((w) => `${w.branch} in ${w.path}`).join(", ")} (readable to you: git status there shows what isn't committed or pushed)` : ""}${r.steps?.length ? `; ${stepsNote(r.steps)}` : ""}`;
 
 /**
  * The project section: the goal, the user's instructions, the project's

@@ -427,9 +427,7 @@ takes is `lyrica@pve!agent=<that secret>`.
   a non-repository folder or a mid-merge repository leaves that folder as
   granted, with a reason in the prompt and the project chat's thread card.
   `threads start` with `base: true` keeps the original checkout for scaffold
-  and merge work; `children.ts` refuses another open base thread in the same
-  project, naming its holder and telling her to message it to go on with
-  that work. Resolving releases it, as does its pull request merging. Outside projects,
+  and merge work; several base threads may be open at once. Outside projects,
   a plain thread keeps the base and works in place; requested `code: true`
   children get their own worktrees and branches. The plain thread merges
   those branches itself, starting a merge thread only if the user asks.
@@ -482,9 +480,11 @@ takes is `lyrica@pve!agent=<that secret>`.
   account in Settings (Git accounts and repositories, below).
 - **Every folder in a project chat's sandbox is read-only to it:** its
   grants, its clones, its own folder and `/shared`. It can read them and
-  run checks (`/tmp` is writable but lasts one command), and the threads it
-  starts get the grants as given, so every file is made or changed by a
-  thread, which hands back what the chat should see in `/shared`. A write
+  run checks, and the threads it starts get the grants as given, so every
+  file is made or changed by a thread, whose folder the chat reads. Its
+  `/tmp` is writable and lasts between commands: `tmp/<id>` in the home
+  workspace (`Workspace.tmpDir`, `SandboxSpec.tmp`), outside the thread
+  folder, gone with the thread (docs/daemon.md, the sweep). A write
   its tools try is refused with that advice (`SandboxSpec.readOnly`).
   Subagents it delegates to get the same view, and its default role there
   is `worker`, not `coder`. Its machines and MCP servers stay usable, and
@@ -562,8 +562,8 @@ takes is `lyrica@pve!agent=<that secret>`.
   still has the hash they left: something changed it since, so it is kept.
 - **The nightly sweep** (`daemon/src/sweep.ts`), for each user whose home is
   mounted: change records and snapshots older than 30 days, snapshots no
-  record names, the folders (and Claude Code folders) of threads that no
-  longer exist, and subagent worktrees whose run isn't live and that
+  record names, the folders (with their Claude Code folders and lasting
+  `/tmp`) of threads that no longer exist, and subagent worktrees whose run isn't live and that
   haven't changed in 30 days. Before
   a worktree goes, git's record of it (`.git/worktrees/<name>` in its
   repository) goes too, so git no longer counts its branch as checked out:
@@ -576,30 +576,52 @@ takes is `lyrica@pve!agent=<that secret>`.
 
 ## Handing files over
 
-Threads that work together hand files over through one folder, never in
-messages (a model once planned to send a page to another thread as base64
-chunks). A thread's family is its topmost thread and everything started
-under it: a project's chat and all its threads, or a thread with its child
-threads and their subagents, at any depth (`familyRoot`).
+Threads that work together hand files over by path, never in messages (a
+model once planned to send a page to another thread as base64 chunks). A
+thread's family is its topmost thread and everything started under it: a
+project's chat and all its threads, or a thread with its child threads and
+their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
 
-- The family's folder is `shared/` inside the topmost thread's folder,
-  mounted read-write at `/shared` in every sandbox of the family
-  (`Workspace.sharedDir`, `SandboxSpec.shared`). In a project that is
+- Every member reads every other member's folder, read-only, at
+  `/thread-workspaces/<id>` (`Workspace.familyFolders`,
+  `SandboxSpec.family`): the path a code thread's own worktrees already
+  have, so a path one thread reports works in the others, worktrees and git
+  state included. A write there is refused, naming whose folder it is. A
+  local-only member's folder (it, or a thread between it and the top,
+  local-only under a top that may call the cloud) is mounted only in members
+  that are local-only too. Only members whose thread is in the reader's
+  pool and not the other one are mounted (`WorkspaceOptions.onlyIn`), and a
+  member started narrowed (fewer folders or repositories than its parent,
+  or a writer in its own worktree; `WorkspaceSettings.narrowed`) gets none,
+  so it can't read what it was narrowed away from. The mounts are worked
+  out again at every sandbox start. Decided 2026-10-25, after a project chat that
+  couldn't see its threads' work started duplicate threads for one pull
+  request.
+- The family's shared folder is `shared/` inside the topmost thread's
+  folder, mounted at `/shared` in every sandbox of the family
+  (`Workspace.sharedDir`, `SandboxSpec.shared`). Each thread writes only in
+  its own `/shared/<id>/`, made for it and mounted read-write over the
+  read-only rest (`Workspace.sharedOwn`, `SandboxSpec.sharedOwn`); a
+  project chat's is read-only throughout, and what `lyricad` puts there
+  for it (uploads, images) stays at the top. In a project that is
   `shared/` in the project folder, so the person sees it in Project
   settings and the project chat's Files; a code thread, which has its own
   folder, sees it only at `/shared`. It goes when the topmost thread's
-  folder goes. A thread that puts a file or link at that path leaves the
+  folder goes, and a thread's own `/shared/<id>/` when that thread is
+  forgotten (`forgetFiles`); resolving keeps it. A thread that puts a file or link at that path leaves the
   family without `/shared` rather than breaking its sandboxes. A
   local-only thread (itself or an ancestor below the top) under a topmost
   thread that may call the cloud gets no `/shared`, since what it put there
   would reach that model (`sharesFamilyFolder`).
-- The prompt's workspace section says so in one line (`SHARED_LINE`).
+- The prompt's workspace section says so in one line (`familyLine`), with
+  the path its family reads its folder at and its own part of `/shared`
+  (`ThreadTools.family`).
 - Another line (`LINK_LINE`), in every thread and the project chat, tells
   her a `/workspace` or `/shared` path is a link the person can open, and to
   link a file by its absolute path, never a relative one (docs/web.md, Chat).
 - The `threads` tool refuses a message over 8,000 characters, and any
-  message or task holding a long base64 run, naming `/shared` or a shared
-  repository instead (`checkWords`).
+  message or task holding a long base64 run, pointing at her own folder
+  instead (`checkWords`).
 
 ## Images and portrait photos
 
@@ -1156,7 +1178,9 @@ her account is general.
   failure as hers unless she shows otherwise: flaky only once a re-run of
   just the failed jobs passes, not hers only once a base-branch run's log
   shows the same test failing; otherwise she pushes at least one fix before
-  calling it blocked (`CI_RED`; `git.md` says the same). GitHub is polled; a Forgejo or
+  calling it blocked (`CI_RED`; `git.md` says the same, with the exact `gh`
+  commands, to end the turn rather than watch a run, to force-push only
+  after a rebase, and never to loosen, pad or skip a test). GitHub is polled; a Forgejo or
   Gitea account whose host resolves into her own network also gets a
   signed tailnet webhook (Settings → Git accounts, **Webhook**) that nudges
   a poll at once, with polling as the fallback. A merged or closed pull

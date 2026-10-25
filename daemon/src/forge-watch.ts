@@ -19,12 +19,6 @@ export interface ForgeWatchOptions {
   memory: Memory;
   workspace: Workspace;
   wakeups: Wakeups;
-  /**
-   * A watched pull request merged and was the thread's last watch: true when
-   * that settled the thread (a project thread holding the base checkout,
-   * resolved), so the end needs no wake.
-   */
-  merged?: (userId: string, pool: Pool, thread: string, number: number) => boolean;
   /** Failure names only, never a body or a note. */
   log: (line: string) => void;
 }
@@ -327,13 +321,10 @@ export class ForgeWatcher {
     } else this.codeState.delete(id);
     const lastState: ForgeWatchState = { head: w.head, headSince: w.headSince, notifiedHeads: w.notifiedHeads, seenReviews: w.seenReviews };
     const out = decideWatch({ number: w.number, account: a.account, now: now.toISOString(), last: lastState, poll });
-    let note = out.note ? renderNote(out.note) : null;
+    const note = out.note ? renderNote(out.note) : null;
     const view = this.o.memory.openThreadView(userId, pool);
     let wakeId: number | undefined;
     try {
-      // A merged pull request that was the thread's last watch may settle the thread instead of waking it.
-      if (out.stop && poll.kind === "snapshot" && poll.pull.state === "merged" && !view.own.watches().some((x) => x.thread === w.thread && x.id !== w.id)
-        && this.o.merged?.(userId, pool, w.thread, w.number)) note = null;
       wakeId = view.own.settleWatch(w.id, out.next, out.stop, note ? { thread: w.thread, dueAt: now.toISOString(), text: note } : null);
     } catch (err) {
       this.o.log(`a forge poll of ${w.repo}#${w.number} couldn't be saved: ${(err as Error).name}`);

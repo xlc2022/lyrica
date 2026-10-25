@@ -21,9 +21,13 @@ async function setup() {
   const ada = await users.createUser("ada", "pw", profile("Ada"), { admin: true });
   await users.authenticate("ada", "pw");
   const localOnly = new Set<string>();
-  const workspace = new Workspace(keyring, users, { excludePorts: [], restricted: (_u, pool, thread) => pool === "private" || localOnly.has(thread) });
+  const privateIds = new Set<string>();
+  const workspace = new Workspace(keyring, users, {
+    excludePorts: [], restricted: (_u, pool, thread) => pool === "private" || localOnly.has(thread),
+    onlyIn: (_u, pool) => (id) => (pool === "private") === privateIds.has(id),
+  });
   const thread = (threadId: string, pool: Pool = "general") => ({ userId: ada.id, pool, threadId });
-  return { workspace, settings: workspace.settings(ada.id), thread, localOnly };
+  return { workspace, settings: workspace.settings(ada.id), thread, localOnly, privateIds, ada };
 }
 
 describe("a family's shared folder", () => {
@@ -38,6 +42,42 @@ describe("a family's shared folder", () => {
     // A local-only top keeps its family's files local already.
     localOnly.add("top");
     expect(["top", "child", "grandchild"].map((t) => workspace.sharesFamilyFolder(thread(t)))).toEqual([true, true, true]);
+  });
+});
+
+describe("a family's folders", () => {
+  it("are read by every other member, but a local-only member's never reach one that may call the cloud", async () => {
+    const { workspace, settings, thread, localOnly, privateIds, ada } = await setup();
+    settings.startThread("top", "general");
+    for (const id of ["a", "b"]) { settings.inheritSettings("top", id, "general"); settings.setThreadWork(id, { worktrees: [] }); }
+    // A plain child works in its parent's folder, so it adds none.
+    settings.inheritSettings("top", "plain", "general");
+    const home = workspace.homeDir(thread("top").userId);
+    for (const id of ["top", "a", "b"]) mkdirSync(join(home, "threads", encodeURIComponent(id)), { recursive: true });
+    const seen = (id: string) => workspace.familyFolders(thread(id)).map((f) => f.dest).sort();
+    expect(seen("a")).toEqual(["/thread-workspaces/b", "/thread-workspaces/top"]);
+    expect(seen("plain")).toEqual(["/thread-workspaces/a", "/thread-workspaces/b"]);
+    localOnly.add("b");
+    expect(seen("a")).toEqual(["/thread-workspaces/top"]);
+    expect(seen("top")).toEqual(["/thread-workspaces/a"]);
+    // A local-only member reads them all.
+    expect(seen("b")).toEqual(["/thread-workspaces/a", "/thread-workspaces/top"]);
+    localOnly.delete("b");
+    // A folder of a thread in the other pool is never mounted, whatever the family table says.
+    privateIds.add("b");
+    expect(seen("a")).toEqual(["/thread-workspaces/top"]);
+    privateIds.delete("b");
+    // A member narrowed to fewer folders than the top gets none of the others'.
+    const host = mkdtempSync(join(tmpdir(), "lyrica-host-"));
+    mkdirSync(join(host, "music"));
+    workspace.allowedPaths.allow(ada, ada.id, "general", host);
+    settings.setThread("top", "general", { grants: [{ path: host, writable: true }] });
+    settings.inheritSettings("top", "narrow", "general", { grants: [{ path: join(host, "music"), writable: false }] });
+    settings.setThreadWork("narrow", { worktrees: [] });
+    mkdirSync(join(home, "threads", "narrow"), { recursive: true });
+    expect(seen("narrow")).toEqual([]);
+    expect(seen("a")).toEqual(["/thread-workspaces/b", "/thread-workspaces/narrow", "/thread-workspaces/top"]);
+    rmSync(host, { recursive: true, force: true });
   });
 });
 

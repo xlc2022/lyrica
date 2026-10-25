@@ -155,6 +155,24 @@ describe.skipIf(!runnable)("the sandbox", () => {
     expect((await sh("ls /shared 2>&1 || true")).out).toContain("No such file");
   });
 
+  it("mounts other family members' folders read-only, writes only its own part of /shared, and keeps a lasting /tmp where given", async () => {
+    mkdirSync(p("fam-shared", "web%2Fa"), { recursive: true });
+    mkdirSync(p("sibling"), { recursive: true });
+    writeFileSync(p("sibling", "notes.md"), "from b");
+    mkdirSync(p("chat-tmp"), { recursive: true });
+    const a = new Sandbox({ workdir: p("work"), grants: [], network: OFF, self: [], shared: p("fam-shared"), sharedOwn: "web%2Fa",
+      family: [{ path: p("sibling"), dest: "/thread-workspaces/web%2Fb" }] });
+    expect((await sh("cat /thread-workspaces/web%2Fb/notes.md; touch /thread-workspaces/web%2Fb/x 2>&1; touch /shared/x 2>&1; touch '/shared/web%2Fa/y' && echo OWN-OK", a)).out)
+      .toMatch(/^from b[\s\S]*Read-only file system[\s\S]*Read-only file system[\s\S]*OWN-OK/);
+    expect(existsSync(p("fam-shared", "web%2Fa", "y"))).toBe(true);
+    await expect(a.ops().write.writeFile("/thread-workspaces/web%2Fb/z", "no")).rejects.toThrow("another thread's folder");
+    await expect(a.ops().write.writeFile("/shared/z", "no")).rejects.toThrow("you write only in your own /shared/web%2Fa");
+    const chat = new Sandbox({ workdir: p("work"), grants: [], network: OFF, self: [], readOnly: true, tmp: p("chat-tmp") });
+    await sh("echo body > /tmp/issue.md", chat);
+    expect((await sh("cat /tmp/issue.md", chat)).out).toBe("body\n");
+    expect((await chat.ops().read.readFile("/tmp/issue.md")).toString()).toBe("body\n");
+  });
+
   it("gives a run with Claude Code the wrapper and its relay, and never the token", async () => {
     const TOKEN = "sk-ant-oat01-made-up-for-tests-only";
     const seen: string[] = [];

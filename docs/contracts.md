@@ -819,10 +819,7 @@ Custom roles override built-ins by name, except `claude`.
   wakeupMark(setAt) })` through the existing wake-up guards — never a body,
   never comment or log text. A merged or closed pull stops the watch
   with one note (`ended`), or silently when the watching account merged
-  it (`mergedBy`). A merged pull that was its thread's last watch first
-  calls `ForgeWatchOptions.merged` → `ChildThreads.merged`: an idle project
-  thread holding the base checkout is resolved and its project chat told,
-  and the end then has no wake. One request at a time per token; `Retry-After` and
+  it (`mergedBy`). One request at a time per token; `Retry-After` and
   GitHub's `x-ratelimit-reset` are honoured; polling slows to 10 minutes
   while fewer than a fifth of the token's hourly requests remain, or after
   a webhook for that repository in the last 24 hours.
@@ -844,7 +841,7 @@ Custom roles override built-ins by name, except `claude`.
   `readOnly`, `internet`, `base: true` for a project’s original checkout, and `code: true` to start it in code mode; in a project a title matching an open thread's, or naming the same `#number`, is refused, naming it), `message` (to a child, by ID or current title
   (`pickThread`; a title two threads share is refused), or `to: "parent"`
   from a child; a child's message with no `to` and no `id`, or whose `id`
-  names its parent, goes to the parent), `list` (`ChildInfo` with `ChildStatus`, and `branches` for a project thread's worktrees), `read` (`id`,
+  names its parent, goes to the parent), `list` (`ChildInfo` with `ChildStatus`, and `worktrees` (branch and path) for a project thread's own worktrees), `read` (`id`,
   `last`: the latest messages of a listed, logged thread, or of one of her own subagents' threads (`PoolReader.latestEntries`), `READ_DEFAULT`
   10, `READ_MAX` 30, formatted by `formatEntry`; a parent's read of a child still working ends with `CHILD_WAKES`, as does `turn-tools`' refusal of a third identical `threads read`) and `stop` (`id`: a
   parent's child, `ThreadsHost.stop`), and `routine` (above). `later` (`minutes`, clamped to 1 to
@@ -1637,7 +1634,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   `forgetThreadFiles(services, userId, pool, threads)` does the same for
   threads just forgotten, at once and with no age limit, and drops their
   change records and snapshots too, keeping a folder whose id a thread in
-  either pool still has; `DELETE …/threads/:pool/:threadId` calls it.
+  either pool still has, and removes its `tmp/<id>` and each
+  `threads/*/shared/<id>` directory (not following a link there);
+  `DELETE …/threads/:pool/:threadId` calls it.
 - **Web access** (`LyricadOptions.web`): built-in Caddy, configured through
   its admin socket `/run/lyrica-caddy/admin.sock`, or an external proxy, with
   an extra listener whose settings and TLS key are in
@@ -2200,10 +2199,19 @@ claudeCodeFor(t): boolean                 // Claude Code for a run: general, not
 settings(userId).detach(threadId)          // a kept child, once its parent is forgotten: no longer narrowed by it
 // Project code threads have their own folder; other child threads share their parent's (folderThread).
 sharedDir(t): string | undefined          // shared/ in the folder of the family's topmost thread (settings.familyRoot; the project chat in a project):
-  // SandboxSpec.shared, mounted read-write at /shared (SHARED) for the whole family; undefined when a thread made it a file or link,
+  // SandboxSpec.shared, mounted at /shared (SHARED) for the whole family; undefined when a thread made it a file or link,
   // or when sharesFamilyFolder(t) is false: a local-only thread (or ancestor below the top) under a top that isn't restricted
+sharedOwn(t, shared): string              // the thread's own shared/<id>/ (made, replacing a file or link there): SandboxSpec.sharedOwn,
+  // mounted read-write at /shared/<id> over a read-only /shared; a write elsewhere in /shared throws SandboxDenied. Not for t.coordinates
+familyFolders(t): { path, dest }[]        // SandboxSpec.family: every other family member's folder (settings.family(root), by folderThread),
+  // mounted read-only at /thread-workspaces/<id> (FAMILY_ROOT); a local-only member's only for a local-only reader; a write throws SandboxDenied.
+  // Only members WorkspaceOptions.onlyIn(userId, t.pool) passes (in the reader's pool and not the other; without it, none), and none at all
+  // when settings.narrowed(t.threadId): it or a thread above it was started by inheritSettings with fewer folders or repositories.
+  // settings.family(root): root and every thread below it in thread_workspaces. Worked out at every sandbox start.
+tmpDir(t): string                         // a project chat's lasting /tmp, tmp/<id> in the home (SandboxSpec.tmp); the sweep and forgetting remove it
+// forThread(t).family() → { folder, handover? }: where its family reads its folder, and its own /shared/<id> (ThreadTools.family, familyLine)
 // SandboxSpec.readOnly (t.coordinates, a project chat and its subagents): /workspace, its alias and /shared mount read-only and
-//   a write the tools try throws SandboxDenied naming a code thread; /tmp stays a command's scratch
+//   a write the tools try throws SandboxDenied naming a code thread; its /tmp is SandboxSpec.tmp, which lasts between commands
 settings(userId): WorkspaceSettings       // per-pool defaults, per-thread overrides, machines
 // MachineConfig { name, kind: "ssh" | "proxmox", host, port, username (Proxmox: token id), privateKey (Proxmox: the token),
 //   root (Proxmox: null), asUser (SSH: the user's own account; Proxmox: false), hostKey (Proxmox: certificate fingerprint AB:CD:…), pool,

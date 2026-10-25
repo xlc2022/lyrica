@@ -1148,18 +1148,22 @@ project page and the web part are built. Recent calls can be filtered by project
   saves as a project note and follows; it is guidance, not a hard limit.
   Every folder in the project chat is read-only to her there, its own
   folder and `/shared` included: she reads them and runs checks, and the
-  threads she starts make every file and hand back what she needs in
-  `/shared` (grants and clones decided 2026-10-19, after a run where she
+  threads she starts make every file, which she reads in their folders
+  (grants and clones decided 2026-10-19, after a run where she
   built a whole game in the project chat despite her guidance; her own
-  folder 2026-10-20, after three runs built in it instead).
+  folder 2026-10-20, after three runs built in it instead). Her `/tmp`
+  lasts between commands, for drafts such as an issue body (2026-10-25).
 - **Code builds run scaffold, parts, merge** (principles 1, 6 and 8).
   A `code: true, base: true` thread scaffolds the original checkout and
   resolves; parallel `code: true` parts each get worktrees of their writable
   host-folder repository roots, then a `code: true, base: true` merge thread
   merges their branches and tests after each merge. Conflicts and red tests
   go back to the owning thread; merged branches are deleted by the merge
-  thread. The project chat stays read-only. Only one open base thread per
-  project is allowed, enforced in `children.ts`. Part grants keep the original
+  thread. The project chat stays read-only. Base threads hold no exclusive
+  lock on the original checkout (2026-10-25; one hold was enforced from
+  2026-10-21 until it pushed her into resolving threads with work in
+  them): nothing serialises two base threads' writes, so her guidance runs
+  them one after the other and each can read the other's checkout first. Part grants keep the original
   checkout read-only and `.git` writable; their own folder holds the writable
   worktree. Resolving removes clean worktrees, keeping branches; dirty
   worktrees stay with a note of their path. Deleting a thread removes its
@@ -1255,11 +1259,17 @@ project page and the web part are built. Recent calls can be filtered by project
   (decided 2026-10-11; folders in
   [briefs/folder-narrowing.md](docs/briefs/folder-narrowing.md)). Two threads may
   write one file; her guidance is a subfolder per thread for its outputs.
-  A code thread has its own folder, so files pass between the threads
-  through the project folder's `shared/`, mounted at `/shared` in every
-  thread of the project; outside a project a thread and its children share
-  one the same way. Messages carry words, not files: the threads tool
-  refuses long or encoded ones (docs/workspace.md, "Handing files over").
+  **A thread family reads each other's folders** (2026-10-25): every
+  thread of a project, or a thread and its children outside one, mounts
+  each other member's folder read-only at `/thread-workspaces/<id>`,
+  worktrees and git state included, so work is handed over by path and
+  the project chat sees what its threads have on disk before starting
+  another. The family also shares the topmost thread's `shared/` at
+  `/shared`, where each thread writes only in its own `/shared/<id>/`. A
+  local-only member's folder never reaches a member that may call the
+  cloud, nothing crosses pools, and a member started with fewer folders
+  gets none of the others'. Messages carry words, not files: the threads tool refuses long or
+  encoded ones (docs/workspace.md, "Handing files over").
 - **What the user sees:**
   - In the sidebar a project is a thread row with a project icon, its
     threads nested under it with their state and unseen count, resolved ones
@@ -1340,10 +1350,7 @@ project page and the web part are built. Recent calls can be filtered by project
   Gitea account whose host resolves into her own network also gets a signed
   tailnet webhook that nudges a poll at once, and polling stays as its
   fallback. A merged or closed pull request ends the watch with one more
-  turn saying so (2026-10-23), unless her own account merged it. An idle
-  project thread holding the base checkout whose last watched pull request
-  merges is resolved instead, freeing the checkout, and the project chat is
-  told (2026-10-24). A note
+  turn saying so (2026-10-23), unless her own account merged it. A note
   whose checks didn't all pass asks her to read the failing log and push at
   least one fix before calling it blocked (2026-10-24). She may call a
   failure flaky only once re-running just the failed jobs passes, and not

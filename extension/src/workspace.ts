@@ -5,7 +5,7 @@ import {
 import { readFileSync } from "node:fs";
 import { posix } from "node:path";
 import {
-  decide, type CommandRule, holdsSecret, librariesLine, JOB_LIMITS, jobLine, type JobInfo, mcpNamespace, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, SHARED, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
+  decide, type CommandRule, holdsSecret, librariesLine, JOB_LIMITS, jobLine, type JobInfo, mcpNamespace, sandboxTools, PROXMOX_READS, PROXMOX_SUSPECT, stricterMode, suspectCommand, suspectKey, SHARED, FAMILY_ROOT, WORKDIR, writtenFiles, type ExecutionTarget, type ProxmoxAction, type Network, type NewChange, type PermissionMode, type ThreadGitRepository, type ThreadMachine, type ThreadRepository, type ThreadWorkspace, type ToolOps,
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { setToolsOff } from "./gate.ts";
@@ -71,6 +71,8 @@ export interface ThreadTools {
   madeSince?(since: Date): void;
   /** What the person's Files panel added or removed since her last turn, names only; taking them clears them. */
   fileNotes?(): { added: string[]; removed: string[] };
+  /** Where its parent, children and (in a project) siblings read its folder, and its own part of /shared. Without it, neither is said. */
+  family?(): { folder: string; handover?: string };
   /** Starts an approved command in the background (docs/workspace.md, "Background commands"). Without it, bash has no background and there is no jobs tool. */
   startJob?(command: string, machine?: string, timeoutS?: number): Promise<JobInfo>;
   jobs?(): JobInfo[];
@@ -495,7 +497,7 @@ export function describe(tools: ThreadTools): string {
     ...(s.coordinates ? [READ_ONLY_CHAT] : []),
     LINK_LINE,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
-    SHARED_LINE,
+    ...(tools.family ? [familyLine(tools.family())] : []),
     ...(s.grants.some((g) => g.writable) ? [BUILD_THERE] : []),
     ...(s.threadWork ? [
       ...(s.threadWork.base ? ["You hold the project's base checkout: scaffold or merge here, then resolve this thread to release it."] : []),
@@ -512,13 +514,16 @@ export function describe(tools: ThreadTools): string {
 }
 
 /** A project chat builds nothing itself: a model building alone in its own folder, three runs running, is why. */
-export const READ_ONLY_CHAT = `Every folder here is read-only to you, ${WORKDIR} and ${SHARED} included (/tmp lasts one command): a code thread makes or changes every file, and puts what you need to see in ${SHARED}. Uploads here land in ${WORKDIR}/shared/uploads and images you make in ${WORKDIR}/shared/images, which your threads see as ${SHARED}/uploads and ${SHARED}/images.`;
+export const READ_ONLY_CHAT = `Every folder here is read-only to you, ${WORKDIR} and ${SHARED} included, but /tmp is yours and lasts between commands (for drafts such as an issue body): a code thread makes or changes every file, and you read its work in its folder. Uploads here land in ${WORKDIR}/shared/uploads and images you make in ${WORKDIR}/shared/images, which your threads see as ${SHARED}/uploads and ${SHARED}/images.`;
 
 /** How she shows a file: a model once linked its deliverables relatively (./site/index.html), which opened nothing. */
 export const LINK_LINE = `A ${WORKDIR} or ${SHARED} path you write is a link the person can open, and an image you write as markdown (![what it shows](${WORKDIR}/plot.png)) shows in your message. Link a file by its absolute path ([the page](${SHARED}/site/index.html)), never a relative one.`;
 
-/** Threads hand files to each other through one folder: a model once planned to send a whole page as base64 chunks in messages. */
-export const SHARED_LINE = `${SHARED} is shared with your parent and child threads (in a project, with its chat and every thread): hand files over there; messages carry words, not files.`;
+/**
+ * Threads hand files over by path: a model once planned to send a whole page as base64 chunks in messages,
+ * and a project chat started duplicate threads because it couldn't see what its threads had on disk.
+ */
+export const familyLine = (f: { folder: string; handover?: string }) => `Your parent, child and (in a project) sibling threads' folders are readable to you at ${FAMILY_ROOT}/<thread id>, worktrees and git state included, and yours to them at ${f.folder}: hand work over by path; messages carry words, not files. ${SHARED} is shared with them too${f.handover ? `; there you write only in ${f.handover}` : ""}.`;
 
 /** Each command is its own sandbox, network too: a model once started a server in one call and curled it from the next. */
 const SERVER_LINE = "Each command, and each background job, runs in its own sandbox with its own network, so a server you start answers only inside that command or job: start it and whatever talks to it (curl, tests) in the same one.";

@@ -187,11 +187,14 @@ describe("the sweep of change records", () => {
     const { home, ws, write, changes } = await setup();
     writeFileSync(join(ws, "f.txt"), "before");
     await write("c1", join(ws, "f.txt"), "after");
-    for (const dir of ["threads/web%2Ft/docs", "claude/web%2Ft", "threads/web%2Fu"]) mkdirSync(join(home, dir), { recursive: true });
+    for (const dir of ["threads/web%2Ft/docs", "claude/web%2Ft", "threads/web%2Fu/shared/web%2Ft", "threads/web%2Fu/shared/notes", "tmp/web%2Ft"]) mkdirSync(join(home, dir), { recursive: true });
     writeFileSync(join(home, "threads/web%2Ft/docs/notes.md"), "x");
     expect(readdirSync(join(home, "snapshots"))).toHaveLength(1);
 
-    expect(forgetFiles(home, changes, "general", ["web/t"], [], () => false)).toBe(2);
+    // Its folder, its Claude Code folder, its lasting /tmp and its own part of its family's /shared.
+    expect(forgetFiles(home, changes, "general", ["web/t"], [], () => false)).toBe(4);
+    expect(readdirSync(join(home, "threads/web%2Fu/shared"))).toEqual(["notes"]);
+    expect(readdirSync(join(home, "tmp"))).toEqual([]);
     expect(changes.forThreads("general", ["web/t"])).toEqual([]);
     expect(readdirSync(join(home, "snapshots"))).toEqual([]);
     expect(readdirSync(join(home, "threads"))).toEqual(["web%2Fu"]);

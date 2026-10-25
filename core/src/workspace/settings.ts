@@ -653,6 +653,10 @@ export class WorkspaceSettings {
     // Given only read-only repositories (a read-only or narrowed child's), repositories its parent gains later reach it read-only too.
     const readOnly = !!narrower.repositories?.every((r) => r.readOnly);
     this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.readOnlyRepos.${childThreadId}`, readOnly ? "1" : "0");
+    // Started with fewer folders or repositories than its parent (folders narrowed, or a writer in its own worktree): its family's folders stay out of its sandbox.
+    const narrowed = (narrower.grants && !parent.grants.every((g) => narrower.grants!.some((m) => within(g.path, m.path))))
+      || (narrower.repositories && !parent.repositories.every((r) => narrower.repositories!.some((x) => sameRepository(r, x))));
+    this.db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(`workspace.narrowed.${childThreadId}`, narrowed ? "1" : "0");
     // Start from nothing, so a refused narrowing leaves the child with no access at all.
     this.write(childThreadId, {
       grants: [], internet: false, services: false, hosts: [], mode: "plan", webSearch: false, images: false, claudeCode: false, code: false, machines: [], repositories: [], mcpServers: [], parent: parentThreadId,
@@ -838,6 +842,18 @@ export class WorkspaceSettings {
       id = parent;
     }
     throw new Error(`thread ${threadId} has too many ancestors`);
+  }
+
+  /** Every thread of the family under this topmost thread, itself included. */
+  /** Whether the thread, or one between it and its family's top, was started narrowed (`inheritSettings`). */
+  narrowed(threadId: string): boolean {
+    for (let id: string | null = threadId, i = 0; id && i < 100; id = this.thread(id).parent, i++) if (this.setting(`workspace.narrowed.${id}`) === "1") return true;
+    return false;
+  }
+
+  family(root: string): string[] {
+    return (this.db.prepare("WITH RECURSIVE f(id) AS (SELECT ? UNION SELECT t.thread_id FROM thread_workspaces t JOIN f ON t.parent = f.id) SELECT id FROM f")
+      .all(root) as { id: string }[]).map((r) => r.id);
   }
 
   /** The topmost thread above this one (a project's chat for its threads): its family shares one folder. */

@@ -20,8 +20,14 @@ export interface SandboxSpec {
   workdir?: string;
   /** An additional unique sandbox path for this same folder; git records worktree paths repository-wide. */
   workdirAlias?: string;
-  /** Host path of the folder its thread family shares. Mounted read-write at /shared. */
+  /** Host path of the folder its thread family shares, mounted at /shared: read-only when `sharedOwn` is set. */
   shared?: string;
+  /** Its own subfolder of `shared` (which must exist), the one part of /shared it writes: /shared/<sharedOwn>. */
+  sharedOwn?: string;
+  /** Other family members' thread folders, mounted read-only, each at its `dest` (/thread-workspaces/<id>). */
+  family?: { path: string; dest: string }[];
+  /** Host folder mounted read-write at /tmp, so files there last between commands; otherwise /tmp is fresh each run. */
+  tmp?: string;
   grants: Grant[];
   network: Network;
   /** Ports never reachable on any address, whatever the switches say: lyricad's own. */
@@ -312,9 +318,18 @@ export class Sandbox implements ExecutionTarget {
   allow(path: string, write: boolean): string {
     const p = cleanPath(path);
     if (within(p, WORKDIR) || (this.spec.workdirAlias && within(p, this.spec.workdirAlias)) || (this.spec.shared && within(p, SHARED))) {
-      if (write && this.spec.readOnly) throw new SandboxDenied(`${p} is read-only in a project chat: start a code thread to make or change files, and it hands them back in /shared`);
+      if (write && this.spec.readOnly) throw new SandboxDenied(`${p} is read-only in a project chat: start a code thread to make or change files, and it hands them back in its folder or /shared`);
+      if (write && this.spec.sharedOwn && within(p, SHARED) && !within(p, `${SHARED}/${this.spec.sharedOwn}`)) {
+        throw new SandboxDenied(`${p} is read-only: in ${SHARED} you write only in your own ${SHARED}/${this.spec.sharedOwn}`);
+      }
       return p;
     }
+    const sibling = this.spec.family?.find((f) => within(p, f.dest));
+    if (sibling) {
+      if (write) throw new SandboxDenied(`${sibling.dest} is another thread's folder, read-only to you: message that thread to change it`);
+      return p;
+    }
+    if (this.spec.tmp && within(p, "/tmp")) return p;
     const grant = [...this.grants].reverse().find((g) => within(p, g.path));
     // The offline libraries (page.ts) are there for every thread, read-only.
     if (!grant && within(p, LIBS)) {
@@ -498,12 +513,16 @@ export class Sandbox implements ExecutionTarget {
     if (this.spec.workdir && this.spec.workdirAlias) mount(cleanPath(this.spec.workdir), !this.spec.readOnly, this.spec.workdirAlias);
     if (this.spec.workdir && this.spec.repos) mount(cleanPath(this.spec.repos), !this.spec.reposReadOnly, `${WORKDIR}/repos`);
     if (this.spec.claudeDir) mount(cleanPath(this.spec.claudeDir), true, CLAUDE_DIR);
-    if (this.spec.shared) mount(cleanPath(this.spec.shared), !this.spec.readOnly, SHARED);
+    if (this.spec.shared) mount(cleanPath(this.spec.shared), !this.spec.readOnly && !this.spec.sharedOwn, SHARED);
+    if (this.spec.shared && this.spec.sharedOwn) mount(cleanPath(join(this.spec.shared, this.spec.sharedOwn)), !this.spec.readOnly, `${SHARED}/${this.spec.sharedOwn}`);
+    for (const f of this.spec.family ?? []) mount(cleanPath(f.path), false, f.dest);
+    if (this.spec.tmp) mount(cleanPath(this.spec.tmp), true, "/tmp");
     for (const g of this.grants) mount(g.path, g.writable, g.path, () => this.spec.check?.(g));
     for (const f of this.spec.files ?? []) args.push("--ro-bind", f, f);
     for (const l of libraryDirs()) args.push("--ro-bind", l.dir, `${LIBS}/${l.name}`);
 
-    const visible = (this.spec.workdir && (within(cwd, WORKDIR) || (this.spec.workdirAlias && within(cwd, this.spec.workdirAlias)))) || (this.spec.shared && within(cwd, SHARED)) || this.grants.some((g) => within(cwd, g.path));
+    const visible = (this.spec.workdir && (within(cwd, WORKDIR) || (this.spec.workdirAlias && within(cwd, this.spec.workdirAlias)))) || (this.spec.shared && within(cwd, SHARED)) || this.grants.some((g) => within(cwd, g.path))
+      || !!this.spec.family?.some((f) => within(cwd, f.dest));
     args.push("--chdir", visible ? cwd : this.spec.workdir ? WORKDIR : "/");
     return args;
   }

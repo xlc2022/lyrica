@@ -1276,8 +1276,6 @@ export function apiRoutes(d: Lyricad): Route[] {
       const thread = owner(d, user, o => threadOf(o, r));
       const project = owner(d, user, o => o[pool].projectOf(thread.id));
       if (project && project !== thread.id && s().children.stopped(user.id, pool, project)) throw new HttpError(409, "this project is paused or hidden");
-      const held = s().children.baseHeld(user.id, pool, thread.id);
-      if (held) throw new HttpError(409, held);
       const n = Number(r.params.n);
       const label = owner(d, user, o => {
         const store = o[pool];
@@ -1317,8 +1315,6 @@ export function apiRoutes(d: Lyricad): Route[] {
           }
         } finally { view.close(); }
       }
-      const held = thread.child ? s().children.baseHeld(user.id, poolOf(r), thread.id) : undefined;
-      if (held) throw new HttpError(409, held);
       const result = await s().host.get(user.id, poolOf(r), thread.id).send(unmarked(String(text ?? "")), { recentThreadIds });
       // The user wrote: the thread no longer waits on them, and a resolved one reopens.
       if (thread.child) s().children.userWrote(user.id, poolOf(r), thread.id);
