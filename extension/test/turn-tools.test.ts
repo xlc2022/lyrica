@@ -5,11 +5,11 @@ import { fauxAssistantMessage, fauxProvider, fauxThinking, fauxToolCall, type Js
 import { createAgentSession, DefaultResourceLoader, SessionManager } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { expect, it } from "vitest";
-import { CALL_THE_TOOL, CARRY_ON, createTurnToolsExtension, EMPTY_REPLY, TEXT_TOOL_CALL, MAX_TURN_TOOL_CALLS, TURN_TOOL_NOTICE, WRAP_UP } from "../src/turn-tools.ts";
+import { CALL_THE_TOOL, CARRY_ON, createTurnToolsExtension, CUT_OFF, CUT_WRAP_UP, EMPTY_REPLY, TEXT_TOOL_CALL, MAX_TURN_TOOL_CALLS, TURN_TOOL_NOTICE, WRAP_UP } from "../src/turn-tools.ts";
 import { createImageExtension, type ImageTools } from "../src/images.ts";
 import { toMessages } from "../../daemon/src/messages.ts";
 
-async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1, batch = false) {
+async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1, batch = false, stopReason: "toolUse" | "length" = "toolUse") {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-tool-limit-"));
   const faux = fauxProvider({ provider: "faux", models: [{ id: "loop" }] });
   let executed = 0, requested = 0;
@@ -27,7 +27,7 @@ async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1
   };
   /** Past the cap her tools are off, and she writes where things stand. */
   const wrapUp = (ctx: { messages: unknown[] }) => (offered(ctx) ? undefined : (asked.push(JSON.stringify(ctx.messages.slice(-3))), fauxAssistantMessage("Stopped at the limit: half done.")));
-  const responses = calls.map(c => (ctx: { messages: unknown[] }) => { requested++; return wrapUp(ctx) ?? fauxAssistantMessage(fauxToolCall(c.name, c.args), { stopReason: "toolUse" }); }).concat([() => { requested++; return fauxAssistantMessage("Done"); }]);
+  const responses = calls.map(c => (ctx: { messages: unknown[] }) => { requested++; return wrapUp(ctx) ?? fauxAssistantMessage(fauxToolCall(c.name, c.args), { stopReason }); }).concat([() => { requested++; return fauxAssistantMessage("Done"); }]);
   faux.setResponses(batch ? [() => { requested++; return fauxAssistantMessage(calls.map(c => fauxToolCall(c.name, c.args)), { stopReason: "toolUse" }); }, (ctx: { messages: unknown[] }) => { requested++; return wrapUp(ctx) ?? fauxAssistantMessage("tools still on"); }] : responses);
   const loader = new DefaultResourceLoader({ cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
     extensionFactories: [createTurnToolsExtension(), pi => {
@@ -64,6 +64,16 @@ it("ends a looping model at the per-turn cap, shows the notice, and lets her say
   expect(shown).toContain("Turn stopped after `100` tool calls.");
   expect(shown).toContain("Stopped at the limit: half done.");
   expect(shown).not.toContain(WRAP_UP);
+});
+
+it("stops the turn when a tool call is cut off at the reply limit twice in a row, rather than re-issuing it again", async () => {
+  // The shape seen on a nearly full window: each re-issued call cut off differently, so no repeat guard caught it.
+  const r = await scenario(Array.from({ length: 12 }, (_, i) => ({ name: "threads", args: { query: `compact ${"x".repeat(i)}` } })), 1, false, "length");
+  expect(r.executed).toBe(0);
+  expect(r.requested).toBe(3);
+  expect(r.asked).toHaveLength(1);
+  expect(r.asked[0]).toContain(CUT_WRAP_UP);
+  expect(JSON.stringify(r.shown)).toContain(CUT_OFF);
 });
 
 it("refuses the third identical call despite different object key order", async () => {

@@ -11,6 +11,9 @@ export const TURN_TOOL_NOTICE = "lyrica-tool-limit";
 /** Told to her, unseen, once the limit stops her tools: the person gets a reply, never only the notice. */
 export const TURN_TOOL_WRAP_UP = "lyrica-tool-limit-wrap-up";
 export const WRAP_UP = "You reached this turn's tool limit, so your tools are off for the rest of this turn. Reply now in a few lines: what you did, where things stand, and what's left.";
+/** Shown when two replies in a row were cut off at the reply limit with a tool call in them: re-issued, it would only be cut again. */
+export const CUT_OFF = "Turn stopped: two replies in a row were cut off at the reply limit, so their tool calls didn't run.";
+export const CUT_WRAP_UP = "Your last two replies were cut off at the reply limit, so your tools are off for the rest of this turn. Reply now in a line or two: where things stand.";
 /** Told to her, unseen, after a reply with only thinking in it: no text and no tool call. */
 export const EMPTY_REPLY_RETRY = "lyrica-empty-reply-retry";
 export const CARRY_ON = "Your last reply had only thinking in it: no text and no tool call. Carry on from there: make the tool call you meant to, or write your reply.";
@@ -56,7 +59,7 @@ export function createTurnToolsExtension(): ExtensionFactory {
   return pi => {
     let calls = 0, run = 0, last = "", stopped = false, notified = false, why = "";
     let wrapped = false;
-    let empty = 0, asText = 0;
+    let empty = 0, asText = 0, cut = 0;
     /** The thinking level to go back to after a retry without thinking. */
     let thinking: ThinkingLevel | null = null;
     const repeats = new Map<string, number>();
@@ -68,7 +71,7 @@ export function createTurnToolsExtension(): ExtensionFactory {
       thinking = null;
     });
     pi.on("agent_start", () => {
-      calls = run = empty = asText = 0; last = why = ""; stopped = notified = wrapped = false;
+      calls = run = empty = asText = cut = 0; last = why = ""; stopped = notified = wrapped = false;
       repeats.clear(); refused.clear();
     });
     // This event precedes schema validation, so malformed and unknown calls count too.
@@ -118,6 +121,9 @@ export function createTurnToolsExtension(): ExtensionFactory {
         }
         if (asText === 2) return { entries: [{ type: "custom_message", customType: EMPTY_REPLY_NOTICE, content: TEXT_TOOL_CALL, display: true }] };
       }
+      // A tool call cut off at the reply limit doesn't run, and Pi tells her to re-issue it: once is a retry; twice, the turn stops.
+      if (m.role === "assistant") cut = m.stopReason === "length" && m.content.some((c) => c.type === "toolCall") ? cut + 1 : 0;
+      if (cut >= 2 && !stopped) { stopped = true; why = CUT_OFF; }
       if (!stopped) return;
       // Her wrap-up came back with tool calls anyway: end there.
       if (notified) {
@@ -129,7 +135,7 @@ export function createTurnToolsExtension(): ExtensionFactory {
       setToolsOff(pi, ctx, "tool-limit", pi.getAllTools().map((t) => t.name));
       return { entries: [
         { type: "custom_message", customType: TURN_TOOL_NOTICE, content: why, display: true },
-        { type: "custom_message", customType: TURN_TOOL_WRAP_UP, content: WRAP_UP, display: false },
+        { type: "custom_message", customType: TURN_TOOL_WRAP_UP, content: why === CUT_OFF ? CUT_WRAP_UP : WRAP_UP, display: false },
       ] };
     });
   };

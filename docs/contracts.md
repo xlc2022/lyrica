@@ -1245,7 +1245,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   the model it already has the result and should answer or try something
   different. A plain `sleep` (a `bash` call that only sleeps) starts the
   count over for every call, so polling isn't refused. A run of 25 calls to one tool, with any arguments, also stops
-  the turn. Calls beyond either limit in a batch are refused. After the
+  the turn, and so do two replies in a row cut off at the reply limit with a
+  tool call in them (Pi refuses a cut-off call and asks for it again, which
+  on a full window is only cut again): that turn's notice reads `CUT_OFF`
+  and its wrap-up `CUT_WRAP_UP`. Calls beyond either limit in a batch are refused. After the
   batch's results her tools turn off and a hidden `lyrica-tool-limit-wrap-up`
   message (`WRAP_UP`) asks for one reply on what she did, where things
   stand and what's left, so the person never gets only the notice; if that

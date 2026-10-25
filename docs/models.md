@@ -927,6 +927,14 @@ xAI provider instead (below).
   reserve reaches the window, and Lyrica's two lines start 17 and 2 points
   before that edge (at most 75% and 90%); and a kept tail of a quarter of the window (at
   most 20,000). A caller's own compaction settings win.
+- Before each turn (`prepareTurn`), a conversation over the turn's model's
+  compaction edge compacts before it is sent: Pi checks only after a reply,
+  and a reply on a full window has no room left to ask for it. That happens
+  after a switch to a model with a smaller window, or when a copy is loaded
+  at a smaller context. On a switch it summarises first on the model the
+  conversation came from, which holds it whole; failing that, on the new
+  one. A model the conversation has outgrown is passed over for one it
+  fits; when none fits, the first takes it compacted.
 
 `openThreadSession` hosts one thread with that runtime and its chat model.
 
