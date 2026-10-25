@@ -430,18 +430,19 @@ const TASK_ROWS: { group: string; tasks: { task: Task; hint: string }[] }[] = [
     { task: "sleep.dream", hint: "Her own time" },
     { task: "sleep.wake", hint: "Writing WAKE" },
   ] },
-  { group: "Images", tasks: [{ task: "image.create", hint: "New images" }, { task: "image.edit", hint: "Changing an image" }] },
+  { group: "Images", tasks: [{ task: "vision", hint: "Seeing an image her model can't" }, { task: "image.create", hint: "New images" }, { task: "image.edit", hint: "Changing an image" }] },
   { group: "Speech", tasks: [{ task: "speech.transcribe", hint: "Speech to text" }, { task: "speech.speak", hint: "Text to speech" }] },
 ];
 const TASK_ORDER = TASK_ROWS.flatMap((g) => g.tasks.map((t) => t.task));
 
 /** What a task needs (core/models): Same as stays within one, and pickers offer only models that have it. */
-const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "image.create" ? "image" : t === "image.edit" ? "edit"
+const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "vision" ? "vision" : t === "image.create" ? "image" : t === "image.edit" ? "edit"
   : t === "speech.transcribe" ? "transcribe" : t === "speech.speak" ? "speak" : "text");
 const suits = (task: Task, m: OfferingInfo) => {
   if (m.status === "gone") return false;
   switch (capability(task)) {
     case "embedding": return !!m.embedding;
+    case "vision": return !!m.vision && !m.embedding && !m.image && !m.edit && !m.transcribe && !m.speak && !m.recipe && !companion(m.modelId);
     case "image": return !!m.image;
     case "edit": return !!m.edit;
     case "transcribe": return !!m.transcribe;

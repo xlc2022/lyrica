@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
   DelegationStore, isRestricted, LIVE_STATUSES, matchModel, refId, renderThreadMentions, sameModelName, singledOut, unmatched,
-  type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
+  type CallContext, type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
   type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
 import type { ThreadContext } from "../index.ts";
@@ -1154,21 +1154,20 @@ export class Delegation {
       // tool_search loads the MCP tools, which register after its role's tools are set, so the role doesn't turn them off.
       const allowed = new Set([...role.tools, "ask_parent", ...(nested ? ["delegate"] : []), ...(mcp ? ["tool_search"] : [])]);
       // First: it must run before the MCP extension registers anything, else the role gate turns loaded MCP tools off.
-      // A model without vision that reads an image goes on, for the rest of this subagent, on a local model that can see it:
-      // the first whose machine is up, recorded as the subagent's model.
+      // A model without vision that reads an image goes on, for the rest of this subagent, on one that can see it (visionList),
+      // recorded as the subagent's model. Its own call context, so a private or local-only one reads the Private column.
       const vision: VisionFallback = async () => {
         const task = role.name === "coder" ? "code" : "chat";
         const call = () => models.callContext(parent.user.id, parent.pool, child.id);
-        const locals = models.textModels(call()).filter((m) => m.vision && m.local);
-        if (!locals.length) return undefined;
-        const list = locals.map((m) => ({ offeringId: m.id }));
+        const list = visionList(models, call());
+        if (!list.length) return undefined;
         // Tried before anything is saved, so with none up the thread keeps its own list, or none.
         const tried = { ...call(), overrides: { ...call().overrides, [task]: list } };
         let picked;
         try { picked = models.resolve(task, tried); } catch { return undefined; }
         models.setThreadModel(parent.user.id, parent.pool, child.id, task, list);
         const { model } = piModelFor(opened.runtime, models, task, call(), picked);
-        if (sub) { sub.model = picked.label; sub.cloud = false; }
+        if (sub) { sub.model = picked.label; sub.cloud = picked.endpoint.kind !== "local"; }
         this.store.update(parent.user.id, parent.pool, child.id, { model: picked.label, offeringId: picked.ref.offeringId });
         return { model, label: picked.label };
       };
@@ -1261,6 +1260,19 @@ function withInput(spec: WorkflowSpec, input: string): WorkflowSpec {
 }
 
 /** What a finished run tells the parent. */
+/**
+ * The models a subagent whose model can't see an image switches to: the first up in the person's Look at images
+ * list (task `vision`, with tools), else every local chat model with vision. `ctx` is the subagent's own, so a private
+ * or local-only one reads the Private column and gets local models only.
+ */
+export function visionList(models: Models, ctx: CallContext): { offeringId: string }[] {
+  try {
+    return [models.resolve("vision", ctx, { tools: true }).ref];
+  } catch {
+    return models.textModels(ctx).filter((m) => m.vision && m.local).map((m) => ({ offeringId: m.id }));
+  }
+}
+
 export function outcome(run: Run): string {
   const head = `Subagent run ${run.id}`;
   if (run.status === "finished") return `${head} finished:\n\n${run.result}`;

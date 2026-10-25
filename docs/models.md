@@ -490,6 +490,17 @@ stays in memory; the caller stores results and records the call without prompts.
 `beforeSend(resolution)` runs before each provider attempt, including fallbacks;
 a refusal stops the call. The image tool uses it for portrait-photo permission
 against the model that would actually receive the bytes.
+The task `vision` (Look at images) has its own ordered list of models with
+vision, in each column and preset; nothing follows it and it follows
+nothing. A subagent whose model can't see an image it reads switches, for
+the rest of its work, to the first model in that list whose machine is up
+(and that uses tools), else to the first local chat model with vision
+(`visionList`). The subagent's own context decides the column, so a private
+or local-only one reads the Private column and stays local. A switch to a
+cloud model sends that model the subagent's whole conversation so far, not
+only the image, at that model's price: a cloud model is in the list only if
+the person put it there. With no list set, only local models are tried.
+
 The tasks `image.create`, `image.edit` and `image.upscale` have their own
 ordered lists and require `image`, `edit` and `upscale` capabilities respectively.
 Local endpoints resolve by these capabilities; the cloud provider table does

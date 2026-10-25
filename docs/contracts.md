@@ -337,8 +337,10 @@ read through `searchView`; only matching notes then pass.
 
 ```ts
 type Task = "chat" | "code" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "watching"
-          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "image.create" | "image.edit" | "image.upscale"
+          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "vision" | "image.create" | "image.edit" | "image.upscale"
           | "speech.transcribe" | "speech.speak";
+// vision (Look at images): its own list only, of models with vision; no task follows it. A subagent whose model can't see
+// an image switches to its first model up (with tools), else to a local model with vision (visionList, extension/src/delegate/runs.ts).
 // code (Coding) defaults to { same: "subagent.strong" } in new tables and
 // populated saved presets missing it, subject to the one-level Same as rule.
 // A thread's code list wins; its chat override never supplies code's fallback.
@@ -1178,13 +1180,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   of an image carrying Pi's "does not support images" note) gets `NO_VISION` appended, telling her she
   saw nothing and must not describe it; a `read` of an image then fails.
   A subagent's guard gets a `VisionFallback` (`createSubagentExtension`'s
-  `vision`): the subagent's thread takes the local chat models with vision
-  it may use as its list, and the first whose machine is up becomes its
-  model, in its record and card too; the guard switches to it with `pi.setModel`,
+  `vision`): the subagent's thread takes `visionList(models, its context)`
+  as its list (the first model up in the Look at images list, task
+  `vision`, else the local chat models with vision it may use), and the
+  first whose machine is up becomes its model, in its record and card too; the guard switches to it with `pi.setModel`,
   keeps the image and drops Pi's note, appending `SWITCHED`. With none, or
   a switch that fails, it warns as above.
-  `delegate({ action: "models" })` marks the models with vision, for a look
-  she hands on.
+  `NO_VISION` and the delegate guideline tell her to delegate a look
+  without naming a model, so the subagent switches by that list.
 - Memory sections include `opening`: the sleep item a thread was started
   from. It comes from `itemForThread`, so no other thread ever has it.
 - Memory sections include `pinned` (`pinnedOf(store, threadId)`: the

@@ -986,6 +986,13 @@ it's off.
   `image.upscale` has its own list in each preset (7B on the Blackwell,
   3B on the 3090), and the `image` tool offers `upscale`. Portrait photos
   follow the same rule as for edits. Video is out of scope.
+- **Looking at images** (2026-10-25): the task `vision`, **Look at
+  images**, has its own list of models with vision in each preset, chosen
+  by the person (a plan's model, a local one, or a paid one they add).
+  A subagent whose model can't see an image switches to it; with no list,
+  to a local model with vision. She delegates a look without naming a
+  model, after a project chat named a paid cloud copy of a model her own
+  machines serve.
 - **Cloud image services** are cloud endpoints like any other. The provider
   table selects by endpoint kind: OpenAI-compatible image generation and
   editing with a key (any marked image model), and the ChatGPT plan's own

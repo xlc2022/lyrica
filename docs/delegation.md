@@ -30,7 +30,8 @@ subagent:
   parent's `subagent.cheap` or `subagent.strong` model (the coder instead
   inherits the parent's `code` list and context limit). She picks a tier,
   and names a model only when the person named one (or a saved workflow,
-  which a user writes, does). A step's `model` is an offering ID, an
+  which a user writes, does); a look at an image her model can't see goes
+  to a subagent with no model named, which switches as below. A step's `model` is an offering ID, an
   `<endpoint>/<model>` label, or the person's own words: `matchModel` takes
   the one chat model the parent may use whose model ID or label holds every
   word of it. A name that fits none, or several, fails the run with the
@@ -46,7 +47,8 @@ subagent:
   models she may name, local first, each marked local or cloud, and vision
   and paid where they apply. A subagent whose model
   has no vision switches, on a tool result holding an image, to the first
-  local chat model with vision she may use whose machine is up, which
+  model up in the person's Look at images list (task `vision`), else the
+  first local chat model with vision she may use whose machine is up, which
   becomes its model (its card says so) and sees the image; with none, it is told it saw nothing (contracts.md,
   `registerVisionGuard`). In a private or local-only thread it is always a
   local model. A refused model fails the run before any thread is made;

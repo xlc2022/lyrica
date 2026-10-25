@@ -20,7 +20,7 @@ const Tier = StringEnum(["cheap", "strong"] as const);
 const CHECK_IN = " Check on it with status: writers commit to their own branches, not the main checkout.";
 const STEP_MODEL = "Only a model the person named, in their words.";
 const WORKERS = "Subagents at once, only when the person asked; default 2.";
-const MODELS_GUIDELINE = "Give a step a model only when the person named one, in their words (if it fits none, ask which they meant), or to look at an image your model can't see (a local one first). Set workers only when they ask for more or fewer than 2 at once.";
+const MODELS_GUIDELINE = "Give a step a model only when the person named one, in their words (if it fits none, ask which they meant). To look at an image your model can't see, delegate without a model: the subagent switches to the person's Look at images model. Set workers only when they ask for more or fewer than 2 at once.";
 /** The text checking on runs, naming models and setting workers adds to every thread's tool definitions, for tests that size a window around them. */
 export const MODEL_CHOICE_TEXT = [CHECK_IN, STEP_MODEL, WORKERS, MODELS_GUIDELINE, "models", "models lists the models a step may name; "];
 // She picks a tier; a model only when the person named one (a saved workflow, which a user writes, may name one too).
