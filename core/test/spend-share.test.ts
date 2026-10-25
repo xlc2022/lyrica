@@ -45,6 +45,9 @@ describe("spend share", () => {
     // Claude Code run from the subagent's thread isn't in its run, so it still counts there.
     models.addCallTotals(ada.id, "general", "sub", "Claude Code", "cloud", 30, 4);
     expect(models.usage(ada.id, "general", ["sub"]).find((r) => r.label === "Claude Code")).toEqual({ threadId: "sub", label: "Claude Code", kind: "cloud", tokens: 34, input: 30, output: 4 });
+    // Named by the Claude model that answered, it counts there just the same.
+    models.addCallTotals(ada.id, "general", "sub", "Claude Code/claude-made-up-1", "cloud", 10, 2);
+    expect(models.usage(ada.id, "general", ["sub"]).find((r) => r.label === "Claude Code/claude-made-up-1")).toMatchObject({ tokens: 12, input: 10, output: 2 });
     db.prepare("DELETE FROM call_totals WHERE thread = 'sub'").run();
     const project = models.usage(ada.id, "general", ["chat", "work"]);
     expect(project.reduce((n, r) => n + r.tokens, 0)).toBe(180);

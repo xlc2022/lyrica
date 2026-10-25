@@ -391,7 +391,8 @@ left out, since its run counts them, except Claude Code's totals, which its
 run doesn't count. Every lookup filters both pool and thread. Claude Code in her
 sandbox makes no call records: its relay counts each message request's
 tokens and `addCallTotals` adds them to the thread's `call_totals` as
-**Claude Code**, cloud (docs/workspace.md, "Claude Code").
+**Claude Code/<model>** (the Claude model that answered; **Claude Code**
+when it named none), cloud (docs/workspace.md, "Claude Code").
 
 Totals count her turns, including `code` turns through pruning, and her subagents' work; titles, images, speech and a project chat's looks at its threads carry no counts and aren't included.
 Models Overview shows

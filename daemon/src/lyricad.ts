@@ -485,11 +485,11 @@ export class Lyricad implements Drainable {
       },
       // A run's relay opened a pull request: the CI-watch poller records it (docs/briefs/ci-wakes.md).
       onPullCreate: (t, pr) => forge.record(t.userId, t.pool, t.threadId, pr.repo, pr.number),
-      // Claude Code's tokens, counted by the run's relay, join that thread's usage as their own row.
+      // Claude Code's tokens, counted by the run's relay, join that thread's usage as their own row, one per Claude model that answered.
       // Anthropic refused a run's Claude Code for the Claude plan's usage limit: kept with the plans' limits, for the wait card and notification.
       onClaudeCodeLimit: (t, until) => { models.reportPlanLimit(claudePlanId(t.userId), until); },
       onClaudeCodeUsage: (t, u) => {
-        try { models.addCallTotals(t.userId, t.pool, t.threadId, "Claude Code", "cloud", u.inputTokens, u.outputTokens); }
+        try { models.addCallTotals(t.userId, t.pool, t.threadId, u.model ? `Claude Code/${u.model}` : "Claude Code", "cloud", u.inputTokens, u.outputTokens); }
         catch (err) { this.log(`Claude Code usage not recorded: ${(err as Error).message}`); }
       },
       // A background command ended: its thread gets a notice, as a background subagent's result, and an idle thread wakes once.

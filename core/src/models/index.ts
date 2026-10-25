@@ -2890,7 +2890,7 @@ export class Models {
           AND (prompt_tokens IS NOT NULL OR read_tokens IS NOT NULL OR output_tokens IS NOT NULL) AND thread NOT IN (SELECT thread FROM subagent_runs WHERE pool = @pool)
         UNION ALL SELECT thread, label, kind, tokens, input_tokens, output_tokens, gpu_ms FROM call_totals
           WHERE pool = @pool AND thread IN (SELECT value FROM json_each(@threads))
-            AND (label = 'Claude Code' OR thread NOT IN (SELECT thread FROM subagent_runs WHERE pool = @pool))
+            AND (label = 'Claude Code' OR label LIKE 'Claude Code/%' OR thread NOT IN (SELECT thread FROM subagent_runs WHERE pool = @pool))
       ) GROUP BY thread, label, kind`).all({ pool, threads: JSON.stringify(threadIds) })) as
       { threadId: string; label: string; kind: "local" | "cloud"; tokens: number; input: number; output: number; gpuMs: number }[];
     const result: UsageRow[] = rows.map(r => ({ threadId: r.threadId, label: r.label, kind: r.kind, tokens: r.tokens, input: r.input, output: r.output, ...(r.kind === "local" ? { gpuMs: r.gpuMs } : {}) }));
