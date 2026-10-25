@@ -51,6 +51,22 @@ function fakeModel() {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", async () => {
+      // Test-only model metadata, in encrypted stores; never a production route.
+      if (req.method === "POST" && req.url === "/model-facts-fixture") {
+        const { userId } = JSON.parse(body) as { userId: string };
+        const models = daemon.services!.models, user = daemon.services!.users.get(userId)!;
+        const endpoint = models.addEndpoint(user, { name: "StatusFixture", kind: "local", baseUrl: `http://127.0.0.1:${modelPort}/local/v1` });
+        for (const [index, modelId] of ["fixture-measured", "fixture-without-speed-with-a-long-model-name-for-phone-wrapping"].entries()) {
+          const offering = models.addModel(user, endpoint.id, { modelId, tools: true });
+          const resolution = models.resolve("chat", { userId, pool: "general", localOnly: false, overrides: { chat: [{ offeringId: offering.id }] } });
+          for (const [n, outputTokens] of (index ? [undefined] : [10, 30, 20]).entries()) {
+            const threadId = `status-fixture-${index}-${n}`;
+            models.recordCall(userId, { pool: "general", threadId, task: "chat", resolution: { ...resolution, skipped: n === 1 ? [{ label: "fixture-primary", reason: "endpoint down" }] : [] } });
+            if (outputTokens !== undefined) models.recordPace(userId, threadId, { promptTokens: 100, outputTokens, window: 4096, ttftMs: 100, genMs: 1000, processed: 100 }, "chat", "general");
+          }
+        }
+        res.writeHead(204); return res.end();
+      }
       // Test-only history fixture, in encrypted stores; never a production route.
       if (req.method === "POST" && req.url === "/history-fixture") {
         const { userId } = JSON.parse(body) as { userId: string };

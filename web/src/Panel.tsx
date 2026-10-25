@@ -1,4 +1,5 @@
 import { StaleUnitsLine } from "./StaleUnitsLine.tsx";
+import { ModelCallFacts } from "./ModelCallFacts.tsx";
 // Settings (the user's own) and Administration (server-wide), each a page with
 // its sections listed at the left. The old control panel's cards moved here.
 import { useState } from "react";
@@ -58,7 +59,7 @@ const SETTINGS: SectionDef[] = [
   { key: "reset", label: "Reset", body: (ctx) => <WipeSection ctx={ctx} mine /> },
 ];
 const ADMIN: SectionDef[] = [
-  { key: "status", label: "Status", body: (ctx) => <StatusSection ctx={ctx} /> },
+  { key: "status", label: "Status", body: (ctx) => <StatusSection key={`${ctx.user.id}:${ctx.me.display.showGeneral}:${ctx.me.display.showPrivate}`} ctx={ctx} /> },
   { key: "name", label: "Her name", body: (ctx) => <Section title="Her name"><NameForm ctx={ctx} /></Section> },
   { key: "users", label: "Users", body: (ctx) => <UsersSection ctx={ctx} /> },
   { key: "sleep", label: "Sleep", body: (ctx) => <SleepTimeSection ctx={ctx} /> },
@@ -334,6 +335,7 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
         <dt>Sleep time</dt><dd className="num">{sleep.data?.time ?? "…"}</dd>
         <dt>Start unlocked</dt><dd>{s ? (s.savedPassphrase ? "Passphrase saved" : "Passphrase not saved") : "…"}</dd>
       </dl>
+      {s?.modelFacts && <ModelCallFacts facts={s.modelFacts} />}
     </Section>
   );
 }
