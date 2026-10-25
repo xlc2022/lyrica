@@ -69,7 +69,7 @@ describe("endpoints", () => {
     const router = await fakeOpenAI({ models: [
       { id: "minimax/minimax-m3.1-flash:free", context_length: 1048576, supported_parameters: ["tools", "reasoning"],
         reasoning: { mandatory: true, supported_efforts: ["max", "xhigh", "high", "medium", "low"], default_effort: "max" },
-        pricing: { prompt: "0", completion: "0" }, top_provider: { max_completion_tokens: 524288 }, expiration_date: "2026-11-30" },
+        pricing: { prompt: "0", completion: "0" }, top_provider: { max_completion_tokens: 524288, context_length: 262144 }, expiration_date: "2026-11-30" },
       { id: "paid/thinker", supported_parameters: ["reasoning"], reasoning: { mandatory: false, supported_efforts: ["none", "minimal", "high"] },
         pricing: { prompt: "0.0000003", completion: "0.0000012", internal_reasoning: "0.0000012", input_cache_read: "0" } },
       { id: "openrouter/auto", pricing: { prompt: "-1", completion: "-1" }, expiration_date: "soon" },
@@ -77,7 +77,8 @@ describe("endpoints", () => {
     const ep = models.addEndpoint(ada, { name: "router", kind: "cloud", baseUrl: router.baseUrl, apiKey: "k" });
     const found = await models.discover(ada, ep.id);
     const [free, paid, auto] = ["minimax/minimax-m3.1-flash:free", "paid/thinker", "openrouter/auto"].map((id) => found.find((o) => o.modelId === id));
-    expect(free).toMatchObject({ reasoning: ["low", "medium", "high"], alwaysThinks: true, maxOutput: 524288, retiresAt: "2026-11-30", price: { input: 0, output: 0, free: true } });
+    // The provider serves less than the model's own window: the provider's is the one that counts.
+    expect(free).toMatchObject({ contextWindow: 262144, reasoning: ["low", "medium", "high"], alwaysThinks: true, maxOutput: 524288, retiresAt: "2026-11-30", price: { input: 0, output: 0, free: true } });
     expect(paid).toMatchObject({ reasoning: ["low", "high"], price: { input: 0.3, output: 1.2, reasoning: 1.2, free: false } });
     expect(paid!.alwaysThinks).toBeUndefined();
     expect(paid!.price!.cacheRead).toBeUndefined();

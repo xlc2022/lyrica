@@ -70,7 +70,9 @@ and `-`, at most 40 characters.
   doesn't answer is tried a day later. The day is counted in memory from the
   last read or try, so a restart reads every list once more.
 - **Capabilities:** context window, tools, vision, embedding, image, edit, upscale
-  and thinking levels. OpenRouter reports the context, tools, thinking and
+  and thinking levels. OpenRouter reports the context (the lesser of the
+  model's `context_length` and the provider's `top_provider.context_length`,
+  since a free provider often serves less), tools, thinking and
   modalities; llama-server reports the context
   (`meta.n_ctx`), and on `/props` its chat template, vision and slots
   (a router, whose list gives each model's state, is asked one at a time

@@ -151,7 +151,8 @@ export async function probeUrl(baseUrl: string, apiKey: string | undefined, time
  * and `architecture` modalities (vision, images), `default_parameters`
  * (the sampling it uses when a request sets none), `reasoning` (its
  * efforts, and whether thinking can be turned off), `pricing`,
- * `expiration_date` and `top_provider.max_completion_tokens`, llama-server's
+ * `expiration_date` and `top_provider` (`max_completion_tokens`, and `context_length`
+ * where it serves less than the model's), llama-server's
  * `meta.n_ctx`, LM Studio's `max_context_length`, vLLM's `max_model_len`.
  * A plain llama-server's template, vision and slots come from `llamaServerModel`.
  */
@@ -159,6 +160,7 @@ export async function discoverModels(baseUrl: string, apiKey: string | undefined
   const body = (await getModels(baseUrl, apiKey, timeoutMs)) as { data?: unknown };
   if (!Array.isArray(body?.data)) throw new Error(`${baseUrl}/models did not return a model list`);
   const num = (v: unknown) => (typeof v === "number" && v > 0 ? Math.floor(v) : undefined);
+  const lesser = (a?: number, b?: number) => (a && b ? Math.min(a, b) : a ?? b);
   return body.data.flatMap((m: Record<string, any>) => {
     if (typeof m?.id !== "string" || !m.id) return [];
     const params = Array.isArray(m.supported_parameters) ? m.supported_parameters : undefined;
@@ -170,7 +172,8 @@ export async function discoverModels(baseUrl: string, apiKey: string | undefined
     const maxOutput = num(m.top_provider?.max_completion_tokens);
     return [{
       modelId: m.id,
-      contextWindow: num(m.context_length) ?? num(m.meta?.n_ctx) ?? num(m.max_context_length) ?? num(m.max_model_len),
+      // OpenRouter's context_length is the model's own; the provider it routes to may serve less (a free one often does).
+      contextWindow: lesser(num(m.context_length), num(m.top_provider?.context_length)) ?? num(m.meta?.n_ctx) ?? num(m.max_context_length) ?? num(m.max_model_len),
       tools: params ? params.includes("tools") : undefined,
       reasoning: thinks?.levels ?? (params?.includes("reasoning") || params?.includes("reasoning_effort") ? ["low", "medium", "high"] as ("low" | "medium" | "high")[] : undefined),
       ...(thinks?.alwaysThinks ? { alwaysThinks: true } : {}),
