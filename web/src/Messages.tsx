@@ -254,17 +254,17 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
   // The guard turning away a read made again is about her waiting, not a failure to show.
   const failed = tools.some((p) => p.type === "tool" && p.isError && !isPoll(p));
   const body = useRef<HTMLDivElement>(null);
-  // Whether the person left the box at its bottom; growth fires no scroll event, so this holds until they scroll.
-  const stick = useRef(true);
-  // Where the box was last pinned to its bottom.
-  const pinned = useRef<number | undefined>(undefined);
+  // The box's height before this render's growth, so where the person left it is measured against what they saw,
+  // whether or not their scroll's event has fired yet. A scroll records it too, for growth inside a marker.
+  const height = useRef(0);
   // While she works, an open box follows the newest call, but only while it sits at its bottom: scrolled up, it stays put.
   useLayoutEffect(() => {
     const el = body.current;
-    if (!el) { stick.current = true; pinned.current = undefined; return; }
-    // A scroll up lands before its scroll event does: below where the box was last pinned, the person has moved it.
-    if (stick.current && pinned.current !== undefined && el.scrollTop < pinned.current - 1) stick.current = false;
-    if (streaming && stick.current) { el.scrollTop = el.scrollHeight; pinned.current = el.scrollTop; }
+    if (!el) { height.current = 0; return; }
+    // The person's scroll lands before its event does, and growth moves the bottom under them: judge by the height they saw.
+    const wasBottom = height.current - el.scrollTop - el.clientHeight < 24;
+    if (streaming && wasBottom) el.scrollTop = el.scrollHeight;
+    height.current = el.scrollHeight;
   });
   const n = tools.length || parts.length;
   const word = tools.length ? (n === 1 ? "tool call" : "tool calls") : (n === 1 ? "step" : "steps");
@@ -276,7 +276,7 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
         <Icon name="down" />
       </button>
       {open && (
-        <div ref={body} className="marker-body run-body" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24; }}>
+        <div ref={body} className="marker-body run-body" onScroll={(e) => { height.current = e.currentTarget.scrollHeight; }}>
           {runs.map((r) => r.parts.map((p, i) => (p.type === "text" || p.type === "image" ? null : <Marker key={`${r.key}-${i}`} part={p} env={env} />)))}
           {streaming && <span className="writing-dots" aria-hidden="true"><i /><i /><i /></span>}
         </div>
