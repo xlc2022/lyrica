@@ -9,6 +9,13 @@ export type Match = { model: Named } | { closest: Named[] };
 const compact = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 const words = (s: string) => s.toLowerCase().split(/[^a-z0-9.]+/).map(compact).filter(Boolean);
 const modelPart = (label: string) => label.slice(label.indexOf("/") + 1);
+/** A model's own name: its label after the last `/`, compacted. */
+const own = (label: string) => compact(label.slice(label.lastIndexOf("/") + 1));
+
+/** Whether two labels name the same model on different endpoints: "router/qwen/qwen3.8-27b" and "gpu/qwen3.8-27b". */
+export function sameModel(a: string, b: string): boolean {
+  return !!own(a) && own(a) === own(b);
+}
 
 function bigrams(s: string): string[] {
   const out: string[] = [];
@@ -58,7 +65,6 @@ export function matchModel(name: string, models: Named[], closest = 3): Match {
  */
 export function singledOut(text: string, model: Named, models: Named[]): boolean {
   const said = compact(text);
-  const own = (label: string) => compact(label.slice(label.lastIndexOf("/") + 1));
   if (said.includes(compact(model.label))) return true;
   const name = own(model.label);
   return !!name && said.includes(name) && !models.some((m) => m.id !== model.id && own(m.label) === name);

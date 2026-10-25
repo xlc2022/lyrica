@@ -289,33 +289,28 @@ describe("delegate", () => {
     expect(s.delegation.models(s.thread("general", { localOnly: true })).map((m) => m.label)).toEqual(["gpu/qwen3.8-27b"]);
   });
 
-  it("never picks a model that costs money unless the person named it", async () => {
+  it("runs a cloud model the person also hosts locally on the local copy, unless they named the cloud one", async () => {
     const s = await setup();
     s.cloud.respond(async () => ({ text: "seen" }));
     s.local.respond(async () => ({ text: "seen" }));
     const paidServer = await fakeOpenAI({ label: "paid", models: [{ id: "qwen/qwen3.8-27b", pricing: { prompt: "0.0000002", completion: "0.0000025" } }] });
     paidServer.respond(async () => ({ text: "seen" }));
     const router = s.models.addEndpoint(s.ada, { name: "router", kind: "cloud", baseUrl: paidServer.baseUrl, apiKey: "sk-test" });
-    const paid = (await s.models.discover(s.ada, router.id))[0]!;
-    s.models.setCapabilities(s.ada, paid.id, { vision: true, tools: true });
-    s.models.setCapabilities(s.ada, s.localRef.offeringId, { vision: true });
+    s.models.setCapabilities(s.ada, (await s.models.discover(s.ada, router.id))[0]!.id, { tools: true });
     const parent = s.thread();
-    // Not listed, and listed models put local ones first.
-    expect(s.delegation.models(parent).map((m) => m.label)).toEqual(["gpu/qwen3.8-27b", "openrouter/deepseek/deepseek-4.1-flash"]);
+    // Local first, and a priced one says so.
+    expect(s.delegation.models(parent).map((m) => `${m.label}${m.paid ? " paid" : ""}`)).toEqual(["gpu/qwen3.8-27b", "openrouter/deepseek/deepseek-4.1-flash", "router/qwen/qwen3.8-27b paid"]);
     const say = (text: string) => parent.view.own.appendEntry(parent.threadId, { piId: `u${Math.random()}`, role: "user", data: {}, text });
-    // She names it herself: refused, with the free models that can see.
-    say("What's in this picture?");
-    const own = await s.run(parent, { task: "look", role: "scout", model: "router/qwen/qwen3.8-27b" });
-    expect(own.status).toBe("failed");
-    expect(own.result).toContain("costs money, and the person didn't name it");
-    expect(own.result).toContain("Free models that can see images: gpu/qwen3.8-27b");
-    // The model's name alone is shared with a free one, so it doesn't single the paid one out.
-    say("Use qwen3.8-27b for it.");
-    expect((await s.run(parent, { task: "look", role: "scout", model: "router/qwen/qwen3.8-27b" })).status).toBe("failed");
-    // The person names it by its whole label: allowed.
+    say("Use qwen3.8-27b to look at it.");
+    expect((await s.run(parent, { task: "look", role: "scout", model: "router/qwen/qwen3.8-27b" })).status).toBe("finished");
+    expect(s.delegation.status(parent)[0]).toMatchObject({ model: "gpu/qwen3.8-27b" });
+    // The person names the cloud copy by its whole label: it runs there.
     say("Use router/qwen/qwen3.8-27b for it.");
-    const named = await s.run(parent, { task: "look", role: "scout", model: "router/qwen/qwen3.8-27b" });
-    expect(named.status).toBe("finished");
+    expect((await s.run(parent, { task: "look", role: "scout", model: "router/qwen/qwen3.8-27b" })).status).toBe("finished");
+    expect(s.delegation.status(parent)[0]).toMatchObject({ model: "router/qwen/qwen3.8-27b" });
+    // A cloud model with no local copy runs as named.
+    expect((await s.run(parent, { task: "check", role: "scout", model: "deepseek flash" })).status).toBe("finished");
+    expect(s.delegation.status(parent)[0]).toMatchObject({ model: "openrouter/deepseek/deepseek-4.1-flash" });
   });
 
   it("runs a project chat's subagents in the background, and moves a long foreground run there", async () => {

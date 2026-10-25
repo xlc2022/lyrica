@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchModel, singledOut } from "../src/index.ts";
+import { matchModel, sameModel, singledOut } from "../src/index.ts";
 
 const models = [
   { id: "1", label: "gpu/qwen3.8-flash-next" },
@@ -32,5 +32,7 @@ describe("naming a model in plain words", () => {
     expect(singledOut("use qwen3.8-27b", paid, all)).toBe(false);
     expect(singledOut("use deepseek-4.1-flash please", models[3]!, all)).toBe(true);
     expect(singledOut("what's in this picture?", paid, all)).toBe(false);
+    expect(sameModel("router/qwen/qwen3.8-27b", "gpu/qwen3.8-27b")).toBe(true);
+    expect(sameModel("gpu/qwen3.8-flash-next", "gpu/qwen3.8-27b")).toBe(false);
   });
 });

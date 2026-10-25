@@ -34,13 +34,13 @@ subagent:
   `<endpoint>/<model>` label, or the person's own words: `matchModel` takes
   the one chat model the parent may use whose model ID or label holds every
   word of it. A name that fits none, or several, fails the run with the
-  closest few, for her to ask the person which they meant. A model whose
-  price is known and isn't free is refused unless the person's latest
-  message singles it out (`singledOut`: its whole label, or its own model
-  name when no other model shares it), with the free models that can see
-  images; a saved workflow naming one needs the person to name it too.
-  `delegate({ action: "models" })` lists the free chat models she may name,
-  local first, each marked local or cloud, and vision where it has it. A subagent whose model
+  closest few, for her to ask the person which they meant. A cloud model
+  that a local endpoint also serves under the same model name (`sameModel`)
+  runs on the local copy, unless the person's latest message singles out the
+  cloud one (`singledOut`: its whole label, or its own model name when no
+  other model shares it). `delegate({ action: "models" })` lists the chat
+  models she may name, local first, each marked local or cloud, and vision
+  and paid where they apply. A subagent whose model
   has no vision switches, on a tool result holding an image, to the first
   local chat model with vision she may use whose machine is up, which
   becomes its model (its card says so) and sees the image; with none, it is told it saw nothing (contracts.md,
