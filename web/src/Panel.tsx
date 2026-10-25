@@ -1,4 +1,5 @@
 import { StaleUnitsLine } from "./StaleUnitsLine.tsx";
+import { ModelCallFacts } from "./ModelCallFacts.tsx";
 // Settings (the user's own) and Administration (server-wide), each a page with
 // its sections listed at the left. The old control panel's cards moved here.
 import { useState } from "react";
@@ -334,6 +335,7 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
         <dt>Sleep time</dt><dd className="num">{sleep.data?.time ?? "…"}</dd>
         <dt>Start unlocked</dt><dd>{s ? (s.savedPassphrase ? "Passphrase saved" : "Passphrase not saved") : "…"}</dd>
       </dl>
+      {s?.modelFacts && <ModelCallFacts facts={s.modelFacts} />}
     </Section>
   );
 }

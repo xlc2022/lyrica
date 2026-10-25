@@ -823,7 +823,15 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   and tooltips, and §6's confirmation dialog. No drawer or extra captions.
 - **Administration**, for administrators: Status (stale Debian systemd units
   with the action to run `install.sh`, the server's network
-  self-test, sleep time, start unlocked), **Her name** (Name, 1–40 characters
+  self-test, sleep time, start unlocked, then **Model calls · last 24 hours**:
+  `ModelCallFacts.tsx` renders plain facts per offering ID from GET Status's
+  `modelFacts`: recorded label/endpoint, calls, median generation tok/s,
+  measured sample count and recorded fallbacks. All model copies are shown;
+  facts wrap on a phone, no timer or new control. The scope line names the
+  displayed pools and latest-500-record retention per user, not a complete
+  day's activity. No measured speed reads Unavailable; empty reads No retained
+  calls in the last 24 hours. Tooltips explain scope, pace and fallback
+  markers; no errors or retries are inferred), **Her name** (Name, 1–40 characters
   on one line, one Save disabled when invalid or unchanged; `PUT …/admin/name`,
   then her displayed name updates and the page re-reads `/api/state`), Users with the administrator flag,
   **Change password…** (the new password and the administrator's own, in

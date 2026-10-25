@@ -75,8 +75,9 @@ describe("model facts for the last 24 hours", () => {
     const even = modelFacts(["10", "40", "20", "30"].map((s, i) => at("even", -(i + 1) * MIN, { pace: pace(Number(s)) })), ["general"], NOW);
     expect(even.models.map((m) => [m.speedSamples, m.medianTokPerSec])).toEqual([[4, 25]]);
 
-    const pair = modelFacts([at("pair", -MIN, { pace: pace(10) }), at("pair", -2 * MIN, { pace: pace(13) })], ["general"], NOW);
-    expect(pair.models.map((m) => [m.speedSamples, m.medianTokPerSec])).toEqual([[2, 11.5]]);
+    const pair = modelFacts([at("pair", -MIN, { pace: pace(10.1) }), at("pair", -2 * MIN, { pace: pace(10.2) })], ["general"], NOW);
+    expect(pair.models[0]!.speedSamples).toBe(2);
+    expect(pair.models[0]!.medianTokPerSec).toBeCloseTo(10.15);
   });
 
   it("reports speed as unavailable rather than zero when nothing measured it, and still counts the calls", () => {
@@ -88,7 +89,7 @@ describe("model facts for the last 24 hours", () => {
       call({ offeringId: "negative", pace: pace(-1) }),
     ], ["general"], NOW);
     expect(r.models.map((m) => [m.offeringId, m.calls, m.speedSamples, m.medianTokPerSec])).toEqual([
-      ["negative", 1, 0, undefined], ["nan", 1, 0, undefined], ["no-pace", 1, 0, undefined], ["zero", 1, 1, 0],
+      ["infinite", 1, 0, undefined], ["nan", 1, 0, undefined], ["negative", 1, 0, undefined], ["no-pace", 1, 0, undefined], ["zero", 1, 1, 0],
     ]);
     const without = r.models.find((m) => m.offeringId === "no-pace")!;
     expect("medianTokPerSec" in without).toBe(false);

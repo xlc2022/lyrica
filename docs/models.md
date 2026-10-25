@@ -407,6 +407,18 @@ the user's last twenty measured calls; the text library shows them on each
 copy (`speed`). Counts and times only, so a "Do not log" thread records them
 too. Nothing acts on speed.
 
+Administration → Status summarizes all retained records in the authenticated
+user's displayed pools in the inclusive last 24 hours, grouped by offering
+ID, with call counts, median recorded generation tok/s and its sample count,
+and recorded fallback counts. No last-twenty or preview limit is used here;
+latest-500-per-user retention still means this is not a complete day. Missing
+speed is unavailable. A nonempty `fallback` is a recorded resolution skip
+(including eligibility/health skips), not evidence of failed requests, retries
+or errors; notes never establish fallback. Hosted retries replace the call
+row and tool requests update its cumulative pace, so records are not request
+counts. All recorded tasks count; Claude Code relay totals have no call rows
+and are excluded. No schema or new measurement is added.
+
 ## Prices, retirement and reply limits
 
 OpenRouter's model list also gives each model's `pricing` (dollars per token,

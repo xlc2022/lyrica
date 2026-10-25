@@ -1773,3 +1773,31 @@ test("Reset: Wipe memory asks for the box and the password, stops what runs, the
   const threads = await page.evaluate(async (path) => (await fetch(path)).json(), `/api/u/${userId}/threads`) as unknown[];
   expect(threads).toEqual([]);
 });
+
+
+test("Status model facts preserve existing facts and render empty, measured and missing data without phone overflow", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const displayPath = `/api/u/${userId}/me/display`;
+  const original = (await (await page.request.get(`/api/u/${userId}/me`)).json()).display;
+  try {
+    expect((await page.request.patch(displayPath, { data: { showGeneral: false, showPrivate: false }, headers: { origin: baseURL! } })).ok()).toBe(true);
+    await page.goto(`/#/u/${userId}/admin/status`);
+    const facts = page.getByRole("region", { name: "Model calls", exact: true });
+    await expect(facts).toContainText("No retained calls in the last 24 hours.");
+    await expect(facts).toContainText("No pools shown");
+    await noHorizontalScroll(page);
+    expect((await page.request.patch(displayPath, { data: { showGeneral: true, showPrivate: false }, headers: { origin: baseURL! } })).ok()).toBe(true);
+    const modelPort = Number(new URL(baseURL!).port) + 10;
+    const seeded = await page.request.post(`http://127.0.0.1:${modelPort}/model-facts-fixture`, { data: { userId } });
+    expect(seeded.ok()).toBe(true);
+    await page.reload();
+    await expect(facts).toContainText("fixture-measured");
+    await expect(facts).toContainText("3 calls · Median speed 20 tok/s · 3 measured · Recorded fallbacks 1");
+    await expect(facts).toContainText("Unavailable · 0 measured · Recorded fallbacks 0");
+    await expect(facts).toContainText("Retained history · General · pruned to latest 500 records per user");
+    await expect(page.getByText("Her tools' network", { exact: true })).toBeVisible();
+    await expect(page.getByText("Sleep time", { exact: true })).toBeVisible();
+    await expect(page.getByText("Start unlocked", { exact: true })).toBeVisible();
+    await noHorizontalScroll(page);
+  } finally { await page.request.patch(displayPath, { data: original, headers: { origin: baseURL! } }); }
+});

@@ -19,12 +19,12 @@ const measuredSpeed = (c: CallInfo): number[] => {
 /** A recorded fallback marker: the first model in the list didn't answer. A note is never one. */
 const hasFallback = (c: CallInfo): boolean => typeof c.fallback === "string" && c.fallback.trim() !== "";
 
-/** The middle of measured speeds; an even count averages the central pair, as the library's medians do. */
+/** The middle of measured speeds; an even count averages the central pair. */
 function median(xs: number[]): number | undefined {
   const v = [...xs].sort((a, b) => a - b);
   if (!v.length) return undefined;
   const mid = Math.floor(v.length / 2);
-  return v.length % 2 ? v[mid]! : Math.round(((v[mid - 1]! + v[mid]!) / 2) * 10) / 10;
+  return v.length % 2 ? v[mid]! : (v[mid - 1]! + v[mid]!) / 2;
 }
 
 /**
@@ -37,7 +37,7 @@ function median(xs: number[]): number | undefined {
  * carry a recorded marker, never what a note says, so they are resolution skips,
  * not retries, failed attempts or errors. Rows outside `[now - 24h, now]`, with a
  * timestamp in the future or unreadable, say nothing and are left out. Nothing is
- * capped: the store keeps only the latest 500 rows per user across pools, so this
+ * capped: nightly pruning keeps the latest 500 rows per user across pools, so this
  * is retained history, not a complete day's activity.
  */
 export function modelFacts(calls: CallInfo[], pools: Pool[], now: number = Date.now()): ModelCallFacts {

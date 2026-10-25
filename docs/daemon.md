@@ -902,6 +902,18 @@ administrators users, allowed paths, shared
 endpoints, the sleep time (`sleep.time` in `self.db`'s `settings`) and persona
 proposals.
 
+GET `…/admin/status` also returns `modelFacts`, without changing its existing
+facts: all retained `model_calls` in the authenticated administrator's own
+shown pools, filtered to the inclusive last 24 hours and grouped by offering
+ID (`model-facts.ts`). No preview limit is applied. The latest-500-per-user
+retention still limits coverage; folded totals have no timestamps or pace and
+are not used. All recorded tasks count once per row. Median generation speed
+uses available `pace.tokPerSec` values with their sample count, absent without
+samples. Recorded fallbacks count nonempty fallback markers, not errors or
+retries. Hidden pools and other users never enter the aggregate; the Hidden
+thread filter does not filter call metadata, as in Call history. No schema,
+tracking, model request or polling is added.
+
 **Persona proposals** come from one user's conversation or dream, so they
 may carry that user's details. They start as drafts in that user's `user.db`
 (`PersonaProposals.propose`, which takes the thread's own view, so whose a

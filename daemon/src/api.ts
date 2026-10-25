@@ -1858,8 +1858,23 @@ export interface MemoryImportResult {
 
 // --- Administrators: /api/u/:userId/admin/… ---
 
+/** Retained model call records in the authenticated user's displayed pools, in [since, until].
+ * Not a complete day: the store keeps only the latest 500 records per user across pools. */
+export interface ModelCallFacts {
+  since: string; until: string; pools: Pool[];
+  models: {
+    offeringId: string; label: string; endpointName: string; calls: number;
+    /** Median of recorded pace.tokPerSec; absent when speedSamples is zero. */
+    medianTokPerSec?: number; speedSamples: number;
+    /** Records with a nonempty fallback marker (skipped candidates, not errors/retries). */
+    fallbacks: number;
+  }[];
+}
+
 /** GET /api/u/:userId/admin/status → AdminStatus */
 export interface AdminStatus {
+  /** Present on GET only; all retained rows are considered, without a preview limit. */
+  modelFacts?: ModelCallFacts;
   /** Installed Debian units that differ from the last update release. */
   unitsStale?: string[];
   /** Why tools have no network on this host, if the self-test refused it. */

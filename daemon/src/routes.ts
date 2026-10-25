@@ -27,6 +27,7 @@ import { SEARCH_PAGE, searchMessages } from "./search.ts";
 import { forgetThreadFiles } from "./sweep.ts";
 import { applyRemoval, entriesFrom, removalPlan, uploadsIn, type RemovalContext } from "./removal.ts";
 import { historyQuery } from "./history.ts";
+import { modelFacts } from "./model-facts.ts";
 import { redactUrl, unredactUrl } from "./redact.ts";
 import { isPdf, VIEW_LIMIT, viewHeaders, viewKind, withConsole } from "./file-view.ts";
 
@@ -2006,7 +2007,12 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
 
     // --- Administrators ---
-    route("GET", `${u}/admin/status`, (r) => { d.adminFor(r); return adminStatus(d); }),
+    route("GET", `${u}/admin/status`, (r): Api.AdminStatus => {
+      const user = d.adminFor(r), pools = shownPools(display(d, user.id));
+      // SQLite LIMIT -1 reads every retained row, not a recent-calls preview.
+      const calls = s().models.callHistory(user.id, { limit: -1, offset: 0, q: "", pools }).entries;
+      return { ...adminStatus(d), modelFacts: modelFacts(calls, pools) };
+    }),
     route("GET", `${u}/admin/updates`, (r) => { d.adminFor(r); return updates(d); }),
     route("POST", `${u}/admin/updates`, async (r) => {
       d.adminFor(r);
