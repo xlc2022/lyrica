@@ -1737,3 +1737,30 @@ test("a thread's branch shows as a badge that opens the changes view: files, com
   await expect(dialog).toBeHidden();
   await noHorizontalScroll(page);
 });
+
+test("an open run of tool calls follows again when scrolled to its bottom while calls render before the scroll event", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "recall: 24 slowly");
+  const run = page.locator(".marker.tool-run");
+  await run.getByRole("button", { name: /tool calls running/ }).click();
+  const box = run.locator(".run-body");
+  const calls = run.locator(".run-body .marker[data-type='tool']");
+  await expect.poll(() => box.evaluate((el) => el.scrollHeight > el.clientHeight + 40)).toBe(true);
+  // Scrolled up, new calls land below without moving it.
+  await box.evaluate((el) => { el.scrollTop = 0; });
+  const seen = await calls.count();
+  await expect.poll(() => calls.count()).toBeGreaterThan(seen + 1);
+  expect(await box.evaluate((el) => el.scrollTop)).toBe(0);
+  // Hold the scroll events back, scroll to the bottom, and let new calls render before the event arrives.
+  await page.evaluate(() => { (window as any).held = true; window.addEventListener("scroll", (e) => { if ((window as any).held) e.stopImmediatePropagation(); }, true); });
+  await box.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  const back = await calls.count();
+  await expect.poll(() => calls.count()).toBeGreaterThan(back);
+  // The held event arrives late, measured against a height the person never saw: following must not stop.
+  await box.evaluate((el) => { (window as any).held = false; el.dispatchEvent(new Event("scroll")); });
+  const later = await calls.count();
+  await expect.poll(() => calls.count()).toBeGreaterThan(later);
+  await expect.poll(() => box.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight), { timeout: 3000 }).toBeLessThanOrEqual(2);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/tool-run-follow-${page.viewportSize()!.width}.png` });
+});
