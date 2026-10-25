@@ -1250,15 +1250,18 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
 - **Turn tool limits** (`extension/src/turn-tools.ts`, installed first by
   `openThreadSession`): one prompt/agent run, including model continuations
   and nested tool calls, permits at most 100 attempted tool calls. Invalid
-  calls count too. Subagent sessions have independent budgets. The third
-  and later calls to the same tool with identical JSON arguments (object
-  keys sorted recursively; array order preserved) return an error telling
-  the model it already has the result and should answer or try something
-  different. A plain `sleep` (a `bash` call that only sleeps) starts the
-  count over for every call, so polling isn't refused. A run of 25 calls to one tool, with any arguments, also stops
-  the turn, and so do two replies in a row cut off at the reply limit with a
-  tool call in them (Pi refuses a cut-off call and asks for it again, which
-  on a full window is only cut again): that turn's notice reads `CUT_OFF`
+  calls count too. Subagent sessions have independent budgets. A call to
+  the same tool with identical JSON arguments (object keys sorted
+  recursively; array order preserved) whose last two such calls returned
+  the same result, or of which two run together in the same batch, returns
+  an error telling the model it already has the result and should answer
+  or try something different; while the result keeps changing (a running
+  job's output, say) the call runs. Only a digest
+  of each result is kept, in memory, for the run. A plain `sleep` (a `bash` call that only sleeps) starts the
+  count over for every call, so polling isn't refused. Two replies in a row
+  cut off at the reply limit with a tool call in them also stop the turn (Pi
+  refuses a cut-off call and asks for it again, which on a full window is
+  only cut again): that turn's notice reads `CUT_OFF`
   and its wrap-up `CUT_WRAP_UP`. Calls beyond either limit in a batch are refused. After the
   batch's results her tools turn off and a hidden `lyrica-tool-limit-wrap-up`
   message (`WRAP_UP`) asks for one reply on what she did, where things
@@ -1266,7 +1269,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   reply calls tools anyway the turn aborts. Her tools come back when the run
   ends. A stored
   `lyrica-tool-limit` message shows “Turn stopped after 100 tool calls.”
-  or “Turn stopped after 25 calls in a row to <tool>.” (count and tool in mono, under the heading Tool limit) in the thread, live and after reload. Counters reset on the next agent run.
+  (the count in mono, under the heading Tool limit) in the thread, live and after reload. Counters reset on the next agent run.
   Pi validates tool schemas before execution and returns validation errors
   naming missing fields. These limits serve principles 1 and 2: real
   runaway turns stop structurally.

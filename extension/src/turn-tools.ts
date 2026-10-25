@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { CHILD_WAKES } from "@lyrica/core";
@@ -5,7 +6,6 @@ import { setToolsOff } from "./gate.ts";
 
 // Principles 1 and 2: stop real tool loops in the runtime, independently of the prompt.
 export const MAX_TURN_TOOL_CALLS = 100;
-export const MAX_SAME_TOOL_RUN = 25;
 export const MAX_IDENTICAL_TOOL_CALLS = 3;
 export const TURN_TOOL_NOTICE = "lyrica-tool-limit";
 /** Told to her, unseen, once the limit stops her tools: the person gets a reply, never only the notice. */
@@ -70,12 +70,15 @@ export function createWaitForReportsExtension(off: () => boolean): ExtensionFact
 /** One budget per prompt/agent run, including every model continuation and nested tool call. */
 export function createTurnToolsExtension(): ExtensionFactory {
   return pi => {
-    let calls = 0, run = 0, last = "", stopped = false, notified = false, why = "";
+    let calls = 0, stopped = false, notified = false, why = "";
     let wrapped = false;
     let empty = 0, asText = 0, cut = 0;
     /** The thinking level to go back to after a retry without thinking. */
     let thinking: ThinkingLevel | null = null;
-    const repeats = new Map<string, number>();
+    /** By tool and arguments, a digest of each result those calls returned this run. */
+    const repeats = new Map<string, string[]>();
+    /** Calls running, by ID: their tool and arguments. */
+    const running = new Map<string, string>();
     const refused = new Map<string, string>();
     // Back on as the run ends: the next prompt's first request is built before agent_start.
     pi.on("agent_end", (_e, ctx) => {
@@ -84,30 +87,40 @@ export function createTurnToolsExtension(): ExtensionFactory {
       thinking = null;
     });
     pi.on("agent_start", () => {
-      calls = run = empty = asText = cut = 0; last = why = ""; stopped = notified = wrapped = false;
-      repeats.clear(); refused.clear();
+      calls = empty = asText = cut = 0; why = ""; stopped = notified = wrapped = false;
+      repeats.clear(); running.clear(); refused.clear();
     });
     // This event precedes schema validation, so malformed and unknown calls count too.
     pi.on("tool_execution_start", e => {
       if (stopped) { refused.set(e.toolCallId, `Turn stopped after ${calls} tool calls.`); return; }
       calls++;
-      run = e.toolName === last ? run + 1 : 1;
-      last = e.toolName;
       const key = `${e.toolName}:${normalized(e.args)}`;
       // After a plain sleep, time has passed: a sleep, or a call made again after one (polling a file, say), may not return the same thing.
       // The caps on calls still bound a loop of them.
       if (isSleep(e.toolName, e.args)) repeats.clear();
-      const count = (repeats.get(key) ?? 0) + 1;
-      repeats.set(key, count);
-      if (count >= MAX_IDENTICAL_TOOL_CALLS) refused.set(e.toolCallId, isThreadRead(e.toolName, e.args)
+      // A call made again whose last results were all the same would only return that again; one whose result changed
+      // (a running job's output, a log that grows) can still tell her something.
+      // Identical calls in one batch run at the same moment, so they count as the same result.
+      const seen = repeats.get(key) ?? [];
+      const last = seen.slice(-(MAX_IDENTICAL_TOOL_CALLS - 1));
+      const together = [...running.values()].filter((k) => k === key).length;
+      if (together >= MAX_IDENTICAL_TOOL_CALLS - 1 || (last.length === MAX_IDENTICAL_TOOL_CALLS - 1 && last.every((r) => r === last[0]))) refused.set(e.toolCallId, isThreadRead(e.toolName, e.args)
         ? `You already read this thread twice with these arguments. If it is still working: ${CHILD_WAKES}`
-        : "You already have this result: this tool was called with identical arguments twice. Answer or try something different.");
+        : "You already have this result: this tool was called with identical arguments twice and returned the same both times. Answer or try something different.");
+      else running.set(e.toolCallId, key);
       if (calls >= MAX_TURN_TOOL_CALLS) { stopped = true; why = `Turn stopped after \`${calls}\` tool calls.`; }
-      else if (run >= MAX_SAME_TOOL_RUN) { stopped = true; why = `Turn stopped after \`${run}\` calls in a row to \`${e.toolName}\`.`; }
     });
     pi.on("tool_call", e => {
       const reason = refused.get(e.toolCallId);
       if (reason) return { block: true, reason };
+    });
+    // Only a digest of the result is kept, never its text.
+    pi.on("tool_execution_end", e => {
+      const key = running.get(e.toolCallId);
+      if (key === undefined) return;
+      running.delete(e.toolCallId);
+      const digest = createHash("sha256").update(`${e.isError}:${JSON.stringify((e.result as { content?: unknown } | undefined)?.content ?? null)}`).digest("base64");
+      repeats.set(key, [...(repeats.get(key) ?? []), digest]);
     });
     pi.on("turn_end", (e, ctx) => {
       // A reply with only thinking ends the run with nothing said or done: once, she carries on; again, the turn fails visibly.

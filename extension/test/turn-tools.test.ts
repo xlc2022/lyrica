@@ -32,9 +32,10 @@ async function scenario(calls: { name: string; args: JsonObject }[], prompts = 1
   const loader = new DefaultResourceLoader({ cwd: dir, agentDir: dir, noContextFiles: true, noSkills: true, noExtensions: true, noPromptTemplates: true,
     extensionFactories: [createTurnToolsExtension(), ...extra, pi => {
       pi.registerProvider(faux.provider);
-      for (const name of ["search", "other", "threads", "bash"]) pi.registerTool({ name, label: name, description: name,
+      // `log` is a running job's output: each call returns more of it.
+      for (const name of ["search", "other", "threads", "bash", "log"]) pi.registerTool({ name, label: name, description: name,
         parameters: Type.Object({ query: Type.Optional(Type.String()), command: Type.Optional(Type.String()), nested: Type.Optional(Type.Object({ a: Type.Number(), b: Type.Number() })) }),
-        execute: async () => { executed++; return { content: [{ type: "text", text: "result" }], details: {} }; } });
+        execute: async () => { executed++; return { content: [{ type: "text", text: name === "log" ? `line ${executed}` : "result" }], details: {} }; } });
     }, createImageExtension({ enabled: () => { executed++; throw new Error("must not execute"); } } as unknown as ImageTools)] });
   try {
     await loader.reload();
@@ -115,11 +116,20 @@ it("lets a plain sleep repeat, and a call made again after one, since time has p
   expect((await scenario([status, status, status])).executed).toBe(2);
 });
 
-it("ends after 25 consecutive calls to the same tool with changing arguments", async () => {
-  const r = await scenario(Array.from({ length: 30 }, (_, i) => ({ name: "search", args: { query: String(i) } })));
-  expect(r.executed).toBe(25);
-  expect(r.requested).toBe(26);
-  expect(JSON.stringify(r.shown)).toContain("Turn stopped after `25` calls in a row to `search`.");
+it("refuses the third identical call in one batch", async () => {
+  const cat = { name: "bash", args: { command: "cat package.json" } };
+  expect((await scenario([cat, cat, cat], 1, true)).executed).toBe(2);
+});
+
+it("lets a call be made again while its result keeps changing, as a running job's output does", async () => {
+  const log = { name: "log", args: { query: "j3" } };
+  expect((await scenario([log, log, log, log])).executed).toBe(4);
+});
+
+it("lets one tool run with changing arguments up to the turn's cap", async () => {
+  const r = await scenario(Array.from({ length: 30 }, (_, i) => ({ name: "bash", args: { command: `echo ${i}` } })));
+  expect(r.executed).toBe(30);
+  expect(JSON.stringify(r.shown)).not.toContain("Turn stopped");
 });
 
 it("validates missing required fields before executing", async () => {
@@ -139,11 +149,11 @@ it("blocks calls past the cap within a single batch", async () => {
 });
 
 it("resets the budget on the next prompt", async () => {
-  // The 26th response is her wrap-up; the 27th call runs on the next prompt.
-  const r = await scenario(Array.from({ length: 27 }, (_, i) => ({ name: "search", args: { query: String(i) } })), 2);
-  expect(r.executed).toBe(26);
+  // The 101st response is her wrap-up; the 102nd call runs on the next prompt.
+  const r = await scenario(Array.from({ length: 102 }, (_, i) => ({ name: "search", args: { query: String(i) } })), 2);
+  expect(r.executed).toBe(101);
   expect(r.notices).toHaveLength(1);
-  expect(r.requested).toBe(28);
+  expect(r.requested).toBe(103);
 });
 
 /** Her replies, in order, to one prompt: what each request asked and what the thread shows. */

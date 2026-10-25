@@ -172,8 +172,8 @@ characters, the limit on project instructions.
 >
 > **Hard rules.** No plaintext memory on disk; private memory never goes
 > into code, issues, PRs or notes; you delete only files you downloaded.
-> Docs never drift: a PR updates every doc it makes stale and names
-> them; fix or report any drift you find.
+> Docs never drift: a PR fixes every stale doc, brief or wording in what
+> it touches, and names them; report drift elsewhere.
 >
 > **This chat** starts work on your issues without asking and posts only
 > what needs the owner: a decision, a blocker, an update to press.

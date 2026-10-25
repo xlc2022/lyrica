@@ -579,10 +579,12 @@ describe("projects", () => {
     script("dns").push(tool({ action: "later", minutes: 5, note: "Check the leases." }), tool({ action: "resolve" }), { text: "Done." });
     const dns = ends((await say("move DNS")).events).flatMap((e) => e.threads ?? [])[0]!.id;
     await until(() => messages(threadPath(dns)), (m) => m.some((x) => x.role === "assistant" && x.parts.some((p) => p.type === "text" && p.text === "Done.")));
-    const asked = requests.length;
+    // Only the resolved thread's requests count: the project chat may still take its turn on the child's end.
+    const mine = () => requests.filter((c) => who(c) === "dns").length;
+    const asked = mine();
     d.services!.wakeups.tick(new Date(Date.now() + 10 * 60_000));
     await new Promise((r) => setTimeout(r, 400));
-    expect(requests.length).toBe(asked);
+    expect(mine()).toBe(asked);
     expect((await messages(threadPath(dns))).some((x) => x.from?.kind === "wakeup")).toBe(false);
     expect(d.services!.children.resolved(rt.ada.id, "general", dns)).toBe(true);
     expect(d.services!.wakeups.list(rt.ada.id, "general", dns)).toEqual([]);
