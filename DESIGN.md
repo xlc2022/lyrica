@@ -1293,19 +1293,27 @@ project page and the web part are built. Recent calls can be filtered by project
     project. Tokens opens model shares, Total, **By thread** (This chat
     first, then threads by tokens), and a project-filtered **Recent calls**
     link. On a phone Tokens is at the foot of the Threads popover.
-    Its actions stay **Files** and **Settings**.
+    Its actions are **Project**, **Files** and
+    **Settings** (the last reads **Settings (this thread)** here): the
+    project's settings open from the **Project settings** link in the
+    overview's header.
   - **Thread cards:** one per thread, under the message that started it,
     updated in place: title, state, what it waits on, the first line of its
     last update, and the files it made. A card waiting on the user is covered by
     the chat's pending bar. **Suggested threads** is a card like the plan
     card, with **Start** per thread and **Start all**.
-  - **Project settings** is a page with sections: General (Goal; Threads,
-    the model and thinking new threads start with; Paused; then the project
-    chat's own settings under **This chat**, including the **Folders**,
-    **Machines** and **Repositories** every thread of the project inherits), Memory
-    (Instructions, and a link to the project page in the memory browser),
-    and **Files and
-    images** (Files | Images), where the project folder is managed. Files in the header stays the quick view.
+  - **Project settings** is the page the overview's one
+    **Project settings** link opens, with sections: General (Goal;
+    Paused; **Watching threads** and **Check in on threads**; an h3
+    **New threads** with the model, Code mode, thinking and fallback new
+    threads start with; an h3 **Workspace** holding Group and the
+    **Folders**, **Machines**, **Repositories** and **MCP servers** every
+    thread of the project inherits, narrower or the same, then a
+    **Thread settings** link to the coordinator's own models, network and
+    local-only in its drawer; Commands; Checks), Memory (Instructions, and
+    a link to the project page in the memory browser), and **Files and
+    images** (Files | Images), where the project folder is managed. Files
+    in the chat's header stays the quick view.
   - **Paused** stops the project's working threads and starts nothing new.
     **Hide** stops it too. **Delete** forgets the project chat, its threads,
     its page, the notes that came only from it, and its folder.
@@ -1512,9 +1520,9 @@ Decided 2026-10-12 (docs/briefs/mcp.md).
 - **Added like Git accounts, granted like repositories.** Settings → MCP
   servers holds each user's servers, each in one pool, checked before it
   is saved. A thread gets a server only when granted: an MCP servers row
-  in the thread drawer and under This chat, so a project's threads
-  inherit it, narrower or the same. Removing one from a project takes it
-  from running threads at once.
+  in the thread drawer and under **Workspace** on Project settings, so
+  a project's threads inherit it, narrower or the same. Removing one
+  from a project takes it from running threads at once.
 - **Pools.** Private and local-only threads use only servers marked
   Private; general threads only General ones. A private server is on her
   own network (LAN, this machine or the tailnet), checked like a private
@@ -2157,10 +2165,10 @@ from Monika's runbooks.
   machines' check, with **Off network** and its dialog when that stops
   holding), never GitHub. A **repository** (`owner/name` and the account
   it uses) is granted to a thread like a folder: a Repositories row in the
-  thread drawer and under This chat in Project settings, so every thread of
-  the project gets them, narrower or the same; she may add one to a thread
-  from an account of its pool, with the user's approval, like any change
-  that reaches beyond the thread.
+  thread drawer and under **Workspace** on Project settings, so every
+  thread of the project gets them, narrower or the same; she may add one
+  to a thread from an account of its pool, with the user's approval,
+  like any change that reaches beyond the thread.
   Each thread clones its repositories into its own folder in the encrypted
   home workspace (`repos/<name>`), fetched at the start of a turn, so two
   threads never share a working tree. A clone goes only with its thread:

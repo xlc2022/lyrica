@@ -293,7 +293,12 @@ const SECTIONS = [{ key: "general", label: "General" }, { key: "memory", label: 
 const THINKING: ThinkingLevel[] = ["off", "low", "medium", "high"];
 const refOf = (m?: ModelRef | ModelRef[]) => { const one = Array.isArray(m) ? m[0] : m; return one && "offeringId" in one ? one.offeringId : ""; };
 
-/** Settings in the project chat's header: its own page, sections at the left (docs/ux.md §6). */
+/**
+ * The **Project settings** page, reached by the one link in the project's
+ * overview (from the chat's **Project** button): its own page, sections at
+ * the left (docs/ux.md §6). The chat keeps its own **Settings (this thread)**
+ * drawer for its models, network and local-only.
+ */
 export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContext; pool: Pool; threadId: string; section?: string }) {
   const userId = ctx.user.id;
   const base = threadPath(userId, pool, threadId);
@@ -327,7 +332,7 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   );
 }
 
-/** Goal, Paused and Watching threads; New threads (Model, Code mode, Thinking, Fallback); Workspace (Group, Folders, Machines, Repositories, MCP servers); Commands; Checks; one Save. */
+/** Goal; Paused, Watching threads and Check in on threads; New threads (Model, Code mode, Thinking, Fallback); Workspace (Group, Folders, Machines, Repositories, MCP servers) and the Thread settings link; Commands; Checks; one Save. */
 export function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
 }) {
