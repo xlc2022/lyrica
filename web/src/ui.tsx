@@ -51,24 +51,29 @@ export function useDismiss(ref: React.RefObject<HTMLElement | null>, open: boole
 
 /**
  * Keeps a header popover (the anchor's `.picker`) inside the window, 16px from each edge: it opens under its button
- * and slides left as far as it would run off the right. On a phone the picker is fixed across the screen instead.
+ * and slides left as far as it would run off the right. Placed fixed where it would open, so a pane that clips its
+ * overflow (the thread beside the chat, the main column beside the sidebar) never cuts it: it overlaps its neighbour
+ * instead. On a phone the picker is fixed across the screen by CSS.
  */
 export function useInView(anchor: React.RefObject<HTMLElement | null>, open: boolean) {
   useLayoutEffect(() => {
     const el = open ? anchor.current?.querySelector<HTMLElement>(":scope > .picker") : null;
     if (!el) return;
     const fit = () => {
-      el.style.translate = "";
+      Object.assign(el.style, { position: "", left: "", right: "", top: "", translate: "" });
       if (getComputedStyle(el).position !== "absolute") return;
       const r = el.getBoundingClientRect(), right = document.documentElement.clientWidth - 16;
       const dx = Math.max(16 - r.left, Math.min(0, right - r.right));
-      if (dx) el.style.translate = `${dx}px 0`;
+      Object.assign(el.style, { position: "fixed", left: `${r.left + dx}px`, right: "auto", top: `${r.top}px` });
     };
     fit();
     const seen = new ResizeObserver(fit);
     seen.observe(el);
+    // Fixed, it no longer scrolls with its button; a scrolling drawer or page moves it along.
+    const scrolled = (e: Event) => { if (!el.contains(e.target as Node)) fit(); };
     addEventListener("resize", fit);
-    return () => { seen.disconnect(); removeEventListener("resize", fit); };
+    addEventListener("scroll", scrolled, true);
+    return () => { seen.disconnect(); removeEventListener("resize", fit); removeEventListener("scroll", scrolled, true); };
   }, [anchor, open]);
 }
 

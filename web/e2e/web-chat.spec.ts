@@ -1057,6 +1057,19 @@ test("after a reply the header's Context shows the percent, and its popover list
     await noHorizontalScroll(page);
     if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/context-edge-${page.viewportSize()!.width}.png` });
     await page.keyboard.press("Escape");
+
+    // In a pane narrower than the popover, as in the panel beside a chat, it overlaps the pane to its left rather than being cut.
+    await meter.evaluate((el) => {
+      el.parentElement!.removeAttribute("style");
+      Object.assign(el.closest<HTMLElement>(".main")!.style, { width: "260px", justifySelf: "end" });
+    });
+    await meter.click();
+    const wide = (await popover.boundingBox())!;
+    const main = (await page.locator(".main").filter({ has: meter }).boundingBox())!;
+    expect(wide.x).toBeLessThan(main.x);
+    expect(await popover.evaluate((el, x) => el.contains(document.elementFromPoint(x, el.getBoundingClientRect().top + 12)), wide.x + 4)).toBe(true);
+    if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/context-overlap-${page.viewportSize()!.width}.png` });
+    await page.keyboard.press("Escape");
   }
 });
 
