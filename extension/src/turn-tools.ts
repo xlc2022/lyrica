@@ -5,7 +5,6 @@ import { setToolsOff } from "./gate.ts";
 
 // Principles 1 and 2: stop real tool loops in the runtime, independently of the prompt.
 export const MAX_TURN_TOOL_CALLS = 100;
-export const MAX_SAME_TOOL_RUN = 25;
 export const MAX_IDENTICAL_TOOL_CALLS = 3;
 export const TURN_TOOL_NOTICE = "lyrica-tool-limit";
 /** Told to her, unseen, once the limit stops her tools: the person gets a reply, never only the notice. */
@@ -70,7 +69,7 @@ export function createWaitForReportsExtension(off: () => boolean): ExtensionFact
 /** One budget per prompt/agent run, including every model continuation and nested tool call. */
 export function createTurnToolsExtension(): ExtensionFactory {
   return pi => {
-    let calls = 0, run = 0, last = "", stopped = false, notified = false, why = "";
+    let calls = 0, stopped = false, notified = false, why = "";
     let wrapped = false;
     let empty = 0, asText = 0, cut = 0;
     /** The thinking level to go back to after a retry without thinking. */
@@ -84,15 +83,13 @@ export function createTurnToolsExtension(): ExtensionFactory {
       thinking = null;
     });
     pi.on("agent_start", () => {
-      calls = run = empty = asText = cut = 0; last = why = ""; stopped = notified = wrapped = false;
+      calls = empty = asText = cut = 0; why = ""; stopped = notified = wrapped = false;
       repeats.clear(); refused.clear();
     });
     // This event precedes schema validation, so malformed and unknown calls count too.
     pi.on("tool_execution_start", e => {
       if (stopped) { refused.set(e.toolCallId, `Turn stopped after ${calls} tool calls.`); return; }
       calls++;
-      run = e.toolName === last ? run + 1 : 1;
-      last = e.toolName;
       const key = `${e.toolName}:${normalized(e.args)}`;
       // After a plain sleep, time has passed: a sleep, or a call made again after one (polling a file, say), may not return the same thing.
       // The caps on calls still bound a loop of them.
@@ -103,7 +100,6 @@ export function createTurnToolsExtension(): ExtensionFactory {
         ? `You already read this thread twice with these arguments. If it is still working: ${CHILD_WAKES}`
         : "You already have this result: this tool was called with identical arguments twice. Answer or try something different.");
       if (calls >= MAX_TURN_TOOL_CALLS) { stopped = true; why = `Turn stopped after \`${calls}\` tool calls.`; }
-      else if (run >= MAX_SAME_TOOL_RUN) { stopped = true; why = `Turn stopped after \`${run}\` calls in a row to \`${e.toolName}\`.`; }
     });
     pi.on("tool_call", e => {
       const reason = refused.get(e.toolCallId);

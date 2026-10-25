@@ -1255,10 +1255,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   keys sorted recursively; array order preserved) return an error telling
   the model it already has the result and should answer or try something
   different. A plain `sleep` (a `bash` call that only sleeps) starts the
-  count over for every call, so polling isn't refused. A run of 25 calls to one tool, with any arguments, also stops
-  the turn, and so do two replies in a row cut off at the reply limit with a
-  tool call in them (Pi refuses a cut-off call and asks for it again, which
-  on a full window is only cut again): that turn's notice reads `CUT_OFF`
+  count over for every call, so polling isn't refused. Two replies in a row
+  cut off at the reply limit with a tool call in them also stop the turn (Pi
+  refuses a cut-off call and asks for it again, which on a full window is
+  only cut again): that turn's notice reads `CUT_OFF`
   and its wrap-up `CUT_WRAP_UP`. Calls beyond either limit in a batch are refused. After the
   batch's results her tools turn off and a hidden `lyrica-tool-limit-wrap-up`
   message (`WRAP_UP`) asks for one reply on what she did, where things
@@ -1266,7 +1266,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   reply calls tools anyway the turn aborts. Her tools come back when the run
   ends. A stored
   `lyrica-tool-limit` message shows “Turn stopped after 100 tool calls.”
-  or “Turn stopped after 25 calls in a row to <tool>.” (count and tool in mono, under the heading Tool limit) in the thread, live and after reload. Counters reset on the next agent run.
+  (the count in mono, under the heading Tool limit) in the thread, live and after reload. Counters reset on the next agent run.
   Pi validates tool schemas before execution and returns validation errors
   naming missing fields. These limits serve principles 1 and 2: real
   runaway turns stop structurally.

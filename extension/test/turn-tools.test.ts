@@ -115,11 +115,10 @@ it("lets a plain sleep repeat, and a call made again after one, since time has p
   expect((await scenario([status, status, status])).executed).toBe(2);
 });
 
-it("ends after 25 consecutive calls to the same tool with changing arguments", async () => {
-  const r = await scenario(Array.from({ length: 30 }, (_, i) => ({ name: "search", args: { query: String(i) } })));
-  expect(r.executed).toBe(25);
-  expect(r.requested).toBe(26);
-  expect(JSON.stringify(r.shown)).toContain("Turn stopped after `25` calls in a row to `search`.");
+it("lets one tool run with changing arguments up to the turn's cap", async () => {
+  const r = await scenario(Array.from({ length: 30 }, (_, i) => ({ name: "bash", args: { command: `echo ${i}` } })));
+  expect(r.executed).toBe(30);
+  expect(JSON.stringify(r.shown)).not.toContain("Turn stopped");
 });
 
 it("validates missing required fields before executing", async () => {
@@ -139,11 +138,11 @@ it("blocks calls past the cap within a single batch", async () => {
 });
 
 it("resets the budget on the next prompt", async () => {
-  // The 26th response is her wrap-up; the 27th call runs on the next prompt.
-  const r = await scenario(Array.from({ length: 27 }, (_, i) => ({ name: "search", args: { query: String(i) } })), 2);
-  expect(r.executed).toBe(26);
+  // The 101st response is her wrap-up; the 102nd call runs on the next prompt.
+  const r = await scenario(Array.from({ length: 102 }, (_, i) => ({ name: "search", args: { query: String(i) } })), 2);
+  expect(r.executed).toBe(101);
   expect(r.notices).toHaveLength(1);
-  expect(r.requested).toBe(28);
+  expect(r.requested).toBe(103);
 });
 
 /** Her replies, in order, to one prompt: what each request asked and what the thread shows. */
