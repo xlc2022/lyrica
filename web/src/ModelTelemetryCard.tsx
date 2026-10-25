@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import uPlot, { type BBox } from "uplot";
+import uPlot from "uplot";
+import "uplot/dist/uPlot.min.css";
 import { get, u, type ModelTelemetry, type TelemetryRange, type Task } from "./api.ts";
 import { useLoad } from "./ui.tsx";
 
@@ -119,13 +120,21 @@ function createDonutChart(root: HTMLDivElement, values: number[], labels: string
       {},
       {
         label: "Count",
-        stroke: "var(--accent)",
+        stroke: "#1f6f78",
         width: 2,
-        fill: "color-mix(in oklab, var(--accent) 15%, transparent)",
+        fill: "rgba(31, 111, 120, 0.15)",
         paths: donutPathBuilder(values),
         points: { show: false },
       },
     ],
+    hooks: {
+      init: [
+        (u) => {
+          u.root.style.fontFamily = "IBM Plex Sans, system-ui, -apple-system, sans-serif";
+          u.root.style.color = "var(--fg)";
+        },
+      ],
+    },
   };
   const plot = new uPlot(opts, data, root);
   uplots.push(plot);
@@ -149,15 +158,23 @@ function createLatencyChart(root: HTMLDivElement, task: Task, p50: number, p95: 
     series: [
       {},
       {
-        stroke: "var(--accent)",
+        stroke: "#1f6f78",
         width: 1,
-        fill: "color-mix(in oklab, var(--accent) 20%, transparent)",
+        fill: "rgba(31, 111, 120, 0.2)",
         paths: latencyBarPathBuilder(percentiles, labels),
         points: { show: false },
       },
     ],
     scales: { x: { time: false }, y: { min: 0 } },
     cursor: { show: false },
+    hooks: {
+      init: [
+        (u) => {
+          u.root.style.fontFamily = "IBM Plex Sans, system-ui, -apple-system, sans-serif";
+          u.root.style.color = "var(--fg)";
+        },
+      ],
+    },
   };
   const plot = new uPlot(opts, data, root);
   uplots.push(plot);
@@ -179,11 +196,19 @@ function createThroughputChart(root: HTMLDivElement, labels: string[], input: nu
     ],
     series: [
       {},
-      { label: "Input", stroke: "var(--info)", width: 2, fill: "color-mix(in oklab, var(--info) 15%, transparent)" },
-      { label: "Output", stroke: "var(--accent)", width: 2, fill: "color-mix(in oklab, var(--accent) 15%, transparent)" },
+      { label: "Input", stroke: "#2b6cb0", width: 2, fill: "rgba(43, 108, 176, 0.15)" },
+      { label: "Output", stroke: "#1f6f78", width: 2, fill: "rgba(31, 111, 120, 0.15)" },
     ],
     scales: { x: { time: false }, y: { min: 0 } },
     cursor: { show: false },
+    hooks: {
+      init: [
+        (u) => {
+          u.root.style.fontFamily = "IBM Plex Sans, system-ui, -apple-system, sans-serif";
+          u.root.style.color = "var(--fg)";
+        },
+      ],
+    },
   };
   const plot = new uPlot(opts, data, root);
   uplots.push(plot);
@@ -206,15 +231,23 @@ function createErrorRateChart(root: HTMLDivElement, labels: string[], rates: num
       {},
       {
         label: "Error %",
-        stroke: "var(--danger)",
+        stroke: "#a8322d",
         width: 1,
-        fill: "color-mix(in oklab, var(--danger) 20%, transparent)",
+        fill: "rgba(168, 50, 45, 0.2)",
         paths: barPathBuilder(rates, labels),
         points: { show: false },
       },
     ],
     scales: { x: { time: false }, y: { min: 0, max: 100 } },
     cursor: { show: false },
+    hooks: {
+      init: [
+        (u) => {
+          u.root.style.fontFamily = "IBM Plex Sans, system-ui, -apple-system, sans-serif";
+          u.root.style.color = "var(--fg)";
+        },
+      ],
+    },
   };
   const plot = new uPlot(opts, data, root);
   uplots.push(plot);

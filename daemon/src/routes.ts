@@ -2549,39 +2549,70 @@ function modelTelemetry(d: Lyricad, r: Request): Api.ModelTelemetry {
   const userId = d.adminFor(r).id;
   const ps = presets(d, userId);
   
-  // Parse range parameter
-  const range = (r.query.get("range") as Api.TelemetryRange) ?? "24h";
+  // Parse and validate range parameter
+  const range = (r.query.get("range") as Api.TelemetryRange | null);
+  const validRanges: Api.TelemetryRange[] = ["1h", "6h", "24h", "7d"];
+  if (range && !validRanges.includes(range)) {
+    throw new HttpError(400, `invalid range: ${range}, must be one of ${validRanges.join(", ")}`);
+  }
+  const effectiveRange = range ?? "24h";
   const now = Date.now();
-  const rangeMs = range === "1h" ? 3600_000 : range === "6h" ? 21_600_000 : range === "24h" ? 86_400_000 : 604_800_000;
+  const rangeMs = effectiveRange === "1h" ? 3600_000 : effectiveRange === "6h" ? 21_600_000 : effectiveRange === "24h" ? 86_400_000 : 604_800_000;
   const since = now - rangeMs;
   
-  const callHistory = m.callHistory(userId, { limit: 1000, offset: 0, q: "", pools: ["general", "private"] });
+  // Get call history with enough entries to cover the range, then filter
+  // Use a larger limit to avoid truncation within the range
+  const callHistory = m.callHistory(userId, { limit: 5000, offset: 0, q: "", pools: ["general", "private"] });
   
-  // Filter calls by time range
-  const filteredCalls = callHistory.entries.filter((c) => new Date(c.at).getTime() >= since);
+  // Filter calls by time range FIRST, then take the most recent 1000 for processing
+  const filteredCalls = callHistory.entries
+    .filter((c) => new Date(c.at).getTime() >= since)
+    .slice(0, 1000);
   
-  // Model assignments by task from presets and column
+  const truncated = filteredCalls.length === 1000 && callHistory.entries.length > 1000;
+  
+  // Model assignments by task - traverse presets properly including groups and Same-as
   const assignments: Api.ModelAssignment[] = [];
+  const seenOfferings = new Set<string>();
+  
+  const resolveEntry = (task: Api.Task, entry: Api.Entry | undefined, depth = 0): { offeringId: string }[] => {
+    if (depth > 10) return []; // Prevent infinite loops
+    if (!entry) return [];
+    if ("same" in entry) {
+      const sameTask = entry.same;
+      const sameEntry = ps.columns.general.entries[sameTask] ?? ps.columns.private.entries[sameTask];
+      return resolveEntry(task, sameEntry, depth + 1);
+    }
+    if (Array.isArray(entry)) {
+      return entry.filter((ref): ref is { offeringId: string } => "offeringId" in ref);
+    }
+    return [];
+  };
+  
   for (const task of THREAD_TASKS) {
-    const entry = ps.columns.general.entries[task] ?? ps.columns.private.entries[task];
-    if (entry && Array.isArray(entry)) {
-      for (const ref of entry) {
-        if ("offeringId" in ref) {
-          const offering = m.offering(userId, ref.offeringId);
-          if (offering) {
-            assignments.push({
-              task,
-              offeringId: ref.offeringId,
-              label: `${offering.endpoint.name}/${modelName(offering.offering)}`,
-              kind: offering.endpoint.kind,
-            });
-          }
+    // Check both general and private columns
+    for (const column of [ps.columns.general, ps.columns.private] as const) {
+      const entry = column.entries[task];
+      const refs = resolveEntry(task, entry);
+      for (const ref of refs) {
+        const offeringId = ref.offeringId;
+        if (seenOfferings.has(offeringId)) continue;
+        const offering = m.offering(userId, offeringId);
+        if (offering) {
+          seenOfferings.add(offeringId);
+          assignments.push({
+            task,
+            offeringId,
+            label: `${offering.endpoint.name}/${modelName(offering.offering)}`,
+            kind: offering.endpoint.kind,
+          });
         }
       }
     }
   }
   
-  // Latency percentiles from call history (generation time only)
+  // Latency percentiles from call history (generation time only) - per task over time buckets
+  // For now return current snapshot percentiles; time-series would need different API shape
   const latencyMap = new Map<Api.Task, number[]>();
   for (const call of filteredCalls) {
     const genMs = call.pace?.genMs;
@@ -2601,7 +2632,7 @@ function modelTelemetry(d: Lyricad, r: Request): Api.ModelTelemetry {
     latency.push({ task, p50, p95, p99 });
   }
   
-  // Throughput from call history
+  // Throughput from call history - per task averages
   const throughputMap = new Map<Api.Task, { input: number; output: number; count: number }>();
   for (const call of filteredCalls) {
     const tokPerSec = call.pace?.tokPerSec;
@@ -2624,14 +2655,13 @@ function modelTelemetry(d: Lyricad, r: Request): Api.ModelTelemetry {
     });
   }
   
-  // Error rate by model - only count calls with pace (completed) and check for isError or error in note
+  // Error rate by model - count ALL calls (including failed ones without pace)
   const errorMap = new Map<string, { total: number; errors: number }>();
   for (const call of filteredCalls) {
-    if (!call.pace) continue; // Only count completed calls
     const agg = errorMap.get(call.label) ?? { total: 0, errors: 0 };
     agg.total += 1;
-    // A call is an error if it has an error note or was a fallback due to error
-    const isError = call.note?.includes("error") || (call.fallback && call.note?.includes("down"));
+    // A call is an error if: it has no pace (failed), or has error note, or fallback due to down
+    const isError = !call.pace || call.note?.includes("error") || (call.fallback && call.note?.includes("down"));
     if (isError) {
       agg.errors += 1;
     }
