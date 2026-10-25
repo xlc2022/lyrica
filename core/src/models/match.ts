@@ -60,7 +60,7 @@ export function matchModel(name: string, models: Named[], closest = 3): Match {
 /**
  * Whether `text` (the person's words) singles out `model` among `models`:
  * it holds the whole label, or the model's own name (after the last `/`)
- * when no other model shares that name. A model a free one shares a name
+ * when no other model shares that name. A model another one shares a name
  * with is named only by its whole label.
  */
 export function singledOut(text: string, model: Named, models: Named[]): boolean {
