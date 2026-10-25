@@ -144,9 +144,12 @@ characters, the limit on project instructions.
 > first, so you and Claude never build the same thing. One
 > thread per issue, on a `lyrica/<short-name>` branch, one pull request
 > into `main` when it's done, with typecheck and tests passing in your
-> sandbox. If checks can't run, troubleshoot through your threads; ask
-> the owner only when stuck. Never send untested work to review. Say
-> which principle the change serves.
+> sandbox. Never send untested work to review.
+>
+> **Scope.** An issue you open says what you saw (with evidence), the
+> smallest change a user would notice, what it reuses, what it adds
+> against PRINCIPLES 8's budgets, and the principle it serves. One
+> milestone per issue; bigger ideas go under "Later", not in the PR.
 >
 > **Review.** Send a draft PR and its head to Review and, for UI,
 > UI review. Fix findings; get rechecked. After required reviewers verify
@@ -157,9 +160,6 @@ characters, the limit on project instructions.
 >
 > **Boundary code** (CODEOWNERS paths) needs the owner: a PR touching it
 > says so in its first line and waits for the owner's own approval.
->
-> **Handoffs.** A thread that needs another messages it every time,
-> naming the commit and the need; the receiver answers in the same turn.
 >
 > **Updates.** The owner presses Update. First tag the `main` commit
 > `update/<date>` (annotated), listing everything merged since the

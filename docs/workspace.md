@@ -1178,7 +1178,8 @@ her account is general.
   failure as hers unless she shows otherwise: flaky only once a re-run of
   just the failed jobs passes, not hers only once a base-branch run's log
   shows the same test failing; otherwise she pushes at least one fix before
-  calling it blocked (`CI_RED`; `git.md` says the same, with the exact `gh`
+  calling it blocked (`CI_RED`; `git.md`, which also says to keep work she
+  starts herself small, says the same, with the exact `gh`
   commands, to end the turn rather than watch a run, to force-push only
   after a rebase, and never to loosen, pad or skip a test). GitHub is polled; a Forgejo or
   Gitea account whose host resolves into her own network also gets a
