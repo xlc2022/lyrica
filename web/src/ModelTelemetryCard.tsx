@@ -76,11 +76,42 @@ const barPathBuilder = (rates: number[], labels: string[]): uPlot.Series.PathBui
   };
 };
 
-export function ModelTelemetryCard() {
+const latencyBarPathBuilder = (percentiles: number[], labels: string[]): uPlot.Series.PathBuilder => {
+  return (u, _seriesIdx, _idx0, _idx1) => {
+    const bbox = u.bbox!;
+    const left = bbox.left as number;
+    const top = bbox.top as number;
+    const width = bbox.width as number;
+    const height = bbox.height as number;
+    const strokePath = new Path2D();
+    const fillPath = new Path2D();
+    const bx = left + 10;
+    const bw = Math.max(1, (width - 20) / labels.length - 4);
+    const maxVal = Math.max(...percentiles, 1);
+    for (let j = 0; j < percentiles.length; j++) {
+      const h = (percentiles[j]! / maxVal) * height;
+      const x = bx + j * (bw + 4);
+      const y = top + height - h;
+      fillPath.moveTo(x, top + height);
+      fillPath.lineTo(x, y);
+      fillPath.lineTo(x + bw, y);
+      fillPath.lineTo(x + bw, top + height);
+      fillPath.closePath();
+      strokePath.moveTo(x, top + height);
+      strokePath.lineTo(x, y);
+      strokePath.lineTo(x + bw, y);
+      strokePath.lineTo(x + bw, top + height);
+    }
+    return { stroke: strokePath, fill: fillPath };
+  };
+};
+
+export function ModelTelemetryCard({ userId }: { userId: string }) {
   const [range, setRange] = useState<TelemetryRange>("24h");
-  const telemetry = useLoad<ModelTelemetry>(() => get(u("admin", "telemetry", "models")), [range]);
+  const path = `${u(userId, "admin", "telemetry", "models")}?range=${range}`;
+  const telemetry = useLoad<ModelTelemetry>(() => get(path), [userId, range]);
   const donutRef = useRef<HTMLDivElement>(null);
-  const sparklineRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const latencyRefs = useRef<(HTMLDivElement | null)[]>([]);
   const areaRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const uplots = useRef<uPlot[]>([]);
@@ -119,30 +150,35 @@ export function ModelTelemetryCard() {
       uplots.current.push(plot);
     }
 
-    // Sparklines: latency p50/p95/p99 per task
+    // Latency percentiles bar chart per task
     for (let i = 0; i < latency.length; i++) {
       const l = latency[i];
       if (!l) continue;
-      const ref = sparklineRefs.current[i];
+      const ref = latencyRefs.current[i];
       if (ref) {
-        const xVals = [0, 1, 2];
+        const percentiles = [l.p50, l.p95, l.p99];
+        const labels = ["p50", "p95", "p99"];
         const data: uPlot.AlignedData = [
-          toTypedArray(xVals),
-          toTypedArray([l.p50, l.p95, l.p99]),
+          toCategoryArray(labels),
+          toTypedArray(percentiles),
         ];
         const opts: uPlot.Options = {
           width: 320,
           height: 100,
-          title: `${l.task} latency (ms)`,
+          title: `${l.task} latency percentiles (ms)`,
           axes: [
-            { space: 0, show: false },
+            { space: 0 },
             { space: 30, size: 40, grid: { stroke: "var(--line)" }, ticks: { size: 4 } },
           ],
           series: [
             {},
-            { stroke: "var(--accent)", width: 2, fill: "none", points: { show: true, size: 4 } },
-            { stroke: "var(--warn)", width: 1, fill: "none", points: { show: true, size: 3 }, dash: [4, 2] },
-            { stroke: "var(--danger)", width: 1, fill: "none", points: { show: true, size: 3 }, dash: [2, 2] },
+            {
+              stroke: "var(--accent)",
+              width: 1,
+              fill: "color-mix(in oklab, var(--accent) 20%, transparent)",
+              paths: latencyBarPathBuilder(percentiles, labels),
+              points: { show: false },
+            },
           ],
           scales: { x: { time: false }, y: { min: 0 } },
           cursor: { show: false },
@@ -242,7 +278,7 @@ export function ModelTelemetryCard() {
         <div className="chart-container donut" ref={donutRef} />
         <div className="chart-row">
           {latency.map((_, i) => (
-            <div key={i} className="chart-container sparkline" ref={(el) => { sparklineRefs.current[i] = el; }} />
+            <div key={i} className="chart-container sparkline" ref={(el) => { latencyRefs.current[i] = el; }} />
           ))}
         </div>
         <div className="chart-container area" ref={areaRef} />

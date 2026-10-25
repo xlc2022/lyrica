@@ -346,7 +346,7 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
             <dt>Start unlocked</dt><dd>{s ? (s.savedPassphrase ? "Passphrase saved" : "Passphrase not saved") : "…"}</dd>
           </dl>
         </StatusCard>
-        <ModelTelemetryCard />
+        <ModelTelemetryCard userId={userId} />
       </StatusGrid>
     </Section>
   );
