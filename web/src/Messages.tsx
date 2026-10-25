@@ -748,7 +748,9 @@ const THREADS_HEADS: Record<string, string> = {
 function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {
   const args = (part.args ?? {}) as { action?: string; title?: string; task?: string; text?: string; to?: string; summary?: string };
   if (args.action === "compact" && args.summary) return <CompactionCard part={part} summary={args.summary} env={env} />;
-  const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
+  // The guard turning away a read made again is about her waiting: a done card with its sentence muted, not a failure.
+  const refused = part.isError && isPoll(part);
+  const state = part.result === undefined ? "running" : part.isError && !refused ? "failed" : "done";
   // A message names the thread it went to, and a read the thread it read (known once it runs), by its current title: "a thread" until then, and a forgotten one has no Open.
   const to = (args.action === "message" && args.to !== "parent") || args.action === "read" ? part.threads?.[0] : undefined;
   const titleOf = useMentionTitles(to ? `[${to.pool === env.pool ? "" : `${to.pool}/`}t:${to.id}]` : "", env.userId, env.pool);
@@ -772,7 +774,7 @@ function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" 
       </div>
       {child?.steps && child.state !== "resolved" && <StepLine steps={child.steps} />}
       {(args.task ?? args.text) && <div className="prose"><HerProse text={(args.task ?? args.text)!} env={env} /></div>}
-      {part.isError && <ToolError text={String(part.result ?? "")} env={env} />}
+      {refused ? <p className="muted">{String(part.result ?? "")}</p> : part.isError && <ToolError text={String(part.result ?? "")} env={env} />}
     </div>
   );
 }

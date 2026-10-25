@@ -552,6 +552,8 @@ test("her waiting (sleeps that only echo, reads of a thread, a refused read) fol
   await run.getByRole("button", { name: /tool calls/ }).click();
   await expect(run.locator(".run-body .marker[data-type='tool']")).toHaveCount(2);
   await expect(run.locator(".run-body .threads-card")).toHaveCount(2);
+  await expect(run.locator(".run-body .threads-card .status[data-state='failed']")).toHaveCount(0);
+  await expect(run.locator(".run-body .threads-card p.muted")).toContainText("You already read this thread");
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/waiting-open-${page.viewportSize()!.width}.png` });
 });

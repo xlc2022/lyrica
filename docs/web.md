@@ -982,7 +982,7 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   optionally followed by `echo` of plain words, whose output is empty or
   only that echo (running counts); a `threads read`; or the turn guard's
   refusal of a read made again. The guard's refusal doesn't mark the run
-  failed. The calls themselves stay allowed: polling is a wake's backup.
+  failed, and its card shows the done dot with the sentence muted. The calls themselves stay allowed: polling is a wake's backup.
 - An expanded `read` call of a text file (`readText`) shows its result as
   `ReadText`: the code block's strip with the file's name (a Files link
   when its path resolves under the thread's folders and the call isn't on a
