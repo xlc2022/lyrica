@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
-  DelegationStore, isRestricted, LIVE_STATUSES, matchModel, refId, renderThreadMentions, unmatched,
+  DelegationStore, isRestricted, LIVE_STATUSES, matchModel, refId, renderThreadMentions, singledOut, unmatched,
   type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
   type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
@@ -632,7 +632,8 @@ export class Delegation {
     let sub: Subagent;
     try {
       const role = this.role(run.parent.user.id, row.role, "worker");
-      const pick: ModelPick = row.pick && "model" in row.pick ? { model: this.named(run, row.pick.model) } : { tier: row.pick?.tier ?? role.tier };
+      // A model it already ran on was allowed then.
+      const pick: ModelPick = row.pick && "model" in row.pick ? { model: this.named(run, row.pick.model, false) } : { tier: row.pick?.tier ?? role.tier };
       sub = await this.open(run, role, pick, row.narrowing ?? {}, row);
       opened.resolve();
     } catch (err) {
@@ -941,14 +942,33 @@ export class Delegation {
    * A model a saved workflow or the person names: by offering ID, as
    * `endpoint/model`, or in plain words that fit one of the thread's models.
    * Otherwise the error lists the closest, for her to ask which was meant.
+   * One that costs money is refused unless the person's latest message
+   * singles it out (`singledOut`): she never picks a paid model herself.
    */
-  private named(run: Run, name: string): ModelRef {
+  private named(run: Run, name: string, checkPaid = true): ModelRef {
     const { models } = this.o;
-    const ref = models.find(run.parent.user.id, name);
-    if (ref) return ref;
-    const m = matchModel(name, models.textModels(this.parentCall(run)));
-    if ("closest" in m) throw new Error(unmatched(name, m));
-    return { offeringId: m.model.id };
+    const list = models.textModels(this.parentCall(run));
+    let ref = models.find(run.parent.user.id, name);
+    if (!ref) {
+      const m = matchModel(name, list);
+      if ("closest" in m) throw new Error(unmatched(name, m));
+      ref = { offeringId: m.model.id };
+    }
+    const picked = list.find((x) => x.id === refId(ref));
+    if (checkPaid && picked?.paid && !singledOut(this.personSaid(run), picked, list)) {
+      const free = list.filter((x) => !x.paid && x.vision).sort((a, b) => Number(b.local) - Number(a.local)).slice(0, 3).map((x) => x.label);
+      throw new Error(`${picked.label} costs money, and the person didn't name it: name a model that costs money only when they did, in their words.`
+        + (free.length ? ` Free models that can see images: ${free.join(", ")}.` : ""));
+    }
+    return ref;
+  }
+
+  /** The latest message from the person, in the thread that owns the run (past any subagents). */
+  private personSaid(run: Run): string {
+    const own = this.o.memory.openThreadView(run.parent.user.id, run.parent.pool).own;
+    let owner = run.parent.threadId;
+    while (own.getThread(owner)?.subagent && own.getThread(owner)?.parent) owner = own.getThread(owner)!.parent!;
+    return own.lastEntry(owner, ["user"])?.text ?? "";
   }
 
   /** Up to three distinct models: the thread's subagent models first, then others it allows. */
@@ -959,15 +979,17 @@ export class Delegation {
     for (const task of ["subagent.strong", "subagent.cheap", "chat"] as const) {
       try { picks.push(models.resolveModel(task, call)); } catch { /* not set */ }
     }
-    for (const { offerings } of models.allowed(call)) for (const m of offerings) if (m.tools !== false && m.status === "listed") picks.push({ offeringId: m.id });
+    // Beyond the thread's own lists, only models that cost nothing.
+    for (const { offerings } of models.allowed(call)) for (const m of offerings) if (m.tools !== false && m.status === "listed" && !(m.price && !m.price.free)) picks.push({ offeringId: m.id });
     const seen = new Set<string>();
     return picks.filter((r) => !seen.has(r.offeringId) && !!seen.add(r.offeringId)).slice(0, 3);
   }
 
-  /** The chat models this thread may name for its subagents, as it is now. */
+  /** The chat models this thread may name for its subagents, as it is now: local first, and none that costs money. */
   models(parent: ThreadContext): { id: string; label: string; local: boolean; vision: boolean }[] {
     const { models } = this.o;
-    return models.textModels(models.callContext(parent.user.id, parent.pool, parent.threadId));
+    return models.textModels(models.callContext(parent.user.id, parent.pool, parent.threadId))
+      .filter((m) => !m.paid).sort((a, b) => Number(b.local) - Number(a.local));
   }
 
   /** The parent's CallContext as it is now: local-only may have been switched on since the run started. */

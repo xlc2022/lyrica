@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchModel } from "../src/index.ts";
+import { matchModel, singledOut } from "../src/index.ts";
 
 const models = [
   { id: "1", label: "gpu/qwen3.8-flash-next" },
@@ -23,5 +23,14 @@ describe("naming a model in plain words", () => {
     expect(pick("flash")).toEqual(["gpu/qwen3.8-flash-next", "openrouter/deepseek/deepseek-4.1-flash"]);
     expect(pick("gpt 6.2 sol")[0]).toBe("chatgpt/gpt-6.1-sol");
     expect(pick("llama")).toEqual([]);
+  });
+
+  it("tells whether the person's words single out one model", () => {
+    const paid = { id: "5", label: "router/qwen/qwen3.8-27b" };
+    const all = [...models, paid];
+    expect(singledOut("use router/qwen/qwen3.8-27b", paid, all)).toBe(true);
+    expect(singledOut("use qwen3.8-27b", paid, all)).toBe(false);
+    expect(singledOut("use deepseek-4.1-flash please", models[3]!, all)).toBe(true);
+    expect(singledOut("what's in this picture?", paid, all)).toBe(false);
   });
 });

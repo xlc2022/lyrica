@@ -50,6 +50,20 @@ export function matchModel(name: string, models: Named[], closest = 3): Match {
   return { closest: ranked.slice(0, closest).map((r) => r.m) };
 }
 
+/**
+ * Whether `text` (the person's words) singles out `model` among `models`:
+ * it holds the whole label, or the model's own name (after the last `/`)
+ * when no other model shares that name. A model a free one shares a name
+ * with is named only by its whole label.
+ */
+export function singledOut(text: string, model: Named, models: Named[]): boolean {
+  const said = compact(text);
+  const own = (label: string) => compact(label.slice(label.lastIndexOf("/") + 1));
+  if (said.includes(compact(model.label))) return true;
+  const name = own(model.label);
+  return !!name && said.includes(name) && !models.some((m) => m.id !== model.id && own(m.label) === name);
+}
+
 /** What she's told when a name fits no one model: the closest, and to ask. */
 export function unmatched(name: string, m: { closest: Named[] }): string {
   if (!m.closest.length) return `"${name}" isn't one of this thread's models, and none is close. Ask the person which model they meant.`;

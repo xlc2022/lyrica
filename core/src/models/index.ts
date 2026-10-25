@@ -26,7 +26,7 @@ export { acceptedSettings, ANSWER_SETTINGS, payloadFields, replyCap, DEFAULT_CON
 export { fingerprint, HostIdentityChanged, HostRefused, hostOrigin, normaliseCode, PairingFailed, pairingProofs } from "./host.ts";
 export { useTailnetProxy } from "./tailnet.ts";
 export { refId, type Entry, type Use } from "./refs.ts";
-export { matchModel, unmatched, type Match, type Named } from "./match.ts";
+export { matchModel, singledOut, unmatched, type Match, type Named } from "./match.ts";
 export { MAX_CLIP_BYTES, MAX_CLIP_SECONDS, MAX_SPEAK_CHARS, pcmSeconds, SPEECH_CONTENT_TYPE, SPEECH_FORMAT, wavData, wavSeconds } from "./speech.ts";
 
 /** A cloud model was asked for where only local models are allowed. Nothing falls back. */
@@ -2930,11 +2930,14 @@ export class Models {
     }));
   }
 
-  /** The chat models a context may use, by label, for her to name: listed, and not image, speech or embedding models. */
-  textModels(ctx: CallContext): (Named & { local: boolean; vision: boolean })[] {
+  /**
+   * The chat models a context may use, by label, for her to name: listed, and not image, speech or embedding models.
+   * `paid` when its price is known and isn't free.
+   */
+  textModels(ctx: CallContext): (Named & { local: boolean; vision: boolean; paid: boolean })[] {
     return this.allowed(ctx).flatMap(({ endpoint, offerings }) => offerings
       .filter((o) => o.status === "listed" && o.tools !== false && !o.embedding && !o.image && !o.transcribe && !o.speak && !o.recipe)
-      .map((o) => ({ id: o.id, label: labelOf(endpoint, o), local: endpoint.kind === "local", vision: !!o.vision })));
+      .map((o) => ({ id: o.id, label: labelOf(endpoint, o), local: endpoint.kind === "local", vision: !!o.vision, paid: !!o.price && !o.price.free })));
   }
 
   /** Every endpoint and model a context may use. For a restricted context, local endpoints only. */
