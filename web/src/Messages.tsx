@@ -161,14 +161,40 @@ function isMarker(p: MessagePart): boolean {
   if (p.type === "thinking" || p.type === "recall" || p.type === "remember") return true;
   if (p.type !== "tool") return false;
   if (p.name === "delegate" || p.name === "propose_plan" || p.name === "image") return false;
-  if (p.name === "threads") return (p.args as { action?: string } | null)?.action === "steps";
+  if (p.name === "threads") return (p.args as { action?: string } | null)?.action === "steps" || isPoll(p);
   return true;
 }
 
+/** `sleep N`, optionally then `echo` of a word or two: what she runs to wait. Its words, unquoted, are what it prints. */
+const SLEEP = /^\s*sleep\s+\d+(?:\.\d+)?[smh]?\s*(?:(?:&&|;)\s*echo((?:\s+(?:"[^"\n]*"|'[^'\n]*'|[^\s"';&|]+))*))?\s*;?\s*$/;
+/** The guard's refusal of a third identical thread read (extension/src/turn-tools.ts): about her waiting, nothing to show. */
+const READ_AGAIN = "You already read this thread";
+
+/**
+ * A call that only waits or checks on a thread, with nothing of its own to show (docs/ux.md §6): a sleep whose output is
+ * only its echo, a thread read, or the guard's refusal of a read made again. A sleep that printed anything else, or failed,
+ * is not one.
+ */
+export function isPoll(p: MessagePart): boolean {
+  if (p.type !== "tool") return false;
+  const args = (p.args ?? {}) as { command?: unknown; action?: unknown };
+  if (p.name === "threads" && args.action === "read") return !p.isError || String(p.result ?? "").startsWith(READ_AGAIN);
+  if (p.name !== "bash" || p.isError || typeof args.command !== "string") return false;
+  const m = SLEEP.exec(args.command);
+  if (!m) return false;
+  if (p.result === undefined) return true;
+  const out = p.result.trim();
+  const echoed = [...(m[1] ?? "").matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((w) => w[1] ?? w[2] ?? w[3]).join(" ");
+  return out === "" || out === "(no output)" || out === echoed;
+}
+
+/** A poll that only waited: a sleep or a refused read. One folds its run; a single read of a thread stays its card. */
+const waits = (p: MessagePart) => isPoll(p) && !(p.type === "tool" && p.name === "threads" && !p.isError);
+
 /**
  * The conversation's nodes, in order: stored messages, then the live ones. Her messages that are only markers get no
- * header line; a run of three or more such markers, up to her next text, image or card or the person's next message,
- * folds into one ToolRun marker (docs/ux.md §6, Lyrica's inner workings). Along the way, the images her image parts
+ * header line; a run of three or more such markers, or any with a sleep or a refused read in it (waits), up to her next
+ * text, image or card or the person's next message, folds into one ToolRun marker (docs/ux.md §6, Lyrica's inner workings). Along the way, the images her image parts
  * showed since the person's last message are collected, so her prose doesn't show the same image again.
  */
 function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boolean, env: Env, you: string,
@@ -179,7 +205,7 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
   const flush = () => {
     if (!quiet.length) return;
     const markers = quiet.reduce((a, q) => a + q.parts.length, 0);
-    if (markers >= 3) nodes.push(<ToolRun key={`run-${quiet[0]!.key}`} runs={quiet} env={env} />);
+    if (markers >= 3 || quiet.some((q) => q.parts.some(waits))) nodes.push(<ToolRun key={`run-${quiet[0]!.key}`} runs={quiet} env={env} />);
     else for (const q of quiet) nodes.push(<section key={q.key} className="turn quiet" id={q.n !== undefined ? `m-${q.n}` : undefined}><Parts parts={q.parts} env={env} bare streaming={q.streaming} /></section>);
     quiet = [];
   };
@@ -217,7 +243,8 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
   const tools = parts.filter((p) => p.type === "tool");
   const streaming = runs.at(-1)!.streaming;
   const running = streaming || tools.some((p) => p.type === "tool" && p.result === undefined);
-  const failed = tools.some((p) => p.type === "tool" && p.isError);
+  // The guard turning away a read made again is about her waiting, not a failure to show.
+  const failed = tools.some((p) => p.type === "tool" && p.isError && !isPoll(p));
   const body = useRef<HTMLDivElement>(null);
   // Whether the person left the box at its bottom; growth fires no scroll event, so this holds until they scroll.
   const stick = useRef(true);
@@ -726,7 +753,9 @@ const THREADS_HEADS: Record<string, string> = {
 function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" }>; env: Env }) {
   const args = (part.args ?? {}) as { action?: string; title?: string; task?: string; text?: string; to?: string; summary?: string };
   if (args.action === "compact" && args.summary) return <CompactionCard part={part} summary={args.summary} env={env} />;
-  const state = part.result === undefined ? "running" : part.isError ? "failed" : "done";
+  // The guard turning away a read made again is about her waiting: a done card with its sentence muted, not a failure.
+  const refused = part.isError && isPoll(part);
+  const state = part.result === undefined ? "running" : part.isError && !refused ? "failed" : "done";
   // A message names the thread it went to, and a read the thread it read (known once it runs), by its current title: "a thread" until then, and a forgotten one has no Open.
   const to = (args.action === "message" && args.to !== "parent") || args.action === "read" ? part.threads?.[0] : undefined;
   const titleOf = useMentionTitles(to ? `[${to.pool === env.pool ? "" : `${to.pool}/`}t:${to.id}]` : "", env.userId, env.pool);
@@ -750,7 +779,7 @@ function ThreadsCard({ part, env }: { part: Extract<MessagePart, { type: "tool" 
       </div>
       {child?.steps && child.state !== "resolved" && <StepLine steps={child.steps} />}
       {(args.task ?? args.text) && <div className="prose"><HerProse text={(args.task ?? args.text)!} env={env} /></div>}
-      {part.isError && <ToolError text={String(part.result ?? "")} env={env} />}
+      {refused ? <p className="muted">{String(part.result ?? "")}</p> : part.isError && <ToolError text={String(part.result ?? "")} env={env} />}
     </div>
   );
 }

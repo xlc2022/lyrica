@@ -52,7 +52,10 @@ tool itself, reactions, Remember this.
   "<n> tool calls" (the count in mono) with "running" while the turn goes
   on, which opens to a box at most 320 px tall that scrolls, every marker
   inside it opening as before. The run ends at her next text, image or
-  card, or at the user's next message.
+  card, or at the user's next message. A run with a call that only waited
+  (a sleep that printed nothing but its echo, the refusal of a repeated
+  read of another thread) folds whatever its size, and a read of another
+  thread joins a run rather than ending it.
 - **Uploads**: an image upload is saved as `uploads/<random>.<ext>`; other
   files keep their cleaned name. In the message box an image path in the
   draft shows as a thumbnail above the text with an ✕ that takes the line
