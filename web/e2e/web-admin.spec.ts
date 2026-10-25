@@ -1708,8 +1708,10 @@ test("Code mode: thread switch, Coding model and project defaults", async ({ pag
   await expect(page.getByRole("button", { name: /^Model:/ })).toContainText("cloud-model");
 
   await openProjectSettings(page);
-  // New threads say what new threads get; the chat's own Model and Mode live in its header, drawer and composer.
-  await expect(page.getByRole("combobox", { name: "Model", exact: true }).locator("option").first()).toHaveText("Same as this chat");
+  // New threads say what new threads get, and name the coordinator they follow rather than "this chat":
+  // the page opens on its own, with no chat in view. The chat's own Model and Mode live in its header, drawer and composer.
+  for (const field of ["Model", "Thinking", "Fallback"])
+    await expect(page.getByRole("combobox", { name: field, exact: true }).locator("option").first()).toHaveText("Same as coordinator");
   await expect(page.getByRole("heading", { name: "Workspace", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "This chat", exact: true })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Mode", exact: true })).toHaveCount(0);

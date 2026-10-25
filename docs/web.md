@@ -304,7 +304,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   sections at the left. **General**: Goal, the Paused and **Watching
   threads** switches (`watchThreads`; the tooltip says what a look does), **New
   threads** (Model, Code mode, Thinking and Fallback the project's threads start with;
-  "Same as this chat" follows the project chat; Model becomes a new thread's
+  "Same as coordinator" is the project's coordinating chat, which this page can be
+  opened away from; Model becomes a new thread's
   Coding in Code mode and its Main conversation otherwise), **Workspace**
   (Group, then **Folders**, **Machines**, **Repositories** and **MCP
   servers**, the drawer's own controls,
