@@ -1866,6 +1866,14 @@ export interface AdminStatus {
   credentials: { available: boolean; reason?: string };
 }
 
+/** GET /api/u/:userId/admin/telemetry/models → ModelTelemetry */
+export type TelemetryRange = "1h" | "6h" | "24h" | "7d";
+export interface ModelAssignment { task: Task; offeringId: string; label: string; kind: "local" | "cloud"; }
+export interface LatencyPercentiles { task: Task; p50: number; p95: number; p99: number; }
+export interface ThroughputData { task: Task; inputPerSec: number; outputPerSec: number; }
+export interface ErrorRate { model: string; total: number; errors: number; rate: number; }
+export interface ModelTelemetry { assignments: ModelAssignment[]; latency: LatencyPercentiles[]; throughput: ThroughputData[]; errors: ErrorRate[]; }
+
 /** PUT /api/u/:userId/admin/passphrase → AdminStatus. Saves (with the passphrase) or forgets the self.db passphrase. */
 export interface PassphraseChange { save: boolean; passphrase?: string }
 

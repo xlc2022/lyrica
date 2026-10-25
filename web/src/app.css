@@ -1747,3 +1747,31 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .nthreads a { overflow-wrap: anywhere; }
 .plan-wait { display: grid; gap: 8px; justify-items: start; margin: 12px 0; }
 .plan-wait p { margin: 0; }
+
+/* Status page telemetry cards (Issue #542) */
+.status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.status-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 12px; }
+.status-card h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.telemetry-card .card-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.telemetry-card .card-head h3 { margin: 0; }
+.telemetry-picker select { min-height: 30px; padding: 2px 8px; font-size: 13px; background: var(--bg); border: 1px solid var(--edge); border-radius: 8px; color: var(--fg); }
+.chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.chart-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.chart-container { min-height: 160px; }
+.chart-container.donut { grid-column: span 2; display: flex; justify-content: center; align-items: center; }
+
+/* uPlot theme overrides */
+.u-plot { background: var(--panel) !important; }
+.u-plot .u-title { fill: var(--fg) !important; font: 600 13px var(--ui) !important; }
+.u-plot .u-axis .u-ticks { stroke: var(--line) !important; }
+.u-plot .u-axis .u-values { fill: var(--muted) !important; font: 11px var(--mono) !important; }
+.u-plot .u-grid { stroke: var(--line) !important; }
+.u-plot .u-series path { fill: none; }
+.u-plot .u-points { stroke: var(--fg) !important; }
+
+@media (max-width: 760px) {
+  .status-grid { grid-template-columns: 1fr; }
+  .chart-grid { grid-template-columns: 1fr; }
+  .chart-container.donut { grid-column: span 1; }
+  .chart-row { grid-template-columns: 1fr; }
+}

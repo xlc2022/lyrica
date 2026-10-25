@@ -28,6 +28,7 @@ import { WebAccessSection } from "./WebAccess.tsx";
 import { WebSearchSection } from "./WebSearch.tsx";
 import { WipeSection } from "./Wipe.tsx";
 import { browserZone, Confirm, ErrorText, Prose, Switch, useAction, useLoad } from "./ui.tsx";
+import { ModelTelemetryCard } from "./ModelTelemetryCard.tsx";
 
 export const PRESETS: Record<string, Pronouns> = {
   "she/her": { subj: "she", obj: "her", poss: "her", possPro: "hers", refl: "herself" },
@@ -314,6 +315,14 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
 }
 
 
+function StatusCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return <section className="status-card"><h3>{title}</h3>{children}</section>;
+}
+
+function StatusGrid({ children }: { children: React.ReactNode }) {
+  return <div className="status-grid">{children}</div>;
+}
+
 function StatusSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const status = useLoad(() => get<AdminStatus>(u(userId, "admin", "status")), [userId]);
@@ -329,11 +338,16 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
           <p>{s.networkRefused}</p>
         </div>
       )}
-      <dl className="facts">
-        <dt>Her tools' network</dt><dd>{s ? (s.networkRefused ? <span className="status-word"><span className="dot down" />Refused</span> : <span className="status-word"><span className="dot up" />Self-test passed</span>) : "…"}</dd>
-        <dt>Sleep time</dt><dd className="num">{sleep.data?.time ?? "…"}</dd>
-        <dt>Start unlocked</dt><dd>{s ? (s.savedPassphrase ? "Passphrase saved" : "Passphrase not saved") : "…"}</dd>
-      </dl>
+      <StatusGrid>
+        <StatusCard title="System Status">
+          <dl className="facts">
+            <dt>Her tools' network</dt><dd>{s ? (s.networkRefused ? <span className="status-word"><span className="dot down" />Refused</span> : <span className="status-word"><span className="dot up" />Self-test passed</span>) : "…"}</dd>
+            <dt>Sleep time</dt><dd className="num">{sleep.data?.time ?? "…"}</dd>
+            <dt>Start unlocked</dt><dd>{s ? (s.savedPassphrase ? "Passphrase saved" : "Passphrase not saved") : "…"}</dd>
+          </dl>
+        </StatusCard>
+        <ModelTelemetryCard />
+      </StatusGrid>
     </Section>
   );
 }

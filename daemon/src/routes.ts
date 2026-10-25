@@ -2007,6 +2007,7 @@ export function apiRoutes(d: Lyricad): Route[] {
 
     // --- Administrators ---
     route("GET", `${u}/admin/status`, (r) => { d.adminFor(r); return adminStatus(d); }),
+    route("GET", `${u}/admin/telemetry/models`, (r) => { d.adminFor(r); return modelTelemetry(d, r); }),
     route("GET", `${u}/admin/updates`, (r) => { d.adminFor(r); return updates(d); }),
     route("POST", `${u}/admin/updates`, async (r) => {
       d.adminFor(r);
@@ -2541,6 +2542,100 @@ function adminStatus(d: Lyricad): Api.AdminStatus {
     savedPassphrase: d.keyring.hasSavedPassphrase(),
     credentials: why ? { available: false, reason: why } : { available: true },
   };
+}
+
+function modelTelemetry(d: Lyricad, r: Request): Api.ModelTelemetry {
+  const m = d.services!.models;
+  const userId = d.adminFor(r).id;
+  const ps = presets(d, userId);
+  const callHistory = m.callHistory(userId, { limit: 1000, offset: 0, q: "", pools: ["general", "private"] });
+  
+  // Model assignments by task from presets and column
+  const assignments: Api.ModelAssignment[] = [];
+  for (const task of THREAD_TASKS) {
+    const entry = ps.columns.general.entries[task] ?? ps.columns.private.entries[task];
+    if (entry && Array.isArray(entry)) {
+      for (const ref of entry) {
+        if ("offeringId" in ref) {
+          const offering = m.offering(userId, ref.offeringId);
+          if (offering) {
+            assignments.push({
+              task,
+              offeringId: ref.offeringId,
+              label: `${offering.endpoint.name}/${modelName(offering.offering)}`,
+              kind: offering.endpoint.api === "host" ? "local" : "cloud",
+            });
+          }
+        }
+      }
+    }
+  }
+  
+  // Latency percentiles from call history
+  const latencyMap = new Map<Api.Task, number[]>();
+  for (const call of callHistory.entries) {
+    const genMs = call.pace?.genMs;
+    if (genMs !== undefined) {
+      const arr = latencyMap.get(call.task) ?? [];
+      arr.push(genMs);
+      latencyMap.set(call.task, arr);
+    }
+  }
+  const latency: Api.LatencyPercentiles[] = [];
+  for (const [task, times] of latencyMap) {
+    if (times.length === 0) continue;
+    times.sort((a, b) => a - b);
+    const p50 = times[Math.floor(times.length * 0.5)] ?? 0;
+    const p95 = times[Math.floor(times.length * 0.95)] ?? 0;
+    const p99 = times[Math.floor(times.length * 0.99)] ?? 0;
+    latency.push({ task, p50, p95, p99 });
+  }
+  
+  // Throughput from call history
+  const throughputMap = new Map<Api.Task, { input: number; output: number; count: number }>();
+  for (const call of callHistory.entries) {
+    const tokPerSec = call.pace?.tokPerSec;
+    const promptTokPerSec = call.pace?.promptTokPerSec;
+    if (tokPerSec !== undefined && promptTokPerSec !== undefined) {
+      const agg = throughputMap.get(call.task) ?? { input: 0, output: 0, count: 0 };
+      agg.input += promptTokPerSec;
+      agg.output += tokPerSec;
+      agg.count += 1;
+      throughputMap.set(call.task, agg);
+    }
+  }
+  const throughput: Api.ThroughputData[] = [];
+  for (const [task, agg] of throughputMap) {
+    if (agg.count === 0) continue;
+    throughput.push({
+      task,
+      inputPerSec: agg.input / agg.count,
+      outputPerSec: agg.output / agg.count,
+    });
+  }
+  
+  // Error rate by model
+  const errorMap = new Map<string, { total: number; errors: number }>();
+  for (const call of callHistory.entries) {
+    if (!call.pace) continue; // Only count completed calls
+    const agg = errorMap.get(call.label) ?? { total: 0, errors: 0 };
+    agg.total += 1;
+    if (call.note?.includes("error") || call.fallback) {
+      agg.errors += 1;
+    }
+    errorMap.set(call.label, agg);
+  }
+  const errors: Api.ErrorRate[] = [];
+  for (const [model, agg] of errorMap) {
+    errors.push({
+      model,
+      total: agg.total,
+      errors: agg.errors,
+      rate: agg.total > 0 ? agg.errors / agg.total : 0,
+    });
+  }
+  
+  return { assignments, latency, throughput, errors };
 }
 
 /**
