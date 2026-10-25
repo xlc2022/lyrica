@@ -229,11 +229,15 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
   const body = useRef<HTMLDivElement>(null);
   // Whether the person left the box at its bottom; growth fires no scroll event, so this holds until they scroll.
   const stick = useRef(true);
+  // Where the box was last pinned to its bottom.
+  const pinned = useRef<number | undefined>(undefined);
   // While she works, an open box follows the newest call, but only while it sits at its bottom: scrolled up, it stays put.
   useLayoutEffect(() => {
     const el = body.current;
-    if (!el) { stick.current = true; return; }
-    if (streaming && stick.current) el.scrollTop = el.scrollHeight;
+    if (!el) { stick.current = true; pinned.current = undefined; return; }
+    // A scroll up lands before its scroll event does: below where the box was last pinned, the person has moved it.
+    if (stick.current && pinned.current !== undefined && el.scrollTop < pinned.current - 1) stick.current = false;
+    if (streaming && stick.current) { el.scrollTop = el.scrollHeight; pinned.current = el.scrollTop; }
   });
   const n = tools.length || parts.length;
   const word = tools.length ? (n === 1 ? "tool call" : "tool calls") : (n === 1 ? "step" : "steps");
