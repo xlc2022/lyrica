@@ -455,8 +455,20 @@ test("a project: New project, suggested threads start into cards, the Threads po
   await card.getByRole("button", { name: "Start" }).first().click();
   await expect(page.locator(".tcard")).toHaveCount(1);
   await expect(page.locator(".tcard").first()).toContainText("Alpha");
+  // Also what the Start all tap landed on (seen once more in CI: no request at all, the button still enabled).
+  await page.evaluate(() => {
+    const w = window as unknown as { taps: string[] };
+    w.taps = [];
+    for (const type of ["pointerdown", "pointerup", "click"]) document.addEventListener(type, (e) => {
+      const t = e.target as HTMLElement, all = document.querySelector<HTMLElement>(".suggested .primary");
+      w.taps.push(`${type} ${t.tagName}.${t.className} "${(t.textContent ?? "").trim().slice(0, 24)}" at ${Math.round((e as PointerEvent).clientX)},${Math.round((e as PointerEvent).clientY)}; Start all ${all ? `${all.isConnected ? "" : "detached "}${JSON.stringify(all.getBoundingClientRect().toJSON())}` : "gone"}`);
+    }, true);
+  });
   await card.getByRole("button", { name: "Start all" }).click();
-  await expect(page.locator(".tcard")).toHaveCount(2).catch((err: Error) => { throw new Error(`${err.message}\nStart requests: ${starts.join("; ") || "none"}`); });
+  await expect(page.locator(".tcard")).toHaveCount(2).catch(async (err: Error) => {
+    const taps = await page.evaluate(() => (window as unknown as { taps: string[] }).taps);
+    throw new Error(`${err.message}\nStart requests: ${starts.join("; ") || "none"}\nTaps: ${taps.join("; ") || "none"}`);
+  });
   await expect(card.getByRole("link", { name: "Open" })).toHaveCount(2);
   const fact = page.getByRole("button", { name: /^Threads/ });
   await expect(fact).toContainText("2");
