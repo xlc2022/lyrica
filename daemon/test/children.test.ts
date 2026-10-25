@@ -545,6 +545,24 @@ describe("a child's end, reading and stopping", () => {
     expect(got.join("\n")).not.toContain("finished without a report");
   });
 
+  it("the parent hears that a child waits for its plan's reset, once, not that it stopped with an error", async () => {
+    const { rt, d, thread, parent, child, say, path, messages } = await setup();
+    const resets = Date.parse("2030-01-01T06:48:00Z");
+    parent.push(start("Status", "Record the call facts."), { text: "Started." });
+    // The child's plan refuses for its usage limit, as hosted.ts reports it: the thread waits, and its turn ends in the error.
+    child.push(() => {
+      const { children } = d.services!;
+      for (const c of children.children(rt.ada.id, "general", thread.id)) { children.planWaiting(rt.ada.id, "general", c.id, "chatgpt", resets); children.planWaiting(rt.ada.id, "general", c.id, "chatgpt", resets); }
+      return { status: 400 };
+    });
+    const id = toolEnd(await say("record the facts in their own thread"))!.threads![0]!.id;
+    await until(() => notices(() => messages(path)), (n) => n.some((t) => t.includes("usage limit")));
+    await new Promise((r) => setTimeout(r, 300));
+    const all = (await notices(() => messages(path))).filter((t) => t.includes(`[t:${id}]`));
+    expect(all.filter((t) => t.includes("usage limit"))).toEqual([`Child thread [t:${id}] is waiting for chatgpt's usage limit, which resets at 06:48 UTC; it carries on then by itself.`]);
+    expect(all.join("\n")).not.toContain("stopped with an error");
+  });
+
   it("the parent hears at once, from lyricad, when a child's checks run out of rounds, with its last message", async () => {
     const { rt, d, thread, parent, child, say, path, messages } = await setup();
     parent.push(start("Track", "Fix the track."), { text: "Started." });

@@ -741,7 +741,9 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   exit code, how long it ran and the last 40 lines of its output), on the
   path a background subagent's result takes (`Delegation.deliver`, status
   `job`). A busy thread gets it as a follow-up; an idle one is woken once to
-  carry on (`HostedThread.wakeChild`), unless its project is paused or it
+  carry on (`HostedThread.wakeChild`), 5 s after the first job ends
+  (`JOB_WAKE_MS`), so jobs that end close together wake it once with all
+  their notices, unless its project is paused or it
   waits for a child slot, when the notice waits in the thread for its next
   turn. A stopped job never wakes it: she stopped it herself, or `lyricad`
   did.
@@ -753,6 +755,12 @@ background, so it doesn't hold her turn (`core/src/workspace/jobs.ts`).
   On a machine, stopping sends SSH's KILL signal and closes the channel; a
   server that ignores the signal may leave a program that ignores the
   hangup running there.
+- An `edit` or `write` inside the folder of a running job that checks the
+  code (tests, a type check, a lint, a build), or a `bash` `git commit`
+  there, gets a line added to its result (`checkUnder`): the job's id and
+  command, and that the edit isn't in what it tests, or that the commit may
+  not be the tree it tests. A job's folder is its cwd, or where a leading
+  `cd <dir> &&` goes. It warns and never blocks.
 - Subagents and Plan mode have neither `background` nor `jobs`.
 
 ## Thread settings

@@ -31,7 +31,8 @@ const HOST_CODES = ["need_repo", "above_recommended"];
 /** Changes no list in the shell shows, so they don't tell the user's other tabs: a draft saves after each pause in typing. */
 const UNLISTED = new Set(["/api/u/:userId/threads/:pool/:threadId/draft"]);
 /** What an idle thread is woken with when one of its background commands ends: the notice above it says which. */
-const JOB_WAKE = "A background command ended: its notice is above. Carry on with what it was for, or say what it found.";
+const JOB_WAKE_MS = 5000;
+const JOB_WAKE = "A background command ended: its notice is above (and any others that ended with it). Carry on with what it was for, or say what it found.";
 import {
   checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, readBody, secureServer, sendJson, serveStatic, statusOf, Updating,
   type Listener, type Request, type Route, type TrustForwarded,
@@ -97,6 +98,8 @@ export interface LyricadOptions {
   watchMs?: number;
   /** How long a child's report waits before waking its parent, batching reports close together (default 60 s). */
   childWakeMs?: number;
+  /** How long after a background job ends its thread wakes, so jobs ending close together wake it once (default 5 s). */
+  jobWakeMs?: number;
   /** Sleep's per-phase limits and retries. Sleep's defaults otherwise. */
   sleep?: Partial<SleepLimits>;
   /** Largest upload, in bytes. Default 50 MB. */
@@ -463,6 +466,8 @@ export class Lyricad implements Drainable {
       external: this.external, certWaitMs: w.certWaitMs, trustCa: w.trustCa, log: this.log,
     });
     // Where the front door is, read at every sandbox start, so a change in web access applies to the next command.
+    // A pending wake for background jobs that ended, by `user/pool/thread`: those ending close together wake it once.
+    const jobWakes = new Map<string, NodeJS.Timeout>();
     const workspace = new Workspace(keyring, users, {
       excludePorts: this.sandboxExcluded, frontDoor: () => web.frontDoor(), bwrap: this.opts.bwrap, pasta: this.opts.pasta,
       // A private or local-only thread never gets Claude Code. Asked at each run, once the models below exist.
@@ -495,9 +500,16 @@ export class Lyricad implements Drainable {
           delegation.deliver({ user: { id: t.userId }, pool: t.pool, threadId: t.threadId } as Parameters<Delegation["deliver"]>[0], content, details);
           host.delivered(t.userId, t.pool, t.threadId, content, details);
           // A job she or lyricad stopped (her jobs stop, Lock, shutdown) only leaves its notice: waking then would spend a turn on nothing.
-          if (job.state === "stopped" || host.draining || host.busy(t.userId, t.pool, t.threadId) || !children.mayWake(t.userId, t.pool, t.threadId)) return;
-          children.woke(t.userId, t.pool, t.threadId);
-          void host.get(t.userId, t.pool, t.threadId).wakeChild(JOB_WAKE).catch(() => {});
+          if (job.state === "stopped") return;
+          // Jobs that end close together wake the thread once, a few seconds after the first, with all their notices.
+          const k = `${t.userId}/${t.pool}/${t.threadId}`;
+          if (jobWakes.has(k)) return;
+          jobWakes.set(k, setTimeout(() => {
+            jobWakes.delete(k);
+            if (host.draining || host.busy(t.userId, t.pool, t.threadId) || !children.mayWake(t.userId, t.pool, t.threadId)) return;
+            children.woke(t.userId, t.pool, t.threadId);
+            void host.get(t.userId, t.pool, t.threadId).wakeChild(JOB_WAKE).catch(() => {});
+          }, this.opts.jobWakeMs ?? JOB_WAKE_MS).unref());
         } catch (err) {
           this.log(`a background command's notice wasn't delivered: ${(err as Error).name}`);
         }

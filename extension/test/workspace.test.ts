@@ -7,7 +7,7 @@ import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServ
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { BASH_TIMEOUT_S, createDownloadsExtension, pageTool, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
-import { BUILD_THERE, editArguments, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
+import { BUILD_THERE, checkUnder, editArguments, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { Users, Workspace } from "@lyrica/core";
@@ -119,10 +119,10 @@ async function run(mode: ThreadWorkspace["mode"], calls: ReturnType<typeof fauxT
     ...(o.jobs ? {
       startJob: async (command: string, machine?: string) => {
         o.jobs!.push(`${machine ?? "sandbox"}: ${command}`);
-        return { id: `j${o.jobs!.length}`, place: machine ?? "sandbox", command, startedAt: new Date().toISOString(), state: "running" as const };
+        return { id: `j${o.jobs!.length}`, place: machine ?? "sandbox", command, cwd: "/workspace", startedAt: new Date().toISOString(), state: "running" as const };
       },
-      jobs: () => o.jobs!.map((c, i) => ({ id: `j${i + 1}`, place: c.split(": ")[0]!, command: c.split(": ")[1]!, startedAt: new Date().toISOString(), state: "running" as const })),
-      jobOutput: (id: string) => ({ job: { id, place: "sandbox", command: "x", startedAt: new Date().toISOString(), state: "running" as const }, output: "half way\n" }),
+      jobs: () => o.jobs!.map((c, i) => ({ id: `j${i + 1}`, place: c.split(": ")[0]!, command: c.split(": ")[1]!, cwd: "/workspace", startedAt: new Date().toISOString(), state: "running" as const })),
+      jobOutput: (id: string) => ({ job: { id, place: "sandbox", command: "x", cwd: "/workspace", startedAt: new Date().toISOString(), state: "running" as const }, output: "half way\n" }),
       stopJob: (id: string) => id === "j1",
     } : {}),
     repositories: () => o.repositories ?? [], cloneRepositories: async () => o.cloneProblems ?? [],
@@ -926,5 +926,19 @@ describe("the page tool", () => {
     // Without Chromium and node in the sandbox, it says so.
     const none = pageTool({ target: () => target, previewTarget: () => box } as unknown as ThreadTools, () => {}, () => false);
     await expect(none.execute("2", { action: "preview", path: "site/index.html" }, undefined, undefined, undefined as never)).rejects.toThrow(/needs Chromium and Node/);
+  });
+});
+
+describe("an edit or a commit while a check runs", () => {
+  const job = (command: string, extra: object = {}) => ({ id: "j8", place: "sandbox", command, cwd: "/workspace", startedAt: "2026-10-25T05:43:18Z", state: "running" as const, ...extra });
+  it("tells her an edit under a running check isn't in what it tests, and a commit there may not be the tree it tests", () => {
+    expect(checkUnder([job("cd lyrica && npx vitest run daemon")], "sandbox", "/workspace/lyrica/daemon/src/a.ts", "edit")).toBe("j8 is still running checks here (cd lyrica && npx vitest run daemon); this edit isn't in what it tests, so its result won't cover it.");
+    expect(checkUnder([job("npx playwright test")], "sandbox", "/workspace/lyrica", "commit")).toContain("this commit may not be the tree it tests");
+  });
+  it("stays quiet for a job that isn't a check, one that ended, another folder or another place", () => {
+    expect(checkUnder([job("docker compose pull")], "sandbox", "/workspace/a.ts", "edit")).toBeUndefined();
+    expect(checkUnder([job("npm test", { state: "exited" })], "sandbox", "/workspace/a.ts", "edit")).toBeUndefined();
+    expect(checkUnder([job("cd other && npm test")], "sandbox", "/workspace/lyrica/a.ts", "edit")).toBeUndefined();
+    expect(checkUnder([job("npm test", { place: "box" })], "sandbox", "/workspace/a.ts", "edit")).toBeUndefined();
   });
 });

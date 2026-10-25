@@ -108,6 +108,29 @@ type Create = (cwd: string, options: { operations: never }) => ToolDefinition;
 
 /** A command's time limit when she sets none, in seconds: a test that hangs (a browser that never closes) can't hold the thread forever. */
 export const BASH_TIMEOUT_S = 600;
+
+/** A bash command that makes a commit. */
+const COMMIT = /\bgit\b[^;&|\n]*\bcommit\b/;
+/** A background command that checks the code: tests, a type check, a lint or a build. */
+const CHECK = /\b(test|tests|vitest|jest|playwright|pytest|tsc|typecheck|lint|eslint|check|e2e|build|cargo|go test)\b/;
+
+/**
+ * The line she gets when an edit or a commit lands while a check runs as a
+ * background job in the same place and folder: what it tests no longer
+ * matches. A job's folder is its cwd, or where a leading `cd <dir> &&` goes.
+ */
+export function checkUnder(jobs: JobInfo[], place: string, path: string, what: "edit" | "commit"): string | undefined {
+  const job = jobs.find((j) => {
+    if (j.state !== "running" || j.place !== place || !j.cwd || !CHECK.test(j.command)) return false;
+    const cd = /^\s*cd\s+("[^"]+"|'[^']+'|\S+)\s*&&/.exec(j.command)?.[1]?.replace(/^["']|["']$/g, "");
+    const dir = cd ? posix.resolve(j.cwd, cd) : j.cwd;
+    return what === "commit" ? path === dir || path.startsWith(`${dir}/`) || dir.startsWith(`${path}/`) : path.startsWith(`${dir}/`);
+  });
+  if (!job) return undefined;
+  return what === "edit"
+    ? `${job.id} is still running checks here (${job.command}); this edit isn't in what it tests, so its result won't cover it.`
+    : `${job.id} is still running checks here (${job.command}); this commit may not be the tree it tests. Commit after checks pass on the exact tree.`;
+}
 const BASH_TIMEOUT = Type.Optional(Type.Number({ description: `Timeout in seconds, ${BASH_TIMEOUT_S} if left out (${JOB_LIMITS.timeoutS} in the background). Give a longer one for a long build or test run.` }));
 const BACKGROUND = Type.Optional(Type.Boolean({ description: "Run it in the background: you get a job id at once, and are told when it ends. For a download, build or install that takes minutes or more." }));
 const TOOLS: Record<keyof ToolOps, Create> = {
@@ -262,10 +285,16 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           const tool = create(cwd, { operations: ops as never });
           // Pi resolves paths against the session's cwd, which is on the host; use the target's.
           const here = new Proxy(ctx, { get: (t, k) => (k === "cwd" ? cwd : Reflect.get(t, k)) });
-          if (machine || (name !== "write" && name !== "edit" && name !== "bash")) return tool.execute(id, rest, signal, onUpdate, here);
+          // A file changed, or a commit made, under a check that is still running: she hears it isn't in what it tests.
+          const checking = <R extends { content: unknown[] }>(result: R): R => {
+            const what = name === "bash" ? (COMMIT.test(String(rest.command ?? "")) ? "commit" : undefined) : name === "edit" || name === "write" ? "edit" : undefined;
+            const line = what && checkUnder(tools.jobs?.() ?? [], machine || "sandbox", what === "edit" && typeof rest.path === "string" ? posix.resolve(cwd, rest.path) : cwd, what);
+            return line ? { ...result, content: [...result.content, { type: "text" as const, text: line }] } : result;
+          };
+          if (machine || (name !== "write" && name !== "edit" && name !== "bash")) return checking(await tool.execute(id, rest, signal, onUpdate, here));
           const since = new Date();
           try {
-            return await tool.execute(id, rest, signal, onUpdate, here);
+            return checking(await tool.execute(id, rest, signal, onUpdate, here));
           } finally {
             // Which thread wrote what, for the file viewer; a failed sweep only leaves it unrecorded.
             if (name === "bash") tools.madeSince?.(since);

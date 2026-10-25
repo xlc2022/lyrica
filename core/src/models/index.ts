@@ -34,6 +34,16 @@ export class CloudModelForbidden extends Error {}
 /** No usable model is set for a task, or the one set no longer exists. */
 export class NoModel extends Error {}
 /**
+ * The model a turn would run on is a plan at its usage limit, and the user
+ * didn't choose to fall back: nothing is sent, and the turn waits for the reset (`until`).
+ */
+export class PlanWaiting extends Error {
+  override readonly name = "PlanWaiting";
+  constructor(readonly endpointId: string, readonly until: number) {
+    super("the plan reached its usage limit; waiting for it to reset");
+  }
+}
+/**
  * Every model that could take a task's call is away (its machine down, paused
  * or stale) or failed to answer: nothing can answer now, though something may
  * once a machine is back. A NoModel, so whatever handles one handles this.

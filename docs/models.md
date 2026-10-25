@@ -1012,7 +1012,13 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   guess runs out, up to six), and the Models page shows "Limit reached until" with the
   reset time. The router still picks the plan for every task, so nothing
   falls back (the owner's call: a model set to a plan is set so for a
-  reason). A subagent's or background job's call fails until the reset,
+  reason). While a plan is limited, a turn that would run on it sends
+  nothing (`prepareTurn` throws `PlanWaiting` before any request or call
+  record): the thread holds what came (messages, a wake from a job, a child
+  or a wake-up) and runs one turn with it a minute after the reset, saying
+  once that it waits. A child's parent hears once that it waits for the
+  plan and when it resets, rather than that it stopped with an error.
+  A subagent's or background job's call fails until the reset,
   and the job runs again when it next would; sleep waits and runs again
   at the reset. The user can fall back instead, until the reset, from the
   thread's card or the notification (`POST …/endpoints/:id/fall-back`,
