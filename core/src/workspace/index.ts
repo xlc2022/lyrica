@@ -1,4 +1,4 @@
-import { makeWorktrees, removeWorktrees } from "./worktree.ts";
+import { makeWorktrees, removeWorktrees, unsaved } from "./worktree.ts";
 import { ensurePhotosDir, PortraitPhotos, ThreadImages } from "./images.ts";
 export * from "./images.ts";
 import { randomBytes } from "node:crypto";
@@ -723,6 +723,22 @@ export class Workspace {
     })().finally(() => this.worktreeCleanup.delete(key));
     this.worktreeCleanup.set(key, job);
     return job;
+  }
+
+  /** Each checkout a project thread works in (its worktrees, or the base checkout it holds) with work no remote has, and what. */
+  async unsavedWork(t: WorkspaceThread): Promise<string[]> {
+    const ws = this.settings(t.userId);
+    const work = ws.threadWork(t.threadId);
+    if (!work) return [];
+    const paths = work.base ? ws.effective(t.threadId).grants.filter((g) => g.writable).map((g) => g.path) : work.cleaned ? [] : work.worktrees.map((w) => w.path);
+    if (!paths.length) return [];
+    const target = this.targetFor(t);
+    const out: string[] = [];
+    for (const p of paths) {
+      const u = await unsaved(target, p).catch(() => undefined);
+      if (u) out.push(`${p}: ${u}`);
+    }
+    return out;
   }
 
   /** Reopening a resolved part restores its checkout on the saved branch before tools run. */

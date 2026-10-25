@@ -17,7 +17,9 @@ tool's file and process operations be swapped for another backend
 operation to an **execution target**. Nothing runs inside `lyricad`'s process.
 `edit` also takes each of its `edits` sent as a JSON string, as some models
 send them (`editArguments`); an edit still not an object fails saying what
-came and the shape wanted.
+came and the shape wanted. An `edit` or `write` without `path` fails naming
+the file she last read, edited or wrote this turn and asking her to add
+`path` (`pathArguments`); the path is never filled in for her.
 A `bash` call with no `timeout` gets `BASH_TIMEOUT_S` (600 seconds), so a
 command that never ends (a test whose browser never closes) can't hold the
 thread; she gives a longer one for a long build, or runs it in the
@@ -426,7 +428,8 @@ takes is `lyrica@pve!agent=<that secret>`.
   granted, with a reason in the prompt and the project chat's thread card.
   `threads start` with `base: true` keeps the original checkout for scaffold
   and merge work; `children.ts` refuses another open base thread in the same
-  project, naming its holder. Resolving releases it. Outside projects,
+  project, naming its holder and telling her to message it to go on with
+  that work. Resolving releases it, as does its pull request merging. Outside projects,
   a plain thread keeps the base and works in place; requested `code: true`
   children get their own worktrees and branches. The plain thread merges
   those branches itself, starting a merge thread only if the user asks.
@@ -1135,8 +1138,8 @@ her account is general.
   internet on she runs as `lyricad`'s own uid, as with it off (a nested
   user namespace inside the networked one), so files she writes in a
   grant stay the user's to change. The install scripts stay skipped since
-  the sandbox has no compiler for `node-gyp rebuild`, and nothing needs
-  them: the SQLite binding loads its prebuilt `prebuilds/linux-x64.node`. The tests that need FUSE or a tun device
+  nothing needs them (NixOS's sandbox tools include `gnumake` and `gcc` for
+  a native module with no prebuilt binary, as Debian's build-essential does): the SQLite binding loads its prebuilt `prebuilds/linux-x64.node`. The tests that need FUSE or a tun device
   (encrypted homes, rewind, uploads, network switches, the SSH helper)
   skip there, since her sandbox has neither; CI runs them with
   `LYRICA_SANDBOX_TESTS=require`, so they can't skip. The e2e tests use

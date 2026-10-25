@@ -129,7 +129,7 @@ export type ChildStatus = "working" | "waiting" | "idle";
 /** A project's thread, as the project chat sees it: waiting covers an approval and a question for the person (`needsYou`). */
 export type ThreadState = "working" | "waiting" | "queued" | "held" | "idle" | "resolved";
 
-export interface ChildInfo { id: string; title?: string; status: ChildStatus; state?: ThreadState; needsYou?: boolean; updatedAt: string; steps?: ThreadStep[] }
+export interface ChildInfo { id: string; title?: string; status: ChildStatus; branches?: string[]; state?: ThreadState; needsYou?: boolean; updatedAt: string; steps?: ThreadStep[] }
 
 /** One step of a thread's checklist (`threads steps`), which the person follows on its card: done, under way, or not started. */
 export interface ThreadStep { text: string; state: "done" | "doing" | "todo" }
@@ -217,7 +217,7 @@ export const CHILD_WAKES = "When it ends, its report (or its last message) reach
 
 /** Her guidance in a project's thread. */
 export const PROJECT_THREAD_GUIDELINES = [
-  "Post an update to the project chat (threads message to: \"parent\") at milestones, not after every step. Always end with a message to the parent: the result, or what blocked you.",
+  "Post an update to the project chat (threads message to: \"parent\") at milestones, not after every step. Always end with a message to the parent: the result, or what blocked you; after code work, name your branch and what isn't committed or pushed yet.",
   "Use question: true in a message to the parent when you need an answer; plain progress updates do not wake it.",
   "Ask the project chat (threads message, question: true) what it can decide, such as how work is split or merged; use threads ask only when the person must decide.",
   "Save lasting decisions about the project with remember.",
@@ -257,7 +257,7 @@ export function pickThread(ref: string, rows: { id: string; title?: string }[]):
 
 /** One line of the threads tool's list. */
 export const threadLine = (r: ChildInfo) =>
-  `[t:${r.id}] ${r.title ? JSON.stringify(r.title) : "(untitled)"}: ${r.state ?? r.status}${r.needsYou ? " (waiting on the person)" : ""}, last ${r.updatedAt}${r.steps?.length ? `; ${stepsNote(r.steps)}` : ""}`;
+  `[t:${r.id}] ${r.title ? JSON.stringify(r.title) : "(untitled)"}: ${r.state ?? r.status}${r.needsYou ? " (waiting on the person)" : ""}, last ${r.updatedAt}${r.branches?.length ? `; works on ${r.branches.join(", ")} in its own worktree` : ""}${r.steps?.length ? `; ${stepsNote(r.steps)}` : ""}`;
 
 /**
  * The project section: the goal, the user's instructions, the project's

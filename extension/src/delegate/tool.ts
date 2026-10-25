@@ -9,7 +9,7 @@ import { toolGuidance, WORK_GUIDELINES, type ThreadContext } from "../index.ts";
 import { syncEntries } from "../record.ts";
 import { registerMemoryTools } from "../tools.ts";
 import { registerExitCodes } from "../exit-codes.ts";
-import { registerVisionGuard } from "../vision.ts";
+import { registerVisionGuard, type VisionFallback } from "../vision.ts";
 import { subagentPrompt } from "./roles.ts";
 import { CLAUDE_ROLE } from "./claude.ts";
 import { DELEGATE_MESSAGE, outcome, Stopped, type Delegation, type Deliver, type Request, type Run, type SubagentHooks } from "./runs.ts";
@@ -231,11 +231,11 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
  * A subagent's own extension: the preamble and its role's prompt, read-only
  * memory, ask_parent, and only the tools its role allows.
  */
-export function createSubagentExtension(thread: ThreadContext, role: Role, hooks: SubagentHooks, allowed: Set<string>, name = "Lyrica", codingTask?: { task: string; done: string }, repoRules?: () => Promise<string | undefined>): ExtensionFactory {
+export function createSubagentExtension(thread: ThreadContext, role: Role, hooks: SubagentHooks, allowed: Set<string>, name = "Lyrica", codingTask?: { task: string; done: string }, repoRules?: () => Promise<string | undefined>, vision?: VisionFallback): ExtensionFactory {
   const who = () => ({ threadId: thread.threadId, user: { id: thread.user.id, profile: thread.user.profile }, code: role.name === "coder" });
   return (pi) => {
     registerMemoryTools(pi, thread.view, who, { readOnly: true });
-    registerVisionGuard(pi);
+    registerVisionGuard(pi, vision);
     registerExitCodes(pi);
     pi.registerTool({
       name: "ask_parent",

@@ -65,7 +65,7 @@ export interface ThreadsHost {
   /** This thread's children; in a project's thread, the project's other threads. */
   list(parent: ThreadContext): ChildInfo[];
   /** Resolves a project's thread (`id`, or the calling thread itself), or reopens one. */
-  resolve?(from: ThreadContext, id: string | undefined, resolved: boolean): void | Promise<void>;
+  resolve?(from: ThreadContext, id: string | undefined, resolved: boolean, force?: boolean): void | Promise<void>;
   /** Stops a child's running turn, as Pause does. False if it wasn't working. */
   stop?(from: ThreadContext, id: string): Promise<boolean>;
   /** A wake-up for this thread `minutes` from now (already clamped), with its note; refused past `WAKEUP_LIMITS`. */
@@ -116,7 +116,7 @@ const Params = Type.Object({
   readOnly: Type.Optional(Type.Boolean({ description: "For start: it may read the folders but not change them." })),
   internet: Type.Optional(Type.Literal(false, { description: "For start: false cuts it off from the internet." })),
   code: Type.Optional(Type.Boolean({ description: "For start: true starts it in code mode." })),
-  id: Type.Optional(Type.String({ description: "For message, read, stop, resolve and reopen: the thread, by its ID ([t:…]) or its current title." })),
+  id: Type.Optional(Type.String({ description: "For message, read, stop, resolve and reopen: the thread's ID ([t:…]) or current title." })),
   minutes: Type.Optional(Type.Number({ description: `For later: how many minutes from now to wake this thread, 1 to ${WAKEUP_LIMITS.maxMinutes}.` })),
   note: Type.Optional(Type.String({ description: "For later or routine add: the note to yourself the wake-up starts with: what to check and what to do then." })),
   routineAction: Type.Optional(StringEnum(["add", "list", "pause", "resume", "remove"] as const, { description: "For routine: what to do with this thread's routines." })),
@@ -140,8 +140,9 @@ const Params = Type.Object({
   options: Type.Optional(Type.Array(Type.Object({ label: Type.String(), consequence: Type.String() }), { description: "For ask: 2–4 unique labels and their consequences." })),
   recommended: Type.Optional(Type.Integer({ description: "For ask: the recommended option's index." })),
   context: Type.Optional(Type.String({ description: "For ask: brief context, if needed." })),
-  needsYou: Type.Optional(Type.Boolean({ description: "For message to the parent from a project's thread: the person must decide something before you can go on." })),
+  needsYou: Type.Optional(Type.Boolean({ description: "For message to the parent: the person must decide something before you can go on." })),
   threads: Type.Optional(Type.Array(Type.Object({ title: Type.String(), task: Type.String() }), { description: "For suggest: the threads you propose, each with a title and its task." })),
+  force: Type.Optional(Type.Literal(true)),
   summary: Type.Optional(Type.String({ description: "For compact: what the next stretch needs: what you're doing, decisions, open questions, paths and names." })),
 });
 type Params = Static<typeof Params>;
@@ -155,7 +156,7 @@ const FIELD_ACTIONS: Record<Exclude<Field, "action">, string[]> = {
   id: ["message", "read", "stop", "resolve", "reopen"], text: ["message"], to: ["message"], question: ["message", "ask"], options: ["ask"], recommended: ["ask"], context: ["ask"], needsYou: ["message"], last: ["read"],
   minutes: ["later"], cancel: ["later"], note: ["later", "routine"], pr: ["watch"],
   routineAction: ["routine"], routineId: ["routine"], schedule: ["routine"], newThread: ["routine"],
-  steps: ["steps"], summary: ["compact"],
+  steps: ["steps"], summary: ["compact"], force: ["resolve"],
 };
 
 /** Principle 8: the parameters for these actions only, so a thread's tool definition carries nothing it can't use. */
@@ -450,7 +451,7 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
           }
           if (!inProject && !p.id) throw new Error(`${p.action} needs the thread's id or title`);
           const id = inProject ? undefined : pickThread(p.id!, host.list(thread));
-          await host.resolve(thread, id, resolved);
+          await host.resolve(thread, id, resolved, p.force === true);
           return text(`${resolved ? "Resolved" : "Reopened"} ${id ? `[t:${id}]` : "this thread"}.`, id ? { threads: [id] } : undefined);
         }
         if (child) throw new Error("a child thread can't start child threads; it can delegate, and message its parent");

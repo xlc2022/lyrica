@@ -1386,7 +1386,8 @@ system with the module on. Only x86_64-linux.
 - **Sandboxes.** NixOS has no `/usr` to share. The module sets
   `LYRICA_SANDBOX_TOOLS` to one directory of `sandboxPackages`
   (`nix/sandbox-tools.nix`: a shell, the usual command-line tools, git,
-  OpenSSH, OpenSSL, curl, jq, ripgrep, Python, ImageMagick, Chromium with IBM Plex
+  OpenSSH, OpenSSL, curl, jq, ripgrep, Python, make and gcc (for native npm
+  modules), ImageMagick, Chromium with IBM Plex
   and DejaVu fonts for her screenshots, bubblewrap, passt, nftables) and
   `LYRICA_SANDBOX_CLOSURE` to the store paths of their closure, Node's and
   the CA bundle's (`closureInfo`). See docs/workspace.md.

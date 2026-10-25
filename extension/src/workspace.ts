@@ -160,12 +160,6 @@ const shown = (tool: string, input: Record<string, unknown>, machine: string | u
   JSON.stringify([tool, machine ?? null, cwd ?? null, tool === "bash" || tool === "proxmox" ? suspectKey(tool, input) : tool === "page" ? [input.action, input.path, input.out] : input.path]);
 
 /**
- * Lyrica's read, write, edit and bash: Pi's own tools, with every operation
- * sent to the thread's execution target. Nothing runs in this process. It
- * also enforces the thread's mode and switches: what they turn off isn't
- * offered, and a call to it is refused.
- */
-/**
  * `edit`'s arguments, before validation: Pi takes `edits` sent as one JSON
  * string; some models send each edit as a JSON string too, which is parsed
  * here. An edit that is still not an object fails with what came and the
@@ -186,6 +180,26 @@ export function editArguments(input: unknown): unknown {
   return { ...args, edits };
 }
 
+/** The file read, edited or written last this turn, which a refusal for a missing `path` names. */
+export interface LastFile { verb: "read" | "edited" | "wrote"; path: string }
+
+/**
+ * `edit` and `write` without `path` fail naming the file she last read or
+ * changed this turn, rather than only "must have required properties path".
+ * The path isn't filled in for her: the file she meant may be another one.
+ */
+export function pathArguments(tool: string, input: unknown, last?: LastFile): unknown {
+  const args = input as { path?: unknown } | null;
+  if (args && typeof args === "object" && typeof args.path === "string" && args.path.trim()) return input;
+  throw new Error(`${tool} needs \`path\`, the file to ${tool === "edit" ? "change" : "write"}; ${last ? `you last ${last.verb} ${last.path} this turn: add \`path\`` : "add `path`"}`);
+}
+
+/**
+ * Lyrica's read, write, edit and bash: Pi's own tools, with every operation
+ * sent to the thread's execution target. Nothing runs in this process. It
+ * also enforces the thread's mode and switches: what they turn off isn't
+ * offered, and a call to it is refused.
+ */
 export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
   return (pi) => {
     /** An MCP tool's server (one of the thread's, or none) and its own name there, and whether the server marks it read-only. */
@@ -211,6 +225,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
     };
     /** Where her tools ran this turn: "sandbox" or a machine. */
     let places = new Set<string>();
+    let last: LastFile | undefined;
 
     for (const [name, create] of Object.entries(TOOLS) as [keyof ToolOps, Create][]) {
       const template = create(WORKDIR, { operations: undefined as never });
@@ -221,9 +236,13 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
           ...(name === "bash" ? { timeout: BASH_TIMEOUT, ...(tools.startJob ? { background: BACKGROUND } : {}) } : {}),
           machine: MACHINE,
         }) as typeof template.parameters,
-        ...(name === "edit" ? { prepareArguments: (input: unknown) => editArguments(template.prepareArguments ? template.prepareArguments(input) : input) } : {}),
+        ...(name === "edit" || name === "write" ? { prepareArguments: (input: unknown) => {
+          const args = pathArguments(name, template.prepareArguments ? template.prepareArguments(input) : input, last);
+          return name === "edit" ? editArguments(args) : args;
+        } } : {}),
         async execute(id, params, signal, onUpdate, ctx) {
           const { machine: named, background, ...rest } = params as Record<string, unknown>;
+          if ((name === "read" || name === "edit" || name === "write") && typeof rest.path === "string") last = { verb: name === "read" ? "read" : name === "edit" ? "edited" : "wrote", path: rest.path };
           if (name === "bash" && background === true && tools.startJob) {
             const machine = (named as string | undefined) || undefined;
             const target = tools.target(machine);
@@ -407,6 +426,7 @@ export function createWorkspaceExtension(tools: ThreadTools): ExtensionFactory {
     pi.on("before_agent_start", async (event, ctx) => {
       await tools.prepareWorktrees?.();
       places = new Set();
+      last = undefined;
       gate(ctx);
       // Each turn starts from the forge as it is now; what failed is said, and the turn goes on.
       const problems = tools.repositories?.().length && tools.cloneRepositories ? await tools.cloneRepositories().catch((err: Error) => [err.message]) : [];

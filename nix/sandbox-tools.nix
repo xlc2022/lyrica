@@ -8,7 +8,9 @@
 # for threads with Claude Code on (docs/workspace.md, "Claude Code"), and
 # codex for ChatGPT Images, in a sandbox of its own (docs/models.md).
 # chromium and the fonts render HTML/SVG diagrams offline (principle 1),
-# and take screenshots of her web UI (web/e2e/shot.ts).
+# and take screenshots of her web UI (web/e2e/shot.ts). gnumake and gcc,
+# with python3, build native npm modules (node-gyp) when no prebuilt binary
+# fits, as Debian's build-essential does there.
 pkgs:
 let
   # Claude Code is unfree. Only it is allowed, in its own import, so the
@@ -21,7 +23,7 @@ in
 with pkgs; [
   bashInteractive coreutils findutils gnugrep gnused gawk diffutils patch
   gnutar gzip xz bzip2 zstd unzip which file less procps util-linux
-  getent git gh tea nodejs_22 openssh openssl curl cacert jq ripgrep python3 imagemagick
+  getent git gh tea nodejs_22 openssh openssl curl cacert jq ripgrep python3 gnumake gcc imagemagick
   chromium ibm-plex dejavu_fonts
   bubblewrap passt nftables
   unfree.claude-code codex

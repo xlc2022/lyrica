@@ -10,6 +10,8 @@ import type { ThreadContext } from "../index.ts";
 import { syncEntries, toStoredEntry } from "../record.ts";
 import { PaceTracker } from "../context.ts";
 import { openThreadSession } from "../session.ts";
+import { piModelFor } from "../models.ts";
+import type { VisionFallback } from "../vision.ts";
 import { createMcpServersExtension } from "../mcp.ts";
 import { createWebExtension } from "../web.ts";
 import { checkoutsOf, repoRules } from "../code-repositories.ts";
@@ -192,9 +194,9 @@ export class Subagent {
   private readonly aborter = new AbortController();
 
   constructor(
-    private readonly d: Delegation, readonly run: Run, readonly ctx: ThreadContext, readonly role: Role, readonly model: string,
+    private readonly d: Delegation, readonly run: Run, readonly ctx: ThreadContext, readonly role: Role, public model: string,
     /** Whether its model is on a cloud endpoint. */
-    readonly cloud: boolean, body: (sub: Subagent) => SubagentBody,
+    public cloud: boolean, body: (sub: Subagent) => SubagentBody,
     /** Releases the parent's folders, for a writer without worktrees. */
     private readonly releaseFolders: () => void,
     /** Tokens it used before, for a subagent that is continued. */
@@ -1117,7 +1119,25 @@ export class Delegation {
       // tool_search loads the MCP tools, which register after its role's tools are set, so the role doesn't turn them off.
       const allowed = new Set([...role.tools, "ask_parent", ...(nested ? ["delegate"] : []), ...(mcp ? ["tool_search"] : [])]);
       // First: it must run before the MCP extension registers anything, else the role gate turns loaded MCP tools off.
-      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica", !earlier && role.name === "coder" ? { task, done } : undefined, rules));
+      // A model without vision that reads an image goes on, for the rest of this subagent, on a local model that can see it:
+      // the first whose machine is up, recorded as the subagent's model.
+      const vision: VisionFallback = async () => {
+        const task = role.name === "coder" ? "code" : "chat";
+        const call = () => models.callContext(parent.user.id, parent.pool, child.id);
+        const locals = models.textModels(call()).filter((m) => m.vision && m.local);
+        if (!locals.length) return undefined;
+        const list = locals.map((m) => ({ offeringId: m.id }));
+        // Tried before anything is saved, so with none up the thread keeps its own list, or none.
+        const tried = { ...call(), overrides: { ...call().overrides, [task]: list } };
+        let picked;
+        try { picked = models.resolve(task, tried); } catch { return undefined; }
+        models.setThreadModel(parent.user.id, parent.pool, child.id, task, list);
+        const { model } = piModelFor(opened.runtime, models, task, call(), picked);
+        if (sub) { sub.model = picked.label; sub.cloud = false; }
+        this.store.update(parent.user.id, parent.pool, child.id, { model: picked.label, offeringId: picked.ref.offeringId });
+        return { model, label: picked.label };
+      };
+      extensions.unshift(createSubagentExtension(ctx, role, hooks, allowed, this.o.name?.() ?? "Lyrica", !earlier && role.name === "coder" ? { task, done } : undefined, rules, vision));
       const opened = await openThreadSession({ thread: ctx, models, cwd: this.o.cwd, extensions, task: () => role.name === "coder" ? "code" : "chat" });
       opened.session.setThinkingLevel(role.thinking);
       // Passes over a model whose machine is away, and records the call. The role keeps its own thinking level.

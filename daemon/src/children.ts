@@ -156,6 +156,7 @@ export class ChildThreads implements ThreadsHost {
     const project = !!own.getThread(parent.threadId)?.project;
     if (project && this.o.paused?.(userId, parent.pool, parent.threadId)) throw new Error("this project is paused; nothing new starts until the person resumes it");
     const baseKey = `${userId}/${parent.pool}/${parent.threadId}`;
+    if (project) this.checkSameTask(userId, parent, req.title);
     if (project && req.base) this.checkBase(userId, parent.pool, parent.threadId);
     // In a project, past the limit the thread waits its turn; elsewhere the start is refused.
     const queued = project && this.workingCount(userId) >= this.limits.concurrency;
@@ -732,12 +733,14 @@ export class ChildThreads implements ThreadsHost {
       return this.rows(userId).filter((r) => r.pool === pool && r.parent === project && view.own.getThread(r.thread)).map((r) => {
         const t = view.own.getThread(r.thread)!;
         const status = this.o.host().status(userId, pool, r.thread);
-        const reason = this.o.workspace.settings(userId).threadWork(r.thread)?.reason;
+        const work = this.o.workspace.settings(userId).threadWork(r.thread);
+        const reason = work?.reason;
+        const branches = work && !work.cleaned ? work.worktrees.map((w) => w.branch) : [];
         const state = stateOf(r, status);
         const hold = state === "idle" ? this.o.held?.(userId, pool, r.thread) : undefined;
         return {
           id: r.thread, ...(t.title ? { title: t.title } : {}), status, state: hold ? "held" : state, ...(hold ? { held: { thread: hold.other, ...(view.own.getThread(hold.other)?.title ? { title: view.own.getThread(hold.other)!.title! } : {}), path: hold.path } } : {}), ...(r.needs_you ? { needsYou: true } : {}),
-          ...(reason ? { worktreeReason: reason } : {}),
+          ...(reason ? { worktreeReason: reason } : {}), ...(branches.length ? { branches } : {}),
           updatedAt: view.own.lastEntry(r.thread)?.createdAt ?? t.createdAt, unseen: r.unseen, ...(on ? stepsOf(view.own.steps(r.thread)) : {}),
           ...(r.anchor !== null ? { anchor: r.anchor } : {}), ...(r.resolved_at ? { resolvedAt: r.resolved_at } : {}),
         };
@@ -757,13 +760,24 @@ export class ChildThreads implements ThreadsHost {
     return lines.join("\n") || undefined;
   }
 
-  /** Resolves or reopens a project's thread, from her tool. A thread resolves only itself; the project chat any of its threads. */
-  resolve(from: ThreadContext, id: string | undefined, resolved: boolean): Promise<void> {
+  /**
+   * Resolves or reopens a project's thread, from her tool. A thread resolves
+   * only itself; the project chat any of its threads. Work no remote has
+   * stops a resolve unless forced, since no thread would go on with it.
+   */
+  async resolve(from: ThreadContext, id: string | undefined, resolved: boolean, force = false): Promise<void> {
     const userId = from.user.id;
     const target = id ?? from.threadId;
     const row = this.row(userId, from.pool, target);
     if (!row || !from.view.own.getThread(row.parent)?.project) throw new Error(`[t:${target}] isn't a thread of a project`);
     if (id !== undefined && row.parent !== from.threadId) throw new Error(`[t:${target}] isn't a thread of this project`);
+    if (resolved && !force && !row.resolved_at) {
+      const unsaved = await this.o.workspace.unsavedWork({ userId, pool: from.pool, threadId: target });
+      if (unsaved.length) {
+        throw new Error(`${id ? `[t:${target}]` : "This thread"} has work no remote has:\n${unsaved.join("\n")}\n`
+          + `${id ? "To go on with it, send that thread what to do next with threads message" : "Commit and push it, or say in your report where it is"}; resolving sets it aside, so only resolve with force: true if it isn't wanted.`);
+      }
+    }
     return this.setResolved(userId, from.pool, target, resolved);
   }
 
@@ -991,13 +1005,20 @@ export class ChildThreads implements ThreadsHost {
     this.locking.delete(userId);
   }
 
+  /** A project thread for the same task (its title) that is still open goes on there, keeping its work, rather than starting over beside it. */
+  private checkSameTask(userId: string, parent: ThreadContext, title: string): void {
+    const same = (t: string | undefined) => !!t && t.trim().toLowerCase() === title.trim().toLowerCase();
+    const open = this.rows(userId).find((r) => r.pool === parent.pool && r.parent === parent.threadId && !r.resolved_at && same(parent.view.own.getThread(r.thread)?.title));
+    if (open) throw new Error(`[t:${open.thread}] is already open for this task, with its work so far: send it what to do next with threads message`);
+  }
+
   private checkBase(userId: string, pool: Pool, project: string, except?: string): void {
     const pending = this.bases.get(`${userId}/${pool}/${project}`);
     if (pending) throw new Error(`the base checkout is held by ${JSON.stringify(pending)}`);
     const holder = this.rows(userId).find((r) => r.pool === pool && r.parent === project && r.thread !== except && !r.resolved_at && this.o.workspace.settings(userId).threadWork(r.thread)?.base);
     if (!holder) return;
     // The link shows the thread's title, so the message doesn't repeat it.
-    throw new Error(`the base checkout is held by [t:${holder.thread}]; resolve that thread first`);
+    throw new Error(`the base checkout is held by [t:${holder.thread}]: to go on with that work, send it what to do next with threads message; it frees the checkout when its pull request merges or it's resolved`);
   }
 
   /**
