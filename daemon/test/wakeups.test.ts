@@ -143,12 +143,13 @@ describe("a plan's usage limit", () => {
     const local = models.resolve("chat", models.callContext(s.rt.ada.id, "general", s.thread.id)).ref;
     models.setColumnTask(s.rt.ada.id, "general", "chat", [{ offeringId: planModel.id }, local]);
     const realFetch = globalThis.fetch;
+    const sent = { plan: 0 };
     globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input instanceof Request ? input.url : input);
-      if (/chatgpt\.com|api\.openai\.com/.test(url)) return Response.json({ error }, { status: 429 });
+      if (/chatgpt\.com|api\.openai\.com/.test(url)) { sent.plan++; return Response.json({ error }, { status: 429 }); }
       return realFetch(input, init);
     }) as typeof fetch;
-    return { ...s, models, plan, restore: () => { globalThis.fetch = realFetch; } };
+    return { ...s, models, plan, sent, restore: () => { globalThis.fetch = realFetch; } };
   }
 
   it("waits for the plan to reset rather than falling back, says when once, and carries the turn on then", async () => {
@@ -178,11 +179,21 @@ describe("a plan's usage limit", () => {
     }
   });
 
-  it("keeps one resume however many turns the limit cuts off before it resets", async () => {
+  it("holds what comes while the plan is limited, with no request to it and nothing new said, and keeps one resume", async () => {
     const s = await planFirst({ code: "usage_limit_reached", resets_at: Math.floor(Date.now() / 1000) + 40 * 60 });
     try {
       await s.say("build it");
-      await s.say("and the tests");
+      const before = s.sent.plan;
+      // A message and a wake (a job's end, a child's notice) wait: nothing is sent to the plan, and the person hears nothing new.
+      const from = s.stream.events.length;
+      expect((await s.ada.post(`${s.path}/messages`, { text: "and the tests" })).status).toBe(200);
+      await s.stream.until((e) => e.type === "queue" && e.queued.includes("and the tests"), from);
+      await s.d.services!.host.get(s.rt.ada.id, "general", s.thread.id).wakeChild("A background command ended.");
+      await new Promise((r) => setTimeout(r, 200));
+      expect(s.sent.plan).toBe(before);
+      const events = s.stream.events.slice(from).map((e) => e.event.type);
+      expect(events).not.toContain("turn_start");
+      expect(events).not.toContain("notice");
       expect(await s.wakeups()).toHaveLength(1);
     } finally {
       s.restore();
@@ -218,6 +229,8 @@ describe("a plan's usage limit", () => {
       s.tick(39);
       expect(await s.wakeups()).toEqual([first]);
       const from = s.stream.events.length;
+      // The plan resets (this fake one refuses again, so the turn waits once more).
+      (s.models as unknown as { limited: Map<string, number> }).limited.set(s.plan.id, Date.now() - 1);
       s.tick(42);
       await s.stream.until((e) => e.type === "turn_end", from);
       // It fired; this fake plan is limited still, so the turn waits again with a wake-up of its own.

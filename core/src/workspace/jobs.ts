@@ -17,6 +17,8 @@ export interface JobInfo {
   /** "sandbox" or the machine's name. */
   place: string;
   command: string;
+  /** Where it runs, on its place. */
+  cwd: string;
   startedAt: string;
   endedAt?: string;
   state: JobState;
@@ -84,7 +86,7 @@ export class Jobs {
     const n = (this.next.get(k) ?? 0) + 1;
     this.next.set(k, n);
     const job: Job = {
-      id: `j${n}`, place, command, startedAt: new Date().toISOString(), state: "running",
+      id: `j${n}`, place, command, cwd, startedAt: new Date().toISOString(), state: "running",
       thread, controller: new AbortController(), output: [], outputBytes: 0, dropped: 0,
     };
     list.push(job);
@@ -164,7 +166,7 @@ export class Jobs {
 }
 
 const info = (j: Job): JobInfo => ({
-  id: j.id, place: j.place, command: j.command, startedAt: j.startedAt, state: j.state,
+  id: j.id, place: j.place, command: j.command, cwd: j.cwd, startedAt: j.startedAt, state: j.state,
   ...(j.endedAt ? { endedAt: j.endedAt } : {}), ...(j.exitCode !== undefined ? { exitCode: j.exitCode } : {}), ...(j.reason ? { reason: j.reason } : {}),
 });
 

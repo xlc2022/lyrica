@@ -598,6 +598,11 @@ taking turns. A stopped turn tells nobody, nor does a turn the user
 started in the child. Which children owe a report is
 held in memory; a restart tells the parent anyway.
 
+A child waiting for its plan's usage limit (docs/models.md, Subscription
+plans) tells its parent once per reset, without a wake: "is waiting for
+<plan>'s usage limit, which resets at HH:MM UTC; it carries on then by
+itself". Its turn's error then asks nobody to nudge it.
+
 A turn the turn tool limits stopped (extension/src/turn-tools.ts) wakes
 the parent at once, whether or not the child owed a report: "stopped at
 its turn's tool limit, so its work may not be finished, and is idle",

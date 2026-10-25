@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
-  ANSWER, answerMark, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, planLimitReset, NoModel, Offline, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
+  ANSWER, answerMark, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, planLimitReset, NoModel, Offline, PlanWaiting, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
@@ -247,6 +247,8 @@ export class HostedThread {
   private idle: NodeJS.Timeout | undefined;
   /** No model could be reached: the queued messages wait, and this asks again until one answers. */
   private held: NodeJS.Timeout | undefined;
+  /** A wake that came while nothing could answer: it goes, as a wake, once something can. */
+  private heldWake: string | undefined;
   /** Settings changed during a turn: reopen the session once it ends. */
   private stale = false;
   /** The note a turn on the reloaded session starts with, when this turn asked for one (`reload`). */
@@ -594,14 +596,19 @@ export class HostedThread {
         try {
           await opened.prepare();
         } catch (err) {
-          if (!(err instanceof Offline)) throw err;
+          if (!(err instanceof Offline) && !(err instanceof PlanWaiting)) throw err;
           // Nothing is stored yet: the messages wait, and go once a model answers again. Marked ones wait apart.
           const marked = this.steering.find((s) => s.prompt);
           if (marked) marked.prompt = false;
-          const person = [...(marked ? [] : [next]), ...this.queued.splice(0)];
+          // A wake (a child's notices, a job's end, a wake-up) isn't a message: it is kept apart and goes as a wake.
+          if (next === CHILD_WAKE) this.heldWake = wake ?? this.heldWake ?? "Read the child thread notices and respond to the result or question.";
+          const person = [...(marked || next === CHILD_WAKE ? [] : [next]), ...this.queued.splice(0)];
           this.hold(person.length ? person.join("\n\n") : undefined, err);
+          if (err instanceof PlanWaiting) this.planWaiting(err.endpointId, err.until);
           break;
         }
+        // The turn reads the notices a held wake was for.
+        this.heldWake = undefined;
         // Marked messages that came while no session was open: Pi takes them after this turn's first message.
         for (const s of this.steering) if (!s.handed && !s.prompt) this.hand(opened, s);
         this.emit({ type: "turn_start" });
@@ -676,17 +683,24 @@ export class HostedThread {
   }
 
   /**
-   * No model for the thread's chat can be reached: the person's text waits in
-   * the queue (marked messages wait apart), the views are told once, and
-   * every HEALTH_MS lyricad asks the machines again (resolveLive), sending it
-   * as soon as one answers. Stop, or a new message (which goes with it), ends
-   * the wait.
+   * Nothing can answer now: the person's text waits in the queue (marked
+   * messages wait apart, a wake waits as `heldWake`) and goes in one turn once
+   * a model can. Offline is told once and asks the machines again every
+   * HEALTH_MS (resolveLive); a plan at its usage limit says so once and waits
+   * for its reset. Stop, or a new message (which goes with it), ends the wait.
    */
-  private hold(text: string | undefined, err: Offline): void {
+  private hold(text: string | undefined, err: Offline | PlanWaiting): void {
     this.queued = text !== undefined ? [text] : [];
     this.emit({ type: "queue", queued: [...this.queued] });
-    this.emit({ type: "offline", task: err.task, tried: err.tried });
-    this.waitForModel();
+    if (err instanceof Offline) {
+      this.emit({ type: "offline", task: err.task, tried: err.tried });
+      return this.waitForModel();
+    }
+    if (!this.limitNoticed.has(err.endpointId)) {
+      this.limitNoticed.add(err.endpointId);
+      this.emit({ type: "notice", text: this.limitNotice(err.endpointId), status: "limit" });
+    }
+    this.waitForModel(Math.max(0, err.until - Date.now()) + 60_000);
   }
 
   private turnTask: "chat" | "code" = "chat";
@@ -699,9 +713,15 @@ export class HostedThread {
     this.unhold();
     this.held = setTimeout(() => {
       this.held = undefined;
-      const waiting = () => this.queued.length > 0 || this.steering.length > 0;
+      const waiting = () => this.queued.length > 0 || this.steering.length > 0 || this.heldWake !== undefined;
       if (this.closed || this.busy || !waiting()) return;
-      const send = () => { if (!this.closed && !this.busy && waiting()) void this.start(this.queued.length ? this.queued.splice(0).join("\n\n") : undefined).catch(() => {}); };
+      const send = () => {
+        if (this.closed || this.busy || !waiting()) return;
+        const wake = this.heldWake;
+        this.heldWake = undefined;
+        if (!this.queued.length && !this.steering.length && wake) return void this.wakeChild(wake).catch(() => {});
+        void this.start(this.queued.length ? this.queued.splice(0).join("\n\n") : undefined).catch(() => {});
+      };
       // Anything but Offline (the list was changed to one that can't work, say) is said by the turn itself.
       this.o.models.resolveLive(this.chatTask(), this.o.models.callContext(this.userId, this.pool, this.threadId))
         .then(send, (err) => (err instanceof Offline ? this.waitForModel() : send()));
@@ -800,6 +820,7 @@ export class HostedThread {
     }
 
     this.unhold();
+    this.heldWake = undefined;
     this.imageRetryAbort?.abort();
     for (const p of [...this.pending.values()]) p.done(false, "stopped");
     if (this.queued.length) {
@@ -1257,6 +1278,12 @@ export class HostedThread {
   private resumeAfterLimit(endpointId: string): void {
     const until = this.o.models.planLimitedUntil(endpointId) ?? Date.now();
     this.o.resume?.(this.userId, this.pool, this.threadId, new Date(until + 60_000), PLAN_LIMIT_RESUME);
+    this.planWaiting(endpointId, until);
+  }
+
+  /** The thread waits for a plan's reset: a child's parent hears so (children.ts), instead of being asked to nudge it. */
+  private planWaiting(endpointId: string, until: number): void {
+    this.o.threads?.planWaiting?.(this.userId, this.pool, this.threadId, this.o.models.endpoint(this.userId, endpointId)?.name ?? "its plan", until);
   }
 
   /** The endpoint couldn't be reached: marks it down, and returns the chat's Offline when no model is left. */

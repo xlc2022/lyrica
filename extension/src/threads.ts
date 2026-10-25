@@ -49,6 +49,8 @@ export interface ThreadsHost {
   watchable?(from: ThreadContext): boolean;
   /** A child's checks still fail after the last round (checks.ts): its parent is told when the turn ends. */
   checksExhausted?(userId: string, pool: ThreadContext["pool"], thread: string, report: string): void;
+  /** The thread waits for a plan's usage limit (`plan`, by name) to reset at `until`: a child's parent is told once, without a wake. */
+  planWaiting?(userId: string, pool: ThreadContext["pool"], thread: string, plan: string, until: number): void;
   draft?(from: ThreadContext, change: { goal?: string; instructions?: string }): void;
   /**
    * Creates a child of `parent`, with its settings or narrower ones, and

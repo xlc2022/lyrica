@@ -2,7 +2,7 @@ import { createAssistantMessageEventStream, type Api, type AssistantMessageEvent
 import { estimateTokens, ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { PlanCredentials, planProvider } from "./plans.ts";
-import { acceptedSettings, DEFAULT_CONTEXT, replyCap, isPlan, planLimitReset, CloudModelForbidden, isRestricted, NoModel, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
+import { acceptedSettings, DEFAULT_CONTEXT, replyCap, isPlan, planLimitReset, CloudModelForbidden, isRestricted, NoModel, PlanWaiting, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
 import { streamWithInlineThinking } from "./inline-thinking.ts";
 import { capToolCalls, objectTools } from "./tool-stream.ts";
 import { markOverflow, sharedStream, shareModel } from "./model-share.ts";
@@ -236,6 +236,9 @@ export async function prepareTurn(o: {
   const live = (need: { tokens?: number }) => o.models.resolveLive(task, o.call, { ...(tools ? { tools } : {}), ...need }, o.retry ? { probeMs: 1000 } : {});
   // A model the conversation outgrew is passed over for one it fits; when none fits, the first takes it compacted (below).
   const r = await live(tokens ? { tokens } : {}).catch((err) => { if (tokens && err instanceof NoModel) return live({}); throw err; });
+  // A plan at its usage limit would only refuse again: nothing is sent or recorded, and the turn waits for its reset.
+  const limit = o.models.planLimitedUntil(r.endpoint.id);
+  if (limit !== undefined && !o.models.planFallingBack(r.endpoint.id)) throw new PlanWaiting(r.endpoint.id, limit);
   // A model LM Studio loaded at another context since the endpoint was read plans by that from this turn.
   if (!o.retry) await o.models.refreshServed(o.call.userId, r.ref.offeringId).catch(() => {});
   const { model } = piModelFor(o.runtime, o.models, task, o.call, r);

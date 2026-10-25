@@ -93,6 +93,8 @@ export class ChildThreads implements ThreadsHost {
   private readonly noticed = new Set<string>();
   /** Children whose checks still failed after the last round this turn (checks.ts): the report their parent gets when the turn ends. */
   private readonly exhausted = new Map<string, string>();
+  /** When the plan a thread waits for resets, by `user/pool/thread`: its parent was told, once per reset. */
+  private readonly planWaits = new Map<string, number>();
   /** A report in this turn, including a turn started by the user. */
   private readonly reports = new Set<string>();
   private readonly locking = new Set<string>();
@@ -382,6 +384,10 @@ export class ChildThreads implements ThreadsHost {
    */
   ended(userId: string, pool: Pool, thread: string, how: "done" | "error" | "stopped" | "limited"): void {
     const key = `${userId}/${pool}/${thread}`;
+    // An error from a plan's usage limit: the parent was told the child waits for the reset, so nobody is asked to nudge it.
+    const planWait = this.planWaits.get(key);
+    const waitsForPlan = how === "error" && planWait !== undefined && planWait > Date.now();
+    if (how !== "error") this.planWaits.delete(key);
     this.markStopped(userId, pool, thread, how === "stopped");
     const wake = this.parentWakes.get(key);
     if (wake?.running) {
@@ -415,7 +421,7 @@ export class ChildThreads implements ThreadsHost {
     this.drainWakes(userId);
     if (!t) return;
     this.tasked.delete(key);
-    if (how === "stopped" || (how === "done" && t.reported) || (how === "error" && this.noticed.has(key))) return;
+    if (how === "stopped" || waitsForPlan || (how === "done" && t.reported) || (how === "error" && this.noticed.has(key))) return;
     let row: Row | undefined;
     try { row = this.row(userId, pool, thread); } catch { return; /* locked */ }
     if (!row) return;
@@ -425,6 +431,22 @@ export class ChildThreads implements ThreadsHost {
     this.deliver(userId, pool, row.parent, how === "error"
       ? `Child thread [t:${thread}] stopped with an error, and is idle. Read it with threads read, or message it to go on.`
       : `Child thread [t:${thread}] finished without a report, and is idle. Read it with threads read, or message it.`, thread, "update", how === "error" ? "now" : "batch");
+  }
+
+  /**
+   * A thread waits for a plan's usage limit to reset (hosted.ts): a child's
+   * parent is told once per reset, without a wake, since there is nothing to
+   * do until then and a nudge would only be refused again.
+   */
+  planWaiting(userId: string, pool: Pool, thread: string, plan: string, until: number): void {
+    const key = `${userId}/${pool}/${thread}`;
+    if (this.planWaits.get(key) === until) return;
+    this.planWaits.set(key, until);
+    let row: Row | undefined;
+    try { row = this.row(userId, pool, thread); } catch { return; /* locked */ }
+    if (!row) return;
+    const at = new Date(until).toISOString().slice(11, 16);
+    this.deliver(userId, pool, row.parent, `Child thread [t:${thread}] is waiting for ${plan}'s usage limit, which resets at ${at} UTC; it carries on then by itself.`, thread);
   }
 
   /**

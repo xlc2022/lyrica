@@ -15,9 +15,9 @@ function slowTarget() {
 }
 
 describe("background commands", () => {
-  it("tell the thread when one ends, and wake it once if it is idle", async () => {
+  it("tell the thread when one ends, and wake it once if it is idle, with every job that ended close together", async () => {
     const rt = await runtime();
-    const dm = await daemon(rt);
+    const dm = await daemon(rt, { jobWakeMs: 300 });
     await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
     const ada = await login(dm.base, "ada", "pw");
     const model = await fakeOpenAI({ label: "local", models: [{ id: "qwen3.8-27b" }] });
@@ -36,16 +36,23 @@ describe("background commands", () => {
     const { target, finish } = slowTarget();
     const job = dm.d.services!.workspace.jobs.start({ userId: rt.ada.id, pool: "general", threadId: thread.id }, "box", target, "docker compose pull", "/home/lyrica");
     expect(job.id).toBe("j1");
+    const second = slowTarget();
+    dm.d.services!.workspace.jobs.start({ userId: rt.ada.id, pool: "general", threadId: thread.id }, "box", second.target, "docker image prune -f", "/home/lyrica");
     from = stream.events.length;
     finish("Pulled llama-server\nPulled host-api\n");
+    second.finish("Total reclaimed space: 0B\n");
     await stream.until((e) => e.type === "turn_end", from);
+    await new Promise((r) => setTimeout(r, 500));
+    // Both ended within the wait: one turn, which reads both notices.
+    expect(model.requests).toHaveLength(2);
+    expect(asked.at(-1)).toContain("docker image prune -f");
 
     expect(asked.at(-1)).toMatch(/Background command j1 in box, exited with code 0 after \d+ s: docker compose pull\\nLast output:\\nPulled llama-server\\nPulled host-api/);
     const page = (await ada.get<MessagePage>(`${path}/messages`)).body;
     const notice = page.messages.find((m) => m.role === "notice")!;
     expect(notice.parts[0]).toMatchObject({ type: "delegation", status: "job", text: expect.stringContaining("docker compose pull") });
     expect(page.messages.at(-1)!.parts).toEqual([{ type: "text", text: "The images are pulled." }]);
-    expect(dm.d.services!.workspace.jobs.list({ userId: rt.ada.id, pool: "general", threadId: thread.id })).toMatchObject([{ id: "j1", state: "exited" }]);
+    expect(dm.d.services!.workspace.jobs.list({ userId: rt.ada.id, pool: "general", threadId: thread.id })).toMatchObject([{ id: "j1", state: "exited" }, { id: "j2", state: "exited" }]);
   });
 });
 
