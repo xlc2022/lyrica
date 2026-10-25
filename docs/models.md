@@ -932,8 +932,8 @@ xAI provider instead (below).
   and a reply on a full window has no room left to ask for it. That happens
   after a switch to a model with a smaller window, or when a copy is loaded
   at a smaller context. On a switch it summarises first on the model the
-  conversation came from, which holds it whole; failing that, on the new
-  one. A model the conversation has outgrown is passed over for one it
+  conversation came from, which holds it whole, when that one costs
+  nothing (local or free); otherwise, or failing that, on the new one. A model the conversation has outgrown is passed over for one it
   fits; when none fits, the first takes it compacted.
 
 `openThreadSession` hosts one thread with that runtime and its chat model.

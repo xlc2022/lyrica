@@ -246,11 +246,14 @@ export async function prepareTurn(o: {
   for (const m of switching ? [model] : [model, current!]) follow(m, r.endpoint, now, o.call.contextLimit);
   // Pi compacts only after a reply, and a reply on a full window has no room left to ask for it: a conversation over
   // this model's compaction edge (after a switch to a smaller window, or a load at one) compacts before it is sent.
-  // First on the model it came from, which holds it whole; failing that, on this one. A retry is mid-turn, so it can't.
+  // First on the model it came from, which holds it whole; else on this one. A retry is mid-turn, so it can't.
   const over = () => { const t = o.session.getContextUsage()?.tokens; return !!t && t > model.contextWindow - reserveFor(model.contextWindow); };
   const compact = () => o.session.compact().then(() => true, () => false);
   let compacted = false;
-  if (!o.retry && over() && switching && current && current.contextWindow > model.contextWindow) compacted = await compact();
+  // Only on one that costs nothing (local, or free): a model left behind over its price or a plan limit isn't called again.
+  const was = current && o.models.endpoint(o.call.userId, current.provider);
+  const costless = !!was && (was.kind === "local" || !!o.models.offerings(o.call.userId, was.id).find((x) => x.modelId === current!.id)?.price?.free);
+  if (!o.retry && over() && switching && current && costless && current.contextWindow > model.contextWindow) compacted = await compact();
   if (switching) await o.session.setModel(model);
   if (!o.retry && !compacted && over()) await compact();
   let note: string | undefined;
