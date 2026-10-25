@@ -1667,6 +1667,9 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .frow > .rename { margin: 2px 6px 2px 0; }
 /* Project in a project chat's header: pressed while the overview shows beside the chat. */
 .head-actions .sm[aria-pressed="true"] { background: var(--tool); }
+/* Resolve is a toggle: filled in the ok color while the thread is resolved, a second press reopens it (docs/ux.md §6). */
+.head-actions .resolve-btn[aria-pressed="true"] { background: var(--ok); border-color: var(--ok); color: var(--bg); font-weight: 600; }
+.head-actions .resolve-btn[aria-pressed="true"]:hover:not(:disabled) { border-color: var(--ok); filter: brightness(1.05); }
 
 /* A message's actions (docs/ux.md §6, "A message's actions"): a quiet row of icon buttons under the message, each named by
    its tooltip, borderless at rest and bordered on hover, as the message box's icons are. Shown on hover or focus where a
