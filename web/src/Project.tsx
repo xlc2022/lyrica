@@ -384,8 +384,9 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
     ? "A command prefix has 1 to 8 words, each at most 64 characters, with no control characters. Each prefix can have one rule." : "";
   const checkError = checks.some(c => c.trim().length > 300 || /[\x00-\x1f\x7f-\x9f]/.test(c))
     ? "A check is one line of at most 300 characters, with no control characters." : "";
-  const newThreadsHint = `Threads ${her()} starts from this chat. Each one can be changed after it starts.`;
-  const sameHint = `${newThreadsHint} Other models come from this chat's settings.`;
+  // A project's threads follow the coordinating chat, not whichever thread is on screen: this page opens as a page of its own.
+  const newThreadsHint = `Threads ${her()} starts from the coordinator. Each one can be changed after it starts.`;
+  const sameHint = `${newThreadsHint} Other models come from the coordinator's settings.`;
   return (
     <form className="card project-form" aria-labelledby="h-general" onSubmit={(e) => { e.preventDefault(); void save(); }}>
       <h2 id="h-general">General</h2>
@@ -404,7 +405,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
         <label className="field" title={`The model a new thread talks on: Coding in Code mode, Main conversation otherwise. ${newThreadsHint}`}>
           <span>Model</span>
           <select value={model} onChange={(e) => setModel(e.target.value)}>
-            <option value="">Same as this chat</option>
+            <option value="">Same as coordinator</option>
             {settings.allowed.map((ep) => (
               <optgroup key={ep.id} label={`${ep.name} (${ep.kind})`}>
                 {ep.models.map((m) => <option key={m.id} value={m.id}>{ep.kind} · {modelName(m)} · {ep.name}</option>)}
@@ -417,14 +418,14 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
         <label className="field" title={newThreadsHint}>
           <span>Thinking</span>
           <select value={thinking} onChange={(e) => setThinking(e.target.value as ThinkingLevel | "")}>
-            <option value="">Same as this chat</option>
+            <option value="">Same as coordinator</option>
             {THINKING.map((l) => <option key={l} value={l}>{l === "off" ? "Off" : l[0]!.toUpperCase() + l.slice(1)}</option>)}
           </select>
         </label>
         <label className="field" title={newThreadsHint}>
           <span>Fallback</span>
           <select value={fallback} onChange={(e) => setFallback(e.target.value as "" | "on" | "off")}>
-            <option value="">Same as this chat</option>
+            <option value="">Same as coordinator</option>
             <option value="on">On</option>
             <option value="off">Off</option>
           </select>
