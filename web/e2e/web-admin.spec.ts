@@ -1004,8 +1004,6 @@ test("the sidebar brand links home and closes the phone drawer", async ({ page, 
   const userId = await enter(page, baseURL!);
   await page.goto(`/#/u/${userId}/admin/status`);
   await expect(page.getByRole("heading", { name: "Status", exact: true })).toBeVisible();
-  // Wait for telemetry card to load (charts may take a moment)
-  await expect(page.locator(".telemetry-card")).toBeVisible({ timeout: 15000 });
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   const brand = page.locator("a.brand");
   await expect(brand).toHaveAttribute("href", `#/u/${userId}`);

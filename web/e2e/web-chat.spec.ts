@@ -525,7 +525,7 @@ test("an open run of tool calls follows her newest call only while its box is at
   await box.evaluate((el) => { el.scrollTop = 0; });
   const seen = await calls.count();
   await expect.poll(() => calls.count()).toBeGreaterThan(seen + 2);
-  expect(await box.evaluate((el) => el.scrollTop)).toBeLessThanOrEqual(10);
+  expect(await box.evaluate((el) => el.scrollTop)).toBe(0);
   // Back at the bottom, it follows again.
   await box.evaluate((el) => { el.scrollTop = el.scrollHeight; });
   const back = await calls.count();
