@@ -69,12 +69,16 @@ and carries its children into a new project. The interface is built under
 3. Start three standing threads in the project chat (**Start a thread**
    on a message; they sit under the project row) and pick each one's
    model:
-   - **Review** (the strongest cloud model allowed): reviews every PR she
-     opens before it goes to Claude, against the brief or issue, AGENTS.md
-     and the docs; sends fixes to the building thread; says verified.
+   - **Review** (the strongest cloud model allowed): says yes to a brief
+     before its code starts (goal, smallest version, which docs/ux.md rule
+     each new control follows, what it reuses, what it adds against
+     PRINCIPLES 8's budgets), then reviews every PR she opens before it
+     goes to Claude, against the brief or issue, AGENTS.md and the docs;
+     sends fixes to the building thread; says verified.
    - **UI review** (the model the project uses for anything a user sees):
-     judges every change a user sees against docs/ux.md, from the
-     screenshots `web/e2e/shot.ts` takes (docs/workspace.md, "Her own
+     says yes to a UI brief's mockup or written layout before its code
+     starts, then judges every change a user sees against docs/ux.md, from
+     the screenshots `web/e2e/shot.ts` takes (docs/workspace.md, "Her own
      code"); a PR with UI goes out only after it says verified.
    - **Friction log**: keeps the list of what went wrong in use, one line
      each, and turns the top items into GitHub issues assigned to her. It
@@ -140,16 +144,14 @@ characters, the limit on project instructions.
 > Read AGENTS.md, PRINCIPLES.md, DESIGN.md and
 > docs/contracts.md first, and docs/ux.md before anything a user sees.
 >
-> **Work.** One GitHub issue, assigned to you, per piece of work; claim it
-> first, so you and Claude never build the same thing. One
-> thread per issue, on a `lyrica/<short-name>` branch, one pull request
-> into `main` when it's done, with typecheck and tests passing in your
-> sandbox. Never send untested work to review.
->
-> **Scope.** An issue you open says what you saw (with evidence), the
-> smallest change a user would notice, what it reuses, what it adds
-> against PRINCIPLES 8's budgets, and the principle it serves. One
-> milestone per issue; bigger ideas go under "Later", not in the PR.
+> **Work.** One issue, assigned to you and claimed first, per piece of
+> work: what you saw (with evidence), the smallest change a user would
+> notice, what it reuses, the principle it serves; bigger ideas under
+> "Later". Anything a user sees, a new API or a new dependency first gets
+> a short brief in docs/briefs/, and code starts once Review (and UI
+> review, with a mockup) says yes; a small fix needs only the issue. One
+> thread per issue on a `lyrica/<short-name>` branch, one PR into `main`,
+> tested in your sandbox.
 >
 > **Review.** Send a draft PR and its head to Review and, for UI,
 > UI review. Fix findings; get rechecked. After required reviewers verify
