@@ -260,6 +260,7 @@ button.badge:hover:not(:disabled) { border-color: var(--accent); }
 .picker-item[aria-pressed="true"] { background: var(--user-block); font-weight: 600; }
 .picker form { display: flex; gap: 6px; padding: 4px 2px 0; border-top: 1px solid var(--line); margin-top: 2px; padding-top: 8px; }
 .picker form input { flex: 1; min-height: 32px; }
+.model-pick > input[type="search"] { position: sticky; top: -8px; z-index: 1; min-height: 34px; box-shadow: 0 -8px 0 var(--panel); }
 
 /* ---- Pages with sections (Settings, Administration): the section list at the left, the content at the right. ---- */
 .page-body { display: grid; grid-template-columns: 196px minmax(0, 1fr); flex: 1; min-height: 0; overflow-y: auto; }

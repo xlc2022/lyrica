@@ -117,7 +117,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   (`{ title }`) and reloads the list, Escape or an unchanged name puts the
   title back. Clicks inside the field never reach the row's link.
 - **Thread:** a header with the title; under it the pool word, the model
-  badge (cloud or local, model and endpoint; it opens the model picker), the
+  badge (cloud or local, model and endpoint; it opens the model picker,
+  whose search box matches every word against model, endpoint and kind,
+  `matchesModel` in `ModelLabel.tsx`), the
   thread's group as a link that changes it, the folders as words with the
   paths in their tooltip, and the granted machines', repositories' and MCP
   servers' names in mono; at the right Files, Settings and ⋯, which opens

@@ -799,7 +799,16 @@ test("the model badge shows the current model, and a change takes effect", async
   await expect(badge).toContainText("cloud-model");
   await expect(badge).toContainText(/cloud/i);
   await badge.click();
-  await page.getByRole("dialog").getByRole("button", { name: "local-model" }).click();
+  // The search box takes focus and narrows the list by model and endpoint; Enter picks the first match.
+  const search = page.getByRole("dialog").getByRole("searchbox", { name: "Search models" });
+  await expect(search).toBeFocused();
+  await search.fill("no such model");
+  await expect(page.getByRole("dialog")).toContainText("No models match.");
+  await search.fill("gpu local");
+  await expect(page.getByRole("dialog").getByRole("button", { name: "cloud-model" })).toHaveCount(0);
+  await expect(page.getByRole("dialog").getByRole("button", { name: "local-model" })).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/model-search-${page.viewportSize()!.width}.png` });
+  await search.press("Enter");
   await expect(badge).toContainText("local-model");
   await expect(badge).toContainText("gpu");
   await send(page, "Which model?");
