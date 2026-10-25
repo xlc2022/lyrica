@@ -1162,7 +1162,7 @@ export class HostedThread {
             this.limitCut = limited ? provider : undefined;
             const offline = isUnreachable(m.errorMessage) && this.opened ? this.wentAway(provider) : undefined;
             if (offline) this.emit({ type: "offline", task: offline.task, tried: offline.tried });
-            else this.emit({ type: "error", message: plainError(m.errorMessage) });
+            else this.emit({ type: "error", message: plainError(m.errorMessage), reply: true });
             if (limited && !this.limitNoticed.has(provider)) {
               this.limitNoticed.add(provider);
               this.emit({ type: "notice", text: this.limitNotice(provider), status: "limit" });
@@ -1176,7 +1176,7 @@ export class HostedThread {
         const entry = e.entry as { type: string; customType?: string; content?: unknown; details?: unknown };
         if (entry.type === "custom_message" && entry.customType === TURN_TOOL_NOTICE) this.emit({ type: "notice", text: String(entry.content), status: "limit" });
         // Two replies with only thinking: the turn failed, so a project hears it as it would an error.
-        if (entry.type === "custom_message" && entry.customType === EMPTY_REPLY_NOTICE) this.emit({ type: "error", message: String(entry.content) });
+        if (entry.type === "custom_message" && entry.customType === EMPTY_REPLY_NOTICE) this.emit({ type: "error", message: String(entry.content), reply: true });
         if (entry.type === "custom_message" && entry.customType === DELEGATE_MESSAGE) this.notice(entry.content, entry.details);
         break;
       }

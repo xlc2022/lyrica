@@ -190,7 +190,7 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
   ];
   for (const e of entries) {
     const m = e.stored;
-    const hers = m ? (m.role === "assistant" && !m.error && !cards.has(m.n) ? m.parts : undefined) : e.live?.role === "assistant" ? e.live.parts : undefined;
+    const hers = m ? (m.role === "assistant" && !m.error && !cards.has(m.n) ? m.parts : undefined) : e.live?.role === "assistant" && !e.live.error ? e.live.parts : undefined;
     if (hers && hers.length && hers.every(isMarker)) { quiet.push({ key: e.key, n: m?.n, parts: hers, streaming: e.streaming }); continue; }
     flush();
     const user = m ? m.role === "user" : e.live?.role === "user";
@@ -325,7 +325,12 @@ function LiveMessage({ item, env, you, streaming, shown }: { item: LiveItem; env
     return <LookMarker text={text} told={item.told ? item.told.map((t) => ({ threads: [{ pool: env.pool, id: t.threadId }], text: t.text })) : toldIn(text, env.pool)} env={env} />;
   }
   if (item.role === "notice") return <Notice text={item.text} status={item.status} threads={item.threads} env={env} />;
-  return <Parts parts={item.parts} env={env} model={item.model} streaming={streaming} shown={shown} />;
+  return (
+    <>
+      <Parts parts={item.parts} env={env} model={item.model} streaming={streaming && !item.error} shown={shown} />
+      {item.error && <p className="error turn-error" role="alert">{item.error}</p>}
+    </>
+  );
 }
 
 /** A message in the person's place; `hers` when Lyrica wrote it (a subagent's task), so the threads she mentions show by title. Its paths are links. */

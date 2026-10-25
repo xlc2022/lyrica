@@ -26,7 +26,7 @@ it("replies with only thinking, twice, fail the turn live and show as that reply
   const hosted = Object.create(HostedThread.prototype) as { forward(e: unknown): void; emit(e: ThreadEvent): void; pool: string };
   hosted.pool = "general"; hosted.emit = (e) => { events.push(e); };
   hosted.forward({ type: "entry_appended", entry: { type: "custom_message", customType: EMPTY_REPLY_NOTICE, content: EMPTY_REPLY } });
-  expect(events).toContainEqual({ type: "error", message: EMPTY_REPLY });
+  expect(events).toContainEqual({ type: "error", message: EMPTY_REPLY, reply: true });
   const thinking = { role: "assistant", content: [{ type: "thinking", thinking: "planning" }], stopReason: "stop" };
   const messages = toMessages("web/a", "general", [
     { n: 1, createdAt: "2026-10-20", data: { type: "message", message: thinking } },

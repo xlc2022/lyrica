@@ -4,7 +4,8 @@ import type { ContextInfo, Message, MessagePart, PermissionRequest, ThreadEvent,
 
 export type LiveItem =
   | { role: "user"; text: string; afterN?: number }
-  | { role: "assistant"; model?: string; parts: MessagePart[] }
+  /** `error`: why this reply failed, shown under it as its stored copy shows it. */
+  | { role: "assistant"; model?: string; parts: MessagePart[]; error?: string }
   /** Delivered into the thread, such as a background subagent run's result. */
   | { role: "notice"; text: string; status?: string; threads?: ThreadRef[]; told?: Told[] };
 
@@ -15,7 +16,7 @@ export interface Live {
   permissions: PermissionRequest[];
   /** This turn's messages so far. Cleared once the stored messages are reloaded. */
   items: LiveItem[];
-  /** Plain-words errors from the latest turn. */
+  /** Plain-words errors from the latest turn that belong to no reply of it. */
   errors: string[];
   /** No model could be reached: what was tried. Any waiting message is in `queued`, and goes when one answers. */
   offline?: { task: string; tried: { label: string; reason: string }[] };
@@ -145,8 +146,12 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "received":
       // From another thread or a look, where it reached the turn; drawn by its mark.
       return { ...s, items: [...s.items, { role: "user", text: e.text }] };
-    case "error":
+    case "error": {
+      // A reply's own error goes under that reply, so a retry that goes on writes below it instead of above it.
+      const last = s.items.length > s.ended ? s.items.at(-1) : undefined;
+      if (e.reply && last?.role === "assistant") return { ...s, items: [...s.items.slice(0, -1), { ...last, error: e.message }] };
       return { ...s, errors: [...s.errors, e.message] };
+    }
     case "offline":
       // A message she sent that no model took now waits in the queue, so it isn't shown twice.
       // Held messages may have been joined into one, so a message matches the whole text or a blank-line-bounded piece of it.

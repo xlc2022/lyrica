@@ -591,7 +591,8 @@ of the result (6 lines or 600 characters; 60 lines or 6,000 characters for
 a `read`, so its card can show the file; stored messages keep the same), and for `delegate` its subagent threads, each with the role and
 model from its run's record), recall and remember markers, permission
 requests and their outcome, usage, errors in plain words (a model the router
-refused, an endpoint that didn't answer), `offline` when no model could be
+refused, an endpoint that didn't answer; `reply` when it is the error of the
+reply that just ended, as that reply stores it), `offline` when no model could be
 reached, the queue, `received` (a marked message that reached the turn, or
 was kept), the title, `settings`
 when the thread's settings changed (an approved plan switching its mode),
