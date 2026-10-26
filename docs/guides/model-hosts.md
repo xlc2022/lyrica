@@ -109,8 +109,8 @@ minutes on a 4-core machine; it says which. `LYRICA_HOST_REGISTRY`
 points it at another registry, such as a Forgejo instance's. When the
 image GPU (`COMFY_GPU`) is one, ComfyUI isn't started and
 stable-diffusion.cpp, downloaded the same way (or built, 18 minutes),
-makes the images instead: create only, for Z-Image, Qwen-Image, FLUX and
-SDXL recipes without LoRAs. The first image after a
+makes the images instead: create only, for Z-Image, Qwen-Image, Krea 2,
+FLUX and SDXL recipes without LoRAs. The first image after a
 load takes about 2.5 minutes while it converts the weights to Q8_0.
 vLLM models can't run on the card, so dictation runs on whisper.cpp
 instead, with its own starter (large-v3-turbo q8_0). Voices run on it
@@ -365,7 +365,14 @@ memory. On 24 GB, the 27B below at 128k leaves no room for pinned voice:
 either leave voice unpinned and accept the 30-second first use after a
 swap, or pin it and serve the chat model at a shorter context. An image
 recipe such as Z-Image takes 19–22 GB on its own, so on 24 GB chat, voice
-and images take turns: pin only what must answer at once. Whisper on
+and images take turns: pin only what must answer at once. The Krea 2
+Turbo starter (fp8, about 18.6 GB of files) loads one stage at a time,
+about 13.5 GB at its largest; beside a 27B chat model on 24 GB it runs
+only while ComfyUI pauses the chat model. Its weights are under the Krea 2
+Community License: free for non-commercial use and for commercial use
+under $1M a year in revenue, and section 4.2 requires content filtering
+wherever it runs. The host doesn't filter images, so that is the
+operator's to set up, if they install it. Whisper on
 vLLM wants a memory share of about 0.1 of a 24 GB card.
 
 Measured on an RTX 3090 (24 GB) with Qwen3.8-27B Q4_K_M on llama.cpp:

@@ -28,6 +28,9 @@ afterEach(async () => {
 const Z_DIFFUSION = safetensors({ "cap_embedder.0.weight": {}, "noise_refiner.0.attention.qkv.weight": {}, "layers.0.attention.qkv.weight": {} });
 const QWEN3 = safetensors({ "model.layers.0.self_attn.q_proj.weight": {}, "model.layers.0.self_attn.q_norm.weight": {} });
 const QWEN25VL = safetensors({ "model.layers.0.self_attn.q_proj.weight": {}, "visual.blocks.0.attn.qkv.weight": {} });
+const KREA2_DIFFUSION = safetensors({ "txtfusion.projector.weight": {}, "first.weight": {}, "blocks.0.attn.wq.weight": {} });
+const QWEN3VL = safetensors({ "model.language_model.layers.0.self_attn.q_proj.weight": {}, "model.language_model.layers.0.self_attn.q_norm.weight": {}, "model.visual.blocks.0.attn.qkv.weight": {}, "model.visual.merger.linear_fc2.weight": {} });
+const KREA2_LORA = safetensors({ "diffusion_model.blocks.0.attn.wq.lora_A.weight": {}, "diffusion_model.blocks.0.attn.wq.lora_B.weight": {} });
 const FLUX_VAE = safetensors({ "decoder.conv_in.weight": { shape: [512, 16, 3, 3] }, "encoder.conv_in.weight": { shape: [128, 3, 3, 3] } });
 const SDXL_VAE = safetensors({ "decoder.conv_in.weight": { shape: [512, 4, 3, 3] }, "encoder.conv_in.weight": { shape: [128, 3, 3, 3] } });
 const Z_LORA = safetensors({ "diffusion_model.layers.0.attention.qkv.lora_A.weight": {}, "diffusion_model.layers.0.attention.qkv.lora_B.weight": {} });
@@ -53,6 +56,7 @@ describe("parts", () => {
       "a/z.safetensors": Z_DIFFUSION, "a/qwen3.safetensors": QWEN3, "a/qwen25vl.safetensors": QWEN25VL, "a/ae.safetensors": FLUX_VAE,
       "a/sdxl_vae.safetensors": SDXL_VAE, "a/style.safetensors": Z_LORA, "a/flux-ckpt.safetensors": FLUX_CKPT, "a/clip_l.safetensors": CLIP_L,
       "a/t5.safetensors": T5, "a/seedvr2_ema_3b_fp16.safetensors": safetensors({ x: { dtype: "F16" } }), "a/ema_vae_fp16.safetensors": safetensors({ y: {} }),
+      "a/krea2.safetensors": KREA2_DIFFUSION, "a/qwen3vl.safetensors": QWEN3VL, "a/krea2-style.safetensors": KREA2_LORA,
     });
     const got = Object.fromEntries(scanParts(dir).map((p) => [p.file.slice(2), [p.role, p.slot, p.arch, p.precision]]));
     expect(got).toEqual({
@@ -66,6 +70,9 @@ describe("parts", () => {
       "seedvr2_ema_3b_fp16.safetensors": ["upscaler", null, "seedvr2", "fp16"],
       "style.safetensors": ["lora", null, "z-image", "bf16"],
       "t5.safetensors": ["text_encoder", "t5", "t5", "fp8"],
+      "krea2.safetensors": ["diffusion", null, "krea2", "bf16"],
+      "qwen3vl.safetensors": ["text_encoder", "qwen3vl", "qwen3vl", "bf16"],
+      "krea2-style.safetensors": ["lora", null, "krea2", "bf16"],
       "z.safetensors": ["diffusion", null, "z-image", "bf16"],
     });
   });
@@ -187,6 +194,15 @@ describe("recipes", () => {
     expect(Object.keys(edit)).not.toContain("ref1");
     expect(edit.pos!.inputs).not.toHaveProperty("image2");
     expect(edit.batch!.inputs.samples).toEqual(["encoded", 0]);
+
+    const krea = fill(TEMPLATES.get("krea2")!, [
+      { role: "diffusion", slot: null, file: "k.safetensors", added: false },
+      { role: "text_encoder", slot: "qwen3vl", file: "vl.safetensors", added: false },
+      { role: "vae", slot: null, file: "v.safetensors", added: false },
+    ], [], { prompt: "x", width: 1024, height: 1024, count: 1, steps: 8, cfg: 1, seed: 1, sampler: "euler", scheduler: "simple" });
+    expect(krea.load_clip).toEqual({ class_type: "CLIPLoader", inputs: { clip_name: "vl.safetensors", type: "krea2" } });
+    expect(krea.neg!.inputs.conditioning).toEqual(["pos", 0]);
+    expect(JSON.stringify(krea)).not.toContain("$");
   });
 
   it("sizes a recipe by its largest stage plus the VAE, as ComfyUI loads one stage at a time", () => {
@@ -325,6 +341,8 @@ describe("stable-diffusion.cpp", () => {
     expect(sdcppArgs({ template: "flux", parts: [part("checkpoint", "f/flux.safetensors")], loras: [] }, "/models")).toEqual(["-m", "/models/f/flux.safetensors"]);
     expect(sdcppArgs({ template: "qwen-image", parts: [part("diffusion", "q/d.safetensors"), part("text_encoder", "q/te.safetensors", "qwen2.5vl"), part("vae", "q/v.safetensors")], loras: [] }, "/models"))
       .toEqual(["--diffusion-model", "/models/q/d.safetensors", "--llm", "/models/q/te.safetensors", "--vae", "/models/q/v.safetensors"]);
+    expect(sdcppArgs({ template: "krea2", parts: [part("diffusion", "k/d.safetensors"), part("text_encoder", "k/te.safetensors", "qwen3vl"), part("vae", "k/v.safetensors")], loras: [] }, "/models"))
+      .toEqual(["--diffusion-model", "/models/k/d.safetensors", "--llm", "/models/k/te.safetensors", "--vae", "/models/k/v.safetensors"]);
     expect(() => sdcppArgs({ template: "seedvr2", parts: [], loras: [] }, "/models")).toThrow(/no seedvr2 support/);
     expect(() => sdcppArgs({ template: "z-image", parts: [], loras: [{ file: "l.safetensors", strength: 1 }] }, "/models")).toThrow(/LoRAs/);
   });
@@ -514,6 +532,6 @@ describe("the image API", () => {
     const z = body.starters.find((st: { id: string }) => st.id === "z-image-turbo");
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
-    expect(body.starters.map((st: { id: string }) => st.id)).toEqual(["flux-schnell", "qwen-image-edit", "qwen-image", "sdxl", "seedvr2-3b", "seedvr2-7b", "z-image-turbo"]);
+    expect(body.starters.map((st: { id: string }) => st.id)).toEqual(["flux-schnell", "krea2-turbo", "qwen-image-edit", "qwen-image", "sdxl", "seedvr2-3b", "seedvr2-7b", "z-image-turbo"]);
   });
 });
