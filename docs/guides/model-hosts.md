@@ -243,7 +243,9 @@ the host card.
 Three ways a model gets into the library:
 
 - **Copy files into the models folder** and **Scan the folder** on the
-  dashboard (the host also scans at start and after each download). GGUF
+  dashboard, or **Scan** in Lyrica's Models, Image models, which has every
+  host you manage read its folder again (the host also scans at start and
+  after each download). GGUF
   files are served by llama.cpp; a folder with a `config.json` and
   safetensors by vLLM (a model whose config asks for remote code is listed
   but never loaded).
