@@ -7,7 +7,7 @@ import { createAgentSession, DefaultResourceLoader, SessionManager, type Extensi
 import { ThreadImages, Workspace, type CallContext } from "@lyrica/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeImages, png } from "../../core/test/fake-images.ts";
-import { createImageExtension, imageParameters, ratioSize, type ApprovalRequest } from "../src/index.ts";
+import { ASK_INSTEAD, createImageExtension, imageParameters, ratioSize, type ApprovalRequest } from "../src/index.ts";
 
 const dirs: string[] = [];
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -305,5 +305,23 @@ describe("image tool: rejected attempts", () => {
     await expect(s.run({ action: "reject", images: [] })).rejects.toThrow(/reject needs images/);
     expect((await s.run({ action: "clear_rejected" })).content[0]).toMatchObject({ text: "Deleted 1 rejected image for good." });
     expect(readdirSync(join(s.folder, "images"))).toEqual([a.split("/").at(-1)]);
+  });
+});
+
+describe("image tool: asking after a few rejects", () => {
+  it("nudges her to ask the person on the eighth rejected attempt in a turn, and starts over next turn", async () => {
+    const s = await setup(); s.context({ localOnly: true });
+    let turn = () => {};
+    let tool!: ToolDefinition;
+    createImageExtension(s.options)({ on: (e: string, f: () => void) => { if (e === "agent_start") turn = f; }, registerTool: (t: ToolDefinition) => { tool = t; } } as unknown as ExtensionAPI);
+    const call = (args: unknown) => tool.execute("c", args, undefined, undefined, noUI);
+    const made = async () => ((await call({ action: "create", prompt: "A garden", tier: "fast" })).details as { image: { paths: string[] } }).image.paths[0]!;
+    const texts = (r: { content: { type: string; text?: string }[] }) => r.content.map(c => c.text);
+    turn();
+    const seven = []; for (let i = 0; i < 7; i++) seven.push(await made());
+    expect(texts(await call({ action: "reject", images: seven }))).not.toContain(ASK_INSTEAD);
+    expect(texts(await call({ action: "reject", images: [await made()] }))).toContain(ASK_INSTEAD);
+    turn();
+    expect(texts(await call({ action: "reject", images: [await made()] }))).not.toContain(ASK_INSTEAD);
   });
 });

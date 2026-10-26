@@ -22,6 +22,8 @@ in the encrypted thread folder).
 - Rejects move to the images folder's `rejected/`; thumbnails and origin
   records follow; `clear_rejected` deletes only the tool's own results there,
   only when the user asks (her tool guidance says so).
+- From her eighth rejected attempt in a turn, the reject's answer nudges her
+  to stop, pick the closest and ask the user (set by the user, 2026-10-26).
 - The web groups each turn's rejects into one closed "<n> rejected" marker
   and shows the pick last.
 

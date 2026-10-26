@@ -93,6 +93,11 @@ async function allowPortrait(o: ImageTools, r: Resolution, id: string, ctx: Exte
   }
 }
 
+/** Rejected attempts in one turn after which she asks the person rather than trying again. */
+export const REJECTS_BEFORE_ASKING = 8;
+/** Added to a reject's answer once a turn reaches REJECTS_BEFORE_ASKING; a nudge, not a block. */
+export const ASK_INSTEAD = `That's ${REJECTS_BEFORE_ASKING} or more rejected attempts this turn. Stop retrying: pick the closest attempt and ask them what to change.`;
+
 /** What a refused call answers with; Resend and Try in the message still work. */
 export const REFUSED_THIS_TURN = "An image was refused earlier in this reply, so no more image calls run in this turn. Tell them what was refused and why.";
 
@@ -101,7 +106,9 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
     // A refusal ends image calls for the rest of the agent run (her turn): a reworded prompt would
     // spend more of a plan on what was just declined.
     let refused = false;
-    pi.on("agent_start", () => { refused = false; });
+    // Attempts rejected this turn: past a few, retrying is less use than asking (ASK_INSTEAD).
+    let rejects = 0;
+    pi.on("agent_start", () => { refused = false; rejects = 0; });
     pi.registerTool({
       name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat). Reject sets attempts aside in images/rejected/; pick shows the one you keep last; clear_rejected deletes the rejected ones for good.",
       promptSnippet: "create, edit or upscale images",
@@ -114,6 +121,9 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         if (refused) throw new Error(REFUSED_THIS_TURN);
         const result = await executeImage(o, id, p, signal, ctx);
         if ("imageRefusal" in result.details) refused = true;
+        if ("rejected" in result.details && (rejects += result.details.rejected?.length ?? 0) >= REJECTS_BEFORE_ASKING) {
+          return { ...result, content: [...result.content, { type: "text" as const, text: ASK_INSTEAD }] };
+        }
         return result;
       },
     });

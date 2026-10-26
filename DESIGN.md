@@ -912,7 +912,8 @@ it's off.
     it moves to the images folder's `rejected/` and stays the user's. The
     chat folds a turn's rejects into one closed group and shows her pick, or
     her last attempt, on its own after it. **Pick** brings back an earlier
-    attempt she likes best. **Clear rejected** deletes the thread's rejects
+    attempt she likes best. From her eighth reject in a turn, the tool's
+    answer tells her to stop, pick the closest and ask the user. **Clear rejected** deletes the thread's rejects
     for good, only when the user asks; the files, thumbnails and records go
     with them, and with the thread.
   - A content refusal stops fallback and shows `image_refusal`, with small

@@ -722,7 +722,10 @@ already rejected stays put. `pick` takes an `image` (by either path) and
 moves it back if it was rejected, so the chat shows it last as her choice.
 `clear_rejected` deletes, for good, the tool's results in `rejected/` and the
 folder once empty; anything else she put there stays. Her tool guidance says
-to use it only when the user asks. `ThreadImages.reject`, `pick` and
+to use it only when the user asks. From her eighth rejected attempt in a turn
+(`REJECTS_BEFORE_ASKING`), each reject's answer adds `ASK_INSTEAD`: stop
+retrying, pick the closest attempt and ask what to change. It is a nudge, not
+a block; the count starts over each turn. `ThreadImages.reject`, `pick` and
 `clearRejected` anchor every directory and follow no symlinks; a move or
 delete also removes the image's Files thumbnail (`.lyrica/thumbs/…`), and a
 move takes the record of which thread made it along. Deleting the thread

@@ -1406,7 +1406,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `{ type: "image", paths: string[], model: string, tier?: "fast" | "quality", picked?: true }`.
     `reject` (`images`: paths) moves the tool's own results in the thread's
     images folder (`images/` or a project chat's `shared/images/`) into its
-    `rejected/`, all or none, calling no model; details `{ rejected: paths }`.
+    `rejected/`, all or none, calling no model; details `{ rejected: paths }`; from the turn's eighth rejected attempt its text adds
+    `ASK_INSTEAD` (a nudge to pick the closest and ask, not a refusal).
     `pick` (`image`) brings one back from `rejected/` if needed and answers
     `{ image: { paths: [path], model: "", picked: true } }`: the web takes the
     facts from the part that first showed it. `clear_rejected` deletes the
