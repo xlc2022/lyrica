@@ -1938,6 +1938,7 @@ test("a long From sleep row opens its own text in place and starts no chat", asy
   expect(await page.evaluate(async path => (await (await fetch(path)).json()).items.map((i: { title: string }) => i.title), `/api/u/${userId}/notifications?type=sleep`))
     .toContain(SLEEP_FIXTURE.long);
 
+  const start = page.viewportSize()!;   // the resize step below moves it, so keep this project's own
   const chats: string[] = [];
   page.on("request", r => { if (/\/sleep\/[a-z]+\/items\/[^/]+\/chat$/.test(r.url())) chats.push(`${r.method()} ${r.url()}`); });
   await page.goto(`/#/u/${userId}/notifications`);
@@ -2009,4 +2010,33 @@ test("a long From sleep row opens its own text in place and starts no chat", asy
   await expect(dismissed).toHaveCount(0);
   expect(page.url()).toBe(url);
   expect(chats).toEqual([]);
+
+  // The welcome page's From sleep card opens its item in place too (#594), at this size.
+  await page.setViewportSize(start);
+  await page.goto(`/#/u/${userId}`);
+  const homeUrl = page.url();
+  const card = page.locator(".card").filter({ has: page.getByRole("heading", { name: "From sleep" }) });
+  const item = card.locator(".sleep-item").filter({ hasText: SLEEP_FIXTURE.long.slice(0, 40) });
+  const text = item.locator("> .main-col > .text");
+  const homeMore = item.locator("> .main-col > .show-more");
+  const clip = () => text.evaluate(el => el.scrollHeight - el.clientHeight);
+  const shootHome = async (state: "collapsed" | "expanded") => {
+    if (!process.env.SCREENSHOTS) return;
+    const w = page.viewportSize()!.width;
+    await page.emulateMedia({ colorScheme: "light" });
+    await card.screenshot({ path: `${process.env.SCREENSHOTS}/welcome-sleep-${state}-${w}.png` });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await card.screenshot({ path: `${process.env.SCREENSHOTS}/welcome-sleep-${state}-${w}-dark.png` });
+  };
+  await expect(homeMore).toHaveText("Show more");
+  expect(await clip()).toBeGreaterThan(0);
+  await noHorizontalScroll(page);
+  await shootHome("collapsed");
+  await homeMore.click();
+  await expect(homeMore).toHaveText("Show less");
+  expect(await clip()).toBeLessThanOrEqual(1);
+  expect(page.url()).toBe(homeUrl);
+  expect(chats).toEqual([]);
+  await noHorizontalScroll(page);
+  await shootHome("expanded");
 });
