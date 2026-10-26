@@ -3,7 +3,7 @@
 // Tests run in order on this file's own lyricad per size.
 import { createServer } from "node:http";
 import { expect, test, type Page } from "@playwright/test";
-import { phone, enter, newThread, send, openSettings, openProjectSettings, threadIdOf, sendTo, hitHeight, noHorizontalScroll, fetchReal } from "./helpers.ts";
+import { phone, enter, newThread, send, openSettings, openProjectSettings, threadIdOf, sendTo, hitHeight, noHorizontalScroll, fetchReal, SLEEP_FIXTURE } from "./helpers.ts";
 import type { ModelsPage } from "../src/api.ts";
 
 test.describe.configure({ mode: "serial" });
@@ -1927,4 +1927,86 @@ test("Status model facts preserve existing facts and render empty, measured and 
     await expect(facts).toContainText("No retained calls in the last 24 hours.");
     await expect(facts).not.toContainText("fixture-measured");
   } finally { await show(original); }
+});
+
+// #591: a From sleep row whose text is long reads itself where it waits. Last in the file, so its
+// fixture items are not on screen for the tests above.
+test("a long From sleep row opens its own text in place and starts no chat", async ({ page, baseURL, request }) => {
+  const userId = await enter(page, baseURL!);
+  expect((await request.post(`http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}/sleep-item-fixture`, { data: { userId } })).ok()).toBe(true);
+  // The whole text reaches the API: these rows are no longer cut at 160 characters on the way here.
+  expect(await page.evaluate(async path => (await (await fetch(path)).json()).items.map((i: { title: string }) => i.title), `/api/u/${userId}/notifications?type=sleep`))
+    .toContain(SLEEP_FIXTURE.long);
+
+  const chats: string[] = [];
+  page.on("request", r => { if (/\/sleep\/[a-z]+\/items\/[^/]+\/chat$/.test(r.url())) chats.push(`${r.method()} ${r.url()}`); });
+  await page.goto(`/#/u/${userId}/notifications`);
+  const url = page.url();
+  const row = page.locator(".nrow.nsleep").filter({ hasText: SLEEP_FIXTURE.long.slice(0, 40) });
+  const name = row.locator("> .main-col > .name");
+  // The button's own label flips, so it is followed by its class; the role check below pins the words.
+  const more = row.locator("> .main-col > .show-more");
+  const lines = () => name.evaluate(el => ({ clamp: getComputedStyle(el).webkitLineClamp, clipped: el.scrollHeight - el.clientHeight }));
+  const height = () => row.evaluate(el => el.getBoundingClientRect().height);
+  // Both themes, for UI review. While open, the row's own picture too: on a phone the tall text
+  // pushes its link, facts and buttons past the bottom of a viewport shot.
+  const shoot = async (state: "collapsed" | "expanded") => {
+    if (!process.env.SCREENSHOTS) return;
+    const w = page.viewportSize()!.width;
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-row-${state}-${w}.png` });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-row-${state}-${w}-dark.png` });
+    if (state === "expanded") await row.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-row-${state}-row-${w}.png` });
+  };
+
+  // Collapsed: three lines, and the rest hidden.
+  await expect(row.getByRole("button", { name: "Show more" })).toBeVisible();
+  await expect(more).toHaveText("Show more");
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  expect(await lines()).toEqual({ clamp: "3", clipped: expect.any(Number) });
+  expect((await lines()).clipped).toBeGreaterThan(0);
+  const collapsed = await height();
+  await noHorizontalScroll(page);
+  await shoot("collapsed");
+
+  // The keyboard opens it, in place: same address, no chat started, nothing clipped.
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await expect(more).toHaveAttribute("aria-expanded", "true");
+  await expect(more).toHaveText("Show less");
+  await expect(name).toHaveAttribute("data-more", "");
+  expect((await lines()).clipped).toBeLessThanOrEqual(1);
+  expect(await height()).toBeGreaterThan(collapsed);
+  expect(page.url()).toBe(url);
+  expect(chats).toEqual([]);
+  await noHorizontalScroll(page);   // while open, with the whole paragraph laid out
+  await shoot("expanded");
+
+  // And closes it again, with the space bar.
+  await more.focus();
+  await page.keyboard.press(" ");
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  expect((await lines()).clipped).toBeGreaterThan(0);
+  expect(Math.abs((await height()) - collapsed)).toBeLessThan(1);
+
+  // A row that fits at this width has no disclosure; the same one gains it when the column narrows.
+  const mid = page.locator(".nrow.nsleep").filter({ hasText: "second trellis" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(mid.getByRole("button", { name: "Show more" })).toBeVisible();
+  await noHorizontalScroll(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(mid.locator(".show-more")).toHaveCount(0);
+  // A short row never has one.
+  await expect(page.locator(".nrow.nsleep").filter({ hasText: SLEEP_FIXTURE.short }).locator(".show-more")).toHaveCount(0);
+
+  // The row is still selectable, and its own buttons are still the actions.
+  await row.getByRole("checkbox").check();
+  await expect(page.locator(".bulk").getByRole("button", { name: "Dismiss" })).toBeVisible();
+  await row.getByRole("checkbox").uncheck();
+  const dismissed = page.locator(".nrow.nsleep").filter({ hasText: SLEEP_FIXTURE.short });
+  await dismissed.getByRole("button", { name: "Dismiss" }).click();
+  await expect(dismissed).toHaveCount(0);
+  expect(page.url()).toBe(url);
+  expect(chats).toEqual([]);
 });

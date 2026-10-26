@@ -139,6 +139,17 @@ export async function noHorizontalScroll(page: Page) {
   expect(found.past).toEqual([]);
 }
 
+/**
+ * Sleep items the `/sleep-item-fixture` route writes (serve.ts), so a Notifications row can be
+ * shown cut and open. Synthetic, at three lengths: `long` is past three lines at any width,
+ * `medium` only at 390 px, `short` never.
+ */
+export const SLEEP_FIXTURE = {
+  long: "Fixture question about whether to plant the beds along the north wall this season, since the shade from the fig arrives too late in the afternoon to matter for the tomatoes and the soil there drains well enough that they should ripen before the first frost; she would rather ask than decide alone, because last year rows were placed by the fence line and nobody ever measured it.",
+  medium: "Fixture question about whether the fig needs a second trellis before next spring, since its new growth already reaches the kitchen window by August and that wall is only warm in the afternoon.",
+  short: "Fixture note about the greenhouse being warm enough now.",
+};
+
 /** route.fetch, tried once more if lyricad closed a kept-alive connection under it (ECONNRESET, or "socket hang up" when no byte came back), as a browser retries such a GET itself. */
 export async function fetchReal(route: Route) {
   try {

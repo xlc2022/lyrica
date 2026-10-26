@@ -699,7 +699,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Oldest first, By type and By pool (the last two group the rows under eyebrows); Where
   narrows to a pool. Each row has its kind, pool and time, Open thread or
   Open where the item leads, and its actions as buttons (an action that
-  answers with a thread goes there). Checkboxes select rows for the bulk
+  answers with a thread goes there). A **From sleep** row carries its item's whole text
+  (`GET …/notifications` no longer shortens these titles) and shows three lines;
+  **Show more** under the text opens the rest in place and reads **Show less**, so
+  reading one needs no chat. The welcome card's rows do the same, since they are the
+  same row. Checkboxes select rows for the bulk
   bar: a button for each action every selected row shares, with the count
   (Add to Private 2, Decline 2), and none when they share none. Twenty rows at a time, with
   Show more. The welcome page shows the first four decisions in a card
@@ -940,8 +944,8 @@ The content is one column in a centred block at most 960 px wide.
 Beneath the box the cards sit side by side (auto-fit, each at least 240 px) and
 stack when they don't fit. Each card has a plain h2 with its link on the right:
 **From sleep** with Sleep and shows new visible-pool items, each clamped to
-three lines (as are sleep rows in Notifications; the Sleep page and Start a
-chat carry the whole text), with Start a chat and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
+three lines, the Sleep page and Start a chat carrying the whole text (a
+Notifications row opens its own text in place), with Start a chat and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
 time in mono. **Notifications** has All <n> and "Nothing waiting." when
 empty. **Backend** has Models and lists each pool's first chat model, host,
 local/cloud chip and preset, then each model host's state as a dot and word.

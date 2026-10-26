@@ -316,8 +316,8 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .cards .facts { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .cards .facts dd + dt { margin-top: 8px; }
 .cards .sleep-item .actions { justify-content: start; }
-/* A sleep item in a list shows three lines; Start a chat and the Sleep page carry the whole text. */
-.cards .sleep-item .text, .nrow.nsleep .name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+/* A sleep item on the welcome card shows three lines; the Sleep page and Start a chat carry the whole text. */
+.cards .sleep-item .text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .cards .list > li.sleep-item { grid-template-columns: minmax(0, 1fr); }
 .cards .nrow.nopick { grid-template-columns: 20px minmax(0, 1fr); }
 .cards .nrow .actions { grid-column: 2; justify-content: start; }
@@ -1204,6 +1204,13 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .nrow.nopick { grid-template-columns: 18px minmax(0, 1fr) auto; }
 .nrow .main-col { display: grid; gap: 2px; min-width: 0; }
 .nrow .main-col .name { display: block; overflow-wrap: anywhere; }
+/* A long From sleep row reads itself where it waits (docs/ux.md §6): three lines until its own
+   link opens the rest, so a long one neither sends the person to Start a chat nor grows the list.
+   The link is its own row of the text column, between the text and its facts; while open, the
+   row's actions keep to its top instead of floating beside a tall block. */
+.nrow.nsleep .name:not([data-more]) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.nrow.nsleep .show-more { justify-self: start; font-size: 13px; }
+.nrow.nsleep:has(.name[data-more]) { align-items: start; }
 .nrow .ico { width: 18px; text-align: center; color: var(--muted); font-size: 14px; }
 .nrow .when { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .nrow .actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: end; }
@@ -1220,6 +1227,7 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
   .nrow .actions { grid-column: 2 / -1; justify-content: start; }
   .chip, .ntop select { min-height: 36px; }
 }
+@media (pointer: coarse) { .nrow.nsleep .show-more { min-height: var(--tap); } }
 
 /* Reactions (docs/ux.md §6): chips under a message; the React button beside the message menu; the quick row and the full picker as popovers. */
 .reactions { display: flex; flex-wrap: wrap; gap: 6px; }
