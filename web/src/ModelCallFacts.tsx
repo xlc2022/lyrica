@@ -112,7 +112,7 @@ function hourlySpec(series: Series[], facts: Facts, panel: string, measure: "cal
     mark: { type: "bar", stroke: panel, strokeWidth: 1, cornerRadiusEnd: 2 },
     encoding: {
       x: { field: "hour", type: "temporal", timeUnit: "utcyearmonthdatehours", title: null, scale: { type: "utc", domain: span(h) }, axis: { format: "%H:%M", tickCount: 6, grid: false } },
-      y: { field: measure, type: "quantitative", title: null, axis: { tickMinStep: 1, format: measure === "calls" ? "d" : "~s", tickCount: 4 } },
+      y: { field: measure, type: "quantitative", title: null, axis: { tickMinStep: 1, tickCount: 4, ...(measure === "calls" ? { format: "d" } : { labelExpr: "datum.value === 0 ? '0' : format(datum.value, '~s')" }) } },
       color: colour,
       tooltip: [{ field: "hours", title: "Hour" }, { field: "model", title: "Model" }, { field: measure, title: measure === "calls" ? "Calls" : "Output tokens", format: "," }],
     },

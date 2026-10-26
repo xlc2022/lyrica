@@ -59,7 +59,11 @@ export async function drawChart(el: HTMLElement, tip: HTMLElement, spec: object,
     tip.replaceChildren(...(typeof value === "object" ? Object.entries(value as Record<string, unknown>) : [["", value] as const]).map(([k, x]) => {
       const line = document.createElement("div");
       if (k) { const b = document.createElement("span"); b.className = "muted"; b.textContent = `${k} `; line.append(b); }
-      line.append(String(x));
+      const v = document.createElement("span");
+      // Numbers in mono, as everywhere on the page.
+      if (typeof x === "number" || /^[\d.,:–\s]+$/.test(String(x))) v.className = "num";
+      v.textContent = String(x);
+      line.append(v);
       return line;
     }));
     tip.hidden = false;

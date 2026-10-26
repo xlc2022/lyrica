@@ -146,6 +146,7 @@ Rules:
   Memory, Pages, Notes, WAKE, Journal, User introduced, Add a memory, Write, Import, Export, Files, Choose files…, As exported, Done, Came
   from, Used in, History, Show all, Show less, Search, Page, Sleep history, Memory history, Journal history, Call history, Download history, Restore, Archive, Preview, Source, Console, Previous image, Next image, Edit, Remember this,
   React, React with, More emoji, Reactions,
+  Updated, Refresh, Last sleep, Not yet, Complete, Model hosts, Model calls · last <n> hours, Retained history, Recorded fallbacks, Calls per hour, Output tokens per hour, Speed per call · tok/s, Calls by task, Calls, Output, Prompt, Fallbacks, Not measured,
   Waiting on you, Goal, Instructions, Paused, All threads, Only projects,
   No projects, Machines, Add machine, Mode limit, Replace key, Use anyway, Mine, Your account,
   Git accounts, Add account, Kind, Host, Account, Token, Replace token, Save
