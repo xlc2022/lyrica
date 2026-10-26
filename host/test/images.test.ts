@@ -405,10 +405,10 @@ describe("stable-diffusion.cpp", () => {
 });
 
 describe("the image API", () => {
-  async function stack(o: { sdcpp?: boolean } = {}) {
+  async function stack(o: { sdcpp?: boolean; files?: Record<string, Buffer> } = {}) {
     const models = folder({
       [`${Z}/diffusion_models/z.safetensors`]: Z_DIFFUSION, [`${Z}/text_encoders/qwen_3_4b.safetensors`]: QWEN3, [`${Z}/vae/ae.safetensors`]: FLUX_VAE,
-      "shared/flux1-schnell-fp8.safetensors": FLUX_CKPT, "shared/style.safetensors": Z_LORA,
+      "shared/flux1-schnell-fp8.safetensors": FLUX_CKPT, "shared/style.safetensors": Z_LORA, ...o.files,
     });
     const comfyFake = await fakeComfy();
     open.push(comfyFake);
@@ -551,6 +551,20 @@ describe("the image API", () => {
     expect(deleted.body.kept[0]).toEqual({ file: `${Z}/diffusion_models/z.safetensors`, reason: "Used by Z copy." });
     const second = await s.api(`/host/v1/recipes/${copy.body.id}`, { method: "DELETE" });
     expect(second.body.kept.map((k: { reason: string }) => k.reason)).toEqual(["Not downloaded by the host.", "Not downloaded by the host.", "Not downloaded by the host."]);
+  });
+
+  it("keeps a part that is also a chat model when its recipe is deleted", async () => {
+    const vl = "k/Qwen3VL-4B-Instruct-Q8_0.gguf";
+    const s = await stack({ files: {
+      "k/krea.gguf": ggufBytes({ "general.architecture": "krea2" }),
+      [vl]: ggufBytes({ "general.architecture": "qwen3vl", "qwen3vl.embedding_length": 2560, "tokenizer.ggml.model": "gpt2" }),
+    } });
+    expect(s.host.runtime!.models.map((m) => m.id)).toContain(vl);
+    s.host.runtime!.record.set(vl, { path: vl, size: 1, sha256: "x", verified: true, downloadedAt: "", source: "huggingface", repo: null, revision: null } as never);
+    const krea = (await s.api("/host/v1/recipes")).body.recipes.find((r: Recipe) => r.arch === "krea2");
+    const { body } = await s.api(`/host/v1/recipes/${krea.id}`, { method: "DELETE" });
+    expect(body.deleted).toEqual([]);
+    expect(body.kept).toContainEqual({ file: vl, reason: "Also a chat model." });
   });
 
   it("lists starters with which parts are here", async () => {
