@@ -1746,8 +1746,10 @@ Details in [docs/memory.md](docs/memory.md).
   thread folders, uploads, images and portrait photos) is unreadable at
   once and then removed. Every other self.db row naming them goes in the
   same transaction: links, threads in transit, persona suggestions, folder
-  grants, model-list bookkeeping. Copies of threads another user already
-  accepted are that user's and stay. There is no administrator export:
+  grants, model-list bookkeeping, and the mark of a password they set for
+  someone (its date stays, so that user is still told). The persona's
+  revision history keeps who wrote each revision. Copies of threads another
+  user already accepted are that user's and stay. There is no administrator export:
   exporting someone's memory would mean reading it, so a user who wants to
   keep notes, pages or skills exports them first. Backups, update
   snapshots, remote accounts on machines and anything already sent to a

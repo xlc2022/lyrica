@@ -18,7 +18,8 @@ function traces(keyring: Keyring, id: string): Record<string, number> {
     users: count("SELECT count(*) AS n FROM users WHERE id = ?", id),
     user_links: count("SELECT count(*) AS n FROM user_links WHERE a = ? OR b = ?", id, id),
     thread_shares: count("SELECT count(*) AS n FROM thread_shares WHERE from_user = ? OR to_user = ?", id, id),
-    persona_proposals: count("SELECT count(*) AS n FROM persona_proposals WHERE sent_by = ?", id),
+    persona_proposals: count("SELECT count(*) AS n FROM persona_proposals WHERE sent_by = 'user:' || ?", id),
+    password_set_by: count("SELECT count(*) AS n FROM users WHERE password_set_by = ?", id),
     workspace_paths: count("SELECT count(*) AS n FROM workspace_paths WHERE user_id = ?", id),
     redirect_pending: count("SELECT count(*) AS n FROM redirect_pending WHERE user = ?", id),
     shared_refs: count("SELECT count(*) AS n FROM shared_refs WHERE user = ?", id),
@@ -26,7 +27,7 @@ function traces(keyring: Keyring, id: string): Record<string, number> {
   };
 }
 
-const none = { users: 0, user_links: 0, thread_shares: 0, persona_proposals: 0, workspace_paths: 0, redirect_pending: 0, shared_refs: 0, settings: 0 };
+const none = { users: 0, user_links: 0, thread_shares: 0, persona_proposals: 0, password_set_by: 0, workspace_paths: 0, redirect_pending: 0, shared_refs: 0, settings: 0 };
 
 describe("deleting a user", () => {
   it("removes their account, folder and every self.db row naming them, and leaves other users alone", async () => {
@@ -44,8 +45,15 @@ describe("deleting a user", () => {
     expect((await sam.post(`${su}/threads/general/${enc(plans.id)}/share`, { to: rt.ada.id })).status).toBe(200);
     expect((await sam.put(`${su}/me/credentials`, { save: true })).status).toBe(200);
     d.keyring.self().prepare("INSERT INTO user_links (a, b) VALUES (?, ?)").run(...[rt.ada.id, rt.sam.id].sort());
+    // Sam sends on a persona suggestion, as PersonaProposals.send does from a draft in their user.db.
+    const db = d.services!.users.openUserDb(rt.sam.id);
+    const draft = Number(db.prepare("INSERT INTO persona_drafts (path, text, original, reason, author, base, created_at) VALUES ('soul.md', 'x', 'x', 'y', 'lyrica', 0, ?)").run(new Date().toISOString()).lastInsertRowid);
+    db.close();
+    d.services!.proposals.send(rt.sam.id, draft);
+    // Sam set someone's password once (only an administrator can; the column is all that matters here).
+    d.keyring.self().prepare("UPDATE users SET password_set_by = ?, password_set_at = ? WHERE id = ?").run(rt.sam.id, "2026-10-26T00:00:00Z", rt.ada.id);
     d.keyring.self().prepare("INSERT INTO workspace_paths (user_id, pool, path) VALUES (?, 'general', '/srv/homelab')").run(rt.sam.id);
-    expect(traces(d.keyring, rt.sam.id)).toMatchObject({ users: 1, user_links: 1, thread_shares: 1, workspace_paths: 1 });
+    expect(traces(d.keyring, rt.sam.id)).toMatchObject({ users: 1, user_links: 1, thread_shares: 1, persona_proposals: 1, password_set_by: 1, workspace_paths: 1 });
     expect(d.keyring.hasSavedKey(rt.sam.id)).toBe(true);
 
     // Administrators only, never themselves, with their own password and the box ticked.
@@ -59,6 +67,8 @@ describe("deleting a user", () => {
     expect((await ada.post<DeleteUserResult>(del, { password: "pw", understood: true })).body).toEqual({ deleted: true, busy: [] });
 
     expect(traces(d.keyring, rt.sam.id)).toEqual(none);
+    expect(d.services!.users.passwordSetBy(rt.ada.id)).toBeUndefined();
+    expect(d.keyring.self().prepare("SELECT password_set_at AS at FROM users WHERE id = ?").get(rt.ada.id)).toEqual({ at: "2026-10-26T00:00:00Z" });
     expect(existsSync(join(rt.home, "users", rt.sam.id))).toBe(false);
     expect(d.keyring.hasSavedKey(rt.sam.id)).toBe(false);
     expect(d.keyring.hasUserKey(rt.sam.id)).toBe(false);

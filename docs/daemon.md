@@ -1039,7 +1039,8 @@ checked on the login limiter like **Change password…**; without
   they were locked. Then `Users.deleteUser` runs one self.db transaction
   with `secure_delete` on: their `users` row (wrapped key and recovery copy),
   `user_links`, `thread_shares` they sent or were sent, `persona_proposals`
-  they sent, `workspace_paths`, `redirect_pending` (and any redirect only
+  they sent (`sent_by` `user:<id>`), `password_set_by` on rows of users whose
+  password they set (cleared, `password_set_at` kept), `workspace_paths`, `redirect_pending` (and any redirect only
   they still needed), `shared_refs`, `shared_refs_indexed`, and their id in
   the `wipe.pending` and `wipe.home` marks; it adds them to
   `delete.pending`. Their folder is unreadable from here, since no copy of

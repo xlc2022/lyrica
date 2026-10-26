@@ -332,7 +332,10 @@ export class Users {
         db.prepare("DELETE FROM users WHERE id = ?").run(id);
         db.prepare("DELETE FROM user_links WHERE a = ? OR b = ?").run(id, id);
         db.prepare("DELETE FROM thread_shares WHERE from_user = ? OR to_user = ?").run(id, id);
-        db.prepare("DELETE FROM persona_proposals WHERE sent_by = ?").run(id);
+        // PersonaProposals records the sender as `user:<id>`.
+        db.prepare("DELETE FROM persona_proposals WHERE sent_by = 'user:' || ?").run(id);
+        // A password they set for someone keeps its date, so that user is still told, without naming them.
+        db.prepare("UPDATE users SET password_set_by = NULL WHERE password_set_by = ?").run(id);
         db.prepare("DELETE FROM workspace_paths WHERE user_id = ?").run(id);
         // A redirect only this user still had to apply goes with their row, as their next sync would have dropped it.
         const redirects = db.prepare("SELECT from_id FROM redirect_pending WHERE user = ?").all(id) as { from_id: string }[];
