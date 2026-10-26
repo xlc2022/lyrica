@@ -17,8 +17,8 @@ const unavailable = () => new HostError(503, "model_unavailable", "stable-diffus
 const CALL_MS = 30_000;
 
 /** The templates sd.cpp can make images for, and its flag for each text encoder slot. */
-const TEMPLATES = new Set(["z-image", "qwen-image", "flux", "sdxl"]);
-const ENCODERS: Record<string, string> = { qwen3: "--llm", "qwen2.5vl": "--llm", t5: "--t5xxl", clip_l: "--clip_l", clip_g: "--clip_g" };
+const TEMPLATES = new Set(["z-image", "qwen-image", "krea2", "flux", "sdxl"]);
+const ENCODERS: Record<string, string> = { qwen3: "--llm", "qwen2.5vl": "--llm", qwen3vl: "--llm", t5: "--t5xxl", clip_l: "--clip_l", clip_g: "--clip_g" };
 /** ComfyUI's sampler and scheduler names as sd.cpp names them; others take sd.cpp's default. */
 const SAMPLERS: Record<string, string> = {
   euler: "euler", euler_ancestral: "euler_a", heun: "heun", dpm_2: "dpm2", dpmpp_2s_ancestral: "dpm++2s_a", dpmpp_2m: "dpm++2m",

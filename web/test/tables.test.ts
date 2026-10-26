@@ -1,4 +1,4 @@
-// A table in a message: GitHub's tables render, and one written on a single line is put back on its rows (web/src/tables.ts).
+// A table in a message: GitHub's tables render, and one written on a single line is put back on its rows (web/src/markdown.ts).
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";

@@ -671,9 +671,9 @@ as `{ "parts": [...] }`, each entry like this:
 - `role`: `checkpoint` (holds its own encoders and VAE), `diffusion`,
   `text_encoder`, `vae`, `lora`, `upscaler` (a SeedVR2 DiT), or `unknown`.
 - `slot`: for a text encoder, which one: `clip_l`, `clip_g`, `t5`,
-  `qwen2.5vl`, `qwen3`, …; otherwise `null`.
+  `qwen2.5vl`, `qwen3`, `qwen3vl`, …; otherwise `null`.
 - `arch`: the architecture read from the tensor names (`sdxl`, `flux`,
-  `z-image`, `qwen-image`, `seedvr2`, …), or `null`. A file whose
+  `z-image`, `qwen-image`, `krea2`, `seedvr2`, …), or `null`. A file whose
   architecture has no template stays a file: it is listed but no recipe
   can use it.
 - `precision`: `fp32`, `bf16`, `fp16`, `fp8`, or a GGUF quantisation such
@@ -681,9 +681,9 @@ as `{ "parts": [...] }`, each entry like this:
 - Only the safetensors header (or GGUF metadata) is read, never the
   weights. Files are used where they are.
 - Architectures with templates: `sdxl` and `flux` (a checkpoint, or
-  diffusion model, encoders and VAE), `z-image`, `qwen-image` (create, and
-  edit for a diffusion model whose file name says "edit"), and `seedvr2`
-  (upscale).
+  diffusion model, encoders and VAE), `z-image`, `krea2` (create),
+  `qwen-image` (create, and edit for a diffusion model whose file name
+  says "edit"), and `seedvr2` (upscale).
 
 ### Recipes
 

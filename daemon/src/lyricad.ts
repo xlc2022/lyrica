@@ -638,6 +638,7 @@ export class Lyricad implements Drainable {
     this.services = { routines, wakeups, forge, users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, tailnet: this.tailnet, prefs, shares };
     this.rememberName(selfName(keyring.self()));
     await web.resume();
+    await this.finishDeletes();
     for (const u of users.all()) {
       if (await keyring.loadSavedKey(u.id)) {
         await this.keyAvailable(u.id);
@@ -768,6 +769,50 @@ export class Lyricad implements Drainable {
       this.wipingNow = false;
       s.host.draining = this.drainingNow;
       if (!this.drainingNow) this.undrained();
+    }
+  }
+
+  /**
+   * Deleting a user (DESIGN.md, "Deleting a user"), after the rules and the
+   * administrator's password are checked. While any of their work runs (a
+   * turn, a subagent, a sleep run) it is sent a stop and nothing is deleted:
+   * the result lists it, and the delete is asked for again. Then they are
+   * locked (signed out everywhere, work stopped, key dropped, home
+   * unmounted), their saved key is forgotten, their rows in self.db go, and
+   * then their folder. Logs nothing about them.
+   */
+  async deleteUser(actor: User, target: User): Promise<{ deleted: boolean; busy: BusyItem[] }> {
+    const s = this.services!;
+    if (this.wipingNow) throw new HttpError(409, "Lyrica is wiping memory");
+    s.users.checkDelete(actor, target);
+    const busy = this.busy().filter((b) => b.userId === target.id);
+    if (busy.length) {
+      for (const b of busy) {
+        if (b.kind === "turn" && b.pool && b.threadId) await s.host.get(b.userId, b.pool, b.threadId).stop();
+        else if (b.kind === "subagent") await s.delegation.stopAll(b.userId);
+        else if (b.kind === "sleep") await s.sleep.stop(b.userId);
+      }
+      return { deleted: false, busy };
+    }
+    if (this.keyring.hasUserKey(target.id)) await this.lockUser(target.id);
+    else this.sessions.dropUser(target.id);
+    s.users.deleteUser(actor, target);
+    await this.keyring.dropSavedKey(target.id).catch((err: Error) => this.log(`forgetting a deleted user's saved key failed: ${firstLine(err)}`));
+    await this.finishDeletes();
+    this.log("deleted a user");
+    return { deleted: true, busy: [] };
+  }
+
+  /** Removes the folders of deleted users still on disk: right after a delete, and at each unlock after one was interrupted. */
+  private async finishDeletes(): Promise<void> {
+    const s = this.services!;
+    for (const id of s.users.pendingDeletes()) {
+      try {
+        if (existsSync(s.users.userDir(id)) && isMounted(s.workspace.homeDir(id))) await s.workspace.unmountHome(id);
+        s.users.removeUserFiles(id);
+      } catch (err) {
+        this.log(`removing a deleted user's folder failed: ${firstLine(err as Error)}`);
+      }
     }
   }
 

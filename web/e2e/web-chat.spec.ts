@@ -1,6 +1,7 @@
 // The web UI against a real lyricad (e2e/serve.ts) and a fake model server, at phone and desktop sizes.
 // Chats: a thread's messages, its tools and modes, search, memory, accounts and machines.
 // Tests run in order on this file's own lyricad per size.
+import { deflateSync } from "node:zlib";
 import { expect, test } from "@playwright/test";
 import { phone, enter, newThread, send, openSettings, togglePrivate, threadIdOf, sendTo, hitHeight, noHorizontalScroll } from "./helpers.ts";
 
@@ -302,6 +303,62 @@ test("a message waiting behind her turn has Steer now while she works, and it se
   await page.reload();
   await expect(page.locator(".msg.user.queued")).toContainText("Use the blue tiles instead");
   await expect(page.getByRole("button", { name: "Steer now" })).toHaveCount(0);
+});
+
+/** A solid square PNG of one colour, so each attempt looks different in a screenshot. */
+function solidPng(r: number, g: number, b: number, size = 96): Buffer {
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = (buf: Buffer) => { let c = 0xffffffff; for (const x of buf) c = crcTable[(c ^ x) & 0xff]! ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type: string, data: Buffer) => { const head = Buffer.alloc(8); head.writeUInt32BE(data.length); head.write(type, 4); const tail = Buffer.alloc(4); tail.writeUInt32BE(crc(Buffer.concat([head.subarray(4), data]))); return Buffer.concat([head, data, tail]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(size); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: size }, () => [r, g, b]).flat())]);
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(Buffer.concat(Array.from({ length: size }, () => row)))), chunk("IEND", Buffer.alloc(0))]);
+}
+
+test("her rejected attempts fold into one closed group, and her pick shows last on its own", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "A lantern by a pond");
+  await expect(page.getByText("You said: A lantern by a pond")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  const at = (c: string) => `/workspace/images/${c.repeat(8)}-0000-0000-0000-000000000000.png`;
+  const [a, b, c] = [at("a"), at("b"), at("c")];
+  const colours: Record<string, Buffer> = { a: solidPng(200, 80, 60), b: solidPng(70, 120, 200), c: solidPng(60, 160, 90) };
+  const make = (id: string, path: string) => [
+    { type: "tool", toolCallId: id, name: "image", args: { action: "create", tier: "fast", prompt: "A lantern by a pond" }, result: path, isError: false },
+    { type: "image", paths: [path], model: "box/Z-Image", tier: "fast" },
+  ];
+  const reject = (id: string, path: string) => ({ type: "tool", toolCallId: id, name: "image", args: { action: "reject", images: [path] }, result: "Rejected", isError: false });
+  await page.route(`**${base}/messages`, (route) => route.fulfill({ json: {
+    messages: [
+      { id: `e:${threadId}#0`, n: 0, role: "user", createdAt: "2026-10-26T12:00:00Z", parts: [{ type: "text", text: "A lantern by a pond" }] },
+      { id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-10-26T12:00:01Z", parts: make("m1", a) },
+      { id: `e:${threadId}#2`, n: 2, role: "assistant", createdAt: "2026-10-26T12:00:02Z", parts: [reject("r1", a), ...make("m2", b)] },
+      { id: `e:${threadId}#3`, n: 3, role: "assistant", createdAt: "2026-10-26T12:00:03Z", parts: [reject("r2", b), ...make("m3", c), { type: "text", text: "The third one has the lantern's glow on the water." }] },
+    ], hasMore: false,
+  } }));
+  await page.route(`**${base}/files/thumb?*`, (route) => route.fulfill({ status: 404 }));
+  await page.route(`**${base}/file?*`, (route) => {
+    const path = new URL(route.request().url()).searchParams.get("path") ?? "";
+    route.fulfill({ contentType: "image/png", body: colours[path.split("/").at(-1)![0]!] ?? colours.a });
+  });
+  await page.reload();
+  const group = page.getByRole("button", { name: "2 rejected" });
+  await expect(group).toHaveAttribute("aria-expanded", "false");
+  // Only the last attempt shows full size; the rejects are folded away.
+  await expect(page.locator(".turn .message-image")).toHaveCount(1);
+  await expect(page.getByRole("img", { name: c.split("/").at(-1)! })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Rejecting an image" }).first()).toBeVisible();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ fullPage: true, path: `${process.env.SCREENSHOTS}/rejects-closed-${page.viewportSize()!.width}.png` });
+  await group.click();
+  await expect(group).toHaveAttribute("aria-expanded", "true");
+  const rejected = page.locator(".rejected-body img");
+  await expect(rejected).toHaveCount(2);
+  await expect(rejected.first()).toHaveAttribute("src", `${base}/file?path=${encodeURIComponent(a.replace("/images/", "/images/rejected/"))}`);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ fullPage: true, path: `${process.env.SCREENSHOTS}/rejects-open-${page.viewportSize()!.width}.png` });
 });
 
 test("an image tool result shows inline, opens large, starts an edit with Images enabled, and deletes after asking", async ({ page, baseURL }) => {

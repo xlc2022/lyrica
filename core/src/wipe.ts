@@ -46,7 +46,7 @@ export function wipePools(keyring: Keyring, users: Users, only?: string, keepSki
   self.transaction(() => {
     if (only) {
       self.prepare("DELETE FROM thread_shares WHERE from_user = ? OR to_user = ?").run(only, only);
-      self.prepare("DELETE FROM persona_proposals WHERE sent_by = ?").run(only);
+      self.prepare("DELETE FROM persona_proposals WHERE sent_by = 'user:' || ?").run(only);
     } else {
       self.prepare("DELETE FROM thread_shares").run();
       self.prepare("DELETE FROM persona_proposals").run();

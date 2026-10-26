@@ -1734,6 +1734,50 @@ test("Code mode: thread switch, Coding model and project defaults", async ({ pag
 });
 
 // Near the end of this file: it wipes Ada's memory.
+test("Users: Delete user… asks for the box and the password, waits for their work to stop, then removes them", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/delete-user-${name}-${page.viewportSize()!.width}.png` }); };
+  const login = `sam${page.viewportSize()!.width}`;
+  await page.goto(`/#/u/${userId}/admin/users`);
+  await page.getByLabel("Login name").fill(login);
+  await page.getByLabel("Display name").fill("Sam");
+  await page.getByLabel("Password", { exact: true }).fill("pw2");
+  await page.getByRole("button", { name: "Add user" }).click();
+  const row = page.locator("li").filter({ hasText: `(${login})` });
+  await expect(row).toBeVisible();
+  // Your own row has neither Change password… nor Delete user….
+  await expect(page.locator("li").filter({ hasText: "(ada)" }).getByRole("button", { name: "Delete user…" })).toHaveCount(0);
+  for (const name of ["Change password…", "Delete user…"]) expect(await hitHeight(row.getByRole("button", { name }))).toBeGreaterThanOrEqual(page.viewportSize()!.width < 600 ? 44 : 30);
+  if (process.env.SCREENSHOTS) await row.screenshot({ path: `${process.env.SCREENSHOTS}/delete-user-row-${page.viewportSize()!.width}.png` });
+  await row.getByRole("button", { name: "Delete user…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete Sam?" });
+  const remove = dialog.getByRole("button", { name: "Delete user" });
+  await expect(remove).toBeDisabled();
+  await dialog.getByLabel("I understand this can't be undone").check();
+  await expect(remove).toBeDisabled();
+  await dialog.getByLabel("Your password").fill("not-mine");
+  await noHorizontalScroll(page);
+  await shot("confirm");
+  await remove.click();
+  await expect(dialog.getByRole("alert")).toHaveText("That isn't your password.");
+  await dialog.getByLabel("Your password").fill("pw");
+  // Their work is running (the server's side is in daemon/test/delete-user.test.ts): the dialog waits until it stops.
+  const path = `**/api/u/${userId}/admin/users/*/delete`;
+  await page.route(path, (route) => route.fulfill({ json: { deleted: false, busy: [{ kind: "turn", user: "Sam", pool: "general" }] } }));
+  await remove.click();
+  const waiting = page.getByRole("dialog", { name: "Stopping Sam's work" });
+  await expect(waiting.getByRole("status", { name: "Stopping" })).toBeVisible();
+  await expect(waiting.getByRole("button", { name: "Delete user" })).toBeDisabled();
+  await waiting.locator("summary").click();
+  await expect(waiting.getByText("Reply · General")).toBeVisible();
+  await shot("stopping");
+  await page.unrouteAll();
+  await page.getByRole("dialog", { name: "Everything has stopped" }).getByRole("button", { name: "Delete user" }).click();
+  await expect(page.getByText("Sam was deleted.")).toBeVisible();
+  await expect(row).toHaveCount(0);
+  await shot("done");
+});
+
 test("Settings → Reset: Wipe my memory asks for the box and the password, then wipes only the user's own", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/wipe-mine-${name}-${page.viewportSize()!.width}.png` }); };

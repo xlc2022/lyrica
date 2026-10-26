@@ -83,6 +83,7 @@ lockUser(userId: string): void
   memory. Missing, failed or empty credentials stay locked; logs contain
   only the credential name/id and error class, never stderr or secrets.
 - Wiping memory (`POST /api/u/:userId/admin/wipe` with `WipeRequest { password, understood, keepSkills? }`, administrators, the administrator's own password; `GET` the same path for what still runs; `lyrica admin wipe` while lyricad is stopped) answers `WipeResult { wiped, busy: WipeBusy[] }`. While anything runs it only sends stops (`wiped: false`); otherwise core's `wipePools(keyring, users)` deletes every pool and marks every user, `finishWipe(self, userId, userDb)` clears `WIPED_USER_TABLES` once their key is here, and `homeWiped` clears the home mark once their thread folders are gone (`wipePending`, `homeWipePending` read the marks). `KEPT_USER_TABLES` names the rest; a new user.db table goes in one of the two. `POST`/`GET /api/u/:userId/me/wipe` (any user, their own password) is the same for that user alone, through `wipePools(keyring, users, userId)`. With `keepSkills`, `wipePools(…, keepSkills)` sets each pool aside as `<pool>.keep.db` and `Memory.carrySkills(userId)` (called by lyricad's finish, at once or at the next unlock) copies its active skills into the fresh pool with `SkillLibrary.restore` and deletes it. See [daemon.md](daemon.md#wiping-memory).
+- Deleting a user (`POST /api/u/:userId/admin/users/:targetId/delete` with `DeleteUserRequest { password, understood }`, administrators, the administrator's own password, never themselves; `GET` the same path for what of theirs still runs; `lyrica admin user remove <login>` while lyricad is stopped) answers `DeleteUserResult { deleted, busy: WipeBusy[] }`. While their work runs it only sends stops (`deleted: false`); otherwise lyricad locks them, `Users.deleteUser` removes every self.db row naming them, `Keyring.dropSavedKey` removes a saved key, and `Users.removeUserFiles` removes `users/<id>/`, retried at the next unlock if it fails. See [daemon.md](daemon.md#deleting-a-user).
 - Changing the self.db passphrase (`POST /api/u/:userId/admin/passphrase/change` with `PassphraseRotate { current, next }`, administrators; `lyrica admin passphrase`) rekeys self.db in place and re-saves a saved passphrase (if the re-save fails, the saved copy is removed and the response carries a note to save it again); a wrong `current` is `403`. See [daemon.md](daemon.md).
 
 ## core/users
@@ -94,11 +95,14 @@ class Users {
   changePassword(user, oldPassword, newPassword): Promise<void>  // rewraps the same data key; clears passwordSetBy
   setPassword(actor: User, actorPassword, target: User, newPassword): Promise<void>  // admin, confirming their own password (AuthError); the key from its recovery copy, under the new password; NoRecoveryCopy if none yet
   checkPassword(user: User, password): Promise<boolean>     // is it theirs; unlocks nothing
-  passwordSetBy(userId): { by; at } | undefined              // an administrator set it and the user hasn't changed it since
+  passwordSetBy(userId): { by?; at } | undefined             // an administrator set it and the user hasn't changed it since; no `by` once that administrator is deleted
   ensureRecoveryCopy(userId): void                           // writes the copy for a user from before, once their key is in memory
   setAdmin(actor: User, target: User, admin: boolean): void  // refuses to demote the last admin
   updateProfile(actor: User, target: User, change): Profile  // self, or an admin; a rename appends to previousNames
   listUsers(actor: User): User[]                             // admins see everyone, others themselves
+  checkDelete(actor: User, target: User): User               // Forbidden unless an administrator deletes another user, so one always remains
+  deleteUser(actor: User, target: User): void                // one self.db transaction, secure delete on: the row (wrapped key, recovery copy) and every row naming them; marks them in `delete.pending`
+  pendingDeletes(): string[] / removeUserFiles(userId)       // deleted users whose `users/<id>/` is still on disk; removes it (home unmounted) and clears the mark
   link(a: User, aPassword, otherLogin, otherPassword): Promise<void>  // the same person's users; both passwords
   unlink(actor: User, other: User): void
   linked(userId): string[]
@@ -224,10 +228,11 @@ nothing else. No code path gives a general view a private handle.
 | Code tasks | `codeTask(threadId)` → `{ task, done, at }` or undefined; `setCodeTask(threadId, task, done = "")` replaces it (300 / 1,200 characters), with credential removal. Pool step 9 adds `code_tasks`, deleted with the thread; no task text enters user.db |
 | Drafts | `draft(threadId)` → `{ text, updatedAt }` or undefined, `setDraft(threadId, text)` (empty deletes it); one per thread, gone with the thread. Pool schema step 3 (`drafts`) |
 | Projects | `pageForProject(threadId)`, `projectNotes(threadId, since?)` |
-| Writing memories | `addNotes(notes, { author, thread? })`, `putPage` (sleep and user pages), `putWake`, `addJournal`. Every write (notes, pages and edits, WAKE, journal, sleep items, project instructions) passes text, title, summary and tags through `removeSecrets` (core/src/secrets.ts) first; matches become `[secret removed]` |
+| Current notes | `notesSince(since)`: notes not superseded or archived, written at or after `since`, oldest first (the wake phase's notes since the last WAKE) |
+| Writing memories | `addNotes(notes, { author, thread? })`, `supersede(old, by, author)` (marks existing notes replaced by a current note and flags pages citing them; deletes nothing, so no tombstone; never a user's note unless a user does it), `pruneSuperseded(before)` → count (sleep removes superseded notes, not a user's, edited by one or archived, that nothing but their replacement cites, whose replacement was written before `before`; no tombstone), `putPage` (sleep and user pages), `putWake`, `addJournal`. Every write (notes, pages and edits, WAKE, journal, sleep items, project instructions) passes text, title, summary and tags through `removeSecrets` (core/src/secrets.ts) first; matches become `[secret removed]` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `journalHistory({ limit, offset, q })` → `{ entries, total }`, `userIntroduced` |
-| Search | `search(query, { kinds, limit, current, excludeThread, fromThread, only, skip, minWords })`, returning `{ id, kind, snippet, score, at, origin }` (`origin`: who wrote a memory, or `user` or `lyrica` for a user or assistant entry, unset for a tool result; `at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, as a word or a word's start, a user's name counting once); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
+| Search | `search(query, { kinds, limit, current, excludeThread, fromThread, only, skip, minWords })`, returning `{ id, kind, snippet, score, at, origin }` (`origin`: who wrote a memory, or `user` or `lyrica` for a user or assistant entry, unset for a tool result; a user-role entry lyricad wrote, such as a message from another of her threads, a watch, a wake-up or a routine, is `lyrica`; `at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, as a word or a word's start, a user's name counting once); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
 | Lineage | `cameFrom`, `usedIn`, `revisions`, `revisionHistory(id, { limit, offset, q })` → `{ entries, total }` (newest first), `isTombstoned(entryId)`, `editedSince(since)` |
 | Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `sleepRunHistory({ limit, offset, q })` → `{ entries, total }`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` |
 | Sleep items | `addItem`, `listItems`, `getItem`, `startItem(id, threadId)`, `dismissItem`, `itemForThread`. Items, like the journal and WAKE, store `{user}` as a mention token, and the readers give it back as the name |
@@ -659,8 +664,7 @@ class Models {                                              // new Models(keyrin
   `model_unavailable` (one model's server is off) skips only that model.
 - **Planned:** `X-Lyrica-Priority: background` for sleep and cheap subagents
   (not sent; hosts use their defaults; it needs the task in Pi's request
-  preparation), and clearing `redirect_pending` rows when a user is deleted,
-  once users can be.
+  preparation).
 
 ## delegate
 
@@ -1403,7 +1407,16 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     messages project it as a tool marker and optional image part, without
     PNG bytes. Saved task lists are unchanged.
     Successful tool details are `{ image: ImagePart }`, where `ImagePart` is
-    `{ type: "image", paths: string[], model: string, tier?: "fast" | "quality" }`.
+    `{ type: "image", paths: string[], model: string, tier?: "fast" | "quality", picked?: true }`.
+    `reject` (`images`: paths) moves the tool's own results in the thread's
+    images folder (`images/` or a project chat's `shared/images/`) into its
+    `rejected/`, all or none, calling no model; details `{ rejected: paths }`; from the turn's eighth rejected attempt its text adds
+    `ASK_INSTEAD` (a nudge to pick the closest and ask, not a refusal).
+    `pick` (`image`) brings one back from `rejected/` if needed and answers
+    `{ image: { paths: [path], model: "", picked: true } }`: the web takes the
+    facts from the part that first showed it. `clear_rejected` deletes the
+    tool's results in `rejected/`; details `{ cleared: paths }`. The web reads
+    which attempts are rejected from these calls' arguments.
     `model` is the answering model's label. Saved messages carry this part
     beside the originating tool call; `tool_end` carries `image?: ImagePart`.
     API messages and events carry paths, never the PNG's base64 bytes.

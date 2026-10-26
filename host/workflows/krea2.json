@@ -1,0 +1,97 @@
+{
+  "arch": "krea2",
+  "does": [
+    "create"
+  ],
+  "checkpoint": false,
+  "clipType": "krea2",
+  "parts": [
+    {
+      "role": "diffusion",
+      "arch": [
+        "krea2"
+      ]
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3vl"
+    },
+    {
+      "role": "vae",
+      "arch": [
+        "qwen-image"
+      ]
+    }
+  ],
+  "references": 0,
+  "mask": false,
+  "workflow": {
+    "pos": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$prompt",
+        "clip": "$clip"
+      }
+    },
+    "neg": {
+      "class_type": "ConditioningZeroOut",
+      "inputs": {
+        "conditioning": [
+          "pos",
+          0
+        ]
+      }
+    },
+    "latent": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "width": "$width",
+        "height": "$height",
+        "batch_size": "$count"
+      }
+    },
+    "sample": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": "$model",
+        "seed": "$seed",
+        "steps": "$steps",
+        "cfg": "$cfg",
+        "sampler_name": "$sampler",
+        "scheduler": "$scheduler",
+        "positive": [
+          "pos",
+          0
+        ],
+        "negative": [
+          "neg",
+          0
+        ],
+        "latent_image": [
+          "latent",
+          0
+        ],
+        "denoise": 1
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "save": {
+      "class_type": "SaveImageWebsocket",
+      "inputs": {
+        "images": [
+          "decode",
+          0
+        ]
+      }
+    }
+  }
+}

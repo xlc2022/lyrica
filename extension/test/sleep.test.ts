@@ -454,6 +454,65 @@ describe("consolidation that keeps to its job", () => {
     expect(asUserToken("May Lin moved the review to May 3rd; May Chen agreed.", "May Lin")).toBe("{user} moved the review to May 3rd; May Chen agreed.");
   });
 
+  it("lets a newer note supersede an older one, flags the pages citing it, and never supersedes the user's own note", async () => {
+    const s = await setup();
+    const v = s.view();
+    const old = s.talk(v, "Claude merges our pull requests.", "Claude merges the pull requests");
+    v.own.putPage({ slug: "workflow", title: "Workflow", summary: "how work merges", text: `Claude merges [${old.note}].` }, "sleep");
+    const owner = s.memory.openOwnerView(s.ada.id);
+    const mine = owner.general.addNotes([{ text: "Reviews happen on Fridays" }], { author: `user:${s.ada.id}` })[0]!;
+    owner.close();
+    await new Promise((r) => setTimeout(r, 2));
+    const newer = s.talk(v, "Since this week I merge my own pull requests.", "{user} now merges pull requests after review");
+    const seen = s.script({
+      consolidate: [
+        (c) => { expect(said(c)).toContain("the newer one holds"); return call("supersede", { notes: [old.note], by: newer.note }); },
+        call("supersede", { notes: [mine], by: newer.note }),
+        call("write_page", { slug: "workflow", title: "Workflow", summary: "how work merges", text: `Claude merges [${old.note}].` }),
+        call("write_page", { slug: "workflow", title: "Workflow", summary: "how work merges", text: `{user} merges after review [${newer.note}].` }),
+      ],
+    });
+    await new Promise((r) => setTimeout(r, 2));
+    expect((await s.sleep.run(s.ada.id, "general", "manual")).status).toBe("complete");
+    // Replaced, still readable and citable; the page citing it came up for a rewrite, and the rewrite cleared it.
+    expect(v.own.get(old.note!)).toMatchObject({ supersededBy: newer.note });
+    // Folding deletes nothing, so it leaves no tombstone: the entry can still be noted.
+    expect(v.own.isTombstoned(old.note!) || v.own.isTombstoned(old.entry)).toBe(false);
+    expect(said(seen.consolidate[1]!)).toContain("Rewrite [p:workflow] from current notes");
+    expect(said(seen.consolidate[2]!)).toContain("was added by a user: raise a question instead");
+    expect(v.own.get(mine)!.supersededBy).toBeUndefined();
+    // A page cites the note that replaced one, never the replaced note.
+    expect(said(seen.consolidate[3]!)).toContain(`[${old.note}] was superseded by [${newer.note}]: cite the current note instead`);
+    expect(v.own.cameFrom("p:workflow")).toEqual([newer.note]);
+    expect(v.own.get("p:workflow")).toMatchObject({ flagged: false });
+    v.close();
+  });
+
+  it("writes WAKE from the last one beside the notes written since, never from its own context, and strips a copied dream header", async () => {
+    const s = await setup();
+    const v = s.view();
+    s.talk(v, "Can you finish the jump-to-latest button?", "The jump-to-latest button is open and hers to finish");
+    s.script({ wake: [call("write_wake", { text: `The jump-to-latest button is still open. ${words(420)}` })] });
+    expect((await s.sleep.run(s.ada.id, "general", "manual")).status).toBe("complete");
+    const lastWake = v.own.get("wake")!.text;
+    await new Promise((r) => setTimeout(r, 2));
+    const done = s.talk(v, "The jump-to-latest button merged.", "The jump-to-latest button merged");
+    const seen = s.script({
+      dream: [call("write_journal", { text: `${DREAM_HEADER}\n\n**${DREAM_HEADER}**\n\nA river of buttons.` })],
+      wake: [call("write_wake", { text: `The button is done. ${words(420)}` })],
+    });
+    await new Promise((r) => setTimeout(r, 2));
+    expect((await s.sleep.run(s.ada.id, "general", "manual")).status).toBe("complete");
+    const prompt = said(seen.wake[0]!);
+    expect(prompt).toContain("It is a draft, not a source");
+    expect(prompt).toContain(`[${done.note}]`);
+    // The old WAKE comes once, in the instruction, not again as what she woke up with.
+    expect(prompt.split(lastWake.slice(0, 40)).length).toBe(2);
+    const [journal] = v.own.listJournal();
+    expect(journal!.text).toBe(`${DREAM_HEADER}\n\nA river of buttons.`);
+    v.close();
+  });
+
   it("writes pages before reading conversations, reads only so many, keeps no near-copies, and writes {user} for the name", async () => {
     const s = await setup();
     const v = s.view();

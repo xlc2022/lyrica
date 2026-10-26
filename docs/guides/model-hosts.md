@@ -109,8 +109,8 @@ minutes on a 4-core machine; it says which. `LYRICA_HOST_REGISTRY`
 points it at another registry, such as a Forgejo instance's. When the
 image GPU (`COMFY_GPU`) is one, ComfyUI isn't started and
 stable-diffusion.cpp, downloaded the same way (or built, 18 minutes),
-makes the images instead: create only, for Z-Image, Qwen-Image, FLUX and
-SDXL recipes without LoRAs. The first image after a
+makes the images instead: create only, for Z-Image, Qwen-Image, Krea 2,
+FLUX and SDXL recipes without LoRAs. The first image after a
 load takes about 2.5 minutes while it converts the weights to Q8_0.
 vLLM models can't run on the card, so dictation runs on whisper.cpp
 instead, with its own starter (large-v3-turbo q8_0). Voices run on it
@@ -365,8 +365,17 @@ memory. On 24 GB, the 27B below at 128k leaves no room for pinned voice:
 either leave voice unpinned and accept the 30-second first use after a
 swap, or pin it and serve the chat model at a shorter context. An image
 recipe such as Z-Image takes 19–22 GB on its own, so on 24 GB chat, voice
-and images take turns: pin only what must answer at once. Whisper on
-vLLM wants a memory share of about 0.1 of a 24 GB card.
+and images take turns: pin only what must answer at once. The Krea 2
+Turbo starter (fp8, about 18.6 GB of files) loads one stage at a time,
+about 13.5 GB at its largest; beside a 27B chat model on 24 GB it runs
+only once the host unloads the chat model, which it never does to a
+pinned or busy one. Whisper on vLLM wants a memory share of about 0.1 of
+a 24 GB card.
+
+Krea 2 Turbo's weights are under the Krea 2 Community License: free for
+non-commercial use and for commercial use under $1M a year in revenue,
+and section 4.2 requires content filtering wherever it runs. The host
+filters nothing, so an operator who installs it sets up that filter.
 
 Measured on an RTX 3090 (24 GB) with Qwen3.8-27B Q4_K_M on llama.cpp:
 
@@ -534,7 +543,9 @@ workstation"). Note what goes wrong against each.
 8. A download of a gated repository with a token, and one from a link.
 9. An image: install the Z-Image Turbo starter recipe (Image models,
    **Download image model**, which opens on Starter recipes; missing parts
-   download after you confirm), make an image, edit and upscale. The
+   download after you confirm), make an image, edit and upscale. Then
+   install Krea 2 Turbo and make an image beside an unpinned chat model:
+   the chat model unloads first and loads again on the next chat. The
    ComfyUI workflow templates have never run, so expect node or input
    names in `host/workflows/` to need fixing.
 

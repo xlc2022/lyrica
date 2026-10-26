@@ -64,7 +64,7 @@ export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: s
       section("Notes since you last slept", notes),
       section("Conversations with something new (skim them with read_memory)", threads),
       section(`Memories ${user} changed or added (authoritative)`, edited),
-      section("Pages to rewrite (something they cited was deleted)", m.flagged.map((id) => `- [${id}]`)),
+      section("Pages to rewrite (something they cited was deleted or replaced)", m.flagged.map((id) => `- [${id}]`)),
       section("Projects with something new", projects),
       generalText ? `General memory's page about ${user} [general/p:about-user]:\n${generalText}` : "",
       [
@@ -73,9 +73,10 @@ export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: s
         "2. Then skim the conversations for anything important that was never noted, and note it with remember, citing the entry it came from ([e:…]). A few reads are enough; don't note again what a note above already says.",
         aboutStep,
         `4. What ${user} wrote or edited is authoritative: build on it, and never change their words. If newer conversation contradicts it, raise a question instead.`,
-        "5. When two things contradict each other, raise a question rather than guessing.",
-        "6. Rewrite the pages listed above without the deleted source.",
-        ...(projects.length ? [`7. Keep each project's page (the slug given above): what you know about the project, such as decisions, requirements, pitfalls, who to ask and what's open, citing its notes and conversations. Its instructions are ${user}'s and stay as they are; write only what you know.`] : []),
+        "5. When a newer note records a change (a rule, a plan, a decision, a status), the newer one holds: supersede the older notes with it, and keep only the current version on pages. Raise a question only when notes disagree and neither is plainly the later word.",
+        "6. Fold notes that say the same thing, or track work step by step, into one: once work such as a pull request is finished, keep one note with its outcome and anything learned (remember, citing the entry it came from), and supersede the step-by-step notes with it. Superseded notes stay readable, and notes can still cite them, but pages cite the note that replaced them.",
+        "7. Rewrite the pages listed above from current notes: something they cited was deleted or replaced.",
+        ...(projects.length ? [`8. Keep each project's page (the slug given above): what you know about the project, such as decisions, requirements, pitfalls, who to ask and what's open, citing its notes and conversations. Its instructions are ${user}'s and stay as they are; write only what you know.`] : []),
         "Keep working in the about tags of notes you merge; add it to notes that plainly state a coding or workflow preference.",
         `Write {user} for the person, never their name, in notes and pages, and {user:obj}, {user:poss}, {user:poss-pro} or {user:refl} for their pronouns${c.pronouns ? ` (${c.pronouns})` : ""}; there is no subject form, so write {user} where "she" or "they" would go. Name a conversation by citing it ([t:…]), never by its title, which can change.`,
       ].join("\n"),
@@ -88,11 +89,18 @@ export function sleepInstruction(phase: SleepPhase, c: { view: PoolView; user: s
         `${user} sometime, raise it (a few at most). Don't write WAKE: that comes next, without your dreams.`,
     ].join("\n\n");
   }
+  const wake = view.own.get("wake");
+  const since = wake ? view.own.notesSince(wake.updatedAt) : [];
+  const newer = since.slice(-NOTES_SHOWN).map((n) => `- [${n.id}] ${short(n.text)}`);
+  if (since.length > NOTES_SHOWN) newer.unshift(`- (${since.length - NOTES_SHOWN} earlier ones: use recall.)`);
   const questions = view.own.listItems({ run: c.runId }).filter((i: SleepItem) => i.kind === "question").map((i) => `- ${i.text}`);
   const changes = view.own.sleepChanges(view.own.getSleepRun(c.runId)!.startedAt, new Date().toISOString()).pages.map((p) => `- [${p.id}]`);
   return [
     `Morning: the last part of sleep. Write WAKE with write_wake: 400 to 800 words, first person, in your own voice, not a bulleted briefing. It's what you'll wake up with in the next conversation: where things stand with ${user}, what's in motion, and what's unresolved, including the open questions below.${privateNote}`,
     "WAKE is orientation only. Leave your dreams out of it. Unfinished work in a project belongs in it like any other work.",
+    wake ? `Your last WAKE, written ${wake.updatedAt.slice(0, 10)}, is below with the notes written since. It is a draft, not a source: keep from it only what the pages and notes still support. Where a newer note or a page says something is finished, merged, dropped or changed, follow that and leave the old claim out. Check anything else you keep with recall.` : "",
+    wake ? `Last WAKE:\n${wake.text}` : "",
+    section("Notes since your last WAKE", newer),
     section("Open questions from tonight", questions),
     section("Pages changed tonight", changes),
   ].filter(Boolean).join("\n\n");

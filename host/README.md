@@ -223,6 +223,9 @@ live in `recipes.json`; the optional `useFor` tag is `fast`, `quality` or
 per host, and Lyrica's router filters create tiers by it.
 - **Starters** (`recipes/`) are known-good recipes, with each part's
   checksum. Install downloads only the parts that aren't here.
+  Krea 2 Turbo's weights are under the Krea 2 Community License, which
+  requires content filtering wherever it runs; the host filters nothing,
+  so the operator who installs it sets that up.
 - **Scanning** reads each safetensors header (tensor names only) to tell a
   part's role, slot, architecture and precision, and proposes recipes from
   matching parts. A proposal does nothing until it is confirmed. A file
@@ -264,7 +267,7 @@ per host, and Lyrica's router filters create tiers by it.
   CMP's llama.cpp below) makes the images instead:
   it converts the recipe's parts to Q8_0 as it loads them and runs with
   flash attention off, so the work goes to the card's int8 units. It
-  creates only, for Z-Image, Qwen-Image, FLUX and SDXL recipes without
+  creates only, for Z-Image, Qwen-Image, Krea 2, FLUX and SDXL recipes without
   LoRAs; the recipe list shows edit, upscale and other recipes as unsupported, saying why. It takes its model
   as start-up arguments, so `sdcpp/gate.sh` starts it for the recipe
   host-api names in `serving/sdcpp.json`, reports the run in the

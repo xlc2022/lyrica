@@ -129,6 +129,9 @@ export class Keyring {
 
   async forgetSavedKey(userId: string): Promise<void> { await this.store().remove(`user-${userId}`); }
 
+  /** A deleted user's saved key goes, even where saving keys isn't available now. */
+  async dropSavedKey(userId: string): Promise<void> { await this.credentials?.remove(`user-${userId}`); }
+
   hasSavedKey(userId: string): boolean { return this.credentials?.saved(`user-${userId}`) ?? false; }
 
   /** Takes the key saved for the user, if one is saved. Returns whether it did. */

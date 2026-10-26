@@ -317,6 +317,33 @@ describe("in a Pi session", () => {
     expect(seen[0]!.turn).toMatch(new RegExp(`\\[${hit!.id}\\] \\(note, \\d{4}-\\d{2}-\\d{2}\\) Ada's cat Miso hates the vacuum cleaner`));
     expect(second.view.own.loadEntries(second.threadId).length).toBeGreaterThanOrEqual(2);
   });
+
+  it("doesn't save a note again word for word, but saves one that reads alike and may change it, pointing at the near match", async () => {
+    const m = await withMemory();
+    const t = m.thread();
+    const remember = (notes: { text: string; supersedes?: string[] }[]) => () => fauxAssistantMessage(fauxToolCall("remember", { notes }), { stopReason: "toolUse" });
+    const { session: s, seen } = await session(t.context, [
+      remember([{ text: "{user} prefers tabs over spaces" }]),
+      remember([{ text: "{user} prefers tabs over spaces." }, { text: "{user} bakes rye bread on Sundays" }]),
+      remember([{ text: "{user} prefers spaces over tabs" }]),
+      () => fauxAssistantMessage("Noted."),
+    ]);
+    try {
+      await s.prompt("Tabs, then rye, then actually spaces.");
+    } finally {
+      s.dispose();
+    }
+    const notes = () => t.view.own.search("prefers tabs spaces", { kinds: ["note"], current: true }).map((h) => h.id);
+    const says = (words: string) => notes().find((id) => t.view.own.get(id)!.text.includes(words))!;
+    const first = says("tabs over spaces");
+    const changed = says("spaces over tabs");
+    // The copy wasn't saved; the changed fact was, with a pointer to the note it may change.
+    expect(notes()).toHaveLength(2);
+    expect(t.view.own.search("rye Sundays", { kinds: ["note"] })).toHaveLength(1);
+    expect(JSON.stringify(seen[2])).toContain(`Already noted, so not saved again: [${first}]`);
+    expect(JSON.stringify(seen[3])).toContain(`Similar to [${first}]: if a new note changes one, save it again with supersedes set to it.`);
+    expect(changed).not.toBe(first);
+  });
 });
 
 

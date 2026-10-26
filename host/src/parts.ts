@@ -14,7 +14,7 @@ export interface Part {
   size: number;
   format: "safetensors" | "gguf";
   role: Role;
-  /** For text encoders: clip_l, clip_g, t5, qwen3, qwen2.5vl. */
+  /** For text encoders: clip_l, clip_g, t5, qwen3, qwen2.5vl, qwen3vl. */
   slot: string | null;
   /** The architecture it belongs to; for text encoders, the encoder's own (same as the slot). */
   arch: string | null;
@@ -73,6 +73,7 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
     const arch = has(/double_blocks|single_blocks/) ? "flux"
       : has(/img_mod|txt_mod/) ? "qwen-image"
       : has(/noise_refiner|context_refiner|cap_embedder|layers[._]\d+[._]attention/) ? "z-image"
+      : has(/txtfusion|blocks[._]\d+[._]attn[._]w[qkvo]\b/) ? "krea2"
       : has(/input_blocks|down_blocks|lora_te2/) ? "sdxl"
       : null;
     return { role: "lora", slot: null, arch };
@@ -91,6 +92,7 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   if (hasBare(/^double_blocks\.0\.img_attn/) && hasBare(/^single_blocks\./)) return { role: "diffusion", slot: null, arch: "flux" };
   if (hasBare(/^transformer_blocks\.0\.img_mod/) && hasBare(/^txt_norm\./)) return { role: "diffusion", slot: null, arch: "qwen-image" };
   if (hasBare(/^cap_embedder\./) && hasBare(/^(noise_refiner|context_refiner)\./)) return { role: "diffusion", slot: null, arch: "z-image" };
+  if (hasBare(/^txtfusion\.projector\.weight$/)) return { role: "diffusion", slot: null, arch: "krea2" };
   if (hasBare(/^input_blocks\.0\.0\./) && hasBare(/^label_emb\./)) return { role: "diffusion", slot: null, arch: "sdxl" };
 
   const clipEmbed = names.find((n) => /text_model\.embeddings\.token_embedding\.weight$/.test(n));
@@ -101,6 +103,7 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   }
   if (has(/encoder\.block\.0\.layer\.0\.SelfAttention\.q\.weight$/)) return { role: "text_encoder", slot: "t5", arch: "t5" };
   if (has(/(^|\.)layers\.0\.self_attn\.q_proj\.weight$/)) {
+    if (has(/(^|\.)visual\.merger\.linear_fc2\.weight$/)) return { role: "text_encoder", slot: "qwen3vl", arch: "qwen3vl" };
     if (has(/(^|\.)visual\.blocks\.0\./)) return { role: "text_encoder", slot: "qwen2.5vl", arch: "qwen2.5vl" };
     if (has(/(^|\.)layers\.0\.self_attn\.q_norm\.weight$/)) return { role: "text_encoder", slot: "qwen3", arch: "qwen3" };
   }
