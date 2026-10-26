@@ -43,6 +43,16 @@ const RECALL_HITS = 5;
 /** In a message of three words or more, an automatic recall hit holds two of them, so one shared word doesn't bring up an unrelated conversation. */
 const RECALL_WORDS = 2;
 
+const words = (t: string) => new Set(t.toLowerCase().replace(/\[[^\]]*\]/g, " ").replace(/\{user[^}]*\}/g, " user ").match(/[\p{L}\p{N}]+/gu) ?? []);
+/** Two notes say the same thing: most of their words are shared. */
+export function nearCopy(a: string, b: string): boolean {
+  const x = words(a), y = words(b);
+  if (!x.size || !y.size) return false;
+  let both = 0;
+  for (const w of x) if (y.has(w)) both++;
+  return both / (x.size + y.size - both) >= 0.6;
+}
+
 /** The page about the person she's talking with. A user can write it; sleep keeps it up. */
 export const ABOUT_USER_PAGE = "p:about-user";
 
@@ -56,7 +66,7 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
   const item = own.itemForThread(ctx.threadId);
   return {
     notice: own.getThread(ctx.threadId)?.unlogged ? UNLOGGED_NOTICE : undefined,
-    wake: ctx.code ? undefined : own.getWake(),
+    wake: ctx.code || ctx.hide?.("wake") ? undefined : own.getWake(),
     // The thread's own pool comes first; the about section's budget cuts whatever doesn't fit.
     about: ctx.code ? undefined : [own, ...view.reads].map((store) => store.get(ABOUT_USER_PAGE)).filter((p) => p && !p.archived)
       .map((p) => p!.text.trim()).filter(Boolean).join("\n\n") || undefined,

@@ -7,6 +7,7 @@ import {
 } from "@lyrica/core";
 import { Type } from "typebox";
 import { createLyricaExtension, type ThreadContext } from "./index.ts";
+import { nearCopy } from "./memory.ts";
 import { openThreadSession } from "./session.ts";
 
 // Sleep (docs/sleep.md): consolidate → dream → wake, each an agentic Pi
@@ -29,6 +30,9 @@ export interface SleepLimits {
 }
 
 export const DEFAULT_SLEEP_LIMITS: SleepLimits = { turns: 40, tokens: 600_000, windows: 4, timeoutMs: 20 * 60_000, retries: 2, retryDelayMs: 2000 };
+
+/** How long a superseded note nothing cites is kept after the note that replaced it, before a complete sleep removes it. */
+export const SUPERSEDED_KEEP_MS = 14 * 24 * 3600_000;
 
 /** How long a phase's thread is kept. What sleep wrote stays; the transcript would keep copies of memories deleted since. */
 export const SLEEP_THREAD_AGE_MS = 36 * 3600_000;
@@ -63,8 +67,13 @@ export const hideDreams = (id: string): boolean => {
   return kindOf(bare) === "journal" || /^[et]:sleep\//.test(bare);
 };
 
+/** The wake phase's hidden memories: dreams, and the old WAKE, which its instruction shows beside the notes written since. */
+const hideFromWake = (id: string): boolean => hideDreams(id) || id === "wake";
+
 /** The marker at the head of every dream, so nothing in one reads as a fact. */
 export const DREAM_HEADER = "Dream journal (reflection, not a record of fact).";
+/** The header, or a copy of it the model wrote itself after reading earlier entries. */
+const LEADING_HEADERS = /^(\s*[#*_>]*\s*dream journal\s*\(reflection, not a record of fact\)\.?[*_]*)+\s*/i;
 
 const SETTING = "sleep.mode";
 const FALLBACK = "sleep.fallback";
@@ -222,6 +231,10 @@ export class Sleep {
         if (!result.ok) { ok = false; break; }
       }
       const status = ok ? "complete" : "partial";
+      if (ok) {
+        const pruned = view.own.pruneSuperseded(new Date(Date.now() - SUPERSEDED_KEEP_MS).toISOString());
+        if (pruned) this.log(`sleep ${pool}: removed ${pruned} superseded notes`);
+      }
       // A phase the plan's usage limit cut off: the rest waits for the reset, as a skipped run would.
       const cut = !ok && !state.stopped ? this.limitedPlan(userId, pool, plan.phases) : undefined;
       if (cut) this.waiting.set(`${userId}/${pool}`, { userId, pool, endpointId: cut });
@@ -338,7 +351,7 @@ export class Sleep {
         extensions: [
           createLyricaExtension(ctx, {
             persona: () => this.o.persona.read(), profile: () => this.o.users.get(userId)!.profile,
-            memoryTools: "read", ...(phase === "wake" ? { hide: hideDreams } : {}),
+            memoryTools: "read", ...(phase === "wake" ? { hide: hideFromWake } : {}),
           }),
           sleepTools(phase, tools),
         ],
@@ -410,15 +423,6 @@ export function asUserToken(text: string, name: string): string {
   return text.replace(new RegExp(`(?<![\\w{])${esc}(?![\\w}])`, "g"), "{user}");
 }
 
-const words = (t: string) => new Set(t.toLowerCase().replace(/\[[^\]]*\]/g, " ").replace(/\{user[^}]*\}/g, " user ").match(/[\p{L}\p{N}]+/gu) ?? []);
-/** Two notes say the same thing: most of their words are shared. */
-export function nearCopy(a: string, b: string): boolean {
-  const x = words(a), y = words(b);
-  if (!x.size || !y.size) return false;
-  let both = 0;
-  for (const w of x) if (y.has(w)) both++;
-  return both / (x.size + y.size - both) >= 0.6;
-}
 
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }], details: undefined });
 
@@ -475,6 +479,21 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
         },
       });
       pi.registerTool({
+        name: "supersede",
+        label: "Supersede",
+        description: "Mark older notes as replaced by a newer note that is already saved: a rule, plan or status that has since changed, a duplicate, or step-by-step notes on finished work folded into one. They stay readable and citable; pages citing them come up for a rewrite.",
+        promptSnippet: "mark notes replaced by a newer one",
+        parameters: Type.Object({
+          notes: Type.Array(Type.String(), { minItems: 1, description: "The older notes' IDs." }),
+          by: Type.String({ description: "The newer note that replaces them, like n:20261024-a1b2c3d4." }),
+        }),
+        async execute(_id, params) {
+          own.supersede(params.notes, params.by, "sleep");
+          const pages = [...new Set(params.notes.flatMap((n) => own.usedIn(n)).filter((id) => id.startsWith("p:")))];
+          return text(`Superseded by ${params.by}.${pages.length ? ` Rewrite ${pages.map((p) => `[${p}]`).join(", ")} from current notes.` : ""}`);
+        },
+      });
+      pi.registerTool({
         name: "write_page",
         label: "Write page",
         description: "Create or rewrite a page: your understanding of one subject, citing the notes behind it. The whole text replaces the old one.",
@@ -491,6 +510,9 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
           if (!cites.length) throw new Error("a page cites what it rests on, like [n:20261009-a1b2c3d4]");
           // A dream is reflection: a page can't rest on one.
           if (cites.some((c) => hideDreams(c))) throw new Error("a page can't cite the journal or sleep's own threads: dreams aren't facts");
+          // A page rests on current notes: a replaced one points to the note that replaced it.
+          const old = cites.flatMap((c) => { const by = c.startsWith("n:") ? own.get(c, { raw: true })?.supersededBy : undefined; return by ? [`[${c}] was superseded by [${by}]`] : []; });
+          if (old.length) throw new Error(`${old.join("; ")}: cite the current note instead`);
           // A project's page belongs to a logged project in this pool: never one in another pool, or one kept out of memory.
           if (params.slug.startsWith("project-")) {
             const project = own.listThreads({ includeHidden: true }).find((t) => t.project && projectSlug(t.id) === params.slug);
@@ -514,7 +536,7 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
         promptSnippet: "write tonight's journal entry",
         parameters: Type.Object({ text: Type.String() }),
         async execute(_id, params) {
-          const id = own.addJournal(`${DREAM_HEADER}\n\n${asUserToken(params.text.trim(), s.user)}`, "sleep");
+          const id = own.addJournal(`${DREAM_HEADER}\n\n${asUserToken(params.text.replace(LEADING_HEADERS, "").trim(), s.user)}`, "sleep");
           s.done.journal = id;
           return text(`Wrote ${id}.`);
         },

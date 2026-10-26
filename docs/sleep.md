@@ -51,16 +51,33 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
 1. **Consolidate.** She reads the notes since the last sleep and skims the
    threads they came from. For anything important that she never saved, she
    writes a note (catch-up stays light; Monika manages without it). Then she
-   updates or creates pages, citing notes. Contradictions become questions for
-   the user rather than guesses. This step also rewrites pages flagged by a
-   deletion. Notes and pages a user edited or added since the last sleep are
+   updates or creates pages, citing notes. A newer note that records a change
+   (a rule, a plan, a status) holds over the older one: `supersede` marks the
+   older notes replaced by it. She also folds near-duplicates, and the
+   step-by-step notes on finished work (a pull request's status lines) into
+   one note with the outcome and what was learned. Superseding deletes
+   nothing and leaves no tombstone: the old notes stay readable and citable,
+   leave automatic recall, and flag the pages citing them. `write_page`
+   refuses to cite a superseded note and names the note that replaced it.
+   After a complete run, sleep removes superseded notes that nothing but
+   their replacement cites, two weeks after the replacement was written
+   (`pruneSuperseded`). What they said lives on in that note, so this
+   leaves no tombstone. A user's notes, and notes a user edited or
+   archived, stay. A private page citing a removed general note is
+   rewritten like one citing a deleted note. Only
+   contradictions with no plain later word become questions for the user.
+   This step also rewrites pages flagged by a deletion or a supersede. Notes and pages a user edited or added since the last sleep are
    authoritative: she builds on them, and asks rather than overwriting them.
    She never edits or deletes a memory a user wrote.
 2. **Dream.** Free reflection, as in Monika, written into the journal. It's
-   marked as reflection, so nothing in a dream becomes a fact by itself.
+   marked as reflection, so nothing in a dream becomes a fact by itself. The
+   code adds the marker; one she copied from an earlier entry is dropped.
 3. **Wake.** Write WAKE: where things stand, what's in motion, and what's
    unresolved, including the night's questions. It is orientation only and
-   holds no dream content: the wake phase can't see the journal at all.
+   holds no dream content: the wake phase can't see the journal at all. The
+   old WAKE isn't in its context; the instruction shows it as a draft beside
+   the current notes written since, which win where they say work finished
+   or changed.
 
 Along the way she keeps the few things she'd like to raise as **items** for
 the Sleep section: a question from consolidation, a thought or a persona

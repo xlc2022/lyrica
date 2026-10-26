@@ -156,6 +156,16 @@ describe("notes", () => {
     expect(own.search("tea", auto)[0]!.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
+  it("counts a message from another of her threads as hers, not the person's", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const brief = said(own, "[From t:web/1a2b3c4d]\n\nImplement the zebra crossing fix");
+    const theirs = said(own, "Please look at the zebra crossing");
+    expect(own.get(brief.entry)!.origin).toBe("lyrica");
+    expect(own.get(theirs.entry)!.origin).toBe("user");
+    expect(Object.fromEntries(own.search("zebra crossing").map((h) => [h.id, h.origin]))).toEqual({ [brief.entry]: "lyrica", [theirs.entry]: "user" });
+  });
+
   it("supersedes without losing the old note", async () => {
     const { memory, ada } = await setup();
     const { own } = memory.openThreadView(ada.id, "general");
@@ -165,6 +175,39 @@ describe("notes", () => {
     expect(own.get(old!)!.supersededBy).toBe(fresh);
     expect(own.search("lives", { current: true }).map((h) => h.id)).toEqual([fresh]);
     expect(own.search("lives").map((h) => h.id).sort()).toEqual([fresh, old].sort());
+  });
+
+  it("removes superseded notes nothing cites once their replacement is old enough, with no tombstone, keeping cited and user notes", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const s = said(own, "pull requests");
+    const add = (text: string, supersedes?: string[]) => own.addNotes([{ text, source: s.entry, supersedes }], { author: "lyrica", thread: s.thread })[0]!;
+    const step1 = add("PR 12 is waiting on CI");
+    const step2 = add("PR 12 has review findings");
+    const cited = add("PR 12 taught that e2e needs a built web");
+    own.putPage({ slug: "lessons", title: "Lessons", summary: "what PRs taught", text: `Build first [${cited}].` }, "sleep");
+    const owner = memory.openOwnerView(ada.id);
+    const mine = owner.general.addNotes([{ text: "PR 12 is mine to merge" }], { author: `user:${ada.id}` })[0]!;
+    owner.close();
+    const folded = add(`PR 12 merged; e2e needs a built web [${step1}]`);
+    own.supersede([step2], step1, "sleep");
+    expect(() => own.supersede([mine], folded, "sleep")).toThrow(/added by a user/);
+    own.supersede([step1, cited], folded, "sleep");
+    expect(own.get("p:lessons")).toMatchObject({ flagged: true });
+
+    // Too recent: nothing goes.
+    expect(own.pruneSuperseded("2000-01-01T00:00:00Z")).toBe(0);
+    expect(own.pruneSuperseded(new Date(Date.now() + 1000).toISOString())).toBe(2);
+    expect(own.get(step1)).toBeUndefined();
+    expect(own.get(step2)).toBeUndefined();
+    expect(own.isTombstoned(s.entry)).toBe(false);
+    expect(own.search("waiting review", {}).map((h) => h.id)).toEqual([]);
+    // Still cited by a page, so it stays until the page cites the folded note.
+    expect(own.get(cited)).toMatchObject({ supersededBy: folded });
+    expect(own.get(folded)!.supersededBy).toBeUndefined();
+    own.putPage({ slug: "lessons", title: "Lessons", summary: "what PRs taught", text: `Build first [${folded}].` }, "sleep");
+    expect(own.pruneSuperseded(new Date(Date.now() + 1000).toISOString())).toBe(1);
+    expect(own.get(cited)).toBeUndefined();
   });
 });
 

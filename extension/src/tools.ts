@@ -2,7 +2,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { PoolView } from "@lyrica/core";
 import { Type } from "typebox";
-import { codeMemoryThread, formatHit, formatRead, keptFrom, search, type MemoryContext } from "./memory.ts";
+import { codeMemoryThread, formatHit, formatRead, keptFrom, nearCopy, search, type MemoryContext } from "./memory.ts";
 import { syncEntries } from "./record.ts";
 
 // The Memory component's model-facing tools: remember, recall, read_memory.
@@ -34,6 +34,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       "One fact per note. Save several notes in one remember call rather than one long note.",
       "In notes, write {user} for the person you're talking with, never their name, and {user:obj}, {user:poss}, {user:poss-pro}, {user:refl} for their pronouns. There is no subject pronoun form: write {user} where \"she\" or \"they\" would go.",
       "To correct a note, save the corrected fact with supersedes set to the old note's ID.",
+      "Progress on work in flight (a pull request's CI, a review round) lives where the work is. Note what it settled: the outcome, a decision, or a lesson, with supersedes set to notes it makes out of date.",
       "In notes, mention another conversation as [t:<id>] and a message in one as [e:<id>#<n>], never by its title: titles change, and the ID always shows the current one.",
     ],
     parameters: Type.Object({
@@ -48,8 +49,17 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       // The message that led here is in Pi's session but may not be stored yet.
       syncEntries(toolCtx.sessionManager, view.own, threadId);
       const source = view.own.lastEntry(threadId, ["user", "toolResult"])?.id;
-      const ids = view.own.addNotes(params.notes.map((n) => ({ ...n, source })), { author: "lyrica", thread: threadId });
-      return text(`Saved ${ids.join(", ")}.`);
+      // A note that says what a current note already says is that note: say so instead of saving a copy.
+      const copies: string[] = [];
+      const fresh = params.notes.filter((n) => {
+        const same = n.supersedes?.length ? undefined : view.own.search(n.text, { kinds: ["note"], current: true, limit: 5 })
+          .find((h) => nearCopy(n.text, view.own.get(h.id, { raw: true })?.text ?? ""));
+        if (same) copies.push(same.id);
+        return !same;
+      });
+      const ids = fresh.length ? view.own.addNotes(fresh.map((n) => ({ ...n, source })), { author: "lyrica", thread: threadId }) : [];
+      const already = copies.length ? `${ids.length ? " " : ""}Already noted, so not saved again: ${[...new Set(copies)].map((id) => `[${id}]`).join(", ")}.` : "";
+      return text(`${ids.length ? `Saved ${ids.join(", ")}.` : ""}${already}`);
     },
   });
 

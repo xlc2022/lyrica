@@ -269,7 +269,10 @@ secrets, and does not rewrite memory already stored. A secret-named label follow
 
 - `remember(notes: [{ text, about?, supersedes? }])` writes notes. Their
   source is the current thread entry. Superseded notes stay but drop out of
-  automatic recall.
+  automatic recall. A note that nearly repeats a current note (`nearCopy`)
+  isn't saved again unless it supersedes one; the result names the note it
+  repeats. Her instructions say progress on work in flight lives with the
+  work, so she notes what it settled.
 - **One fact per note, and plenty of notes.** Small notes keep lineage and
   deletion precise. Small notes must never mean fewer notes, so:
   - one `remember` call can save several notes at once, so splitting a moment

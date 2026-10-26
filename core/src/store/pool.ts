@@ -11,6 +11,9 @@ import { askOfCall, isQuestionCall, type Ask, FROM_PARENT, ROUTINE, WAKEUP, WATC
 import { citationsIn, ftsQuery, holdsEnough, indexText, kindOf, queryTerms, queryWords, searchWords, snippet, stripCitations, withoutWords, type Kind } from "./refs.ts";
 
 /** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
+/** A user-role entry lyricad wrote: a message from another of her threads (a parent's or sibling's), a watch, a wake-up or a routine. Hers, not the person's. */
+const isMarked = (text: string) => [FROM_PARENT, WATCHING, WAKEUP, ROUTINE].some((m) => m.test(text));
+
 export type Author = "lyrica" | "sleep" | `user:${string}`;
 export type Origin = "lyrica" | "sleep" | "user";
 
@@ -255,11 +258,11 @@ export interface SleepItem {
 export interface SleepMaterial {
   /** Logged threads with new entries (not sleep's own threads, not exported copies), which of them the user pinned, and the project chat of a project's thread. */
   threads: { id: string; title?: string; entries: number; first: string; last: string; pinned?: string[]; project?: string }[];
-  /** Notes written in conversation or by a user. */
+  /** Current notes written in conversation or by a user. */
   notes: Item[];
   /** Memories a user changed or added. */
   edited: Edited[];
-  /** Pages that cited something since deleted. */
+  /** Pages that cited something since deleted or replaced. */
   flagged: string[];
 }
 
@@ -573,7 +576,7 @@ export class PoolReader {
       case "entry": {
         // A logged message read as a memory of its own: what recall found before sleep consolidated it. Never one written unlogged.
         const [e] = this.entryWindow(id, 0);
-        return e && !e.unlogged ? { id, kind: "entry", text: e.text, origin: e.role === "user" ? "user" : "lyrica", createdAt: e.createdAt, updatedAt: e.createdAt } : undefined;
+        return e && !e.unlogged ? { id, kind: "entry", text: e.text, origin: e.role === "user" && !isMarked(e.text) ? "user" : "lyrica", createdAt: e.createdAt, updatedAt: e.createdAt } : undefined;
       }
       default:
         return undefined;
@@ -614,13 +617,12 @@ export class PoolReader {
     const since = this.watermark() ?? "";
     let before = opts.before ?? null;
     const out: Item[] = [];
-    // A message from another thread (a parent's or sibling's), a watch, a wake-up or a routine is hers or the daemon's, not a person's: left out.
-    const marked = [FROM_PARENT, WATCHING, WAKEUP, ROUTINE];
+    // A message from another thread, a watch, a wake-up or a routine is hers or the daemon's, not a person's: left out.
     for (;;) {
       const batch = limit * 2;
       const rows = stmt.all({ since, before, limit: batch }) as { thread: string; n: number; text: string; created_at: string }[];
       for (const r of rows) {
-        if (marked.some((m) => m.test(r.text))) continue;
+        if (isMarked(r.text)) continue;
         const item = this.get(entryId(r.thread, r.n));
         if (item) out.push(item);
         if (out.length === limit) return out;
@@ -730,7 +732,7 @@ export class PoolReader {
           ...(pinned.length ? { pinned } : {}), ...(project ? { project } : {}),
         };
       });
-    const notes = (this.db.prepare("SELECT id FROM notes WHERE origin != 'sleep' AND archived = 0 AND created_at >= ? AND created_at < ? ORDER BY created_at")
+    const notes = (this.db.prepare("SELECT id FROM notes WHERE origin != 'sleep' AND archived = 0 AND superseded_by IS NULL AND created_at >= ? AND created_at < ? ORDER BY created_at")
       .all(from, until) as { id: string }[]).map((r) => this.get(r.id)!);
     const edited = this.editedSince(from).filter((e) => e.at < until);
     const flagged = (this.db.prepare("SELECT slug FROM pages WHERE flagged = 1 AND archived = 0").all() as { slug: string }[]).map((r) => `p:${r.slug}`);
@@ -880,7 +882,7 @@ export class PoolReader {
       if (id.startsWith("e:sleep/")) return undefined;
       const [entry] = this.entryWindow(id, 0);
       if (!entry || !holdsEnough(entry.text, terms, opts.minWords)) return undefined;
-      return { id, kind, score, snippet: snippet(entry.text, words), origin: ENTRY_ORIGIN[entry.role], at: entry.createdAt };
+      return { id, kind, score, snippet: snippet(entry.text, words), origin: entry.role === "user" && isMarked(entry.text) ? "lyrica" : ENTRY_ORIGIN[entry.role], at: entry.createdAt };
     }
     const item = this.get(id);
     if (!item || (item.archived && !opts.includeArchived) || (item.supersededBy && opts.current)) return undefined;
@@ -1446,6 +1448,59 @@ export class PoolStore extends PoolReader {
       }
       return id;
     }));
+  }
+
+  /**
+   * Marks older notes as replaced by a newer one that is already saved. They
+   * stay readable and citable; pages citing them are flagged for a rewrite.
+   * Only a user replaces a note a user added.
+   */
+  supersede(old: string[], by: string, author: Author): void {
+    this.checkAuthor(author);
+    const newer = this.load(by);
+    if (!newer || newer.kind !== "note" || newer.supersededBy) throw new Error(`no current note ${by} to replace them with`);
+    this.tx(() => {
+      for (const id of old) {
+        const note = this.load(id);
+        if (!note || note.kind !== "note") throw new Error(`no such note to supersede: ${id}`);
+        if (id === by) throw new Error("a note can't replace itself");
+        if (note.origin === "user" && !author.startsWith("user:")) throw new Error(`${id} was added by a user: raise a question instead`);
+        this.db.prepare("UPDATE notes SET superseded_by = ? WHERE id = ?").run(by, id);
+        this.db.prepare("UPDATE pages SET flagged = 1 WHERE 'p:' || slug IN (SELECT src FROM citations WHERE dst = ?)").run(id);
+      }
+    });
+  }
+
+  /**
+   * Removes notes superseded before `before` (by when the replacing note was
+   * written) that nothing cites but that note: no page or other note points
+   * at them, so what they said lives on in the note that replaced them. No
+   * tombstone, since nothing was forgotten on purpose. A user's own notes,
+   * and notes a user edited or archived, stay. Returns how many went.
+   */
+  pruneSuperseded(before: string): number {
+    this.checkAuthor("sleep");
+    const ids = (this.db.prepare(`SELECT n.id, n.superseded_by AS by FROM notes n JOIN notes r ON r.id = n.superseded_by
+      WHERE r.created_at < ? AND n.origin != 'user' AND n.archived = 0
+      AND NOT EXISTS (SELECT 1 FROM citations c WHERE (c.dst = n.id OR c.dst = ?||n.id) AND c.src != n.superseded_by)
+      AND NOT EXISTS (SELECT 1 FROM revisions v WHERE v.item = n.id AND v.author LIKE 'user:%')`).all(before, `${this.pool}/`) as { id: string; by: string }[]);
+    this.tx(() => {
+      for (const { id, by } of ids) {
+        // A note this one had replaced now points at what replaced it.
+        this.db.prepare("UPDATE notes SET superseded_by = ? WHERE superseded_by = ?").run(by, id);
+        this.db.prepare("DELETE FROM notes WHERE id = ?").run(id);
+        this.db.prepare("DELETE FROM revisions WHERE item = ?").run(id);
+        this.db.prepare("DELETE FROM citations WHERE src = ?").run(id);
+        this.db.prepare("DELETE FROM search WHERE id = ?").run(id);
+      }
+    });
+    return ids.length;
+  }
+
+  /** Current notes (not superseded or archived) written at or after `since`, oldest first. */
+  notesSince(since: string): Item[] {
+    return (this.db.prepare("SELECT id FROM notes WHERE superseded_by IS NULL AND archived = 0 AND created_at >= ? ORDER BY created_at, rowid").all(since) as { id: string }[])
+      .map((r) => this.get(r.id)!);
   }
 
   // Pages, WAKE and journal

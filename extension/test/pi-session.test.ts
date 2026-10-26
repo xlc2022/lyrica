@@ -317,6 +317,39 @@ describe("in a Pi session", () => {
     expect(seen[0]!.turn).toMatch(new RegExp(`\\[${hit!.id}\\] \\(note, \\d{4}-\\d{2}-\\d{2}\\) Ada's cat Miso hates the vacuum cleaner`));
     expect(second.view.own.loadEntries(second.threadId).length).toBeGreaterThanOrEqual(2);
   });
+
+  it("doesn't save a note again that a current note already says, unless it corrects one", async () => {
+    const m = await withMemory();
+    const t = m.thread();
+    const remember = (notes: { text: string; supersedes?: string[] }[]) => () => fauxAssistantMessage(fauxToolCall("remember", { notes }), { stopReason: "toolUse" });
+    const { session: s, seen } = await session(t.context, [
+      remember([{ text: "{user} eats vegetarian on weekdays" }]),
+      remember([{ text: "{user} eats vegetarian food on weekdays" }, { text: "{user} bakes rye bread on Sundays" }]),
+      () => fauxAssistantMessage("Noted."),
+    ]);
+    try {
+      await s.prompt("I eat vegetarian on weekdays, and I bake rye on Sundays.");
+    } finally {
+      s.dispose();
+    }
+    const notes = () => t.view.own.search("vegetarian weekdays", { kinds: ["note"], current: true }).map((h) => h.id);
+    const first = notes()[0]!;
+    expect(notes()).toHaveLength(1);
+    expect(t.view.own.search("rye Sundays", { kinds: ["note"] })).toHaveLength(1);
+    expect(JSON.stringify(seen.at(-1))).toContain(`Already noted, so not saved again: [${first}]`);
+    // A correction is saved even when it reads much the same.
+    const { session: s2 } = await session(t.context, [
+      remember([{ text: "{user} eats vegetarian on weekdays and Saturdays", supersedes: [first] }]),
+      () => fauxAssistantMessage("Noted."),
+    ]);
+    try {
+      await s2.prompt("Saturdays too, actually.");
+    } finally {
+      s2.dispose();
+    }
+    expect(notes()).toHaveLength(1);
+    expect(notes()[0]).not.toBe(first);
+  });
 });
 
 
