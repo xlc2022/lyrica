@@ -24,8 +24,8 @@ send edits to the **Qwen-Image-Edit 2509** starter on a ComfyUI host
    with its prompt enhancer off: `TextEncodeQwenImage21` (the image, up to
    three references, a 1024-pixel budget), `QwenImage21Cache`, a CFG 1
    guider and the Turbo's fixed 8-step sigmas, which live in the starter's
-   defaults. The starter takes the bf16 diffusion model (13.25 GB), the
-   int8 Qwen3-VL 8B encoder (8.71 GB) and the 2.1 VAE, from
+   defaults. The starter takes the bf16 diffusion model (14.2 GB), the
+   int8 Qwen3-VL 8B encoder (9.4 GB) and the 2.1 VAE, from
    Comfy-Org/Qwen-Image-2.1. Scanning tells the 2.1 diffusion model,
    its VAE (Wan 2.2 layout, 64 latent channels) and the 8B encoder
    (`qwen3vl_8b` slot, apart from Krea 2's 4B) from the older ones. It
@@ -40,15 +40,15 @@ send edits to the **Qwen-Image-Edit 2509** starter on a ComfyUI host
 ChatGPT Images and cloud edits are unchanged. No new control: the
 starter shows in the Image models starter list like the others.
 Principles: 1 (a companion that helps well) and 8 (local first, within the
-host's budget: the Turbo starter's largest stage is 13.25 GB on a 24 GB
+host's budget: the Turbo starter's largest stage is 14.9 GB on a 24 GB
 card).
 
 ## Handoff
 
 - Done: the brief, the two workflows, the starter, detection, the tool's
   wording and the docs, on `claude/project-thread-w6uyq4`.
-- Next: CI's starters job prints the new parts' checksums; pin them. After
-  merge, the dev deployment's host needs an update and the starter
+- Done: the parts' checksums, pinned from CI's starters job.
+- Next: after merge, the dev deployment's host needs an update and the starter
   installed, with the owner's yes, then her Image edits list in the
   Private column switched to it.
 - Open: the edit size stays one megapixel; 2.1 can go to 2048 if the owner
