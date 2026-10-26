@@ -720,6 +720,8 @@ as `{ "parts": [...] }`, each entry like this:
   won't propose it again).
 - `ready`: every part is present. Only a confirmed, ready recipe runs.
 - `does`: what it can be used for: `create`, `edit`, `upscale`.
+- `mask`: whether its template's edits take a mask (Lyrica's router skips
+  one that doesn't for a masked edit).
 - `useFor`: `fast`, `quality` or `both` (default). An optional field in
   `recipes.json`; an older recipe without it reads as both. Copies keep the tag.
   Lyrica's router filters create tiers by this tag; the host keeps recipe defaults.
@@ -808,9 +810,10 @@ the action is `invalid`.
   `references` only for a template that takes them (otherwise `invalid`).
 - `POST /host/v1/images/edit`: as create without `width` and `height`, plus
   `"image": "<base64>"` and an optional `"mask": "<base64>"` (its white
-  part is changed). The result follows the image's shape, at about one
-  megapixel. Up to two `references` for Qwen-Image-Edit, three for
-  Qwen-Image 2.1; neither takes a mask on 2.1.
+  part is changed). The result is about one megapixel, at the nearest
+  shape the model was trained on (Qwen-Image-Edit) or the image's own
+  shape on a 32-pixel grid (Qwen-Image 2.1). Up to two `references` for
+  Qwen-Image-Edit, three for Qwen-Image 2.1. Qwen-Image 2.1 takes no mask.
 - `POST /host/v1/images/upscale`
 
   ```json

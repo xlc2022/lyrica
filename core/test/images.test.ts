@@ -41,6 +41,14 @@ describe("image calls through the router (principles 1 and 2)", () => {
     ]);
     expect(s.heard).toEqual([]);
   });
+  it("passes over a host recipe that takes no mask for a masked edit, and uses it for a maskless one", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
+    const plain = await s.host("plain", undefined, false);
+    s.models.setColumnTask(s.ada.id, "private", "image.edit", [plain.ref, s.spare.ref]);
+    expect((await s.models.image(ctx, { action: "edit", prompt: "Add flowers", image: input, mask: input })).resolution.ref).toEqual(s.spare.ref);
+    expect((await s.models.image(ctx, { action: "edit", prompt: "Add flowers", image: input })).resolution.ref).toEqual(plain.ref);
+    expect(plain.server.images.map(i => "mask" in i.body)).toEqual([false]);
+  });
   it("creates and edits through the keyed OpenAI endpoint, including quality and references", async () => {
     const s = await setup();
     for (const tier of ["fast", "quality"] as const) await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier, count: 2 });

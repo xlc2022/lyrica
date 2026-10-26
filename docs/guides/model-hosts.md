@@ -385,6 +385,10 @@ Krea 2 Turbo's weights are under the Krea 2 Community License: free for
 non-commercial use and for commercial use under $1M a year in revenue,
 and section 4.2 requires content filtering wherever it runs. The host
 filters nothing, so an operator who installs it sets up that filter.
+Qwen-Image 2.1's weights are under the Qwen Research License: research
+and evaluation only, no commercial use without a separate licence from
+Qwen, and a notice with their attribution wherever it is passed on. An
+operator who installs that starter takes that on.
 
 Measured on an RTX 3090 (24 GB) with Qwen3.8-27B Q4_K_M on llama.cpp:
 

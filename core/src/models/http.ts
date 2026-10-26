@@ -49,6 +49,8 @@ export interface DiscoveredModel {
   size?: number;
   /** An image model, by its name: a confirmed recipe, or a ChatGPT plan's image tool. */
   recipe?: string;
+  /** For a host recipe that edits: whether its edits take a mask. */
+  mask?: boolean;
   /** A host recipe's create tiers; absent means both. */
   useFor?: "fast" | "quality" | "both";
   /** The context window a host serves the model with, which wins over one set by hand. */

@@ -29,7 +29,12 @@ send edits to the **Qwen-Image-Edit 2509** starter on a ComfyUI host
    Comfy-Org/Qwen-Image-2.1. Scanning tells the 2.1 diffusion model,
    its VAE (Wan 2.2 layout, 64 latent channels) and the 8B encoder
    (`qwen3vl_8b` slot, apart from Krea 2's 4B) from the older ones. It
-   edits only; sd.cpp hosts can't run it.
+   edits only; sd.cpp hosts can't run it. Its weights are under the Qwen
+   Research License (non-commercial: research and evaluation only); the
+   guides say so, and the operator who installs it takes that on.
+   It takes no mask, so a host's recipe listing now says `mask` (from its
+   template) and the router skips a recipe without one for a masked edit,
+   going on down the Image edits list.
 3. **Her edit instructions.** The tool tells her to give the one change
    and what must stay the same (face, body, pose, framing, light), to call
    the edited image image 1 and references image 2 and so on, and to check
