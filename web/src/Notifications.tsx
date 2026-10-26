@@ -6,6 +6,7 @@
 import { useMemo, useState } from "react";
 import { get, request, u, type Notification, type NotificationAction, type NotificationPage, type NotificationType, type Pool, type ThreadSummary } from "./api.ts";
 import { Icon } from "./icons.tsx";
+import { firstWords } from "./memory.ts";
 import { go, href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
 import { ClampedText, clock, ErrorText, shortTime, useAction, useLoad } from "./ui.tsx";
@@ -69,7 +70,9 @@ function Row({ n, ctx, picked, onPick, act, busy }: {
   const [open, setOpen] = useState(false);
   return (
     <li className={`nrow${onPick ? "" : " nopick"}${n.type === "question" ? " nquestion" : ""}${n.type === "sleep" ? " nsleep" : ""}`}>
-      {onPick && <input type="checkbox" className="npick" checked={!!picked} onChange={(e) => onPick(e.target.checked)} aria-label={`Select ${n.title}`} />}
+      {/* The name is the title's first words, not its whole text: a From sleep row's title is her
+          whole item (#591), and "Select" would come only after a paragraph. (docs/web.md) */}
+      {onPick && <input type="checkbox" className="npick" checked={!!picked} onChange={(e) => onPick(e.target.checked)} aria-label={`Select ${firstWords(n.title, 80)}`} />}
       <span className="ico" aria-hidden="true">{n.type === "question" ? <Icon name="bell" /> : t.glyph}</span>
       <div className="main-col">
         {/* A long From sleep row reads itself here rather than sending the person to Start a chat (§6). */}
