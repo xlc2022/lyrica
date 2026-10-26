@@ -338,11 +338,14 @@ describe("stable-diffusion.cpp", () => {
   const part = (role: string, file: string, slot: string | null = null) => ({ role, slot, file, added: false }) as Recipe["parts"][number];
 
   it("gives sd-server each part under its own flag, and refuses what it can't run", () => {
-    expect(sdcppArgs({ template: "flux", parts: [part("checkpoint", "f/flux.safetensors")], loras: [] }, "/models")).toEqual(["-m", "/models/f/flux.safetensors"]);
+    expect(sdcppArgs({ template: "flux", parts: [part("checkpoint", "f/flux.safetensors")], loras: [] }, "/models")).toEqual(["--type", "q8_0", "-m", "/models/f/flux.safetensors"]);
     expect(sdcppArgs({ template: "qwen-image", parts: [part("diffusion", "q/d.safetensors"), part("text_encoder", "q/te.safetensors", "qwen2.5vl"), part("vae", "q/v.safetensors")], loras: [] }, "/models"))
-      .toEqual(["--diffusion-model", "/models/q/d.safetensors", "--llm", "/models/q/te.safetensors", "--vae", "/models/q/v.safetensors"]);
+      .toEqual(["--type", "q8_0", "--diffusion-model", "/models/q/d.safetensors", "--llm", "/models/q/te.safetensors", "--vae", "/models/q/v.safetensors"]);
+    // A GGUF main model keeps its own quantisation.
+    expect(sdcppArgs({ template: "krea2", parts: [part("diffusion", "k/d.gguf"), part("text_encoder", "k/te.gguf", "qwen3vl"), part("vae", "k/v.safetensors")], loras: [] }, "/models"))
+      .toEqual(["--diffusion-model", "/models/k/d.gguf", "--llm", "/models/k/te.gguf", "--vae", "/models/k/v.safetensors"]);
     expect(sdcppArgs({ template: "krea2", parts: [part("diffusion", "k/d.safetensors"), part("text_encoder", "k/te.safetensors", "qwen3vl"), part("vae", "k/v.safetensors")], loras: [] }, "/models"))
-      .toEqual(["--diffusion-model", "/models/k/d.safetensors", "--llm", "/models/k/te.safetensors", "--vae", "/models/k/v.safetensors"]);
+      .toEqual(["--type", "q8_0", "--diffusion-model", "/models/k/d.safetensors", "--llm", "/models/k/te.safetensors", "--vae", "/models/k/v.safetensors"]);
     expect(() => sdcppArgs({ template: "seedvr2", parts: [], loras: [] }, "/models")).toThrow(/no seedvr2 support/);
     expect(() => sdcppArgs({ template: "z-image", parts: [], loras: [{ file: "l.safetensors", strength: 1 }] }, "/models")).toThrow(/LoRAs/);
   });
@@ -431,7 +434,7 @@ describe("the image API", () => {
     expect(made.body.images.map((i: { seed: number }) => i.seed)).toEqual([11, 12]);
     // sd-server started with the recipe's parts, and got the recipe's defaults in its own names.
     expect(s.sdFake!.seen.started).toEqual([[
-      "--diffusion-model", join(s.models, `${Z}/diffusion_models/z.safetensors`),
+      "--type", "q8_0", "--diffusion-model", join(s.models, `${Z}/diffusion_models/z.safetensors`),
       "--llm", join(s.models, `${Z}/text_encoders/qwen_3_4b.safetensors`),
       "--vae", join(s.models, `${Z}/vae/ae.safetensors`),
     ]]);

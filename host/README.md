@@ -265,8 +265,10 @@ per host, and Lyrica's router filters create tiers by it.
   isn't started. stable-diffusion.cpp's `sd-server` (`sdcpp/Dockerfile`, a
   pinned commit built with `GGML_CUDA_FORCE_MMQ`, pulled or built like the
   CMP's llama.cpp below) makes the images instead:
-  it converts the recipe's parts to Q8_0 as it loads them and runs with
-  flash attention off, so the work goes to the card's int8 units. It
+  it converts the recipe's parts to Q8_0 as it loads them (unless the
+  diffusion model is a GGUF, whose own quantisation is kept, since a Q8_0
+  copy may not fit) and runs with flash attention off, so the work goes to
+  the card's int8 units. It
   creates only, for Z-Image, Qwen-Image, Krea 2, FLUX and SDXL recipes without
   LoRAs; the recipe list shows edit, upscale and other recipes as unsupported, saying why. It takes its model
   as start-up arguments, so `sdcpp/gate.sh` starts it for the recipe
