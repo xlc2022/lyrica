@@ -3,12 +3,12 @@
 // carries the count of decisions; the welcome page shows the first few; the
 // Notifications page has the whole list with filters, sorting, paging and the
 // actions on each row.
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { get, request, u, type Notification, type NotificationAction, type NotificationPage, type NotificationType, type Pool, type ThreadSummary } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { go, href } from "./route.ts";
 import { PageHead, type ShellContext } from "./Shell.tsx";
-import { clock, ErrorText, shortTime, useAction, useLoad } from "./ui.tsx";
+import { ClampedText, clock, ErrorText, shortTime, useAction, useLoad } from "./ui.tsx";
 
 const TYPES: Record<NotificationType, { glyph: string; label: string }> = {
   question: { glyph: "?", label: "Question" },
@@ -67,29 +67,13 @@ function Row({ n, ctx, picked, onPick, act, busy }: {
 }) {
   const t = TYPES[n.type];
   const [open, setOpen] = useState(false);
-  // A long From sleep row reads itself here rather than sending the person to Start a chat (§6):
-  // three lines until its own link opens the rest. The link shows only where the clamp really
-  // hides something, so it is re-measured when the text changes and when the row's width does.
-  const [more, setMore] = useState(false);
-  const [clipped, setClipped] = useState(false);
-  const nameEl = useRef<HTMLSpanElement>(null);
-  useLayoutEffect(() => {
-    const el = nameEl.current;
-    // Only while collapsed: open, nothing is hidden, and measuring would take the link away.
-    if (n.type !== "sleep" || !el || more) return;
-    const measure = () => setClipped(el.scrollHeight > el.clientHeight + 1);
-    measure();
-    const watch = new ResizeObserver(measure);
-    watch.observe(el);
-    return () => watch.disconnect();
-  }, [n.type, n.title, more]);
   return (
     <li className={`nrow${onPick ? "" : " nopick"}${n.type === "question" ? " nquestion" : ""}${n.type === "sleep" ? " nsleep" : ""}`}>
       {onPick && <input type="checkbox" className="npick" checked={!!picked} onChange={(e) => onPick(e.target.checked)} aria-label={`Select ${n.title}`} />}
       <span className="ico" aria-hidden="true">{n.type === "question" ? <Icon name="bell" /> : t.glyph}</span>
       <div className="main-col">
-        <span ref={nameEl} className="name" {...(more ? { "data-more": "" } : {})}>{n.title}</span>
-        {clipped && <button type="button" className="link show-more" aria-expanded={more} onClick={() => setMore(!more)}>{more ? "Show less" : "Show more"}</button>}
+        {/* A long From sleep row reads itself here rather than sending the person to Start a chat (§6). */}
+        {n.type === "sleep" ? <ClampedText className="name" text={n.title} /> : <span className="name">{n.title}</span>}
         {n.detail && <span className="meta">{numFirst(n.detail)}</span>}
         {n.until && <span className="meta">Carries on when it resets at <span className="num">{clock(n.until)}</span>.</span>}
         {n.threads && <>
