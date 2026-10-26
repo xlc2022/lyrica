@@ -728,7 +728,7 @@ retrying, pick the closest attempt and ask what to change. It is a nudge, not
 a block; the count starts over each turn. `ThreadImages.reject`, `pick` and
 `clearRejected` anchor every directory and follow no symlinks; a move or
 delete also removes the image's Files thumbnail (`.lyrica/thumbs/…`), and a
-move takes the record of which thread made it along. Deleting the thread
+move takes the record of which thread made it along, and a clear drops it. Deleting the thread
 deletes its rejects with its folder.
 
 `npx vitest run core/test/image-storage.test.ts extension/test/images.test.ts`

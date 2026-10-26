@@ -52,9 +52,9 @@ describe("image storage boundaries (principles 2 and 4)", () => {
   });
   it("sets rejected attempts aside with their thumbnails and records, brings a pick back, and deletes only made rejects", () => {
     const { root, home } = setup();
-    const moves: [string, string][] = [];
+    const moves: [string, string][] = [], removed: string[] = [];
     const files = new ThreadImages(() => home, () => ["threads", "web%2Fa"], async () => ({ stream: Readable.from([png]), size: png.length }),
-      { isPortraitImage: () => false, recordPortraitImage: () => {} }, () => {}, () => false, (from, to) => { moves.push([from, to]); });
+      { isPortraitImage: () => false, recordPortraitImage: () => {} }, () => {}, () => false, (from, to) => { moves.push([from, to]); }, paths => { removed.push(...paths); });
     const [a, b] = files.save([cleanPng(png), cleanPng(png)]);
     const dir = join(home, "threads", "web%2Fa"), name = (p: string) => p.split("/").at(-1)!;
     mkdirSync(join(dir, ".lyrica", "thumbs", "images"), { recursive: true });
@@ -77,6 +77,7 @@ describe("image storage boundaries (principles 2 and 4)", () => {
     expect(() => files.reject(["/workspace/images/11111111-1111-1111-1111-111111111111.png"])).toThrow(/isn't there/);
     writeFileSync(join(dir, "images", "rejected", "keep.png"), png);
     expect(files.clearRejected()).toEqual([`/workspace/images/rejected/${name(b!)}`]);
+    expect(removed).toEqual([`/workspace/images/rejected/${name(b!)}`]);
     expect(readdirSync(join(dir, "images", "rejected"))).toEqual(["keep.png"]);
     rmSync(join(dir, "images", "rejected", "keep.png"));
     files.reject([a!]);

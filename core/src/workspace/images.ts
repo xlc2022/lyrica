@@ -170,7 +170,9 @@ export class ThreadImages {
     /** Whether images go to the thread's shared/ (a project chat's, read by its threads at /shared) instead of images/. */
     private readonly shared: () => boolean = () => false,
     /** Hears of an image moved by reject or pick, as she sees both paths, so its record of who made it moves along. */
-    private readonly moved: (from: string, to: string) => void = () => {}) {}
+    private readonly moved: (from: string, to: string) => void = () => {},
+    /** Hears of the rejects clearRejected deleted, as she saw their paths, so their records go too. */
+    private readonly removed: (paths: string[]) => void = () => {}) {}
 
   private folder(): string[] { return this.shared() ? ["shared", "images"] : ["images"]; }
 
@@ -219,8 +221,8 @@ export class ThreadImages {
   }
 
   /**
-   * Sets her attempts aside in the images folder's rejected/, all or none: each must be an image the tool made in
-   * this thread. One already rejected stays where it is. Returns where each is now.
+   * Sets her attempts aside in the images folder's rejected/, all or none: each must carry the tool's own uuid name
+   * in this thread's images folder. One already rejected stays where it is. Returns where each is now.
    */
   reject(paths: string[]): string[] {
     const found = paths.map(p => this.attempt(p));
@@ -253,7 +255,9 @@ export class ThreadImages {
       try { inDir(this.home(), thumbs, false, fd => unlinkSync(`/proc/self/fd/${fd}/${file}`)); } catch { /* none kept */ }
     }
     try { inDir(this.home(), base, false, fd => rmdirSync(`/proc/self/fd/${fd}/${REJECTED_DIR}`)); } catch { /* not empty */ }
-    return names.map(n => posix.join(WORKDIR, ...this.folder(), REJECTED_DIR, n));
+    const paths = names.map(n => posix.join(WORKDIR, ...this.folder(), REJECTED_DIR, n));
+    if (paths.length) this.removed(paths);
+    return paths;
   }
 
   /** Her pick among her attempts: a rejected one comes back to the images folder. Returns its path there. */

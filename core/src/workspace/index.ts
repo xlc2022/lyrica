@@ -473,7 +473,9 @@ export class Workspace {
     (from, to) => {
       const s = this.settings(t.userId), f = this.originKey(t, from), k = this.originKey(t, to);
       if (f && k && f.folder === k.folder) s.moveOrigins(f.folder, f.path, k.path);
-    });
+    },
+    // Cleared rejects take their records with them, as a delete in Files does.
+    (paths) => { const s = this.settings(t.userId); for (const p of paths) { const key = this.originKey(t, p); if (key) s.dropOrigins(key.folder, [key.path]); } });
   }
 
   /** A project chat whose shared/ is its own folder's (it is its family's top): what it makes goes there. */
