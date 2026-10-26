@@ -19,7 +19,9 @@ export async function imageRetryOptions(models: Models, workspace: Workspace, vi
   const part = messages.flatMap(m => m.parts.map(p => ({ m, p }))).find(({ p }) => p.type === "tool" && p.toolCallId === toolCallId);
   if (!part || part.p.type !== "tool" || part.p.name !== "image" || !part.p.imageRefusal) throw new HttpError(404, "no stored image refusal");
   const source = part.m;
-  const args = part.p.args as Parameters<typeof executeImage>[2];
+  // Only a model's call can be refused; reject and pick call none.
+  const args = part.p.args as Parameters<typeof executeImage>[2] & { action: "create" | "edit" | "upscale" };
+  if (!["create", "edit", "upscale"].includes(args.action)) throw new HttpError(404, "no stored image refusal");
   const refusal = part.p.imageRefusal;
   const ctx = models.callContext(userId, pool, threadId);
   const settings = workspace.settings(userId);

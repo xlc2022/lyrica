@@ -39,11 +39,26 @@ async function setup(pool: "general" | "private" = "general", window = 16_384) {
 const guidanceTokens = Math.ceil((JSON.stringify([...CONTINUATION_GUIDELINES, ...WORK_GUIDELINES, CODING_GUIDELINE, ...MODEL_CHOICE_TEXT, ...THREAD_MODEL_TEXT, ...RECALL_GUIDELINES, ...Object.values(SKILL_TOOL_TEXT)]).length + 96) / (4 * 0.92));
 /** The window over her first turn's context (a long message on top of her prompt) where Pi compacts by the third. */
 const TIGHT = 1406 + guidanceTokens;
-/** The window over her first turn's context where three long turns still fit, with no compaction. */
-const ROOMY = 5090 + guidanceTokens;
+/**
+ * The window over her first turn's context where three long turns and a short one still fit, with no compaction.
+ * Pi's reserve is 8% of the whole window, which grows with her prompt while this headroom doesn't: 5090 had left
+ * the short turn two tokens under Pi's edge, so a few more tokens of tool text compacted it early.
+ */
+const ROOMY = 5600 + guidanceTokens;
+/**
+ * The window over her first, medium turn's context where seven more medium turns and a short one fit. Pi keeps the
+ * window's newest quarter when it compacts, and this window is her whole prompt plus headroom: with three long
+ * turns a slightly longer prompt (CI's, or a tool's new text) kept them all ("Nothing to compact"). Shorter turns
+ * leave older ones to cut, with room to spare under Pi's edge.
+ */
+const MANY = 7200 + guidanceTokens;
+/** The medium turns after the first. */
+const MORE = ["SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH", "SEVENTH", "EIGHTH"];
 
 /** A long message with a word to find it by. */
 const long = (mark: string) => `${mark} ${"the quick brown fox jumps over the lazy dog ".repeat(200)}`;
+/** A third of a long one. */
+const medium = (mark: string) => `${mark} ${"the quick brown fox jumps over the lazy dog ".repeat(66)}`;
 const SUMMARY = (`SUMMARY-MARK. We are writing the migration guide for the offering IDs. Decided: one transaction per database, redirects one hop long. ` +
   `Open: whether Clean up should suggest groups. Paths: docs/models.md, core/src/models/schema.ts. Names: Ada, the blackwell host. `.repeat(3)).trim();
 const sent = (r: { messages: { content?: unknown }[] }) => JSON.stringify(r.messages);
@@ -136,10 +151,9 @@ describe("her context", () => {
 
   it("compacts with her summary when the turn ends: the old messages go, the recent ones stay, and a marker holds the summary", async () => {
     const { ada, model, path, stream, turn, fitAfterFirst } = await setup("general", 16_384 + guidanceTokens);
-    await turn(long("FIRST-MARK"));
-    await fitAfterFirst(ROOMY);
-    await turn(long("SECOND-MARK"));
-    await turn(long("THIRD-MARK"));
+    await turn(medium("FIRST-MARK"));
+    await fitAfterFirst(MANY);
+    for (const mark of MORE) await turn(medium(`${mark}-MARK`));
     expect(stream.events.filter((e) => e.event.type === "compacted")).toHaveLength(0);
     const requestsBefore = model.requests.length;
     model.reply({ tools: [{ name: "threads", args: { action: "compact", summary: SUMMARY } }] }, { text: "Compacting now." });
@@ -171,10 +185,9 @@ describe("her context", () => {
 
   it("in a private thread, compacts with its local model when her summary is too short to stand on its own", async () => {
     const { ada, model, path, stream, turn, fitAfterFirst } = await setup("private", 16_384 + guidanceTokens);
-    await turn(long("FIRST-MARK"));
-    await fitAfterFirst(ROOMY);
-    await turn(long("SECOND-MARK"));
-    await turn(long("THIRD-MARK"));
+    await turn(medium("FIRST-MARK"));
+    await fitAfterFirst(MANY);
+    for (const mark of MORE) await turn(medium(`${mark}-MARK`));
     model.reply(
       { tools: [{ name: "threads", args: { action: "compact", summary: "NOTES-MARK keep the migration plan" } }] },
       { text: "Compacting." },

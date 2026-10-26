@@ -19,10 +19,10 @@ export function imagePart(tool: string, details: unknown): Extract<MessagePart, 
   if (tool !== "image") return undefined;
   const p = (details as { image?: unknown } | undefined)?.image;
   if (!p || typeof p !== "object") return undefined;
-  const i = p as { type?: unknown; paths?: unknown; model?: unknown; tier?: unknown };
+  const i = p as { type?: unknown; paths?: unknown; model?: unknown; tier?: unknown; picked?: unknown };
   if (i.type !== "image" || !Array.isArray(i.paths) || !i.paths.length || !i.paths.every(p => typeof p === "string") || typeof i.model !== "string") return undefined;
   if (i.tier !== undefined && i.tier !== "fast" && i.tier !== "quality") return undefined;
-  return { type: "image", paths: i.paths, model: i.model, ...(i.tier ? { tier: i.tier } : {}) };
+  return { type: "image", paths: i.paths, model: i.model, ...(i.tier ? { tier: i.tier } : {}), ...(i.picked === true ? { picked: true as const } : {}) };
 }
 
 /** A root step's card (docs/workspace.md, "Root steps"): what run_as_root read on the machine, as it stored it. */

@@ -1,6 +1,6 @@
 // Principles 2 and 4: image bytes live in the user's mounted encrypted home.
 import { createHash, randomUUID } from "node:crypto";
-import { closeSync, constants, createReadStream, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, constants, createReadStream, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { posix } from "node:path";
 import type { Readable } from "node:stream";
 import { cleanPng, type GeneratedImage, type ImageInput } from "../models/images.ts";
@@ -10,6 +10,10 @@ import type { WorkspaceSettings } from "./settings.ts";
 
 export const PHOTOS_DIR = "/photos-of-me";
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+/** Where a thread's rejected attempts go, inside its images folder. */
+export const REJECTED_DIR = "rejected";
+/** A name the image tool gave (`save`): only these can be rejected or picked. */
+const MADE_NAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$/;
 export interface WorkspaceImage { input: ImageInput; portrait: boolean }
 export interface HomeFile { stream: Readable; size: number; type: string }
 export interface PortraitPhoto { path: string; size: number; type: string }
@@ -164,7 +168,103 @@ export class ThreadImages {
     /** Hears of the images saved, as she sees their paths. */
     private readonly made: (paths: string[]) => void = () => {},
     /** Whether images go to the thread's shared/ (a project chat's, read by its threads at /shared) instead of images/. */
-    private readonly shared: () => boolean = () => false) {}
+    private readonly shared: () => boolean = () => false,
+    /** Hears of an image moved by reject or pick, as she sees both paths, so its record of who made it moves along. */
+    private readonly moved: (from: string, to: string) => void = () => {},
+    /** Hears of the rejects clearRejected deleted, as she saw their paths, so their records go too. */
+    private readonly removed: (paths: string[]) => void = () => {}) {}
+
+  private folder(): string[] { return this.shared() ? ["shared", "images"] : ["images"]; }
+
+  /**
+   * One of her made images by the path she names, in the images folder or its rejected/: the file's name and
+   * whether it is rejected now. A path given in the images folder that has since been rejected is found there.
+   */
+  private attempt(path: string): { name: string; rejected: boolean } {
+    const relative = path.startsWith(`${WORKDIR}/`) ? path.slice(WORKDIR.length + 1) : path.replace(/^\.\//, "");
+    const folder = this.folder().join("/");
+    const name = posix.basename(relative);
+    const dir = posix.dirname(relative);
+    if (!MADE_NAME.test(name) || (dir !== folder && dir !== `${folder}/${REJECTED_DIR}`)) {
+      throw new Error(`only images the image tool made in ${folder}/ can be rejected or picked`);
+    }
+    const base = [...this.thread(), ...this.folder()];
+    const there = (parts: string[]) => {
+      try { return inDir(this.home(), parts, false, fd => lstatSync(`/proc/self/fd/${fd}/${name}`).isFile()); }
+      catch (err) { if (["ENOENT", "ENOTDIR", "ELOOP"].includes((err as NodeJS.ErrnoException).code ?? "")) return false; throw err; }
+    };
+    const inRejected = there([...base, REJECTED_DIR]);
+    if (dir === folder && there(base)) return { name, rejected: false };
+    if (inRejected) return { name, rejected: true };
+    if (dir !== folder && there(base)) return { name, rejected: false };
+    throw new Error(`${path} isn't there`);
+  }
+
+  /** Moves a made image between the images folder and its rejected/, taking its thumbnail and record along. */
+  private move(name: string, reject: boolean): string {
+    const base = [...this.thread(), ...this.folder()];
+    const [fromDir, toDir] = reject ? [base, [...base, REJECTED_DIR]] : [[...base, REJECTED_DIR], base];
+    inDir(this.home(), fromDir, false, from => inDir(this.home(), toDir, true, to => {
+      const target = `/proc/self/fd/${to}/${name}`;
+      try { lstatSync(target); throw new Error(`${name} is already in ${reject ? REJECTED_DIR : "the images folder"}`); }
+      catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
+      renameSync(`/proc/self/fd/${from}/${name}`, target);
+    }));
+    const seen = (dir: string[]) => posix.join(WORKDIR, ...dir.slice(this.thread().length), name);
+    // The panel keeps a thumbnail per path (ThreadFiles.thumb); the old path's goes now rather than at its next prune.
+    const thumbs = [...this.thread(), ".lyrica", "thumbs", ...fromDir.slice(this.thread().length)];
+    for (const file of [name, `${name}.png`, `${name}.jpg`]) {
+      try { inDir(this.home(), thumbs, false, fd => unlinkSync(`/proc/self/fd/${fd}/${file}`)); } catch { /* none kept */ }
+    }
+    this.moved(seen(fromDir), seen(toDir));
+    return seen(toDir);
+  }
+
+  /**
+   * Sets her attempts aside in the images folder's rejected/, all or none: each must carry the tool's own uuid name
+   * in this thread's images folder. One already rejected stays where it is. Returns where each is now.
+   */
+  reject(paths: string[]): string[] {
+    const found = paths.map(p => this.attempt(p));
+    const done: string[] = [];
+    try {
+      return found.map(f => {
+        if (f.rejected) return posix.join(WORKDIR, ...this.folder(), REJECTED_DIR, f.name);
+        const to = this.move(f.name, true); done.push(f.name); return to;
+      });
+    } catch (err) {
+      for (const name of done) { try { this.move(name, false); } catch { /* left rejected */ } }
+      throw err;
+    }
+  }
+
+  /**
+   * Deletes, for good, every attempt in the images folder's rejected/ that the tool made, with its thumbnail, and the
+   * folder once empty. Anything else she put there stays. Returns the paths deleted.
+   */
+  clearRejected(): string[] {
+    const base = [...this.thread(), ...this.folder()];
+    const thumbs = [...this.thread(), ".lyrica", "thumbs", ...this.folder(), REJECTED_DIR];
+    let names: string[];
+    try {
+      names = inDir(this.home(), [...base, REJECTED_DIR], false, fd => readdirSync(`/proc/self/fd/${fd}`).filter(n => MADE_NAME.test(n) && lstatSync(`/proc/self/fd/${fd}/${n}`).isFile()).map(n => {
+        unlinkSync(`/proc/self/fd/${fd}/${n}`); return n;
+      }));
+    } catch (err) { if (["ENOENT", "ENOTDIR"].includes((err as NodeJS.ErrnoException).code ?? "")) return []; throw err; }
+    for (const n of names) for (const file of [n, `${n}.png`, `${n}.jpg`]) {
+      try { inDir(this.home(), thumbs, false, fd => unlinkSync(`/proc/self/fd/${fd}/${file}`)); } catch { /* none kept */ }
+    }
+    try { inDir(this.home(), base, false, fd => rmdirSync(`/proc/self/fd/${fd}/${REJECTED_DIR}`)); } catch { /* not empty */ }
+    const paths = names.map(n => posix.join(WORKDIR, ...this.folder(), REJECTED_DIR, n));
+    if (paths.length) this.removed(paths);
+    return paths;
+  }
+
+  /** Her pick among her attempts: a rejected one comes back to the images folder. Returns its path there. */
+  pick(path: string): string {
+    const f = this.attempt(path);
+    return f.rejected ? this.move(f.name, false) : posix.join(WORKDIR, ...this.folder(), f.name);
+  }
 
   content(path: string): HomeFile {
     const home = this.home();
@@ -207,7 +307,7 @@ export class ThreadImages {
 
   /** Exclusive PNG names, no sidecars or prompt metadata, and no writes through a symlink. */
   save(images: GeneratedImage[], portrait = false): string[] {
-    const folder = this.shared() ? ["shared", "images"] : ["images"];
+    const folder = this.folder();
     const paths = inDir(this.home(), [...this.thread(), ...folder], true, dir => images.map(image => {
       const png = cleanPng(image.bytes);
       // Record before publishing the bytes so concurrent readers cannot miss the policy.

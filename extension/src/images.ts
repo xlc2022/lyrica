@@ -6,7 +6,8 @@ import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ApprovalRequest } from "./workspace.ts";
 
-export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality" }
+/** `picked`: her pick among attempts made earlier, shown again last; its model is the earlier part's, so empty here. */
+export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality"; picked?: true }
 export interface ImageTools {
   models: Models;
   call(): CallContext;
@@ -25,10 +26,11 @@ const path = (description: string) => Type.Optional(Type.String({ description })
  * refuses such a tool, and smaller models' chat templates show it no fields.
  */
 export const imageParameters = Type.Object({
-  action: StringEnum(["create", "edit", "upscale"] as const),
+  action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected"] as const),
   prompt: Type.Optional(Type.String({ description: "For create: what to draw." })),
   tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality." })),
-  image: path("For edit and upscale: the image's path."),
+  image: path("For edit, upscale and pick: the image's path."),
+  images: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For reject: the attempts to set aside." })),
   instruction: Type.Optional(Type.String({ description: "For edit: what to change." })),
   mask: path("For edit: a mask image's path."),
   references: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For create and edit: reference images' paths." })),
@@ -40,11 +42,11 @@ export const imageParameters = Type.Object({
 });
 export type ImageArgs = Static<typeof imageParameters>;
 
-const NEEDS = { create: ["prompt", "tier"], edit: ["image", "instruction"], upscale: ["image"] } as const;
+const NEEDS = { create: ["prompt", "tier"], edit: ["image", "instruction"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [] } as const;
 
 /** The fields an action needs, named in the error a model reads. */
 function needs(p: ImageArgs): void {
-  const missing = NEEDS[p.action].filter(k => p[k] === undefined || p[k] === "");
+  const missing = NEEDS[p.action].filter(k => p[k] === undefined || p[k] === "" || (Array.isArray(p[k]) && !p[k].length));
   if (missing.length) throw new Error(`${p.action} needs ${missing.join(" and ")}: ${NEEDS[p.action].join(", ")} are required, the rest optional.`);
 }
 
@@ -91,6 +93,11 @@ async function allowPortrait(o: ImageTools, r: Resolution, id: string, ctx: Exte
   }
 }
 
+/** Rejected attempts in one turn after which she asks the person rather than trying again. */
+export const REJECTS_BEFORE_ASKING = 8;
+/** Added to a reject's answer once a turn reaches REJECTS_BEFORE_ASKING; a nudge, not a block. */
+export const ASK_INSTEAD = `That's ${REJECTS_BEFORE_ASKING} or more rejected attempts this turn. Stop retrying: pick the closest attempt and ask them what to change.`;
+
 /** What a refused call answers with; Resend and Try in the message still work. */
 export const REFUSED_THIS_TURN = "An image was refused earlier in this reply, so no more image calls run in this turn. Tell them what was refused and why.";
 
@@ -99,17 +106,25 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
     // A refusal ends image calls for the rest of the agent run (her turn): a reworded prompt would
     // spend more of a plan on what was just declined.
     let refused = false;
-    pi.on("agent_start", () => { refused = false; });
+    // Attempts rejected this turn, each once: past a few, retrying is less use than asking (ASK_INSTEAD).
+    const rejects = new Set<string>();
+    pi.on("agent_start", () => { refused = false; rejects.clear(); });
     pi.registerTool({
-      name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat).",
+      name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat). Reject sets attempts aside in images/rejected/; pick shows the one you keep last; clear_rejected deletes the rejected ones for good.",
       promptSnippet: "create, edit or upscale images",
       promptGuidelines: ["Write prompts from the conversation; inspect results and retry if needed.",
+        "Before retrying, reject the attempts that miss; the chat folds them away. If an earlier attempt is best, pick it.",
+        "Use clear_rejected only when they ask to delete this thread's rejected images.",
         "Draw exact layouts and diagrams as HTML, SVG or Mermaid."],
       parameters: imageParameters,
       async execute(id, p, signal, _update, ctx) {
         if (refused) throw new Error(REFUSED_THIS_TURN);
         const result = await executeImage(o, id, p, signal, ctx);
         if ("imageRefusal" in result.details) refused = true;
+        if ("rejected" in result.details) for (const path of result.details.rejected ?? []) rejects.add(path);
+        if ("rejected" in result.details && rejects.size >= REJECTS_BEFORE_ASKING) {
+          return { ...result, content: [...result.content, { type: "text" as const, text: ASK_INSTEAD }] };
+        }
         return result;
       },
     });
@@ -130,6 +145,20 @@ function withModel(err: unknown, action: string, r: Resolution | undefined, sign
 export async function executeImage(o: ImageTools, id: string, p: ImageArgs, signal?: AbortSignal, ctx?: ExtensionContext) {
   if (!o.enabled()) throw new Error("Images are off in this thread.");
   needs(p);
+  // Sorting her own attempts calls no model: the files move inside the thread's images folder.
+  if (p.action === "reject") {
+    const paths = o.files.reject(p.images!);
+    return { content: [{ type: "text" as const, text: `Rejected ${paths.join(", ")}. The chat shows them folded away.` }], details: { rejected: paths } };
+  }
+  if (p.action === "clear_rejected") {
+    const paths = o.files.clearRejected();
+    return { content: [{ type: "text" as const, text: paths.length ? `Deleted ${paths.length} rejected ${paths.length === 1 ? "image" : "images"} for good.` : "There were no rejected images to delete." }], details: { cleared: paths } };
+  }
+  if (p.action === "pick") {
+    const path = o.files.pick(p.image!);
+    const part: ImagePart = { type: "image", paths: [path], model: "", picked: true };
+    return { content: [{ type: "text" as const, text: `Picked ${path}; the chat shows it last.` }], details: { image: part } };
+  }
   let portrait = false;
   const read = async (path: string) => {
     const result = await o.files.read(path); portrait ||= result.portrait;

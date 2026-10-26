@@ -988,8 +988,16 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   thumbnails use the existing thumbnail route and fall back to that file.
   The shared Lightbox has a filename header, Download and Copy path behind
   ⋯, and Close. Image tool markers read Making an image with its tier,
-  Editing an image or Upscaling an image, then the word running, done or failed; expanding
-  a failed marker shows the result's reason. The API currently sends no
+  Editing an image, Upscaling an image, Rejecting an image (or <n> images),
+  Picking an image or Deleting rejected images, then the word running, done
+  or failed; expanding a failed marker shows the result's reason. Her
+  rejected attempts (`src/rejects.ts`, from the tool's successful reject,
+  pick and clear_rejected calls, matched by file name) leave their parts and
+  fold into one closed "<n> rejected" marker per turn, where the turn's first
+  reject was, opening to 160 px thumbnails at their `rejected/` paths with
+  the usual facts and ⋯; a picked part takes the facts of the part that
+  first showed it, and an image shown twice in a turn shows only the last
+  time. After clear_rejected the marker reads "<n> rejected · deleted". The API currently sends no
   image step progress, so there is no step count or progress bar.
 - A thread she mentions (`[t:<id>]`, `[e:<id>#<n>]`) shows as its current
   title, linked to the thread in the same tab; "a forgotten thread" once it's
