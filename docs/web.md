@@ -939,8 +939,16 @@ local/cloud chip and preset, then each model host's state as a dot and word.
 - Her messages are prose, rendered with `react-markdown` and `remark-gfm`
   (`Prose` in `ui.tsx`): tables, task lists, strikethrough, footnotes and bare
   links. A table a model wrote on one line is put back on its rows first
-  (`unfoldTables` in `tables.ts`; a code block is left as written). Raw HTML is
-  skipped and links open in a new tab. A path under `/workspace` or
+  (`unfoldTables` in `markdown.ts`; a code block is left as written). Raw HTML is
+  skipped and links open in a new tab. `RichBlock.tsx` draws a ```` ```mermaid ````
+  block (Mermaid, `securityLevel: "strict"`, SVG labels), a ```` ```vega-lite ````
+  block (Vega-Lite compiled to Vega, expressions interpreted by
+  `vega-interpreter`, a loader that refuses every URL, and a spec naming a URL
+  refused before it runs) and math (`remark-math` without single-dollar math;
+  `mathMarks` turns `\( \)` and `\[ \]` into `$$`; KaTeX). Each library is its
+  own chunk, loaded only when a message holds such a block, and the SVG is
+  sanitized with DOMPurify before it is shown. The page's theme (`useTheme` in
+  `ui.tsx`) colours them, redrawn when it changes. A path under `/workspace` or
   `/shared`, in her prose or the person's message, is a link to `…/files/<encoded path>`,
   which opens the Files panel with the file in the viewer (`paths.tsx`; a code block is left
   as written). So is a markdown link whose target is a file, not a URL or an

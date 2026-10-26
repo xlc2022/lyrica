@@ -2,7 +2,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { unfoldTables } from "../src/tables.ts";
+import { unfoldTables } from "../src/markdown.ts";
 import { Prose } from "../src/ui.tsx";
 
 const render = (text: string) => renderToStaticMarkup(createElement(Prose, { text }));

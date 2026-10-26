@@ -17,11 +17,18 @@
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/ibm-plex-sans": "^5.3.0",
+    "dompurify": "3.4.17",
     "emoji-picker-element": "^1.29.1",
     "emoji-picker-element-data": "^1.8.0",
+    "katex": "0.19.1",
+    "mermaid": "12.2.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-markdown": "10.1.0",
-    "remark-gfm": "4.0.1"
+    "remark-gfm": "4.0.1",
+    "remark-math": "6.0.0",
+    "vega": "6.4.0",
+    "vega-interpreter": "2.3.2",
+    "vega-lite": "6.5.0"
   }
 }

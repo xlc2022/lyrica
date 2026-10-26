@@ -525,6 +525,7 @@ export function describe(tools: ThreadTools): string {
     SERVER_LINE,
     ...(s.coordinates ? [READ_ONLY_CHAT] : []),
     LINK_LINE,
+    FORMATS_LINE,
     grants.length ? `Folders you were given: ${grants.join(", ")}.` : "No other folders were given to you in this conversation.",
     ...(tools.family ? [familyLine(tools.family())] : []),
     ...(s.grants.some((g) => g.writable) ? [BUILD_THERE] : []),
@@ -544,6 +545,9 @@ export function describe(tools: ThreadTools): string {
 
 /** A project chat builds nothing itself: a model building alone in its own folder, three runs running, is why. */
 export const READ_ONLY_CHAT = `Every folder here is read-only to you, ${WORKDIR} and ${SHARED} included, but /tmp is yours and lasts between commands (for drafts such as an issue body): a code thread makes or changes every file, and you read its work in its folder. Uploads here land in ${WORKDIR}/shared/uploads and images you make in ${WORKDIR}/shared/images, which your threads see as ${SHARED}/uploads and ${SHARED}/images.`;
+
+/** What her messages render, so she uses it: GitHub's Markdown, and these fences and marks (docs/ux.md §6). */
+export const FORMATS_LINE = "Your messages render GitHub Markdown (each table row on its own line), a ```mermaid block as a diagram, a ```vega-lite block (JSON, its data inline as values, never a url) as a chart, and math between $$ marks or in \\( \\) and \\[ \\]. A single $ is a dollar sign, not math.";
 
 /** How she shows a file: a model once linked its deliverables relatively (./site/index.html), which opened nothing. */
 export const LINK_LINE = `A ${WORKDIR} or ${SHARED} path you write is a link the person can open, and an image you write as markdown (![what it shows](${WORKDIR}/plot.png)) shows in your message. Link a file by its absolute path ([the page](${SHARED}/site/index.html)), never a relative one.`;

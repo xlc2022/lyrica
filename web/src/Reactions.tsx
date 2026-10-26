@@ -77,18 +77,3 @@ export function ReactButton({ n, reactions, reactor }: { n: number; reactions: R
     </span>
   );
 }
-
-/** The `<emoji-picker>` element follows the page's theme: it reads a `dark` class, not the page's data-theme. */
-export function usePickerTheme(): "dark" | "light" {
-  const read = () => (document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light");
-  const [theme, setTheme] = useState<"dark" | "light">(read);
-  useEffect(() => {
-    const mq = matchMedia("(prefers-color-scheme: dark)");
-    const on = () => setTheme(read());
-    mq.addEventListener("change", on);
-    const mo = new MutationObserver(on);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => { mq.removeEventListener("change", on); mo.disconnect(); };
-  }, []);
-  return theme;
-}
