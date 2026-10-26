@@ -904,6 +904,18 @@ administrators users, allowed paths, shared
 endpoints, the sleep time (`sleep.time` in `self.db`'s `settings`) and persona
 proposals.
 
+**Skills** (docs/briefs/skills.md) live in each pool's database and are
+reached through that pool's `openThreadView`, one per request, only for the
+pools the display shows (another pool is 404). `GET …/skills` → `Skills`
+(every skill with its state, waiting ones first, and the auto-approve
+switch); `POST …/skills` (`SkillChange`, `pool` defaulting to General) adds
+the person's own, active at once, → `SkillInfo`, 400 with the reason when it
+doesn't fit `SKILL_LIMITS`; `PUT …/skills/auto-approve`
+(`SkillsAutoApprove`), `POST …/skills/:pool/:name/approve`, `…/decline` and
+`DELETE …/skills/:pool/:name` answer the new `Skills`. `POST …/skills/export`
+(the shown pools' active skills) and `…/skills/import` (through the owner
+view) move them as Markdown held in memory, never written to disk.
+
 GET `…/admin/status` also returns `modelFacts`, without changing its existing
 facts: all retained `model_calls` in the authenticated administrator's own
 shown pools, filtered to the inclusive last 24 hours and grouped by offering
