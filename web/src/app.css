@@ -1777,3 +1777,33 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .nthreads a { overflow-wrap: anywhere; }
 .plan-wait { display: grid; gap: 8px; justify-items: start; margin: 12px 0; }
 .plan-wait p { margin: 0; }
+
+/* Administration → Status (docs/ux.md, Recorded model activity and Status): its hosts, one legend above four charts in
+   two columns (one on a phone), each with a hover tip, then a row per model copy. */
+.status-hosts, .model-calls { display: grid; gap: 10px; min-width: 0; }
+.status-host { display: grid; gap: 6px; }
+.status-host .name { font-weight: 600; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.chart-legend li { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.status-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
+.status-chart { margin: 0; display: grid; gap: 6px; min-width: 0; }
+.status-chart figcaption { font-size: 13px; font-weight: 600; }
+.chart-box { position: relative; min-width: 0; }
+.chart-box svg { display: block; max-width: 100%; }
+.chart-tip { position: absolute; z-index: 5; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 12px; white-space: nowrap; box-shadow: 0 2px 8px rgb(0 0 0 / 0.12); }
+.model-table { display: grid; font-size: 13px; }
+.model-table > [role="row"] { display: grid; grid-template-columns: minmax(0, 1fr) 3.5em 4em 7em 7.5em 5.5em; gap: 8px; padding: 6px 0; align-items: baseline; border-top: 1px solid var(--line); }
+.model-table > .mt-head { border-top: 0; }
+.model-table > [role="row"] > :not(:first-child) { text-align: right; white-space: nowrap; }
+.mt-model { min-width: 0; overflow-wrap: anywhere; }
+.mt-model .swatch { margin-right: 6px; vertical-align: -1px; }
+@media (max-width: 760px) {
+  .status-charts { grid-template-columns: minmax(0, 1fr); }
+  /* On a phone the model takes its own line and each number carries its label. */
+  .model-table > .mt-head { display: none; }
+  .model-table > [role="row"] { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 2px; }
+  .model-table > [role="row"] > .mt-model { grid-column: 1 / -1; }
+  .model-table > [role="row"] > :not(:first-child) { text-align: left; }
+  .model-table > [role="row"] > [data-label]::before { content: attr(data-label) " "; color: var(--muted); font-family: var(--ui); }
+}

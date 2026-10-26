@@ -6,7 +6,7 @@ import {
   type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
-  BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries,
+  BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, piModelFor, syncEntries, timedReply,
   GO_AHEAD, type ApprovalRequest, type ThreadsHost, type Delegation, type DelegationEvent, type GoAhead, type DownloadsHost, type HubListing, type ModelsHost, type PlanRequest, type SubagentApproval, type ThreadContext, type UserReaction,
 } from "@lyrica/extension";
 import type * as Api from "./api.ts";
@@ -1132,11 +1132,12 @@ export class HostedThread {
         const reply = await models.callWithFallback("title", call, {}, async (resolution) => {
           const { model } = piModelFor(runtime, models, "title", call, resolution);
           models.recordCall(this.userId, { pool: this.pool, threadId: this.threadId, task: "title", resolution });
-          const r = await runtime.completeSimple(model, {
+          const { reply: r, pace } = await timedReply(runtime.streamSimple(model, {
             systemPrompt: "Write a short title, at most six words, for the conversation below. Reply with the title only, no quotes.",
             messages: [{ role: "user", content: said, timestamp: Date.now() }],
-          });
+          }), model.contextWindow);
           if (r.stopReason === "error") throw new Error(r.errorMessage ?? "the title model failed");
+          if (pace) models.recordPace(this.userId, this.threadId, pace, "title", this.pool);
           return r;
         });
         const text = reply.content.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("").trim();

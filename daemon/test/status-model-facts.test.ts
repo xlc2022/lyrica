@@ -39,7 +39,8 @@ it("Status reads all retained calls, but only this administrator's displayed poo
     finally { db.close(); }
     const shown = (await request(rt.ada.id)).body!.modelFacts!;
     expect(shown.pools).toEqual(["general"]);
-    expect(shown.models).toEqual([{ offeringId: "visible", label: "visible", endpointName: "fixture", calls: 125, speedSamples: 0, fallbacks: 0 }]);
+    expect(shown.models).toEqual([{ offeringId: "visible", label: "visible", endpointName: "fixture", kind: "local", calls: 125, speedSamples: 0, promptSamples: 0, outputTokens: 0, fallbacks: 0 }]);
+    expect(shown.calls).toHaveLength(125);
     expect(JSON.stringify(shown)).not.toContain("private-only");
     expect(JSON.stringify(both)).not.toContain("other-user-only");
     // A signed-in normal user and a cross-account request cannot read the admin facts.

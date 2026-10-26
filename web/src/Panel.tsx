@@ -2,11 +2,11 @@ import { StaleUnitsLine } from "./StaleUnitsLine.tsx";
 import { ModelCallFacts } from "./ModelCallFacts.tsx";
 // Settings (the user's own) and Administration (server-wide), each a page with
 // its sections listed at the left. The old control panel's cards moved here.
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   del, get, HttpError, patch, post, put, saveName, u,
   type AdminStatus, type AllowedPaths, type Me, type ModeDefault, type NetworkDefaults, type PersonaProposal,
-  type Pool, type Presets, type ProposalDraft, type Pronouns, type SleepTime, type Theme, type UserCard,
+  type MemoryOverview, type Pool, type Presets, type ProposalDraft, type Pronouns, type SleepOverview, type SleepRunInfo, type SleepTime, type Theme, type UserCard,
   type NameSetting,
 } from "./api.ts";
 import { PushSection } from "./Push.tsx";
@@ -19,7 +19,7 @@ import { McpServersSection } from "./Mcp.tsx";
 import { MachinesSection } from "./Machines.tsx";
 import { PortraitPhotosSection } from "./PortraitPhotos.tsx";
 import { checkName, her, setHer } from "./name.ts";
-import { SleepModeField, SleepTimeSection } from "./Sleep.tsx";
+import { SKIPPED, SleepModeField, SleepTimeSection } from "./Sleep.tsx";
 import { TailnetSection } from "./Tailnet.tsx";
 import { UpdatesSection } from "./Updates.tsx";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
@@ -28,7 +28,11 @@ import { PageHead, type ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
 import { WebSearchSection } from "./WebSearch.tsx";
 import { WipeSection } from "./Wipe.tsx";
-import { browserZone, Confirm, ErrorText, Prose, Switch, useAction, useLoad } from "./ui.tsx";
+import { browserZone, clock, Confirm, ErrorText, hidden, Prose, shortTime, Switch, useAction, useLoad } from "./ui.tsx";
+import { Icon } from "./icons.tsx";
+import { duration } from "./Machines.tsx";
+import { GpuBlock, StateWord } from "./Models.tsx";
+import { hostOf } from "./ModelsFrame.tsx";
 
 export const PRESETS: Record<string, Pronouns> = {
   "she/her": { subj: "she", obj: "her", poss: "her", possPro: "hers", refl: "herself" },
@@ -315,13 +319,38 @@ function NetworkSection({ ctx }: { ctx: ShellContext }) {
 }
 
 
+/** How often Status reads itself again while the page is in view; focus and Refresh read it at once. */
+const STATUS_EVERY_MS = 60_000;
+const RUN_WORD: Record<SleepRunInfo["status"], string> = { running: "Sleeping", complete: "Complete", partial: "Stopped early", skipped: "Skipped" };
+
 function StatusSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
   const status = useLoad(() => get<AdminStatus>(u(userId, "admin", "status")), [userId]);
   const sleep = useLoad(() => get<SleepTime>(u(userId, "admin", "sleep")), [userId]);
+  const runs = useLoad(() => get<SleepOverview>(u(userId, "sleep")), [userId]);
+  const memory = useLoad(() => get<MemoryOverview>(u(userId, "memory")), [userId]);
+  const [read, setRead] = useState(() => new Date());
+  const { reload: reloadModels } = ctx.models;
+  const refresh = useCallback(() => {
+    status.reload(); runs.reload(); memory.reload(); reloadModels(); setRead(new Date());
+  }, [status.reload, runs.reload, memory.reload, reloadModels]);
+  useEffect(() => {
+    const tick = () => { if (document.visibilityState === "visible") refresh(); };
+    const t = setInterval(tick, STATUS_EVERY_MS);
+    addEventListener("focus", tick);
+    return () => { clearInterval(t); removeEventListener("focus", tick); };
+  }, [refresh]);
   const s = status.data;
+  const page = ctx.models.page;
+  const hosts = page?.endpoints.filter((ep) => ep.api === "host") ?? [];
+  const latest = runs.data?.runs.filter((r) => !hidden(ctx.me.display, r.pool)) ?? [];
   return (
-    <Section title="Status">
+    <section className="card" aria-labelledby="h-status">
+      <div className="section-head">
+        <h2 id="h-status">Status</h2>
+        <span className="meta muted">Updated <span className="num">{clock(read)}</span></span>
+        <button type="button" className="icon-btn quiet" aria-label="Refresh" title="Refresh. Status also refreshes every minute while it's open." onClick={refresh}><Icon name="refresh" /></button>
+      </div>
       <StaleUnitsLine units={s?.unitsStale} />
       <ErrorText error={status.error} />
       {s?.networkRefused && (
@@ -333,12 +362,27 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
       <dl className="facts">
         <dt>Her tools' network</dt><dd>{s ? (s.networkRefused ? <span className="status-word"><span className="dot down" />Refused</span> : <span className="status-word"><span className="dot up" />Self-test passed</span>) : "…"}</dd>
         <dt>Sleep time</dt><dd className="num">{sleep.data?.time ?? "…"}</dd>
+        <dt>Last sleep</dt><dd>{!runs.data ? "…" : latest.length ? latest.map((r, i) => <span key={r.pool} className="status-line">{i > 0 && <br />}<PoolWord pool={r.pool} /> · <span className="num">{shortTime(r.startedAt)}</span>
+          {r.finishedAt && <> · <span className="num">{duration(Date.parse(r.finishedAt) - Date.parse(r.startedAt))}</span></>} · {r.status === "skipped" && r.skipReason ? SKIPPED[r.skipReason] : RUN_WORD[r.status]}</span>) : "Not yet"}</dd>
+        <dt>Memory</dt><dd>{memory.data ? <><span className="num">{memory.data.pages.toLocaleString()}</span> {memory.data.pages === 1 ? "page" : "pages"} · <span className="num">{memory.data.notes.toLocaleString()}</span> {memory.data.notes === 1 ? "note" : "notes"}</> : "…"}</dd>
         <dt>Start unlocked</dt><dd>{s ? (s.savedPassphrase ? "Passphrase saved" : "Passphrase not saved") : "…"}</dd>
       </dl>
+      {page && hosts.length > 0 && <section aria-labelledby="h-status-hosts" className="status-hosts">
+        <h3 id="h-status-hosts" style={{ fontSize: 15 }}>Model hosts</h3>
+        {hosts.map((ep) => {
+          const host = hostOf(page, ep.id);
+          return <div key={ep.id} className="status-host" data-endpoint={ep.id}>
+            <div className="row"><span className="name">{ep.name}</span><StateWord ep={ep} host={host} /></div>
+            {host && "status" in host && host.status.gpus.map((g) => <GpuBlock key={g.index} g={g} />)}
+          </div>;
+        })}
+      </section>}
       {s?.modelFacts && <ModelCallFacts facts={s.modelFacts} />}
-    </Section>
+    </section>
   );
 }
+
+const PoolWord = ({ pool }: { pool: Pool }) => <>{pool === "general" ? "General" : "Private"}</>;
 
 function UnlockedSection({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;

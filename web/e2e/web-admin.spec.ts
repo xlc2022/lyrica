@@ -1799,6 +1799,36 @@ test("Reset: Wipe memory asks for the box and the password, stops what runs, the
 });
 
 
+test("Status shows each model host's state and its GPUs, and refreshes itself when the page comes back into focus", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const GB = 2 ** 30;
+  await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
+    const real = await (await fetchReal(route)).json() as ModelsPage;
+    const local = real.endpoints.find((e) => e.kind === "local")!;
+    real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", state: "up", shared: false, models: [] });
+    real.hosts.push({ endpointId: "ep-box", status: {
+      name: "box", version: "0.9.0", fingerprint: "SHA256:aaaa", state: "running", downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: 96 * GB },
+      gpus: [{ index: 0, name: "Fixture GPU", vendor: "nvidia", role: "shared", vram: { total: 16 * GB, used: 9 * GB },
+        models: [{ id: "fixture/Fixture-27B-Q4_K_M.gguf", kind: "chat", state: "loaded", pinned: false, busy: false, vram: 9 * GB, lastUsed: null }], queue: { chat: 1, image: 0, background: 0 } }],
+    } });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(real) });
+  });
+  await page.goto(`/#/u/${userId}/admin/status`);
+  // The shell read the Models page before the made-up host joined it.
+  await page.reload();
+  const hosts = page.getByRole("region", { name: "Model hosts" });
+  const box = hosts.locator(".status-host").filter({ hasText: "box" });
+  await expect(box.locator(".status-word")).toHaveText("Online");
+  await expect(box.locator(".gpu-line")).toHaveText("GPU 0 · Fixture GPU9.0 / 16 GB");
+  await expect(box).toContainText("Fixture-27B-Q4_K_M (loaded)");
+  await expect(box).toContainText("Waiting: 1 chat");
+  await noHorizontalScroll(page);
+  await page.screenshot({ path: `shots/status-hosts-${page.viewportSize()!.width}.png` });
+  const read = page.waitForRequest((r) => r.url().endsWith(`/api/u/${userId}/admin/status`));
+  await page.evaluate(() => dispatchEvent(new Event("focus")));
+  await read;
+});
+
 test("Status model facts preserve existing facts and render empty, measured and missing data without phone overflow", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const displayPath = `/api/u/${userId}/me/display`;
@@ -1820,10 +1850,21 @@ test("Status model facts preserve existing facts and render empty, measured and 
     const seeded = await page.request.post(`http://127.0.0.1:${modelPort}/model-facts-fixture`, { data: { userId } });
     expect(seeded.ok()).toBe(true);
     await page.reload();
-    await expect(facts).toContainText("fixture-measured");
-    await expect(facts).toContainText("3 calls · Median speed 20 tok/s · 3 measured · Recorded fallbacks 1");
-    await expect(facts).toContainText("Unavailable · 0 measured · Recorded fallbacks 0");
+    const row = (name: string) => facts.getByRole("row").filter({ hasText: name });
+    await expect(row("fixture-measured").getByRole("cell")).toHaveText(["fixture-measured · StatusFixture", /3$/, /60$/, /20 tok\/s$/, /3,000 tok\/s$/, /1$/]);
+    await expect(row("fixture-without-speed").getByRole("cell").nth(3)).toHaveText(/—$/);
+    await expect(row("fixture-without-speed").getByRole("cell").nth(3)).toHaveAttribute("title", /^Not measured/);
     await expect(facts).toContainText("Retained history · General · pruned to latest 500 records per user");
+    await expect(facts).toContainText("34 calls");
+    // Each chart draws, from the facts alone, and its marks answer the pointer.
+    for (const name of ["Calls per hour", "Output tokens per hour", "Speed per call · tok/s", "Calls by task"]) await expect(facts.getByRole("figure", { name, exact: true }).locator(".chart-box svg")).toBeVisible();
+    await expect(facts.getByRole("list", { name: "Models" }).getByRole("listitem")).toHaveText(["fixture-cloud", "fixture-measured", "fixture-without-speed-with-a-long-model-name-for-phone-wrapping"]);
+    await expect(page.getByText("Last sleep", { exact: true })).toBeVisible();
+    await expect(page.locator("dt").filter({ hasText: /^Memory$/ })).toBeVisible();
+    const statusReads = () => page.waitForRequest((r) => r.url().endsWith(`/api/u/${userId}/admin/status`));
+    const read = statusReads();
+    await page.getByRole("button", { name: "Refresh" }).click();
+    await read;
     await expect(page.getByText("Her tools' network", { exact: true })).toBeVisible();
     await expect(page.getByText("Sleep time", { exact: true })).toBeVisible();
     await expect(page.locator("dt").filter({ hasText: "Start unlocked" })).toBeVisible();
