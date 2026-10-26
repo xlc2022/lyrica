@@ -1,0 +1,37 @@
+{
+  "name": "Krea 2 Turbo",
+  "template": "krea2",
+  "parts": [
+    {
+      "role": "diffusion",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Krea-2",
+      "path": "diffusion_models/krea2_turbo_fp8_scaled.safetensors",
+      "sha256": ""
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3vl",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Krea-2",
+      "path": "text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+      "sha256": ""
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Krea-2",
+      "path": "vae/qwen_image_vae.safetensors",
+      "sha256": ""
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "steps": 8,
+    "cfg": 1,
+    "sampler": "euler",
+    "scheduler": "simple",
+    "width": 1024,
+    "height": 1024
+  }
+}
