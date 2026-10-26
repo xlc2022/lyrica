@@ -545,6 +545,8 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
 .wipe-busy { font-size: 13px; }
 .wipe-busy summary { list-style: none; cursor: pointer; color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
 @media (pointer: coarse) { .wipe-busy summary { min-height: var(--tap); } }
+/* Administration → Users: Change password… and Delete user… are full taps on a phone. */
+@media (pointer: coarse) { .user-row button.sm { min-height: var(--tap); } }
 .wipe-busy summary::-webkit-details-marker { display: none; }
 .wipe-busy ul { margin: 6px 0 0; padding-left: 18px; max-height: 160px; overflow-y: auto; }
 

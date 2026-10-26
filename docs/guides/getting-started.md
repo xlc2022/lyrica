@@ -544,6 +544,18 @@ always deleting skills, and refuses while lyricad runs; each user's
 thread files go at their next unlock.
 Backups and update snapshots aren't wiped.
 
+To remove someone from the server, use **Delete user…** on their row under
+Administration, Users: tick the box and give your own password. Their
+login, threads, projects, memories, files, portrait photos and settings
+are deleted; threads they already shared stay with whoever accepted them.
+You can't delete yourself, so an administrator always remains. If any of
+their work is running it is stopped first. There is no export: a user who
+wants to keep notes, pages or skills exports them from Memory or Settings,
+Skills before they go. With lyricad stopped, `sudo lyrica admin user remove
+<login>` does the same at prompts (the passphrase, an administrator's login
+and password, then typing the login). Backups and update snapshots still
+hold the user's encrypted data until they age out.
+
 ## Reach her from other machines
 
 A fresh install starts in **Direct**: `lyricad` serves HTTPS itself on port

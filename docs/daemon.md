@@ -1016,6 +1016,46 @@ deletes every user's threads and memories in both pools (DESIGN.md,
   suggestions they sent, and marks only them. New turns are still refused
   for everyone while the call runs.
 
+## Deleting a user
+
+`POST …/admin/users/:targetId/delete` with `DeleteUserRequest { password,
+understood: true }` (administrators; the administrator's own password,
+checked on the login limiter like **Change password…**; without
+`understood` it is `400`) deletes another user and everything they own
+(DESIGN.md, "Deleting a user"). `lyricad.deleteUser()`:
+
+- `Users.checkDelete` refuses (`403`) anyone but an administrator, and an
+  administrator deleting themself, before the password is checked. Since the
+  one deleting is another administrator, one always remains. During a wipe it
+  is `409`.
+- While any of the user's work runs (`busy()` for them), it sends each a stop,
+  deletes nothing and answers `DeleteUserResult { deleted: false, busy }`,
+  each item its kind, display name and pool, never a thread title. `GET` the
+  same path lists what still runs; the page asks again once it lists nothing.
+  Nothing is drained: other users carry on.
+- Otherwise it locks the user (`lockUser`: every session of theirs ends,
+  scheduled turns, child threads, subagents, sleep and hosted threads stop,
+  the key is dropped and the home unmounted), or only ends their sessions if
+  they were locked. Then `Users.deleteUser` runs one self.db transaction
+  with `secure_delete` on: their `users` row (wrapped key and recovery copy),
+  `user_links`, `thread_shares` they sent or were sent, `persona_proposals`
+  they sent (`sent_by` `user:<id>`), `password_set_by` on rows of users whose
+  password they set (cleared, `password_set_at` kept), `workspace_paths`, `redirect_pending` (and any redirect only
+  they still needed), `shared_refs`, `shared_refs_indexed`, and their id in
+  the `wipe.pending` and `wipe.home` marks; it adds them to
+  `delete.pending`. Their folder is unreadable from here, since no copy of
+  the key is left. `Keyring.dropSavedKey` removes a saved key, and
+  `finishDeletes` removes `users/<id>/` (pools, user.db, `home.crypt`) and
+  clears the mark. A folder that couldn't go (a busy mount, a crash) is
+  removed at the next unlock, before saved keys load. It logs one line
+  without the user's name.
+- Threads they shared that another user already accepted are that user's
+  own copies and stay. Persona revisions they approved stay. A mention of
+  them in another user's memory falls back to "a user".
+- `lyrica admin user remove <login>` does the same from a terminal while
+  lyricad is stopped (it refuses while it runs): the self.db passphrase, an
+  administrator's login and password, and typing the login.
+
 ## Logs
 
 One line per request: method, route pattern (never the path, which holds

@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { openEncrypted, type Db } from "./db.ts";
 import { migrate } from "./migrations.ts";
@@ -32,6 +32,19 @@ interface RecoveryWrap { nonce: string; ct: string; tag: string }
 interface Row { id: string; login: string; admin: number; profile: string }
 const toUser = (r: Row): User => ({ id: r.id, login: r.login, admin: r.admin === 1, profile: JSON.parse(r.profile) });
 const COLUMNS = "id, login, admin, profile";
+
+/** self.db setting: deleted users whose folder is still on disk. */
+const DELETE_PENDING = "delete.pending";
+
+function getList(db: Db, key: string): string[] {
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined;
+  return row ? JSON.parse(row.value) as string[] : [];
+}
+
+function setList(db: Db, key: string, ids: string[]): void {
+  if (ids.length) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, JSON.stringify(ids));
+  else db.prepare("DELETE FROM settings WHERE key = ?").run(key);
+}
 
 /** Local accounts. The index lives in self.db; each user's data lives in their own user.db. */
 export class Users {
@@ -136,10 +149,10 @@ export class Users {
     }
   }
 
-  /** The administrator who set the password and when, until the user changes it. */
-  passwordSetBy(userId: string): { by: string; at: string } | undefined {
+  /** When an administrator set the password, and who unless they were deleted since, until the user changes it. */
+  passwordSetBy(userId: string): { by?: string; at: string } | undefined {
     const r = this.db.prepare("SELECT password_set_by AS by, password_set_at AS at FROM users WHERE id = ?").get(userId) as { by: string | null; at: string | null } | undefined;
-    return r?.by && r.at ? { by: r.by, at: r.at } : undefined;
+    return r?.at ? { ...(r.by ? { by: r.by } : {}), at: r.at } : undefined;
   }
 
   /** Checks the password and unlocks the user's key. */
@@ -300,6 +313,65 @@ export class Users {
       this.migrated.add(userId);
     }
     return db;
+  }
+
+  /**
+   * Deletes a user (DESIGN.md, "Deleting a user"), as another administrator:
+   * their row, with the wrapped key and its recovery copy, and every self.db
+   * row naming them, in one transaction with secure delete on. Their folder
+   * (pools, user.db, home) is then unreadable, since no copy of the key is
+   * left, and waits in `delete.pending` for `removeUserFiles`. Their running
+   * work must be stopped, their key dropped and their home unmounted first.
+   */
+  deleteUser(actor: User, target: User): void {
+    const id = this.checkDelete(actor, target).id, db = this.db;
+    const secure = db.pragma("secure_delete", { simple: true });
+    db.pragma("secure_delete = ON");
+    try {
+      db.transaction(() => {
+        db.prepare("DELETE FROM users WHERE id = ?").run(id);
+        db.prepare("DELETE FROM user_links WHERE a = ? OR b = ?").run(id, id);
+        db.prepare("DELETE FROM thread_shares WHERE from_user = ? OR to_user = ?").run(id, id);
+        // PersonaProposals records the sender as `user:<id>`.
+        db.prepare("DELETE FROM persona_proposals WHERE sent_by = 'user:' || ?").run(id);
+        // A password they set for someone keeps its date, so that user is still told, without naming them.
+        db.prepare("UPDATE users SET password_set_by = NULL WHERE password_set_by = ?").run(id);
+        db.prepare("DELETE FROM workspace_paths WHERE user_id = ?").run(id);
+        // A redirect only this user still had to apply goes with their row, as their next sync would have dropped it.
+        const redirects = db.prepare("SELECT from_id FROM redirect_pending WHERE user = ?").all(id) as { from_id: string }[];
+        db.prepare("DELETE FROM redirect_pending WHERE user = ?").run(id);
+        const unused = db.prepare("DELETE FROM offering_redirects WHERE from_id = ? AND NOT EXISTS (SELECT 1 FROM redirect_pending WHERE from_id = ?)");
+        for (const r of redirects) unused.run(r.from_id, r.from_id);
+        db.prepare("DELETE FROM shared_refs WHERE user = ?").run(id);
+        db.prepare("DELETE FROM shared_refs_indexed WHERE user = ?").run(id);
+        for (const key of ["wipe.pending", "wipe.home"]) setList(db, key, getList(db, key).filter((x) => x !== id));
+        setList(db, DELETE_PENDING, [...new Set([...getList(db, DELETE_PENDING), id])]);
+      })();
+    } finally {
+      db.pragma(`secure_delete = ${secure ? "ON" : "OFF"}`);
+    }
+    this.migrated.delete(id);
+  }
+
+  /** Refuses a delete the rules don't allow: only an administrator, never themself. Since the actor is another administrator, one always remains. */
+  checkDelete(actor: User, target: User): User {
+    if (!this.get(actor.id)?.admin) throw new Forbidden("only an administrator can delete a user");
+    const current = this.get(target.id);
+    if (!current) throw new Error(`no such user: ${target.login}`);
+    if (current.id === actor.id) throw new Forbidden("you can't delete yourself");
+    return current;
+  }
+
+  /** Deleted users whose folder is still on disk. */
+  pendingDeletes(): string[] {
+    return getList(this.db, DELETE_PENDING);
+  }
+
+  /** Removes a deleted user's folder and clears their mark. Their home must be unmounted. */
+  removeUserFiles(userId: string): void {
+    if (this.get(userId)) throw new Error("this user hasn't been deleted");
+    rmSync(this.userDir(userId), { recursive: true, force: true });
+    setList(this.db, DELETE_PENDING, getList(this.db, DELETE_PENDING).filter((x) => x !== userId));
   }
 
   private adminCount(): number {
