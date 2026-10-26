@@ -366,7 +366,7 @@ either leave voice unpinned and accept the 30-second first use after a
 swap, or pin it and serve the chat model at a shorter context. An image
 recipe such as Z-Image takes 19–22 GB on its own, so on 24 GB chat, voice
 and images take turns: pin only what must answer at once. The Krea 2
-Turbo starter (fp8, about 18.5 GB of files) loads one stage at a time,
+Turbo starter (fp8, about 18.6 GB of files) loads one stage at a time,
 about 13.5 GB at its largest; beside a 27B chat model on 24 GB it runs
 only while ComfyUI pauses the chat model. Its weights are under the Krea 2
 Community License: free for non-commercial use and for commercial use
