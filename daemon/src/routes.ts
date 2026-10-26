@@ -2345,7 +2345,7 @@ function me(d: Lyricad, user: User): Api.Me {
   const set = d.services!.users.passwordSetBy(user.id);
   const warnings = [
     ...(savedCredentials && !stayUnlocked ? ["Your key is saved, so it is unlocked again whenever Lyrica restarts, even though logging out drops it."] : []),
-    ...(set ? [`${d.services!.users.get(set.by)?.profile.displayName ?? "An administrator"} set your password on ${set.at.slice(0, 10)}. Change it in Settings → Password.`] : []),
+    ...(set ? [`${(set.by && d.services!.users.get(set.by)?.profile.displayName) || "An administrator"} set your password on ${set.at.slice(0, 10)}. Change it in Settings → Password.`] : []),
   ];
   return {
     user: card(fresh), previousNames: fresh.profile.previousNames, display: display(d, user.id), savedCredentials, stayUnlocked,

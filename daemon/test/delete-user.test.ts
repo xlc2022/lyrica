@@ -67,8 +67,9 @@ describe("deleting a user", () => {
     expect((await ada.post<DeleteUserResult>(del, { password: "pw", understood: true })).body).toEqual({ deleted: true, busy: [] });
 
     expect(traces(d.keyring, rt.sam.id)).toEqual(none);
-    expect(d.services!.users.passwordSetBy(rt.ada.id)).toBeUndefined();
-    expect(d.keyring.self().prepare("SELECT password_set_at AS at FROM users WHERE id = ?").get(rt.ada.id)).toEqual({ at: "2026-10-26T00:00:00Z" });
+    // Ada is still told her password was set, without Sam's name.
+    expect(d.services!.users.passwordSetBy(rt.ada.id)).toEqual({ at: "2026-10-26T00:00:00Z" });
+    expect((await ada.get<{ warning?: string }>(`${au}/me`)).body.warning).toContain("An administrator set your password on 2026-10-26.");
     expect(existsSync(join(rt.home, "users", rt.sam.id))).toBe(false);
     expect(d.keyring.hasSavedKey(rt.sam.id)).toBe(false);
     expect(d.keyring.hasUserKey(rt.sam.id)).toBe(false);

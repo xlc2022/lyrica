@@ -95,7 +95,7 @@ class Users {
   changePassword(user, oldPassword, newPassword): Promise<void>  // rewraps the same data key; clears passwordSetBy
   setPassword(actor: User, actorPassword, target: User, newPassword): Promise<void>  // admin, confirming their own password (AuthError); the key from its recovery copy, under the new password; NoRecoveryCopy if none yet
   checkPassword(user: User, password): Promise<boolean>     // is it theirs; unlocks nothing
-  passwordSetBy(userId): { by; at } | undefined              // an administrator set it and the user hasn't changed it since
+  passwordSetBy(userId): { by?; at } | undefined             // an administrator set it and the user hasn't changed it since; no `by` once that administrator is deleted
   ensureRecoveryCopy(userId): void                           // writes the copy for a user from before, once their key is in memory
   setAdmin(actor: User, target: User, admin: boolean): void  // refuses to demote the last admin
   updateProfile(actor: User, target: User, change): Profile  // self, or an admin; a rename appends to previousNames

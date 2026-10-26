@@ -149,10 +149,10 @@ export class Users {
     }
   }
 
-  /** The administrator who set the password and when, until the user changes it. */
-  passwordSetBy(userId: string): { by: string; at: string } | undefined {
+  /** When an administrator set the password, and who unless they were deleted since, until the user changes it. */
+  passwordSetBy(userId: string): { by?: string; at: string } | undefined {
     const r = this.db.prepare("SELECT password_set_by AS by, password_set_at AS at FROM users WHERE id = ?").get(userId) as { by: string | null; at: string | null } | undefined;
-    return r?.by && r.at ? { by: r.by, at: r.at } : undefined;
+    return r?.at ? { ...(r.by ? { by: r.by } : {}), at: r.at } : undefined;
   }
 
   /** Checks the password and unlocks the user's key. */
