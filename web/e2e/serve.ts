@@ -32,6 +32,7 @@ import { fileURLToPath } from "node:url";
 import { Keyring, PersonaStore, PRONOUN_PRESETS, SystemdCredentials, Users } from "@lyrica/core";
 import { Lyricad } from "@lyrica/daemon";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
+import { SLEEP_FIXTURE } from "./helpers.ts";
 
 export const PASSPHRASE = "correct horse";
 /** The one model /long/v1 serves. */
@@ -94,6 +95,21 @@ function fakeModel() {
             view.own.putWake(`Fixture dream ${i}`, "sleep");
             view.own.addJournal(`Fixture journal ${i}`, "sleep");
           }
+        } finally { view.close(); }
+        res.writeHead(204); return res.end();
+      }
+      // Test-only sleep items, so a Notifications row can be shown cut and open; never a production route.
+      // The run is one that was skipped, so the Sleep page's history reads as it did before.
+      if (req.method === "POST" && req.url === "/sleep-item-fixture") {
+        const { userId } = JSON.parse(body) as { userId: string };
+        const view = daemon.services!.memory.openThreadView(userId, "general");
+        try {
+          const run = view.own.recordSleepRun("scheduled", "no-activity", new Date(Date.now() - 3_600_000).toISOString());
+          for (const [kind, text] of [
+            ["question", SLEEP_FIXTURE.long],
+            ["thought", SLEEP_FIXTURE.medium],
+            ["thought", SLEEP_FIXTURE.short],
+          ] as const) view.own.addItem(run, { kind, text });
         } finally { view.close(); }
         res.writeHead(204); return res.end();
       }
