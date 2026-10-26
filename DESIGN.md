@@ -20,6 +20,7 @@ individual: her persona is the only thing users share.
 - Users are either **administrators** or **normal users**. Administrators can:
   - change any account's administrator status from the control panel (the last
     administrator can't be demoted);
+  - delete another user (below, "Deleting a user");
   - approve changes to Lyrica's persona;
   - edit global settings such as the sleep time and the endpoint list.
 
@@ -1735,6 +1736,22 @@ Details in [docs/memory.md](docs/memory.md).
   threads that made it; drafts still waiting go. A locked user's pools are
   then set aside, still encrypted, until their next unlock copies the
   skills out and deletes them.
+- **Deleting a user** (the owner, 2026-10-26): an administrator removes
+  another user from Administration → Users (**Delete user…**, or `lyrica
+  admin user remove` with lyricad stopped), with an unticked confirm box
+  and their own password. Nobody deletes themself, so an administrator
+  always remains. Their running work is stopped first, they are signed out
+  everywhere, and their row in self.db goes with the only copies of their
+  key, so everything in `users/<id>/` (both pools, user.db, the home with
+  thread folders, uploads, images and portrait photos) is unreadable at
+  once and then removed. Every other self.db row naming them goes in the
+  same transaction: links, threads in transit, persona suggestions, folder
+  grants, model-list bookkeeping. Copies of threads another user already
+  accepted are that user's and stay. There is no administrator export:
+  exporting someone's memory would mean reading it, so a user who wants to
+  keep notes, pages or skills exports them first. Backups, update
+  snapshots, remote accounts on machines and anything already sent to a
+  model provider are not covered.
 
 ### Skills
 

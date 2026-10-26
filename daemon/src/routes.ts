@@ -2097,6 +2097,24 @@ export function apiRoutes(d: Lyricad): Route[] {
       const done = await d.wipeMemory(undefined, keepSkills === true);
       return { wiped: done.wiped, busy: wipeBusy(d, done.busy) };
     }),
+    // Delete user (Administration → Users): another user, with the administrator's own password.
+    route("GET", `${u}/admin/users/:targetId/delete`, (r): Api.DeleteUserResult => {
+      d.adminFor(r);
+      const t = target(d, r);
+      return { deleted: false, busy: wipeBusy(d, d.busy().filter((b) => b.userId === t.id)) };
+    }),
+    route("POST", `${u}/admin/users/:targetId/delete`, async (r): Promise<Api.DeleteUserResult> => {
+      const actor = d.adminFor(r);
+      const t = target(d, r);
+      const { password, understood } = await r.json<Api.DeleteUserRequest>();
+      if (understood !== true) throw new HttpError(400, "tick the box first");
+      s().users.checkDelete(actor, t);
+      // An open session isn't enough: the administrator's own password is checked, and guesses count on the limiter.
+      const keys = [`login:${actor.login.toLowerCase()}`, `ip:${r.ip}`];
+      await limited(d, keys, async () => { if (!(await s().users.checkPassword(actor, String(password ?? "")))) throw new AuthError(); }, "that isn't your password");
+      const done = await d.deleteUser(actor, t);
+      return { deleted: done.deleted, busy: wipeBusy(d, done.busy) };
+    }),
     route("PATCH", `${u}/admin/users/:targetId/profile`, async (r) => {
       const actor = d.adminFor(r);
       s().users.updateProfile(actor, target(d, r), pick(await r.json<Api.ProfileChange>(), ["displayName", "pronouns", "accent", "monogram"]));

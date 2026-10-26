@@ -845,7 +845,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   then her displayed name updates and the page re-reads `/api/state`), Users with the administrator flag,
   **Change password…** (the new password and the administrator's own, in
   the row; the user's data stays, they are logged out and told at their
-  next visit) and their allowed folders, Sleep (**Sleep time**, `type="time"`, one Save;
+  next visit), **Delete user…** on every row but your own (`src/DeleteUser.tsx`:
+  Wipe memory's dialog, titled "Delete <name>?", on `POST`/`GET
+  …/admin/users/:targetId/delete`, its stopping state "Stopping <name>'s
+  work"; done, the row goes and the section says "<name> was deleted.") and
+  their allowed folders, Sleep (**Sleep time**, `type="time"`, one Save;
   `GET`/`PUT …/admin/sleep`), Start unlocked (saving the `self.db`
   passphrase, and **Change passphrase…**: Current passphrase, New passphrase and
   New passphrase again stacked in place, hiding Passphrase and Save meanwhile, `POST …/admin/passphrase/change`; a 403 says "That

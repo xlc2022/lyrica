@@ -28,6 +28,7 @@ import { PageHead, type ShellContext } from "./Shell.tsx";
 import { WebAccessSection } from "./WebAccess.tsx";
 import { WebSearchSection } from "./WebSearch.tsx";
 import { WipeSection } from "./Wipe.tsx";
+import { DeleteUserButton } from "./DeleteUser.tsx";
 import { browserZone, Confirm, ErrorText, Prose, Switch, useAction, useLoad } from "./ui.tsx";
 
 export const PRESETS: Record<string, Pronouns> = {
@@ -434,7 +435,7 @@ function PassphraseChanger({ userId, open, setOpen, onChanged }: { userId: strin
 }
 
 /** Change password… on a user's row (docs/ux.md §6, editing in place): the new password, the administrator's own, one button; the user's data stays. */
-function PasswordSetter({ userId, target }: { userId: string; target: UserCard }) {
+function PasswordSetter({ userId, target, after }: { userId: string; target: UserCard; after?: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [own, setOwn] = useState("");
@@ -444,6 +445,7 @@ function PasswordSetter({ userId, target }: { userId: string; target: UserCard }
     return (
       <div className="row">
         <button type="button" className="sm" onClick={() => { setOpen(true); setDone(false); }}>Change password…</button>
+        {after}
         {done && <span className="muted small" role="status">Password changed. {target.displayName} is logged out and told at their next visit.</span>}
       </div>
     );
@@ -468,9 +470,11 @@ function UsersSection({ ctx }: { ctx: ShellContext }) {
   const users = useLoad(() => get<UserCard[]>(u(userId, "admin", "users")), [userId]);
   const [run, busy, error] = useAction();
   const [form, setForm] = useState({ login: "", password: "", displayName: "", pronouns: PRESETS["she/her"]!, admin: false });
+  const [deleted, setDeleted] = useState("");
   return (
     <Section title="Users">
       <ErrorText error={users.error || error} />
+      {deleted && <p className="meta" role="status">{deleted} was deleted.</p>}
       <ul className="list">
         {(users.data ?? []).map((x) => (
           <li key={x.id}>
@@ -479,7 +483,8 @@ function UsersSection({ ctx }: { ctx: ShellContext }) {
               <Switch label="Administrator" checked={x.admin}
                 onChange={(admin) => run(async () => { await put(u(userId, "admin", "users", x.id, "admin"), { admin }); users.reload(); })} />
             </div>
-            {x.id !== userId && <PasswordSetter userId={userId} target={x} />}
+            {x.id !== userId && <PasswordSetter userId={userId} target={x}
+              after={<DeleteUserButton userId={userId} target={x} onDeleted={() => { setDeleted(x.displayName); users.reload(); }} />} />}
             <AllowedPathsEditor userId={userId} target={x.id} />
           </li>
         ))}

@@ -1913,6 +1913,16 @@ export interface WipeBusy { kind: BusyItem["kind"]; user: string; pool?: Pool }
  * running, and the wipe is asked for again once GET /admin/wipe lists nothing.
  */
 export interface WipeResult { wiped: boolean; busy: WipeBusy[] }
+/**
+ * POST /api/u/:userId/admin/users/:targetId/delete (DeleteUserRequest) → DeleteUserResult
+ * (DESIGN.md, "Deleting a user"). The administrator's own password, and the
+ * ticked box. 403 for themself or the last administrator; 401 for a wrong
+ * password. GET on the same path → DeleteUserResult with `deleted` false and
+ * the target's running work, for the dialog to wait on.
+ */
+export interface DeleteUserRequest { password: string; understood: boolean }
+/** deleted false: the user's work was running and was sent a stop; the delete is asked for again once GET lists nothing. */
+export interface DeleteUserResult { deleted: boolean; busy: WipeBusy[] }
 /** PATCH /api/u/:userId/admin/users/:targetId/profile → UserCard */
 
 /** GET /api/u/:userId/admin/users/:targetId/paths → AllowedPaths */

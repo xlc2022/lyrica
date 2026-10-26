@@ -83,6 +83,7 @@ lockUser(userId: string): void
   memory. Missing, failed or empty credentials stay locked; logs contain
   only the credential name/id and error class, never stderr or secrets.
 - Wiping memory (`POST /api/u/:userId/admin/wipe` with `WipeRequest { password, understood, keepSkills? }`, administrators, the administrator's own password; `GET` the same path for what still runs; `lyrica admin wipe` while lyricad is stopped) answers `WipeResult { wiped, busy: WipeBusy[] }`. While anything runs it only sends stops (`wiped: false`); otherwise core's `wipePools(keyring, users)` deletes every pool and marks every user, `finishWipe(self, userId, userDb)` clears `WIPED_USER_TABLES` once their key is here, and `homeWiped` clears the home mark once their thread folders are gone (`wipePending`, `homeWipePending` read the marks). `KEPT_USER_TABLES` names the rest; a new user.db table goes in one of the two. `POST`/`GET /api/u/:userId/me/wipe` (any user, their own password) is the same for that user alone, through `wipePools(keyring, users, userId)`. With `keepSkills`, `wipePools(…, keepSkills)` sets each pool aside as `<pool>.keep.db` and `Memory.carrySkills(userId)` (called by lyricad's finish, at once or at the next unlock) copies its active skills into the fresh pool with `SkillLibrary.restore` and deletes it. See [daemon.md](daemon.md#wiping-memory).
+- Deleting a user (`POST /api/u/:userId/admin/users/:targetId/delete` with `DeleteUserRequest { password, understood }`, administrators, the administrator's own password, never themselves; `GET` the same path for what of theirs still runs; `lyrica admin user remove <login>` while lyricad is stopped) answers `DeleteUserResult { deleted, busy: WipeBusy[] }`. While their work runs it only sends stops (`deleted: false`); otherwise lyricad locks them, `Users.deleteUser` removes every self.db row naming them, `Keyring.dropSavedKey` removes a saved key, and `Users.removeUserFiles` removes `users/<id>/`, retried at the next unlock if it fails. See [daemon.md](daemon.md#deleting-a-user).
 - Changing the self.db passphrase (`POST /api/u/:userId/admin/passphrase/change` with `PassphraseRotate { current, next }`, administrators; `lyrica admin passphrase`) rekeys self.db in place and re-saves a saved passphrase (if the re-save fails, the saved copy is removed and the response carries a note to save it again); a wrong `current` is `403`. See [daemon.md](daemon.md).
 
 ## core/users
@@ -99,6 +100,9 @@ class Users {
   setAdmin(actor: User, target: User, admin: boolean): void  // refuses to demote the last admin
   updateProfile(actor: User, target: User, change): Profile  // self, or an admin; a rename appends to previousNames
   listUsers(actor: User): User[]                             // admins see everyone, others themselves
+  checkDelete(actor: User, target: User): User               // Forbidden unless an administrator deletes another user, so one always remains
+  deleteUser(actor: User, target: User): void                // one self.db transaction, secure delete on: the row (wrapped key, recovery copy) and every row naming them; marks them in `delete.pending`
+  pendingDeletes(): string[] / removeUserFiles(userId)       // deleted users whose `users/<id>/` is still on disk; removes it (home unmounted) and clears the mark
   link(a: User, aPassword, otherLogin, otherPassword): Promise<void>  // the same person's users; both passwords
   unlink(actor: User, other: User): void
   linked(userId): string[]
@@ -659,8 +663,7 @@ class Models {                                              // new Models(keyrin
   `model_unavailable` (one model's server is off) skips only that model.
 - **Planned:** `X-Lyrica-Priority: background` for sleep and cheap subagents
   (not sent; hosts use their defaults; it needs the task in Pi's request
-  preparation), and clearing `redirect_pending` rows when a user is deleted,
-  once users can be.
+  preparation).
 
 ## delegate
 
