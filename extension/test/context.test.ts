@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { createAssistantMessageEventStream, type AssistantMessage } from "@earendil-works/pi-ai";
 import { speeds } from "@lyrica/core";
-import { ContextMeter, contextLines, keepRecentFor, linesFor, prepareLine, reserveFor, statusLine, type Section } from "../src/index.ts";
+import { ContextMeter, contextLines, keepRecentFor, linesFor, prepareLine, reserveFor, statusLine, timedReply, type Section } from "../src/index.ts";
 
 const section = (name: Section["name"], chars: number): Section => ({ name, text: "x".repeat(chars), budget: chars, truncated: false, place: "system" });
 
@@ -142,5 +143,34 @@ describe("requested compaction at Pi’s threshold", () => {
     const r = handlers.get("session_before_compact")!({ reason: "manual", preparation: { messagesToSummarize: [old.message], turnPrefixMessages: [], firstKeptEntryId: "b", tokensBefore: 219_000 } }, ctx);
     // Tools 1000, the kept message 2000, the summary 100: the measured total's unseen tokens (a model's reasoning) don't stay behind.
     expect(r.compaction.details.after).toBe(1000 + 2000 + 100);
+  });
+});
+
+describe("timedReply", () => {
+  const reply = (stopReason: AssistantMessage["stopReason"]) => ({ role: "assistant", content: [{ type: "text", text: "A title" }], stopReason, timestamp: 0,
+    usage: { input: 900, output: 60, cacheRead: 100, cacheWrite: 0, totalTokens: 1060, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } }) as unknown as AssistantMessage;
+  const tick = () => new Promise<void>((r) => setImmediate(r));
+
+  it("measures a one-shot request as a turn: wait to the first token, then generation", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: 0 });
+    try {
+      const stream = createAssistantMessageEventStream();
+      const done = timedReply(stream, 8192);
+      vi.setSystemTime(300);
+      stream.push({ type: "text_delta", contentIndex: 0, delta: "A", partial: reply("stop") });
+      await tick();
+      vi.setSystemTime(1300);
+      stream.push({ type: "done", reason: "stop", message: reply("stop") } as never);
+      stream.end(reply("stop"));
+      const { pace } = await done;
+      expect(pace).toMatchObject({ promptTokens: 1000, outputTokens: 60, ttftMs: 300, genMs: 1000, processed: 900, tokPerSec: 60, promptTokPerSec: 3000 });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("gives no pace for a failed request", async () => {
+    const stream = createAssistantMessageEventStream();
+    const done = timedReply(stream, 8192);
+    stream.end(reply("error"));
+    expect((await done).pace).toBeUndefined();
   });
 });

@@ -1870,12 +1870,18 @@ export interface MemoryImportResult {
 export interface ModelCallFacts {
   since: string; until: string; pools: Pool[];
   models: {
-    offeringId: string; label: string; endpointName: string; calls: number;
+    offeringId: string; label: string; endpointName: string; kind: "cloud" | "local"; calls: number;
     /** Median of recorded pace.tokPerSec; absent when speedSamples is zero. */
     medianTokPerSec?: number; speedSamples: number;
+    /** Median of recorded pace.promptTokPerSec; absent when promptSamples is zero. */
+    medianPromptTokPerSec?: number; promptSamples: number;
+    /** Recorded output tokens, over the records that have a pace. */
+    outputTokens: number;
     /** Records with a nonempty fallback marker (skipped candidates, not errors/retries). */
     fallbacks: number;
   }[];
+  /** Each record in the window, newest first, for Status's charts: numbers and names only, never text or thread. */
+  calls: { at: string; offeringId: string; task: Task; outputTokens?: number; tokPerSec?: number; fallback?: true }[];
 }
 
 /** GET /api/u/:userId/admin/status → AdminStatus */

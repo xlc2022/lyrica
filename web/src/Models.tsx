@@ -83,7 +83,7 @@ export function stateOf(ep: Endpoint, host?: Host): { dot: string; word: string;
   return { dot: "down", word: "Unreachable", since };
 }
 
-function StateWord({ ep, host }: { ep: Endpoint; host?: Host }) {
+export function StateWord({ ep, host }: { ep: Endpoint; host?: Host }) {
   const s = stateOf(ep, host);
   return (
     <span className="status-word" data-state={s.word} title={host && "error" in host ? host.error : undefined}>
@@ -1242,7 +1242,7 @@ function HostDrawer({ ctx, ep, host, onClose }: { ctx: MCtx; ep: Endpoint; host?
   );
 }
 
-function GpuBlock({ g }: { g: Gpu }) {
+export function GpuBlock({ g }: { g: Gpu }) {
   const queued = (["chat", "image", "background"] as const).filter((k) => g.queue[k] > 0);
   return (
     <div className="gpu" data-gpu={g.index}>

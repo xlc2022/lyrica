@@ -31,7 +31,7 @@ describe("model facts for the last 24 hours", () => {
   });
 
   it("reports the window as its bounds and the pools it was given, with no models from nothing", () => {
-    expect(modelFacts([], ["general", "private"], NOW)).toEqual({ since: iso(-MODEL_FACTS_WINDOW_MS), until: iso(0), pools: ["general", "private"], models: [] });
+    expect(modelFacts([], ["general", "private"], NOW)).toEqual({ since: iso(-MODEL_FACTS_WINDOW_MS), until: iso(0), pools: ["general", "private"], models: [], calls: [] });
   });
 
   it("uses the clock of the request when none is given", () => {
@@ -56,8 +56,8 @@ describe("model facts for the last 24 hours", () => {
       at("copy-2", -1 * MIN, { label: "GLM 4.6V Fast", endpointName: "vLLM" }),
     ], ["general"], NOW);
     expect(r.models).toEqual([
-      { offeringId: "copy-1", label: "GLM 4.6V Fast", endpointName: "Llama.cpp", calls: 2, speedSamples: 0, fallbacks: 0 },
-      { offeringId: "copy-2", label: "GLM 4.6V Fast", endpointName: "vLLM", calls: 1, speedSamples: 0, fallbacks: 0 },
+      { offeringId: "copy-1", label: "GLM 4.6V Fast", endpointName: "Llama.cpp", kind: "local", calls: 2, speedSamples: 0, promptSamples: 0, outputTokens: 0, fallbacks: 0 },
+      { offeringId: "copy-2", label: "GLM 4.6V Fast", endpointName: "vLLM", kind: "local", calls: 1, speedSamples: 0, promptSamples: 0, outputTokens: 0, fallbacks: 0 },
     ]);
   });
 
@@ -105,6 +105,29 @@ describe("model facts for the last 24 hours", () => {
       call({ offeringId: "f", fallback: "   " }),
     ], ["general"], NOW);
     expect(r.models.map((m) => [m.offeringId, m.calls, m.fallbacks])).toEqual([["f", 5, 2]]);
+  });
+
+  it("adds up output and medians prompt speed over paced rows only", () => {
+    const r = modelFacts([
+      at("p", -3 * MIN, { pace: { ...pace(30), promptTokPerSec: 400 } }),
+      at("p", -2 * MIN, { pace: { ...pace(), promptTokPerSec: 600 } }),
+      at("p", -1 * MIN),
+    ], ["general"], NOW);
+    expect(r.models.map((m) => [m.outputTokens, m.promptSamples, m.medianPromptTokPerSec, m.speedSamples])).toEqual([[100, 2, 500, 1]]);
+  });
+
+  it("gives each row in the window as numbers for the charts, newest first, with no thread, note or fallback text", () => {
+    const r = modelFacts([
+      at("a", -2 * MIN, { task: "title", pace: pace(40), threadId: "secret-thread", note: "a note", fallback: "the first was down" }),
+      at("a", -25 * 60 * MIN, { pace: pace(10) }),
+      at("b", -1 * MIN, { task: "watching" }),
+      at("c", -1 * MIN, { pool: "private" }),
+    ], ["general"], NOW);
+    expect(r.calls).toEqual([
+      { at: iso(-1 * MIN), offeringId: "b", task: "watching" },
+      { at: iso(-2 * MIN), offeringId: "a", task: "title", outputTokens: 50, tokPerSec: 40, fallback: true },
+    ]);
+    expect(JSON.stringify(r)).not.toMatch(/secret-thread|a note|was down/);
   });
 
   it("reads past any preview limit: every row and every model given counts", () => {

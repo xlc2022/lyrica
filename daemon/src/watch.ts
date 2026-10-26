@@ -1,5 +1,5 @@
 import { FROM_PARENT, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK, type Memory, type Models, type Pool } from "@lyrica/core";
-import { DELEGATE_MESSAGE, modelRuntimeFor, piModelFor } from "@lyrica/extension";
+import { DELEGATE_MESSAGE, modelRuntimeFor, piModelFor, timedReply } from "@lyrica/extension";
 import type { ThreadHost } from "./hosted.ts";
 import { toldLines } from "./messages.ts";
 
@@ -295,8 +295,9 @@ export class Watcher {
     const reply = await models.callWithFallback("watching", call, {}, async (resolution) => {
       const { model } = piModelFor(runtime, models, "watching", call, resolution);
       models.recordCall(userId, { pool, threadId: project, task: "watching", resolution });
-      const r = await runtime.completeSimple(model, { systemPrompt: SYSTEM, messages: [{ role: "user", content: prompt, timestamp: Date.now() }] });
+      const { reply: r, pace } = await timedReply(runtime.streamSimple(model, { systemPrompt: SYSTEM, messages: [{ role: "user", content: prompt, timestamp: Date.now() }] }), model.contextWindow);
       if (r.stopReason === "error") throw new Error(r.errorMessage ?? "the watching model failed");
+      if (pace) models.recordPace(userId, project, pace, "watching", pool);
       return r;
     });
     return reply.content.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("");

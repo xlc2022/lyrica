@@ -1,3 +1,4 @@
+import type { AssistantMessage, AssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { buildSessionContext, estimateTokens, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { FROM_PARENT, ROUTINE, speeds, WAKEUP, WATCHING, type Pace } from "@lyrica/core";
 import type { Section } from "./assemble.ts";
@@ -237,6 +238,21 @@ export class PaceTracker {
     const t = this.turn;
     return t.calls ? speeds({ promptTokens: t.prompt, readTokens: t.read, outputTokens: t.output, window, ttftMs: t.ttft, genMs: t.gen, processed: t.processed }) : undefined;
   }
+}
+
+/**
+ * A one-shot request outside a session (a thread's title, a project chat's look), read
+ * to its end and measured as a turn is, so its call record gets a pace (Status's speeds).
+ */
+export async function timedReply(stream: AssistantMessageEventStream, window: number): Promise<{ reply: AssistantMessage; pace?: Pace }> {
+  const tracker = new PaceTracker();
+  tracker.request();
+  for await (const e of stream) if (e.type.endsWith("_delta")) tracker.token();
+  const reply = await stream.result();
+  if (reply.stopReason === "error" || reply.stopReason === "aborted") return { reply };
+  tracker.end(reply.usage);
+  const pace = tracker.pace(window);
+  return { reply, ...(pace ? { pace } : {}) };
 }
 
 /**

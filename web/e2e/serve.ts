@@ -56,15 +56,27 @@ function fakeModel() {
         const { userId } = JSON.parse(body) as { userId: string };
         const models = daemon.services!.models, user = daemon.services!.users.get(userId)!;
         const endpoint = models.addEndpoint(user, { name: "StatusFixture", kind: "local", baseUrl: `http://127.0.0.1:${modelPort}/local/v1` });
-        for (const [index, modelId] of ["fixture-measured", "fixture-without-speed-with-a-long-model-name-for-phone-wrapping"].entries()) {
-          const offering = models.addModel(user, endpoint.id, { modelId, tools: true });
-          const resolution = models.resolve("chat", { userId, pool: "general", localOnly: false, overrides: { chat: [{ offeringId: offering.id }] } });
-          for (const [n, outputTokens] of (index ? [undefined] : [10, 30, 20]).entries()) {
-            const threadId = `status-fixture-${index}-${n}`;
-            models.recordCall(userId, { pool: "general", threadId, task: "chat", resolution: { ...resolution, skipped: n === 1 ? [{ label: "fixture-primary", reason: "endpoint down" }] : [] } });
-            if (outputTokens !== undefined) models.recordPace(userId, threadId, { promptTokens: 100, outputTokens, window: 4096, ttftMs: 100, genMs: 1000, processed: 100 }, "chat", "general");
-          }
-        }
+        // A call recorded `ago` ms before now: the store stamps a record with the clock, so the clock is held there for it.
+        const RealDate = Date;
+        const back = (ago: number, record: () => void) => {
+          const at = RealDate.now() - ago;
+          globalThis.Date = class extends RealDate { constructor(...a: []) { super(...(a.length ? a : [at] as unknown as [])); } static override now() { return at; } } as DateConstructor;
+          try { record(); } finally { globalThis.Date = RealDate; }
+        };
+        const call = (offeringId: string, threadId: string, task: "chat" | "title" | "watching" | "sleep.consolidate", ago: number, outputTokens?: number, genMs = 1000, fallback = false) => back(ago, () => {
+          const resolution = models.resolve("chat", { userId, pool: "general", localOnly: false, overrides: { chat: [{ offeringId }] } });
+          models.recordCall(userId, { pool: "general", threadId, task, resolution: { ...resolution, skipped: fallback ? [{ label: "fixture-primary", reason: "endpoint down" }] : [] } });
+          if (outputTokens !== undefined) models.recordPace(userId, threadId, { promptTokens: 1200, outputTokens, window: 4096, ttftMs: 400, genMs, processed: 1200 }, task, "general");
+        });
+        const [measured, unmeasured] = ["fixture-measured", "fixture-without-speed-with-a-long-model-name-for-phone-wrapping"].map((modelId) => models.addModel(user, endpoint.id, { modelId, tools: true }).id);
+        // Three measured chat turns now (20 tok/s at the median, one fallback) and one call nothing measured.
+        for (const [n, outputTokens] of [10, 30, 20].entries()) call(measured!, `status-fixture-0-${n}`, "chat", 0, outputTokens, 1000, n === 1);
+        call(unmeasured!, "status-fixture-1-0", "title", 0);
+        // A cloud model through the day, so the hours, speeds and tasks have something to draw.
+        const cloud = models.addEndpoint(user, { name: "CloudFixture", kind: "cloud", baseUrl: `http://127.0.0.1:${modelPort}/cloud/v1` });
+        const cloudModel = models.addModel(user, cloud.id, { modelId: "vendor/fixture-cloud", tools: true }).id;
+        const HOUR = 3_600_000, tasks = ["chat", "chat", "title", "watching", "chat", "sleep.consolidate"] as const;
+        for (let i = 0; i < 30; i++) call(cloudModel, `status-fixture-c-${i}`, tasks[i % tasks.length]!, (2 + ((i * 7) % 22)) * HOUR + (i % 5) * 600_000, 200 + ((i * 97) % 900), 4000 + ((i * 1300) % 9000));
         res.writeHead(204); return res.end();
       }
       // Test-only history fixture, in encrypted stores; never a production route.

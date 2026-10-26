@@ -829,18 +829,26 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `GET|PUT …/photo-cloud`. This follows the Images brief and principles 1
   and 2; controls reuse §3's secondary button and menu, §4's short labels
   and tooltips, and §6's confirmation dialog. No drawer or extra captions.
-- **Administration**, for administrators: Status (stale Debian systemd units
-  with the action to run `install.sh`, the server's network
-  self-test, sleep time, start unlocked, then **Model calls · last 24 hours**:
-  `ModelCallFacts.tsx` renders plain facts per offering ID from GET Status's
-  `modelFacts`: recorded label/endpoint, calls, median generation tok/s,
-  measured sample count and recorded fallbacks. All model copies are shown;
-  facts wrap on a phone, no timer or new control. Changing shown pools drops
-  the old aggregate and loads Status again. The scope line names the
-  displayed pools and latest-500-record retention per user, not a complete
-  day's activity. No measured speed reads Unavailable; empty reads No retained
-  calls in the last 24 hours. Tooltips explain scope, pace and fallback
-  markers; no errors or retries are inferred), **Her name** (Name, 1–40 characters
+- **Administration**, for administrators: Status (`StatusSection` in
+  `Panel.tsx`: "Updated" time and a refresh icon button in its head, and it
+  re-reads Status, the sleep runs, memory counts and the Models page every
+  minute while visible and on focus; stale Debian systemd units with the
+  action to run `install.sh`, the server's network self-test, sleep time,
+  last sleep per shown pool from `GET …/sleep`, memory pages and notes from
+  `GET …/memory`, start unlocked; **Model hosts** from the shell's Models page,
+  each host's state word and Models' `GpuBlock`s; then **Model calls · last 24
+  hours**: `ModelCallFacts.tsx` draws from GET Status's `modelFacts` a facts
+  line, one legend, four Vega-Lite charts (calls and output tokens per hour,
+  speed per call, calls by task; drawn live by `charts.ts`'s `drawChart` with
+  a hover tip, hours on the user's own clock) and a row per offering ID with
+  calls, output, median generation and prompt tok/s and recorded fallbacks.
+  Series take the chart colours by label; past eight copies the least used are
+  Other. Changing shown pools drops the old aggregate and loads Status again.
+  The scope line names the displayed pools and latest-500-record retention
+  per user, not a complete day's activity. No measured speed reads — with a
+  "Not measured" tooltip; empty reads No retained calls in the last 24 hours.
+  Tooltips explain scope, pace and fallback markers; no errors or retries are
+  inferred), **Her name** (Name, 1–40 characters
   on one line, one Save disabled when invalid or unchanged; `PUT …/admin/name`,
   then her displayed name updates and the page re-reads `/api/state`), Users with the administrator flag,
   **Change password…** (the new password and the administrator's own, in
@@ -946,9 +954,9 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   (`unfoldTables` in `markdown.ts`; a code block is left as written). Raw HTML is
   skipped and links open in a new tab. `RichBlock.tsx` draws a ```` ```mermaid ````
   block (Mermaid, `securityLevel: "strict"`, SVG labels), a ```` ```vega-lite ````
-  block (Vega-Lite compiled to Vega, expressions interpreted by
-  `vega-interpreter`, a loader that refuses every URL, and a spec naming a URL
-  refused before it runs) and math (`remark-math` without single-dollar math;
+  block (`chartSvg` in `charts.ts`, which Status's charts share: Vega-Lite
+  compiled to Vega, expressions interpreted by `vega-interpreter`, a loader that
+  refuses every URL, and a spec naming a URL refused before it runs) and math (`remark-math` without single-dollar math;
   `mathMarks` turns `\( \)` and `\[ \]` into `$$`; KaTeX). Each library is its
   own chunk, loaded only when a message holds such a block, and the SVG is
   sanitized with DOMPurify before it is shown. The page's theme (`useTheme` in
