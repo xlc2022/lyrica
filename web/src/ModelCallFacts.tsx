@@ -1,22 +1,17 @@
 // Principles 1 and 8: Administration → Status draws what her models did from facts already recorded per call (docs/ux.md,
 // Recorded model activity): calls and output per hour, each call's speed, calls by task, and a row per model copy.
 import { useEffect, useRef, useState } from "react";
-import type { ModelCallFacts as Facts, Task } from "./api.ts";
+import type { ModelCallFacts as Facts } from "./api.ts";
 import { drawChart, SERIES, tokens } from "./charts.ts";
 import { shortModel } from "./ModelLabel.tsx";
+import { TASK_WORD } from "./ModelsFrame.tsx";
 import { tokenCount } from "./Project.tsx";
-import { TASK_LABELS } from "./Settings.tsx";
 import { timeZone, useTheme } from "./ui.tsx";
 
 const HOUR = 3_600_000;
 /** More copies than the categorical order holds: the busiest seven keep their colour, the rest are Other. */
 const MOST = 8;
 const OTHER = "Other";
-
-/** Each task as the Models page names it. */
-const TASK_NAMES: Record<Task, string> = {
-  ...TASK_LABELS, compaction: "Compaction", embedding: "Embeddings", "sleep.consolidate": "Sleep: consolidate", "sleep.dream": "Sleep: dream", "sleep.wake": "Sleep: wake", vision: "Look at images",
-};
 
 const SPEED_WHY = "Median recorded output tokens per second of generation, with positive output and at least 50 ms.";
 const PROMPT_WHY = "Median recorded prompt tokens read per second, before the first token.";
@@ -123,7 +118,7 @@ function speedSpec(series: Series[], facts: Facts, panel: string) {
   const { colour, ...b } = base(series, "Speed per call, in output tokens per second");
   const name = new Map(series.map((s) => [s.offeringId, s.name]));
   const h = hours(facts.until);
-  const values = facts.calls.filter((c) => c.tokPerSec !== undefined).map((c) => ({ at: wall(c.at), time: hhmm(wall(c.at)), model: name.get(c.offeringId) ?? OTHER, speed: c.tokPerSec, task: TASK_NAMES[c.task] ?? c.task }));
+  const values = facts.calls.filter((c) => c.tokPerSec !== undefined).map((c) => ({ at: wall(c.at), time: hhmm(wall(c.at)), model: name.get(c.offeringId) ?? OTHER, speed: c.tokPerSec, task: TASK_WORD[c.task] ?? c.task }));
   return {
     ...b, height: 140, data: { values },
     mark: { type: "point", filled: true, size: 64, opacity: 1, stroke: panel, strokeWidth: 1.5 },
@@ -141,7 +136,7 @@ function taskSpec(series: Series[], facts: Facts, panel: string) {
   const name = new Map(series.map((s) => [s.offeringId, s.name]));
   const rows = new Map<string, { task: string; model: string; calls: number }>();
   for (const c of facts.calls) {
-    const task = TASK_NAMES[c.task] ?? c.task, model = name.get(c.offeringId) ?? OTHER, key = `${task}\u0000${model}`;
+    const task = TASK_WORD[c.task] ?? c.task, model = name.get(c.offeringId) ?? OTHER, key = `${task}\u0000${model}`;
     rows.set(key, { task, model, calls: (rows.get(key)?.calls ?? 0) + 1 });
   }
   const tasks = new Set([...rows.values()].map((r) => r.task));
