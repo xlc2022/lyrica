@@ -46,6 +46,8 @@ export interface Starter {
   parts: { role: Role; slot?: string; source: string; repo: string; path: string; sha256: string; size?: number }[];
   loras: { file: string; strength: number }[];
   defaults: Record<string, string | number>;
+  /** Listed only on hosts that make images this way, when the other can't run it. */
+  backend?: "comfyui" | "sdcpp";
 }
 
 export const DEFAULT_KEYS = ["steps", "cfg", "sampler", "scheduler", "width", "height", "shift", "guidance", "negativePrompt", "scale", "maxSize", "colorMatch"];
@@ -161,7 +163,7 @@ export class RecipeBook {
       if (!["diffusion", "checkpoint", "upscaler"].includes(main.role) || used.has(main.file)) continue;
       const t = this.templateFor(main);
       if (!t) continue; // no template for its architecture: it stays a file
-      const starter = this.starters.find((s) => s.template === t.name);
+      const starter = this.starters.find((s) => s.template === t.name && !s.backend);
       const recipeParts: RecipePart[] = [{ role: main.role, slot: null, file: main.file, added: false }];
       if (main.role !== "checkpoint") {
         for (const spec of t.parts.filter((s) => s.role !== main.role)) {
@@ -339,11 +341,20 @@ export class RecipeBook {
       if (!file && !downloading(p)) toDownload.push(p);
       return { role: p.role, slot: p.slot ?? null, file: file ?? starterPath(p), added: false };
     });
+    // A scan may already have made a recipe from the starter's main file: that one becomes the starter's.
+    const main = parts.find((p) => p.role === "checkpoint" || p.role === "diffusion" || p.role === "upscaler")?.file;
+    const found = this.recipes.find((r) => !r.starter && !r.base && r.parts.some((p) => !p.added && p.file === main));
+    if (found?.state === "confirmed") {
+      found.starter = starter.id;
+      this.save();
+      return { recipe: found, toDownload: [] };
+    }
     const recipe: Recipe = {
-      id: randomUUID(), name: starter.name, state: "confirmed", arch: t.arch, template: t.name, does: t.does, useFor: "both",
+      id: found?.id ?? randomUUID(), name: starter.name, state: "confirmed", arch: t.arch, template: t.name, does: t.does, useFor: "both",
       parts, loras: [...starter.loras], defaults: { ...starter.defaults }, base: null, starter: starter.id,
     };
-    this.recipes.push(recipe);
+    if (found) this.recipes.splice(this.recipes.indexOf(found), 1, recipe);
+    else this.recipes.push(recipe);
     this.save();
     return { recipe, toDownload };
   }

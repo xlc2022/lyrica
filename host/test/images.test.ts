@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Comfy } from "../src/comfy.ts";
 import { Images, inputImage, recipeSize } from "../src/images.ts";
+import { ggufBytes } from "../src/gguf.ts";
 import { scanParts } from "../src/parts.ts";
 import { RecipeBook, loadStarters, type Recipe } from "../src/recipes.ts";
 import { Runtime } from "../src/runtime.ts";
@@ -57,6 +58,9 @@ describe("parts", () => {
       "a/sdxl_vae.safetensors": SDXL_VAE, "a/style.safetensors": Z_LORA, "a/flux-ckpt.safetensors": FLUX_CKPT, "a/clip_l.safetensors": CLIP_L,
       "a/t5.safetensors": T5, "a/seedvr2_ema_3b_fp16.safetensors": safetensors({ x: { dtype: "F16" } }), "a/ema_vae_fp16.safetensors": safetensors({ y: {} }),
       "a/krea2.safetensors": KREA2_DIFFUSION, "a/qwen3vl.safetensors": QWEN3VL, "a/krea2-style.safetensors": KREA2_LORA,
+      "a/krea2-q5.gguf": ggufBytes({ "general.architecture": "krea2", "general.file_type": 16 }),
+      "a/qwen3vl-4b.gguf": ggufBytes({ "general.architecture": "qwen3vl", "qwen3vl.embedding_length": 2560, "tokenizer.ggml.model": "gpt2", "general.file_type": 7 }),
+      "a/qwen3vl-8b.gguf": ggufBytes({ "general.architecture": "qwen3vl", "qwen3vl.embedding_length": 4096, "tokenizer.ggml.model": "gpt2" }),
     });
     const got = Object.fromEntries(scanParts(dir).map((p) => [p.file.slice(2), [p.role, p.slot, p.arch, p.precision]]));
     expect(got).toEqual({
@@ -73,6 +77,9 @@ describe("parts", () => {
       "krea2.safetensors": ["diffusion", null, "krea2", "bf16"],
       "qwen3vl.safetensors": ["text_encoder", "qwen3vl", "qwen3vl", "bf16"],
       "krea2-style.safetensors": ["lora", null, "krea2", "bf16"],
+      "krea2-q5.gguf": ["diffusion", null, "krea2", "Q5_K_S"],
+      // Qwen3-VL 4B is Krea 2's encoder; other text models aren't image parts.
+      "qwen3vl-4b.gguf": ["text_encoder", "qwen3vl", "qwen3vl", "Q8_0"],
       "z.safetensors": ["diffusion", null, "z-image", "bf16"],
     });
   });
@@ -170,6 +177,23 @@ describe("recipes", () => {
     }
     b.patch(id, { op: "defaults", defaults: { steps: 30, width: 768, sampler: "dpmpp_2m", colorMatch: "wavelet" } }, []);
     expect(b.get(id).defaults).toMatchObject({ steps: 30, width: 768, sampler: "dpmpp_2m" });
+  });
+
+  it("turns a recipe a scan made from a starter's files into the starter's, rather than adding a second", () => {
+    const dir = folder({ [`${Z}/diffusion_models/z_image_turbo_bf16.safetensors`]: Z_DIFFUSION, [`${Z}/text_encoders/qwen_3_4b.safetensors`]: QWEN3 });
+    const b = book();
+    b.propose(scanParts(dir));
+    const proposed = b.all()[0]!;
+    const starter = STARTERS.find((s) => s.id === "z-image-turbo")!;
+    const { recipe } = b.fromStarter(starter, () => null);
+    expect(b.all()).toHaveLength(1);
+    expect(recipe).toMatchObject({ id: proposed.id, name: "Z-Image Turbo", state: "confirmed", starter: "z-image-turbo" });
+    // One already in use is kept as it is, and counts as the starter's.
+    const c = book();
+    c.propose(scanParts(dir));
+    c.setState([c.all()[0]!.id], "confirmed");
+    expect(c.fromStarter(starter, () => null).recipe).toMatchObject({ name: "z image turbo bf16", starter: "z-image-turbo" });
+    expect(c.all()).toHaveLength(1);
   });
 
   it("fills a template with loaders, LoRAs and values, and nothing else", () => {
@@ -536,5 +560,13 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual(["flux-schnell", "krea2-turbo", "qwen-image-edit", "qwen-image", "sdxl", "seedvr2-3b", "seedvr2-7b", "z-image-turbo"]);
+  });
+
+  it("lists a starter for one backend only on hosts using it", async () => {
+    const comfy = await stack();
+    expect((await comfy.api("/host/v1/starters")).body.starters.map((st: { id: string }) => st.id)).not.toContain("krea2-turbo-q5");
+    expect((await comfy.api("/host/v1/starters/krea2-turbo-q5/install", { body: {} })).status).toBe(404);
+    const sd = await stack({ sdcpp: true });
+    expect((await sd.api("/host/v1/starters")).body.starters.map((st: { id: string }) => st.id)).toContain("krea2-turbo-q5");
   });
 });

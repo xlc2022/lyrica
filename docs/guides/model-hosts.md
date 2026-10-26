@@ -111,7 +111,10 @@ image GPU (`COMFY_GPU`) is one, ComfyUI isn't started and
 stable-diffusion.cpp, downloaded the same way (or built, 18 minutes),
 makes the images instead: create only, for Z-Image, Qwen-Image, Krea 2,
 FLUX and SDXL recipes without LoRAs. The first image after a
-load takes about 2.5 minutes while it converts the weights to Q8_0.
+load takes about 2.5 minutes while it converts the weights to Q8_0; a
+GGUF keeps its own quantisation. Krea 2 has its own starter there, Krea 2
+Turbo Q5 (GGUFs, about 13.4 GB), which fits the card's 16 GB: about 70
+seconds an image once loaded, 2.5 minutes cold.
 vLLM models can't run on the card, so dictation runs on whisper.cpp
 instead, with its own starter (large-v3-turbo q8_0). Voices run on it
 with an older cuDNN, so on such a host a Blackwell card can't run voices.
