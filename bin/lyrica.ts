@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  bootstrap, Keyring, MACHINE_LIMITS, MIN_READER, SCHEMA, parseHost, proxmoxAddress, PersonaStore, PRONOUN_PRESETS, pronounLabel, Users, wipePools, Workspace,
+  bootstrap, Keyring, MACHINE_LIMITS, MIN_READER, SCHEMA, parseHost, proxmoxAddress, PersonaStore, PRONOUN_PRESETS, pronounLabel, SystemdCredentials, Users, wipePools, Workspace,
   type MachineLimit, type Pool, type Profile, type Pronouns, type User,
 } from "@lyrica/core";
 import { AgentSessionRuntime, InteractiveMode } from "@earendil-works/pi-coding-agent";
@@ -21,6 +21,7 @@ const USAGE = `usage:
   lyrica admin user set-admin <login> on|off
   lyrica admin user passwd <login>
   lyrica admin user profile <login>
+  lyrica admin user remove <login>  (delete a user and all their data; lyricad stopped)
   lyrica admin grants add|remove --user <login> --pool general|private <path>
   lyrica admin grants list --user <login>
   lyrica admin ssh add --user <login> <name> <account>@<host>[:<port>] [--root <path>] [--pool general|private] [--limit ask|acceptEdits|auto]
@@ -152,6 +153,22 @@ async function admin(args: string[], home: string): Promise<void> {
     if ((await ask("Type wipe to go on: ")).trim() !== "wipe") throw new Error("nothing was wiped");
     const n = wipePools(keyring, users);
     console.log(`Wiped ${n} users' memory. Their thread files go when each is next unlocked.`);
+    return;
+  }
+  if (sub === "user" && action === "remove" && login) {
+    // A running lyricad has the user's threads open and their home mounted: it deletes from Administration instead.
+    if (existsSync(join(home, "lyricad.sock"))) throw new Error("lyricad is running: delete from Administration, Users, or stop it first (sudo systemctl stop lyricad).");
+    await keyring.unlockSelf(await ask("self.db passphrase: ", true));
+    const target = need(users, login);
+    const actor = await signIn(users, "Administrator login: ");
+    users.checkDelete(actor, target);
+    console.log(`${target.profile.displayName}'s login, threads, projects, memories, files, photos and settings are deleted. Threads they already shared stay with the people who accepted them. This can't be undone.`);
+    if ((await ask(`Type ${target.login} to go on: `)).trim() !== target.login) throw new Error("nothing was deleted");
+    users.deleteUser(actor, target);
+    keyring.credentials = new SystemdCredentials(join(home, "credentials"));
+    await keyring.dropSavedKey(target.id);
+    users.removeUserFiles(target.id);
+    console.log(`Deleted ${target.login}.`);
     return;
   }
   if (sub !== "user" && sub !== "grants" && sub !== "ssh" && sub !== "proxmox" && sub !== "net" && sub !== "models") throw new Error(USAGE);

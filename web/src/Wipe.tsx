@@ -9,9 +9,9 @@ import { Section, retryMinutes } from "./Panel.tsx";
 import type { ShellContext } from "./Shell.tsx";
 import { Dialog, ErrorText } from "./ui.tsx";
 
-const KIND: Record<WipeBusy["kind"], string> = { turn: "Reply", subagent: "Subagent", sleep: "Sleep" };
-const POOL = { general: "General", private: "Private" } as const;
-const POLL_MS = 1500;
+export const KIND: Record<WipeBusy["kind"], string> = { turn: "Reply", subagent: "Subagent", sleep: "Sleep" };
+export const POOL = { general: "General", private: "Private" } as const;
+export const POLL_MS = 1500;
 
 /** `mine`: Settings' wipe of the user's own memory; otherwise Administration's wipe of everyone's. */
 export function WipeSection({ ctx, mine }: { ctx: ShellContext; mine?: boolean }) {
