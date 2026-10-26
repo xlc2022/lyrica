@@ -579,7 +579,7 @@ function RejectedImages({ parts, env }: { parts: RejectedImage[]; env: Env }) {
       {open && (
         <div className="marker-body rejected-body">
           {left.map((p) => <MessageImages key={p.paths[0]} part={p} env={env} />)}
-          {gone > 0 && <p className="muted">{gone} deleted</p>}
+          {gone > 0 && <p className="muted"><span className="num">{gone}</span> deleted</p>}
         </div>
       )}
     </div>
