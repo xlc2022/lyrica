@@ -320,6 +320,8 @@ describe("image tool: asking after a few rejects", () => {
     turn();
     const seven = []; for (let i = 0; i < 7; i++) seven.push(await made());
     expect(texts(await call({ action: "reject", images: seven }))).not.toContain(ASK_INSTEAD);
+    // One rejected again doesn't count twice.
+    expect(texts(await call({ action: "reject", images: [seven[0]!] }))).not.toContain(ASK_INSTEAD);
     expect(texts(await call({ action: "reject", images: [await made()] }))).toContain(ASK_INSTEAD);
     turn();
     expect(texts(await call({ action: "reject", images: [await made()] }))).not.toContain(ASK_INSTEAD);

@@ -106,9 +106,9 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
     // A refusal ends image calls for the rest of the agent run (her turn): a reworded prompt would
     // spend more of a plan on what was just declined.
     let refused = false;
-    // Attempts rejected this turn: past a few, retrying is less use than asking (ASK_INSTEAD).
-    let rejects = 0;
-    pi.on("agent_start", () => { refused = false; rejects = 0; });
+    // Attempts rejected this turn, each once: past a few, retrying is less use than asking (ASK_INSTEAD).
+    const rejects = new Set<string>();
+    pi.on("agent_start", () => { refused = false; rejects.clear(); });
     pi.registerTool({
       name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat). Reject sets attempts aside in images/rejected/; pick shows the one you keep last; clear_rejected deletes the rejected ones for good.",
       promptSnippet: "create, edit or upscale images",
@@ -121,7 +121,8 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         if (refused) throw new Error(REFUSED_THIS_TURN);
         const result = await executeImage(o, id, p, signal, ctx);
         if ("imageRefusal" in result.details) refused = true;
-        if ("rejected" in result.details && (rejects += result.details.rejected?.length ?? 0) >= REJECTS_BEFORE_ASKING) {
+        if ("rejected" in result.details) for (const path of result.details.rejected ?? []) rejects.add(path);
+        if ("rejected" in result.details && rejects.size >= REJECTS_BEFORE_ASKING) {
           return { ...result, content: [...result.content, { type: "text" as const, text: ASK_INSTEAD }] };
         }
         return result;
