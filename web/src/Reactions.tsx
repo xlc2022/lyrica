@@ -77,4 +77,3 @@ export function ReactButton({ n, reactions, reactor }: { n: number; reactions: R
     </span>
   );
 }
-
