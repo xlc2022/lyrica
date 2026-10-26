@@ -477,7 +477,7 @@ function UsersSection({ ctx }: { ctx: ShellContext }) {
       {deleted && <p className="meta" role="status">{deleted} was deleted.</p>}
       <ul className="list">
         {(users.data ?? []).map((x) => (
-          <li key={x.id}>
+          <li key={x.id} className="user-row">
             <div className="row between">
               <span><b>{x.displayName}</b> <span className="muted">({x.login})</span></span>
               <Switch label="Administrator" checked={x.admin}

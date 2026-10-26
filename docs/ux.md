@@ -179,7 +179,7 @@ Rules:
   Edit, Upscale, Where, Local, Cloud, Other, ChatGPT Images, Other cloud models,
   Replace, Delete model…, Edit message, Resend, Steer now, Try <model>, Tokens, Input, Output, Cached, GPU time, By thread, Plan limit, Fall back, Waiting threads, Use <model> until then,
   All projects, Total, Code mode, Coding, Reset, Wipe memory…, Wipe memory,
-  Wipe my memory…, Wipe your memory?, Keep everyone's skills, Keep my skills, Your password, Stopping everything, Stopping your work, Everything has stopped, running, Reply, Subagent,
+  Wipe my memory…, Wipe your memory?, Keep everyone's skills, Keep my skills, Your password, Stopping everything, Stopping your work, Stopping <name>'s work, Everything has stopped, <name> was deleted., running, Reply, Subagent,
   Subagent status, Subagent wait, Subagent run stopped, Subagent models, Message to the <role>,
   Message to a subagent, Message to <title>, Message to a thread, Message to a forgotten thread,
   Read <title>, Read a thread, Read a forgotten thread,

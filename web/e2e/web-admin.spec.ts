@@ -1747,6 +1747,8 @@ test("Users: Delete user… asks for the box and the password, waits for their w
   await expect(row).toBeVisible();
   // Your own row has neither Change password… nor Delete user….
   await expect(page.locator("li").filter({ hasText: "(ada)" }).getByRole("button", { name: "Delete user…" })).toHaveCount(0);
+  for (const name of ["Change password…", "Delete user…"]) expect(await hitHeight(row.getByRole("button", { name }))).toBeGreaterThanOrEqual(page.viewportSize()!.width < 600 ? 44 : 30);
+  if (process.env.SCREENSHOTS) await row.screenshot({ path: `${process.env.SCREENSHOTS}/delete-user-row-${page.viewportSize()!.width}.png` });
   await row.getByRole("button", { name: "Delete user…" }).click();
   const dialog = page.getByRole("dialog", { name: "Delete Sam?" });
   const remove = dialog.getByRole("button", { name: "Delete user" });
