@@ -944,8 +944,9 @@ The content is one column in a centred block at most 960 px wide.
 Beneath the box the cards sit side by side (auto-fit, each at least 240 px) and
 stack when they don't fit. Each card has a plain h2 with its link on the right:
 **From sleep** with Sleep and shows new visible-pool items, each clamped to
-three lines, the Sleep page and Start a chat carrying the whole text (a
-Notifications row opens its own text in place), with Start a chat and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
+three lines with **Show more** under it opening the rest in place (as a
+Notifications row does; `ClampedText` in `src/ui.tsx` is the one place that
+measures), with Start a chat and Dismiss, private locks, or "Nothing she wants to raise." and the latest run's
 time in mono. **Notifications** has All <n> and "Nothing waiting." when
 empty. **Backend** has Models and lists each pool's first chat model, host,
 local/cloud chip and preset, then each model host's state as a dot and word.

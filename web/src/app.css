@@ -316,8 +316,10 @@ legend .source { font-weight: 400; text-transform: none; letter-spacing: normal;
 .cards .facts { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .cards .facts dd + dt { margin-top: 8px; }
 .cards .sleep-item .actions { justify-content: start; }
-/* A sleep item on the welcome card shows three lines; the Sleep page and Start a chat carry the whole text. */
-.cards .sleep-item .text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+/* A sleep item on the welcome card shows three lines and opens the rest in place, as a From sleep
+   row in Notifications does (docs/ux.md §6); the Sleep page still carries the whole text. */
+.cards .sleep-item .text:not([data-more]) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.cards .sleep-item .show-more { justify-self: start; font-size: 13px; }
 .cards .list > li.sleep-item { grid-template-columns: minmax(0, 1fr); }
 .cards .nrow.nopick { grid-template-columns: 20px minmax(0, 1fr); }
 .cards .nrow .actions { grid-column: 2; justify-content: start; }
@@ -1227,7 +1229,7 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
   .nrow .actions { grid-column: 2 / -1; justify-content: start; }
   .chip, .ntop select { min-height: 36px; }
 }
-@media (pointer: coarse) { .nrow.nsleep .show-more { min-height: var(--tap); } }
+@media (pointer: coarse) { .nrow.nsleep .show-more, .cards .sleep-item .show-more { min-height: var(--tap); } }
 
 /* Reactions (docs/ux.md §6): chips under a message; the React button beside the message menu; the quick row and the full picker as popovers. */
 .reactions { display: flex; flex-wrap: wrap; gap: 6px; }

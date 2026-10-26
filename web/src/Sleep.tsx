@@ -13,7 +13,7 @@ import { plainCitations, poolWord, wordDiff } from "./memory.ts";
 import { readable } from "./mentions.ts";
 import { go, href, idHref, type Route } from "./route.ts";
 import { PageHead, PoolLock, type ShellContext } from "./Shell.tsx";
-import { clock, ConfirmDialog, dateText, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
+import { ClampedText, clock, ConfirmDialog, dateText, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
 
 export interface SleepState {
   overview?: SleepOverview;
@@ -76,7 +76,8 @@ export function SleepCard({ ctx }: { ctx: ShellContext }) {
       <ErrorText error={ctx.sleep.error || error} />
       {o && (items.length ? <ul className="list sleep-items">{items.map((i) => (
         <li key={`${i.pool}/${i.id}`} className="sleep-item">
-          <div className="main-col"><span className="text">{i.pool === "private" && <span className="private" title="Private"><Icon name="lock" /><span className="sr-only">Private: </span></span>}{plain(i.text, users)}</span></div>
+          {/* Three lines until its own link opens the rest, as a From sleep row in Notifications does (§6). */}
+          <div className="main-col"><ClampedText className="text" text={plain(i.text, users)} prefix={i.pool === "private" ? <span className="private" title="Private"><Icon name="lock" /><span className="sr-only">Private: </span></span> : undefined} /></div>
           <div className="actions">
             <button type="button" className="sm" disabled={busy} onClick={() => void chat(i)}>Start a chat</button>
             <button type="button" className="sm" disabled={busy} onClick={() => void dismiss(i)}>Dismiss</button>

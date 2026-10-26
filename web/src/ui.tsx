@@ -1,5 +1,5 @@
 // Small pieces shared by every page.
-import { type MouseEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Markdown, { type Components, type Options } from "react-markdown";
 import { Icon } from "./icons.tsx";
@@ -78,6 +78,32 @@ export function useInView(anchor: React.RefObject<HTMLElement | null>, open: boo
     addEventListener("scroll", scrolled, true);
     return () => { seen.disconnect(); removeEventListener("resize", fit); removeEventListener("scroll", scrolled, true); };
   }, [anchor, open]);
+}
+
+/**
+ * Text clamped to three lines until its own link opens the rest in place (docs/ux.md §6): what a
+ * sleep item on the welcome page and a From sleep row in Notifications do, so reading one doesn't
+ * mean starting a chat. The link shows only while the clamp hides something, so it is measured when
+ * the text changes and whenever the width does; measuring is skipped while open, or opening would
+ * take the link away. The caller styles `.<its class>:not([data-more])` for the clamp.
+ */
+export function ClampedText({ className, text, prefix }: { className: string; text: string; prefix?: ReactNode }) {
+  const el = useRef<HTMLSpanElement>(null);
+  const [more, setMore] = useState(false);
+  const [clipped, setClipped] = useState(false);
+  useLayoutEffect(() => {
+    const node = el.current;
+    if (!node || more) return;
+    const measure = () => setClipped(node.scrollHeight > node.clientHeight + 1);
+    measure();
+    const watch = new ResizeObserver(measure);
+    watch.observe(node);
+    return () => watch.disconnect();
+  }, [more, text]);
+  return <>
+    <span ref={el} className={className} {...(more ? { "data-more": "" } : {})}>{prefix}{text}</span>
+    {clipped && <button type="button" className="link show-more" aria-expanded={more} onClick={() => setMore(!more)}>{more ? "Show less" : "Show more"}</button>}
+  </>;
 }
 
 /** Arrow keys move between a menu's items (WCAG 2.1.1); Home and End jump to the ends. Returns whether the key was taken. */
