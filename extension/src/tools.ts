@@ -2,7 +2,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { PoolView } from "@lyrica/core";
 import { Type } from "typebox";
-import { codeMemoryThread, formatHit, formatRead, keptFrom, search, type MemoryContext } from "./memory.ts";
+import { codeMemoryThread, formatHit, formatRead, keptFrom, nearCopy, sameText, search, type MemoryContext } from "./memory.ts";
 import { syncEntries } from "./record.ts";
 
 // The Memory component's model-facing tools: remember, recall, read_memory.
@@ -34,6 +34,7 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       "One fact per note. Save several notes in one remember call rather than one long note.",
       "In notes, write {user} for the person you're talking with, never their name, and {user:obj}, {user:poss}, {user:poss-pro}, {user:refl} for their pronouns. There is no subject pronoun form: write {user} where \"she\" or \"they\" would go.",
       "To correct a note, save the corrected fact with supersedes set to the old note's ID.",
+      "Progress on work in flight (a pull request's CI, a review round) lives where the work is. Note what it settled: the outcome, a decision, or a lesson, with supersedes set to notes it makes out of date.",
       "In notes, mention another conversation as [t:<id>] and a message in one as [e:<id>#<n>], never by its title: titles change, and the ID always shows the current one.",
     ],
     parameters: Type.Object({
@@ -48,8 +49,26 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       // The message that led here is in Pi's session but may not be stored yet.
       syncEntries(toolCtx.sessionManager, view.own, threadId);
       const source = view.own.lastEntry(threadId, ["user", "toolResult"])?.id;
-      const ids = view.own.addNotes(params.notes.map((n) => ({ ...n, source })), { author: "lyrica", thread: threadId });
-      return text(`Saved ${ids.join(", ")}.`);
+      // A note word for word like a current one is that note: not saved again. One that only reads much the same may
+      // change it ("spaces over tabs"), so it's saved, and she's shown the near match to set supersedes if it does.
+      const copies: string[] = [];
+      const similar: string[] = [];
+      const fresh = params.notes.filter((n) => {
+        if (n.supersedes?.length) return true;
+        const near = view.own.search(n.text, { kinds: ["note"], current: true, limit: 5 })
+          .map((h) => ({ id: h.id, text: view.own.get(h.id, { raw: true })?.text ?? "" })).filter((h) => nearCopy(n.text, h.text));
+        const same = near.find((h) => sameText(n.text, h.text));
+        if (same) copies.push(same.id);
+        else if (near[0]) similar.push(near[0].id);
+        return !same;
+      });
+      const ids = fresh.length ? view.own.addNotes(fresh.map((n) => ({ ...n, source })), { author: "lyrica", thread: threadId }) : [];
+      const list = (xs: string[]) => [...new Set(xs)].map((id) => `[${id}]`).join(", ");
+      return text([
+        ids.length ? `Saved ${ids.join(", ")}.` : "",
+        copies.length ? `Already noted, so not saved again: ${list(copies)}.` : "",
+        similar.length ? `Similar to ${list(similar)}: if a new note changes one, save it again with supersedes set to it.` : "",
+      ].filter(Boolean).join(" "));
     },
   });
 
