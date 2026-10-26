@@ -4,11 +4,11 @@ import "emoji-picker-element";
 import type { EmojiClickEvent } from "emoji-picker-element/shared";
 import dataUrl from "emoji-picker-element-data/en/emojibase/data.json?url";
 import { useEffect, useRef } from "react";
-import { usePickerTheme } from "./Reactions.tsx";
+import { useTheme } from "./ui.tsx";
 
 export default function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }) {
   const ref = useRef<HTMLElement>(null);
-  const theme = usePickerTheme();
+  const theme = useTheme();
   useEffect(() => {
     const el = ref.current;
     if (!el) return;

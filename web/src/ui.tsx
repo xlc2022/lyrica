@@ -1,12 +1,13 @@
 // Small pieces shared by every page.
 import { type MouseEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Markdown, { type Components } from "react-markdown";
-import { CodeBlock } from "./CodeBlock.tsx";
+import Markdown, { type Components, type Options } from "react-markdown";
 import { Icon } from "./icons.tsx";
 import remarkGfm from "remark-gfm";
 import { basename, fileTarget, InlineImage, Lightbox, rehypePaths, type FileLinks } from "./paths.tsx";
-import { unfoldTables } from "./tables.ts";
+import remarkMath from "remark-math";
+import { prepareMarkdown } from "./markdown.ts";
+import { RichCode, richPre } from "./RichBlock.tsx";
 import type { Display, Pool } from "./api.ts";
 
 /** Whether the display filters hide a pool. Hiding only changes what's shown. */
@@ -267,11 +268,16 @@ function jump(e: MouseEvent<HTMLAnchorElement>) {
   (e.currentTarget.closest(".prose") ?? document).querySelector(`[id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" });
 }
 const PLAIN = markdown(undefined, () => {});
-/** GitHub's Markdown: tables, task lists, strikethrough, footnotes and bare links (docs/ux.md §6, Tables in a message). */
-const GFM = [remarkGfm];
+/**
+ * GitHub's Markdown (tables, task lists, strikethrough, footnotes, bare links) and math between $$ marks, never a single
+ * $, which is a price far more often (docs/ux.md §6, Tables in a message; Diagrams, charts and math in a message).
+ */
+const REMARK: Options["remarkPlugins"] = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]];
+const PRE = { plain: richPre(false), copy: richPre(true) };
 
 /**
- * GitHub's Markdown with raw HTML skipped, a table written on one line put back on its lines; with `files`, the thread's paths are links and its images show. `onLarge` lets the
+ * GitHub's Markdown with raw HTML skipped, a table written on one line put back on its lines, and diagrams, charts and
+ * math drawn (RichBlock.tsx); with `files`, the thread's paths are links and its images show. `onLarge` lets the
  * caller hold the opened image: a message's prose is replaced when its stored copy arrives, which would close a
  * lightbox whose state lived here. `a` draws the links instead (a memory's titled citations). `copyCode` gives each
  * fenced block its language and Copy (a message's prose, docs/ux.md §6); the other pages' code blocks stay as they are.
@@ -279,11 +285,11 @@ const GFM = [remarkGfm];
 export function Prose({ text, files, onLarge, a, copyCode, skipImages }: { text: string; files?: FileLinks; onLarge?: (path: string) => void; a?: Components["a"]; copyCode?: boolean; /** Images of the thread's shown already, kept as links. */ skipImages?: ReadonlySet<string> }) {
   const [large, setLarge] = useState<string>();
   const open = onLarge ?? setLarge;
-  const components = useMemo(() => ({ ...(files ? markdown(files, open, skipImages) : PLAIN), ...(a ? { a } : {}), ...(copyCode ? { pre: CodeBlock } : {}) }), [files, open, a, copyCode, skipImages]);
+  const components = useMemo(() => ({ ...(files ? markdown(files, open, skipImages) : PLAIN), ...(a ? { a } : {}), code: RichCode, pre: copyCode ? PRE.copy : PRE.plain }), [files, open, a, copyCode, skipImages]);
   const plugins = useMemo(() => (files ? [rehypePaths(files)] : []), [files]);
   return (
     <>
-      <Markdown skipHtml components={components} remarkPlugins={GFM} rehypePlugins={plugins}>{unfoldTables(text)}</Markdown>
+      <Markdown skipHtml components={components} remarkPlugins={REMARK} rehypePlugins={plugins}>{prepareMarkdown(text)}</Markdown>
       {large && files && createPortal(<Lightbox path={large} url={files.url(large)} onClose={() => setLarge(undefined)} />, document.body)}
     </>
   );
@@ -384,4 +390,20 @@ export function useNow(): Date {
     return () => clearInterval(t);
   }, []);
   return now;
+}
+
+/** The page's theme, for what draws its own colours (the emoji picker, a diagram or chart in a message): the user's pick, else the system's. */
+export function useTheme(): "dark" | "light" {
+  // Light where there is no page (a message rendered to a string in a test).
+  const read = () => (typeof document !== "undefined" && (document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches)) ? "dark" : "light");
+  const [theme, setTheme] = useState<"dark" | "light">(read);
+  useEffect(() => {
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    const on = () => setTheme(read());
+    mq.addEventListener("change", on);
+    const mo = new MutationObserver(on);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => { mq.removeEventListener("change", on); mo.disconnect(); };
+  }, []);
+  return theme;
 }

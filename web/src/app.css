@@ -388,6 +388,20 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 /* A task list (docs/ux.md §6, Tables in a message): the box in the bullet's place, read-only. */
 .prose .contains-task-list { list-style: none; padding-left: 0; }
 .prose .contains-task-list input { margin: 0 6px 0 0; vertical-align: -1px; }
+/* A diagram or chart in a message (docs/ux.md §6, Diagrams, charts and math in a message): the code block's frame and
+   strip, Preview | Source beside Copy, the drawing on the panel's colour; a wide one scrolls sideways, never the page. */
+.prose figure.rich-block { margin: 1em 0; }
+.rich-block .code-head { justify-content: flex-start; padding-right: 4px; }
+.rich-block .seg { margin-left: auto; }
+.rich-block .seg button { min-height: 30px; }
+.rich-block .seg + .code-copy { margin-left: 0; }
+.rich-draw { background: var(--panel); border-top: 1px solid var(--line); padding: 12px; overflow-x: auto; text-align: center; }
+.rich-draw svg { max-width: 100%; max-height: 480px; height: auto; }
+.rich-error { margin: 0; padding: 0 12px 8px; font-size: 12px; color: var(--muted); }
+/* Math: display math centred on its own line, scrolling sideways when wide; inline math at the text's size. */
+.prose .math-display { margin: 0 0 10px; overflow-x: auto; overflow-y: hidden; text-align: center; }
+.prose pre.math-display { text-align: left; }
+.prose .katex { font-size: 1.05em; }
 .prose .footnotes { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); margin-top: 16px; padding-top: 6px; }
 .prose img { max-width: 100%; }
 /* The one indicator while a reply is being written (docs/ux.md §6): three muted dots fading in turn, after her last marker and never after text. */
@@ -678,7 +692,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .threads .trow { grid-template-columns: 32px minmax(0, 1fr); }
   button.icon-btn, button.icon.sm { width: 44px; height: 44px; min-height: 44px; }
   .head-actions button.sm { min-height: 44px; min-width: 44px; }
-  button.code-copy, button.copy-button { min-height: 44px; min-width: 44px; }
+  button.code-copy, button.copy-button, .rich-block .seg button { min-height: 44px; min-width: 44px; }
   .chips button { min-width: 44px; }
   .check input, .showing input { width: 22px; height: 22px; }
 }

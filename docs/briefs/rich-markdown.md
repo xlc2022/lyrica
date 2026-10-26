@@ -17,23 +17,22 @@ model that wrote a table on one line showed its pipes as text. Now:
 - Styles in `app.css` under `.prose`; docs/ux.md "Tables and other Markdown
   in a message".
 
-## Step 2: diagrams and charts (proposed, waits on the user's pick)
+## Step 2: diagrams, charts and math (the user picked all three)
 
-- **Diagrams:** a ` ```mermaid ` fence drawn by Mermaid (flowcharts,
-  sequence, state, Gantt, pie, timeline), `securityLevel: "strict"`, themed
-  from the app's tokens, loaded as its own chunk only when a message holds
-  one. The block keeps its strip with **Source** to see the text.
-- **Charts:** a ` ```vega-lite ` fence (JSON) drawn by Vega-Lite as SVG,
-  data inline only (no `url` data: a spec that names one is refused), its own
-  chunk. Models write Vega-Lite and Mermaid well without being taught.
-- **Math (optional):** `$…$` and `$$…$$` by KaTeX.
-- A block that fails to parse shows as its code block with a muted line
-  saying why; while it streams it stays a code block.
-- Her context gains one line naming the formats that render, so she uses
-  them (core context assembly, PR review).
+- `web/src/RichBlock.tsx`: a ` ```mermaid ` fence drawn by Mermaid (strict,
+  SVG labels), a ` ```vega-lite ` fence by Vega-Lite (interpreted
+  expressions, a loader refusing every URL, a spec naming one refused), math
+  by KaTeX. Each loads as its own chunk only when a message holds one; the SVG
+  is sanitized with DOMPurify. Preview | Source and Copy in the strip.
+- `web/src/markdown.ts`: `mathMarks` turns `\( \)` and `\[ \]` into `$$`;
+  `remark-math` runs without single-dollar math, since `$` is a price far
+  more often.
+- `FORMATS_LINE` in `extension/src/workspace.ts` tells her what renders.
+- docs/ux.md "Diagrams, charts and math in a message"; docs/web.md;
+  docs/workspace.md.
 
 ## Handoff
 
-Done: step 1 on `claude/project-thread-x5a8r2`. Next: the user's pick for
-step 2, then build it as a follow-up PR with UI review. Open: whether math is
-wanted.
+Done: step 1 (PR #576) and step 2. Next: nothing planned; watch whether she
+uses the formats well, and whether a chart needs more than inline data.
+Open: none.

@@ -621,6 +621,10 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
 - Another line (`LINK_LINE`), in every thread and the project chat, tells
   her a `/workspace` or `/shared` path is a link the person can open, and to
   link a file by its absolute path, never a relative one (docs/web.md, Chat).
+  The next (`FORMATS_LINE`) names what her messages render: GitHub's
+  Markdown with each table row on its own line, ```` ```mermaid ```` diagrams,
+  ```` ```vega-lite ```` charts with inline data, and `$$`, `\( \)` or `\[ \]`
+  math (docs/ux.md §6).
 - The `threads` tool refuses a message over 8,000 characters, and any
   message or task holding a long base64 run, pointing at her own folder
   instead (`checkWords`).

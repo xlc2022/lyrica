@@ -7,7 +7,7 @@ import type { ExecutionTarget, ThreadGitRepository, ThreadMachine, ThreadMcpServ
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { BASH_TIMEOUT_S, createDownloadsExtension, pageTool, createMcpServersExtension, createModelsExtension, filesFor, type DownloadsHost, createWorkspaceExtension, setToolsOff, toolsLine, type ApprovalRequest, type ModelsHost, type ServingProposal, type ThreadTools } from "../src/index.ts";
-import { BUILD_THERE, checkUnder, editArguments, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
+import { BUILD_THERE, checkUnder, editArguments, FORMATS_LINE, pathArguments, insertsOnly, LINK_LINE, READ_ONLY_CHAT, describe as describePrompt } from "../src/workspace.ts";
 import { testMcpServer } from "../../core/test/mcp-server.ts";
 import { freshKeyring, profile } from "../../core/test/helpers.ts";
 import { Users, Workspace } from "@lyrica/core";
@@ -848,12 +848,14 @@ describe("where she builds", () => {
     expect(chat).toContain(READ_ONLY_CHAT);
     expect(prompt(false)).not.toContain(READ_ONLY_CHAT);
   });
-  it("tells every thread, a project chat too, to link a file by its absolute path", () => {
+  it("tells every thread, a project chat too, to link a file by its absolute path and what its messages render", () => {
     const chat = describePrompt({
       settings: () => ({ grants: [], coordinates: true }), network: () => ({ internet: false, services: false, hosts: [] }),
     } as unknown as ThreadTools);
     expect(chat).toContain(LINK_LINE);
     expect(prompt(false)).toContain(LINK_LINE);
+    expect(chat).toContain(FORMATS_LINE);
+    expect(prompt(false)).toContain(FORMATS_LINE);
   });
 });
 
