@@ -36,6 +36,13 @@ describe("a table in a message", () => {
     expect(unfoldTables(text)).toBe(text);
   });
 
+  it("keeps a footnote's mark and its ↩ in the page", () => {
+    const html = render("A claim.[^1]\n\n[^1]: The source.");
+    expect(html).toMatch(/<a href="#user-content-fn-1"[^>]*>1<\/a>/);
+    expect(html).toContain('href="#user-content-fnref-1"');
+    expect(html).not.toContain("_blank");
+  });
+
   it("renders the other GitHub marks: task lists, strikethrough and bare links", () => {
     const html = render("- [x] done\n- [ ] not yet\n\n~~gone~~ see https://example.com");
     expect(html).toContain('type="checkbox"');

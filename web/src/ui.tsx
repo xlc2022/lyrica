@@ -1,5 +1,5 @@
 // Small pieces shared by every page.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Markdown, { type Components } from "react-markdown";
 import { CodeBlock } from "./CodeBlock.tsx";
@@ -241,6 +241,7 @@ function markdown(files: FileLinks | undefined, large: (path: string) => void, s
   return {
     a: ({ node: _, ...props }) => {
       if (props.href?.startsWith("#/")) return <a {...props} />;
+      if (props.href?.startsWith("#")) return <a {...props} onClick={jump} />;
       const file = files && fileTarget(props.href);
       // Mono only when the link's text is the path itself; words stay prose.
       const path = typeof props.children === "string" && props.children.startsWith("/");
@@ -255,6 +256,15 @@ function markdown(files: FileLinks | undefined, large: (path: string) => void, s
         : <a href={src} target="_blank" rel="noopener noreferrer">{alt || src}</a>;
     },
   };
+}
+/**
+ * An in-page link (a footnote's mark and its ↩) scrolls to its target in the same message: the hash is the app's
+ * route, and every message numbers its footnotes from 1.
+ */
+function jump(e: MouseEvent<HTMLAnchorElement>) {
+  e.preventDefault();
+  const id = decodeURIComponent(e.currentTarget.hash.slice(1));
+  (e.currentTarget.closest(".prose") ?? document).querySelector(`[id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" });
 }
 const PLAIN = markdown(undefined, () => {});
 /** GitHub's Markdown: tables, task lists, strikethrough, footnotes and bare links (docs/ux.md §6, Tables in a message). */
