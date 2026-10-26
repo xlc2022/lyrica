@@ -1,0 +1,35 @@
+{
+  "name": "Qwen-Image 2.1 Turbo",
+  "template": "qwen-image-2.1-edit",
+  "parts": [
+    {
+      "role": "diffusion",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Qwen-Image-2.1",
+      "path": "diffusion_models/qwen_image_2.1_turbo_bf16.safetensors",
+      "sha256": ""
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3vl_8b",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Qwen-Image-2.1",
+      "path": "text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+      "sha256": ""
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Qwen-Image-2.1",
+      "path": "vae/qwen_image_2.1_vae_bf16.safetensors",
+      "sha256": ""
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "cfg": 1,
+    "sampler": "euler",
+    "resolution": 1024,
+    "sigmas": "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0"
+  }
+}

@@ -35,9 +35,9 @@ export const ROLE_WORD: Record<Role, string> = {
 };
 /** A role inside a sentence: "text encoder", but "VAE" and "LoRA" as they are. */
 export const roleWord = (r: Role) => (r === "vae" || r === "lora" ? ROLE_WORD[r] : ROLE_WORD[r].toLowerCase());
-const SLOT_WORD: Record<string, string> = { clip_l: "CLIP-L", clip_g: "CLIP-G", t5: "T5", "qwen2.5vl": "Qwen2.5-VL", qwen3: "Qwen3", qwen3vl: "Qwen3-VL" };
+const SLOT_WORD: Record<string, string> = { clip_l: "CLIP-L", clip_g: "CLIP-G", t5: "T5", "qwen2.5vl": "Qwen2.5-VL", qwen3: "Qwen3", qwen3vl: "Qwen3-VL", qwen3vl_8b: "Qwen3-VL 8B" };
 export const slotWord = (s: string) => SLOT_WORD[s] ?? s;
-const ARCH_WORD: Record<string, string> = { sdxl: "SDXL", flux: "FLUX", "z-image": "Z-Image", "qwen-image": "Qwen-Image", krea2: "Krea 2", seedvr2: "SeedVR2" };
+const ARCH_WORD: Record<string, string> = { sdxl: "SDXL", flux: "FLUX", "z-image": "Z-Image", "qwen-image": "Qwen-Image", "qwen-image-2.1": "Qwen-Image 2.1", krea2: "Krea 2", seedvr2: "SeedVR2" };
 export const archWord = (a: string) => ARCH_WORD[a] ?? a;
 export const precisionWord = (p: string | null) => (p ? p.toUpperCase() : "");
 export const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);

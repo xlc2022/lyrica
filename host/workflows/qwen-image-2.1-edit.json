@@ -1,0 +1,181 @@
+{
+  "arch": "qwen-image-2.1",
+  "does": [
+    "edit"
+  ],
+  "checkpoint": false,
+  "clipType": "qwen_image",
+  "parts": [
+    {
+      "role": "diffusion",
+      "arch": [
+        "qwen-image-2.1"
+      ]
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3vl_8b"
+    },
+    {
+      "role": "vae",
+      "arch": [
+        "qwen-image-2.1"
+      ]
+    }
+  ],
+  "references": 3,
+  "mask": false,
+  "workflow": {
+    "load": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "$image"
+      }
+    },
+    "ref1": {
+      "_if": "reference1",
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "$reference1"
+      }
+    },
+    "ref2": {
+      "_if": "reference2",
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "$reference2"
+      }
+    },
+    "ref3": {
+      "_if": "reference3",
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "$reference3"
+      }
+    },
+    "encode": {
+      "class_type": "TextEncodeQwenImage21",
+      "inputs": {
+        "clip": "$clip",
+        "prompt": "$prompt",
+        "negative_prompt": "$negativePrompt",
+        "vae": "$vae",
+        "resolution": "$resolution",
+        "images.image_1": [
+          "load",
+          0
+        ],
+        "images.image_2": [
+          "ref1",
+          0
+        ],
+        "images.image_3": [
+          "ref2",
+          0
+        ],
+        "images.image_4": [
+          "ref3",
+          0
+        ]
+      }
+    },
+    "cache": {
+      "class_type": "QwenImage21Cache",
+      "inputs": {
+        "model": "$model",
+        "device": "auto",
+        "dtype": "default"
+      }
+    },
+    "guider": {
+      "class_type": "CFGGuider",
+      "inputs": {
+        "model": [
+          "cache",
+          0
+        ],
+        "positive": [
+          "encode",
+          0
+        ],
+        "negative": [
+          "encode",
+          1
+        ],
+        "cfg": "$cfg"
+      }
+    },
+    "noise": {
+      "class_type": "RandomNoise",
+      "inputs": {
+        "noise_seed": "$seed"
+      }
+    },
+    "sampler": {
+      "class_type": "KSamplerSelect",
+      "inputs": {
+        "sampler_name": "$sampler"
+      }
+    },
+    "sigmas": {
+      "class_type": "ManualSigmas",
+      "inputs": {
+        "sigmas": "$sigmas"
+      }
+    },
+    "batch": {
+      "class_type": "RepeatLatentBatch",
+      "inputs": {
+        "samples": [
+          "encode",
+          2
+        ],
+        "amount": "$count"
+      }
+    },
+    "sample": {
+      "class_type": "SamplerCustomAdvanced",
+      "inputs": {
+        "noise": [
+          "noise",
+          0
+        ],
+        "guider": [
+          "guider",
+          0
+        ],
+        "sampler": [
+          "sampler",
+          0
+        ],
+        "sigmas": [
+          "sigmas",
+          0
+        ],
+        "latent_image": [
+          "batch",
+          0
+        ]
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "save": {
+      "class_type": "SaveImageWebsocket",
+      "inputs": {
+        "images": [
+          "decode",
+          0
+        ]
+      }
+    }
+  }
+}
