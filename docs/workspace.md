@@ -635,7 +635,10 @@ The `image` tool creates, edits and upscales through the thread's model router.
 It names inputs by workspace path: uploads, earlier results or granted files.
 Reject, pick and clear_rejected sort her attempts (below, "Rejected attempts").
 Create takes a prompt, fast or quality, optional size or `width:height` aspect
-ratio, count and references. Edit takes an image path, instruction, optional
+ratio, count and references; her guidelines say to write the prompt as one
+detailed paragraph (subject and action, then setting, light, framing and
+medium), to keep to what was asked and to ask for text in the image only
+when wanted. Edit takes an image path, instruction, optional
 mask and references; the instruction gives the change and what stays the
 same, calling the edited image image 1 and references image 2 and on, and
 her guidelines say to look at the image first and to check faces, hands

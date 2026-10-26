@@ -1,11 +1,16 @@
-# Better local image edits
+# Better local image edits and images
 
 The owner's report (2026-10-26): her image edits are very poor, with bad
 anatomy and either poor prompt adherence or poor prompting. A read-only
 check of the dev deployment found that private and local-only threads
 send edits to the **Qwen-Image-Edit 2509** starter on a ComfyUI host
 (general threads use ChatGPT Images). That model dates from September
-2025, and our workflow for it differs from ComfyUI's own template.
+2025, and our workflow for it differs from ComfyUI's own template. The
+owner then asked for every image workflow to be compared with best
+practice: the graphs for Z-Image, Krea 2, FLUX schnell and SeedVR2 match
+ComfyUI's templates; her create prompts get no guidance, though ComfyUI's
+Krea 2 template expands a prompt into a detailed paragraph first; and the
+Qwen-Image and SDXL starters send an empty negative prompt.
 
 ## What changes
 
@@ -17,11 +22,13 @@ send edits to the **Qwen-Image-Edit 2509** starter on a ComfyUI host
    to both the positive and negative encoders at their own size (the
    encoder scales them). Its starter's settings stay as they are: 20 steps,
    CFG 2.5.
-2. **A Qwen-Image 2.1 Turbo edit starter.** Qwen-Image 2.1 (September
-   2026) edits from one checkpoint with better anatomy and prompt
-   adherence; Turbo is its 8-step version. The new `qwen-image-2.1-edit`
-   template follows ComfyUI's `image_qwen_image_2_1_turbo_image_edit`
-   with its prompt enhancer off: `TextEncodeQwenImage21` (the image, up to
+2. **A Qwen-Image 2.1 Turbo starter.** Qwen-Image 2.1 (September
+   2026) creates and edits from one checkpoint with better anatomy and
+   prompt adherence; Turbo is its 8-step version. The new `qwen-image-2.1`
+   template does both, following ComfyUI's
+   `image_qwen_image_2_1_turbo_t2i` and `…_turbo_image_edit` with their
+   prompt enhancers off: an edit's canvas comes from the image, a create's
+   from width and height; `TextEncodeQwenImage21` (the image, up to
    three references, a 1024-pixel budget), `QwenImage21Cache`, a CFG 1
    guider and the Turbo's fixed 8-step sigmas, which live in the starter's
    defaults. The starter takes the bf16 diffusion model (14.2 GB), the
@@ -29,13 +36,21 @@ send edits to the **Qwen-Image-Edit 2509** starter on a ComfyUI host
    Comfy-Org/Qwen-Image-2.1. Scanning tells the 2.1 diffusion model,
    its VAE (Wan 2.2 layout, 64 latent channels) and the 8B encoder
    (`qwen3vl_8b` slot, apart from Krea 2's 4B) from the older ones. It
-   edits only; sd.cpp hosts can't run it. Its weights are under the Qwen
+   doesn't run on sd.cpp hosts. Its weights are under the Qwen
    Research License (non-commercial: research and evaluation only); the
    guides say so, and the operator who installs it takes that on.
    It takes no mask, so a host's recipe listing now says `mask` (from its
    template) and the router skips a recipe without one for a masked edit,
    going on down the Image edits list.
-3. **Her edit instructions.** The tool tells her to give the one change
+3. **Starter settings from ComfyUI's templates.** Qwen-Image takes CFG 4
+   and the template's negative prompt (low resolution, deformed limbs and
+   fingers, oversaturation, a waxy look); SDXL takes the template's
+   negative (blur, bad anatomy, extra limbs, watermark). Recipes already
+   installed keep their own defaults.
+4. **Her create prompts.** The tool asks for one detailed paragraph:
+   subject and action, then setting, light, framing and medium, keeping to
+   what was asked, with text in the image only when wanted.
+5. **Her edit instructions.** The tool tells her to give the one change
    and what must stay the same (face, body, pose, framing, light), to call
    the edited image image 1 and references image 2 and so on, and to check
    faces, hands and limbs against the source before showing a result.

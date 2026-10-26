@@ -1,6 +1,6 @@
 {
   "name": "Qwen-Image 2.1 Turbo",
-  "template": "qwen-image-2.1-edit",
+  "template": "qwen-image-2.1",
   "parts": [
     {
       "role": "diffusion",
@@ -32,6 +32,8 @@
   "defaults": {
     "cfg": 1,
     "sampler": "euler",
+    "width": 1024,
+    "height": 1024,
     "resolution": 1024,
     "sigmas": "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0"
   }

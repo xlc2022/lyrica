@@ -1,6 +1,7 @@
 {
   "arch": "qwen-image-2.1",
   "does": [
+    "create",
     "edit"
   ],
   "checkpoint": false,
@@ -30,7 +31,8 @@
       "class_type": "LoadImage",
       "inputs": {
         "image": "$image"
-      }
+      },
+      "_if": "image"
     },
     "ref1": {
       "_if": "reference1",
@@ -124,6 +126,7 @@
       }
     },
     "batch": {
+      "_if": "image",
       "class_type": "RepeatLatentBatch",
       "inputs": {
         "samples": [
@@ -131,6 +134,14 @@
           2
         ],
         "amount": "$count"
+      }
+    },
+    "canvas": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "width": "$width",
+        "height": "$height",
+        "batch_size": "$count"
       }
     },
     "sample": {
@@ -152,10 +163,18 @@
           "sigmas",
           0
         ],
-        "latent_image": [
-          "batch",
-          0
-        ]
+        "latent_image": {
+          "$pick": [
+            [
+              "batch",
+              0
+            ],
+            [
+              "canvas",
+              0
+            ]
+          ]
+        }
       }
     },
     "decode": {

@@ -685,8 +685,9 @@ as `{ "parts": [...] }`, each entry like this:
 - Architectures with templates: `sdxl` and `flux` (a checkpoint, or
   diffusion model, encoders and VAE), `z-image`, `krea2` (create),
   `qwen-image` (create, and edit for a diffusion model whose file name
-  says "edit"), `qwen-image-2.1` (edit, with the Turbo's 8-step schedule
-  from the recipe's defaults) and `seedvr2` (upscale).
+  says "edit"), `qwen-image-2.1` (create and edit from one recipe, with
+  the Turbo's 8-step schedule from the recipe's defaults) and `seedvr2`
+  (upscale).
 
 ### Recipes
 

@@ -234,7 +234,18 @@ describe("recipes", () => {
     expect(edit.scaled!.class_type).toBe("FluxKontextImageScale");
 
     const starter = STARTERS.find((s) => s.id === "qwen-image-2.1-turbo")!;
-    const qi21 = fill(TEMPLATES.get("qwen-image-2.1-edit")!, [
+    const qi21Parts = [
+      { role: "diffusion" as const, slot: null, file: "q.safetensors", added: false },
+      { role: "text_encoder" as const, slot: "qwen3vl_8b", file: "vl.safetensors", added: false },
+      { role: "vae" as const, slot: null, file: "v.safetensors", added: false },
+    ];
+    // One template creates on a new canvas and edits on the image's own.
+    const qi21New = fill(TEMPLATES.get("qwen-image-2.1")!, qi21Parts, [], { negativePrompt: "", ...starter.defaults, prompt: "x", count: 1, seed: 1 });
+    expect(qi21New.sample!.inputs.latent_image).toEqual(["canvas", 0]);
+    expect(Object.keys(qi21New)).not.toContain("load");
+    expect(qi21New.encode!.inputs).not.toHaveProperty("images.image_1");
+    expect(JSON.stringify(qi21New)).not.toContain("$");
+    const qi21 = fill(TEMPLATES.get("qwen-image-2.1")!, [
       { role: "diffusion", slot: null, file: "q.safetensors", added: false },
       { role: "text_encoder", slot: "qwen3vl_8b", file: "vl.safetensors", added: false },
       { role: "vae", slot: null, file: "v.safetensors", added: false },
@@ -244,6 +255,7 @@ describe("recipes", () => {
     expect(qi21.encode!.inputs).not.toHaveProperty("images.image_3");
     expect(qi21.sigmas!.inputs.sigmas).toMatch(/^1\.0, .*, 0$/);
     expect(qi21.batch!.inputs).toEqual({ samples: ["encode", 2], amount: 2 });
+    expect(qi21.sample!.inputs.latent_image).toEqual(["batch", 0]);
     expect(JSON.stringify(qi21)).not.toContain("$");
 
     const krea = fill(TEMPLATES.get("krea2")!, [
