@@ -136,7 +136,8 @@ function collect(d: Lyricad, user: User, show: Api.Display): Api.Notification[] 
         if (i.thread || i.kind === "persona") continue;
         const path = `${u}/sleep/${pool}/items/${encodeURIComponent(i.id)}`;
         out.push({
-          id: `sleep:${i.id}`, type: "sleep", title: i.text.length > DETAIL ? `${i.text.slice(0, DETAIL - 1)}…` : i.text,
+          // The whole text: the row clamps it and opens in place, so nothing is lost before it gets there.
+          id: `sleep:${i.id}`, type: "sleep", title: i.text,
           detail: i.kind === "question" ? "A question from sleep" : "Something from sleep",
           scope: pool, decision: true, at: i.createdAt,
           actions: [{ label: "Start a chat", method: "POST", path: `${path}/chat`, opens: true }, { label: "Dismiss", method: "DELETE", path }],
