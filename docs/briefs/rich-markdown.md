@@ -5,14 +5,14 @@ table, a diagram or a chart should read as one, not as raw marks. The
 renderer stays local: nothing it draws calls the network or runs a script the
 page didn't ship (the privacy and cloud boundaries).
 
-## Step 1: GitHub's Markdown (this PR)
+## Step 1: GitHub's Markdown (PR #576)
 
 Before it, `Prose` ran plain CommonMark, so no table rendered at all, and a
 model that wrote a table on one line showed its pipes as text. Now:
 
 - `remark-gfm` in `Prose` (`web/src/ui.tsx`): tables, task lists,
   strikethrough, footnotes, bare links, everywhere Markdown renders.
-- `unfoldTables` (`web/src/tables.ts`) puts a one-line table back on its rows
+- `unfoldTables` (`web/src/markdown.ts`) puts a one-line table back on its rows
   before parsing; fenced code is left as written.
 - Styles in `app.css` under `.prose`; docs/ux.md "Tables and other Markdown
   in a message".
@@ -33,6 +33,6 @@ model that wrote a table on one line showed its pipes as text. Now:
 
 ## Handoff
 
-Done: step 1 (PR #576) and step 2. Next: nothing planned; watch whether she
+Done: step 1 (PR #576) and step 2 (PR #577). Next: nothing planned; watch whether she
 uses the formats well, and whether a chart needs more than inline data.
 Open: none.
