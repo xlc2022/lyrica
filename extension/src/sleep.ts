@@ -481,7 +481,7 @@ export function sleepTools(phase: SleepPhase, s: SleepTools): ExtensionFactory {
       pi.registerTool({
         name: "supersede",
         label: "Supersede",
-        description: "Mark older notes as replaced by a newer note that is already saved: a rule, plan or status that has since changed, a duplicate, or step-by-step notes on finished work folded into one. They stay readable and citable; pages citing them come up for a rewrite.",
+        description: "Mark older notes as replaced by a newer note that is already saved: a rule, plan or status that has since changed, a duplicate, or step-by-step notes on finished work folded into one. They stay readable, and notes can still cite them; pages cite the newer note, so pages citing them come up for a rewrite.",
         promptSnippet: "mark notes replaced by a newer one",
         parameters: Type.Object({
           notes: Type.Array(Type.String(), { minItems: 1, description: "The older notes' IDs." }),

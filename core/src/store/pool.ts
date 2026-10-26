@@ -10,10 +10,10 @@ import type { Interface, Pool } from "../types.ts";
 import { askOfCall, isQuestionCall, type Ask, FROM_PARENT, ROUTINE, WAKEUP, WATCHING, type ThreadStep } from "../threads.ts";
 import { citationsIn, ftsQuery, holdsEnough, indexText, kindOf, queryTerms, queryWords, searchWords, snippet, stripCitations, withoutWords, type Kind } from "./refs.ts";
 
-/** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
 /** A user-role entry lyricad wrote: a message from another of her threads (a parent's or sibling's), a watch, a wake-up or a routine. Hers, not the person's. */
 const isMarked = (text: string) => [FROM_PARENT, WATCHING, WAKEUP, ROUTINE].some((m) => m.test(text));
 
+/** Who made a change. Thread views write as `lyrica` or `sleep`; the owner view as `user:<id>`. */
 export type Author = "lyrica" | "sleep" | `user:${string}`;
 export type Origin = "lyrica" | "sleep" | "user";
 

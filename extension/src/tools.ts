@@ -2,7 +2,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { PoolView } from "@lyrica/core";
 import { Type } from "typebox";
-import { codeMemoryThread, formatHit, formatRead, keptFrom, nearCopy, search, type MemoryContext } from "./memory.ts";
+import { codeMemoryThread, formatHit, formatRead, keptFrom, nearCopy, sameText, search, type MemoryContext } from "./memory.ts";
 import { syncEntries } from "./record.ts";
 
 // The Memory component's model-facing tools: remember, recall, read_memory.
@@ -49,17 +49,26 @@ export function registerMemoryTools(pi: ExtensionAPI, view: PoolView, ctx: () =>
       // The message that led here is in Pi's session but may not be stored yet.
       syncEntries(toolCtx.sessionManager, view.own, threadId);
       const source = view.own.lastEntry(threadId, ["user", "toolResult"])?.id;
-      // A note that says what a current note already says is that note: say so instead of saving a copy.
+      // A note word for word like a current one is that note: not saved again. One that only reads much the same may
+      // change it ("spaces over tabs"), so it's saved, and she's shown the near match to set supersedes if it does.
       const copies: string[] = [];
+      const similar: string[] = [];
       const fresh = params.notes.filter((n) => {
-        const same = n.supersedes?.length ? undefined : view.own.search(n.text, { kinds: ["note"], current: true, limit: 5 })
-          .find((h) => nearCopy(n.text, view.own.get(h.id, { raw: true })?.text ?? ""));
+        if (n.supersedes?.length) return true;
+        const near = view.own.search(n.text, { kinds: ["note"], current: true, limit: 5 })
+          .map((h) => ({ id: h.id, text: view.own.get(h.id, { raw: true })?.text ?? "" })).filter((h) => nearCopy(n.text, h.text));
+        const same = near.find((h) => sameText(n.text, h.text));
         if (same) copies.push(same.id);
+        else if (near[0]) similar.push(near[0].id);
         return !same;
       });
       const ids = fresh.length ? view.own.addNotes(fresh.map((n) => ({ ...n, source })), { author: "lyrica", thread: threadId }) : [];
-      const already = copies.length ? `${ids.length ? " " : ""}Already noted, so not saved again: ${[...new Set(copies)].map((id) => `[${id}]`).join(", ")}.` : "";
-      return text(`${ids.length ? `Saved ${ids.join(", ")}.` : ""}${already}`);
+      const list = (xs: string[]) => [...new Set(xs)].map((id) => `[${id}]`).join(", ");
+      return text([
+        ids.length ? `Saved ${ids.join(", ")}.` : "",
+        copies.length ? `Already noted, so not saved again: ${list(copies)}.` : "",
+        similar.length ? `Similar to ${list(similar)}: if a new note changes one, save it again with supersedes set to it.` : "",
+      ].filter(Boolean).join(" "));
     },
   });
 

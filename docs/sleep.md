@@ -56,8 +56,9 @@ working implementation (`config/extensions/stateful-memory/memory-sleep.js`).
    older notes replaced by it. She also folds near-duplicates, and the
    step-by-step notes on finished work (a pull request's status lines) into
    one note with the outcome and what was learned. Superseding deletes
-   nothing and leaves no tombstone: the old notes stay readable and citable,
-   leave automatic recall, and flag the pages citing them. `write_page`
+   nothing and leaves no tombstone: the old notes stay readable, notes can
+   still cite them, they leave automatic recall, and the pages citing them
+   are flagged. `write_page`
    refuses to cite a superseded note and names the note that replaced it.
    After a complete run, sleep removes superseded notes that nothing but
    their replacement cites, two weeks after the replacement was written

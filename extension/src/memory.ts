@@ -44,6 +44,13 @@ const RECALL_HITS = 5;
 const RECALL_WORDS = 2;
 
 const words = (t: string) => new Set(t.toLowerCase().replace(/\[[^\]]*\]/g, " ").replace(/\{user[^}]*\}/g, " user ").match(/[\p{L}\p{N}]+/gu) ?? []);
+/** Two notes are the same words, ignoring case, citations and spacing. */
+export function sameText(a: string, b: string): boolean {
+  // A stored mention token and a written {user} are the same person.
+  const norm = (t: string) => t.toLowerCase().replace(/\[\[u:[^\]]*\]\]|\{user[^}]*\}/g, " user ").replace(/\[[^\]]*\]/g, " ").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  return norm(a) === norm(b);
+}
+
 /** Two notes say the same thing: most of their words are shared. */
 export function nearCopy(a: string, b: string): boolean {
   const x = words(a), y = words(b);
