@@ -19,6 +19,6 @@
     "scheduler": "karras",
     "width": 1024,
     "height": 1024,
-    "negativePrompt": ""
+    "negativePrompt": "lowres, blurry, out of focus, deformed, bad anatomy, extra limbs, mutated, watermark, text, logo, signature"
   }
 }

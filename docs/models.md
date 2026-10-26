@@ -532,6 +532,9 @@ other tier on every attempt. Absent means both. Cloud offerings store
 `useFor`, `image` and `edit` in the existing `offerings.hand` JSON, set
 through `addModel` or `setCapabilities`; shared offerings live in self.db,
 personal ones in user.db. No schema step. Edit and upscale keep their lists.
+A host recipe that edits keeps its listing's `mask` in the offering's
+discovered facts; a masked edit skips one whose `mask` is false (one
+discovered before hosts said so is tried).
 
 A create request has `prompt`, `tier` (`fast` or `quality`), optional
 `size: { width, height }`, `count` and `references`. Edit takes `prompt`,

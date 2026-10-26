@@ -27,11 +27,11 @@ const path = (description: string) => Type.Optional(Type.String({ description })
  */
 export const imageParameters = Type.Object({
   action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected"] as const),
-  prompt: Type.Optional(Type.String({ description: "For create: what to draw." })),
+  prompt: Type.Optional(Type.String({ description: "For create: what to draw, as one detailed paragraph." })),
   tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality." })),
   image: path("For edit, upscale and pick: the image's path."),
   images: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For reject: the attempts to set aside." })),
-  instruction: Type.Optional(Type.String({ description: "For edit: what to change." })),
+  instruction: Type.Optional(Type.String({ description: "For edit: the change, and what stays the same. The edited image is image 1; references are image 2 and on." })),
   mask: path("For edit: a mask image's path."),
   references: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For create and edit: reference images' paths." })),
   count: Type.Optional(Type.Integer({ minimum: 1, maximum: 4, description: "For create and edit: how many images." })),
@@ -115,7 +115,10 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
       promptGuidelines: ["Write prompts from the conversation; inspect results and retry if needed.",
         "Before retrying, reject the attempts that miss; the chat folds them away. If an earlier attempt is best, pick it.",
         "Use clear_rejected only when they ask to delete this thread's rejected images.",
-        "Draw exact layouts and diagrams as HTML, SVG or Mermaid."],
+        "Draw exact layouts and diagrams as HTML, SVG or Mermaid.",
+        "For create, describe the subject and what it does, then setting, light, framing and medium (photo, painting, sketch); keep to what they asked, and ask for text in the image only when they want it, quoted.",
+        "For an edit, look at the image first; name the one change plainly and say what stays (face, body, pose, framing, light).",
+        "Check faces, hands and limbs in a result against the source; reject one that gets them wrong."],
       parameters: imageParameters,
       async execute(id, p, signal, _update, ctx) {
         if (refused) throw new Error(REFUSED_THIS_TURN);

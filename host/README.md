@@ -228,7 +228,9 @@ per host, and Lyrica's router filters create tiers by it.
   stable-diffusion.cpp.
   Krea 2 Turbo's weights are under the Krea 2 Community License, which
   requires content filtering wherever it runs; the host filters nothing,
-  so the operator who installs it sets that up.
+  so the operator who installs it sets that up. Qwen-Image 2.1 Turbo's
+  weights are under the Qwen Research License (research and evaluation
+  only, no commercial use without Qwen's separate licence).
 - **Scanning** reads each safetensors header (tensor names only) to tell a
   part's role, slot, architecture and precision, and proposes recipes from
   matching parts (GGUFs by their metadata; a text model's GGUF is not a

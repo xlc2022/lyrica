@@ -31,11 +31,12 @@
   "loras": [],
   "defaults": {
     "steps": 20,
-    "cfg": 2.5,
+    "cfg": 4,
     "sampler": "euler",
     "scheduler": "simple",
     "width": 1328,
     "height": 1328,
-    "shift": 3.1
+    "shift": 3.1,
+    "negativePrompt": "低分辨率，低画质，肢体畸形，手指畸形，画面过饱和，蜡像感，人脸无细节，过度光滑，画面具有AI感。构图混乱。文字模糊，扭曲"
   }
 }

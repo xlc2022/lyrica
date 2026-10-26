@@ -9,7 +9,7 @@ export async function fakeImages() {
   const models = new Models(keyring, users);
   const hostFetches = new Map<string, typeof fetch>();
   vi.spyOn(models, "fetchFor").mockImplementation(ep => hostFetches.get(ep.id));
-  const host = async (name: string, useFor?: "fast" | "quality" | "both") => {
+  const host = async (name: string, useFor?: "fast" | "quality" | "both", mask?: boolean) => {
     const images: { action: string; body: Record<string, unknown> }[] = [];
     let down: string | false = false;
     let output: Buffer = png;
@@ -22,7 +22,7 @@ export async function fakeImages() {
       if (path === "/host/v1/status") return Response.json({ state: "running" });
       if (path === "/host/v1/models") return Response.json({ models: [] });
       if (path === "/host/v1/recipes") return Response.json({ recipes: [
-        { id: "art", name: "Art", state: "confirmed", ready: true, useFor: server.useFor, does: ["create", "edit", "upscale"] },
+        { id: "art", name: "Art", state: "confirmed", ready: true, useFor: server.useFor, does: ["create", "edit", "upscale"], ...(mask === undefined ? {} : { mask }) },
         { id: "proposal", name: "Proposal", state: "proposed", ready: true, does: ["create"] },
       ] });
       if (down) return Response.json({ error: { code: down, message: "Images unavailable." } }, { status: 503 });

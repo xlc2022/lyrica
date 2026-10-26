@@ -14,7 +14,7 @@ export interface Part {
   size: number;
   format: "safetensors" | "gguf";
   role: Role;
-  /** For text encoders: clip_l, clip_g, t5, qwen3, qwen2.5vl, qwen3vl. */
+  /** For text encoders: clip_l, clip_g, t5, qwen3, qwen2.5vl, qwen3vl (4B), qwen3vl_8b. */
   slot: string | null;
   /** The architecture it belongs to; for text encoders, the encoder's own (same as the slot). */
   arch: string | null;
@@ -44,7 +44,7 @@ export function readSafetensorsHeader(path: string): Record<string, Tensor> {
   }
 }
 
-const PRECISION: Record<string, string> = { F32: "fp32", BF16: "bf16", F16: "fp16", F8_E4M3: "fp8", F8_E5M2: "fp8", F8_E4M3FN: "fp8" };
+const PRECISION: Record<string, string> = { F32: "fp32", BF16: "bf16", F16: "fp16", F8_E4M3: "fp8", F8_E5M2: "fp8", F8_E4M3FN: "fp8", I8: "int8" };
 
 function precisionOf(tensors: Tensor[]): string | null {
   const count = new Map<string, number>();
@@ -91,6 +91,7 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   const hasBare = (re: RegExp) => bare.some((n) => re.test(n));
   if (hasBare(/^double_blocks\.0\.img_attn/) && hasBare(/^single_blocks\./)) return { role: "diffusion", slot: null, arch: "flux" };
   if (hasBare(/^transformer_blocks\.0\.img_mod/) && hasBare(/^txt_norm\./)) return { role: "diffusion", slot: null, arch: "qwen-image" };
+  if (hasBare(/^txt_in\.text_norm\.weight$/) && hasBare(/^modulation\.1\.weight$/)) return { role: "diffusion", slot: null, arch: "qwen-image-2.1" };
   if (hasBare(/^cap_embedder\./) && hasBare(/^(noise_refiner|context_refiner)\./)) return { role: "diffusion", slot: null, arch: "z-image" };
   if (hasBare(/^txtfusion\.projector\.weight$/)) return { role: "diffusion", slot: null, arch: "krea2" };
   if (hasBare(/^input_blocks\.0\.0\./) && hasBare(/^label_emb\./)) return { role: "diffusion", slot: null, arch: "sdxl" };
@@ -103,7 +104,9 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   }
   if (has(/encoder\.block\.0\.layer\.0\.SelfAttention\.q\.weight$/)) return { role: "text_encoder", slot: "t5", arch: "t5" };
   if (has(/(^|\.)layers\.0\.self_attn\.q_proj\.weight$/)) {
-    if (has(/(^|\.)visual\.merger\.linear_fc2\.weight$/)) return { role: "text_encoder", slot: "qwen3vl", arch: "qwen3vl" };
+    // Qwen3-VL 4B (Krea 2's) and 8B (Qwen-Image 2.1's), told apart by the merger's width.
+    const merger = names.find((n) => /(^|\.)visual\.merger\.linear_fc2\.weight$/.test(n));
+    if (merger) return shapes[merger]?.[0] === 4096 ? { role: "text_encoder", slot: "qwen3vl_8b", arch: "qwen3vl" } : { role: "text_encoder", slot: "qwen3vl", arch: "qwen3vl" };
     if (has(/(^|\.)visual\.blocks\.0\./)) return { role: "text_encoder", slot: "qwen2.5vl", arch: "qwen2.5vl" };
     if (has(/(^|\.)layers\.0\.self_attn\.q_norm\.weight$/)) return { role: "text_encoder", slot: "qwen3", arch: "qwen3" };
   }
@@ -112,7 +115,12 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
     const channels = shapes["decoder.conv_in.weight"]?.[1];
     return { role: "vae", slot: null, arch: channels === 4 ? "sdxl" : channels === 16 ? "flux" : null };
   }
-  if (has(/^decoder\.conv1\.weight$/) && has(/^encoder\.conv1\.weight$/)) return { role: "vae", slot: null, arch: "qwen-image" };
+  if (has(/^decoder\.conv1\.weight$/) && has(/^encoder\.conv1\.weight$/)) {
+    // Wan 2.1's layout is Qwen-Image's; Wan 2.2's with a flat (2D) head is Qwen-Image 2.1's.
+    if (!has(/^decoder\.upsamples\.0\.upsamples\./)) return { role: "vae", slot: null, arch: "qwen-image" };
+    const head = shapes["decoder.head.2.weight"];
+    return { role: "vae", slot: null, arch: head?.length === 5 && head[2] === 1 ? "qwen-image-2.1" : null };
+  }
   return unknown;
 }
 

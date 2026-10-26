@@ -137,7 +137,7 @@ export class RecipeBook {
   }
 
   describe(r: Recipe, files: Set<string>) {
-    return { ...r, useFor: r.useFor ?? "both", ready: this.ready(r, files) };
+    return { ...r, useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: this.template(r).mask };
   }
 
   /** The template for a main part: an edit model gets the edit template when its architecture has one. */

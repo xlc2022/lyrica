@@ -31,6 +31,10 @@ const QWEN3 = safetensors({ "model.layers.0.self_attn.q_proj.weight": {}, "model
 const QWEN25VL = safetensors({ "model.layers.0.self_attn.q_proj.weight": {}, "visual.blocks.0.attn.qkv.weight": {} });
 const KREA2_DIFFUSION = safetensors({ "txtfusion.projector.weight": {}, "first.weight": {}, "blocks.0.attn.wq.weight": {} });
 const QWEN3VL = safetensors({ "model.language_model.layers.0.self_attn.q_proj.weight": {}, "model.language_model.layers.0.self_attn.q_norm.weight": {}, "model.visual.blocks.0.attn.qkv.weight": {}, "model.visual.merger.linear_fc2.weight": {} });
+const QWEN3VL_8B = safetensors({ "model.language_model.layers.0.self_attn.q_proj.weight": { dtype: "I8" }, "model.visual.merger.linear_fc2.weight": { shape: [4096, 4608], dtype: "I8" } });
+const QI21_DIFFUSION = safetensors({ "txt_in.text_norm.weight": {}, "modulation.1.weight": {}, "transformer_blocks.0.attn.norm_q.weight": {}, "img_in.weight": {}, "transformer_blocks.0.img_mlp.gate_up.weight": {} });
+const QWEN_VAE = safetensors({ "decoder.conv1.weight": {}, "encoder.conv1.weight": {}, "decoder.upsamples.0.residual.0.gamma": {}, "decoder.head.2.weight": { shape: [3, 96, 3, 3, 3] } });
+const QI21_VAE = safetensors({ "decoder.conv1.weight": {}, "encoder.conv1.weight": {}, "decoder.upsamples.0.upsamples.0.residual.2.weight": {}, "decoder.head.2.weight": { shape: [4, 256, 1, 3, 3] } });
 const KREA2_LORA = safetensors({ "diffusion_model.blocks.0.attn.wq.lora_A.weight": {}, "diffusion_model.blocks.0.attn.wq.lora_B.weight": {} });
 const FLUX_VAE = safetensors({ "decoder.conv_in.weight": { shape: [512, 16, 3, 3] }, "encoder.conv_in.weight": { shape: [128, 3, 3, 3] } });
 const SDXL_VAE = safetensors({ "decoder.conv_in.weight": { shape: [512, 4, 3, 3] }, "encoder.conv_in.weight": { shape: [128, 3, 3, 3] } });
@@ -58,6 +62,7 @@ describe("parts", () => {
       "a/sdxl_vae.safetensors": SDXL_VAE, "a/style.safetensors": Z_LORA, "a/flux-ckpt.safetensors": FLUX_CKPT, "a/clip_l.safetensors": CLIP_L,
       "a/t5.safetensors": T5, "a/seedvr2_ema_3b_fp16.safetensors": safetensors({ x: { dtype: "F16" } }), "a/ema_vae_fp16.safetensors": safetensors({ y: {} }),
       "a/krea2.safetensors": KREA2_DIFFUSION, "a/qwen3vl.safetensors": QWEN3VL, "a/krea2-style.safetensors": KREA2_LORA,
+      "a/qi21.safetensors": QI21_DIFFUSION, "a/qwen3vl-8b.safetensors": QWEN3VL_8B, "a/qwen_vae.safetensors": QWEN_VAE, "a/qi21_vae.safetensors": QI21_VAE,
       "a/krea2-q5.gguf": ggufBytes({ "general.architecture": "krea2", "general.file_type": 16 }),
       "a/qwen3vl-4b.gguf": ggufBytes({ "general.architecture": "qwen3vl", "qwen3vl.embedding_length": 2560, "tokenizer.ggml.model": "gpt2", "general.file_type": 7 }),
       "a/qwen3vl-8b.gguf": ggufBytes({ "general.architecture": "qwen3vl", "qwen3vl.embedding_length": 4096, "tokenizer.ggml.model": "gpt2" }),
@@ -78,6 +83,11 @@ describe("parts", () => {
       "qwen3vl.safetensors": ["text_encoder", "qwen3vl", "qwen3vl", "bf16"],
       "krea2-style.safetensors": ["lora", null, "krea2", "bf16"],
       "krea2-q5.gguf": ["diffusion", null, "krea2", "Q5_K_S"],
+      "qi21.safetensors": ["diffusion", null, "qwen-image-2.1", "bf16"],
+      // Qwen-Image 2.1's encoder is the 8B, apart from Krea 2's 4B.
+      "qwen3vl-8b.safetensors": ["text_encoder", "qwen3vl_8b", "qwen3vl", "int8"],
+      "qwen_vae.safetensors": ["vae", null, "qwen-image", "bf16"],
+      "qi21_vae.safetensors": ["vae", null, "qwen-image-2.1", "bf16"],
       // Qwen3-VL 4B is Krea 2's encoder; other text models aren't image parts.
       "qwen3vl-4b.gguf": ["text_encoder", "qwen3vl", "qwen3vl", "Q8_0"],
       "z.safetensors": ["diffusion", null, "z-image", "bf16"],
@@ -218,6 +228,35 @@ describe("recipes", () => {
     expect(Object.keys(edit)).not.toContain("ref1");
     expect(edit.pos!.inputs).not.toHaveProperty("image2");
     expect(edit.batch!.inputs.samples).toEqual(["encoded", 0]);
+    // As ComfyUI's own template: CFGNorm after the shift, and the image at a trained resolution.
+    expect(edit.sample!.inputs.model).toEqual(["norm", 0]);
+    expect(edit.norm!.inputs).toEqual({ model: ["shift", 0], strength: 1 });
+    expect(edit.scaled!.class_type).toBe("FluxKontextImageScale");
+
+    const starter = STARTERS.find((s) => s.id === "qwen-image-2.1-turbo")!;
+    const qi21Parts = [
+      { role: "diffusion" as const, slot: null, file: "q.safetensors", added: false },
+      { role: "text_encoder" as const, slot: "qwen3vl_8b", file: "vl.safetensors", added: false },
+      { role: "vae" as const, slot: null, file: "v.safetensors", added: false },
+    ];
+    // One template creates on a new canvas and edits on the image's own.
+    const qi21New = fill(TEMPLATES.get("qwen-image-2.1")!, qi21Parts, [], { negativePrompt: "", ...starter.defaults, prompt: "x", count: 1, seed: 1 });
+    expect(qi21New.sample!.inputs.latent_image).toEqual(["canvas", 0]);
+    expect(Object.keys(qi21New)).not.toContain("load");
+    expect(qi21New.encode!.inputs).not.toHaveProperty("images.image_1");
+    expect(JSON.stringify(qi21New)).not.toContain("$");
+    const qi21 = fill(TEMPLATES.get("qwen-image-2.1")!, [
+      { role: "diffusion", slot: null, file: "q.safetensors", added: false },
+      { role: "text_encoder", slot: "qwen3vl_8b", file: "vl.safetensors", added: false },
+      { role: "vae", slot: null, file: "v.safetensors", added: false },
+    ], [], { negativePrompt: "", ...starter.defaults, prompt: "x", count: 2, seed: 1, image: "lyrica-image.png", reference1: "lyrica-ref.png" });
+    expect(qi21.load_clip).toEqual({ class_type: "CLIPLoader", inputs: { clip_name: "vl.safetensors", type: "qwen_image" } });
+    expect(qi21.encode!.inputs).toMatchObject({ "images.image_1": ["load", 0], "images.image_2": ["ref1", 0], resolution: 1024 });
+    expect(qi21.encode!.inputs).not.toHaveProperty("images.image_3");
+    expect(qi21.sigmas!.inputs.sigmas).toMatch(/^1\.0, .*, 0$/);
+    expect(qi21.batch!.inputs).toEqual({ samples: ["encode", 2], amount: 2 });
+    expect(qi21.sample!.inputs.latent_image).toEqual(["batch", 0]);
+    expect(JSON.stringify(qi21)).not.toContain("$");
 
     const krea = fill(TEMPLATES.get("krea2")!, [
       { role: "diffusion", slot: null, file: "k.safetensors", added: false },
@@ -573,7 +612,7 @@ describe("the image API", () => {
     const z = body.starters.find((st: { id: string }) => st.id === "z-image-turbo");
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
-    expect(body.starters.map((st: { id: string }) => st.id)).toEqual(["flux-schnell", "krea2-turbo", "qwen-image-edit", "qwen-image", "sdxl", "seedvr2-3b", "seedvr2-7b", "z-image-turbo"]);
+    expect(body.starters.map((st: { id: string }) => st.id)).toEqual(["flux-schnell", "krea2-turbo", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "sdxl", "seedvr2-3b", "seedvr2-7b", "z-image-turbo"]);
   });
 
   it("lists a starter for one backend only on hosts using it", async () => {
