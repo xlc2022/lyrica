@@ -70,8 +70,8 @@ function Row({ n, ctx, picked, onPick, act, busy }: {
   const [open, setOpen] = useState(false);
   return (
     <li className={`nrow${onPick ? "" : " nopick"}${n.type === "question" ? " nquestion" : ""}${n.type === "sleep" ? " nsleep" : ""}`}>
-      {/* The name is the title's first words, not its whole text: a From sleep row's title is her
-          whole item (#591), and "Select" would come only after a paragraph. (docs/web.md) */}
+      {/* The name holds the title's first words, not its whole text: a From sleep row's title is
+          her whole item (#591), so the full title made the checkbox announce all of it. */}
       {onPick && <input type="checkbox" className="npick" checked={!!picked} onChange={(e) => onPick(e.target.checked)} aria-label={`Select ${firstWords(n.title, 80)}`} />}
       <span className="ico" aria-hidden="true">{n.type === "question" ? <Icon name="bell" /> : t.glyph}</span>
       <div className="main-col">
