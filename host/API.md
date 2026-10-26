@@ -730,13 +730,19 @@ Calls:
   state, as `{ "recipes": [...] }`.
 - `GET /host/v1/recipes/<id>`
 - `GET /host/v1/starters`: the starter recipes shipped with the host, each
-  with its parts' files and checksums and which are present.
+  with its parts' files and checksums and which are present. A starter
+  with a `backend` (`comfyui` or `sdcpp`) is listed, and installs, only on
+  hosts that make images that way (Krea 2 Turbo Q5 is `sdcpp`: the pinned
+  ComfyUI-GGUF can't load a Krea 2 GGUF).
 - `POST /host/v1/starters/<starter>/install`: downloads the missing parts
   (as `POST /host/v1/downloads`, with `X-Hub-Token` if needed) and creates
   the recipe as `confirmed`; it becomes `ready` when they finish. Answers
   `{ "recipe": <recipe>, "downloads": [<download>] }`. Installing it again
   answers with the same recipe, downloading only the parts neither here
-  nor already downloading.
+  nor already downloading. A recipe a scan already made from the starter's main
+  file becomes the starter's recipe instead of a second one: a proposal
+  takes the starter's name, parts and defaults; a confirmed one is kept as
+  it is.
 - `POST /host/v1/recipes/<id>/confirm`, `POST /host/v1/recipes/<id>/ignore`:
   for proposals. One already in that state answers as it is, so a retry is
   harmless; another state is `invalid`. Several at once:

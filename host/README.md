@@ -223,15 +223,21 @@ live in `recipes.json`; the optional `useFor` tag is `fast`, `quality` or
 per host, and Lyrica's router filters create tiers by it.
 - **Starters** (`recipes/`) are known-good recipes, with each part's
   checksum. Install downloads only the parts that aren't here.
+  A starter can be for one way of making images only: Krea 2 Turbo Q5
+  (GGUFs, about 13.4 GB, for 16 GB cards) is listed only on hosts using
+  stable-diffusion.cpp.
   Krea 2 Turbo's weights are under the Krea 2 Community License, which
   requires content filtering wherever it runs; the host filters nothing,
   so the operator who installs it sets that up.
 - **Scanning** reads each safetensors header (tensor names only) to tell a
   part's role, slot, architecture and precision, and proposes recipes from
-  matching parts. A proposal does nothing until it is confirmed. A file
-  whose architecture has no template stays a file.
+  matching parts (GGUFs by their metadata; a text model's GGUF is not a
+  part, except Qwen3-VL 4B, which is also Krea 2's text encoder). A
+  proposal does nothing until it is confirmed. A file whose architecture
+  has no template stays a file. Installing a starter whose main file a
+  scan already proposed makes that proposal the starter's recipe.
 - Deleting a recipe deletes only parts the host downloaded, unchanged, that
-  no other recipe uses.
+  no other recipe uses and that aren't also a chat model.
 - ComfyUI is our image (`comfyui/Dockerfile`, CUDA or ROCm), built from
   pinned commits of ComfyUI, ComfyUI-GGUF and the SeedVR2 upscaler, with no
   plugin manager. Only those nodes load. Their Python packages go into a
@@ -265,8 +271,10 @@ per host, and Lyrica's router filters create tiers by it.
   isn't started. stable-diffusion.cpp's `sd-server` (`sdcpp/Dockerfile`, a
   pinned commit built with `GGML_CUDA_FORCE_MMQ`, pulled or built like the
   CMP's llama.cpp below) makes the images instead:
-  it converts the recipe's parts to Q8_0 as it loads them and runs with
-  flash attention off, so the work goes to the card's int8 units. It
+  it converts the recipe's parts to Q8_0 as it loads them (unless the
+  diffusion model is a GGUF, whose own quantisation is kept, since a Q8_0
+  copy may not fit) and runs with flash attention off, so the work goes to
+  the card's int8 units. It
   creates only, for Z-Image, Qwen-Image, Krea 2, FLUX and SDXL recipes without
   LoRAs; the recipe list shows edit, upscale and other recipes as unsupported, saying why. It takes its model
   as start-up arguments, so `sdcpp/gate.sh` starts it for the recipe

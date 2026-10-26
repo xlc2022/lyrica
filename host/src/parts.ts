@@ -118,6 +118,7 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
 
 const GGUF_ARCH: Record<string, Kind> = {
   flux: { role: "diffusion", slot: null, arch: "flux" },
+  krea2: { role: "diffusion", slot: null, arch: "krea2" },
   lumina2: { role: "diffusion", slot: null, arch: "z-image" },
   qwen_image: { role: "diffusion", slot: null, arch: "qwen-image" },
   sdxl: { role: "diffusion", slot: null, arch: "sdxl" },
@@ -133,8 +134,10 @@ function readPart(root: string, path: string): Part | null {
   const size = statSync(path).size;
   if (path.endsWith(".gguf")) {
     const meta = readGguf(path);
-    if (meta["tokenizer.ggml.model"] !== undefined) return null; // a text model
-    const kind = /seedvr2/i.test(basename(path)) ? classify([], {}, path) : GGUF_ARCH[String(meta["general.architecture"])] ?? unknown;
+    // A text model, except Qwen3-VL 4B, which is also Krea 2's text encoder.
+    const vl4b = meta["general.architecture"] === "qwen3vl" && Number(meta["qwen3vl.embedding_length"]) === 2560;
+    if (meta["tokenizer.ggml.model"] !== undefined && !vl4b) return null;
+    const kind: Kind = vl4b ? { role: "text_encoder", slot: "qwen3vl", arch: "qwen3vl" } : /seedvr2/i.test(basename(path)) ? classify([], {}, path) : GGUF_ARCH[String(meta["general.architecture"])] ?? unknown;
     const ft = meta["general.file_type"];
     return { file, size, format: "gguf", ...kind, precision: ft === undefined ? "gguf" : GGUF_TYPES[Number(ft)] ?? "gguf" };
   }

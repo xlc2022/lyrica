@@ -34,8 +34,8 @@ while :; do
     else
       # Each argument NUL-terminated, so none is split or globbed.
       mapfile -d '' args < <(jq -j '.args[] | (., "\u0000")' <<<"$want")
-      # Weights become Q8_0 as they load; flash attention would use the throttled tensor cores.
-      "$SERVER" --listen-ip 0.0.0.0 --listen-port 8188 --type q8_0 --flash-attn off "${args[@]}" &
+      # Flash attention would use the throttled tensor cores. host-api adds --type q8_0 when it wants it.
+      "$SERVER" --listen-ip 0.0.0.0 --listen-port 8188 --flash-attn off "${args[@]}" &
       pid=$!
       report "$(jq -c '{attempt}' <<<"$want")"
     fi

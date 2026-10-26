@@ -204,6 +204,12 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
     });
   };
 
+  // Every host this user manages reads its models folder again; what they propose shows in To review.
+  const scanAll = () => void run(async () => {
+    await Promise.all(reads.filter((r) => canEdit(ctx, r.ep)).map((r) => post(u(userId, "hosts", r.ep.id, "manage"), { method: "POST", path: "/host/v1/scan" })));
+    refresh();
+  });
+
   // The header's facts, over every host.
   const partCount = all.reduce((n, l) => n + l.parts.length, 0);
   const imageIds = new Set([...rows.flatMap((r) => r.copies.map((c) => offeringOf(c)?.id)), ...plain.map(({ m }) => m.id)].filter(Boolean));
@@ -224,6 +230,7 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
             {ROLES.map(([x, label]) => <button key={x} type="button" aria-pressed={does === x} onClick={() => setDoes(x)}>{label}</button>)}
           </div>
         )}
+        <button type="button" disabled={busy || !libs.data} title="Reads each host's models folder again." onClick={scanAll}>Scan</button>
         <button type="button" className="primary" onClick={() => go({ page: "models", userId, tab: "images", add: "image" })}>Download model</button>
       </>}>
       <ErrorText error={ctx.models.error || libs.error || groups.error || error} />

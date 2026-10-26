@@ -163,13 +163,13 @@ export class Images {
     }
     if (path === "/host/v1/starters" && method === "GET") {
       sendJson(res, 200, {
-        starters: this.book.starters.map((s) => ({ ...s, parts: s.parts.map((p) => ({ ...p, present: this.have(p) !== null })) })),
+        starters: this.starters().map((s) => ({ ...s, parts: s.parts.map((p) => ({ ...p, present: this.have(p) !== null })) })),
       });
       return true;
     }
     const install = path.match(/^\/host\/v1\/starters\/([\w.-]+)\/install$/);
     if (install && method === "POST") {
-      const starter = this.book.starters.find((s) => s.id === install[1]);
+      const starter = this.starters().find((s) => s.id === install[1]);
       if (!starter) throw notFound("No such starter.");
       // Installing a starter again returns its recipe, and downloads only what's still missing.
       const { recipe, toDownload } = this.book.fromStarter(starter, (p) => this.have(p), (p) => this.downloading(p));
@@ -227,6 +227,12 @@ export class Images {
     return false;
   }
 
+  /** The starters this host can run: a starter for one backend only shows on hosts using it. */
+  private starters(): Starter[] {
+    const backend = this.sdcpp ? "sdcpp" : "comfyui";
+    return this.book.starters.filter((s) => !s.backend || s.backend === backend);
+  }
+
   /** Whether a starter part is already queued or downloading. */
   private downloading(p: Starter["parts"][number]): boolean {
     const dest = starterPath(p);
@@ -271,6 +277,10 @@ export class Images {
     for (const file of candidates) {
       if (!this.runtime.record.has(file)) {
         kept.push({ file, reason: "Not downloaded by the host." });
+        continue;
+      }
+      if (this.runtime.models.some((m) => m.id === file)) {
+        kept.push({ file, reason: "Also a chat model." });
         continue;
       }
       try {

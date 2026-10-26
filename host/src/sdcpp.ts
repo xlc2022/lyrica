@@ -36,7 +36,10 @@ export function sdcppArgs(r: Pick<Recipe, "template" | "parts" | "loras">, model
   const cant = (why: string) => invalid(`This host makes images with stable-diffusion.cpp, which can't run this recipe: ${why}.`);
   if (!TEMPLATES.has(r.template)) throw cant(`it has no ${r.template} support here`);
   if (r.loras.length) throw cant("LoRAs aren't supported");
-  const args: string[] = [];
+  // Weights become Q8_0 as they load, for the card's int8 units, unless the
+  // main model is a GGUF: its quantisation is kept, as a larger one may not fit.
+  const main = r.parts.find((p) => p.role === "checkpoint" || p.role === "diffusion");
+  const args: string[] = main?.file?.endsWith(".gguf") ? [] : ["--type", "q8_0"];
   for (const p of r.parts) {
     if (!p.file) continue;
     const flag = p.role === "checkpoint" ? "-m" : p.role === "diffusion" ? "--diffusion-model" : p.role === "vae" ? "--vae" : p.role === "text_encoder" ? ENCODERS[p.slot ?? ""] : undefined;
