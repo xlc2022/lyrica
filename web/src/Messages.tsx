@@ -24,6 +24,7 @@ import { basename, fileTarget, InlineImage, isImagePath, isUnderWorkdir, Lightbo
 import { CopyButton } from "./CopyButton.tsx";
 import type { ReactNode } from "react";
 import { foldLooks, raisedIn, toldIn, type Told } from "./looks.ts";
+import { sortImages, type MessageImages as SortedImages, type RejectedImage } from "./rejects.ts";
 import { her } from "./name.ts";
 import { ReactButton, ReactionChips } from "./Reactions.tsx";
 import { ReadAloudButton } from "./Voice.tsx";
@@ -160,7 +161,9 @@ export interface Quiet { key: string; n?: number; parts: MessagePart[]; streamin
 function isMarker(p: MessagePart): boolean {
   if (p.type === "thinking" || p.type === "recall" || p.type === "remember") return true;
   if (p.type !== "tool") return false;
-  if (p.name === "delegate" || p.name === "propose_plan" || p.name === "image") return false;
+  // Rejecting or clearing attempts shows no image: a marker, which can fold into a run. Her other image calls show an image.
+  if (p.name === "image") return ["reject", "clear_rejected"].includes((p.args as { action?: string } | null)?.action ?? "");
+  if (p.name === "delegate" || p.name === "propose_plan") return false;
   if (p.name === "threads") return (p.args as { action?: string } | null)?.action === "steps" || isPoll(p);
   return true;
 }
@@ -214,6 +217,10 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
     ...stored.map((m): E => ({ key: m.id, stored: m, streaming: false })),
     ...liveItems.map((item, i): E => ({ key: `live-${i}`, live: item, streaming: busy && i === liveItems.length - 1 })),
   ];
+  // Her rejected attempts fold into one group per turn, and her pick shows last (rejects.ts).
+  const images = sortImages(entries.map((e) => e.stored
+    ? { key: e.key, user: e.stored.role === "user", parts: e.stored.role === "assistant" ? e.stored.parts : undefined }
+    : { key: e.key, user: e.live?.role === "user", parts: e.live?.role === "assistant" ? e.live.parts : undefined }));
   for (const e of entries) {
     const m = e.stored;
     const hers = m ? (m.role === "assistant" && !m.error && !cards.has(m.n) ? m.parts : undefined) : e.live?.role === "assistant" && !e.live.error ? e.live.parts : undefined;
@@ -223,8 +230,8 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
     if (user) shown = new Set();
     for (const p of hers ?? []) if (p.type === "image") for (const path of p.paths) shown.add(path);
     const seen = new Set(shown);
-    if (m) nodes.push(<StoredMessage key={m.id} m={m} env={env} you={you} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)} cards={cards.get(m.n)} shown={seen} />);
-    else if (e.live) nodes.push(<LiveMessage key={e.key} item={e.live} env={env} you={you} streaming={e.streaming} shown={seen} />);
+    if (m) nodes.push(<StoredMessage key={m.id} m={m} env={env} you={you} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)} cards={cards.get(m.n)} shown={seen} images={images.get(e.key)} />);
+    else if (e.live) nodes.push(<LiveMessage key={e.key} item={e.live} env={env} you={you} streaming={e.streaming} shown={seen} images={images.get(e.key)} />);
   }
   flush();
   return nodes;
@@ -285,7 +292,7 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
   );
 }
 
-function StoredMessage({ m, env, you, cards, told, folded, shown }: { m: Message; env: Env; you: string; cards?: ThreadSummary[]; told?: Told[]; folded?: boolean; shown?: ReadonlySet<string> }) {
+function StoredMessage({ m, env, you, cards, told, folded, shown, images }: { m: Message; env: Env; you: string; cards?: ThreadSummary[]; told?: Told[]; folded?: boolean; shown?: ReadonlySet<string>; images?: SortedImages }) {
   const after = cards?.map((t) => <ThreadCard key={t.id} t={t} userId={env.userId} env={env.project!} />);
   if (m.role === "user") {
     if (m.from?.kind === "parent" || m.from?.kind === "thread") return <><FromThread text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} from={m.from} env={env} n={m.n} />{after}</>;
@@ -304,7 +311,7 @@ function StoredMessage({ m, env, you, cards, told, folded, shown }: { m: Message
   }
   return (
     <>
-      <Parts parts={m.parts} env={env} model={m.model} n={m.n} at={m.createdAt} folded={folded} reactions={m.reactions} shown={shown} />
+      <Parts parts={m.parts} env={env} model={m.model} n={m.n} at={m.createdAt} folded={folded} reactions={m.reactions} shown={shown} images={images} />
       {m.error && <p className="error turn-error">{m.error}</p>}
       {m.paid && <p className="warn-text turn-paid">{m.paid}</p>}
       {after}
@@ -347,7 +354,7 @@ function LookMarker({ text, told, env, n }: { text: string; told: Told[]; env: E
   );
 }
 
-function LiveMessage({ item, env, you, streaming, shown }: { item: LiveItem; env: Env; you: string; streaming: boolean; shown?: ReadonlySet<string> }) {
+function LiveMessage({ item, env, you, streaming, shown, images }: { item: LiveItem; env: Env; you: string; streaming: boolean; shown?: ReadonlySet<string>; images?: SortedImages }) {
   if (item.role === "user") {
     if (item.text.startsWith(WATCHING_MARK)) { const text = item.text.slice(WATCHING_MARK.length); return <LookMarker text={text} told={toldIn(text, env.pool)} env={env} />; }
     const parent = FROM_PARENT.exec(item.text);
@@ -366,7 +373,7 @@ function LiveMessage({ item, env, you, streaming, shown }: { item: LiveItem; env
   if (item.role === "notice") return <Notice text={item.text} status={item.status} threads={item.threads} env={env} />;
   return (
     <>
-      <Parts parts={item.parts} env={env} model={item.model} streaming={streaming && !item.error} shown={shown} />
+      <Parts parts={item.parts} env={env} model={item.model} streaming={streaming && !item.error} shown={shown} images={images} />
       {item.error && <p className="error turn-error" role="alert">{item.error}</p>}
     </>
   );
@@ -444,9 +451,9 @@ function Sep() {
 /**
  * Her message: prose for text, one-line markers for everything else. `bare`: only markers, drawn without a header line
  * (the run they belong to is her inner workings). `shown`: image paths her image parts already showed this turn, so her
- * prose keeps them as links.
+ * prose keeps them as links. `images`: how its image parts show, with the turn's rejected attempts (rejects.ts).
  */
-function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, shown }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number; at?: string; folded?: boolean; reactions?: Reaction[]; bare?: boolean; shown?: ReadonlySet<string> }) {
+function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, shown, images }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number; at?: string; folded?: boolean; reactions?: Reaction[]; bare?: boolean; shown?: ReadonlySet<string>; images?: SortedImages }) {
   const [remembering, setRemembering] = useState(false);
   const out: React.ReactNode[] = [];
   let prose: string[] = [];
@@ -468,7 +475,11 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
     // After a look, the threads she told are in the look's marker; the messages would show twice.
     if (folded && p.type === "tool" && p.name === "threads" && !p.isError && (p.args as { action?: string } | null)?.action === "message") return;
     flush(i);
-    out.push(p.type === "image" ? <MessageImages key={i} part={p} env={env} /> : <Marker key={i} part={p} env={env} />);
+    if (p.type !== "image") { out.push(<Marker key={i} part={p} env={env} />); return; }
+    const group = images?.groups.get(i);
+    if (group) out.push(<RejectedImages key={`r${i}`} parts={group} env={env} />);
+    const shownPart = images?.parts.has(i) ? images.parts.get(i) : p;
+    if (shownPart) out.push(<MessageImages key={i} part={shownPart} env={env} />);
   });
   flush(parts.length);
   // The one indicator while she writes: three muted dots fading in turn, at the end of the live reply and only when its last part isn't text.
@@ -547,6 +558,34 @@ function MessageImages({ part, env }: { part: ImagePart; env: Env }) {
   );
 }
 
+/**
+ * Her rejected attempts in a turn, as one closed marker, "<n> rejected", that opens to their images as small
+ * thumbnails, each with its facts and actions. Open state follows the first attempt's name, so the stored copy keeps
+ * it. Once she has deleted them at the person's word, the marker reads "<n> rejected · deleted" and doesn't open.
+ */
+function RejectedImages({ parts, env }: { parts: RejectedImage[]; env: Env }) {
+  const key = `rejected:${basename(parts[0]!.paths[0]!)}`;
+  const open = env.openTools.has(key);
+  const left = parts.filter((p) => !p.deleted);
+  const gone = parts.length - left.length;
+  const count = <span><span className="num">{parts.length}</span> rejected{!left.length && <> · deleted</>}</span>;
+  if (!left.length) return <div className="marker tool-run rejected-run" data-type="rejected"><span className="marker-static">{count}</span></div>;
+  return (
+    <div className="marker tool-run rejected-run" data-type="rejected">
+      <button type="button" aria-expanded={open} onClick={() => env.toggleTool(key)}>
+        {count}
+        <Icon name="down" />
+      </button>
+      {open && (
+        <div className="marker-body rejected-body">
+          {left.map((p) => <MessageImages key={p.paths[0]} part={p} env={env} />)}
+          {gone > 0 && <p className="muted">{gone} deleted</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "image" }>; env: Env }) {
   const [localOpen, setLocalOpen] = useState(false);
   const open = part.type === "tool" ? env.openTools.has(part.toolCallId) : localOpen;
@@ -590,8 +629,11 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       const place = mcp?.server ?? machineOf(part.args);
       label = <>{place && <b className="place">{place}</b>}<b className="tool-name">{mcp?.tool ?? part.name}</b> <code>{summarizeArgs(part.args)}</code> <span className="state" data-state={state}>{state}</span></>;
       if (part.name === "image") {
-        const args = (part.args ?? {}) as { action?: string; tier?: string };
-        const making = args.action === "edit" ? "Editing an image" : args.action === "upscale" ? "Upscaling an image" : "Making an image";
+        const args = (part.args ?? {}) as { action?: string; tier?: string; images?: unknown };
+        const n = Array.isArray(args.images) ? args.images.length : 1;
+        const making = args.action === "edit" ? "Editing an image" : args.action === "upscale" ? "Upscaling an image"
+          : args.action === "reject" ? (n === 1 ? "Rejecting an image" : `Rejecting ${n} images`) : args.action === "pick" ? "Picking an image"
+          : args.action === "clear_rejected" ? "Deleting rejected images" : "Making an image";
         label = <><span>{making}{args.action === "create" && args.tier && <> · {args.tier}</>} <span className="state" data-state={state}>{state}</span></span></>;
       }
       body = (

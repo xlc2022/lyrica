@@ -629,6 +629,7 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
 
 The `image` tool creates, edits and upscales through the thread's model router.
 It names inputs by workspace path: uploads, earlier results or granted files.
+Reject, pick and clear_rejected sort her attempts (below, "Rejected attempts").
 Create takes a prompt, fast or quality, optional size or `width:height` aspect
 ratio, count and references. Edit takes an image path, instruction, optional
 mask and references. Upscale takes an image, optional scale and maximum size.
@@ -710,6 +711,22 @@ profile is on its temporary tmpfs. NixOS includes Chromium and fonts through
 `npx vitest run core/test/image-render.test.ts` renders inside a real encrypted
 home with internet off, using `describe.skipIf` when Chromium or the encrypted
 sandbox prerequisites are missing.
+
+### Rejected attempts
+
+When an attempt misses the prompt, she rejects it before trying again.
+`reject` takes `images` (paths of the tool's own `<uuid>.png` results in the
+thread's images folder, `images/` or a project chat's `shared/images/`) and
+moves them into `rejected/` there, all or none, with no model call; one
+already rejected stays put. `pick` takes an `image` (by either path) and
+moves it back if it was rejected, so the chat shows it last as her choice.
+`clear_rejected` deletes, for good, the tool's results in `rejected/` and the
+folder once empty; anything else she put there stays. Her tool guidance says
+to use it only when the user asks. `ThreadImages.reject`, `pick` and
+`clearRejected` anchor every directory and follow no symlinks; a move or
+delete also removes the image's Files thumbnail (`.lyrica/thumbs/…`), and a
+move takes the record of which thread made it along. Deleting the thread
+deletes its rejects with its folder.
 
 `npx vitest run core/test/image-storage.test.ts extension/test/images.test.ts`
 checks these boundaries without sockets. The real encrypted-home test skips

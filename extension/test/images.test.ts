@@ -291,3 +291,19 @@ it("Try skips a maskless plan for masked edits and skips cloud endpoints for for
   expect(s.models.nextImageModel(s.ctx(), "edit", {}, after, true)?.ref).toEqual(s.workstation.ref);
   expect(s.heard).toEqual([]);
 });
+
+describe("image tool: rejected attempts", () => {
+  it("rejects attempts without a model call, picks one back as an image part, and clears the rest", async () => {
+    const s = await setup(); s.context({ localOnly: true });
+    const made = async () => ((await s.run({ action: "create", prompt: "A garden", tier: "fast" })).details as { image: { paths: string[] } }).image.paths[0]!;
+    const a = await made(), b = await made();
+    const rejected = await s.run({ action: "reject", images: [a, b] });
+    expect(rejected.details).toEqual({ rejected: [a, b].map(p => p.replace("/images/", "/images/rejected/")) });
+    expect(readdirSync(join(s.folder, "images", "rejected"))).toHaveLength(2);
+    const picked = await s.run({ action: "pick", image: a });
+    expect(picked.details).toEqual({ image: { type: "image", paths: [a], model: "", picked: true } });
+    await expect(s.run({ action: "reject", images: [] })).rejects.toThrow(/reject needs images/);
+    expect((await s.run({ action: "clear_rejected" })).content[0]).toMatchObject({ text: "Deleted 1 rejected image for good." });
+    expect(readdirSync(join(s.folder, "images"))).toEqual([a.split("/").at(-1)]);
+  });
+});

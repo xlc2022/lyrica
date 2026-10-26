@@ -1403,7 +1403,15 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     messages project it as a tool marker and optional image part, without
     PNG bytes. Saved task lists are unchanged.
     Successful tool details are `{ image: ImagePart }`, where `ImagePart` is
-    `{ type: "image", paths: string[], model: string, tier?: "fast" | "quality" }`.
+    `{ type: "image", paths: string[], model: string, tier?: "fast" | "quality", picked?: true }`.
+    `reject` (`images`: paths) moves the tool's own results in the thread's
+    images folder (`images/` or a project chat's `shared/images/`) into its
+    `rejected/`, all or none, calling no model; details `{ rejected: paths }`.
+    `pick` (`image`) brings one back from `rejected/` if needed and answers
+    `{ image: { paths: [path], model: "", picked: true } }`: the web takes the
+    facts from the part that first showed it. `clear_rejected` deletes the
+    tool's results in `rejected/`; details `{ cleared: paths }`. The web reads
+    which attempts are rejected from these calls' arguments.
     `model` is the answering model's label. Saved messages carry this part
     beside the originating tool call; `tool_end` carries `image?: ImagePart`.
     API messages and events carry paths, never the PNG's base64 bytes.

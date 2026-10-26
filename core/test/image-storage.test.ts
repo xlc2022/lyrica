@@ -50,6 +50,40 @@ describe("image storage boundaries (principles 2 and 4)", () => {
     expect(() => files.save([cleanPng(png)])).toThrow();
     expect(readdirSync(root)).toEqual(["home"]);
   });
+  it("sets rejected attempts aside with their thumbnails and records, brings a pick back, and deletes only made rejects", () => {
+    const { root, home } = setup();
+    const moves: [string, string][] = [];
+    const files = new ThreadImages(() => home, () => ["threads", "web%2Fa"], async () => ({ stream: Readable.from([png]), size: png.length }),
+      { isPortraitImage: () => false, recordPortraitImage: () => {} }, () => {}, () => false, (from, to) => { moves.push([from, to]); });
+    const [a, b] = files.save([cleanPng(png), cleanPng(png)]);
+    const dir = join(home, "threads", "web%2Fa"), name = (p: string) => p.split("/").at(-1)!;
+    mkdirSync(join(dir, ".lyrica", "thumbs", "images"), { recursive: true });
+    writeFileSync(join(dir, ".lyrica", "thumbs", "images", `${name(a!)}.png`), png);
+    expect(files.reject([a!, `images/${name(b!)}`])).toEqual([`/workspace/images/rejected/${name(a!)}`, `/workspace/images/rejected/${name(b!)}`]);
+    expect(readdirSync(join(dir, "images", "rejected")).sort()).toEqual([name(a!), name(b!)].sort());
+    expect(existsSync(join(dir, ".lyrica", "thumbs", "images", `${name(a!)}.png`))).toBe(false);
+    expect(moves[0]).toEqual([a, `/workspace/images/rejected/${name(a!)}`]);
+    // Already rejected stays; a pick by its old path finds it in rejected/.
+    expect(files.reject([a!])).toEqual([`/workspace/images/rejected/${name(a!)}`]);
+    expect(files.pick(a!)).toBe(a);
+    expect(existsSync(join(dir, "images", name(a!)))).toBe(true);
+    // Only the tool's own results in this thread's images folder.
+    writeFileSync(join(dir, "mine.png"), png);
+    expect(() => files.reject(["/workspace/mine.png"])).toThrow(/only images the image tool made/);
+    expect(() => files.reject(["/workspace/images/../mine.png"])).toThrow(/only images/);
+    expect(() => files.reject([a!, "/workspace/images/00000000-0000-0000-0000-000000000000.png"])).toThrow(/isn't there/);
+    expect(existsSync(join(dir, "images", name(a!)))).toBe(true);
+    symlinkSync(root, join(dir, "images", "11111111-1111-1111-1111-111111111111.png"));
+    expect(() => files.reject(["/workspace/images/11111111-1111-1111-1111-111111111111.png"])).toThrow(/isn't there/);
+    writeFileSync(join(dir, "images", "rejected", "keep.png"), png);
+    expect(files.clearRejected()).toEqual([`/workspace/images/rejected/${name(b!)}`]);
+    expect(readdirSync(join(dir, "images", "rejected"))).toEqual(["keep.png"]);
+    rmSync(join(dir, "images", "rejected", "keep.png"));
+    files.reject([a!]);
+    expect(files.clearRejected()).toHaveLength(1);
+    expect(existsSync(join(dir, "images", "rejected"))).toBe(false);
+    expect(files.clearRejected()).toEqual([]);
+  });
   it("saves a project chat's results in its shared folder, where the chat still shows them", () => {
     const { home } = setup();
     const chat = new ThreadImages(() => home, () => ["threads", "p1"], async () => ({ stream: Readable.from([png]), size: png.length }),

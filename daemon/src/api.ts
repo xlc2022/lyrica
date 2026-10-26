@@ -1251,7 +1251,8 @@ export interface Transcription { text: string; seconds: number; model: string }
 export interface ImageRefusal { code: "image_refusal"; offeringId: string; endpointId: string }
 export interface ImageRetryOptions { next?: { offeringId: string; label: string }; userMessage?: { n: number; text: string }; canEdit: boolean }
 /** GET …/image-calls/:toolCallId: current retry choices. POST { next?: boolean }: retry the stored call. */
-export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality" }
+/** `picked`: her pick among her attempts (the image tool's pick), shown again last; `model` is then empty, the earlier part has it. */
+export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality"; picked?: true }
 
 export type MessagePart =
   | ImagePart

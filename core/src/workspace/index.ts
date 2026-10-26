@@ -468,7 +468,12 @@ export class Workspace {
       return ["threads", id];
     }, path => this.files(t).read(path), this.settings(t.userId), (paths) => this.madeFiles(t, paths),
     // A project chat's go in its shared/, as its uploads do (saveUpload), so its threads can read them at /shared.
-    () => this.sharesOwnFolder(t));
+    () => this.sharesOwnFolder(t),
+    // A rejected or picked image keeps the record of the thread that made it, as a rename in Files does.
+    (from, to) => {
+      const s = this.settings(t.userId), f = this.originKey(t, from), k = this.originKey(t, to);
+      if (f && k && f.folder === k.folder) s.moveOrigins(f.folder, f.path, k.path);
+    });
   }
 
   /** A project chat whose shared/ is its own folder's (it is its family's top): what it makes goes there. */
