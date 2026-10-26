@@ -936,7 +936,10 @@ local/cloud chip and preset, then each model host's state as a dot and word.
 
 ## Chat
 
-- Her messages are prose, rendered with `react-markdown`. Raw HTML is
+- Her messages are prose, rendered with `react-markdown` and `remark-gfm`
+  (`Prose` in `ui.tsx`): tables, task lists, strikethrough, footnotes and bare
+  links. A table a model wrote on one line is put back on its rows first
+  (`unfoldTables` in `tables.ts`; a code block is left as written). Raw HTML is
   skipped and links open in a new tab. A path under `/workspace` or
   `/shared`, in her prose or the person's message, is a link to `…/files/<encoded path>`,
   which opens the Files panel with the file in the viewer (`paths.tsx`; a code block is left

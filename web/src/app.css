@@ -382,7 +382,13 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .prose .code-block pre code { font-size: inherit; }
 .prose blockquote { margin-left: 0; padding-left: 12px; border-left: 3px solid var(--line); color: var(--muted); }
 .prose table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13px; }
-.prose th, .prose td { border: 1px solid var(--line); padding: 4px 8px; }
+.prose th, .prose td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; overflow-wrap: break-word; }
+.prose th { background: var(--tool); font-weight: 600; }
+.prose table { margin: 0 0 10px; }
+/* A task list (docs/ux.md §6, Tables in a message): the box in the bullet's place, read-only. */
+.prose .contains-task-list { list-style: none; padding-left: 0; }
+.prose .contains-task-list input { margin: 0 6px 0 0; vertical-align: -1px; }
+.prose .footnotes { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); margin-top: 16px; padding-top: 6px; }
 .prose img { max-width: 100%; }
 /* The one indicator while a reply is being written (docs/ux.md §6): three muted dots fading in turn, after her last marker and never after text. */
 .writing-dots { display: inline-flex; gap: 4px; align-items: center; margin-left: 2px; }

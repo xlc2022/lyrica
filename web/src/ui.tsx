@@ -4,7 +4,9 @@ import { createPortal } from "react-dom";
 import Markdown, { type Components } from "react-markdown";
 import { CodeBlock } from "./CodeBlock.tsx";
 import { Icon } from "./icons.tsx";
+import remarkGfm from "remark-gfm";
 import { basename, fileTarget, InlineImage, Lightbox, rehypePaths, type FileLinks } from "./paths.tsx";
+import { unfoldTables } from "./tables.ts";
 import type { Display, Pool } from "./api.ts";
 
 /** Whether the display filters hide a pool. Hiding only changes what's shown. */
@@ -255,9 +257,11 @@ function markdown(files: FileLinks | undefined, large: (path: string) => void, s
   };
 }
 const PLAIN = markdown(undefined, () => {});
+/** GitHub's Markdown: tables, task lists, strikethrough, footnotes and bare links (docs/ux.md §6, Tables in a message). */
+const GFM = [remarkGfm];
 
 /**
- * Markdown with raw HTML skipped; with `files`, the thread's paths are links and its images show. `onLarge` lets the
+ * GitHub's Markdown with raw HTML skipped, a table written on one line put back on its lines; with `files`, the thread's paths are links and its images show. `onLarge` lets the
  * caller hold the opened image: a message's prose is replaced when its stored copy arrives, which would close a
  * lightbox whose state lived here. `a` draws the links instead (a memory's titled citations). `copyCode` gives each
  * fenced block its language and Copy (a message's prose, docs/ux.md §6); the other pages' code blocks stay as they are.
@@ -269,7 +273,7 @@ export function Prose({ text, files, onLarge, a, copyCode, skipImages }: { text:
   const plugins = useMemo(() => (files ? [rehypePaths(files)] : []), [files]);
   return (
     <>
-      <Markdown skipHtml components={components} rehypePlugins={plugins}>{text}</Markdown>
+      <Markdown skipHtml components={components} remarkPlugins={GFM} rehypePlugins={plugins}>{unfoldTables(text)}</Markdown>
       {large && files && createPortal(<Lightbox path={large} url={files.url(large)} onClose={() => setLarge(undefined)} />, document.body)}
     </>
   );
