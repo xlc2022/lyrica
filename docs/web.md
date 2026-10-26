@@ -704,7 +704,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Show more** under the text opens the rest in place and reads **Show less**, so
   reading one needs no chat. The welcome card's rows do the same, since they are the
   same row. Checkboxes select rows for the bulk
-  bar: a button for each action every selected row shares, with the count
+  bar; a row's checkbox is named "Select <its first words>"
+  (`firstWords(title, 80)` in `src/memory.ts`), so a whole sleep item is not
+  read out before the word "Select" while the row keeps its full text.
+  A button for each action every selected row shares, with the count
   (Add to Private 2, Decline 2), and none when they share none. Twenty rows at a time, with
   Show more. The welcome page shows the first four decisions in a card
   with All N.
