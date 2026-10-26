@@ -180,11 +180,22 @@ export class Sleep {
     await r.done.catch(() => {});
   }
 
+  /** A deleted user: what waits for them (a plan's reset, skips to record at their next unlock) goes. */
+  forget(userId: string): void {
+    for (const [key, w] of this.waiting) if (w.userId === userId) this.waiting.delete(key);
+    for (let i = this.unrecorded.length - 1; i >= 0; i--) if (this.unrecorded[i]!.userId === userId) this.unrecorded.splice(i, 1);
+  }
+
   private emit(e: SleepEvent): void { this.events.emit("event", e); }
 
   private async runNow(userId: string, pool: Pool, reason: SleepRun["reason"]): Promise<SleepRun> {
     const started = Date.now();
     const at = new Date().toISOString();
+    // A deleted user has nothing to sleep on and no unlock to record a skip at.
+    if (!this.o.users.get(userId)) {
+      this.forget(userId);
+      return { id: "", reason, status: "skipped", skipReason: "no-key", until: at, phases: {}, startedAt: at, finishedAt: at };
+    }
     if (!this.o.hasKey(userId)) {
       this.unrecorded.push({ userId, pool, reason, at });
       this.log(`sleep ${pool}: skipped, no-key`);

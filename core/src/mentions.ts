@@ -1,4 +1,4 @@
-import type { Profile, Pronouns } from "./profile.ts";
+import { PRONOUN_PRESETS, type Profile, type Pronouns } from "./profile.ts";
 
 // Stored memory names users by token, so renames and pronoun changes never
 // rewrite it (docs/memory.md, "Names and pronouns"). There is no subject
@@ -22,17 +22,21 @@ export function toStored(text: string, speaker: UserId): string {
   });
 }
 
+/** How a token renders once its user is gone (deleted): no name, and they/them. */
+export const FORMER_USER = "a former user";
+
 /**
  * Tokens → current display names and pronouns. A pronoun that starts a
- * sentence is capitalised. Tokens for unknown users are left as they are.
+ * sentence is capitalised. A token for a user who no longer exists renders
+ * as FORMER_USER, never as the raw ID.
  */
 export function render(text: string, profiles: (id: UserId) => Profile | undefined): string {
   return text.replace(STORED, (token, id: string, form: string | undefined, offset: number) => {
     const profile = profiles(id);
-    if (!profile) return token;
-    if (form === undefined) return profile.displayName;
-    if (!(form in FORMS)) return token;
-    const word = profile.pronouns[FORMS[form as Form]];
+    if (form !== undefined && !(form in FORMS)) return token;
+    const word = !profile ? (form === undefined ? FORMER_USER : PRONOUN_PRESETS.they[FORMS[form as Form]])
+      : form === undefined ? profile.displayName : profile.pronouns[FORMS[form as Form]];
+    if (form === undefined && profile) return word;
     return startsSentence(text, offset) ? word.charAt(0).toUpperCase() + word.slice(1) : word;
   });
 }

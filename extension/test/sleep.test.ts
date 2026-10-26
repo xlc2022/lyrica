@@ -307,6 +307,22 @@ describe("a night's sleep", () => {
     v.close();
   });
 
+  it("forgets a deleted user: what waited for them goes, and a run for them does nothing", async () => {
+    const s = await setup();
+    const v = s.view();
+    s.talk(v, "Hello there.", "{user} said hello");
+    const plan = s.models.addPlan(s.ada, { name: "chatgpt", plan: "chatgpt", credential: { access: "a", refresh: "r", expires: Date.now() + 3_600_000 } });
+    s.models.setColumnTask(s.ada.id, "general", "sleep.dream", { offeringId: s.models.addModel(s.ada, plan.id, { modelId: "gpt-5" }).id });
+    s.models.reportPlanLimit(plan.id, Date.now() + 40 * 60_000);
+    expect(await s.sleep.run(s.ada.id, "general", "scheduled")).toMatchObject({ skipReason: "plan-limit" });
+    s.sleep.forget(s.ada.id);
+    expect(s.sleep.planWaits(s.ada.id)).toEqual([]);
+    v.close();
+    const logged = s.logs.length;
+    expect(await s.sleep.run("no-such-user", "general", "scheduled")).toMatchObject({ status: "skipped", id: "" });
+    expect(s.logs).toHaveLength(logged);
+  });
+
   it("skips when the endpoint is offline without moving the watermark, and resumes a partial run", async () => {
     const s = await setup();
     const v = s.view();

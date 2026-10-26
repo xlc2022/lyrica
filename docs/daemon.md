@@ -1052,7 +1052,13 @@ checked on the login limiter like **Change password…**; without
   without the user's name.
 - Threads they shared that another user already accepted are that user's
   own copies and stay. Persona revisions they approved stay. A mention of
-  them in another user's memory falls back to "a user".
+  them in another user's memory renders as "a former user" (they/them for
+  pronoun tokens), never as their ID, so prompts and the memory browser
+  name no one.
+- What a lock keeps for the user's return goes: sleep waiting on a plan's
+  reset or holding skips to record (`Sleep.forget`), and the scheduled
+  sleep's marks for them. A sleep run asked for a user who no longer
+  exists does nothing and records nothing.
 - `lyrica admin user remove <login>` does the same from a terminal while
   lyricad is stopped (it refuses while it runs): the self.db passphrase, an
   administrator's login and password, and typing the login.
