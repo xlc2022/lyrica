@@ -39,9 +39,9 @@ describe("mentions", () => {
     expect(pronounLabel(PRONOUN_PRESETS.she)).toBe("she/her");
   });
 
-  it("keeps different users apart and leaves unknown users as tokens", () => {
-    const text = `${toStored("{user} met", "u1")} ${toStored("{user} and thanked {user:obj}.", "u2")} [[u:gone]] too.`;
-    expect(render(text, lookup)).toBe("Al met Mina and thanked them. [[u:gone]] too.");
+  it("keeps different users apart and names a deleted user only as a former user, never by ID", () => {
+    const text = `${toStored("{user} met", "u1")} ${toStored("{user} and thanked {user:obj}.", "u2")} [[u:gone]] too, with [[u:gone:poss]] dog. [[u:gone:poss]] dog barked.`;
+    expect(render(text, lookup)).toBe("Al met Mina and thanked them. A former user too, with their dog. Their dog barked.");
   });
 
   it("finds current and previous names in a query without changing it", () => {

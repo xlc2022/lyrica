@@ -797,6 +797,10 @@ export class Lyricad implements Drainable {
     if (this.keyring.hasUserKey(target.id)) await this.lockUser(target.id);
     else this.sessions.dropUser(target.id);
     s.users.deleteUser(actor, target);
+    // A lock keeps what waits for the user's return; nobody returns from a delete.
+    s.sleep.forget(target.id);
+    this.userSleptOn.delete(target.id);
+    this.sleepersDue.delete(target.id);
     await this.keyring.dropSavedKey(target.id).catch((err: Error) => this.log(`forgetting a deleted user's saved key failed: ${firstLine(err)}`));
     await this.finishDeletes();
     this.log("deleted a user");

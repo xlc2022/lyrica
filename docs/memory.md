@@ -151,7 +151,8 @@ memory never needs rewriting when they do.
   its title, so a rename never leaves stale text.
 - **Reading.** Every read path (context assembly, tools, the memory browser)
   renders tokens with the user's current profile. Lyrica and the user both see
-  natural text. The stored token form shows only in the browser's "raw" view.
+  natural text. A token for a deleted user renders as "a former user", and
+  its pronoun forms as they/them. The stored token form shows only in the browser's "raw" view.
 - **WAKE and journal are plain text.** They are rewritten every sleep, so
   tokens would only make her narrative voice clunky. After a change they catch
   up at the next sleep.

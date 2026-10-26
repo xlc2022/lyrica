@@ -178,7 +178,7 @@ class ThreadShares {                                          // thread_shares i
 
 ```ts
 toStored(text: string, speaker: UserId): string              // {user}, {user:obj}… → [[u:ID]], [[u:ID:obj]]…
-render(text: string, profiles: (id) => Profile | undefined): string   // tokens → current names and pronouns
+render(text: string, profiles: (id) => Profile | undefined): string   // tokens → current names and pronouns; a deleted user → FORMER_USER ("a former user"), they/them
 queryTokens(query: string, profiles: Map<UserId, Profile>): …  // see below
 THREAD_MENTION                                                // [t:<id>], [e:<id>#<n>], [general/t:<id>]
 renderThreadMentions(text, titleOf: (id, pool?) => string | undefined): string   // each mention → current title, or "a forgotten thread"
