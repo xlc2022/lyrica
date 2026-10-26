@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" color="#d6455a" fill="none" stroke="currentColor" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
-  <g transform="rotate(44 256 256) translate(-10 -12)">
-    <path d="M204 210V102H130V74H250V210C291 245 316 303 316 356C316 413 282 444 230 444C178 444 144 413 144 356C144 303 163 245 204 210Z"/>
-    <path d="M250 210C334 256 366 318 354 376C346 417 301 446 230 444"/>
-    <path d="M230.0 278.0 244.7 297.8 268.0 305.6 253.8 325.7 253.5 350.4 230.0 343.0 206.5 350.4 206.2 325.7 192.0 305.6 215.3 297.8Z"/>
-    <path d="M200 395H260"/>
-  </g>
-</svg>

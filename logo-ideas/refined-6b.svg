@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" color="#1f6f78" fill="none" stroke="currentColor" stroke-width="30" stroke-linejoin="round" stroke-linecap="round">
-  <g transform="rotate(-11 256 256)">
-  <path d="M125.0 416.0 L125.0 89.0 Q125.0 75.0 139.0 75.0 L248.0 75.0 Q262.0 75.0 262.0 89.0 L262.0 280.0 Q262.0 294.0 276.0 294.0 L393.0 294.0 Q407.0 294.0 407.0 308.0 L407.0 416.0 Q407.0 430.0 393.0 430.0 L139.0 430.0 Q125.0 430.0 125.0 416.0 Z"/>
-  <path d="M262 294 V430"/>
-  </g>
-</svg>
