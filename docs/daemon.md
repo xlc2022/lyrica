@@ -537,7 +537,8 @@ things are".
   update that failed its probation and rolled back (`rollback`, for seven
   days after it, leading to Administration → Updates). Each
   item has its type, pool, time, whether it is a decision, where it leads,
-  and its actions as requests the UI sends as they are; `total` counts the
+  and its actions as requests the UI sends as they are. A sleep item's title is
+  her whole text, not a shortened copy: the row clamps it and opens it in place; `total` counts the
   filtered items, `waiting` the decisions over everything (the sidebar's
   count), `types` the types present. `type=decision` keeps decisions; sorts
   are newest, oldest, type and scope; `limit` goes up to 200. The list

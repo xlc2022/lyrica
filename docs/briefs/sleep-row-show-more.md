@@ -38,17 +38,22 @@ that exists only because there was no way to expand goes away.
 
 ## Design
 
-The link is the **Link** look (§3: "revealing more of a list"), not a third button:
-it sits at the end of the text column, so §3's two visible actions per row are still
-**Start a chat** and **Dismiss**, and pressing it cannot reach either. It is a real
+The link is the **Link** look (§3: "revealing more of a list"). It is a real
 `<button type="button">` with `aria-expanded`, like the row's existing **▸ Waiting
 threads** toggle.
 
-It shows only when there is more to see, measured the way `FromThread` in
-`web/src/Messages.tsx` measures (the rendered element's `scrollHeight` against its
-`clientHeight`) rather than by a character count, so it appears at whatever width
-the text actually overflows — 390 px and 1280 px differ. Collapsed, the row is the
-same height as now; expanded, the list reflows below it.
+It is honest to say this is a third visible control on such a row. §3 allows two
+actions per row, so `docs/ux.md` §6 records it narrowly: an inline reading
+disclosure in the text column, not an action on the item — **Start a chat** and
+**Dismiss** stay the only buttons that touch it, and they keep their place in the
+row's actions area. It is not read as a general third-action allowance.
+
+It shows only when there is more to see: the rendered element's `scrollHeight`
+against its `clientHeight`, measured when the text changes and whenever the row's
+width does (a `ResizeObserver`), so it appears wherever the text really overflows —
+390 px and 1280 px differ, and a row resized narrow gains the link. What stays the
+same is the **collapsed cap: three lines of text**, not the whole row's height, which
+grows by the line the link needs; expanded, the list reflows below it.
 
 Mockup, synthetic text (a short row above an affected one):
 
@@ -59,36 +64,41 @@ desktop 1280 ── Notifications ───────────────�
 
  ☾  Fixture question about whether to plant the beds along the north
     wall this season, since the shade from the fig arrives too late in
-    the afternoon to matter for the tomatoes and the soil there drains
-    well enough that …                                       [Start a chat] [Dismiss]
-    A question from sleep · general · 04:03                    Show more
+    the afternoon to …                                       [Start a chat] [Dismiss]
+    Show more
+    A question from sleep · general · 04:03
 
 expanded, same row ────────────────────────────────────────────────────────────────
- ☾  Fixture question about whether to plant the beds along the north
+ ☾  Fixture question about whether to plant the beds along the north   [Start a chat] [Dismiss]
     wall this season, since the shade from the fig arrives too late in
     the afternoon to matter for the tomatoes and the soil there drains
-    well enough that they ripen before the first frost. She would
-    rather ask than decide alone, because last year's rows were placed
-    by the fence line and she is not sure that was ever measured.
-                                                              [Start a chat] [Dismiss]
-    A question from sleep · general · 04:03                     Show less
+    well enough that they should ripen before the first frost; she
+    would rather ask than decide alone, because last year rows were
+    placed by the fence line and nobody ever measured it.
+    Show less
+    A question from sleep · general · 04:03
 
-phone 390 ── collapsed / expanded ──────────────────────────────────────────────────
- ☾  Fixture question about whether to plant the   ☾  Fixture question about whether to
-    beds along the north wall this season, since      beds along the north wall this
-    the shade from the fig arrives too late in …      season, since … (all of it)
-    Something from sleep · general · 04:03            [Start a chat] [Dismiss]
-    [Start a chat] [Dismiss]                          Show more → Show less
+phone 390 ── collapsed / expanded ────────────────────────────────────────────────
+ ☾  Fixture question about whether to plant the      ☾  Fixture question about whether to
+    beds along the north wall this season, since        beds along the north wall this
+    the shade from the fig arrives too late in …        season, since … (all of it)
+    [Start a chat] [Dismiss]                               [Start a chat] [Dismiss]
+    Show more                                              Show less
+    Something from sleep · general · 04:03                 A question from sleep · general · 04:03
 ```
 
 ## Done when
 
-- A long **From sleep** row shows three lines and **Show more**; pressing it shows
-  the whole text in place, the address does not change, no `…/items/<id>/chat`
-  request is made and no thread appears; pressing again collapses.
-- A short row has no link at all.
-- One e2e test covers both widths with no horizontal scroll; screenshots for UI
-  review.
+- The API carries the item's whole text past 160 characters (the other shortened
+  lines are untouched code); a long **From sleep** row shows three lines and **Show more**.
+- Pressing it, or focusing it and pressing Enter or Space, shows the whole text in
+  place: same address, no `…/items/<id>/chat` request, no thread; pressing again
+  collapses back to three lines.
+- A short row has no link at all, and a row that fits at one width gains the link
+  when it is narrowed — the measurement follows the width, not a character count.
+- The row's checkbox still selects it for the bulk bar, and Dismiss still dismisses.
+- One e2e test covers collapsed, expanded, collapse-again and both widths with no
+  horizontal scroll; screenshots for UI review.
 - `docs/web.md` (Notifications, the welcome cards' line about three lines) and
   `docs/ux.md` §6's Notifications row say what the row does now; no drift.
 - typecheck, tests and e2e pass; draft PR to Review and UI review.
