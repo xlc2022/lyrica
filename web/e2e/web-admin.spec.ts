@@ -1948,6 +1948,17 @@ test("a long From sleep row opens its own text in place and starts no chat", asy
   const more = row.locator("> .main-col > .show-more");
   const lines = () => name.evaluate(el => ({ clamp: getComputedStyle(el).webkitLineClamp, clipped: el.scrollHeight - el.clientHeight }));
   const height = () => row.evaluate(el => el.getBoundingClientRect().height);
+  // Both themes, for UI review. While open, the row's own picture too: on a phone the tall text
+  // pushes its link, facts and buttons past the bottom of a viewport shot.
+  const shoot = async (state: "collapsed" | "expanded") => {
+    if (!process.env.SCREENSHOTS) return;
+    const w = page.viewportSize()!.width;
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-row-${state}-${w}.png` });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-row-${state}-${w}-dark.png` });
+    if (state === "expanded") await row.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-row-${state}-row-${w}.png` });
+  };
 
   // Collapsed: three lines, and the rest hidden.
   await expect(row.getByRole("button", { name: "Show more" })).toBeVisible();
@@ -1957,7 +1968,7 @@ test("a long From sleep row opens its own text in place and starts no chat", asy
   expect((await lines()).clipped).toBeGreaterThan(0);
   const collapsed = await height();
   await noHorizontalScroll(page);
-  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-row-collapsed-${page.viewportSize()!.width}.png` });
+  await shoot("collapsed");
 
   // The keyboard opens it, in place: same address, no chat started, nothing clipped.
   await more.focus();
@@ -1969,7 +1980,8 @@ test("a long From sleep row opens its own text in place and starts no chat", asy
   expect(await height()).toBeGreaterThan(collapsed);
   expect(page.url()).toBe(url);
   expect(chats).toEqual([]);
-  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/sleep-row-expanded-${page.viewportSize()!.width}.png` });
+  await noHorizontalScroll(page);   // while open, with the whole paragraph laid out
+  await shoot("expanded");
 
   // And closes it again, with the space bar.
   await more.focus();
