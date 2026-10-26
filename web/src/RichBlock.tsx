@@ -48,6 +48,8 @@ async function mermaid(text: string, theme: Theme): Promise<string> {
       primaryColor: t.tool, primaryBorderColor: t.edge, primaryTextColor: t.fg, secondaryColor: t.panel, tertiaryColor: t.panel,
       lineColor: t.muted, textColor: t.fg, edgeLabelBackground: t.panel, noteBkgColor: t.tool, noteTextColor: t.fg, noteBorderColor: t.line,
       ...Object.fromEntries(SERIES[theme].map((c, i) => [`pie${i + 1}`, c])), pieStrokeColor: t.panel, pieOuterStrokeColor: t.line, pieOpacity: "1",
+      // A pie in the message's type scale, beside a flowchart's 14 px labels and a chart's 12 px axes.
+      pieTitleTextSize: "16px", pieTitleTextColor: t.fg, pieSectionTextSize: "13px", pieLegendTextSize: "13px", pieLegendTextColor: t.fg,
     },
   });
   // Parsed first: a failed render leaves its error drawing in the page's body.
@@ -68,7 +70,7 @@ async function vegaLite(text: string, theme: Theme): Promise<string> {
   const axis = { domainColor: t.edge, gridColor: t.line, tickColor: t.edge, labelColor: t.muted, titleColor: t.fg, labelFont: t.font, titleFont: t.font, labelFontSize: 12, titleFontSize: 12, titleFontWeight: 600 };
   const config = {
     background: null, font: t.font, view: { stroke: null },
-    axis, legend: { labelColor: t.fg, titleColor: t.fg, labelFont: t.font, titleFont: t.font, labelFontSize: 12, titleFontSize: 12 },
+    axis, axisX: { labelAngle: 0 }, legend: { labelColor: t.fg, titleColor: t.fg, labelFont: t.font, titleFont: t.font, labelFontSize: 12, titleFontSize: 12 },
     title: { color: t.fg, font: t.font, fontSize: 13, fontWeight: 600 }, text: { color: t.fg, font: t.font },
     range: { category: SERIES[theme] }, mark: { color: SERIES[theme][0] }, line: { strokeWidth: 2 },
     bar: { cornerRadiusEnd: 4 }, arc: { stroke: t.panel, strokeWidth: 2 },
@@ -88,7 +90,10 @@ const DRAW: Record<Kind, (text: string, theme: Theme) => Promise<string>> = { me
 const WORD: Record<Kind, string> = { mermaid: "diagram", "vega-lite": "chart" };
 
 /** The first line of why a block didn't draw, short enough for one caption. */
-const reason = (e: unknown) => (e instanceof Error ? e.message : String(e)).split("\n").find((l) => l.trim())?.trim().replace(/:$/, ".").slice(0, 160) ?? "";
+function reason(e: unknown): string {
+  const line = (e instanceof Error ? e.message : String(e)).split("\n").find((l) => l.trim())?.trim().replace(/:$/, "").slice(0, 160) ?? "";
+  return /[.!?]$/.test(line) ? line : `${line}.`;
+}
 
 /** A ```mermaid or ```vega-lite block: drawn once its text settles, with Preview | Source and Copy in its strip. */
 function Figure({ kind, lang, text, children }: { kind: Kind; lang: string; text: string; children: ReactNode }) {

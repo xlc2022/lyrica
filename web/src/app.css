@@ -397,6 +397,7 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .rich-block .seg + .code-copy { margin-left: 0; }
 .rich-draw { background: var(--panel); border-top: 1px solid var(--line); padding: 12px; overflow-x: auto; text-align: center; }
 .rich-draw svg { max-width: 100%; max-height: 480px; height: auto; }
+.rich-draw .pieTitleText { font-weight: 600; }
 .rich-error { margin: 0; padding: 0 12px 8px; font-size: 12px; color: var(--muted); }
 /* Math: display math centred on its own line, scrolling sideways when wide; inline math at the text's size. */
 .prose .math-display { margin: 0 0 10px; overflow-x: auto; overflow-y: hidden; text-align: center; }
