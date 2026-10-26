@@ -1,6 +1,8 @@
 # Brief: Read a long sleep row in place
 
-**Status:** In progress. **Branch:** `lyrica/sleep-row-show-more`. **Issue:** #591.
+**Status:** Merged as #592 (`bd1fb7fa`). The welcome page's **From sleep** card, left
+out below, was asked for in use and went to #594. Handoff notes are history.
+**Branch:** `lyrica/sleep-row-show-more`. **Issue:** #591.
 **Read first:** AGENTS.md, PRINCIPLES.md, docs/contracts.md, docs/ux.md (§1, §3, §6
 "Anything waiting for the user", §8, §10), docs/web.md (Notifications, the welcome
 cards).
@@ -30,9 +32,10 @@ that exists only because there was no way to expand goes away.
 ## Out of scope
 
 - Any new endpoint, field, page or widget; any change to what the row's buttons do.
-- The welcome page's **From sleep** card, whose items keep clamping to three lines:
-  its own link to Sleep sits above them. (Rows in the Notifications *card* share
-  `Row`, so they gain the reveal with the page.)
+- The welcome page's **From sleep** card: left out here on the judgement that its
+  link to Sleep sits above it. In use that was wrong — it went to #594, which also
+  lifted the measuring into `ClampedText` in `src/ui.tsx` for both places. (Rows in
+  the Notifications *card* share `Row`, so they gained the reveal with the page.)
 - Citation groups left in a notification title but stripped on the Sleep page —
   drift of its own, filed under Later in #591.
 
