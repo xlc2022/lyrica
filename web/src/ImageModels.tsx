@@ -230,7 +230,7 @@ export function ImageModels({ ctx }: { ctx: MCtx }) {
             {ROLES.map(([x, label]) => <button key={x} type="button" aria-pressed={does === x} onClick={() => setDoes(x)}>{label}</button>)}
           </div>
         )}
-        <button type="button" disabled={busy || !libs.data} title="Read each host's models folder again" onClick={scanAll}>Scan</button>
+        <button type="button" disabled={busy || !libs.data} title="Reads each host's models folder again." onClick={scanAll}>Scan</button>
         <button type="button" className="primary" onClick={() => go({ page: "models", userId, tab: "images", add: "image" })}>Download model</button>
       </>}>
       <ErrorText error={ctx.models.error || libs.error || groups.error || error} />

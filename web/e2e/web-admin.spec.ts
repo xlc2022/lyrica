@@ -800,6 +800,9 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await expect(page.getByRole("heading", { level: 1, name: "Image models" })).toBeVisible();
   await expect(page.locator(".head .cap")).toHaveText("1 model (recipe) · 6 parts on 1 host · 0 groups · 1 to review");
   await expect(page.getByRole("navigation", { name: "Models pages" }).getByRole("link", { name: "Image models" })).toHaveAttribute("aria-current", "page");
+  // Scan in the header has each host read its models folder again.
+  await page.getByRole("button", { name: "Scan", exact: true }).click();
+  await expect.poll(() => post("manage")).toEqual([{ method: "POST", path: "/host/v1/scan" }]);
 
   // A recipe: its facts, then its copy on the host as a block of parts.
   const list = page.getByRole("list", { name: "Z-Image models" });
@@ -942,7 +945,7 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Scan folder" }).click();
   await page.getByRole("button", { name: "Scan now" }).click();
   await expect(page.getByRole("list", { name: "Found" }).locator("li.rvrow")).toContainText("Qwen-Image");
-  expect(post("manage")).toEqual([{ method: "POST", path: "/host/v1/scan" }]);
+  expect(post("manage")).toEqual([{ method: "POST", path: "/host/v1/scan" }, { method: "POST", path: "/host/v1/scan" }]);
   await page.getByRole("group", { name: "Source" }).getByRole("button", { name: "Hugging Face" }).click();
   await page.getByLabel("Repository").fill("Comfy-Org/Qwen-Image_ComfyUI");
   await page.getByRole("button", { name: "Look up" }).click();
