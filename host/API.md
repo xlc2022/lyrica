@@ -498,10 +498,10 @@ Only the repository's name and revision leave the host.
   and couldn't be fetched) or `probation` (it went back to the old folder).
   `last` is then `{ models, commit, at, ok }`.
 - After an unload, a server's process can take seconds to let go of its
-  memory. Until a GPU has freed half of what the model held (30 s at most),
-  a request that wouldn't fit there waits for it rather than failing with
-  `too_big`, and a load that unloaded something to make room plans again
-  once the memory is back.
+  memory, and ComfyUI frees a model in steps. Until a GPU's use has stopped
+  falling for 2 s (30 s at most), a request that wouldn't fit there waits
+  for it rather than failing with `too_big`, and a load that unloaded
+  something to make room plans again once the memory is back.
 
 ### Usage
 

@@ -84,6 +84,8 @@ export interface SchedulerOptions {
   sharedMemory?: Server[];
   /** Longest wait, in ms, for an unloaded model's memory to come back before the next load is planned. */
   settleMs?: number;
+  /** How long, in ms, an unloaded model's GPU must stop freeing memory before it counts as done. */
+  quietMs?: number;
 }
 
 export type HostRunState = "running" | "pausing" | "paused" | "restarting";
@@ -103,8 +105,8 @@ export class Scheduler {
   private changing = 0;
   /** Invalidates GPU-delta attribution when another request or memory change starts. */
   private memoryEpoch = 0;
-  /** GPUs whose unloaded model's memory hasn't come back yet, and the use that means it has. */
-  private readonly releasing = new Map<number, { until: number; below: number }>();
+  /** GPUs whose unloaded model's memory hasn't come back yet: the lowest use seen, and when it last fell. */
+  private readonly releasing = new Map<number, { until: number; low: number; fell: number }>();
   private retry: ReturnType<typeof setTimeout> | null = null;
   runState: HostRunState = "running";
   /** What went wrong the last time the host paused, restarted or reset: shown in the status. */
@@ -539,20 +541,25 @@ export class Scheduler {
     }
     this.loaded.delete(l.model.id);
     // Until the server's process lets go of the memory, it looks like other programs'.
-    const until = Date.now() + (this.o.settleMs ?? 30_000);
-    for (const g of l.option.gpus) this.releasing.set(g, { until, below: (before[g] ?? 0) - (l.vram[g] ?? 0) / 2 });
+    const now = Date.now();
+    const until = now + (this.o.settleMs ?? 30_000);
+    for (const g of l.option.gpus) this.releasing.set(g, { until, low: before[g] ?? 0, fell: now });
     this.o.log("unloaded", { model: l.model.id });
   }
 
   /**
    * GPUs an unloaded model may still hold memory on: a server's process can
-   * take seconds to exit after it says it unloaded. Done once a GPU has freed
-   * half of what the model held, or after `settleMs`.
+   * take seconds to exit after it says it unloaded, and ComfyUI frees a
+   * model in steps. Done once a GPU's use hasn't fallen for `quietMs`, or
+   * after `settleMs`.
    */
   private stillReleasing(): number[] {
+    const now = Date.now();
     for (const [g, r] of this.releasing) {
       const used = this.gpus.find((x) => x.index === g)?.used ?? 0;
-      if (used <= r.below || Date.now() >= r.until) this.releasing.delete(g);
+      // Less than 64 MiB is noise, not a model letting go.
+      if (used < r.low - 64 * 1024 ** 2) Object.assign(r, { low: used, fell: now });
+      if (now - r.fell >= (this.o.quietMs ?? 2_000) || now >= r.until) this.releasing.delete(g);
     }
     return [...this.releasing.keys()];
   }

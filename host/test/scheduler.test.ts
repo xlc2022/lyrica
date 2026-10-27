@@ -155,6 +155,24 @@ describe("the GPU queue", () => {
     expect(llamacpp.calls).toEqual(["load first@0", "unload first", "load second@0"]);
   });
 
+  it("waits while an unloaded model frees its memory in steps, as ComfyUI does", async () => {
+    const { scheduler, llamacpp, gpus } = setup([24]);
+    await scheduler.start([]);
+    await scheduler.run(textModel("edit", 18), "chat", async () => {});
+    // The server answers before it frees anything; then most goes, and the rest is held a while longer.
+    llamacpp.unload = async (model) => {
+      llamacpp.calls.push(`unload ${model.id}`);
+      setTimeout(() => {
+        gpus.loaded.delete(model.id);
+        gpus.loaded.set(`${model.id} (freeing)`, { 0: 7 * GIB });
+      }, 100);
+      setTimeout(() => gpus.loaded.set(`${model.id} (freeing)`, { 0: 6 * GIB }), 400);
+      setTimeout(() => gpus.loaded.delete(`${model.id} (freeing)`), 1000);
+    };
+    await scheduler.run(textModel("create", 16), "chat", async () => {});
+    expect(llamacpp.calls).toEqual(["load edit@0", "unload edit", "load create@0"]);
+  });
+
   it("fails at once with a plain reason when a model can never fit", async () => {
     const { scheduler } = setup([24]);
     await scheduler.start([]);
