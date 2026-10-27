@@ -1350,6 +1350,59 @@ test("Search finds messages by a rare word, marks it, and a hit opens its thread
   await expect(side.locator(".showing label").filter({ hasText: "Hidden" })).toHaveAttribute("title", "Hidden threads are left out of the list and of search.");
 });
 
+test("Search closes when another page is opened, clears its query, and opens again for the next search", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General"); // one titled "New thread", for the search that follows
+  const side = page.getByRole("complementary", { name: "Threads" });
+  const box = side.getByRole("searchbox", { name: "Search titles and messages" });
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+
+  // Opened, and used for a word nobody wrote.
+  await side.getByText("Search", { exact: true }).click();
+  await box.fill("nowhere at all");
+  await expect(side.getByText("Nothing matches.")).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/search-open-${page.viewportSize()!.width}.png` });
+
+  // Another page closes the field and clears its query, so the list there is the list again.
+  await side.getByRole("link", { name: /^Notifications/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Notifications" })).toBeVisible();
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await expect(box).toBeHidden();
+  await expect(side.getByText("Nothing matches.")).toHaveCount(0);
+  if (process.env.SCREENSHOTS) {
+    // The drawer slides in, so the capture waits for it to settle.
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${process.env.SCREENSHOTS}/search-closed-${page.viewportSize()!.width}.png` });
+  }
+
+  // It opens again, and searches: the field is closed by leaving, not by using it once.
+  await side.getByText("Search", { exact: true }).click();
+  await expect(box).toBeVisible();
+  await box.fill("New thread");
+  await expect(side.locator(".thread").first()).toBeVisible();
+  await expect(side.getByText("Nothing matches.")).toHaveCount(0);
+  await noHorizontalScroll(page);
+});
+
+test("Search closes on a second page of one area, where the route's kind does not change", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const side = page.getByRole("complementary", { name: "Threads" });
+  const box = side.getByRole("searchbox", { name: "Search titles and messages" });
+  // Models and its pages are one route kind, so a check on the kind alone would miss this.
+  await page.goto(`/#/u/${userId}/models`);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await side.getByText("Search", { exact: true }).click();
+  await box.fill("nowhere at all");
+  await expect(side.getByText("Nothing matches.")).toBeVisible();
+  if (phone(page)) await side.getByRole("button", { name: "Hide threads" }).click();
+  await page.getByRole("navigation", { name: "Models pages" }).getByRole("link", { name: "Hosts and endpoints" }).click();
+  await expect(page).toHaveURL(/\/models\/hosts$/);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await expect(box).toBeHidden();
+  await expect(side.getByText("Nothing matches.")).toHaveCount(0);
+  await noHorizontalScroll(page);
+});
+
 test("a memory can be added, edited and restored", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   // A thread mention in a memory shows as a link to that thread.
