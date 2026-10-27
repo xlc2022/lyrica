@@ -39,7 +39,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   matches marked, and "<n> more in this thread" to
   open the rest in place; after the groups, the threads whose title alone
   matched; **Show more** under a full page of 50; "Nothing matches." when
-  nothing does; Escape clears it. A hit opens its thread at that message,
+  nothing does; Escape clears it. Leaving a conversation for another page
+  closes the field and clears its query, as navigating already closes the phone
+  drawer, so that page's list is the list again; opening one of its hits keeps
+  them, since you are still choosing among them. A hit opens its thread at that message,
   loading older messages as needed, and marks it a moment, as the Pinned
   popover does; only the thread and the message number wait in session
   storage for a thread not yet open), **Notifications** with the count of decisions waiting (read with
