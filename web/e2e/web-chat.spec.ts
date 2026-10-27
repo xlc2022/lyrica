@@ -1384,6 +1384,25 @@ test("Search closes when another page is opened, clears its query, and opens aga
   await noHorizontalScroll(page);
 });
 
+test("Search closes on a second page of one area, where the route's kind does not change", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const side = page.getByRole("complementary", { name: "Threads" });
+  const box = side.getByRole("searchbox", { name: "Search titles and messages" });
+  // Models and its pages are one route kind, so a check on the kind alone would miss this.
+  await page.goto(`/#/u/${userId}/models`);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await side.getByText("Search", { exact: true }).click();
+  await box.fill("nowhere at all");
+  await expect(side.getByText("Nothing matches.")).toBeVisible();
+  if (phone(page)) await side.getByRole("button", { name: "Hide threads" }).click();
+  await page.getByRole("navigation", { name: "Models pages" }).getByRole("link", { name: "Hosts and endpoints" }).click();
+  await expect(page).toHaveURL(/\/models\/hosts$/);
+  if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
+  await expect(box).toBeHidden();
+  await expect(side.getByText("Nothing matches.")).toHaveCount(0);
+  await noHorizontalScroll(page);
+});
+
 test("a memory can be added, edited and restored", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   // A thread mention in a memory shows as a link to that thread.

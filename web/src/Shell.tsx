@@ -536,15 +536,21 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
   const [run, , actionError] = useAction();
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-  // Search's field belongs to this list, so leaving a conversation for another page closes it and clears
+  // Search's field belongs to this list, so going anywhere that isn't a conversation closes it and clears
   // its query, as navigating already closes the phone drawer: a closed field that still filtered the list
-  // would be state nobody can see. Opening one of its hits keeps them — there you are still choosing among
-  // them — and typing changes no address, so nothing moves while you search (docs/ux.md §6).
+  // would be state nobody can see. It watches the address, not the route — Shell's `shown` is a fresh object
+  // on a narrow thread-with-panel render, which would clear a query with no navigation — so another page of
+  // one area counts as leaving, while opening a hit, another thread or what opens beside a conversation
+  // keeps them. Typing changes no address, so nothing moves while you search (docs/ux.md §6).
   useEffect(() => {
-    if (route.page === "thread") return;
-    setSearchOpen(false);
-    setQuery("");
-  }, [route.page]);
+    const leave = () => {
+      if (parse(location.hash).page === "thread") return;
+      setSearchOpen(false);
+      setQuery("");
+    };
+    addEventListener("hashchange", leave);
+    return () => removeEventListener("hashchange", leave);
+  }, []);
   // Its width, dragged on its right edge, goes to .app's grid as the panel's does; a phone's slide-over keeps its own.
   const sideRef = useRef<HTMLElement>(null);
   const [sideWidth, resizeSide] = useStoredWidth(SIDE_WIDTH_KEY, SIDE_MIN, SIDE_MAX, SIDE_DEFAULT);
