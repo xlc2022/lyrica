@@ -817,7 +817,7 @@ the action is `invalid`.
   Qwen-Image-Edit, three for Qwen-Image 2.1. Qwen-Image 2.1 runs a masked
   edit through LanPaint's sampler on an image of about one megapixel, with
   the mask grown by 24 pixels, then puts only that part back into the
-  original at its own size.
+  original at its own size, blended over 31 pixels at its edge.
 - `POST /host/v1/images/upscale`
 
   ```json

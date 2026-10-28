@@ -267,7 +267,7 @@ describe("recipes", () => {
     expect(qi21Masked.batch!.inputs.samples).toEqual(["masked", 0]);
     expect(qi21Masked.inpaint!.class_type).toBe("LanPaint_SamplerCustomAdvanced");
     expect(qi21Masked.inpaint!.inputs).toMatchObject({ guider: ["guider", 0], sigmas: ["sigmas", 0], latent_image: ["batch", 0] });
-    expect(qi21Masked.merged!.inputs).toMatchObject({ samples: ["inpaint", 0], image: ["originals", 0], mask: ["grown", 0] });
+    expect(qi21Masked.merged!.inputs).toMatchObject({ blend_overlap: 31, samples: ["inpaint", 0], image: ["originals", 0], mask: ["grown", 0] });
     // The merge keeps as many images as the original has, so a batch repeats it.
     expect(qi21Masked.originals!.inputs).toEqual({ image: ["load", 0], amount: 2 });
     expect(qi21Masked.save!.inputs.images).toEqual(["merged", 0]);
