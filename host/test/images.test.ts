@@ -48,11 +48,12 @@ const wan = (channels: number, dim: number) => safetensors({ "head.modulation": 
 const WAN_5B = wan(48, 3072);
 const WAN_T2V = wan(16, 5120);
 const WAN_I2V = wan(36, 5120);
-// QuantStack's GGUF experts: the same tensors as the safetensors, but GGUF holds at most four
-// dimensions, so ComfyUI-GGUF flattens the 5-D patch embedding and records its true shape.
-const wanGguf = (channels: number) => ggufBytes({ "general.architecture": "wan", "general.quantization_version": 2, "general.file_type": 17,
-  "comfy.gguf.orig_shape.patch_embedding.weight": [5120, channels, 1, 2, 2] },
-  { "head.modulation": [1, 6, 5120], "patch_embedding.weight": [5120 * channels * 2, 2], "blocks.0.ffn.0.weight": [13824, 5120] });
+// Wan GGUF experts. QuantStack's carry three keys of metadata and the 5-D patch embedding as it is;
+// ComfyUI-GGUF's converter flattens it to fit four dimensions and records its true shape.
+const WAN_GGUF_META = { "general.architecture": "wan", "general.quantization_version": 2, "general.file_type": 17 };
+const wanGguf = (channels: number, flattened = false) => ggufBytes(
+  flattened ? { ...WAN_GGUF_META, "comfy.gguf.orig_shape.patch_embedding.weight": [5120, channels, 1, 2, 2] } : WAN_GGUF_META,
+  { "head.modulation": [1, 6, 5120], "patch_embedding.weight": flattened ? [5120 * channels * 2, 2] : [5120, channels, 1, 2, 2], "blocks.0.ffn.0.weight": [13824, 5120] });
 const WAN_LORA = safetensors({ "diffusion_model.blocks.0.cross_attn.k.lora_A.weight": {}, "diffusion_model.blocks.0.cross_attn.k.lora_B.weight": {} });
 const UMT5 = safetensors({ "encoder.block.0.layer.0.SelfAttention.q.weight": { dtype: "F8_E4M3" }, "shared.weight": { shape: [256384, 4096] } });
 const WAN22_VAE = safetensors({ "decoder.conv1.weight": { shape: [1024, 48, 3, 3, 3] }, "encoder.conv1.weight": {}, "decoder.upsamples.0.upsamples.0.residual.2.weight": {} });
@@ -129,7 +130,7 @@ describe("video parts", () => {
       "v/minimax_h3_fl2va_pruned_int8_convrot.safetensors": H3, "v/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": H3_LORA,
       "v/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": QWEN3VL_32B, "v/minimax_h3_video_vae_int8_convrot.safetensors": H3_VAE,
       "v/minimax_h3_audio_vae_fp32.safetensors": H3_AUDIO_VAE,
-      "v/Wan2.2-T2V-A14B-HighNoise-Q5_K_M.gguf": wanGguf(16), "v/Wan2.2-I2V-A14B-LowNoise-Q5_K_M.gguf": wanGguf(36),
+      "v/Wan2.2-T2V-A14B-HighNoise-Q5_K_M.gguf": wanGguf(16), "v/Wan2.2-I2V-A14B-LowNoise-Q5_K_M.gguf": wanGguf(36, true),
     });
     const got = Object.fromEntries(scanParts(dir).map((p) => [p.file.slice(2), [p.role, p.slot, p.arch]]));
     expect(got).toEqual({
