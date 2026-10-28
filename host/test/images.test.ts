@@ -464,7 +464,7 @@ describe("stable-diffusion.cpp", () => {
 });
 
 describe("the image API", () => {
-  async function stack(o: { sdcpp?: boolean; files?: Record<string, Buffer> } = {}) {
+  async function stack(o: { sdcpp?: boolean; files?: Record<string, Buffer>; gpuGb?: number } = {}) {
     const models = folder({
       [`${Z}/diffusion_models/z.safetensors`]: Z_DIFFUSION, [`${Z}/text_encoders/qwen_3_4b.safetensors`]: QWEN3, [`${Z}/vae/ae.safetensors`]: FLUX_VAE,
       "shared/flux1-schnell-fp8.safetensors": FLUX_CKPT, "shared/style.safetensors": Z_LORA, ...o.files,
@@ -475,7 +475,7 @@ describe("the image API", () => {
     const log = (event: string, fields?: object) => void lines.push(JSON.stringify({ event, ...fields }));
     const h = await startHost({ log, modelsDir: models });
     open.push(h.host);
-    const gpus = new FakeGpus([24]);
+    const gpus = new FakeGpus([o.gpuGb ?? 24]);
     const backend = new FakeBackend(gpus);
     const comfy = new Comfy(comfyFake.url);
     const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
@@ -576,6 +576,18 @@ describe("the image API", () => {
     expect(usage.body.models).toContainEqual(expect.objectContaining({ id: z.id, images: 2 }));
     expect(s.lines.join("\n")).not.toContain(MARKER);
     for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);
+  });
+
+  it("lists a recipe too big for the image GPU as doing nothing, and says why", async () => {
+    // Each recipe needs half a GiB over its parts; this GPU has a quarter.
+    const s = await stack({ gpuGb: 0.25 });
+    const listed = (await s.api("/host/v1/recipes")).body.recipes;
+    const z = listed.find((r: Recipe) => r.arch === "z-image");
+    expect(z).toMatchObject({ does: [], unsupported: expect.stringMatching(/needs about 0\.5 GB on GPU 0/) });
+    await s.api(`/host/v1/recipes/${z.id}/confirm`, { body: {} });
+    const made = await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" } });
+    expect([made.status, made.body.error.code]).toEqual([413, "too_big"]);
+    expect(s.comfyFake.seen.prompts).toHaveLength(0);
   });
 
   it("saves Use for through the recipe API and keeps it when the book reopens", async () => {

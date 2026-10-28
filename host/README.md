@@ -238,6 +238,8 @@ per host, and Lyrica's router filters create tiers by it.
   proposal does nothing until it is confirmed. A file whose architecture
   has no template stays a file. Installing a starter whose main file a
   scan already proposed makes that proposal the starter's recipe.
+- A recipe too big for the image GPU, even empty, does nothing and says
+  why, so Lyrica never offers it.
 - Deleting a recipe deletes only parts the host downloaded, unchanged, that
   no other recipe uses and that aren't also a chat model.
 - ComfyUI is our image (`comfyui/Dockerfile`, CUDA or ROCm), built from

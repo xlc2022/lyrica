@@ -131,9 +131,15 @@ export class Images {
     }
   }
 
-  /** A recipe as the API lists it. With stable-diffusion.cpp, it does only what sd.cpp can run here, and says why when that's nothing. */
+  /**
+   * A recipe as the API lists it. With stable-diffusion.cpp, it does only
+   * what sd.cpp can run here. One too big for the image GPU does nothing.
+   * Either way it says why when that's nothing.
+   */
   private describe(r: Recipe, files: Set<string>) {
     const d = this.book.describe(r, files);
+    const tooBig = r.parts.every((p) => p.file) ? this.runtime.scheduler.neverFits({ model: this.asModel(r), gpu: this.comfyGpu }) : null;
+    if (tooBig) return { ...d, does: [], unsupported: tooBig };
     if (!this.sdcpp) return d;
     try {
       sdcppArgs(r, this.modelsDir);
