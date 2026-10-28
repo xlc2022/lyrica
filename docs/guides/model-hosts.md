@@ -380,7 +380,8 @@ of files), is 14.9 GB at its largest stage and takes turns the same way.
 It replaces Qwen-Image-Edit 2509 for edits: once installed, put it first
 in a column's Image edits list, and in its Images list too if you like
 its images. A masked edit on it runs through LanPaint (a pinned ComfyUI
-node, GPL-3.0), which takes a few times as long as a plain edit. Whisper on vLLM wants a memory share of about 0.1 of a 24 GB
+node, GPL-3.0), which takes about two and a half times as long as a
+plain edit. Whisper on vLLM wants a memory share of about 0.1 of a 24 GB
 card.
 
 Krea 2 Turbo's weights are under the Krea 2 Community License: free for

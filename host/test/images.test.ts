@@ -260,14 +260,16 @@ describe("recipes", () => {
     expect(Object.keys(qi21)).not.toContain("inpaint");
     expect(JSON.stringify(qi21)).not.toContain("$");
     // A masked edit goes through LanPaint at about a megapixel, and only the masked part goes back into the original.
-    const qi21Masked = fill(TEMPLATES.get("qwen-image-2.1")!, qi21Parts, [], { negativePrompt: "", ...starter.defaults, prompt: "x", count: 1, seed: 1, image: "lyrica-image.png", mask: "lyrica-mask.png" });
+    const qi21Masked = fill(TEMPLATES.get("qwen-image-2.1")!, qi21Parts, [], { negativePrompt: "", ...starter.defaults, prompt: "x", count: 2, seed: 1, image: "lyrica-image.png", mask: "lyrica-mask.png" });
     // The mask grows a little, so the old outline at its edge is redrawn too.
     expect(qi21Masked.grown!.inputs).toMatchObject({ mask: ["mask", 0], expand: 24 });
     expect(qi21Masked.masked!.inputs).toMatchObject({ image: ["fit", 0], mask: ["grown", 0] });
     expect(qi21Masked.batch!.inputs.samples).toEqual(["masked", 0]);
     expect(qi21Masked.inpaint!.class_type).toBe("LanPaint_SamplerCustomAdvanced");
     expect(qi21Masked.inpaint!.inputs).toMatchObject({ guider: ["guider", 0], sigmas: ["sigmas", 0], latent_image: ["batch", 0] });
-    expect(qi21Masked.merged!.inputs).toMatchObject({ samples: ["inpaint", 0], image: ["load", 0], mask: ["grown", 0] });
+    expect(qi21Masked.merged!.inputs).toMatchObject({ samples: ["inpaint", 0], image: ["originals", 0], mask: ["grown", 0] });
+    // The merge keeps as many images as the original has, so a batch repeats it.
+    expect(qi21Masked.originals!.inputs).toEqual({ image: ["load", 0], amount: 2 });
     expect(qi21Masked.save!.inputs.images).toEqual(["merged", 0]);
     expect(JSON.stringify(qi21Masked)).not.toContain("$");
 

@@ -274,6 +274,17 @@
         "vae": "$vae"
       }
     },
+    "originals": {
+      "_if": "mask",
+      "class_type": "RepeatImageBatch",
+      "inputs": {
+        "image": [
+          "load",
+          0
+        ],
+        "amount": "$count"
+      }
+    },
     "merged": {
       "_if": "mask",
       "class_type": "LanPaint_ImageDecode",
@@ -284,7 +295,7 @@
         ],
         "vae": "$vae",
         "image": [
-          "load",
+          "originals",
           0
         ],
         "mask": [
