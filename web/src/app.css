@@ -1187,6 +1187,12 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .read-image .inline-img img { max-height: 160px; }
 .message-image { width: fit-content; max-width: min(100%, 420px); }
 .message-image .inline-img { min-width: var(--tap); }
+/* A clip: its poster at the image's size, with a round play button over its middle; playing, the browser's own player. */
+.message-video .clip { display: block; width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--tool); }
+.message-video .clip-poster { position: relative; padding: 0; overflow: hidden; cursor: pointer; }
+.message-video .clip-poster img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.message-video .clip-play { position: absolute; inset: 0; margin: auto; width: var(--tap); height: var(--tap); display: grid; place-items: center; border-radius: 50%; background: var(--panel); color: var(--fg); border: 1px solid var(--line); }
+.message-video .clip-poster:hover .clip-play, .message-video .clip-poster:focus-visible .clip-play { border-color: var(--muted); }
 .image-facts { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .image-facts .cap { overflow-wrap: anywhere; min-width: 0; }
 .image-facts .row-menu { margin-left: auto; flex: none; }

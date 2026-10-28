@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HostedThread } from "../src/hosted.ts";
-import { imagePart, toMessages } from "../src/messages.ts";
+import { imagePart, toMessages, videoPart } from "../src/messages.ts";
 import type { ThreadEvent } from "../src/api.ts";
 
 const image = { type: "image" as const, paths: ["/workspace/images/result.png"], model: "workstation/Art", tier: "quality" as const };
@@ -24,6 +24,23 @@ describe("image message metadata (principle 1)", () => {
       result: { content: [{ type: "text", text: "Saved result.png." }, { type: "image", data: "bytes", mimeType: "image/png" }], details } });
     expect(events[0]).toMatchObject({ type: "tool_end", image });
     expect(JSON.stringify(events)).not.toContain('"data":"bytes"');
+  });
+  it("shows a clip's path and facts in stored and live messages, without its bytes or poster", () => {
+    const video = { type: "video" as const, path: "/workspace/videos/clip.mp4", model: "workstation/Clip", width: 1280, height: 704, duration: 5.04, audio: false };
+    const result = { content: [{ type: "text", text: "Saved clip.mp4. Its first frame:" }, { type: "image", data: "bytes", mimeType: "image/png" }], details: { video } };
+    const messages = toMessages("web/a", "general", [
+      { n: 1, createdAt: "2026-10-28", data: { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "v1", name: "image", arguments: { action: "video" } }] } } },
+      { n: 2, createdAt: "2026-10-28", data: { type: "message", message: { role: "toolResult", toolCallId: "v1", toolName: "image", ...result } } },
+    ]);
+    expect(messages[0]?.parts).toContainEqual(video);
+    const events: ThreadEvent[] = [];
+    const hosted = Object.create(HostedThread.prototype) as { forward(e: unknown): void; emit(e: ThreadEvent): void; pool: string };
+    hosted.pool = "general"; hosted.emit = e => { events.push(e); };
+    hosted.forward({ type: "tool_execution_end", toolCallId: "v1", toolName: "image", isError: false, result });
+    expect(events[0]).toMatchObject({ type: "tool_end", video });
+    expect(JSON.stringify([messages, events])).not.toContain('"data":"bytes"');
+    expect(videoPart("image", { video: { ...video, path: 17 } })).toBeUndefined();
+    expect(videoPart("read", { video })).toBeUndefined();
   });
   it("ignores malformed metadata and another tool's metadata", () => {
     expect(imagePart("read", details)).toBeUndefined();

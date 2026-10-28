@@ -631,7 +631,7 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
 
 ## Images and portrait photos
 
-The `image` tool creates, edits and upscales through the thread's model router.
+The `image` tool creates, edits and upscales through the thread's model router, and makes short clips (below).
 It names inputs by workspace path: uploads, earlier results or granted files.
 Reject, pick and clear_rejected sort her attempts (below, "Rejected attempts").
 Create takes a prompt, fast or quality (quality when left out), optional size or `width:height` aspect
@@ -654,6 +654,19 @@ help: try another model, or tell them."
 Ratios become a canvas near one megapixel, on a 16-pixel grid; GPT Image 1
 cloud models use their nearest supported canvas shape. Without size or count,
 host recipe defaults apply. Neither tier overrides a host recipe's settings.
+
+The same tool makes short clips: `video` from a prompt, `animate` from an
+image as the first frame, each with an optional size or ratio and
+`duration` in seconds (1 to 15, the recipe's default when left out). Her
+guidelines say to make one only when asked, since it holds the model host's
+GPU for minutes, and to describe the motion and camera. A clip comes only
+from the Videos task's list, and only a model host makes one, so a first
+frame never reaches a cloud model and a portrait needs no consent.
+`ThreadImages.saveVideo` writes it as `videos/<uuid>.mp4` (a project chat's
+`shared/videos/`), with its poster, cleaned, written first as its Files
+thumbnail (`.lyrica/thumbs/videos/<uuid>.mp4.png`): deleting the clip in
+Files deletes the poster, and renaming it moves it. She gets the clip's
+facts and its poster as an image, so she sees its first frame.
 
 Each user's mounted home also has `photos-of-me/`, outside the thread folders
 and sandbox grants. The tool reaches it through `/photos-of-me/<file>` (or

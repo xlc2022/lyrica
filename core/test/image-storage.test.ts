@@ -6,7 +6,7 @@ import { Readable } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 import { ensurePhotosDir, ThreadImages, Users, Workspace } from "../src/index.ts";
 import { cleanPng } from "../src/models/images.ts";
-import { png } from "./fake-images.ts";
+import { mp4, png } from "./fake-images.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -48,6 +48,25 @@ describe("image storage boundaries (principles 2 and 4)", () => {
     rmSync(join(home, "threads", "web%2Fa", "images"), { recursive: true });
     symlinkSync(root, join(home, "threads", "web%2Fa", "images"));
     expect(() => files.save([cleanPng(png)])).toThrow();
+    expect(readdirSync(root)).toEqual(["home"]);
+  });
+  it("saves a clip under its own name with its poster as its thumbnail, and serves it as MP4 in byte ranges", async () => {
+    const { root, home, files } = setup();
+    const text = Buffer.alloc(18); text.writeUInt32BE(6); text.write("tEXt", 4); text.write("secret", 8);
+    const poster = { ...cleanPng(png), bytes: Buffer.concat([png.subarray(0, 33), text, png.subarray(33)]) };
+    const clip = { bytes: mp4, type: "video/mp4" as const, width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, poster };
+    const path = files.saveVideo(clip);
+    const name = path.split("/").at(-1)!;
+    expect(path).toMatch(/^\/workspace\/videos\/[0-9a-f-]{36}\.mp4$/);
+    expect(readFileSync(join(home, "threads", "web%2Fa", "videos", name))).toEqual(mp4);
+    expect(readFileSync(join(home, "threads", "web%2Fa", ".lyrica", "thumbs", "videos", `${name}.png`))).toEqual(png);
+    const whole = files.content(path);
+    whole.stream.destroy();
+    expect(whole).toMatchObject({ type: "video/mp4", size: mp4.length });
+    const part = files.content(path, { start: 4, end: 7 });
+    expect(Buffer.concat(await part.stream.toArray())).toEqual(Buffer.from("ftyp"));
+    expect(() => files.content(path, { start: mp4.length })).toThrow(RangeError);
+    expect(() => files.saveVideo({ ...clip, bytes: png })).toThrow(/MP4/);
     expect(readdirSync(root)).toEqual(["home"]);
   });
   it("sets rejected attempts aside with their thumbnails and records, brings a pick back, and deletes only made rejects", () => {

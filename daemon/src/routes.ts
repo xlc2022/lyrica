@@ -102,8 +102,15 @@ export function apiRoutes(d: Lyricad): Route[] {
       const pool = poolOf(r), threadId = r.params.threadId!;
       const view = s().memory.openThreadView(user.id, pool);
       try { if (!view.own.getThread(threadId)) throw new HttpError(404, "no such thread"); } finally { view.close(); }
-      const file = imageFile(() => s().workspace.imageFiles({ userId: user.id, pool, threadId }).content(r.query.get("path") ?? ""));
-      r.res.writeHead(200, { "content-type": file.type, "content-length": String(file.size), "cache-control": "no-store",
+      // A clip plays in the browser's own player, which seeks with one byte range (bytes=a-b or bytes=a-).
+      const asked = /^bytes=(\d+)-(\d*)$/.exec(r.req.headers.range ?? "");
+      const range = asked ? { start: Number(asked[1]), ...(asked[2] ? { end: Number(asked[2]) } : {}) } : undefined;
+      let file;
+      try { file = imageFile(() => s().workspace.imageFiles({ userId: user.id, pool, threadId }).content(r.query.get("path") ?? "", range)); }
+      catch (err) { if (err instanceof RangeError) throw new HttpError(416, "the range is outside the file"); throw err; }
+      const end = range ? Math.min(range.end ?? file.size - 1, file.size - 1) : file.size - 1;
+      r.res.writeHead(range ? 206 : 200, { "content-type": file.type, "content-length": String(range ? end - range.start + 1 : file.size), "cache-control": "no-store",
+        "accept-ranges": "bytes", ...(range ? { "content-range": `bytes ${range.start}-${end}/${file.size}` } : {}),
         "content-security-policy": "default-src 'none'; sandbox", "x-content-type-options": "nosniff" });
       file.stream.on("error", () => r.res.destroy()); file.stream.pipe(r.res);
       return undefined;
@@ -2394,7 +2401,7 @@ function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo 
   const image = !!provider && (ep.api !== "openai-compatible" || !!ep.apiKey)
     && available.some(m => (m.image && provider.create) || (m.edit && provider.edit));
   const cloudCapabilities: Api.EndpointInfo["cloudCapabilities"] = [
-    ...(available.some(m => !m.embedding && !m.transcribe && !m.speak && ((!m.image && !m.edit && !m.upscale) || m.tools || m.vision)) ? ["Text" as const] : []),
+    ...(available.some(m => !m.embedding && !m.transcribe && !m.speak && ((!m.image && !m.edit && !m.upscale && !m.video && !m.animate) || m.tools || m.vision)) ? ["Text" as const] : []),
     ...(available.some(m => m.vision) ? ["Vision" as const] : []),
     ...(image ? ["Image" as const] : []),
   ];

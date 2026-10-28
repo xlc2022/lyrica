@@ -361,6 +361,37 @@ test("her rejected attempts fold into one closed group, and her pick shows last 
   if (process.env.SCREENSHOTS) await page.screenshot({ fullPage: true, path: `${process.env.SCREENSHOTS}/rejects-open-${page.viewportSize()!.width}.png` });
 });
 
+test("a clip she made shows its poster and facts, and plays in the browser's player", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "A fox in the snow");
+  await expect(page.getByText("You said: A fox in the snow")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  const path = "/workspace/videos/fox.mp4";
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=", "base64");
+  await page.route(`**${base}/messages`, (route) => route.fulfill({ json: {
+    messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-10-28T04:00:00Z", parts: [
+      { type: "tool", toolCallId: "fox", name: "image", args: { action: "video", prompt: "A fox in the snow" }, result: path, isError: false },
+      { type: "video", path, model: "box/Wan 2.2 TI2V 5B", width: 1280, height: 704, duration: 5.04, audio: true },
+    ] }], hasMore: false,
+  } }));
+  await page.route(`**${base}/files/thumb?*`, (route) => route.fulfill({ contentType: "image/png", body: png }));
+  await page.route(`**${base}/file?*`, (route) => route.fulfill({ contentType: "video/mp4", body: Buffer.alloc(0) }));
+  await page.reload();
+  const play = page.getByRole("button", { name: "Play fox.mp4" });
+  await expect(play).toBeVisible();
+  await expect(page.getByText("Made with box/Wan 2.2 TI2V 5B · 5.0 s · sound", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Clip actions for fox.mp4" }).click();
+  await expect(page.getByRole("menuitem", { name: "Download" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Delete…" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  if (process.env.SCREENSHOTS) await page.screenshot({ fullPage: true, path: `${process.env.SCREENSHOTS}/clip-${page.viewportSize()!.width}.png` });
+  await play.click();
+  await expect(page.getByLabel("fox.mp4", { exact: true })).toHaveAttribute("src", `${base}/file?path=${encodeURIComponent(path)}`);
+  await expect(play).toHaveCount(0);
+});
+
 test("an image tool result shows inline, opens large, starts an edit with Images enabled, and deletes after asking", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");

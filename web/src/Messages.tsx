@@ -1,7 +1,7 @@
 // The conversation: stored messages, then what's streaming now.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { get, post, threadPath, u, type GoAhead, type ImagePart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
+import { get, post, threadPath, u, type GoAhead, type ImagePart, type VideoPart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import { SkillCard } from "./Skills.tsx";
 import { isQuestionPart, QuestionCard, ROOT_TOOL } from "./Question.tsx";
 import { storedLiveCopies, storedUserItems, type LiveItem } from "./live.ts";
@@ -284,7 +284,7 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
       </button>
       {open && (
         <div ref={body} className="marker-body run-body" onScroll={(e) => { height.current = e.currentTarget.scrollHeight; }}>
-          {runs.map((r) => r.parts.map((p, i) => (p.type === "text" || p.type === "image" ? null : <Marker key={`${r.key}-${i}`} part={p} env={env} />)))}
+          {runs.map((r) => r.parts.map((p, i) => (p.type === "text" || p.type === "image" || p.type === "video" ? null : <Marker key={`${r.key}-${i}`} part={p} env={env} />)))}
           {streaming && <span className="writing-dots" aria-hidden="true"><i /><i /><i /></span>}
         </div>
       )}
@@ -475,6 +475,7 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
     // After a look, the threads she told are in the look's marker; the messages would show twice.
     if (folded && p.type === "tool" && p.name === "threads" && !p.isError && (p.args as { action?: string } | null)?.action === "message") return;
     flush(i);
+    if (p.type === "video") { out.push(<MessageVideo key={i} part={p} env={env} />); return; }
     if (p.type !== "image") { out.push(<Marker key={i} part={p} env={env} />); return; }
     const group = images?.groups.get(i);
     if (group) out.push(<RejectedImages key={`r${i}`} parts={group} env={env} />);
@@ -559,6 +560,49 @@ function MessageImages({ part, env }: { part: ImagePart; env: Env }) {
 }
 
 /**
+ * A clip she made (ux §3): its poster with a play button, which becomes the browser's own player, then the same facts
+ * and rare actions as an image's. Without a poster the player shows at once.
+ */
+function MessageVideo({ part, env }: { part: VideoPart; env: Env }) {
+  const url = `${env.base}/file?path=${encodeURIComponent(part.path)}`;
+  const poster = `${env.base}/files/thumb?path=${encodeURIComponent(part.path)}`;
+  const name = basename(part.path);
+  const [playing, setPlaying] = useState(false);
+  const [noPoster, setNoPoster] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [gone, setGone] = useState(false);
+  if (gone) return <p className="message-image-gone muted">{GONE}</p>;
+  // Sized to its shape before anything loads: at most 320 px tall and 420 px wide, as an image is.
+  const ratio = part.width && part.height ? part.width / part.height : 16 / 9;
+  return (
+    <div className="message-image message-video" style={{ width: `min(100%, ${Math.round(Math.min(420, 320 * ratio))}px)` }}>
+      {deleting && (
+        <ConfirmDialog title={`Delete ${name}?`} danger confirm="Delete" sentence={`${name} is deleted for good. This can't be undone.`}
+          onCancel={() => setDeleting(false)}
+          onConfirm={() => { setDeleting(false); void post(`${env.base}/files/delete`, { paths: [part.path] }).then(() => setGone(true), (e: Error) => env.onError(e.message)); }} />
+      )}
+      {playing || noPoster
+        ? <video className="clip" style={{ aspectRatio: ratio }} controls autoPlay={playing} playsInline src={url} poster={noPoster ? undefined : poster} aria-label={name} />
+        : (
+          <button type="button" className="clip clip-poster" style={{ aspectRatio: ratio }} aria-label={`Play ${name}`} title="Play" onClick={() => setPlaying(true)}>
+            <img src={poster} alt="" onError={() => setNoPoster(true)} />
+            <span className="clip-play"><Icon name="play" /></span>
+          </button>
+        )}
+      <div className="image-facts">
+        <span className="cap">Made with {part.model} · <span className="num">{part.duration.toFixed(1)}</span> s{part.audio && <> · sound</>}</span>
+        <RowMenu label={`Clip actions for ${name}`} items={[
+          { label: "Download", onPick: () => { const a = document.createElement("a"); a.href = url; a.download = name; a.click(); } },
+          { label: "Copy path", onPick: () => { void navigator.clipboard.writeText(part.path).catch((e: Error) => env.onError(e.message)); } },
+          { label: "Show in Files", onPick: () => go({ page: "files", userId: env.userId, pool: env.pool, threadId: env.threadId, path: part.path }) },
+          { label: "Delete…", danger: true, onPick: () => setDeleting(true) },
+        ]} />
+      </div>
+    </div>
+  );
+}
+
+/**
  * Her rejected attempts in a turn, as one closed marker, "<n> rejected", that opens to their images as small
  * thumbnails, each with its facts and actions. Open state follows the first attempt's name, so the stored copy keeps
  * it. Once she has deleted them at the person's word, the marker reads "<n> rejected · deleted" and doesn't open.
@@ -586,7 +630,7 @@ function RejectedImages({ parts, env }: { parts: RejectedImage[]; env: Env }) {
   );
 }
 
-function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "image" }>; env: Env }) {
+function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "image" | "video" }>; env: Env }) {
   const [localOpen, setLocalOpen] = useState(false);
   const open = part.type === "tool" ? env.openTools.has(part.toolCallId) : localOpen;
   const toggle = () => (part.type === "tool" ? env.toggleTool(part.toolCallId) : setLocalOpen(!localOpen));
@@ -633,7 +677,8 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
         const n = Array.isArray(args.images) ? args.images.length : 1;
         const making = args.action === "edit" ? "Editing an image" : args.action === "upscale" ? "Upscaling an image"
           : args.action === "reject" ? (n === 1 ? "Rejecting an image" : `Rejecting ${n} images`) : args.action === "pick" ? "Picking an image"
-          : args.action === "clear_rejected" ? "Deleting rejected images" : "Making an image";
+          : args.action === "clear_rejected" ? "Deleting rejected images" : args.action === "video" ? "Making a clip"
+          : args.action === "animate" ? "Animating an image" : "Making an image";
         label = <><span>{making}{args.action === "create" && args.tier && <> · {args.tier}</>} <span className="state" data-state={state}>{state}</span></span></>;
       }
       body = (

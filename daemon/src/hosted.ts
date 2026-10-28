@@ -12,7 +12,7 @@ import {
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
 import type { SameFile } from "./same-file.ts";
-import { delegateThreads, delegationPart, imagePart, imageRefusal, rootPart, markersFor, plainError, shortResult, toReactions, turnRecall, type Started } from "./messages.ts";
+import { delegateThreads, delegationPart, imagePart, imageRefusal, rootPart, videoPart, markersFor, plainError, shortResult, toReactions, turnRecall, type Started } from "./messages.ts";
 
 export interface HostOptions {
   users: Users;
@@ -874,11 +874,12 @@ export class HostedThread {
         }, id, args, controller.signal);
       } catch (err) { result = { content: [{ type: "text" as const, text: plainError((err as Error).message) }], isError: true, details: undefined }; }
       const text = shortResult(result.content);
+      const isError = "isError" in result && !!result.isError;
       const manager = SessionManager.inMemory(this.o.cwd, undefined, view.own.loadEntries(this.threadId) as never);
       manager.appendCustomMessageEntry("lyrica-image-retry", result.content, true,
-        { toolCallId: id, args, result: { details: result.details, isError: !!result.isError }, userMessageN });
+        { toolCallId: id, args, result: { details: result.details, isError }, userMessageN });
       syncEntries(manager, view.own, this.threadId);
-      this.emit({ type: "tool_end", toolCallId: id, name: "image", result: text, isError: !!result.isError,
+      this.emit({ type: "tool_end", toolCallId: id, name: "image", result: text, isError,
         image: imagePart("image", result.details), imageRefusal: imageRefusal("image", result.details) });
     } finally {
       view.close(); this.imageRetryAbort = undefined; this.busy = false;
@@ -1246,9 +1247,10 @@ export class HostedThread {
         const result = shortResult(content, e.toolName);
         const threads = delegateThreads(e.toolName, (e.result as { details?: unknown } | undefined)?.details, this.pool, e.toolName === "delegate" ? this.started() : undefined);
         const image = !e.isError ? imagePart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;
+        const video = !e.isError ? videoPart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;
         const refusedImage = imageRefusal(e.toolName, (e.result as { details?: unknown } | undefined)?.details);
         const root = !e.isError ? rootPart(e.toolName, (e.result as { details?: unknown } | undefined)?.details) : undefined;
-        this.emit({ type: "tool_end", ...(refusedImage ? { imageRefusal: refusedImage } : {}), toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}), ...(image ? { image } : {}), ...(root ? { root } : {}) });
+        this.emit({ type: "tool_end", ...(refusedImage ? { imageRefusal: refusedImage } : {}), toolCallId: e.toolCallId, name: e.toolName, result, isError: e.isError, ...(threads ? { threads } : {}), ...(image ? { image } : {}), ...(video ? { video } : {}), ...(root ? { root } : {}) });
         const full = Array.isArray(content) ? content.map((p: { text?: string }) => p.text ?? "").join("\n") : String(content ?? "");
         for (const m of markersFor(e.toolName, (e as { args?: unknown }).args, full)) this.emit(m);
         break;
