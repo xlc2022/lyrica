@@ -1,0 +1,205 @@
+{
+  "arch": "wan2.2-i2v-14b",
+  "does": [
+    "animate"
+  ],
+  "checkpoint": false,
+  "clipType": "wan",
+  "parts": [
+    {
+      "role": "diffusion",
+      "slot": "high",
+      "arch": [
+        "wan2.2-i2v-14b"
+      ]
+    },
+    {
+      "role": "diffusion",
+      "slot": "low",
+      "arch": [
+        "wan2.2-i2v-14b"
+      ]
+    },
+    {
+      "role": "lora",
+      "slot": "high",
+      "arch": [
+        "wan"
+      ]
+    },
+    {
+      "role": "lora",
+      "slot": "low",
+      "arch": [
+        "wan"
+      ]
+    },
+    {
+      "role": "text_encoder",
+      "slot": "umt5"
+    },
+    {
+      "role": "vae",
+      "arch": [
+        "qwen-image"
+      ]
+    }
+  ],
+  "references": 0,
+  "mask": false,
+  "video": {
+    "fps": 16,
+    "frameStep": 4,
+    "frameOffset": 1,
+    "sizeStep": 16,
+    "maxSeconds": 8,
+    "audio": false
+  },
+  "workflow": {
+    "pos": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$prompt",
+        "clip": "$clip"
+      }
+    },
+    "neg": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$negativePrompt",
+        "clip": "$clip"
+      }
+    },
+    "load": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "$image"
+      }
+    },
+    "i2v": {
+      "class_type": "WanImageToVideo",
+      "inputs": {
+        "positive": [
+          "pos",
+          0
+        ],
+        "negative": [
+          "neg",
+          0
+        ],
+        "vae": "$vae",
+        "width": "$width",
+        "height": "$height",
+        "length": "$frames",
+        "batch_size": 1,
+        "start_image": [
+          "load",
+          0
+        ]
+      }
+    },
+    "shift_high": {
+      "class_type": "ModelSamplingSD3",
+      "inputs": {
+        "model": "$model_high",
+        "shift": "$shift"
+      }
+    },
+    "shift_low": {
+      "class_type": "ModelSamplingSD3",
+      "inputs": {
+        "model": "$model_low",
+        "shift": "$shift"
+      }
+    },
+    "high": {
+      "class_type": "KSamplerAdvanced",
+      "inputs": {
+        "model": [
+          "shift_high",
+          0
+        ],
+        "add_noise": "enable",
+        "noise_seed": "$seed",
+        "steps": "$steps",
+        "cfg": "$cfg",
+        "sampler_name": "$sampler",
+        "scheduler": "$scheduler",
+        "positive": [
+          "i2v",
+          0
+        ],
+        "negative": [
+          "i2v",
+          1
+        ],
+        "latent_image": [
+          "i2v",
+          2
+        ],
+        "start_at_step": 0,
+        "end_at_step": "$halfSteps",
+        "return_with_leftover_noise": "enable"
+      }
+    },
+    "low": {
+      "class_type": "KSamplerAdvanced",
+      "inputs": {
+        "model": [
+          "shift_low",
+          0
+        ],
+        "add_noise": "disable",
+        "noise_seed": 0,
+        "steps": "$steps",
+        "cfg": "$cfg",
+        "sampler_name": "$sampler",
+        "scheduler": "$scheduler",
+        "positive": [
+          "i2v",
+          0
+        ],
+        "negative": [
+          "i2v",
+          1
+        ],
+        "latent_image": [
+          "high",
+          0
+        ],
+        "start_at_step": "$halfSteps",
+        "end_at_step": 10000,
+        "return_with_leftover_noise": "disable"
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "low",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "video": {
+      "class_type": "CreateVideo",
+      "inputs": {
+        "images": [
+          "decode",
+          0
+        ],
+        "fps": "$fps"
+      }
+    },
+    "save": {
+      "class_type": "SaveVideoWebsocket",
+      "inputs": {
+        "video": [
+          "video",
+          0
+        ]
+      }
+    }
+  }
+}

@@ -94,7 +94,7 @@ of how she works with the user, from storyboards to edits of the user's own phot
 - Inline images, the lightbox, and the photos-of-me and setting screens in
   the UI (Web UI thread, from this API).
 - The personal LoRA (later).
-- Video.
+- Video (its own brief since 2026-10-28: docs/briefs/video.md).
 
 ## Done when
 

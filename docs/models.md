@@ -721,7 +721,9 @@ the host's own, from `GET /host/v1/starters`, each part marked `present`;
 making one posts `…/starters/<id>/install` with the hub token when a part
 is missing, and the host downloads those and confirms the recipe. A shared
 host needs an administrator. Only confirmed recipes become offerings (`recipe/<id>`,
-with `image` or `edit`), so a proposal never resolves; a recipe deleted here
+with `image` or `edit`), so a proposal never resolves; a video recipe (one
+that does only `video` or `animate`) isn't an offering yet, until videos are
+a task (docs/briefs/video.md); a recipe deleted here
 leaves a tombstone. The tag is `fast`, `quality` or `both`, stored as an
 optional field in the host's `recipes.json`; absent reads as both. The daemon
 recipe action `{ do: "change", change: { op: "useFor", useFor } }` forwards

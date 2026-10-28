@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Comfy } from "../src/comfy.ts";
-import { Images, inputImage, recipeSize } from "../src/images.ts";
+import { Images, inputImage, recipeSize, videoValues } from "../src/images.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import { scanParts } from "../src/parts.ts";
 import { RecipeBook, loadStarters, type Recipe } from "../src/recipes.ts";
@@ -13,7 +13,7 @@ import { Runtime } from "../src/runtime.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fill, loadTemplates } from "../src/templates.ts";
 import { SdCpp, sdcppArgs, sdcppJob } from "../src/sdcpp.ts";
-import { FakeBackend, FakeGpus, PNG, fakeComfy, fakeSdServer, safetensors } from "./fakes.ts";
+import { FakeBackend, FakeGpus, MP4, PNG, fakeComfy, fakeSdServer, safetensors } from "./fakes.ts";
 import { call, lyrica, pair, startHost } from "./helpers.ts";
 
 const TEMPLATES = loadTemplates(new URL("../workflows/", import.meta.url).pathname);
@@ -43,6 +43,23 @@ const FLUX_CKPT = safetensors({ "model.diffusion_model.double_blocks.0.img_attn.
 const SD15_CKPT = safetensors({ "model.diffusion_model.input_blocks.0.0.weight": {}, "first_stage_model.decoder.conv_in.weight": {}, "cond_stage_model.transformer.x": {} });
 const CLIP_L = safetensors({ "text_model.embeddings.token_embedding.weight": { shape: [49408, 768], dtype: "F16" } });
 const T5 = safetensors({ "encoder.block.0.layer.0.SelfAttention.q.weight": { dtype: "F8_E4M3" } });
+// Video parts, by the keys ComfyUI's own detection reads.
+const wan = (channels: number, dim: number) => safetensors({ "head.modulation": { shape: [1, 6, dim] }, "patch_embedding.weight": { shape: [dim, channels, 1, 2, 2] }, "blocks.0.ffn.0.weight": {} });
+const WAN_5B = wan(48, 3072);
+const WAN_T2V = wan(16, 5120);
+const WAN_I2V = wan(36, 5120);
+const WAN_LORA = safetensors({ "diffusion_model.blocks.0.cross_attn.k.lora_A.weight": {}, "diffusion_model.blocks.0.cross_attn.k.lora_B.weight": {} });
+const UMT5 = safetensors({ "encoder.block.0.layer.0.SelfAttention.q.weight": { dtype: "F8_E4M3" }, "shared.weight": { shape: [256384, 4096] } });
+const WAN22_VAE = safetensors({ "decoder.conv1.weight": { shape: [1024, 48, 3, 3, 3] }, "encoder.conv1.weight": {}, "decoder.upsamples.0.upsamples.0.residual.2.weight": {} });
+const LTX2 = safetensors({ "model.diffusion_model.adaln_single.emb.timestep_embedder.linear_1.bias": {}, "model.diffusion_model.audio_adaln_single.linear.weight": {} });
+const GEMMA4_12B = safetensors({ "model.layers.0.post_feedforward_layernorm.weight": {}, "model.layers.0.self_attn.q_proj.weight": { dtype: "I8" }, "model.layers.47.self_attn.q_norm.weight": {} });
+const LTX2_VAE = safetensors({ "decoder.up_blocks.0.res_blocks.0.conv1.conv.weight": {}, "encoder.conv_in.conv.weight": {} });
+const LTX2_AUDIO_VAE = safetensors({ "vocoder.resblocks.0.convs1.0.weight": {}, "decoder.conv_in.weight": {} });
+const H3 = safetensors({ "video_patch_proj.weight": { dtype: "I8" }, "audio_patch_proj.weight": {}, "blocks.0.attn.to_q.weight": {} });
+const H3_LORA = safetensors({ "diffusion_model.blocks.0.attn.to_q.lora_A.weight": {}, "diffusion_model.blocks.0.attn.to_q.lora_B.weight": {} });
+const QWEN3VL_32B = safetensors({ "model.language_model.layers.0.self_attn.q_proj.weight": { dtype: "U8" }, "model.language_model.layers.0.self_attn.q_norm.weight": {}, "model.language_model.layers.63.self_attn.q_proj.weight": { dtype: "U8" } });
+const H3_VAE = safetensors({ "decoder.transformer_blocks.0.scale1": {}, "encoder.down.5.block.0.conv1.weight": { dtype: "I8" } });
+const H3_AUDIO_VAE = safetensors({ "pre_block.attn.zero_k_bias": { dtype: "F32" } });
 
 function folder(files: Record<string, Buffer>): string {
   const dir = mkdtempSync(join(tmpdir(), "lyrica-img-"));
@@ -92,6 +109,133 @@ describe("parts", () => {
       "qwen3vl-4b.gguf": ["text_encoder", "qwen3vl", "qwen3vl", "Q8_0"],
       "z.safetensors": ["diffusion", null, "z-image", "bf16"],
     });
+  });
+});
+
+describe("video parts", () => {
+  it("tells video models, their experts, encoders and audio VAEs apart, so no image recipe takes them", () => {
+    const dir = folder({
+      "v/wan2.2_ti2v_5B_fp16.safetensors": WAN_5B, "v/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors": WAN_T2V,
+      "v/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors": WAN_T2V, "v/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors": WAN_I2V,
+      "v/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors": WAN_LORA, "v/umt5_xxl_fp8_e4m3fn_scaled.safetensors": UMT5,
+      "v/wan2.2_vae.safetensors": WAN22_VAE, "v/wan_2.1_vae.safetensors": QWEN_VAE,
+      "v/ltx-2.5-22b-distilled.safetensors": LTX2, "v/gemma4-12b-with-proj.safetensors": GEMMA4_12B, "v/ltx-2.5-video-vae-bf16.safetensors": LTX2_VAE,
+      "v/ltx-2.5-audio-vae-bf16.safetensors": LTX2_AUDIO_VAE, "v/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors": safetensors({ "res_blocks.0.conv1.weight": {} }),
+      "v/minimax_h3_fl2va_pruned_int8_convrot.safetensors": H3, "v/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": H3_LORA,
+      "v/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": QWEN3VL_32B, "v/minimax_h3_video_vae_int8_convrot.safetensors": H3_VAE,
+      "v/minimax_h3_audio_vae_fp32.safetensors": H3_AUDIO_VAE,
+    });
+    const got = Object.fromEntries(scanParts(dir).map((p) => [p.file.slice(2), [p.role, p.slot, p.arch]]));
+    expect(got).toEqual({
+      "wan2.2_ti2v_5B_fp16.safetensors": ["diffusion", null, "wan2.2-5b"],
+      // The 14B's two experts share their layout, so the name says which is which.
+      "wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors": ["diffusion", "high", "wan2.2-t2v-14b"],
+      "wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors": ["diffusion", "low", "wan2.2-t2v-14b"],
+      "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors": ["diffusion", "high", "wan2.2-i2v-14b"],
+      "wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors": ["lora", "high", "wan"],
+      // UMT5 isn't FLUX's T5, Gemma 4 isn't Qwen3, and the 32B isn't Krea 2's Qwen3-VL.
+      "umt5_xxl_fp8_e4m3fn_scaled.safetensors": ["text_encoder", "umt5", "umt5"],
+      "gemma4-12b-with-proj.safetensors": ["text_encoder", "gemma4_12b", "gemma4"],
+      "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": ["text_encoder", "qwen3vl_32b", "qwen3vl"],
+      "wan2.2_vae.safetensors": ["vae", null, "wan2.2"],
+      "wan_2.1_vae.safetensors": ["vae", null, "qwen-image"],
+      "ltx-2.5-22b-distilled.safetensors": ["diffusion", null, "ltx2"],
+      "ltx-2.5-video-vae-bf16.safetensors": ["vae", null, "ltx2"],
+      "ltx-2.5-audio-vae-bf16.safetensors": ["vae", "audio", "ltx2"],
+      "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors": ["latent_upscaler", null, "ltx2"],
+      "minimax_h3_fl2va_pruned_int8_convrot.safetensors": ["diffusion", null, "minimax-h3"],
+      "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": ["lora", "speed", "minimax-h3"],
+      "minimax_h3_video_vae_int8_convrot.safetensors": ["vae", null, "minimax-h3"],
+      "minimax_h3_audio_vae_fp32.safetensors": ["vae", "audio", "minimax-h3"],
+    });
+  });
+
+  it("proposes one recipe for a model's two experts, with the LoRAs of its own mode", () => {
+    const R = "lyrica/huggingface/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/split_files";
+    const dir = folder({
+      [`${R}/diffusion_models/wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors`]: WAN_T2V, [`${R}/diffusion_models/wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors`]: WAN_T2V,
+      [`${R}/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors`]: WAN_LORA, [`${R}/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors`]: WAN_LORA,
+      [`${R}/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors`]: WAN_LORA, [`${R}/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors`]: WAN_LORA,
+      [`${R}/vae/wan_2.1_vae.safetensors`]: QWEN_VAE, "other/umt5.safetensors": UMT5,
+    });
+    const b = new RecipeBook(mkdtempSync(join(tmpdir(), "lyrica-book-")), TEMPLATES, STARTERS);
+    const parts = scanParts(dir);
+    expect(b.propose(parts)).toBe(1);
+    const r = b.all()[0]!;
+    expect(r).toMatchObject({ template: "wan22-t2v-14b", does: ["video"], defaults: { steps: 4, shift: 5, duration: 5 } });
+    const file = (role: string, slot: string) => r.parts.find((p) => p.role === role && p.slot === slot)?.file;
+    expect(file("diffusion", "high")).toMatch(/t2v_high_noise/);
+    expect(file("diffusion", "low")).toMatch(/t2v_low_noise/);
+    expect(file("lora", "high")).toMatch(/t2v_lightx2v_4steps_lora_v1.1_high/);
+    expect(file("lora", "low")).toMatch(/t2v_lightx2v_4steps_lora_v1.1_low/);
+    expect(b.ready(r, new Set(parts.map((p) => p.file)))).toBe(true);
+    // Its two models take only the LoRAs the template names.
+    expect(() => b.patch(r.id, { op: "addLora", file: parts.find((p) => p.role === "lora")!.file, strength: 1 }, parts)).toThrow(/only the LoRAs/);
+  });
+
+  it("fills the video templates: two experts with their LoRAs, audio VAEs, and a first frame only when given", () => {
+    const p = (role: Recipe["parts"][number]["role"], file: string, slot: string | null = null) => ({ role, slot, file, added: false });
+    const at = (spec: string, duration: number, width: number, height: number, steps = 4) => videoValues(TEMPLATES.get(spec)!.video!, duration, width, height, steps);
+    const wan14 = STARTERS.find((s) => s.id === "wan2.2-t2v-14b")!;
+    const t2v = fill(TEMPLATES.get("wan22-t2v-14b")!, [
+      p("diffusion", "high.safetensors", "high"), p("diffusion", "low.safetensors", "low"), p("lora", "lh.safetensors", "high"), p("lora", "ll.safetensors", "low"),
+      p("text_encoder", "umt5.safetensors", "umt5"), p("vae", "vae.safetensors"),
+    ], [], { negativePrompt: "", ...wan14.defaults, prompt: "x", seed: 3, width: 1280, height: 720, ...at("wan22-t2v-14b", 5, 1280, 720) });
+    expect(t2v.lora_high!.inputs).toEqual({ model: ["load_model_high", 0], lora_name: "lh.safetensors", strength_model: 1 });
+    expect(t2v.shift_high!.inputs.model).toEqual(["lora_high", 0]);
+    expect(t2v.shift_low!.inputs.model).toEqual(["lora_low", 0]);
+    // The high-noise expert takes the first half of the steps, the low-noise one the rest.
+    expect(t2v.high!.inputs).toMatchObject({ steps: 4, start_at_step: 0, end_at_step: 2, noise_seed: 3, return_with_leftover_noise: "enable" });
+    expect(t2v.low!.inputs).toMatchObject({ start_at_step: 2, latent_image: ["high", 0], add_noise: "disable" });
+    // Wan 2.2 14B: 5 seconds at 16 fps is 81 frames.
+    expect(t2v.latent!.inputs).toEqual({ width: 1280, height: 720, length: 81, batch_size: 1 });
+    expect(t2v.save).toEqual({ class_type: "SaveVideoWebsocket", inputs: { video: ["video", 0] } });
+    expect(JSON.stringify(t2v)).not.toContain("$");
+
+    const ltxParts = [p("diffusion", "ltx.safetensors"), p("text_encoder", "gemma.safetensors", "gemma4_12b"), p("vae", "v.safetensors"), p("vae", "a.safetensors", "audio"), p("latent_upscaler", "up.safetensors")];
+    const ltx = STARTERS.find((s) => s.id === "ltx-2.5-distilled")!;
+    const ltxValues = { negativePrompt: "", steps: 1, ...ltx.defaults, prompt: "x", seed: 1, width: 1280, height: 704, ...at("ltx2", 5, 1280, 704) };
+    const fromText = fill(TEMPLATES.get("ltx2")!, ltxParts, [], ltxValues);
+    // It samples at half size, upscales the latent twice over, then refines; the audio has its own VAE.
+    expect(fromText.empty!.inputs).toEqual({ width: 640, height: 352, length: 121, batch_size: 1 });
+    expect(fromText.av!.inputs.video_latent).toEqual(["empty", 0]);
+    expect(fromText.upscale!.inputs).toEqual({ samples: ["split", 0], upscale_model: ["load_latent_upscaler", 0], vae: ["load_vae", 0] });
+    expect(fromText.sound!.inputs.audio_vae).toEqual(["load_vae_audio", 0]);
+    expect(fromText.video!.inputs).toEqual({ images: ["decode", 0], fps: 24, audio: ["sound", 0] });
+    expect(Object.keys(fromText)).not.toContain("load");
+    expect(JSON.stringify(fromText)).not.toContain("$");
+    const fromImage = fill(TEMPLATES.get("ltx2")!, ltxParts, [], { ...ltxValues, image: "lyrica-image.png" });
+    expect(fromImage.first!.inputs).toMatchObject({ image: ["prep", 0], latent: ["empty", 0], strength: 0.7 });
+    expect(fromImage.av!.inputs.video_latent).toEqual(["first", 0]);
+    expect(fromImage.av_full!.inputs.video_latent).toEqual(["again", 0]);
+
+    const h3 = STARTERS.find((s) => s.id === "minimax-h3-turbo")!;
+    const turbo = fill(TEMPLATES.get("minimax-h3")!, [
+      p("diffusion", "h3.safetensors"), p("lora", "turbo.safetensors", "speed"), p("text_encoder", "vl.safetensors", "qwen3vl_32b"),
+      p("vae", "v.safetensors"), p("vae", "a.safetensors", "audio"),
+    ], [], { negativePrompt: "", ...h3.defaults, prompt: "x", seed: 1, width: 1344, height: 768, ...at("minimax-h3", 5, 1344, 768, 8) });
+    // The speed LoRA goes onto the one model; H3's frames come in 17s plus 5: 124 for 5 seconds at 24 fps.
+    expect(turbo.guide!.inputs.model).toEqual(["lora_speed", 0]);
+    expect(turbo.load_clip!.inputs).toEqual({ clip_name: "vl.safetensors", type: "minimax" });
+    expect(turbo.cond!.inputs).toMatchObject({ length: 124, width: 1344 });
+    expect(turbo.cond!.inputs).not.toHaveProperty("first_frame");
+    expect(turbo.sound!.inputs.vae).toEqual(["load_vae_audio", 0]);
+    expect(JSON.stringify(turbo)).not.toContain("$");
+    // A template that needs a part the recipe lacks says so.
+    expect(() => fill(TEMPLATES.get("minimax-h3")!, [p("diffusion", "h3.safetensors"), p("vae", "v.safetensors")], [], { ...h3.defaults, prompt: "x", seed: 1, width: 1344, height: 768, ...at("minimax-h3", 5, 1344, 768) })).toThrow(/nothing for \$clip/);
+  });
+
+  it("times clips on each model's frame grid, up to its longest", () => {
+    const frames = (t: string, d: number) => videoValues(TEMPLATES.get(t)!.video!, d, 1280, 704, 20).frames;
+    expect(frames("wan22-5b", 5)).toBe(121);
+    expect(frames("wan22-i2v-14b", 3)).toBe(49);
+    expect(frames("ltx2", 10)).toBe(241);
+    expect(frames("minimax-h3", 15)).toBe(362);
+    expect(frames("minimax-h3", 1)).toBe(39);
+    for (const t of [...TEMPLATES.values()].filter((t) => t.does.some((a) => a === "video" || a === "animate"))) {
+      expect(t.video, t.name).toBeDefined();
+      expect(t.workflow.save!.class_type, t.name).toBe("SaveVideoWebsocket");
+    }
   });
 });
 
@@ -307,6 +451,16 @@ describe("recipes", () => {
     expect(recipeSize({ ...z, loras: [{ file: "style.safetensors", strength: 1 }] }, parts)).toBeCloseTo(13.1 * GB);
     // An encoder larger than the diffusion model sets the peak.
     expect(recipeSize(z, [...parts.slice(1), { file: "z.safetensors", size: 4 * GB }])).toBeCloseTo(8.3 * GB);
+    // A video model's two experts run one after the other, each with its own LoRA; both VAEs stay.
+    const sizes = [{ file: "h", size: 14 * GB }, { file: "l", size: 14 * GB }, { file: "lh", size: 0.6 * GB }, { file: "ll", size: 0.6 * GB },
+      { file: "t", size: 6.7 * GB }, { file: "v", size: 0.3 * GB }, { file: "a", size: 0.1 * GB }];
+    const wan = { loras: [], parts: [
+      { role: "diffusion" as const, slot: "high", file: "h", added: false }, { role: "diffusion" as const, slot: "low", file: "l", added: false },
+      { role: "lora" as const, slot: "high", file: "lh", added: false }, { role: "lora" as const, slot: "low", file: "ll", added: false },
+      { role: "text_encoder" as const, slot: "umt5", file: "t", added: false }, { role: "vae" as const, slot: null, file: "v", added: false },
+      { role: "vae" as const, slot: "audio", file: "a", added: false },
+    ] };
+    expect(recipeSize(wan, sizes)).toBeCloseTo(15 * GB);
   });
 });
 
@@ -578,6 +732,48 @@ describe("the image API", () => {
     for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);
   });
 
+  it("makes a clip and its poster from a video recipe, timed and sized by its template", async () => {
+    const W = "lyrica/huggingface/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/split_files";
+    const s = await stack({ files: {
+      [`${W}/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors`]: WAN_5B, [`${W}/vae/wan2.2_vae.safetensors`]: WAN22_VAE, "other/umt5.safetensors": UMT5,
+    } });
+    const { body } = await s.api("/host/v1/recipes?state=proposed");
+    const wan: Recipe & { video: { fps: number; audio: boolean } } = body.recipes.find((r: Recipe) => r.arch === "wan2.2-5b");
+    const z: Recipe = body.recipes.find((r: Recipe) => r.arch === "z-image");
+    expect(wan).toMatchObject({ does: ["video", "animate"], ready: true, video: { fps: 24, audio: false } });
+    await s.api("/host/v1/recipes/confirm", { body: { ids: [wan.id, z.id] } });
+
+    const made = await s.api("/host/v1/videos/create", { body: { recipe: wan.id, prompt: MARKER, seed: 5 } });
+    expect(made.status).toBe(200);
+    expect(Buffer.from(made.body.video.mp4, "base64")).toEqual(MP4);
+    expect(Buffer.from(made.body.poster, "base64")).toEqual(PNG);
+    // 5 seconds at 24 fps on Wan's grid of 4 frames plus 1; the poster gives the size.
+    expect(made.body.video).toMatchObject({ frames: 121, fps: 24, duration: 121 / 24, audio: false, seed: 5, width: 1, height: 1 });
+    const sent = s.comfyFake.seen.prompts[0];
+    expect(sent.latent.inputs).toEqual({ vae: ["load_vae", 0], width: 1280, height: 704, length: 121, batch_size: 1 });
+    expect(sent.sample.inputs).toMatchObject({ steps: 20, cfg: 5, sampler_name: "uni_pc" });
+    expect(Object.keys(sent)).not.toContain("load");
+    expect(s.comfyFake.seen.historyCleared).toBe(1);
+
+    // Animating: the first frame is uploaded, and with no size asked the clip takes the image's shape at the recipe's area.
+    const animated = await s.api("/host/v1/videos/create", { body: { recipe: wan.id, prompt: "x", image: PNG.toString("base64"), duration: 2 } });
+    expect(animated.status).toBe(200);
+    const second = s.comfyFake.seen.prompts[1];
+    expect(second.latent.inputs).toMatchObject({ width: 960, height: 960, length: 49, start_image: ["scale", 0] });
+    expect(second.load.inputs.image).toBe("lyrica-image.png");
+    expect(s.comfyFake.seen.uploads).toEqual(["lyrica-image.png", "lyrica-image.png"]);
+
+    const refused = async (path: string, extra: object) => (await s.api(path, { body: { recipe: wan.id, prompt: "x", ...extra } })).body.error.message;
+    expect(await refused("/host/v1/videos/create", { width: 1000 })).toMatch(/multiple of 32/);
+    expect(await refused("/host/v1/videos/create", { duration: 9 })).toMatch(/from 1 to 8/);
+    expect(await refused("/host/v1/videos/create", { count: 2 })).toMatch(/count/);
+    expect(await refused("/host/v1/images/create", {})).toBe("That recipe doesn't create images.");
+    expect((await s.api("/host/v1/videos/create", { body: { recipe: z.id, prompt: "x" } })).body.error.message).toBe("That recipe doesn't make videos.");
+
+    expect(s.lines.join("\n")).not.toContain(MARKER);
+    for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);
+  });
+
   it("saves Use for through the recipe API and keeps it when the book reopens", async () => {
     const s = await stack();
     const { body } = await s.api("/host/v1/recipes");
@@ -632,7 +828,10 @@ describe("the image API", () => {
     const z = body.starters.find((st: { id: string }) => st.id === "z-image-turbo");
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
-    expect(body.starters.map((st: { id: string }) => st.id)).toEqual(["flux-schnell", "krea2-turbo", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "sdxl", "seedvr2-3b", "seedvr2-7b", "z-image-turbo"]);
+    expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
+      "flux-schnell", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-turbo", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "sdxl", "seedvr2-3b", "seedvr2-7b",
+      "wan2.2-i2v-14b", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
+    ]);
   });
 
   it("lists a starter for one backend only on hosts using it", async () => {
@@ -640,6 +839,9 @@ describe("the image API", () => {
     expect((await comfy.api("/host/v1/starters")).body.starters.map((st: { id: string }) => st.id)).not.toContain("krea2-turbo-q5");
     expect((await comfy.api("/host/v1/starters/krea2-turbo-q5/install", { body: {} })).status).toBe(404);
     const sd = await stack({ sdcpp: true });
-    expect((await sd.api("/host/v1/starters")).body.starters.map((st: { id: string }) => st.id)).toContain("krea2-turbo-q5");
+    const onSd = (await sd.api("/host/v1/starters")).body.starters.map((st: { id: string }) => st.id);
+    expect(onSd).toContain("krea2-turbo-q5");
+    // sd.cpp makes no videos, so the video starters show only on ComfyUI hosts.
+    expect(onSd).not.toContain("wan2.2-ti2v-5b");
   });
 });

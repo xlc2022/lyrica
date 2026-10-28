@@ -226,6 +226,18 @@ per host, and Lyrica's router filters create tiers by it.
   A starter can be for one way of making images only: Krea 2 Turbo Q5
   (GGUFs, about 13.4 GB, for 16 GB cards) is listed only on hosts using
   stable-diffusion.cpp.
+  The video starters (Wan 2.2 TI2V 5B, T2V 14B and I2V 14B, LTX-2.5
+  Distilled, MiniMax H3 Turbo) are for ComfyUI hosts only. Wan 2.2 is
+  Apache 2.0. LTX-2.5's repository is gated: installing it needs a
+  Hugging Face token whose account accepted its licence, the LTX-2.x
+  Community License (free under $10M yearly revenue). The hub hides a
+  gated repository's checksums, so that starter has none pinned: the host
+  checks each file against the hub's checksum when it downloads it with the
+  token. MiniMax H3's licence
+  forbids using, hosting or running it, or using what it makes, in the US,
+  the EU, the UK and South Korea; the operator checks where the host and
+  its users are before installing it. H3 and LTX-2.5 fit a 96 GB card;
+  Wan 2.2 fits a 24 GB one.
   Krea 2 Turbo's weights are under the Krea 2 Community License, which
   requires content filtering wherever it runs; the host filters nothing,
   so the operator who installs it sets that up. Qwen-Image 2.1 Turbo's
@@ -242,8 +254,9 @@ per host, and Lyrica's router filters create tiers by it.
   no other recipe uses and that aren't also a chat model.
 - ComfyUI is our image (`comfyui/Dockerfile`, CUDA or ROCm), built from
   pinned commits of ComfyUI, ComfyUI-GGUF, the SeedVR2 upscaler and LanPaint
-  (masked edits on Qwen-Image 2.1), with no plugin manager. Only those
-  nodes load. Their Python packages go into a
+  (masked edits on Qwen-Image 2.1), with no plugin manager, plus our own
+  `comfyui/websocket_video_save.py`, which sends a clip and its poster
+  back over the websocket. Only those nodes load. Their Python packages go into a
   venv, each pinned with its hash in `comfyui/requirements.txt`
   (`comfyui/lock.sh` remakes it); torch is the base image's. It has no
   route out, logs nothing, keeps its input, output and temp folders in
@@ -258,15 +271,20 @@ per host, and Lyrica's router filters create tiers by it.
   job, which then waits while it starts.
   A ComfyUI that is off, or doesn't answer a request within 30 seconds,
   fails that job as `unavailable`, and the next job still runs.
+- **Videos** come from video recipes, through the same ComfyUI, one clip
+  per job (API.md, "Making videos"). A clip can take from a few minutes
+  to most of an hour, and holds ComfyUI's GPU until it is done; on a host
+  with two GPUs, `COMFY_GPU` names the one for images and videos and the
+  other serves chat. One clip isn't split over two GPUs.
 - At start the gate checks that the image's PyTorch has kernels for the
   GPU (its compute capability against `torch.cuda.get_arch_list()`), in a
   process that holds the GPU only for those few seconds. If it
   has none, ComfyUI never starts, the container reports unhealthy, image
   jobs fail at once saying why, and the dashboard and status list it under
   problems.
-- A recipe takes the memory of its largest stage plus its VAE: the text
-  encoders, or the diffusion model or checkpoint with its LoRAs, or an
-  upscaler. ComfyUI runs them in turn and frees one stage's models when the
+- A recipe takes the memory of its largest stage plus its VAEs: the text
+  encoders, or the diffusion model or checkpoint with its LoRAs (one of a
+  video model's two experts at a time), or an upscaler. ComfyUI runs them in turn and frees one stage's models when the
   next needs the room, so a recipe whose parts add up to more than the GPU
   can still run.
 - When `COMFY_GPU` is a CMP 100-210 (PCI ID `10de:1df4`), whose FP16 tensor

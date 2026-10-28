@@ -1,0 +1,189 @@
+{
+  "arch": "minimax-h3",
+  "does": [
+    "video",
+    "animate"
+  ],
+  "checkpoint": false,
+  "clipType": "minimax",
+  "parts": [
+    {
+      "role": "diffusion",
+      "arch": [
+        "minimax-h3"
+      ]
+    },
+    {
+      "role": "lora",
+      "slot": "speed",
+      "arch": [
+        "minimax-h3"
+      ]
+    },
+    {
+      "role": "text_encoder",
+      "slot": "qwen3vl_32b"
+    },
+    {
+      "role": "vae",
+      "slot": null,
+      "arch": [
+        "minimax-h3"
+      ]
+    },
+    {
+      "role": "vae",
+      "slot": "audio",
+      "arch": [
+        "minimax-h3"
+      ]
+    }
+  ],
+  "references": 0,
+  "mask": false,
+  "video": {
+    "fps": 24,
+    "frameStep": 17,
+    "frameOffset": 5,
+    "sizeStep": 32,
+    "maxSeconds": 15,
+    "audio": true
+  },
+  "workflow": {
+    "load": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "$image"
+      },
+      "_if": "image"
+    },
+    "scale": {
+      "class_type": "ImageScale",
+      "inputs": {
+        "image": [
+          "load",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "width": "$width",
+        "height": "$height",
+        "crop": "center"
+      },
+      "_if": "image"
+    },
+    "cond": {
+      "class_type": "MiniMaxH3ImageToVideo",
+      "inputs": {
+        "clip": "$clip",
+        "vae": "$vae",
+        "prompt": "$prompt",
+        "width": "$width",
+        "height": "$height",
+        "length": "$frames",
+        "first_frame": [
+          "scale",
+          0
+        ]
+      }
+    },
+    "guide": {
+      "class_type": "BasicGuider",
+      "inputs": {
+        "model": "$model",
+        "conditioning": [
+          "cond",
+          0
+        ]
+      }
+    },
+    "noise": {
+      "class_type": "RandomNoise",
+      "inputs": {
+        "noise_seed": "$seed"
+      }
+    },
+    "sampler": {
+      "class_type": "KSamplerSelect",
+      "inputs": {
+        "sampler_name": "$sampler"
+      }
+    },
+    "schedule": {
+      "class_type": "BasicScheduler",
+      "inputs": {
+        "model": "$model",
+        "scheduler": "$scheduler",
+        "steps": "$steps",
+        "denoise": 1
+      }
+    },
+    "sample": {
+      "class_type": "SamplerCustomAdvanced",
+      "inputs": {
+        "noise": [
+          "noise",
+          0
+        ],
+        "guider": [
+          "guide",
+          0
+        ],
+        "sampler": [
+          "sampler",
+          0
+        ],
+        "sigmas": [
+          "schedule",
+          0
+        ],
+        "latent_image": [
+          "cond",
+          1
+        ]
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "sound": {
+      "class_type": "VAEDecodeAudio",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae_audio"
+      }
+    },
+    "video": {
+      "class_type": "CreateVideo",
+      "inputs": {
+        "images": [
+          "decode",
+          0
+        ],
+        "fps": "$fps",
+        "audio": [
+          "sound",
+          0
+        ]
+      }
+    },
+    "save": {
+      "class_type": "SaveVideoWebsocket",
+      "inputs": {
+        "video": [
+          "video",
+          0
+        ]
+      }
+    }
+  }
+}
