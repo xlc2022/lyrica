@@ -19,7 +19,15 @@ export interface ImageTools {
   enabled(): boolean;
   approve?(request: ApprovalRequest): Promise<boolean>;
   now?: () => Date;
+  /**
+   * Runs a clip in the background (lyricad's clip jobs): the call returns at once and the
+   * thread hears of the clip when it is made. Without it a clip is made within the call.
+   */
+  background?(make: (signal: AbortSignal) => Promise<ClipMade>): void;
 }
+
+/** A clip made in the background: what she is told, and the part the chat shows. */
+export interface ClipMade { text: string; video: VideoPart }
 
 const path = (description: string) => Type.Optional(Type.String({ description }));
 /**
@@ -114,7 +122,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
     const rejects = new Set<string>();
     pi.on("agent_start", () => { refused = false; rejects.clear(); });
     pi.registerTool({
-      name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat). Reject sets attempts aside in images/rejected/; pick shows the one you keep last; clear_rejected deletes the rejected ones for good. Video makes a short clip from a prompt and animate one from an image; clips go to videos/ (shared/videos/) and can take many minutes.",
+      name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat). Reject sets attempts aside in images/rejected/; pick shows the one you keep last; clear_rejected deletes the rejected ones for good. Video makes a short clip from a prompt and animate one from an image; clips go to videos/ (shared/videos/), are made in the background, and you are told here when one is ready.",
       promptSnippet: "create, edit or upscale images, and make short clips",
       promptGuidelines: ["Write prompts from the conversation; inspect results and retry if needed.",
         "Before retrying, reject the attempts that miss; the chat folds them away. If an earlier attempt is best, pick it.",
@@ -127,7 +135,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "Don't pass the image being edited as a reference too.",
         "For a person from reference photos, say \"the person from the reference images\", not an image number; ask for one new angle per edit, or several views as one wide create. For an exact garment, pass its photo as a reference. Word a change of build strongly. For a relative, pass no photo: describe the traits they share and how they differ.",
         "Check faces, hands and limbs in a result against the source; reject one that gets them wrong.",
-        "Make a clip only when they ask for one: it holds the model host's GPU for minutes. For video and animate, describe the motion and the camera in one paragraph; for animate, say what moves and what stays."],
+        "Make a clip only when they ask for one: it holds the model host's GPU for minutes. It is made in the background: say it's on its way and end your reply; you'll be told when it's ready. For video and animate, write the prompt as a detailed shot even when they gave a few words: the subject and what it does, how things move, the camera's move and lens, the light and the mood, in one paragraph of about 80 to 120 words; for animate, say what moves and what stays."],
       parameters: imageParameters,
       async execute(id, p, signal, _update, ctx) {
         if (refused) throw new Error(REFUSED_THIS_TURN);
@@ -229,15 +237,26 @@ async function executeVideo(o: ImageTools, p: ImageArgs, signal?: AbortSignal) {
   const request: VideoRequest = { prompt: p.prompt!, ...(p.action === "animate" ? { image: (await o.files.read(p.image!)).input } : {}),
     ...(size ? { size } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }) };
   const call = o.call();
-  let attempted: Resolution | undefined;
-  let out;
-  try { out = await o.models.video(call, request, { signal, beforeSend: async r => { attempted = r; if (!o.enabled()) throw new Error("Images are off in this thread."); } }); }
-  catch (err) { throw withModel(err, p.action, attempted, signal); }
-  signal?.throwIfAborted();
-  const path = o.files.saveVideo(out.video);
-  const v = out.video;
-  const part: VideoPart = { type: "video", path, model: out.resolution.label, width: v.width, height: v.height, duration: v.duration, audio: v.audio };
-  o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: "video", resolution: out.resolution });
-  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}: ${v.duration.toFixed(1)} s at ${v.width}×${v.height}${v.audio ? ", with sound" : ""}. Saved ${path}. Its first frame:` },
-    { type: "image" as const, data: Buffer.from(v.poster.bytes).toString("base64"), mimeType: v.poster.type }], details: { video: part } };
+  const make = async (signal?: AbortSignal) => {
+    let attempted: Resolution | undefined;
+    let out;
+    try { out = await o.models.video(call, request, { signal, beforeSend: async r => { attempted = r; if (!o.enabled()) throw new Error("Images are off in this thread."); } }); }
+    catch (err) { throw withModel(err, p.action, attempted, signal); }
+    signal?.throwIfAborted();
+    const path = o.files.saveVideo(out.video);
+    const v = out.video;
+    const video: VideoPart = { type: "video", path, model: out.resolution.label, width: v.width, height: v.height, duration: v.duration, audio: v.audio };
+    o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: "video", resolution: out.resolution });
+    const text = `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}: ${v.duration.toFixed(1)} s at ${v.width}×${v.height}${v.audio ? ", with sound" : ""}. Saved ${path}.`;
+    return { text, video, poster: v.poster };
+  };
+  // A clip holds the host's GPU for minutes: in the background her turn ends, and the chat goes on.
+  if (o.background) {
+    o.background(async (signal) => { const { text, video } = await make(signal); return { text: `The clip is ready. ${text}`, video }; });
+    return { content: [{ type: "text" as const, text: "Making the clip in the background; it takes minutes. You'll be told here when it is ready, and the chat shows it then. Don't wait for it: finish this reply." }],
+      details: { clip: "started" } };
+  }
+  const { text, video, poster } = await make(signal);
+  return { content: [{ type: "text" as const, text: `${text} Its first frame:` },
+    { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: { video } };
 }

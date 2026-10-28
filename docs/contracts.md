@@ -1417,8 +1417,16 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     PNG bytes. Saved task lists are unchanged.
     `video` (`prompt`, optional `size` or `aspectRatio` and `duration`) and
     `animate` (also `image`, the first frame) make one clip through
-    `Models.video`, save it with `ThreadImages.saveVideo` and answer with
-    its facts and its poster as image content, so she sees the first frame;
+    `Models.video` and save it with `ThreadImages.saveVideo`. With
+    `ImageTools.background(make)` (lyricad's `ClipJobs`, daemon/src/clips.ts)
+    the call reads the first frame, hands `make(signal) → ClipMade { text,
+    video: VideoPart }` over and answers at once ("Making the clip in the
+    background…", details `{ clip: "started" }`); lyricad delivers the result
+    as a delegate notice with details `{ status: "clip", video }` (or
+    `"clip-failed"`, its reason in the text), which messages show as an
+    assistant message with the video part and the `notice` event carries as
+    `video`, and wakes an idle thread. Without it (an explicit retry) the call
+    answers with its facts and its poster as image content, so she sees the first frame;
     details `{ video: VideoPart }`, `VideoPart` being `{ type: "video", path,
     model, width, height, duration, audio }`. A video's error reads `Video
     failed with <label> [<code>]: …`. Saved messages carry the part beside its

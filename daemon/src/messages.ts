@@ -207,6 +207,12 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
         out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "user", from: { kind: "watching", told: toldLines(text) }, parts: [{ type: "text", text }] });
         continue;
       }
+      // A clip made in the background shows as hers, like one made within a turn.
+      const clip = (details as { status?: unknown } | undefined)?.status === "clip" ? videoPart("image", details) : undefined;
+      if (clip) {
+        out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "assistant", parts: [clip] });
+        continue;
+      }
       const part = delegationPart(e.content, details);
       const threads = delegateThreads("delegate", details, pool, started);
       out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "notice", parts: [threads ? { ...part, threads } : part] });

@@ -610,7 +610,12 @@ delivers into the thread (a background result or question, a note, a user's
 message to a subagent) goes out as `notice`, with its status and threads,
 and is stored: the message list shows it as a `notice` message. A
 background command's end comes the same way, with status `job`, and wakes
-an idle thread once (docs/workspace.md, Background commands).
+an idle thread once (docs/workspace.md, Background commands). A clip made in
+the background (`ClipJobs`, clips.ts) comes with status `clip` and its
+`video` part: the message list shows it as her message with the clip, and
+the `notice` event carries `video`; a failed one has status `clip-failed`.
+Either wakes an idle thread once; a clip Lock or a shutdown stopped wakes
+nothing.
 
 Child-thread notices use the same encrypted delivery path. Questions,
 `needsYou`, a report at the child's idle turn end, and failure/didn't-start

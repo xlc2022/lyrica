@@ -522,10 +522,10 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
 /** Where a made image was, once it is no longer in the thread's files. */
 const GONE = "No longer in Files";
 
-/** Principle 1: made images stay in the conversation, with their facts and rare actions (ux §3 and §6). */
 /** The model that made an image or clip, as `<endpoint>/<model>`: a shared endpoint's `shared.` belongs to its ID, not its name. */
 const modelShown = (label: string) => label.replace(/^shared\./, "");
 
+/** Principle 1: made images stay in the conversation, with their facts and rare actions (ux §3 and §6). */
 function MessageImages({ part, env }: { part: ImagePart; env: Env }) {
   const links = useFileLinks(env.userId, env.pool, env.threadId);
   const files: FileLinks = { ...links, url: (path) => `${env.base}/file?path=${encodeURIComponent(path)}` };
@@ -682,7 +682,9 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
           : args.action === "reject" ? (n === 1 ? "Rejecting an image" : `Rejecting ${n} images`) : args.action === "pick" ? "Picking an image"
           : args.action === "clear_rejected" ? "Deleting rejected images" : args.action === "video" ? "Making a clip"
           : args.action === "animate" ? "Animating an image" : "Making an image";
-        label = <><span>{making}{args.action === "create" && args.tier && <> · {args.tier}</>} <span className="state" data-state={state}>{state}</span></span></>;
+        // A clip made in the background: the call only started it, and the clip shows when it is made.
+        const shown = state === "done" && part.result?.startsWith("Making the clip in the background") ? "started" : state;
+        label = <><span>{making}{args.action === "create" && args.tier && <> · {args.tier}</>} <span className="state" data-state={shown}>{shown}</span></span></>;
       }
       body = (
         <>

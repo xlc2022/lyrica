@@ -25,6 +25,7 @@ import type { BusyItem, Health, SetupRequest, State, UserCard } from "./api.ts";
 import { RateLimiter, Sessions } from "./auth.ts";
 import { SameFile } from "./same-file.ts";
 import { ThreadHost } from "./hosted.ts";
+import { ClipJobs } from "./clips.ts";
 
 /** Model host refusals the web UI acts on, so their code goes with the message. */
 const HOST_CODES = ["need_repo", "above_recommended"];
@@ -33,6 +34,8 @@ const UNLISTED = new Set(["/api/u/:userId/threads/:pool/:threadId/draft"]);
 /** What an idle thread is woken with when one of its background commands ends: the notice above it says which. */
 const JOB_WAKE_MS = 5000;
 const JOB_WAKE = "A background command ended: its notice is above (and any others that ended with it). Carry on with what it was for, or say what it found.";
+/** What an idle thread is woken with when a clip she started is made, or fails. */
+const CLIP_WAKE = "A clip you started in the background is done: its notice is above, and the chat shows the clip. Tell them it's ready, or why it failed.";
 import {
   checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, readBody, secureServer, sendJson, serveStatic, statusOf, Updating,
   type Listener, type Request, type Route, type TrustForwarded,
@@ -121,6 +124,8 @@ export interface Services {
   routines: Routines;
   /** CI wakes: polls each thread's open pull requests and hands the notes to the wake-up path. */
   forge: ForgeWatcher;
+  /** Clips her image tool makes in the background. */
+  clips: ClipJobs;
   users: Users;
   memory: Memory;
   models: Models;
@@ -467,6 +472,32 @@ export class Lyricad implements Drainable {
     });
     // A pending wake for background jobs that ended, by `user/pool/thread`: those ending close together wake it once.
     const jobWakes = new Map<string, NodeJS.Timeout>();
+    /** Wakes an idle thread once, a few seconds after the first of the endings `kind` names, with all their notices. */
+    const wakeSoon = (t: { userId: string; pool: Pool; threadId: string }, kind: string, text: string) => {
+      const k = `${t.userId}/${t.pool}/${t.threadId}/${kind}`;
+      if (jobWakes.has(k)) return;
+      jobWakes.set(k, setTimeout(() => {
+        jobWakes.delete(k);
+        if (host.draining || host.busy(t.userId, t.pool, t.threadId) || !children.mayWake(t.userId, t.pool, t.threadId)) return;
+        children.woke(t.userId, t.pool, t.threadId);
+        void host.get(t.userId, t.pool, t.threadId).wakeChild(text).catch(() => {});
+      }, this.opts.jobWakeMs ?? JOB_WAKE_MS).unref());
+    };
+    /** A delivered notice: into the stored thread, and to its open streams. */
+    const notify = (t: { userId: string; pool: Pool; threadId: string }, content: string, details: Record<string, unknown>) => {
+      const withId = { ...details, id: randomBytes(8).toString("hex") };
+      delegation.deliver({ user: { id: t.userId }, pool: t.pool, threadId: t.threadId } as Parameters<Delegation["deliver"]>[0], content, withId);
+      host.delivered(t.userId, t.pool, t.threadId, content, withId);
+    };
+    // Clips she makes in the background: the thread gets the clip, or why there is none, and wakes to say so.
+    const clips = new ClipJobs({
+      done: (t, made) => { notify(t, made.text, { status: "clip", video: made.video }); wakeSoon(t, "clip", CLIP_WAKE); },
+      failed: (t, message, stopped) => {
+        notify(t, stopped ? `The clip was stopped: ${message}.` : `The clip failed: ${message}`, { status: "clip-failed" });
+        if (!stopped) wakeSoon(t, "clip", CLIP_WAKE);
+      },
+      log: this.log,
+    });
     // Where the front door is, read at every sandbox start, so a change in web access applies to the next command.
     const workspace = new Workspace(keyring, users, {
       excludePorts: this.sandboxExcluded, frontDoor: () => web.frontDoor(), bwrap: this.opts.bwrap, pasta: this.opts.pasta,
@@ -502,14 +533,7 @@ export class Lyricad implements Drainable {
           // A job she or lyricad stopped (her jobs stop, Lock, shutdown) only leaves its notice: waking then would spend a turn on nothing.
           if (job.state === "stopped") return;
           // Jobs that end close together wake the thread once, a few seconds after the first, with all their notices.
-          const k = `${t.userId}/${t.pool}/${t.threadId}`;
-          if (jobWakes.has(k)) return;
-          jobWakes.set(k, setTimeout(() => {
-            jobWakes.delete(k);
-            if (host.draining || host.busy(t.userId, t.pool, t.threadId) || !children.mayWake(t.userId, t.pool, t.threadId)) return;
-            children.woke(t.userId, t.pool, t.threadId);
-            void host.get(t.userId, t.pool, t.threadId).wakeChild(JOB_WAKE).catch(() => {});
-          }, this.opts.jobWakeMs ?? JOB_WAKE_MS).unref());
+          wakeSoon(t, "job", JOB_WAKE);
         } catch (err) {
           this.log(`a background command's notice wasn't delivered: ${(err as Error).name}`);
         }
@@ -599,6 +623,7 @@ export class Lyricad implements Drainable {
       users, memory, models, workspace, persona, delegation, cwd, log: this.log, sameFile, searxng: () => searxngAddress(keyring.self()), name: () => selfName(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       codePulls: (u, p, t) => forge.codePulls(u, p, t),
+      clips: (u, p, t, make) => clips.start({ userId: u, pool: p, threadId: t }, make),
       resume: (u, p, t, at, note) => wakeups.resume(u, p, t, at, note),
       threads: children, onTurn: (u, p, t, working, byPerson) => {
         children.turn(u, p, t, working);
@@ -635,7 +660,7 @@ export class Lyricad implements Drainable {
     host.draining = this.drainingNow;
     const shares = new ThreadShares(keyring.self());
     const routines = new Routines({ memory, host: () => host, children, zone: (id) => zoneOf(users.get(id)?.profile ?? {}), log: this.log });
-    this.services = { routines, wakeups, forge, users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, tailnet: this.tailnet, prefs, shares };
+    this.services = { routines, wakeups, forge, clips, users, memory, models, workspace, persona, proposals, delegation, children, projects, watcher, sleep, host, web, tailnet: this.tailnet, prefs, shares };
     this.rememberName(selfName(keyring.self()));
     await web.resume();
     await this.finishDeletes();
@@ -714,6 +739,7 @@ export class Lyricad implements Drainable {
     s.routines.drop(userId);
     s.forge.drop(userId);
     s.workspace.jobs.stopUser(userId, "Lyrica locked");
+    s.clips.stop("Lyrica locked", userId);
     // Subagent runs record how they ended in user.db, and a sleep run in the pool, so they stop before the key goes.
     await s.delegation.stopAll(userId);
     await s.children.lock(userId);
@@ -1041,6 +1067,7 @@ export class Lyricad implements Drainable {
     if (s) {
       await s.delegation.stopAll();
       for (const u of s.users.all()) s.workspace.jobs.stopUser(u.id, "Lyrica stopped");
+      s.clips.stop("Lyrica stopped");
       s.watcher.close();
       for (const u of s.users.all()) await s.sleep.stop(u.id);
       await s.host.close();
