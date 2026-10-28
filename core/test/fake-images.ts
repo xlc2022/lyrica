@@ -24,6 +24,7 @@ export async function fakeImages() {
       if (path === "/host/v1/recipes") return Response.json({ recipes: [
         { id: "art", name: "Art", state: "confirmed", ready: true, useFor: server.useFor, does: ["create", "edit", "upscale"], ...(mask === undefined ? {} : { mask }) },
         { id: "proposal", name: "Proposal", state: "proposed", ready: true, does: ["create"] },
+        { id: "clip", name: "Clip", state: "confirmed", ready: true, does: ["video", "animate"], video: { fps: 24, audio: false } },
       ] });
       if (down) return Response.json({ error: { code: down, message: "Images unavailable." } }, { status: 503 });
       const action = path.split("/").at(-1)!;
@@ -35,6 +36,7 @@ export async function fakeImages() {
       return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: output.toString("base64"), width: 1, height: 1, seed: 42 })), seconds: 0.1 });
     }) as typeof fetch);
     const offerings = await models.discover(ada, ep.id);
+    // Only Art: a proposal never resolves, and a video recipe waits for the video task.
     expect(offerings).toHaveLength(1);
     const ref = { offeringId: offerings[0]!.id };
     models.reportUp(ada.id, ep.id);

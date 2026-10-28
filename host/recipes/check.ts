@@ -21,6 +21,10 @@ for (const f of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
     if (!hub) {
       console.log(`MISSING ${line}`);
       failed = true;
+    } else if (!/^[0-9a-f]{64}$/.test(hub.oid)) {
+      // A gated repository hides its checksums from anonymous callers; the
+      // host still checks the hub's checksum when it downloads with a token.
+      console.log(`GATED ${line} (the hub hides its checksum)`);
     } else if (!p.sha256) {
       console.log(`UNPINNED ${line} sha256=${hub.oid} size=${hub.size}`);
       if (write) p.sha256 = hub.oid;

@@ -10,6 +10,7 @@ lyrica:
   clip: .
   vae: .
   loras: .
+  latent_upscale_models: .
 seedvr2:
   base_path: /serving
   seedvr2: seedvr2

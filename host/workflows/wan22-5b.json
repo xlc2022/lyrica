@@ -1,0 +1,151 @@
+{
+  "arch": "wan2.2-5b",
+  "does": [
+    "video",
+    "animate"
+  ],
+  "checkpoint": false,
+  "clipType": "wan",
+  "parts": [
+    {
+      "role": "diffusion",
+      "arch": [
+        "wan2.2-5b"
+      ]
+    },
+    {
+      "role": "text_encoder",
+      "slot": "umt5"
+    },
+    {
+      "role": "vae",
+      "arch": [
+        "wan2.2"
+      ]
+    }
+  ],
+  "references": 0,
+  "mask": false,
+  "video": {
+    "fps": 24,
+    "frameStep": 4,
+    "frameOffset": 1,
+    "sizeStep": 32,
+    "maxSeconds": 8,
+    "audio": false
+  },
+  "workflow": {
+    "pos": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$prompt",
+        "clip": "$clip"
+      }
+    },
+    "neg": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$negativePrompt",
+        "clip": "$clip"
+      }
+    },
+    "load": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "$image"
+      },
+      "_if": "image"
+    },
+    "scale": {
+      "class_type": "ImageScale",
+      "inputs": {
+        "image": [
+          "load",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "width": "$width",
+        "height": "$height",
+        "crop": "center"
+      },
+      "_if": "image"
+    },
+    "latent": {
+      "class_type": "Wan22ImageToVideoLatent",
+      "inputs": {
+        "vae": "$vae",
+        "width": "$width",
+        "height": "$height",
+        "length": "$frames",
+        "batch_size": 1,
+        "start_image": [
+          "scale",
+          0
+        ]
+      }
+    },
+    "shift": {
+      "class_type": "ModelSamplingSD3",
+      "inputs": {
+        "model": "$model",
+        "shift": "$shift"
+      }
+    },
+    "sample": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": [
+          "shift",
+          0
+        ],
+        "seed": "$seed",
+        "steps": "$steps",
+        "cfg": "$cfg",
+        "sampler_name": "$sampler",
+        "scheduler": "$scheduler",
+        "positive": [
+          "pos",
+          0
+        ],
+        "negative": [
+          "neg",
+          0
+        ],
+        "latent_image": [
+          "latent",
+          0
+        ],
+        "denoise": 1
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "video": {
+      "class_type": "CreateVideo",
+      "inputs": {
+        "images": [
+          "decode",
+          0
+        ],
+        "fps": "$fps"
+      }
+    },
+    "save": {
+      "class_type": "SaveVideoWebsocket",
+      "inputs": {
+        "video": [
+          "video",
+          0
+        ]
+      }
+    }
+  }
+}

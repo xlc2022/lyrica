@@ -1,5 +1,5 @@
 // ComfyUI, reached only from host-api. Results come back over its websocket
-// (SaveImageWebsocket), nothing is saved, and its history is cleared after
+// (SaveImageWebsocket, and our SaveVideoWebsocket for clips), nothing is saved, and its history is cleared after
 // every job. One job at a time, so uploads can't mix. It runs only while a
 // recipe is loaded (host/comfyui/gate.py reads serving/comfyui.json), since
 // its process holds GPU memory for as long as it lives.
@@ -12,6 +12,10 @@ import type { TextModel } from "./library.ts";
 
 /** A 1×1 PNG, written over each upload after its job. */
 const BLANK = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+
+/** The websocket's binary messages: event 1 (a preview image), then a format. PNG is ComfyUI's; MP4 is SaveVideoWebsocket's. */
+const PNG = 2;
+const MP4 = 16;
 
 const unavailable = () => new HostError(503, "model_unavailable", "ComfyUI didn't answer.");
 /** How long one request to ComfyUI may take, outside the job itself: a ComfyUI that hangs fails the job rather than the queue. */
@@ -93,11 +97,23 @@ export class Comfy implements Backend {
    * overwritten with a blank image and the history is cleared; a job that
    * fails, times out or is cancelled is interrupted and taken off the queue.
    */
-  run(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, signal?: AbortSignal): Promise<Buffer[]> {
+  async run(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, signal?: AbortSignal): Promise<Buffer[]> {
+    return (await this.job(images, build, "image", this.timeoutMs, signal)).pngs;
+  }
+
+  /** Like `run`, for a video workflow: its MP4 and its poster (the first frame, a PNG). */
+  async runVideo(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, timeoutMs: number, signal?: AbortSignal): Promise<{ video: Buffer; poster: Buffer | null }> {
+    const { pngs, videos } = await this.job(images, build, "video", timeoutMs, signal);
+    if (!videos[0]) throw new HostError(503, "model_unavailable", "ComfyUI returned no video.");
+    return { video: videos[0], poster: pngs[0] ?? null };
+  }
+
+  private job(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, what: "image" | "video", timeoutMs: number, signal?: AbortSignal): Promise<{ pngs: Buffer[]; videos: Buffer[] }> {
     return this.serial(async () => {
       signal?.throwIfAborted();
       const names: Record<string, string> = {};
       const pngs: Buffer[] = [];
+      const videos: Buffer[] = [];
       let promptId: string | null = null;
       let finished = false;
       let ws: WebSocket | null = null;
@@ -116,14 +132,15 @@ export class Comfy implements Backend {
         let timer: NodeJS.Timeout | undefined;
         let onAbort = () => {};
         const done = new Promise<void>((resolve, reject) => {
-          timer = setTimeout(() => reject(new HostError(503, "busy", "The image took too long.")), this.timeoutMs);
+          timer = setTimeout(() => reject(new HostError(503, "busy", `The ${what} took too long.`)), timeoutMs);
           onAbort = () => reject(new HostError(503, "model_unavailable", "The request was cancelled."));
           signal?.addEventListener("abort", onAbort, { once: true });
           socket.onmessage = (e) => {
             if (e.data instanceof ArrayBuffer) {
-              // 4 bytes event type, 4 bytes image format (2 = PNG), then the image.
+              // 4 bytes event type, 4 bytes format (2 = PNG, 16 = MP4), then the image or clip.
               const view = Buffer.from(e.data);
-              if (view.length > 8 && view.readUInt32BE(0) === 1 && view.readUInt32BE(4) === 2) pngs.push(view.subarray(8));
+              if (view.length > 8 && view.readUInt32BE(0) === 1 && view.readUInt32BE(4) === PNG) pngs.push(view.subarray(8));
+              if (view.length > 8 && view.readUInt32BE(0) === 1 && view.readUInt32BE(4) === MP4) videos.push(view.subarray(8));
               return;
             }
             let msg: { type?: string; data?: { prompt_id?: string; node?: unknown; node_type?: unknown; exception_type?: unknown } };
@@ -135,7 +152,7 @@ export class Comfy implements Backend {
             // Only this client's messages arrive here; skip any for another prompt.
             if (promptId && msg.data?.prompt_id && msg.data.prompt_id !== promptId) return;
             // The node and the exception's type name what broke; the exception's message can carry the prompt, so it stays out.
-            if (msg.type === "execution_error") reject(new HostError(503, "model_unavailable", `ComfyUI failed to make the image (${String(msg.data?.node_type ?? "a node")}: ${String(msg.data?.exception_type ?? "error")}).`));
+            if (msg.type === "execution_error") reject(new HostError(503, "model_unavailable", `ComfyUI failed to make the ${what} (${String(msg.data?.node_type ?? "a node")}: ${String(msg.data?.exception_type ?? "error")}).`));
             else if (msg.type === "executing" && msg.data?.node === null) resolve();
           };
           socket.onclose = () => reject(unavailable());
@@ -156,7 +173,7 @@ export class Comfy implements Backend {
           promptId = ((await res.json()) as { prompt_id: string }).prompt_id;
           await done;
           finished = true;
-          return pngs;
+          return { pngs, videos };
         } finally {
           clearTimeout(timer);
           signal?.removeEventListener("abort", onAbort);

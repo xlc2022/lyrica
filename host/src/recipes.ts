@@ -50,12 +50,12 @@ export interface Starter {
   backend?: "comfyui" | "sdcpp";
 }
 
-export const DEFAULT_KEYS = ["steps", "cfg", "sampler", "scheduler", "width", "height", "shift", "guidance", "negativePrompt", "scale", "maxSize", "colorMatch"];
+export const DEFAULT_KEYS = ["steps", "cfg", "sampler", "scheduler", "width", "height", "shift", "guidance", "negativePrompt", "scale", "maxSize", "colorMatch", "duration"];
 
 // The same ranges a request may ask for (images.ts), so a default is always one a request could give.
 const DEFAULT_RANGES: Record<string, [number, number, number?]> = {
   steps: [1, 150, 1], cfg: [0, 30], width: [256, 2048, 16], height: [256, 2048, 16],
-  shift: [0, 20], guidance: [0, 30], scale: [1, 4], maxSize: [256, 8192, 1],
+  shift: [0, 20], guidance: [0, 30], scale: [1, 4], maxSize: [256, 8192, 1], duration: [1, 15],
 };
 export const COLOR_MATCH = ["lab", "wavelet", "wavelet_adaptive", "hsv", "adain", "none"];
 
@@ -85,6 +85,9 @@ export function loadStarters(dir: string): Starter[] {
 export const starterPath = (p: { source: string; repo: string; path: string }) => `lyrica/${p.source}/${p.repo}/${p.path}`;
 
 const prettyName = (file: string) => basename(file).replace(/\.(safetensors|gguf)$/, "").replace(/[_-]+/g, " ");
+
+/** A video model's mode in its file name: t2v, i2v or ti2v. */
+const mode = (f: string) => basename(f).toLowerCase().match(/(?:^|[^a-z0-9])(t2v|i2v|ti2v)(?:[^a-z0-9]|$)/)?.[1] ?? null;
 
 /** The folder of a downloaded repository (lyrica/<source>/<owner>/<repo>), to prefer parts from the same place. */
 const home = (file: string) => file.split("/").slice(0, 4).join("/");
@@ -137,7 +140,10 @@ export class RecipeBook {
   }
 
   describe(r: Recipe, files: Set<string>) {
-    return { ...r, useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: this.template(r).mask };
+    const t = this.templates.get(r.template);
+    // A recipe made by a newer host (read after a rollback, say) does nothing here.
+    if (!t) return { ...r, useFor: r.useFor ?? "both", ready: false, mask: false, does: [], unsupported: `This host has no template ${r.template}; update it to use this recipe.` };
+    return { ...r, useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, ...(t.video ? { video: t.video } : {}) };
   }
 
   /** The template for a main part: an edit model gets the edit template when its architecture has one. */
@@ -163,12 +169,16 @@ export class RecipeBook {
       if (!["diffusion", "checkpoint", "upscaler"].includes(main.role) || used.has(main.file)) continue;
       const t = this.templateFor(main);
       if (!t) continue; // no template for its architecture: it stays a file
-      const starter = this.starters.find((s) => s.template === t.name && !s.backend);
-      const recipeParts: RecipePart[] = [{ role: main.role, slot: null, file: main.file, added: false }];
+      const starter = this.starters.find((s) => s.template === t.name && s.backend !== "sdcpp");
+      const recipeParts: RecipePart[] = [{ role: main.role, slot: main.slot, file: main.file, added: false }];
       if (main.role !== "checkpoint") {
-        for (const spec of t.parts.filter((s) => s.role !== main.role)) {
+        // A video model's other expert is a part like its VAE; the main part fills its own slot.
+        for (const spec of t.parts.filter((s) => s.role !== main.role || (s.slot ?? null) !== main.slot)) {
           const candidates = parts.filter((p) => this.fits(spec, p));
-          const pick = candidates.find((p) => home(p.file) === home(main.file)) ?? candidates[0];
+          // Prefer the same folder, then the same mode (Wan's t2v and i2v LoRAs sit side by side).
+          const pick = candidates.find((p) => home(p.file) === home(main.file) && mode(p.file) === mode(main.file))
+            ?? candidates.find((p) => home(p.file) === home(main.file)) ?? candidates[0];
+          if (pick && spec.role === "diffusion") used.add(pick.file);
           if (pick) recipeParts.push({ role: spec.role, slot: spec.slot ?? null, file: pick.file, added: false });
           else {
             const known = starter?.parts.find((p) => p.role === spec.role && (spec.slot === undefined || p.slot === spec.slot));
@@ -267,6 +277,7 @@ export class RecipeBook {
       }
       case "addLora":
       case "setLora": {
+        if (t.parts.some((s) => s.role === "diffusion" && s.slot)) throw invalid("This recipe's two models take only the LoRAs its template names.");
         const strength = body.strength;
         if (typeof strength !== "number" || strength < -4 || strength > 4) throw invalid("strength must be a number from -4 to 4.");
         const lora = part(body.file);

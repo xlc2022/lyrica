@@ -217,6 +217,8 @@ export function safetensors(tensors: Record<string, { dtype?: string; shape?: nu
 
 /** A 1×1 PNG. */
 export const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+/** Bytes standing in for an MP4 clip: the host passes them on without reading them. */
+export const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.alloc(12, 1)]);
 
 /**
  * A fake ComfyUI: /upload/image, /prompt, /history, /free, and a websocket
@@ -267,13 +269,19 @@ export async function fakeComfy(o: { hang?: boolean } = {}) {
       const ws = sockets.get(client_id);
       const latent = Object.values(prompt as Record<string, { class_type: string; inputs: Record<string, unknown> }>).find((n) => /Latent/.test(n.class_type) && ("batch_size" in n.inputs || "amount" in n.inputs));
       const count = Number(latent?.inputs.batch_size ?? latent?.inputs.amount ?? 1);
+      // A video workflow gets a poster and then the clip, as SaveVideoWebsocket sends them.
+      const video = Object.values(prompt as Record<string, { class_type: string }>).some((n) => n.class_type === "SaveVideoWebsocket");
+      const send = (format: number, data: Buffer) => {
+        const head = Buffer.alloc(8);
+        head.writeUInt32BE(1, 0);
+        head.writeUInt32BE(format, 4);
+        ws?.write(frame(2, Buffer.concat([head, data])));
+      };
       setTimeout(() => {
-        for (let i = 0; i < count; i++) {
-          const head = Buffer.alloc(8);
-          head.writeUInt32BE(1, 0);
-          head.writeUInt32BE(2, 4);
-          ws?.write(frame(2, Buffer.concat([head, PNG])));
-        }
+        if (video) {
+          send(2, PNG);
+          send(16, MP4);
+        } else for (let i = 0; i < count; i++) send(2, PNG);
         ws?.write(frame(1, Buffer.from(JSON.stringify({ type: "executing", data: { node: null, prompt_id: id } }))));
       }, 5);
       return;

@@ -6,11 +6,25 @@ import { readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Role } from "./parts.ts";
 
-export type Action = "create" | "edit" | "upscale";
+export type Action = "create" | "edit" | "upscale" | "video" | "animate";
+
+/** How a video template's clips are timed and sized. */
+export interface VideoSpec {
+  fps: number;
+  /** Frames come in steps: frames = frameStep × k + frameOffset. */
+  frameStep: number;
+  frameOffset: number;
+  /** Width and height are multiples of this. */
+  sizeStep: number;
+  maxSeconds: number;
+  /** Whether its clips have sound. */
+  audio: boolean;
+}
 
 export interface PartSpec {
   role: Role;
-  slot?: string;
+  /** null: only a part without a slot (a video VAE, not its audio VAE). */
+  slot?: string | null;
   arch?: string[];
 }
 
@@ -32,6 +46,8 @@ export interface Template {
   parts: PartSpec[];
   references: number;
   mask: boolean;
+  /** Video templates only. */
+  video?: VideoSpec;
   workflow: Record<string, Node>;
 }
 
@@ -55,24 +71,28 @@ export function loadTemplates(dir: string): Map<string, Template> {
 
 type Link = [string, number];
 
-/** Loader nodes for the recipe's parts: model, clip and VAE outputs, with LoRAs applied to the model. */
+/**
+ * Loader nodes for the recipe's parts: model, clip and VAE outputs, with LoRAs applied to the model.
+ * A part with a slot gets its own link: `$model_high` and `$model_low` for a video model's two
+ * experts, `$vae_audio` for an audio VAE. A LoRA the template names (with a slot) goes onto the
+ * expert of that slot, or onto the model; the recipe's own LoRAs go onto the model.
+ */
 function loaders(t: Template, parts: FilledPart[], loras: { file: string; strength: number }[]) {
   const nodes: Record<string, Node> = {};
+  const links: Record<string, Link | null> = { $model: null, $clip: null, $vae: null };
   const gguf = (f: string) => f.endsWith(".gguf");
-  let model: Link | null = null;
-  let clip: Link | null = null;
-  let vae: Link | null = null;
+  const suffix = (slot: string | null) => (slot ? `_${slot}` : "");
   const checkpoint = parts.find((p) => p.role === "checkpoint");
   if (checkpoint) {
     nodes.load_checkpoint = { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: checkpoint.file } };
-    [model, clip, vae] = [["load_checkpoint", 0], ["load_checkpoint", 1], ["load_checkpoint", 2]];
+    [links.$model, links.$clip, links.$vae] = [["load_checkpoint", 0], ["load_checkpoint", 1], ["load_checkpoint", 2]];
   }
-  const diffusion = parts.find((p) => p.role === "diffusion");
-  if (diffusion) {
-    nodes.load_model = gguf(diffusion.file)
+  for (const diffusion of parts.filter((p) => p.role === "diffusion")) {
+    const id = `load_model${suffix(diffusion.slot)}`;
+    nodes[id] = gguf(diffusion.file)
       ? { class_type: "UnetLoaderGGUF", inputs: { unet_name: diffusion.file } }
       : { class_type: "UNETLoader", inputs: { unet_name: diffusion.file, weight_dtype: "default" } };
-    model = ["load_model", 0];
+    links[`$model${suffix(diffusion.slot)}`] = [id, 0];
   }
   // Text encoders in the template's slot order.
   const slots = t.parts.filter((s) => s.role === "text_encoder").map((s) => s.slot);
@@ -82,23 +102,36 @@ function loaders(t: Template, parts: FilledPart[], loras: { file: string; streng
     nodes.load_clip = encoders.length === 1
       ? { class_type: anyGguf ? "CLIPLoaderGGUF" : "CLIPLoader", inputs: { clip_name: encoders[0], type: t.clipType } }
       : { class_type: anyGguf ? "DualCLIPLoaderGGUF" : "DualCLIPLoader", inputs: { clip_name1: encoders[0], clip_name2: encoders[1], type: t.clipType } };
-    clip = ["load_clip", 0];
+    links.$clip = ["load_clip", 0];
   }
-  const vaePart = parts.find((p) => p.role === "vae");
-  if (vaePart) {
-    nodes.load_vae = { class_type: "VAELoader", inputs: { vae_name: vaePart.file } };
-    vae = ["load_vae", 0];
+  for (const vae of parts.filter((p) => p.role === "vae")) {
+    const id = `load_vae${suffix(vae.slot)}`;
+    nodes[id] = { class_type: "VAELoader", inputs: { vae_name: vae.file } };
+    links[`$vae${suffix(vae.slot)}`] = [id, 0];
+  }
+  const upscaler = parts.find((p) => p.role === "latent_upscaler");
+  if (upscaler) {
+    nodes.load_latent_upscaler = { class_type: "LatentUpscaleModelLoader", inputs: { model_name: upscaler.file } };
+    links.$latentUpscaler = ["load_latent_upscaler", 0];
+  }
+  for (const lora of parts.filter((p) => p.role === "lora" && p.slot)) {
+    const target = `$model${suffix(lora.slot)}` in links ? `$model${suffix(lora.slot)}` : "$model";
+    const id = `lora${suffix(lora.slot)}`;
+    nodes[id] = { class_type: "LoraLoaderModelOnly", inputs: { model: links[target], lora_name: lora.file, strength_model: 1 } };
+    links[target] = [id, 0];
   }
   loras.forEach((l, i) => {
-    nodes[`lora_${i}`] = { class_type: "LoraLoaderModelOnly", inputs: { model, lora_name: l.file, strength_model: l.strength } };
-    model = [`lora_${i}`, 0];
+    nodes[`lora_${i}`] = { class_type: "LoraLoaderModelOnly", inputs: { model: links.$model, lora_name: l.file, strength_model: l.strength } };
+    links.$model = [`lora_${i}`, 0];
   });
-  return { nodes, links: { $model: model, $clip: clip, $vae: vae } };
+  return { nodes, links };
 }
 
 /** The ComfyUI prompt for one request. Throws if a value the template needs is missing. */
 export function fill(t: Template, parts: FilledPart[], loras: { file: string; strength: number }[], values: Values): Record<string, Node> {
   const { nodes, links } = t.loaders === "template" ? { nodes: {}, links: {} as Record<string, Link | null> } : loaders(t, parts, loras);
+  // A loader link a template asks for but no part gives (`$vae_audio` with no audio VAE) is an error below.
+  const linkName = (v: string) => /^\$(model|clip|vae|latentUpscaler)(_\w+)?$/.test(v);
   const graph: Record<string, Node> = {};
   for (const [id, node] of Object.entries(t.workflow)) {
     if (node._if && values[node._if] === undefined) continue;
@@ -106,8 +139,8 @@ export function fill(t: Template, parts: FilledPart[], loras: { file: string; st
   }
   const resolve = (v: unknown): unknown => {
     if (typeof v === "string" && v.startsWith("$")) {
-      if (v in links) {
-        const link = (links as Record<string, Link | null>)[v];
+      if (v in links || linkName(v)) {
+        const link = links[v];
         if (!link) throw new Error(`the recipe has nothing for ${v}`);
         return link;
       }

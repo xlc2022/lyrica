@@ -1,0 +1,60 @@
+{
+  "name": "LTX-2.5 Distilled",
+  "template": "ltx2",
+  "parts": [
+    {
+      "role": "diffusion",
+      "source": "huggingface",
+      "repo": "Lightricks/LTX-2.5",
+      "path": "diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+      "sha256": "",
+      "size": 21504034224
+    },
+    {
+      "role": "text_encoder",
+      "slot": "gemma4_12b",
+      "source": "huggingface",
+      "repo": "Lightricks/LTX-2.5",
+      "path": "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+      "sha256": "",
+      "size": 15372969374
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "Lightricks/LTX-2.5",
+      "path": "vae/ltx-2.5-video-vae-bf16.safetensors",
+      "sha256": "",
+      "size": 1472223346
+    },
+    {
+      "role": "vae",
+      "slot": "audio",
+      "source": "huggingface",
+      "repo": "Lightricks/LTX-2.5",
+      "path": "vae/ltx-2.5-audio-vae-bf16.safetensors",
+      "sha256": "",
+      "size": 364866540
+    },
+    {
+      "role": "latent_upscaler",
+      "source": "huggingface",
+      "repo": "Lightricks/LTX-2.5",
+      "path": "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+      "sha256": "",
+      "size": 995778752
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "cfg": 1,
+    "sampler": "euler_ancestral",
+    "width": 1280,
+    "height": 704,
+    "duration": 5,
+    "negativePrompt": "pc game, console game, video game, cartoon, childish, ugly",
+    "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0",
+    "refineSigmas": "0.85, 0.7250, 0.4219, 0.0"
+  },
+  "backend": "comfyui"
+}
