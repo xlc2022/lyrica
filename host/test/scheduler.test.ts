@@ -220,6 +220,20 @@ describe("the GPU queue", () => {
     expect(gpus.on("image")).toEqual([0]);
   });
 
+  it("runs a model its measurement fits, though its estimate no longer would", async () => {
+    const { scheduler, state } = setup([24]);
+    await scheduler.start([]);
+    const m = textModel("m", 10);
+    await scheduler.loadNow(m);
+    await scheduler.unloadNow("m");
+    state.update((s) => {
+      s.vram["m@0~8192"] = { 0: 4 * GIB };
+    });
+    await scheduler.setGpu(0, { ...scheduler.gpuSettings(0), keepFree: 13 * GIB });
+    expect(scheduler.neverFits({ model: m })).toBeNull();
+    await scheduler.run(m, "chat", async () => {});
+  });
+
   it("keeps the larger first-use measurement across reloads without counting growth twice", async () => {
     const { scheduler, state, gpus } = setup();
     await scheduler.start([]);

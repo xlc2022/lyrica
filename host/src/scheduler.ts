@@ -461,7 +461,8 @@ export class Scheduler {
     // could free (on an integrated GPU, a model may sit in shared memory that
     // this server can't use).
     const empty = view.map((g) => ({ ...g, used: 0 }));
-    const possible = opts.filter((o) => !neverFits(model, s, o, empty, (i) => this.gpuSettings(i)));
+    const measured = (o: Option) => ({ ...o, need: this.needOf(model, o, s) });
+    const possible = opts.filter((o) => !neverFits(model, s, measured(o), empty, (i) => this.gpuSettings(i)));
     const usable = possible.filter((o) => !o.gpus.some((g) => held.has(g)));
     // A way that needs no unloading beats one that does, whatever its order.
     const roomy = usable.find((o) => !deficitOf(o)(new Set(rivals)));
@@ -485,7 +486,7 @@ export class Scheduler {
     if (!usable.length) return { wait: [...new Set(possible.flatMap((o) => o.gpus))] };
     // It can never fit: say why, for the first way it could have run.
     const o = opts[0]!;
-    const reason = neverFits(model, s, o, empty, (i) => this.gpuSettings(i));
+    const reason = neverFits(model, s, measured(o), empty, (i) => this.gpuSettings(i));
     if (reason) return new HostError(413, "too_big", reason);
     const gb = (n: number) => (n / GIB).toFixed(1);
     const need = this.needOf(model, o, s);
