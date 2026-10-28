@@ -25,6 +25,14 @@ export function imagePart(tool: string, details: unknown): Extract<MessagePart, 
   return { type: "image", paths: i.paths, model: i.model, ...(i.tier ? { tier: i.tier } : {}), ...(i.picked === true ? { picked: true as const } : {}) };
 }
 
+/** A clip's metadata only: its bytes stay in the encrypted home, and its poster is its thumbnail. */
+export function videoPart(tool: string, details: unknown): Extract<MessagePart, { type: "video" }> | undefined {
+  const v = tool === "image" ? (details as { video?: Record<string, unknown> } | undefined)?.video : undefined;
+  if (!v || v.type !== "video" || typeof v.path !== "string" || typeof v.model !== "string") return undefined;
+  const num = (n: unknown) => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : 0);
+  return { type: "video", path: v.path, model: v.model, width: num(v.width), height: num(v.height), duration: num(v.duration), audio: v.audio === true };
+}
+
 /** A root step's card (docs/workspace.md, "Root steps"): what run_as_root read on the machine, as it stored it. */
 export function rootPart(tool: string, details: unknown): RootStep | undefined {
   const r = (details as { root?: Partial<RootStep> } | undefined)?.root;
@@ -293,6 +301,8 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       if (threads) call.part.threads = threads;
       const image = !m.isError ? imagePart(call.part.name, m.details) : undefined;
       if (image) call.owner.parts.push(image);
+      const video = !m.isError ? videoPart(call.part.name, m.details) : undefined;
+      if (video) call.owner.parts.push(video);
       call.owner.parts.push(...markersFor(call.part.name, call.part.args, textOf(m.content)));
     }
   }

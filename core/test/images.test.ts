@@ -279,3 +279,33 @@ describe("a failed image call's error", () => {
     await expect(failed).rejects.not.toMatchObject({ message: expect.stringContaining("SECRET") });
   });
 });
+
+describe("video calls through the router (principles 1 and 2)", () => {
+  it("makes a clip from a prompt and from a first frame on a host's video recipe, never naming parts", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
+    s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.clip]);
+    const out = await s.models.video(ctx, { prompt: "A fox in the snow", duration: 5 });
+    expect(out.video).toMatchObject({ type: "video/mp4", width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7, poster: { type: "image/png", width: 1, height: 1 } });
+    expect(out.resolution.ref).toEqual(s.workstation.clip);
+    await s.models.video(ctx, { prompt: "It runs off", image: input, size: { width: 1024, height: 576 } });
+    expect(s.workstation.server.videos).toEqual([
+      { recipe: "clip", prompt: "A fox in the snow", duration: 5 },
+      { recipe: "clip", prompt: "It runs off", image: png.toString("base64"), width: 1024, height: 576 },
+    ]);
+  });
+  it("takes only video recipes for the list, and passes over one that can't animate for a first frame", async () => {
+    const s = await setup();
+    expect(() => s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.ref])).toThrow(/can't do video/);
+    s.models.setColumnTask(s.ada.id, "general", "video", [s.spare.clip]);
+    s.models.setCapabilities(s.ada, s.spare.clip.offeringId, { animate: false });
+    await expect(s.models.video(s.ctx(), { prompt: "It runs off", image: input })).rejects.toThrow(/doesn't animate images/);
+    expect((await s.models.video(s.ctx(), { prompt: "A fox" })).resolution.ref).toEqual(s.spare.clip);
+  });
+  it("refuses a bad request before any call", async () => {
+    const s = await setup();
+    s.models.setColumnTask(s.ada.id, "general", "video", [s.spare.clip]);
+    await expect(s.models.video(s.ctx(), { prompt: " " })).rejects.toThrow(/needs a prompt/);
+    await expect(s.models.video(s.ctx(), { prompt: "A fox", duration: 30 })).rejects.toThrow(/1 to 15 seconds/);
+    expect(s.spare.server.videos).toEqual([]);
+  });
+});

@@ -10,14 +10,14 @@ export type Column = "private" | "general";
 export const TASKS = [
   "chat", "code", "subagent.cheap", "subagent.strong", "compaction",
   "title", "watching", "embedding", "sleep.consolidate", "sleep.dream", "sleep.wake",
-  "vision", "image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak",
+  "vision", "image.create", "image.edit", "image.upscale", "video", "speech.transcribe", "speech.speak",
 ] as const;
 export type Task = (typeof TASKS)[number];
 /** Each task as people read it, as the Models page names it: for messages that reach the interface. */
 export const TASK_NAMES: Record<Task, string> = {
   chat: "Main conversation", code: "Coding", "subagent.cheap": "Cheap subagents", "subagent.strong": "Strong subagents", compaction: "Compaction",
   title: "Titles", watching: "Watching threads", embedding: "Embeddings", "sleep.consolidate": "Sleep: consolidate", "sleep.dream": "Sleep: dream", "sleep.wake": "Sleep: wake",
-  vision: "Look at images", "image.create": "Images", "image.edit": "Image edits", "image.upscale": "Image upscaling", "speech.transcribe": "Dictation", "speech.speak": "Read aloud",
+  vision: "Look at images", "image.create": "Images", "image.edit": "Image edits", "image.upscale": "Image upscaling", video: "Videos", "speech.transcribe": "Dictation", "speech.speak": "Read aloud",
 };
 
 /**

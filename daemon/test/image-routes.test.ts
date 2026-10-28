@@ -8,7 +8,7 @@ import { loadTemplates } from "../../host/src/templates.ts";
 import { ensurePhotosDir } from "@lyrica/core";
 import { createImageExtension } from "@lyrica/extension";
 import { SessionManager, type ExtensionAPI, type ExtensionToolContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { png } from "../../core/test/fake-images.ts";
+import { mp4, png } from "../../core/test/fake-images.ts";
 import { apiRoutes } from "../src/routes.ts";
 import { match, statusOf, type Request } from "../src/http.ts";
 import { Lyricad } from "../src/lyricad.ts";
@@ -33,20 +33,20 @@ async function setup() {
   const thread = view.own.createThread({ interface: "web", title: "images" }); view.close();
   const dir = join(homes.get(rt.ada.id)!, "threads", encodeURIComponent(thread.id)); mkdirSync(dir, { recursive: true });
   const routes = apiRoutes(d);
-  async function call(method: string, path: string, userId: string | null = rt.ada.id, body: unknown = {}) {
+  async function call(method: string, path: string, userId: string | null = rt.ada.id, body: unknown = {}, headers: Record<string, string> = {}) {
     const url = new URL(path, "http://localhost"); const found = match(routes, method, url.pathname);
     if (!found || found === "method") throw new Error("test route not found");
-    let status = 200; let headers: Record<string, string> = {}; const chunks: Buffer[] = [];
+    let status = 200; let sent: Record<string, string> = {}; const chunks: Buffer[] = [];
     const res = new Writable({ write(chunk, _enc, cb) { chunks.push(Buffer.from(chunk)); cb(); } });
-    Object.assign(res, { writeHead(code: number, h: Record<string, string>) { status = code; headers = h; return res; } });
-    const r = { params: found.params, query: url.searchParams, cookie: userId ? cookies.get(userId) : undefined, res,
+    Object.assign(res, { writeHead(code: number, h: Record<string, string>) { status = code; sent = h; return res; } });
+    const r = { params: found.params, query: url.searchParams, cookie: userId ? cookies.get(userId) : undefined, res, req: { headers },
       json: async () => body, bytes: async () => Buffer.from(body as Buffer) } as unknown as Request;
     try {
       const done = once(res, "finish");
       const value = await found.route.handler(r);
       if (value === undefined) await done; else res.end();
-      return { status, headers, value, bytes: Buffer.concat(chunks) };
-    } catch (err) { res.end(); return { status: statusOf(err), headers, value: undefined, bytes: Buffer.concat(chunks) }; }
+      return { status, headers: sent, value, bytes: Buffer.concat(chunks) };
+    } catch (err) { res.end(); return { status: statusOf(err), headers: sent, value: undefined, bytes: Buffer.concat(chunks) }; }
   }
   return { rt, d, homes, dir, thread, call };
 }
@@ -230,6 +230,23 @@ describe("image routes (principles 1 and 2)", () => {
       for (const path of ["../photos-of-me/portrait.png", "/workspace/../photos-of-me/portrait.png", "escape/portrait.png", "link.png", "/photos-of-me/portrait.png", "images", "/tmp/result.png"]) {
         expect((await call("GET", `${base}?path=${encodeURIComponent(path)}`)).status).toBe(404);
       }
+    } finally { await d.stop(); }
+  });
+
+  it("serves a clip as MP4 and in the byte ranges the browser's player asks for", async () => {
+    const { rt, d, dir, thread, call } = await setup();
+    try {
+      mkdirSync(join(dir, "videos")); writeFileSync(join(dir, "videos", "clip.mp4"), mp4);
+      const url = `/api/u/${rt.ada.id}/threads/private/${encodeURIComponent(thread.id)}/file?path=${encodeURIComponent("/workspace/videos/clip.mp4")}`;
+      const whole = await call("GET", url);
+      expect(whole).toMatchObject({ status: 200, bytes: mp4, headers: { "content-type": "video/mp4", "accept-ranges": "bytes", "content-length": String(mp4.length) } });
+      const part = await call("GET", url, rt.ada.id, {}, { range: "bytes=4-7" });
+      expect(part).toMatchObject({ status: 206, headers: { "content-range": `bytes 4-7/${mp4.length}`, "content-length": "4" } });
+      expect(part.bytes.toString()).toBe("ftyp");
+      const rest = await call("GET", url, rt.ada.id, {}, { range: "bytes=20-" });
+      expect(rest).toMatchObject({ status: 206, headers: { "content-range": `bytes 20-${mp4.length - 1}/${mp4.length}` } });
+      expect(rest.bytes).toEqual(mp4.subarray(20));
+      expect((await call("GET", url, rt.ada.id, {}, { range: `bytes=${mp4.length}-` })).status).toBe(416);
     } finally { await d.stop(); }
   });
 

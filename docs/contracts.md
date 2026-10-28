@@ -342,7 +342,7 @@ read through `searchView`; only matching notes then pass.
 
 ```ts
 type Task = "chat" | "code" | "subagent.cheap" | "subagent.strong" | "compaction" | "title" | "watching"
-          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "vision" | "image.create" | "image.edit" | "image.upscale"
+          | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake" | "vision" | "image.create" | "image.edit" | "image.upscale" | "video"
           | "speech.transcribe" | "speech.speak";
 // vision (Look at images): its own list only, of models with vision; no task follows it. A subagent whose model can't see
 // an image switches to its first model up (with tools), else to a local model with vision (visionList, extension/src/delegate/runs.ts).
@@ -364,7 +364,7 @@ interface Endpoint {
   unencrypted: boolean;                     // local, plain HTTP, outside this machine and the tailnet
   downSince?: string; stale: boolean;       // stale: unreachable for STALE_DAYS (14)
 }
-interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; upscale?; reasoning?: ("low" | "medium" | "high")[];
+interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; upscale?; video?; animate?; reasoning?: ("low" | "medium" | "high")[];
                          transcribe?: boolean; speak?: { voices: Voice[] }; useFor?: "fast" | "quality" | "both" }
 interface Voice { id; language }                             // language: a primary tag, "en" or "zh"
 interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
@@ -472,6 +472,12 @@ class Models {                                              // new Models(keyrin
   // Content refusal throws HostRefused("image_refusal", fixed message; codexImage quotes Codex's declining reply) and stops fallback. Limits/outages fall back.
   // Cloud useFor/image/edit are offerings.hand JSON in self.db (shared) or user.db (personal); no schema step.
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
+  // Videos (memory only; caller stores and records results)
+  video(ctx, request: VideoRequest, { signal?, beforeSend? }?): Promise<{ video: GeneratedVideo; resolution }>
+  // VideoRequest { prompt; image?: ImageInput (its first frame); size?: { width, height } (multiples of 16, 256-2048); duration?: seconds, 1-15 }
+  // GeneratedVideo { bytes (H.264 MP4); type: "video/mp4"; width; height; frames; fps; duration; audio; seed?; poster: GeneratedImage }
+  // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image) answers, so no clip
+  // or first frame reaches a cloud model. POST /host/v1/videos/create with explicit fields only; two hours at most.
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked, unset?): { level; note? }   // asked defaults to DEFAULT_THINKING ("medium"), also the per-user default; unset (CallContext.thinkingUnset) drops the can't-think note
@@ -1361,8 +1367,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     the `reactions` event. `LyricaOptions.reactions()` hands the extension
     the user's reactions since her last turn; `reactionLines` puts them in
     the turn message as `<reactions>`;
-  - `image` (`createImageExtension(ImageTools)`), one tool with `create`, `edit`
-    and `upscale`. Create takes `prompt`, `tier` (`fast` or `quality`), optional
+  - `image` (`createImageExtension(ImageTools)`), one tool with `create`, `edit`,
+    `upscale`, `video` and `animate`. Create takes `prompt`, `tier` (`fast` or `quality`), optional
     `size: { width, height }` or `aspectRatio` (`width:height`), `count` and
     `references`; edit takes `image`, `instruction`, optional `mask`, `count`
     and `references`; upscale takes `image`, optional `scale` and `maxSize`.
@@ -1409,6 +1415,14 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     custom entry keeps the source user message number, args and result;
     messages project it as a tool marker and optional image part, without
     PNG bytes. Saved task lists are unchanged.
+    `video` (`prompt`, optional `size` or `aspectRatio` and `duration`) and
+    `animate` (also `image`, the first frame) make one clip through
+    `Models.video`, save it with `ThreadImages.saveVideo` and answer with
+    its facts and its poster as image content, so she sees the first frame;
+    details `{ video: VideoPart }`, `VideoPart` being `{ type: "video", path,
+    model, width, height, duration, audio }`. A video's error reads `Video
+    failed with <label> [<code>]: …`. Saved messages carry the part beside its
+    call and `tool_end` carries `video?: VideoPart`, never the bytes.
     Successful tool details are `{ image: ImagePart }`, where `ImagePart` is
     `{ type: "image", paths: string[], model: string, tier?: "fast" | "quality", picked?: true }`.
     `reject` (`images`: paths) moves the tool's own results in the thread's
@@ -1888,7 +1902,10 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     are 404, no login is 401. `GET`/`PUT /api/u/:userId/photo-cloud` → `PhotoCloudSetting`
     (`policy: "never" | "ask" | "always"`); PUT validates and clears daily
     approval. All follow session/key checks and mutations require same-origin.
-    HTTP `Capabilities` includes `upscale`, as core does.
+    HTTP `Capabilities` includes `upscale`, `video` and `animate`, as core does.
+    `GET …/file` also serves a clip (`video/mp4`) and answers one byte range
+    (`Range: bytes=a-b` or `bytes=a-`) with 206 and `Content-Range`, or 416
+    outside the file, so the browser's player can seek.
   - modes: `GET`/`PUT /api/u/:userId/mode` (`ModeDefault`), the mode new
     threads start in; `ThreadSettings` and `ThreadSettingsChange` gain
     `webSearch` and `images`, and their mode and switches are the effective
@@ -2307,6 +2324,9 @@ imageFiles(t): ThreadImages
 //   removes PNG metadata, refuses symlinks, returns /workspace/images/<uuid>.png paths. A project chat's (t.coordinates,
 //   as saveUpload) go in shared/images (/workspace/shared/images/<uuid>.png, its threads' /shared/images).
 //   With a portrait input, records each result's SHA-256 in encrypted user.db settings before writing; descendants inherit the rule.
+// ThreadImages.saveVideo(GeneratedVideo): string; exclusive videos/<uuid>.mp4 (a project chat's shared/videos/), with its
+//   poster, PNG metadata removed, written first as the clip's thumbnail (.lyrica/thumbs/videos/<uuid>.mp4.png).
+// ThreadImages.content(path, range?: { start, end? }) streams those bytes; a start past the end throws RangeError.
 photos(userId): PortraitPhotos
 // list(): PortraitPhoto[] { path; size; type }; upload(bytes): path (PNG/JPEG/WebP, 20 MB, metadata removed,
 //   exclusive generated name); remove(name): void. Every access checks the user's key and mounted home.

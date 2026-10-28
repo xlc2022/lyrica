@@ -55,8 +55,8 @@ function modelAndEndpoint(label: string, endpointName?: string): string {
   return `${m[2]} · ${endpointName ?? m[1]}`;
 }
 
-/** A text model: not one that draws, embeds, hears or speaks, and not gone. */
-export const isTextModel = (m: EndpointInfo["models"][number]) => m.status !== "gone" && !m.image && !m.edit && !m.embedding && !m.transcribe && !m.speak;
+/** A text model: not one that draws, films, embeds, hears or speaks, and not gone. */
+export const isTextModel = (m: EndpointInfo["models"][number]) => m.status !== "gone" && !m.image && !m.edit && !m.video && !m.animate && !m.embedding && !m.transcribe && !m.speak;
 
 /** The text models, counted once per model ID. */
 function textModels(eps: EndpointInfo[]): number {
@@ -430,14 +430,14 @@ const TASK_ROWS: { group: string; tasks: { task: Task; hint: string }[] }[] = [
     { task: "sleep.dream", hint: "Her own time" },
     { task: "sleep.wake", hint: "Writing WAKE" },
   ] },
-  { group: "Images", tasks: [{ task: "vision", hint: "Seeing an image her model can't" }, { task: "image.create", hint: "New images" }, { task: "image.edit", hint: "Changing an image" }] },
+  { group: "Images", tasks: [{ task: "vision", hint: "Seeing an image her model can't" }, { task: "image.create", hint: "New images" }, { task: "image.edit", hint: "Changing an image" }, { task: "video", hint: "Short clips, on a model host" }] },
   { group: "Speech", tasks: [{ task: "speech.transcribe", hint: "Speech to text" }, { task: "speech.speak", hint: "Text to speech" }] },
 ];
 const TASK_ORDER = TASK_ROWS.flatMap((g) => g.tasks.map((t) => t.task));
 
 /** What a task needs (core/models): Same as stays within one, and pickers offer only models that have it. */
 const capability = (t: Task) => (t === "embedding" ? "embedding" : t === "vision" ? "vision" : t === "image.create" ? "image" : t === "image.edit" ? "edit"
-  : t === "speech.transcribe" ? "transcribe" : t === "speech.speak" ? "speak" : "text");
+  : t === "video" ? "video" : t === "speech.transcribe" ? "transcribe" : t === "speech.speak" ? "speak" : "text");
 const suits = (task: Task, m: OfferingInfo) => {
   if (m.status === "gone") return false;
   switch (capability(task)) {
@@ -445,9 +445,10 @@ const suits = (task: Task, m: OfferingInfo) => {
     case "vision": return !!m.vision && !m.embedding && !m.image && !m.edit && !m.transcribe && !m.speak && !m.recipe && !companion(m.modelId);
     case "image": return !!m.image;
     case "edit": return !!m.edit;
+    case "video": return !!(m.video || m.animate);
     case "transcribe": return !!m.transcribe;
     case "speak": return !!m.speak?.voices.length;
-    default: return !m.embedding && !m.image && !m.edit && !m.transcribe && !m.speak && !m.recipe && !companion(m.modelId);
+    default: return !m.embedding && !m.image && !m.edit && !m.video && !m.animate && !m.transcribe && !m.speak && !m.recipe && !companion(m.modelId);
   }
 };
 /** A vision projector or MTP draft a host listed before it knew them as companions (host/API.md): never a model to pick. */

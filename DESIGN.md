@@ -1004,9 +1004,13 @@ it's off.
   (`video`) or from a first frame (`animate`); its template sets the frame
   rate, frame grid, size step and longest clip, and the host answers with
   an MP4 and a poster, sent back over ComfyUI's websocket so nothing
-  reaches disk. One clip runs on one GPU. The hosts do this now; the task,
-  the tool, storage and the player are the brief's second part
-  (docs/briefs/video.md), so until then a video recipe is no offering.
+  reaches disk. One clip runs on one GPU. The task **Videos** (`video`)
+  lists those recipes in each preset; the `image` tool's `video` and
+  `animate` actions make a clip (no new tool, principle 8), which is stored
+  in the thread's `videos/` with its poster as its thumbnail, so deleting
+  it deletes the poster. The chat shows the poster with a play button and
+  plays the clip in the browser's own player. Only model hosts make clips,
+  so a first frame never reaches a cloud model.
 - **Looking at images** (2026-10-25): the task `vision`, **Look at
   images**, has its own list of models with vision in each preset, chosen
   by the person (a plan's model, a local one, or a paid one they add).

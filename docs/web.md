@@ -1007,6 +1007,14 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   (a failed load alone, offline say, leaves it as it is), reads "No longer
   in Files", without the facts line. Full images use the thread's authenticated `…/file?path=` route;
   thumbnails use the existing thumbnail route and fall back to that file.
+  A video part (a clip she made) shows its poster (`…/files/thumb`) at the
+  clip's shape, at most 320 px tall and 420 px wide, with a round Play
+  button in its middle ("Play <name>"); Play swaps it for the browser's own
+  `<video>` player on `…/file?path=`, playing. Without a poster the player
+  shows at once. Its facts line reads "Made with <model> · <seconds> s",
+  and "· sound" when it has audio; its ⋯ holds Download, Copy path, Show in
+  Files and Delete…, which asks as for an image; a deleted clip reads "No
+  longer in Files". Its markers read Making a clip and Animating an image.
   The shared Lightbox has a filename header, Download and Copy path behind
   ⋯, and Close. Image tool markers read Making an image with its tier,
   Editing an image, Upscaling an image, Rejecting an image (or <n> images),

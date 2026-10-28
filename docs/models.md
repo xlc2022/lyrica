@@ -520,6 +520,19 @@ cloud model sends that model the subagent's whole conversation so far, not
 only the image, at that model's price: a cloud model is in the list only if
 the person put it there. With no list set, only local models are tried.
 
+The task `video` (Videos) has its own ordered list in each column and
+preset, of host recipes that do `video` or `animate`; nothing follows it.
+`video(ctx, request, { signal?, beforeSend? })` makes one clip from a prompt,
+or from `image` as its first frame, with optional `size` and `duration`
+(1 to 15 seconds). Only a model host's recipe answers: a cloud model or
+plain endpoint in the list is passed over ("only a model host makes
+videos"), and with an image a recipe that doesn't `animate` is too. It
+posts `/host/v1/videos/create` with explicit fields only and waits up to
+two hours (a host's fetch leaves out undici's five-minute wait for the
+first byte on image and video jobs, which answer only when done); the answer is checked as an MP4, its poster as a PNG with its
+metadata removed, all in memory. Fallback is as for images. It is not a
+thread task: a thread uses its preset's or column's list.
+
 The tasks `image.create`, `image.edit` and `image.upscale` have their own
 ordered lists and require `image`, `edit` and `upscale` capabilities respectively.
 Local endpoints resolve by these capabilities; the cloud provider table does
@@ -721,9 +734,8 @@ the host's own, from `GET /host/v1/starters`, each part marked `present`;
 making one posts `…/starters/<id>/install` with the hub token when a part
 is missing, and the host downloads those and confirms the recipe. A shared
 host needs an administrator. Only confirmed recipes become offerings (`recipe/<id>`,
-with `image` or `edit`), so a proposal never resolves; a video recipe (one
-that does only `video` or `animate`) isn't an offering yet, until videos are
-a task (docs/briefs/video.md); a recipe deleted here
+with `image`, `edit`, `upscale`, `video` or `animate` as the recipe does),
+so a proposal never resolves; a recipe deleted here
 leaves a tombstone. The tag is `fast`, `quality` or `both`, stored as an
 optional field in the host's `recipes.json`; absent reads as both. The daemon
 recipe action `{ do: "change", change: { op: "useFor", useFor } }` forwards

@@ -4,6 +4,7 @@ import { closeSync, constants, createReadStream, fstatSync, lstatSync, mkdirSync
 import { posix } from "node:path";
 import type { Readable } from "node:stream";
 import { cleanPng, type GeneratedImage, type ImageInput } from "../models/images.ts";
+import { isMp4, type GeneratedVideo } from "../models/videos.ts";
 import { sniffImage } from "./ops.ts";
 import { WORKDIR } from "./sandbox.ts";
 import type { WorkspaceSettings } from "./settings.ts";
@@ -16,6 +17,8 @@ export const REJECTED_DIR = "rejected";
 const MADE_NAME = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$/;
 export interface WorkspaceImage { input: ImageInput; portrait: boolean }
 export interface HomeFile { stream: Readable; size: number; type: string }
+/** Bytes `start` to `end`, both included, as a Range request asks; past the end is cut to it. */
+export interface ByteRange { start: number; end?: number }
 export interface PortraitPhoto { path: string; size: number; type: string }
 export class HomeFileMissing extends Error {}
 
@@ -63,16 +66,18 @@ function fileIn<T>(home: string, parts: string[], run: (fd: number, name: string
 }
 
 /** Principle 2: serve an anchored regular file, never a grant or a symlink. */
-function readHomeFile(home: string, parts: string[]): HomeFile {
+function readHomeFile(home: string, parts: string[], range?: ByteRange): HomeFile {
   return fileIn(home, parts, (dir, name) => {
     const fd = openSync(`/proc/self/fd/${dir}/${name}`, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
       const stat = fstatSync(fd);
       if (!stat.isFile()) throw new HomeFileMissing("file not found");
       const head = Buffer.alloc(Math.min(512, stat.size)); readSync(fd, head, 0, head.length, 0);
-      const type = sniffImage(head) ?? (head.subarray(0, 5).toString() === "%PDF-" ? "application/pdf" :
+      const type = sniffImage(head) ?? (isMp4(head) ? "video/mp4" : head.subarray(0, 5).toString() === "%PDF-" ? "application/pdf" :
         !head.includes(0) && !head.toString("utf8").includes("\uFFFD") ? "text/plain; charset=utf-8" : "application/octet-stream");
-      return { stream: createReadStream("", { fd, autoClose: true, start: 0 }), size: stat.size, type };
+      if (range && (range.start >= stat.size || (range.end !== undefined && range.end < range.start))) throw new RangeError("the range is outside the file");
+      const end = range ? { start: range.start, end: Math.min(range.end ?? stat.size - 1, stat.size - 1) } : { start: 0 };
+      return { stream: createReadStream("", { fd, autoClose: true, ...end }), size: stat.size, type };
     } catch (err) { closeSync(fd); throw err; }
   });
 }
@@ -174,7 +179,7 @@ export class ThreadImages {
     /** Hears of the rejects clearRejected deleted, as she saw their paths, so their records go too. */
     private readonly removed: (paths: string[]) => void = () => {}) {}
 
-  private folder(): string[] { return this.shared() ? ["shared", "images"] : ["images"]; }
+  private folder(kind: "images" | "videos" = "images"): string[] { return this.shared() ? ["shared", kind] : [kind]; }
 
   /**
    * One of her made images by the path she names, in the images folder or its rejected/: the file's name and
@@ -266,10 +271,10 @@ export class ThreadImages {
     return f.rejected ? this.move(f.name, false) : posix.join(WORKDIR, ...this.folder(), f.name);
   }
 
-  content(path: string): HomeFile {
+  content(path: string, range?: ByteRange): HomeFile {
     const home = this.home();
     const relative = path.startsWith(`${WORKDIR}/`) ? path.slice(WORKDIR.length + 1) : path;
-    return readHomeFile(home, [...this.thread(), ...partsOf(relative)]);
+    return readHomeFile(home, [...this.thread(), ...partsOf(relative)], range);
   }
 
   async read(path: string): Promise<WorkspaceImage> {
@@ -319,5 +324,24 @@ export class ThreadImages {
     }));
     this.made(paths);
     return paths;
+  }
+
+  /**
+   * A clip under an exclusive MP4 name in videos/ (shared/videos/ in a project chat), with its poster as the clip's
+   * thumbnail (`.lyrica/thumbs/<its path>.png`, as ThreadFiles.thumb keeps one), so deleting the clip deletes it.
+   */
+  saveVideo(video: GeneratedVideo): string {
+    if (!isMp4(video.bytes)) throw new Error("a clip must be an MP4");
+    const folder = this.folder("videos"), name = `${randomUUID()}.mp4`;
+    const write = (dir: number, file: string, bytes: Uint8Array) => {
+      const fd = openSync(`/proc/self/fd/${dir}/${file}`, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+      try { writeFileSync(fd, bytes); } finally { closeSync(fd); }
+    };
+    // The poster first: the panel then never sees a clip without its thumbnail.
+    inDir(this.home(), [...this.thread(), ".lyrica", "thumbs", ...folder], true, dir => write(dir, `${name}.png`, cleanPng(video.poster.bytes).bytes));
+    inDir(this.home(), [...this.thread(), ...folder], true, dir => write(dir, name, video.bytes));
+    const path = posix.join(WORKDIR, ...folder, name);
+    this.made([path]);
+    return path;
   }
 }
