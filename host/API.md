@@ -670,7 +670,8 @@ as `{ "parts": [...] }`, each entry like this:
 
 - `role`: `checkpoint` (holds its own encoders and VAE), `diffusion`,
   `text_encoder`, `vae`, `lora`, `upscaler` (a SeedVR2 DiT),
-  `latent_upscaler` (LTX-2's), or `unknown`.
+  `latent_upscaler` (LTX-2's), `interpolator` (RIFE 4.7 or later, or
+  FILM, for ComfyUI's own frame interpolation), or `unknown`.
 - `slot`: for a text encoder, which one: `clip_l`, `clip_g`, `t5`, `umt5`
   (Wan's), `qwen2.5vl`, `qwen3`, `qwen3vl` (Qwen3-VL 4B), `qwen3vl_8b`,
   `qwen3vl_32b` (MiniMax H3's), `gemma4_12b` (LTX-2.5's), …. For Wan 2.2
@@ -733,13 +734,19 @@ as `{ "parts": [...] }`, each entry like this:
 - `state`: `proposed` (found by a scan or made from a starter; does
   nothing yet), `confirmed`, or `ignored` (a proposal set aside; a scan
   won't propose it again).
-- `ready`: every part is present. Only a confirmed, ready recipe runs.
+- `ready`: every part is present (an optional one may be missing). Only a
+  confirmed, ready recipe runs.
 - `does`: what it can be used for: `create`, `edit`, `upscale`, or for a
   video recipe `video` (from a prompt) and `animate` (from a first frame).
 - `video`: a video recipe's timing, from its template: `{ "fps": 24,
   "frameStep": 4, "frameOffset": 1, "sizeStep": 32, "maxSeconds": 8,
   "audio": false }`. Clips have `frameStep × k + frameOffset` frames, and
-  width and height are multiples of `sizeStep`.
+  width and height are multiples of `sizeStep`. A template may take an
+  optional `interpolator` part (Wan 2.2 14B's do, with `"interpolate": 2`):
+  a recipe is ready without one, or while it downloads, and once its file
+  is here each gap between two frames gains a frame, so its `fps` here is
+  doubled. Installing a starter again
+  adds a part it gained since, such as the 14B starters' RIFE.
 - `mask`: whether its template's edits take a mask (Lyrica's router skips
   one that doesn't for a masked edit).
 - `useFor`: `fast`, `quality` or `both` (default). An optional field in

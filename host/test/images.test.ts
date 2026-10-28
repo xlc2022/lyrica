@@ -8,7 +8,7 @@ import { Comfy } from "../src/comfy.ts";
 import { Images, inputImage, recipeSize, videoValues } from "../src/images.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import { scanParts } from "../src/parts.ts";
-import { RecipeBook, loadStarters, type Recipe } from "../src/recipes.ts";
+import { present, RecipeBook, loadStarters, type Recipe } from "../src/recipes.ts";
 import { Runtime } from "../src/runtime.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fill, loadTemplates } from "../src/templates.ts";
@@ -54,6 +54,8 @@ const WAN_GGUF_META = { "general.architecture": "wan", "general.quantization_ver
 const wanGguf = (channels: number, flattened = false) => ggufBytes(
   flattened ? { ...WAN_GGUF_META, "comfy.gguf.orig_shape.patch_embedding.weight": [5120, channels, 1, 2, 2] } : WAN_GGUF_META,
   { "head.modulation": [1, 6, 5120], "patch_embedding.weight": flattened ? [5120 * channels * 2, 2] : [5120, channels, 1, 2, 2], "blocks.0.ffn.0.weight": [13824, 5120] });
+// Comfy-Org's RIFE 4.26 for ComfyUI's own frame interpolation nodes.
+const RIFE = safetensors({ "blocks.0.conv0.0.0.weight": {}, "blocks.0.lastconv.0.weight": {}, "encode.cnn0.weight": {}, "encode.cnn3.weight": { shape: [16, 4, 4, 4] } });
 const WAN_LORA = safetensors({ "diffusion_model.blocks.0.cross_attn.k.lora_A.weight": {}, "diffusion_model.blocks.0.cross_attn.k.lora_B.weight": {} });
 const UMT5 = safetensors({ "encoder.block.0.layer.0.SelfAttention.q.weight": { dtype: "F8_E4M3" }, "shared.weight": { shape: [256384, 4096] } });
 const WAN22_VAE = safetensors({ "decoder.conv1.weight": { shape: [1024, 48, 3, 3, 3] }, "encoder.conv1.weight": {}, "decoder.upsamples.0.upsamples.0.residual.2.weight": {} });
@@ -129,7 +131,7 @@ describe("video parts", () => {
       "v/ltx-2.5-audio-vae-bf16.safetensors": LTX2_AUDIO_VAE, "v/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors": safetensors({ "res_blocks.0.conv1.weight": {} }),
       "v/minimax_h3_fl2va_pruned_int8_convrot.safetensors": H3, "v/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": H3_LORA,
       "v/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": QWEN3VL_32B, "v/minimax_h3_video_vae_int8_convrot.safetensors": H3_VAE,
-      "v/minimax_h3_audio_vae_fp32.safetensors": H3_AUDIO_VAE,
+      "v/minimax_h3_audio_vae_fp32.safetensors": H3_AUDIO_VAE, "v/rife_v4.26.safetensors": RIFE,
       "v/Wan2.2-T2V-A14B-HighNoise-Q5_K_M.gguf": wanGguf(16), "v/Wan2.2-I2V-A14B-LowNoise-Q5_K_M.gguf": wanGguf(36, true),
     });
     const got = Object.fromEntries(scanParts(dir).map((p) => [p.file.slice(2), [p.role, p.slot, p.arch]]));
@@ -146,6 +148,7 @@ describe("video parts", () => {
       "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": ["text_encoder", "qwen3vl_32b", "qwen3vl"],
       "wan2.2_vae.safetensors": ["vae", null, "wan2.2"],
       "wan_2.1_vae.safetensors": ["vae", null, "qwen-image"],
+      "rife_v4.26.safetensors": ["interpolator", null, "rife"],
       "ltx-2.5-22b-distilled.safetensors": ["diffusion", null, "ltx2"],
       "ltx-2.5-video-vae-bf16.safetensors": ["vae", null, "ltx2"],
       "ltx-2.5-audio-vae-bf16.safetensors": ["vae", "audio", "ltx2"],
@@ -201,6 +204,19 @@ describe("video parts", () => {
     expect(t2v.latent!.inputs).toEqual({ width: 1280, height: 720, length: 81, batch_size: 1 });
     expect(t2v.save).toEqual({ class_type: "SaveVideoWebsocket", inputs: { video: ["video", 0] } });
     expect(JSON.stringify(t2v)).not.toContain("$");
+    // Without an interpolator the clip is the model's 16 fps; with one, each gap gains a frame: 161 frames at 32 fps.
+    expect(t2v.video!.inputs).toEqual({ images: ["decode", 0], fps: 16 });
+    expect(Object.keys(t2v)).not.toContain("interpolate");
+    const doubled = videoValues(TEMPLATES.get("wan22-t2v-14b")!.video!, 5, 1280, 720, 4, 2);
+    expect(doubled).toMatchObject({ frames: 81, clipFrames: 161, fps: 32, multiplier: 2 });
+    const smooth = fill(TEMPLATES.get("wan22-t2v-14b")!, [
+      p("diffusion", "high.safetensors", "high"), p("diffusion", "low.safetensors", "low"), p("lora", "lh.safetensors", "high"), p("lora", "ll.safetensors", "low"),
+      p("text_encoder", "umt5.safetensors", "umt5"), p("vae", "vae.safetensors"), p("interpolator", "rife.safetensors"),
+    ], [], { negativePrompt: "", ...wan14.defaults, prompt: "x", seed: 3, width: 1280, height: 720, ...doubled });
+    expect(smooth.load_interpolator).toEqual({ class_type: "FrameInterpolationModelLoader", inputs: { model_name: "rife.safetensors" } });
+    expect(smooth.interpolate!.inputs).toEqual({ interp_model: ["load_interpolator", 0], images: ["decode", 0], multiplier: 2 });
+    expect(smooth.video!.inputs).toEqual({ images: ["interpolate", 0], fps: 32 });
+    expect(smooth.latent!.inputs.length).toBe(81);
 
     const ltxParts = [p("diffusion", "ltx.safetensors"), p("text_encoder", "gemma.safetensors", "gemma4_12b"), p("vae", "v.safetensors"), p("vae", "a.safetensors", "audio"), p("latent_upscaler", "up.safetensors")];
     const ltx = STARTERS.find((s) => s.id === "ltx-2.5-distilled")!;
@@ -324,6 +340,28 @@ describe("recipes", () => {
     expect(first.failed).toEqual([{ id: "missing", message: "No such recipe." }]);
     expect(b.setState([proposal.id], "confirmed")).toMatchObject({ done: [{ id: proposal.id, state: "confirmed" }], failed: [] });
     expect(b.setState([proposal.id], "ignored").failed[0]!.message).toBe("p isn't a proposal.");
+  });
+
+  it("adds a part a starter gained to its installed recipe, which stays ready at 16 fps until the part is here", () => {
+    const b = new RecipeBook(mkdtempSync(join(tmpdir(), "lyrica-book-")), TEMPLATES, STARTERS);
+    const starter = STARTERS.find((s) => s.id === "wan2.2-t2v-14b-q5")!;
+    const before = { ...starter, parts: starter.parts.filter((p) => p.role !== "interpolator") };
+    const { recipe } = b.fromStarter(before, () => null);
+    const here = new Set(recipe.parts.map((p) => p.file!));
+    expect(b.ready(recipe, here)).toBe(true);
+    const again = b.fromStarter(starter, () => null);
+    expect(again.recipe.id).toBe(recipe.id);
+    expect(again.toDownload.map((p) => p.role)).toContain("interpolator");
+    const rife = b.get(recipe.id).parts.find((p) => p.role === "interpolator")!.file!;
+    expect(rife).toMatch(/rife_v4\.26\.safetensors$/);
+    // Still downloading: ready, 16 fps, and the job's parts leave it out, so no interpolation node runs.
+    expect(b.ready(b.get(recipe.id), here)).toBe(true);
+    expect(b.describe(b.get(recipe.id), here)).toMatchObject({ ready: true, video: { fps: 16 } });
+    const job = fill(TEMPLATES.get("wan22-t2v-14b")!, present(b.get(recipe.id), here), [], { negativePrompt: "", ...starter.defaults, prompt: "x", seed: 1, width: 1280, height: 720,
+      ...videoValues(TEMPLATES.get("wan22-t2v-14b")!.video!, 5, 1280, 720, 4) });
+    expect(Object.keys(job)).not.toContain("interpolate");
+    // Once it's here, 32 fps.
+    expect(b.describe(b.get(recipe.id), new Set([...here, rife]))).toMatchObject({ ready: true, video: { fps: 32 } });
   });
 
   it("installs a starter once, and checks defaults against the request ranges", () => {

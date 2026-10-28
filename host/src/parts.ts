@@ -6,7 +6,7 @@ import { closeSync, lstatSync, openSync, readSync, readdirSync, statSync } from 
 import { basename, join, relative } from "node:path";
 import { readGguf, readGgufTensors } from "./gguf.ts";
 
-export type Role = "checkpoint" | "diffusion" | "text_encoder" | "vae" | "lora" | "upscaler" | "latent_upscaler" | "unknown";
+export type Role = "checkpoint" | "diffusion" | "text_encoder" | "vae" | "lora" | "upscaler" | "latent_upscaler" | "interpolator" | "unknown";
 
 export interface Part {
   /** Path relative to the models folder. */
@@ -72,6 +72,9 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   // SeedVR2 ships its own file names; its loaders find them by name.
   if (/seedvr2/.test(name)) return { role: "upscaler", slot: null, arch: "seedvr2" };
   if (/^ema_vae/.test(name)) return { role: "vae", slot: null, arch: "seedvr2" };
+  // Frame interpolation, by the keys ComfyUI's own loader reads: RIFE 4.7 and later, or FILM.
+  if (has(/(^|\.)(block0|blocks\.0)\.lastconv\./) && has(/(^|\.)encode\.cnn0\./)) return { role: "interpolator", slot: null, arch: "rife" };
+  if (has(/^extract\.extract_sublevels\./)) return { role: "interpolator", slot: null, arch: "film" };
 
   // A video model's two experts (Wan 2.2 14B), and the speed LoRAs made for each, are told apart by name.
   const expert = /high[_-]?noise/.test(name) ? "high" : /low[_-]?noise/.test(name) ? "low" : null;

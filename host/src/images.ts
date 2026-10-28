@@ -10,7 +10,7 @@ import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import { scanParts, type Part, type Role } from "./parts.ts";
-import { COLOR_MATCH, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
+import { COLOR_MATCH, present, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
 import type { Runtime } from "./runtime.ts";
 import { sdcppArgs, type SdCpp } from "./sdcpp.ts";
 import { fill, type Action, type Values, type VideoSpec } from "./templates.ts";
@@ -450,7 +450,9 @@ export class Images {
     values.width = snap(width ?? (height !== undefined ? height * shape : Math.sqrt(area * shape)));
     values.height = snap(height ?? (width !== undefined ? width / shape : Math.sqrt(area / shape)));
     const duration = num(body, "duration", 1, spec.maxSeconds) ?? Math.min(Number(values.duration), spec.maxSeconds);
-    Object.assign(values, videoValues(spec, duration, Number(values.width), Number(values.height), Number(values.steps)));
+    const parts = present(recipe, this.files());
+    const multiplier = parts.some((p) => p.role === "interpolator") ? spec.interpolate ?? 1 : 1;
+    Object.assign(values, videoValues(spec, duration, Number(values.width), Number(values.height), Number(values.steps), multiplier));
     values.seed = int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);
 
     const started = Date.now();
@@ -462,7 +464,6 @@ export class Images {
     const scheduler = this.runtime.scheduler;
     const { video, poster } = await scheduler.run(model, "image", () =>
       scheduler.measuring(model, () => this.comfy.runVideo(uploads, (names) => {
-        const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
         return fill(template, parts, recipe.loras, { ...values, ...names });
       }, VIDEO_TIMEOUT_MS, abort.signal)),
       this.comfyGpu,
@@ -474,7 +475,7 @@ export class Images {
     const size = poster ? imageSize(poster) : null;
     sendJson(res, 200, {
       video: { mp4: video.toString("base64"), width: size?.width ?? values.width, height: size?.height ?? values.height,
-        frames: values.frames, fps: spec.fps, duration: Number(values.frames) / spec.fps, audio: spec.audio, seed: values.seed },
+        frames: values.clipFrames, fps: values.fps, duration: Number(values.clipFrames) / Number(values.fps), audio: spec.audio, seed: values.seed },
       poster: poster ? poster.toString("base64") : null,
       seconds,
     });
@@ -517,14 +518,18 @@ export function recipeSize(r: Pick<Recipe, "parts" | "loras">, parts: Pick<Part,
     groups.set(group, (groups.get(group) ?? 0) + sizeOf(p.file));
   }
   const model = Math.max(0, ...[...groups].map(([g, n]) => n + (g === "" ? loras : 0)), loras);
-  return Math.max(stage(["text_encoder"]), model, stage(["upscaler"])) + stage(["vae", "latent_upscaler"]);
+  return Math.max(stage(["text_encoder"]), model, stage(["upscaler"])) + stage(["vae", "latent_upscaler", "interpolator"]);
 }
 
-/** A clip's frames and the values a video template reads besides the request's own. */
-export function videoValues(spec: VideoSpec, duration: number, width: number, height: number, steps: number): Values {
+/**
+ * A clip's frames and the values a video template reads besides the request's own. With an interpolator
+ * (`multiplier` above 1) the model makes `frames` and each gap between two gains frames: `clipFrames` at `fps`.
+ */
+export function videoValues(spec: VideoSpec, duration: number, width: number, height: number, steps: number, multiplier = 1): Values {
   const k = Math.max(1, Math.ceil((duration * spec.fps - spec.frameOffset) / spec.frameStep));
+  const frames = k * spec.frameStep + spec.frameOffset;
   return {
-    frames: k * spec.frameStep + spec.frameOffset, fps: spec.fps,
+    frames, clipFrames: (frames - 1) * multiplier + 1, fps: spec.fps * multiplier, multiplier,
     // LTX-2 samples at half size and then upscales; Wan's experts split the steps.
     halfWidth: width / 2, halfHeight: height / 2, halfSteps: Math.max(1, Math.floor(steps / 2)),
   };

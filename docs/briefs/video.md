@@ -98,7 +98,11 @@ The owner chose, in order:
   Q5_K_M GGUF experts beside the fp8 ones, the same lightx2v 4-step LoRAs,
   UMT5 and VAE, on the existing 14B templates (a `.gguf` expert loads
   through ComfyUI-GGUF). The host reads a Wan GGUF's tensor list, so its
-  experts classify as the safetensors do. Not yet run on a GPU.
+  experts classify as the safetensors do. Lunasa's run: 430 s for 5 s at
+  1280×720, 22.7 GB peak, clearly sharper than the 5B.
+- **Smoother 14B clips** (built): Comfy-Org's RIFE 4.26 (MIT, 22 MB) as an
+  optional `interpolator` part of the 14B templates and starters, run by
+  ComfyUI's own FrameInterpolate after decoding: 16 fps becomes 32.
 - Not chosen yet: chat passing over a host whose GPU a clip holds, for the
   next fallback in her preset, instead of waiting and failing.
 

@@ -5,7 +5,7 @@ import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from
 import { basename, join } from "node:path";
 import { HostError, invalid, notFound } from "./http.ts";
 import type { Part, Role } from "./parts.ts";
-import type { Action, PartSpec, Template } from "./templates.ts";
+import type { Action, PartSpec, Template, VideoSpec } from "./templates.ts";
 
 export interface Missing {
   source: string;
@@ -127,23 +127,24 @@ export class RecipeBook {
     return t;
   }
 
-  /** Every part present, and the template's needs covered. */
+  /** Every part present (an optional one may be missing), and the template's needs covered. */
   ready(r: Recipe, files: Set<string>): boolean {
-    if (r.parts.some((p) => !p.file || !files.has(p.file)) || r.loras.some((l) => !files.has(l.file))) return false;
     const t = this.template(r);
+    const optional = (p: RecipePart) => t.parts.some((s) => s.optional && s.role === p.role && (s.slot ?? null) === p.slot);
+    if (r.parts.some((p) => (!p.file || !files.has(p.file)) && !optional(p)) || r.loras.some((l) => !files.has(l.file))) return false;
     if (r.parts.some((p) => p.role === "checkpoint" && !p.added)) {
       // A checkpoint's own encoders are replaced only as a whole set.
       const added = r.parts.filter((p) => p.added && p.role === "text_encoder").length;
       return added === 0 || added === t.parts.filter((s) => s.role === "text_encoder").length;
     }
-    return t.parts.every((s) => r.parts.some((p) => p.role === s.role && (s.slot === undefined || p.slot === s.slot)));
+    return t.parts.every((s) => s.optional || r.parts.some((p) => p.role === s.role && (s.slot === undefined || p.slot === s.slot)));
   }
 
   describe(r: Recipe, files: Set<string>) {
     const t = this.templates.get(r.template);
     // A recipe made by a newer host (read after a rollback, say) does nothing here.
     if (!t) return { ...r, useFor: r.useFor ?? "both", ready: false, mask: false, does: [], unsupported: `This host has no template ${r.template}; update it to use this recipe.` };
-    return { ...r, useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, ...(t.video ? { video: t.video } : {}) };
+    return { ...r, useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, ...(t.video ? { video: clipSpec(t.video, present(r, files)) } : {}) };
   }
 
   /** The template for a main part: an edit model gets the edit template when its architecture has one. */
@@ -180,7 +181,7 @@ export class RecipeBook {
             ?? candidates.find((p) => home(p.file) === home(main.file)) ?? candidates[0];
           if (pick && spec.role === "diffusion") used.add(pick.file);
           if (pick) recipeParts.push({ role: spec.role, slot: spec.slot ?? null, file: pick.file, added: false });
-          else {
+          else if (!spec.optional) {
             const known = starter?.parts.find((p) => p.role === spec.role && (spec.slot === undefined || p.slot === spec.slot));
             recipeParts.push({
               role: spec.role, slot: spec.slot ?? null, file: null, added: false,
@@ -342,6 +343,10 @@ export class RecipeBook {
   ): { recipe: Recipe; toDownload: Starter["parts"] } {
     const installed = this.recipes.find((r) => r.starter === starter.id);
     if (installed) {
+      // A part the starter gained since (an optional interpolator) joins the recipe.
+      const gained = starter.parts.filter((p) => !installed.parts.some((q) => q.role === p.role && q.slot === (p.slot ?? null)));
+      installed.parts.push(...gained.map((p) => ({ role: p.role, slot: p.slot ?? null, file: have(p) ?? starterPath(p), added: false })));
+      if (gained.length) this.save();
       const files = new Set(installed.parts.map((p) => p.file));
       return { recipe: installed, toDownload: starter.parts.filter((p) => files.has(starterPath(p)) && !have(p) && !downloading(p)) };
     }
@@ -369,4 +374,14 @@ export class RecipeBook {
     this.save();
     return { recipe, toDownload };
   }
+}
+
+/** A recipe's parts whose files are here: what a job runs with (an optional part still downloading is left out). */
+export function present(r: Pick<Recipe, "parts">, files: Set<string>): (RecipePart & { file: string })[] {
+  return r.parts.filter((p): p is RecipePart & { file: string } => !!p.file && files.has(p.file));
+}
+
+/** A video template's timing for a recipe's present parts: with an interpolator, more frames a second. */
+export function clipSpec(spec: VideoSpec, parts: { role: Role }[]): VideoSpec {
+  return spec.interpolate && parts.some((p) => p.role === "interpolator") ? { ...spec, fps: spec.fps * spec.interpolate } : spec;
 }
