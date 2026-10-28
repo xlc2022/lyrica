@@ -449,11 +449,17 @@ ComfyUI hosts list five video starters: Wan 2.2 TI2V 5B (about 18 GB of
 files, fits a 24 GB card), Wan 2.2 T2V 14B and I2V 14B (about 38 GB
 each), LTX-2.5 Distilled (about 40 GB) and MiniMax H3 Turbo (about
 42 GB); H3 and LTX-2.5 fit a 96 GB card. A host on stable-diffusion.cpp
-doesn't list them. Lyrica doesn't use video recipes yet: installed, they
-sit on the host, and only `POST /host/v1/videos/create` makes a clip
-([host/API.md](../../host/API.md)). A clip takes from a few minutes to
-most of an hour and holds ComfyUI's GPU until it is done; with two GPUs,
-`COMFY_GPU` picks the one for images and videos.
+doesn't list them. Once one is confirmed, put it in the **Videos** row
+of Models, Tasks (the last row under Images, whose picker lists only
+model hosts' video recipes), or `lyrica admin models preset set private
+video '<host>/<recipe>' --user ada`. Until a column has one, her `image`
+tool can't make clips. A clip is 1 to 15 seconds, from a prompt or, with
+a recipe that animates (Wan 2.2 I2V, for one), from an image as its first
+frame; it is saved encrypted in the thread's folder under `videos/`, and
+Files shows its poster. Cloud models and plain endpoints in the list are
+passed over. A clip takes from a few minutes to most of an hour and holds
+ComfyUI's GPU until it is done; with two GPUs, `COMFY_GPU` picks the one
+for images and videos.
 
 Wan 2.2 is Apache 2.0. LTX-2.5's repository is gated: installing it
 needs a Hugging Face token whose account accepted the LTX-2.x Community
