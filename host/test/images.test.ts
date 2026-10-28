@@ -48,9 +48,11 @@ const wan = (channels: number, dim: number) => safetensors({ "head.modulation": 
 const WAN_5B = wan(48, 3072);
 const WAN_T2V = wan(16, 5120);
 const WAN_I2V = wan(36, 5120);
-// QuantStack's GGUF experts: three keys of metadata, and the same tensors as the safetensors.
-const wanGguf = (channels: number) => ggufBytes({ "general.architecture": "wan", "general.quantization_version": 2, "general.file_type": 17 },
-  { "head.modulation": [1, 6, 5120], "patch_embedding.weight": [5120, channels, 1, 2, 2], "blocks.0.ffn.0.weight": [13824, 5120] });
+// QuantStack's GGUF experts: the same tensors as the safetensors, but GGUF holds at most four
+// dimensions, so ComfyUI-GGUF flattens the 5-D patch embedding and records its true shape.
+const wanGguf = (channels: number) => ggufBytes({ "general.architecture": "wan", "general.quantization_version": 2, "general.file_type": 17,
+  "comfy.gguf.orig_shape.patch_embedding.weight": [5120, channels, 1, 2, 2] },
+  { "head.modulation": [1, 6, 5120], "patch_embedding.weight": [5120 * channels * 2, 2], "blocks.0.ffn.0.weight": [13824, 5120] });
 const WAN_LORA = safetensors({ "diffusion_model.blocks.0.cross_attn.k.lora_A.weight": {}, "diffusion_model.blocks.0.cross_attn.k.lora_B.weight": {} });
 const UMT5 = safetensors({ "encoder.block.0.layer.0.SelfAttention.q.weight": { dtype: "F8_E4M3" }, "shared.weight": { shape: [256384, 4096] } });
 const WAN22_VAE = safetensors({ "decoder.conv1.weight": { shape: [1024, 48, 3, 3, 3] }, "encoder.conv1.weight": {}, "decoder.upsamples.0.upsamples.0.residual.2.weight": {} });

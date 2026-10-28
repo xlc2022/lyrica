@@ -81,6 +81,8 @@ export function readGgufTensors(path: string): Record<string, number[]> {
   return readHeader(path, true).shapes;
 }
 
+const ORIG_SHAPE = "comfy.gguf.orig_shape.";
+
 function readHeader(path: string, tensors: boolean): { meta: Record<string, GgufValue>; shapes: Record<string, number[]> } {
   const fd = openSync(path, "r");
   try {
@@ -106,6 +108,12 @@ function readHeader(path: string, tensors: boolean): { meta: Record<string, Gguf
       r.u64(); // offset
       shapes[name] = shape;
     }
+    // ComfyUI-GGUF flattens tensors of more than four dimensions (Wan's 5-D
+    // patch embedding) and keeps the true shape, already in PyTorch's order, here.
+    for (const [key, v] of Object.entries(meta)) {
+      const name = key.startsWith(ORIG_SHAPE) ? key.slice(ORIG_SHAPE.length) : null;
+      if (name && name in shapes && Array.isArray(v) && v.every((d) => typeof d === "number")) shapes[name] = v as number[];
+    }
     return { meta, shapes };
   } finally {
     closeSync(fd);
@@ -113,11 +121,12 @@ function readHeader(path: string, tensors: boolean): { meta: Record<string, Gguf
 }
 
 /** Writes a GGUF header with the given metadata and tensor infos (PyTorch shapes) but no tensor data: for tests and fakes. */
-export function ggufBytes(meta: Record<string, string | number | boolean>, tensors: Record<string, number[]> = {}): Buffer {
+export function ggufBytes(meta: Record<string, string | number | boolean | number[]>, tensors: Record<string, number[]> = {}): Buffer {
   const parts: Buffer[] = [Buffer.from("GGUF"), u32(3), u64(Object.keys(tensors).length), u64(Object.keys(meta).length)];
   for (const [k, v] of Object.entries(meta)) {
     parts.push(str(k));
     if (typeof v === "string") parts.push(u32(8), str(v));
+    else if (Array.isArray(v)) parts.push(u32(9), u32(5), u64(v.length), ...v.map(i32));
     else if (typeof v === "boolean") parts.push(u32(7), Buffer.from([v ? 1 : 0]));
     else if (Number.isInteger(v)) parts.push(u32(4), u32(v));
     else { const b = Buffer.alloc(4); b.writeFloatLE(v); parts.push(u32(6), b); }
@@ -126,5 +135,6 @@ export function ggufBytes(meta: Record<string, string | number | boolean>, tenso
   return Buffer.concat(parts);
 }
 function u32(n: number) { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; }
+function i32(n: number) { const b = Buffer.alloc(4); b.writeInt32LE(n); return b; }
 function u64(n: number) { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; }
 function str(s: string) { const b = Buffer.from(s, "utf8"); return Buffer.concat([u64(b.length), b]); }
