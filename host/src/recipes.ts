@@ -140,7 +140,9 @@ export class RecipeBook {
   }
 
   describe(r: Recipe, files: Set<string>) {
-    const t = this.template(r);
+    const t = this.templates.get(r.template);
+    // A recipe made by a newer host (read after a rollback, say) does nothing here.
+    if (!t) return { ...r, useFor: r.useFor ?? "both", ready: false, mask: false, does: [], unsupported: `This host has no template ${r.template}; update it to use this recipe.` };
     return { ...r, useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, ...(t.video ? { video: t.video } : {}) };
   }
 

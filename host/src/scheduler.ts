@@ -234,6 +234,26 @@ export class Scheduler {
     return this.gpus;
   }
 
+  /**
+   * Why a job's model can never run here, even with its GPUs empty: no GPU
+   * allows it, or every way it may run needs more than the GPU has, by its
+   * measured memory once it has run; null if some way could.
+   */
+  neverFits(job: { model: TextModel; gpu?: number }): string | null {
+    const model = job.model;
+    const opts = this.optionsFor(job);
+    if (!opts.length) {
+      const server = serverOf(model);
+      if (job.gpu !== undefined) return `GPU ${job.gpu} doesn't allow images.`;
+      const cmpOnly = NOT_ON_CMP.includes(server) && this.gpus.some((g) => g.pciId === CMP_100_210);
+      return cmpOnly ? `${SERVER_NAMES[server]} can't run on a CMP 100-210, and no other GPU here allows it.` : `No GPU allows ${SERVER_NAMES[server]} for this model.`;
+    }
+    const s = this.served(model);
+    const empty = this.gpusFor(serverOf(model)).map((g) => ({ ...g, used: 0 }));
+    const reasons = opts.map((o) => neverFits(model, s, { ...o, need: this.needOf(model, o, s) }, empty, (i) => this.gpuSettings(i)));
+    return reasons.every((r) => r !== null) ? reasons[0]! : null;
+  }
+
   /** The ways this job's model may run. */
   private optionsFor(job: { model: TextModel; gpu?: number }): Option[] {
     if (this.onCpu(job.model)) return [CPU_OPTION];
@@ -420,14 +440,10 @@ export class Scheduler {
    */
   private plan(job: Pick<Job, "model" | "gpu">, held: Set<number>): Plan {
     const model = job.model;
+    const never = this.neverFits(job);
+    if (never) return new HostError(413, "too_big", never);
     const opts = this.optionsFor(job);
     const s = this.served(model);
-    if (!opts.length) {
-      const server = serverOf(model);
-      if (job.gpu !== undefined) return new HostError(413, "too_big", `GPU ${job.gpu} doesn't allow images.`);
-      const cmpOnly = NOT_ON_CMP.includes(server) && this.gpus.some((g) => g.pciId === CMP_100_210);
-      return new HostError(413, "too_big", cmpOnly ? `${SERVER_NAMES[server]} can't run on a CMP 100-210, and no other GPU here allows it.` : `No GPU allows ${SERVER_NAMES[server]} for this model.`);
-    }
     // whisper.cpp holds one model at a time: loading this one replaces any other.
     const rivals = model.server === "whispercpp" ? [...this.loaded.values()].filter((l) => l.model.server === "whispercpp" && l.model.id !== model.id) : [];
     if (rivals.some((l) => !l.ready || l.active > 0)) return { wait: [...new Set(rivals.flatMap((l) => l.option.gpus))] };
@@ -445,8 +461,8 @@ export class Scheduler {
     // could free (on an integrated GPU, a model may sit in shared memory that
     // this server can't use).
     const empty = view.map((g) => ({ ...g, used: 0 }));
-    const possible = opts.filter((o) => !neverFits(model, s, o, empty, (i) => this.gpuSettings(i)));
-    if (!possible.length) return new HostError(413, "too_big", neverFits(model, s, opts[0]!, empty, (i) => this.gpuSettings(i))!);
+    const measured = (o: Option) => ({ ...o, need: this.needOf(model, o, s) });
+    const possible = opts.filter((o) => !neverFits(model, s, measured(o), empty, (i) => this.gpuSettings(i)));
     const usable = possible.filter((o) => !o.gpus.some((g) => held.has(g)));
     // A way that needs no unloading beats one that does, whatever its order.
     const roomy = usable.find((o) => !deficitOf(o)(new Set(rivals)));
@@ -470,7 +486,7 @@ export class Scheduler {
     if (!usable.length) return { wait: [...new Set(possible.flatMap((o) => o.gpus))] };
     // It can never fit: say why, for the first way it could have run.
     const o = opts[0]!;
-    const reason = neverFits(model, s, o, empty, (i) => this.gpuSettings(i));
+    const reason = neverFits(model, s, measured(o), empty, (i) => this.gpuSettings(i));
     if (reason) return new HostError(413, "too_big", reason);
     const gb = (n: number) => (n / GIB).toFixed(1);
     const need = this.needOf(model, o, s);

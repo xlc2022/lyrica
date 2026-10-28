@@ -872,6 +872,11 @@ defaults. Each image of a batch is made from the next seed, and says so. A
 cancelled job is cancelled in sd-server.
 
 A recipe's memory is measured after its first job, as for text models.
+A recipe too big for the image GPU even with it empty (by that measure,
+or before it by its parts) is listed with `does` empty and an
+`unsupported` reason, so Lyrica never offers it, and a job for it is
+`too_big`. So is a recipe whose template this host doesn't have (one a
+newer host made, read after a rollback).
 
 ### Making videos
 
