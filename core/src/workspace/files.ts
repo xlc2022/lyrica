@@ -6,6 +6,7 @@
 import { posix } from "node:path";
 import { Readable } from "node:stream";
 import { crc32 } from "node:zlib";
+import type { ByteRange } from "./images.ts";
 import { sniffImage } from "./ops.ts";
 import { SHARED, Sandbox, SandboxDenied, WORKDIR } from "./sandbox.ts";
 import type { Grant } from "./settings.ts";
@@ -104,14 +105,22 @@ export class ThreadFiles {
     return entries.map((e) => ({ ...e, source: e.path.startsWith(`${WORKDIR}/uploads/`) ? "uploaded" : "made" }));
   }
 
-  /** A file's bytes as a stream, with its size and type. The caller sends it as is. */
-  async read(path: string): Promise<{ stream: Readable; size: number; type: string }> {
+  /**
+   * A file's bytes as a stream, with its whole size and type. The caller
+   * sends it as is. With a range only those bytes come (a clip seeks with
+   * one); a range past the end or backwards is a RangeError.
+   */
+  async read(path: string, range?: ByteRange): Promise<{ stream: Readable; size: number; type: string }> {
     const p = this.allow(path, false);
     const head = await this.file(["sh", "-c", 'test -f "$1" || { echo "$1 is not a file" >&2; exit 1; }; stat -c %s -- "$1"; head -c 16 -- "$1"', "sh", p]);
     const nl = head.indexOf(10);
     const size = Number(head.subarray(0, nl).toString());
     const type = sniffImage(head.subarray(nl + 1)) ?? typeByName(p);
-    const child = await this.box.start(["cat", "--", p]);
+    if (range && (range.start >= size || (range.end !== undefined && range.end < range.start))) throw new RangeError("the range is outside the file");
+    const length = range ? Math.min(range.end ?? size - 1, size - 1) - range.start + 1 : 0;
+    const child = await this.box.start(range
+      ? ["sh", "-c", 'tail -c +"$2" -- "$1" | head -c "$3"', "sh", p, String(range.start + 1), String(length)]
+      : ["cat", "--", p]);
     const err: Buffer[] = [];
     child.stderr.on("data", (d: Buffer) => err.push(d));
     child.on("close", (code) => { if (code !== 0) child.stdout.destroy(new Error(Buffer.concat(err).toString().trim() || "could not read the file")); });

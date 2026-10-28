@@ -28,8 +28,10 @@ function fakeFiles() {
     },
     search: async (root: string, q: string) => ({ entries: q ? [entry(`${root}/${q}.txt`)] : [], more: false }),
     images: async () => [{ ...entry("/workspace/uploads/cat.png"), source: "uploaded" as const }],
-    read: async (path: string) => {
+    read: async (path: string, range?: { start: number; end?: number }) => {
       if (path === "/workspace/missing") throw new Error("/workspace/missing is not a file");
+      if (range && range.start >= 5) throw new RangeError("the range is outside the file");
+      if (range) return { stream: Readable.from([Buffer.from("hello".slice(range.start, (range.end ?? 4) + 1))]), size: 5, type: "video/mp4" };
       return { stream: Readable.from([Buffer.from("hel"), Buffer.from("lo")]), size: 5, type: "text/plain; charset=utf-8" };
     },
     upload: async (dir: string, name: string, bytes: Buffer) => {
@@ -119,6 +121,13 @@ describe("the Files panel's routes", () => {
     const down = await get(`${path}/content?path=${enc("/workspace/a.txt")}&download=1`);
     expect(down.headers.get("content-disposition")).toBe("attachment; filename*=UTF-8''a.txt");
     expect((await get(`${path}/content?path=${enc("/workspace/missing")}`)).status).toBe(400);
+    // A clip opened from Files seeks with one byte range, as on `…/file`.
+    const part = await fetch(`${base}${path}/content?path=${enc("/workspace/videos/a.mp4")}`, { headers: { cookie: ada.cookie!, range: "bytes=1-3" } });
+    expect(part.status).toBe(206);
+    expect(part.headers.get("content-range")).toBe("bytes 1-3/5");
+    expect(part.headers.get("content-length")).toBe("3");
+    expect(await part.text()).toBe("ell");
+    expect((await fetch(`${base}${path}/content?path=${enc("/workspace/videos/a.mp4")}`, { headers: { cookie: ada.cookie!, range: "bytes=9-" } })).status).toBe(416);
 
     const zip = await fetch(`${base}${path}/zip`, {
       method: "POST", headers: { cookie: ada.cookie!, origin: base, "content-type": "application/json" }, body: JSON.stringify({ paths: ["/workspace/notes"] }),
@@ -265,6 +274,31 @@ describe("a clip's poster", () => {
       expect((await files.thumb(join(dir, "clips", "a.mp4")))?.bytes.toString()).toBe("poster");
       await files.remove([join(dir, "clips", "a.mp4")]);
       expect(readdirSync(join(dir, ".lyrica", "thumbs", "clips"))).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a ranged read in the thread's sandbox", () => {
+  it("sends only the asked bytes and refuses a range past the end", async () => {
+    const { ThreadFiles } = await import("@lyrica/core");
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-range-"));
+    try {
+      writeFileSync(join(dir, "a.mp4"), "0123456789");
+      const { spawn, spawnSync } = await import("node:child_process");
+      const box = {
+        allow: (p: string) => p,
+        run: async (argv: string[]) => { const r = spawnSync(argv[0]!, argv.slice(1)); return { code: r.status, signal: r.signal, stdout: r.stdout, stderr: r.stderr }; },
+        start: async (argv: string[]) => spawn(argv[0]!, argv.slice(1), { stdio: ["pipe", "pipe", "pipe"] }),
+      };
+      const files = new ThreadFiles(box as unknown as Sandbox, [], () => {}, dir);
+      const text = async (r: { stream: Readable }) => { const c: Buffer[] = []; for await (const b of r.stream) c.push(b as Buffer); return Buffer.concat(c).toString(); };
+      const middle = await files.read(join(dir, "a.mp4"), { start: 2, end: 5 });
+      expect([middle.size, await text(middle)]).toEqual([10, "2345"]);
+      expect(await text(await files.read(join(dir, "a.mp4"), { start: 7 }))).toBe("789");
+      expect(await text(await files.read(join(dir, "a.mp4"), { start: 8, end: 99 }))).toBe("89");
+      await expect(files.read(join(dir, "a.mp4"), { start: 10 })).rejects.toThrow(RangeError);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

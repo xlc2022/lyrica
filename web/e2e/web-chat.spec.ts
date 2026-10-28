@@ -373,7 +373,7 @@ test("a clip she made shows its poster and facts, and plays in the browser's pla
   await page.route(`**${base}/messages`, (route) => route.fulfill({ json: {
     messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-10-28T04:00:00Z", parts: [
       { type: "tool", toolCallId: "fox", name: "image", args: { action: "video", prompt: "A fox in the snow" }, result: path, isError: false },
-      { type: "video", path, model: "box/Wan 2.2 TI2V 5B", width: 1280, height: 704, duration: 5.04, audio: true },
+      { type: "video", path, model: "shared.box/Wan 2.2 TI2V 5B", width: 1280, height: 704, duration: 5.04, audio: true },
     ] }], hasMore: false,
   } }));
   await page.route(`**${base}/files/thumb?*`, (route) => route.fulfill({ contentType: "image/png", body: png }));

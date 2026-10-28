@@ -523,6 +523,9 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
 const GONE = "No longer in Files";
 
 /** Principle 1: made images stay in the conversation, with their facts and rare actions (ux §3 and §6). */
+/** The model that made an image or clip, as `<endpoint>/<model>`: a shared endpoint's `shared.` belongs to its ID, not its name. */
+const modelShown = (label: string) => label.replace(/^shared\./, "");
+
 function MessageImages({ part, env }: { part: ImagePart; env: Env }) {
   const links = useFileLinks(env.userId, env.pool, env.threadId);
   const files: FileLinks = { ...links, url: (path) => `${env.base}/file?path=${encodeURIComponent(path)}` };
@@ -544,7 +547,7 @@ function MessageImages({ part, env }: { part: ImagePart; env: Env }) {
         <div key={path} className="message-image">
           <InlineImage src={path} alt={basename(path)} label={basename(path)} files={files} large={(p) => env.large(p, files)} onGone={() => setDeleted((d) => new Set(d).add(path))} />
           <div className="image-facts">
-            <span className="cap">Made with {part.model}{part.tier && <> · {part.tier}</>}</span>
+            <span className="cap">Made with {modelShown(part.model)}{part.tier && <> · {part.tier}</>}</span>
             <RowMenu label={`Image actions for ${basename(path)}`} items={[
               { label: "Download", onPick: () => { const a = document.createElement("a"); a.href = files.url(path); a.download = basename(path); a.click(); } },
               { label: "Copy path", onPick: () => { void navigator.clipboard.writeText(path).catch((e: Error) => env.onError(e.message)); } },
@@ -590,7 +593,7 @@ function MessageVideo({ part, env }: { part: VideoPart; env: Env }) {
           </button>
         )}
       <div className="image-facts">
-        <span className="cap">Made with {part.model} · <span className="num">{part.duration.toFixed(1)}</span> s{part.audio && <> · sound</>}</span>
+        <span className="cap">Made with {modelShown(part.model)} · <span className="num">{part.duration.toFixed(1)}</span> s{part.audio && <> · sound</>}</span>
         <RowMenu label={`Clip actions for ${name}`} items={[
           { label: "Download", onPick: () => { const a = document.createElement("a"); a.href = url; a.download = name; a.click(); } },
           { label: "Copy path", onPick: () => { void navigator.clipboard.writeText(part.path).catch((e: Error) => env.onError(e.message)); } },

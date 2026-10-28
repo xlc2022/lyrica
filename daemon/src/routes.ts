@@ -8,7 +8,7 @@ import {
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
   searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled, modelName,
   codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf,
-  ChangesUnavailable, commitFiles, fileSides, repositoryChanges, type ExecutionTarget,
+  ChangesUnavailable, type ByteRange, commitFiles, fileSides, repositoryChanges, type ExecutionTarget,
 } from "@lyrica/core";
 import type * as Api from "./api.ts";
 import { THREAD_TASKS } from "./api.ts";
@@ -102,9 +102,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       const pool = poolOf(r), threadId = r.params.threadId!;
       const view = s().memory.openThreadView(user.id, pool);
       try { if (!view.own.getThread(threadId)) throw new HttpError(404, "no such thread"); } finally { view.close(); }
-      // A clip plays in the browser's own player, which seeks with one byte range (bytes=a-b or bytes=a-).
-      const asked = /^bytes=(\d+)-(\d*)$/.exec(r.req.headers.range ?? "");
-      const range = asked ? { start: Number(asked[1]), ...(asked[2] ? { end: Number(asked[2]) } : {}) } : undefined;
+      const range = byteRange(r);
       let file;
       try { file = imageFile(() => s().workspace.imageFiles({ userId: user.id, pool, threadId }).content(r.query.get("path") ?? "", range)); }
       catch (err) { if (err instanceof RangeError) throw new HttpError(416, "the range is outside the file"); throw err; }
@@ -1575,10 +1573,16 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("GET", `${t}/files/content`, async (r) => {
       const path = r.query.get("path") ?? "";
-      const { stream, size, type } = await refused(() => files(r).read(path));
+      const range = byteRange(r);
+      let read;
+      try { read = await refused(() => files(r).read(path, range)); }
+      catch (err) { if (err instanceof RangeError) throw new HttpError(416, "the range is outside the file"); throw err; }
+      const { stream, size, type } = read;
+      const end = range ? Math.min(range.end ?? size - 1, size - 1) : size - 1;
       const name = path.split("/").pop() ?? "file";
-      r.res.writeHead(200, {
-        "content-type": type, "content-length": String(size), "cache-control": "no-store",
+      r.res.writeHead(range ? 206 : 200, {
+        "content-type": type, "content-length": String(range ? end - range.start + 1 : size), "cache-control": "no-store",
+        "accept-ranges": "bytes", ...(range ? { "content-range": `bytes ${range.start}-${end}/${size}` } : {}),
         "content-disposition": `${r.query.get("download") ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(name)}`,
         "content-security-policy": "default-src 'none'; sandbox", "x-content-type-options": "nosniff",
       }),
@@ -2258,6 +2262,11 @@ function checkPool(p: unknown): Pool {
 }
 
 const poolOf = (r: Request): Pool => checkPool(r.params.pool);
+/** The one byte range a browser's player seeks with (`bytes=a-b` or `bytes=a-`); any other Range header serves the whole file. */
+function byteRange(r: Request): ByteRange | undefined {
+  const asked = /^bytes=(\d+)-(\d*)$/.exec(r.req.headers.range ?? "");
+  return asked ? { start: Number(asked[1]), ...(asked[2] ? { end: Number(asked[2]) } : {}) } : undefined;
+}
 
 function checkKind(k: unknown): "ssh" | "proxmox" {
   if (k === undefined || k === "ssh") return "ssh";
