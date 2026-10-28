@@ -17,6 +17,7 @@ server. Built in two pull requests: the host first, then Lyrica's side.
 |---|---|---|---|
 | Wan 2.2 TI2V 5B | fp16 5B, UMT5 fp8, Wan 2.2 VAE (Comfy-Org repackaged) | the 3090: 1280×704, 24 fps, about 5 s | Apache 2.0 |
 | Wan 2.2 T2V 14B and I2V 14B | two fp8 experts (high and low noise), their lightx2v 4-step LoRAs, UMT5 fp8, Wan 2.1 VAE | the 3090 at 480 to 720p, both on the workstation; 16 fps, about 5 s | Apache 2.0 |
+| Wan 2.2 T2V 14B Q5 and I2V 14B Q5 | the same, with QuantStack's Q5_K_M GGUF experts (10.8 GB each) | a 24 GB card with less system memory; 16 fps, about 5 s | Apache 2.0 |
 | LTX-2.5 distilled | int8 22B, Gemma 4 12B int8, video and audio VAEs, the 2× latent upscaler (Lightricks/LTX-2.5, gated) | the workstation; video **with audio**, 24 fps, up to about 10 s | LTX-2.x Community License: free under $10M yearly revenue |
 | MiniMax H3 | pruned int8 33B, Qwen3-VL 32B NVFP4, video and audio VAEs, the lightx2v 8-step turbo LoRA (Comfy-Org/MiniMax-H3) | the workstation; video **with audio**, 768p, 24 fps, 5 to 15 s | MiniMax community licence: forbids use in the US, EU, UK and South Korea |
 
@@ -94,9 +95,11 @@ The owner chose, in order:
 - **A quality option**: more sampling steps (about 40 to 50, against 20)
   for about 12 to 15 minutes a clip, likely as `tier` fast and quality.
   Waits on lunasa's same-seed comparison of 20 and 40 steps.
-- **Wan 2.2 A14B on a 24 GB card**: a starter with GGUF quants (Q4_K_M or
-  Q5) of both experts and the lightx2v 4 to 8 step LoRAs, a two-stage
-  template, ComfyUI-GGUF, pinned files.
+- **Wan 2.2 A14B on a 24 GB card** (built): starters with QuantStack's
+  Q5_K_M GGUF experts beside the fp8 ones, the same lightx2v 4-step LoRAs,
+  UMT5 and VAE, on the existing 14B templates (a `.gguf` expert loads
+  through ComfyUI-GGUF). The host reads a Wan GGUF's tensor list, so its
+  experts classify as the safetensors do. Not yet run on a GPU.
 - Not chosen yet: chat passing over a host whose GPU a clip holds, for the
   next fallback in her preset, instead of waiting and failing.
 
@@ -129,5 +132,11 @@ The owner chose, in order:
   on Files and the model's name).
 - 2026-10-28, part 3's background clips and prompt guideline built on
   `claude/project-thread-105ofj`.
-- Next: the quality option once lunasa's step comparison is in, the A14B
-  starter, then the 14B, LTX-2.5 and H3 starters on a real GPU.
+- 2026-10-28, lunasa's same-seed test on the 5B (1280×704, 121 frames):
+  an expanded prompt at 20 steps (349 s) beat a short one at 20 or 40;
+  40 steps took 660 s and overexposed the expanded prompt. About 17 s a
+  step.
+- 2026-10-28, the Q5 GGUF 14B starters built on
+  `claude/project-thread-105ofj`, pinned from the hub's listing.
+- Next: the quality option if the owner keeps it, then the 14B (fp8 and
+  Q5), LTX-2.5 and H3 starters on a real GPU.

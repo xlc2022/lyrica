@@ -1,0 +1,72 @@
+{
+  "name": "Wan 2.2 T2V 14B Q5",
+  "template": "wan22-t2v-14b",
+  "parts": [
+    {
+      "role": "diffusion",
+      "slot": "high",
+      "source": "huggingface",
+      "repo": "QuantStack/Wan2.2-T2V-A14B-GGUF",
+      "path": "HighNoise/Wan2.2-T2V-A14B-HighNoise-Q5_K_M.gguf",
+      "sha256": "fe704eb3541b09edb9cb675d58443bebccbabba0c9f5353305a6e01d9d9a2478",
+      "size": 10790416896
+    },
+    {
+      "role": "diffusion",
+      "slot": "low",
+      "source": "huggingface",
+      "repo": "QuantStack/Wan2.2-T2V-A14B-GGUF",
+      "path": "LowNoise/Wan2.2-T2V-A14B-LowNoise-Q5_K_M.gguf",
+      "sha256": "67242c61f055eb40c70fb421eb7dc1bdfde9c535f47c165fdfbf0b81b8b535dd",
+      "size": 10790416896
+    },
+    {
+      "role": "lora",
+      "slot": "high",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+      "path": "split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
+      "sha256": "698321cb86bd30c4af06c9b84e656a1048c8cb54e06d50694536fb5de37fde41",
+      "size": 1226977424
+    },
+    {
+      "role": "lora",
+      "slot": "low",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+      "path": "split_files/loras/wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors",
+      "sha256": "ec95216e614b3c132c11bfb387b11feedf62163150ccc9068bca8a189771e75a",
+      "size": 1226977424
+    },
+    {
+      "role": "text_encoder",
+      "slot": "umt5",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+      "path": "split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "sha256": "c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68",
+      "size": 6735906897
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+      "path": "split_files/vae/wan_2.1_vae.safetensors",
+      "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+      "size": 253815318
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "steps": 4,
+    "cfg": 1,
+    "sampler": "euler",
+    "scheduler": "simple",
+    "shift": 5,
+    "width": 1280,
+    "height": 720,
+    "duration": 5,
+    "negativePrompt": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
+  },
+  "backend": "comfyui"
+}
