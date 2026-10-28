@@ -93,5 +93,18 @@ card).
   finished scene, gave the best result, but it redraws a thing being
   recoloured (a coat's cut, the clothes beside it). So it's a choice per
   edit: `replace` for a new object, off for changing one.
+- Done (owner's ask, 2026-10-28): likeness work, as hosted image models do
+  it (other angles, outfits, builds, a relative), tested on the dev
+  deployment with a made-up person on 2.1 Turbo. Naming "the person from
+  the reference images" kept identity better than an image number; one
+  new angle per edit kept it; a turnaround as one wide create gave front,
+  profile and back. A garment's own photo reproduced it exactly, where
+  words gave a generic one. "More muscular" barely changed the build, so
+  build changes need strong wording. A relative made with the person's
+  photo came out as the same person, so a relative gets no photo, only the
+  shared traits and the differences. This became one tool guideline.
+- Next: a personal LoRA for a closer likeness (DESIGN, photos-of-me,
+  "Later"). ai-toolkit trains Qwen-Image 2.1 LoRAs. No face-ID adapter
+  exists for 2.1; its own multi-image encoder does that job.
 - Open: the edit size stays one megapixel; 2.1 can go to 2048 if the owner
   wants larger edits and the time it costs.

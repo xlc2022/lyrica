@@ -125,6 +125,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "Make one big change per edit: for a new setting and a new outfit, edit twice, each from the last result. With a mask, say what replaces what is under it.",
         "With a mask, set replace when the masked thing becomes something else (a painting into a mirror), and then write the instruction as the finished scene (a round mirror on a warm beige wall); leave it off to recolour or reshape what's there, which keeps the rest of it.",
         "Don't pass the image being edited as a reference too.",
+        "For a person from reference photos, say \"the person from the reference images\", not an image number; ask for one new angle per edit, or several views as one wide create. For an exact garment, pass its photo as a reference. Word a change of build strongly. For a relative, pass no photo: describe the traits they share and how they differ.",
         "Check faces, hands and limbs in a result against the source; reject one that gets them wrong.",
         "Make a clip only when they ask for one: it holds the model host's GPU for minutes. For video and animate, describe the motion and the camera in one paragraph; for animate, say what moves and what stays."],
       parameters: imageParameters,

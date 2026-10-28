@@ -646,7 +646,12 @@ her guidelines say to look at the image first, to say what goes as well
 as what stays, to make one big change per edit (a new setting and a new
 outfit are two edits), with a mask to say what replaces what is under
 it, to set `replace` and write the instruction as the finished scene when
-the masked thing becomes something else, not to pass the edited image as a reference too, and to check faces,
+the masked thing becomes something else, not to pass the edited image as a reference too, for a
+person from reference photos to name them as the person from the reference
+images, ask for one new angle per edit (or several views as one wide
+create), pass a garment's photo for an exact outfit, word a change of build
+strongly, and for a relative pass no photo but describe shared traits and
+differences, and to check faces,
 hands and limbs in a result against the source. Upscale takes an image, optional
 scale and maximum size. A failure no retry can fix (a host's `too_big`,
 `invalid`, `unsupported` or `refused`) ends its result with "Retrying won't
