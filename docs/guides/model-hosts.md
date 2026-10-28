@@ -441,7 +441,12 @@ upscale. Before any cloud fallback, a portrait photo's cloud setting is
 checked. OpenAI setup and offline diagrams are in the [getting-started
 guide](getting-started.md#image-models). No real GPU image job has run
 yet: item 9 of the checklist below. ComfyUI runs only while an image
-recipe is loaded, and stops once none is.
+recipe is loaded, and stops once none is. A recipe too big for the image
+GPU even with nothing else loaded, or whose template the host lacks (one
+a newer release made, after a rollback), is unsupported: `GET
+/host/v1/recipes` lists it with no actions and the reason, Lyrica never
+offers it for a task, and a job for it fails as too big. A host gets
+this with its next Update or `host/install.sh`.
 
 ### Video recipes
 
