@@ -175,6 +175,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "stopping":
       return { ...s, queued: [], offline: undefined };
     case "notice":
+      // A clip made in the background shows as hers, as it does once the thread reloads.
+      if (e.video) return { ...s, items: [...s.items, { role: "assistant", parts: [e.video] }] };
       return { ...s, items: [...s.items, { role: "notice", text: e.text, status: e.status, threads: e.threads, told: e.told }] };
     case "refresh":
       return { ...s, reload: s.reload + 1, ended: s.items.length };

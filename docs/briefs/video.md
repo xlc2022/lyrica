@@ -75,9 +75,30 @@ and its users are.
   byte ranges so the player can seek.
 - The chat shows the poster with a play button and plays the clip in the
   browser's own player; its home in docs/ux.md, "A clip the agent made".
-- Open: on a host with one GPU a clip holds it for minutes and chat
-  waits behind it. Nothing refuses or reorders that yet; her guidelines
-  say to make a clip only when asked.
+
+## Part 3: chat goes on while a clip is made, and better clips
+
+The first run through Lyrica (lunasa's 3090) showed that a Wan clip holds
+22 of 24 GB for about 6 minutes: her turn waited on the tool call, and a
+chat request waited 2 minutes in the host's queue, then failed as busy.
+The owner chose, in order:
+
+- **Clips in the background** (built): the tool call reads the first frame,
+  hands the job to lyricad's `ClipJobs` and returns, so her turn ends. The
+  clip comes into the thread as her message and wakes an idle thread to
+  say it's ready; a failure is a notice that wakes it too; Lock and a
+  shutdown stop it. Her marker reads started.
+- **Detailed clip prompts** (built, a guideline): she writes the prompt as
+  a detailed shot (subject and action, motion, camera move and lens, light
+  and mood, about 80 to 120 words) even from a few words.
+- **A quality option**: more sampling steps (about 40 to 50, against 20)
+  for about 12 to 15 minutes a clip, likely as `tier` fast and quality.
+  Waits on lunasa's same-seed comparison of 20 and 40 steps.
+- **Wan 2.2 A14B on a 24 GB card**: a starter with GGUF quants (Q4_K_M or
+  Q5) of both experts and the lightx2v 4 to 8 step LoRAs, a two-stage
+  template, ComfyUI-GGUF, pinned files.
+- Not chosen yet: chat passing over a host whose GPU a clip holds, for the
+  next fallback in her preset, instead of waiting and failing.
 
 ## Not in scope
 
@@ -104,5 +125,9 @@ and its users are.
   took its shape (960×960) in 372 s. The motion from a flat test image was
   weak and its first frame darker than the rest.
 - 2026-10-28, part 2 built on `claude/project-thread-105ofj` (see above).
-- Next: the 14B and LTX-2.5 and H3 starters on a real GPU, and the
-  one-GPU question above.
+- 2026-10-28, part 2 ran end to end on lunasa (#612, then #616 for ranges
+  on Files and the model's name).
+- 2026-10-28, part 3's background clips and prompt guideline built on
+  `claude/project-thread-105ofj`.
+- Next: the quality option once lunasa's step comparison is in, the A14B
+  starter, then the 14B, LTX-2.5 and H3 starters on a real GPU.

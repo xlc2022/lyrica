@@ -70,13 +70,15 @@ export function sweepUser(s: Services, userId: string, now = new Date()): SweepC
  * Removes the files of threads just forgotten, at once rather than at the next
  * sweep: the records of which thread wrote each file, the records of what her calls changed and their snapshots, each
  * thread's folder under `threads/` (its run worktrees forgotten by git first)
- * and its Claude Code folder. Their background commands stop. Only while the home is mounted; otherwise the
+ * and its Claude Code folder. Their background commands and clips stop. Only while the home is mounted; otherwise the
  * sweep takes the folders later. Returns how many folders went.
  */
 export function forgetThreadFiles(s: Services, userId: string, pool: Pool, threads: string[]): number {
   const home = s.workspace.homeDir(userId);
   if (!threads.length) return 0;
   s.workspace.jobs.stopUser(userId, "the thread was forgotten", { pool, ids: threads });
+  // A clip still being made would save into the forgotten folder when it ends.
+  s.clips.stop("the thread was forgotten", userId, { pool, ids: threads });
   // Which thread wrote a file: the forgotten threads' records, and those in their folders (a folder another pool's
   // thread still has is kept, as below).
   const exists = threadExists(s, userId);

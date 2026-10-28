@@ -664,14 +664,22 @@ The same tool makes short clips: `video` from a prompt, `animate` from an
 image as the first frame, each with an optional size or ratio and
 `duration` in seconds (1 to 15, the recipe's default when left out). Her
 guidelines say to make one only when asked, since it holds the model host's
-GPU for minutes, and to describe the motion and camera. A clip comes only
+GPU for minutes, and to write the prompt as a detailed shot (subject and
+action, motion, the camera's move and lens, light and mood, about 80 to 120
+words) even from a few words. A clip is made in the background (lyricad's
+clip jobs): the call reads the first frame and returns, she says it's on its
+way and ends her reply, and when it is made the thread gets it as her
+message and an idle thread wakes to say it's ready; a failure comes as a
+notice and wakes it too. Lock, a shutdown and deleting the thread stop it
+before it is saved, and wake nothing. A clip comes only
 from the Videos task's list, and only a model host makes one, so a first
 frame never reaches a cloud model and a portrait needs no consent.
 `ThreadImages.saveVideo` writes it as `videos/<uuid>.mp4` (a project chat's
 `shared/videos/`), with its poster, cleaned, written first as its Files
 thumbnail (`.lyrica/thumbs/videos/<uuid>.mp4.png`): deleting the clip in
-Files deletes the poster, and renaming it moves it. She gets the clip's
-facts and its poster as an image, so she sees its first frame.
+Files deletes the poster, and renaming it moves it. She is told the clip's
+facts and path; a clip made within a call (an explicit retry) also shows her
+its poster as an image.
 
 Each user's mounted home also has `photos-of-me/`, outside the thread folders
 and sandbox grants. The tool reaches it through `/photos-of-me/<file>` (or

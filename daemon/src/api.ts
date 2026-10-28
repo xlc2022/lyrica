@@ -1631,7 +1631,7 @@ export type ThreadEvent =
    */
   | { type: "delegation"; event: DelegationEvent }
   /** A background run's result or question, just delivered into this thread (also stored, as a `notice` message). */
-  | { type: "notice"; text: string; runId?: string; status?: string; threads?: ThreadRef[]; told?: Told[] }
+  | { type: "notice"; text: string; runId?: string; status?: string; threads?: ThreadRef[]; told?: Told[]; /** A clip made in the background: shown as hers, not as a notice. */ video?: VideoPart }
   /** Messages from entry `from` on were removed (a rewind): drop them, and reload. `resend`: a message is being sent in their place. */
   | { type: "rewound"; from: number; resend?: true };
 

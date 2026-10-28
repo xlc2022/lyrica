@@ -7,7 +7,7 @@ import { createAgentSession, DefaultResourceLoader, SessionManager, type Extensi
 import { ThreadImages, Workspace, type CallContext } from "@lyrica/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeImages, mp4, png } from "../../core/test/fake-images.ts";
-import { ASK_INSTEAD, createImageExtension, imageParameters, ratioSize, type ApprovalRequest } from "../src/index.ts";
+import { ASK_INSTEAD, createImageExtension, imageParameters, ratioSize, type ApprovalRequest, type ClipMade, type ImageTools } from "../src/index.ts";
 
 const dirs: string[] = [];
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -205,6 +205,27 @@ describe("image tool results (principles 1 and 4)", () => {
     s.models.setColumnTask(s.ada.id, "general", "video", []);
     await expect(s.run({ action: "video", prompt: "A fox" })).rejects.toThrow();
     expect(s.heard).toEqual([]);
+  });
+  it("hands a clip to the background when lyricad runs clips, so her turn ends, and the clip comes back when it's made", async () => {
+    const s = await setup();
+    s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.clip]);
+    const started: ((signal: AbortSignal) => Promise<ClipMade>)[] = [];
+    (s.options as ImageTools).background = make => { started.push(make); };
+    const out = await s.run({ action: "video", prompt: "A fox in the snow" });
+    expect(out.details).toEqual({ clip: "started" });
+    expect(out.content).toEqual([{ type: "text", text: expect.stringContaining("Making the clip in the background") }]);
+    // Nothing has gone to the host yet: the job does that, after the call returned.
+    expect(s.workstation.server.videos).toEqual([]);
+    const made = await started[0]!(new AbortController().signal);
+    expect(made.video).toMatchObject({ type: "video", model: "shared.workstation/Clip", width: 1280, height: 704 });
+    expect(made.text).toMatch(/^The clip is ready\. Made with Clip on workstation: 5\.0 s at 1280×704\. Saved \/workspace\/videos\/.+\.mp4\.$/);
+    expect(readFileSync(join(s.folder, "videos", made.video.path.split("/").at(-1)!))).toEqual(mp4);
+    expect(s.models.recentCalls(s.ada.id).map(c => c.task)).toEqual(["video"]);
+    // Images turned off while it waited: nothing is sent.
+    await s.run({ action: "video", prompt: "A cat" });
+    s.enable(false);
+    await expect(started[1]!(new AbortController().signal)).rejects.toThrow("Images are off");
+    expect(s.workstation.server.videos).toHaveLength(1);
   });
   it("names the host and recipe that made the image, by the recipe's name", async () => {
     const s = await setup();

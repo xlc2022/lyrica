@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { HostedThread } from "../src/hosted.ts";
 import { imagePart, toMessages, videoPart } from "../src/messages.ts";
 import type { ThreadEvent } from "../src/api.ts";
+import { DELEGATE_MESSAGE } from "@lyrica/extension";
 
 const image = { type: "image" as const, paths: ["/workspace/images/result.png"], model: "workstation/Art", tier: "quality" as const };
 const details = { image };
@@ -41,6 +42,22 @@ describe("image message metadata (principle 1)", () => {
     expect(JSON.stringify([messages, events])).not.toContain('"data":"bytes"');
     expect(videoPart("image", { video: { ...video, path: 17 } })).toBeUndefined();
     expect(videoPart("read", { video })).toBeUndefined();
+  });
+  it("shows a clip made in the background as hers, stored and live, and a failed one as a notice", () => {
+    const video = { type: "video" as const, path: "/workspace/videos/clip.mp4", model: "workstation/Clip", width: 1280, height: 704, duration: 5.04, audio: false };
+    const messages = toMessages("web/a", "general", [
+      { n: 1, createdAt: "2026-10-28", data: { type: "custom_message", customType: DELEGATE_MESSAGE, content: "The clip is ready.", display: true, details: { status: "clip", video, id: "a" } } },
+      { n: 2, createdAt: "2026-10-28", data: { type: "custom_message", customType: DELEGATE_MESSAGE, content: "The clip failed: out of memory", display: true, details: { status: "clip-failed", id: "b" } } },
+    ]);
+    expect(messages.map((m) => [m.role, m.parts])).toEqual([
+      ["assistant", [video]],
+      ["notice", [{ type: "delegation", text: "The clip failed: out of memory", status: "clip-failed" }]],
+    ]);
+    const events: ThreadEvent[] = [];
+    const hosted = Object.create(HostedThread.prototype) as { delivered(c: unknown, d: unknown): void; emit(e: ThreadEvent): void; pool: string; noticed: Set<string>; started(): undefined };
+    hosted.pool = "general"; hosted.emit = e => { events.push(e); }; hosted.noticed = new Set(); hosted.started = () => undefined;
+    hosted.delivered("The clip is ready.", { status: "clip", video, id: "c" });
+    expect(events[0]).toMatchObject({ type: "notice", status: "clip", video });
   });
   it("ignores malformed metadata and another tool's metadata", () => {
     expect(imagePart("read", details)).toBeUndefined();
