@@ -8,7 +8,7 @@ import { Comfy } from "../src/comfy.ts";
 import { Images, inputImage, recipeSize, videoValues } from "../src/images.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import { scanParts } from "../src/parts.ts";
-import { RecipeBook, loadStarters, type Recipe } from "../src/recipes.ts";
+import { present, RecipeBook, loadStarters, type Recipe } from "../src/recipes.ts";
 import { Runtime } from "../src/runtime.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { fill, loadTemplates } from "../src/templates.ts";
@@ -342,18 +342,26 @@ describe("recipes", () => {
     expect(b.setState([proposal.id], "ignored").failed[0]!.message).toBe("p isn't a proposal.");
   });
 
-  it("adds a part a starter gained to its installed recipe, which was ready without it", () => {
+  it("adds a part a starter gained to its installed recipe, which stays ready at 16 fps until the part is here", () => {
     const b = new RecipeBook(mkdtempSync(join(tmpdir(), "lyrica-book-")), TEMPLATES, STARTERS);
     const starter = STARTERS.find((s) => s.id === "wan2.2-t2v-14b-q5")!;
     const before = { ...starter, parts: starter.parts.filter((p) => p.role !== "interpolator") };
     const { recipe } = b.fromStarter(before, () => null);
-    expect(b.ready(recipe, new Set(recipe.parts.map((p) => p.file!)))).toBe(true);
-    expect(b.describe(recipe, new Set())).toMatchObject({ video: { fps: 16 } });
+    const here = new Set(recipe.parts.map((p) => p.file!));
+    expect(b.ready(recipe, here)).toBe(true);
     const again = b.fromStarter(starter, () => null);
     expect(again.recipe.id).toBe(recipe.id);
     expect(again.toDownload.map((p) => p.role)).toContain("interpolator");
-    expect(b.get(recipe.id).parts.find((p) => p.role === "interpolator")?.file).toMatch(/rife_v4\.26\.safetensors$/);
-    expect(b.describe(b.get(recipe.id), new Set())).toMatchObject({ video: { fps: 32 } });
+    const rife = b.get(recipe.id).parts.find((p) => p.role === "interpolator")!.file!;
+    expect(rife).toMatch(/rife_v4\.26\.safetensors$/);
+    // Still downloading: ready, 16 fps, and the job's parts leave it out, so no interpolation node runs.
+    expect(b.ready(b.get(recipe.id), here)).toBe(true);
+    expect(b.describe(b.get(recipe.id), here)).toMatchObject({ ready: true, video: { fps: 16 } });
+    const job = fill(TEMPLATES.get("wan22-t2v-14b")!, present(b.get(recipe.id), here), [], { negativePrompt: "", ...starter.defaults, prompt: "x", seed: 1, width: 1280, height: 720,
+      ...videoValues(TEMPLATES.get("wan22-t2v-14b")!.video!, 5, 1280, 720, 4) });
+    expect(Object.keys(job)).not.toContain("interpolate");
+    // Once it's here, 32 fps.
+    expect(b.describe(b.get(recipe.id), new Set([...here, rife]))).toMatchObject({ ready: true, video: { fps: 32 } });
   });
 
   it("installs a starter once, and checks defaults against the request ranges", () => {

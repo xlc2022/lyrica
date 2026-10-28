@@ -10,7 +10,7 @@ import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import { scanParts, type Part, type Role } from "./parts.ts";
-import { COLOR_MATCH, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
+import { COLOR_MATCH, present, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
 import type { Runtime } from "./runtime.ts";
 import { sdcppArgs, type SdCpp } from "./sdcpp.ts";
 import { fill, type Action, type Values, type VideoSpec } from "./templates.ts";
@@ -450,7 +450,8 @@ export class Images {
     values.width = snap(width ?? (height !== undefined ? height * shape : Math.sqrt(area * shape)));
     values.height = snap(height ?? (width !== undefined ? width / shape : Math.sqrt(area / shape)));
     const duration = num(body, "duration", 1, spec.maxSeconds) ?? Math.min(Number(values.duration), spec.maxSeconds);
-    const multiplier = recipe.parts.some((p) => p.role === "interpolator" && p.file) ? spec.interpolate ?? 1 : 1;
+    const parts = present(recipe, this.files());
+    const multiplier = parts.some((p) => p.role === "interpolator") ? spec.interpolate ?? 1 : 1;
     Object.assign(values, videoValues(spec, duration, Number(values.width), Number(values.height), Number(values.steps), multiplier));
     values.seed = int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);
 
@@ -463,7 +464,6 @@ export class Images {
     const scheduler = this.runtime.scheduler;
     const { video, poster } = await scheduler.run(model, "image", () =>
       scheduler.measuring(model, () => this.comfy.runVideo(uploads, (names) => {
-        const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
         return fill(template, parts, recipe.loras, { ...values, ...names });
       }, VIDEO_TIMEOUT_MS, abort.signal)),
       this.comfyGpu,
