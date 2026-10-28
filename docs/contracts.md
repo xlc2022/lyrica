@@ -562,7 +562,9 @@ class Models {                                              // new Models(keyrin
   a reply cut off, a host's `unreachable`, `paused`, `busy`, `restarting`,
   `unavailable`, `unpaired` or `identity_changed`) marks it down and tries
   the next (a host's `model_unavailable` marks only that model down, for
-  HEALTH_MS, and the host stays up for its others); any other failure is thrown as is; when none answers it throws
+  HEALTH_MS, and the host stays up for its others; so does `too_big`, a
+  model its GPU can never hold, whose reason says retrying won't help); any
+  other failure is thrown as is; when none answers it throws
   `Offline` naming every model tried, and never goes round twice.
 - **Kind is pinned** where an endpoint is made: `addEndpoint` takes it as
   declared, `pairHost` makes a host local, `editEndpoint` can't change it,
