@@ -998,7 +998,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   setup block have none.
 - An image part, stored or delivered on `tool_end`, shows each path as a
   thumbnail up to 320 px tall with an 8 px radius and the filename as its
-  accessible name. The facts line reads "Made with <model>" and, when given,
+  accessible name. The facts line reads "Made with <model>" (the model's
+  label without a shared endpoint's `shared.`) and, when given,
   "· fast" or "· quality". Its ⋯ holds Download, Copy path, Show in Files,
   Edit… and Delete…. Edit… fills the composer with "Edit <path>: " and enables
   Images. Delete… asks in a dialog ("Delete <name>?", Cancel and Delete),
