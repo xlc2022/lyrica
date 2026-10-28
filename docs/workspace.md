@@ -634,7 +634,7 @@ their subagents, at any depth (`familyRoot`, `WorkspaceSettings.family`).
 The `image` tool creates, edits and upscales through the thread's model router.
 It names inputs by workspace path: uploads, earlier results or granted files.
 Reject, pick and clear_rejected sort her attempts (below, "Rejected attempts").
-Create takes a prompt, fast or quality, optional size or `width:height` aspect
+Create takes a prompt, fast or quality (quality when left out), optional size or `width:height` aspect
 ratio, count and references; her guidelines say to write the prompt as one
 detailed paragraph (subject and action, then setting, light, framing and
 medium), to keep to what was asked and to ask for text in the image only
@@ -648,7 +648,9 @@ outfit are two edits), with a mask to say what replaces what is under
 it, to set `replace` and write the instruction as the finished scene when
 the masked thing becomes something else, not to pass the edited image as a reference too, and to check faces,
 hands and limbs in a result against the source. Upscale takes an image, optional
-scale and maximum size.
+scale and maximum size. A failure no retry can fix (a host's `too_big`,
+`invalid`, `unsupported` or `refused`) ends its result with "Retrying won't
+help: try another model, or tell them."
 Ratios become a canvas near one megapixel, on a 16-pixel grid; GPT Image 1
 cloud models use their nearest supported canvas shape. Without size or count,
 host recipe defaults apply. Neither tier overrides a host recipe's settings.

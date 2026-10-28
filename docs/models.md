@@ -331,7 +331,7 @@ machines again, in order, so one that has just come back answers at once.
 project's threads (`watching`, "Watching threads", in the project chat's
 context), speech and images) on each model in turn: a machine that can't be
 reached or is away (`isUnreachable`) is marked down and the next tries (a
-host's `model_unavailable` marks only that model down), any
+host's `model_unavailable` or `too_big` marks only that model down), any
 other failure is the call's own, and when none answers it throws `Offline`
 with every model tried.
 `resolveModel` returns just the chosen `{ offeringId }`.

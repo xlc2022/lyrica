@@ -28,7 +28,7 @@ const path = (description: string) => Type.Optional(Type.String({ description })
 export const imageParameters = Type.Object({
   action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected"] as const),
   prompt: Type.Optional(Type.String({ description: "For create: what to draw, as one detailed paragraph." })),
-  tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality." })),
+  tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality (the default)." })),
   image: path("For edit, upscale and pick: the image's path."),
   images: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For reject: the attempts to set aside." })),
   instruction: Type.Optional(Type.String({ description: "For edit: the change, and what stays the same. The edited image is image 1; references are image 2 and on." })),
@@ -43,12 +43,12 @@ export const imageParameters = Type.Object({
 });
 export type ImageArgs = Static<typeof imageParameters>;
 
-const NEEDS = { create: ["prompt", "tier"], edit: ["image", "instruction"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [] } as const;
+const NEEDS = { create: ["prompt"], edit: ["image", "instruction"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [] } as const;
 
 /** The fields an action needs, named in the error a model reads. */
 function needs(p: ImageArgs): void {
   const missing = NEEDS[p.action].filter(k => p[k] === undefined || p[k] === "" || (Array.isArray(p[k]) && !p[k].length));
-  if (missing.length) throw new Error(`${p.action} needs ${missing.join(" and ")}: ${NEEDS[p.action].join(", ")} are required, the rest optional.`);
+  if (missing.length) throw new Error(`${p.action} needs ${missing.join(" and ")}: ${NEEDS[p.action].join(", ")} ${NEEDS[p.action].length === 1 ? "is" : "are"} required, the rest optional.`);
 }
 
 /** Around one megapixel, rounded to the host's 16-pixel grid and bounded by its size limits. */
@@ -142,10 +142,14 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
  * A failed call says which model (a host's recipe by name) it reached and what came back,
  * so she can report it; an Offline error already lists what it tried.
  */
+const FINAL = new Set(["too_big", "invalid", "unsupported", "refused"]);
+
 function withModel(err: unknown, action: string, r: Resolution | undefined, signal?: AbortSignal): unknown {
   if (!r || signal?.aborted || !(err instanceof Error) || err.name === "Offline") return err;
   const code = err instanceof HostRefused ? ` [${err.code}]` : "";
-  return new Error(`Image ${action} failed with ${r.label}${code}: ${err.message}`, { cause: err });
+  // A request the model or its machine can never serve: retrying, now or later, only repeats it.
+  const final = err instanceof HostRefused && FINAL.has(err.code) ? " Retrying won't help: try another model, or tell them." : "";
+  return new Error(`Image ${action} failed with ${r.label}${code}: ${err.message}${final}`, { cause: err });
 }
 
 /** Shared by Pi and explicit refusal retries; no model-facing arguments are added. */
@@ -180,7 +184,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
     if (p.action === "create") {
       if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
       const size = p.size ?? (p.aspectRatio ? ratioSize(p.aspectRatio) : undefined);
-      request = { action: p.action, prompt: p.prompt!, tier: p.tier!, ...(size ? { size } : {}), ...common };
+      request = { action: p.action, prompt: p.prompt!, tier: p.tier ?? "quality", ...(size ? { size } : {}), ...common };
     } else request = { action: p.action, prompt: p.instruction!, image: await read(p.image!), ...(p.mask ? { mask: await read(p.mask), ...(p.replace ? { replace: true } : {}) } : {}), ...common };
   }
   const call = o.call();
@@ -202,7 +206,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   }
   signal?.throwIfAborted();
   const paths = o.files.save(out.images, portrait);
-  const part: ImagePart = { type: "image", paths, model: out.resolution.label, ...(p.action === "create" ? { tier: p.tier } : {}) };
+  const part: ImagePart = { type: "image", paths, model: out.resolution.label, ...(p.action === "create" ? { tier: p.tier ?? "quality" } : {}) };
   o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: `image.${p.action}`, resolution: out.resolution });
   return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}. Saved ${paths.join(", ")}.` },
     ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };

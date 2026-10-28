@@ -2578,7 +2578,7 @@ export class Models {
   /**
    * One call, on the task's models in turn: a model whose machine can't be
    * reached or is away (`isUnreachable`) is marked down and the next one
-   * tries. Any other failure is the call's own and is thrown as is. When none
+   * tries; so does one too big for its machine's GPU. Any other failure is the call's own and is thrown as is. When none
    * answers, throws Offline naming every model tried. The call records itself.
    */
   async callWithFallback<T>(task: Task, ctx: CallContext, need: Need, call: (r: Resolution) => Promise<T>, opts: { probeMs?: number } = {}): Promise<T> {
@@ -2600,6 +2600,12 @@ export class Models {
         this.reportUp(ctx.userId, r.endpoint.id);
         return out;
       } catch (err) {
+        // A model too big for its machine's GPU never fits there: the next one answers, and the machine stays up.
+        if (err instanceof HostRefused && err.code === "too_big") {
+          this.modelDown.set(r.offering.id, Date.now());
+          tried.push({ label: r.label, reason: "it's too big for that machine's GPU, so retrying won't help" });
+          continue;
+        }
         if (!isUnreachable(err)) throw err;
         // A host that answered but couldn't run this one model stays up for its others.
         if (err instanceof HostRefused && err.code === "model_unavailable") this.modelDown.set(r.offering.id, Date.now());

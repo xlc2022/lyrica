@@ -173,7 +173,11 @@ describe("image tool results (principles 1 and 4)", () => {
     const image = await s.files.read(part.paths[0]!);
     expect(image.portrait).toBe(false); expect(image.input.bytes).toEqual(png);
     await s.run({ action: "edit", instruction: "Add flowers", image: part.paths[0] });
-    expect(s.models.recentCalls(s.ada.id)).toHaveLength(2);
+    // A create without a tier is a quality one, rather than an error the model has to fix.
+    const plain = await s.run({ action: "create", prompt: "A pond" });
+    expect((plain.details as { image: { tier: string } }).image.tier).toBe("quality");
+    expect(s.heard.at(-1)?.body).toMatchObject({ quality: "high" });
+    expect(s.models.recentCalls(s.ada.id)).toHaveLength(3);
     expect(JSON.stringify(s.models.recentCalls(s.ada.id))).not.toMatch(/garden|flowers/);
   });
   it("names the host and recipe that made the image, by the recipe's name", async () => {
@@ -206,7 +210,7 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(imageParameters).toMatchObject({ type: "object", properties: { action: expect.anything(), prompt: expect.anything(), image: expect.anything() } });
     expect(imageParameters).not.toHaveProperty("anyOf");
     const s = await setup();
-    await expect(s.run({ action: "create" })).rejects.toThrow("create needs prompt and tier");
+    await expect(s.run({ action: "create" })).rejects.toThrow("create needs prompt: prompt is required");
     await expect(s.run({ action: "edit", image: "/photos-of-me/portrait.png" })).rejects.toThrow("edit needs instruction");
     expect(s.heard).toHaveLength(0);
   });

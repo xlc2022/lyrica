@@ -81,6 +81,16 @@ describe("image calls through the router (principles 1 and 2)", () => {
     expect(s.spare.server.images).toHaveLength(1);
     expect(s.heard).toEqual([]);
   });
+  it("passes over a recipe too big for its machine's GPU, and says retrying won't help when none fits", async () => {
+    const s = await setup();
+    s.workstation.server.imagesOff("too_big");
+    const out = await s.models.image(s.ctx({ localOnly: true }), { action: "create", prompt: "A garden", tier: "quality" });
+    expect(out.resolution.endpoint.name).toBe("3090");
+    const s2 = await setup();
+    s2.workstation.server.imagesOff("too_big");
+    s2.spare.server.imagesOff("too_big");
+    await expect(s2.models.image(s2.ctx({ localOnly: true }), { action: "create", prompt: "A garden", tier: "quality" })).rejects.toThrow(/too big for that machine's GPU, so retrying won't help/);
+  });
   it.each(["fast", "quality"] as const)("%s skips the other tier and falls back down the same list", async (tier) => {
     const s = await setup();
     s.workstation.server.useFor = tier === "fast" ? "quality" : "fast";
