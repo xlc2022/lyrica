@@ -2243,7 +2243,7 @@ forThread(t)  // { commandRules(), checks() (the project's; none outside one or 
 fileKey(t, path)  // one file under the same key for every thread that can write it: "<folder thread>:<path>" in a thread's folder or /shared, "grant:<path>" in a writable grant; else undefined
               // each read fresh; settings() is effective; fileNotes() takes (reads and clears) what the Files panel added and removed
 files(t): ThreadFiles                     // the Files panel, every call a fresh no-network sandbox over the thread's grants:
-  // roots(), list(dir), search(root, q), images(), read(path) → { stream, size, type }, upload(dir, name, bytes) → path,
+  // roots(), list(dir), search(root, q), images(), read(path, range?) → { stream, size, type } (only the range's bytes; RangeError past the end), upload(dir, name, bytes) → path,
   // mkdir(path), rename(from, to), remove(paths), zip(paths) → Readable. FilesRefused: outside the grants, a root, .lyrica, read-only.
 changes(userId): FileChanges              // her write and edit calls' changes, for removing turns
 checkouts(t): { name, path, kind }[]     // where its code lives, for the changes view: worktrees, clones, writable grants (docs/daemon.md "Changes")
