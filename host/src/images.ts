@@ -23,7 +23,7 @@ const BASE_DEFAULTS: Values = { negativePrompt: "", steps: 20, cfg: 1, sampler: 
 const IDLE_FREE_MS = 10 * 60_000;
 /** How long one clip may take: a 14B model on a 24 GB card can take most of an hour. */
 const VIDEO_TIMEOUT_MS = 2 * 60 * 60_000;
-const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "width", "height", "duration", "steps", "cfg", "seed"];
+const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "width", "height", "duration", "steps", "cfg", "seed", "aspectRatio"];
 
 const FIELDS: Record<"create" | "edit" | "upscale", string[]> = {
   create: ["recipe", "prompt", "negativePrompt", "width", "height", "count", "steps", "cfg", "seed", "references"],
@@ -38,6 +38,15 @@ function int(body: Record<string, unknown>, key: string, min: number, max: numbe
     throw invalid(`${key} must be ${step > 1 ? `a multiple of ${step} ` : "a whole number "}from ${min} to ${max}.`);
   }
   return v;
+}
+
+/** `width:height`, from 1:4 to 4:1. */
+function aspectRatio(v: unknown): number | undefined {
+  if (v === undefined) return undefined;
+  const m = typeof v === "string" ? /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(v) : null;
+  const r = m ? Number(m[1]) / Number(m[2]) : NaN;
+  if (!Number.isFinite(r) || r < 1 / 4 || r > 4) throw invalid("aspectRatio must be width:height, from 1:4 to 4:1.");
+  return r;
 }
 
 function num(body: Record<string, unknown>, key: string, min: number, max: number): number | undefined {
@@ -428,16 +437,18 @@ export class Images {
     values.cfg = num(body, "cfg", 0, 30) ?? values.cfg!;
     const uploads: Record<string, Buffer> = {};
     if (action === "animate") uploads.image = inputImage(body.image, "image");
-    // A request gives a multiple of the template's size step. Otherwise the recipe's size is used, snapped
-    // to the step; when animating, as the same area in the image's shape.
+    // Sizes are snapped to the template's size step. Without them the recipe's area is used, in the shape
+    // `aspectRatio` gives, or when animating the image's.
     const snap = (n: number) => Math.min(2048, Math.max(256, Math.round(n / spec.sizeStep) * spec.sizeStep));
-    const width = int(body, "width", 256, 2048, spec.sizeStep);
-    const height = int(body, "height", 256, 2048, spec.sizeStep);
+    const width = int(body, "width", 256, 2048);
+    const height = int(body, "height", 256, 2048);
+    const ratio = aspectRatio(body.aspectRatio);
+    if (ratio !== undefined && (width !== undefined || height !== undefined)) throw invalid("Give a size or an aspect ratio, not both.");
     const frame = uploads.image ? imageSize(uploads.image)! : null;
     const area = Number(values.width) * Number(values.height);
-    const shape = frame && width === undefined && height === undefined ? frame.width / frame.height : Number(values.width) / Number(values.height);
-    values.width = width ?? snap(height !== undefined ? height * shape : Math.sqrt(area * shape));
-    values.height = height ?? snap(width !== undefined ? width / shape : Math.sqrt(area / shape));
+    const shape = ratio ?? (frame && width === undefined && height === undefined ? frame.width / frame.height : Number(values.width) / Number(values.height));
+    values.width = snap(width ?? (height !== undefined ? height * shape : Math.sqrt(area * shape)));
+    values.height = snap(height ?? (width !== undefined ? width / shape : Math.sqrt(area / shape)));
     const duration = num(body, "duration", 1, spec.maxSeconds) ?? Math.min(Number(values.duration), spec.maxSeconds);
     Object.assign(values, videoValues(spec, duration, Number(values.width), Number(values.height), Number(values.steps)));
     values.seed = int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);

@@ -474,7 +474,7 @@ class Models {                                              // new Models(keyrin
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Videos (memory only; caller stores and records results)
   video(ctx, request: VideoRequest, { signal?, beforeSend? }?): Promise<{ video: GeneratedVideo; resolution }>
-  // VideoRequest { prompt; image?: ImageInput (its first frame); size?: { width, height } (multiples of 16, 256-2048); duration?: seconds, 1-15 }
+  // VideoRequest { prompt; image?: ImageInput (its first frame); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1-15 }
   // GeneratedVideo { bytes (H.264 MP4); type: "video/mp4"; width; height; frames; fps; duration; audio; seed?; poster: GeneratedImage }
   // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image) answers, so no clip
   // or first frame reaches a cloud model. POST /host/v1/videos/create with explicit fields only; two hours at most.
@@ -1415,7 +1415,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     custom entry keeps the source user message number, args and result;
     messages project it as a tool marker and optional image part, without
     PNG bytes. Saved task lists are unchanged.
-    `video` (`prompt`, optional `size` or `aspectRatio` and `duration`) and
+    `video` (`prompt`, optional `size` or `aspectRatio`, which goes to the host
+    as it is, and `duration`) and
     `animate` (also `image`, the first frame) make one clip through
     `Models.video` and save it with `ThreadImages.saveVideo`. With
     `ImageTools.background(make)` (lyricad's `ClipJobs`, daemon/src/clips.ts)

@@ -889,15 +889,17 @@ newer host made, read after a rollback).
 
   ```json
   { "recipe": "<id>", "prompt": "...", "negativePrompt": "...",
-    "image": "<base64>", "width": 1280, "height": 704, "duration": 5,
+    "image": "<base64>", "width": 1280, "height": 704, "aspectRatio": "16:9",
+    "duration": 5,
     "steps": 20, "cfg": 5.0, "seed": 1234 }
   ```
 
   One clip from a video recipe. Only `recipe` and `prompt` are required.
   With `image` (its first frame) the recipe must `animate`, without it
-  `video`. `width` and `height` are multiples of the recipe's `sizeStep`
-  from 256 to 2048; left out, they are the recipe's, or when animating
-  the same area in the image's shape. `duration` is seconds, 1 to the
+  `video`. `width` and `height` are 256 to 2048, snapped to the recipe's
+  `sizeStep`; left out, they are the recipe's area in the shape of
+  `aspectRatio` (`width:height`, 1:4 to 4:1, never with a size), or when
+  animating the image's, or else the recipe's own size. `duration` is seconds, 1 to the
   recipe's `maxSeconds` (default 5), made into the model's nearest frame
   count at or above it. `steps`, `cfg` and `seed` as for images; a
   template whose model takes no CFG (MiniMax H3, LTX-2.5 distilled)

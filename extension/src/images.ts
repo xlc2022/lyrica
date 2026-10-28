@@ -233,9 +233,9 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
  */
 async function executeVideo(o: ImageTools, p: ImageArgs, signal?: AbortSignal) {
   if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
-  const size = p.size ?? (p.aspectRatio ? ratioSize(p.aspectRatio) : undefined);
+  // An aspect ratio goes to the host as it is, which keeps the recipe's area and snaps to its size step.
   const request: VideoRequest = { prompt: p.prompt!, ...(p.action === "animate" ? { image: (await o.files.read(p.image!)).input } : {}),
-    ...(size ? { size } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }) };
+    ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }) };
   const call = o.call();
   const make = async (signal?: AbortSignal) => {
     let attempted: Resolution | undefined;

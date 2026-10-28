@@ -92,9 +92,8 @@ The owner chose, in order:
 - **Detailed clip prompts** (built, a guideline): she writes the prompt as
   a detailed shot (subject and action, motion, camera move and lens, light
   and mood, about 80 to 120 words) even from a few words.
-- **A quality option**: more sampling steps (about 40 to 50, against 20)
-  for about 12 to 15 minutes a clip, likely as `tier` fast and quality.
-  Waits on lunasa's same-seed comparison of 20 and 40 steps.
+- **A quality option** (dropped): lunasa's same-seed test showed more
+  steps double the time and don't help; the prompt matters more.
 - **Wan 2.2 A14B on a 24 GB card** (built): starters with QuantStack's
   Q5_K_M GGUF experts beside the fp8 ones, the same lightx2v 4-step LoRAs,
   UMT5 and VAE, on the existing 14B templates (a `.gguf` expert loads
@@ -138,5 +137,8 @@ The owner chose, in order:
   step.
 - 2026-10-28, the Q5 GGUF 14B starters built on
   `claude/project-thread-105ofj`, pinned from the hub's listing.
-- Next: the quality option if the owner keeps it, then the 14B (fp8 and
-  Q5), LTX-2.5 and H3 starters on a real GPU.
+- 2026-10-28, the owner dropped the quality option. Lunasa found her
+  default 16:9 clip refused (core's 1360×768 isn't a multiple of Wan
+  5B's 32); an aspect ratio now goes to the host, which keeps the
+  recipe's area in that shape and snaps sizes to its step.
+- Next: the 14B (fp8 and Q5), LTX-2.5 and H3 starters on a real GPU.

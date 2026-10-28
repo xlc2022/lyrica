@@ -196,7 +196,7 @@ describe("image tool results (principles 1 and 4)", () => {
     await s.run({ action: "animate", prompt: "She waves", image: "/photos-of-me/portrait.png" });
     expect(s.asked).toEqual([]);
     expect(s.workstation.server.videos).toEqual([
-      { recipe: "clip", prompt: "A fox in the snow", width: 1360, height: 768, duration: 5 },
+      { recipe: "clip", prompt: "A fox in the snow", aspectRatio: "16:9", duration: 5 },
       { recipe: "clip", prompt: "She waves", image: png.toString("base64") },
     ]);
     expect(s.models.recentCalls(s.ada.id).map(c => c.task)).toEqual(["video", "video"]);
