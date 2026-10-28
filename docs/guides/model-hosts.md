@@ -379,8 +379,9 @@ creates (bf16 diffusion model, int8 Qwen3-VL 8B encoder, about 24.3 GB
 of files), is 14.9 GB at its largest stage and takes turns the same way.
 It replaces Qwen-Image-Edit 2509 for edits: once installed, put it first
 in a column's Image edits list, and in its Images list too if you like
-its images. It takes no mask, so a masked edit goes to the next model in
-the list. Whisper on vLLM wants a memory share of about 0.1 of a 24 GB
+its images. A masked edit on it runs through LanPaint (a pinned ComfyUI
+node, GPL-3.0), which takes about two and a half times as long as a
+plain edit. Whisper on vLLM wants a memory share of about 0.1 of a 24 GB
 card.
 
 Krea 2 Turbo's weights are under the Krea 2 Community License: free for
@@ -561,8 +562,8 @@ workstation"). Note what goes wrong against each.
    download after you confirm), make an image, edit and upscale. Then
    install Krea 2 Turbo and make an image beside an unpinned chat model:
    the chat model unloads first and loads again on the next chat. Edit
-   an image with Qwen-Image 2.1 Turbo, then a masked edit, which should
-   skip it for the next model in the Image edits list. The
+   an image with Qwen-Image 2.1 Turbo, then a masked edit: only the
+   masked part should change. The
    ComfyUI workflow templates have never run, so expect node or input
    names in `host/workflows/` to need fixing.
 

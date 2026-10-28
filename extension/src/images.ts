@@ -117,7 +117,9 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "Use clear_rejected only when they ask to delete this thread's rejected images.",
         "Draw exact layouts and diagrams as HTML, SVG or Mermaid.",
         "For create, describe the subject and what it does, then setting, light, framing and medium (photo, painting, sketch); keep to what they asked, and ask for text in the image only when they want it, quoted.",
-        "For an edit, look at the image first; name the one change plainly and say what stays (face, body, pose, framing, light).",
+        "For an edit, look at the image first; name the one change plainly, say what goes, and say what stays (faces, body, pose, framing, light).",
+        "Make one big change per edit: for a new setting and a new outfit, edit twice, each from the last result. With a mask, say what replaces what is under it.",
+        "Don't pass the image being edited as a reference too.",
         "Check faces, hands and limbs in a result against the source; reject one that gets them wrong."],
       parameters: imageParameters,
       async execute(id, p, signal, _update, ctx) {

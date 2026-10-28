@@ -988,7 +988,8 @@ it's off.
     architecture. Deleting a recipe deletes only the parts Lyrica downloaded
     that no other recipe uses, and says which it keeps and why.
   - Quantized GGUF diffusion models run through one more pinned custom node
-    (ComfyUI-GGUF), so smaller GPUs can use them.
+    (ComfyUI-GGUF), so smaller GPUs can use them. Masked edits on
+    Qwen-Image 2.1 run through another (LanPaint).
 - **Upscaling** uses **SeedVR2**, through its pinned ComfyUI node
   (ComfyUI-SeedVR2_VideoUpscaler). It's an image model like the others: a
   recipe of its DiT (3B or 7B, at FP16, FP8 or GGUF) and its VAE, with

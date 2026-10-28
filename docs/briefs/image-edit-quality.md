@@ -71,5 +71,18 @@ card).
 - Next: after merge, the dev deployment's host needs an update and the starter
   installed, with the owner's yes, then her Image edits list in the
   Private column switched to it.
+- Trial (owner's ask, 2026-10-28): masked edits on Qwen-Image 2.1 through
+  the LanPaint ComfyUI node (2.2.0, pinned), following LanPaint's own
+  Qwen-Image 2.1 masked-edit example on the Turbo's sigmas. The dev
+  deployment compared it with 2509 on four masked edits: about 53 s
+  against 115 s, the same quality inside the mask, and the rest of the
+  image kept exactly (2509 redraws the whole frame). The owner chose to
+  keep it. The mask now grows by 24 pixels, as a faint frame was left at
+  an old outline on the mask's edge, and the result blends into the
+  original over 31 pixels (LanPaint's default 9 left a visible seam).
+- Done (2026-10-28): edit guidance from the deployment's tests. Saying
+  what goes fixed a leftover object; one big change per edit kept a
+  person's identity where a whole-scene change redrew faces; passing the
+  edited image as a reference too changed nothing.
 - Open: the edit size stays one megapixel; 2.1 can go to 2048 if the owner
   wants larger edits and the time it costs.
