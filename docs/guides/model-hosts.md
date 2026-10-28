@@ -11,12 +11,14 @@ and on Lyrica's side [docs/models.md](../models.md) ("Model hosts").
 **What has and hasn't been exercised.** CI installs the stack with
 `install.sh --no-gpu` on pull requests that touch `host/`, and checks its
 network layout on the running containers. The CUDA and ROCm images build
-only when the files that go into them change. Nothing has run on a GPU,
-with a real model, or against a real hub (the model host brief's handoff
-says so, and no later thread has reported otherwise). The voice and
-dictation choices below come from a benchmark the owner ran on a Windows machine
-with an RTX 3090, outside this stack. Expect the first real install to turn
-something up; the checklist at the end is for that.
+only when the files that go into them change. Real hardware so far: an
+RTX 3090 (chat and Wan 2.2 5B clips), the development deployment's host
+(Qwen-Image 2.1 edits) and a CMP 100-210 (chat, dictation, voices and
+stable-diffusion.cpp images, with starters from the hub); the briefs
+record each run. The voice and dictation choices below come from a
+benchmark the owner ran on a Windows machine with an RTX 3090, outside
+this stack. Expect a new machine to turn something up; the checklist at
+the end is for that.
 
 ## What a host is to Lyrica
 
@@ -311,10 +313,11 @@ The answer is `202` with the downloads; `GET /host/v1/downloads` follows
 them, and the dashboard shows the same. A sharded or multi-file model
 appears in the library once every file is here.
 
-Pin both (the pin button in the library, or `POST /host/v1/models/pin`)
-if the GPU has room, so neither waits for a load when someone speaks or
-listens. Together they take about 4.2 GB of VRAM on an NVIDIA host; on AMD
-or without CUDA the voice runs on the CPU, where Kokoro is quick enough.
+Pin both (**Pin** in the model's ⋯ in the library, or `POST
+/host/v1/models/pin`) if the GPU has room, so neither waits for a load
+when someone speaks or listens. Together they take about 4.2 GB of VRAM
+on an NVIDIA host; on AMD or without CUDA the voice runs on the CPU,
+where Kokoro is quick enough.
 Warm, on an RTX 3090, a 24-second reply is spoken in 0.7 s and transcribed
 in 0.25 s; on the CPU alone Kokoro takes about 1.3 s for a 5-second
 sentence. Unpinned, the host swaps models in and out, and the first use
@@ -439,11 +442,13 @@ or count, and never picks parts or LoRAs itself. Each list is an ordered
 fallback, and private threads only use local models. SeedVR2 recipes
 upscale. Before any cloud fallback, a portrait photo's cloud setting is
 checked. OpenAI setup and offline diagrams are in the [getting-started
-guide](getting-started.md#image-models). No real GPU image job has run
-yet: item 9 of the checklist below. ComfyUI runs only while an image
-recipe is loaded, and stops once none is. A recipe too big for the image
-GPU even with nothing else loaded, or whose template the host lacks (one
-a newer release made, after a rollback), is unsupported: `GET
+guide](getting-started.md#image-models). Qwen-Image 2.1 edits (masked
+too) and Z-Image and Krea 2 Q5 on stable-diffusion.cpp have made real
+images; other starters haven't yet: item 9 of the checklist below.
+ComfyUI runs only while an image recipe is loaded, and stops once none
+is. A recipe too big for the image GPU even with nothing else loaded,
+or whose template the host lacks (one a newer release made, after a
+rollback), is unsupported: `GET
 /host/v1/recipes` lists it with no actions and the reason, Lyrica never
 offers it for a task, and a job for it fails as too big. A host gets
 this with its next Update or `host/install.sh`.
@@ -606,9 +611,8 @@ workstation"). Note what goes wrong against each.
    install Krea 2 Turbo and make an image beside an unpinned chat model:
    the chat model unloads first and loads again on the next chat. Edit
    an image with Qwen-Image 2.1 Turbo, then a masked edit: only the
-   masked part should change. The
-   ComfyUI workflow templates have never run, so expect node or input
-   names in `host/workflows/` to need fixing.
+   masked part should change. Templates no real job has used yet may
+   need node or input names in `host/workflows/` fixed.
 
 Report what fails, with the `host-api` log lines, in the Operator docs
 thread.
