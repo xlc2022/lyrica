@@ -32,7 +32,7 @@ export async function imageRetryOptions(models: Models, workspace: Workspace, vi
     try { const read = await files.read(path); portrait ||= read.portrait; }
     catch { readable = false; }
   }
-  const need: Need = args.action === "create" ? { imageTier: args.tier } : args.action === "edit" ? { imageMask: !!args.mask } : {};
+  const need: Need = args.action === "create" ? { imageTier: args.tier ?? "quality" } : args.action === "edit" ? { imageMask: !!args.mask } : {};
   const noCloud = portrait && settings.photoCloudPolicy() === "never";
   const routing = ctx;
   const next = readable ? models.nextImageModel(routing, args.action, need, refusal.endpointId, noCloud) : undefined;

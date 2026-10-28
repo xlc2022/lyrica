@@ -86,15 +86,16 @@ describe("image routes (principles 1 and 2)", () => {
     const { rt, d, thread, call, dir } = await setup();
     try {
       const models = d.services!.models, actor = d.services!.users.get(rt.ada.id)!;
-      const refs = ["first", "second"].map(name => {
+      // A call that left out its tier was a quality one, so the next model skips the fast-only one.
+      const refs = ["first", "fast", "second"].map(name => {
         const ep = models.addEndpoint(actor, { name, kind: "local", baseUrl: `https://${name}.example/v1`, apiKey: "fake-key" });
         models.reportUp(actor.id, ep.id);
-        const offering = models.addModel(actor, ep.id, { modelId: "art", image: true });
+        const offering = models.addModel(actor, ep.id, { modelId: "art", image: true, ...(name === "fast" ? { useFor: "fast" as const } : {}) });
         return { ep, ref: { offeringId: offering.id } };
       });
       models.setColumnTask(actor.id, "private", "image.create", refs.map(r => r.ref));
       const view = d.services!.memory.openThreadView(actor.id, "private");
-      const args = { action: "create", prompt: "A garden", tier: "quality" };
+      const args = { action: "create", prompt: "A garden" };
       let parentId: string | null = null;
       const append = (piId: string, role: string, message: unknown) => {
         view.own.appendEntry(thread.id, { piId, role, text: "", data: { type: "message", id: piId, parentId, timestamp: new Date().toISOString(), message } });
@@ -106,7 +107,7 @@ describe("image routes (principles 1 and 2)", () => {
         content: [{ type: "text", text: "Image generation was refused (image_refusal)." }],
         details: { imageRefusal: { code: "image_refusal", offeringId: refs[0]!.ref.offeringId, endpointId: refs[0]!.ep.id } } });
       const path = `/api/u/${actor.id}/threads/private/${encodeURIComponent(thread.id)}/image-calls/refused`;
-      expect((await call("GET", path)).value).toMatchObject({ canEdit: true, userMessage: { text: "Make a garden." }, next: { offeringId: refs[1]!.ref.offeringId } });
+      expect((await call("GET", path)).value).toMatchObject({ canEdit: true, userMessage: { text: "Make a garden." }, next: { offeringId: refs[2]!.ref.offeringId } });
       expect((await call("GET", path, rt.sam.id)).status).toBe(401);
       expect((await call("GET", path.replace(actor.id, rt.sam.id), rt.sam.id)).status).toBe(404);
       append("later", "user", { role: "user", content: "Another message." });
