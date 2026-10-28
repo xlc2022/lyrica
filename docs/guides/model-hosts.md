@@ -443,6 +443,27 @@ guide](getting-started.md#image-models). No real GPU image job has run
 yet: item 9 of the checklist below. ComfyUI runs only while an image
 recipe is loaded, and stops once none is.
 
+### Video recipes
+
+ComfyUI hosts list five video starters: Wan 2.2 TI2V 5B (about 18 GB of
+files, fits a 24 GB card), Wan 2.2 T2V 14B and I2V 14B (about 38 GB
+each), LTX-2.5 Distilled (about 40 GB) and MiniMax H3 Turbo (about
+42 GB); H3 and LTX-2.5 fit a 96 GB card. A host on stable-diffusion.cpp
+doesn't list them. Lyrica doesn't use video recipes yet: installed, they
+sit on the host, and only `POST /host/v1/videos/create` makes a clip
+([host/API.md](../../host/API.md)). A clip takes from a few minutes to
+most of an hour and holds ComfyUI's GPU until it is done; with two GPUs,
+`COMFY_GPU` picks the one for images and videos.
+
+Wan 2.2 is Apache 2.0. LTX-2.5's repository is gated: installing it
+needs a Hugging Face token whose account accepted the LTX-2.x Community
+License (free under $10M yearly revenue), and its files are checked
+against the hub's checksums at download, since none are pinned. MiniMax
+H3's licence forbids using, hosting or running it, or using what it
+makes, in the US, the EU, the UK and South Korea: check where the host
+and its users are before installing it. The ComfyUI image gained a
+video-saving node, so the next Update or `host/install.sh` rebuilds it.
+
 ## More than one host
 
 Deploying a second host is the same install, with a name of its own, and a
