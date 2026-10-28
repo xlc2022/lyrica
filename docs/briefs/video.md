@@ -29,7 +29,7 @@ starters and says what each licence asks; the operator decides whether
 their use is allowed. H3 needs the owner's own check of where the host
 and its users are.
 
-## Part 1: the host (this PR)
+## Part 1: the host (#609, merged)
 
 1. **Video templates** in `host/workflows/`, one per model and mode:
    `does` holds `video` (from a prompt) and/or `animate` (from a first
@@ -58,18 +58,26 @@ and its users are.
 7. **Core** lists no video recipe as an offering until part 2, so a video
    recipe never shows as a chat or image model.
 
-## Part 2: Lyrica's side (next PR)
+## Part 2: Lyrica's side
 
-- The task `video` ("Videos") with its own list in each preset (H3 or
-  LTX-2.5 on the Blackwell preset, Wan 2.2 5B on the 3090), local only
-  for now.
-- A `video` tool (`create` from a prompt, `animate` from a workspace
-  image), within the tool budget, the same portrait rule as edits, and
-  the photos-of-you rule for a first frame.
-- Clips stored encrypted like images, with the poster as their
-  thumbnail; deleting a clip deletes its poster.
+- The task `video` ("Videos") with its own list in each preset; the
+  operator puts H3 or LTX-2.5 there on the Blackwell host and Wan 2.2 5B
+  on the 3090. Only a model host's recipe answers, so it is local only,
+  and it is not a thread task.
+- The `image` tool's `video` (from a prompt) and `animate` (from a
+  workspace image or a photo of you) actions, with an optional size or
+  ratio and seconds: no new tool (principle 8). A first frame never
+  leaves the operator's hosts, so the photos-of-you consent never asks.
+  She gets the clip's facts and its poster, so she sees its first frame.
+- Clips stored in the encrypted home as `videos/<uuid>.mp4`, with the
+  poster as their Files thumbnail; deleting a clip deletes its poster,
+  and renaming it moves the poster along. The thread's file route answers
+  byte ranges so the player can seek.
 - The chat shows the poster with a play button and plays the clip in the
-  browser's own player (DESIGN, "Files"); its home in docs/ux.md.
+  browser's own player; its home in docs/ux.md, "A clip the agent made".
+- Open: on a host with one GPU a clip holds it for minutes and chat
+  waits behind it. Nothing refuses or reorders that yet; her guidelines
+  say to make a clip only when asked.
 
 ## Not in scope
 
@@ -90,5 +98,11 @@ and its users are.
   node for node, but the first real clip of each starter is the check.
   The starter checksums come from CI's starters job; LTX-2.5's gated
   repository hides them, so its starter has none pinned.
-- Next: part 2. Open question for the owner: whether H3's licence allows
-  their use (see the table).
+- The owner keeps the H3 starter and decided its licence question.
+- 2026-10-28, first real run on the 3090 (Wan 2.2 5B, from main): 5 s at
+  1280×704, 121 frames, in 354 s at 22.0 GB peak; animating a 768² image
+  took its shape (960×960) in 372 s. The motion from a flat test image was
+  weak and its first frame darker than the rest.
+- 2026-10-28, part 2 built on `claude/project-thread-105ofj` (see above).
+- Next: the 14B and LTX-2.5 and H3 starters on a real GPU, and the
+  one-GPU question above.

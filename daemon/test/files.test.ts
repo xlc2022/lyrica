@@ -243,6 +243,34 @@ describe("the zip the panel streams", () => {
   });
 });
 
+/** A clip's thumbnail is the poster saved with it (ThreadImages.saveVideo): served, moved and deleted with it, never made. */
+describe("a clip's poster", () => {
+  it("is served as the clip's thumbnail, moves when the clip is renamed and goes when it is deleted", async () => {
+    const { ThreadFiles } = await import("@lyrica/core");
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-clip-thumbs-"));
+    try {
+      const box = { allow: (p: string) => p, run: async (argv: string[]) => {
+        const { spawnSync } = await import("node:child_process");
+        const r = spawnSync(argv[0]!, argv.slice(1));
+        return { code: r.status, signal: r.signal, stdout: r.stdout, stderr: r.stderr };
+      } };
+      const files = new ThreadFiles(box as unknown as Sandbox, [], () => {}, dir);
+      mkdirSync(join(dir, "videos")); mkdirSync(join(dir, ".lyrica", "thumbs", "videos"), { recursive: true });
+      writeFileSync(join(dir, "videos", "a.mp4"), "clip");
+      expect(await files.thumb(join(dir, "videos", "a.mp4"))).toBeUndefined();
+      writeFileSync(join(dir, ".lyrica", "thumbs", "videos", "a.mp4.png"), "poster");
+      expect(await files.thumb(join(dir, "videos", "a.mp4"))).toEqual({ bytes: Buffer.from("poster"), type: "image/png" });
+      await files.rename(join(dir, "videos"), join(dir, "clips"));
+      expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual(["clips"]);
+      expect((await files.thumb(join(dir, "clips", "a.mp4")))?.bytes.toString()).toBe("poster");
+      await files.remove([join(dir, "clips", "a.mp4")]);
+      expect(readdirSync(join(dir, ".lyrica", "thumbs", "clips"))).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 /** Thumbnails over the same stand-in, where ImageMagick is on the host; made in the sandbox, kept beside the thread's files, gone with them. */
 describe("the thumbnails the panel serves", () => {
   it("makes a small copy once, keeps it until the image changes, and deletes it with the image, however it goes", async () => {
@@ -277,15 +305,17 @@ describe("the thumbnails the panel serves", () => {
       writeFileSync(join(dir, "fake.png"), "push graphic-context\nviewbox 0 0 9 9\nfill red\nrectangle 0,0 8,8\npop graphic-context\n");
       await expect(files.thumb(join(dir, "fake.png"))).rejects.toThrow();
       expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual(["big.png.png"]);
-      // Deleting the image takes the copy along; so does renaming it.
+      // Deleting the image deletes the copy; renaming it moves the copy along.
       await files.remove([join(dir, "big.png")]);
       expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual([]);
       execFileSync("convert", ["-size", "40x40", "xc:blue", join(dir, "small.jpg")]);
       expect((await files.thumb(join(dir, "small.jpg")))?.type).toBe("image/jpeg");
       expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual(["small.jpg.jpg"]);
       await files.rename(join(dir, "small.jpg"), join(dir, "moved.jpg"));
+      expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual(["moved.jpg.jpg"]);
+      await files.remove([join(dir, "moved.jpg")]);
       expect(readdirSync(join(dir, ".lyrica", "thumbs"))).toEqual([]);
-      expect(readdirSync(dir).sort()).toEqual([".lyrica", "fake.png", "moved.jpg", "notes.txt"]);
+      expect(readdirSync(dir).sort()).toEqual([".lyrica", "fake.png", "notes.txt"]);
       // An image deleted or moved by a command, outside the panel: its copy goes when the panel next lists or asks.
       mkdirSync(join(dir, "art"));
       execFileSync("convert", ["-size", "40x40", "xc:red", join(dir, "art", "a.png")]);

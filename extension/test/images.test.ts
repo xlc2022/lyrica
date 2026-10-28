@@ -6,7 +6,7 @@ import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-work
 import { createAgentSession, DefaultResourceLoader, SessionManager, type ExtensionAPI, type ExtensionToolContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { ThreadImages, Workspace, type CallContext } from "@lyrica/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fakeImages, png } from "../../core/test/fake-images.ts";
+import { fakeImages, mp4, png } from "../../core/test/fake-images.ts";
 import { ASK_INSTEAD, createImageExtension, imageParameters, ratioSize, type ApprovalRequest } from "../src/index.ts";
 
 const dirs: string[] = [];
@@ -179,6 +179,32 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(s.heard.at(-1)?.body).toMatchObject({ quality: "high" });
     expect(s.models.recentCalls(s.ada.id)).toHaveLength(3);
     expect(JSON.stringify(s.models.recentCalls(s.ada.id))).not.toMatch(/garden|flowers/);
+  });
+  it("makes a clip from a prompt or a portrait's first frame on the host, keeps it in videos/ with its poster, and shows her the poster", async () => {
+    const s = await setup(); s.settings.setPhotoCloudPolicy("never");
+    s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.clip]);
+    const out = await s.run({ action: "video", prompt: "A fox in the snow", aspectRatio: "16:9", duration: 5 });
+    const part = (out.details as { video: { path: string } }).video;
+    expect(part).toMatchObject({ type: "video", model: "shared.workstation/Clip", width: 1280, height: 704, duration: 5.04, audio: false });
+    expect(part.path).toMatch(/^\/workspace\/videos\/[a-f\d-]+\.mp4$/);
+    const name = part.path.split("/").at(-1)!;
+    expect(readFileSync(join(s.folder, "videos", name))).toEqual(mp4);
+    expect(readFileSync(join(s.folder, ".lyrica", "thumbs", "videos", `${name}.png`))).toEqual(png);
+    expect(out.content).toContainEqual({ type: "text", text: expect.stringContaining("Made with Clip on workstation: 5.0 s at 1280×704.") });
+    expect(out.content).toContainEqual({ type: "image", data: png.toString("base64"), mimeType: "image/png" });
+    // A portrait's first frame goes only to a model host, so even Never lets it through, with no question.
+    await s.run({ action: "animate", prompt: "She waves", image: "/photos-of-me/portrait.png" });
+    expect(s.asked).toEqual([]);
+    expect(s.workstation.server.videos).toEqual([
+      { recipe: "clip", prompt: "A fox in the snow", width: 1360, height: 768, duration: 5 },
+      { recipe: "clip", prompt: "She waves", image: png.toString("base64") },
+    ]);
+    expect(s.models.recentCalls(s.ada.id).map(c => c.task)).toEqual(["video", "video"]);
+    expect(JSON.stringify(s.models.recentCalls(s.ada.id))).not.toMatch(/fox|waves/);
+    await expect(s.run({ action: "animate", prompt: "It runs" })).rejects.toThrow("animate needs image");
+    s.models.setColumnTask(s.ada.id, "general", "video", []);
+    await expect(s.run({ action: "video", prompt: "A fox" })).rejects.toThrow();
+    expect(s.heard).toEqual([]);
   });
   it("names the host and recipe that made the image, by the recipe's name", async () => {
     const s = await setup();

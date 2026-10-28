@@ -16,8 +16,11 @@ is 404; a missing login is 401.
   regular file in that thread's folder only, including `images/` results.
   Paths are relative or start with `/workspace/`. Grants, absolute host paths,
   traversal, symlinks and missing files are 404. Content-Type is sniffed from
-  bytes (images/PDF, otherwise text or binary), `Cache-Control` is `no-store`,
-  `nosniff` is set, and a sandbox CSP prevents executable content. Project
+  bytes (images, MP4, PDF, otherwise text or binary), `Cache-Control` is `no-store`,
+  `nosniff` is set, and a sandbox CSP prevents executable content. It
+  answers one byte range (`Range: bytes=a-b` or `bytes=a-`) with 206 and
+  `Content-Range`, and 416 for a range past the end, so a clip seeks in the
+  browser's player. Project
   and child threads use their workspace's shared folder, as their tools do.
 - `GET /api/u/:userId/photos-of-me` returns `PortraitPhoto[]` (`path`, `size`,
   `type`), sorted by path. `POST` accepts raw PNG/JPEG/WebP bytes, at most
@@ -771,8 +774,10 @@ documented in `daemon/src/api.ts`, "The Files panel".
   folder at most 320 px on a side (PNG, or JPEG for a JPEG), made by
   ImageMagick (`magick`, or `convert` on ImageMagick 6) inside the sandbox
   and kept under `.lyrica/thumbs` mirroring the image's path, remade when
-  the image is newer; a delete or rename takes the copies under its path
-  along. An image she deletes or moves with a command takes its copy too:
+  the image is newer; a delete deletes the copies under its path and a
+  rename moves them along. A clip (`.mp4`) has no copy made: its thumbnail
+  is the poster saved with it (`ThreadImages.saveVideo`), served while the
+  clip is there, and 404 when it has none. An image she deletes or moves with a command takes its copy too:
   asking for that copy deletes it, and listing the thread's folder or its
   images sweeps out every copy whose image is gone (`pruneThumbs`), so the
   panel's reload after each tool call keeps them clean. Only a file named `.png`, `.jpg`, `.jpeg`, `.gif` or `.webp`, decoded

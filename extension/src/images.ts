@@ -1,13 +1,15 @@
-// Principles 1, 2 and 8: one image tool, with portrait consent checked at each resolved provider.
+// Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { CloudModelForbidden, HostRefused, isRestricted, modelName, type CallContext, type ImageRequest, type Models, type Resolution,
-  type ThreadImages, type WorkspaceSettings } from "@lyrica/core";
+  type ThreadImages, type VideoRequest, type WorkspaceSettings } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ApprovalRequest } from "./workspace.ts";
 
 /** `picked`: her pick among attempts made earlier, shown again last; its model is the earlier part's, so empty here. */
 export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality"; picked?: true }
+/** A clip she made; its poster is the clip's thumbnail. */
+export interface VideoPart { type: "video"; path: string; model: string; width: number; height: number; duration: number; audio: boolean }
 export interface ImageTools {
   models: Models;
   call(): CallContext;
@@ -26,24 +28,25 @@ const path = (description: string) => Type.Optional(Type.String({ description })
  * refuses such a tool, and smaller models' chat templates show it no fields.
  */
 export const imageParameters = Type.Object({
-  action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected"] as const),
-  prompt: Type.Optional(Type.String({ description: "For create: what to draw, as one detailed paragraph." })),
+  action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected", "video", "animate"] as const),
+  prompt: Type.Optional(Type.String({ description: "For create: what to draw, as one detailed paragraph. For video and animate: what happens in the clip." })),
   tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality (the default)." })),
-  image: path("For edit, upscale and pick: the image's path."),
+  image: path("For edit, upscale, pick and animate: the image's path (animate's first frame)."),
   images: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For reject: the attempts to set aside." })),
   instruction: Type.Optional(Type.String({ description: "For edit: the change, and what stays the same. The edited image is image 1; references are image 2 and on." })),
   mask: path("For edit: a mask image's path."),
   replace: Type.Optional(Type.Boolean({ description: "For a masked edit: true when what's under the mask becomes something new; omit when it changes what's there." })),
   references: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For create and edit: reference images' paths." })),
   count: Type.Optional(Type.Integer({ minimum: 1, maximum: 4, description: "For create and edit: how many images." })),
-  size: Type.Optional(Type.Object({ width: Type.Integer(), height: Type.Integer() }, { description: "For create: exact pixels." })),
-  aspectRatio: Type.Optional(Type.String({ description: "For create: width:height (16:9); omit for recipe defaults." })),
+  size: Type.Optional(Type.Object({ width: Type.Integer(), height: Type.Integer() }, { description: "For create and video: exact pixels." })),
+  aspectRatio: Type.Optional(Type.String({ description: "For create and video: width:height (16:9); omit for recipe defaults." })),
+  duration: Type.Optional(Type.Number({ minimum: 1, maximum: 15, description: "For video and animate: seconds; omit for the model's default." })),
   scale: Type.Optional(Type.Number({ minimum: 1, maximum: 4, description: "For upscale: the factor." })),
   maxSize: Type.Optional(Type.Integer({ minimum: 256, maximum: 8192, description: "For upscale: the longest side's limit." })),
 });
 export type ImageArgs = Static<typeof imageParameters>;
 
-const NEEDS = { create: ["prompt"], edit: ["image", "instruction"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [] } as const;
+const NEEDS = { create: ["prompt"], edit: ["image", "instruction"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [], video: ["prompt"], animate: ["image", "prompt"] } as const;
 
 /** The fields an action needs, named in the error a model reads. */
 function needs(p: ImageArgs): void {
@@ -111,8 +114,8 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
     const rejects = new Set<string>();
     pi.on("agent_start", () => { refused = false; rejects.clear(); });
     pi.registerTool({
-      name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat). Reject sets attempts aside in images/rejected/; pick shows the one you keep last; clear_rejected deletes the rejected ones for good.",
-      promptSnippet: "create, edit or upscale images",
+      name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat). Reject sets attempts aside in images/rejected/; pick shows the one you keep last; clear_rejected deletes the rejected ones for good. Video makes a short clip from a prompt and animate one from an image; clips go to videos/ (shared/videos/) and can take many minutes.",
+      promptSnippet: "create, edit or upscale images, and make short clips",
       promptGuidelines: ["Write prompts from the conversation; inspect results and retry if needed.",
         "Before retrying, reject the attempts that miss; the chat folds them away. If an earlier attempt is best, pick it.",
         "Use clear_rejected only when they ask to delete this thread's rejected images.",
@@ -122,7 +125,8 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "Make one big change per edit: for a new setting and a new outfit, edit twice, each from the last result. With a mask, say what replaces what is under it.",
         "With a mask, set replace when the masked thing becomes something else (a painting into a mirror), and then write the instruction as the finished scene (a round mirror on a warm beige wall); leave it off to recolour or reshape what's there, which keeps the rest of it.",
         "Don't pass the image being edited as a reference too.",
-        "Check faces, hands and limbs in a result against the source; reject one that gets them wrong."],
+        "Check faces, hands and limbs in a result against the source; reject one that gets them wrong.",
+        "Make a clip only when they ask for one: it holds the model host's GPU for minutes. For video and animate, describe the motion and the camera in one paragraph; for animate, say what moves and what stays."],
       parameters: imageParameters,
       async execute(id, p, signal, _update, ctx) {
         if (refused) throw new Error(REFUSED_THIS_TURN);
@@ -145,11 +149,12 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
 const FINAL = new Set(["too_big", "invalid", "unsupported", "refused"]);
 
 function withModel(err: unknown, action: string, r: Resolution | undefined, signal?: AbortSignal): unknown {
+  const what = action === "video" || action === "animate" ? "Video" : `Image ${action}`;
   if (!r || signal?.aborted || !(err instanceof Error) || err.name === "Offline") return err;
   const code = err instanceof HostRefused ? ` [${err.code}]` : "";
   // A request the model or its machine can never serve: retrying, now or later, only repeats it.
   const final = err instanceof HostRefused && FINAL.has(err.code) ? " Retrying won't help: try another model, or tell them." : "";
-  return new Error(`Image ${action} failed with ${r.label}${code}: ${err.message}${final}`, { cause: err });
+  return new Error(`${what} failed with ${r.label}${code}: ${err.message}${final}`, { cause: err });
 }
 
 /** Shared by Pi and explicit refusal retries; no model-facing arguments are added. */
@@ -170,6 +175,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
     const part: ImagePart = { type: "image", paths: [path], model: "", picked: true };
     return { content: [{ type: "text" as const, text: `Picked ${path}; the chat shows it last.` }], details: { image: part } };
   }
+  if (p.action === "video" || p.action === "animate") return executeVideo(o, p, signal);
   let portrait = false;
   const read = async (path: string) => {
     const result = await o.files.read(path); portrait ||= result.portrait;
@@ -210,4 +216,27 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: `image.${p.action}`, resolution: out.resolution });
   return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}. Saved ${paths.join(", ")}.` },
     ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };
+}
+
+/**
+ * A clip from the thread's Videos list: only a model host makes one, so nothing here goes to a cloud model and a
+ * portrait first frame needs no consent. The poster comes back as an image, so she can see its first frame.
+ */
+async function executeVideo(o: ImageTools, p: ImageArgs, signal?: AbortSignal) {
+  if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
+  const size = p.size ?? (p.aspectRatio ? ratioSize(p.aspectRatio) : undefined);
+  const request: VideoRequest = { prompt: p.prompt!, ...(p.action === "animate" ? { image: (await o.files.read(p.image!)).input } : {}),
+    ...(size ? { size } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }) };
+  const call = o.call();
+  let attempted: Resolution | undefined;
+  let out;
+  try { out = await o.models.video(call, request, { signal, beforeSend: async r => { attempted = r; if (!o.enabled()) throw new Error("Images are off in this thread."); } }); }
+  catch (err) { throw withModel(err, p.action, attempted, signal); }
+  signal?.throwIfAborted();
+  const path = o.files.saveVideo(out.video);
+  const v = out.video;
+  const part: VideoPart = { type: "video", path, model: out.resolution.label, width: v.width, height: v.height, duration: v.duration, audio: v.audio };
+  o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: "video", resolution: out.resolution });
+  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}: ${v.duration.toFixed(1)} s at ${v.width}×${v.height}${v.audio ? ", with sound" : ""}. Saved ${path}. Its first frame:` },
+    { type: "image" as const, data: Buffer.from(v.poster.bytes).toString("base64"), mimeType: v.poster.type }], details: { video: part } };
 }

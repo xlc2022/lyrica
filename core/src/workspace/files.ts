@@ -123,9 +123,10 @@ export class ThreadFiles {
    * A small copy of an image in the thread's folder, at most THUMB_BOX on a
    * side, made by ImageMagick inside the sandbox and kept under
    * `.lyrica/thumbs/<its path>.png` (or `.jpg` for a JPEG) until the image
-   * is newer; a deleted or renamed image takes its copy with it, at once
-   * from the panel, otherwise when its copy is next asked for or the panel
-   * next lists the thread's folder (pruneThumbs). Only a
+   * is newer; a renamed image takes its copy along, and a deleted one
+   * deletes it, at once from the panel, otherwise when its copy is next
+   * asked for or the panel next lists the thread's folder (pruneThumbs). A
+   * clip (`.mp4`) has the poster it was made with, or none. Only a
    * file named like an image, decoded as what its name says (a `.png`
    * holding something else fails rather than runs), within memory, size
    * and time limits. Without ImageMagick, for a file outside the thread's
@@ -136,6 +137,11 @@ export class ThreadFiles {
     const p = this.allow(path, false);
     const cache = this.thumbPath(p);
     const ext = posix.extname(p).slice(1).toLowerCase();
+    // A clip's thumbnail is its poster, kept when it was made (ThreadImages.saveVideo); none is made here.
+    if (cache && ext === "mp4") {
+      const r = await this.box.run(["sh", "-c", 'test -f "$1" && test -f "$2" && cat -- "$2"', "sh", p, `${cache}.png`], { timeoutMs: THUMB_TIMEOUT_MS });
+      return r.code === 0 && r.stdout.length ? { bytes: r.stdout, type: "image/png" } : undefined;
+    }
     if (!cache || !IMAGE_EXTENSIONS.includes(ext)) return undefined;
     const jpeg = ext === "jpg" || ext === "jpeg";
     const coder = jpeg ? "jpeg" : ext;
@@ -201,7 +207,11 @@ export class ThreadFiles {
   async rename(from: string, to: string): Promise<void> {
     const f = this.inside(from);
     const t = this.inside(to);
-    await this.file(["sh", "-c", 'if [ -e "$2" ] || [ -L "$2" ]; then echo "$2 is already there" >&2; exit 1; fi; mv -T -- "$1" "$2" && shift 2 && rm -rf -- "$@"', "sh", f, t, ...this.thumbsOf([f])]);
+    // Thumbnails move with it: a clip's poster can't be made again (ThreadImages.saveVideo). One with nowhere to go is deleted.
+    const moved = this.thumbsOf([t]);
+    const pairs = this.thumbsOf([f]).flatMap((c, i) => [c, moved[i] ?? ""]);
+    await this.file(["sh", "-c", 'if [ -e "$2" ] || [ -L "$2" ]; then echo "$2 is already there" >&2; exit 1; fi; mv -T -- "$1" "$2" && shift 2 && ' +
+      'while [ $# -gt 1 ]; do if [ -e "$1" ]; then rm -rf -- "$2"; { [ -n "$2" ] && mkdir -p -- "$(dirname -- "$2")" && mv -T -- "$1" "$2"; } || rm -rf -- "$1"; fi; shift 2; done', "sh", f, t, ...pairs]);
     this.note("removed", [f]);
     this.note("added", [t]);
     this.origins.moved?.(f, t);

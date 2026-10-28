@@ -26,7 +26,7 @@ export type Column = "private" | "general";
 export type Task =
   | "chat" | "code" | "subagent.cheap" | "subagent.strong" | "compaction"
   | "title" | "watching" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
-  | "vision" | "image.create" | "image.edit" | "image.upscale" | "speech.transcribe" | "speech.speak";
+  | "vision" | "image.create" | "image.edit" | "image.upscale" | "video" | "speech.transcribe" | "speech.speak";
 /** The tasks a thread can choose models for. Compaction isn't one: Pi compacts with the thread's chat model. */
 export const THREAD_TASKS = ["chat", "code", "subagent.cheap", "subagent.strong", "title", "watching", "image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
@@ -200,7 +200,7 @@ export interface CredentialsChange { save: boolean }
 /** What a model can do: discovered where the endpoint says, else set by hand. */
 export interface Capabilities {
   useFor?: "fast" | "quality" | "both";
-  contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean; upscale?: boolean;
+  contextWindow?: number; tools?: boolean; vision?: boolean; embedding?: boolean; image?: boolean; edit?: boolean; upscale?: boolean; video?: boolean; animate?: boolean;
   /** The thinking levels it offers, besides off. */
   reasoning?: ("low" | "medium" | "high")[];
   /** Speech to text (Dictation). */
@@ -1253,9 +1253,12 @@ export interface ImageRetryOptions { next?: { offeringId: string; label: string 
 /** GET …/image-calls/:toolCallId: current retry choices. POST { next?: boolean }: retry the stored call. */
 /** `picked`: her pick among her attempts (the image tool's pick), shown again last; `model` is then empty, the earlier part has it. */
 export interface ImagePart { type: "image"; paths: string[]; model: string; tier?: "fast" | "quality"; picked?: true }
+/** A clip she made, played from `path`; its poster is its thumbnail (`…/files/thumb`). `duration` is seconds. */
+export interface VideoPart { type: "video"; path: string; model: string; width: number; height: number; duration: number; audio: boolean }
 
 export type MessagePart =
   | ImagePart
+  | VideoPart
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
   /** `root`: a run_as_root card's script, hash and command, as the tool read them on the machine. */
@@ -1576,7 +1579,7 @@ export type ThreadEvent =
   | { type: "tool_call"; toolCallId: string; name: string }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
   /** `result` is short: the first lines of the tool's output. */
-  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart; imageRefusal?: ImageRefusal; root?: RootStep }
+  | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart; video?: VideoPart; imageRefusal?: ImageRefusal; root?: RootStep }
   /** Memories recalled for this turn, automatically or with recall/read_memory. */
   | { type: "recall"; ids: string[] }
   /** Notes she saved. */

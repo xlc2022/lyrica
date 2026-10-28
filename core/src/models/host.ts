@@ -126,8 +126,9 @@ export function hostOrigin(address: string): string {
  * checks the host's key against the pin. No session resumption, so every
  * connection presents and checks a certificate.
  */
-function pinnedAgent(id: Identity, pin: string): Agent {
+function pinnedAgent(id: Identity, pin: string, opts: { headersTimeout?: number } = {}): Agent {
   return quiet(new Agent({
+    ...opts,
     // undici can emit "error" on a client while it ends a body cut off mid-stream. The request
     // still fails through its own promise; with no listener the event would end the process.
     factory: (origin, opts) => quiet(new Pool(origin, { ...opts, factory: (o, c) => quiet(new Client(o, c)) })),
@@ -185,6 +186,9 @@ const AWAY = new Set(["paused", "busy", "restarting", "unavailable", "unpaired"]
  */
 export function hostFetch(id: Identity, host: { addresses: string[]; pin: string }, away: (reason: string, code: string) => void, reached?: (origin: string) => void): typeof fetch {
   const dispatcher = pinnedAgent(id, host.pin);
+  // An image or video job answers only when it is done, which can be past undici's 5 minutes for the first byte (a clip
+  // takes minutes): those wait as long as their caller's own signal allows.
+  const jobs = pinnedAgent(id, host.pin, { headersTimeout: 0 });
   const origins = host.addresses.map(hostOrigin);
   return (async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
@@ -196,7 +200,8 @@ export function hostFetch(id: Identity, host: { addresses: string[]; pin: string
       for (let attempt = 0; attempt < attempts; attempt++) {
         try {
           // undici's own fetch, so the dispatcher and the fetch are the same version.
-          const res = (await undiciFetch(new URL(url.pathname + url.search, origin), { ...(init as object), dispatcher })) as unknown as Response;
+          const job = /^\/host\/v1\/(images|videos)\//.test(url.pathname) && method === "POST";
+          const res = (await undiciFetch(new URL(url.pathname + url.search, origin), { ...(init as object), dispatcher: job ? jobs : dispatcher })) as unknown as Response;
           reached?.(origin);
           const err = await hostError(res);
           if (err && AWAY.has(err.code)) away(err.message, err.code);
