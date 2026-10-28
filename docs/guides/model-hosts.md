@@ -490,8 +490,17 @@ second pairing. Then:
   shared; a host only one user may reach is personal, and no other user
   sees its addresses or models.
 - **One hub token** saved in Lyrica serves downloads on every host.
-- A host **can be paired with several Lyrica servers** at once; its
-  dashboard lists them.
+- A host **can be paired with several Lyrica servers** at once, each
+  with its own code; its dashboard lists them and revokes any one. Every
+  paired server has the same rights: it sees the same models, recipes and
+  GPUs, and can load, pin, pause, change settings, delete downloads and
+  update the host. Only the dashboard makes codes and revokes servers.
+  Their jobs share one queue on the same GPUs, so one busy server slows
+  the others, and a pause from any of them pauses the host for all.
+  **Update** moves the host to the asking server's release, so keep the
+  servers on the same release. Each Lyrica keeps its own lists, users and
+  shared or personal setting, and neither sees the other's threads; the
+  dashboard's Usage counts all servers together.
 
 ## Operating a host
 
