@@ -230,7 +230,10 @@ per host, and Lyrica's router filters create tiers by it.
   Distilled, MiniMax H3 Turbo) are for ComfyUI hosts only. Wan 2.2 is
   Apache 2.0. LTX-2.5's repository is gated: installing it needs a
   Hugging Face token whose account accepted its licence, the LTX-2.x
-  Community License (free under $10M yearly revenue). MiniMax H3's licence
+  Community License (free under $10M yearly revenue). The hub hides a
+  gated repository's checksums, so that starter has none pinned: the host
+  checks each file against the hub's checksum when it downloads it with the
+  token. MiniMax H3's licence
   forbids using, hosting or running it, or using what it makes, in the US,
   the EU, the UK and South Korea; the operator checks where the host and
   its users are before installing it. H3 and LTX-2.5 fit a 96 GB card;

@@ -88,6 +88,7 @@ and its users are.
   video recipes out of its offerings until part 2.
 - Not yet run on a real GPU: the workflows follow ComfyUI's templates
   node for node, but the first real clip of each starter is the check.
-  The starter checksums come from CI's starters job.
+  The starter checksums come from CI's starters job; LTX-2.5's gated
+  repository hides them, so its starter has none pinned.
 - Next: part 2. Open question for the owner: whether H3's licence allows
   their use (see the table).
