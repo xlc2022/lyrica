@@ -69,3 +69,29 @@ describe("a clip made in the background, through lyricad", () => {
     expect(page.messages.map((m) => [m.role, m.parts[0]?.type])).toEqual([["assistant", "video"], ["assistant", "text"]]);
   });
 });
+
+describe("a forgotten thread's clip", () => {
+  it("stops before it is saved, so nothing is written into the forgotten folder", async () => {
+    const rt = await runtime();
+    const dm = await daemon(rt);
+    await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
+    const ada = await login(dm.base, "ada", "pw");
+    const thread = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "general", title: "Fox" })).body;
+    const other = (await ada.post<ThreadSummary>(`/api/u/${rt.ada.id}/threads`, { pool: "general", title: "Cat" })).body;
+    const signals: AbortSignal[] = [];
+    let saved = 0;
+    // As the image tool's job does: wait for the host, then save only if not stopped.
+    let answer!: () => void;
+    const host = new Promise<void>((r) => { answer = r; });
+    const make = async (signal: AbortSignal): Promise<ClipMade> => { signals.push(signal); await host; signal.throwIfAborted(); saved++; return { text: "ready", video }; };
+    const clips = dm.d.services!.clips;
+    clips.start({ userId: rt.ada.id, pool: "general", threadId: thread.id }, make);
+    clips.start({ userId: rt.ada.id, pool: "general", threadId: other.id }, make);
+    expect((await ada.del(`/api/u/${rt.ada.id}/threads/general/${enc(thread.id)}`)).status).toBe(200);
+    expect(signals.map((s) => s.aborted)).toEqual([true, false]);
+    answer();
+    await settled();
+    expect(saved).toBe(1);
+    expect(clips.count(rt.ada.id, "general", thread.id)).toBe(0);
+  });
+});

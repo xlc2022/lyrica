@@ -34,8 +34,15 @@ export class ClipJobs {
     return [...this.running.values()].filter((t) => t.userId === userId && t.pool === pool && t.threadId === threadId).length;
   }
 
-  /** Stops a user's clips (Lock), or everyone's (shutdown). Their threads are told they stopped. */
-  stop(reason: string, userId?: string): void {
-    for (const [controller, t] of this.running) if (!userId || t.userId === userId) controller.abort(reason);
+  /**
+   * Stops a user's clips (Lock), some of their threads' (forgotten), or everyone's (shutdown), before the
+   * clip is saved. Their threads are told they stopped; a forgotten one hears nothing.
+   */
+  stop(reason: string, userId?: string, threads?: { pool: Pool; ids: string[] }): void {
+    for (const [controller, t] of this.running) {
+      if (userId && t.userId !== userId) continue;
+      if (threads && (t.pool !== threads.pool || !threads.ids.includes(t.threadId))) continue;
+      controller.abort(reason);
+    }
   }
 }

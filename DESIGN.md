@@ -1009,8 +1009,8 @@ it's off.
   `animate` actions make a clip (no new tool, principle 8) in the
   background: the call returns at once, so her turn ends and the chat goes
   on, and when the clip is made it shows in the thread as hers and wakes
-  an idle thread to say so (a failure is a notice that wakes it too; Lock
-  or a shutdown stops it). It is stored
+  an idle thread to say so (a failure is a notice that wakes it too; Lock,
+  a shutdown or deleting the thread stops it). It is stored
   in the thread's `videos/` with its poster as its thumbnail, so deleting
   it deletes the poster. The chat shows the poster with a play button and
   plays the clip in the browser's own player. Only model hosts make clips,

@@ -670,8 +670,8 @@ words) even from a few words. A clip is made in the background (lyricad's
 clip jobs): the call reads the first frame and returns, she says it's on its
 way and ends her reply, and when it is made the thread gets it as her
 message and an idle thread wakes to say it's ready; a failure comes as a
-notice and wakes it too. Lock and a shutdown stop it, and wake
-nothing. A clip comes only
+notice and wakes it too. Lock, a shutdown and deleting the thread stop it
+before it is saved, and wake nothing. A clip comes only
 from the Videos task's list, and only a model host makes one, so a first
 frame never reaches a cloud model and a portrait needs no consent.
 `ThreadImages.saveVideo` writes it as `videos/<uuid>.mp4` (a project chat's
