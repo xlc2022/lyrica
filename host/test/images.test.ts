@@ -249,9 +249,9 @@ describe("recipes", () => {
       { role: "diffusion", slot: null, file: "q.safetensors", added: false },
       { role: "text_encoder", slot: "qwen3vl_8b", file: "vl.safetensors", added: false },
       { role: "vae", slot: null, file: "v.safetensors", added: false },
-    ], [], { negativePrompt: "", ...starter.defaults, prompt: "x", count: 2, seed: 1, image: "lyrica-image.png", reference1: "lyrica-ref.png" });
+    ], [], { negativePrompt: "", ...starter.defaults, prompt: "x", count: 2, seed: 1, image: "lyrica-image.png", reference1: "lyrica-ref.png", seen: 1 });
     expect(qi21.load_clip).toEqual({ class_type: "CLIPLoader", inputs: { clip_name: "vl.safetensors", type: "qwen_image" } });
-    expect(qi21.encode!.inputs).toMatchObject({ "images.image_1": ["load", 0], "images.image_2": ["ref1", 0], resolution: 1024 });
+    expect(qi21.encode!.inputs).toMatchObject({ "images.image_1": ["seen", 0], "images.image_2": ["ref1", 0], resolution: 1024 });
     expect(qi21.encode!.inputs).not.toHaveProperty("images.image_3");
     expect(qi21.sigmas!.inputs.sigmas).toMatch(/^1\.0, .*, 0$/);
     expect(qi21.batch!.inputs).toEqual({ samples: ["encode", 2], amount: 2 });
@@ -260,7 +260,7 @@ describe("recipes", () => {
     expect(Object.keys(qi21)).not.toContain("inpaint");
     expect(JSON.stringify(qi21)).not.toContain("$");
     // A masked edit goes through LanPaint at about a megapixel, and only the masked part goes back into the original.
-    const qi21Masked = fill(TEMPLATES.get("qwen-image-2.1")!, qi21Parts, [], { negativePrompt: "", ...starter.defaults, prompt: "x", count: 2, seed: 1, image: "lyrica-image.png", mask: "lyrica-mask.png" });
+    const qi21Masked = fill(TEMPLATES.get("qwen-image-2.1")!, qi21Parts, [], { negativePrompt: "", ...starter.defaults, prompt: "x", count: 2, seed: 1, image: "lyrica-image.png", mask: "lyrica-mask.png", seen: 1 });
     // The mask grows a little, so the old outline at its edge is redrawn too.
     expect(qi21Masked.grown!.inputs).toMatchObject({ mask: ["mask", 0], expand: 24 });
     expect(qi21Masked.masked!.inputs).toMatchObject({ image: ["fit", 0], mask: ["grown", 0] });
@@ -271,7 +271,12 @@ describe("recipes", () => {
     // The merge keeps as many images as the original has, so a batch repeats it.
     expect(qi21Masked.originals!.inputs).toEqual({ image: ["load", 0], amount: 2 });
     expect(qi21Masked.save!.inputs.images).toEqual(["merged", 0]);
+    expect(qi21Masked.encode!.inputs["images.image_1"]).toEqual(["seen", 0]);
     expect(JSON.stringify(qi21Masked)).not.toContain("$");
+    // Replacing the masked part: the encoder doesn't see the image, so the old object's shape doesn't come back.
+    const qi21Replace = fill(TEMPLATES.get("qwen-image-2.1")!, qi21Parts, [], { negativePrompt: "", ...starter.defaults, prompt: "x", count: 1, seed: 1, image: "lyrica-image.png", mask: "lyrica-mask.png" });
+    expect(qi21Replace.encode!.inputs).not.toHaveProperty("images.image_1");
+    expect(qi21Replace.masked!.inputs.image).toEqual(["fit", 0]);
 
     const krea = fill(TEMPLATES.get("krea2")!, [
       { role: "diffusion", slot: null, file: "k.safetensors", added: false },

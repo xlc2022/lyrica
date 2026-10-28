@@ -6,7 +6,7 @@ const QUALITY = { fast: "low", quality: "high" } as const;
 type Common = { count?: number; references?: ImageInput[] };
 export type ImageRequest =
   | (Common & { action: "create"; prompt: string; tier: "fast" | "quality"; size?: { width: number; height: number } })
-  | (Common & { action: "edit"; prompt: string; image: ImageInput; mask?: ImageInput })
+  | (Common & { action: "edit"; prompt: string; image: ImageInput; mask?: ImageInput; replace?: boolean })
   | { action: "upscale"; image: ImageInput; scale?: number; maxSize?: number };
 export interface GeneratedImage { bytes: Uint8Array; type: "image/png"; width: number; height: number; seed?: number }
 export interface Target {
@@ -155,7 +155,7 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal):
   const fields = { recipe: t.modelId.slice(7),
     ...(r.action === "upscale" ? { image: base64(r.image), ...(r.scale === undefined ? {} : { scale: r.scale }), ...(r.maxSize === undefined ? {} : { maxSize: r.maxSize }) } : {
       prompt: r.prompt, ...(r.count === undefined ? {} : { count: r.count }), ...(r.references ? { references: r.references.map(base64) } : {}),
-      ...(r.action === "create" ? r.size ?? {} : { image: base64(r.image), ...(r.mask ? { mask: base64(r.mask) } : {}) }),
+      ...(r.action === "create" ? r.size ?? {} : { image: base64(r.image), ...(r.mask ? { mask: base64(r.mask), ...(r.replace ? { replace: true } : {}) } : {}) }),
     }) };
   const out = await answer(t, `/host/v1/images/${r.action}`, JSON.stringify(fields), { "content-type": "application/json" }, signal);
   if (!Array.isArray(out.images) || !out.images.length) throw new HostRefused("invalid", "image host returned no images");

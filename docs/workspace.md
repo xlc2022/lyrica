@@ -639,12 +639,14 @@ ratio, count and references; her guidelines say to write the prompt as one
 detailed paragraph (subject and action, then setting, light, framing and
 medium), to keep to what was asked and to ask for text in the image only
 when wanted. Edit takes an image path, instruction, optional
-mask and references; the instruction gives the change and what stays the
+mask (with `replace` when what's under it becomes something new) and
+references; the instruction gives the change and what stays the
 same, calling the edited image image 1 and references image 2 and on, and
 her guidelines say to look at the image first, to say what goes as well
 as what stays, to make one big change per edit (a new setting and a new
 outfit are two edits), with a mask to say what replaces what is under
-it, not to pass the edited image as a reference too, and to check faces,
+it, to set `replace` and write the instruction as the finished scene when
+the masked thing becomes something else, not to pass the edited image as a reference too, and to check faces,
 hands and limbs in a result against the source. Upscale takes an image, optional
 scale and maximum size.
 Ratios become a canvas near one megapixel, on a 16-pixel grid; GPT Image 1

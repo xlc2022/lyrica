@@ -33,6 +33,7 @@ export const imageParameters = Type.Object({
   images: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For reject: the attempts to set aside." })),
   instruction: Type.Optional(Type.String({ description: "For edit: the change, and what stays the same. The edited image is image 1; references are image 2 and on." })),
   mask: path("For edit: a mask image's path."),
+  replace: Type.Optional(Type.Boolean({ description: "For a masked edit: true when what's under the mask becomes something new; omit when it changes what's there." })),
   references: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For create and edit: reference images' paths." })),
   count: Type.Optional(Type.Integer({ minimum: 1, maximum: 4, description: "For create and edit: how many images." })),
   size: Type.Optional(Type.Object({ width: Type.Integer(), height: Type.Integer() }, { description: "For create: exact pixels." })),
@@ -119,6 +120,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "For create, describe the subject and what it does, then setting, light, framing and medium (photo, painting, sketch); keep to what they asked, and ask for text in the image only when they want it, quoted.",
         "For an edit, look at the image first; name the one change plainly, say what goes, and say what stays (faces, body, pose, framing, light).",
         "Make one big change per edit: for a new setting and a new outfit, edit twice, each from the last result. With a mask, say what replaces what is under it.",
+        "With a mask, set replace when the masked thing becomes something else (a painting into a mirror), and then write the instruction as the finished scene (a round mirror on a warm beige wall); leave it off to recolour or reshape what's there, which keeps the rest of it.",
         "Don't pass the image being edited as a reference too.",
         "Check faces, hands and limbs in a result against the source; reject one that gets them wrong."],
       parameters: imageParameters,
@@ -179,7 +181,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
       if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
       const size = p.size ?? (p.aspectRatio ? ratioSize(p.aspectRatio) : undefined);
       request = { action: p.action, prompt: p.prompt!, tier: p.tier!, ...(size ? { size } : {}), ...common };
-    } else request = { action: p.action, prompt: p.instruction!, image: await read(p.image!), ...(p.mask ? { mask: await read(p.mask) } : {}), ...common };
+    } else request = { action: p.action, prompt: p.instruction!, image: await read(p.image!), ...(p.mask ? { mask: await read(p.mask), ...(p.replace ? { replace: true } : {}) } : {}), ...common };
   }
   const call = o.call();
   let attempted: Resolution | undefined;

@@ -817,7 +817,13 @@ the action is `invalid`.
   Qwen-Image-Edit, three for Qwen-Image 2.1. Qwen-Image 2.1 runs a masked
   edit through LanPaint's sampler on an image of about one megapixel, with
   the mask grown by 24 pixels, then puts only that part back into the
-  original at its own size, blended over 31 pixels at its edge.
+  original at its own size, blended over 31 pixels at its edge. With a
+  mask, `"replace": true` says the masked part becomes something new: its
+  text encoder then gets only the prompt and references, not the image,
+  so the old object's outline doesn't come back as a panel. Without it the
+  encoder sees the image, which keeps the rest of a thing being recoloured
+  or reshaped. Other templates ignore it; `replace` without a mask is
+  `invalid`.
 - `POST /host/v1/images/upscale`
 
   ```json

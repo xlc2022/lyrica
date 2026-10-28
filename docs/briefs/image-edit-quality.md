@@ -84,5 +84,14 @@ card).
   what goes fixed a leftover object; one big change per edit kept a
   person's identity where a whole-scene change redrew faces; passing the
   edited image as a reference too changed nothing.
+- Done (owner's ask, 2026-10-28): a masked edit could leave a lighter
+  panel where the mask was. The dev deployment showed it is the model
+  redrawing the old object's outline, more strongly with more steps,
+  thinking or Lambda, because the encoder sees the original. Prompt First
+  and a softer mask edge changed nothing. Leaving the image out of the
+  encoder removed the panel and, with the instruction written as the
+  finished scene, gave the best result, but it redraws a thing being
+  recoloured (a coat's cut, the clothes beside it). So it's a choice per
+  edit: `replace` for a new object, off for changing one.
 - Open: the edit size stays one megapixel; 2.1 can go to 2048 if the owner
   wants larger edits and the time it costs.

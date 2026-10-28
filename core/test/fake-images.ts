@@ -29,7 +29,7 @@ export async function fakeImages() {
       const action = path.split("/").at(-1)!;
       const body = JSON.parse(String(opts.body));
       if (body.recipe !== "art") return Response.json({ error: { code: "not_found" } }, { status: 404 });
-      const allowed = ["recipe", "prompt", "count", "references", ...(action === "create" ? ["width", "height"] : action === "edit" ? ["image", "mask"] : ["image", "scale", "maxSize"])];
+      const allowed = ["recipe", "prompt", "count", "references", ...(action === "create" ? ["width", "height"] : action === "edit" ? ["image", "mask", "replace"] : ["image", "scale", "maxSize"])];
       expect(Object.keys(body).every(k => allowed.includes(k))).toBe(true);
       images.push({ action, body });
       return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: output.toString("base64"), width: 1, height: 1, seed: 42 })), seconds: 0.1 });
