@@ -815,8 +815,9 @@ the action is `invalid`.
   shape the model was trained on (Qwen-Image-Edit) or the image's own
   shape on a 32-pixel grid (Qwen-Image 2.1). Up to two `references` for
   Qwen-Image-Edit, three for Qwen-Image 2.1. Qwen-Image 2.1 runs a masked
-  edit through LanPaint's sampler on an image of about one megapixel, then
-  puts only the masked part back into the original at its own size.
+  edit through LanPaint's sampler on an image of about one megapixel, with
+  the mask grown by 24 pixels, then puts only that part back into the
+  original at its own size.
 - `POST /host/v1/images/upscale`
 
   ```json

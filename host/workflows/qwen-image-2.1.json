@@ -63,6 +63,18 @@
         "channel": "red"
       }
     },
+    "grown": {
+      "_if": "mask",
+      "class_type": "GrowMask",
+      "inputs": {
+        "mask": [
+          "mask",
+          0
+        ],
+        "expand": 24,
+        "tapered_corners": true
+      }
+    },
     "fit": {
       "_if": "mask",
       "class_type": "ImageScaleToTotalPixels",
@@ -86,7 +98,7 @@
         ],
         "vae": "$vae",
         "mask": [
-          "mask",
+          "grown",
           0
         ]
       }
@@ -276,7 +288,7 @@
           0
         ],
         "mask": [
-          "mask",
+          "grown",
           0
         ],
         "blend_overlap": 9
