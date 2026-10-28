@@ -19,6 +19,8 @@ export interface VideoSpec {
   maxSeconds: number;
   /** Whether its clips have sound. */
   audio: boolean;
+  /** With an interpolator part, how many frames each frame becomes (the clip's fps rises as many times). */
+  interpolate?: number;
 }
 
 export interface PartSpec {
@@ -26,6 +28,8 @@ export interface PartSpec {
   /** null: only a part without a slot (a video VAE, not its audio VAE). */
   slot?: string | null;
   arch?: string[];
+  /** A recipe is ready without it; with it, the template's nodes that need it run. */
+  optional?: boolean;
 }
 
 interface Node {
@@ -114,6 +118,11 @@ function loaders(t: Template, parts: FilledPart[], loras: { file: string; streng
     nodes.load_latent_upscaler = { class_type: "LatentUpscaleModelLoader", inputs: { model_name: upscaler.file } };
     links.$latentUpscaler = ["load_latent_upscaler", 0];
   }
+  const interpolator = parts.find((p) => p.role === "interpolator");
+  if (interpolator) {
+    nodes.load_interpolator = { class_type: "FrameInterpolationModelLoader", inputs: { model_name: interpolator.file } };
+    links.$interpolator = ["load_interpolator", 0];
+  }
   for (const lora of parts.filter((p) => p.role === "lora" && p.slot)) {
     const target = `$model${suffix(lora.slot)}` in links ? `$model${suffix(lora.slot)}` : "$model";
     const id = `lora${suffix(lora.slot)}`;
@@ -131,10 +140,11 @@ function loaders(t: Template, parts: FilledPart[], loras: { file: string; streng
 export function fill(t: Template, parts: FilledPart[], loras: { file: string; strength: number }[], values: Values): Record<string, Node> {
   const { nodes, links } = t.loaders === "template" ? { nodes: {}, links: {} as Record<string, Link | null> } : loaders(t, parts, loras);
   // A loader link a template asks for but no part gives (`$vae_audio` with no audio VAE) is an error below.
-  const linkName = (v: string) => /^\$(model|clip|vae|latentUpscaler)(_\w+)?$/.test(v);
+  const linkName = (v: string) => /^\$(model|clip|vae|latentUpscaler|interpolator)(_\w+)?$/.test(v);
   const graph: Record<string, Node> = {};
   for (const [id, node] of Object.entries(t.workflow)) {
-    if (node._if && values[node._if] === undefined) continue;
+    // `_if` names a value, or an optional part's link: without it the node is left out.
+    if (node._if && values[node._if] === undefined && !links[`$${node._if}`]) continue;
     graph[id] = { class_type: node.class_type, inputs: { ...node.inputs } };
   }
   const resolve = (v: unknown): unknown => {

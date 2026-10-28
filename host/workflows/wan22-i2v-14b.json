@@ -43,6 +43,14 @@
       "arch": [
         "qwen-image"
       ]
+    },
+    {
+      "role": "interpolator",
+      "arch": [
+        "rife",
+        "film"
+      ],
+      "optional": true
     }
   ],
   "references": 0,
@@ -53,7 +61,8 @@
     "frameOffset": 1,
     "sizeStep": 16,
     "maxSeconds": 8,
-    "audio": false
+    "audio": false,
+    "interpolate": 2
   },
   "workflow": {
     "pos": {
@@ -182,13 +191,33 @@
         "vae": "$vae"
       }
     },
-    "video": {
-      "class_type": "CreateVideo",
+    "interpolate": {
+      "_if": "interpolator",
+      "class_type": "FrameInterpolate",
       "inputs": {
+        "interp_model": "$interpolator",
         "images": [
           "decode",
           0
         ],
+        "multiplier": "$multiplier"
+      }
+    },
+    "video": {
+      "class_type": "CreateVideo",
+      "inputs": {
+        "images": {
+          "$pick": [
+            [
+              "interpolate",
+              0
+            ],
+            [
+              "decode",
+              0
+            ]
+          ]
+        },
         "fps": "$fps"
       }
     },

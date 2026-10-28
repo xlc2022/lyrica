@@ -5,7 +5,7 @@ import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from
 import { basename, join } from "node:path";
 import { HostError, invalid, notFound } from "./http.ts";
 import type { Part, Role } from "./parts.ts";
-import type { Action, PartSpec, Template } from "./templates.ts";
+import type { Action, PartSpec, Template, VideoSpec } from "./templates.ts";
 
 export interface Missing {
   source: string;
@@ -136,14 +136,14 @@ export class RecipeBook {
       const added = r.parts.filter((p) => p.added && p.role === "text_encoder").length;
       return added === 0 || added === t.parts.filter((s) => s.role === "text_encoder").length;
     }
-    return t.parts.every((s) => r.parts.some((p) => p.role === s.role && (s.slot === undefined || p.slot === s.slot)));
+    return t.parts.every((s) => s.optional || r.parts.some((p) => p.role === s.role && (s.slot === undefined || p.slot === s.slot)));
   }
 
   describe(r: Recipe, files: Set<string>) {
     const t = this.templates.get(r.template);
     // A recipe made by a newer host (read after a rollback, say) does nothing here.
     if (!t) return { ...r, useFor: r.useFor ?? "both", ready: false, mask: false, does: [], unsupported: `This host has no template ${r.template}; update it to use this recipe.` };
-    return { ...r, useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, ...(t.video ? { video: t.video } : {}) };
+    return { ...r, useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, ...(t.video ? { video: clipSpec(t.video, r.parts) } : {}) };
   }
 
   /** The template for a main part: an edit model gets the edit template when its architecture has one. */
@@ -180,7 +180,7 @@ export class RecipeBook {
             ?? candidates.find((p) => home(p.file) === home(main.file)) ?? candidates[0];
           if (pick && spec.role === "diffusion") used.add(pick.file);
           if (pick) recipeParts.push({ role: spec.role, slot: spec.slot ?? null, file: pick.file, added: false });
-          else {
+          else if (!spec.optional) {
             const known = starter?.parts.find((p) => p.role === spec.role && (spec.slot === undefined || p.slot === spec.slot));
             recipeParts.push({
               role: spec.role, slot: spec.slot ?? null, file: null, added: false,
@@ -342,6 +342,10 @@ export class RecipeBook {
   ): { recipe: Recipe; toDownload: Starter["parts"] } {
     const installed = this.recipes.find((r) => r.starter === starter.id);
     if (installed) {
+      // A part the starter gained since (an optional interpolator) joins the recipe.
+      const gained = starter.parts.filter((p) => !installed.parts.some((q) => q.role === p.role && q.slot === (p.slot ?? null)));
+      installed.parts.push(...gained.map((p) => ({ role: p.role, slot: p.slot ?? null, file: have(p) ?? starterPath(p), added: false })));
+      if (gained.length) this.save();
       const files = new Set(installed.parts.map((p) => p.file));
       return { recipe: installed, toDownload: starter.parts.filter((p) => files.has(starterPath(p)) && !have(p) && !downloading(p)) };
     }
@@ -369,4 +373,9 @@ export class RecipeBook {
     this.save();
     return { recipe, toDownload };
   }
+}
+
+/** A video template's timing for a recipe: with an interpolator, more frames a second. */
+export function clipSpec(spec: VideoSpec, parts: { role: Role }[]): VideoSpec {
+  return spec.interpolate && parts.some((p) => p.role === "interpolator") ? { ...spec, fps: spec.fps * spec.interpolate } : spec;
 }
