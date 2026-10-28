@@ -377,6 +377,8 @@ test("a clip she made shows its poster and facts, and plays in the browser's pla
     ] }, { id: `e:${threadId}#2`, n: 2, role: "assistant", createdAt: "2026-10-28T04:10:00Z", parts: [
       { type: "tool", toolCallId: "cat", name: "image", args: { action: "video", prompt: "A cat on a roof" }, result: "Making the clip in the background; it takes minutes.", isError: false },
       { type: "text", text: "It's on its way." },
+    ] }, { id: `e:${threadId}#3`, n: 3, role: "notice", createdAt: "2026-10-28T04:20:00Z", parts: [
+      { type: "delegation", text: "The clip failed: the host ran out of memory.", status: "clip-failed" },
     ] }], hasMore: false,
   } }));
   await page.route(`**${base}/files/thumb?*`, (route) => route.fulfill({ contentType: "image/png", body: png }));
@@ -384,6 +386,11 @@ test("a clip she made shows its poster and facts, and plays in the browser's pla
   await page.reload();
   // A clip still being made in the background: its call only started it.
   await expect(page.getByText("Making a clip started", { exact: true })).toBeVisible();
+  // One that failed there is a notice headed Clip, failed, with the reason.
+  const failed = page.locator(".subagent.delivered[data-status='clip-failed']");
+  await expect(failed.locator("b")).toHaveText("Clip");
+  await expect(failed).toContainText("failed");
+  await expect(failed).toContainText("The clip failed: the host ran out of memory.");
   const play = page.getByRole("button", { name: "Play fox.mp4" });
   await expect(play).toBeVisible();
   await expect(page.getByText("Made with box/Wan 2.2 TI2V 5B · 5.0 s · sound", { exact: true })).toBeVisible();

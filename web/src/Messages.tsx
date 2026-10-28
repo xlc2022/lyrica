@@ -1071,11 +1071,13 @@ function ThreadsPill({ threads, env }: { threads: ThreadRef[]; env: Env }) {
 const NOTICE_HEADS: Record<string, string> = {
   question: "Subagent asks", note: "Subagent note", user_message: "Message to a subagent", interrupted: "Subagent interrupted",
   update: "Child thread", limit: "Tool limit", "checks-passed": "Checks", "checks-failed": "Checks", job: "Background command",
+  clip: "Clip", "clip-failed": "Clip",
 };
 /** A project's checks at the end of a code turn: a dot and a word after the head. */
 const CHECK_STATES: Record<string, ReactNode> = {
   "checks-passed": <span className="status-word"><span className="dot up" aria-hidden="true" />passed</span>,
   "checks-failed": <span className="status-word"><span className="dot down" aria-hidden="true" />failed</span>,
+  "clip-failed": <span className="status-word"><span className="dot down" aria-hidden="true" />failed</span>,
 };
 
 /** Something a subagent run delivered into the thread: a result, a question, a note, or what someone wrote to one. */

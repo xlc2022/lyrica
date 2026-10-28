@@ -493,7 +493,7 @@ export class Lyricad implements Drainable {
     const clips = new ClipJobs({
       done: (t, made) => { notify(t, made.text, { status: "clip", video: made.video }); wakeSoon(t, "clip", CLIP_WAKE); },
       failed: (t, message, stopped) => {
-        notify(t, stopped ? `The clip was stopped: ${message}.` : `The clip failed: ${message}`, { status: "clip-failed" });
+        notify(t, stopped ? `The clip was stopped: ${message}.` : `The clip failed: ${message.replace(/[.\s]*$/, "")}.`, { status: "clip-failed" });
         if (!stopped) wakeSoon(t, "clip", CLIP_WAKE);
       },
       log: this.log,
