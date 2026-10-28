@@ -669,13 +669,19 @@ as `{ "parts": [...] }`, each entry like this:
 ```
 
 - `role`: `checkpoint` (holds its own encoders and VAE), `diffusion`,
-  `text_encoder`, `vae`, `lora`, `upscaler` (a SeedVR2 DiT), or `unknown`.
-- `slot`: for a text encoder, which one: `clip_l`, `clip_g`, `t5`,
-  `qwen2.5vl`, `qwen3`, `qwen3vl` (Qwen3-VL 4B), `qwen3vl_8b`, …; otherwise
-  `null`.
+  `text_encoder`, `vae`, `lora`, `upscaler` (a SeedVR2 DiT),
+  `latent_upscaler` (LTX-2's), or `unknown`.
+- `slot`: for a text encoder, which one: `clip_l`, `clip_g`, `t5`, `umt5`
+  (Wan's), `qwen2.5vl`, `qwen3`, `qwen3vl` (Qwen3-VL 4B), `qwen3vl_8b`,
+  `qwen3vl_32b` (MiniMax H3's), `gemma4_12b` (LTX-2.5's), …. For Wan 2.2
+  14B's two experts and their LoRAs, `high` or `low` (read from the file
+  name, as their tensors are alike); a speed LoRA otherwise, `speed`; an
+  audio VAE, `audio`. Otherwise `null`.
 - `arch`: the architecture read from the tensor names (`sdxl`, `flux`,
-  `z-image`, `qwen-image`, `qwen-image-2.1`, `krea2`, `seedvr2`, …), or
-  `null`. A file whose
+  `z-image`, `qwen-image`, `qwen-image-2.1`, `krea2`, `seedvr2`,
+  `wan2.2-5b`, `wan2.2-t2v-14b`, `wan2.2-i2v-14b`, `ltx2`, `minimax-h3`,
+  …), or `null`. Wan 2.2 14B's VAE is Wan 2.1's, which reads as
+  `qwen-image`; the 5B's is `wan2.2`. A file whose
   architecture has no template stays a file: it is listed but no recipe
   can use it.
 - `precision`: `fp32`, `bf16`, `fp16`, `fp8`, `int8`, or a GGUF quantisation such
@@ -686,8 +692,11 @@ as `{ "parts": [...] }`, each entry like this:
   diffusion model, encoders and VAE), `z-image`, `krea2` (create),
   `qwen-image` (create, and edit for a diffusion model whose file name
   says "edit"), `qwen-image-2.1` (create and edit from one recipe, with
-  the Turbo's 8-step schedule from the recipe's defaults) and `seedvr2`
-  (upscale).
+  the Turbo's 8-step schedule from the recipe's defaults), `seedvr2`
+  (upscale), and the video ones: `wan2.2-5b`, `ltx2` and `minimax-h3`
+  (video and animate), `wan2.2-t2v-14b` (video) and `wan2.2-i2v-14b`
+  (animate). A model with two experts takes both in one recipe, and only
+  the LoRAs its template names.
 
 ### Recipes
 
@@ -720,7 +729,12 @@ as `{ "parts": [...] }`, each entry like this:
   nothing yet), `confirmed`, or `ignored` (a proposal set aside; a scan
   won't propose it again).
 - `ready`: every part is present. Only a confirmed, ready recipe runs.
-- `does`: what it can be used for: `create`, `edit`, `upscale`.
+- `does`: what it can be used for: `create`, `edit`, `upscale`, or for a
+  video recipe `video` (from a prompt) and `animate` (from a first frame).
+- `video`: a video recipe's timing, from its template: `{ "fps": 24,
+  "frameStep": 4, "frameOffset": 1, "sizeStep": 32, "maxSeconds": 8,
+  "audio": false }`. Clips have `frameStep × k + frameOffset` frames, and
+  width and height are multiples of `sizeStep`.
 - `mask`: whether its template's edits take a mask (Lyrica's router skips
   one that doesn't for a masked edit).
 - `useFor`: `fast`, `quality` or `both` (default). An optional field in
@@ -770,11 +784,11 @@ Calls:
   - `{ "op": "addLora", "file": "<path>", "strength": 0.8 }`,
     `{ "op": "setLora", "file": "<path>", "strength": 1.0 }`,
     `{ "op": "removeLora", "file": "<path>" }`: the LoRA's architecture
-    must match;
+    must match, and a recipe with two experts takes none;
   - `{ "op": "defaults", "defaults": { "steps": 30 } }`: merged into the
     defaults. Each must be one a request could give (the ranges below;
-    `shift` 0 to 20, `guidance` 0 to 30, `sampler` and `scheduler` ComfyUI
-    names, `negativePrompt` at most 4096 characters);
+    `shift` 0 to 20, `guidance` 0 to 30, `duration` 1 to 15, `sampler` and
+    `scheduler` ComfyUI names, `negativePrompt` at most 4096 characters);
   - `{ "op": "rename", "name": "..." }`;
   - `{ "op": "useFor", "useFor": "fast" }`: `fast`, `quality` or `both`,
     saved in `recipes.json`.
@@ -858,3 +872,37 @@ defaults. Each image of a batch is made from the next seed, and says so. A
 cancelled job is cancelled in sd-server.
 
 A recipe's memory is measured after its first job, as for text models.
+
+### Making videos
+
+- `POST /host/v1/videos/create`
+
+  ```json
+  { "recipe": "<id>", "prompt": "...", "negativePrompt": "...",
+    "image": "<base64>", "width": 1280, "height": 704, "duration": 5,
+    "steps": 20, "cfg": 5.0, "seed": 1234 }
+  ```
+
+  One clip from a video recipe. Only `recipe` and `prompt` are required.
+  With `image` (its first frame) the recipe must `animate`, without it
+  `video`. `width` and `height` are multiples of the recipe's `sizeStep`
+  from 256 to 2048; left out, they are the recipe's, or when animating
+  the same area in the image's shape. `duration` is seconds, 1 to the
+  recipe's `maxSeconds` (default 5), made into the model's nearest frame
+  count at or above it. `steps`, `cfg` and `seed` as for images; a
+  template whose model takes no CFG (MiniMax H3, LTX-2.5 distilled)
+  ignores `cfg`. Answers:
+
+  ```json
+  { "video": { "mp4": "<base64>", "width": 1280, "height": 704,
+               "frames": 121, "fps": 24, "duration": 5.04, "audio": false, "seed": 1234 },
+    "poster": "<base64 PNG of the first frame>", "seconds": 312.4 }
+  ```
+
+  The clip is H.264 MP4, with AAC sound when `audio` is true (LTX-2.5,
+  MiniMax H3). ComfyUI encodes it in memory (our `SaveVideoWebsocket`
+  node) and sends it, and the poster, over its websocket, so nothing is
+  written to disk. A video job may run for two hours before it times out;
+  it holds ComfyUI's GPU while it runs, like an image job. Errors are as
+  for images; on a stable-diffusion.cpp host every video job is
+  `invalid`.

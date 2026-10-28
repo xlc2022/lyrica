@@ -996,7 +996,17 @@ it's off.
   defaults such as the scale and the largest size. The task
   `image.upscale` has its own list in each preset (7B on the Blackwell,
   3B on the 3090), and the `image` tool offers `upscale`. Portrait photos
-  follow the same rule as for edits. Video is out of scope.
+  follow the same rule as for edits.
+- **Videos** (2026-10-28): video models are recipes too, on the same
+  ComfyUI: Wan 2.2 (TI2V 5B for a 24 GB card; T2V and I2V 14B, whose two
+  experts and their speed LoRAs are one recipe), LTX-2.5 and MiniMax H3
+  (both with sound, for a 96 GB card). A recipe makes a clip from a prompt
+  (`video`) or from a first frame (`animate`); its template sets the frame
+  rate, frame grid, size step and longest clip, and the host answers with
+  an MP4 and a poster, sent back over ComfyUI's websocket so nothing
+  reaches disk. One clip runs on one GPU. The hosts do this now; the task,
+  the tool, storage and the player are the brief's second part
+  (docs/briefs/video.md), so until then a video recipe is no offering.
 - **Looking at images** (2026-10-25): the task `vision`, **Look at
   images**, has its own list of models with vision in each preset, chosen
   by the person (a plan's model, a local one, or a paid one they add).

@@ -1,5 +1,5 @@
 // The image routes in API.md ("Image models"): parts, recipes, starters, and
-// create, edit and upscale through ComfyUI.
+// create, edit and upscale through ComfyUI, and videos from video recipes.
 import { createHash, randomInt } from "node:crypto";
 import { mkdirSync, readdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -13,7 +13,7 @@ import { scanParts, type Part, type Role } from "./parts.ts";
 import { COLOR_MATCH, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
 import type { Runtime } from "./runtime.ts";
 import { sdcppArgs, type SdCpp } from "./sdcpp.ts";
-import { fill, type Action, type Values } from "./templates.ts";
+import { fill, type Action, type Values, type VideoSpec } from "./templates.ts";
 
 const IMAGE_LIMIT = 20 * 1024 * 1024;
 const MAX_SIDE = 8192;
@@ -21,8 +21,11 @@ const MAX_PIXELS = 36_000_000;
 const MAX_RESOLUTION = 4096;
 const BASE_DEFAULTS: Values = { negativePrompt: "", steps: 20, cfg: 1, sampler: "euler", scheduler: "simple", width: 1024, height: 1024, shift: 3, guidance: 3.5, scale: 2, maxSize: 4096, colorMatch: "lab" };
 const IDLE_FREE_MS = 10 * 60_000;
+/** How long one clip may take: a 14B model on a 24 GB card can take most of an hour. */
+const VIDEO_TIMEOUT_MS = 2 * 60 * 60_000;
+const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "width", "height", "duration", "steps", "cfg", "seed"];
 
-const FIELDS: Record<Action, string[]> = {
+const FIELDS: Record<"create" | "edit" | "upscale", string[]> = {
   create: ["recipe", "prompt", "negativePrompt", "width", "height", "count", "steps", "cfg", "seed", "references"],
   edit: ["recipe", "prompt", "negativePrompt", "count", "steps", "cfg", "seed", "references", "image", "mask", "replace"],
   upscale: ["recipe", "image", "scale", "maxSize", "colorMatch", "seed"],
@@ -221,7 +224,11 @@ export class Images {
     }
     const make = path.match(/^\/host\/v1\/images\/(create|edit|upscale)$/);
     if (make && method === "POST") {
-      await this.make(make[1] as Action, req, res);
+      await this.make(make[1] as "create" | "edit" | "upscale", req, res);
+      return true;
+    }
+    if (path === "/host/v1/videos/create" && method === "POST") {
+      await this.video(req, res);
       return true;
     }
     return false;
@@ -294,7 +301,7 @@ export class Images {
     return { deleted, kept };
   }
 
-  private async make(action: Action, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async make(action: "create" | "edit" | "upscale", req: IncomingMessage, res: ServerResponse): Promise<void> {
     const body = await readJson(req, 4 * IMAGE_LIMIT + 1024 * 1024);
     onlyFields(body, FIELDS[action]);
     if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
@@ -383,6 +390,78 @@ export class Images {
     });
   }
 
+  /**
+   * One clip from a video recipe: from the prompt alone (`video`), or from a
+   * first frame (`animate`). The template times it: the duration becomes the
+   * model's frame count, and width and height multiples of its size step.
+   */
+  private async video(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const body = await readJson(req, 2 * IMAGE_LIMIT);
+    onlyFields(body, VIDEO_FIELDS);
+    if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
+    const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
+    if (!recipe || !this.book.ready(recipe, this.files())) throw notFound("No confirmed, ready recipe with that ID.");
+    const action: Action = body.image === undefined ? "video" : "animate";
+    if (!recipe.does.includes(action)) {
+      throw invalid(recipe.does.includes("animate") ? "That recipe animates an image: give it one." : recipe.does.includes("video") ? "That recipe doesn't animate images." : "That recipe doesn't make videos.");
+    }
+    if (this.sdcpp) throw invalid("This host makes images with stable-diffusion.cpp, which can't make videos.");
+    const template = this.book.templates.get(recipe.template)!;
+    const spec = template.video;
+    if (!spec) throw new HostError(500, "internal", `Template ${template.name} has no video settings.`);
+
+    const values: Values = { ...BASE_DEFAULTS, duration: 5, ...recipe.defaults };
+    if (typeof body.prompt !== "string" || !body.prompt) throw invalid("prompt is missing.");
+    values.prompt = body.prompt;
+    if (body.negativePrompt !== undefined) {
+      if (typeof body.negativePrompt !== "string") throw invalid("negativePrompt must be text.");
+      values.negativePrompt = body.negativePrompt;
+    }
+    values.steps = int(body, "steps", 1, 150) ?? values.steps!;
+    values.cfg = num(body, "cfg", 0, 30) ?? values.cfg!;
+    const uploads: Record<string, Buffer> = {};
+    if (action === "animate") uploads.image = inputImage(body.image, "image");
+    // A request gives a multiple of the template's size step. Otherwise the recipe's size is used, snapped
+    // to the step; when animating, as the same area in the image's shape.
+    const snap = (n: number) => Math.min(2048, Math.max(256, Math.round(n / spec.sizeStep) * spec.sizeStep));
+    const width = int(body, "width", 256, 2048, spec.sizeStep);
+    const height = int(body, "height", 256, 2048, spec.sizeStep);
+    const frame = uploads.image ? imageSize(uploads.image)! : null;
+    const area = Number(values.width) * Number(values.height);
+    const shape = frame && width === undefined && height === undefined ? frame.width / frame.height : Number(values.width) / Number(values.height);
+    values.width = width ?? snap(height !== undefined ? height * shape : Math.sqrt(area * shape));
+    values.height = height ?? snap(width !== undefined ? width / shape : Math.sqrt(area / shape));
+    const duration = num(body, "duration", 1, spec.maxSeconds) ?? Math.min(Number(values.duration), spec.maxSeconds);
+    Object.assign(values, videoValues(spec, duration, Number(values.width), Number(values.height), Number(values.steps)));
+    values.seed = int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);
+
+    const started = Date.now();
+    const model = this.asModel(recipe);
+    const abort = new AbortController();
+    res.on("close", () => {
+      if (!res.writableFinished) abort.abort();
+    });
+    const scheduler = this.runtime.scheduler;
+    const { video, poster } = await scheduler.run(model, "image", () =>
+      scheduler.measuring(model, () => this.comfy.runVideo(uploads, (names) => {
+        const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
+        return fill(template, parts, recipe.loras, { ...values, ...names });
+      }, VIDEO_TIMEOUT_MS, abort.signal)),
+      this.comfyGpu,
+      abort.signal,
+    );
+    const seconds = (Date.now() - started) / 1000;
+    this.runtime.count(recipe.id, { requests: 1, seconds });
+    this.log("video", { recipe: recipe.id, action, frames: Number(values.frames) });
+    const size = poster ? imageSize(poster) : null;
+    sendJson(res, 200, {
+      video: { mp4: video.toString("base64"), width: size?.width ?? values.width, height: size?.height ?? values.height,
+        frames: values.frames, fps: spec.fps, duration: Number(values.frames) / spec.fps, audio: spec.audio, seed: values.seed },
+      poster: poster ? poster.toString("base64") : null,
+      seconds,
+    });
+  }
+
   /** What stops images being made on this host, for the status. */
   get problems(): string[] {
     const p = (this.sdcpp ?? this.comfy).problem;
@@ -405,11 +484,30 @@ export class Images {
  * ComfyUI's memory for a recipe at its peak. It runs the text encoders, then
  * the diffusion model with its LoRAs, then an upscaler, freeing one stage's
  * models when the next needs the room, so the peak is the largest stage plus
- * the VAE, not every part at once.
+ * the VAEs, not every part at once. A video model's two experts run one after
+ * the other, each with its own LoRA.
  */
 export function recipeSize(r: Pick<Recipe, "parts" | "loras">, parts: Pick<Part, "file" | "size">[]): number {
   const sizeOf = (f: string | null) => parts.find((p) => p.file === f)?.size ?? 0;
   const stage = (roles: Role[]) => r.parts.filter((p) => roles.includes(p.role)).reduce((n, p) => n + sizeOf(p.file), 0);
   const loras = r.loras.reduce((n, l) => n + sizeOf(l.file), 0);
-  return Math.max(stage(["text_encoder"]), stage(["checkpoint", "diffusion", "lora", "unknown"]) + loras, stage(["upscaler"])) + stage(["vae"]);
+  // Each expert's slot, or one group for a model without experts; a LoRA joins its expert's group, or the model's.
+  const experts = new Set(r.parts.filter((p) => p.role === "diffusion" && p.slot).map((p) => p.slot));
+  const groups = new Map<string, number>();
+  for (const p of r.parts.filter((p) => ["checkpoint", "diffusion", "lora", "unknown"].includes(p.role))) {
+    const group = p.slot && experts.has(p.slot) ? p.slot : "";
+    groups.set(group, (groups.get(group) ?? 0) + sizeOf(p.file));
+  }
+  const model = Math.max(0, ...[...groups].map(([g, n]) => n + (g === "" ? loras : 0)), loras);
+  return Math.max(stage(["text_encoder"]), model, stage(["upscaler"])) + stage(["vae", "latent_upscaler"]);
+}
+
+/** A clip's frames and the values a video template reads besides the request's own. */
+export function videoValues(spec: VideoSpec, duration: number, width: number, height: number, steps: number): Values {
+  const k = Math.max(1, Math.ceil((duration * spec.fps - spec.frameOffset) / spec.frameStep));
+  return {
+    frames: k * spec.frameStep + spec.frameOffset, fps: spec.fps,
+    // LTX-2 samples at half size and then upscales; Wan's experts split the steps.
+    halfWidth: width / 2, halfHeight: height / 2, halfSteps: Math.max(1, Math.floor(steps / 2)),
+  };
 }

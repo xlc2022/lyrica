@@ -1681,8 +1681,9 @@ export class Models {
     }>(await this.hostCall(ep, "GET", "/host/v1/models"), "models");
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
     // Image models are recipes: only confirmed ones become offerings, so a proposal never resolves.
+    // A video recipe isn't one yet: it waits for the video task (docs/briefs/video.md).
     const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"]; mask?: boolean }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
-      .filter((r) => r?.state === "confirmed").map((r) => ({
+      .filter((r) => r?.state === "confirmed" && (!r.does || r.does.some((d) => d === "create" || d === "edit" || d === "upscale"))).map((r) => ({
         modelId: `recipe/${r.id}`, recipe: r.name, useFor: r.useFor ?? "both", ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true, ...(typeof r.mask === "boolean" ? { mask: r.mask } : {}) } : {}), ...(r.does?.includes("upscale") ? { upscale: true } : {}),
       } as DiscoveredModel));
     return [...list.filter((m) => typeof m?.id === "string" && m.kind !== "image").map((m) => {
