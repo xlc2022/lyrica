@@ -4,7 +4,7 @@
 // architecture and a precision.
 import { closeSync, lstatSync, openSync, readSync, readdirSync, statSync } from "node:fs";
 import { basename, join, relative } from "node:path";
-import { readGguf } from "./gguf.ts";
+import { readGguf, readGgufTensors } from "./gguf.ts";
 
 export type Role = "checkpoint" | "diffusion" | "text_encoder" | "vae" | "lora" | "upscaler" | "latent_upscaler" | "unknown";
 
@@ -184,7 +184,10 @@ function readPart(root: string, path: string): Part | null {
     // A text model, except Qwen3-VL 4B, which is also Krea 2's text encoder.
     const vl4b = meta["general.architecture"] === "qwen3vl" && Number(meta["qwen3vl.embedding_length"]) === 2560;
     if (meta["tokenizer.ggml.model"] !== undefined && !vl4b) return null;
-    const kind: Kind = vl4b ? { role: "text_encoder", slot: "qwen3vl", arch: "qwen3vl" } : /seedvr2/i.test(basename(path)) ? classify([], {}, path) : GGUF_ARCH[String(meta["general.architecture"])] ?? unknown;
+    // A Wan expert is told by its tensors, as its safetensors would be: which of the 14B models, and (by name) which expert.
+    const wan = meta["general.architecture"] === "wan" ? readGgufTensors(path) : null;
+    const kind: Kind = vl4b ? { role: "text_encoder", slot: "qwen3vl", arch: "qwen3vl" } : /seedvr2/i.test(basename(path)) ? classify([], {}, path)
+      : wan ? classify(Object.keys(wan), wan, path) : GGUF_ARCH[String(meta["general.architecture"])] ?? unknown;
     const ft = meta["general.file_type"];
     return { file, size, format: "gguf", ...kind, precision: ft === undefined ? "gguf" : GGUF_TYPES[Number(ft)] ?? "gguf" };
   }

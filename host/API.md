@@ -687,7 +687,12 @@ as `{ "parts": [...] }`, each entry like this:
 - `precision`: `fp32`, `bf16`, `fp16`, `fp8`, `int8`, or a GGUF quantisation such
   as `Q4_K`.
 - Only the safetensors header (or GGUF metadata) is read, never the
-  weights. Files are used where they are.
+  weights. A Wan GGUF (`general.architecture` `wan`, as QuantStack's
+  Wan 2.2 A14B quants are) also has its tensor list read, so its
+  architecture and expert come from its tensors and name as a safetensors
+  file's do. A tensor ComfyUI-GGUF flattened to fit GGUF's four dimensions
+  takes its true shape from `comfy.gguf.orig_shape.<name>`. Files are used
+  where they are.
 - Architectures with templates: `sdxl` and `flux` (a checkpoint, or
   diffusion model, encoders and VAE), `z-image`, `krea2` (create),
   `qwen-image` (create, and edit for a diffusion model whose file name

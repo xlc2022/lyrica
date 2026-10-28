@@ -999,7 +999,8 @@ it's off.
   follow the same rule as for edits.
 - **Videos** (2026-10-28): video models are recipes too, on the same
   ComfyUI: Wan 2.2 (TI2V 5B for a 24 GB card; T2V and I2V 14B, whose two
-  experts and their speed LoRAs are one recipe), LTX-2.5 and MiniMax H3
+  experts and their speed LoRAs are one recipe, in fp8 or as Q5 GGUF
+  quants for a 24 GB card), LTX-2.5 and MiniMax H3
   (both with sound, for a 96 GB card). A recipe makes a clip from a prompt
   (`video`) or from a first frame (`animate`); its template sets the frame
   rate, frame grid, size step and longest clip, and the host answers with

@@ -450,9 +450,11 @@ this with its next Update or `host/install.sh`.
 
 ### Video recipes
 
-ComfyUI hosts list five video starters: Wan 2.2 TI2V 5B (about 18 GB of
+ComfyUI hosts list seven video starters: Wan 2.2 TI2V 5B (about 18 GB of
 files, fits a 24 GB card), Wan 2.2 T2V 14B and I2V 14B (about 38 GB
-each), LTX-2.5 Distilled (about 40 GB) and MiniMax H3 Turbo (about
+each), the same two as Q5 GGUF quants, **Wan 2.2 T2V 14B Q5** and
+**I2V 14B Q5** (about 31 GB each, for a 24 GB card and less system
+memory), LTX-2.5 Distilled (about 40 GB) and MiniMax H3 Turbo (about
 42 GB); H3 and LTX-2.5 fit a 96 GB card. A host on stable-diffusion.cpp
 doesn't list them. Once one is confirmed, put it in the **Videos** row
 of Models, Tasks (the last row under Images, whose picker lists only

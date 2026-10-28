@@ -1,4 +1,4 @@
-// Reads a GGUF file's metadata (the key-value header), never its tensors.
+// Reads a GGUF file's metadata (the key-value header) and its tensors' names and shapes, never their data.
 import { closeSync, openSync, readSync } from "node:fs";
 
 export type GgufValue = string | number | bigint | boolean | GgufValue[] | null;
@@ -70,37 +70,71 @@ function value(r: Reader, type: number, keepArrays: number): GgufValue {
 
 /** The metadata of a GGUF file. Large arrays (the tokenizer's vocabulary) are left out. */
 export function readGguf(path: string): Record<string, GgufValue> {
+  return readHeader(path, false).meta;
+}
+
+/**
+ * A GGUF file's tensors by name, each shape in PyTorch's order (GGUF lists the
+ * innermost dimension first), as the safetensors header gives them.
+ */
+export function readGgufTensors(path: string): Record<string, number[]> {
+  return readHeader(path, true).shapes;
+}
+
+const ORIG_SHAPE = "comfy.gguf.orig_shape.";
+
+function readHeader(path: string, tensors: boolean): { meta: Record<string, GgufValue>; shapes: Record<string, number[]> } {
   const fd = openSync(path, "r");
   try {
     const r = new Reader(fd);
     if (r.bytes(4).toString("latin1") !== "GGUF") throw new Error("not a GGUF file");
     const version = r.u32();
     if (version < 2 || version > 3) throw new Error(`unsupported GGUF version ${version}`);
-    r.u64(); // tensor count
+    const tensorCount = Number(r.u64());
     const count = Number(r.u64());
     const meta: Record<string, GgufValue> = {};
     for (let i = 0; i < count; i++) {
       const key = r.string();
       meta[key] = value(r, r.u32(), 64);
     }
-    return meta;
+    const shapes: Record<string, number[]> = {};
+    for (let i = 0; tensors && i < tensorCount; i++) {
+      const name = r.string();
+      const dims = r.u32();
+      if (dims > 8) throw new Error("GGUF tensor has too many dimensions");
+      const shape: number[] = [];
+      for (let d = 0; d < dims; d++) shape.unshift(Number(r.u64()));
+      r.u32(); // type
+      r.u64(); // offset
+      shapes[name] = shape;
+    }
+    // ComfyUI-GGUF flattens tensors of more than four dimensions (Wan's 5-D
+    // patch embedding) and keeps the true shape, already in PyTorch's order, here.
+    for (const [key, v] of Object.entries(meta)) {
+      const name = key.startsWith(ORIG_SHAPE) ? key.slice(ORIG_SHAPE.length) : null;
+      if (name && name in shapes && Array.isArray(v) && v.every((d) => typeof d === "number")) shapes[name] = v as number[];
+    }
+    return { meta, shapes };
   } finally {
     closeSync(fd);
   }
 }
 
-/** Writes a GGUF header with the given metadata and no tensors: for tests and fakes. */
-export function ggufBytes(meta: Record<string, string | number | boolean>): Buffer {
-  const parts: Buffer[] = [Buffer.from("GGUF"), u32(3), u64(0), u64(Object.keys(meta).length)];
+/** Writes a GGUF header with the given metadata and tensor infos (PyTorch shapes) but no tensor data: for tests and fakes. */
+export function ggufBytes(meta: Record<string, string | number | boolean | number[]>, tensors: Record<string, number[]> = {}): Buffer {
+  const parts: Buffer[] = [Buffer.from("GGUF"), u32(3), u64(Object.keys(tensors).length), u64(Object.keys(meta).length)];
   for (const [k, v] of Object.entries(meta)) {
     parts.push(str(k));
     if (typeof v === "string") parts.push(u32(8), str(v));
+    else if (Array.isArray(v)) parts.push(u32(9), u32(5), u64(v.length), ...v.map(i32));
     else if (typeof v === "boolean") parts.push(u32(7), Buffer.from([v ? 1 : 0]));
     else if (Number.isInteger(v)) parts.push(u32(4), u32(v));
     else { const b = Buffer.alloc(4); b.writeFloatLE(v); parts.push(u32(6), b); }
   }
+  for (const [name, shape] of Object.entries(tensors)) parts.push(str(name), u32(shape.length), ...[...shape].reverse().map(u64), u32(0), u64(0));
   return Buffer.concat(parts);
 }
 function u32(n: number) { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; }
+function i32(n: number) { const b = Buffer.alloc(4); b.writeInt32LE(n); return b; }
 function u64(n: number) { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; }
 function str(s: string) { const b = Buffer.from(s, "utf8"); return Buffer.concat([u64(b.length), b]); }
