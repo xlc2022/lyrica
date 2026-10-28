@@ -794,8 +794,16 @@ describe("the image API", () => {
     expect(second.load.inputs.image).toBe("lyrica-image.png");
     expect(s.comfyFake.seen.uploads).toEqual(["lyrica-image.png", "lyrica-image.png"]);
 
+    // A size is snapped to the template's step, and an aspect ratio keeps the recipe's area in its shape.
+    await s.api("/host/v1/videos/create", { body: { recipe: wan.id, prompt: "x", width: 1360, height: 768 } });
+    expect(s.comfyFake.seen.prompts[2].latent.inputs).toMatchObject({ width: 1376, height: 768 });
+    await s.api("/host/v1/videos/create", { body: { recipe: wan.id, prompt: "x", aspectRatio: "9:16" } });
+    expect(s.comfyFake.seen.prompts[3].latent.inputs).toMatchObject({ width: 704, height: 1280 });
+
     const refused = async (path: string, extra: object) => (await s.api(path, { body: { recipe: wan.id, prompt: "x", ...extra } })).body.error.message;
-    expect(await refused("/host/v1/videos/create", { width: 1000 })).toMatch(/multiple of 32/);
+    expect(await refused("/host/v1/videos/create", { width: 100 })).toMatch(/from 256 to 2048/);
+    expect(await refused("/host/v1/videos/create", { aspectRatio: "16:9", width: 1024 })).toMatch(/not both/);
+    expect(await refused("/host/v1/videos/create", { aspectRatio: "wide" })).toMatch(/width:height/);
     expect(await refused("/host/v1/videos/create", { duration: 9 })).toMatch(/from 1 to 8/);
     expect(await refused("/host/v1/videos/create", { count: 2 })).toMatch(/count/);
     expect(await refused("/host/v1/images/create", {})).toBe("That recipe doesn't create images.");
