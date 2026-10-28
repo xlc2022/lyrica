@@ -460,7 +460,8 @@ class Models {                                              // new Models(keyrin
   image(ctx, request: ImageRequest, { signal?, beforeSend?: (resolution) => Promise<void> }?): Promise<{ images: GeneratedImage[]; resolution }>
   // ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
   // ImageRequest: create { prompt, tier: "fast" | "quality", size?: { width, height }, count?, references?: ImageInput[] }
-  //   | edit { prompt, image: ImageInput, mask?: ImageInput, count?, references?: ImageInput[] }
+  //   | edit { prompt, image: ImageInput, mask?: ImageInput, replace?: boolean, count?, references?: ImageInput[] }
+  //     replace (with a mask): what's under it becomes something new; host recipes get it, cloud providers ignore it
   //   | upscale { image: ImageInput, scale?, maxSize? }; each has action: "create" | "edit" | "upscale"
   // GeneratedImage { bytes: Uint8Array; type: "image/png"; width; height; seed? }; no prompt metadata
   // Create passes imageTier to resolution: recipes and cloud offerings skip a useFor tag of only the other tier.

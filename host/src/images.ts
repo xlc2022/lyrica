@@ -24,7 +24,7 @@ const IDLE_FREE_MS = 10 * 60_000;
 
 const FIELDS: Record<Action, string[]> = {
   create: ["recipe", "prompt", "negativePrompt", "width", "height", "count", "steps", "cfg", "seed", "references"],
-  edit: ["recipe", "prompt", "negativePrompt", "count", "steps", "cfg", "seed", "references", "image", "mask"],
+  edit: ["recipe", "prompt", "negativePrompt", "count", "steps", "cfg", "seed", "references", "image", "mask", "replace"],
   upscale: ["recipe", "image", "scale", "maxSize", "colorMatch", "seed"],
 };
 
@@ -334,6 +334,10 @@ export class Images {
       if (!template.mask) throw invalid("This recipe doesn't take a mask.");
       uploads.mask = inputImage(body.mask, "mask");
     }
+    if (body.replace !== undefined && (typeof body.replace !== "boolean" || (body.replace && !uploads.mask))) throw invalid("replace must be true or false, and true only with a mask.");
+    // The text encoder sees the edited image, except where a masked part is replaced: then only the prompt
+    // and references guide it, so the model draws the new thing rather than reshaping what was there.
+    if (action === "edit" && !body.replace) values.seen = 1;
     if (action === "upscale") {
       const scale = num(body, "scale", 1, 4) ?? Number(values.scale);
       values.maxSize = int(body, "maxSize", 256, 8192) ?? values.maxSize!;

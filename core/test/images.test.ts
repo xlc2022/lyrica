@@ -33,10 +33,12 @@ describe("image calls through the router (principles 1 and 2)", () => {
     expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "fast" })).images[0]).toMatchObject({ type: "image/png", width: 1, height: 1, seed: 42 });
     await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", size: { width: 1024, height: 512 }, count: 2 });
     await s.models.image(ctx, { action: "edit", prompt: "Add flowers", image: input, mask: input, references: [input] });
+    await s.models.image(ctx, { action: "edit", prompt: "A round mirror on a beige wall", image: input, mask: input, replace: true });
     await s.models.image(ctx, { action: "upscale", image: input });
     expect(s.workstation.server.images.map(i => i.body)).toEqual([
       { recipe: "art", prompt: "A garden" }, { recipe: "art", prompt: "A garden", width: 1024, height: 512, count: 2 },
       { recipe: "art", prompt: "Add flowers", image: png.toString("base64"), mask: png.toString("base64"), references: [png.toString("base64")] },
+      { recipe: "art", prompt: "A round mirror on a beige wall", image: png.toString("base64"), mask: png.toString("base64"), replace: true },
       { recipe: "art", image: png.toString("base64") },
     ]);
     expect(s.heard).toEqual([]);
