@@ -256,7 +256,18 @@ describe("recipes", () => {
     expect(qi21.sigmas!.inputs.sigmas).toMatch(/^1\.0, .*, 0$/);
     expect(qi21.batch!.inputs).toEqual({ samples: ["encode", 2], amount: 2 });
     expect(qi21.sample!.inputs.latent_image).toEqual(["batch", 0]);
+    expect(qi21.save!.inputs.images).toEqual(["decode", 0]);
+    expect(Object.keys(qi21)).not.toContain("inpaint");
     expect(JSON.stringify(qi21)).not.toContain("$");
+    // A masked edit goes through LanPaint at about a megapixel, and only the masked part goes back into the original.
+    const qi21Masked = fill(TEMPLATES.get("qwen-image-2.1")!, qi21Parts, [], { negativePrompt: "", ...starter.defaults, prompt: "x", count: 1, seed: 1, image: "lyrica-image.png", mask: "lyrica-mask.png" });
+    expect(qi21Masked.masked!.inputs).toMatchObject({ image: ["fit", 0], mask: ["mask", 0] });
+    expect(qi21Masked.batch!.inputs.samples).toEqual(["masked", 0]);
+    expect(qi21Masked.inpaint!.class_type).toBe("LanPaint_SamplerCustomAdvanced");
+    expect(qi21Masked.inpaint!.inputs).toMatchObject({ guider: ["guider", 0], sigmas: ["sigmas", 0], latent_image: ["batch", 0] });
+    expect(qi21Masked.merged!.inputs).toMatchObject({ samples: ["inpaint", 0], image: ["load", 0], mask: ["mask", 0] });
+    expect(qi21Masked.save!.inputs.images).toEqual(["merged", 0]);
+    expect(JSON.stringify(qi21Masked)).not.toContain("$");
 
     const krea = fill(TEMPLATES.get("krea2")!, [
       { role: "diffusion", slot: null, file: "k.safetensors", added: false },

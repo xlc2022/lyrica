@@ -71,5 +71,10 @@ card).
 - Next: after merge, the dev deployment's host needs an update and the starter
   installed, with the owner's yes, then her Image edits list in the
   Private column switched to it.
+- Trial (owner's ask, 2026-10-28): masked edits on Qwen-Image 2.1 through
+  the LanPaint ComfyUI node (2.2.0, pinned), following LanPaint's own
+  Qwen-Image 2.1 masked-edit example on the Turbo's sigmas. The dev
+  deployment compares it with 2509 on a few masked edits before it goes
+  to review.
 - Open: the edit size stays one megapixel; 2.1 can go to 2048 if the owner
   wants larger edits and the time it costs.

@@ -241,8 +241,9 @@ per host, and Lyrica's router filters create tiers by it.
 - Deleting a recipe deletes only parts the host downloaded, unchanged, that
   no other recipe uses and that aren't also a chat model.
 - ComfyUI is our image (`comfyui/Dockerfile`, CUDA or ROCm), built from
-  pinned commits of ComfyUI, ComfyUI-GGUF and the SeedVR2 upscaler, with no
-  plugin manager. Only those nodes load. Their Python packages go into a
+  pinned commits of ComfyUI, ComfyUI-GGUF, the SeedVR2 upscaler and LanPaint
+  (masked edits on Qwen-Image 2.1), with no plugin manager. Only those
+  nodes load. Their Python packages go into a
   venv, each pinned with its hash in `comfyui/requirements.txt`
   (`comfyui/lock.sh` remakes it); torch is the base image's. It has no
   route out, logs nothing, keeps its input, output and temp folders in

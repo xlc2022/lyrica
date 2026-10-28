@@ -25,7 +25,7 @@
     }
   ],
   "references": 3,
-  "mask": false,
+  "mask": true,
   "workflow": {
     "load": {
       "class_type": "LoadImage",
@@ -53,6 +53,42 @@
       "class_type": "LoadImage",
       "inputs": {
         "image": "$reference3"
+      }
+    },
+    "mask": {
+      "_if": "mask",
+      "class_type": "LoadImageMask",
+      "inputs": {
+        "image": "$mask",
+        "channel": "red"
+      }
+    },
+    "fit": {
+      "_if": "mask",
+      "class_type": "ImageScaleToTotalPixels",
+      "inputs": {
+        "image": [
+          "load",
+          0
+        ],
+        "upscale_method": "lanczos",
+        "megapixels": 1.0,
+        "resolution_steps": 16
+      }
+    },
+    "masked": {
+      "_if": "mask",
+      "class_type": "LanPaint_ImageEncode",
+      "inputs": {
+        "image": [
+          "fit",
+          0
+        ],
+        "vae": "$vae",
+        "mask": [
+          "mask",
+          0
+        ]
       }
     },
     "encode": {
@@ -129,10 +165,18 @@
       "_if": "image",
       "class_type": "RepeatLatentBatch",
       "inputs": {
-        "samples": [
-          "encode",
-          2
-        ],
+        "samples": {
+          "$pick": [
+            [
+              "masked",
+              0
+            ],
+            [
+              "encode",
+              2
+            ]
+          ]
+        },
         "amount": "$count"
       }
     },
@@ -177,6 +221,37 @@
         }
       }
     },
+    "inpaint": {
+      "_if": "mask",
+      "class_type": "LanPaint_SamplerCustomAdvanced",
+      "inputs": {
+        "noise": [
+          "noise",
+          0
+        ],
+        "guider": [
+          "guider",
+          0
+        ],
+        "sampler": [
+          "sampler",
+          0
+        ],
+        "sigmas": [
+          "sigmas",
+          0
+        ],
+        "latent_image": [
+          "batch",
+          0
+        ],
+        "LanPaint_NumSteps": 5,
+        "LanPaint_Lambda": 5.0,
+        "LanPaint_StepSize": 0.2,
+        "LanPaint_PromptMode": "Image First",
+        "LanPaint_Info": ""
+      }
+    },
     "decode": {
       "class_type": "VAEDecode",
       "inputs": {
@@ -187,13 +262,41 @@
         "vae": "$vae"
       }
     },
+    "merged": {
+      "_if": "mask",
+      "class_type": "LanPaint_ImageDecode",
+      "inputs": {
+        "samples": [
+          "inpaint",
+          0
+        ],
+        "vae": "$vae",
+        "image": [
+          "load",
+          0
+        ],
+        "mask": [
+          "mask",
+          0
+        ],
+        "blend_overlap": 9
+      }
+    },
     "save": {
       "class_type": "SaveImageWebsocket",
       "inputs": {
-        "images": [
-          "decode",
-          0
-        ]
+        "images": {
+          "$pick": [
+            [
+              "merged",
+              0
+            ],
+            [
+              "decode",
+              0
+            ]
+          ]
+        }
       }
     }
   }
