@@ -471,7 +471,10 @@ frame; it is saved encrypted in the thread's folder under `videos/`, and
 Files shows its poster. Cloud models and plain endpoints in the list are
 passed over. A clip takes from a few minutes to most of an hour and holds
 ComfyUI's GPU until it is done; with two GPUs, `COMFY_GPU` picks the one
-for images and videos.
+for images and videos. When she asks for a shape (16:9, say), the host
+keeps the recipe's area and fits the size to its template's step. A host
+from before that refuses such a clip as invalid, so update the host
+whenever you update `lyricad`.
 
 Wan 2.2 is Apache 2.0. LTX-2.5's repository is gated: installing it
 needs a Hugging Face token whose account accepted the LTX-2.x Community
