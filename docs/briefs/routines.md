@@ -65,7 +65,7 @@ thread linked, schedule, next time in mono, Pause and Remove.
 
 **E. Docs** (the local model drafts, Codex checks against the code).
 docs/delegation.md (a Routines section after Wake-ups), docs/contracts.md,
-docs/web.md, and the status table in docs/briefs/design.md. Every doc the
+docs/web.md, and the status table in docs/briefs/design.md (since removed). Every doc the
 change makes stale is updated and listed in the PR description.
 
 ## Out of scope

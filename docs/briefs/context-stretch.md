@@ -92,7 +92,7 @@ untested until it is.
    fetch container.** Hugging Face and ModelScope, which fetch already
    speaks to: the two places publishers put the recipe. A general web
    search is not part of this; it waits on the search decision (SearXNG)
-   in docs/briefs/design.md's open questions.
+   in docs/briefs/design.md's open questions (since removed).
 3. **Lyrica looks up and proposes; a person applies.** In a general thread
    she can run the lookup and propose a serving change, which an
    administrator (shared host) or the owner (personal host) approves on a
