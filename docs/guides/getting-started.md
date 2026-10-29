@@ -797,14 +797,15 @@ right account by themselves. Details are in
 Each clone gets its dependencies installed in the sandbox: the project's
 **Setup** command (Project settings → General) when one is set,
 otherwise the lockfile picks npm, pnpm, yarn, uv or a Python `.venv`
-([docs/workspace.md](../workspace.md#dependencies)). npm is already
-there; for the others, put the installer where her sandbox sees it. On
-NixOS, add `pnpm`, `yarn` or `uv` to `sandboxPackages` (python3 is in
-by default). On Debian or Ubuntu, install it system-wide (anywhere under
-`/usr`, `/usr/local` included); `install.sh` already installs
-`python3-venv` for `requirements.txt` projects. Until then her turn is told "dependencies
-didn't install", with "a program it needs isn't installed in the
-sandbox" when the installer is missing.
+([docs/workspace.md](../workspace.md#dependencies)). npm and Python's
+venv are already there (`install.sh` installs `python3-venv`; an older
+install gets it on its next `install.sh` run); for the others, put the
+installer where her sandbox sees it. On NixOS, add
+`pnpm`, `yarn` or `uv` to `sandboxPackages`. On Debian or Ubuntu,
+install it system-wide (anywhere under `/usr`, `/usr/local` included).
+Until then her turn is told "dependencies didn't install", with "a
+program it needs isn't installed in the sandbox" when the installer is
+missing.
 
 In code mode she reads each checkout's `AGENTS.md` (or `CLAUDE.md`) and
 follows its rules. To make a project's code threads prove their work, list
