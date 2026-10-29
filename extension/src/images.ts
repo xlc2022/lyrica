@@ -49,7 +49,7 @@ export const imageParameters = Type.Object({
   count: Type.Optional(Type.Integer({ minimum: 1, maximum: 4, description: "For create and edit: how many images." })),
   size: Type.Optional(Type.Object({ width: Type.Integer(), height: Type.Integer() }, { description: "For create and video: exact pixels." })),
   aspectRatio: Type.Optional(Type.String({ description: "For create and video: width:height (16:9); omit for recipe defaults." })),
-  duration: Type.Optional(Type.Number({ minimum: 1, maximum: 15, description: "For video, animate and motion: seconds; omit for the model's default (motion: at most the driving clip's length)." })),
+  duration: Type.Optional(Type.Number({ minimum: 1, maximum: 15, description: "For video, animate and motion: seconds; omit for the model's default. For motion, leave it out: the host uses the driving clip's own length, up to the model's longest." })),
   scale: Type.Optional(Type.Number({ minimum: 1, maximum: 4, description: "For upscale: the factor." })),
   maxSize: Type.Optional(Type.Integer({ minimum: 256, maximum: 8192, description: "For upscale: the longest side's limit." })),
 });
@@ -137,7 +137,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "For a person from reference photos, say \"the person from the reference images\", not an image number; ask for one new angle per edit, or several views as one wide create. For an exact garment, pass its photo as a reference. Word a change of build strongly. For a relative, pass no photo: describe the traits they share and how they differ.",
         "Check faces, hands and limbs in a result against the source; reject one that gets them wrong.",
         "Make a clip only when they ask for one: it holds the model host's GPU for minutes. It is made in the background: say it's on its way and end your reply; you'll be told when it's ready. For video and animate, write the prompt as a detailed shot even when they gave a few words: the subject and what it does, how things move, the camera's move and lens, the light and the mood, in one paragraph of about 80 to 120 words; for animate, say what moves and what stays.",
-        "Use motion when they want someone to move as a given clip shows (a dance, a gesture), or when a clip of a person from a prompt alone would move badly: make a plain clip of someone doing the moves first (video), then motion with it. For motion, the prompt says the scene, light and look; the moves come from the clip."],
+        "Use motion when they want someone to move as a given clip shows (a dance, a gesture), or when a clip of a person from a prompt alone would move badly: make a plain clip of someone doing the moves first (video), then motion with it. For motion, the prompt says the scene, light and look; the moves come from the clip. Don't measure the clip first: leave duration out and the host takes its length."],
       parameters: imageParameters,
       async execute(id, p, signal, update, ctx) {
         if (refused) throw new Error(REFUSED_THIS_TURN);
