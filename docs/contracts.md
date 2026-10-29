@@ -696,7 +696,9 @@ The built-in coder comes first in its role list (strong, writes, high
 thinking; read/write/edit/bash/recall/read_memory). It uses the parent's
 `code` model list, preset and context limit, and project/filtered recall
 through its existing thread view, without persona. A step's optional
-`done` accompanies its task in the Code task section. Without a role, a
+`done` accompanies its task in the Code task section, and its optional
+`title` (at most 60 characters) names its thread `<role>: <title>` in place
+of the task's first line. Without a role, a
 write-capable step in a repository thread selects coder; otherwise worker.
 Custom roles override built-ins by name, except `claude`.
 - The built-in `claude` role is Claude Code, not a Pi session

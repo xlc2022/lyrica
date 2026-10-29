@@ -54,7 +54,8 @@ describe("delegation in lyricad", () => {
       expect.objectContaining({ parts: [expect.objectContaining({ type: "delegation", status: "finished", text: expect.stringContaining("in the shed") })] }),
     ]);
     const subs = (await ada.get<Subagents>(`${path}/subagents`)).body;
-    expect(subs.runs).toEqual([expect.objectContaining({ role: "scout", status: "finished", thread: started.event.threadId })]);
+    // Its title is its thread's, after the role.
+    expect(subs.runs).toEqual([expect.objectContaining({ role: "scout", status: "finished", thread: started.event.threadId, title: "find the seed list" })]);
     expect(subs.usage.inputTokens).toBeGreaterThan(0);
     // Subagents live in their delegate cards, not the thread list; a child thread (a fork) nests under its parent.
     const own = d.services!.memory.openThreadView(rt.ada.id, "general");

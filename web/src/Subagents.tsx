@@ -57,15 +57,17 @@ export function SubagentsDrawer({ id, userId, pool, data, error, tasks, onClose 
           <ul className="sub-list">
             {ordered.map((r) => {
               const [state, word] = STATES[r.status];
+              // Without a title of its own, a subagent's title is its task's first line: the task line would only repeat it.
               const task = tasks.get(r.thread);
+              const taskLine = task && !(r.title && task.startsWith(r.title)) ? task : undefined;
               // The subagent opens beside the conversation from 1180 px up (the shell's links do that), so the drawer steps aside.
               return (
                 <li key={r.thread}>
                   <a className="sub-row" href={href({ page: "thread", userId, pool, threadId: r.thread })} onClick={onClose}>
                     <span className="status" data-state={state} aria-hidden="true" />
-                    <b className="role">{r.role}</b>
+                    <span className="sub-name" title={r.title || undefined}><b className="role">{r.role}</b>{r.title && <> – {r.title}</>}</span>
                     <span className="tstate" data-state={state}>{word}</span>
-                    {task && <span className="task" title={task}>{task}</span>}
+                    {taskLine && <span className="task" title={taskLine}>{taskLine}</span>}
                     <span className="sub-facts">
                       <span className="num" title={r.model}>{shortModel(r.model)}</span> · <span className="num" title={fullTime(r.startedAt)}>{wakeTime(r.startedAt)}</span> · <span className="num">{tokenCount(r.inputTokens + r.outputTokens)}</span> tokens
                     </span>

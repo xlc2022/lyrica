@@ -24,7 +24,10 @@ subagent:
   separate `pi` process;
 - has its own thread, created with `createThread({ parent, subagent: true })`,
   so it belongs to its parent and the UI shows it in its `delegate` card. Its entries are
-  recorded like any thread's;
+  recorded like any thread's. It is titled `<role>: <title>`: the step's
+  optional `title` (a few words, at most 60 characters, which the tool asks
+  her for so the user can tell subagents apart), else its task's first line
+  cut to 80;
 - gets its model from `childContext(parent, child, { tier } | { model })`,
   with the parent's `CallContext` as it is when the subagent starts: the
   parent's `subagent.cheap` or `subagent.strong` model (the coder instead

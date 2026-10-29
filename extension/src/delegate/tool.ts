@@ -26,6 +26,7 @@ export const MODEL_CHOICE_TEXT = [CHECK_IN, STEP_MODEL, WORKERS, MODELS_GUIDELIN
 // She picks a tier; a model only when the person named one (a saved workflow, which a user writes, may name one too).
 const Step = Type.Object({
   task: Type.String({ description: "What to do, with everything the subagent needs: it sees none of this conversation." }),
+  title: Type.Optional(Type.String({ maxLength: 60, description: "Three to six words naming the task, shown to the user after the role." })),
   done: Type.Optional(Type.String({ maxLength: 1200, description: "Progress and decisions so far, for the coder’s Code task section." })),
   role: Type.Optional(Type.String({ description: "A role; coder for writing in a repository, worker otherwise." })),
   tier: Type.Optional(Tier),
@@ -63,7 +64,7 @@ function request(p: Params): Request {
   const given = WORK.filter((k) => p[k] !== undefined);
   if (given.length !== 1) throw new Error(`give exactly one of ${WORK.join(", ")}`);
   const narrowing = { folders: p.folders, readOnly: p.readOnly, internet: p.internet };
-  if (p.task !== undefined) return { ...narrowing, task: p.task, done: p.done, role: p.role, tier: p.tier, ...(p.model ? { model: p.model } : {}), ...(p.fork ? { fork: true } : {}) };
+  if (p.task !== undefined) return { ...narrowing, task: p.task, title: p.title, done: p.done, role: p.role, tier: p.tier, ...(p.model ? { model: p.model } : {}), ...(p.fork ? { fork: true } : {}) };
   if (p.workflow !== undefined) return { ...narrowing, workflow: p.workflow, input: p.input };
   const k = given[0] as "tasks" | "chain" | "loop" | "council";
   return { ...narrowing, [k]: p[k] } as Request;

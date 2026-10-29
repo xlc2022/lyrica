@@ -1042,7 +1042,7 @@ export class Delegation {
   private spawn(run: Run, step: Step, narrowing: Narrowing, worktrees: Worktree[] = []): Promise<Subagent> {
     const role = this.role(run.parent.user.id, step.role, this.defaultRole(run, narrowing));
     const pick: ModelPick = step.model ? { model: this.named(run, step.model) } : { tier: step.tier ?? role.tier };
-    return this.open(run, role, pick, narrowing, undefined, step.task, worktrees, !!step.fork, step.done);
+    return this.open(run, role, pick, narrowing, undefined, step.task, worktrees, !!step.fork, step.done, step.title);
   }
 
   /**
@@ -1051,7 +1051,7 @@ export class Delegation {
    * (`earlier`). Each counts against the request's budget. A writer without
    * worktrees first waits until no other writer is in the parent's folders.
    */
-  private async open(run: Run, role: Role, pick: ModelPick, narrowing: Narrowing, earlier: SubagentRecord | undefined, task = "", worktrees: Worktree[] = [], fork = false, done = ""): Promise<Subagent> {
+  private async open(run: Run, role: Role, pick: ModelPick, narrowing: Narrowing, earlier: SubagentRecord | undefined, task = "", worktrees: Worktree[] = [], fork = false, done = "", title?: string): Promise<Subagent> {
     const { parent } = run;
     const { models, workspace } = this.o;
     const writer = !!workspace && !role.readOnly && !narrowing.readOnly;
@@ -1075,7 +1075,7 @@ export class Delegation {
     try {
       if (!view.own.getThread(parent.threadId)) throw new Error("its parent thread was forgotten");
       const child = earlier ? view.own.getThread(earlier.thread)
-        : view.own.createThread({ interface: parent.interface, parent: parent.threadId, subagent: true, title: `${role.name}: ${subagentTitle(task, view.own)}` });
+        : view.own.createThread({ interface: parent.interface, parent: parent.threadId, subagent: true, title: `${role.name}: ${title?.trim().slice(0, 60) || subagentTitle(task, view.own)}` });
       if (!child) throw new Error("that subagent's thread was forgotten");
       if (fork) forkConversation(view.own, parent.threadId, child.id);
       const parentThread = view.own.getThread(parent.threadId)!;

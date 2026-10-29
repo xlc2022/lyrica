@@ -1199,8 +1199,14 @@ export function apiRoutes(d: Lyricad): Route[] {
       const user = d.userFor(r);
       const thread = owner(d, user, (o) => threadOf(o, r));
       const ref = { user, pool: poolOf(r), threadId: thread.id };
+      const runs = s().delegation.store.runs(user.id, ref.pool, { parent: thread.id });
+      // Each subagent's thread is titled "<role>: <title>" when it starts; the drawer shows the title after the role.
+      const titles = owner(d, user, (o) => new Map(runs.map((x) => [x.thread, o[ref.pool].getThread(x.thread)?.title ?? ""])));
       return {
-        runs: s().delegation.store.runs(user.id, ref.pool, { parent: thread.id }).map(({ pool: _p, parent: _t, pick: _k, narrowing: _n, ...run }) => run),
+        runs: runs.map(({ pool: _p, parent: _t, pick: _k, narrowing: _n, ...run }) => {
+          const title = titles.get(run.thread) ?? "";
+          return { ...run, title: title.startsWith(`${run.role}: `) ? title.slice(run.role.length + 2) : title };
+        }),
         usage: s().delegation.usage(ref),
       };
     }),
