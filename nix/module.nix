@@ -65,7 +65,7 @@ in {
         inherit plugins;
         # Changes whenever a plugin in daemon/src/web/providers.ts or nixpkgs' Caddy does;
         # `nix flake check` prints the new one.
-        hash = "sha256-nb5feCtr6tT1IzZgsa/E4B1iv1hs0ZZBWSoAqOIIdQw=";
+        hash = "sha256-82zy3KS7mYK8z8v/L9KiHOBQkYCeoY4MdgyI09MLUH0=";
       };
       defaultText = lib.literalExpression "caddy with the DNS plugins in daemon/src/web/providers.ts";
       description = "Caddy with the DNS plugins lyricad configures.";
