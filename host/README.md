@@ -94,6 +94,19 @@ ROCm and Vulkan come inside the images. In a VM, pass the whole GPU through
 machine). Upgrading is `git pull && host/install.sh`: Lyrica shows the
 host's version but can't update it, since the configuration names the checkout.
 
+### gpu-unlock
+
+Optional, for GeForce RTX 20/30/40 cards: full-rate FP16/BF16 tensor math,
+unlocked at boot by [gpu-unlock](https://github.com/Zagitta/gpu-unlock)'s
+kernel module. On NixOS, `services.lyrica-host.gpuUnlock.enable = true`
+builds the module for the configured kernel, adds NVIDIA's firmware and the
+module to the initrd (so it runs before `nvidia`, which loads in stage 2)
+and sets `gpu_unlock.targets=all`. On Debian or Ubuntu, `host/gpu-unlock.sh`
+builds upstream's DKMS packages and adds the parameter to GRUB;
+`--remove` undoes it. `install.sh` and updates never run it. Both pin
+the same upstream commit and NVIDIA inputs (`nix/gpu-unlock.nix`); change
+them together. See docs/guides/model-hosts.md, "Full-rate tensor math".
+
 ### AMD GPUs
 
 ROCm runs llama.cpp, vLLM and images, but only on the GPUs its images are

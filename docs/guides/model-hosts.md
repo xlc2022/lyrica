@@ -122,6 +122,43 @@ instead, with its own starter (large-v3-turbo q8_0). Voices run on it
 with an older cuDNN, so on such a host a Blackwell card can't run voices.
 Details are in [host/README.md](../../host/README.md#image-models).
 
+### Full-rate tensor math
+
+GeForce cards run FP16, BF16 and TF32 tensor math at half the rate of the
+same chip sold as a workstation card.
+[gpu-unlock](https://github.com/Zagitta/gpu-unlock), a kernel module,
+lifts that cap at every boot, before the NVIDIA driver loads. Upstream reports faster prompt reading on vLLM (25 to 55%), image
+and video making, and little change for quantized GGUF models or for
+writing tokens. It's optional and off by default.
+
+- **Cards:** GeForce RTX 30 (stable upstream); RTX 20 and 40 are
+  experimental. Not RTX 50, workstation cards or the CMP 100-210. It has
+  been tried here on no card yet.
+- **Debian or Ubuntu:** `host/gpu-unlock.sh`. It lists the cards it would
+  unlock and asks first, then fetches the pinned upstream commit and two
+  files from NVIDIA's driver (checked against pinned checksums), builds
+  DKMS packages, installs them and adds `gpu_unlock.targets=all` to GRUB's
+  kernel command line through `/etc/default/grub.d/lyrica-gpu-unlock.cfg`.
+  Without GRUB, add that parameter yourself. Keep your distribution's
+  headers package (`linux-headers-amd64`, `linux-headers-generic`)
+  installed so DKMS builds it for new kernels; with Secure Boot, enroll
+  DKMS's key the first time (`mokutil --import`).
+- **NixOS:** `services.lyrica-host.gpuUnlock.enable = true;`, then
+  `nixos-rebuild boot`. The firmware is unfree: with an
+  `allowUnfreePredicate`, also allow `gpu-unlock-firmware`.
+- **Reboot**, then check: `journalctl -k -b | grep gpu_unlock` says
+  `unlocked` for each card.
+- **Undo:** `host/gpu-unlock.sh --remove` and reboot; on NixOS, set it
+  false and rebuild, or boot the previous generation. For one boot,
+  delete `gpu_unlock.targets=all` in the boot menu's editor.
+
+It runs as root before the driver, on the machine that holds Lyrica's
+memory if she runs there too. At the pinned commit it opens no network
+connection and writes no files; it touches only the cards it supports,
+through their registers and NVIDIA's own signed firmware. A suspend
+resets the unlock and the module redoes it on resume; hibernation isn't
+covered.
+
 ## Install
 
 Lyrica can do this for you on a Debian or Ubuntu machine she reaches
@@ -618,6 +655,10 @@ workstation"). Note what goes wrong against each.
    an image with Qwen-Image 2.1 Turbo, then a masked edit: only the
    masked part should change. Templates no real job has used yet may
    need node or input names in `host/workflows/` fixed.
+10. Optional, on a GeForce RTX 20, 30 or 40 card: turn on gpu-unlock
+    ("Full-rate tensor math"), reboot, and check the kernel log says
+    `unlocked`. Time the same prompt and the same image before and
+    after, and check that a suspend and resume keeps it.
 
 Report what fails, with the `host-api` log lines, in the Operator docs
 thread.
