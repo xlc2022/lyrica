@@ -487,7 +487,7 @@ function Sources({ sources }: { sources: Source[] }) {
       <ul aria-labelledby={label}>
         {sources.map((s) => (
           <li key={s.url}>
-            <a href={s.url} target="_blank" rel="noopener noreferrer" title={s.url}>
+            <a href={s.url} target="_blank" rel="noopener noreferrer" title={s.title ? `${s.title}\n${s.url}` : s.url}>
               {s.title && <span className="source-title">{s.title}</span>}
               <span className="source-host">{s.host}</span>
             </a>

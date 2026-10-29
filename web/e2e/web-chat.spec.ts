@@ -1938,7 +1938,7 @@ test("the pages she read show under her reply as Sources, each opening in a new 
   await expect(first).toHaveAttribute("href", `${fake}/page/moths-at-night`);
   await expect(first).toHaveAttribute("target", "_blank");
   await expect(first).toHaveAttribute("rel", "noopener noreferrer");
-  await expect(first).toHaveAttribute("title", `${fake}/page/moths-at-night`);
+  await expect(first).toHaveAttribute("title", `Moths At Night\n${fake}/page/moths-at-night`);
   await expect(first).toContainText("Moths At Night");
   await expect(first).toContainText("127.0.0.1");
   // The reply before has none.
