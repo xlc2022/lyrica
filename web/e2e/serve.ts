@@ -24,6 +24,7 @@
 // "tell <title>: <text>" messages that child thread (then says "Sent it.").
 // "read <title>" reads that child thread (then says "Read it.").
 // "compact: <summary>" compacts the thread with that summary (then says "Compacting.").
+// "fetch: <url>, <url>" reads each with web_fetch in turn (then says "Read them."); /page/<slug> is an article.
 import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -141,6 +142,13 @@ function fakeModel() {
         }
         res.writeHead(404); return res.end();
       }
+      // An article for web_fetch: its title from the slug, a byline, and enough text for Readability to keep.
+      const slug = /^\/page\/([\w-]+)$/.exec(req.url ?? "")?.[1];
+      if (slug) {
+        const title = slug.split("-").map((w) => w[0]!.toUpperCase() + w.slice(1)).join(" ");
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        return res.end(`<!doctype html><html><head><title>${title}</title></head><body><nav>Home</nav><article><h1>${title}</h1><p class="byline">By Sam</p>${`<p>${title} is a page the fake serves, long enough for the reader to keep as an article.</p>`.repeat(8)}</article></body></html>`);
+      }
       // A SearXNG at /searxng, answering JSON.
       if (req.url?.startsWith("/searxng/search?")) {
         res.writeHead(200, { "content-type": "application/json" });
@@ -181,6 +189,17 @@ function fakeModel() {
           res.write(`data: ${JSON.stringify({ ...base, choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}\n\n`);
           return res.end("data: [DONE]\n\n");
         }
+      }
+      // "fetch: <url>, <url>": web_fetch each in turn, then "Read them."
+      const fetches = /^fetch: (.+)/.exec(said)?.[1]?.split(",").map((u) => u.trim()) ?? [];
+      if (fetches.length) {
+        const since = chat.messages.length - 1 - chat.messages.map((m) => m.role).lastIndexOf("user");
+        const done = since ? chat.messages.slice(-since).filter((m) => m.role === "tool").length : 0;
+        if (done < fetches.length) send({ role: "assistant", tool_calls: [{ index: 0, id: `call_${Date.now()}_${done}`, type: "function", function: { name: "web_fetch", arguments: JSON.stringify({ url: fetches[done] }) } }] });
+        else send({ role: "assistant", content: "Read them." });
+        send({}, done < fetches.length ? "tool_calls" : "stop");
+        res.write(`data: ${JSON.stringify({ ...base, choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}\n\n`);
+        return res.end("data: [DONE]\n\n");
       }
       const ask = /(?:^|\n\n)ask(?: twice)?: (.+)/.exec(said)?.[1];
       const plan = /plan: (.+)/.exec(said)?.[1];

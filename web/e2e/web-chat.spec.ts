@@ -1917,3 +1917,38 @@ test("an open run of tool calls follows again when scrolled to its bottom while 
   await expect.poll(() => box.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight), { timeout: 3000 }).toBeLessThanOrEqual(2);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/tool-run-follow-${page.viewportSize()!.width}.png` });
 });
+
+test("the pages she read show under her reply as Sources, each opening in a new tab", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "Hello there");
+  await expect(page.getByText("You said: Hello there")).toBeVisible();
+  // Her fetches run in the thread's sandbox: the fake's pages are on this machine, so the thread needs local services.
+  const thread = threadIdOf(page.url());
+  await page.evaluate(async (path) => {
+    await fetch(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ services: true }) });
+  }, `/api/u/${userId}/threads/general/${encodeURIComponent(thread)}/settings`);
+  const fake = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;
+  await send(page, `fetch: ${fake}/page/moths-at-night, ${fake}/page/a-luna-moth-diary-of-seven-short-days-and-nights, ${fake}/page/moths-at-night`);
+  await expect(page.getByText("Read them.")).toBeVisible();
+  // Under her words, in the turn that read them.
+  const sources = page.locator(".turn").filter({ hasText: "Read them." }).getByRole("list", { name: "Sources" });
+  await expect(sources.getByRole("link")).toHaveCount(2);
+  const first = sources.getByRole("link").first();
+  await expect(first).toHaveAttribute("href", `${fake}/page/moths-at-night`);
+  await expect(first).toHaveAttribute("target", "_blank");
+  await expect(first).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(first).toHaveAttribute("title", `${fake}/page/moths-at-night`);
+  await expect(first).toContainText("Moths At Night");
+  await expect(first).toContainText("127.0.0.1");
+  // The reply before has none.
+  await expect(page.locator(".turn").filter({ hasText: "You said: Hello there" }).locator(".sources")).toHaveCount(0);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) {
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/sources-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  }
+});
