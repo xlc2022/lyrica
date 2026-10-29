@@ -13,6 +13,8 @@ afterEach(() => { vi.restoreAllMocks(); for (const folder of welcomeFolders.spli
 // Projects: a project chat whose child threads are the project's threads.
 
 const said = (c: ChatRequest) => JSON.stringify(c.messages);
+/** What started this request's run: the messages after her last reply (a wake is followed by her turn message). */
+const started = (c: ChatRequest) => JSON.stringify(c.messages.slice(c.messages.findLastIndex((m) => m.role === "assistant") + 1));
 /** Which thread a request is from: its first user message's text says so in these tests. */
 const who = (c: ChatRequest) => (JSON.stringify(c.messages[0]?.content ?? "").includes("Reply with JSON only") ? "watching"
   : /\[From t:[^\]]+\]\\n\\n(\w+)/.exec(said(c))?.[1] ?? "chat");
@@ -653,7 +655,7 @@ describe("projects", () => {
     const asked = () => requests.filter((c) => who(c) === "watching");
     const chatTurns = () => requests.filter((c) => who(c) === "chat" && !!c.tools?.length).length;
     // A child's report or bad end now wakes an idle parent for a turn of its own (brief child-wakes); those aren't looks' turns.
-    const wakeTurns = () => requests.filter((c) => who(c) === "chat" && JSON.stringify(c.messages.at(-1)).includes("Read the child thread notices")).length;
+    const wakeTurns = () => requests.filter((c) => who(c) === "chat" && started(c).includes("Read the child thread notices")).length;
     script("chat").push(start(["DNS", "dns: move DNS to the router"], ["Backups", "backups: copy the backups"]), { text: "Started." });
     script("dns").push({ text: "DNS moved." });
     script("backups").push({ text: "Copying." });
@@ -818,7 +820,7 @@ describe("projects", () => {
   it("wake an idle project with an unfinished checklist, twice at most, never paused or stopped", async () => {
     const { d, ada, rt, script, say, path, requests, project } = await setup();
     const later = () => new Date(Date.now() + 11 * 60_000);
-    const woken = () => requests.filter((c) => JSON.stringify(c.messages.at(-1)).includes("Nothing in this project is running")).length;
+    const woken = () => requests.filter((c) => started(c).includes("Nothing in this project is running")).length;
     const settle = async () => { await new Promise((r) => setTimeout(r, 300)); await until(() => Promise.resolve(d.services!.host.busy(rt.ada.id, "general", project.id)), (b) => !b); };
     script("chat").push(tool({ action: "steps", steps: [{ text: "Move DNS", state: "doing" }] }), { text: "On it." });
     await say("move DNS");

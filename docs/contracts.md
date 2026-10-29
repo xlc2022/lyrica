@@ -8,7 +8,7 @@ sketches; names may move, but the boundaries may not.
 ## Stack and layout
 
 - TypeScript (ESM) on Node 22 LTS, using npm workspaces.
-- Pi pinned exactly: `@earendil-works/pi-coding-agent@1.1.0`.
+- Pi pinned exactly: `@earendil-works/pi-coding-agent@1.4.0`.
 - SQLCipher through `better-sqlite3-multiple-ciphers`. Argon2id through
   `@node-rs/argon2`.
 - Tests with `vitest`. Type checks with `tsc --noEmit`.
@@ -1082,7 +1082,7 @@ Custom roles override built-ins by name, except `claude`.
   thread of the same project, marked with the same `[From t:<sender>]` line
   (`HostedThread.send(text, { fromThread })`; only `lyricad` writes it, and
   `Message.from.kind` is `thread`), at most `ThreadsLimits.siblingMessages`
-  (3) per turn to any one thread; each sent one says how many more that
+  (3) per request to any one thread; each sent one says how many more that
   thread can take this turn, and the refusal past it points to one message
   next turn or the project chat. It bounds one turn flooding one thread; it
   counts per thread because a turn with news for several (a new head for
@@ -1223,12 +1223,17 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   keeps them word for word within the budget (8,000 characters): over it,
   the oldest are cut to their first line, then the oldest dropped, and it
   reports `shortened`. The context meter counts them as its `pinned` part.
-- **`before_agent_start`** never replaces the whole system prompt. It does two
-  things:
+- **`before_agent_start`** never replaces the whole system prompt. It runs
+  for every run: one the user's prompt starts, and one a hidden message
+  starts (a child's report waking its parent, a nudge, a subagent's task),
+  whose text then stands in for the prompt when routing topics and recalling
+  memory (`startText`). Per-request limits (the delegate budget, child
+  threads started, messages to sibling threads) reset only on a run a
+  prompt starts (`startsRequest`). It does two things:
   - It edits `event.systemPromptOptions`. The persona core goes in
     `customPrompt`. WAKE, the page index, the thread's pinned messages, and
     "who you're talking with" go in `sections`.
-  - In Pi 1.1.0, setting `customPrompt` also drops Pi's default tool list and
+  - In Pi 1.4.0, setting `customPrompt` also drops Pi's default tool list and
     rules. The extension therefore rebuilds them from each tool's own snippets
     and guidelines (`toolGuidance`) into a `tools` section. Any tool
     registered with a snippet and guidelines appears there automatically.
@@ -1630,7 +1635,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   most one second and rewrites the turn's call record. Each successful
   assistant message calls `reportUp` for its provider.
 - `modelRuntimeFor` wraps `ModelRuntime.prepareRequest`, an internal of Pi
-  1.1.0 (as are `defaultBuiltins`, `builtins` and `rebuildProviders`, used to
+  1.4.0 (as are `defaultBuiltins`, `builtins` and `rebuildProviders`, used to
   empty the catalog); re-check them when Pi is upgraded. The wrapper gives a
   host provider its `fetchFor` fetch, and for every offering adds an
   `onPayload` that merges `payloadFields(offeringSettings(…).values, …)` into

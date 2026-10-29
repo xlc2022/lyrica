@@ -1,4 +1,4 @@
-import type { BuildSystemPromptOptions, ExtensionCommandContext, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import type { BeforeAgentStartEvent, BuildSystemPromptOptions, ExtensionCommandContext, ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { isThreadView, type CallContext, type Interface, type Persona, type Pool, type PoolView, type Profile, type User } from "@lyrica/core";
 import { assemble, type Budgets, type Section } from "./assemble.ts";
 import { dropNudges, frameMidTurn, contextLines, registerContext, type ContextMeter } from "./context.ts";
@@ -114,9 +114,9 @@ export function createLyricaExtension(thread: ThreadContext, opts: LyricaOptions
       const code = turnCode = opts.code?.() ?? false;
       const fullPersona = opts.persona();
       const persona = code ? { core: fullPersona.core.filter(f => /(^|\/)SOUL\.md$/.test(f.path)), topics: [] } : fullPersona;
-      const topics = code ? [] : router.route([...persona.topics, SELF_PRIMER], event.prompt);
+      const topics = code ? [] : router.route([...persona.topics, SELF_PRIMER], startText(event));
       setToolsOff(pi, ctx, "code", code ? CODE_TOOLS_OFF : []);
-      const memory = await memorySections(view, event.prompt, { ...who(), folders: opts.folders?.() ?? [], projectThreads: opts.projectThreads, name: opts.name?.() });
+      const memory = await memorySections(view, startText(event), { ...who(), folders: opts.folders?.() ?? [], projectThreads: opts.projectThreads, name: opts.name?.() });
       // An unlogged thread isn't offered remember at all.
       if (opts.memoryTools !== "read") setToolsOff(pi, ctx, "unlogged", memory.notice ? ["remember", ...(saving ? ["save_skill"] : [])] : []);
       const { customPrompt, sections, topics: topicTexts, turn, report } = assemble(
@@ -187,6 +187,27 @@ export const WORK_GUIDELINES = [
   "Make independent tool calls together in one reply (several reads, searches or checks at once), not one per reply: every reply resends your whole context.",
   "A file you've read stays in your context; read it again only after it changes. In a large file read the part you need, and send long command output to a file, then read what matters.",
 ];
+
+/**
+ * What a run starts from, for routing topics and recalling memory: the user's
+ * prompt, or the text of the hidden message (a child's report, a nudge) that
+ * started it.
+ */
+export function startText(event: BeforeAgentStartEvent): string {
+  if (event.messageType === "user") return event.prompt;
+  const c = event.message.content;
+  return typeof c === "string" ? c : c.filter((p) => p.type === "text").map((p) => p.text).join("\n");
+}
+
+/**
+ * Whether a run is a new request: one a prompt starts (the person's message, a
+ * routine, a wake-up). A run a hidden message starts (a child's report, a
+ * delegate result, a nudge) carries on the request before it, so per-request
+ * limits don't reset for it.
+ */
+export function startsRequest(event: BeforeAgentStartEvent): boolean {
+  return event.messageType === "user";
+}
 
 /**
  * A custom prompt replaces Pi's default tool list and rules, so they are

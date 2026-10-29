@@ -7,7 +7,7 @@ import {
 } from "@lyrica/core";
 import { askCompaction, COMPACT_GUIDELINES, type ContextMeter } from "./context.ts";
 import { CODE_NUDGE } from "./code.ts";
-import type { ThreadContext } from "./index.ts";
+import { startsRequest, type ThreadContext } from "./index.ts";
 import { syncEntries } from "./record.ts";
 import { formatEntry } from "./memory.ts";
 
@@ -226,11 +226,10 @@ export function createThreadsExtension(thread: ThreadContext, host: ThreadsHost 
       pi.sendMessage({ customType: "lyrica-ask-nudge", content: ASK_NUDGE, display: false }, { deliverAs: "followUp", triggerTurn: true });
     });
     let started = 0;
-    /** Messages this turn to each of the project's other threads, by thread. */
+    /** Messages this request to each of the project's other threads, by thread. */
     const siblings = new Map<string, number>();
     pi.on("before_agent_start", (event) => {
-      started = 0;
-      siblings.clear();
+      if (startsRequest(event)) { started = 0; siblings.clear(); }
       if (!child) return;
       const parent = store.getThread(self.parent ?? "");
       const o = event.systemPromptOptions;

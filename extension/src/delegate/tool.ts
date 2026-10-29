@@ -5,7 +5,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { memorySections } from "../memory.ts";
 import { codeTaskText } from "../code.ts";
 import { setToolsOff } from "../gate.ts";
-import { toolGuidance, WORK_GUIDELINES, type ThreadContext } from "../index.ts";
+import { startsRequest, startText, toolGuidance, WORK_GUIDELINES, type ThreadContext } from "../index.ts";
 import { syncEntries } from "../record.ts";
 import { registerMemoryTools } from "../tools.ts";
 import { registerExitCodes } from "../exit-codes.ts";
@@ -124,7 +124,7 @@ export function createDelegateExtension(thread: ThreadContext, delegation: Deleg
     pi.on("session_start", (_e, ctx) => { detach = delegation.attach(thread, deliverVia(pi, ctx, thread)); });
     pi.on("session_shutdown", () => detach?.());
     pi.on("before_agent_start", (event) => {
-      if (!budget) requestBudget = delegation.newBudget();
+      if (!budget && startsRequest(event)) requestBudget = delegation.newBudget();
       const claude = delegation.claudeCode(thread);
       const roles = delegation.roles(userId).filter((r) => claude || r.name !== CLAUDE_ROLE).map((r) => `- ${r.name} (${r.tier}${r.readOnly ? ", read-only" : ""}): ${r.description}`);
       const flows = delegation.workflows(userId).map((w) => `- ${w.name}: ${w.description}`);
@@ -265,7 +265,7 @@ export function createSubagentExtension(thread: ThreadContext, role: Role, hooks
       o.customPrompt = subagentPrompt(role, name);
       o.sections = { ...(tools ? { tools } : {}), ...o.sections };
       if (role.name === "coder") {
-        const memory = await memorySections(thread.view, event.prompt, { ...who(), folders: [] });
+        const memory = await memorySections(thread.view, startText(event), { ...who(), folders: [] });
         o.sections.project = memory.project ?? "";
         o.sections.code_task = codeTaskText(codingTask ?? thread.view.own.codeTask(thread.threadId));
         const rules = await repoRules?.();

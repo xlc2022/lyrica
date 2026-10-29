@@ -319,7 +319,10 @@ the thread's scratch folder (`/workspace`).
   at most `runsPerRequest`, outside the thread's: two such runs in one
   thread can each have that many working;
 - `runsPerRequest`: subagents one message to the parent may start, default 8,
-  counting the ones its subagents start;
+  counting the ones its subagents start. A request is a run a prompt starts
+  (the person's message, a routine, a wake-up); a run a hidden message starts
+  (a delegate result, a child's report, a nudge) carries on the request
+  before it and gets no new budget;
 - `timeoutMs`: per stretch of work, default 90 minutes, however busy;
 - `idleMs`: how long a subagent may go with no sign of work (a streamed
   token, a tool call or result), default 5 minutes. A pending approval or
@@ -674,7 +677,7 @@ A project chat's child threads are the project's threads
   frees. The queued task is held in memory only; after a restart the project
   chat is told the thread didn't start, and a message starts it.
 - A project's thread can **message another thread of the same project**
-  (`message({ id, text })`, at most 3 per turn to any one thread), marked with the sender's
+  (`message({ id, text })`, at most 3 per request to any one thread), marked with the sender's
   `[From t:<sender>]` line, and `list` shows it the project's other threads.
   A thread outside the project is refused.
 - `ask({ question, options, recommended, context? })` asks the user on a

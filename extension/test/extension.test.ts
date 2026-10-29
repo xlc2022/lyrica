@@ -23,10 +23,12 @@ function load(thread: ThreadContext, folders: string[] = [], budgets?: Budgets, 
     setActiveTools: (names: string[]) => { active = names; },
   } as unknown as ExtensionAPI;
   void createLyricaExtension(thread, { persona: () => persona, profile: () => profile, folders: () => folders, budgets, recentWork })(pi);
-  const turn = async (prompt: string) => {
+  /** A run started by the user's prompt, or by a hidden message (`custom`) when one is given. */
+  const turn = async (prompt: string, custom?: { customType: string; content: string }) => {
     // Pi builds fresh options from its base for every turn.
     const options = { cwd: "/", selectedTools: [], sections: {} as Record<string, string> };
-    const result = await handlers.get("before_agent_start")!({ type: "before_agent_start", prompt, systemPrompt: "", systemPromptOptions: options }, { hasUI: false });
+    const start = custom ? { messageType: "custom", message: { role: "custom", display: false, timestamp: 1, ...custom } } : { messageType: "user", prompt };
+    const result = await handlers.get("before_agent_start")!({ type: "before_agent_start", ...start, systemPrompt: "", systemPromptOptions: options }, { hasUI: false });
     return { options, result, active: [...active] };
   };
   return Object.assign(turn, { tools, request: (messages: unknown[]) => handlers.get("context_with_system")!({ type: "context_with_system", messages }) });
@@ -62,6 +64,14 @@ describe("extension", () => {
     expect(first.result.message).toMatchObject({ customType: "lyrica-turn", display: false });
     expect(first.result.message.content).toContain("<time>");
     expect(first.result.message.content).toContain('<topic id="music">');
+  });
+
+  it("routes a run a hidden message starts by that message's text", async () => {
+    const turn = load((await withMemory()).thread().context);
+    const woken = await turn("", { customType: "lyrica-child-wake", content: "The child thread finished the song." });
+    expect(woken.options).toMatchObject({ customPrompt: "She is Lyrica." });
+    expect(woken.result.message.content).toContain("<time>");
+    expect(woken.result.message.content).toContain('<topic id="music">');
   });
 
   it("accepts only a thread view from openThreadView", async () => {

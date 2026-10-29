@@ -4,7 +4,7 @@
   "type": "module",
   "exports": { ".": "./src/index.ts", "./api": "./src/api.ts" },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "1.1.0",
+    "@earendil-works/pi-coding-agent": "1.4.0",
     "@lyrica/core": "*",
     "@lyrica/extension": "*"
   }

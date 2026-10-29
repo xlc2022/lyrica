@@ -129,7 +129,7 @@ administrator pairs or manages them; a personal host lives in its user's
   session resumption. `modelRuntimeFor` gives each host's Pi provider this
   fetch, so chat, tools and streaming go through the host's `/v1`. It does
   so by wrapping the runtime's `prepareRequest`, an internal of Pi's
-  `ModelRuntime` checked against Pi 1.1.0; re-check it when Pi is upgraded.
+  `ModelRuntime` checked against Pi 1.4.0; re-check it when Pi is upgraded.
   The same wrapper adds each offering's saved settings.
 - A host that can't be reached, or doesn't answer within 30 seconds, is a
   plain reason ("blackwell can't be reached."), a 502 through the daemon.
