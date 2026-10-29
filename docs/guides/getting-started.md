@@ -1049,7 +1049,10 @@ refused. To replace the destination, enter the full URL and token again;
   rebuild; an Update doesn't add it. The Updates page shows each step;
   the updater's state is in `/var/lib/lyrica-update`. An update installs
   no packages: when a release needs a new one, install it by hand or run
-  `install.sh` from a checkout. On Debian and Ubuntu, Administration → Status
+  `install.sh` from a checkout. Node is one: releases since 2026-10-29 need
+  22.12 or later, and on an older Node the update's build fails and she
+  stays on the running release, so upgrade Node first (NodeSource, as in
+  "On Debian or Ubuntu"). On Debian and Ubuntu, Administration → Status
   reports any installed units that differ from the new release or are missing;
   run `install.sh` from a current checkout to update them. Updates never
   rewrite units, since `lyricad.service` defines her confinement. NixOS units
