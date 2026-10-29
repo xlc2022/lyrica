@@ -1970,6 +1970,54 @@ test("an open run of tool calls follows again when scrolled to its bottom while 
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/tool-run-follow-${page.viewportSize()!.width}.png` });
 });
 
+// The subagents drawer (docs/ux.md §6): the fake model never delegates, so the thread's runs are answered here as the daemon
+// would send them; the header's button and the drawer's rows are the real UI.
+test("a thread's subagents open in a drawer from the header: working ones first, each row a link to its thread", async ({ page, baseURL }) => {
+  await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "Hello there");
+  await expect(page.getByText("in a few pieces.")).toBeVisible();
+  const header = page.locator(".thread-head .head-actions");
+  await expect(header.getByRole("button", { name: /^Subagents/ })).toHaveCount(0);
+  const run = (thread: string, role: string, status: string, minutes: number) => ({
+    run: `run-${thread}`, thread, role, model: "cloud/cloud-model", background: false, status,
+    inputTokens: 12000, outputTokens: 800, startedAt: new Date(Date.now() - minutes * 60_000).toISOString(), endedAt: status === "running" ? null : new Date().toISOString(),
+  });
+  const runs = [run("sub-c", "reviewer", "failed", 1), run("sub-b", "coder", "running", 5), run("sub-a", "researcher", "finished", 9)];
+  await page.route("**/subagents", (route) => route.fulfill({ json: { runs, usage: { inputTokens: 36000, outputTokens: 2400 } } }));
+  await page.reload();
+  const button = header.getByRole("button", { name: "Subagents 3" });
+  await expect(button).toBeVisible();
+  await expect(button.locator(".num")).toHaveCSS("font-family", /Plex Mono|monospace/);
+  await button.click();
+  const drawer = page.getByRole("complementary", { name: "Subagents" });
+  await expect(drawer).toBeVisible();
+  await expect(button).toHaveAttribute("aria-expanded", "true");
+  await expect(drawer.locator("p.sub-facts")).toHaveText("3 subagents · 1 working · 38k tokens");
+  const rows = drawer.locator(".sub-row");
+  await expect(rows).toHaveCount(3);
+  // The one still working leads; the rest stay newest first.
+  await expect(rows.locator(".role")).toHaveText(["coder", "reviewer", "researcher"]);
+  await expect(rows.locator(".tstate")).toHaveText(["Working", "Failed", "Done"]);
+  await expect(rows.first()).toHaveAttribute("href", /\/t\/general\/sub-b$/);
+  await expect(rows.first().locator(".sub-facts")).toContainText("cloud-model");
+  await expect(rows.first().locator(".sub-facts")).toContainText("13k tokens");
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/subagents-drawer-${page.viewportSize()!.width}.png` });
+  // One drawer at a time: Settings takes its place, and Escape closes whichever is open.
+  if (!phone(page)) {
+    await page.getByRole("button", { name: "Thread settings" }).click();
+    await expect(drawer).toHaveCount(0);
+    await expect(page.getByRole("complementary", { name: "Thread settings" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await button.click();
+  }
+  await expect(drawer).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
 test("the pages she read show under her reply as Sources, each opening in a new tab", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");

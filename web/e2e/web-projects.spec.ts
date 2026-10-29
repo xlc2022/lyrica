@@ -833,6 +833,13 @@ test("the split view: a thread from its card opens in the panel, links inside it
   const panel = page.getByRole("complementary", { name: "Alpha" });
   await expect(panel.getByRole("heading", { level: 1, name: "Alpha" })).toBeFocused();
   await expect(panel.getByLabel("Message", { exact: true })).toBeVisible();
+  // Open as a page and Close panel follow the thread's own buttons at the same spacing, as one row.
+  const gaps = await panel.locator(".thread-head").evaluate((head) => {
+    const buttons = [...head.querySelectorAll(".head-actions > *, .panel-actions > *")].map((el) => el.getBoundingClientRect());
+    return buttons.slice(1).map((b, i) => Math.round(b.left - buttons[i]!.right));
+  });
+  expect(new Set(gaps).size, JSON.stringify(gaps)).toBe(1);
+  if (process.env.SCREENSHOTS) await panel.locator(".thread-head").screenshot({ path: `${process.env.SCREENSHOTS}/panel-head-${page.viewportSize()!.width}.png` });
   await expect(page.locator("main .tcard")).toHaveCount(1);
   expect(page.url()).toContain("/panel/t/general/");
   await page.keyboard.press("Escape");

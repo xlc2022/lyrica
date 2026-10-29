@@ -379,6 +379,16 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   under Chat. Opening a subagent's thread by link shows the same thing as
   its card: a link to its parent, its transcript and a message box, never
   the composer or settings.
+- **Subagents drawer** (`src/Subagents.tsx`): once a thread has delegated,
+  its header shows **Subagents** with the count after Files. It opens a
+  drawer (one drawer at a time: it and Thread settings close each other)
+  from `GET …/subagents`, reloaded as a run starts, works or ends: a facts
+  line ("3 subagents · 1 working · 38k tokens"), then a row per run, those
+  working or asking first and otherwise newest first. A row is the link to
+  the subagent's thread (beside, from 1180 px up) and closes the drawer: its role, its state as a dot and a word (Working,
+  Asking, Done, Failed, Stopped, Interrupted), its task on one line when
+  its `delegate` card is loaded (`delegateTasks` in `src/Messages.tsx`),
+  then the model's short name, start time and tokens in mono.
 - **Memory** (`src/Memory.tsx`, `src/memory.ts`; [memory.md](memory.md), The
   memory browser): a notebook. The browse pane lists one layer (Pages, Notes,
   WAKE, Journal) newest first (Journal previews one entry with Show all

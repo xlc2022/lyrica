@@ -1,6 +1,6 @@
 // One thread: header with its badges, the conversation, and the composer.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Message, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTombstone, type ThreadUsage, type WakeupInfo } from "./api.ts";
+import { del, get, patch, post, put, threadPath, u, HttpError, type MachineInfo, type Message, type Pins, type Pool, type RemovalPlan, type RewindRequest, type SendResponse, type Subagents, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTombstone, type ThreadUsage, type WakeupInfo } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { hasConsequences, jumpTo, PinnedBadge, RemovalConfirm, useUndo, type Rewinder } from "./Rewind.tsx";
 import { JUMP_EVENT, JUMP_KEY, SHOW_EVENT, SHOW_KEY, take, type JumpRequest, type ShowRequest } from "./links.ts";
@@ -8,7 +8,8 @@ import { go, href, parse } from "./route.ts";
 import { ProjectWelcome, ThreadsFact, useOverview, type ProjectEnv } from "./Project.tsx";
 import { useThread } from "./stream.ts";
 import { type Live, tailKey } from "./live.ts";
-import { Conversation, MessageBox } from "./Messages.tsx";
+import { Conversation, delegateTasks, MessageBox } from "./Messages.tsx";
+import { SubagentsDrawer } from "./Subagents.tsx";
 import { Composer } from "./Composer.tsx";
 import { ContextFact, newerContext } from "./ContextMeter.tsx";
 import { TokensFact } from "./Usage.tsx";
@@ -44,6 +45,9 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const drawerId = useId();
   const dropped = useRef(false);
   useEffect(() => { if (drawerAtStart && !drawer && !dropped.current) { dropped.current = true; dropDrawer?.(); } }, [drawer, drawerAtStart, dropDrawer]);
+  // The subagents drawer (docs/ux.md §6): one drawer at a time, so opening it closes Settings and back.
+  const [agentsOpen, setAgentsOpen] = useState(false);
+  const agentsId = useId();
   const [sendError, setSendError] = useState("");
   const { refreshThreads } = ctx;
   // A project chat: its threads, reloaded when one changes state or a turn ends.
@@ -51,6 +55,14 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   // Reloaded with each context reading too, which a long turn sends after every request.
   const usage = useLoad(() => get<ThreadUsage>(`${base}/usage`), [base, t.live.children, t.live.reload, t.live.context?.measuredAt]);
   const overview = useOverview(userId, pool, threadId, isProject, t.live.children + t.live.reload);
+  // Its subagent runs, reloaded as a run starts, works or ends; a subagent's own thread has none.
+  const ticks = Object.values(t.live.subagents).reduce((a, b) => a + b, 0);
+  const isSubagent = summary.data?.subagent;
+  const agents = useLoad(() => isSubagent === false ? get<Subagents>(`${base}/subagents`) : Promise.resolve(undefined), [base, isSubagent, ticks, t.live.reload, t.live.items.length]);
+  const agentTasks = useMemo(() => delegateTasks([
+    ...t.messages.flatMap((m) => m.role === "assistant" ? m.parts : []),
+    ...t.live.items.flatMap((i) => i.role === "assistant" ? i.parts : []),
+  ]), [t.messages, t.live.items]);
   const usageProps = usage.data ? { usage: usage.data, userId, pool, threadId, threads: overview.data?.threads ?? threads } : undefined;
   useEffect(() => { if (t.live.children) refreshThreads(); }, [t.live.children, refreshThreads]);
   // Each thread's last update to the project chat, for its card.
@@ -280,7 +292,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   if (!s && summary.error && gone.data) return <Tombstone userId={userId} pool={pool} data={gone.data} />;
 
   return (
-    <Main className="main" data-drawer-open={drawer}>
+    <Main className="main" data-drawer-open={drawer || agentsOpen}>
       <header className="head thread-head">
         <button type="button" className="menu-btn icon" aria-label="Show threads" onClick={ctx.openSide}><Icon name="menu" /></button>
         <div className="head-title">
@@ -316,7 +328,13 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
             {s?.project && <button type="button" className="sm" aria-label="Project" aria-pressed={wide ? onOverview : undefined} onClick={openOverview}><Icon name="project" /><span className="long">Project</span></button>}
             {/* The Files panel (docs/ux.md §6): beside the conversation from the split width, the page on its own below it. */}
             <a className="sm" href={href({ page: "files", userId, pool, threadId })} aria-label="Files and images"><Icon name="panel" /><span className="long">Files</span></a>
-            <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls={drawerId} onClick={() => setDrawer(!drawer)}>
+            {/* Subagents (docs/ux.md §6): only once the thread has delegated, with how many it has; the drawer lists them all. */}
+            {!!agents.data?.runs.length && (
+              <button type="button" className="sm" aria-label={`Subagents ${agents.data.runs.length}`} title="Subagents" aria-expanded={agentsOpen} aria-controls={agentsId} onClick={() => { setAgentsOpen(!agentsOpen); setDrawer(false); }}>
+                <Icon name="agents" /><span className="long">Subagents</span> <span className="num">{agents.data.runs.length}</span>
+              </button>
+            )}
+            <button type="button" className="sm" aria-label="Thread settings" aria-expanded={drawer} aria-controls={drawerId} onClick={() => { setDrawer(!drawer); setAgentsOpen(false); }}>
               <Icon name="gear" /><span className="long">{s?.project ? "Settings (this thread)" : "Settings"}</span>
             </button>
             {/* A project's thread resolves in one press (docs/ux.md §6); the button stays, filled while resolved, and a second press reopens it. */}
@@ -381,7 +399,10 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
           onClose={() => setDrawer(false)} id={drawerId}
         />
       )}
-      {drawer && <div className="scrim drawer-scrim" aria-hidden="true" onClick={() => setDrawer(false)} />}
+      {agentsOpen && s && !s.subagent && (
+        <SubagentsDrawer id={agentsId} userId={userId} pool={pool} data={agents.data} error={agents.error} tasks={agentTasks} onClose={() => setAgentsOpen(false)} />
+      )}
+      {(drawer || agentsOpen) && <div className="scrim drawer-scrim" aria-hidden="true" onClick={() => { setDrawer(false); setAgentsOpen(false); }} />}
       {menuAt && (
         <ThreadMenu at={menuAt} userId={userId} groups={ctx.groups} onGroups={ctx.refreshGroups} onToast={ctx.toast}
           onChange={() => { summary.reload(); refreshThreads(); }} onClose={closeMenu}

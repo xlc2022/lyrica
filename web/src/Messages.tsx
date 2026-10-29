@@ -872,6 +872,21 @@ function delegateText(a: DelegateArgs): string | undefined {
   return a.task ?? a.loop?.task ?? a.council?.question ?? (a.workflow ? `${a.workflow}${a.input ? `: ${a.input}` : ""}` : undefined);
 }
 
+/** Each subagent thread's task, from the `delegate` runs among these parts: a step's own task where the run had several, else the run's. */
+export function delegateTasks(parts: MessagePart[]): Map<string, string> {
+  const tasks = new Map<string, string>();
+  for (const p of parts) {
+    if (p.type !== "tool" || p.name !== "delegate" || !p.threads?.length) continue;
+    const a = (p.args ?? {}) as DelegateArgs;
+    const steps = a.tasks ?? a.chain;
+    p.threads.forEach((t, i) => {
+      const text = steps?.length === p.threads!.length ? steps[i]!.task : delegateText(a);
+      if (text) tasks.set(t.id, text);
+    });
+  }
+  return tasks;
+}
+
 /**
  * A `delegate` call. A run is headed by its subagents' roles and, when they share one, the model
  * they ran on (until they start, the role it asked for); a message names whom it went to; status,
