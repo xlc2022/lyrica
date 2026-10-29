@@ -1,6 +1,6 @@
 # Clips that move like another clip
 
-**Status:** Part 1 (the host) in review; part 2 not started.
+**Status:** Part 1 (the host) merged as #646; part 2 in review.
 
 The owner asked (2026-10-29) for better human movement in generated
 clips. Wan 2.2 makes a person move vaguely and often weakly from a prompt
@@ -80,8 +80,8 @@ templates and background clips.
   and she can make a driving clip first (a `video` of a plain figure
   doing the moves, then `motion`). The prompt says the scene and light,
   not the moves.
-- **The interface:** nothing new to press. The marker reads **Copying
-  moves** (beside Making a clip and Animating an image), and the clip
+- **The interface:** nothing new to press. The marker reads **Copying a
+  clip's moves** (beside Making a clip and Animating an image), and the clip
   shows as any clip does. docs/ux.md gets the label in its word list and
   in "A clip the agent made"; UI review judges it.
 
@@ -124,5 +124,14 @@ templates and background clips.
   - SAM 3.1 looks for "person" in both the image and the clip.
   - Core leaves out a recipe that does only `motion`, so it never shows as
     a chat model before part 2.
-- Next: PR review and the owner's approval (host is CODEOWNERS), a real
-  clip on lunasa from the built image, then part 2 with UI review.
+- 2026-10-29: part 1 merged as #646 (886926c). Lunasa ran the host's
+  filled template from the host image (ComfyUI 0.43.1) with a 32 fps
+  driver: 556 s for 5 s at 1280×704, 21.4 GB of VRAM and 29.6 of 30 GB of
+  system memory (tight), at real speed.
+- 2026-10-29, part 2 built on `claude/project-thread-mzp6un`: the `motion`
+  capability and offering, `drive` on `VideoRequest` (an MP4 of at most
+  64 MB, with `image`), routing to a recipe that does `motion`,
+  `ThreadImages.readClip`, the `image` tool's `motion` action and
+  guideline, and the marker **Copying a clip's moves** (ux-copy kept the
+  "<verb>ing a <thing>" pattern of the other markers).
+- Next: PR review and UI review, then a clip through Lyrica on lunasa.

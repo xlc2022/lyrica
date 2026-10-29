@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CloudModelForbidden, HostRefused, PLAN_IMAGE_MODEL, type ImageRequest } from "../src/index.ts";
 import { cleanPng, imageAt } from "../src/models/images.ts";
 
-import { fakeImages as setup } from "./fake-images.ts";
+import { fakeImages as setup, mp4 } from "./fake-images.ts";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS1sAAAAASUVORK5CYII=", "base64");
 const input = { bytes: png, type: "image/png" as const };
@@ -301,11 +301,23 @@ describe("video calls through the router (principles 1 and 2)", () => {
     await expect(s.models.video(s.ctx(), { prompt: "It runs off", image: input })).rejects.toThrow(/doesn't animate images/);
     expect((await s.models.video(s.ctx(), { prompt: "A fox" })).resolution.ref).toEqual(s.spare.clip);
   });
-  it("offers no host recipe that does only what Lyrica can't ask for yet, so it never shows as a chat model", async () => {
-    const s = await setup();
+  it("moves an image as a driving clip moves only on a recipe that does motion, and passes over one that doesn't", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
+    const drive = mp4;
+    s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.clip, s.workstation.moves]);
+    const out = await s.models.video(ctx, { prompt: "A plain studio", image: input, drive });
+    expect(out.resolution.ref).toEqual(s.workstation.moves);
+    expect(s.workstation.server.videos).toEqual([{ recipe: "moves", prompt: "A plain studio", image: png.toString("base64"), drive: drive.toString("base64") }]);
+    // A clip from a prompt or a first frame still goes to the recipe that makes those.
+    expect((await s.models.video(ctx, { prompt: "A fox" })).resolution.ref).toEqual(s.workstation.clip);
+    s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.clip]);
+    await expect(s.models.video(ctx, { prompt: "x", image: input, drive })).rejects.toThrow(/doesn't move an image as a clip does/);
+    // A driving clip needs its subject, and must be an MP4.
+    await expect(s.models.video(ctx, { prompt: "x", drive })).rejects.toThrow(/needs the image/);
+    await expect(s.models.video(ctx, { prompt: "x", image: input, drive: png })).rejects.toThrow(/MP4/);
+    // An offering that does only motion is no chat model.
     const ids = s.models.offerings(s.ada.id, s.workstation.ep.id).map((o) => o.modelId);
-    expect(ids).toContain("recipe/clip");
-    expect(ids).not.toContain("recipe/moves");
+    expect(ids).toContain("recipe/moves");
   });
   it("refuses a bad request before any call", async () => {
     const s = await setup();

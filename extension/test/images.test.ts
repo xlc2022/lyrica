@@ -206,6 +206,18 @@ describe("image tool results (principles 1 and 4)", () => {
     await expect(s.run({ action: "video", prompt: "A fox" })).rejects.toThrow();
     expect(s.heard).toEqual([]);
   });
+  it("moves a portrait as the person in a workspace clip moves, on the host only, with no question", async () => {
+    const s = await setup(); s.settings.setPhotoCloudPolicy("never");
+    s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.clip, s.workstation.moves]);
+    writeFileSync(join(s.folder, "uploads", "dance.mp4"), mp4);
+    const out = await s.run({ action: "motion", prompt: "A plain studio", image: "/photos-of-me/portrait.png", video: "/workspace/uploads/dance.mp4" });
+    expect((out.details as { video: { model: string } }).video.model).toBe("shared.workstation/Moves");
+    expect(s.asked).toEqual([]);
+    expect(s.workstation.server.videos).toEqual([{ recipe: "moves", prompt: "A plain studio", image: png.toString("base64"), drive: mp4.toString("base64") }]);
+    await expect(s.run({ action: "motion", prompt: "x", image: "/photos-of-me/portrait.png" })).rejects.toThrow("motion needs video");
+    await expect(s.run({ action: "motion", prompt: "x", image: "/photos-of-me/portrait.png", video: "/workspace/uploads/landscape.png" })).rejects.toThrow(/isn't an MP4/);
+    expect(s.heard).toEqual([]);
+  });
   it("hands a clip to the background when lyricad runs clips, so her turn ends, and the clip comes back when it's made", async () => {
     const s = await setup();
     s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.clip]);

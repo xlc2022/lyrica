@@ -525,12 +525,14 @@ only the image, at that model's price: a cloud model is in the list only if
 the person put it there. With no list set, only local models are tried.
 
 The task `video` (Videos) has its own ordered list in each column and
-preset, of host recipes that do `video` or `animate`; nothing follows it.
+preset, of host recipes that do `video`, `animate` or `motion`; nothing follows it.
 `video(ctx, request, { signal?, beforeSend?, onProgress? })` makes one clip from a prompt,
-or from `image` as its first frame, with optional `size` and `duration`
-(1 to 15 seconds). Only a model host's recipe answers: a cloud model or
+or from `image` as its first frame, or with `drive` (an MP4 of at most
+64 MB) `image`'s subject moved as the person in that clip moves, with
+optional `size` and `duration` (1 to 15 seconds). Only a model host's recipe answers: a cloud model or
 plain endpoint in the list is passed over ("only a model host makes
-videos"), and with an image a recipe that doesn't `animate` is too. It
+videos"), and with an image a recipe that doesn't `animate` is too, and
+with a driving clip one that doesn't do `motion`. It
 posts `/host/v1/videos/create` with explicit fields only and waits up to
 two hours (a host's fetch leaves out undici's five-minute wait for the
 first byte on image and video jobs, which answer only when done); the answer is checked as an MP4, its poster as a PNG with its
@@ -738,9 +740,8 @@ the host's own, from `GET /host/v1/starters`, each part marked `present`;
 making one posts `…/starters/<id>/install` with the hub token when a part
 is missing, and the host downloads those and confirms the recipe. A shared
 host needs an administrator. Only confirmed recipes become offerings (`recipe/<id>`,
-with `image`, `edit`, `upscale`, `video` or `animate` as the recipe does),
-so a proposal never resolves; a recipe that does none of these (SCAIL-2's
-`motion`, until Lyrica can ask for it) isn't one; a recipe deleted here
+with `image`, `edit`, `upscale`, `video`, `animate` or `motion` as the recipe does),
+so a proposal never resolves; a recipe that does none of these isn't one; a recipe deleted here
 leaves a tombstone. The tag is `fast`, `quality` or `both`, stored as an
 optional field in the host's `recipes.json`; absent reads as both. The daemon
 recipe action `{ do: "change", change: { op: "useFor", useFor } }` forwards

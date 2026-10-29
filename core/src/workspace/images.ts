@@ -4,7 +4,7 @@ import { closeSync, constants, createReadStream, fstatSync, lstatSync, mkdirSync
 import { posix } from "node:path";
 import type { Readable } from "node:stream";
 import { cleanPng, type GeneratedImage, type ImageInput } from "../models/images.ts";
-import { isMp4, type GeneratedVideo } from "../models/videos.ts";
+import { isMp4, MAX_DRIVE_BYTES, type GeneratedVideo } from "../models/videos.ts";
 import { sniffImage } from "./ops.ts";
 import { WORKDIR } from "./sandbox.ts";
 import type { WorkspaceSettings } from "./settings.ts";
@@ -308,6 +308,24 @@ export class ThreadImages {
     } finally { file.stream.destroy(); }
     const bytes = Buffer.concat(chunks);
     return { input: imageInput(bytes), portrait: this.portraits.isPortraitImage(createHash("sha256").update(bytes).digest("hex")) };
+  }
+
+  /** A driving clip from the workspace (`motion`): an MP4 of at most 64 MB, read in memory only. */
+  async readClip(path: string): Promise<Uint8Array> {
+    const file = await this.readWorkspace(path);
+    const chunks: Buffer[] = [];
+    let size = 0;
+    try {
+      if (file.size > MAX_DRIVE_BYTES) throw new Error("a driving clip is at most 64 MB");
+      for await (const chunk of file.stream) {
+        const bytes = Buffer.from(chunk); size += bytes.length;
+        if (size > MAX_DRIVE_BYTES) throw new Error("a driving clip is at most 64 MB");
+        chunks.push(bytes);
+      }
+    } finally { file.stream.destroy(); }
+    const bytes = Buffer.concat(chunks);
+    if (!isMp4(bytes)) throw new Error(`${path} isn't an MP4 clip`);
+    return bytes;
   }
 
   /** Exclusive PNG names, no sidecars or prompt metadata, and no writes through a symlink. */
