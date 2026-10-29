@@ -747,6 +747,25 @@ describe("delegate", () => {
     const [child] = parent.view.own.listThreads({ parent: parent.threadId });
     expect(parent.view.own.listThreads({ parent: child!.id })).toHaveLength(1);
   });
+
+  it("gives a new budget to a request, not to a run a hidden message starts", async () => {
+    const s = await setup({ limits: { runsPerRequest: 1 } });
+    s.cloud.respond(() => ({ text: "done" }));
+    const parent = s.thread();
+    const handlers = new Map<string, Function>();
+    let tool!: { execute: Function };
+    const pi = { on: (e: string, h: Function) => handlers.set(e, h), registerTool: (t: { name: string; execute: Function }) => { if (t.name === "delegate") tool = t; } };
+    createDelegateExtension(parent, s.delegation)(pi as never);
+    const start = (e: object) => handlers.get("before_agent_start")!({ type: "before_agent_start", systemPrompt: "", systemPromptOptions: { sections: {} }, ...e });
+    const delegate = async () => JSON.stringify((await tool.execute("call", { task: "look", role: "scout" }, undefined, undefined, { sessionManager: { getEntries: () => [] } })).content);
+    start({ messageType: "user", prompt: "look twice" });
+    expect(await delegate()).toContain("done");
+    // A delegate result or a child's report carries on the same request.
+    start({ messageType: "custom", message: { role: "custom", customType: "lyrica-delegate", content: "Run finished.", display: false, timestamp: 1 } });
+    expect(await delegate()).toContain("this request has already started 1 subagent");
+    start({ messageType: "user", prompt: "look again" });
+    expect(await delegate()).toContain("done");
+  });
 });
 
 describe("talking with subagents", () => {

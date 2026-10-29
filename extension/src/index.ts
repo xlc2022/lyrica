@@ -200,6 +200,16 @@ export function startText(event: BeforeAgentStartEvent): string {
 }
 
 /**
+ * Whether a run is a new request: one a prompt starts (the person's message, a
+ * routine, a wake-up). A run a hidden message starts (a child's report, a
+ * delegate result, a nudge) carries on the request before it, so per-request
+ * limits don't reset for it.
+ */
+export function startsRequest(event: BeforeAgentStartEvent): boolean {
+  return event.messageType === "user";
+}
+
+/**
  * A custom prompt replaces Pi's default tool list and rules, so they are
  * rebuilt here from the tools' own snippets and guidelines, after any `rules` given.
  */

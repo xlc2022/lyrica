@@ -1082,7 +1082,7 @@ Custom roles override built-ins by name, except `claude`.
   thread of the same project, marked with the same `[From t:<sender>]` line
   (`HostedThread.send(text, { fromThread })`; only `lyricad` writes it, and
   `Message.from.kind` is `thread`), at most `ThreadsLimits.siblingMessages`
-  (3) per turn to any one thread; each sent one says how many more that
+  (3) per request to any one thread; each sent one says how many more that
   thread can take this turn, and the refusal past it points to one message
   next turn or the project chat. It bounds one turn flooding one thread; it
   counts per thread because a turn with news for several (a new head for
@@ -1227,7 +1227,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   for every run: one the user's prompt starts, and one a hidden message
   starts (a child's report waking its parent, a nudge, a subagent's task),
   whose text then stands in for the prompt when routing topics and recalling
-  memory (`startText`). It does two things:
+  memory (`startText`). Per-request limits (the delegate budget, child
+  threads started, messages to sibling threads) reset only on a run a
+  prompt starts (`startsRequest`). It does two things:
   - It edits `event.systemPromptOptions`. The persona core goes in
     `customPrompt`. WAKE, the page index, the thread's pinned messages, and
     "who you're talking with" go in `sections`.
