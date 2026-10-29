@@ -1064,8 +1064,12 @@ it's off.
   attempt, including fallbacks; local models always remain allowed.
   Images made from them follow the same rule.
 - **Later:** a personal LoRA, trained on the user's photos on the GPU machine
-  for a closer likeness. It would be stored encrypted in their home, and loaded
-  into the GPU machine's memory only for a job. Choosing a LoRA for one image
+  for a closer likeness (brief: `docs/briefs/personal-lora.md`). It would be
+  trained only from that user's own `photos-of-me/`, when they start it, by
+  a pinned trainer on their model host with no route out and its photos in
+  memory only; captioned by a local model only; stored encrypted in their
+  home, and loaded into the GPU machine's memory only for a job. Deleting a
+  photo it was trained on deletes it. Choosing a LoRA for one image
   (a style, a person) comes with it: the `image` tool would offer a short list
   of LoRAs the user enabled, with their trigger words, and each recipe would
   say which LoRA slots it takes. Until then, LoRAs exist only inside
