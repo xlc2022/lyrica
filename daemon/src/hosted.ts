@@ -319,6 +319,8 @@ export class HostedThread {
   private id(n: number): string { return `${EPOCH}-${n}`; }
 
   private emit(event: ThreadEvent): void {
+    // A turn that ended without ending a call (stopped mid-call, say) leaves no placeholder behind.
+    if (event.type === "turn_end") for (const id of [...this.making.keys()]) { this.making.delete(id); this.emit({ type: "made", toolCallId: id }); }
     this.track(event);
     this.o.onEvent?.(this.userId, this.pool, this.threadId, event);
     const n = ++this.n;
