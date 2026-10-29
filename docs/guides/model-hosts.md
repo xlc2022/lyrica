@@ -125,9 +125,9 @@ Details are in [host/README.md](../../host/README.md#image-models).
 ### Full-rate tensor math
 
 GeForce cards run FP16, BF16 and TF32 tensor math at half the rate of the
-same chip sold as a workstation card. [gpu-unlock](https://github.com/Zagitta/gpu-unlock),
-a kernel module, lifts that cap at every boot, before the NVIDIA driver
-loads. Upstream reports faster prompt reading on vLLM (25 to 55%), image
+same chip sold as a workstation card.
+[gpu-unlock](https://github.com/Zagitta/gpu-unlock), a kernel module,
+lifts that cap at every boot, before the NVIDIA driver loads. Upstream reports faster prompt reading on vLLM (25 to 55%), image
 and video making, and little change for quantized GGUF models or for
 writing tokens. It's optional and off by default.
 
@@ -655,6 +655,10 @@ workstation"). Note what goes wrong against each.
    an image with Qwen-Image 2.1 Turbo, then a masked edit: only the
    masked part should change. Templates no real job has used yet may
    need node or input names in `host/workflows/` fixed.
+10. Optional, on a GeForce RTX 20, 30 or 40 card: turn on gpu-unlock
+    ("Full-rate tensor math"), reboot, and check the kernel log says
+    `unlocked`. Time the same prompt and the same image before and
+    after, and check that a suspend and resume keeps it.
 
 Report what fails, with the `host-api` log lines, in the Operator docs
 thread.
