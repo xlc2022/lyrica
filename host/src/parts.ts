@@ -6,7 +6,7 @@ import { closeSync, lstatSync, openSync, readSync, readdirSync, statSync } from 
 import { basename, join, relative } from "node:path";
 import { readGguf, readGgufTensors } from "./gguf.ts";
 
-export type Role = "checkpoint" | "diffusion" | "text_encoder" | "vae" | "lora" | "upscaler" | "latent_upscaler" | "interpolator" | "unknown";
+export type Role = "checkpoint" | "diffusion" | "text_encoder" | "vae" | "lora" | "upscaler" | "latent_upscaler" | "interpolator" | "clip_vision" | "segmenter" | "unknown";
 
 export interface Part {
   /** Path relative to the models folder. */
@@ -17,7 +17,7 @@ export interface Part {
   /**
    * For text encoders: clip_l, clip_g, t5, umt5, qwen3, qwen2.5vl, qwen3vl (4B), qwen3vl_8b,
    * qwen3vl_32b, gemma4_12b. For a video model's two experts and their LoRAs: high, low (from
-   * the file name); a speed LoRA: speed. An audio VAE: audio.
+   * the file name); a speed LoRA: speed; SCAIL-2's DPO LoRA: dpo. An audio VAE: audio.
    */
   slot: string | null;
   /** The architecture it belongs to; for text encoders, the encoder's own (same as the slot). */
@@ -75,12 +75,14 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   // Frame interpolation, by the keys ComfyUI's own loader reads: RIFE 4.7 and later, or FILM.
   if (has(/(^|\.)(block0|blocks\.0)\.lastconv\./) && has(/(^|\.)encode\.cnn0\./)) return { role: "interpolator", slot: null, arch: "rife" };
   if (has(/^extract\.extract_sublevels\./)) return { role: "interpolator", slot: null, arch: "film" };
+  // SAM 3.1, which finds and tracks people for a pose-driven model (SCAIL-2); ComfyUI loads it as a checkpoint.
+  if (has(/^detector\.backbone\./) && has(/^tracker\.model\./)) return { role: "segmenter", slot: null, arch: "sam3" };
 
   // A video model's two experts (Wan 2.2 14B), and the speed LoRAs made for each, are told apart by name.
   const expert = /high[_-]?noise/.test(name) ? "high" : /low[_-]?noise/.test(name) ? "low" : null;
 
   if (has(/lora_(up|down|A|B)\b|\.lora_(up|down|A|B)\.|^lora_(unet|te)/)) {
-    const slot = expert ?? (/turbo|lightning|lightx2v|\d+[_-]?steps?/.test(name) ? "speed" : null);
+    const slot = expert ?? (/turbo|lightning|lightx2v|\d+[_-]?steps?/.test(name) ? "speed" : /(^|[^a-z])dpo([^a-z]|$)/.test(name) ? "dpo" : null);
     const arch = /minimax[_-]?h3/.test(name) ? "minimax-h3"
       : has(/blocks[._]\d+[._](self|cross)[._]attn[._][qkvo]\b/) ? "wan"
       : has(/double_blocks|single_blocks/) ? "flux"
@@ -111,6 +113,8 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
   // Video models, by the keys ComfyUI's model detection reads.
   if (hasBare(/^video_patch_proj\.weight$/) && hasBare(/^audio_patch_proj\.weight$/)) return { role: "diffusion", slot: null, arch: "minimax-h3" };
   if (hasBare(/^adaln_single\.emb\.timestep_embedder\.linear_1\.bias$/) && hasBare(/^audio_adaln_single\.linear\.weight$/)) return { role: "diffusion", slot: null, arch: "ltx2" };
+  // SCAIL-2: Wan 2.1 I2V 14B with its own patch embeddings for the pose and mask videos.
+  if (hasBare(/^head\.modulation$/) && hasBare(/^patch_embedding_pose\.weight$/)) return { role: "diffusion", slot: null, arch: "scail2" };
   if (hasBare(/^head\.modulation$/)) {
     // Wan: the 5B takes 48 latent channels; the 14B experts 16 (text to video) or 36 (image to video).
     const patch = Object.entries(shapes).find(([n]) => /(^|\.)patch_embedding\.weight$/.test(n))?.[1];
@@ -118,6 +122,10 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
     return arch ? { role: "diffusion", slot: arch.endsWith("14b") ? expert : null, arch } : unknown;
   }
 
+  // CLIP ViT-H's image half (clip_vision_h, Wan 2.1 I2V's and SCAIL-2's): 32 layers, no text model.
+  if (has(/^vision_model\.embeddings\.patch_embedding\.weight$/) && !has(/^text_model\./)) {
+    return has(/^vision_model\.encoder\.layers\.31\./) && !has(/^vision_model\.encoder\.layers\.32\./) ? { role: "clip_vision", slot: null, arch: "clip-vision-h" } : unknown;
+  }
   const clipEmbed = names.find((n) => /text_model\.embeddings\.token_embedding\.weight$/.test(n));
   if (clipEmbed) {
     const width = shapes[clipEmbed]?.[1];

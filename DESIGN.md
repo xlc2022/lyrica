@@ -1021,7 +1021,10 @@ it's off.
   in the thread's `videos/` with its poster as its thumbnail, so deleting
   it deletes the poster. The chat shows the poster with a play button and
   plays the clip in the browser's own player. Only model hosts make clips,
-  so a first frame never reaches a cloud model.
+  so a first frame never reaches a cloud model. A SCAIL-2 recipe (2026-10-29)
+  does `motion`: an image's subject moves as the person in a driving clip
+  moves, frame for frame, with SAM 3.1 finding the person in both. Only the
+  host does it so far; Lyrica offers no such recipe until her side is built.
 - **Looking at images** (2026-10-25): the task `vision`, **Look at
   images**, has its own list of models with vision in each preset, chosen
   by the person (a plan's model, a local one, or a paid one they add).

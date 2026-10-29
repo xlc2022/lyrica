@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Role } from "./parts.ts";
 
-export type Action = "create" | "edit" | "upscale" | "video" | "animate";
+export type Action = "create" | "edit" | "upscale" | "video" | "animate" | "motion";
 
 /** How a video template's clips are timed and sized. */
 export interface VideoSpec {
@@ -30,6 +30,8 @@ export interface PartSpec {
   arch?: string[];
   /** A recipe is ready without it; with it, the template's nodes that need it run. */
   optional?: boolean;
+  /** For a LoRA the template names: how strongly it applies (default 1). */
+  strength?: number;
 }
 
 interface Node {
@@ -79,7 +81,9 @@ type Link = [string, number];
  * Loader nodes for the recipe's parts: model, clip and VAE outputs, with LoRAs applied to the model.
  * A part with a slot gets its own link: `$model_high` and `$model_low` for a video model's two
  * experts, `$vae_audio` for an audio VAE. A LoRA the template names (with a slot) goes onto the
- * expert of that slot, or onto the model; the recipe's own LoRAs go onto the model.
+ * expert of that slot, or onto the model, in the template's order; the recipe's own LoRAs go onto the model.
+ * A CLIP vision model is `$clipVision`; a segmenter (SAM 3.1, a checkpoint to ComfyUI) `$segmenter`
+ * and its text encoder `$segmenterClip`.
  */
 function loaders(t: Template, parts: FilledPart[], loras: { file: string; strength: number }[]) {
   const nodes: Record<string, Node> = {};
@@ -123,10 +127,22 @@ function loaders(t: Template, parts: FilledPart[], loras: { file: string; streng
     nodes.load_interpolator = { class_type: "FrameInterpolationModelLoader", inputs: { model_name: interpolator.file } };
     links.$interpolator = ["load_interpolator", 0];
   }
-  for (const lora of parts.filter((p) => p.role === "lora" && p.slot)) {
+  const vision = parts.find((p) => p.role === "clip_vision");
+  if (vision) {
+    nodes.load_clip_vision = { class_type: "CLIPVisionLoader", inputs: { clip_name: vision.file } };
+    links.$clipVision = ["load_clip_vision", 0];
+  }
+  const segmenter = parts.find((p) => p.role === "segmenter");
+  if (segmenter) {
+    nodes.load_segmenter = { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: segmenter.file } };
+    [links.$segmenter, links.$segmenterClip] = [["load_segmenter", 0], ["load_segmenter", 1]];
+  }
+  const order = (p: FilledPart) => t.parts.findIndex((s) => s.role === "lora" && s.slot === p.slot);
+  for (const lora of parts.filter((p) => p.role === "lora" && p.slot).sort((a, b) => order(a) - order(b))) {
     const target = `$model${suffix(lora.slot)}` in links ? `$model${suffix(lora.slot)}` : "$model";
     const id = `lora${suffix(lora.slot)}`;
-    nodes[id] = { class_type: "LoraLoaderModelOnly", inputs: { model: links[target], lora_name: lora.file, strength_model: 1 } };
+    const strength = t.parts.find((s) => s.role === "lora" && s.slot === lora.slot)?.strength ?? 1;
+    nodes[id] = { class_type: "LoraLoaderModelOnly", inputs: { model: links[target], lora_name: lora.file, strength_model: strength } };
     links[target] = [id, 0];
   }
   loras.forEach((l, i) => {
@@ -140,7 +156,7 @@ function loaders(t: Template, parts: FilledPart[], loras: { file: string; streng
 export function fill(t: Template, parts: FilledPart[], loras: { file: string; strength: number }[], values: Values): Record<string, Node> {
   const { nodes, links } = t.loaders === "template" ? { nodes: {}, links: {} as Record<string, Link | null> } : loaders(t, parts, loras);
   // A loader link a template asks for but no part gives (`$vae_audio` with no audio VAE) is an error below.
-  const linkName = (v: string) => /^\$(model|clip|vae|latentUpscaler|interpolator)(_\w+)?$/.test(v);
+  const linkName = (v: string) => /^\$(model|clip|vae|latentUpscaler|interpolator|clipVision|segmenter|segmenterClip)(_\w+)?$/.test(v);
   const graph: Record<string, Node> = {};
   for (const [id, node] of Object.entries(t.workflow)) {
     // `_if` names a value, or an optional part's link: without it the node is left out.

@@ -301,6 +301,12 @@ describe("video calls through the router (principles 1 and 2)", () => {
     await expect(s.models.video(s.ctx(), { prompt: "It runs off", image: input })).rejects.toThrow(/doesn't animate images/);
     expect((await s.models.video(s.ctx(), { prompt: "A fox" })).resolution.ref).toEqual(s.spare.clip);
   });
+  it("offers no host recipe that does only what Lyrica can't ask for yet, so it never shows as a chat model", async () => {
+    const s = await setup();
+    const ids = s.models.offerings(s.ada.id, s.workstation.ep.id).map((o) => o.modelId);
+    expect(ids).toContain("recipe/clip");
+    expect(ids).not.toContain("recipe/moves");
+  });
   it("refuses a bad request before any call", async () => {
     const s = await setup();
     s.models.setColumnTask(s.ada.id, "general", "video", [s.spare.clip]);

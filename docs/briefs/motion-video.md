@@ -1,6 +1,6 @@
 # Clips that move like another clip
 
-**Status:** Brief, not started.
+**Status:** Part 1 (the host) in review; part 2 not started.
 
 The owner asked (2026-10-29) for better human movement in generated
 clips. Wan 2.2 makes a person move vaguely and often weakly from a prompt
@@ -58,9 +58,9 @@ templates and background clips.
    reference image's shape unless one is asked for. It answers as for
    any clip.
 4. **On disk:** ComfyUI reads the driving clip from its input folder,
-   as it reads an uploaded image. The host writes over it after the job
-   as it does an image (a tiny blank MP4 in place of the 1×1 PNG), so
-   nothing a user gave stays.
+   which is in memory (tmpfs), as it reads an uploaded image. The host
+   writes over it after the job as it does an image, with the same 1×1
+   PNG under the clip's name, so nothing a user gave stays.
 5. **Docs:** host/API.md, host/README.md, docs/models.md, docs/contracts.md
    if the video request's shape is written there, and this brief.
 
@@ -96,8 +96,10 @@ templates and background clips.
 
 ## Open questions
 
-- SAM 3.1's licence (Meta's own SAM licence) needs reading before the
-  starter ships; the host says what it asks, as for Krea 2 and H3.
+- SAM 3.1's licence, read by lunasa: Meta's SAM License (2025-11-19)
+  allows commercial use; it asks that publications acknowledge SAM, that
+  use follows the law and trade controls, and no reverse engineering. The
+  host README says so.
 - Whether a Q5 GGUF of SCAIL-2 should be a second starter for a 24 GB
   card with little system memory. The int8 one ran fine on lunasa.
 
@@ -106,5 +108,21 @@ templates and background clips.
 - 2026-10-29: brief written after the bake-off. The test ComfyUI is
   stopped and its files are kept on lunasa in `/srv/posebake`, so part 1
   can check its template against a real run there.
-- Next: part 1 on a `claude/*` branch, then PR review (host) and a real
-  clip on lunasa; then part 2, with UI review.
+- 2026-10-29, part 1 built on `claude/project-thread-mzp6un`, from the
+  workflow lunasa ran (ComfyUI's own template, animation mode) and the
+  files' headers and checksums lunasa read:
+  - `host/workflows/scail2.json` and the starter `host/recipes/scail-2.json`
+    (the lightx2v LoRA and CLIP vision from Comfy-Org/Wan-Animate-2, the
+    VAE and UMT5 the 14B starters already use).
+  - The scan tells SCAIL-2 by `patch_embedding_pose`, CLIP ViT-H's image
+    half (`clip_vision`) and SAM 3.1 (`segmenter`) apart, and the DPO LoRA
+    by name (`dpo`). A template's named LoRA has its own strength.
+  - `drive` on `POST /host/v1/videos/create`: an MP4 or QuickTime clip of
+    at most 64 MB, whose length is read from its movie header. The clip is
+    no longer than that; a new pinned node, `comfyui/video_frames.py`,
+    picks its frames at 16 fps, so the moves keep their speed.
+  - SAM 3.1 looks for "person" in both the image and the clip.
+  - Core leaves out a recipe that does only `motion`, so it never shows as
+    a chat model before part 2.
+- Next: PR review and the owner's approval (host is CODEOWNERS), a real
+  clip on lunasa from the built image, then part 2 with UI review.
