@@ -47,7 +47,7 @@ and mixes the folder with the chat's other grants. The owner asked
    `/delete`, `/zip`); `rename` moves. Nothing new in `lyricad`.
 7. **Docs:** docs/ux.md (the Project settings row gets the section back),
    docs/web.md, DESIGN.md (Projects), docs/briefs/projects-web.md and
-   docs/briefs/design.md (no longer "not built"), the mockup.
+   docs/briefs/design.md (no longer "not built"; that brief has since been removed), the mockup.
 
 ## Out of scope
 

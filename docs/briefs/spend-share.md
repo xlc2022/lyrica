@@ -73,7 +73,7 @@ pools left out), kept in the route (`web/src/route.ts`).
 docs/models.md, docs/delegation.md, docs/contracts.md, docs/daemon.md,
 docs/web.md, docs/ux.md (a thread's tokens row, "A project's usage", Recent
 calls; names Tokens, GPU time, By thread, All projects, and the Total tooltip "Counts every request, cached reads included."), and the status table
-in docs/briefs/design.md. The guarantee, once: "Totals count her turns and her
+in docs/briefs/design.md (since removed). The guarantee, once: "Totals count her turns and her
 subagents' work; titles, images, speech and a project chat's looks at its
 threads carry no counts and aren't included."
 

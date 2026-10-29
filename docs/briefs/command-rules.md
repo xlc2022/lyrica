@@ -74,7 +74,7 @@ ask as the mode says." The command card adds a secondary **Always allow
 
 **F. Docs.** DESIGN.md (a bullet under Modes), docs/workspace.md,
 delegation.md, contracts.md, ux.md (both homes and the new names), web.md,
-daemon.md, briefs/design.md's status table. The guarantee, once: "A forbid rule
+daemon.md, briefs/design.md's status table (since removed). The guarantee, once: "A forbid rule
 refuses any command she writes that contains a matching command, however
 chained or wrapped; it doesn't see inside scripts or programs she runs."
 
