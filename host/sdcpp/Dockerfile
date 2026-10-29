@@ -15,9 +15,10 @@ WORKDIR /src
 RUN git init -q && git remote add origin https://github.com/leejet/stable-diffusion.cpp && \
     git fetch -q --depth 1 origin "$COMMIT" && git checkout -q FETCH_HEAD && \
     git submodule update -q --init --depth 1 ggml
+# Its ggml's CUTLASS kernels are a submodule we don't fetch; the builds before it had none.
 RUN test -n "$CUDA_ARCHS" && \
     cmake -B build -DSD_CUDA=ON -DGGML_CUDA_FORCE_MMQ=ON -DCMAKE_CUDA_ARCHITECTURES="$CUDA_ARCHS" -DGGML_NATIVE=OFF \
-      -DSD_SERVER_BUILD_FRONTEND=OFF -DSD_WEBP=OFF -DSD_WEBM=OFF && \
+      -DGGML_CUDA_CUTLASS_PATH= -DSD_SERVER_BUILD_FRONTEND=OFF -DSD_WEBP=OFF -DSD_WEBM=OFF && \
     cmake --build build --config Release --target sd-server -j"$(nproc)"
 
 FROM ${RUNTIME}
