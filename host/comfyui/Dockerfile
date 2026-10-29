@@ -5,7 +5,7 @@
 ARG BASE=pytorch/pytorch:2.14.0-cuda13.0-cudnn9-runtime@sha256:9c99fafa01edfaa3d16da8c209b38b5970bb6fd6e72725ef60efc901489f70c6
 FROM ${BASE}
 
-ARG COMFYUI_COMMIT=daeb5e53681e2b10a3f0727d9ec5bc90784bee10
+ARG COMFYUI_COMMIT=086099f5d8886163ef77dc354f8382cb7431582a
 ARG GGUF_COMMIT=6ea2651e7df66d7585f6ffee804b20e92fb38b8a
 ARG SEEDVR2_COMMIT=4490bd1f482e026674543386bb2a4d176da245b9
 # LanPaint 2.2.0: masked edits on models without an inpainting checkpoint (Qwen-Image 2.1).

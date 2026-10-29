@@ -10,8 +10,8 @@ ARG RUNTIME=nvidia/cuda:12.8.1-runtime-ubuntu24.04@sha256:ebef3c171eeef0298e4eb2
 
 FROM ${DEVEL} AS build
 # The tag compose.nvidia.yaml's image is built from, and its commit.
-ARG TAG=b11459
-ARG COMMIT=f498f864fbc0472004ee1c3616c1188c68eb157f
+ARG TAG=b11960
+ARG COMMIT=8642541b255bfb5dc39cd351a178be09013a55d6
 # The host's GPUs' compute capabilities, as install.sh found them (e.g. 70-real).
 ARG CUDA_ARCHS
 RUN apt-get update && apt-get install -y --no-install-recommends gcc-14 g++-14 cmake git ca-certificates libssl-dev && rm -rf /var/lib/apt/lists/*

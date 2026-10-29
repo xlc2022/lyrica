@@ -12,7 +12,7 @@ x-server: &server
 services:
   llamacpp:
     <<: *server
-    image: ghcr.io/ggml-org/llama.cpp:server-rocm-b11459@sha256:cc1e67f8d06d1a052367e55a76a159c4ca91d1722add19fdf99ef94834cfc0c1
+    image: ghcr.io/ggml-org/llama.cpp:server-rocm-b11960@sha256:be8c5b9a0cece64e7c082c1bb7106adc243af2c0b2aa076713b3a9c2681b3446
     # --no-slots: no endpoint that would show what's being generated.
     command: [--models-preset, /serving/llamacpp.ini, --no-models-autoload, --models-max, "0", --no-slots, --host, 0.0.0.0, --port, "8080"]
     volumes:
@@ -22,7 +22,7 @@ services:
 
   vllm:
     <<: *server
-    image: rocm/vllm:rocm10.0.0_ubuntu24.04_py3.14_pytorch_2.12.0_vllm_0.27.0@sha256:b8a082f346d069376d35784250e38b23a043efe979408ae3a33d7c6b62ee3276
+    image: rocm/vllm:rocm10.1.0_ubuntu24.04_py3.14-pytorch_2.13.0_vllm-0.29.0@sha256:e0ea9a10b729573ea8598bdc073bda0ea382fe1037eec7c0761b6fa7f46baaf4
     entrypoint: [python3, /lyrica/supervisor.py]
     init: true # reaps what vLLM's engine processes leave behind
     shm_size: 16gb

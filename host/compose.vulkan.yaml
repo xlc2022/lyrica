@@ -14,7 +14,7 @@ x-server: &server
 services:
   llamacpp:
     <<: *server
-    image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b11459@sha256:815720cb50a090db0c1d48b6e3b2b4ca656c3b99409cf4f31e63ff154ce586c4
+    image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b11960@sha256:c9aba1a673382ad356a72fb63e6cd73e8c021797e904b6c099bfe130217df62e
     environment:
       # Keep the driver's device order (Mesa's device-select layer would put
       # the display GPU first), so Vulkan0, Vulkan1 ... follow PCI address,

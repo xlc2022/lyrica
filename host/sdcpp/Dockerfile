@@ -7,7 +7,7 @@ ARG DEVEL=nvidia/cuda:12.8.1-devel-ubuntu24.04@sha256:520292dbb4f755fd360766059e
 ARG RUNTIME=nvidia/cuda:12.8.1-runtime-ubuntu24.04@sha256:ebef3c171eeef0298e4eb2e4be843105edf3b8b0ac45e0b43acee358e8046867
 
 FROM ${DEVEL} AS build
-ARG COMMIT=a77d3623180b2bc1886f3dd04c0aa04156a987ef
+ARG COMMIT=77b72a2efed78f55de26892c7e909cee001e8b83
 # The host's GPUs' compute capabilities, as install.sh found them (e.g. 70-real).
 ARG CUDA_ARCHS
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential cmake git ca-certificates && rm -rf /var/lib/apt/lists/*
