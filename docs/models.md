@@ -1018,7 +1018,12 @@ Code: `extension/src/plans.ts`, and `addPlan` and its neighbours in
   the provider's own text, which may echo what it was sent.
 - **Calls.** In the runtime a plan is Pi's `openai` or `xai` provider
   (Responses API) under the endpoint's ID, offering only its listed models
-  and signing in only with the plan. The runtime's credential store
+  and signing in only with the plan. Under that ID Pi no longer sees a
+  Sign in with ChatGPT token, so a ChatGPT plan's models carry compat that
+  keeps out what the sign-in refuses (OpenAI's
+  `subscription_sharing_unsupported_capability`): the thinking level goes
+  in `reasoning.effort`, never a `configuration_update` input item, and
+  there is no `max_output_tokens` or prompt cache retention. The runtime's credential store
   (`PlanCredentials`) reads the sign-in from `user.db` and writes Pi's
   refresh back, one refresh at a time per plan across the process. A
   refresh the provider refuses (400 or 401) signs the plan out:
