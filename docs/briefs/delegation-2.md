@@ -1,5 +1,7 @@
 # Brief: Delegation 2 (talking with subagents, and their approvals)
 
+**Status:** Merged as #27 (8205620).
+
 **Thread:** Delegation 2. **Branch:** `feature/delegation-2`.
 
 **Depends on:** Delegation, Daemon and Web UI (merged).

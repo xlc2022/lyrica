@@ -48,16 +48,16 @@ AGENTS.md, Workflow, is the rule; read it first. In short:
 - If a PR commits a `node_modules` symlink, a checkout replaces the real
   one; test from a `git worktree` in the scratchpad instead.
 
-## State at handoff
+## State at handoff (2026-10-19; refresh at the next restart)
 
 Nothing is waiting on this thread. Verified today and merged by their
 threads: #352 (code mode), #355, #359, #360, #361, #362, #364, #365 and
 #367. #357 (host Update in the contracts, web and daemon docs) came from
-the 10-19 drift check and merged here. Open at handoff: #366 (question
-card, web-side, Live sync thread), not sent here for review.
+the 10-19 drift check and merged here. #366 (question card, web-side)
+merged later without review here.
 
-Schema steps: user.db's next step is 15, pool.db's next is 10 and
-self.db's next is 4 (#352 took user 14 and pool 9).
+Schema steps (2026-10-29): user.db's next step is 19, pool.db's next is
+12 and self.db's next is 4 (check `STEPS` in core/src/migrations.ts).
 
 Patterns worth checking on every agent-loop PR, from today's findings:
 

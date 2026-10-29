@@ -1,5 +1,7 @@
 # Brief: Bootstrap (the setup state, her name, the tailnet)
 
+**Status:** Merged as #134 (236ee64). Handoff notes below are history.
+
 **Thread:** Bootstrap. **Branch:** `feature/bootstrap`. **Model:** Opus.
 **Followed by:** Web: bootstrap ([web-bootstrap.md](web-bootstrap.md)),
 which builds on this brief's API and can start once the interfaces in

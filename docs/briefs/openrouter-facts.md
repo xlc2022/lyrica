@@ -1,5 +1,7 @@
 # Brief: more of OpenRouter's model list
 
+**Status:** Merged: the first PR as #414 (9ece126), next item 1 as #420 (94e8030). Items 2 to 4 are not built.
+
 Serves principle 1 (the user sees what a model costs and when it goes away,
 and free models stop failing their first thinking-off call) and the owner's
 ask to read more of OpenRouter's public `GET /api/v1/models`, tested with the

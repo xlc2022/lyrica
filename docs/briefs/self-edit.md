@@ -1,5 +1,7 @@
 # Brief: Self-editing
 
+**Status:** Merged as #141 (bc2d8d7); items 1 and 2 were superseded by [repositories.md](repositories.md).
+
 **Thread:** Self-editing. **Branch:** `feature/self-edit`. **Model:** Opus.
 **Depends on:** Releases merged (update notes are what the updater
 installs).

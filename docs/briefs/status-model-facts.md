@@ -1,5 +1,7 @@
 # Status model facts
 
+**Status:** Merged as #559 (e3c097d); the charts followed in #587 ([status-charts.md](status-charts.md)).
+
 Issue #557. Serves principles 1 (experience before infrastructure), 7 (plain
 guarantees) and 8 (small surface).
 

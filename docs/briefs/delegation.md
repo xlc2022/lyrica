@@ -1,7 +1,7 @@
 # Brief: Delegation
 
-**Thread:** Delegation. **Branch:** `feature/delegation`. **Depends on:**
-Memory (merged), Workspace (#6) and Models. Start once both are merged.
+**Thread:** Delegation. **Branch:** `feature/delegation`. **Status:** Merged as
+#13 (0f55baf); wired into lyricad in #17 (c3913e0).
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md ("Models and endpoints"),
 docs/delegation.md, and docs/contracts.md (`delegate`, `core/store`,
 `core/workspace`, `core/models`).

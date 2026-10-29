@@ -1,5 +1,7 @@
 # Brief: Recall relevance
 
+**Status:** Merged as #340 (176903a).
+
 **Thread:** Recall relevance. **Branch:** `claude/project-thread-qwhegg`.
 **Model:** Opus. **Read first:** AGENTS.md, docs/memory.md.
 
@@ -48,5 +50,5 @@ improves once replies stay on topic.
 
 Done: all three, with tests in `core/test/store.test.ts` and
 `extension/test/pins.test.ts`; docs/memory.md and docs/contracts.md updated.
-Next: PR review. Open: whether the two-word floor drops useful recall in
+Merged as #340. Open: whether the two-word floor drops useful recall in
 practice; the evals would show it.

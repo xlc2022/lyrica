@@ -1,5 +1,7 @@
 # Brief: Child threads (Lyrica starts threads of her own)
 
+**Status:** Merged as #44, #47, #48 and #51 (9cfabfd last). Handoff notes below are history.
+
 **Thread:** Delegation (continuing after Delegation 2). **Branch:**
 `feature/child-threads`.
 
@@ -46,8 +48,9 @@ structural.
      router with its own `CallContext`, so a private or local-only parent's
      child is local-only.
    - Depth 1: a child thread can't start child threads (it can delegate).
-     Limits: children started per user request (default 3) and children
-     working at once per user (default 2), like Delegation's.
+     Limits: children started per user request (default 3, 6 on a cloud
+     model) and children working at once per user (default 32), as
+     docs/delegation.md says.
 3. **Updates and messages.**
    - The child posts short updates with `message({ to: "parent" })` at
      milestones and when done; the prompt says always to end with a report.

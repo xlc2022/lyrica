@@ -1,5 +1,7 @@
 # Brief: dictation through whisper.cpp on a CMP 100-210
 
+**Status:** Merged as #477 (5563b85); danube retested in #483.
+
 Owner: the Agent loop thread. Tests: the danube thread, on danube.
 
 ## Why

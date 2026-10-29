@@ -1,6 +1,6 @@
 # Brief: Web access
 
-**Status:** Built; on main. Handoff notes below are history.
+**Status:** Merged as #18 (4a92cee); the page in #22 (2044767). Handoff notes below are history.
 
 **Thread:** Daemon (follow-up). **Branch:** `feature/web-access`.
 **Depends on:** Daemon (#14, merged) and the Delegation wiring PR. Start

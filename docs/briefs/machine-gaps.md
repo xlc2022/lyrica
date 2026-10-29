@@ -1,6 +1,6 @@
 # Brief: Machine gaps (background commands, root steps, logging in as the user, model host install)
 
-**Status:** Building. Four pull requests, in this order: A, B, D, C.
+**Status:** Merged: A as #444 (212ca15), B as #450 (9a007f4), D as #453 (681407a), C as #454 (2536a81). Handoff notes below are history.
 
 **Branch:** `claude/project-thread-46papz`, one pull request at a time.
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md (Machines), docs/workspace.md

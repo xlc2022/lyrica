@@ -1,5 +1,7 @@
 # Brief: Projects (web)
 
+**Status:** Merged across the Web UI 2 pull requests; Notifications in #279.
+
 **Thread:** Web UI. **Branch:** `feature/projects-web`. **Model:** Fable.
 
 **Depends on:** Projects (back end) for its API, and Web UI 2 Part 0 for

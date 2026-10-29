@@ -1,5 +1,7 @@
 # Better local image edits and images
 
+**Status:** Merged as #597, #606, #607 and #615. Handoff notes below are history, except the open size question at the end.
+
 The owner's report (2026-10-26): her image edits are very poor, with bad
 anatomy and either poor prompt adherence or poor prompting. A read-only
 check of the dev deployment found that private and local-only threads
@@ -39,7 +41,8 @@ Qwen-Image and SDXL starters send an empty negative prompt.
    doesn't run on sd.cpp hosts. Its weights are under the Qwen
    Research License (non-commercial: research and evaluation only); the
    guides say so, and the operator who installs it takes that on.
-   It takes no mask, so a host's recipe listing now says `mask` (from its
+   It first took no mask; masked edits now run through the pinned LanPaint
+   node (see the Handoff). A host's recipe listing says `mask` (from its
    template) and the router skips a recipe without one for a masked edit,
    going on down the Image edits list.
 3. **Starter settings from ComfyUI's templates.** Qwen-Image takes CFG 4

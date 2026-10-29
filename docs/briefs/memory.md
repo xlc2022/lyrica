@@ -1,5 +1,7 @@
 # Brief: Memory (milestone 2, "She remembers")
 
+**Status:** Merged as #7 (5d830b7); user edits and user-added memories in #4 (bed7cab).
+
 **Thread:** Memory. **Branch:** `feature/memory`. **Depends on:** Core
 (merged). **Runs alongside:** Workspace. The two meet only through the
 contracts listed under "Seams" below.

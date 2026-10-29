@@ -1,6 +1,6 @@
 # Memory export and import
 
-**Status: built.** The design lives in [memory.md](../memory.md#export-and-import);
+**Status: built** (merged as #439, 4309610). The design lives in [memory.md](../memory.md#export-and-import);
 the controls in [ux.md](../ux.md) §6, "A user's memory".
 
 ## Goal

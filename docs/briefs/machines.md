@@ -1,5 +1,7 @@
 # Brief: Machines
 
+**Status:** Merged as #76 (a25254d), with #82 (b4a5cf5) and the web UI in #83 (fc81866).
+
 **Thread:** Machines. **Branch:** `feature/machines`. **Model:** Opus.
 **Runs alongside:** SSH helper ([ssh-helper.md](ssh-helper.md)), which
 changes only `core/src/workspace/ssh.ts`'s transport; agree on the seam
@@ -7,7 +9,7 @@ before either touches it. **Followed by:** Proxmox and Web: machines.
 
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md "Machines" and
 "Modes, in the message box", docs/contracts.md `core/workspace` (the
-planned Machines entries), docs/workspace.md, docs/daemon.md "Permission
+Machines entries), docs/workspace.md, docs/daemon.md "Permission
 prompts", and `/mnt/project-files/remote/proposal.md` for the reasoning.
 
 ## Goal

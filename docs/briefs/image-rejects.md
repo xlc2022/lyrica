@@ -1,5 +1,7 @@
 # Brief: Rejected image attempts
 
+**Status:** Merged as #582 (6e41c1c).
+
 **Thread:** Tuck rejected image attempts away.
 
 **Read first:** docs/workspace.md "Rejected attempts", docs/ux.md §6 "An image
@@ -40,4 +42,4 @@ in the encrypted thread folder).
 core/test/image-storage.test.ts, extension/test/images.test.ts,
 web/test/rejects.test.ts.
 
-**Next:** PR review and UI review.
+**Next:** none (merged as #582).

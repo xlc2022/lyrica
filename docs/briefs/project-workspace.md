@@ -1,5 +1,7 @@
 # Brief: Project settings: Folders and Machines
 
+**Status:** Merged as #128 (983dbd5); folders narrow at once in #129.
+
 **Thread:** Project workspace. **Branch:** `feature/project-workspace`.
 **Model:** Fable, as the project's model rule gives UI work to Fable (as
 Web: machines was). **Depends on:** Web: machines

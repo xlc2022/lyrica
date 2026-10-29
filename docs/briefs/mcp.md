@@ -1,5 +1,7 @@
 # Brief: MCP servers
 
+**Status:** Merged as #175 (7393b14); the design in #164. Handoff notes below are history.
+
 **Thread:** Self-development tools (Opus). Design approved by the owner on
 2026-10-12 from `/mnt/project-files/self-dev/mcp-design.md`. The design
 lines live in DESIGN.md, "MCP servers"; this brief is the build plan.
@@ -62,5 +64,5 @@ resources and prompts, Lyrica as an MCP server, a catalogue of servers.
 
 ## Order
 
-After web search (`web_search`, `web_fetch`) merges, since both touch
-the tool list and the gate.
+Built after web search (#166), since both touch the tool list and the
+gate.

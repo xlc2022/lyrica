@@ -1,5 +1,7 @@
 # Brief: Reasoning
 
+**Status:** Merged as #228 (0a9bd09); the marker was renamed in #333 (a531ca3).
+
 **Thread:** Reasoning fix build (Codex codes on lunasa, Claude assesses). **Branch:** `feature/reasoning`. **Model:** Opus.
 
 **Read first:** AGENTS.md, docs/models.md (thinking levels), docs/contracts.md

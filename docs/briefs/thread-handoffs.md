@@ -1,6 +1,6 @@
 # Brief: Handing files between threads
 
-**Status:** Built in this PR. **Thread:** Roadmap. **Model:** Opus.
+**Status:** Merged as #389 (0c06827). **Thread:** Roadmap. **Model:** Opus.
 
 ## Goal
 

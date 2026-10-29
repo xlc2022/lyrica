@@ -1,5 +1,7 @@
 # Brief: Context and pace (the meter, prepared compaction, speed)
 
+**Status:** Merged as #46 (977c915); the meter in #182.
+
 **Thread:** Models 2, after #40 (it owns
 `prepare()`, call records and the Pi runtime hooks). **Branch:**
 `feature/context`. The meter's UI goes to the Web UI 2 thread.
@@ -101,9 +103,8 @@ compaction marker shown as one line in the web UI.
 - **A compaction marker that expands** is built: the stored marker and her
   Compaction card both open to the summary (docs/web.md). The context meter,
   the facts line's Context and its popover, is built too.
-- **Speed in the web UI**, which the API already sends: the tok/s and prompt
-  tok/s columns in Recent calls (each call's `pace`), and each copy's median
-  speed in the text library (a library copy's `speed`). Web UI 2.
+- **Speed in the web UI** is built: tok/s and prompt tok/s in Recent calls
+  and each copy's median speed in the text library (#430).
 - **Exact counts** from a host's llama.cpp `/tokenize`.
 
 **Open questions:** none blocking. `compact` is its own tool, with her summary

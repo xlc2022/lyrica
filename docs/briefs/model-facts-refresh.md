@@ -1,6 +1,6 @@
 # Brief: Re-read local models' details after a restart
 
-**Status:** Built on this branch. The owner asked for the cause to be found and fixed
+**Status:** Merged as #377 (c3a44a6); since #519 endpoints are also re-read daily ([daily-model-lists.md](daily-model-lists.md)). The owner asked for the cause to be found and fixed
 (2026-10-19).
 
 **Branch:** `feature/model-facts-refresh`. **Built by:** the Agent loop

@@ -1,5 +1,7 @@
 # Brief: Web: updates
 
+**Status:** Merged as #144 (7abb27a).
+
 **Thread:** Web: updates. **Branch:** `feature/web-updates`. **Model:**
 Fable. **Depends on:** Releases merged (its API).
 

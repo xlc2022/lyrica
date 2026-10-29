@@ -1,5 +1,10 @@
 # Brief: the design thread
 
+**Status:** Superseded and kept as history. Its role passed to PR review
+([pr-review-handoff.md](pr-review-handoff.md)), merging follows AGENTS.md
+("Review and merge"), and each brief now carries its own status line, so
+the table below is as of 12 October 2026.
+
 **Thread:** Design. **Branch:** `claude/agent-harness-design-ft4cad`, merged
 into `main` by pull request like any other. This brief is the design thread's
 own handoff, so a fresh session (or a project conversation) can take over.

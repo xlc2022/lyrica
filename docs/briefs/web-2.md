@@ -1,5 +1,7 @@
 # Brief: Web UI 2 (the Models page, Sleep and images)
 
+**Status:** All parts merged, from #80 to #318 (see the Handoff notes). The "remaining parts" designs below are history.
+
 **Thread:** Web UI. **Branch:** `feature/web`. Each part is its own PR,
 started when its API lands:
 
@@ -152,7 +154,7 @@ For each part:
 - docs/web.md describes what exists;
 - the PR shows a screenshot at desktop and at phone size.
 
-## Designs for the remaining parts
+## Designs for the remaining parts (all built)
 
 Written 2026-10-12 so an Opus thread can build each part without a design
 pass. Each is one PR, in this order, after the pre-deployment batch. Every
@@ -544,7 +546,7 @@ stands; change the contract only where the UI needs it, in the same PR.
 
 Built: the thread menu's Pin/Unpin (sidebar), the Pinned group at the top
 of the list, the message Pin/Unpin in the message menu, the pinned badge,
-the header's "<n> pinned ▾" popover. Remaining, per the mockup:
+the header's "<n> pinned ▾" popover. Then built (#204):
 
 - The thread header's ⋯ menu (and the panel's breadcrumbs menu) gets
   Pin/Unpin for the thread itself, the same `PATCH …/threads/:pool/:id`

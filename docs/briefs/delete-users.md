@@ -1,5 +1,7 @@
 # Deleting users
 
+**Status:** Merged as #581 (ec1192a).
+
 Principles 2 and 7: users are protected from each other, and a deleted
 user's data is gone from this server, except backups. Decided by the owner
 on 2026-10-26, with no administrator export.
@@ -35,4 +37,4 @@ Done: core (`Users.checkDelete`, `deleteUser`, `pendingDeletes`,
 `lyricad.deleteUser` with `finishDeletes` at unlock, the CLI, the web
 dialog (`web/src/DeleteUser.tsx`), daemon tests
 (`daemon/test/delete-user.test.ts`) and the web e2e in web-admin.spec.ts.
-Next: PR review and UI review. Open questions: none.
+Merged as #581. Open questions: none.

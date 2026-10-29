@@ -1,5 +1,7 @@
 # Brief: Projects (back end)
 
+**Status:** Merged as #72 (store) and #84 (back end, 1332b0c); Watching threads in #97 and #112. Handoff notes below are history.
+
 **Thread:** Projects. **Branch:** `feature/projects`. **Model:** Opus.
 
 **Depends on:** child threads (merged, #44 to #51) and Modes (merged).
@@ -11,7 +13,7 @@ Nothing else; Projects (web) and Projects (sleep) build on this one's API.
   threads and "chooses between them" bullets; "Memory";
 - docs/delegation.md (Child threads), docs/memory.md, docs/daemon.md,
   docs/workspace.md;
-- docs/contracts.md: the **Planned (Projects)** entries under `core/store`,
+- docs/contracts.md: the Projects entries (now current) under `core/store`,
   `delegate`, `extension`, `daemon` and `core/workspace`.
 
 ## Goal

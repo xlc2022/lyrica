@@ -1,6 +1,6 @@
 # Brief: Skills
 
-**Status:** Built on `claude/project-thread-30ndu9` (Roadmap thread), in review.
+**Status:** Merged as #399 (2bbdbdd), with follow-ups #410 and #448.
 Roadmap item 4. The owner chose it on 2026-10-20 and decided: her own skills
 need approval, with a setting to approve them automatically, and skills load
 in every thread.

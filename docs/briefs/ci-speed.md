@@ -1,5 +1,7 @@
 # Brief: faster CI without losing coverage
 
+**Status:** Merged as #364 (2fed39e).
+
 Principle 8 (budgets) and AGENTS.md's test rule: CI protects what the user
 would notice, and a PR's check job shouldn't cost more than it has to. The
 analysis behind this lives outside the repo, in the project's shared
@@ -47,7 +49,7 @@ Out of scope: cutting tests, and the phone e2e pass (the operator keeps it).
 
 ## Handoff
 
-Done: items 1 to 8 above, in one PR. Next: see how the seven e2e projects
-behave on the `lyrica-fast` runners. If the runner is short of cores, lower
-`workers` in `web/playwright.config.ts` before merging files back together.
+Done: items 1 to 8 above, in one PR. CI now runs on GitHub's hosted runners
+(docs/ci.md). If a runner is short of cores, lower `workers` in
+`web/playwright.config.ts` before merging files back together.
 Open questions: none.

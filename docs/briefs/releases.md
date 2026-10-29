@@ -1,5 +1,7 @@
 # Brief: Releases and rollback
 
+**Status:** Merged as #93 (308cc36), #136 (151014d) and #139 (053e1b5).
+
 **Thread:** Releases. **Branch:** `feature/releases`. **Model:** Opus.
 
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md "Updates and

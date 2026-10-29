@@ -1,7 +1,9 @@
 # Brief: Daemon
 
+**Status:** Merged as #14 (2c91f81). Handoff notes below are history.
+
 **Thread:** Daemon. **Branch:** `feature/daemon`. **Depends on:** Core,
-Memory, Workspace (merged) and Models (#11). Start once Models is merged.
+Memory, Workspace (merged) and Models (#11), all merged.
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md ("Who Lyrica is for",
 "Storage, encryption and unlocking", "Runtime"), docs/contracts.md (`daemon`,
 `bin/lyrica`, `core/keyring`, `core/users`, `core/store`, `core/models`,

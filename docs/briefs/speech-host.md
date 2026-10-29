@@ -1,5 +1,7 @@
 # Brief: Model host: speech
 
+**Status:** Merged as #65 (fed3b22); starters in #69, the voice pick in #70.
+
 **Thread:** Model host. **Branch:** `feature/host-speech`. **Model:** Opus.
 
 **Depends on:** nothing. It runs alongside Speech ([speech.md](speech.md)).

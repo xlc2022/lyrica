@@ -1,6 +1,6 @@
 # Brief: Charts on the Status page
 
-**Status:** Built on this branch. The operator asked for Status to be more useful,
+**Status:** Merged as #587 (1041f4e), with #588 (f85d730). The operator asked for Status to be more useful,
 with charts and analytics, and to refresh itself or have a refresh button
 (2026-10-26), and picked the full set plus model hosts.
 
@@ -44,5 +44,4 @@ docs/models.md and docs/contracts.md describe it.
 
 ## Handoff
 
-Done: everything above. Next: UI review and PR review (daemon and extension
-touched). Open: none.
+Done: everything above, merged as #587 and #588. Open: none.

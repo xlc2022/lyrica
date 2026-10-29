@@ -1,5 +1,7 @@
 # Brief: Speech (dictation and Read aloud, back end)
 
+**Status:** Merged as #64 (fde3727); the host side as #65 (fed3b22).
+
 **Thread:** Speech. **Branch:** `feature/speech`. **Model:** Opus.
 
 **Depends on:** nothing. It can run alongside Model host: speech

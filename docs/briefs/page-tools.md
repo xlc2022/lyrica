@@ -1,6 +1,6 @@
 # Brief: Page tools and offline libraries
 
-**Status:** Built on `claude/project-thread-30ndu9` (Roadmap thread), in review.
+**Status:** Merged as #494 (a8d97f8).
 The owner approved items 1 to 3 of the tooling proposal on 2026-10-23
 ("Send 1-3"). Item 4, a planning nudge, is parked in the roadmap.
 **Read first:** AGENTS.md, PRINCIPLES.md (1, 2, 8), docs/workspace.md

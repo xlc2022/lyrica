@@ -1,5 +1,7 @@
 # Brief: Web UI
 
+**Status:** Merged as #16 (ffd1923). The start instructions below are history.
+
 **Thread:** Web UI. **Branch:** `feature/web`. **Depends on:** Daemon.
 - Start once the Daemon thread has pushed `daemon/src/api.ts`. Branch from
   `feature/daemon`, and merge `main` into your branch once Daemon is merged.
@@ -16,7 +18,8 @@ DESIGN.md:
 
 Then read docs/contracts.md ("UI rules that cross components"),
 `daemon/src/api.ts` with docs/daemon.md, and the mockup in
-`docs/briefs/web-mockup/`.
+the app mockup (see DESIGN.md; the old
+`docs/briefs/web-mockup/` folder was deleted).
 
 ## Goal
 

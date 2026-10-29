@@ -1,5 +1,7 @@
 # Brief: Images
 
+**Status:** Merged as #219 (f87acbd); the Web UI part is in [web-2.md](web-2.md). The notes below are as of 2026-10-12.
+
 **Thread:** Images. **Branch:** `feature/images`.
 
 **Depends on:** Models 2 (hosts and fallbacks) and Model host (the image API
