@@ -6,9 +6,9 @@ import { PermissionPrompt } from "../src/Messages.tsx";
 import type { CommandRule, PermissionRequest, ThreadSettings, ThreadSummary } from "../src/api.ts";
 import type { ShellContext } from "../src/Shell.tsx";
 
-const general = (rules: CommandRule[], checks: string[] = []) => renderToStaticMarkup(createElement(GeneralSection, {
+const general = (rules: CommandRule[], checks: string[] = [], setup?: string) => renderToStaticMarkup(createElement(GeneralSection, {
   ctx: { user: { id: "ada" }, groups: [] } as unknown as ShellContext, base: "/project",
-  summary: { id: "project", pool: "general", projectSettings: { commandRules: rules, checks } } as unknown as ThreadSummary,
+  summary: { id: "project", pool: "general", projectSettings: { commandRules: rules, checks, setup } } as unknown as ThreadSummary,
   settings: { mode: "ask", models: { chat: { source: "column" } }, allowed: [], grants: [], machines: [], repositories: [], mcpServers: [] } as unknown as ThreadSettings,
   onSummary: () => {}, onSettings: () => {},
 }));
@@ -54,6 +54,16 @@ describe("command rules in the web UI", () => {
     expect(invalid).toContain("A check is one line of at most 300 characters");
     expect(invalid).toContain('disabled="">Save</button>');
     expect(general([], Array.from({ length: 8 }, (_, i) => `check ${i}`))).toContain('disabled="">Add check</button>');
+  });
+  it("puts Setup between Commands and Checks, one mono command, empty meaning the lockfile's, and refuses a multi-line one before Save", () => {
+    const html = general([]);
+    expect(html.indexOf("Commands</h3>")).toBeLessThan(html.indexOf(">Setup</h3>"));
+    expect(html.indexOf(">Setup</h3>")).toBeLessThan(html.indexOf("Checks</h3>"));
+    expect(html).toContain('class="mono" aria-label="Setup command" placeholder="From the lockfile" value=""');
+    expect(general([], [], "make deps")).toContain('aria-label="Setup command" placeholder="From the lockfile" value="make deps"');
+    const invalid = general([], [], "make\ndeps");
+    expect(invalid).toContain("Setup is one line of at most 300 characters");
+    expect(invalid).toContain('disabled="">Save</button>');
   });
   it("offers Always allow between Allow and Deny only with a daemon prefix", () => {
     const html = permission("npm run test");

@@ -293,6 +293,10 @@ export const STEPS: Record<DbKind, MigrationStep[]> = {
     // Principle 2: a machine may log in as the user's own account, which they chose with its warnings. Adds a column only.
     version: 18,
     run(db) { addColumns(db, [["machines", "as_user", "INTEGER NOT NULL DEFAULT 0"]]); },
+  }, {
+    // Principles 2 and 6: a project's setup command, which installs a clone's dependencies in place of the lockfile's. Adds a column only.
+    version: 19,
+    run(db) { addColumns(db, [["project_settings", "setup", "TEXT"]]); },
   }],
   pool: [{
     version: 1, contract: true,

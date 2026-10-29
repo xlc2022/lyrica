@@ -1680,7 +1680,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   and approves the call, also for a subagent. Other requests refuse it.
   `ThreadChange.commandRules` replaces rules only on a project chat;
   `ProjectSettingsInfo.commandRules` returns them. `ThreadChange.checks`
-  and `ProjectSettingsInfo.checks` do the same for the project's checks
+  and `ProjectSettingsInfo.checks` do the same for the project's checks,
+  and `ThreadChange.setup` (a string; empty or `null` clears it) and
+  `ProjectSettingsInfo.setup` (absent when unset) for its setup command
   (400 with the reason when invalid).
 - **Sweep** (`Lyricad.sweep`, nightly, before sleep): `sweepUser(services,
   userId)` for each user whose home workspace is mounted clears snapshots
@@ -2247,6 +2249,8 @@ settings(userId).setCommandRules(pool, project, rules) / addCommandRule(pool, pr
 settings(userId).checks(pool, project): string[] / setChecks(pool, project, checks)
 // checkChecks: at most 8 commands, each one line of at most 300 characters, no control characters; blanks dropped.
 // user step 16 adds project_settings.checks, JSON default [].
+settings(userId).setup(pool, project): string | undefined / setSetup(pool, project, command)
+// one line of at most 300 characters, no control characters; blank or null clears it. user step 19 adds project_settings.setup, NULL default.
 settings(userId).skillsAutoApprove() / setSkillsAutoApprove(on)   // her skills active at once; user.db setting skills.auto_approve
 forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), previewTarget(), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileKey(path), madeFiles(paths), madeSince(since, found?), fileNotes() },
 fileKey(t, path)  // one file under the same key for every thread that can write it: "<folder thread>:<path>" in a thread's folder or /shared, "grant:<path>" in a writable grant; else undefined
@@ -2410,7 +2414,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   sandbox under the thread's folder in the home workspace (`repos/<name>`,
   a subagent's under its parent's, mounted read-only for one with
   `reposReadOnly` and for a project chat, though `cloneFor` itself may
-  write them) and returns the problems, never removing
+  write them), then installs each clone's dependencies (`setup.ts`:
+  `SETUP_SCRIPT`, `setupOutcome`; docs/workspace.md, "Dependencies"),
+  and returns the problems, never removing
   one (a clone goes with the thread); `addRepository(t, r)` is the
   `add_repository` tool's change. `credentialsFor(t).forge` holds the
   tokens; it is empty when the thread is of the other pool, has no

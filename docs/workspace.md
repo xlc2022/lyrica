@@ -1003,7 +1003,31 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   line in the turn's prompt, not an error. A clone stays when its
   repository leaves the thread, since it may hold unpushed work; it goes
   with the thread's folder when the sweep removes it. Two threads never
-  share a working tree.
+  share a working tree. Each clone then gets its dependencies
+  ([Dependencies](#dependencies)).
+- <a id="dependencies"></a>**Dependencies.** After a clone or fetch
+  succeeds, `cloneFor` installs the clone's dependencies in the same
+  sandbox and network as the clone (`core/src/workspace/setup.ts`), so her
+  checks find them: the project's **Setup** command when the person set one
+  (Project settings → General; `project_settings.setup`, expand-only user
+  step 19, one line of at most 300 characters), otherwise the first
+  lockfile found picks it: `package-lock.json` or `npm-shrinkwrap.json`
+  `npm ci --ignore-scripts`, `pnpm-lock.yaml` `pnpm install
+  --frozen-lockfile --ignore-scripts`, `yarn.lock` `yarn install
+  --frozen-lockfile --ignore-scripts` (with `.yarnrc.yml`, `--immutable
+  --mode=skip-build`), `uv.lock` `uv sync --frozen`, `requirements*.txt` a
+  `.venv` and `pip install -r`; none does nothing. Install scripts stay
+  skipped (see [Her checks](#her-own-code)). It runs once per clone and
+  again only when the command or a lockfile changes: `.git/lyrica-setup`
+  holds a hash of both from the last install that succeeded (and
+  `node_modules` or `.venv` must still be there when no Setup is set). A
+  failure, a missing installer (exit 127) or 10 minutes passing is a line
+  in the turn's prompt, like a failed clone: "dependencies didn't install",
+  the command, its exit code and its last 20 lines, the thread's secrets
+  masked. The same failure isn't run again for an hour, unless the command
+  or a lockfile changes; until then the line says so, and she can run it
+  herself. Subagents use their parent's clones as installed; worktrees get
+  no install of their own.
 - **Credentials** never enter the sandbox. A run with repositories or Claude Code gets
   its own relay (`openRelay`, `core/src/workspace/relay.ts`): a server in
   `lyricad` on a random loopback port, forwarded into the run's sandbox
@@ -1235,7 +1259,8 @@ her account is general.
   to check afterwards. It describes code, never conversations. After a
   failed probation, a GitHub issue linked to the tag holds the post-mortem.
 - **Her checks.** `npm run typecheck` and `npm test` run in her sandbox
-  with the thread's internet on, after `npm ci --ignore-scripts`. With the
+  with the thread's internet on, after `npm ci --ignore-scripts`, which
+  `cloneFor` runs in each clone ([Dependencies](#dependencies)). With the
   internet on she runs as `lyricad`'s own uid, as with it off (a nested
   user namespace inside the networked one), so files she writes in a
   grant stay the user's to change. The install scripts stay skipped since
