@@ -567,6 +567,36 @@ describe("user step 18 (machines on the user's own account)", () => {
   });
 });
 
+describe("user step 19 (a project's setup command)", () => {
+  it("adds project_settings.setup to every released user schema, keeping project settings and earlier readers", () => {
+    for (let version = 1; version < 19; version++) {
+      const db = scratchDb();
+      const previous = STEPS.user.filter((s) => s.version <= version);
+      migrate(db, "user", {}, previous);
+      db.prepare("INSERT INTO project_settings (pool, thread, paused) VALUES ('general', 'web/p', 1)").run();
+      migrate(db, "user");
+      expect(db.prepare("SELECT paused, setup FROM project_settings").get(), `v${version}`).toEqual({ paused: 1, setup: null });
+      expect(schemaOf(db)).toEqual({ version: SCHEMA.user, minReader: MIN_READER.user });
+      expect(() => checkReadable(db, "user", previous)).not.toThrow();
+      db.close();
+    }
+  });
+
+  it("keeps one short line, and clears it when empty", () => {
+    const db = scratchDb();
+    migrate(db, "user");
+    const settings = new WorkspaceSettings(db, () => ({ general: [], private: [] }));
+    settings.setChecks("general", "web/p", ["npm test"]);
+    expect(settings.setSetup("general", "web/p", "  make deps ")).toBe("make deps");
+    expect([settings.setup("general", "web/p"), settings.checks("general", "web/p")]).toEqual(["make deps", ["npm test"]]);
+    expect(() => settings.setSetup("general", "web/p", "make\nrm -rf /")).toThrow(/one line/);
+    expect(() => settings.setSetup("general", "web/p", "x".repeat(301))).toThrow(/300 characters/);
+    expect(settings.setSetup("general", "web/p", " ")).toBeUndefined();
+    expect(settings.setup("general", "web/p")).toBeUndefined();
+    db.close();
+  });
+});
+
 describe("pool step 10 (skills)", () => {
   it("adds the skills table to every released pool schema, keeping earlier readers and thread data", () => {
     for (let version = 1; version < 10; version++) {

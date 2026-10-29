@@ -912,6 +912,8 @@ export interface ProjectSettingsInfo {
   commandRules: CommandRule[];
   /** Commands run when a code turn in the project ends, at most 8 (docs/workspace.md, "Project checks"). */
   checks: string[];
+  /** The command that installs a clone's dependencies in place of the lockfile's; none: the lockfile picks (docs/workspace.md, "Dependencies"). */
+  setup?: string;
   /** The project page's memory ID, for the memory browser. The page exists once instructions are saved or sleep writes it. */
   pageId: string;
   /** Paused: its threads stop, nothing new starts, and they take no messages. */
@@ -950,6 +952,8 @@ export interface ThreadChange {
   title?: string; hidden?: boolean; project?: true; goal?: string; instructions?: string;
   commandRules?: CommandRule[];
   checks?: string[];
+  /** A project's setup command; empty or null clears it. */
+  setup?: string | null;
   threadsCode?: boolean;
   paused?: boolean; threadsModel?: ModelRef | ModelRef[] | null; threadsThinking?: ThinkingLevel | null; threadsFallback?: boolean | null; watchThreads?: boolean; checkInOnThreads?: boolean;
 }

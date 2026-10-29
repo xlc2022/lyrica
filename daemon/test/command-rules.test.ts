@@ -122,6 +122,10 @@ describe("project checks through lyricad", () => {
     const set = await s.ada.patch<ThreadSummary>(s.path, { checks: ["npm test", " "] });
     expect(set.body.projectSettings!.checks).toEqual(["npm test"]);
     expect((await s.ada.patch<ThreadSummary>(s.path, { threadsThinking: "high" })).body.projectSettings!.checks).toEqual(["npm test"]);
+    expect((await s.ada.patch(s.path, { setup: "make\ndeps" })).status).toBe(400);
+    expect((await s.ada.patch(s.childPath, { setup: "make deps" })).status).toBe(400);
+    expect((await s.ada.patch<ThreadSummary>(s.path, { setup: " make deps " })).body.projectSettings!.setup).toBe("make deps");
+    expect((await s.ada.patch<ThreadSummary>(s.path, { setup: null })).body.projectSettings!.setup).toBeUndefined();
     await s.ada.patch(`${s.childPath}/settings`, { code: true, mode: "auto" });
     // Code mode runs on the Coding model, the workers endpoint here.
     s.sub.respond(c => c.messages.some(m => m.role === "tool") ? { text: "Done." } : bash("echo built"));

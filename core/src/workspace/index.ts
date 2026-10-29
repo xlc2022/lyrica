@@ -14,9 +14,10 @@ import type { Users } from "../users.ts";
 import { FileChanges, type NewChange } from "./changes.ts";
 import { cleanUploadName, PANEL_DIR, ThreadFiles, type FileEntry } from "./files.ts";
 import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
-import type { ExecutionTarget } from "./ops.ts";
+import { maskSecrets, type ExecutionTarget } from "./ops.ts";
 import { Sandbox, sandboxHas, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
 import type { ClaudeCodeUsage } from "./relay.ts";
+import { SETUP_SCRIPT, SetupFailures, setupOutcome } from "./setup.ts";
 import type { CodexBox } from "../models/codex.ts";
 import { authorizedKeysLine, machineSetup } from "./machines.ts";
 import {
@@ -202,6 +203,8 @@ export class Workspace {
   private readonly gitRefused = new Set<string>();
   /** The email each account's commits carry, asked of its host once per daemon run, by `user/account/host/login`. */
   private readonly gitEmails = new Map<string, string>();
+  /** Each clone's last failed install, by its repos/ folder and name (setup.ts). */
+  private readonly setupFailed = new SetupFailures();
   /**
    * Private MCP servers whose host passed the own-network check in this
    * process, by `<userId>/<name>/<url>`. A private server is used only once
@@ -969,8 +972,35 @@ export class Workspace {
       const state = out.code === 0 ? "signedIn" : gitFailure(err);
       if (state) s.gitAccountState(a.name, state);
       if (out.code !== 0) problems.push(`${r.name} couldn't be ${/fetch/.test(err) ? "fetched" : "cloned"}: ${lastLine(err)}`);
+      else {
+        const problem = await this.setupClone(t, box, r.name, r.path);
+        if (problem) problems.push(problem);
+      }
     }
     return problems;
+  }
+
+  /**
+   * Installs a clone's dependencies, with the project's setup command or what
+   * its lockfile names, when the clone hasn't got them for its lockfile yet
+   * (setup.ts). A failure is a line for her prompt; the same failure isn't
+   * tried again for an hour, unless the command or a lockfile changes.
+   */
+  private async setupClone(t: WorkspaceThread, box: Sandbox, repo: string, path: string): Promise<string | undefined> {
+    const command = t.project ? this.settings(t.userId).setup(t.pool, t.project) ?? "" : "";
+    const id = `${this.reposDir(t)}\0${repo}`;
+    const before = this.setupFailed.before(id);
+    if ("problem" in before) return before.problem;
+    const mask = (text: string) => maskSecrets(Buffer.from(text), box.secrets()).toString();
+    let out: { code: number | null; stderr: Buffer };
+    try {
+      out = await box.run(["sh", "-c", SETUP_SCRIPT, "sh", path, command, before.skip], { timeoutMs: SETUP_TIMEOUT_MS });
+    } catch (err) {
+      const timedOut = (err as Error).message.startsWith("timeout:");
+      const problem = `${repo}: dependencies didn't install: ${timedOut ? `took more than ${SETUP_TIMEOUT_MS / 60_000} minutes and was stopped` : mask((err as Error).message)}.`;
+      return timedOut ? this.setupFailed.after(id, { kind: "timeout", problem }) : problem;
+    }
+    return this.setupFailed.after(id, setupOutcome(repo, { code: out.code, stderr: out.stderr.toString() }, mask));
   }
 
   /** She adds a repository to the thread, once the user approved it: checked like any change to the thread's settings. */
@@ -1565,6 +1595,9 @@ function gitFailure(stderr: string): GitAccountState["kind"] | undefined {
   if (/Could not resolve host|Failed to connect|Connection (timed out|refused)|Network is unreachable|Operation timed out/i.test(stderr)) return "unreachable";
   return undefined;
 }
+
+/** How long a clone's install may take at the start of a turn. */
+const SETUP_TIMEOUT_MS = 10 * 60_000;
 
 const lastLine = (text: string): string => text.trim().split("\n").at(-1)?.replace(/^fatal: /, "").slice(0, 300) || "git failed";
 

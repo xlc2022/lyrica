@@ -1667,6 +1667,12 @@ shows which checks passed or failed (docs/workspace.md, "Project checks").
 When a child thread's rounds run out, `lyricad`, not the model, tells its
 parent at once which checks fail, where and at which commit, so the parent
 can tell the thread's work from its environment (2026-10-24).
+Each clone comes with its dependencies: after cloning or fetching it,
+`lyricad` runs the project's setup command, or else the install its
+lockfile names, in the thread's sandbox once and again when the command or
+a lockfile changes, and a failure is a plain line in her prompt rather than
+checks dying with "command not found" (docs/workspace.md, "Dependencies";
+decided 2026-10-29).
 Coder subagents use that project's filtered memory through their existing
 thread view, their role prompt without persona, and their step's task and
 optional progress.
@@ -1975,6 +1981,10 @@ Details in [docs/sleep.md](docs/sleep.md).
   - **Project checks:** up to 8 commands, edited under Checks in Project
     settings → General, run without a card when a code turn in the
     project's threads ends after a change, since the person wrote them.
+  - **Project setup:** one command, edited under Setup in Project settings
+    → General, run without a card in each new clone and when a lockfile
+    changes, since the person wrote it; without one, the lockfile's own
+    install runs (install scripts skipped).
   - Irreversible actions that leave the server always ask, whatever the
     mode. Subagents and child threads get the parent's mode or a stricter
     one, and follow the parent when it is made stricter later, at any

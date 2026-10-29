@@ -332,13 +332,14 @@ export function ProjectPage({ ctx, pool, threadId, section }: { ctx: ShellContex
   );
 }
 
-/** Goal; Paused, Watching threads and Check in on threads; New threads (Model, Code mode, Thinking, Fallback); Workspace (Group, Folders, Machines, Repositories, MCP servers) and the Thread settings link; Commands; Checks; one Save. */
+/** Goal; Paused, Watching threads and Check in on threads; New threads (Model, Code mode, Thinking, Fallback); Workspace (Group, Folders, Machines, Repositories, MCP servers) and the Thread settings link; Commands; Setup; Checks; one Save. */
 export function GeneralSection({ ctx, base, summary, settings, onSummary, onSettings }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings; onSummary: (s: ThreadSummary) => void; onSettings: (s: ThreadSettings) => void;
 }) {
   const ps = summary.projectSettings;
   const [rules, setRules] = useState<CommandRule[]>(ps?.commandRules ?? []);
   const [checks, setChecks] = useState<string[]>(ps?.checks ?? []);
+  const [setup, setSetup] = useState(ps?.setup ?? "");
   const [goal, setGoal] = useState(ps?.draftGoal ?? summary.goal ?? "");
   useEffect(() => { if (ps?.draftGoal !== undefined) setGoal(ps.draftGoal); }, [ps?.draftGoal]);
   const [paused, setPaused] = useState(!!ps?.paused);
@@ -361,7 +362,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
   const save = () => run(async () => {
     setSaved(false);
     const change: ThreadChange = {
-      goal, paused, commandRules: rules.filter(r => r.prefix.trim()), checks: checks.map(c => c.trim()).filter(Boolean),
+      goal, paused, commandRules: rules.filter(r => r.prefix.trim()), checks: checks.map(c => c.trim()).filter(Boolean), setup: setup.trim() || null,
       ...(watch !== (ps?.watchThreads !== false) ? { watchThreads: watch } : {}),
       ...(checkIn !== (ps?.checkInOnThreads !== false) ? { checkInOnThreads: checkIn } : {}),
       threadsModel: model ? { offeringId: model } : null,
@@ -373,6 +374,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
     const updated = await patch<ThreadSummary>(base, change);
     setRules(updated.projectSettings?.commandRules ?? rules);
     setChecks(updated.projectSettings?.checks ?? checks);
+    setSetup(updated.projectSettings?.setup ?? "");
     onSummary(updated);
     if (grants || granted || repositories || mcpServers) {
       onSettings(await patch<ThreadSettings>(`${base}/settings`, {
@@ -389,6 +391,8 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
     ? "A command prefix has 1 to 8 words, each at most 64 characters, with no control characters. Each prefix can have one rule." : "";
   const checkError = checks.some(c => c.trim().length > 300 || /[\x00-\x1f\x7f-\x9f]/.test(c))
     ? "A check is one line of at most 300 characters, with no control characters." : "";
+  const setupError = setup.trim().length > 300 || /[\x00-\x1f\x7f-\x9f]/.test(setup)
+    ? "Setup is one line of at most 300 characters, with no control characters." : "";
   // A project's threads follow the coordinating chat, not whichever thread is on screen: this page opens as a page of its own.
   const newThreadsHint = `Threads ${her()} starts from the coordinator. Each one can be changed after it starts.`;
   const sameHint = `${newThreadsHint} Other models come from the coordinator's settings.`;
@@ -484,6 +488,10 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
       <ErrorText error={ruleError} />
       <button type="button" disabled={rules.length >= 100} onClick={() => setRules([...rules, { prefix: "", decision: "ask" }])}>Add rule</button>
 
+      <h3 title="Installs each clone's dependencies when it is cloned and whenever a lockfile changes. Empty, the lockfile picks the install: npm, pnpm, yarn, uv or pip.">Setup</h3>
+      <div className="command-rule"><input className="mono" aria-label="Setup command" placeholder="From the lockfile" value={setup} onChange={e => setSetup(e.target.value)} /></div>
+      <ErrorText error={setupError} />
+
       <h3 title={`Run in each repository when a code thread ends a turn that changed something; if one fails, ${her()} fixes it before finishing.`}>Checks</h3>
       {!checks.length && <p className="muted">No checks: {her()} runs what the repository asks.</p>}
       {checks.map((check, i) => <div className="command-rule" key={i}>
@@ -494,7 +502,7 @@ export function GeneralSection({ ctx, base, summary, settings, onSummary, onSett
       <button type="button" disabled={checks.length >= 8} onClick={() => setChecks([...checks, ""])}>Add check</button>
 
       <div className="row">
-        <button type="submit" className="primary" disabled={busy || !!ruleError || !!checkError}>Save</button>
+        <button type="submit" className="primary" disabled={busy || !!ruleError || !!checkError || !!setupError}>Save</button>
         {ps?.draftGoal !== undefined && <button type="button" disabled={busy} onClick={() => run(async () => { const updated = await patch<ThreadSummary>(base, { discardDraft: true }); onSummary(updated); setGoal(updated.goal ?? ""); })}>Discard draft</button>}
         {saved && <span className="muted" role="status">Saved.</span>}
       </div>

@@ -363,6 +363,22 @@ export class WorkspaceSettings {
     return checked;
   }
 
+  /** The person's command that installs a clone's dependencies, in place of the lockfile's (docs/workspace.md, "Dependencies"). */
+  setup(pool: Pool, project: string): string | undefined {
+    const row = this.db.prepare("SELECT setup FROM project_settings WHERE pool = ? AND thread = ?").get(pool, project) as { setup: string | null } | undefined;
+    return row?.setup ?? undefined;
+  }
+
+  /** Empty clears it, so the lockfile picks the install again. */
+  setSetup(pool: Pool, project: string, setup: unknown): string | undefined {
+    if (setup !== null && typeof setup !== "string") throw new Error("setup is a command");
+    const command = setup?.trim() || null;
+    // eslint-disable-next-line no-control-regex
+    if (command && (command.length > MAX_CHECK_LENGTH || /[\x00-\x1f\x7f]/.test(command))) throw new Error(`Setup is one line of at most ${MAX_CHECK_LENGTH} characters, with no control characters.`);
+    this.db.prepare("INSERT INTO project_settings (pool, thread, setup) VALUES (?, ?, ?) ON CONFLICT(pool, thread) DO UPDATE SET setup = excluded.setup").run(pool, project, command);
+    return command ?? undefined;
+  }
+
   addCommandRule(pool: Pool, project: string, rule: CommandRule): void {
     this.db.transaction(() => {
       const checked = checkCommandRules([rule])[0]!;

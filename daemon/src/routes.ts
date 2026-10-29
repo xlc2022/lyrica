@@ -1096,7 +1096,7 @@ export function apiRoutes(d: Lyricad): Route[] {
           s().projects.pin(user.id, pool, thread.id, true);
         }
         const project = !!store.getThread(thread.id)!.project;
-        const settings = change.threadsCode !== undefined || change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.checkInOnThreads !== undefined || change.commandRules !== undefined || change.checks !== undefined;
+        const settings = change.threadsCode !== undefined || change.paused !== undefined || change.threadsModel !== undefined || change.threadsThinking !== undefined || change.threadsFallback !== undefined || change.watchThreads !== undefined || change.checkInOnThreads !== undefined || change.commandRules !== undefined || change.checks !== undefined || change.setup !== undefined;
         if ((change.goal !== undefined || change.instructions !== undefined || change.discardDraft !== undefined || settings) && !project) {
           throw new HttpError(400, "only a project has a goal, instructions and project settings");
         }
@@ -1118,6 +1118,9 @@ export function apiRoutes(d: Lyricad): Route[] {
         if (change.commandRules !== undefined) s().workspace.settings(user.id).setCommandRules(pool, thread.id, change.commandRules);
         if (change.checks !== undefined) {
           try { s().workspace.settings(user.id).setChecks(pool, thread.id, change.checks); } catch (err) { throw new HttpError(400, (err as Error).message); }
+        }
+        if (change.setup !== undefined) {
+          try { s().workspace.settings(user.id).setSetup(pool, thread.id, change.setup); } catch (err) { throw new HttpError(400, (err as Error).message); }
         }
         if (settings) {
           s().projects.set(user.id, pool, thread.id, {
@@ -2685,7 +2688,7 @@ function summary(d: Lyricad, user: User, pool: Pool, store: PoolStore, th: Threa
     ...(settings ? { projectSettings: {
       ...(settings.draftGoal !== undefined ? { draftGoal: settings.draftGoal } : {}),
       ...(settings.draftInstructions !== undefined ? { draftInstructions: settings.draftInstructions } : {}),
-      commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), checks: d.services!.workspace.settings(user.id).checks(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, threadsCode: settings.code, watchThreads: settings.watch, checkInOnThreads: settings.checkIn, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
+      commandRules: d.services!.workspace.settings(user.id).commandRules(pool, th.id), checks: d.services!.workspace.settings(user.id).checks(pool, th.id), setup: d.services!.workspace.settings(user.id).setup(pool, th.id), pageId: `p:${projectSlug(th.id)}`, paused: settings.paused, threadsCode: settings.code, watchThreads: settings.watch, checkInOnThreads: settings.checkIn, ...(settings.model ? { threadsModel: settings.model } : {}), ...(settings.thinking ? { threadsThinking: settings.thinking } : {}),
       ...(settings.fallback !== undefined ? { threadsFallback: settings.fallback } : {}),
     } } : {}),
     ...(mine ? { state: mine.state, ...(mine.held ? { held: mine.held } : {}), ...(mine.worktreeReason ? { worktreeReason: mine.worktreeReason } : {}), ...(mine.anchor !== undefined ? { anchor: mine.anchor } : {}), ...(mine.needsYou ? { needsYou: true as const } : {}), ...chips(d, user, pool, th.id, look) } : {}),
