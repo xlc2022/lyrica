@@ -1,5 +1,6 @@
+import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { cutPage, fetchArgv, fetchedPage, htmlMarkdown, outside, renderArgv, searxngSearch } from "../src/web.ts";
+import { cutPage, fetchArgv, fetchedPage, htmlMarkdown, outside, pdfText, renderArgv, renderedPage, searxngSearch } from "../src/web.ts";
 
 // What web_fetch and web_search give her (docs/workspace.md, "Web").
 
@@ -19,13 +20,14 @@ const curl = (body: string | Buffer, type: string, status = 200) => ({
 });
 
 /** A one-page PDF whose page shows `text`, with its xref table, as a real reader expects. */
-function pdf(text: string): Buffer {
-  const stream = `BT /F1 12 Tf 72 720 Td (${text}) Tj ET`;
+function pdf(text: string, bomb?: Buffer): Buffer {
+  const plain = `BT /F1 12 Tf 72 720 Td (${text}) Tj ET`;
+  const stream = bomb ? bomb.toString("latin1") : plain;
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
     "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
-    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    `<< /Length ${stream.length}${bomb ? " /Filter /FlateDecode" : ""} >>\nstream\n${stream}\nendstream`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     "<< /Title (Field notes) >>",
   ];
@@ -71,6 +73,18 @@ describe("web_fetch's reading", () => {
     const broken = await fetchedPage("https://p.example/b.pdf", curl("%PDF-1.4 nothing here", "application/pdf"));
     expect(broken.isError).toBe(true);
     expect(broken.text).toMatch(/^Couldn't read the PDF at https:\/\/p\.example\/b\.pdf: /);
+  });
+
+  it("kills a PDF reader that runs past its memory limit, and lyricad carries on", async () => {
+    const bomb = pdf("", deflateSync(Buffer.alloc(400_000_000, 32)));
+    await expect(pdfText(bomb, undefined, { ms: 30_000, mb: 200 })).rejects.toThrow("more than 200 MB of memory");
+    expect((await pdfText(pdf("Still here"))).text).toEqual(["Still here"]);
+  }, 40_000);
+
+  it("cuts a rendered page before parsing it, as a fetched one", () => {
+    const html = `<html><body><p>${"word ".repeat(1_000_000)}</p></body></html>`;
+    const page = renderedPage("https://big.example", { code: 0, stdout: Buffer.from(JSON.stringify({ html })) })!;
+    expect(page.text.length).toBeLessThan(3_100_000);
   });
 
   it("refuses other types and says what curl's failures mean", async () => {

@@ -17,9 +17,10 @@ stay masked. The agent loop is a risky area, so the code goes to PR review.
    refuse curl's.
 2. **Read on past the cut.** An `offset` argument (characters) starts
    where the last cut ended; the cut note names the offset to use.
-3. **PDFs.** A PDF is read as text with pdf.js (unpdf) in a worker thread
-   of `lyricad`, with a time and memory limit, so a bad file can't stall
-   the daemon. Fetches may be up to 10 MB.
+3. **PDFs.** A PDF is read as text with pdf.js (unpdf) in a child
+   process of `lyricad`, killed past a time limit or once its resident
+   memory passes a limit (a worker thread's heap limit didn't hold: pdf.js
+   decodes streams outside the heap), so a bad file can't stall the daemon. Fetches may be up to 10 MB.
 4. **Search filters and dates.** `web_search` takes `time` (day, week,
    month, year), `category` (general, news, science, it, videos) and
    `page`; each result shows its date when SearXNG has one.

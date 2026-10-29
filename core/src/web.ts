@@ -2,7 +2,8 @@ import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { Worker } from "node:worker_threads";
+import { fork } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import TurndownService from "turndown";
 import type { Db } from "./db.ts";
 
@@ -10,7 +11,7 @@ import type { Db } from "./db.ts";
 // Search goes to one SearXNG an administrator sets for the server, from
 // lyricad. A fetch runs in the thread's sandbox, so its network switches
 // govern it; lyricad only turns the page into text (Markdown for HTML,
-// text for a PDF, read in a worker thread).
+// text for a PDF, read in a child process).
 
 const KEY = "web.searxng";
 
@@ -234,7 +235,7 @@ export function renderedPage(url: string, r: { code: number | null; stdout: Buff
   if (r.code !== 0) return undefined;
   try {
     const out = JSON.parse(r.stdout.toString("utf8").trim().split("\n").at(-1) ?? "") as { html?: string };
-    return out.html ? htmlPage(url, out.html) : undefined;
+    return out.html ? htmlPage(url, out.html.slice(0, HTML_CHARS)) : undefined;
   } catch {
     return undefined;
   }
@@ -401,24 +402,50 @@ export function htmlMarkdown(html: string, url?: string): { text: string; body: 
   return { text: head ? `${head}\n\n${body}` : body, body };
 }
 
-const PDF_MS = 30_000;
+/** How long a PDF may take to read, and how much memory its reader may hold, before it is killed. */
+export const PDF_LIMITS = { ms: 30_000, mb: 768 };
+type PdfRead = { title: string; pages: number; text: string[] };
 
-/** A PDF's title, page count and the text of each page, read in a worker thread with a time and memory limit. */
-export function pdfText(bytes: Buffer, signal?: AbortSignal): Promise<{ title: string; pages: number; text: string[] }> {
+/** The resident memory of a process, in MB, from /proc; 0 where it can't be read. */
+function rssMb(pid: number): number {
+  try {
+    return (Number(readFileSync(`/proc/${pid}/statm`, "utf8").split(" ")[1]) * 4096) / 1_048_576;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * A PDF's title, page count and the text of each page, read in a child
+ * process (web-pdf.mjs) with no environment, killed past `limits.ms` or once
+ * its resident memory passes `limits.mb`: pdf.js holds decoded streams
+ * outside the JS heap, so a heap limit alone doesn't hold.
+ */
+export function pdfText(bytes: Buffer, signal?: AbortSignal, limits = PDF_LIMITS): Promise<PdfRead> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL("./web-pdf.mjs", import.meta.url), { workerData: bytes, resourceLimits: { maxOldGenerationSizeMb: 512 } });
-    const stop = (err?: Error, value?: { title: string; pages: number; text: string[] }) => {
+    const child = fork(fileURLToPath(new URL("./web-pdf.mjs", import.meta.url)), [], {
+      env: {}, execArgv: ["--max-old-space-size=256"], serialization: "advanced", stdio: ["ignore", "ignore", "ignore", "ipc"],
+    });
+    let settled = false;
+    const stop = (err?: Error, value?: PdfRead) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
+      clearInterval(watch);
       signal?.removeEventListener("abort", aborted);
-      void worker.terminate();
+      child.kill("SIGKILL");
       if (err) reject(err); else resolve(value!);
     };
-    const timer = setTimeout(() => stop(new Error(`reading it took longer than ${PDF_MS / 1000} seconds`)), PDF_MS);
+    const timer = setTimeout(() => stop(new Error(`reading it took longer than ${limits.ms / 1000} seconds`)), limits.ms);
+    const watch = setInterval(() => {
+      if (child.pid && rssMb(child.pid) > limits.mb) stop(new Error(`reading it needed more than ${limits.mb} MB of memory`));
+    }, 50);
     const aborted = () => stop(new Error("stopped"));
     signal?.addEventListener("abort", aborted, { once: true });
-    worker.once("message", (m: { error?: string; title: string; pages: number; text: string[] }) => (m.error ? stop(new Error(m.error)) : stop(undefined, m)));
-    worker.once("error", (e) => stop(e));
-    worker.once("exit", (code) => stop(new Error(`the PDF reader stopped (exit ${code})`)));
+    child.once("message", (m: { error?: string } & PdfRead) => (m.error ? stop(new Error(m.error)) : stop(undefined, m)));
+    child.once("error", (e) => stop(e));
+    child.once("exit", (code, sig) => stop(new Error(`the PDF reader stopped (${code ?? sig})`)));
+    child.send(bytes);
   });
 }
 

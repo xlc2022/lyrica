@@ -965,7 +965,8 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   page's main text (Mozilla Readability), or the whole page when that
   finds too little, as Markdown headed by its title, URL, byline and date,
   without scripts, styles, navigation, forms or images. It reads a PDF's
-  text page by page in a worker thread with a time and memory limit,
+  text page by page in a child process that is killed past 30 seconds or
+  768 MB of memory, so a hostile file can't take `lyricad` down,
   passes text and JSON through, and refuses other types. A page that is
   nearly empty and has scripts is opened again in the sandbox's Chromium
   (when it has Chromium and node), under the same network switches,

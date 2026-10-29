@@ -1471,13 +1471,16 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     main text, else the whole body without scripts, styles, navigation,
     forms or images; turndown, tables as Markdown tables, links absolute),
     headed by title, URL, byline and date; a PDF becomes text page by page
-    (`pdfText`: unpdf in a worker thread, 30 s and 512 MB at most); text
+    (`pdfText`: unpdf in a child process, `web-pdf.mjs`, with no environment,
+    killed after 30 s or once its resident memory passes 768 MB, since
+    pdf.js decodes streams outside the JS heap); text
     and JSON pass through; other types are refused. HTML that is nearly
     empty and has scripts (`thin`) is rendered once more when `canRender()`
     (the sandbox has Chromium and node): `renderArgv` runs
     `web-render.cjs` with the sandbox's node, which drives its Chromium
     over the DevTools pipe without images, media or fonts, and the longer
-    text wins. `cutPage` cuts to `maxChars` (20,000 by default, 50,000 at
+    text wins. HTML from curl or Chromium is cut to 3,000,000 characters
+    before it is parsed on lyricad's thread. `cutPage` cuts to `maxChars` (20,000 by default, 50,000 at
     most) from `offset`, with a note naming the offset to read on from.
     Both tools' results go between `<<<web CODE>>>` and `<<<end web
     CODE>>>` (`outside`; CODE is 8 random hex digits per call, and
