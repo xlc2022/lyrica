@@ -31,7 +31,7 @@ jobs:
       matrix:
         name: [llamacpp, sdcpp, whispercpp]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       # The CUDA devel image unpacks to about 10 GB beside the build.

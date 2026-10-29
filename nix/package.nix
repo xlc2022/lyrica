@@ -1,12 +1,12 @@
 # lyricad, the lyrica CLI and the built web UI, from package-lock.json.
 # See docs/daemon.md, "On NixOS".
-{ lib, buildNpmPackage, importNpmLock, nodejs_22, python3, makeWrapper, src, rev ? "dirty" }:
+{ lib, buildNpmPackage, importNpmLock, nodejs_24, python3, makeWrapper, src, rev ? "dirty" }:
 
 buildNpmPackage {
   pname = "lyrica";
   version = (lib.importJSON (src + "/package.json")).version;
   inherit src;
-  nodejs = nodejs_22;
+  nodejs = nodejs_24;
 
   # Each package fetched by the integrity hash in package-lock.json, so a
   # lockfile change needs no hash here.
@@ -24,7 +24,7 @@ buildNpmPackage {
   npmBuildScript = "build";
 
   postConfigure = ''
-    node -e 'const [a, b] = process.versions.node.split(".").map(Number); if (a < 22 || (a === 22 && b < 6)) { console.error("lyricad needs Node.js 22.6 or later"); process.exit(1); }'
+    node -e 'const [a, b] = process.versions.node.split(".").map(Number); if (a < 22 || (a === 22 && b < 12)) { console.error("lyricad needs Node.js 22.12 or later"); process.exit(1); }'
   '';
 
   installPhase = ''
@@ -33,14 +33,14 @@ buildNpmPackage {
     cp -r package.json bin core daemon extension host persona web/dist node_modules $out/lib/lyrica/
     mkdir -p $out/lib/lyrica/web && mv $out/lib/lyrica/dist $out/lib/lyrica/web/dist
     cp web/package.json $out/lib/lyrica/web/
-    makeWrapper ${nodejs_22}/bin/node $out/bin/lyrica --add-flags $out/lib/lyrica/bin/lyrica
+    makeWrapper ${nodejs_24}/bin/node $out/bin/lyrica --add-flags $out/lib/lyrica/bin/lyrica
     runHook postInstall
   '';
 
   # The SSH helper runs on this Node; the module adds it to the sandbox closure.
   # The commit goes to lyricad as LYRICA_BUILD (the module), not into the
   # build, so a new commit that leaves src alone rebuilds nothing.
-  passthru = { nodejs = nodejs_22; build = builtins.substring 0 7 rev; };
+  passthru = { nodejs = nodejs_24; build = builtins.substring 0 7 rev; };
 
   meta = {
     description = "Lyrica, a personal AI companion (lyricad and the lyrica CLI)";

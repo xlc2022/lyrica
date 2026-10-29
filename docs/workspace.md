@@ -1115,7 +1115,7 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   as the system's. `tea` reads logins only from a file, so its wrapper writes one
   under `/tmp`, the run's own tmpfs, gone when the run ends. There is no
   model-facing tool for a forge beyond `add_repository`. On NixOS the
-  sandbox's tools include `git`, `gh`, `tea` and Node 22; on Debian,
+  sandbox's tools include `git`, `gh`, `tea` and Node 24; on Debian,
   `install.sh` installs `gh` and `tea` where they are packaged.
 - **The Git guide** (`extension/src/git.md`) is in the prompt of every turn
   of a thread with repositories, with the repository list and their

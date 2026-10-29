@@ -78,10 +78,10 @@ apt-get install -y -qq --no-install-recommends \
 # tea, Gitea's and Forgejo's client, isn't packaged everywhere; git alone still works with those accounts.
 apt-get install -y -qq --no-install-recommends tea >/dev/null 2>&1 \
   || say "tea isn't packaged here: threads with a Gitea or Forgejo account use git alone until it's installed."
-command -v node >/dev/null || die "install Node.js 22.6 or later (for example from NodeSource), then run this again"
-# 22.6 for the SSH helper, which runs with type stripping.
-node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 6) ? 0 : 1)' \
-  || die "Node.js $(node -v) is too old: lyricad needs 22.6 or later"
+command -v node >/dev/null || die "install Node.js 24, or 22.12 or later (for example from NodeSource), then run this again"
+# 22.12 for the web UI build (Vite 8); the SSH helper needs 22.6, for type stripping.
+node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 12) ? 0 : 1)' \
+  || die "Node.js $(node -v) is too old: lyricad needs 22.12 or later"
 
 # --- A browser for her screenshots ---
 # Principle 1: render HTML/SVG diagrams offline in the thread sandbox.

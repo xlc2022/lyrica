@@ -1274,8 +1274,8 @@ same ("On NixOS" below).
   openssh-client and jq, and python3-venv for clones' Python dependencies), and the `tailscale` package from Tailscale's apt
   repository when its binaries are missing (then disabling the host's own
   `tailscaled.service` the package enables, unless it was enabled before, so
-  a host keeps its own as it was), checks for Node.js 22.6 or later (the SSH
-  helper runs with type stripping), installs IBM Plex and Playwright's
+  a host keeps its own as it was), checks for Node.js 22.12 or later (the web UI
+  build needs it, Vite 8), installs IBM Plex and Playwright's
   headless Chromium (the version `web/package.json` pins, with the
   libraries it needs, in `/usr/local/lib/lyrica-chromium`, linked as
   `/usr/local/bin/chromium-headless-shell`, so her sandboxes can take
@@ -1436,8 +1436,8 @@ check names and counts, never text.
 ### On NixOS
 
 `flake.nix` gives `packages.x86_64-linux.lyrica` (`nix/package.nix`: lyricad,
-the CLI and the built web UI, `buildNpmPackage` on nixpkgs' `nodejs_22`,
-refusing Node older than 22.6) and `nixosModules.default`
+the CLI and the built web UI, `buildNpmPackage` on nixpkgs' `nodejs_24`,
+refusing Node older than 22.12) and `nixosModules.default`
 (`nix/module.nix`, `services.lyrica`). nixpkgs is the `nixos-26.05` channel,
 locked in `flake.lock`. `nix flake check` builds the package and a NixOS
 system with the module on. Only x86_64-linux.

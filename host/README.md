@@ -453,7 +453,7 @@ revoked. A revoked server must pair again.
 
 ## How it's put together
 
-- `host-api` (this folder's `src/`): TypeScript run by Node 22, with no npm
+- `host-api` (this folder's `src/`): TypeScript run by Node 24, with no npm
   dependencies. It is the only service with published ports:
   - `127.0.0.1:7236` for the dashboard at the machine. The container accepts
     that listener only from Docker's gateway address, which is where
