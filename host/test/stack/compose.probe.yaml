@@ -1,6 +1,6 @@
 # Test-only: a probe container on the models network, to check what it can reach.
 services:
   probe-models:
-    image: alpine:3.22.2@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd412
+    image: alpine:3.22.7@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
     command: sleep infinity
     networks: [models]

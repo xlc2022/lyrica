@@ -618,7 +618,7 @@ class Models {                                              // new Models(keyrin
   `HostIdentityChanged`'s message and marks the host down; `paused`, `busy`,
   `restarting`, `unavailable` and `unpaired` answers mark it down too. A
   host's refusal is a `HostRefused` carrying the host's own `code`. Lyrica's
-  key and certificate live in `self.db` (`host_identity`). `undici` 8.10.2
+  key and certificate live in `self.db` (`host_identity`). `undici` 8.12.3
   is a direct dependency of core for this.
 - **Settings** per offering are layered: a shared offering's values in
   `self.db` (administrators), the user's own in `user.db` over them. Only
