@@ -8,6 +8,14 @@ import type { DiscoveredModel, Endpoint, Models, PlanCredential, PlanKind } from
 // provider for ChatGPT (Sign in with ChatGPT) and Grok (xAI's device code),
 // with the sign-in kept in the user's user.db.
 
+/**
+ * What a ChatGPT sign-in refuses, as Pi's own check for one omits it: the
+ * thinking level as a `configuration_update` input item (it goes in
+ * `reasoning.effort` instead), `max_output_tokens` and the prompt cache's
+ * retention fields.
+ */
+const CHATGPT_SIGN_IN = { supportsMidConvoEffort: false, supportsMaxOutputTokens: false, supportsLongCacheRetention: false, supportsExplicitPromptCacheMode: false } as const;
+
 /** Pi's provider for each plan. */
 const PROVIDERS: Record<PlanKind, () => Provider> = { chatgpt: openaiProvider, grok: xaiProvider };
 
@@ -27,7 +35,9 @@ export function planCatalog(kind: PlanKind): DiscoveredModel[] {
 export function planProvider(ep: Endpoint & { api: PlanKind }, modelIds: string[], onLimit?: (message: string) => void): Provider {
   const base = PROVIDERS[ep.api]();
   const wanted = new Set(modelIds);
-  const models = base.getModels().filter((m) => wanted.has(m.id)).map((m) => ({ ...m, provider: ep.id }) as Model<Api>);
+  // Under the endpoint's ID, Pi no longer sees a ChatGPT sign-in, so the models' compat says what it refuses.
+  const models = base.getModels().filter((m) => wanted.has(m.id))
+    .map((m) => ({ ...m, provider: ep.id, ...(ep.api === "chatgpt" ? { compat: { ...m.compat, ...CHATGPT_SIGN_IN } } : {}) }) as Model<Api>);
   // A refusal that comes as a stream event (Codex over SSE or a WebSocket) keeps its reset time only in the raw event, so it's read there.
   const call = <O extends { onProviderStreamEvent?: (event: unknown, model: Model<Api>) => unknown }>(run: (o: O | undefined) => AssistantMessageEventStream, options: O | undefined) => {
     if (!onLimit) return run(options);

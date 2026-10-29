@@ -141,6 +141,23 @@ describe("a ChatGPT plan", () => {
     expect(s.models.planLimitedUntil(s.plan.id)).toBe(resetsAt * 1000);
   });
 
+  it("sends only what Sign in with ChatGPT accepts: no configuration_update item, no fields it rejects", async () => {
+    const s = await setup();
+    const bodies: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({ error: { message: "stop here" } }, { status: 400 });
+    }) as typeof fetch;
+    const runtime = await modelRuntimeFor(s.models, s.ctx());
+    // A model whose catalogue entry takes its thinking level mid-conversation, as GPT-6.1 Sol's does.
+    const model = runtime.getModel(s.plan.id, "gpt-6.1-sol")!;
+    for await (const _ of runtime.streamSimple(model, { messages: [{ role: "user", content: "Hello.", timestamp: 0 }] }, { reasoning: "high", maxTokens: 4096 }));
+    const body = bodies[0]!;
+    expect((body.input as { type?: string }[]).map((i) => i.type)).not.toContain("configuration_update");
+    expect(body).toMatchObject({ reasoning: { effort: "high" } });
+    for (const field of ["max_output_tokens", "prompt_cache_retention", "prompt_cache_options"]) expect(body).not.toHaveProperty(field);
+  });
+
   it("waits longer each time it's still limited when its guess of the reset runs out", async () => {
     const s = await setup();
     vi.useFakeTimers({ now: 0, toFake: ["Date"] });
