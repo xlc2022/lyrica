@@ -4,7 +4,7 @@ import net, { type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { Comfy } from "../src/comfy.ts";
+import { Comfy, samplingProgress } from "../src/comfy.ts";
 import { Images, inputImage, recipeSize, videoValues } from "../src/images.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import { scanParts } from "../src/parts.ts";
@@ -619,6 +619,28 @@ describe("ComfyUI jobs", () => {
   });
 });
 
+describe("job progress", () => {
+  it("counts only the samplers an output needs, each equally, as 95% of the job", () => {
+    const seen: number[] = [];
+    const prompt = {
+      high: { class_type: "KSamplerAdvanced", inputs: { model: ["m", 0] } },
+      low: { class_type: "KSamplerAdvanced", inputs: { latent_image: ["high", 0] } },
+      unused: { class_type: "KSampler", inputs: {} },
+      pick: { class_type: "KSamplerSelect", inputs: {} },
+      decode: { class_type: "VAEDecode", inputs: { samples: ["low", 0] } },
+      save: { class_type: "SaveImageWebsocket", inputs: { images: ["decode", 0] } },
+    };
+    const progress = samplingProgress(prompt, (f) => seen.push(f))!;
+    progress("high", 2, 2);
+    progress("unused", 1, 1);
+    progress("decode", 1, 1);
+    progress("low", 1, 4);
+    progress("low", 0, 4);
+    expect(seen).toEqual([0.475, 0.475 + 0.95 / 8, 0.475 + 0.95 / 8]);
+    expect(samplingProgress({ save: { class_type: "SaveImageWebsocket", inputs: {} } }, () => {})).toBeUndefined();
+  });
+});
+
 describe("stable-diffusion.cpp", () => {
   const part = (role: string, file: string, slot: string | null = null) => ({ role, slot, file, added: false }) as Recipe["parts"][number];
 
@@ -666,12 +688,12 @@ describe("stable-diffusion.cpp", () => {
 });
 
 describe("the image API", () => {
-  async function stack(o: { sdcpp?: boolean; files?: Record<string, Buffer>; gpuGb?: number } = {}) {
+  async function stack(o: { sdcpp?: boolean; files?: Record<string, Buffer>; gpuGb?: number; hold?: () => Promise<void> } = {}) {
     const models = folder({
       [`${Z}/diffusion_models/z.safetensors`]: Z_DIFFUSION, [`${Z}/text_encoders/qwen_3_4b.safetensors`]: QWEN3, [`${Z}/vae/ae.safetensors`]: FLUX_VAE,
       "shared/flux1-schnell-fp8.safetensors": FLUX_CKPT, "shared/style.safetensors": Z_LORA, ...o.files,
     });
-    const comfyFake = await fakeComfy();
+    const comfyFake = await fakeComfy({ hold: o.hold });
     open.push(comfyFake);
     const lines: string[] = [];
     const log = (event: string, fields?: object) => void lines.push(JSON.stringify({ event, ...fields }));
@@ -701,7 +723,7 @@ describe("the image API", () => {
     });
     const me = lyrica();
     const pinned = await pair(h.tls, me, code);
-    const api = (path: string, init: { method?: string; body?: unknown } = {}) => call({ port: h.tls, path, identity: me, pinned, ...init });
+    const api = (path: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) => call({ port: h.tls, path, identity: me, pinned, ...init });
     return { ...h, api, lines, comfyFake, sdFake, book, models };
   }
 
@@ -742,6 +764,29 @@ describe("the image API", () => {
 
     expect(s.lines.join("\n")).not.toContain(MARKER);
     for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);
+  });
+
+  it("reports a tagged job's progress while it runs, and forgets it once it ends", async () => {
+    let finish!: () => void;
+    const held = new Promise<void>((r) => (finish = r));
+    const s = await stack({ hold: () => held });
+    const { body } = await s.api("/host/v1/recipes?state=proposed");
+    const z: Recipe = body.recipes.find((r: Recipe) => r.arch === "z-image");
+    await s.api(`/host/v1/recipes/${z.id}/confirm`, { body: {} });
+    const token = "job-0123456789abcdef";
+    const made = s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" }, headers: { "x-lyrica-job": token } });
+    // The one sampler is at step 1 of 2: half of sampling, which is 95% of the job.
+    let state: { state: string; progress: number | null } | undefined;
+    for (let i = 0; i < 100 && state?.progress == null; i++) {
+      const r = await s.api(`/host/v1/jobs/${token}`);
+      if (r.status === 200) state = r.body;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(state).toEqual({ state: "running", progress: 0.475 });
+    finish();
+    expect((await made).status).toBe(200);
+    expect((await s.api(`/host/v1/jobs/${token}`)).body.error.code).toBe("not_found");
+    expect((await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" }, headers: { "x-lyrica-job": "short" } })).body.error.code).toBe("invalid");
   });
 
   it("makes images only from a confirmed recipe and its parameters", async () => {

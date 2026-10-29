@@ -1569,9 +1569,16 @@ export interface FilePathsInput { paths: string[] }
  * starts with `reset`, and the UI reloads messages. The SSE `event` field is
  * the `type` below, and `data` is the JSON of the whole event.
  */
+/**
+ * An image or clip being made (docs/ux.md, "An image the agent made"): from when her image call starts until it
+ * ends, or for a clip made in the background until it arrives. `queued`: waiting for the model host's GPU;
+ * `progress`: 0 to 1, when the host reports it.
+ */
+export interface Making { toolCallId: string; startedAt: string; queued?: true; progress?: number }
+
 export type ThreadEvent =
-  /** First event on every connection: the thread's state now. */
-  | { type: "hello"; busy: boolean; queued: string[]; permissions: PermissionRequest[] }
+  /** First event on every connection: the thread's state now, with what is being made. */
+  | { type: "hello"; busy: boolean; queued: string[]; permissions: PermissionRequest[]; making: Making[] }
   /** Missed events can't be replayed: reload messages. */
   | { type: "reset" }
   | { type: "turn_start" }
@@ -1582,6 +1589,10 @@ export type ThreadEvent =
   /** The model has started writing a tool call: shown at once, with its arguments when it runs (`tool_start`). */
   | { type: "tool_call"; toolCallId: string; name: string }
   | { type: "tool_start"; toolCallId: string; name: string; args: unknown }
+  /** An image or clip being made started, or got further. */
+  | ({ type: "making" } & Making)
+  /** It was made, failed or stopped: its placeholder goes. */
+  | { type: "made"; toolCallId: string }
   /** `result` is short: the first lines of the tool's output. */
   | { type: "tool_end"; toolCallId: string; name: string; result: string; isError: boolean; threads?: ThreadRef[]; image?: ImagePart; video?: VideoPart; imageRefusal?: ImageRefusal; root?: RootStep }
   /** Memories recalled for this turn, automatically or with recall/read_memory. */

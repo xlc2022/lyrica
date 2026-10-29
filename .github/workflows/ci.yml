@@ -118,6 +118,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.nix == 'true'
     runs-on: ubuntu-latest
+    # The Nix store cache below removes its own older copies.
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -127,8 +131,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # Nix stays on the runner between runs, like the apt packages. The
-      # installer is pinned by hash and checks its own download.
+      # On a self-hosted runner Nix stays between runs, like the apt packages.
+      # The installer is pinned by hash and checks its own download.
       - name: Install Nix
         run: |
           if [ ! -x /nix/var/nix/profiles/default/bin/nix ]; then
@@ -150,6 +154,22 @@ jobs:
             sudo systemctl restart nix-daemon
           fi
           echo /nix/var/nix/profiles/default/bin >>"$GITHUB_PATH"
+      # A hosted runner starts with an empty store, and the flake check then
+      # fetches and builds for about 15 minutes. The store is kept in the
+      # Actions cache instead: main saves it when the flake, nix/ or the npm
+      # lockfile changed (after the last step roots the run's builds and
+      # collects the rest), and every run restores main's newest copy.
+      - if: runner.environment == 'github-hosted'
+        uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
+        with:
+          primary-key: nix-store-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock', 'nix/**', 'package-lock.json') }}
+          restore-prefixes-first-match: nix-store-${{ runner.os }}-
+          save: ${{ github.event_name == 'push' }}
+          gc-max-store-size-linux: 8G
+          purge: ${{ github.event_name == 'push' }}
+          purge-prefixes: nix-store-${{ runner.os }}-
+          purge-created: 0
+          purge-primary-key: never
       # The same needrestart and dpkg lock settings as the check job.
       - run: |
           echo "\$nrconf{restart} = 'l';" | sudo tee /etc/needrestart/conf.d/lyrica-ci.conf >/dev/null 2>&1 || true
@@ -184,6 +204,7 @@ jobs:
         env:
           LYRICA_SANDBOX_TESTS: require
       # Each run's builds are one generation of a profile; the 10 newest stay, the rest are collected.
+      # On a hosted runner this is what the store cache above saves.
       - name: Keep the last 10 builds
         run: |
           nix() { command nix --extra-experimental-features "nix-command flakes" "$@"; }

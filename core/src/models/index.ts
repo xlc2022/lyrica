@@ -2,6 +2,8 @@ import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateI
 export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
 import { validateVideoRequest, videoAt, type GeneratedVideo, type VideoRequest } from "./videos.ts";
 export { isMp4, type GeneratedVideo, type VideoRequest } from "./videos.ts";
+export { type JobProgress } from "./progress.ts";
+import type { JobProgress } from "./progress.ts";
 export { CODEX_DISABLED, codexImage, codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn } from "./codex.ts";
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
@@ -2658,7 +2660,8 @@ export class Models {
   }
 
   /** Images stay in memory; the caller stores results and records the call. */
-  async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void> } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution }> {
+  /** `onProgress`: how far a model host's job has got (cloud models report none). */
+  async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution }> {
     validateImageRequest(request);
     await this.planImages(ctx.userId);
     return this.callWithFallback(`image.${request.action}`, ctx, request.action === "create" ? { imageTier: request.tier } : request.action === "edit" ? { imageMask: !!request.mask } : {}, async (r) => {
@@ -2669,7 +2672,7 @@ export class Models {
       // ChatGPT Images is made by the user's own Codex, not over the plan's sign-in, which OpenAI refuses for images.
       const codex = ep.api === "chatgpt" && this.codexImages ? this.codexImages.bind(this, ctx.userId) : undefined;
       const images = await imageAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: ep.api === "host" ? hostOrigin(ep.addresses![0]!) : ep.baseUrl,
-        host: ep.api === "host", api: ep.api, modelId: r.offering.modelId, apiKey: ep.api === "chatgpt" ? undefined : ep.apiKey, codex }, request, opts.signal);
+        host: ep.api === "host", api: ep.api, modelId: r.offering.modelId, apiKey: ep.api === "chatgpt" ? undefined : ep.apiKey, codex }, request, opts.signal, opts.onProgress);
       return { images, resolution: r };
     });
   }
@@ -2678,14 +2681,14 @@ export class Models {
    * One clip from the context's Videos list, in memory; the caller stores it and records the call.
    * Local models only: a cloud video model is never resolved, whatever the list holds.
    */
-  async video(ctx: CallContext, request: VideoRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void> } = {}): Promise<{ video: GeneratedVideo; resolution: Resolution }> {
+  async video(ctx: CallContext, request: VideoRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void } = {}): Promise<{ video: GeneratedVideo; resolution: Resolution }> {
     validateVideoRequest(request);
     return this.callWithFallback("video", ctx, { animate: !!request.image }, async (r) => {
       opts.signal?.throwIfAborted();
       await opts.beforeSend?.(r);
       opts.signal?.throwIfAborted();
       const ep = r.endpoint;
-      const video = await videoAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: hostOrigin(ep.addresses![0]!), modelId: r.offering.modelId }, request, opts.signal);
+      const video = await videoAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: hostOrigin(ep.addresses![0]!), modelId: r.offering.modelId }, request, opts.signal, opts.onProgress);
       return { video, resolution: r };
     });
   }

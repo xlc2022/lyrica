@@ -601,7 +601,10 @@ reply that just ended, as that reply stores it), `offline` when no model could b
 reached, the queue, `received` (a marked message that reached the turn, or
 was kept), the title, `settings`
 when the thread's settings changed (an approved plan switching its mode),
-and turn end, then the thread's `context` after each request that goes on with tools and after each turn, and a `compacted`
+`making` (`toolCallId`, `startedAt`, `queued?`, `progress?`) from when an image call that makes something (create, edit,
+upscale, video, animate) starts and each time its model host reports progress, then `made` when it ends (a clip made in
+the background keeps it: its clip job sends `making` and `made` until the clip arrives), `hello` carrying the
+`making` of now so a view that opens meanwhile shows the placeholders, and turn end, then the thread's `context` after each request that goes on with tools and after each turn, and a `compacted`
 marker when it compacts.
 A subagent run's events (started, output, tool calls, questions, notes,
 usage, finished, stopped, interrupted) go out as `delegation` to the parent
@@ -1267,7 +1270,7 @@ same ("On NixOS" below).
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
   openssl, ImageMagick, and for the updater build-essential, python3, git,
-  openssh-client and jq), and the `tailscale` package from Tailscale's apt
+  openssh-client and jq, and python3-venv for clones' Python dependencies), and the `tailscale` package from Tailscale's apt
   repository when its binaries are missing (then disabling the host's own
   `tailscaled.service` the package enables, unless it was enabled before, so
   a host keeps its own as it was), checks for Node.js 22.6 or later (the SSH

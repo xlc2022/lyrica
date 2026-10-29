@@ -1026,6 +1026,11 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   and "· sound" when it has audio; its ⋯ holds Download, Copy path, Show in
   Files and Delete…, which asks as for an image; a deleted clip reads "No
   longer in Files". Its markers read Making a clip and Animating an image;
+  While an image call makes something, the stream's `making` (and `hello`'s)
+  puts its placeholder (Making.tsx) under the marker until `made`: a card
+  per image at the asked shape, a dot field in the accent lit from the
+  top-right by the host's progress, and a pill with the percent, Waiting, or
+  the time since it started (docs/ux.md).
   a clip made in the background marks its call **started**, and the clip
   shows as her own message when a `notice` event brings its `video` (or the
   thread reloads); a failed one is a notice headed Clip with a down dot and
@@ -1183,6 +1188,12 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   shows under that reply as its stored copy does, so a retry Pi makes goes
   on below it; the turn's other errors show after the live turn until the
   next turn starts.
+- **Sources** (docs/ux.md, The pages she read for a reply): `conversationNodes`
+  collects her parts since the person's last message or her last words, and
+  the next message of hers with words shows the pages its `web_fetch` calls
+  read (`sourcesOf`: successful calls, http and https only, once each, with
+  the `# ` title line that follows the outside-content marker) as links
+  under its text, before the reaction chips.
 - **Each message has an action row** under it (`MessageActions` in
   `src/Rewind.tsx`, after the reaction chips; docs/ux.md §6, A message's
   actions): quiet icon buttons, Copy (the message's text; Copied or Copy

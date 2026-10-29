@@ -1,6 +1,7 @@
 // Principle 2: video calls share the router's cloud boundary, and only model hosts make clips. No disk or logging.
 import { hostError, HostIdentityChanged, HostRefused } from "./host.ts";
 import { cleanPng, type GeneratedImage, type ImageInput } from "./images.ts";
+import { withProgress, type JobProgress } from "./progress.ts";
 
 /** One clip: from a prompt, or from `image` as its first frame. `duration` is seconds; `aspectRatio` (width:height) keeps the recipe's area. */
 export interface VideoRequest { prompt: string; image?: ImageInput; size?: { width: number; height: number }; aspectRatio?: string; duration?: number }
@@ -23,14 +24,14 @@ export function validateVideoRequest(r: VideoRequest): void {
 export const isMp4 = (b: Uint8Array) => b.length > 12 && Buffer.from(b.subarray(4, 8)).toString("latin1") === "ftyp";
 
 /** A confirmed host recipe that makes videos: `POST /host/v1/videos/create`, in memory only. */
-export async function videoAt(t: { fetch: typeof fetch; baseUrl: string; modelId: string }, r: VideoRequest, signal?: AbortSignal): Promise<GeneratedVideo> {
+export async function videoAt(t: { fetch: typeof fetch; baseUrl: string; modelId: string }, r: VideoRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<GeneratedVideo> {
   if (!t.modelId.startsWith("recipe/")) throw new HostRefused("invalid", "a host video model must be a confirmed recipe");
   // Explicit fields only: the recipe's defaults apply, and callers cannot name parts or LoRAs.
   const body = JSON.stringify({ recipe: t.modelId.slice(7), prompt: r.prompt, ...(r.image ? { image: Buffer.from(r.image.bytes).toString("base64") } : {}),
     ...(r.size ?? {}), ...(r.aspectRatio ? { aspectRatio: r.aspectRatio } : {}), ...(r.duration === undefined ? {} : { duration: r.duration }) });
   const timeout = AbortSignal.timeout(VIDEO_TIMEOUT_MS);
   let res: Response;
-  try { res = await t.fetch(`${t.baseUrl}/host/v1/videos/create`, { method: "POST", body, headers: { "content-type": "application/json" }, redirect: "error", signal: signal ? AbortSignal.any([signal, timeout]) : timeout }); }
+  try { res = await withProgress(t, onProgress, (tag) => t.fetch(`${t.baseUrl}/host/v1/videos/create`, { method: "POST", body, headers: { "content-type": "application/json", ...tag }, redirect: "error", signal: signal ? AbortSignal.any([signal, timeout]) : timeout })); }
   catch (e) {
     signal?.throwIfAborted();
     if (e instanceof HostRefused || e instanceof HostIdentityChanged) throw e;

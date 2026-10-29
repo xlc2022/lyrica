@@ -40,8 +40,11 @@ stay masked. The agent loop is a risky area, so the code goes to PR review.
 
 ## Part B: sources under her reply (a UI PR after A)
 
-The pages she read in a turn show under her reply, as links. It needs a
-home in docs/ux.md and UI review; the look is settled in that PR.
+The pages she read show under her next words as a **Sources** row of
+links (title and host), built from her successful `web_fetch` calls since
+the person's last message or her last words. Home: docs/ux.md, "The pages
+she read for a reply". Searches aren't listed: a snippet isn't a page she
+read.
 
 ## Out of scope
 
@@ -50,7 +53,7 @@ thread may reach.
 
 ## Handoff
 
-Part A: built on `claude/project-thread-ax31pt` (core/src/web.ts,
-web-pdf.mjs, web-render.cjs, extension/src/web.ts; tests in
-core/test/web.test.ts and extension/test/web.test.ts). Next: its PR and PR
-review, then Part B.
+Part A: merged in #628 (fda62c5). Part B: on `claude/project-thread-ax31pt`
+(web/src/Messages.tsx `Sources`/`sourcesOf`, web/src/app.css; tests in
+web/test/tool-markers.test.ts and the "Sources" e2e in web-chat.spec.ts,
+with a `fetch:` command in the e2e fake). Next: UI review, then merge.

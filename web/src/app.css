@@ -1207,6 +1207,22 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 .message-video .clip-poster img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .message-video .clip-play { position: absolute; inset: 0; margin: auto; width: var(--tap); height: var(--tap); display: grid; place-items: center; border-radius: 50%; background: var(--panel); color: var(--fg); border: 1px solid var(--line); }
 .message-video .clip-poster:hover .clip-play, .message-video .clip-poster:focus-visible .clip-play { border-color: var(--muted); }
+/* An image or clip being made (docs/ux.md §6): a card at its shape, a field of accent dots lit from the top-right
+   corner as far as the host reports (--p, 0 to 1), a brighter band sweeping across, and a pill at its corner. */
+.making-cards { display: flex; flex-wrap: wrap; gap: 8px; }
+.making { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--tool); max-width: 100%; }
+.making-source { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: blur(16px) saturate(0.7); opacity: 0.45; transform: scale(1.15); }
+.making-dots, .making-dots::after { position: absolute; inset: 0; content: ""; background-position: center;
+  background-image: radial-gradient(circle, var(--accent) 0 1.6px, transparent 2.1px); background-size: 14px 14px; }
+.making-dots { --lit: calc(10% + var(--p) * 120%);
+  -webkit-mask-image: radial-gradient(farthest-corner at 100% 0, #000 calc(var(--lit) - 30%), rgb(0 0 0 / 0.14) var(--lit));
+  mask-image: radial-gradient(farthest-corner at 100% 0, #000 calc(var(--lit) - 30%), rgb(0 0 0 / 0.14) var(--lit)); }
+.making-dots::after { background-image: radial-gradient(circle, var(--accent) 0 2.4px, transparent 2.9px); opacity: 0.55;
+  -webkit-mask-image: linear-gradient(115deg, transparent 35%, #000 50%, transparent 65%); mask-image: linear-gradient(115deg, transparent 35%, #000 50%, transparent 65%);
+  -webkit-mask-size: 300% 100%; mask-size: 300% 100%; animation: making-sweep 2.6s linear infinite; }
+.making[data-state="queued"] .making-dots { opacity: 0.5; }
+@keyframes making-sweep { from { -webkit-mask-position: 100% 0; mask-position: 100% 0; } to { -webkit-mask-position: 0 0; mask-position: 0 0; } }
+.making-pill { position: absolute; right: 8px; bottom: 8px; padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--fg); font-size: 13px; }
 .image-facts { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .image-facts .cap { overflow-wrap: anywhere; min-width: 0; }
 .image-facts .row-menu { margin-left: auto; flex: none; }
@@ -1252,6 +1268,16 @@ a.fpath { font-family: var(--mono); font-size: 0.93em; overflow-wrap: anywhere; 
 @media (pointer: coarse) { .nrow.nsleep .show-more, .cards .sleep-item .show-more { min-height: var(--tap); } }
 
 /* Reactions (docs/ux.md §6): chips under a message; the React button beside the message menu; the quick row and the full picker as popovers. */
+/* The pages she read in a turn, under her reply (docs/ux.md, "The pages she read"): an eyebrow, then one link each, title and host. */
+.sources { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; min-width: 0; }
+.sources-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.sources ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.sources li { min-width: 0; max-width: 100%; }
+.sources a { display: inline-flex; align-items: baseline; gap: 6px; max-width: min(320px, 100%); min-height: 28px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 13px; color: var(--fg); }
+.sources a:hover, .sources a:focus-visible { border-color: var(--edge); }
+.source-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.source-host { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+@media (pointer: coarse) { .sources a { min-height: 44px; align-items: center; } }
 .reactions { display: flex; flex-wrap: wrap; gap: 6px; }
 .msg.user .reactions { justify-self: start; }
 .reaction { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 1px 8px 1px 6px; font-size: 13px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--fg); font-weight: 400; }

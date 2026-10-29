@@ -1,6 +1,6 @@
 // What a thread's event stream says is happening now, before it is stored.
 // Pure, so it can be tested without a browser.
-import type { ContextInfo, Message, MessagePart, PermissionRequest, ThreadEvent, ThreadRef, ThreadStep, Told, WakeupInfo } from "./api.ts";
+import type { ContextInfo, Making, Message, MessagePart, PermissionRequest, ThreadEvent, ThreadRef, ThreadStep, Told, WakeupInfo } from "./api.ts";
 
 export type LiveItem =
   | { role: "user"; text: string; afterN?: number }
@@ -14,6 +14,8 @@ export interface Live {
   /** Follow-ups waiting for the running turn. */
   queued: string[];
   permissions: PermissionRequest[];
+  /** Images and clips being made, by image call: their placeholders, until each is made or fails. */
+  making: Record<string, Making>;
   /** This turn's messages so far. Cleared once the stored messages are reloaded. */
   items: LiveItem[];
   /** Plain-words errors from the latest turn that belong to no reply of it. */
@@ -44,7 +46,7 @@ export interface Live {
   context?: ContextInfo | null;
 }
 
-export const initialLive: Live = { busy: false, queued: [], permissions: [], items: [], errors: [], reload: 0, tools: 0, ended: 0, subagents: {}, settings: 0, children: 0 };
+export const initialLive: Live = { busy: false, queued: [], permissions: [], making: {}, items: [], errors: [], reload: 0, tools: 0, ended: 0, subagents: {}, settings: 0, children: 0 };
 
 /** One part's identity and content, so a tail that grew is told from one that didn't. */
 function partKey(p: MessagePart): string {
@@ -97,11 +99,11 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       // Idle: any turn that ended before the stream opened, or while we were
       // away, is stored now, but the messages may have been fetched before it
       // ended. Reload to pick it up.
-      return { ...s, busy: e.busy, queued: e.queued, permissions: e.permissions,
+      return { ...s, busy: e.busy, queued: e.queued, permissions: e.permissions, making: Object.fromEntries((e.making ?? []).map((m) => [m.toolCallId, m])),
         ...(!e.busy && { reload: s.reload + 1, ended: s.items.length }) };
     }
     case "reset":
-      return { ...s, items: [], ended: 0, reload: s.reload + 1, context: null };
+      return { ...s, items: [], making: {}, ended: 0, reload: s.reload + 1, context: null };
     case "rewound":
       return { ...s, items: [], ended: 0, errors: [], reload: s.reload + 1, context: null };
     case "sent":
@@ -125,6 +127,14 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return withParts(s, (parts) => parts.some((p) => p.type === "tool" && p.toolCallId === e.toolCallId)
         ? parts.map((p) => p.type === "tool" && p.toolCallId === e.toolCallId ? { ...p, name: e.name, args: e.args } : p)
         : [...parts, { type: "tool", toolCallId: e.toolCallId, name: e.name, args: e.args }]);
+    case "making": {
+      const { type: _, ...m } = e;
+      return { ...s, making: { ...s.making, [m.toolCallId]: m } };
+    }
+    case "made": {
+      const { [e.toolCallId]: _, ...making } = s.making;
+      return { ...s, making };
+    }
     case "tool_end":
       return withParts({ ...s, tools: s.tools + 1 }, (parts) => parts.flatMap((p) =>
         p.type === "tool" && p.toolCallId === e.toolCallId

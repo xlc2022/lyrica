@@ -224,7 +224,7 @@ export const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("fty
  * A fake ComfyUI: /upload/image, /prompt, /history, /free, and a websocket
  * that sends one PNG per batch item and then "executing" with node null.
  */
-export async function fakeComfy(o: { hang?: boolean } = {}) {
+export async function fakeComfy(o: { hang?: boolean; hold?: () => Promise<void> } = {}) {
   const { createHash } = await import("node:crypto");
   const seen = { uploads: [] as string[], uploadBodies: [] as Buffer[], prompts: [] as any[], historyCleared: 0, freed: 0, interrupted: [] as string[], deleted: [] as string[] };
   const sockets = new Map<string, import("node:net").Socket>();
@@ -277,7 +277,12 @@ export async function fakeComfy(o: { hang?: boolean } = {}) {
         head.writeUInt32BE(format, 4);
         ws?.write(frame(2, Buffer.concat([head, data])));
       };
-      setTimeout(() => {
+      // Each sampler reports its first of two steps; `hold` keeps the job there until the test lets it finish.
+      for (const [node, n] of Object.entries(prompt as Record<string, { class_type: string }>)) {
+        if (/Sampler/.test(n.class_type)) ws?.write(frame(1, Buffer.from(JSON.stringify({ type: "progress", data: { node, value: 1, max: 2, prompt_id: id } }))));
+      }
+      setTimeout(async () => {
+        await o.hold?.();
         if (video) {
           send(2, PNG);
           send(16, MP4);

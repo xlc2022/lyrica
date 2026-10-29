@@ -6,9 +6,21 @@ import type { Message } from "../src/api.ts";
 const run = (actions: LiveAction[], from: Live = initialLive) => actions.reduce(liveReducer, from);
 
 describe("the live view of a thread's stream", () => {
+  it("keeps what is being made by image call until it is made, and takes the list from hello", () => {
+    const at = "2026-10-29T04:00:00.000Z";
+    const s = run([
+      { type: "hello", busy: true, queued: [], permissions: [], making: [{ toolCallId: "clip", startedAt: at, queued: true }] },
+      { type: "making", toolCallId: "img", startedAt: at },
+      { type: "making", toolCallId: "img", startedAt: at, progress: 0.4 },
+      { type: "made", toolCallId: "clip" },
+    ]);
+    expect(s.making).toEqual({ img: { toolCallId: "img", startedAt: at, progress: 0.4 } });
+    expect(run([{ type: "reset" }], s).making).toEqual({});
+  });
+
   it("builds her reply from deltas, markers and tool results, and drops it once the stored copy is loaded", () => {
     const s = run([
-      { type: "hello", busy: false, queued: [], permissions: [] },
+      { type: "hello", busy: false, queued: [], permissions: [], making: [] },
       { type: "sent", text: "hi" },
       { type: "turn_start" },
       { type: "message_start", model: "m" },
@@ -108,7 +120,7 @@ describe("the live view of a thread's stream", () => {
 
   it("a steered follow-up leaves the queue but shows only when she takes it", () => {
     const s = run([
-      { type: "hello", busy: true, queued: [], permissions: [] },
+      { type: "hello", busy: true, queued: [], permissions: [], making: [] },
       { type: "queue", queued: ["one", "two"] },
       { type: "queue", queued: ["two"], steered: true },
     ]);
@@ -148,7 +160,7 @@ describe("the live view of a thread's stream", () => {
   it("shows a message no model took as waiting, once, until a turn starts", () => {
     const tried = [{ label: "gpu/qwen", reason: "gpu is down" }];
     const s = run([
-      { type: "hello", busy: false, queued: [], permissions: [] },
+      { type: "hello", busy: false, queued: [], permissions: [], making: [] },
       { type: "sent", text: "hi" },
       { type: "queue", queued: ["hi"] },
       { type: "offline", task: "chat", tried },
@@ -186,7 +198,7 @@ describe("the live view of a thread's stream", () => {
 
   it("reloads after a reconnect finds the turn over, and after a reset", () => {
     const mid = run([{ type: "turn_start" }, { type: "text", delta: "partial" }]);
-    const back = run([{ type: "hello", busy: false, queued: [], permissions: [] }], mid);
+    const back = run([{ type: "hello", busy: false, queued: [], permissions: [], making: [] }], mid);
     expect(back.reload).toBe(mid.reload + 1);
     expect(run([{ type: "stored" }], back).items).toEqual([]);
     const reset = run([{ type: "reset" }], mid);
@@ -196,9 +208,9 @@ describe("the live view of a thread's stream", () => {
 
   it("reloads when the stream opens on an idle thread, in case a turn ended after the messages were fetched", () => {
     // A child thread opened as its first turn ends: fetched while busy, the stream opens idle with nothing live.
-    const opened = run([{ type: "hello", busy: false, queued: [], permissions: [] }]);
+    const opened = run([{ type: "hello", busy: false, queued: [], permissions: [], making: [] }]);
     expect(opened.reload).toBe(1);
-    expect(run([{ type: "hello", busy: true, queued: [], permissions: [] }]).reload).toBe(0);
+    expect(run([{ type: "hello", busy: true, queued: [], permissions: [], making: [] }]).reload).toBe(0);
   });
 
   it("keeps the latest context for the header's meter, and marks it unmeasured when turns are rewound or reset", () => {

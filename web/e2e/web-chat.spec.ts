@@ -404,6 +404,58 @@ test("a clip she made shows its poster and facts, and plays in the browser's pla
   await expect(play).toHaveCount(0);
 });
 
+test("an image or clip being made shows a card at its shape with how far it has got, until it arrives", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "A garden at dusk");
+  await expect(page.getByText("You said: A garden at dusk")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  const ago = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+  await page.route(`**${base}/messages`, (route) => route.fulfill({ json: {
+    messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-10-29T04:00:00Z", parts: [
+      { type: "tool", toolCallId: "garden", name: "image", args: { action: "create", tier: "quality", prompt: "A garden at dusk", aspectRatio: "16:9" } },
+    ] }, { id: `e:${threadId}#2`, n: 2, role: "assistant", createdAt: "2026-10-29T04:01:00Z", parts: [
+      { type: "tool", toolCallId: "cat", name: "image", args: { action: "video", prompt: "A cat on a roof" }, result: "Making the clip in the background; it takes minutes.", isError: false },
+      { type: "text", text: "It's on its way." },
+    ] }, { id: `e:${threadId}#3`, n: 3, role: "assistant", createdAt: "2026-10-29T04:02:00Z", parts: [
+      { type: "tool", toolCallId: "pond", name: "image", args: { action: "create", tier: "fast", prompt: "A pond", count: 2 } },
+    ] }], hasMore: false,
+  } }));
+  let making: object[] = [
+    { toolCallId: "garden", startedAt: ago(75), progress: 0.42 },
+    { toolCallId: "cat", startedAt: ago(200), queued: true },
+    { toolCallId: "pond", startedAt: ago(83) },
+  ];
+  await page.route(`**${base}/events`, (route) => route.fulfill({ contentType: "text/event-stream",
+    body: `event: hello\ndata: ${JSON.stringify({ type: "hello", busy: true, queued: [], permissions: [], making })}\n\n` }));
+  await page.reload();
+  const garden = page.getByRole("progressbar", { name: "Making an image" }).first();
+  await expect(garden).toHaveAttribute("aria-valuenow", "42");
+  await expect(garden).toContainText("42%");
+  // At the shape asked for, at most 420 px wide and 320 px tall.
+  const box = (await garden.boundingBox())!;
+  expect(Math.abs(box.width / box.height - 16 / 9)).toBeLessThan(0.02);
+  expect(box.width).toBeLessThanOrEqual(422);
+  // A clip waiting for the host's GPU says so; one with no progress counts the time since it started.
+  await expect(page.getByRole("progressbar", { name: "Making a clip" })).toContainText("Waiting");
+  const pond = page.locator(".making-cards").nth(2);
+  await expect(pond.locator(".making")).toHaveCount(2);
+  await expect(pond.getByRole("progressbar")).toHaveText(/^1:2\d$/);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) {
+    await garden.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${process.env.SCREENSHOTS}/making-top-${page.viewportSize()!.width}.png` });
+    await pond.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${process.env.SCREENSHOTS}/making-${page.viewportSize()!.width}.png` });
+  }
+  // Once nothing is being made, the cards go.
+  making = [];
+  await page.reload();
+  await expect(page.getByText("It's on its way.")).toBeVisible();
+  await expect(page.locator(".making")).toHaveCount(0);
+});
+
 test("an image tool result shows inline, opens large, starts an edit with Images enabled, and deletes after asking", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");
@@ -1964,4 +2016,39 @@ test("a thread's subagents open in a drawer from the header: working ones first,
   await page.keyboard.press("Escape");
   await expect(drawer).toHaveCount(0);
   await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("the pages she read show under her reply as Sources, each opening in a new tab", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "Hello there");
+  await expect(page.getByText("You said: Hello there")).toBeVisible();
+  // Her fetches run in the thread's sandbox: the fake's pages are on this machine, so the thread needs local services.
+  const thread = threadIdOf(page.url());
+  await page.evaluate(async (path) => {
+    await fetch(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ services: true }) });
+  }, `/api/u/${userId}/threads/general/${encodeURIComponent(thread)}/settings`);
+  const fake = `http://127.0.0.1:${Number(new URL(baseURL!).port) + 10}`;
+  await send(page, `fetch: ${fake}/page/moths-at-night, ${fake}/page/a-luna-moth-diary-of-seven-short-days-and-nights, ${fake}/page/moths-at-night`);
+  await expect(page.getByText("Read them.")).toBeVisible();
+  // Under her words, in the turn that read them.
+  const sources = page.locator(".turn").filter({ hasText: "Read them." }).getByRole("list", { name: "Sources" });
+  await expect(sources.getByRole("link")).toHaveCount(2);
+  const first = sources.getByRole("link").first();
+  await expect(first).toHaveAttribute("href", `${fake}/page/moths-at-night`);
+  await expect(first).toHaveAttribute("target", "_blank");
+  await expect(first).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(first).toHaveAttribute("title", `Moths At Night\n${fake}/page/moths-at-night`);
+  await expect(first).toContainText("Moths At Night");
+  await expect(first).toContainText("127.0.0.1");
+  // The reply before has none.
+  await expect(page.locator(".turn").filter({ hasText: "You said: Hello there" }).locator(".sources")).toHaveCount(0);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) {
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.screenshot({ path: `${process.env.SCREENSHOTS}/sources-${page.viewportSize()!.width}-${colorScheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: null });
+  }
 });
