@@ -34,8 +34,8 @@ export async function fakeImages() {
       const action = path.split("/").at(-1)!;
       const body = JSON.parse(String(opts.body));
       if (path === "/host/v1/videos/create") {
-        if (body.recipe !== "clip") return Response.json({ error: { code: "invalid", message: "That recipe doesn't make videos." } }, { status: 400 });
-        expect(Object.keys(body).every(k => ["recipe", "prompt", "image", "width", "height", "aspectRatio", "duration"].includes(k))).toBe(true);
+        if (body.recipe !== "clip" && body.recipe !== "moves") return Response.json({ error: { code: "invalid", message: "That recipe doesn't make videos." } }, { status: 400 });
+        expect(Object.keys(body).every(k => ["recipe", "prompt", "image", "drive", "width", "height", "aspectRatio", "duration"].includes(k))).toBe(true);
         videos.push(body);
         return Response.json({ video: { mp4: mp4.toString("base64"), width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7 }, poster: png.toString("base64"), seconds: 300 });
       }
@@ -46,12 +46,14 @@ export async function fakeImages() {
       return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: output.toString("base64"), width: 1, height: 1, seed: 42 })), seconds: 0.1 });
     }) as typeof fetch);
     const offerings = await models.discover(ada, ep.id);
-    // Art and Clip: a proposal never resolves.
-    expect(offerings.map(o => o.recipe)).toEqual(["Art", "Clip"]);
+    // Art, Clip and Moves: a proposal never resolves.
+    expect(offerings.map(o => o.recipe)).toEqual(["Art", "Clip", "Moves"]);
     expect(offerings[1]).toMatchObject({ video: true, animate: true });
-    const ref = { offeringId: offerings[0]!.id }, clip = { offeringId: offerings[1]!.id };
+    expect(offerings[2]).toMatchObject({ motion: true });
+    expect(offerings[2]).not.toHaveProperty("video");
+    const ref = { offeringId: offerings[0]!.id }, clip = { offeringId: offerings[1]!.id }, moves = { offeringId: offerings[2]!.id };
     models.reportUp(ada.id, ep.id);
-    return { server, ep, ref, clip };
+    return { server, ep, ref, clip, moves };
   };
   const workstation = await host("workstation"), spare = await host("3090");
   const cloud = models.addEndpoint(ada, { name: "openai", kind: "cloud", baseUrl: "https://images.example/v1", apiKey: "fake-key" });

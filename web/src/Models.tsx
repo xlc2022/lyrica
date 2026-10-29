@@ -56,7 +56,7 @@ function modelAndEndpoint(label: string, endpointName?: string): string {
 }
 
 /** A text model: not one that draws, films, embeds, hears or speaks, and not gone. */
-export const isTextModel = (m: EndpointInfo["models"][number]) => m.status !== "gone" && !m.image && !m.edit && !m.video && !m.animate && !m.embedding && !m.transcribe && !m.speak;
+export const isTextModel = (m: EndpointInfo["models"][number]) => m.status !== "gone" && !m.image && !m.edit && !m.video && !m.animate && !m.motion && !m.embedding && !m.transcribe && !m.speak;
 
 /** The text models, counted once per model ID. */
 function textModels(eps: EndpointInfo[]): number {
@@ -445,10 +445,10 @@ const suits = (task: Task, m: OfferingInfo) => {
     case "vision": return !!m.vision && !m.embedding && !m.image && !m.edit && !m.transcribe && !m.speak && !m.recipe && !companion(m.modelId);
     case "image": return !!m.image;
     case "edit": return !!m.edit;
-    case "video": return !!(m.video || m.animate);
+    case "video": return !!(m.video || m.animate || m.motion);
     case "transcribe": return !!m.transcribe;
     case "speak": return !!m.speak?.voices.length;
-    default: return !m.embedding && !m.image && !m.edit && !m.video && !m.animate && !m.transcribe && !m.speak && !m.recipe && !companion(m.modelId);
+    default: return !m.embedding && !m.image && !m.edit && !m.video && !m.animate && !m.motion && !m.transcribe && !m.speak && !m.recipe && !companion(m.modelId);
   }
 };
 /** A vision projector or MTP draft a host listed before it knew them as companions (host/API.md): never a model to pick. */

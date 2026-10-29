@@ -174,6 +174,8 @@ export interface Capabilities {
   video?: boolean;
   /** Makes a clip from a first frame. */
   animate?: boolean;
+  /** Moves an image's subject as the person in a driving clip moves (SCAIL-2). */
+  motion?: boolean;
   /** Image create tiers; absent means both. Stored in hand JSON for cloud models. */
   useFor?: "fast" | "quality" | "both";
   /** The thinking levels it offers, besides off. */
@@ -186,9 +188,9 @@ export interface Capabilities {
 /** One of a speech model's voices. `language` is a primary language tag, such as "en" or "zh". */
 export interface Voice { id: string; language: string }
 /** What a host recipe can be asked to do (host/API.md "Recipes"). */
-const RECIPE_ACTIONS = ["create", "edit", "upscale", "video", "animate"];
+const RECIPE_ACTIONS = ["create", "edit", "upscale", "video", "animate", "motion"];
 
-export const CAPABILITIES = ["contextWindow", "tools", "vision", "embedding", "image", "edit", "upscale", "video", "animate", "reasoning", "transcribe", "speak", "useFor"] as const satisfies readonly (keyof Capabilities)[];
+export const CAPABILITIES = ["contextWindow", "tools", "vision", "embedding", "image", "edit", "upscale", "video", "animate", "motion", "reasoning", "transcribe", "speak", "useFor"] as const satisfies readonly (keyof Capabilities)[];
 
 /** One model on one endpoint, with a permanent ID. */
 export interface Offering extends Capabilities {
@@ -346,7 +348,7 @@ export interface CleanupItem {
 }
 
 /** What a call needs from a model: tools, room for the conversation, or an image create tier. */
-export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; animate?: boolean }
+export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; animate?: boolean; motion?: boolean }
 /** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
 export interface ResolveOptions { evenIfDown?: boolean; except?: ReadonlySet<string> }
 
@@ -1692,11 +1694,12 @@ export class Models {
     }>(await this.hostCall(ep, "GET", "/host/v1/models"), "models");
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
     // Image and video models are recipes: only confirmed ones become offerings, so a proposal never resolves.
-    // A recipe that does nothing Lyrica can ask for (`motion`, so far) isn't one, so it never shows as a chat model.
+    // A recipe that does nothing Lyrica can ask for isn't one, so it never shows as a chat model.
     const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"]; mask?: boolean }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
       .filter((r) => r?.state === "confirmed" && r.does?.some((a) => RECIPE_ACTIONS.includes(a))).map((r) => ({
         modelId: `recipe/${r.id}`, recipe: r.name, useFor: r.useFor ?? "both", ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true, ...(typeof r.mask === "boolean" ? { mask: r.mask } : {}) } : {}), ...(r.does?.includes("upscale") ? { upscale: true } : {}),
         ...(r.does?.includes("video") ? { video: true } : {}), ...(r.does?.includes("animate") ? { animate: true } : {}),
+        ...(r.does?.includes("motion") ? { motion: true } : {}),
       } as DiscoveredModel));
     return [...list.filter((m) => typeof m?.id === "string" && m.kind !== "image").map((m) => {
       const levels = (m.capabilities?.reasoning ?? []).filter((l) => l !== "off");
@@ -2687,7 +2690,7 @@ export class Models {
    */
   async video(ctx: CallContext, request: VideoRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void } = {}): Promise<{ video: GeneratedVideo; resolution: Resolution }> {
     validateVideoRequest(request);
-    return this.callWithFallback("video", ctx, { animate: !!request.image }, async (r) => {
+    return this.callWithFallback("video", ctx, request.drive ? { motion: true } : { animate: !!request.image }, async (r) => {
       opts.signal?.throwIfAborted();
       await opts.beforeSend?.(r);
       opts.signal?.throwIfAborted();
@@ -3051,7 +3054,8 @@ export class Models {
     if (task === "image.create" && !o.image) return "it doesn't make images";
     // Only a model host makes clips, and only one whose recipe does what the call needs.
     if (task === "video" && ep.api !== "host") return "only a model host makes videos";
-    if (task === "video" && (need.animate ? !o.animate : !o.video)) return need.animate ? "it doesn't animate images" : "it doesn't make videos from a prompt";
+    if (task === "video" && need.motion && !o.motion) return "it doesn't move an image as a clip does";
+    if (task === "video" && !need.motion && (need.animate ? !o.animate : !o.video)) return need.animate ? "it doesn't animate images" : "it doesn't make videos from a prompt";
     if (task === "vision" && !o.vision) return "it can't see images";
     // Cloud adapters constrain their tasks; local endpoints keep capability-based routing.
     if (task.startsWith("image.") && ep.kind === "cloud") {
@@ -3081,7 +3085,7 @@ export class Models {
     const c = this.catalog(userId);
     const out: ModelRef[] = [];
     const fits = (o: Offering) => (opts.task === "vision" ? !!o.vision : opts.task === "image.create" ? !!o.image : opts.task === "image.edit" ? !!o.edit : opts.task === "image.upscale" ? !!o.upscale
-      : opts.task === "video" ? !!(o.video || o.animate) : opts.task === "speech.transcribe" ? !!o.transcribe : opts.task === "speech.speak" ? !!o.speak?.voices.length : true);
+      : opts.task === "video" ? !!(o.video || o.animate || o.motion) : opts.task === "speech.transcribe" ? !!o.transcribe : opts.task === "speech.speak" ? !!o.speak?.voices.length : true);
     for (const ref of list) {
       const id = ref && typeof ref === "object" ? refId(ref) : undefined;
       if (!id || typeof id !== "string") throw new NoModel("a list holds models or groups");
@@ -3137,7 +3141,7 @@ export class Models {
     // A plan's chat models don't make images, whatever an older switch set: its image model does.
     const plans = new Set([...own.endpoints, ...shared.endpoints].filter((e) => isPlan(e.api)).map((e) => e.id));
     for (const o of [...own.offerings, ...shared.offerings]) {
-      if (plans.has(o.endpointId) && o.modelId !== PLAN_IMAGE_MODEL) { delete o.image; delete o.edit; delete o.upscale; delete o.video; delete o.animate; delete o.useFor; }
+      if (plans.has(o.endpointId) && o.modelId !== PLAN_IMAGE_MODEL) { delete o.image; delete o.edit; delete o.upscale; delete o.video; delete o.animate; delete o.motion; delete o.useFor; }
     }
     return {
       endpoints: new Map([...own.endpoints, ...shared.endpoints].map((e) => [e.id, e])),

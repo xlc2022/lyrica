@@ -64,7 +64,7 @@ import { PLAN_LIMIT_RESUME } from "./wakeups.ts";
 const CHILD_WAKE = "lyrica-child-wake";
 
 /** An image call that makes something, so the chat shows its placeholder while it runs; sorting attempts makes nothing. */
-const makes = (tool: string, args: unknown) => tool === "image" && ["create", "edit", "upscale", "video", "animate"].includes((args as { action?: string } | null)?.action ?? "");
+const makes = (tool: string, args: unknown) => tool === "image" && ["create", "edit", "upscale", "video", "animate", "motion"].includes((args as { action?: string } | null)?.action ?? "");
 /** Events kept for reconnecting streams. Older ones reload from stored entries. */
 const BUFFER = 500;
 /** Each lyricad run gets its own epoch, so an event ID from before a restart is never mistaken for a current one. */

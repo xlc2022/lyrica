@@ -364,7 +364,7 @@ interface Endpoint {
   unencrypted: boolean;                     // local, plain HTTP, outside this machine and the tailnet
   downSince?: string; stale: boolean;       // stale: unreachable for STALE_DAYS (14)
 }
-interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; upscale?; video?; animate?; reasoning?: ("low" | "medium" | "high")[];
+interface Capabilities { contextWindow?; tools?; vision?; embedding?; image?; edit?; upscale?; video?; animate?; motion?; reasoning?: ("low" | "medium" | "high")[];
                          transcribe?: boolean; speak?: { voices: Voice[] }; useFor?: "fast" | "quality" | "both" }
 interface Voice { id; language }                             // language: a primary tag, "en" or "zh"
 interface Offering extends Capabilities {   // one model on one endpoint, with a permanent id
@@ -477,9 +477,9 @@ class Models {                                              // new Models(keyrin
   // onProgress (image() takes it too): JobProgress { queued; progress?: 0-1 } as a model host's job goes (models/progress.ts withProgress):
   // the call carries X-Lyrica-Job: <random token> and GET /host/v1/jobs/<token> is read every 2 s until it ends; a host that
   // hasn't known the job after 5 reads isn't asked again. Cloud models report none.
-  // VideoRequest { prompt; image?: ImageInput (its first frame); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1-15 }
+  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1-15 }
   // GeneratedVideo { bytes (H.264 MP4); type: "video/mp4"; width; height; frames; fps; duration; audio; seed?; poster: GeneratedImage }
-  // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image) answers, so no clip
+  // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image; or `motion`, with drive) answers, so no clip
   // or first frame reaches a cloud model. POST /host/v1/videos/create with explicit fields only; two hours at most.
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
@@ -1378,7 +1378,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     the user's reactions since her last turn; `reactionLines` puts them in
     the turn message as `<reactions>`;
   - `image` (`createImageExtension(ImageTools)`), one tool with `create`, `edit`,
-    `upscale`, `video` and `animate`. Create takes `prompt`, `tier` (`fast` or `quality`), optional
+    `upscale`, `video`, `animate` and `motion`. Create takes `prompt`, `tier` (`fast` or `quality`), optional
     `size: { width, height }` or `aspectRatio` (`width:height`), `count` and
     `references`; edit takes `image`, `instruction`, optional `mask`, `count`
     and `references`; upscale takes `image`, optional `scale` and `maxSize`.
@@ -1427,7 +1427,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     PNG bytes. Saved task lists are unchanged.
     `video` (`prompt`, optional `size` or `aspectRatio`, which goes to the host
     as it is, and `duration`) and
-    `animate` (also `image`, the first frame) make one clip through
+    `animate` (also `image`, the first frame) and `motion` (also `image`, the subject, and
+    `video`, a workspace MP4 read with `ThreadImages.readClip`) make one clip through
     `Models.video` and save it with `ThreadImages.saveVideo`. With
     `ImageTools.background(make, toolCallId)` (lyricad's `ClipJobs`, daemon/src/clips.ts)
     the call reads the first frame, hands `make(signal, onProgress) → ClipMade { text,
@@ -1438,7 +1439,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     assistant message with the video part and the `notice` event carries as
     `video`, and wakes an idle thread. Without it (an explicit retry) the call
     answers with its facts and its poster as image content, so she sees the first frame;
-    a host's progress (create, edit, upscale, video, animate) goes to Pi as the call's update, details `{ progress: JobProgress }`;
+    a host's progress (create, edit, upscale, video, animate, motion) goes to Pi as the call's update, details `{ progress: JobProgress }`;
     details `{ video: VideoPart }`, `VideoPart` being `{ type: "video", path,
     model, width, height, duration, audio }`. A video's error reads `Video
     failed with <label> [<code>]: …`. Saved messages carry the part beside its
@@ -1948,7 +1949,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     are 404, no login is 401. `GET`/`PUT /api/u/:userId/photo-cloud` → `PhotoCloudSetting`
     (`policy: "never" | "ask" | "always"`); PUT validates and clears daily
     approval. All follow session/key checks and mutations require same-origin.
-    HTTP `Capabilities` includes `upscale`, `video` and `animate`, as core does.
+    HTTP `Capabilities` includes `upscale`, `video`, `animate` and `motion`, as core does.
     `GET …/file` also serves a clip (`video/mp4`) and answers one byte range
     (`Range: bytes=a-b` or `bytes=a-`) with 206 and `Content-Range`, or 416
     outside the file, so the browser's player can seek.
@@ -2368,6 +2369,7 @@ imageFiles(t): ThreadImages
 // ThreadImages.read(path): Promise<{ input: ImageInput; portrait: boolean }>; ordinary paths via ThreadFiles,
 //   /photos-of-me/<file> from that user's mounted encrypted home, refusing symlinks/traversal; at most 20 MB, PNG/JPEG/WebP.
 // ThreadImages.read also marks bytes whose SHA-256 was recorded as a derived portrait, regardless of path.
+// ThreadImages.readClip(path): Promise<Uint8Array>; a workspace MP4 (a driving clip) via ThreadFiles, at most 64 MB, in memory.
 // ThreadImages.save(GeneratedImage[], portrait = false): string[]; exclusive images/<uuid>.png in the encrypted thread folder,
 //   removes PNG metadata, refuses symlinks, returns /workspace/images/<uuid>.png paths. A project chat's (t.coordinates,
 //   as saveUpload) go in shared/images (/workspace/shared/images/<uuid>.png, its threads' /shared/images).

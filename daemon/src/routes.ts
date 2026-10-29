@@ -2419,7 +2419,7 @@ function endpointInfo(d: Lyricad, userId: string, id: string): Api.EndpointInfo 
   const image = !!provider && (ep.api !== "openai-compatible" || !!ep.apiKey)
     && available.some(m => (m.image && provider.create) || (m.edit && provider.edit));
   const cloudCapabilities: Api.EndpointInfo["cloudCapabilities"] = [
-    ...(available.some(m => !m.embedding && !m.transcribe && !m.speak && ((!m.image && !m.edit && !m.upscale && !m.video && !m.animate) || m.tools || m.vision)) ? ["Text" as const] : []),
+    ...(available.some(m => !m.embedding && !m.transcribe && !m.speak && ((!m.image && !m.edit && !m.upscale && !m.video && !m.animate && !m.motion) || m.tools || m.vision)) ? ["Text" as const] : []),
     ...(available.some(m => m.vision) ? ["Vision" as const] : []),
     ...(image ? ["Image" as const] : []),
   ];

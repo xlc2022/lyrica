@@ -15,8 +15,8 @@ export interface HostPart {
 /** A recipe: what Lyrica calls, made of parts (host/API.md, "Recipes"). */
 export interface HostRecipe {
   id: string; name: string; state: "proposed" | "confirmed" | "ignored"; ready: boolean; arch: string; template: string;
-  /** A video recipe does `video` and/or `animate` (docs/briefs/video.md). */
-  does: ("create" | "edit" | "upscale" | "video" | "animate")[];
+  /** A video recipe does `video` and/or `animate`, or `motion` (docs/briefs/video.md, motion-video.md). */
+  does: ("create" | "edit" | "upscale" | "video" | "animate" | "motion")[];
   /** Create tiers; absent on older hosts means both. */
   useFor?: "fast" | "quality" | "both";
   parts: { role: Role; slot: string | null; file: string | null; added: boolean; missing?: { source: string; repo: string; path: string; sha256?: string; size?: number } }[];
