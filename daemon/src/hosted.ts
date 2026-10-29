@@ -3,7 +3,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   ANSWER, answerMark, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, planLimitReset, NoModel, Offline, PlanWaiting, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
-  type ChildStatus, type JobProgress, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
+  sandboxHas, sandboxTools, type ChildStatus, type JobProgress, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
   BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, type ClipMade, piModelFor, syncEntries, timedReply,
@@ -1117,7 +1117,7 @@ export class HostedThread {
             ...(this.o.clips ? { background: (make: (signal: AbortSignal, onProgress: (p: JobProgress) => void) => Promise<ClipMade>, toolCallId: string) => this.o.clips!(this.userId, this.pool, this.threadId, make, toolCallId) } : {}),
           }),
           // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
-          createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target() }),
+          createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }),
           // The project's checks, run when a code turn that changed something ends.
           createChecksExtension({ checks: () => tools.checks(), code: () => tools.settings().code, plan: () => tools.settings().mode === "plan",
             checkouts: () => checkoutsOf(tools.settings(), workspace.repositoriesFor({ userId: this.userId, pool: this.pool, threadId: this.threadId })), target: () => tools.target(),

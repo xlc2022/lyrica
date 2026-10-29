@@ -1270,7 +1270,7 @@ same ("On NixOS" below).
 
 - It installs the packages (bubblewrap, gocryptfs, FUSE, passt, nftables,
   openssl, ImageMagick, and for the updater build-essential, python3, git,
-  openssh-client and jq), and the `tailscale` package from Tailscale's apt
+  openssh-client and jq, and python3-venv for clones' Python dependencies), and the `tailscale` package from Tailscale's apt
   repository when its binaries are missing (then disabling the host's own
   `tailscaled.service` the package enables, unless it was enabled before, so
   a host keeps its own as it was), checks for Node.js 22.6 or later (the SSH
