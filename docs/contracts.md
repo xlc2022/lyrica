@@ -1083,9 +1083,9 @@ Custom roles override built-ins by name, except `claude`.
   (`HostedThread.send(text, { fromThread })`; only `lyricad` writes it, and
   `Message.from.kind` is `thread`), at most `ThreadsLimits.siblingMessages`
   (3) per request to any one thread; each sent one says how many more that
-  thread can take this turn, and the refusal past it points to one message
-  next turn or the project chat. It bounds one turn flooding one thread; it
-  counts per thread because a turn with news for several (a new head for
+  thread can take this request, and the refusal past it points to one message
+  on the next request or the project chat. It bounds one request flooding one
+  thread; it counts per thread because a turn with news for several (a new head for
   two reviewers) was cut off by a total, and the threads waiting on it
   stalled. A `message` text is at most `MESSAGE_MAX` (8,000)
   characters, and a `message` or `start` text holding a run of 400 base64
