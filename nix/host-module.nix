@@ -7,6 +7,7 @@
 
 let
   cfg = config.services.lyrica-host;
+  gpuUnlock = config.boot.kernelPackages.callPackage ./gpu-unlock.nix { };
 in {
   options.services.lyrica-host = {
     enable = lib.mkEnableOption "the Lyrica model host's prerequisites";
@@ -41,13 +42,36 @@ in {
         - none: no GPU (install.sh --no-gpu, for testing).
       '';
     };
+
+    gpuUnlock.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        gpu-unlock (nix/gpu-unlock.nix): full-rate FP16/BF16 tensor math on
+        GeForce RTX 20/30/40 cards, unlocked at every boot before the driver
+        loads. RTX 30 is upstream's stable family; RTX 20 and 40 are
+        experimental. It builds a kernel module and NVIDIA firmware (unfree)
+        for this machine. To undo, set it false or boot an earlier generation.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
     assertions = [{
       assertion = !(lib.hasPrefix "/opt/lyrica/" "${cfg.checkout}/");
       message = "services.lyrica-host.checkout must not be in /opt/lyrica: lyricad keeps its releases and repo.git there.";
+    } {
+      assertion = cfg.gpuUnlock.enable -> cfg.gpu == "nvidia";
+      message = "services.lyrica-host.gpuUnlock is for NVIDIA GeForce cards: it needs gpu = \"nvidia\".";
     }];
+
+    # gpu-unlock: the module and its firmware go into the initrd and load
+    # there, so the unlock runs before stage 2 loads nvidia. It touches only
+    # the cards it supports and does nothing without the kernel parameter.
+    boot.extraModulePackages = lib.mkIf cfg.gpuUnlock.enable [ gpuUnlock.module ];
+    hardware.firmware = lib.mkIf cfg.gpuUnlock.enable [ gpuUnlock.firmware ];
+    boot.initrd.kernelModules = lib.mkIf cfg.gpuUnlock.enable (lib.mkBefore [ "gpu_unlock" ]);
+    boot.kernelParams = lib.mkIf cfg.gpuUnlock.enable [ "gpu_unlock.targets=all" ];
 
     # Docker, whose default iptables firewall backend egress.sh's rules need
     # (install.sh checks it); the NixOS firewall stays on iptables beside it.
