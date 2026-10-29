@@ -144,8 +144,14 @@ describe("image routes (principles 1 and 2)", () => {
       }) as typeof fetch);
       const stopped = call("POST", path, actor.id, { next: true });
       await vi.waitFor(() => expect(runningSignal).toBeDefined());
+      // A view that opens meanwhile gets the image's placeholder, and sees it go when the call ends.
+      const seen: { type: string; making?: unknown[]; toolCallId?: string }[] = [];
+      const unsubscribe = d.services!.host.get(actor.id, "private", thread.id).subscribe((_id, e) => seen.push(e as never));
+      expect(seen[0]).toMatchObject({ type: "hello", making: [{ toolCallId: expect.stringMatching(/^image-retry-/), startedAt: expect.any(String) }] });
       await d.services!.host.get(actor.id, "private", thread.id).stop();
       expect((await stopped).status).toBe(200);
+      expect(seen).toContainEqual({ type: "made", toolCallId: (seen[0]!.making![0] as { toolCallId: string }).toolCallId });
+      unsubscribe();
       expect(runningSignal!.aborted).toBe(true);
       expect(readdirSync(join(dir, "images"))).toHaveLength(1);
       expect(d.services!.host.busy(actor.id, "private", thread.id)).toBe(false);

@@ -97,18 +97,18 @@ export class Comfy implements Backend {
    * overwritten with a blank image and the history is cleared; a job that
    * fails, times out or is cancelled is interrupted and taken off the queue.
    */
-  async run(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, signal?: AbortSignal): Promise<Buffer[]> {
-    return (await this.job(images, build, "image", this.timeoutMs, signal)).pngs;
+  async run(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, signal?: AbortSignal, onProgress?: (fraction: number) => void): Promise<Buffer[]> {
+    return (await this.job(images, build, "image", this.timeoutMs, signal, onProgress)).pngs;
   }
 
   /** Like `run`, for a video workflow: its MP4 and its poster (the first frame, a PNG). */
-  async runVideo(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, timeoutMs: number, signal?: AbortSignal): Promise<{ video: Buffer; poster: Buffer | null }> {
-    const { pngs, videos } = await this.job(images, build, "video", timeoutMs, signal);
+  async runVideo(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, timeoutMs: number, signal?: AbortSignal, onProgress?: (fraction: number) => void): Promise<{ video: Buffer; poster: Buffer | null }> {
+    const { pngs, videos } = await this.job(images, build, "video", timeoutMs, signal, onProgress);
     if (!videos[0]) throw new HostError(503, "model_unavailable", "ComfyUI returned no video.");
     return { video: videos[0], poster: pngs[0] ?? null };
   }
 
-  private job(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, what: "image" | "video", timeoutMs: number, signal?: AbortSignal): Promise<{ pngs: Buffer[]; videos: Buffer[] }> {
+  private job(images: Record<string, Buffer>, build: (names: Record<string, string>) => object, what: "image" | "video", timeoutMs: number, signal?: AbortSignal, onProgress?: (fraction: number) => void): Promise<{ pngs: Buffer[]; videos: Buffer[] }> {
     return this.serial(async () => {
       signal?.throwIfAborted();
       const names: Record<string, string> = {};
@@ -120,6 +120,7 @@ export class Comfy implements Backend {
       try {
         for (const [key, data] of Object.entries(images)) names[key] = await this.upload(`lyrica-${key}.png`, data);
         const prompt = build(names);
+        const progress = onProgress && samplingProgress(prompt, onProgress);
         const clientId = randomUUID();
         const socket = new WebSocket(`${this.base.replace(/^http/, "ws")}/ws?clientId=${clientId}`);
         ws = socket;
@@ -143,7 +144,7 @@ export class Comfy implements Backend {
               if (view.length > 8 && view.readUInt32BE(0) === 1 && view.readUInt32BE(4) === MP4) videos.push(view.subarray(8));
               return;
             }
-            let msg: { type?: string; data?: { prompt_id?: string; node?: unknown; node_type?: unknown; exception_type?: unknown } };
+            let msg: { type?: string; data?: { prompt_id?: string; node?: unknown; node_type?: unknown; exception_type?: unknown; value?: unknown; max?: unknown } };
             try {
               msg = JSON.parse(String(e.data));
             } catch {
@@ -154,6 +155,7 @@ export class Comfy implements Backend {
             // The node and the exception's type name what broke; the exception's message can carry the prompt, so it stays out.
             if (msg.type === "execution_error") reject(new HostError(503, "model_unavailable", `ComfyUI failed to make the ${what} (${String(msg.data?.node_type ?? "a node")}: ${String(msg.data?.exception_type ?? "error")}).`));
             else if (msg.type === "executing" && msg.data?.node === null) resolve();
+            else if (msg.type === "progress" && msg.data) progress?.(String(msg.data.node), Number(msg.data.value), Number(msg.data.max));
           };
           socket.onclose = () => reject(unavailable());
         });
@@ -256,4 +258,32 @@ export function imageSize(b: Buffer): { width: number; height: number; type: "pn
     }
   }
   return null;
+}
+
+/** The nodes that sample, whose steps ComfyUI reports as `progress`. */
+const SAMPLER = /^(KSampler|KSamplerAdvanced|SamplerCustom|SamplerCustomAdvanced|LanPaint_SamplerCustomAdvanced|SeedVR2VideoUpscaler)$/;
+
+/**
+ * Turns ComfyUI's per-node step counts into the job's fraction: each sampler that leads to an output counts
+ * equally, and sampling is 95% of the job, since decoding and encoding the result follow it. A workflow with
+ * no sampler reports nothing.
+ */
+export function samplingProgress(prompt: object, report: (fraction: number) => void): ((node: string, value: number, max: number) => void) | undefined {
+  const nodes = prompt as Record<string, { class_type?: string; inputs?: Record<string, unknown> }>;
+  // ComfyUI runs only what an output needs: start from the save nodes, and walk their inputs back.
+  const needed = new Set<string>();
+  const walk = (id: string) => {
+    if (needed.has(id) || !nodes[id]) return;
+    needed.add(id);
+    for (const v of Object.values(nodes[id]!.inputs ?? {})) if (Array.isArray(v) && typeof v[0] === "string") walk(v[0]);
+  };
+  for (const [id, n] of Object.entries(nodes)) if (/^(Save|Preview)/.test(n.class_type ?? "")) walk(id);
+  const samplers = [...needed].filter((id) => SAMPLER.test(nodes[id]!.class_type ?? ""));
+  if (!samplers.length) return undefined;
+  const done = new Map<string, number>();
+  return (node, value, max) => {
+    if (!samplers.includes(node) || !(max > 0) || !Number.isFinite(value)) return;
+    done.set(node, Math.min(1, Math.max(done.get(node) ?? 0, value / max)));
+    report(0.95 * [...done.values()].reduce((a, b) => a + b, 0) / samplers.length);
+  };
 }

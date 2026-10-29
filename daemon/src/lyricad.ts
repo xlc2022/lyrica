@@ -496,6 +496,9 @@ export class Lyricad implements Drainable {
         notify(t, stopped ? `The clip was stopped: ${message}.` : `The clip failed: ${message.replace(/[.\s]*$/, "")}.`, { status: "clip-failed" });
         if (!stopped) wakeSoon(t, "clip", CLIP_WAKE);
       },
+      // Its placeholder in the thread's open views (docs/ux.md, "A clip the agent made").
+      making: (t, m) => host.peek(t.userId, t.pool, t.threadId)?.publish({ type: "making", ...m }),
+      made: (t, toolCallId) => host.peek(t.userId, t.pool, t.threadId)?.publish({ type: "made", toolCallId }),
       log: this.log,
     });
     // Where the front door is, read at every sandbox start, so a change in web access applies to the next command.
@@ -623,7 +626,8 @@ export class Lyricad implements Drainable {
       users, memory, models, workspace, persona, delegation, cwd, log: this.log, sameFile, searxng: () => searxngAddress(keyring.self()), name: () => selfName(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       codePulls: (u, p, t) => forge.codePulls(u, p, t),
-      clips: (u, p, t, make) => clips.start({ userId: u, pool: p, threadId: t }, make),
+      clips: (u, p, t, make, toolCallId) => clips.start({ userId: u, pool: p, threadId: t }, make, toolCallId),
+      clipsMaking: (u, p, t) => clips.making(u, p, t),
       resume: (u, p, t, at, note) => wakeups.resume(u, p, t, at, note),
       threads: children, onTurn: (u, p, t, working, byPerson) => {
         children.turn(u, p, t, working);

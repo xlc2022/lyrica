@@ -1,7 +1,7 @@
 // The conversation: stored messages, then what's streaming now.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { get, post, threadPath, u, type GoAhead, type ImagePart, type VideoPart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
+import { get, post, threadPath, u, type GoAhead, type ImagePart, type Making, type VideoPart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import { SkillCard } from "./Skills.tsx";
 import { isQuestionPart, QuestionCard, ROOT_TOOL } from "./Question.tsx";
 import { storedLiveCopies, storedUserItems, type LiveItem } from "./live.ts";
@@ -28,6 +28,7 @@ import { sortImages, type MessageImages as SortedImages, type RejectedImage } fr
 import { her } from "./name.ts";
 import { ReactButton, ReactionChips } from "./Reactions.tsx";
 import { ReadAloudButton } from "./Voice.tsx";
+import { MakingCards } from "./Making.tsx";
 
 interface Props {
   ctx: ShellContext;
@@ -73,7 +74,7 @@ export function Conversation({ ctx, pool, base, threadId, subagent, thread, rewi
   const env: Env = {
     questions, questionChanged: () => { thread.dispatch({ type: "refresh" }); ctx.refreshThreads(); ctx.refreshNotifications(); },
     busy: live.busy, settingsVersion: live.settings, lastUser: messages.findLast(m => m.role === "user")?.n, userId: ctx.user.id, you: ctx.user.displayName, pool, base, threadId, subagent, openTools, toggleTool,
-    permissions: live.permissions, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
+    permissions: live.permissions, making: live.making, ticks: live.subagents, show, rewinder, parentTitle, speech, onError: onError ?? (() => {}), project,
     lastHers: messages.findLast((m) => m.role === "assistant")?.n, large: openLarge, threads: ctx.threads,
   };
   const liveCopies = hideFrom === undefined ? storedLiveCopies(live.items, messages) : new Set<number>();
@@ -139,6 +140,8 @@ interface Env {
   openTools: ReadonlySet<string>;
   toggleTool: (id: string) => void;
   permissions: PermissionRequest[];
+  /** What her image calls are making now, by call: each shows a placeholder under its marker. */
+  making: Record<string, Making>;
   ticks: Record<string, number>;
   /** A delegate card shows or hides a subagent's work. */
   show: (threadId: string, on: boolean) => void;
@@ -476,7 +479,13 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
     if (folded && p.type === "tool" && p.name === "threads" && !p.isError && (p.args as { action?: string } | null)?.action === "message") return;
     flush(i);
     if (p.type === "video") { out.push(<MessageVideo key={i} part={p} env={env} />); return; }
-    if (p.type !== "image") { out.push(<Marker key={i} part={p} env={env} />); return; }
+    if (p.type !== "image") {
+      out.push(<Marker key={i} part={p} env={env} />);
+      // Where the image or clip will be: its placeholder, until it arrives.
+      const making = p.type === "tool" && p.name === "image" ? env.making[p.toolCallId] : undefined;
+      if (making && p.type === "tool") out.push(<MakingCards key={`m${i}`} args={p.args} making={making} label={makingLabel(p.args)} url={(path) => `${env.base}/file?path=${encodeURIComponent(path)}`} />);
+      return;
+    }
     const group = images?.groups.get(i);
     if (group) out.push(<RejectedImages key={`r${i}`} parts={group} env={env} />);
     const shownPart = images?.parts.has(i) ? images.parts.get(i) : p;
@@ -677,11 +686,7 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       label = <>{place && <b className="place">{place}</b>}<b className="tool-name">{mcp?.tool ?? part.name}</b> <code>{summarizeArgs(part.args)}</code> <span className="state" data-state={state}>{state}</span></>;
       if (part.name === "image") {
         const args = (part.args ?? {}) as { action?: string; tier?: string; images?: unknown };
-        const n = Array.isArray(args.images) ? args.images.length : 1;
-        const making = args.action === "edit" ? "Editing an image" : args.action === "upscale" ? "Upscaling an image"
-          : args.action === "reject" ? (n === 1 ? "Rejecting an image" : `Rejecting ${n} images`) : args.action === "pick" ? "Picking an image"
-          : args.action === "clear_rejected" ? "Deleting rejected images" : args.action === "video" ? "Making a clip"
-          : args.action === "animate" ? "Animating an image" : "Making an image";
+        const making = makingLabel(args);
         // A clip made in the background: the call only started it, and the clip shows when it is made.
         const shown = state === "done" && part.result?.startsWith("Making the clip in the background") ? "started" : state;
         label = <><span>{making}{args.action === "create" && args.tier && <> · {args.tier}</>} <span className="state" data-state={shown}>{shown}</span></span></>;
@@ -703,6 +708,16 @@ function Marker({ part, env }: { part: Exclude<MessagePart, { type: "text" | "im
       {part.type === "tool" && part.name === "image" && part.imageRefusal && <ImageRefusalLinks part={part} env={env} />}
     </div>
   );
+}
+
+/** What an image call's marker says it is doing. */
+function makingLabel(a: unknown): string {
+  const args = (a ?? {}) as { action?: string; images?: unknown };
+  const n = Array.isArray(args.images) ? args.images.length : 1;
+  return args.action === "edit" ? "Editing an image" : args.action === "upscale" ? "Upscaling an image"
+    : args.action === "reject" ? (n === 1 ? "Rejecting an image" : `Rejecting ${n} images`) : args.action === "pick" ? "Picking an image"
+    : args.action === "clear_rejected" ? "Deleting rejected images" : args.action === "video" ? "Making a clip"
+    : args.action === "animate" ? "Animating an image" : "Making an image";
 }
 
 /** The file a `read` call showed her as an image, in this thread's folders; not on a machine, whose files the panel can't reach. */

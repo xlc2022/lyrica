@@ -473,7 +473,10 @@ class Models {                                              // new Models(keyrin
   // Cloud useFor/image/edit are offerings.hand JSON in self.db (shared) or user.db (personal); no schema step.
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Videos (memory only; caller stores and records results)
-  video(ctx, request: VideoRequest, { signal?, beforeSend? }?): Promise<{ video: GeneratedVideo; resolution }>
+  video(ctx, request: VideoRequest, { signal?, beforeSend?, onProgress? }?): Promise<{ video: GeneratedVideo; resolution }>
+  // onProgress (image() takes it too): JobProgress { queued; progress?: 0-1 } as a model host's job goes (models/progress.ts withProgress):
+  // the call carries X-Lyrica-Job: <random token> and GET /host/v1/jobs/<token> is read every 2 s until it ends; a host that
+  // hasn't known the job after 5 reads isn't asked again. Cloud models report none.
   // VideoRequest { prompt; image?: ImageInput (its first frame); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1-15 }
   // GeneratedVideo { bytes (H.264 MP4); type: "video/mp4"; width; height; frames; fps; duration; audio; seed?; poster: GeneratedImage }
   // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image) answers, so no clip
@@ -1419,8 +1422,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     as it is, and `duration`) and
     `animate` (also `image`, the first frame) make one clip through
     `Models.video` and save it with `ThreadImages.saveVideo`. With
-    `ImageTools.background(make)` (lyricad's `ClipJobs`, daemon/src/clips.ts)
-    the call reads the first frame, hands `make(signal) → ClipMade { text,
+    `ImageTools.background(make, toolCallId)` (lyricad's `ClipJobs`, daemon/src/clips.ts)
+    the call reads the first frame, hands `make(signal, onProgress) → ClipMade { text,
     video: VideoPart }` over and answers at once ("Making the clip in the
     background…", details `{ clip: "started" }`); lyricad delivers the result
     as a delegate notice with details `{ status: "clip", video }` (or
@@ -1428,6 +1431,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     assistant message with the video part and the `notice` event carries as
     `video`, and wakes an idle thread. Without it (an explicit retry) the call
     answers with its facts and its poster as image content, so she sees the first frame;
+    a host's progress (create, edit, upscale, video, animate) goes to Pi as the call's update, details `{ progress: JobProgress }`;
     details `{ video: VideoPart }`, `VideoPart` being `{ type: "video", path,
     model, width, height, duration, audio }`. A video's error reads `Video
     failed with <label> [<code>]: …`. Saved messages carry the part beside its

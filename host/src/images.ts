@@ -7,6 +7,7 @@ import { basename, join } from "node:path";
 import { imageSize, type Comfy } from "./comfy.ts";
 import type { Downloads } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
+import { Jobs, type JobProgress } from "./jobs.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import { scanParts, type Part, type Role } from "./parts.ts";
@@ -78,6 +79,8 @@ export class Images {
   /** stable-diffusion.cpp, which makes the images in ComfyUI's place when it is set. */
   private readonly sdcpp: SdCpp | null;
   private readonly downloads: Downloads | null;
+  /** Image and video jobs a client tagged, for their progress. */
+  private readonly jobs = new Jobs();
   private readonly modelsDir: string;
   private readonly seedvr2Dir: string;
   private readonly comfyGpu: number;
@@ -240,12 +243,19 @@ export class Images {
     }
     const make = path.match(/^\/host\/v1\/images\/(create|edit|upscale)$/);
     if (make && method === "POST") {
-      await this.make(make[1] as "create" | "edit" | "upscale", req, res);
+      // A tagged job is readable from the start, so its client sees it queued while the request is read.
+      await this.jobs.track(this.jobs.token(req), (job) => this.make(make[1] as "create" | "edit" | "upscale", req, res, job));
       return true;
     }
     if (path === "/host/v1/videos/create" && method === "POST") {
-      await this.video(req, res);
+      await this.jobs.track(this.jobs.token(req), (job) => this.video(req, res, job));
       return true;
+    }
+    const job = path.match(/^\/host\/v1\/jobs\/([A-Za-z0-9_-]{16,64})$/);
+    if (job && method === "GET") {
+      const state = this.jobs.get(job[1]!);
+      if (!state) throw notFound("No such job running.");
+      return sendJson(res, 200, state), true;
     }
     return false;
   }
@@ -317,7 +327,7 @@ export class Images {
     return { deleted, kept };
   }
 
-  private async make(action: "create" | "edit" | "upscale", req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async make(action: "create" | "edit" | "upscale", req: IncomingMessage, res: ServerResponse, job: JobProgress): Promise<void> {
     const body = await readJson(req, 4 * IMAGE_LIMIT + 1024 * 1024);
     onlyFields(body, FIELDS[action]);
     if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
@@ -382,15 +392,15 @@ export class Images {
     const scheduler = this.runtime.scheduler;
     const sdcpp = this.sdcpp;
     if (sdcpp && sdArgs) sdcpp.prepare(model.id, sdArgs);
-    const pngs = await scheduler.run(model, "image", () =>
-      scheduler.measuring(model, () =>
+    // stable-diffusion.cpp reports no steps: its job only says it runs.
+    const pngs = await scheduler.run(model, "image", () => {
+      job.running();
+      return scheduler.measuring(model, () =>
         sdcpp ? sdcpp.create(model.id, recipe.template, values, abort.signal) : this.comfy.run(uploads, (names) => {
           const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
           return fill(template, parts, recipe.loras, { ...values, ...names });
-        }, abort.signal)),
-      this.comfyGpu,
-      abort.signal,
-    );
+        }, abort.signal, job.progress));
+    }, this.comfyGpu, abort.signal);
     if (!pngs.length) throw new HostError(503, "model_unavailable", `${sdcpp ? "stable-diffusion.cpp" : "ComfyUI"} returned no image.`);
     const seconds = (Date.now() - started) / 1000;
     this.runtime.count(recipe.id, { requests: 1, images: pngs.length, seconds });
@@ -411,7 +421,7 @@ export class Images {
    * first frame (`animate`). The template times it: the duration becomes the
    * model's frame count, and width and height multiples of its size step.
    */
-  private async video(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async video(req: IncomingMessage, res: ServerResponse, job: JobProgress): Promise<void> {
     const body = await readJson(req, 2 * IMAGE_LIMIT);
     onlyFields(body, VIDEO_FIELDS);
     if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
@@ -462,13 +472,12 @@ export class Images {
       if (!res.writableFinished) abort.abort();
     });
     const scheduler = this.runtime.scheduler;
-    const { video, poster } = await scheduler.run(model, "image", () =>
-      scheduler.measuring(model, () => this.comfy.runVideo(uploads, (names) => {
+    const { video, poster } = await scheduler.run(model, "image", () => {
+      job.running();
+      return scheduler.measuring(model, () => this.comfy.runVideo(uploads, (names) => {
         return fill(template, parts, recipe.loras, { ...values, ...names });
-      }, VIDEO_TIMEOUT_MS, abort.signal)),
-      this.comfyGpu,
-      abort.signal,
-    );
+      }, VIDEO_TIMEOUT_MS, abort.signal, job.progress));
+    }, this.comfyGpu, abort.signal);
     const seconds = (Date.now() - started) / 1000;
     this.runtime.count(recipe.id, { requests: 1, seconds });
     this.log("video", { recipe: recipe.id, action, frames: Number(values.frames) });

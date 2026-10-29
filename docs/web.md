@@ -1016,6 +1016,11 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   and "· sound" when it has audio; its ⋯ holds Download, Copy path, Show in
   Files and Delete…, which asks as for an image; a deleted clip reads "No
   longer in Files". Its markers read Making a clip and Animating an image;
+  While an image call makes something, the stream's `making` (and `hello`'s)
+  puts its placeholder (Making.tsx) under the marker until `made`: a card
+  per image at the asked shape, a dot field in the accent lit from the
+  top-right by the host's progress, and a pill with the percent, Waiting, or
+  the time since it started (docs/ux.md).
   a clip made in the background marks its call **started**, and the clip
   shows as her own message when a `notice` event brings its `video` (or the
   thread reloads); a failed one is a notice headed Clip with a down dot and

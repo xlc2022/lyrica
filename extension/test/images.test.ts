@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai";
 import { createAgentSession, DefaultResourceLoader, SessionManager, type ExtensionAPI, type ExtensionToolContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { ThreadImages, Workspace, type CallContext } from "@lyrica/core";
+import { ThreadImages, Workspace, type CallContext, type JobProgress } from "@lyrica/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeImages, mp4, png } from "../../core/test/fake-images.ts";
 import { ASK_INSTEAD, createImageExtension, imageParameters, ratioSize, type ApprovalRequest, type ClipMade, type ImageTools } from "../src/index.ts";
@@ -209,14 +209,15 @@ describe("image tool results (principles 1 and 4)", () => {
   it("hands a clip to the background when lyricad runs clips, so her turn ends, and the clip comes back when it's made", async () => {
     const s = await setup();
     s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.clip]);
-    const started: ((signal: AbortSignal) => Promise<ClipMade>)[] = [];
-    (s.options as ImageTools).background = make => { started.push(make); };
+    const started: ((signal: AbortSignal, onProgress: (p: JobProgress) => void) => Promise<ClipMade>)[] = [];
+    const ids: string[] = [];
+    (s.options as ImageTools).background = (make, id) => { started.push(make); ids.push(id); };
     const out = await s.run({ action: "video", prompt: "A fox in the snow" });
     expect(out.details).toEqual({ clip: "started" });
     expect(out.content).toEqual([{ type: "text", text: expect.stringContaining("Making the clip in the background") }]);
     // Nothing has gone to the host yet: the job does that, after the call returned.
     expect(s.workstation.server.videos).toEqual([]);
-    const made = await started[0]!(new AbortController().signal);
+    const made = await started[0]!(new AbortController().signal, () => {});
     expect(made.video).toMatchObject({ type: "video", model: "shared.workstation/Clip", width: 1280, height: 704 });
     expect(made.text).toMatch(/^The clip is ready\. Made with Clip on workstation: 5\.0 s at 1280×704\. Saved \/workspace\/videos\/.+\.mp4\.$/);
     expect(readFileSync(join(s.folder, "videos", made.video.path.split("/").at(-1)!))).toEqual(mp4);
@@ -224,8 +225,17 @@ describe("image tool results (principles 1 and 4)", () => {
     // Images turned off while it waited: nothing is sent.
     await s.run({ action: "video", prompt: "A cat" });
     s.enable(false);
-    await expect(started[1]!(new AbortController().signal)).rejects.toThrow("Images are off");
+    await expect(started[1]!(new AbortController().signal, () => {})).rejects.toThrow("Images are off");
     expect(s.workstation.server.videos).toHaveLength(1);
+  });
+  it("passes a host's progress to Pi as the call's update, for the chat's placeholder", async () => {
+    const s = await setup();
+    s.context({ localOnly: true });
+    const image = s.models.image.bind(s.models);
+    vi.spyOn(s.models, "image").mockImplementation(async (ctx, request, opts) => { opts?.onProgress?.({ queued: false, progress: 0.5 }); return image(ctx, request, opts); });
+    const updates: unknown[] = [];
+    await s.tool.execute("call", { action: "create", prompt: "A garden", tier: "quality" }, undefined, (u: unknown) => updates.push(u), noUI);
+    expect(updates).toEqual([{ content: [], details: { progress: { queued: false, progress: 0.5 } } }]);
   });
   it("names the host and recipe that made the image, by the recipe's name", async () => {
     const s = await setup();

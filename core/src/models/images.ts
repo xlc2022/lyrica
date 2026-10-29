@@ -1,5 +1,6 @@
 // Principle 2: image calls share the router's cloud boundary. No disk or logging.
 import { hostError, HostIdentityChanged, HostRefused } from "./host.ts";
+import { withProgress, type JobProgress } from "./progress.ts";
 
 export interface ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
 const QUALITY = { fast: "low", quality: "high" } as const;
@@ -139,7 +140,7 @@ export const CLOUD_IMAGE_PROVIDERS: Readonly<Record<string, CloudImageProvider>>
   chatgpt: { run: (t, r, signal) => t.codex ? t.codex(r, signal) : Promise.reject(new HostRefused("unavailable", "Codex isn't set up on this server.")), create: true, edit: true, mask: false, references: true, sizes: true, count: 4, quality: QUALITY },
 };
 
-export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal): Promise<GeneratedImage[]> {
+export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<GeneratedImage[]> {
   if (!t.host) {
     const provider = CLOUD_IMAGE_PROVIDERS[t.api ?? "openai-compatible"];
     if (!provider) throw new HostRefused("unsupported", "This endpoint has no image provider.");
@@ -157,7 +158,7 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal):
       prompt: r.prompt, ...(r.count === undefined ? {} : { count: r.count }), ...(r.references ? { references: r.references.map(base64) } : {}),
       ...(r.action === "create" ? r.size ?? {} : { image: base64(r.image), ...(r.mask ? { mask: base64(r.mask), ...(r.replace ? { replace: true } : {}) } : {}) }),
     }) };
-  const out = await answer(t, `/host/v1/images/${r.action}`, JSON.stringify(fields), { "content-type": "application/json" }, signal);
+  const out = await withProgress(t, onProgress, (tag) => answer(t, `/host/v1/images/${r.action}`, JSON.stringify(fields), { "content-type": "application/json", ...tag }, signal));
   if (!Array.isArray(out.images) || !out.images.length) throw new HostRefused("invalid", "image host returned no images");
   return out.images.map((i: { png: string; seed?: number }) => ({ ...cleanPng(Buffer.from(i.png, "base64")), ...(i.seed === undefined ? {} : { seed: i.seed }) }));
 }

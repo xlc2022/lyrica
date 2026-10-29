@@ -11,7 +11,8 @@ const video = { type: "video" as const, path: "/workspace/videos/a.mp4", model: 
 
 function jobs() {
   const heard: unknown[][] = [];
-  const clips = new ClipJobs({ done: (th, made) => heard.push(["done", th, made]), failed: (th, m, stopped) => heard.push(["failed", th, m, !!stopped]), log: () => {} });
+  const clips = new ClipJobs({ done: (th, made) => heard.push(["done", th, made]), failed: (th, m, stopped) => heard.push(["failed", th, m, !!stopped]),
+    making: (th, m) => heard.push(["making", m.toolCallId, m.queued ?? false, m.progress ?? null]), made: (th, id) => heard.push(["made", id]), log: () => {} });
   return { clips, heard };
 }
 const settled = () => new Promise((r) => setTimeout(r, 0));
@@ -20,27 +21,34 @@ describe("clips made in the background", () => {
   it("tells the thread when a clip is made, or why it failed", async () => {
     const { clips, heard } = jobs();
     let finish!: (m: ClipMade) => void;
-    clips.start(t, () => new Promise((r) => { finish = r; }));
-    clips.start(t, async () => { throw new Error("Video failed with workstation/Clip: out of memory"); });
+    let report!: (p: { queued: boolean; progress?: number }) => void;
+    clips.start(t, (_, progress) => { report = progress; return new Promise((r) => { finish = r; }); }, "c1");
+    clips.start(t, async () => { throw new Error("Video failed with workstation/Clip: out of memory"); }, "c2");
     expect(clips.count("ada", "general", "web/a")).toBe(2);
     await settled();
-    expect(heard).toEqual([["failed", t, "Video failed with workstation/Clip: out of memory", false]]);
+    expect(heard).toEqual([["making", "c1", false, null], ["making", "c2", false, null], ["failed", t, "Video failed with workstation/Clip: out of memory", false], ["made", "c2"]]);
+    // Its placeholder follows the host's progress, and a view that opens now gets it.
+    report({ queued: true });
+    report({ queued: false, progress: 0.4 });
+    expect(heard.slice(-2)).toEqual([["making", "c1", true, null], ["making", "c1", false, 0.4]]);
+    expect(clips.making("ada", "general", "web/a")).toEqual([{ toolCallId: "c1", startedAt: expect.any(String), progress: 0.4 }]);
     finish({ text: "The clip is ready.", video });
     await settled();
-    expect(heard.at(-1)).toEqual(["done", t, { text: "The clip is ready.", video }]);
+    expect(heard.slice(-2)).toEqual([["done", t, { text: "The clip is ready.", video }], ["made", "c1"]]);
     expect(clips.count("ada", "general", "web/a")).toBe(0);
+    expect(clips.making("ada", "general", "web/a")).toEqual([]);
   });
 
   it("stops a user's clips on Lock, aborting the host call, and says they stopped", async () => {
     const { clips, heard } = jobs();
     const signals: AbortSignal[] = [];
     const pending = (signal: AbortSignal) => { signals.push(signal); return new Promise<ClipMade>((_, reject) => signal.addEventListener("abort", () => reject(new Error("aborted")))); };
-    clips.start(t, pending);
-    clips.start({ ...t, userId: "sam" }, pending);
+    clips.start(t, pending, "c1");
+    clips.start({ ...t, userId: "sam" }, pending, "c2");
     clips.stop("Lyrica locked", "ada");
     await settled();
     expect(signals.map((s) => s.aborted)).toEqual([true, false]);
-    expect(heard).toEqual([["failed", t, "Lyrica locked", true]]);
+    expect(heard.filter((h) => h[0] === "failed" || h[0] === "made")).toEqual([["failed", t, "Lyrica locked", true], ["made", "c1"]]);
     expect(clips.count("sam", "general", "web/a")).toBe(1);
   });
 });
@@ -61,8 +69,10 @@ describe("a clip made in the background, through lyricad", () => {
     await stream.ready;
     const from = stream.events.length;
     dm.d.services!.clips.start({ userId: rt.ada.id, pool: "general", threadId: thread.id },
-      async () => ({ text: "The clip is ready. Made with Clip on workstation: 5.0 s at 1280×704. Saved /workspace/videos/a.mp4.", video }));
+      async () => ({ text: "The clip is ready. Made with Clip on workstation: 5.0 s at 1280×704. Saved /workspace/videos/a.mp4.", video }), "c1");
     await stream.until((e) => e.type === "turn_end", from);
+    // Its placeholder showed while it was made, and went when it arrived.
+    expect(stream.events.slice(from).map((e) => e.event.type).filter((x) => x === "making" || x === "made")).toEqual(["making", "made"]);
     expect(stream.events.slice(from)).toContainEqual(expect.objectContaining({ event: expect.objectContaining({ type: "notice", status: "clip", video }) }));
     expect(asked.at(-1)).toContain("Saved /workspace/videos/a.mp4.");
     const page = (await ada.get<MessagePage>(`${path}/messages`)).body;
@@ -85,8 +95,8 @@ describe("a forgotten thread's clip", () => {
     const host = new Promise<void>((r) => { answer = r; });
     const make = async (signal: AbortSignal): Promise<ClipMade> => { signals.push(signal); await host; signal.throwIfAborted(); saved++; return { text: "ready", video }; };
     const clips = dm.d.services!.clips;
-    clips.start({ userId: rt.ada.id, pool: "general", threadId: thread.id }, make);
-    clips.start({ userId: rt.ada.id, pool: "general", threadId: other.id }, make);
+    clips.start({ userId: rt.ada.id, pool: "general", threadId: thread.id }, make, "c1");
+    clips.start({ userId: rt.ada.id, pool: "general", threadId: other.id }, make, "c2");
     expect((await ada.del(`/api/u/${rt.ada.id}/threads/general/${enc(thread.id)}`)).status).toBe(200);
     expect(signals.map((s) => s.aborted)).toEqual([true, false]);
     answer();
