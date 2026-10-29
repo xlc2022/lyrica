@@ -12,11 +12,14 @@
     "build": "npm run build -w @lyrica/web"
   },
   "dependencies": {
-    "tsx": "4.20.6"
+    "tsx": "4.23.15"
+  },
+  "overrides": {
+    "undici": "8.12.3"
   },
   "devDependencies": {
-    "@types/node": "22.18.8",
+    "@types/node": "22.20.5",
     "typescript": "5.9.3",
-    "vitest": "3.2.4"
+    "vitest": "3.2.7"
   }
 }

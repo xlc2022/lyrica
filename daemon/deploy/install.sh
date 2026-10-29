@@ -13,14 +13,14 @@
 set -euo pipefail
 
 # --- Pins ---
-GO_VERSION=1.27.2
+GO_VERSION=1.27.3
 # sha256 of golang.org/toolchain@v0.0.1-go$GO_VERSION.linux-<arch>.zip from proxy.golang.org.
-GO_SHA256_amd64=3a467ed067f27cd55bf3a702f8e2bf12479f53c9d8ae0de548f48ebcb3c67796
-GO_SHA256_arm64=b5d2cb7bfe76d9cb10141eff26ad2c591c752bce8bf4dd9f24521bb6b5994dfb
+GO_SHA256_amd64=af4c06478303fdd1bfb335fab86c7ccb9b12e529044a946a16a1c4bcc779f8d7
+GO_SHA256_arm64=0ec0774cad42ecf4df82691146ee0b10c303ea594f163acb1737baedd5cc2835
 XCADDY_VERSION=v0.4.7
 CADDY_VERSION=v2.11.7
 # The SearXNG image, by tag and digest, and its port on 127.0.0.1.
-SEARXNG_IMAGE=docker.io/searxng/searxng:2026.10.16-8252c0bf6@sha256:3619192d55f19eaec4b01892bdf10f80c67e8592fafd14b26ca504e52229210f
+SEARXNG_IMAGE=docker.io/searxng/searxng:2026.10.28-c360868e5@sha256:268a4b460136dcefc8f2e896b6098ba3f770c8218dbbddcb86811b06b06816f1
 SEARXNG_PORT=8888
 
 PREFIX=/opt/lyrica
