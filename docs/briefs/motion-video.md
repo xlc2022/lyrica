@@ -134,4 +134,10 @@ templates and background clips.
   `ThreadImages.readClip`, the `image` tool's `motion` action and
   guideline, and the marker **Copying a clip's moves** (ux-copy kept the
   "<verb>ing a <thing>" pattern of the other markers).
-- Next: PR review and UI review, then a clip through Lyrica on lunasa.
+- 2026-10-29: part 2 merged as #650 (0ed63a6). Lunasa's end-to-end run
+  through Lyrica passed: asked to move a made-up man like a dancer's clip,
+  she chose `motion` and the clip came back in the background 9.4 minutes
+  later. She first spent about 30 s trying to measure the clip with tools
+  the sandbox lacks, so her guideline and the `duration` field now say to
+  leave it out for motion. `read` and `readClip` share one capped reader.
+- Done. Open for the owner: replacement mode, and a Q5 starter.

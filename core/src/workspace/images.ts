@@ -295,37 +295,31 @@ export class ThreadImages {
       });
       return { input: imageInput(bytes), portrait: true };
     }
-    const file = await this.readWorkspace(path);
-    const chunks: Buffer[] = [];
-    let size = 0;
-    try {
-      if (file.size > MAX_IMAGE_BYTES) throw new Error("an input image is at most 20 MB");
-      for await (const chunk of file.stream) {
-        const bytes = Buffer.from(chunk); size += bytes.length;
-        if (size > MAX_IMAGE_BYTES) throw new Error("an input image is at most 20 MB");
-        chunks.push(bytes);
-      }
-    } finally { file.stream.destroy(); }
-    const bytes = Buffer.concat(chunks);
+    const bytes = await this.readCapped(path, MAX_IMAGE_BYTES, "an input image is at most 20 MB");
     return { input: imageInput(bytes), portrait: this.portraits.isPortraitImage(createHash("sha256").update(bytes).digest("hex")) };
   }
 
   /** A driving clip from the workspace (`motion`): an MP4 of at most 64 MB, read in memory only. */
   async readClip(path: string): Promise<Uint8Array> {
+    const bytes = await this.readCapped(path, MAX_DRIVE_BYTES, "a driving clip is at most 64 MB");
+    if (!isMp4(bytes)) throw new Error(`${path} isn't an MP4 clip`);
+    return bytes;
+  }
+
+  /** A workspace file in memory, refused past `limit` bytes before and while it streams. */
+  private async readCapped(path: string, limit: number, tooBig: string): Promise<Buffer> {
     const file = await this.readWorkspace(path);
     const chunks: Buffer[] = [];
     let size = 0;
     try {
-      if (file.size > MAX_DRIVE_BYTES) throw new Error("a driving clip is at most 64 MB");
+      if (file.size > limit) throw new Error(tooBig);
       for await (const chunk of file.stream) {
         const bytes = Buffer.from(chunk); size += bytes.length;
-        if (size > MAX_DRIVE_BYTES) throw new Error("a driving clip is at most 64 MB");
+        if (size > limit) throw new Error(tooBig);
         chunks.push(bytes);
       }
     } finally { file.stream.destroy(); }
-    const bytes = Buffer.concat(chunks);
-    if (!isMp4(bytes)) throw new Error(`${path} isn't an MP4 clip`);
-    return bytes;
+    return Buffer.concat(chunks);
   }
 
   /** Exclusive PNG names, no sidecars or prompt metadata, and no writes through a symlink. */
