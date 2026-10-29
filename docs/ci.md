@@ -147,5 +147,11 @@ earlier jobs left running" step finds nothing, and the nix job installs Nix
 on every run. Claude Code is unfree, so no binary cache has it, and its
 download answers 429 when every run fetches it: the nix job keeps the file
 in the Actions cache, keyed by `flake.lock`, and adds it to the store
-before the build (`.github/runner/seed-claude-code.sh`). The host-images jobs pick their "Make room" step by where they
+before the build (`.github/runner/seed-claude-code.sh`). On a hosted runner the
+nix job also keeps the Nix store in the Actions cache
+(`nix-community/cache-nix-action`), keyed by `flake.nix`, `flake.lock`,
+`nix/` and `package-lock.json`: each run restores main's newest copy, and a
+push to main whose key is new saves the store as the last step left it
+(the run's builds rooted, the rest collected) and removes the older copies.
+Without it, the flake check fetched and built for about 15 minutes. The host-images jobs pick their "Make room" step by where they
 run.
