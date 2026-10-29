@@ -17,7 +17,7 @@ describe("the CMP's prebuilt images", () => {
     expect(sh(copy, "prebuilt_tag llamacpp")).toBe(tag);
     expect(sh(host, "prebuilt_tag sdcpp")).not.toBe(tag);
     const dockerfile = join(copy, "llamacpp", "Dockerfile");
-    writeFileSync(dockerfile, readFileSync(dockerfile, "utf8").replace("b11459", "b11460"));
+    writeFileSync(dockerfile, readFileSync(dockerfile, "utf8").replace(/^ARG TAG=b\d+/m, "ARG TAG=b0"));
     expect(sh(copy, "prebuilt_tag llamacpp")).not.toBe(tag);
   });
 

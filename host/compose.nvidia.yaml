@@ -23,7 +23,7 @@ services:
 
   llamacpp:
     <<: *server
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda-b11459@sha256:fff6185edd2fbc4093aa5970bf6db53ed11c283e3a1c52a3e244cf27047264f4
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda-b11960@sha256:4ccae195bf542f7844301ae06891baa32a7551cb16de8428af6e929403d4292c
     # --no-slots: no endpoint that would show what's being generated.
     command: [--models-preset, /serving/llamacpp.ini, --no-models-autoload, --models-max, "0", --no-slots, --host, 0.0.0.0, --port, "8080"]
     volumes:
@@ -33,7 +33,7 @@ services:
 
   vllm:
     <<: *server
-    image: vllm/vllm-openai:v0.30.0@sha256:8a69ffad015f138d7170c4ddc429e230a3bc1c1719f67e14324749df200a4b90
+    image: vllm/vllm-openai:v0.32.0@sha256:befccf0e7e4089aa23926bb6f887a85c0d46c2a99e6de5c5ffdf5cb7957c5b34
     entrypoint: [python3, /lyrica/supervisor.py]
     init: true # reaps what vLLM's engine processes leave behind
     shm_size: 16gb
