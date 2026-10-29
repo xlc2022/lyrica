@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { AgentSession, ExtensionFactory, SessionEntry } from "@earendil-works/pi-coding-agent";
 import {
-  DelegationStore, isRestricted, LIVE_STATUSES, matchModel, refId, renderThreadMentions, sameModelName, singledOut, unmatched,
+  DelegationStore, isRestricted, sandboxHas, sandboxTools, LIVE_STATUSES, matchModel, refId, renderThreadMentions, sameModelName, singledOut, unmatched,
   type CallContext, type CouncilSpec, type Grant, type LoopSpec, type Memory, type ModelRef, type Models, type Pool, type PoolStore, type Role,
   type Step, type SubagentRecord, type SubagentStatus, type Tier, type Usage, type User, type Users, type Workflow, type WorkflowSpec, type Workspace,
 } from "@lyrica/core";
@@ -1142,7 +1142,7 @@ export class Delegation {
           approve: r => this.approve(sub!, r),
         }));
         // Its role says whether it searches; its Web search switch is its parent's or off.
-        extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target() }));
+        extensions.push(createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }));
         // Its parent's MCP servers, read live, so one taken from the parent goes from it too; its calls ask in both threads.
         if (tools.settings().mcpServers.length) {
           extensions.push(createMcpServersExtension(tools));

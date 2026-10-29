@@ -952,14 +952,34 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   the query text to them, so a private thread's query leaves her network as
   an anonymous query. Setting one up, or letting `install.sh` run one in
   Docker and fill in the address: [guides/searxng.md](guides/searxng.md).
+- `web_search` can ask for results from the past day, week, month or
+  year, from one category of engines (general, news, science, IT,
+  videos), and for a later page. Each result shows its date when SearXNG
+  has one. When nothing comes back because engines failed, it asks once
+  more, then says which engines failed and what SearXNG suggests.
 - `web_fetch` runs `curl` in the thread's sandbox, the URL one argument,
   so the internet switch and allowed hosts above decide what it can reach:
   a private thread with internet off reads only its allowed hosts. It
-  follows up to 5 redirects, gives up after 20 seconds or 2 MB, and reads
-  only http and https. `lyricad` turns HTML into text with html-to-text
-  (headings, paragraphs, list items, links with their URL; no scripts,
-  styles or navigation), passes text and JSON through, refuses other types,
-  and cuts the result to `maxChars`, saying so. Nothing is written to disk.
+  sends a browser's user agent, follows up to 5 redirects, gives up after
+  20 seconds or 10 MB, and reads only http and https. `lyricad` keeps a
+  page's main text (Mozilla Readability), or the whole page when that
+  finds too little, as Markdown headed by its title, URL, byline and date,
+  without scripts, styles, navigation, forms or images. It reads a PDF's
+  text page by page in a child process that is killed past 30 seconds or
+  768 MB of memory, so a hostile file can't take `lyricad` down,
+  passes text and JSON through, and refuses other types. A page that is
+  nearly empty and has scripts is opened again in the sandbox's Chromium
+  (when it has Chromium and node), under the same network switches,
+  without images or media, and the fuller text is kept. The result is cut
+  to `maxChars`, and the note says which `offset` reads on. Nothing is
+  written to disk: Chromium writes only to the sandbox's `/tmp`, which is
+  in memory and gone when the run ends.
+- Both tools put what they return between two markers holding a code
+  made fresh for each call, headed by where it came from, so a page can't
+  end the markers early or fake the cut note, and her guideline says the
+  text between them is information, never instructions. This makes
+  injected text easy to recognise; it doesn't make her immune to it. The
+  network switches remain the boundary.
 
 ## Git accounts and repositories
 
