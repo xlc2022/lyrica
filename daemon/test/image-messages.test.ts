@@ -19,8 +19,8 @@ describe("image message metadata (principle 1)", () => {
   it("sends image paths/model/tier on tool_end without the image bytes", () => {
     const events: ThreadEvent[] = [];
     // Only the event adapter is exercised: no socket or Pi session is needed.
-    const hosted = Object.create(HostedThread.prototype) as { forward(e: unknown): void; emit(e: ThreadEvent): void; pool: string };
-    hosted.pool = "general"; hosted.emit = e => { events.push(e); };
+    const hosted = Object.create(HostedThread.prototype) as { forward(e: unknown): void; emit(e: ThreadEvent): void; pool: string; making: Map<string, unknown> };
+    hosted.pool = "general"; hosted.making = new Map(); hosted.emit = e => { events.push(e); };
     hosted.forward({ type: "tool_execution_end", toolCallId: "i1", toolName: "image", isError: false,
       result: { content: [{ type: "text", text: "Saved result.png." }, { type: "image", data: "bytes", mimeType: "image/png" }], details } });
     expect(events[0]).toMatchObject({ type: "tool_end", image });
@@ -35,8 +35,8 @@ describe("image message metadata (principle 1)", () => {
     ]);
     expect(messages[0]?.parts).toContainEqual(video);
     const events: ThreadEvent[] = [];
-    const hosted = Object.create(HostedThread.prototype) as { forward(e: unknown): void; emit(e: ThreadEvent): void; pool: string };
-    hosted.pool = "general"; hosted.emit = e => { events.push(e); };
+    const hosted = Object.create(HostedThread.prototype) as { forward(e: unknown): void; emit(e: ThreadEvent): void; pool: string; making: Map<string, unknown> };
+    hosted.pool = "general"; hosted.making = new Map(); hosted.emit = e => { events.push(e); };
     hosted.forward({ type: "tool_execution_end", toolCallId: "v1", toolName: "image", isError: false, result });
     expect(events[0]).toMatchObject({ type: "tool_end", video });
     expect(JSON.stringify([messages, events])).not.toContain('"data":"bytes"');
@@ -76,8 +76,8 @@ it("projects refusal codes in stored and live markers, without provider text or 
   ]);
   expect(messages[0]?.parts[0]).toMatchObject({ isError: true, imageRefusal });
   expect(messages[1]?.parts[0]).toMatchObject({ toolCallId: "retry", isError: true, imageRefusal });
-  const hosted = Object.create(HostedThread.prototype) as { forward(e: unknown): void; emit(e: ThreadEvent): void; pool: string };
-  const events: ThreadEvent[] = []; hosted.pool = "general"; hosted.emit = e => events.push(e);
+  const hosted = Object.create(HostedThread.prototype) as { forward(e: unknown): void; emit(e: ThreadEvent): void; pool: string; making: Map<string, unknown> };
+  const events: ThreadEvent[] = []; hosted.pool = "general"; hosted.making = new Map(); hosted.emit = e => events.push(e);
   hosted.forward({ type: "tool_execution_end", toolCallId: "i1", toolName: "image", isError: true, result });
   expect(events[0]).toMatchObject({ type: "tool_end", imageRefusal });
 });

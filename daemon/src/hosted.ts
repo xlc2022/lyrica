@@ -3,7 +3,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { SessionManager, type AgentSession, type AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   ANSWER, answerMark, recentWorkAllowed, WELCOME_LIMITS, alwaysAllowPrefix, CloudModelForbidden, FROM_PARENT, fromParent, HEALTH_MS, isPlan, isPlanLimit, isUnreachable, planLimitReset, NoModel, Offline, PlanWaiting, suspectKey, ROUTINE, WAKEUP, WATCHING, WATCHING_MARK,
-  sandboxHas, sandboxTools, type ChildStatus, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
+  sandboxHas, sandboxTools, type ChildStatus, type JobProgress, type Memory, type Models, type PersonaStore, type Pool, type PoolView, type Skill, type Users, type Workspace,
 } from "@lyrica/core";
 import {
   BUILTIN_SKILLS, checkoutsOf, codeRepositories, repoSkills, skillsIndex, type ListedSkill, createChecksExtension, formatEntry, repoRules, appendUserMessage, executeImage, ContextMeter, createDelegateExtension, createDownloadsExtension, createImageExtension, createLyricaExtension, createMcpServersExtension, createModelsExtension, createReactExtension, createThreadsExtension, createTopExtension, createWebExtension, createWorkspaceExtension, createWaitForReportsExtension, DELEGATE_MESSAGE, EMPTY_REPLY_NOTICE, TURN_TOOL_NOTICE, OPENING, openThreadSession, type ClipMade, piModelFor, syncEntries, timedReply,
@@ -50,7 +50,9 @@ export interface HostOptions {
   /** Every event the thread's stream carries, as it goes out (the watcher hears of errors and approvals from it). */
   onEvent?: (userId: string, pool: Pool, threadId: string, event: ThreadEvent) => void;
   /** Makes a clip in the background (clips.ts): her image tool's call returns, and the thread hears when it's made. */
-  clips?: (userId: string, pool: Pool, threadId: string, make: (signal: AbortSignal) => Promise<ClipMade>) => void;
+  clips?: (userId: string, pool: Pool, threadId: string, make: (signal: AbortSignal, onProgress: (p: JobProgress) => void) => Promise<ClipMade>, toolCallId: string) => void;
+  /** The clips the thread is waiting for, for a view that opens meanwhile. */
+  clipsMaking?: (userId: string, pool: Pool, threadId: string) => Api.Making[];
   /** A wake-up lyricad sets for the thread, outside her own limits: a turn a plan's usage limit cut off carries on. */
   resume?: (userId: string, pool: Pool, threadId: string, dueAt: Date, note: string) => void;
 }
@@ -60,6 +62,9 @@ export { PLAN_LIMIT_RESUME } from "./wakeups.ts";
 import { PLAN_LIMIT_RESUME } from "./wakeups.ts";
 
 const CHILD_WAKE = "lyrica-child-wake";
+
+/** An image call that makes something, so the chat shows its placeholder while it runs; sorting attempts makes nothing. */
+const makes = (tool: string, args: unknown) => tool === "image" && ["create", "edit", "upscale", "video", "animate"].includes((args as { action?: string } | null)?.action ?? "");
 /** Events kept for reconnecting streams. Older ones reload from stored entries. */
 const BUFFER = 500;
 /** Each lyricad run gets its own epoch, so an event ID from before a restart is never mistaken for a current one. */
@@ -293,7 +298,8 @@ export class HostedThread {
 
   /** Subscribes a stream. Replays what came after `lastEventId`, or starts with `reset` if that's gone. */
   subscribe(client: Client, lastEventId?: string): () => void {
-    const hello: ThreadEvent = { type: "hello", busy: this.busy, queued: [...this.queued], permissions: [...this.pending.values()].map((p) => p.request) };
+    const hello: ThreadEvent = { type: "hello", busy: this.busy, queued: [...this.queued], permissions: [...this.pending.values()].map((p) => p.request),
+      making: [...this.making.values(), ...this.o.clipsMaking?.(this.userId, this.pool, this.threadId) ?? []] };
     if (lastEventId) {
       const [epoch, num] = lastEventId.split("-");
       const after = Number(num);
@@ -313,6 +319,8 @@ export class HostedThread {
   private id(n: number): string { return `${EPOCH}-${n}`; }
 
   private emit(event: ThreadEvent): void {
+    // A turn that ended without ending a call (stopped mid-call, say) leaves no placeholder behind.
+    if (event.type === "turn_end") for (const id of [...this.making.keys()]) { this.making.delete(id); this.emit({ type: "made", toolCallId: id }); }
     this.track(event);
     this.o.onEvent?.(this.userId, this.pool, this.threadId, event);
     const n = ++this.n;
@@ -865,6 +873,8 @@ export class HostedThread {
       this.emit({ type: "turn_start" });
       this.emit({ type: "message_start" });
       this.emit({ type: "tool_start", toolCallId: id, name: "image", args });
+      const making: Api.Making = { toolCallId: id, startedAt: new Date().toISOString() };
+      this.makingNow(making);
       let result;
       try {
         result = await executeImage({ models, threadId: this.threadId,
@@ -873,8 +883,9 @@ export class HostedThread {
           files: workspace.imageFiles({ userId: this.userId, pool: this.pool, threadId: this.threadId, coordinates: !!view.own.getThread(this.threadId)?.project }),
           settings: () => workspace.settings(this.userId), enabled: () => tools.settings().images && tools.settings().mode !== "plan",
           approve: r => this.approve(r),
-        }, id, args, controller.signal);
+        }, id, args, controller.signal, undefined, (p) => this.makingNow({ ...making, ...(p.queued ? { queued: true } : {}), ...(p.progress === undefined ? {} : { progress: p.progress }) }));
       } catch (err) { result = { content: [{ type: "text" as const, text: plainError((err as Error).message) }], isError: true, details: undefined }; }
+      finally { this.making.delete(id); this.emit({ type: "made", toolCallId: id }); }
       const text = shortResult(result.content);
       const isError = "isError" in result && !!result.isError;
       const manager = SessionManager.inMemory(this.o.cwd, undefined, view.own.loadEntries(this.threadId) as never);
@@ -1103,7 +1114,7 @@ export class HostedThread {
             files: workspace.imageFiles({ userId: this.userId, pool: this.pool, threadId: this.threadId, coordinates: !!thread.project }),
             settings: () => workspace.settings(this.userId), enabled: () => tools.settings().images && tools.settings().mode !== "plan",
             approve: r => this.approve(r),
-            ...(this.o.clips ? { background: (make: (signal: AbortSignal) => Promise<ClipMade>) => this.o.clips!(this.userId, this.pool, this.threadId, make) } : {}),
+            ...(this.o.clips ? { background: (make: (signal: AbortSignal, onProgress: (p: JobProgress) => void) => Promise<ClipMade>, toolCallId: string) => this.o.clips!(this.userId, this.pool, this.threadId, make, toolCallId) } : {}),
           }),
           // web_search and web_fetch, behind the Web search switch; a fetch runs in the thread's sandbox.
           createWebExtension({ searxng: () => this.o.searxng?.(), target: () => tools.target(), canRender: () => !!sandboxTools().browser && sandboxHas("node") }),
@@ -1244,8 +1255,17 @@ export class HostedThread {
       }
       case "tool_execution_start":
         this.emit({ type: "tool_start", toolCallId: e.toolCallId, name: e.toolName, args: e.args });
+        if (makes(e.toolName, e.args)) this.makingNow({ toolCallId: e.toolCallId, startedAt: new Date().toISOString() });
         break;
+      case "tool_execution_update": {
+        const p = (e.partialResult as { details?: { progress?: JobProgress } } | undefined)?.details?.progress;
+        const was = this.making.get(e.toolCallId);
+        if (was && p) this.makingNow({ toolCallId: e.toolCallId, startedAt: was.startedAt, ...(p.queued ? { queued: true } : {}), ...(p.progress === undefined ? {} : { progress: p.progress }) });
+        break;
+      }
       case "tool_execution_end": {
+        // A clip made in the background keeps its placeholder: its clip job reports it from here.
+        if (this.making.delete(e.toolCallId) && (e.result as { details?: { clip?: string } } | undefined)?.details?.clip !== "started") this.emit({ type: "made", toolCallId: e.toolCallId });
         const content = (e.result as { content?: unknown } | undefined)?.content;
         const result = shortResult(content, e.toolName);
         const threads = delegateThreads(e.toolName, (e.result as { details?: unknown } | undefined)?.details, this.pool, e.toolName === "delegate" ? this.started() : undefined);
@@ -1373,6 +1393,14 @@ export class HostedThread {
 
   /** A forwarded event from elsewhere, such as Delegation's runs. */
   publish(event: ThreadEvent): void { this.emit(event); }
+
+  /** Images and clips her image calls are making now, by call (docs/ux.md, "An image the agent made"). */
+  private readonly making = new Map<string, Api.Making>();
+
+  private makingNow(m: Api.Making): void {
+    this.making.set(m.toolCallId, m);
+    this.emit({ type: "making", ...m });
+  }
 
   private dispose(): void {
     this.stale = false;

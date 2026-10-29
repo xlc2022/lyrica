@@ -502,13 +502,17 @@ seen while it streams.
 
 ## Image calls
 
-`image(ctx, request, { signal?, beforeSend? })` creates, edits or upscales through the
+`image(ctx, request, { signal?, beforeSend?, onProgress? })` creates, edits or upscales through the
 thread's `CallContext`, returning `{ images, resolution }`. Each image has
 PNG `bytes`, `type`, `width`, `height` and an optional host `seed`. Everything
 stays in memory; the caller stores results and records the call without prompts.
 `beforeSend(resolution)` runs before each provider attempt, including fallbacks;
 a refusal stops the call. The image tool uses it for portrait-photo permission
 against the model that would actually receive the bytes.
+`onProgress` hears how far a model host's job has got (`JobProgress`: queued,
+and a fraction when the host knows it): the call is tagged with
+`X-Lyrica-Job` and the host's `GET /host/v1/jobs/<token>` read every 2 s
+(host/API.md, "Job progress"); `video` takes it too. Cloud models report none.
 The task `vision` (Look at images) has its own ordered list of models with
 vision, in each column and preset; nothing follows it and it follows
 nothing. A subagent whose model can't see an image it reads switches, for
@@ -522,7 +526,7 @@ the person put it there. With no list set, only local models are tried.
 
 The task `video` (Videos) has its own ordered list in each column and
 preset, of host recipes that do `video` or `animate`; nothing follows it.
-`video(ctx, request, { signal?, beforeSend? })` makes one clip from a prompt,
+`video(ctx, request, { signal?, beforeSend?, onProgress? })` makes one clip from a prompt,
 or from `image` as its first frame, with optional `size` and `duration`
 (1 to 15 seconds). Only a model host's recipe answers: a cloud model or
 plain endpoint in the list is passed over ("only a model host makes

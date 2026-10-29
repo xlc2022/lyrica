@@ -404,6 +404,58 @@ test("a clip she made shows its poster and facts, and plays in the browser's pla
   await expect(play).toHaveCount(0);
 });
 
+test("an image or clip being made shows a card at its shape with how far it has got, until it arrives", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "A garden at dusk");
+  await expect(page.getByText("You said: A garden at dusk")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  const ago = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+  await page.route(`**${base}/messages`, (route) => route.fulfill({ json: {
+    messages: [{ id: `e:${threadId}#1`, n: 1, role: "assistant", createdAt: "2026-10-29T04:00:00Z", parts: [
+      { type: "tool", toolCallId: "garden", name: "image", args: { action: "create", tier: "quality", prompt: "A garden at dusk", aspectRatio: "16:9" } },
+    ] }, { id: `e:${threadId}#2`, n: 2, role: "assistant", createdAt: "2026-10-29T04:01:00Z", parts: [
+      { type: "tool", toolCallId: "cat", name: "image", args: { action: "video", prompt: "A cat on a roof" }, result: "Making the clip in the background; it takes minutes.", isError: false },
+      { type: "text", text: "It's on its way." },
+    ] }, { id: `e:${threadId}#3`, n: 3, role: "assistant", createdAt: "2026-10-29T04:02:00Z", parts: [
+      { type: "tool", toolCallId: "pond", name: "image", args: { action: "create", tier: "fast", prompt: "A pond", count: 2 } },
+    ] }], hasMore: false,
+  } }));
+  let making: object[] = [
+    { toolCallId: "garden", startedAt: ago(75), progress: 0.42 },
+    { toolCallId: "cat", startedAt: ago(200), queued: true },
+    { toolCallId: "pond", startedAt: ago(83) },
+  ];
+  await page.route(`**${base}/events`, (route) => route.fulfill({ contentType: "text/event-stream",
+    body: `event: hello\ndata: ${JSON.stringify({ type: "hello", busy: true, queued: [], permissions: [], making })}\n\n` }));
+  await page.reload();
+  const garden = page.getByRole("progressbar", { name: "Making an image" }).first();
+  await expect(garden).toHaveAttribute("aria-valuenow", "42");
+  await expect(garden).toContainText("42%");
+  // At the shape asked for, at most 420 px wide and 320 px tall.
+  const box = (await garden.boundingBox())!;
+  expect(Math.abs(box.width / box.height - 16 / 9)).toBeLessThan(0.02);
+  expect(box.width).toBeLessThanOrEqual(422);
+  // A clip waiting for the host's GPU says so; one with no progress counts the time since it started.
+  await expect(page.getByRole("progressbar", { name: "Making a clip" })).toContainText("Waiting");
+  const pond = page.locator(".making-cards").nth(2);
+  await expect(pond.locator(".making")).toHaveCount(2);
+  await expect(pond.getByRole("progressbar")).toHaveText(/^1:2\d$/);
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) {
+    await garden.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${process.env.SCREENSHOTS}/making-top-${page.viewportSize()!.width}.png` });
+    await pond.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${process.env.SCREENSHOTS}/making-${page.viewportSize()!.width}.png` });
+  }
+  // Once nothing is being made, the cards go.
+  making = [];
+  await page.reload();
+  await expect(page.getByText("It's on its way.")).toBeVisible();
+  await expect(page.locator(".making")).toHaveCount(0);
+});
+
 test("an image tool result shows inline, opens large, starts an edit with Images enabled, and deletes after asking", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");

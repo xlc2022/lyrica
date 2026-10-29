@@ -925,3 +925,21 @@ newer host made, read after a rollback).
   it holds ComfyUI's GPU while it runs, like an image job. Errors are as
   for images; on a stable-diffusion.cpp host every video job is
   `invalid`.
+
+### Job progress
+
+A client may tag an image or video job with `X-Lyrica-Job: <token>` (16 to
+64 letters, digits, `-` or `_`, random and unused; anything else is
+`invalid`). While the job runs, `GET /host/v1/jobs/<token>` answers
+
+```json
+{ "state": "running", "progress": 0.42 }
+```
+
+`state` is `queued` while it waits for the GPU and `running` once it has
+it. `progress` (0 to 1, never going back) comes from ComfyUI's step counts
+for the workflow's samplers that lead to its output, each counting equally,
+as 95% of the job (decoding and encoding follow); it is `null` before the
+first step and for stable-diffusion.cpp, which reports none. Once the job
+ends, or for a token never seen, the answer is `not_found`. Only the state
+and fraction are kept, in memory, while the job runs.

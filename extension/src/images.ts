@@ -1,6 +1,6 @@
 // Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, HostRefused, isRestricted, modelName, type CallContext, type ImageRequest, type Models, type Resolution,
+import { CloudModelForbidden, HostRefused, isRestricted, modelName, type CallContext, type ImageRequest, type JobProgress, type Models, type Resolution,
   type ThreadImages, type VideoRequest, type WorkspaceSettings } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -20,10 +20,10 @@ export interface ImageTools {
   approve?(request: ApprovalRequest): Promise<boolean>;
   now?: () => Date;
   /**
-   * Runs a clip in the background (lyricad's clip jobs): the call returns at once and the
-   * thread hears of the clip when it is made. Without it a clip is made within the call.
+   * Runs a clip in the background (lyricad's clip jobs), under its call's ID: the call returns at once and the
+   * thread hears of the clip when it is made, and of its progress while it is. Without it a clip is made within the call.
    */
-  background?(make: (signal: AbortSignal) => Promise<ClipMade>): void;
+  background?(make: (signal: AbortSignal, onProgress: (p: JobProgress) => void) => Promise<ClipMade>, toolCallId: string): void;
 }
 
 /** A clip made in the background: what she is told, and the part the chat shows. */
@@ -137,9 +137,11 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "Check faces, hands and limbs in a result against the source; reject one that gets them wrong.",
         "Make a clip only when they ask for one: it holds the model host's GPU for minutes. It is made in the background: say it's on its way and end your reply; you'll be told when it's ready. For video and animate, write the prompt as a detailed shot even when they gave a few words: the subject and what it does, how things move, the camera's move and lens, the light and the mood, in one paragraph of about 80 to 120 words; for animate, say what moves and what stays."],
       parameters: imageParameters,
-      async execute(id, p, signal, _update, ctx) {
+      async execute(id, p, signal, update, ctx) {
         if (refused) throw new Error(REFUSED_THIS_TURN);
-        const result = await executeImage(o, id, p, signal, ctx);
+        // How far a model host has got, for the chat's placeholder (docs/ux.md, "An image the agent made").
+        const onProgress = update && ((progress: JobProgress) => update({ content: [], details: { progress } } as never));
+        const result = await executeImage(o, id, p, signal, ctx, onProgress);
         if ("imageRefusal" in result.details) refused = true;
         if ("rejected" in result.details) for (const path of result.details.rejected ?? []) rejects.add(path);
         if ("rejected" in result.details && rejects.size >= REJECTS_BEFORE_ASKING) {
@@ -167,7 +169,7 @@ function withModel(err: unknown, action: string, r: Resolution | undefined, sign
 }
 
 /** Shared by Pi and explicit refusal retries; no model-facing arguments are added. */
-export async function executeImage(o: ImageTools, id: string, p: ImageArgs, signal?: AbortSignal, ctx?: ExtensionContext) {
+export async function executeImage(o: ImageTools, id: string, p: ImageArgs, signal?: AbortSignal, ctx?: ExtensionContext, onProgress?: (p: JobProgress) => void) {
   if (!o.enabled()) throw new Error("Images are off in this thread.");
   needs(p);
   // Sorting her own attempts calls no model: the files move inside the thread's images folder.
@@ -184,7 +186,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
     const part: ImagePart = { type: "image", paths: [path], model: "", picked: true };
     return { content: [{ type: "text" as const, text: `Picked ${path}; the chat shows it last.` }], details: { image: part } };
   }
-  if (p.action === "video" || p.action === "animate") return executeVideo(o, p, signal);
+  if (p.action === "video" || p.action === "animate") return executeVideo(o, id, p, signal, onProgress);
   let portrait = false;
   const read = async (path: string) => {
     const result = await o.files.read(path); portrait ||= result.portrait;
@@ -205,7 +207,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   const call = o.call();
   let attempted: Resolution | undefined;
   let out;
-  try { out = await o.models.image(call, request, { signal, beforeSend: async r => {
+  try { out = await o.models.image(call, request, { signal, onProgress, beforeSend: async r => {
     attempted = r;
     if (!o.enabled()) throw new Error("Images are off in this thread.");
     if (r.endpoint.kind === "cloud") {
@@ -231,16 +233,16 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
  * A clip from the thread's Videos list: only a model host makes one, so nothing here goes to a cloud model and a
  * portrait first frame needs no consent. The poster comes back as an image, so she can see its first frame.
  */
-async function executeVideo(o: ImageTools, p: ImageArgs, signal?: AbortSignal) {
+async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: AbortSignal, onProgress?: (p: JobProgress) => void) {
   if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
   // An aspect ratio goes to the host as it is, which keeps the recipe's area and snaps to its size step.
   const request: VideoRequest = { prompt: p.prompt!, ...(p.action === "animate" ? { image: (await o.files.read(p.image!)).input } : {}),
     ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }) };
   const call = o.call();
-  const make = async (signal?: AbortSignal) => {
+  const make = async (signal?: AbortSignal, onProgress?: (p: JobProgress) => void) => {
     let attempted: Resolution | undefined;
     let out;
-    try { out = await o.models.video(call, request, { signal, beforeSend: async r => { attempted = r; if (!o.enabled()) throw new Error("Images are off in this thread."); } }); }
+    try { out = await o.models.video(call, request, { signal, onProgress, beforeSend: async r => { attempted = r; if (!o.enabled()) throw new Error("Images are off in this thread."); } }); }
     catch (err) { throw withModel(err, p.action, attempted, signal); }
     signal?.throwIfAborted();
     const path = o.files.saveVideo(out.video);
@@ -252,11 +254,11 @@ async function executeVideo(o: ImageTools, p: ImageArgs, signal?: AbortSignal) {
   };
   // A clip holds the host's GPU for minutes: in the background her turn ends, and the chat goes on.
   if (o.background) {
-    o.background(async (signal) => { const { text, video } = await make(signal); return { text: `The clip is ready. ${text}`, video }; });
+    o.background(async (signal, progress) => { const { text, video } = await make(signal, progress); return { text: `The clip is ready. ${text}`, video }; }, id);
     return { content: [{ type: "text" as const, text: "Making the clip in the background; it takes minutes. You'll be told here when it is ready, and the chat shows it then. Don't wait for it: finish this reply." }],
       details: { clip: "started" } };
   }
-  const { text, video, poster } = await make(signal);
+  const { text, video, poster } = await make(signal, onProgress);
   return { content: [{ type: "text" as const, text: `${text} Its first frame:` },
     { type: "image" as const, data: Buffer.from(poster.bytes).toString("base64"), mimeType: poster.type }], details: { video } };
 }

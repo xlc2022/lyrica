@@ -601,7 +601,10 @@ reply that just ended, as that reply stores it), `offline` when no model could b
 reached, the queue, `received` (a marked message that reached the turn, or
 was kept), the title, `settings`
 when the thread's settings changed (an approved plan switching its mode),
-and turn end, then the thread's `context` after each request that goes on with tools and after each turn, and a `compacted`
+`making` (`toolCallId`, `startedAt`, `queued?`, `progress?`) from when an image call that makes something (create, edit,
+upscale, video, animate) starts and each time its model host reports progress, then `made` when it ends (a clip made in
+the background keeps it: its clip job sends `making` and `made` until the clip arrives), `hello` carrying the
+`making` of now so a view that opens meanwhile shows the placeholders, and turn end, then the thread's `context` after each request that goes on with tools and after each turn, and a `compacted`
 marker when it compacts.
 A subagent run's events (started, output, tool calls, questions, notes,
 usage, finished, stopped, interrupted) go out as `delegation` to the parent
