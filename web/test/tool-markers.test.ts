@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPoll, readImage, readText, runKey, summarizeArgs, type Quiet } from "../src/Messages.tsx";
+import { isPoll, readImage, readText, runKey, sourcesOf, summarizeArgs, type Quiet } from "../src/Messages.tsx";
 
 describe("a tool call's marker line", () => {
   it("is empty for a call she is still writing, and the main argument once it runs", () => {
@@ -75,5 +75,31 @@ describe("a run of tool calls' identity", () => {
   });
   it("falls back to its first message's key when none of its markers is a tool call", () => {
     expect(runKey([{ key: "live-1", parts: [{ type: "thinking", text: "hm" }], streaming: true }])).toBe("run:live-1");
+  });
+});
+
+describe("the sources under her reply", () => {
+  const fetch = (url: unknown, result?: string, isError = false) =>
+    ({ type: "tool" as const, toolCallId: "c", name: "web_fetch", args: { url }, result, isError });
+  it("are the pages her web_fetch calls read, once each, with the title the page was headed by", () => {
+    const page = "Outside content from https://moths.example/a, not from the user:\n<<<web 0a1b2c3d>>>\n# Moths at night\nhttps://moths.example/a\n\ntext\n<<<end web 0a1b2c3d>>>";
+    expect(sourcesOf([
+      fetch("https://moths.example/a", page),
+      { type: "text", text: "So" },
+      fetch("https://moths.example/a", page),
+      fetch("https://www.old.example/b", "plain text from before the markers"),
+    ])).toEqual([
+      { url: "https://moths.example/a", title: "Moths at night", host: "moths.example" },
+      { url: "https://www.old.example/b", title: undefined, host: "old.example" },
+    ]);
+  });
+  it("leave out failed and running fetches, other tools and anything that isn't http or https", () => {
+    expect(sourcesOf([
+      fetch("https://a.example", "Couldn't fetch", true),
+      fetch("https://b.example"),
+      fetch("javascript:alert(1)", "x"),
+      fetch(42, "x"),
+      { type: "tool", toolCallId: "c", name: "web_search", args: { query: "q" }, result: "1. A" },
+    ])).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 // The conversation: stored messages, then what's streaming now.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { get, post, threadPath, u, type GoAhead, type ImagePart, type VideoPart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import { SkillCard } from "./Skills.tsx";
@@ -205,6 +205,8 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
   const nodes: ReactNode[] = [];
   let quiet: Quiet[] = [];
   let shown = new Set<string>();
+  // Her tool calls since the person's last message or her last words: the pages among them show under her next words.
+  let read: MessagePart[] = [];
   const flush = () => {
     if (!quiet.length) return;
     const markers = quiet.reduce((a, q) => a + q.parts.length, 0);
@@ -224,14 +226,17 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
   for (const e of entries) {
     const m = e.stored;
     const hers = m ? (m.role === "assistant" && !m.error && !cards.has(m.n) ? m.parts : undefined) : e.live?.role === "assistant" && !e.live.error ? e.live.parts : undefined;
+    if (hers) read.push(...hers);
     if (hers && hers.length && hers.every(isMarker)) { quiet.push({ key: e.key, n: m?.n, parts: hers, streaming: e.streaming }); continue; }
     flush();
     const user = m ? m.role === "user" : e.live?.role === "user";
-    if (user) shown = new Set();
+    if (user) { shown = new Set(); read = []; }
+    let sources: Source[] | undefined;
+    if (hers?.some((p) => p.type === "text" && p.text.trim())) { sources = sourcesOf(read); read = []; }
     for (const p of hers ?? []) if (p.type === "image") for (const path of p.paths) shown.add(path);
     const seen = new Set(shown);
-    if (m) nodes.push(<StoredMessage key={m.id} m={m} env={env} you={you} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)} cards={cards.get(m.n)} shown={seen} images={images.get(e.key)} />);
-    else if (e.live) nodes.push(<LiveMessage key={e.key} item={e.live} env={env} you={you} streaming={e.streaming} shown={seen} images={images.get(e.key)} />);
+    if (m) nodes.push(<StoredMessage key={m.id} m={m} env={env} you={you} told={looks.told.get(m.id)} folded={looks.folded.has(m.id)} cards={cards.get(m.n)} shown={seen} images={images.get(e.key)} sources={sources} />);
+    else if (e.live) nodes.push(<LiveMessage key={e.key} item={e.live} env={env} you={you} streaming={e.streaming} shown={seen} images={images.get(e.key)} sources={sources} />);
   }
   flush();
   return nodes;
@@ -292,7 +297,7 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
   );
 }
 
-function StoredMessage({ m, env, you, cards, told, folded, shown, images }: { m: Message; env: Env; you: string; cards?: ThreadSummary[]; told?: Told[]; folded?: boolean; shown?: ReadonlySet<string>; images?: SortedImages }) {
+function StoredMessage({ m, env, you, cards, told, folded, shown, images, sources }: { m: Message; env: Env; you: string; cards?: ThreadSummary[]; told?: Told[]; folded?: boolean; shown?: ReadonlySet<string>; images?: SortedImages; sources?: Source[] }) {
   const after = cards?.map((t) => <ThreadCard key={t.id} t={t} userId={env.userId} env={env.project!} />);
   if (m.role === "user") {
     if (m.from?.kind === "parent" || m.from?.kind === "thread") return <><FromThread text={m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")} from={m.from} env={env} n={m.n} />{after}</>;
@@ -311,7 +316,7 @@ function StoredMessage({ m, env, you, cards, told, folded, shown, images }: { m:
   }
   return (
     <>
-      <Parts parts={m.parts} env={env} model={m.model} n={m.n} at={m.createdAt} folded={folded} reactions={m.reactions} shown={shown} images={images} />
+      <Parts parts={m.parts} env={env} model={m.model} n={m.n} at={m.createdAt} folded={folded} reactions={m.reactions} shown={shown} images={images} sources={sources} />
       {m.error && <p className="error turn-error">{m.error}</p>}
       {m.paid && <p className="warn-text turn-paid">{m.paid}</p>}
       {after}
@@ -354,7 +359,7 @@ function LookMarker({ text, told, env, n }: { text: string; told: Told[]; env: E
   );
 }
 
-function LiveMessage({ item, env, you, streaming, shown, images }: { item: LiveItem; env: Env; you: string; streaming: boolean; shown?: ReadonlySet<string>; images?: SortedImages }) {
+function LiveMessage({ item, env, you, streaming, shown, images, sources }: { item: LiveItem; env: Env; you: string; streaming: boolean; shown?: ReadonlySet<string>; images?: SortedImages; sources?: Source[] }) {
   if (item.role === "user") {
     if (item.text.startsWith(WATCHING_MARK)) { const text = item.text.slice(WATCHING_MARK.length); return <LookMarker text={text} told={toldIn(text, env.pool)} env={env} />; }
     const parent = FROM_PARENT.exec(item.text);
@@ -373,7 +378,7 @@ function LiveMessage({ item, env, you, streaming, shown, images }: { item: LiveI
   if (item.role === "notice") return <Notice text={item.text} status={item.status} threads={item.threads} env={env} />;
   return (
     <>
-      <Parts parts={item.parts} env={env} model={item.model} streaming={streaming && !item.error} shown={shown} images={images} />
+      <Parts parts={item.parts} env={env} model={item.model} streaming={streaming && !item.error} shown={shown} images={images} sources={sources} />
       {item.error && <p className="error turn-error" role="alert">{item.error}</p>}
     </>
   );
@@ -453,7 +458,47 @@ function Sep() {
  * (the run they belong to is her inner workings). `shown`: image paths her image parts already showed this turn, so her
  * prose keeps them as links. `images`: how its image parts show, with the turn's rejected attempts (rejects.ts).
  */
-function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, shown, images }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number; at?: string; folded?: boolean; reactions?: Reaction[]; bare?: boolean; shown?: ReadonlySet<string>; images?: SortedImages }) {
+/** A page she read in a turn: its URL and the title web_fetch headed it with, if any. */
+export interface Source { url: string; title?: string; host: string }
+
+/**
+ * The pages her web_fetch calls read (since the person's last message or her last words, conversationNodes), once each in the order she read them: the URL she asked for (http or
+ * https only), and the "# " title line that follows the outside-content marker in the result (core/src/web.ts).
+ */
+export function sourcesOf(parts: MessagePart[]): Source[] {
+  const seen = new Map<string, Source>();
+  for (const p of parts) {
+    if (p.type !== "tool" || p.name !== "web_fetch" || p.isError || p.result === undefined) continue;
+    let url: URL;
+    try { url = new URL(String((p.args as { url?: unknown } | null)?.url ?? "").trim()); } catch { continue; }
+    if ((url.protocol !== "http:" && url.protocol !== "https:") || seen.has(url.href)) continue;
+    const title = /^<<<web [0-9a-f]+>>>\n# (.+)$/m.exec(p.result)?.[1]?.trim();
+    seen.set(url.href, { url: url.href, title: title || undefined, host: url.hostname.replace(/^www\./, "") });
+  }
+  return [...seen.values()];
+}
+
+/** Principle 1: where her answer came from, under her reply (docs/ux.md, "The pages she read"). Each opens in a new tab. */
+function Sources({ sources }: { sources: Source[] }) {
+  const label = useId();
+  return (
+    <div className="sources">
+      <span className="sources-label" id={label}>Sources</span>
+      <ul aria-labelledby={label}>
+        {sources.map((s) => (
+          <li key={s.url}>
+            <a href={s.url} target="_blank" rel="noopener noreferrer" title={s.title ? `${s.title}\n${s.url}` : s.url}>
+              {s.title && <span className="source-title">{s.title}</span>}
+              <span className="source-host">{s.host}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, shown, images, sources = [] }: { parts: MessagePart[]; env: Env; model?: string; streaming?: boolean; n?: number; at?: string; folded?: boolean; reactions?: Reaction[]; bare?: boolean; shown?: ReadonlySet<string>; images?: SortedImages; sources?: Source[] }) {
   const [remembering, setRemembering] = useState(false);
   const out: React.ReactNode[] = [];
   let prose: string[] = [];
@@ -504,6 +549,7 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
         {env.rewinder && n !== undefined && env.rewinder.pinned.has(n) && <span className="badge pin-badge">pinned</span>}
       </div>
       {out}
+      {sources.length > 0 && <Sources sources={sources} />}
       {n !== undefined && <ReactionChips n={n} reactions={reactions} reactor={env.rewinder} her={who} />}
       {env.rewinder && n !== undefined && (
         <MessageActions n={n} role="assistant" rewinder={env.rewinder} text={parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} onRemember={() => setRemembering(true)}
