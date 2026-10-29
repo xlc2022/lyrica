@@ -50,7 +50,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   storage for a thread not yet open), **Notifications** with the count of decisions waiting (read with
   the thread list, groups, Me/display settings, Sleep and the Models area
   (its page, the text library and an open copy's settings, through
-  `ShellContext.changed`; an open copy's serving fields take the new values
+  `ShellContext.changed`; the Notifications page and the welcome page's
+  Notifications card read their lists again the same way, so an item acted on
+  elsewhere, such as a sleep item dismissed on the From sleep card, leaves them too; an open copy's serving fields take the new values
   unless the user has edited them, so Save never puts old ones back) on the user stream's `hello` and `changed`
   events, and on focus; the stream reconnects automatically,
   with a fresh connection after a terminal HTTP error), Memory, the Sort menu, the thread list, the **status panel** (`src/SideStatus.tsx`: above the user row, its own divider line; up to two most-used local endpoints side by side and up to two cloud ones on their own lines — each a dot and name (docs/ux.md §5), a short state word when it isn't simply online ("Blackwell · paused") or else, for an endpoint serving a text model, its recent output speed ("· 42 tok/s", nothing with none; prompt speed and turn count, or "no turns in the past day", in the tooltip, from `endpointUses`), plus "· checked 20 s ago" in mono for the cloud ones, ticking as time passes; each item's tooltip holds the whole line; ranked by `GET …/models/page`'s `endpointUses` counts; nothing is drawn with no endpoints), and the user. The **Sort
@@ -714,7 +716,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   Oldest first, By type and By pool (the last two group the rows under eyebrows); Where
   narrows to a pool. Each row has its kind, pool and time, Open thread or
   Open where the item leads, and its actions as buttons (an action that
-  answers with a thread goes there). A **From sleep** row carries its item's whole text
+  answers with a thread goes there); acting on a row also reloads the sleep
+  overview, since a From sleep row is the same item as on the From sleep card
+  and the Sleep page. A **From sleep** row carries its item's whole text
   (`GET …/notifications` no longer shortens these titles) and shows three lines;
   **Show more** under the text opens the rest in place and reads **Show less**, so
   reading one needs no chat. The welcome card's rows do the same, since they are the

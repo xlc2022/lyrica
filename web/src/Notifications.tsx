@@ -43,6 +43,8 @@ function useAct(ctx: ShellContext, reload: () => void) {
     reload();
     ctx.refreshNotifications();
     ctx.refreshThreads();
+    // A From sleep row is the same item as on the From sleep card and the Sleep page.
+    ctx.sleep.reload();
     if (opened) { go({ page: "thread", userId: ctx.user.id, pool: opened.pool, threadId: opened.id }); }
   });
   return [act, busy, error] as const;
@@ -99,7 +101,7 @@ function Row({ n, ctx, picked, onPick, act, busy }: {
 /** The welcome page's card: the first few decisions, and the way to all of them. */
 export function NotificationsCard({ ctx }: { ctx: ShellContext }) {
   const userId = ctx.user.id;
-  const page = useLoad(() => get<NotificationPage>(`${u(userId, "notifications")}?type=decision&limit=4`), [userId]);
+  const page = useLoad(() => get<NotificationPage>(`${u(userId, "notifications")}?type=decision&limit=4`), [userId, ctx.changed]);
   const [act, busy, error] = useAct(ctx, page.reload);
   return (
     <section className="card" aria-labelledby="h-notifications">
@@ -126,7 +128,7 @@ export function NotificationsPage({ ctx }: { ctx: ShellContext }) {
   const [limit, setLimit] = useState(PAGE);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const query = `${u(userId, "notifications")}?${new URLSearchParams({ ...(type !== "all" ? { type } : {}), ...(scope !== "all" ? { scope } : {}), sort, limit: String(limit) })}`;
-  const page = useLoad(() => get<NotificationPage>(query), [query]);
+  const page = useLoad(() => get<NotificationPage>(query), [query, ctx.changed]);
   const [act, busy, error] = useAct(ctx, page.reload);
   const items = page.data?.items ?? [];
   const total = page.data?.total ?? 0;

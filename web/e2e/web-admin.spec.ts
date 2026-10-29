@@ -2045,4 +2045,17 @@ test("a long From sleep row opens its own text in place and starts no chat", asy
   expect(chats).toEqual([]);
   await noHorizontalScroll(page);
   await shootHome("expanded");
+
+  // One item, one state: dismissed on the From sleep card, it leaves the Notifications card too, and the other way round.
+  const notes = page.locator(".card").filter({ has: page.getByRole("heading", { name: "Notifications" }) });
+  const noted = (t: string) => notes.locator(".nrow.nsleep").filter({ hasText: t.slice(0, 40) });
+  await expect(noted(SLEEP_FIXTURE.long)).toHaveCount(1);
+  await item.getByRole("button", { name: "Dismiss" }).click();
+  await expect(item).toHaveCount(0);
+  await expect(noted(SLEEP_FIXTURE.long)).toHaveCount(0);
+  const trellis = noted("second trellis");
+  await expect(trellis).toHaveCount(1);
+  await trellis.getByRole("button", { name: "Dismiss" }).click();
+  await expect(trellis).toHaveCount(0);
+  await expect(card.locator(".sleep-item").filter({ hasText: "second trellis" })).toHaveCount(0);
 });
