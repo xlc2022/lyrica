@@ -1979,11 +1979,11 @@ test("a thread's subagents open in a drawer from the header: working ones first,
   await expect(page.getByText("in a few pieces.")).toBeVisible();
   const header = page.locator(".thread-head .head-actions");
   await expect(header.getByRole("button", { name: /^Subagents/ })).toHaveCount(0);
-  const run = (thread: string, role: string, status: string, minutes: number) => ({
-    run: `run-${thread}`, thread, role, model: "cloud/cloud-model", background: false, status,
+  const run = (thread: string, role: string, status: string, minutes: number, title = "") => ({
+    run: `run-${thread}`, thread, role, title, model: "cloud/cloud-model", background: false, status,
     inputTokens: 12000, outputTokens: 800, startedAt: new Date(Date.now() - minutes * 60_000).toISOString(), endedAt: status === "running" ? null : new Date().toISOString(),
   });
-  const runs = [run("sub-c", "reviewer", "failed", 1), run("sub-b", "coder", "running", 5), run("sub-a", "researcher", "finished", 9)];
+  const runs = [run("sub-c", "reviewer", "failed", 1, "Check the restore script"), run("sub-b", "coder", "running", 5, "Fix the pool scripts"), run("sub-a", "researcher", "finished", 9)];
   await page.route("**/subagents", (route) => route.fulfill({ json: { runs, usage: { inputTokens: 36000, outputTokens: 2400 } } }));
   await page.reload();
   const button = header.getByRole("button", { name: "Subagents 3" });
@@ -1998,6 +1998,8 @@ test("a thread's subagents open in a drawer from the header: working ones first,
   await expect(rows).toHaveCount(3);
   // The one still working leads; the rest stay newest first.
   await expect(rows.locator(".role")).toHaveText(["coder", "reviewer", "researcher"]);
+  // Each one's title follows its role, so two of the same role tell apart; one without a title shows its role alone.
+  await expect(rows.locator(".sub-name")).toHaveText(["coder – Fix the pool scripts", "reviewer – Check the restore script", "researcher"]);
   await expect(rows.locator(".tstate")).toHaveText(["Working", "Failed", "Done"]);
   await expect(rows.first()).toHaveAttribute("href", /\/t\/general\/sub-b$/);
   await expect(rows.first().locator(".sub-facts")).toContainText("cloud-model");

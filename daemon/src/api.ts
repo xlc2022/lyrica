@@ -1696,6 +1696,8 @@ export interface SubagentRun {
   /** The subagent's thread, nested under this one. */
   thread: string;
   role: string;
+  /** A few words naming its task: the title the delegate call gave it, else its task's first line. */
+  title: string;
   model: string;
   background: boolean;
   status: "running" | "question" | "finished" | "failed" | "stopped" | "interrupted";

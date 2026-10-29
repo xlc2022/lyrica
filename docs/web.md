@@ -385,8 +385,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   from `GET …/subagents`, reloaded as a run starts, works or ends: a facts
   line ("3 subagents · 1 working · 38k tokens"), then a row per run, those
   working or asking first and otherwise newest first. A row is the link to
-  the subagent's thread (beside, from 1180 px up) and closes the drawer: its role, its state as a dot and a word (Working,
-  Asking, Done, Failed, Stopped, Interrupted), its task on one line when
+  the subagent's thread (beside, from 1180 px up) and closes the drawer: its role
+  and title ("Coder – Fix the pool scripts", from the run's `title`), its state as a dot and a word (Working,
+  Asking, Done, Failed, Stopped, Interrupted), its task on one line (unless the title is only its start) when
   its `delegate` card is loaded (`delegateTasks` in `src/Messages.tsx`),
   then the model's short name, start time and tokens in mono.
 - **Memory** (`src/Memory.tsx`, `src/memory.ts`; [memory.md](memory.md), The

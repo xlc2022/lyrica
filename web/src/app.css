@@ -515,7 +515,8 @@ button.jump-latest { font-size: 13px; min-height: var(--tap); }
 .sub-list { list-style: none; margin: 0 -8px; padding: 0; display: grid; gap: 2px; }
 .sub-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; column-gap: 8px; row-gap: 2px; align-items: center; padding: 8px; border-radius: 7px; color: var(--fg); text-decoration: none; font-size: 14px; }
 .sub-row:hover { background: var(--tool); text-decoration: none; }
-.sub-row .role { text-transform: capitalize; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-row .sub-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-row .role { text-transform: capitalize; font-weight: 600; }
 .sub-row .task, .sub-row .sub-facts { grid-column: 2 / 4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub-row .task { font-size: 13px; color: var(--muted); }
 .sub-row .sub-facts { font-size: 12px; }

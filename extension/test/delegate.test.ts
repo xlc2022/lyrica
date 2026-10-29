@@ -124,6 +124,9 @@ describe("delegate", () => {
     const [child] = parent.view.own.listThreads({ parent: parent.threadId });
     expect(child).toMatchObject({ parent: parent.threadId, subagent: true, unlogged: true });
     expect(child!.title).toBe("scout: look around");
+    // A title of its own names the thread in place of the task's first line.
+    await s.run(parent, { task: "look around the shed and list every tool there", title: "Shed inventory", role: "scout" });
+    expect(parent.view.own.listThreads({ parent: parent.threadId }).map((t) => t.title)).toContain("scout: Shed inventory");
   });
 
   it("never widens the parent's folders, switches or hosts", async () => {

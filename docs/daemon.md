@@ -654,7 +654,8 @@ thread under the depth limit gets the `delegate` tool
 background run's result reaches her at once: appended if she is idle, as a
 follow-up if she is busy. With no live session it goes into the stored
 thread. `GET …/threads/:pool/:threadId/subagents` lists a thread's runs and
-their total tokens.
+their total tokens; each run's `title` is its thread's title without the
+`<role>: ` it starts with.
 
 **Writing to a subagent.** `POST …/messages` on a subagent's thread (what
 its card's message box does)
