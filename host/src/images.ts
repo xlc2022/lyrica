@@ -4,7 +4,7 @@ import { createHash, randomInt } from "node:crypto";
 import { mkdirSync, readdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
-import { imageSize, type Comfy } from "./comfy.ts";
+import { imageSize, mp4Seconds, type Comfy } from "./comfy.ts";
 import type { Downloads } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import { Jobs, type JobProgress } from "./jobs.ts";
@@ -24,7 +24,9 @@ const BASE_DEFAULTS: Values = { negativePrompt: "", steps: 20, cfg: 1, sampler: 
 const IDLE_FREE_MS = 10 * 60_000;
 /** How long one clip may take: a 14B model on a 24 GB card can take most of an hour. */
 const VIDEO_TIMEOUT_MS = 2 * 60 * 60_000;
-const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "width", "height", "duration", "steps", "cfg", "seed", "aspectRatio"];
+const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "width", "height", "duration", "steps", "cfg", "seed", "aspectRatio"];
+/** A driving clip (`motion`): only its first seconds are used. */
+const DRIVE_LIMIT = 64 * 1024 * 1024;
 
 const FIELDS: Record<"create" | "edit" | "upscale", string[]> = {
   create: ["recipe", "prompt", "negativePrompt", "width", "height", "count", "steps", "cfg", "seed", "references"],
@@ -417,20 +419,24 @@ export class Images {
   }
 
   /**
-   * One clip from a video recipe: from the prompt alone (`video`), or from a
-   * first frame (`animate`). The template times it: the duration becomes the
-   * model's frame count, and width and height multiples of its size step.
+   * One clip from a video recipe: from the prompt alone (`video`), from a
+   * first frame (`animate`), or from an image moved as a driving clip moves
+   * (`motion`). The template times it: the duration becomes the model's frame
+   * count, and width and height multiples of its size step.
    */
   private async video(req: IncomingMessage, res: ServerResponse, job: JobProgress): Promise<void> {
-    const body = await readJson(req, 2 * IMAGE_LIMIT);
+    const body = await readJson(req, 2 * IMAGE_LIMIT + Math.ceil(DRIVE_LIMIT / 3) * 4);
     onlyFields(body, VIDEO_FIELDS);
     if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
     const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
     if (!recipe || !this.book.ready(recipe, this.files())) throw notFound("No confirmed, ready recipe with that ID.");
-    const action: Action = body.image === undefined ? "video" : "animate";
+    const action: Action = body.drive !== undefined ? "motion" : body.image === undefined ? "video" : "animate";
     if (!recipe.does.includes(action)) {
-      throw invalid(recipe.does.includes("animate") ? "That recipe animates an image: give it one." : recipe.does.includes("video") ? "That recipe doesn't animate images." : "That recipe doesn't make videos.");
+      throw invalid(action === "motion" ? (recipe.does.some((a) => a === "video" || a === "animate") ? "That recipe doesn't move an image as a clip does." : "That recipe doesn't make videos.")
+        : recipe.does.includes("motion") ? "That recipe moves an image as a clip does: give it both."
+        : recipe.does.includes("animate") ? "That recipe animates an image: give it one." : recipe.does.includes("video") ? "That recipe doesn't animate images." : "That recipe doesn't make videos.");
     }
+    if (action === "motion" && body.image === undefined) throw invalid("image is missing: the one whose subject moves.");
     if (this.sdcpp) throw invalid("This host makes images with stable-diffusion.cpp, which can't make videos.");
     const template = this.book.templates.get(recipe.template)!;
     const spec = template.video;
@@ -446,7 +452,16 @@ export class Images {
     values.steps = int(body, "steps", 1, 150) ?? values.steps!;
     values.cfg = num(body, "cfg", 0, 30) ?? values.cfg!;
     const uploads: Record<string, Buffer> = {};
-    if (action === "animate") uploads.image = inputImage(body.image, "image");
+    if (action !== "video") uploads.image = inputImage(body.image, "image");
+    let driveSeconds = Infinity;
+    if (action === "motion") {
+      if (typeof body.drive !== "string") throw invalid("drive must be a base64 MP4.");
+      uploads.drive = Buffer.from(body.drive, "base64");
+      if (uploads.drive.length > DRIVE_LIMIT) throw invalid("drive is larger than 64 MB.");
+      const seconds = mp4Seconds(uploads.drive);
+      if (seconds === null) throw invalid("drive isn't an MP4 or QuickTime clip whose length can be read.");
+      driveSeconds = seconds;
+    }
     // Sizes are snapped to the template's size step. Without them the recipe's area is used, in the shape
     // `aspectRatio` gives, or when animating the image's.
     const snap = (n: number) => Math.min(2048, Math.max(256, Math.round(n / spec.sizeStep) * spec.sizeStep));
@@ -459,7 +474,8 @@ export class Images {
     const shape = ratio ?? (frame && width === undefined && height === undefined ? frame.width / frame.height : Number(values.width) / Number(values.height));
     values.width = snap(width ?? (height !== undefined ? height * shape : Math.sqrt(area * shape)));
     values.height = snap(height ?? (width !== undefined ? width / shape : Math.sqrt(area / shape)));
-    const duration = num(body, "duration", 1, spec.maxSeconds) ?? Math.min(Number(values.duration), spec.maxSeconds);
+    // A driving clip can't give more moves than it has.
+    const duration = Math.min(num(body, "duration", 1, spec.maxSeconds) ?? Math.min(Number(values.duration), spec.maxSeconds), driveSeconds);
     const parts = present(recipe, this.files());
     const multiplier = parts.some((p) => p.role === "interpolator") ? spec.interpolate ?? 1 : 1;
     Object.assign(values, videoValues(spec, duration, Number(values.width), Number(values.height), Number(values.steps), multiplier));
@@ -513,7 +529,7 @@ export class Images {
  * the diffusion model with its LoRAs, then an upscaler, freeing one stage's
  * models when the next needs the room, so the peak is the largest stage plus
  * the VAEs, not every part at once. A video model's two experts run one after
- * the other, each with its own LoRA.
+ * the other, each with its own LoRA. A CLIP vision model and a segmenter count with the VAEs.
  */
 export function recipeSize(r: Pick<Recipe, "parts" | "loras">, parts: Pick<Part, "file" | "size">[]): number {
   const sizeOf = (f: string | null) => parts.find((p) => p.file === f)?.size ?? 0;
@@ -527,7 +543,7 @@ export function recipeSize(r: Pick<Recipe, "parts" | "loras">, parts: Pick<Part,
     groups.set(group, (groups.get(group) ?? 0) + sizeOf(p.file));
   }
   const model = Math.max(0, ...[...groups].map(([g, n]) => n + (g === "" ? loras : 0)), loras);
-  return Math.max(stage(["text_encoder"]), model, stage(["upscaler"])) + stage(["vae", "latent_upscaler", "interpolator"]);
+  return Math.max(stage(["text_encoder"]), model, stage(["upscaler"])) + stage(["vae", "latent_upscaler", "interpolator", "clip_vision", "segmenter"]);
 }
 
 /**

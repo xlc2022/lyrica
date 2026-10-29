@@ -12,6 +12,7 @@ lyrica:
   loras: .
   latent_upscale_models: .
   frame_interpolation: .
+  clip_vision: .
 seedvr2:
   base_path: /serving
   seedvr2: seedvr2

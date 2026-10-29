@@ -1,0 +1,80 @@
+{
+  "name": "SCAIL-2",
+  "template": "scail2",
+  "parts": [
+    {
+      "role": "diffusion",
+      "source": "huggingface",
+      "repo": "Comfy-Org/SCAIL-2",
+      "path": "diffusion_models/wan2.1_14B_SCAIL_2_int8_convrot.safetensors",
+      "sha256": "a2114c18a811243185f103765cd5004b61652141aa55a9016d3bdceebceb5ac0",
+      "size": 16654506256
+    },
+    {
+      "role": "lora",
+      "slot": "dpo",
+      "source": "huggingface",
+      "repo": "Comfy-Org/SCAIL-2",
+      "path": "loras/wan2.1_SCAIL_2_DPO_lora_bf16.safetensors",
+      "sha256": "b106522036f64e50f5f8ae3b808973515ff442cc2fac27b65d875eafb95b89e2",
+      "size": 1226936552
+    },
+    {
+      "role": "lora",
+      "slot": "speed",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Wan-Animate-2",
+      "path": "loras/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors",
+      "sha256": "85c4a61c30e0497aa44b91d93a893b624708461a56fe5485183b28fa07e2dfb3",
+      "size": 738005744
+    },
+    {
+      "role": "text_encoder",
+      "slot": "umt5",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+      "path": "split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "sha256": "c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68",
+      "size": 6735906897
+    },
+    {
+      "role": "vae",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+      "path": "split_files/vae/wan_2.1_vae.safetensors",
+      "sha256": "2fc39d31359a4b0a64f55876d8ff7fa8d780956ae2cb13463b0223e15148976b",
+      "size": 253815318
+    },
+    {
+      "role": "clip_vision",
+      "source": "huggingface",
+      "repo": "Comfy-Org/Wan-Animate-2",
+      "path": "clip_vision/clip_vision_h.safetensors",
+      "sha256": "64a7ef761bfccbadbaa3da77366aac4185a6c58fa5de5f589b42a65bcc21f161",
+      "size": 1264219396
+    },
+    {
+      "role": "segmenter",
+      "source": "huggingface",
+      "repo": "Comfy-Org/sam3.1",
+      "path": "checkpoints/sam3.1_multiplex_fp16.safetensors",
+      "sha256": "9ba99c92703c2e8b4f47de2d34a539bb8e18923049e238b780d70dbe6368eb03",
+      "size": 1745546848
+    }
+  ],
+  "loras": [],
+  "defaults": {
+    "steps": 6,
+    "cfg": 1,
+    "sampler": "euler",
+    "scheduler": "simple",
+    "shift": 5,
+    "width": 1280,
+    "height": 704,
+    "duration": 5,
+    "negativePrompt": "",
+    "driveObject": "person",
+    "referenceObject": "person"
+  },
+  "backend": "comfyui"
+}

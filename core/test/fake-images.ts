@@ -28,6 +28,7 @@ export async function fakeImages() {
         { id: "art", name: "Art", state: "confirmed", ready: true, useFor: server.useFor, does: ["create", "edit", "upscale"], ...(mask === undefined ? {} : { mask }) },
         { id: "proposal", name: "Proposal", state: "proposed", ready: true, does: ["create"] },
         { id: "clip", name: "Clip", state: "confirmed", ready: true, does: ["video", "animate"], video: { fps: 24, audio: false } },
+        { id: "moves", name: "Moves", state: "confirmed", ready: true, does: ["motion"], video: { fps: 16, audio: false } },
       ] });
       if (down) return Response.json({ error: { code: down, message: "Images unavailable." } }, { status: 503 });
       const action = path.split("/").at(-1)!;

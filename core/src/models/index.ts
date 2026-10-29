@@ -185,6 +185,9 @@ export interface Capabilities {
 }
 /** One of a speech model's voices. `language` is a primary language tag, such as "en" or "zh". */
 export interface Voice { id: string; language: string }
+/** What a host recipe can be asked to do (host/API.md "Recipes"). */
+const RECIPE_ACTIONS = ["create", "edit", "upscale", "video", "animate"];
+
 export const CAPABILITIES = ["contextWindow", "tools", "vision", "embedding", "image", "edit", "upscale", "video", "animate", "reasoning", "transcribe", "speak", "useFor"] as const satisfies readonly (keyof Capabilities)[];
 
 /** One model on one endpoint, with a permanent ID. */
@@ -1689,8 +1692,9 @@ export class Models {
     }>(await this.hostCall(ep, "GET", "/host/v1/models"), "models");
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
     // Image and video models are recipes: only confirmed ones become offerings, so a proposal never resolves.
+    // A recipe that does nothing Lyrica can ask for (`motion`, so far) isn't one, so it never shows as a chat model.
     const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"]; mask?: boolean }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
-      .filter((r) => r?.state === "confirmed").map((r) => ({
+      .filter((r) => r?.state === "confirmed" && r.does?.some((a) => RECIPE_ACTIONS.includes(a))).map((r) => ({
         modelId: `recipe/${r.id}`, recipe: r.name, useFor: r.useFor ?? "both", ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true, ...(typeof r.mask === "boolean" ? { mask: r.mask } : {}) } : {}), ...(r.does?.includes("upscale") ? { upscale: true } : {}),
         ...(r.does?.includes("video") ? { video: true } : {}), ...(r.does?.includes("animate") ? { animate: true } : {}),
       } as DiscoveredModel));

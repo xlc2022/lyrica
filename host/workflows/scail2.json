@@ -1,0 +1,319 @@
+{
+  "arch": "scail2",
+  "does": [
+    "motion"
+  ],
+  "checkpoint": false,
+  "clipType": "wan",
+  "parts": [
+    {
+      "role": "diffusion",
+      "arch": [
+        "scail2"
+      ]
+    },
+    {
+      "role": "lora",
+      "slot": "dpo",
+      "arch": [
+        "wan"
+      ],
+      "strength": 1
+    },
+    {
+      "role": "lora",
+      "slot": "speed",
+      "arch": [
+        "wan"
+      ],
+      "strength": 0.8
+    },
+    {
+      "role": "text_encoder",
+      "slot": "umt5"
+    },
+    {
+      "role": "vae",
+      "arch": [
+        "qwen-image"
+      ]
+    },
+    {
+      "role": "clip_vision",
+      "arch": [
+        "clip-vision-h"
+      ]
+    },
+    {
+      "role": "segmenter",
+      "arch": [
+        "sam3"
+      ]
+    }
+  ],
+  "references": 0,
+  "mask": false,
+  "video": {
+    "fps": 16,
+    "frameStep": 4,
+    "frameOffset": 1,
+    "sizeStep": 32,
+    "maxSeconds": 5,
+    "audio": false
+  },
+  "workflow": {
+    "pos": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$prompt",
+        "clip": "$clip"
+      }
+    },
+    "neg": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$negativePrompt",
+        "clip": "$clip"
+      }
+    },
+    "load": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "$image"
+      }
+    },
+    "drive": {
+      "class_type": "LoadVideo",
+      "inputs": {
+        "file": "$drive"
+      }
+    },
+    "frames": {
+      "class_type": "LyricaDrivingFrames",
+      "inputs": {
+        "video": [
+          "drive",
+          0
+        ],
+        "fps": "$fps",
+        "frames": "$frames"
+      }
+    },
+    "pose": {
+      "class_type": "ResizeImageMaskNode",
+      "inputs": {
+        "resize_type": "scale dimensions",
+        "resize_type.width": "$width",
+        "resize_type.height": "$height",
+        "resize_type.crop": "center",
+        "scale_method": "area",
+        "input": [
+          "frames",
+          0
+        ]
+      }
+    },
+    "who_drives": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$driveObject",
+        "clip": "$segmenterClip"
+      }
+    },
+    "who_moves": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "$referenceObject",
+        "clip": "$segmenterClip"
+      }
+    },
+    "track_drive": {
+      "class_type": "SAM3_VideoTrack",
+      "inputs": {
+        "detection_threshold": 0.5,
+        "max_objects": 4,
+        "detect_interval": 1,
+        "images": [
+          "pose",
+          0
+        ],
+        "model": "$segmenter",
+        "conditioning": [
+          "who_drives",
+          0
+        ]
+      }
+    },
+    "track_ref": {
+      "class_type": "SAM3_VideoTrack",
+      "inputs": {
+        "detection_threshold": 0.5,
+        "max_objects": 4,
+        "detect_interval": 1,
+        "images": [
+          "load",
+          0
+        ],
+        "model": "$segmenter",
+        "conditioning": [
+          "who_moves",
+          0
+        ]
+      }
+    },
+    "masks": {
+      "class_type": "SCAIL2ColoredMask",
+      "inputs": {
+        "object_indices": "",
+        "sort_by": "left_to_right",
+        "replacement_mode": false,
+        "driving_track_data": [
+          "track_drive",
+          0
+        ],
+        "ref_track_data": [
+          "track_ref",
+          0
+        ]
+      }
+    },
+    "vision": {
+      "class_type": "CLIPVisionEncode",
+      "inputs": {
+        "crop": "none",
+        "clip_vision": "$clipVision",
+        "image": [
+          "load",
+          0
+        ]
+      }
+    },
+    "scail": {
+      "class_type": "WanSCAILToVideo",
+      "inputs": {
+        "width": "$width",
+        "height": "$height",
+        "length": "$frames",
+        "batch_size": 1,
+        "pose_strength": 1,
+        "pose_start": 0,
+        "pose_end": 1,
+        "video_frame_offset": 0,
+        "previous_frame_count": 5,
+        "replacement_mode": false,
+        "positive": [
+          "pos",
+          0
+        ],
+        "negative": [
+          "neg",
+          0
+        ],
+        "vae": "$vae",
+        "pose_video": [
+          "pose",
+          0
+        ],
+        "pose_video_mask": [
+          "masks",
+          0
+        ],
+        "reference_image": [
+          "load",
+          0
+        ],
+        "reference_image_mask": [
+          "masks",
+          1
+        ],
+        "clip_vision_output": [
+          "vision",
+          0
+        ]
+      }
+    },
+    "shift": {
+      "class_type": "ModelSamplingSD3",
+      "inputs": {
+        "model": "$model",
+        "shift": "$shift"
+      }
+    },
+    "sigmas": {
+      "class_type": "BasicScheduler",
+      "inputs": {
+        "scheduler": "$scheduler",
+        "steps": "$steps",
+        "denoise": 1,
+        "model": "$model"
+      }
+    },
+    "sampler": {
+      "class_type": "KSamplerSelect",
+      "inputs": {
+        "sampler_name": "$sampler"
+      }
+    },
+    "sample": {
+      "class_type": "SamplerCustom",
+      "inputs": {
+        "add_noise": true,
+        "noise_seed": "$seed",
+        "cfg": "$cfg",
+        "model": [
+          "shift",
+          0
+        ],
+        "positive": [
+          "scail",
+          0
+        ],
+        "negative": [
+          "scail",
+          1
+        ],
+        "sampler": [
+          "sampler",
+          0
+        ],
+        "sigmas": [
+          "sigmas",
+          0
+        ],
+        "latent_image": [
+          "scail",
+          2
+        ]
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          1
+        ],
+        "vae": "$vae"
+      }
+    },
+    "video": {
+      "class_type": "CreateVideo",
+      "inputs": {
+        "images": [
+          "decode",
+          0
+        ],
+        "fps": "$fps"
+      }
+    },
+    "save": {
+      "class_type": "SaveVideoWebsocket",
+      "inputs": {
+        "video": [
+          "video",
+          0
+        ]
+      }
+    }
+  }
+}

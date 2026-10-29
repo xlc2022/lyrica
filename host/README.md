@@ -250,7 +250,13 @@ per host, and Lyrica's router filters create tiers by it.
   forbids using, hosting or running it, or using what it makes, in the US,
   the EU, the UK and South Korea; the operator checks where the host and
   its users are before installing it. H3 and LTX-2.5 fit a 96 GB card;
-  Wan 2.2 fits a 24 GB one.
+  Wan 2.2 fits a 24 GB one. SCAIL-2 (ComfyUI hosts only, about 28 GB of
+  files) moves an image's subject as the person in a driving clip moves:
+  on a 3090 a 5 s clip at 1280×704 took about 14 minutes at 21 GB. Its
+  weights are MIT; it finds people with SAM 3.1, under Meta's SAM License,
+  which allows commercial use but asks that publications acknowledge SAM,
+  that use follows the law (privacy law included) and trade controls, and
+  that SAM isn't reverse engineered.
   Krea 2 Turbo's weights are under the Krea 2 Community License, which
   requires content filtering wherever it runs; the host filters nothing,
   so the operator who installs it sets that up. Qwen-Image 2.1 Turbo's
@@ -271,7 +277,8 @@ per host, and Lyrica's router filters create tiers by it.
   pinned commits of ComfyUI, ComfyUI-GGUF, the SeedVR2 upscaler and LanPaint
   (masked edits on Qwen-Image 2.1), with no plugin manager, plus our own
   `comfyui/websocket_video_save.py`, which sends a clip and its poster
-  back over the websocket. Only those nodes load. Their Python packages go into a
+  back over the websocket, and `comfyui/video_frames.py`, which picks a
+  driving clip's frames at the model's frame rate. Only those nodes load. Their Python packages go into a
   venv, each pinned with its hash in `comfyui/requirements.txt`
   (`comfyui/lock.sh` remakes it); torch is the base image's. It has no
   route out, logs nothing, keeps its input, output and temp folders in

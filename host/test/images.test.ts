@@ -4,7 +4,7 @@ import net, { type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { Comfy, samplingProgress } from "../src/comfy.ts";
+import { Comfy, mp4Seconds, samplingProgress } from "../src/comfy.ts";
 import { Images, inputImage, recipeSize, videoValues } from "../src/images.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import { scanParts } from "../src/parts.ts";
@@ -54,6 +54,29 @@ const WAN_GGUF_META = { "general.architecture": "wan", "general.quantization_ver
 const wanGguf = (channels: number, flattened = false) => ggufBytes(
   flattened ? { ...WAN_GGUF_META, "comfy.gguf.orig_shape.patch_embedding.weight": [5120, channels, 1, 2, 2] } : WAN_GGUF_META,
   { "head.modulation": [1, 6, 5120], "patch_embedding.weight": flattened ? [5120 * channels * 2, 2] : [5120, channels, 1, 2, 2], "blocks.0.ffn.0.weight": [13824, 5120] });
+// SCAIL-2 is Wan 2.1 I2V 14B with pose and mask patch embeddings; it needs CLIP ViT-H's image half and SAM 3.1.
+const SCAIL2 = safetensors({ "head.modulation": { shape: [1, 6, 5120] }, "patch_embedding.weight": { shape: [5120, 20, 1, 2, 2] }, "patch_embedding_pose.weight": { shape: [5120, 20, 1, 2, 2] }, "img_emb.proj.0.weight": {} });
+const CLIP_VISION_H = safetensors({ "vision_model.embeddings.patch_embedding.weight": {}, "vision_model.encoder.layers.0.self_attn.q_proj.weight": {}, "vision_model.encoder.layers.31.self_attn.q_proj.weight": {}, "visual_projection.weight": {} });
+const SAM3 = safetensors({ "detector.backbone.language_backbone.encoder.ln_final.weight": {}, "detector.transformer.x": {}, "tracker.model.x": {} });
+/** An MP4's top-level boxes as a clip of `seconds` has them: ftyp, mdat, then moov with its movie header (version 0 or 1). */
+function mp4(seconds: number, version: 0 | 1 = 0): Buffer {
+  const box = (type: string, body: Buffer) => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(8 + body.length, 0);
+    head.write(type, 4, "latin1");
+    return Buffer.concat([head, body]);
+  };
+  const mvhd = Buffer.alloc(version ? 112 : 100);
+  mvhd[0] = version;
+  if (version) {
+    mvhd.writeUInt32BE(1000, 20);
+    mvhd.writeBigUInt64BE(BigInt(seconds * 1000), 24);
+  } else {
+    mvhd.writeUInt32BE(600, 12);
+    mvhd.writeUInt32BE(seconds * 600, 16);
+  }
+  return Buffer.concat([box("ftyp", Buffer.from("isom\0\0\x02\0", "latin1")), box("mdat", Buffer.alloc(64)), box("moov", box("mvhd", mvhd))]);
+}
 // Comfy-Org's RIFE 4.26 for ComfyUI's own frame interpolation nodes.
 const RIFE = safetensors({ "blocks.0.conv0.0.0.weight": {}, "blocks.0.lastconv.0.weight": {}, "encode.cnn0.weight": {}, "encode.cnn3.weight": { shape: [16, 4, 4, 4] } });
 const WAN_LORA = safetensors({ "diffusion_model.blocks.0.cross_attn.k.lora_A.weight": {}, "diffusion_model.blocks.0.cross_attn.k.lora_B.weight": {} });
@@ -133,6 +156,9 @@ describe("video parts", () => {
       "v/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": QWEN3VL_32B, "v/minimax_h3_video_vae_int8_convrot.safetensors": H3_VAE,
       "v/minimax_h3_audio_vae_fp32.safetensors": H3_AUDIO_VAE, "v/rife_v4.26.safetensors": RIFE,
       "v/Wan2.2-T2V-A14B-HighNoise-Q5_K_M.gguf": wanGguf(16), "v/Wan2.2-I2V-A14B-LowNoise-Q5_K_M.gguf": wanGguf(36, true),
+      "v/wan2.1_14B_SCAIL_2_int8_convrot.safetensors": SCAIL2, "v/wan2.1_SCAIL_2_DPO_lora_bf16.safetensors": WAN_LORA,
+      "v/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors": WAN_LORA, "v/clip_vision_h.safetensors": CLIP_VISION_H,
+      "v/sam3.1_multiplex_fp16.safetensors": SAM3,
     });
     const got = Object.fromEntries(scanParts(dir).map((p) => [p.file.slice(2), [p.role, p.slot, p.arch]]));
     expect(got).toEqual({
@@ -160,6 +186,12 @@ describe("video parts", () => {
       // A GGUF expert is told by the same tensors.
       "Wan2.2-T2V-A14B-HighNoise-Q5_K_M.gguf": ["diffusion", "high", "wan2.2-t2v-14b"],
       "Wan2.2-I2V-A14B-LowNoise-Q5_K_M.gguf": ["diffusion", "low", "wan2.2-i2v-14b"],
+      // SCAIL-2 by its pose embedding, not as a Wan I2V model; CLIP ViT-H's image half isn't a text encoder.
+      "wan2.1_14B_SCAIL_2_int8_convrot.safetensors": ["diffusion", null, "scail2"],
+      "wan2.1_SCAIL_2_DPO_lora_bf16.safetensors": ["lora", "dpo", "wan"],
+      "lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors": ["lora", "speed", "wan"],
+      "clip_vision_h.safetensors": ["clip_vision", null, "clip-vision-h"],
+      "sam3.1_multiplex_fp16.safetensors": ["segmenter", null, "sam3"],
     });
   });
 
@@ -896,6 +928,62 @@ describe("the image API", () => {
     for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);
   });
 
+  it("moves an image as a driving clip moves, for no longer than the clip, and leaves nothing of either", async () => {
+    const s = await stack({ files: {
+      "s/wan2.1_14B_SCAIL_2_int8_convrot.safetensors": SCAIL2, "s/wan2.1_SCAIL_2_DPO_lora_bf16.safetensors": WAN_LORA,
+      "s/lightx2v_I2V_14B_480p_cfg_step_distill_rank64_bf16.safetensors": WAN_LORA, "s/umt5.safetensors": UMT5, "s/wan_2.1_vae.safetensors": QWEN_VAE,
+      "s/clip_vision_h.safetensors": CLIP_VISION_H, "s/sam3.1_multiplex_fp16.safetensors": SAM3,
+    } });
+    const { body } = await s.api("/host/v1/recipes?state=proposed");
+    const scail: Recipe & { video: { fps: number } } = body.recipes.find((r: Recipe) => r.arch === "scail2");
+    expect(scail).toMatchObject({ template: "scail2", does: ["motion"], ready: true, video: { fps: 16, sizeStep: 32, maxSeconds: 5 } });
+    const z: Recipe = body.recipes.find((r: Recipe) => r.arch === "z-image");
+    await s.api("/host/v1/recipes/confirm", { body: { ids: [scail.id, z.id] } });
+
+    // A 3-second clip gives 3 seconds of moves, however long was asked: 49 frames on Wan's grid at 16 fps.
+    const made = await s.api("/host/v1/videos/create", { body: { recipe: scail.id, prompt: MARKER, image: PNG.toString("base64"), drive: mp4(3).toString("base64"), seed: 9 } });
+    expect(made.status).toBe(200);
+    expect(made.body.video).toMatchObject({ frames: 49, fps: 16, audio: false, seed: 9 });
+    const sent = s.comfyFake.seen.prompts[0];
+    expect(sent.drive.inputs).toEqual({ file: "lyrica-drive.mp4" });
+    expect(sent.frames.inputs).toEqual({ video: ["drive", 0], fps: 16, frames: 49 });
+    // The reference image's shape at the recipe's area, in steps of 32.
+    expect(sent.scail.inputs).toMatchObject({ width: 960, height: 960, length: 49, replacement_mode: false, clip_vision_output: ["vision", 0], vae: ["load_vae", 0] });
+    expect(sent.pose.inputs).toMatchObject({ "resize_type.width": 960, "resize_type.height": 960, input: ["frames", 0] });
+    // The DPO LoRA, then the speed LoRA at 0.8, as ComfyUI's own template has them.
+    expect(sent.lora_dpo.inputs).toMatchObject({ model: ["load_model", 0], strength_model: 1 });
+    expect(sent.lora_speed.inputs).toMatchObject({ model: ["lora_dpo", 0], strength_model: 0.8 });
+    expect(sent.shift.inputs.model).toEqual(["lora_speed", 0]);
+    expect(sent.load_segmenter).toEqual({ class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: "s/sam3.1_multiplex_fp16.safetensors" } });
+    expect(sent.who_drives.inputs).toEqual({ text: "person", clip: ["load_segmenter", 1] });
+    expect(sent.track_drive.inputs.model).toEqual(["load_segmenter", 0]);
+    expect(sent.load_clip_vision).toEqual({ class_type: "CLIPVisionLoader", inputs: { clip_name: "s/clip_vision_h.safetensors" } });
+    expect(sent.sample.inputs).toMatchObject({ noise_seed: 9, cfg: 1, model: ["shift", 0] });
+    expect(JSON.stringify(sent)).not.toContain("$");
+    // Both uploads are written over once the job is done.
+    expect(s.comfyFake.seen.uploads).toEqual(["lyrica-image.png", "lyrica-drive.mp4", "lyrica-image.png", "lyrica-drive.mp4"]);
+    expect(s.comfyFake.seen.uploadBodies[1]!.includes("mvhd")).toBe(true);
+    expect(s.comfyFake.seen.uploadBodies[3]!.includes("mvhd")).toBe(false);
+
+    // A longer clip is cut to the recipe's longest; a version 1 header reads the same.
+    await s.api("/host/v1/videos/create", { body: { recipe: scail.id, prompt: "x", image: PNG.toString("base64"), drive: mp4(12, 1).toString("base64") } });
+    expect(s.comfyFake.seen.prompts[1].frames.inputs.frames).toBe(81);
+
+    const refused = async (extra: object, recipe = scail.id) => (await s.api("/host/v1/videos/create", { body: { recipe, prompt: "x", ...extra } })).body.error.message;
+    expect(await refused({ drive: mp4(3).toString("base64") })).toMatch(/image is missing/);
+    expect(await refused({ image: PNG.toString("base64") })).toMatch(/give it both/);
+    expect(await refused({ image: PNG.toString("base64"), drive: PNG.toString("base64") })).toMatch(/isn't an MP4/);
+    expect(await refused({ image: PNG.toString("base64"), drive: mp4(3).toString("base64") }, z.id)).toBe("That recipe doesn't make videos.");
+    expect(s.lines.join("\n")).not.toContain(MARKER);
+  });
+
+  it("reads a clip's length from its movie header, and nothing else as a clip", () => {
+    expect(mp4Seconds(mp4(3))).toBe(3);
+    expect(mp4Seconds(mp4(7, 1))).toBe(7);
+    expect(mp4Seconds(PNG)).toBeNull();
+    expect(mp4Seconds(mp4(3).subarray(0, 40))).toBeNull();
+  });
+
   it("saves Use for through the recipe API and keeps it when the book reopens", async () => {
     const s = await stack();
     const { body } = await s.api("/host/v1/recipes");
@@ -951,7 +1039,7 @@ describe("the image API", () => {
     // The test folder holds two of its parts at their download paths, but not its diffusion model.
     expect(z.parts.map((p: { present: boolean }) => p.present)).toEqual([false, true, true]);
     expect(body.starters.map((st: { id: string }) => st.id)).toEqual([
-      "flux-schnell", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-turbo", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "sdxl", "seedvr2-3b", "seedvr2-7b",
+      "flux-schnell", "krea2-turbo", "ltx-2.5-distilled", "minimax-h3-turbo", "qwen-image-2.1-turbo", "qwen-image-edit", "qwen-image", "scail-2", "sdxl", "seedvr2-3b", "seedvr2-7b",
       "wan2.2-i2v-14b-q5", "wan2.2-i2v-14b", "wan2.2-t2v-14b-q5", "wan2.2-t2v-14b", "wan2.2-ti2v-5b", "z-image-turbo",
     ]);
   });

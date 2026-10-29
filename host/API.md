@@ -671,17 +671,20 @@ as `{ "parts": [...] }`, each entry like this:
 - `role`: `checkpoint` (holds its own encoders and VAE), `diffusion`,
   `text_encoder`, `vae`, `lora`, `upscaler` (a SeedVR2 DiT),
   `latent_upscaler` (LTX-2's), `interpolator` (RIFE 4.7 or later, or
-  FILM, for ComfyUI's own frame interpolation), or `unknown`.
+  FILM, for ComfyUI's own frame interpolation), `clip_vision` (CLIP
+  ViT-H's image half, SCAIL-2's), `segmenter` (SAM 3.1, which finds and
+  tracks people for SCAIL-2), or `unknown`.
 - `slot`: for a text encoder, which one: `clip_l`, `clip_g`, `t5`, `umt5`
   (Wan's), `qwen2.5vl`, `qwen3`, `qwen3vl` (Qwen3-VL 4B), `qwen3vl_8b`,
   `qwen3vl_32b` (MiniMax H3's), `gemma4_12b` (LTX-2.5's), …. For Wan 2.2
   14B's two experts and their LoRAs, `high` or `low` (read from the file
-  name, as their tensors are alike); a speed LoRA otherwise, `speed`; an
-  audio VAE, `audio`. Otherwise `null`.
+  name, as their tensors are alike); a speed LoRA otherwise, `speed`;
+  SCAIL-2's DPO LoRA (by name), `dpo`; an audio VAE, `audio`. Otherwise
+  `null`.
 - `arch`: the architecture read from the tensor names (`sdxl`, `flux`,
   `z-image`, `qwen-image`, `qwen-image-2.1`, `krea2`, `seedvr2`,
   `wan2.2-5b`, `wan2.2-t2v-14b`, `wan2.2-i2v-14b`, `ltx2`, `minimax-h3`,
-  …), or `null`. Wan 2.2 14B's VAE is Wan 2.1's, which reads as
+  `scail2`, `clip-vision-h`, `sam3`, …), or `null`. Wan 2.2 14B's VAE is Wan 2.1's, which reads as
   `qwen-image`; the 5B's is `wan2.2`. A file whose
   architecture has no template stays a file: it is listed but no recipe
   can use it.
@@ -700,9 +703,9 @@ as `{ "parts": [...] }`, each entry like this:
   says "edit"), `qwen-image-2.1` (create and edit from one recipe, with
   the Turbo's 8-step schedule from the recipe's defaults), `seedvr2`
   (upscale), and the video ones: `wan2.2-5b`, `ltx2` and `minimax-h3`
-  (video and animate), `wan2.2-t2v-14b` (video) and `wan2.2-i2v-14b`
-  (animate). A model with two experts takes both in one recipe, and only
-  the LoRAs its template names.
+  (video and animate), `wan2.2-t2v-14b` (video), `wan2.2-i2v-14b`
+  (animate) and `scail2` (motion). A model with two experts takes both in
+  one recipe, and only the LoRAs its template names.
 
 ### Recipes
 
@@ -737,7 +740,8 @@ as `{ "parts": [...] }`, each entry like this:
 - `ready`: every part is present (an optional one may be missing). Only a
   confirmed, ready recipe runs.
 - `does`: what it can be used for: `create`, `edit`, `upscale`, or for a
-  video recipe `video` (from a prompt) and `animate` (from a first frame).
+  video recipe `video` (from a prompt), `animate` (from a first frame) and
+  `motion` (an image's subject moved as a driving clip's person moves).
 - `video`: a video recipe's timing, from its template: `{ "fps": 24,
   "frameStep": 4, "frameOffset": 1, "sizeStep": 32, "maxSeconds": 8,
   "audio": false }`. Clips have `frameStep × k + frameOffset` frames, and
@@ -896,14 +900,21 @@ newer host made, read after a rollback).
 
   ```json
   { "recipe": "<id>", "prompt": "...", "negativePrompt": "...",
-    "image": "<base64>", "width": 1280, "height": 704, "aspectRatio": "16:9",
-    "duration": 5,
+    "image": "<base64>", "drive": "<base64 MP4>", "width": 1280, "height": 704,
+    "aspectRatio": "16:9", "duration": 5,
     "steps": 20, "cfg": 5.0, "seed": 1234 }
   ```
 
   One clip from a video recipe. Only `recipe` and `prompt` are required.
   With `image` (its first frame) the recipe must `animate`, without it
-  `video`. `width` and `height` are 256 to 2048, snapped to the recipe's
+  `video`. With `drive` too, an MP4 or QuickTime clip of at most 64 MB, the
+  recipe must do `motion`: the image's subject moves as the person in the
+  driving clip does, frame for frame, and the prompt says the scene. The
+  clip's moves are taken at the recipe's frame rate (a 30 fps clip keeps
+  its speed at 16 fps), from its start, for at most the clip's own length;
+  the size, unless asked for, is the image's shape. SAM 3.1 finds the
+  person in both (`driveObject` and `referenceObject` in the recipe's
+  defaults, `person`). `width` and `height` are 256 to 2048, snapped to the recipe's
   `sizeStep`; left out, they are the recipe's area in the shape of
   `aspectRatio` (`width:height`, 1:4 to 4:1, never with a size), or when
   animating the image's, or else the recipe's own size. `duration` is seconds, 1 to the
@@ -921,7 +932,8 @@ newer host made, read after a rollback).
   The clip is H.264 MP4, with AAC sound when `audio` is true (LTX-2.5,
   MiniMax H3). ComfyUI encodes it in memory (our `SaveVideoWebsocket`
   node) and sends it, and the poster, over its websocket, so nothing is
-  written to disk. A video job may run for two hours before it times out;
+  written to disk. A first frame and a driving clip go to ComfyUI's input
+  folder, which is in memory, and are written over once the job is done. A video job may run for two hours before it times out;
   it holds ComfyUI's GPU while it runs, like an image job. Errors are as
   for images; on a stable-diffusion.cpp host every video job is
   `invalid`.

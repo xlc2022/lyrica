@@ -118,7 +118,7 @@ export class Comfy implements Backend {
       let finished = false;
       let ws: WebSocket | null = null;
       try {
-        for (const [key, data] of Object.entries(images)) names[key] = await this.upload(`lyrica-${key}.png`, data);
+        for (const [key, data] of Object.entries(images)) names[key] = await this.upload(uploadName(key, data), data);
         const prompt = build(names);
         const progress = onProgress && samplingProgress(prompt, onProgress);
         const clientId = randomUUID();
@@ -191,7 +191,7 @@ export class Comfy implements Backend {
           await this.post("/queue", { delete: [promptId] });
         }
         // Nothing of what was asked stays: the uploads become blank, and the history goes.
-        for (const key of Object.keys(names)) await this.upload(`lyrica-${key}.png`, BLANK).catch(() => {});
+        for (const [key, data] of Object.entries(images)) if (names[key]) await this.upload(uploadName(key, data), BLANK).catch(() => {});
         await this.post("/history", { clear: true });
       }
     });
@@ -230,6 +230,39 @@ export class Comfy implements Backend {
     this.loaded.clear();
     this.ask(null);
   }
+}
+
+/** An upload's fixed name: a driving clip keeps its kind, so ComfyUI's LoadVideo lists it. */
+const uploadName = (key: string, data: Buffer) => `lyrica-${key}.${mp4Seconds(data) === null ? "png" : "mp4"}`;
+
+/**
+ * How long an MP4 or QuickTime clip runs, from its movie header (`moov` › `mvhd`), or null when
+ * `b` isn't one. Only the top-level boxes and the movie header are read.
+ */
+export function mp4Seconds(b: Buffer): number | null {
+  if (b.length < 16 || b.toString("latin1", 4, 8) !== "ftyp") return null;
+  const box = (from: number, to: number, type: string): [number, number] | null => {
+    for (let i = from; i + 8 <= to;) {
+      let size = b.readUInt32BE(i);
+      let head = 8;
+      if (size === 1) {
+        if (i + 16 > to) return null;
+        size = Number(b.readBigUInt64BE(i + 8));
+        head = 16;
+      } else if (size === 0) size = to - i;
+      if (size < head || i + size > to) return null;
+      if (b.toString("latin1", i + 4, i + 8) === type) return [i + head, i + size];
+      i += size;
+    }
+    return null;
+  };
+  const moov = box(0, b.length, "moov");
+  const mvhd = moov && box(moov[0], moov[1], "mvhd");
+  if (!mvhd || mvhd[1] - mvhd[0] < 32) return null;
+  const v1 = b[mvhd[0]] === 1;
+  const scale = b.readUInt32BE(mvhd[0] + (v1 ? 20 : 12));
+  const length = v1 ? Number(b.readBigUInt64BE(mvhd[0] + 24)) : b.readUInt32BE(mvhd[0] + 16);
+  return scale > 0 && length > 0 ? length / scale : null;
 }
 
 /** Width and height of a PNG, JPEG or WebP, from its header. */
