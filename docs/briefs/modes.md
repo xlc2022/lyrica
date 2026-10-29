@@ -1,5 +1,7 @@
 # Brief: Modes and switches (Plan mode, renamed permission modes, tool switches)
 
+**Status:** Merged as #50 (db67dc8).
+
 **Thread:** Delegation (after Delegation 2, which changes the same permission
 path). **Branch:** `feature/modes`.
 

@@ -1,6 +1,6 @@
 # Brief: Threads sharing a local model
 
-**Status:** built on `claude/agent-loop-reliability-661bmo`. **Built by:** the
+**Status:** Merged as #379 (1d2f3ba) and #380 (1866d8d); #471 later limited requests to the server's slots (docs/models.md). Handoff notes below are history. **Built by:** the
 Agent loop thread, on Opus. **Asked by:** the owner, after Racing sim 6
 (2026-10-19), on Roadmap's card ("Build both").
 

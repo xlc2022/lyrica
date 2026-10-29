@@ -197,8 +197,8 @@ After their branch reports, start a `code: true, base: true` merge thread:
 merge each branch, test after each merge, message the owning thread about
 conflicts or red tests, then delete merged branches. Two threads that
 change one file in the same folder are stopped once and told about each
-other, and agree who changes what before going on. Only one open base
-thread per project is allowed. A thread's report names the check that
+other, and agree who changes what before going on. Several base threads may be
+open at once; none holds the base checkout. A thread's report names the check that
 tests the request as asked and what it showed; with that evidence a light
 look is enough, and otherwise check fully before reporting it done. A
 project thread changes and commits only the files its brief gives it, and

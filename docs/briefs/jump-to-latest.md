@@ -1,6 +1,6 @@
 # Brief: Jump to latest
 
-**Status:** In progress. **Branch:** `lyrica/jump-to-latest`.
+**Status:** Merged as #529 (875b3cb). **Branch:** `lyrica/jump-to-latest`.
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md, docs/contracts.md, docs/ux.md, docs/web.md, docs/briefs/chat-view.md.
 
 ## Goal
@@ -49,5 +49,5 @@ nothing happened.
 
 ## Handoff
 
-- Done:
+- Done: merged as #529.
 - Open questions: none.

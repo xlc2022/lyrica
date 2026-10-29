@@ -1,5 +1,7 @@
 # Read-only project chat
 
+**Status:** Merged as #393 (1267a94).
+
 ## Why
 
 Three test runs (a racing sim and two pagoda builds) had the project chat
@@ -34,4 +36,4 @@ that is a separate change.
 
 ## Handoff
 
-Done when merged and Lunasa's rerun shows the chat starting code threads.
+Merged as #393 (1267a94).

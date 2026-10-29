@@ -1,5 +1,7 @@
 # Brief: Proxmox
 
+**Status:** Merged as #79 (d4c435b).
+
 **Thread:** Proxmox. **Branch:** `feature/proxmox`. **Model:** Opus.
 **Depends on:** Machines merged (the `proxmox` kind extends its table and
 API).

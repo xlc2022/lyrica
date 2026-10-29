@@ -1,5 +1,7 @@
 # Brief: Model host
 
+**Status:** Merged as #28, #31, #32, #33, #38, #39 and #45. Handoff notes below are history.
+
 **Thread:** Model host. **Branch:** `feature/model-host`.
 
 **Depends on:** nothing in Lyrica. The host is its own package. Lyrica's side
@@ -199,8 +201,9 @@ games on, so the host has to be easy to live with and hard to misuse.
 All of `host/` is on main (#28, #31, #32, #33, #38, #39). CI builds both
 ComfyUI images, runs every test against fake model servers and hubs, and
 checks the network layout on a real Docker stack (`install.sh --no-gpu`,
-then `test/stack/network.sh`). Nothing has run on a GPU, a real model or a
-real hub.
+then `test/stack/network.sh`). This section was written before any GPU
+run; real-hardware runs since are recorded in cmp-100-210.md, cmp-whisper.md
+and video.md.
 
 ### Try it on the workstation, in this order
 

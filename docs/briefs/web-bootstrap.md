@@ -1,5 +1,7 @@
 # Brief: Web: bootstrap (the setup page, her name, the Tailnet section)
 
+**Status:** Merged with Bootstrap as #134 (236ee64).
+
 **Thread:** Web UI 2. **Branch:** `feature/web-bootstrap`. **Model:**
 Fable. **Depends on:** Bootstrap ([bootstrap.md](bootstrap.md)) for the
 API; the page can be built against the interfaces in `daemon/src/api.ts`

@@ -1,6 +1,6 @@
 # Brief: Code mode
 
-**Status:** Merged as #352 (a88fe05), 2026-10-19.
+**Status:** Merged as #352 (a88fe05), 2026-10-19; children start in it since #355 (9e9c993). Handoff notes below are history.
 
 **Branch:** `feature/code-mode`. **Built by:** Codex on the test machine
 (Opus for review fixes).

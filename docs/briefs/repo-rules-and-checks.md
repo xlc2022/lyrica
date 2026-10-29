@@ -1,6 +1,6 @@
 # Brief: Repository rules and project checks
 
-**Status:** Building on `claude/project-thread-30ndu9` (Roadmap thread).
+**Status:** Merged as #395 (eda82dd).
 Items 2 and 3 of the 2026-10-20 roadmap, which the owner chose on 2026-10-20 at 09:04Z.
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md "Code mode" and
 "Modes", docs/workspace.md "Project command rules", docs/ux.md.

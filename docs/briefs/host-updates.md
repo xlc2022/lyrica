@@ -1,5 +1,7 @@
 # Brief: Host updates
 
+**Status:** Merged as #311 (629f034).
+
 **Thread:** Model hosts and downloads. **Branch:** `feature/host-updates`.
 **Depends on:** #307 (Models: pausing, companions, downloads).
 

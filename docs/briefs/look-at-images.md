@@ -1,5 +1,7 @@
 # A model list for looking at images
 
+**Status:** Merged as #555 (aa654f8).
+
 The owner's decision (2026-10-25). A project chat whose model can't see
 delegated a look at an uploaded image and named a per-token cloud model,
 while local vision models were up. The owner wants to choose which models

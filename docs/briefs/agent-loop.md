@@ -1,7 +1,7 @@
 # Brief: Agent loop reliability
 
-**Status:** merged as #309 and #314 (smaller tool definitions); live tool
-calls, below, are in PR review. **Branch:** `claude/agent-loop-reliability-661bmo`. **Model:** Opus.
+**Status:** Merged as #309 (ba76098), #314 (9bdf7b3), #315 (0f49a83) and
+#321 (af87f0a). Handoff notes below are history. **Branch:** `claude/agent-loop-reliability-661bmo`. **Model:** Opus.
 
 **Read first:** AGENTS.md, docs/delegation.md ("Child threads"),
 docs/contracts.md (threads, turn tool limits, the `image` tool), docs/models.md.
@@ -126,5 +126,5 @@ recipes, #305).
 
 - **Done:** all of Change (#309), smaller tool definitions (#314), live
   tool calls (#315), image error messages, with tests and docs.
-- **Next:** review of image error messages; an LM Studio chat check on the
-  current build when the user allows it.
+- **Next:** an LM Studio chat check on the current build when the user
+  allows it.

@@ -1,6 +1,6 @@
 # Brief: The changes view
 
-**Status:** The changes view merged (#436). The thread chips merged. Draft on the chip: built; in review.
+**Status:** Merged: the changes view as #436 (91566de), the thread chips as #446 (0dda728), Draft on the chip as #536 (2bf6d88). Handoff notes below are history.
 
 **Thread:** Changes view for PRs. **Branch:** `claude/project-thread-h16cf8`.
 **Model:** Opus.
@@ -83,10 +83,5 @@ Done: the back end (core `git-changes.ts`, routes, the watcher's `openPull`),
 the web badge and dialog, unit tests (core `git-changes.test.ts`, web
 `diff.test.ts`), an e2e test with the routes answered from a fixture
 (`web-chat.spec.ts`, "changes view"), docs and the mockup.
-The changes view merged as #436 (91566de). The thread chips are the second
-pull request from this thread.
-Next: UI review's verified, PR review (`daemon/src/routes.ts`, the store),
-merge.
-Draft chip: built on `claude/project-thread-sqgk3u`. Next: UI review's
-verified (both widths, a draft and a non-draft chip), PR review (core forge
-parsers), merge.
+The changes view merged as #436 (91566de), the thread chips as #446
+(0dda728) and the draft chip as #536 (2bf6d88). Next: nothing planned.

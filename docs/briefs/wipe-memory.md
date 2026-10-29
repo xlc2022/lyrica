@@ -1,6 +1,6 @@
 # Brief: Wiping memory
 
-**Status:** Everyone wipe merged (#390); personal wipe in review.
+**Status:** Merged: the everyone wipe as #390 (5c6ba15), the personal wipe as #397 (58e9ec9).
 
 **Read first:** AGENTS.md, PRINCIPLES.md (2, 6, 7), DESIGN.md (Memory,
 "Wiping memory"; Storage), docs/contracts.md, docs/daemon.md ("Wiping
@@ -44,4 +44,4 @@ test machine's first reset waits for this page.
 
 Done: everything above, with daemon tests (`daemon/test/wipe.test.ts`) and
 e2e tests at both sizes. The everyone wipe merged as #390; the personal wipe
-followed in its own PR.
+as #397.

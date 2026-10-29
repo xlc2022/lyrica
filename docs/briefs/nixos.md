@@ -1,5 +1,7 @@
 # Brief: NixOS
 
+**Status:** Merged as #95 (21d3eac); host check and releases in #139. Handoff notes below are history.
+
 **Thread:** NixOS. **Branch:** `claude/project-thread-hf25g9`. **Model:** Opus.
 
 **Read first:** AGENTS.md, docs/daemon.md "Deployment", docs/workspace.md

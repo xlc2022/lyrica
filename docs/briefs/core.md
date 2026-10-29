@@ -1,5 +1,7 @@
 # Brief: Core (milestone 1, "She is herself")
 
+**Status:** Merged as #3 (4238fd7).
+
 **Thread:** Core. **Branch:** `feature/core`. **Depends on:** nothing.
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md, docs/contracts.md.
 

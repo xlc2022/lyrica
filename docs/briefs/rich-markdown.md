@@ -1,5 +1,7 @@
 # Rich Markdown in chat
 
+**Status:** Merged as #576 and #577.
+
 Serves principle 1, experience before infrastructure: an answer laid out as a
 table, a diagram or a chart should read as one, not as raw marks. The
 renderer stays local: nothing it draws calls the network or runs a script the

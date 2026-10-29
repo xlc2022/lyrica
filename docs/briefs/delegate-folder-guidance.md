@@ -1,5 +1,7 @@
 # Brief: delegation folder guidance
 
+**Status:** Merged in #309 (ba76098).
+
 Issue: #300. Principles 1 (observed friction) and 2 (structural boundaries).
 
 ## Goal

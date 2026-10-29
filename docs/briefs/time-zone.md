@@ -1,5 +1,7 @@
 # Time zone setting
 
+**Status:** Merged as #437 (2ee21d1).
+
 Each user sets their own time zone, and Lyrica uses it for every time she
 shows or is told. Serves principle 1: in a model comparison a model got
 the weekday wrong because it was told the server's date, and a user in

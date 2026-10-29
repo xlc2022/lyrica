@@ -1,5 +1,7 @@
 # Brief: ChatGPT Images through Codex
 
+**Status:** Merged as #328, #330 and #335.
+
 **Thread:** Image settings and recipes. **Branch:** `claude/image-settings-recipes-bpk70s`.
 **Model:** Opus. **Depends on:** image settings (`image-settings.md`, #318).
 

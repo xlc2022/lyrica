@@ -1,5 +1,7 @@
 # Brief: Claude Code as a delegate role
 
+**Status:** Merged as #513 (f24b269).
+
 **Thread:** Agent loop (Opus). The owner approved this on 2026-10-23,
 after asking how Claude Code fits her workflows. Today she runs
 `claude -p` through her own `bash` (docs/workspace.md, "Claude Code"): the

@@ -1,5 +1,7 @@
 # Brief: Workspace
 
+**Status:** Merged as #6 (459a9c6); SSH targets became machines in #76 ([machines.md](machines.md)).
+
 **Thread:** Workspace. **Branch:** `feature/workspace`. **Depends on:** Core
 (merged). **Runs alongside:** Memory. The two meet only through the contracts
 listed under "Seams" below.

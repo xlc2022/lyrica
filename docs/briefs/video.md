@@ -1,5 +1,7 @@
 # Videos
 
+**Status:** Merged: part 1 as #609, part 2 as #612 and #616, part 3 as #618 to #621. Handoff notes below are history.
+
 The owner asked (2026-10-28) for local video generation on the model
 hosts, with MiniMax H3, Wan 2.2 and LTX-2.5, aimed mostly at a future
 workstation with two RTX 6000 Pro Blackwell cards (2 × 96 GB) and also a
@@ -59,7 +61,7 @@ and its users are.
 7. **Core** lists no video recipe as an offering until part 2, so a video
    recipe never shows as a chat or image model.
 
-## Part 2: Lyrica's side
+## Part 2: Lyrica's side (#612, #616, merged)
 
 - The task `video` ("Videos") with its own list in each preset; the
   operator puts H3 or LTX-2.5 there on the Blackwell host and Wan 2.2 5B
@@ -77,7 +79,7 @@ and its users are.
 - The chat shows the poster with a play button and plays the clip in the
   browser's own player; its home in docs/ux.md, "A clip the agent made".
 
-## Part 3: chat goes on while a clip is made, and better clips
+## Part 3: chat goes on while a clip is made, and better clips (#618 to #621, merged)
 
 The first run through Lyrica (lunasa's 3090) showed that a Wan clip holds
 22 of 24 GB for about 6 minutes: her turn waited on the tool call, and a

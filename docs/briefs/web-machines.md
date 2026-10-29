@@ -1,5 +1,7 @@
 # Brief: Web: machines
 
+**Status:** Merged as #83 (fc81866).
+
 **Thread:** Web: machines. **Branch:** `feature/web-machines`. **Model:**
 Fable. **Depends on:** Machines and Proxmox merged.
 

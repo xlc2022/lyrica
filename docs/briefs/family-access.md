@@ -1,5 +1,7 @@
 # Open access within a thread family
 
+**Status:** Merged as #555 (aa654f8).
+
 The owner's decision (2026-10-25): a project's threads, and a parent with
 its child threads outside projects, stop hamstringing each other. Tonight
 a project chat started duplicate threads for one pull request because it

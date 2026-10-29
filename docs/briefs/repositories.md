@@ -1,5 +1,7 @@
 # Brief: Git accounts and repositories
 
+**Status:** Merged as #141 (bc2d8d7), which this rework became. Handoff notes below are history.
+
 **Thread:** Self-editing build (the rework of PR #141). **Branch:** the
 PR's own. **Model:** Opus; the two screens are Fable's (UI review judges
 them against the app mockup, version 29). **Depends on:** Releases (#136)
@@ -128,7 +130,7 @@ docs/briefs/lyrica-project.md.
 
 ## Handoff notes
 
-Built in PR #141. The `gh` wrapper matches the clone's whole repository,
+Merged as #141. The `gh` wrapper matches the clone's whole repository,
 not only its owner, so a repository of the same owner that the thread
 doesn't have gets no token. A nested subagent clones into its immediate
 parent's folder.

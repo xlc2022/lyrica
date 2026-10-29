@@ -1,5 +1,7 @@
 # Brief: Models 2 (hosts, fallbacks and the Models page API)
 
+**Status:** Merged as #30, #34, #36, #37 and #40.
+
 **Thread:** Models 2. **Branch:** `feature/models-2`.
 
 **Depends on:** Models, Daemon and Web access (merged). It is built in parallel

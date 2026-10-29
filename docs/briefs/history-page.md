@@ -1,6 +1,6 @@
 # History pages
 
-**Status:** Merged as #288 (703e572).
+**Status:** Merged as #288 (703e572). Handoff notes below are history.
 
 ## Goal
 

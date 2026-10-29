@@ -1,5 +1,7 @@
 # Brief: Models
 
+**Status:** Merged as #11 (f6dfe7c). Profiles became presets in #283.
+
 **Thread:** Models. **Branch:** `feature/models`. **Depends on:** Core and
 Memory (merged).
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md ("Models and endpoints"),

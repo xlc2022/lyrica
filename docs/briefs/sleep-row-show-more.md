@@ -1,7 +1,7 @@
 # Brief: Read a long sleep row in place
 
 **Status:** Merged as #592 (`bd1fb7fa`). The welcome page's **From sleep** card, left
-out below, was asked for in use and went to #594. Handoff notes are history.
+out below, was asked for in use and went to #594 (merged as #595, 00f93aa). Handoff notes are history.
 **Branch:** `lyrica/sleep-row-show-more`. **Issue:** #591.
 **Read first:** AGENTS.md, PRINCIPLES.md, docs/contracts.md, docs/ux.md (§1, §3, §6
 "Anything waiting for the user", §8, §10), docs/web.md (Notifications, the welcome
@@ -108,5 +108,5 @@ phone 390 ── collapsed / expanded ──────────────
 
 ## Handoff
 
-- Done:
+- Done: merged as #592 and #595.
 - Open questions: none.

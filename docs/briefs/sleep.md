@@ -1,5 +1,7 @@
 # Brief: Sleep
 
+**Status:** Merged as #26 (2955880); later changes are described in docs/sleep.md.
+
 **Thread:** Sleep. **Branch:** `feature/sleep`.
 
 **Depends on:** Memory, Models, Workspace, Delegation and Daemon (all merged),
@@ -27,7 +29,7 @@ becomes understanding (principle 5), and where she wakes up continuous
 
 1. **`runSleep(userId, pool, reason)`**, as in the contract. It returns a
    `SleepRun` with a status (`complete`, `partial` or `skipped`) and a skip
-   reason (`no-key`, `endpoint-down` or `no-activity`).
+   reason (`no-key`, `endpoint-down`, `no-activity` or `plan-limit`).
 2. **Phases are sessions.**
    - Each phase is a thread in the pool's `sleep` interface, run with
      `openThreadSession` and the thread's own `CallContext`, so dreams can be

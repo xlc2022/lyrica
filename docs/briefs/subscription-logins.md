@@ -1,5 +1,7 @@
 # Brief: subscription logins
 
+**Status:** Merged as #169 (5b6963a).
+
 **Thread:** Subscription logins (Opus). Asked by the owner on 2026-10-12 ("Lyrica
 should be able to support Codex and Anthropic logins in addition to API
 keys", so their subscriptions can be used). The owner approved the ChatGPT plan and

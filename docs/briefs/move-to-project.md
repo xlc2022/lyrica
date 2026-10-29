@@ -3,7 +3,7 @@
 **Built by:** Codex on lunasa, one run (below). The Claude thread that wrote
 the project-welcome brief reviews the diff, opens the PR and takes it
 through PR review and UI review. **Branch:** `feature/move-to-project`.
-**Status:** Merged as #297 (c49a93c).
+**Status:** Merged as #297 (c49a93c). Handoff notes below are history.
 
 **Read first:** AGENTS.md, docs/ux.md §6 (the thread menu row, the Fold in
 row and the confirm-before-add rule), docs/briefs/project-welcome.md,

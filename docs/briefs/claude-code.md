@@ -1,5 +1,7 @@
 # Brief: Claude Code on the owner's Claude plan
 
+**Status:** Merged as #186 (6b0e99a).
+
 **Thread:** Subscription logins (Opus). The owner asked on 2026-10-12 for
 Claude logins alongside API keys. Claude plan sign-in in other apps is
 forbidden (docs/briefs/subscription-logins.md), so the same day they
@@ -47,7 +49,7 @@ ours (principle 3), and adds no model-facing tool (principle 8).
 
 ## Built
 
-- Settings → Claude Code (token, Remove, Not installed) and the thread
+- Settings → Claude Code and Codex (token, Remove, Not installed) and the thread
   drawer's Claude Code switch.
 - `thread_workspaces.claude_code`, user step 4; the token in `settings`.
 - `Workspace.claudeCodeFor` / `claudeFor`: a run gets Claude Code only in

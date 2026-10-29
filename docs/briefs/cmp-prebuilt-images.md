@@ -1,5 +1,7 @@
 # Brief: prebuilt CMP images for the model host
 
+**Status:** Merged as #472 (2d88260); danube retested from the published images in #483 (2d1a735). Handoff notes below are history.
+
 Owner: the Agent loop thread (which built #466).
 Tests: the danube thread, on danube.
 
@@ -81,10 +83,10 @@ and any change to what the images contain or how they run.
 
 Built in the Agent loop thread's pull request: `host/prebuilt.sh` (the
 registry, the lists, the tag and the pick), `.github/workflows/cmp-images.yml`,
-`compose.cmp.build.yaml` and `compose.sdcpp.build.yaml` as the build
+`host/compose.cmp.build.yaml` and `host/compose.sdcpp.build.yaml` as the build
 fallback, and `host/test/prebuilt.test.ts`. The first push to `main`
 creates both packages as private; the owner makes them public once
-(docs/ci.md, "CMP images"). Next: the danube test from a clean Docker
-cache. Measured on danube (2026-10-22): its connection downloaded a 5 GB
+(docs/ci.md, "CMP images"). Danube was then retested from
+the published images (#483). Measured on danube (2026-10-22): its connection downloaded a 5 GB
 model from Hugging Face at about 24 MB/s, so a 3.5 GB image takes about
 2½ minutes, against 18–25 minutes to compile.

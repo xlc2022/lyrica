@@ -1,5 +1,7 @@
 # Brief: Image settings and recipes
 
+**Status:** Merged as #318 (a8087f3); follow-ups #320, and #328, #330, #335 and #341 for Codex images.
+
 **Thread:** Image settings and recipes. **Branch:** `claude/image-settings-recipes-bpk70s`.
 **Model:** Opus. **Depends on:** images (`images.md`), image providers
 (`image-providers.md`), the first fix PR (#305: recipe names, list pruning,

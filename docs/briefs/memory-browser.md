@@ -1,5 +1,7 @@
 # Brief: Memory browser, the notebook
 
+**Status:** Merged as #135 (de96fc6).
+
 **Thread:** Memory browser. **Branch:** `feature/memory-browser`.
 **Model:** Fable (a user sees all of it; the API part rides along).
 **Depends on:** nothing. **Runs alongside:** Web UI 2.

@@ -4,7 +4,7 @@
 wrote this brief reviews each diff, opens the PRs and takes them through
 PR review and UI review. **Branches:** `feature/project-welcome-api`, then
 `feature/project-welcome`.
-**Status:** both PRs merged (#286, #290). Follow-up: [Move to project](move-to-project.md), sharing the Fold in confirmation and omitting fold directions when Continue as project reads only its source.
+**Status:** both PRs merged (#286, #290); handoff notes below are history. Follow-up: [Move to project](move-to-project.md), sharing the Fold in confirmation and omitting fold directions when Continue as project reads only its source.
 
 **Read first:** AGENTS.md, docs/ux.md §6 (the Project rows and the
 vocabulary list), DESIGN.md "Projects", docs/contracts.md (daemon,

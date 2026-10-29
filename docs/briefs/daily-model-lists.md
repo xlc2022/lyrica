@@ -1,6 +1,6 @@
 # Brief: read model lists daily
 
-**Status:** Built on `claude/project-thread-30ndu9` (Roadmap thread), in review.
+**Status:** Merged as #519 (76cd1fc).
 The owner asked on 2026-10-24, after OpenRouter dropped a free model without
 notice, for every endpoint's model list to be read again every 24 hours,
 with a setting to turn it off.
