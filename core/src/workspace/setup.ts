@@ -40,7 +40,9 @@ fi
 key=$( { printf '%s\\n' "$cmd"; cat ${[...new Set(DEFAULT_SETUPS.map((d) => d.lockfile))].join(" ")} 2>/dev/null; } | sha256sum | cut -c1-64)
 echo "lyrica-setup $key $cmd" >&2
 if [ "$key" = "$3" ]; then echo lyrica-setup-same >&2; exit 0; fi
-if [ "$(cat .git/lyrica-setup 2>/dev/null)" = "$key" ] && { [ -n "$2" ] || [ -d node_modules ] || [ -d .venv ]; }; then exit 0; fi
+if [ "$(cat .git/lyrica-setup 2>/dev/null)" = "$key" ] && { [ -n "$2" ] || [ -d node_modules ] || [ -d .venv ] || [ -f .pnp.cjs ]; }; then exit 0; fi
+# What the install makes stays out of git status and her commits, without changing the repository.
+mkdir -p .git/info && for d in /node_modules/ /.venv/; do grep -qxF "$d" .git/info/exclude 2>/dev/null || echo "$d" >> .git/info/exclude; done
 sh -c "$cmd" >&2 || exit $?
 printf '%s\\n' "$key" > .git/lyrica-setup
 `;
@@ -65,6 +67,36 @@ export function setupOutcome(repo: string, out: { code: number | null; stderr: s
   const missing = out.code === 127 ? ", a program it needs isn't installed in the sandbox" : "";
   const tail = mask(lastLines(rest));
   return { kind: "failed", key, problem: `${repo}: dependencies didn't install (\`${mask(command)}\` exited ${out.code}${missing})${tail ? `. Its last lines:\n${tail}` : "."}` };
+}
+
+/** How long a failed install isn't run again, unless its command or a lockfile changes. */
+export const SETUP_RETRY_MS = 60 * 60_000;
+
+/**
+ * Each clone's last failed install, by an id for the clone, kept in lyricad's
+ * memory: `before` says whether to run it (and which hash to skip) or
+ * repeats the failure, and `after` records how it went. A timeout has no
+ * hash, so nothing runs for the hour even if a lockfile changes.
+ */
+export class SetupFailures {
+  private readonly failed = new Map<string, { key?: string; at: number; problem: string }>();
+
+  before(id: string, now = Date.now()): { skip: string } | { problem: string } {
+    const f = this.failed.get(id);
+    if (!f || now - f.at >= SETUP_RETRY_MS) return { skip: "" };
+    return f.key === undefined ? { problem: this.again(f.problem) } : { skip: f.key };
+  }
+
+  after(id: string, outcome: SetupOutcome | { kind: "timeout"; problem: string }, now = Date.now()): string | undefined {
+    if (outcome.kind === "same") return this.again(this.failed.get(id)!.problem);
+    if (outcome.kind === "none") { this.failed.delete(id); return undefined; }
+    this.failed.set(id, { ...outcome.kind === "failed" ? { key: outcome.key } : {}, at: now, problem: outcome.problem });
+    return outcome.problem;
+  }
+
+  private again(problem: string): string {
+    return `${problem}\nIt isn't run again until the setup command or a lockfile changes, or an hour has passed; run it yourself to try again now.`;
+  }
 }
 
 /** The last 20 lines, each cut to 300 characters and indented under the problem's line. */

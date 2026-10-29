@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { SETUP_SCRIPT, setupOutcome } from "../src/workspace/setup.ts";
+import { SETUP_RETRY_MS, SETUP_SCRIPT, SetupFailures, setupOutcome } from "../src/workspace/setup.ts";
 
 // The script runs here with plain sh, not in the sandbox: what it decides doesn't depend on bwrap, and fake installers on its PATH record each run.
 let dir: string, clone: string, bin: string;
@@ -92,5 +92,34 @@ describe("a clone's dependencies", () => {
       .toMatch(/^ada\/garden: dependencies didn't install \(`pnpm install --frozen-lockfile --ignore-scripts` exited 127, a program it needs isn't installed in the sandbox\)\. Its last lines:\n {4}.*pnpm/);
     const leaked = { code: 1, stderr: `lyrica-setup ${"a".repeat(64)} npm ci\nfetch https://tok3n@registry failed\n` };
     expect(setupOutcome("ada/garden", leaked, (s) => s.replaceAll("tok3n", "[credential hidden]"))).toMatchObject({ problem: expect.stringContaining("https://[credential hidden]@registry") });
+  });
+
+  it("keeps node_modules and .venv out of git status without changing the repository, and treats Yarn PnP as installed", () => {
+    writeFileSync(join(clone, ".git", "HEAD"), "");
+    writeFileSync(join(clone, "yarn.lock"), "");
+    writeFileSync(join(clone, ".yarnrc.yml"), "");
+    fake("yarn", "touch .pnp.cjs");
+    setup();
+    setup();
+    expect(runs()).toHaveLength(1);
+    expect(readFileSync(join(clone, ".git", "info", "exclude"), "utf8")).toBe("/node_modules/\n/.venv/\n");
+    rmSync(join(clone, ".pnp.cjs"));
+    setup();
+    expect(readFileSync(join(clone, ".git", "info", "exclude"), "utf8")).toBe("/node_modules/\n/.venv/\n");
+  });
+
+  it("repeats a failure for an hour without running it, a timeout even if a lockfile changes", () => {
+    const failures = new SetupFailures();
+    const failed = { kind: "failed" as const, key: "k1", problem: "garden: dependencies didn't install." };
+    expect(failures.before("a", 0)).toEqual({ skip: "" });
+    expect(failures.after("a", failed, 0)).toBe(failed.problem);
+    expect(failures.before("a", 1000)).toEqual({ skip: "k1" });
+    expect(failures.after("a", { kind: "same", key: "k1" }, 1000)).toMatch(/^garden: dependencies didn't install\.\nIt isn't run again until/);
+    expect(failures.before("a", SETUP_RETRY_MS)).toEqual({ skip: "" });
+    expect(failures.after("a", { kind: "none" })).toBeUndefined();
+    expect(failures.before("a")).toEqual({ skip: "" });
+    failures.after("b", { kind: "timeout", problem: "garden: dependencies didn't install: took more than 10 minutes and was stopped." }, 0);
+    expect(failures.before("b", 1000)).toEqual({ problem: expect.stringMatching(/took more than 10 minutes and was stopped\.\nIt isn't run again/) });
+    expect(failures.before("b", SETUP_RETRY_MS)).toEqual({ skip: "" });
   });
 });

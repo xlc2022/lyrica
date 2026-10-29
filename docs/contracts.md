@@ -2415,7 +2415,7 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   a subagent's under its parent's, mounted read-only for one with
   `reposReadOnly` and for a project chat, though `cloneFor` itself may
   write them), then installs each clone's dependencies (`setup.ts`:
-  `SETUP_SCRIPT`, `setupOutcome`; docs/workspace.md, "Dependencies"),
+  `SETUP_SCRIPT`, `setupOutcome`, `SetupFailures`; docs/workspace.md, "Dependencies"),
   and returns the problems, never removing
   one (a clone goes with the thread); `addRepository(t, r)` is the
   `add_repository` tool's change. `credentialsFor(t).forge` holds the

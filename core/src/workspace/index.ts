@@ -17,7 +17,7 @@ import { isMounted, mountGocryptfs, unmountGocryptfs } from "./home.ts";
 import { maskSecrets, type ExecutionTarget } from "./ops.ts";
 import { Sandbox, sandboxHas, SHARED, WORKDIR, type Credentials, type SandboxSpec } from "./sandbox.ts";
 import type { ClaudeCodeUsage } from "./relay.ts";
-import { SETUP_SCRIPT, setupOutcome } from "./setup.ts";
+import { SETUP_SCRIPT, SetupFailures, setupOutcome } from "./setup.ts";
 import type { CodexBox } from "../models/codex.ts";
 import { authorizedKeysLine, machineSetup } from "./machines.ts";
 import {
@@ -203,8 +203,8 @@ export class Workspace {
   private readonly gitRefused = new Set<string>();
   /** The email each account's commits carry, asked of its host once per daemon run, by `user/account/host/login`. */
   private readonly gitEmails = new Map<string, string>();
-  /** Each clone's last failed install, by its repos/ folder and name: tried again after an hour, or when the hash changes. */
-  private readonly setupFailed = new Map<string, { key: string; at: number; problem: string }>();
+  /** Each clone's last failed install, by its repos/ folder and name (setup.ts). */
+  private readonly setupFailed = new SetupFailures();
   /**
    * Private MCP servers whose host passed the own-network check in this
    * process, by `<userId>/<name>/<url>`. A private server is used only once
@@ -988,22 +988,19 @@ export class Workspace {
    */
   private async setupClone(t: WorkspaceThread, box: Sandbox, repo: string, path: string): Promise<string | undefined> {
     const command = t.project ? this.settings(t.userId).setup(t.pool, t.project) ?? "" : "";
-    const memo = `${this.reposDir(t)}\0${repo}`;
-    const failed = this.setupFailed.get(memo);
-    const skip = failed && Date.now() - failed.at < 60 * 60_000 ? failed.key : "";
+    const id = `${this.reposDir(t)}\0${repo}`;
+    const before = this.setupFailed.before(id);
+    if ("problem" in before) return before.problem;
     const mask = (text: string) => maskSecrets(Buffer.from(text), box.secrets()).toString();
     let out: { code: number | null; stderr: Buffer };
     try {
-      out = await box.run(["sh", "-c", SETUP_SCRIPT, "sh", path, command, skip], { timeoutMs: SETUP_TIMEOUT_MS });
+      out = await box.run(["sh", "-c", SETUP_SCRIPT, "sh", path, command, before.skip], { timeoutMs: SETUP_TIMEOUT_MS });
     } catch (err) {
-      const why = (err as Error).message.startsWith("timeout:") ? `took more than ${SETUP_TIMEOUT_MS / 60_000} minutes and was stopped` : mask((err as Error).message);
-      return `${repo}: dependencies didn't install: ${why}.`;
+      const timedOut = (err as Error).message.startsWith("timeout:");
+      const problem = `${repo}: dependencies didn't install: ${timedOut ? `took more than ${SETUP_TIMEOUT_MS / 60_000} minutes and was stopped` : mask((err as Error).message)}.`;
+      return timedOut ? this.setupFailed.after(id, { kind: "timeout", problem }) : problem;
     }
-    const outcome = setupOutcome(repo, { code: out.code, stderr: out.stderr.toString() }, mask);
-    if (outcome.kind === "same") return `${failed!.problem}\nIt isn't run again until the setup command or a lockfile changes, or an hour has passed; run it yourself to try again now.`;
-    if (outcome.kind === "failed") this.setupFailed.set(memo, { key: outcome.key, at: Date.now(), problem: outcome.problem });
-    else this.setupFailed.delete(memo);
-    return outcome.kind === "failed" ? outcome.problem : undefined;
+    return this.setupFailed.after(id, setupOutcome(repo, { code: out.code, stderr: out.stderr.toString() }, mask));
   }
 
   /** She adds a repository to the thread, once the user approved it: checked like any change to the thread's settings. */

@@ -1020,12 +1020,16 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   skipped (see [Her checks](#her-own-code)). It runs once per clone and
   again only when the command or a lockfile changes: `.git/lyrica-setup`
   holds a hash of both from the last install that succeeded (and
-  `node_modules` or `.venv` must still be there when no Setup is set). A
+  `node_modules`, `.venv` or Yarn's `.pnp.cjs` must still be there when no
+  Setup is set). Before installing it adds `/node_modules/` and `/.venv/`
+  to the clone's `.git/info/exclude`, so they stay out of `git status`,
+  the changes view and her commits without changing the repository. A
   failure, a missing installer (exit 127) or 10 minutes passing is a line
   in the turn's prompt, like a failed clone: "dependencies didn't install",
   the command, its exit code and its last 20 lines, the thread's secrets
-  masked. The same failure isn't run again for an hour, unless the command
-  or a lockfile changes; until then the line says so, and she can run it
+  masked (`SetupFailures`). The same failure isn't run again for an hour,
+  unless the command or a lockfile changes (a timeout waits the hour
+  whatever changes); until then the line says so, and she can run it
   herself. Subagents use their parent's clones as installed; worktrees get
   no install of their own.
 - **Credentials** never enter the sandbox. A run with repositories or Claude Code gets
