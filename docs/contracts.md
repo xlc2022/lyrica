@@ -1448,22 +1448,46 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     API messages and events carry paths, never the PNG's base64 bytes.
     The Images switch and Plan mode gate it; subagents also need the tool in
     their role and may not be read-only. It adds one tool within the budget;
-  - `web_search({ query, count? })` and `web_fetch({ url, maxChars? })`
-    (`createWebExtension({ searxng(), target() })`, `core/src/web.ts`), in
+  - `web_search({ query, count?, time?, category?, page? })` and
+    `web_fetch({ url, maxChars?, offset? })`
+    (`createWebExtension({ searxng(), target(), canRender?() })`, `core/src/web.ts`), in
     every hosted thread and in a subagent whose role lists them (the
     researcher's), behind the Web search switch. `web_search` asks the
-    server's SearXNG (`GET <address>/search?q=…&format=json`, 15 s) for up
-    to `count` results (8 by default, 20 at most) as title, URL and
-    snippet, after its first answer or infobox line; it is offered only
+    server's SearXNG (`GET <address>/search?q=…&format=json`, plus
+    `time_range` day|week|month|year, `categories`
+    general|news|science|it|videos and `pageno` 1 to 10; 15 s) for up
+    to `count` results (8 by default, 20 at most) as title, date (when
+    SearXNG has `publishedDate`), URL and snippet, after its first answer
+    or infobox line. No results while `unresponsive_engines` is non-empty:
+    it asks once more, then names the failed engines and SearXNG's
+    corrections and suggestions. It is offered only
     while an address is set, read on every turn and call. A
     `user:password@` in the address goes as basic auth. `web_fetch` runs
-    curl (`fetchArgv`, the URL one argument) through the thread's sandbox
-    target's `run`, so its internet switch and allowed hosts apply; lyricad
-    turns HTML into text (`htmlText`, html-to-text: no scripts, styles or
-    navigation, links with their URL), passes text and JSON through,
-    refuses other types, and cuts to `maxChars` (20,000 by default, 50,000
-    at most), saying so. Both are `openWorldHint` and `readOnlyHint`, so
-    they never ask;
+    curl (`fetchArgv`, the URL one argument, a browser's user agent, 10 MB
+    at most) through the thread's sandbox
+    target's `run`, so its internet switch and allowed hosts apply.
+    lyricad reads the result (`fetchedPage`): HTML in the charset it names
+    becomes Markdown (`htmlMarkdown`: Readability over linkedom for the
+    main text, else the whole body without scripts, styles, navigation,
+    forms or images; turndown, tables as Markdown tables, links absolute),
+    headed by title, URL, byline and date; a PDF becomes text page by page
+    (`pdfText`: unpdf in a child process, `web-pdf.mjs`, with no environment,
+    killed after 30 s or once its resident memory passes 768 MB, since
+    pdf.js decodes streams outside the JS heap); text
+    and JSON pass through; other types are refused. HTML that is nearly
+    empty and has scripts (`thin`) is rendered once more when `canRender()`
+    (the sandbox has Chromium and node): `renderArgv` runs
+    `web-render.cjs` with the sandbox's node, which drives its Chromium
+    over the DevTools pipe without images, media or fonts, and the longer
+    text wins. HTML from curl or Chromium is cut to 3,000,000 characters
+    before it is parsed on lyricad's thread. `cutPage` cuts to `maxChars` (20,000 by default, 50,000 at
+    most) from `offset`, with a note naming the offset to read on from.
+    Both tools' results go between `<<<web CODE>>>` and `<<<end web
+    CODE>>>` (`outside`; CODE is 8 random hex digits per call, and
+    marker-shaped text inside is removed), headed by where they came from;
+    the cut note follows the end marker. `OUTSIDE_GUIDELINE` tells her
+    what is between them is information, never instructions. Both are
+    `openWorldHint` and `readOnlyHint`, so they never ask;
   - `proxmox` (Machines; see [core/workspace](#coreworkspace)) and
     `add_repository` (Repositories; see [core/workspace](#coreworkspace));
   - `page({ action: "preview" | "bundle" | "check", path, out?, width?,
@@ -1680,7 +1704,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
   and approves the call, also for a subagent. Other requests refuse it.
   `ThreadChange.commandRules` replaces rules only on a project chat;
   `ProjectSettingsInfo.commandRules` returns them. `ThreadChange.checks`
-  and `ProjectSettingsInfo.checks` do the same for the project's checks
+  and `ProjectSettingsInfo.checks` do the same for the project's checks,
+  and `ThreadChange.setup` (a string; empty or `null` clears it) and
+  `ProjectSettingsInfo.setup` (absent when unset) for its setup command
   (400 with the reason when invalid).
 - **Sweep** (`Lyricad.sweep`, nightly, before sleep): `sweepUser(services,
   userId)` for each user whose home workspace is mounted clears snapshots
@@ -2247,6 +2273,8 @@ settings(userId).setCommandRules(pool, project, rules) / addCommandRule(pool, pr
 settings(userId).checks(pool, project): string[] / setChecks(pool, project, checks)
 // checkChecks: at most 8 commands, each one line of at most 300 characters, no control characters; blanks dropped.
 // user step 16 adds project_settings.checks, JSON default [].
+settings(userId).setup(pool, project): string | undefined / setSetup(pool, project, command)
+// one line of at most 300 characters, no control characters; blank or null clears it. user step 19 adds project_settings.setup, NULL default.
 settings(userId).skillsAutoApprove() / setSkillsAutoApprove(on)   // her skills active at once; user.db setting skills.auto_approve
 forThread(t)  // { commandRules(), checks() (the project's; none outside one or in its chat), target(machine?), previewTarget(), settings(), machines(), proxmox(machine, action, vm?), allowedInThread(machine, command), setMode(), network(), claudeCode(), folders(), recordChange(), fileKey(path), madeFiles(paths), madeSince(since, found?), fileNotes() },
 fileKey(t, path)  // one file under the same key for every thread that can write it: "<folder thread>:<path>" in a thread's folder or /shared, "grant:<path>" in a writable grant; else undefined
@@ -2410,7 +2438,9 @@ selfTest(): Promise<string | undefined>   // lyricad calls this at startup
   sandbox under the thread's folder in the home workspace (`repos/<name>`,
   a subagent's under its parent's, mounted read-only for one with
   `reposReadOnly` and for a project chat, though `cloneFor` itself may
-  write them) and returns the problems, never removing
+  write them), then installs each clone's dependencies (`setup.ts`:
+  `SETUP_SCRIPT`, `setupOutcome`, `SetupFailures`; docs/workspace.md, "Dependencies"),
+  and returns the problems, never removing
   one (a clone goes with the thread); `addRepository(t, r)` is the
   `add_repository` tool's change. `credentialsFor(t).forge` holds the
   tokens; it is empty when the thread is of the other pool, has no

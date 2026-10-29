@@ -952,14 +952,34 @@ The **Web search** switch gives her two tools (`extension/src/web.ts`,
   the query text to them, so a private thread's query leaves her network as
   an anonymous query. Setting one up, or letting `install.sh` run one in
   Docker and fill in the address: [guides/searxng.md](guides/searxng.md).
+- `web_search` can ask for results from the past day, week, month or
+  year, from one category of engines (general, news, science, IT,
+  videos), and for a later page. Each result shows its date when SearXNG
+  has one. When nothing comes back because engines failed, it asks once
+  more, then says which engines failed and what SearXNG suggests.
 - `web_fetch` runs `curl` in the thread's sandbox, the URL one argument,
   so the internet switch and allowed hosts above decide what it can reach:
   a private thread with internet off reads only its allowed hosts. It
-  follows up to 5 redirects, gives up after 20 seconds or 2 MB, and reads
-  only http and https. `lyricad` turns HTML into text with html-to-text
-  (headings, paragraphs, list items, links with their URL; no scripts,
-  styles or navigation), passes text and JSON through, refuses other types,
-  and cuts the result to `maxChars`, saying so. Nothing is written to disk.
+  sends a browser's user agent, follows up to 5 redirects, gives up after
+  20 seconds or 10 MB, and reads only http and https. `lyricad` keeps a
+  page's main text (Mozilla Readability), or the whole page when that
+  finds too little, as Markdown headed by its title, URL, byline and date,
+  without scripts, styles, navigation, forms or images. It reads a PDF's
+  text page by page in a child process that is killed past 30 seconds or
+  768 MB of memory, so a hostile file can't take `lyricad` down,
+  passes text and JSON through, and refuses other types. A page that is
+  nearly empty and has scripts is opened again in the sandbox's Chromium
+  (when it has Chromium and node), under the same network switches,
+  without images or media, and the fuller text is kept. The result is cut
+  to `maxChars`, and the note says which `offset` reads on. Nothing is
+  written to disk: Chromium writes only to the sandbox's `/tmp`, which is
+  in memory and gone when the run ends.
+- Both tools put what they return between two markers holding a code
+  made fresh for each call, headed by where it came from, so a page can't
+  end the markers early or fake the cut note, and her guideline says the
+  text between them is information, never instructions. This makes
+  injected text easy to recognise; it doesn't make her immune to it. The
+  network switches remain the boundary.
 
 ## Git accounts and repositories
 
@@ -1003,7 +1023,35 @@ come from the user's Git accounts (DESIGN.md, "Updates and self-editing").
   line in the turn's prompt, not an error. A clone stays when its
   repository leaves the thread, since it may hold unpushed work; it goes
   with the thread's folder when the sweep removes it. Two threads never
-  share a working tree.
+  share a working tree. Each clone then gets its dependencies
+  ([Dependencies](#dependencies)).
+- <a id="dependencies"></a>**Dependencies.** After a clone or fetch
+  succeeds, `cloneFor` installs the clone's dependencies in the same
+  sandbox and network as the clone (`core/src/workspace/setup.ts`), so her
+  checks find them: the project's **Setup** command when the person set one
+  (Project settings → General; `project_settings.setup`, expand-only user
+  step 19, one line of at most 300 characters), otherwise the first
+  lockfile found picks it: `package-lock.json` or `npm-shrinkwrap.json`
+  `npm ci --ignore-scripts`, `pnpm-lock.yaml` `pnpm install
+  --frozen-lockfile --ignore-scripts`, `yarn.lock` `yarn install
+  --frozen-lockfile --ignore-scripts` (with `.yarnrc.yml`, `--immutable
+  --mode=skip-build`), `uv.lock` `uv sync --frozen`, `requirements*.txt` a
+  `.venv` and `pip install -r`; none does nothing. Install scripts stay
+  skipped (see [Her checks](#her-own-code)). It runs once per clone and
+  again only when the command or a lockfile changes: `.git/lyrica-setup`
+  holds a hash of both from the last install that succeeded (and
+  `node_modules`, `.venv` or Yarn's `.pnp.cjs` must still be there when no
+  Setup is set). Before installing it adds `/node_modules/` and `/.venv/`
+  to the clone's `.git/info/exclude`, so they stay out of `git status`,
+  the changes view and her commits without changing the repository. A
+  failure, a missing installer (exit 127) or 10 minutes passing is a line
+  in the turn's prompt, like a failed clone: "dependencies didn't install",
+  the command, its exit code and its last 20 lines, the thread's secrets
+  masked (`SetupFailures`). The same failure isn't run again for an hour,
+  unless the command or a lockfile changes (a timeout waits the hour
+  whatever changes); until then the line says so, and she can run it
+  herself. Subagents use their parent's clones as installed; worktrees get
+  no install of their own.
 - **Credentials** never enter the sandbox. A run with repositories or Claude Code gets
   its own relay (`openRelay`, `core/src/workspace/relay.ts`): a server in
   `lyricad` on a random loopback port, forwarded into the run's sandbox
@@ -1235,7 +1283,8 @@ her account is general.
   to check afterwards. It describes code, never conversations. After a
   failed probation, a GitHub issue linked to the tag holds the post-mortem.
 - **Her checks.** `npm run typecheck` and `npm test` run in her sandbox
-  with the thread's internet on, after `npm ci --ignore-scripts`. With the
+  with the thread's internet on, after `npm ci --ignore-scripts`, which
+  `cloneFor` runs in each clone ([Dependencies](#dependencies)). With the
   internet on she runs as `lyricad`'s own uid, as with it off (a nested
   user namespace inside the networked one), so files she writes in a
   grant stay the user's to change. The install scripts stay skipped since

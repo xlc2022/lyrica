@@ -86,7 +86,8 @@ describe("web tools", () => {
     expect(text).not.toContain("steal");
     expect(text).not.toContain("color:red");
     expect(text).not.toContain("Home");
-    expect(text).toMatch(/\[Cut at 120 of \d+ characters\.\]$/);
+    expect(text).toMatch(/^Outside content from https:\/\/example\.org\/a%20b;\$\(rm%20-rf%20\/\), not from the user:\n<<<web [0-9a-f]{8}>>>\n/);
+    expect(text).toMatch(/\n<<<end web [0-9a-f]{8}>>>\n\[Characters 0 to 120 of \d+\. Read on with offset 120\.\]$/);
   });
 });
 
@@ -95,12 +96,12 @@ describe("searxngSearch", () => {
 
   it("lists an answer, then results as title, URL and snippet, up to count", async () => {
     const results = [1, 2, 3].map((i) => ({ title: `Result ${i}`, url: `https://r${i}.example`, content: `snippet\n${i}` }));
-    const text = await searxngSearch("http://s.lan", "q", 2, undefined, reply(200, { answers: ["42"], results }));
+    const text = await searxngSearch("http://s.lan", "q", { count: 2 }, undefined, reply(200, { answers: ["42"], results }));
     expect(text).toBe("Answer: 42\n\n1. Result 1\n   https://r1.example\n   snippet 1\n2. Result 2\n   https://r2.example\n   snippet 2");
   });
 
   it("says plainly what failed", async () => {
-    await expect(searxngSearch("http://s.lan", "q", 8, undefined, reply(403, {}))).rejects.toThrow("is the json format enabled");
+    await expect(searxngSearch("http://s.lan", "q", { count: 8 }, undefined, reply(403, {}))).rejects.toThrow("is the json format enabled");
   });
 
   it("sends user:password in the address as basic auth", async () => {
@@ -109,7 +110,33 @@ describe("searxngSearch", () => {
       seen = { url, auth: (init.headers as Record<string, string>).authorization };
       return new Response(JSON.stringify({ results: [] }));
     }) as unknown as typeof fetch;
-    await searxngSearch("https://ada:s3cret@s.example", "a b", 8, undefined, f);
+    await searxngSearch("https://ada:s3cret@s.example", "a b", { count: 8 }, undefined, f);
     expect(seen).toEqual({ url: "https://s.example/search?q=a%20b&format=json", auth: `Basic ${Buffer.from("ada:s3cret").toString("base64")}` });
+  });
+
+  it("render a page built by JavaScript in the sandbox's Chromium, and read on from an offset", async () => {
+    const calls: string[][] = [];
+    const spa = `<html><head><title>App</title></head><body><div id="root"></div><script src="/app.js"></script></body></html>`;
+    const built = `<html><head><title>App</title></head><body><h1>Built</h1><p>${"Filled in by its script. ".repeat(30)}</p></body></html>`;
+    const target: ExecutionTarget = {
+      name: "sandbox", cwd: async () => "/workspace", folders: () => [], ops: () => { throw new Error("not used"); },
+      run: async (argv) => {
+        calls.push(argv);
+        return argv[0] === "curl"
+          ? { code: 0, stdout: Buffer.from(spa), stderr: Buffer.from("\nLYRICA-FETCH 200 text/html\n") }
+          : { code: 0, stdout: Buffer.from(JSON.stringify({ html: built }) + "\n"), stderr: Buffer.alloc(0) };
+      },
+    };
+    const { s, results } = await session({ searxng: () => null, target: () => target, canRender: () => true },
+      [[fauxToolCall("web_fetch", { url: "https://app.example/", maxChars: 100, offset: 100 })]]);
+    try {
+      await s.prompt("read it");
+    } finally {
+      s.dispose();
+    }
+    expect(calls.map((c) => c[0])).toEqual(["curl", "node"]);
+    expect(calls[1]![3]).toBe("https://app.example/");
+    expect(results[0]).toContain("Filled in by its script.");
+    expect(results[0]).toMatch(/\[Characters 100 to 200 of \d+\. Read on with offset 200\.\]$/);
   });
 });
