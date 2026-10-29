@@ -334,7 +334,8 @@ answers ahead; without a terminal the answer is no), then:
    passt, nftables, ImageMagick (the Files panel's thumbnails are made in
    the sandbox), openssl, curl, unzip and rsync for itself, and
    build-essential, python3, git, openssh-client and jq for building
-   releases and fetching updates, and `gh` and `tea` for threads with
+   releases and fetching updates, python3-venv for her clones' Python
+   dependencies, and `gh` and `tea` for threads with
    repositories (`tea` only where it is packaged; without it, Gitea and
    Forgejo accounts work through git alone). It installs IBM Plex and
    Playwright's headless Chromium with the libraries it needs, in
@@ -800,8 +801,8 @@ otherwise the lockfile picks npm, pnpm, yarn, uv or a Python `.venv`
 there; for the others, put the installer where her sandbox sees it. On
 NixOS, add `pnpm`, `yarn` or `uv` to `sandboxPackages` (python3 is in
 by default). On Debian or Ubuntu, install it system-wide (anywhere under
-`/usr`, `/usr/local` included), and `python3-venv` for
-`requirements.txt` projects. Until then her turn is told "dependencies
+`/usr`, `/usr/local` included); `install.sh` already installs
+`python3-venv` for `requirements.txt` projects. Until then her turn is told "dependencies
 didn't install", with "a program it needs isn't installed in the
 sandbox" when the installer is missing.
 
