@@ -127,13 +127,16 @@ Details are in [host/README.md](../../host/README.md#image-models).
 GeForce cards run FP16, BF16 and TF32 tensor math at half the rate of the
 same chip sold as a workstation card.
 [gpu-unlock](https://github.com/Zagitta/gpu-unlock), a kernel module,
-lifts that cap at every boot, before the NVIDIA driver loads. Upstream reports faster prompt reading on vLLM (25 to 55%), image
-and video making, and little change for quantized GGUF models or for
-writing tokens. It's optional and off by default.
+lifts that cap at every boot, before the NVIDIA driver loads. Upstream
+reports faster prompt reading on vLLM (25 to 55%), image and video
+making, and little change for quantized GGUF models or for writing
+tokens. On an RTX 3090 under NixOS, a warm Krea 2 image went from 14.9
+to 9.4 seconds, a Qwen-Image edit from 11.1 to 7.0, and a 5-second Wan
+14B clip from 427 to 283. It's optional and off by default.
 
 - **Cards:** GeForce RTX 30 (stable upstream); RTX 20 and 40 are
-  experimental. Not RTX 50, workstation cards or the CMP 100-210. It has
-  been tried here on no card yet.
+  experimental. Not RTX 50, workstation cards or the CMP 100-210. Tried
+  here on one RTX 3090 with NixOS; the Debian script hasn't run yet.
 - **Debian or Ubuntu:** `host/gpu-unlock.sh`. It lists the cards it would
   unlock and asks first, then fetches the pinned upstream commit and two
   files from NVIDIA's driver (checked against pinned checksums), builds
