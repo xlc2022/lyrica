@@ -717,6 +717,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     images; Vulkan for llama.cpp on AMD GPUs ROCm's images don't cover, and
     integrated GPUs count their shared memory). The machine needs only the
     GPU driver and the container runtime's GPU support.
+  - **Optional gpu-unlock.** On GeForce RTX 20/30/40 cards, a kernel module
+    can lift the half-rate FP16/BF16 tensor math at boot, before the driver
+    loads. It is off unless the operator turns it on (`host/gpu-unlock.sh`,
+    or `services.lyrica-host.gpuUnlock` on NixOS); install and updates never
+    touch the kernel (host/README.md, "gpu-unlock").
   - **Our images, pinned by digest.** The host API and ComfyUI images are ours,
     built in CI from pinned versions. vLLM and llama.cpp use their official
     images, also pinned by digest. Nothing is pulled as `latest`.
