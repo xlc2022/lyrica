@@ -40,7 +40,7 @@ function load(thread: Awaited<ReturnType<typeof withMemory>>, skills: LyricaOpti
   void createLyricaExtension(thread.thread().context, { persona: () => persona, profile: () => ({ displayName: "Ada", pronouns: PRONOUN_PRESETS.she, previousNames: [] }), skills })(pi);
   const turn = async () => {
     const options = { cwd: "/", selectedTools: [], sections: {} as Record<string, string> };
-    await handlers.get("before_agent_start")!({ type: "before_agent_start", prompt: "hi", systemPrompt: "", systemPromptOptions: options }, { hasUI: false });
+    await handlers.get("before_agent_start")!({ type: "before_agent_start", messageType: "user", prompt: "hi", systemPrompt: "", systemPromptOptions: options }, { hasUI: false });
     return options.sections;
   };
   return { turn, tools };

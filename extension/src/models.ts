@@ -60,7 +60,7 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
   // A plan's sign-in lives in the user's user.db, where Pi's refresh writes it back.
   const plans = new Set(allowed.filter(({ endpoint }) => isPlan(endpoint.api)).map(({ endpoint }) => endpoint.id));
   const runtime = await ModelRuntime.create({ credentials: new PlanCredentials(models, ctx.userId, plans), modelsPath: null, refreshOnCreate: false });
-  // Pi 1.1.0 always loads its built-in catalog. Drop it, so the runtime starts empty.
+  // Pi 1.4.0 always loads its built-in catalog. Drop it, so the runtime starts empty.
   const internals = runtime as unknown as { defaultBuiltins: Map<string, unknown>; builtins: Map<string, unknown>; rebuildProviders(): void };
   internals.defaultBuiltins.clear();
   internals.builtins.clear();

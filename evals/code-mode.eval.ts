@@ -32,7 +32,7 @@ function fakePi() {
     const options = { cwd: "/", customPrompt: "", selectedTools: [...active], sections: {} as Record<string, string> };
     const messages = [];
     for (const handler of handlers.get("before_agent_start") ?? []) {
-      const result = await handler({ prompt, systemPrompt: "", systemPromptOptions: options }, { hasUI: false, sessionManager });
+      const result = await handler({ messageType: "user", prompt, systemPrompt: "", systemPromptOptions: options }, { hasUI: false, sessionManager });
       if (result?.message) messages.push(result.message.content);
     }
     return { options, text: JSON.stringify(options) + messages.join("\n"), active: [...active] };

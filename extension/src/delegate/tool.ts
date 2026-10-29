@@ -5,7 +5,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { memorySections } from "../memory.ts";
 import { codeTaskText } from "../code.ts";
 import { setToolsOff } from "../gate.ts";
-import { toolGuidance, WORK_GUIDELINES, type ThreadContext } from "../index.ts";
+import { startText, toolGuidance, WORK_GUIDELINES, type ThreadContext } from "../index.ts";
 import { syncEntries } from "../record.ts";
 import { registerMemoryTools } from "../tools.ts";
 import { registerExitCodes } from "../exit-codes.ts";
@@ -265,7 +265,7 @@ export function createSubagentExtension(thread: ThreadContext, role: Role, hooks
       o.customPrompt = subagentPrompt(role, name);
       o.sections = { ...(tools ? { tools } : {}), ...o.sections };
       if (role.name === "coder") {
-        const memory = await memorySections(thread.view, event.prompt, { ...who(), folders: [] });
+        const memory = await memorySections(thread.view, startText(event), { ...who(), folders: [] });
         o.sections.project = memory.project ?? "";
         o.sections.code_task = codeTaskText(codingTask ?? thread.view.own.codeTask(thread.threadId));
         const rules = await repoRules?.();
