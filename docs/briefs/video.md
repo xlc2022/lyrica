@@ -115,6 +115,8 @@ The owner chose, in order:
 - Video upscaling, longer clips by extension, reference-to-video, and
   cloud video providers.
 - HunyuanVideo 1.5 (its licence excludes the EU).
+- Clips that move like another clip: their own brief,
+  [motion-video.md](motion-video.md).
 
 ## Handoff
 
