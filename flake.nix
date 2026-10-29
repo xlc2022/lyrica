@@ -23,7 +23,7 @@
         default = lyrica;
         # The module's default sandbox tools; CI runs the sandbox tests with them.
         sandbox-tools = pkgs.callPackage ./nix/sandbox-env.nix { packages = import ./nix/sandbox-tools.nix pkgs; };
-        sandbox-closure = pkgs.callPackage ./nix/sandbox-closure.nix { rootPaths = [ sandbox-tools pkgs.nodejs_22 pkgs.cacert ]; };
+        sandbox-closure = pkgs.callPackage ./nix/sandbox-closure.nix { rootPaths = [ sandbox-tools pkgs.nodejs_24 pkgs.cacert ]; };
         # services.lyrica-host.gpuUnlock's kernel module, for the default
         # kernel: CI builds it. Its firmware needs NVIDIA's driver, so only a
         # host that turns the option on builds that.

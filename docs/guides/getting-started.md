@@ -197,7 +197,7 @@ read it for anything not covered here.
    search; [searxng.md](searxng.md)), `caddyPackage`, and
    `sandboxPackages`, the tools her commands see (NixOS has no `/usr` to
    share, so the module builds one directory from that list, which
-   includes git, gh, tea, Node 22, Claude Code and Codex by default; add
+   includes git, gh, tea, Node 24, Claude Code and Codex by default; add
    to it to give her more). Codex is the version nixpkgs has, not the one
    install.sh pins. Claude Code is
    unfree, but the module allows that one package alone, so your system
@@ -299,15 +299,15 @@ shows the commit that is running, as on Debian.
    For the SearXNG the script offers (below), install Docker first; the
    script never installs it.
 
-5. **Node.js 22.6 or later**, installed before the script runs (it checks
-   and stops otherwise). The SSH helper that machines use runs with
-   Node's type stripping, which arrived in 22.6; an older 22 fails every
-   machine call. NodeSource's packages are one way:
+5. **Node.js 24** (22.12 or later still works), installed before the
+   script runs (it checks and stops otherwise). CI and the NixOS package
+   use 24. The web UI's build (Vite 8) needs 22.12 or later. NodeSource's
+   packages are one way:
 
    ```sh
-   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+   curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
    apt-get install -y nodejs
-   node --version   # v22.6 or later
+   node --version   # v24
    ```
 
 6. **Internet access** during the install: npm, `proxy.golang.org` for the
