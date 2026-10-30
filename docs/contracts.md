@@ -477,7 +477,7 @@ class Models {                                              // new Models(keyrin
   // onProgress (image() takes it too): JobProgress { queued; progress?: 0-1; busyWith?; loading? } as a model host's job goes (models/progress.ts withProgress, exported):
   // the call carries X-Lyrica-Job: <random token> and GET /host/v1/jobs/<token> is read every 2 s until it ends; a host that
   // hasn't known the job after 5 reads isn't asked again. Cloud models report none.
-  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1-15 }
+  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1-15; steps?: 1-150, in place of the recipe's }
   // GeneratedVideo { bytes (H.264 MP4); type: "video/mp4"; width; height; frames; fps; duration; audio; seed?; poster: GeneratedImage }
   // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image; or `motion`, with drive) answers, so no clip
   // or first frame reaches a cloud model. POST /host/v1/videos/create with explicit fields only; two hours at most.
@@ -1437,7 +1437,7 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     messages project it as a tool marker and optional image part, without
     PNG bytes. Saved task lists are unchanged.
     `video` (`prompt`, optional `size` or `aspectRatio`, which goes to the host
-    as it is, and `duration`) and
+    as it is, `duration`, and `steps`, only when the user asks for a number) and
     `animate` (also `image`, the first frame) and `motion` (also `image`, the subject, and
     `video`, a workspace MP4 read with `ThreadImages.readClip`) make one clip through
     `Models.video` and save it with `ThreadImages.saveVideo`. With

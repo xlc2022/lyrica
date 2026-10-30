@@ -1642,8 +1642,8 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 .add-part .seg { justify-self: start; align-self: start; flex-wrap: wrap; }
 .add-part .seg button { padding: 0 12px; }
 .add-part .choice-file { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
-.field.strength { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.field.strength input { width: 88px; font-family: var(--mono); }
+.field.strength, .field.steps .steps-in { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.field.strength input, .field.steps input { width: 88px; font-family: var(--mono); }
 /* The groups by architecture, each ending with the parts that fit it. */
 .arch-groups { display: grid; gap: 12px; max-width: 900px; min-width: 0; }
 .arch-group { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--panel); min-width: 0; }

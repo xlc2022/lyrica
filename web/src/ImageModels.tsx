@@ -415,6 +415,27 @@ function ArchParts({ arch, libs }: { arch: string; libs: HostLibrary[] }) {
  * Use for and Delete model…; a proposal has Use this recipe or Download the missing parts, and Ignore, instead.
  * `details` leaves the actions out.
  */
+/** A recipe's default steps, typed and clamped to 1 to 150 when left; saved to the host when it changes. */
+function StepsField({ steps, disabled, onSave }: { steps: number; disabled: boolean; onSave: (n: number) => void }) {
+  const [text, setText] = useState(String(steps));
+  const leave = () => {
+    const n = Number(text);
+    if (!text.trim() || !Number.isFinite(n)) { setText(String(steps)); return; }
+    const v = Math.min(150, Math.max(1, Math.round(n)));
+    setText(String(v));
+    if (v !== steps) onSave(v);
+  };
+  return (
+    <label className="field steps"><span>Steps</span>
+      <span className="steps-in">
+        <input type="number" min={1} max={150} step={1} value={text} disabled={disabled} onChange={(e) => setText(e.target.value)} onBlur={leave}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); leave(); } }} />
+        <span className="muted">of <span className="num">150</span></span>
+      </span>
+    </label>
+  );
+}
+
 function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean }) {
   const r = c.recipe;
   const [changing, setChanging] = useState<number>();
@@ -450,6 +471,9 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
         </button>)}
       </div>
     </div>
+  );
+  const steps = !details && !proposed && typeof r.defaults.steps === "number" && (
+    <StepsField key={`${r.id}:${r.defaults.steps}`} steps={r.defaults.steps} disabled={!editable || L.busy} onSave={(n) => change({ op: "defaults", defaults: { steps: n } })} />
   );
   const where = mainPart?.downloaded ? `${her()}'s downloads` : "the shared folder";
   return (
@@ -497,10 +521,11 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
           </PartRow>
         ))}
       </ul>
-      {!details && (editable && !proposed || useFor) && (
+      {!details && (editable && !proposed || useFor || steps) && (
         <div className="copyfoot">
           {editable && !proposed && <button type="button" className="sm" disabled={L.busy} onClick={() => L.onAddPart?.(c)}>Add part</button>}
           {useFor}
+          {steps}
           {editable && !proposed && mainPart?.downloaded && <button type="button" className="link danger" disabled={L.busy} onClick={() => L.onDelete?.(c)}>Delete model…</button>}
         </div>
       )}
