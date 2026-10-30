@@ -1389,6 +1389,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `size: { width, height }` or `aspectRatio` (`width:height`), `count` and
     `references`; edit takes `image`, `instruction`, optional `mask`, `count`
     and `references`; upscale takes `image`, optional `scale` and `maxSize`.
+    Create, edit and upscale take an optional `model`, a name she was asked
+    for: `Models.namedImageModels` turns it into offerings tried before the
+    list for that call (docs/models.md, "A model asked for by name").
     The parameters are one object (`action` plus every field, optional, each
     described with the actions it is for), not a union: LM Studio refuses
     tool parameters that aren't `"type": "object"`, and small models' chat
@@ -1415,7 +1418,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Always and local models allow. Ask's approval is per user through the end
     of that server-local day; a policy change clears it. No viewer means denial.
     Outputs save in the encrypted thread folder and return Pi image content
-    (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>”.
+    (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>”,
+    with a note when a named model matched none and `Passed over first: …` when it fell back.
     A content refusal returns `isError: true` with the refusal's message
     (fixed, or Codex's quoted reply) and details
     `{ imageRefusal: { code: "image_refusal", offeringId, endpointId } }`;

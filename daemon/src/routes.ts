@@ -1279,7 +1279,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       if (!offeringId) throw new HttpError(409, "no next image model is available");
       // Check the selected model against today's privacy, capability and tier rules before starting.
       const selected = s().models.resolve(`image.${retry.args.action}`, { ...retry.routing, fallback: false,
-        overrides: { ...retry.routing.overrides, [`image.${retry.args.action}`]: [{ offeringId }] } }, retry.need);
+        overrides: { ...retry.routing.overrides, [`image.${retry.args.action}`]: [{ offeringId }] } }, { ...retry.need, first: undefined });
       if (retry.noCloud && selected.endpoint.kind === "cloud") throw new HttpError(400, "Photos of you aren't allowed to go to cloud models.");
       await s().host.get(user.id, pool, thread.id).retryImage(retry.args, offeringId, retry.options.userMessage?.n);
       return { ok: true };

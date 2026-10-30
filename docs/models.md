@@ -329,6 +329,21 @@ in `user.db` (`settings.fallback`, `thread_choices.fallback`).
 `inheritContext` gives a branch or subagent its parent's switch, whatever the
 default becomes.
 
+**A model asked for by name.** `need.first` holds offering IDs tried before
+the list, for that one call; the list itself is unchanged, so its first
+model is the second choice. Image calls fill it from
+`namedImageModels(ctx, action, name)`: the models that can do the action
+whose name contains the given one, ignoring case, spaces and punctuation
+("Krea2" finds "Krea 2 Turbo"), those in the list first and in its order.
+Any of the user's image models can match, not only those in the list; a
+private or local-only context matches local models only, and Free models
+only still applies. A named model answers whatever the create tier. With
+Fallback off only the named model is tried. `Resolution.passedOver` lists
+the skipped models that could have answered (their machine was away, a call
+to them failed, Free models only ruled them out, or they were named), not
+those that don't do the call; `callWithFallback` adds the models its calls
+failed on to it and to `skipped`.
+
 `resolveLive` first probes the chosen endpoint (2 seconds) when its health
 isn't known lately and there is a later model to fall back to (or always,
 with `probeLast`, as sleep asks).
@@ -661,7 +676,10 @@ saved task lists stay unchanged.
 The `image` tool reads workspace paths and `/photos-of-me/<file>`, enforces
 the user's portrait policy before each resolved attempt, and stores results in
 the encrypted thread folder. Its text result says “Made with <model> on
-<host or endpoint name>” for every provider, alongside the saved paths.
+<host or endpoint name>” for every provider, alongside the saved paths, then
+`No image model here is called "<name>"; the ones that can: …` when a named
+model matched none, and `Passed over first: <label> (<reason>); …` whenever
+`passedOver` isn't empty, so she can say she fell back.
 After a refusal, the tool runs no more image calls for the rest of her turn
 (it resets on Pi's `agent_start`), answering each with
 `REFUSED_THIS_TURN`, so a model can't reword the prompt and spend more of

@@ -886,7 +886,8 @@ export class HostedThread {
           files: workspace.imageFiles({ userId: this.userId, pool: this.pool, threadId: this.threadId, coordinates: !!view.own.getThread(this.threadId)?.project }),
           settings: () => workspace.settings(this.userId), enabled: () => tools.settings().images && tools.settings().mode !== "plan",
           approve: r => this.approve(r),
-        }, id, args, controller.signal, undefined, (p) => this.makingNow({ ...making, ...(p.queued ? { queued: true } : {}), ...(p.progress === undefined ? {} : { progress: p.progress }) }));
+          // The retry's chosen model only: a model named in the first call doesn't go before it.
+        }, id, { ...args, model: undefined }, controller.signal, undefined, (p) => this.makingNow({ ...making, ...(p.queued ? { queued: true } : {}), ...(p.progress === undefined ? {} : { progress: p.progress }) }));
       } catch (err) { result = { content: [{ type: "text" as const, text: plainError((err as Error).message) }], isError: true, details: undefined }; }
       finally { this.making.delete(id); this.emit({ type: "made", toolCallId: id }); }
       const text = shortResult(result.content);
