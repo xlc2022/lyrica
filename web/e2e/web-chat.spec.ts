@@ -3,7 +3,7 @@
 // Tests run in order on this file's own lyricad per size.
 import { deflateSync } from "node:zlib";
 import { expect, test } from "@playwright/test";
-import { phone, enter, newThread, send, openSettings, togglePrivate, threadIdOf, sendTo, hitHeight, noHorizontalScroll } from "./helpers.ts";
+import { phone, enter, newThread, send, openSettings, deleteThread, togglePrivate, threadIdOf, sendTo, hitHeight, noHorizontalScroll } from "./helpers.ts";
 
 test.describe.configure({ mode: "serial" });
 
@@ -933,10 +933,9 @@ test("a child thread nests under its parent, opens from its card, and goes with 
   await view.getByText("Child thread of").getByRole("link").click();
   if (!phone(page)) await expect(page.getByRole("complementary", { name: "Seed list" })).toHaveCount(0);
 
-  const drawer = await openSettings(page);
-  await drawer.getByRole("button", { name: "Forget this thread" }).click();
-  await expect(drawer.getByLabel("Also forget its child thread")).toBeChecked();
-  await drawer.getByRole("button", { name: "Forget it" }).click();
+  const dialog = await deleteThread(page);
+  await expect(dialog.getByLabel("Also delete its child thread")).toBeChecked();
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   // On a failure the message says whether the server still lists the child, or only the sidebar does.
   const listed = async () => ((await page.evaluate(async (path) => (await fetch(path)).json(), `/api/u/${userId}/threads`)) as { title?: string; state?: string; parent?: string }[])
@@ -989,9 +988,7 @@ test("a message to a child thread, and a read of it, are headed by its title, cu
   const childId = threadIdOf((await open.getAttribute("href"))!);
   await page.goto(`/#/u/${userId}/t/general/${encodeURIComponent(childId)}`);
   await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
-  const drawer = await openSettings(page);
-  await drawer.getByRole("button", { name: "Forget this thread" }).click();
-  await drawer.getByRole("button", { name: "Forget it" }).click();
+  await (await deleteThread(page)).getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: title })).toHaveCount(0);
   await page.goto(parentUrl);
   await page.reload();
@@ -1000,9 +997,7 @@ test("a message to a child thread, and a read of it, are headed by its title, cu
   await expect(head).not.toHaveAttribute("title");
   await expect(card.getByRole("link", { name: "Open" })).toHaveCount(0);
   // Forget the parent too, so later tests' recall doesn't find these words.
-  const parent = await openSettings(page);
-  await parent.getByRole("button", { name: "Forget this thread" }).click();
-  await parent.getByRole("button", { name: "Forget it" }).click();
+  await (await deleteThread(page)).getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page).not.toHaveURL(parentUrl);
 });
 

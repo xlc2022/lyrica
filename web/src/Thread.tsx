@@ -394,7 +394,7 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         : <Composer base={base} busy={t.live.busy} onSend={send} onStop={stop} restored={restored} settings={settings.data} machines={granted} onSettings={changeSettings} onError={setSendError} />}
       {drawer && settings.data && s && !s.subagent && (
         <SettingsDrawer
-          ctx={ctx} base={base} summary={s} settings={settings.data} machines={machines.data ?? []} children={findThread(threads, pool, threadId)?.children.length ?? 0}
+          ctx={ctx} base={base} summary={s} settings={settings.data} machines={machines.data ?? []}
           onSettings={settings.set} onSummary={(x) => { summary.set(x); refreshThreads(); }}
           onClose={() => setDrawer(false)} id={drawerId}
         />

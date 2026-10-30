@@ -48,8 +48,9 @@ thread's ID and when it was deleted, nothing else.
    follows it: unticked, "Its messages are deleted, and so is what <her name>
    learned only from it. This can't be undone."; ticked, "Its messages are
    deleted. What <her name> learned from it stays in memory. This can't be
-   undone." The child-thread option keeps its place below. The Settings
-   "Forget this thread?" confirm gets the same checkbox.
+   undone." The child-thread option keeps its place below. (The thread
+   drawer's "Forget this thread" confirm, which duplicated it, was removed
+   later: Delete… is the one place.)
 5. **Tombstone view.** A citation whose link is `deleted` reads "a deleted
    thread" with a "deleted" cap, and opens the thread route. The thread route,
    on a 404, asks for the tombstone and shows it in the thread pane: h1

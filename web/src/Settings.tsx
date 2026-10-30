@@ -2,7 +2,7 @@
 import { isChatModel, matchesModel, ModelLabel, modelName, shortModel } from "./ModelLabel.tsx";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
-  del, get, patch, u,
+  get, patch, u,
   type AllowedPaths, type EndpointInfo, type Grant, type ModelRef, type PermissionMode, type MachineInfo, type OfferingInfo, type Presets,
   type TaskModel, type ThinkingLevel, type ThreadSettings, type ThreadSettingsChange, type ThreadSummary, type ThreadTask,
 } from "./api.ts";
@@ -12,9 +12,8 @@ import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { MODE_ORDER, MODES } from "./Modes.tsx";
 import { VoiceDrawer } from "./ModelsFrame.tsx";
-import { go } from "./route.ts";
 import type { ShellContext } from "./Shell.tsx";
-import { Confirm, ConfirmDialog, ErrorText, Switch, useAction, useDismiss, useInView, useLoad } from "./ui.tsx";
+import { ConfirmDialog, ErrorText, Switch, useAction, useDismiss, useInView, useLoad } from "./ui.tsx";
 
 export const CODE_MODE_HINT = "Focus on the code: a coding model, a short persona, and only this project's memory and your working preferences.";
 
@@ -134,12 +133,10 @@ function ModelPicker({ base, settings, task, onChange, onEscape }: {
   );
 }
 
-export function SettingsDrawer({ ctx, base, summary, settings, machines, onSettings, onSummary, onClose, children = 0, id = "thread-settings" }: {
+export function SettingsDrawer({ ctx, base, summary, settings, machines, onSettings, onSummary, onClose, id = "thread-settings" }: {
   ctx: ShellContext; base: string; summary: ThreadSummary; settings: ThreadSettings;
   /** The user's machines; those of the thread's pool can be granted. */
   machines: MachineInfo[];
-  /** Its child threads listed under it: forgetting asks whether they go too. */
-  children?: number;
   /** The element id the header button's aria-controls names; one per Thread tree, since two can share a page. */
   id?: string;
   onSettings: (s: ThreadSettings) => void; onSummary: (s: ThreadSummary) => void; onClose: () => void;
@@ -283,11 +280,6 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
           </form>
           <div className="row">
             <button type="button" onClick={() => changeThread({ hidden: !summary.hidden })}>{summary.hidden ? "Unhide" : "Hide"}</button>
-            {!sub && (
-              <Forget children={children} onForget={(withChildren, keepMemories) => run(async () => {
-                await del(base, { children: withChildren, keepMemories }); ctx.refreshThreads(); go({ page: "home", userId });
-              })} />
-            )}
           </div>
         </fieldset>
       </div>
@@ -462,13 +454,3 @@ export function Machines({ granted, machines, onChange }: { granted: string[]; m
   );
 }
 
-/** Forgetting a thread asks first, and whether its child threads go too (ticked). */
-function Forget({ children, onForget }: { children: number; onForget: (withChildren: boolean, keepMemories: boolean) => void }) {
-  return (
-    <Confirm label="Forget this thread" danger confirm="Forget it" onConfirm={([keep, kids]) => onForget(!!kids, !!keep)}
-      question={([keep]) => keep
-        ? `Forget this thread? Its messages are deleted. What ${her()} learned from it stays in memory. This can't be undone.`
-        : `Forget this thread? Its messages are deleted, and so is what ${her()} learned only from it. This can't be undone.`}
-      options={[{ label: "Keep memories", ticked: false }, ...(children > 0 ? [{ label: `Also forget its ${children === 1 ? "child thread" : `${children} child threads`}`, ticked: true }] : [])]} />
-  );
-}
