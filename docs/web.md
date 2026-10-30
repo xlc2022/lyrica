@@ -369,7 +369,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   general MCP server yet" when there's none, with an **MCP servers** link at
   its foot; a change applies at once), the mode, the
   **Code mode** (Behaviour, saved at once), Web search and Images switches, the Claude Code switch (only where
-  `claudeCodeOffered`, or while on), "Do not log", rename, hide, and forget. `lyricad` validates every
+  `claudeCodeOffered`, or while on), "Do not log", rename and hide (deleting is the thread menu's Delete…). `lyricad` validates every
   change and its reason is shown. Code mode selects the Coding model in the
   header and its picker; turning it off restores Chat. Its tooltip says
   "Focus on the code: a coding model, a short persona, and only this
@@ -1332,8 +1332,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   tapped (the text is shown once, not repeated in the chat); open,
   it is a tinted block headed "Lyrica · from <title>" with the message menu
   (Branch, Delete; not Edit), and one taller than twelve lines shows
-  **Show more**. Forgetting a thread with child threads asks
-  whether to forget them too, ticked, in the shared `Confirm` with one option.
+  **Show more**. Deleting a thread with child threads asks
+  whether to delete them too, ticked, in the thread menu's `ConfirmDialog`.
 - When a wake-up fires (her `threads later`), her note arrives as a message
   with `from.kind === "wakeup"` (live, text starting `[Wake-up, set …]`). It
   is one line, **Woke up · set <time>**, with "· due <time>" when it fired
