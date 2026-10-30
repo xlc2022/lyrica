@@ -1,5 +1,5 @@
 // Reads a GGUF file's metadata (the key-value header) and its tensors' names and shapes, never their data.
-import { closeSync, openSync, readSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 
 export type GgufValue = string | number | bigint | boolean | GgufValue[] | null;
 
@@ -22,6 +22,11 @@ class Reader {
     this.buf = Buffer.concat([rest, chunk.subarray(0, got)]);
     this.pos = 0;
     if (this.buf.length < n) throw new Error("GGUF header ends early");
+  }
+
+  /** Where the next read starts in the file. */
+  get at(): number {
+    return this.filePos - (this.buf.length - this.pos);
   }
 
   bytes(n: number): Buffer {
@@ -81,9 +86,14 @@ export function readGgufTensors(path: string): Record<string, number[]> {
   return readHeader(path, true).shapes;
 }
 
+/** A GGUF file's tensors by name, each with the bytes its data takes in the file (up to the next tensor's, with its padding). */
+export function readGgufTensorBytes(path: string): Record<string, number> {
+  return readHeader(path, true).bytes;
+}
+
 const ORIG_SHAPE = "comfy.gguf.orig_shape.";
 
-function readHeader(path: string, tensors: boolean): { meta: Record<string, GgufValue>; shapes: Record<string, number[]> } {
+function readHeader(path: string, tensors: boolean): { meta: Record<string, GgufValue>; shapes: Record<string, number[]>; bytes: Record<string, number> } {
   const fd = openSync(path, "r");
   try {
     const r = new Reader(fd);
@@ -98,6 +108,7 @@ function readHeader(path: string, tensors: boolean): { meta: Record<string, Gguf
       meta[key] = value(r, r.u32(), 64);
     }
     const shapes: Record<string, number[]> = {};
+    const offsets: [string, number][] = [];
     for (let i = 0; tensors && i < tensorCount; i++) {
       const name = r.string();
       const dims = r.u32();
@@ -105,23 +116,30 @@ function readHeader(path: string, tensors: boolean): { meta: Record<string, Gguf
       const shape: number[] = [];
       for (let d = 0; d < dims; d++) shape.unshift(Number(r.u64()));
       r.u32(); // type
-      r.u64(); // offset
+      offsets.push([name, Number(r.u64())]);
       shapes[name] = shape;
     }
+    // The data starts at the next multiple of the alignment after the header; each tensor runs to the next one, the last to the end of the file.
+    const align = Number(meta["general.alignment"] ?? 32);
+    const start = Math.ceil(r.at / align) * align;
+    const end = tensors ? fstatSync(fd).size - start : 0;
+    const sorted = [...offsets].sort((a, b) => a[1] - b[1]);
+    const bytes: Record<string, number> = {};
+    sorted.forEach(([name, at], i) => (bytes[name] = (sorted[i + 1]?.[1] ?? end) - at));
     // ComfyUI-GGUF flattens tensors of more than four dimensions (Wan's 5-D
     // patch embedding) and keeps the true shape, already in PyTorch's order, here.
     for (const [key, v] of Object.entries(meta)) {
       const name = key.startsWith(ORIG_SHAPE) ? key.slice(ORIG_SHAPE.length) : null;
       if (name && name in shapes && Array.isArray(v) && v.every((d) => typeof d === "number")) shapes[name] = v as number[];
     }
-    return { meta, shapes };
+    return { meta, shapes, bytes };
   } finally {
     closeSync(fd);
   }
 }
 
-/** Writes a GGUF header with the given metadata and tensor infos (PyTorch shapes) but no tensor data: for tests and fakes. */
-export function ggufBytes(meta: Record<string, string | number | boolean | number[]>, tensors: Record<string, number[]> = {}): Buffer {
+/** Writes a GGUF header with the given metadata and tensor infos (PyTorch shapes, data offsets) but no tensor data: for tests and fakes. */
+export function ggufBytes(meta: Record<string, string | number | boolean | number[]>, tensors: Record<string, number[]> = {}, offsets: Record<string, number> = {}): Buffer {
   const parts: Buffer[] = [Buffer.from("GGUF"), u32(3), u64(Object.keys(tensors).length), u64(Object.keys(meta).length)];
   for (const [k, v] of Object.entries(meta)) {
     parts.push(str(k));
@@ -131,7 +149,7 @@ export function ggufBytes(meta: Record<string, string | number | boolean | numbe
     else if (Number.isInteger(v)) parts.push(u32(4), u32(v));
     else { const b = Buffer.alloc(4); b.writeFloatLE(v); parts.push(u32(6), b); }
   }
-  for (const [name, shape] of Object.entries(tensors)) parts.push(str(name), u32(shape.length), ...[...shape].reverse().map(u64), u32(0), u64(0));
+  for (const [name, shape] of Object.entries(tensors)) parts.push(str(name), u32(shape.length), ...[...shape].reverse().map(u64), u32(0), u64(offsets[name] ?? 0));
   return Buffer.concat(parts);
 }
 function u32(n: number) { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; }

@@ -216,7 +216,7 @@ export class Runtime {
       const as = { ...model, capabilities: { ...model.capabilities } };
       this.pickProjector(as, picked as string | undefined);
       // Refused when saved if the placement can't work, with the reason. Applies at the next load, or on Reload.
-      const saved = validate(as, body.settings as Record<string, unknown>, await s.validationGpus(serverOf(model)), (i) => s.gpuSettings(i), s.onCpu(model));
+      const saved = validate(as, body.settings as Record<string, unknown>, await s.validationGpus(serverOf(model)), (i) => s.gpuSettings(i), s.onCpu(model), s.ramAllowance);
       // A stretch past what the publisher documents was never tested by them: saved only when asked for anyway.
       const rec = this.state.get().recommended[model.id];
       if (saved.stretch && rec?.factor && saved.stretch.factor > rec.factor && body.anyway !== true) {
@@ -266,6 +266,14 @@ export class Runtime {
       sendJson(res, 200, { settings: s.gpuSettings(Number(gpu[1])) });
       return true;
     }
+    if (pathname === "/host/v1/memory" && method === "PUT") {
+      const body = await readJson(req);
+      onlyFields(body, ["systemRam"]);
+      if (typeof body.systemRam !== "number") throw invalid(`systemRam is bytes, from 0 to ${s.memory.most}.`);
+      await s.setRamAllowance(body.systemRam);
+      sendJson(res, 200, s.ramStatus());
+      return true;
+    }
     if (method === "POST" && ["/host/v1/pause", "/host/v1/resume", "/host/v1/restart"].includes(pathname)) {
       if (pathname.endsWith("pause")) await s.pause();
       else if (pathname.endsWith("resume")) await s.resume(this.models);
@@ -292,6 +300,8 @@ export class Runtime {
       maxContextLength: maxContextOf(m, settings),
       trainedContextLength: m.contextLength,
       kvBytes: sized && m.kvPerToken !== null ? sized.kv : null,
+      // What it would keep in the host's system RAM, not fitting the GPUs.
+      ramBytes: this.scheduler.expectedRam(m),
       recommended: this.state.get().recommended[m.id] ?? null,
       // vLLM 0.30 misreads the original context on Qwen3.5-style M-RoPE (vllm#58870).
       stretchUntested: m.server === "vllm",

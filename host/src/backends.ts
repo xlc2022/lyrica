@@ -120,7 +120,9 @@ export class LlamaCpp implements Backend {
       lines.push(`c = ${contextOf(model, s)}`);
       // YaRN, as the publisher's card gives it for llama-server.
       if (s.stretch) lines.push("rope-scaling = yarn", `rope-scale = ${s.stretch.factor}`, `yarn-orig-ctx = ${s.stretch.originalContext}`);
-      lines.push(`n-gpu-layers = ${s.gpuLayers ?? 999}`, `flash-attn = ${s.flashAttention ?? "auto"}`);
+      lines.push(`n-gpu-layers = ${at.gpuLayers ?? s.gpuLayers ?? 999}`, `flash-attn = ${s.flashAttention ?? "auto"}`);
+      // Experts of the first layers kept in system RAM, when the model doesn't fit its GPUs.
+      if (at.cpuMoe) lines.push(`n-cpu-moe = ${at.cpuMoe}`);
       if (s.kvCacheType) lines.push(`cache-type-k = ${s.kvCacheType}`, `cache-type-v = ${s.kvCacheType}`);
       // One cache of the whole context, shared by the requests it serves at once, as the daemon plans.
       const parallel = concurrentOf(model, s);

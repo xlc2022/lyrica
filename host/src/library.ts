@@ -4,7 +4,7 @@
 // voice models for the speech server. Reads headers only.
 import { closeSync, existsSync, lstatSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
-import { readGguf, type GgufValue } from "./gguf.ts";
+import { readGguf, readGgufTensorBytes, type GgufValue } from "./gguf.ts";
 
 export interface Identity {
   basename: string | null;
@@ -54,6 +54,9 @@ export interface TextModel {
   mtp?: string | null;
   /** The GGUF carries its own MTP layers, so llama.cpp can draft with no second file. */
   builtInMtp?: boolean;
+  /** A GGUF model's layers, and the bytes of its experts' weights (a mixture of experts), for keeping part of it in system RAM. */
+  layers?: number;
+  expertBytes?: number;
   /** The sizes of the projector and the MTP file, counted when they're used. */
   mmprojSize?: number;
   mtpSize?: number;
@@ -200,10 +203,16 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
   const embedding = pooling !== undefined && Number(pooling) !== 0;
   let size = statSync(path).size;
   const shard = basename(path).match(SHARD);
+  const shards = [path];
   if (shard) {
     const prefix = basename(path).slice(0, -shard[0].length);
-    for (const s of siblings) if (s !== basename(path) && s.startsWith(prefix) && SHARD.test(s)) size += statSync(join(dirname(path), s)).size;
+    for (const s of siblings) {
+      if (s === basename(path) || !s.startsWith(prefix) || !SHARD.test(s)) continue;
+      size += statSync(join(dirname(path), s)).size;
+      shards.push(join(dirname(path), s));
+    }
   }
+  const layers = Number(meta[`${arch}.block_count`]);
   const { mmproj, mtp } = embedding ? { mmproj: null, mtp: null } : companions(root, path);
   const builtInMtp = Number(meta[`${arch}.nextn_predict_layers`] ?? 0) > 0;
   const context = meta[`${arch}.context_length`];
@@ -237,8 +246,22 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
     ...(mmproj ? { mmprojSize: statSync(join(root, mmproj)).size } : {}),
     ...(mtp ? { mtpSize: statSync(join(root, mtp)).size } : {}),
     ...(recommended ? { sampling: recommended } : {}),
+    ...(Number.isInteger(layers) && layers > 0 ? { layers, ...expertsOf(shards) } : {}),
     remoteCode: false,
   };
+}
+
+/** The bytes of a mixture of experts' expert weights, over all its shards: what llama.cpp's n-cpu-moe keeps in system RAM. */
+function expertsOf(shards: string[]): { expertBytes?: number } {
+  let n = 0;
+  for (const path of shards) {
+    try {
+      for (const [name, bytes] of Object.entries(readGgufTensorBytes(path))) if (/\.ffn_(up|down|gate|gate_up)_exps\./.test(name)) n += bytes;
+    } catch {
+      return {};
+    }
+  }
+  return n ? { expertBytes: n } : {};
 }
 
 /**

@@ -6,13 +6,14 @@
 // holds its GPUs against lower ones. Idle models are unloaded least recently
 // used first, never a pinned one or one in use. A model that can't fit fails
 // with a plain reason instead of running out of memory.
-import { HostError } from "./http.ts";
+import { totalmem } from "node:os";
+import { HostError, invalid } from "./http.ts";
 import type { Backend } from "./backends.ts";
 import { CMP_100_210, type Gpu, type GpuMonitor } from "./gpus.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import {
-  autoContext, CPU_OPTION, defaultGpu, neverFits, options, placementKey, serverOf, sizes, SERVER_NAMES, SERVERS,
+  autoContext, CPU_OPTION, defaultGpu, neverFits, options, placementKey, ramMost, serverOf, sizes, SERVER_NAMES, SERVERS,
   type GpuSettings, type ModelSettings, type Option, type Server,
 } from "./placement.ts";
 import type { StateFile } from "./state.ts";
@@ -86,6 +87,8 @@ export interface SchedulerOptions {
   settleMs?: number;
   /** How long, in ms, an unloaded model's GPU must stop freeing memory before it counts as done. */
   quietMs?: number;
+  /** The machine's memory, for the system RAM allowance's limit. */
+  memoryBytes?: number;
 }
 
 export type HostRunState = "running" | "pausing" | "paused" | "restarting";
@@ -192,6 +195,33 @@ export class Scheduler {
     return this.o.state.get().models[model.id] ?? { placement: { mode: "auto" } };
   }
 
+  /** The machine's memory, and the most of it the allowance may give models. */
+  get memory(): { total: number; most: number } {
+    const total = this.o.memoryBytes ?? totalmem();
+    return { total, most: ramMost(total) };
+  }
+
+  /** Bytes of system RAM llama.cpp models may keep there when they don't fit the GPUs; 0 is off. */
+  get ramAllowance(): number {
+    return Math.min(this.o.state.get().systemRam ?? 0, this.memory.most);
+  }
+
+  /** What loaded models keep in system RAM, all together. */
+  private ramUsed(except?: Set<Loaded>): number {
+    return [...this.loaded.values()].filter((l) => !except?.has(l)).reduce((n, l) => n + (l.option.ram ?? 0), 0);
+  }
+
+  /** Sets the allowance; models over the new one are unloaded once idle, and loaded again within it. */
+  async setRamAllowance(bytes: number): Promise<void> {
+    if (!Number.isFinite(bytes) || bytes < 0 || bytes > this.memory.most) throw invalid(`systemRam is bytes, from 0 to ${this.memory.most}.`);
+    const over = bytes < this.ramUsed() ? [...this.loaded.values()].filter((l) => l.option.ram) : [];
+    if (over.some((l) => l.active > 0 || !l.ready)) throw new HostError(409, "in_use", "A model in system RAM is in use.");
+    for (const l of over) await this.unload(l);
+    this.o.state.update((st) => {
+      st.systemRam = Math.round(bytes);
+    });
+  }
+
   /**
    * Its settings with the context it is served with: a chat model with none
    * saved gets the largest that fits once Lyrica's unpinned models are
@@ -202,11 +232,14 @@ export class Scheduler {
     if (s.contextLength !== undefined || model.kind !== "chat" || this.onCpu(model)) return s;
     const l = this.loaded.get(model.id);
     if (l?.auto) return { ...s, contextLength: l.settings.contextLength };
-    // What the GPUs hold besides Lyrica's models that could be unloaded: other programs, and pinned models.
-    const others = this.gpusFor(serverOf(model)).map((g) => ({
+    return { ...s, contextLength: autoContext(model, s, this.othersView(model), (i) => this.gpuSettings(i)) };
+  }
+
+  /** The GPUs with what they hold besides Lyrica's models that could be unloaded: other programs, and pinned models. */
+  private othersView(model: TextModel): Gpu[] {
+    return this.gpusFor(serverOf(model)).map((g) => ({
       ...g, used: Math.max(0, g.used - [...this.loaded.values()].filter((x) => x.model.id !== model.id && !this.pinned(x.model.id)).reduce((n, x) => n + (x.vram[g.index] ?? 0), 0)),
     }));
-    return { ...s, contextLength: autoContext(model, s, others, (i) => this.gpuSettings(i)) };
   }
 
   private pinned(id: string): boolean {
@@ -250,7 +283,7 @@ export class Scheduler {
     }
     const s = this.served(model);
     const empty = this.gpusFor(serverOf(model)).map((g) => ({ ...g, used: 0 }));
-    const reasons = opts.map((o) => neverFits(model, s, { ...o, need: this.needOf(model, o, s) }, empty, (i) => this.gpuSettings(i)));
+    const reasons = opts.map((o) => neverFits(model, s, { ...o, need: this.needOf(model, o, s) }, empty, (i) => this.gpuSettings(i), this.ramAllowance));
     return reasons.every((r) => r !== null) ? reasons[0]! : null;
   }
 
@@ -259,7 +292,8 @@ export class Scheduler {
     if (this.onCpu(job.model)) return [CPU_OPTION];
     const s = this.served(job.model);
     const gpus = this.gpusFor(serverOf(job.model));
-    if (job.gpu === undefined) return options(job.model, s, gpus, (i) => this.gpuSettings(i));
+    // A spill is sized for the GPUs once the models that can be unloaded are.
+    if (job.gpu === undefined) return options(job.model, s, this.othersView(job.model), (i) => this.gpuSettings(i), this.ramAllowance);
     // ComfyUI: its one GPU, which must allow images.
     const g = gpus.find((x) => x.index === job.gpu);
     const gs = this.gpuSettings(job.gpu);
@@ -453,16 +487,19 @@ export class Scheduler {
       const gpu = view.find((x) => x.index === g)!;
       return gpu.total - gpu.used - this.gpuSettings(g).keepFree;
     };
+    // Models in system RAM share the allowance, as models on a GPU share its memory.
     const deficitOf = (o: Option) => {
       const need = this.needOf(model, o, s);
-      return (evicted: Set<Loaded>) => o.gpus.some((g) => need[g]! > free(g) + [...evicted].reduce((n, l) => n + (l.vram[g] ?? 0), 0));
+      return (evicted: Set<Loaded>) => o.gpus.some((g) => need[g]! > free(g) + [...evicted].reduce((n, l) => n + (l.vram[g] ?? 0), 0)) ||
+        (!!o.ram && o.ram > this.ramAllowance - this.ramUsed(evicted));
     };
+    const inRam = (o: Option) => (o.ram ? [...this.loaded.values()].filter((l) => l.option.ram) : []);
     // A way that can't work even on empty GPUs is out, whatever unloading
     // could free (on an integrated GPU, a model may sit in shared memory that
     // this server can't use).
     const empty = view.map((g) => ({ ...g, used: 0 }));
     const measured = (o: Option) => ({ ...o, need: this.needOf(model, o, s) });
-    const possible = opts.filter((o) => !neverFits(model, s, measured(o), empty, (i) => this.gpuSettings(i)));
+    const possible = opts.filter((o) => !neverFits(model, s, measured(o), empty, (i) => this.gpuSettings(i), this.ramAllowance));
     const usable = possible.filter((o) => !o.gpus.some((g) => held.has(g)));
     // A way that needs no unloading beats one that does, whatever its order.
     const roomy = usable.find((o) => !deficitOf(o)(new Set(rivals)));
@@ -470,7 +507,7 @@ export class Scheduler {
     let waitFor: number[] | null = null;
     for (const o of usable) {
       const deficit = deficitOf(o);
-      const idle = [...new Set(o.gpus.flatMap(loadedOn))].filter((l) => l.ready && l.active === 0 && !this.pinned(l.model.id)).sort((a, b) => a.lastUsed - b.lastUsed);
+      const idle = [...new Set([...o.gpus.flatMap(loadedOn), ...inRam(o)])].filter((l) => l.ready && l.active === 0 && !this.pinned(l.model.id)).sort((a, b) => a.lastUsed - b.lastUsed);
       const evict = new Set<Loaded>(rivals);
       for (const l of idle) {
         if (!deficit(evict)) break;
@@ -478,7 +515,7 @@ export class Scheduler {
       }
       if (!deficit(evict)) return { option: o, evict: [...evict] };
       // Would it fit once the busy models are done?
-      const all = new Set([...rivals, ...new Set(o.gpus.flatMap(loadedOn))].filter((l) => rivals.includes(l) || !this.pinned(l.model.id)));
+      const all = new Set([...rivals, ...new Set([...o.gpus.flatMap(loadedOn), ...inRam(o)])].filter((l) => rivals.includes(l) || !this.pinned(l.model.id)));
       if (!deficit(all) && !waitFor) waitFor = o.gpus;
     }
     if (waitFor) return { wait: waitFor };
@@ -486,8 +523,13 @@ export class Scheduler {
     if (!usable.length) return { wait: [...new Set(possible.flatMap((o) => o.gpus))] };
     // It can never fit: say why, for the first way it could have run.
     const o = opts[0]!;
-    const reason = neverFits(model, s, measured(o), empty, (i) => this.gpuSettings(i));
+    const reason = neverFits(model, s, measured(o), empty, (i) => this.gpuSettings(i), this.ramAllowance);
     if (reason) return new HostError(413, "too_big", reason);
+    if (o.ram && o.ram > this.ramAllowance - this.ramUsed(new Set([...this.loaded.values()].filter((l) => !this.pinned(l.model.id))))) {
+      const gb = (n: number) => (n / GIB).toFixed(1);
+      const pinned = [...this.loaded.values()].filter((l) => this.pinned(l.model.id) && l.option.ram).reduce((n, l) => n + l.option.ram!, 0);
+      return new HostError(413, "too_big", `This model needs about ${gb(o.ram)} GB of system RAM; the allowance is ${gb(this.ramAllowance)} GB, of which ${gb(pinned)} GB is pinned.`);
+    }
     const gb = (n: number) => (n / GIB).toFixed(1);
     const need = this.needOf(model, o, s);
     const g = o.gpus.find((i) => need[i]! > free(i) + loadedOn(i).filter((l) => !this.pinned(l.model.id)).reduce((n, l) => n + (l.vram[i] ?? 0), 0)) ?? o.gpus[0]!;
@@ -784,11 +826,33 @@ export class Scheduler {
             pinned: this.pinned(l.model.id),
             busy: l.active > 0,
             vram: l.vram[g.index] ?? null,
+            ...(l.option.ram ? { ram: l.option.ram } : {}),
             lastUsed: new Date(l.lastUsed).toISOString(),
           })),
         queue,
       };
     });
+  }
+
+  /** Bytes the model would keep in system RAM where it loads first, on empty GPUs; 0 when it fits them or can't load. */
+  expectedRam(model: TextModel): number {
+    if (this.onCpu(model) || model.server !== "llamacpp") return 0;
+    const s = this.served(model);
+    const empty = this.gpusFor(serverOf(model)).map((g) => ({ ...g, used: 0 }));
+    const o = this.optionsFor({ model }).find((x) => !neverFits(model, s, { ...x, need: this.needOf(model, x, s) }, empty, (i) => this.gpuSettings(i), this.ramAllowance));
+    return o?.ram ?? 0;
+  }
+
+  /** The system RAM allowance and what models keep in it, for the status. */
+  ramStatus() {
+    const { total, most } = this.memory;
+    return {
+      total,
+      most,
+      allowance: this.ramAllowance,
+      used: this.ramUsed(),
+      models: [...this.loaded.values()].filter((l) => l.option.ram).map((l) => ({ id: l.model.id, ram: l.option.ram! })),
+    };
   }
 
   /**
