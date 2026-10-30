@@ -199,7 +199,7 @@ function UnifiedLines({ lines, from, to }: { lines: Line[]; from: number; to: nu
   for (let i = from; i < to; i++) {
     const l = lines[i]!;
     out.push(
-      <div key={i} className={`dl ${l.kind}`}>
+      <div key={i} className={`cline ${l.kind}`}>
         <span className="ln">{l.kind !== "ins" ? l.a : ""}</span>
         <span className="ln">{l.kind !== "del" ? l.b : ""}</span>
         <span className="sign">{l.kind === "del" ? "−" : l.kind === "ins" ? "+" : " "}</span>
@@ -212,7 +212,7 @@ function UnifiedLines({ lines, from, to }: { lines: Line[]; from: number; to: nu
 
 function SplitLines({ lines, from, to }: { lines: Line[]; from: number; to: number }) {
   const side = (l: Line | undefined, which: "left" | "right") => (l
-    ? <div className={`dl ${l.kind}`}><span className="ln">{which === "left" ? (l.kind !== "ins" ? l.a : "") : (l.kind !== "del" ? l.b : "")}</span><span className="sign">{l.kind === "del" ? "−" : l.kind === "ins" ? "+" : " "}</span><Code text={l.text} ops={l.kind === "same" ? undefined : l.ops} /></div>
-    : <div className="dl blank" />);
+    ? <div className={`cline ${l.kind}`}><span className="ln">{which === "left" ? (l.kind !== "ins" ? l.a : "") : (l.kind !== "del" ? l.b : "")}</span><span className="sign">{l.kind === "del" ? "−" : l.kind === "ins" ? "+" : " "}</span><Code text={l.text} ops={l.kind === "same" ? undefined : l.ops} /></div>
+    : <div className="cline blank" />);
   return <>{sideBySide(lines, from, to).map((r, i) => <div key={from + i} className="dr">{side(r.left, "left")}{side(r.right, "right")}</div>)}</>;
 }
