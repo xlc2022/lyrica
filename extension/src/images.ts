@@ -1,7 +1,7 @@
 // Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { CloudModelForbidden, HostRefused, isRestricted, modelName, type CallContext, type ImageRequest, type JobProgress, type Models, type Resolution,
-  type ThreadImages, type VideoRequest, type WorkspaceSettings } from "@lyrica/core";
+  type ThreadImages, type VideoRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ApprovalRequest } from "./workspace.ts";
@@ -36,12 +36,12 @@ const path = (description: string) => Type.Optional(Type.String({ description })
  * refuses such a tool, and smaller models' chat templates show it no fields.
  */
 export const imageParameters = Type.Object({
-  action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected", "video", "animate", "motion"] as const),
-  prompt: Type.Optional(Type.String({ description: "For create: what to draw, as one detailed paragraph. For video and animate: what happens in the clip. For motion: the scene, light and look; the clip gives the moves." })),
+  action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected", "video", "animate", "motion", "extend"] as const),
+  prompt: Type.Optional(Type.String({ description: "For create: what to draw, as one detailed paragraph. For video and animate: what happens in the clip. For motion: the scene, light and look; the clip gives the moves. For extend: what happens next." })),
   tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality (the default)." })),
   model: Type.Optional(Type.String({ description: "For create, edit and upscale: an image model they asked for by name; it is tried first, then the usual models." })),
   image: path("For edit, upscale, pick, animate and motion: the image's path (animate's first frame; motion's subject, who moves)."),
-  video: path("For motion: the driving clip's path, an MP4 whose person makes the moves."),
+  video: path("For motion: the driving clip's path, an MP4 whose person makes the moves. For extend: the clip to make longer."),
   images: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For reject: the attempts to set aside." })),
   instruction: Type.Optional(Type.String({ description: "For edit: the change, and what stays the same. The edited image is image 1; references are image 2 and on." })),
   mask: path("For edit: a mask image's path."),
@@ -50,14 +50,21 @@ export const imageParameters = Type.Object({
   count: Type.Optional(Type.Integer({ minimum: 1, maximum: 4, description: "For create and edit: how many images." })),
   size: Type.Optional(Type.Object({ width: Type.Integer(), height: Type.Integer() }, { description: "For create and video: exact pixels." })),
   aspectRatio: Type.Optional(Type.String({ description: "For create and video: width:height (16:9); omit for recipe defaults." })),
-  duration: Type.Optional(Type.Number({ minimum: 1, maximum: 15, description: "For video, animate and motion: seconds; omit for the model's default. For motion, leave it out: the host uses the driving clip's own length, up to the model's longest." })),
+  duration: videoDuration(),
   steps: Type.Optional(Type.Integer({ minimum: 1, maximum: 150, description: "For video, animate and motion: sampling steps, only when they ask for a number; omit for the model's own." })),
   scale: Type.Optional(Type.Number({ minimum: 1, maximum: 4, description: "For upscale: the factor." })),
   maxSize: Type.Optional(Type.Integer({ minimum: 256, maximum: 8192, description: "For upscale: the longest side's limit." })),
 });
 export type ImageArgs = Static<typeof imageParameters>;
 
-const NEEDS = { create: ["prompt"], edit: ["image", "instruction"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [], video: ["prompt"], animate: ["image", "prompt"], motion: ["image", "video", "prompt"] } as const;
+/** `duration`, saying the thread's first Videos model's longest when it is known. */
+export function videoDuration(model?: { name: string; longestSeconds?: number; extend: boolean }) {
+  const longest = model?.longestSeconds ?? LONGEST_VIDEO_SECONDS;
+  const most = model?.longestSeconds ? ` ${model.name} makes up to ${longest} s${model.extend ? ", joining clips into one past a clip's length" : ""}.` : "";
+  return Type.Optional(Type.Number({ minimum: 1, maximum: longest, description: `For video and animate: seconds, the whole length they asked for; omit for the model's default.${most} For extend: the seconds to add. For motion, leave it out: the host uses the driving clip's own length, up to the model's longest.` }));
+}
+
+const NEEDS = { create: ["prompt"], edit: ["image", "instruction"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [], video: ["prompt"], animate: ["image", "prompt"], motion: ["image", "video", "prompt"], extend: ["video", "prompt"] } as const;
 
 /** The fields an action needs, named in the error a model reads. */
 function needs(p: ImageArgs): void {
@@ -125,7 +132,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
     const rejects = new Set<string>();
     pi.on("agent_start", () => { refused = false; rejects.clear(); });
     pi.registerTool({
-      name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat). Reject sets attempts aside in images/rejected/; pick shows the one you keep last; clear_rejected deletes the rejected ones for good. Video makes a short clip from a prompt, animate one from an image, and motion one of an image's subject moving as the person in a clip moves; clips go to videos/ (shared/videos/), are made in the background, and you are told here when one is ready.",
+      name: "image", label: "Image", description: "Create, edit or upscale images from workspace paths or /photos-of-me/<file>; results go to images/ (shared/images/ in a project chat). Reject sets attempts aside in images/rejected/; pick shows the one you keep last; clear_rejected deletes the rejected ones for good. Video makes a clip from a prompt, animate one from an image, motion one of an image's subject moving as the person in a clip moves, and extend makes a clip longer; clips go to videos/ (shared/videos/), are made in the background, and you are told here when one is ready.",
       promptSnippet: "create, edit or upscale images, and make short clips",
       promptGuidelines: ["Write prompts from the conversation; inspect results and retry if needed.",
         "Before retrying, reject the attempts that miss; the chat folds them away. If an earlier attempt is best, pick it.",
@@ -140,8 +147,9 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "For a person from reference photos, say \"the person from the reference images\", not an image number; ask for one new angle per edit, or several views as one wide create. For an exact garment, pass its photo as a reference. Word a change of build strongly. For a relative, pass no photo: describe the traits they share and how they differ.",
         "Check faces, hands and limbs in a result against the source; reject one that gets them wrong.",
         "Make a clip only when they ask for one: it holds the model host's GPU for minutes. It is made in the background: say it's on its way and end your reply; you'll be told when it's ready. For video and animate, write the prompt as a detailed shot even when they gave a few words: the subject and what it does, how things move, the camera's move and lens, the light and the mood, in one paragraph of about 80 to 120 words; for animate, say what moves and what stays.",
+        "For a long video, give the whole length as duration: the host joins clips into one. To make an existing clip longer, use extend with its path, the seconds to add and a prompt for what happens next.",
         "Use motion when they want someone to move as a given clip shows (a dance, a gesture), or when a clip of a person from a prompt alone would move badly: make a plain clip of someone doing the moves first (video), then motion with it. For motion, the prompt says the scene, light and look; the moves come from the clip. Don't measure the clip first: leave duration out and the host takes its length."],
-      parameters: imageParameters,
+      parameters: videoModelParameters(o),
       async execute(id, p, signal, update, ctx) {
         if (refused) throw new Error(REFUSED_THIS_TURN);
         // How far a model host has got, for the chat's placeholder (docs/ux.md, "An image the agent made").
@@ -158,6 +166,15 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
   };
 }
 
+const isVideo = (a: string): a is "video" | "animate" | "motion" | "extend" => ["video", "animate", "motion", "extend"].includes(a);
+
+/** The tool's fields, its duration saying the thread's Videos model's longest; the static schema if that can't be read. */
+function videoModelParameters(o: ImageTools) {
+  let model;
+  try { model = o.models.firstVideoModel(o.call()); } catch { return imageParameters; }
+  return model ? Type.Object({ ...imageParameters.properties, duration: videoDuration(model) }) : imageParameters;
+}
+
 /**
  * A failed call says which model (a host's recipe by name) it reached and what came back,
  * so she can report it; an Offline error already lists what it tried.
@@ -165,7 +182,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
 const FINAL = new Set(["too_big", "invalid", "unsupported", "refused"]);
 
 function withModel(err: unknown, action: string, r: Resolution | undefined, signal?: AbortSignal): unknown {
-  const what = action === "video" || action === "animate" || action === "motion" ? "Video" : `Image ${action}`;
+  const what = isVideo(action) ? "Video" : `Image ${action}`;
   if (!r || signal?.aborted || !(err instanceof Error) || err.name === "Offline") return err;
   const code = err instanceof HostRefused ? ` [${err.code}]` : "";
   // A request the model or its machine can never serve: retrying, now or later, only repeats it.
@@ -191,7 +208,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
     const part: ImagePart = { type: "image", paths: [path], model: "", picked: true };
     return { content: [{ type: "text" as const, text: `Picked ${path}; the chat shows it last.` }], details: { image: part } };
   }
-  if (p.action === "video" || p.action === "animate" || p.action === "motion") return executeVideo(o, id, p, signal, onProgress);
+  if (isVideo(p.action)) return executeVideo(o, id, p, signal, onProgress);
   let portrait = false;
   const read = async (path: string) => {
     const result = await o.files.read(path); portrait ||= result.portrait;
@@ -248,8 +265,8 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
 async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: AbortSignal, onProgress?: (p: JobProgress) => void) {
   if (p.size && p.aspectRatio) throw new Error("Give a size or an aspect ratio, not both.");
   // An aspect ratio goes to the host as it is, which keeps the recipe's area and snaps to its size step.
-  const request: VideoRequest = { prompt: p.prompt!, ...(p.action !== "video" ? { image: (await o.files.read(p.image!)).input } : {}),
-    ...(p.action === "motion" ? { drive: await o.files.readClip(p.video!) } : {}),
+  const request: VideoRequest = { prompt: p.prompt!, ...(p.action === "animate" || p.action === "motion" ? { image: (await o.files.read(p.image!)).input } : {}),
+    ...(p.action === "motion" ? { drive: await o.files.readClip(p.video!) } : {}), ...(p.action === "extend" ? { extend: await o.files.readClip(p.video!) } : {}),
     ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }),
     ...(p.steps === undefined ? {} : { steps: p.steps }) };
   const call = o.call();

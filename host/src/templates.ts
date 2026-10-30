@@ -54,6 +54,12 @@ export interface Template {
   mask: boolean;
   /** Video templates only. */
   video?: VideoSpec;
+  /**
+   * The workflow that makes the next clip of a longer video from the clip so far
+   * (`host/workflows/<name>-continue.json`): the clip's last `overlap` frames anchor the new clip's start.
+   * A chained video's clips are at most `clipSeconds` long: H3 may cut to a new shot within one long clip.
+   */
+  continuation?: Continuation;
   workflow: Record<string, Node>;
 }
 
@@ -64,13 +70,29 @@ export interface FilledPart {
   added: boolean;
 }
 
+export interface Continuation { overlap: number; clipSeconds: number; workflow: Record<string, Node> }
+
 export type Values = Record<string, string | number>;
 
+/** A video made of chained clips is at most this long (API.md, "Making videos"). */
+export const LONGEST_SECONDS = 60;
+
+/** The longest video a template makes: chained clips when it has a continuation, else one clip. */
+export const longestSeconds = (t: Template) => (t.continuation ? LONGEST_SECONDS : t.video?.maxSeconds ?? 0);
+
+/** A file that `continues` another template is that template's continuation, not a template a recipe can pick. */
 export function loadTemplates(dir: string): Map<string, Template> {
   const out = new Map<string, Template>();
+  const continuations: (Continuation & { continues: string })[] = [];
   for (const f of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
     const t = JSON.parse(readFileSync(join(dir, f), "utf8"));
-    out.set(f.slice(0, -5), { ...t, name: f.slice(0, -5) });
+    if (typeof t.continues === "string") continuations.push(t);
+    else out.set(f.slice(0, -5), { ...t, name: f.slice(0, -5) });
+  }
+  for (const c of continuations) {
+    const t = out.get(c.continues);
+    if (!t?.video) throw new Error(`${c.continues}-continue continues no video template`);
+    t.continuation = { overlap: c.overlap, clipSeconds: c.clipSeconds, workflow: c.workflow };
   }
   return out;
 }

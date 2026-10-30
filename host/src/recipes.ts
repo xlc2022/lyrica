@@ -5,7 +5,7 @@ import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from
 import { basename, join } from "node:path";
 import { HostError, invalid, notFound } from "./http.ts";
 import type { Part, Role } from "./parts.ts";
-import type { Action, PartSpec, Template, VideoSpec } from "./templates.ts";
+import { longestSeconds, type Action, type PartSpec, type Template, type VideoSpec } from "./templates.ts";
 
 export interface Missing {
   source: string;
@@ -144,7 +144,10 @@ export class RecipeBook {
     const t = this.templates.get(r.template);
     // A recipe made by a newer host (read after a rollback, say) does nothing here.
     if (!t) return { ...r, useFor: r.useFor ?? "both", ready: false, mask: false, references: 0, does: [], unsupported: `This host has no template ${r.template}; update it to use this recipe.` };
-    return { ...r, useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, references: t.references, ...(t.video ? { video: clipSpec(t.video, present(r, files)) } : {}) };
+    // A template with a continuation also extends clips, and chains them into a longer video.
+    const extend = t.continuation && r.does.some((a) => a === "video" || a === "animate") ? ["extend" as const] : [];
+    return { ...r, does: [...r.does, ...extend], useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, references: t.references,
+      ...(t.video ? { video: { ...clipSpec(t.video, present(r, files)), longestSeconds: longestSeconds(t) } } : {}) };
   }
 
   /** The template for a main part: an edit model gets the edit template when its architecture has one. */

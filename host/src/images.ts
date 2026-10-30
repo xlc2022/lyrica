@@ -4,17 +4,17 @@ import { createHash, randomInt } from "node:crypto";
 import { mkdirSync, readdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
-import { imageSize, mp4Seconds, type Comfy } from "./comfy.ts";
+import { imageSize, mp4Seconds, mp4Video, type Comfy } from "./comfy.ts";
 import type { Downloads } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import type { JobProgress } from "./jobs.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import { scanParts, type Part, type Role } from "./parts.ts";
-import { COLOR_MATCH, present, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
+import { clipSpec, COLOR_MATCH, present, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
 import type { Runtime } from "./runtime.ts";
 import { sdcppArgs, type SdCpp } from "./sdcpp.ts";
-import { fill, type Action, type Values, type VideoSpec } from "./templates.ts";
+import { fill, LONGEST_SECONDS, longestSeconds, type Action, type Continuation, type Values, type VideoSpec } from "./templates.ts";
 
 const IMAGE_LIMIT = 20 * 1024 * 1024;
 const MAX_SIDE = 8192;
@@ -24,7 +24,7 @@ const BASE_DEFAULTS: Values = { negativePrompt: "", steps: 20, cfg: 1, sampler: 
 const IDLE_FREE_MS = 10 * 60_000;
 /** How long one clip may take: a 14B model on a 24 GB card can take most of an hour. */
 const VIDEO_TIMEOUT_MS = 2 * 60 * 60_000;
-const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "width", "height", "duration", "steps", "cfg", "seed", "aspectRatio"];
+const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "extend", "width", "height", "duration", "steps", "cfg", "seed", "aspectRatio"];
 /** A driving clip (`motion`): only its first seconds are used. */
 const DRIVE_LIMIT = 64 * 1024 * 1024;
 
@@ -420,7 +420,9 @@ export class Images {
    * One clip from a video recipe: from the prompt alone (`video`), from a
    * first frame (`animate`), or from an image moved as a driving clip moves
    * (`motion`). The template times it: the duration becomes the model's frame
-   * count, and width and height multiples of its size step.
+   * count, and width and height multiples of its size step. Past its longest
+   * clip, or with `extend` (a clip to add to), a template with a continuation
+   * chains clips into one (clipPlan).
    */
   private async video(req: IncomingMessage, res: ServerResponse, job: JobProgress): Promise<void> {
     const body = await readJson(req, 2 * IMAGE_LIMIT + Math.ceil(DRIVE_LIMIT / 3) * 4);
@@ -428,8 +430,10 @@ export class Images {
     if (typeof body.recipe !== "string") throw invalid("recipe is missing.");
     const recipe = this.book.all().find((r) => r.id === body.recipe && r.state === "confirmed");
     if (!recipe || !this.book.ready(recipe, this.files())) throw notFound("No confirmed, ready recipe with that ID.");
+    const extending = body.extend !== undefined;
+    if (extending && (body.image !== undefined || body.drive !== undefined)) throw invalid("extend takes no image or driving clip: the clip's own last frames start the next.");
     const action: Action = body.drive !== undefined ? "motion" : body.image === undefined ? "video" : "animate";
-    if (!recipe.does.includes(action)) {
+    if (!extending && !recipe.does.includes(action)) {
       throw invalid(action === "motion" ? (recipe.does.some((a) => a === "video" || a === "animate") ? "That recipe doesn't move an image as a clip does." : "That recipe doesn't make videos.")
         : recipe.does.includes("motion") ? "That recipe moves an image as a clip does: give it both."
         : recipe.does.includes("animate") ? "That recipe animates an image: give it one." : recipe.does.includes("video") ? "That recipe doesn't animate images." : "That recipe doesn't make videos.");
@@ -439,6 +443,8 @@ export class Images {
     const template = this.book.templates.get(recipe.template)!;
     const spec = template.video;
     if (!spec) throw new HostError(500, "internal", `Template ${template.name} has no video settings.`);
+    const chain = template.continuation;
+    if (extending && !(chain && recipe.does.some((a) => a === "video" || a === "animate"))) throw invalid("That recipe can't extend a clip.");
 
     const values: Values = { ...BASE_DEFAULTS, duration: 5, ...recipe.defaults };
     if (typeof body.prompt !== "string" || !body.prompt) throw invalid("prompt is missing.");
@@ -460,23 +466,41 @@ export class Images {
       if (seconds === null) throw invalid("drive isn't an MP4 or QuickTime clip whose length can be read.");
       driveSeconds = seconds;
     }
-    // Sizes are snapped to the template's size step. Without them the recipe's area is used, in the shape
-    // `aspectRatio` gives, or when animating the image's.
-    const snap = (n: number) => Math.min(2048, Math.max(256, Math.round(n / spec.sizeStep) * spec.sizeStep));
+    let previous: Buffer | null = null;
     const width = int(body, "width", 256, 2048);
     const height = int(body, "height", 256, 2048);
     const ratio = aspectRatio(body.aspectRatio);
     if (ratio !== undefined && (width !== undefined || height !== undefined)) throw invalid("Give a size or an aspect ratio, not both.");
-    const frame = uploads.image ? imageSize(uploads.image)! : null;
-    const area = Number(values.width) * Number(values.height);
-    const shape = ratio ?? (frame && width === undefined && height === undefined ? frame.width / frame.height : Number(values.width) / Number(values.height));
-    values.width = snap(width ?? (height !== undefined ? height * shape : Math.sqrt(area * shape)));
-    values.height = snap(height ?? (width !== undefined ? width / shape : Math.sqrt(area / shape)));
-    // A driving clip can't give more moves than it has.
-    const duration = Math.min(num(body, "duration", 1, spec.maxSeconds) ?? Math.min(Number(values.duration), spec.maxSeconds), driveSeconds);
+    if (extending) {
+      // The next clip continues this one: its size and frame rate must be the recipe's own.
+      if (typeof body.extend !== "string") throw invalid("extend must be a base64 MP4.");
+      if (width !== undefined || height !== undefined || ratio !== undefined) throw invalid("An extended clip keeps its own size.");
+      previous = Buffer.from(body.extend, "base64");
+      if (previous.length > DRIVE_LIMIT) throw invalid("extend is larger than 64 MB.");
+      const clip = mp4Video(previous);
+      if (!clip) throw invalid("extend isn't an MP4 clip whose video track can be read.");
+      const fps = clipSpec(spec, present(recipe, this.files())).fps;
+      if (Math.abs(clip.fps - fps) > 0.01) throw invalid(`That clip is ${Math.round(clip.fps * 100) / 100} fps; this recipe continues ${fps} fps clips.`);
+      if (![clip.width, clip.height].every((n) => n >= 256 && n <= 2048 && n % spec.sizeStep === 0)) throw invalid(`That clip is ${clip.width}×${clip.height}; this recipe makes sizes in steps of ${spec.sizeStep} from 256 to 2048.`);
+      values.width = clip.width;
+      values.height = clip.height;
+    } else {
+      // Sizes are snapped to the template's size step. Without them the recipe's area is used, in the shape
+      // `aspectRatio` gives, or when animating the image's.
+      const snap = (n: number) => Math.min(2048, Math.max(256, Math.round(n / spec.sizeStep) * spec.sizeStep));
+      const frame = uploads.image ? imageSize(uploads.image)! : null;
+      const area = Number(values.width) * Number(values.height);
+      const shape = ratio ?? (frame && width === undefined && height === undefined ? frame.width / frame.height : Number(values.width) / Number(values.height));
+      values.width = snap(width ?? (height !== undefined ? height * shape : Math.sqrt(area * shape)));
+      values.height = snap(height ?? (width !== undefined ? width / shape : Math.sqrt(area / shape)));
+    }
+    // A driving clip can't give more moves than it has. Extending, the duration is what's added.
+    const longest = extending ? LONGEST_SECONDS : longestSeconds(template);
+    const duration = Math.min(num(body, "duration", 1, longest) ?? Math.min(Number(values.duration), longest), driveSeconds);
     const parts = present(recipe, this.files());
     const multiplier = parts.some((p) => p.role === "interpolator") ? spec.interpolate ?? 1 : 1;
-    Object.assign(values, videoValues(spec, duration, Number(values.width), Number(values.height), Number(values.steps), multiplier));
+    const plan = clipPlan(spec, chain, duration, extending);
+    const clips = plan.map((seconds) => videoValues(spec, seconds, Number(values.width), Number(values.height), Number(values.steps), multiplier));
     values.seed = int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);
 
     const started = Date.now();
@@ -486,19 +510,39 @@ export class Images {
       if (!res.writableFinished) abort.abort();
     });
     const scheduler = this.runtime.scheduler;
+    // One hold on the GPU for every clip, and one progress, each clip weighted by its frames.
+    const total = clips.reduce((n, c) => n + Number(c.frames), 0);
     const { video, poster } = await scheduler.run(model, "image", () => {
       job.running();
-      return scheduler.measuring(model, () => this.comfy.runVideo(uploads, (names) => {
-        return fill(template, parts, recipe.loras, { ...values, ...names });
-      }, VIDEO_TIMEOUT_MS, abort.signal, job.progress));
+      return scheduler.measuring(model, async () => {
+        let video = previous;
+        let poster: Buffer | null = null;
+        let done = 0;
+        for (const [i, clip] of clips.entries()) {
+          const first = i === 0 && !extending;
+          const t = first ? template : { ...template, workflow: chain!.workflow };
+          const step = { ...values, ...clip, seed: Number(values.seed) + i, ...(first ? {} : { overlap: chain!.overlap }) };
+          const made = await this.comfy.runVideo(first ? uploads : { previous: video! }, (names) => fill(t, parts, recipe.loras, { ...step, ...names }),
+            VIDEO_TIMEOUT_MS, abort.signal, (f) => job.progress((done + f * Number(clip.frames)) / total));
+          video = made.video;
+          poster = made.poster ?? poster;
+          done += Number(clip.frames);
+        }
+        return { video: video!, poster };
+      });
     }, this.comfyGpu, abort.signal);
     const seconds = (Date.now() - started) / 1000;
     this.runtime.count(recipe.id, { requests: 1, seconds });
-    this.log("video", { recipe: recipe.id, action, frames: Number(values.frames) });
+    this.log("video", { recipe: recipe.id, action: extending ? "extend" : action, clips: clips.length, frames: total });
     const size = poster ? imageSize(poster) : null;
+    // A chained clip's length is read from the clip itself, or else counted: each continuation drops its overlap.
+    const counted = (extending ? mp4Video(previous!)!.frames : Number(clips[0]!.clipFrames))
+      + clips.slice(extending ? 0 : 1).reduce((n, c) => n + Number(c.frames) - chain!.overlap, 0);
+    const frames = clips.length > 1 || extending ? mp4Video(video)?.frames ?? counted : counted;
+    const fps = Number(clips[0]!.fps);
     sendJson(res, 200, {
       video: { mp4: video.toString("base64"), width: size?.width ?? values.width, height: size?.height ?? values.height,
-        frames: values.clipFrames, fps: values.fps, duration: Number(values.clipFrames) / Number(values.fps), audio: spec.audio, seed: values.seed },
+        frames, fps, duration: frames / fps, audio: spec.audio, seed: values.seed },
       poster: poster ? poster.toString("base64") : null,
       seconds,
     });
@@ -556,4 +600,20 @@ export function videoValues(spec: VideoSpec, duration: number, width: number, he
     // LTX-2 samples at half size and then upscales; Wan's experts split the steps.
     halfWidth: width / 2, halfHeight: height / 2, halfSteps: Math.max(1, Math.floor(steps / 2)),
   };
+}
+
+/**
+ * The clips that make `seconds` of video, each as the seconds videoValues takes: near-equal clips, the first from the
+ * request (unless `extending` a clip), each next one a continuation whose first `overlap` frames repeat the clip so far.
+ * Without a continuation it is one clip. A chain's clips are at most `clipSeconds` long.
+ */
+export function clipPlan(spec: VideoSpec, chain: Continuation | undefined, seconds: number, extending = false): number[] {
+  if (!chain) return [seconds];
+  const most = Number(videoValues(spec, Math.min(spec.maxSeconds, chain.clipSeconds), 0, 0, 1).frames);
+  const want = Math.ceil(seconds * spec.fps);
+  if (!extending && want <= most) return [seconds];
+  // Each clip adds at most `most - overlap` new frames; the first adds all of its own, which leaves slack.
+  const n = Math.ceil(want / (most - chain.overlap));
+  const share = want / n;
+  return Array.from({ length: n }, (_, i) => Math.min(most, i === 0 && !extending ? share : share + chain.overlap) / spec.fps);
 }
