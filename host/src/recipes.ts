@@ -143,8 +143,8 @@ export class RecipeBook {
   describe(r: Recipe, files: Set<string>) {
     const t = this.templates.get(r.template);
     // A recipe made by a newer host (read after a rollback, say) does nothing here.
-    if (!t) return { ...r, useFor: r.useFor ?? "both", ready: false, mask: false, does: [], unsupported: `This host has no template ${r.template}; update it to use this recipe.` };
-    return { ...r, useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, ...(t.video ? { video: clipSpec(t.video, present(r, files)) } : {}) };
+    if (!t) return { ...r, useFor: r.useFor ?? "both", ready: false, mask: false, references: 0, does: [], unsupported: `This host has no template ${r.template}; update it to use this recipe.` };
+    return { ...r, useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, references: t.references, ...(t.video ? { video: clipSpec(t.video, present(r, files)) } : {}) };
   }
 
   /** The template for a main part: an edit model gets the edit template when its architecture has one. */

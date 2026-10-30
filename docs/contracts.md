@@ -466,6 +466,7 @@ class Models {                                              // new Models(keyrin
   // GeneratedImage { bytes: Uint8Array; type: "image/png"; width; height; seed? }; no prompt metadata
   // Create passes imageTier to resolution: recipes and cloud offerings skip a useFor tag of only the other tier.
   // Edit passes imageMask: the ChatGPT plan, and a host recipe whose listing says mask: false, are skipped for masks before any input is sent.
+  // Create and edit pass imageReferences (how many): a host recipe whose listing takes fewer, or a cloud adapter without references, is skipped before any input is sent.
   // CLOUD_IMAGE_PROVIDERS selects by endpoint.api: openai-compatible (key, any marked model) or chatgpt (the user's own Codex, setCodexImages).
   // A chatgpt plan's only image offering is PLAN_IMAGE_MODEL ("chatgpt-images", recipe "ChatGPT Images"), made by codexImage.
   // Each adapter declares create/edit/mask/references/sizes/count and low/high tier mappings; upscale is host-only.

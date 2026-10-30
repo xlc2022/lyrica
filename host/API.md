@@ -821,6 +821,9 @@ as `{ "parts": [...] }`, each entry like this:
   adds a part it gained since, such as the 14B starters' RIFE.
 - `mask`: whether its template's edits take a mask (Lyrica's router skips
   one that doesn't for a masked edit).
+- `references`: how many reference images its template's creates and edits
+  take, 0 for none (Lyrica's router skips one that takes fewer than a call
+  sends).
 - `useFor`: `fast`, `quality` or `both` (default). An optional field in
   `recipes.json`; an older recipe without it reads as both. Copies keep the tag.
   Lyrica's router filters create tiers by this tag; the host keeps recipe defaults.

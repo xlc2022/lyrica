@@ -51,6 +51,17 @@ describe("image calls through the router (principles 1 and 2)", () => {
     expect((await s.models.image(ctx, { action: "edit", prompt: "Add flowers", image: input })).resolution.ref).toEqual(plain.ref);
     expect(plain.server.images.map(i => "mask" in i.body)).toEqual([false]);
   });
+  it("passes over a host recipe that takes fewer reference images than a call sends, and uses it without them", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
+    const plain = await s.host("plain", undefined, undefined, 0), one = await s.host("one", undefined, undefined, 1);
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [plain.ref, one.ref, s.spare.ref]);
+    const made = await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", references: [input] });
+    expect(made.resolution.ref).toEqual(one.ref);
+    expect(made.resolution.skipped.map(p => p.reason)).toEqual(["it doesn't take reference images"]);
+    expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", references: [input, input] })).resolution.ref).toEqual(s.spare.ref);
+    expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality" })).resolution.ref).toEqual(plain.ref);
+    expect(plain.server.images.map(i => "references" in i.body)).toEqual([false]);
+  });
   it("creates and edits through the keyed OpenAI endpoint, including quality and references", async () => {
     const s = await setup();
     for (const tier of ["fast", "quality"] as const) await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier, count: 2 });

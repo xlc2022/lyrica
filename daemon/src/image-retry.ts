@@ -33,7 +33,8 @@ export async function imageRetryOptions(models: Models, workspace: Workspace, vi
     catch { readable = false; }
   }
   const named = args.model?.trim() ? models.namedImageModels(ctx, args.action, args.model).ids : [];
-  const need: Need = { ...(args.action === "create" ? { imageTier: args.tier ?? "quality" } : args.action === "edit" ? { imageMask: !!args.mask } : {}), ...(named.length ? { first: named } : {}) };
+  const need: Need = { ...(args.action === "create" ? { imageTier: args.tier ?? "quality" } : args.action === "edit" ? { imageMask: !!args.mask } : {}),
+    ...(args.action !== "upscale" && args.references?.length ? { imageReferences: args.references.length } : {}), ...(named.length ? { first: named } : {}) };
   const noCloud = portrait && settings.photoCloudPolicy() === "never";
   const routing = ctx;
   const next = readable ? models.nextImageModel(routing, args.action, need, refusal.endpointId, noCloud) : undefined;

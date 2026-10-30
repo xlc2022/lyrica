@@ -51,6 +51,8 @@ export interface DiscoveredModel {
   recipe?: string;
   /** For a host recipe that edits: whether its edits take a mask. */
   mask?: boolean;
+  /** For a host recipe that creates or edits: how many reference images it takes. */
+  references?: number;
   /** A host recipe's create tiers; absent means both. */
   useFor?: "fast" | "quality" | "both";
   /** The context window a host serves the model with, which wins over one set by hand. */
