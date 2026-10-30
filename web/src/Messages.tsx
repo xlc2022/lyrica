@@ -257,7 +257,7 @@ export function runKey(runs: Quiet[]): string {
 }
 
 /**
- * A run of her tool calls as one marker: "<n> tool calls", running while the turn goes on, which opens
+ * A run of her tool calls as one marker: "<n> tool calls", running while the turn goes on and "· <m> failed" after it, which opens
  * to a box that scrolls, every marker in it opening as before. Open state follows the first call's ID, so it survives
  * the stored copy replacing the live one.
  */
@@ -269,7 +269,7 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
   const streaming = runs.at(-1)!.streaming;
   const running = streaming || tools.some((p) => p.type === "tool" && p.result === undefined);
   // The guard turning away a read made again is about her waiting, not a failure to show.
-  const failed = tools.some((p) => p.type === "tool" && p.isError && !isPoll(p));
+  const failed = tools.filter((p) => p.type === "tool" && p.isError && !isPoll(p)).length;
   const body = useRef<HTMLDivElement>(null);
   // The box's height before this render's growth, so where the person left it is measured against what they saw,
   // whether or not their scroll's event has fired yet. A scroll records it too, for growth inside a marker.
@@ -289,7 +289,7 @@ function ToolRun({ runs, env }: { runs: Quiet[]; env: Env }) {
     <div className="marker tool-run" data-type="toolrun" id={runs[0]!.n !== undefined ? `m-${runs[0]!.n}` : undefined}>
       <button type="button" aria-expanded={open} onClick={() => env.toggleTool(key)}>
         {/* One run of text, so its words sit a space apart rather than the button's flex gap. */}
-        <span><span className="num">{n}</span> {word}{running ? <> <span className="state" data-state="running">running</span></> : failed ? <> <span className="state" data-state="failed">failed</span></> : null}</span>
+        <span><span className="num">{n}</span> {word}{running ? <> <span className="state" data-state="running">running</span></> : failed ? <> · <span className="state" data-state="failed"><span className="num">{failed}</span> failed</span></> : null}</span>
         <Icon name="down" />
       </button>
       {open && (
