@@ -668,12 +668,15 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Change** for a text encoder or VAE (`swap`, or Download another… to the
   download page), **Remove** for an added part or LoRA, **Use this recipe**
   (`confirm`), **Download the missing parts** (`download-parts`),
-  **Ignore**, the **Add part** side drawer and the delete dialog. **Add part**
-  lists the host's files of the part's kind and architecture, with what
+  **Ignore**, the **Add part** side drawer and the delete dialog. A LoRA's
+  row has **Strength** (-4 to 4, "of 4", clamped when left), saved with
+  `setLora` when it changed. **Add part**
+  lists the host's files of the part's kind and architecture (for a LoRA,
+  the recipe's `takesLoras` when the host lists it), with what
   uses each, and adds a VAE or text encoder to a checkpoint
   (`addPart`) or a LoRA with its strength (`addLora`), by default into a
   copy named "<name> + <LoRA>" (`copy` first) so the recipe stays as it is.
-  Its Strength is a number from 0 to 1.5, clamped when the field is left.
+  Its Strength is a number from -4 to 4, clamped when the field is left.
   **Delete model…** (shown when Lyrica downloaded the recipe's main file) works
   out from the parts' `downloaded` and `usedBy` what goes and what stays
   (an ignored recipe keeps nothing, as on the host), names the lists that skip it from a first `delete-copy` without confirm on

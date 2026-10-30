@@ -241,8 +241,41 @@ describe("video parts", () => {
     expect(file("lora", "high")).toMatch(/t2v_lightx2v_4steps_lora_v1.1_high/);
     expect(file("lora", "low")).toMatch(/t2v_lightx2v_4steps_lora_v1.1_low/);
     expect(b.ready(r, new Set(parts.map((p) => p.file)))).toBe(true);
-    // Its two models take only the LoRAs the template names.
-    expect(() => b.patch(r.id, { op: "addLora", file: parts.find((p) => p.role === "lora")!.file, strength: 1 }, parts)).toThrow(/only the LoRAs/);
+    // A Wan 2.1 or 2.2 14B LoRA fits it; one made for an expert goes onto that expert when the template is filled.
+    const high = parts.find((p) => p.role === "lora" && /i2v.*high/.test(p.file))!.file;
+    expect(b.patch(r.id, { op: "addLora", file: high, strength: 0.5 }, parts).loras).toEqual([{ file: high, strength: 0.5 }]);
+  });
+
+  it("puts a request's LoRA onto both experts, or onto the one it was made for", () => {
+    const p = (role: Recipe["parts"][number]["role"], file: string, slot: string | null = null) => ({ role, slot, file, added: false });
+    const wan14 = STARTERS.find((s) => s.id === "wan2.2-t2v-14b")!;
+    const values = { negativePrompt: "", ...wan14.defaults, prompt: "x", seed: 3, width: 832, height: 480, ...videoValues(TEMPLATES.get("wan22-t2v-14b")!.video!, 5, 832, 480, 4) };
+    const wf = fill(TEMPLATES.get("wan22-t2v-14b")!, [
+      p("diffusion", "high.safetensors", "high"), p("diffusion", "low.safetensors", "low"), p("lora", "lh.safetensors", "high"), p("lora", "ll.safetensors", "low"),
+      p("text_encoder", "umt5.safetensors", "umt5"), p("vae", "vae.safetensors"),
+    ], [{ file: "style.safetensors", strength: 0.7 }, { file: "detail_high_noise.safetensors", strength: 0.4, slot: "high" }], values);
+    // After each expert's speed LoRA: the style on both, the high-noise one on the high expert only.
+    expect(wf.lora_0_high!.inputs).toEqual({ model: ["lora_high", 0], lora_name: "style.safetensors", strength_model: 0.7 });
+    expect(wf.lora_0_low!.inputs).toEqual({ model: ["lora_low", 0], lora_name: "style.safetensors", strength_model: 0.7 });
+    expect(wf.lora_1_high!.inputs).toEqual({ model: ["lora_0_high", 0], lora_name: "detail_high_noise.safetensors", strength_model: 0.4 });
+    expect(wf.lora_1_low).toBeUndefined();
+    expect(wf.shift_high!.inputs.model).toEqual(["lora_1_high", 0]);
+    expect(wf.shift_low!.inputs.model).toEqual(["lora_0_low", 0]);
+  });
+
+  it("tells a Wan 2.2 5B LoRA from a 14B one by its width, and a Qwen-Image 2.1 LoRA by its metadata or name", () => {
+    const wan = (width: number) => safetensors({ "diffusion_model.blocks.0.self_attn.q.lora_down.weight": { shape: [16, width] }, "diffusion_model.blocks.0.self_attn.q.lora_up.weight": { shape: [width, 16] } });
+    const qwen = { "transformer_blocks.0.attn.to_q.lora_A.weight": {}, "transformer_blocks.0.img_mod.1.lora_A.weight": {} };
+    const dir = folder({
+      "w5.safetensors": wan(3072), "w14.safetensors": wan(5120),
+      "q21.safetensors": safetensors(qwen, { ss_base_model_version: "qwen_image_2" }), "q1.safetensors": safetensors(qwen, { ss_base_model_version: "qwen_image" }),
+      "my_qwen-image-2.1_style.safetensors": safetensors(qwen),
+    });
+    const arch = Object.fromEntries(scanParts(dir).map((p) => [p.file, [p.role, p.arch]]));
+    expect(arch).toEqual({
+      "w5.safetensors": ["lora", "wan2.2-5b"], "w14.safetensors": ["lora", "wan"],
+      "q21.safetensors": ["lora", "qwen-image-2.1"], "q1.safetensors": ["lora", "qwen-image"], "my_qwen-image-2.1_style.safetensors": ["lora", "qwen-image-2.1"],
+    });
   });
 
   it("fills the video templates: two experts with their LoRAs, audio VAEs, and a first frame only when given", () => {
@@ -924,6 +957,9 @@ describe("the image API", () => {
     const listed = (await s.api("/host/v1/recipes")).body.recipes;
     expect(listed.find((r: Recipe) => r.id === z.id)).toMatchObject({ does: ["create"] });
     expect(listed.find((r: Recipe) => r.id === z.id)).not.toHaveProperty("unsupported");
+    // sd.cpp takes no LoRAs, for one job either.
+    expect(listed.find((r: Recipe) => r.id === z.id)).toMatchObject({ takesLoras: [] });
+    expect((await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", loras: [{ file: "shared/style.safetensors", strength: 1 }] } })).body.error.message).toMatch(/takes no LoRAs/);
     expect(listed.find((r: Recipe) => r.id === copy.id)).toMatchObject({ does: [], unsupported: expect.stringContaining("LoRAs aren't supported") });
 
     expect(s.lines.join("\n")).not.toContain(MARKER);
@@ -1020,6 +1056,38 @@ describe("the image API", () => {
     expect(usage.body.models).toContainEqual(expect.objectContaining({ id: z.id, images: 2 }));
     expect(s.lines.join("\n")).not.toContain(MARKER);
     for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);
+  });
+
+  it("adds a LoRA of the host's that fits a recipe to one job, at the strength asked for", async () => {
+    const s = await stack({ files: { "shared/krea-style.safetensors": KREA2_LORA } });
+    const { body } = await s.api("/host/v1/recipes?state=proposed");
+    const z: Recipe & { takesLoras: string[] } = body.recipes.find((r: Recipe) => r.arch === "z-image");
+    // Only the LoRAs of its architecture.
+    expect(z.takesLoras).toEqual(["shared/style.safetensors"]);
+    await s.api(`/host/v1/recipes/${z.id}/confirm`, { body: {} });
+
+    const made = await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", loras: [{ file: "shared/style.safetensors", strength: 0.6 }] } });
+    expect(made.status).toBe(200);
+    const sent = s.comfyFake.seen.prompts[0];
+    expect(sent.lora_0.inputs).toEqual({ model: ["load_model", 0], lora_name: "shared/style.safetensors", strength_model: 0.6 });
+    // The recipe itself is unchanged: the next job has no LoRA.
+    expect((await s.api(`/host/v1/recipes/${z.id}`)).body.loras).toEqual([]);
+    await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" } });
+    expect(Object.keys(s.comfyFake.seen.prompts[1])).not.toContain("lora_0");
+
+    // A built-in LoRA asked for again takes the request's strength instead of adding a second loader.
+    await s.api(`/host/v1/recipes/${z.id}`, { method: "PATCH", body: { op: "addLora", file: "shared/style.safetensors", strength: 1 } });
+    await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", loras: [{ file: "shared/style.safetensors", strength: 0.3 }] } });
+    expect(s.comfyFake.seen.prompts[2].lora_0.inputs.strength_model).toBe(0.3);
+    expect(Object.keys(s.comfyFake.seen.prompts[2])).not.toContain("lora_1");
+
+    const refused = async (loras: unknown) => (await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", loras } })).body.error.message;
+    expect(await refused([{ file: "shared/krea-style.safetensors", strength: 1 }])).toBe("krea-style.safetensors isn't a LoRA on this host that this recipe takes.");
+    expect(await refused([{ file: "a/z.safetensors", strength: 1 }])).toMatch(/isn't a LoRA/);
+    expect(await refused([{ file: "shared/style.safetensors", strength: 5 }])).toMatch(/from -4 to 4/);
+    expect(await refused([{ file: "shared/style.safetensors", strength: 1 }, { file: "shared/style.safetensors", strength: 1 }])).toMatch(/twice/);
+    expect(await refused(Array.from({ length: 9 }, () => ({ file: "shared/style.safetensors", strength: 1 })))).toMatch(/at most 8/);
+    expect((await s.api("/host/v1/images/upscale", { body: { recipe: z.id, image: PNG.toString("base64"), loras: [] } })).body.error.code).toBe("invalid");
   });
 
   it("lists a recipe too big for the image GPU as doing nothing, and says why", async () => {

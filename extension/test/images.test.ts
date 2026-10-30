@@ -166,6 +166,22 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(unknown.content).toContainEqual({ type: "text", text: expect.stringMatching(/No image model here is called "Flux"; the ones that can: .*gpt-image-1/) });
   });
 
+  it("sends LoRAs asked for by name to a model that takes them, says which, and lists the library when one isn't found", async () => {
+    const s = await setup();
+    const styles = await s.host("styles", undefined, undefined, undefined, ["l/pixel_art_v2.safetensors", "w/detail_high_noise.safetensors", "w/detail_low_noise.safetensors"]);
+    const tool = (o: ImageTools) => { let t!: ToolDefinition; createImageExtension(o)({ on: () => {}, registerTool: (d: ToolDefinition) => { t = d; } } as unknown as ExtensionAPI); return t; };
+    const loras = (tool(s.options as ImageTools).parameters as { properties: { loras: { description: string } } }).properties.loras;
+    expect(loras.description).toContain("The LoRAs here: detail high noise, detail low noise, pixel art v2.");
+    // The thread's list is a cloud model, which takes none: the model that takes it goes first.
+    const made = await s.run({ action: "create", prompt: "A garden", loras: [{ name: "Pixel Art", strength: 0.7 }] });
+    expect((made.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text).toMatch(/^Made with Art on styles\. With pixel art v2 at 0\.7\. Saved /);
+    expect(styles.server.images.map(i => i.body)).toEqual([{ recipe: "art", prompt: "A garden", loras: [{ file: "l/pixel_art_v2.safetensors", strength: 0.7 }] }]);
+    await expect(s.run({ action: "create", prompt: "A garden", loras: [{ name: "ink", strength: 1 }] }))
+      .rejects.toThrow('No image model here takes "ink". The LoRAs here: detail high noise, detail low noise, pixel art v2.');
+    await expect(s.run({ action: "upscale", image: "/workspace/uploads/landscape.png", loras: [{ name: "pixel art", strength: 1 }] })).rejects.toThrow(/upscale takes no LoRAs/);
+    expect(s.heard).toEqual([]);
+  });
+
   it("stores PNGs under the thread's images/ and returns image content and path/model/tier details", async () => {
     const s = await setup(); s.settings.setPhotoCloudPolicy("always");
     const out = await s.run({ action: "create", prompt: "A garden", tier: "fast", aspectRatio: "16:9", count: 2 });

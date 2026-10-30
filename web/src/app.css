@@ -1678,6 +1678,8 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 @media (max-width: 760px) {
   .partrow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "role actions" "file size"; }
   .partrow .role { grid-area: role; } .partrow .actions { grid-area: actions; } .partrow .pfile { grid-area: file; } .partrow .size { grid-area: size; }
+  .partrow.with-field { grid-template-areas: "role size" "file file" "actions actions"; }
+  .partrow.with-field .actions { justify-content: space-between; }
   .list > li.rvrow { grid-template-columns: minmax(0, 1fr); }
   .list[data-selecting] .rvrow > .actions { display: none; }
 }

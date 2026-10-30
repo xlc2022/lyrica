@@ -718,7 +718,8 @@ A **download**:
 ## Image models
 
 Image models are **recipes** of **parts**. Lyrica names a confirmed recipe
-and gives parameters; she never names parts, LoRAs or workflows.
+and gives parameters; she never names parts or workflows. The only files a
+request names are LoRAs the recipe lists in `takesLoras` ("LoRAs for one job").
 
 Every call here is open to any paired client, including installing,
 confirming and deleting. The host doesn't know who is behind a client:
@@ -753,7 +754,12 @@ as `{ "parts": [...] }`, each entry like this:
   `z-image`, `qwen-image`, `qwen-image-2.1`, `krea2`, `seedvr2`,
   `wan2.2-5b`, `wan2.2-t2v-14b`, `wan2.2-i2v-14b`, `ltx2`, `minimax-h3`,
   `scail2`, `clip-vision-h`, `sam3`, …), or `null`. Wan 2.2 14B's VAE is Wan 2.1's, which reads as
-  `qwen-image`; the 5B's is `wan2.2`. A file whose
+  `qwen-image`; the 5B's is `wan2.2`. A LoRA's is its model's, except that
+  Wan 2.1 and 2.2 14B LoRAs share one layout, `wan`, which fits the 14B
+  and SCAIL-2 recipes; a Wan LoRA 3072 wide (`self_attn.q`) is the 5B's,
+  `wan2.2-5b`. A Qwen-Image 2.1 LoRA has Qwen-Image's tensor names, so it
+  reads as `qwen-image-2.1` only when its metadata's `ss_base_model_version`
+  says `qwen_image_2` or its file name says "qwen-image-2.1". A file whose
   architecture has no template stays a file: it is listed but no recipe
   can use it.
 - `precision`: `fp32`, `bf16`, `fp16`, `fp8`, `int8`, or a GGUF quantisation such
@@ -773,7 +779,8 @@ as `{ "parts": [...] }`, each entry like this:
   (upscale), and the video ones: `wan2.2-5b`, `ltx2` and `minimax-h3`
   (video and animate), `wan2.2-t2v-14b` (video), `wan2.2-i2v-14b`
   (animate) and `scail2` (motion). A model with two experts takes both in
-  one recipe, and only the LoRAs its template names. A file that names a
+  one recipe, with the LoRAs its template names; any other LoRA goes onto
+  both experts, or onto the one a `high` or `low` LoRA was made for. A file that names a
   template under `continues` (`minimax-h3-continue.json`) is that
   template's continuation, the workflow that makes the next clip of a
   longer video, not a template of its own.
@@ -826,6 +833,10 @@ as `{ "parts": [...] }`, each entry like this:
   is here each gap between two frames gains a frame, so its `fps` here is
   doubled. Installing a starter again
   adds a part it gained since, such as the 14B starters' RIFE.
+- `takesLoras`: the LoRA files on this host a request may add for one job
+  ("LoRAs for one job"): those whose architecture fits the recipe's, other
+  than the ones its template loads itself. Empty on a stable-diffusion.cpp
+  host and for SeedVR2.
 - `mask`: whether its template's edits take a mask (Lyrica's router skips
   one that doesn't for a masked edit).
 - `references`: how many reference images its template's creates and edits
@@ -878,7 +889,7 @@ Calls:
   - `{ "op": "addLora", "file": "<path>", "strength": 0.8 }`,
     `{ "op": "setLora", "file": "<path>", "strength": 1.0 }`,
     `{ "op": "removeLora", "file": "<path>" }`: the LoRA's architecture
-    must match, and a recipe with two experts takes none;
+    must fit (as for `takesLoras`), and its strength is -4 to 4;
   - `{ "op": "defaults", "defaults": { "steps": 30 } }`: merged into the
     defaults. Each must be one a request could give (the ranges below;
     `shift` 0 to 20, `guidance` 0 to 30, `duration` 1 to 15, `sampler` and
@@ -947,6 +958,17 @@ the action is `invalid`.
 For upscale, the shorter side's target (`scale` times the shorter side) is
 capped at 4096.
 
+#### LoRAs for one job
+
+Create, edit and `POST /host/v1/videos/create` also take
+`"loras": [{ "file": "<path>", "strength": 0.7 }]`: at most 8 files, each
+one the recipe lists in `takesLoras` or one of its own LoRAs, at a
+strength from -4 to 4. They apply to this job only; the recipe doesn't
+change. A recipe's own LoRA named again takes the request's strength
+instead; the rest go on after the recipe's own, in the order given. A
+file it doesn't take, a file named twice or a bad strength is `invalid`,
+as is any LoRA on a stable-diffusion.cpp host.
+
 A client that closes its connection cancels its job, queued or running. A
 job that fails, times out (30 minutes) or is cancelled is interrupted in
 ComfyUI and removed from its queue.
@@ -963,7 +985,7 @@ fewest jobs, and each clip of a chained video runs on the same one.
 
 On a host whose (first) image GPU is a CMP 100-210, stable-diffusion.cpp makes the
 images instead (README.md, "Image models"): create only, for Z-Image,
-Qwen-Image, FLUX and SDXL recipes without LoRAs. The recipe list says so:
+Qwen-Image, FLUX and SDXL recipes without LoRAs, and a job names none. The recipe list says so:
 `does` holds only `create`, or is empty with an `unsupported` reason for a
 recipe it can't run. A job for one is `invalid`, saying why. `sampler` and `scheduler` take the nearest sd.cpp names, or its
 defaults. Each image of a batch is made from the next seed, and says so. A
@@ -984,7 +1006,8 @@ newer host made, read after a rollback).
   { "recipe": "<id>", "prompt": "...", "negativePrompt": "...",
     "image": "<base64>", "drive": "<base64 MP4>", "extend": "<base64 MP4>", "width": 1280, "height": 704,
     "aspectRatio": "16:9", "duration": 5,
-    "steps": 20, "cfg": 5.0, "seed": 1234 }
+    "steps": 20, "cfg": 5.0, "seed": 1234,
+    "loras": [{ "file": "<path>", "strength": 0.7 }] }
   ```
 
   One clip from a video recipe. Only `recipe` and `prompt` are required.
@@ -1019,7 +1042,7 @@ newer host made, read after a rollback).
   must list `extend`: `duration` (1 to 60) is the seconds to add, made by
   continuations only, and the answer is the whole clip. ComfyUI joins the
   clips (our `clip_chain.py`), re-encoding one segment at a time.
-  `steps`, `cfg` and `seed` as for images; a
+  `steps`, `cfg`, `seed` and `loras` as for images (each clip of a chain takes the same LoRAs); a
   template whose model takes no CFG (MiniMax H3, LTX-2.5 distilled)
   ignores `cfg`. Answers:
 

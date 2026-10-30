@@ -30,8 +30,8 @@ interface Tensor {
   shape: number[];
 }
 
-/** The tensors listed in a safetensors header. */
-export function readSafetensorsHeader(path: string): Record<string, Tensor> {
+/** The tensors listed in a safetensors header; `meta` receives its `__metadata__` strings. */
+export function readSafetensorsHeader(path: string, meta?: Record<string, string>): Record<string, Tensor> {
   const fd = openSync(path, "r");
   try {
     const len = Buffer.alloc(8);
@@ -41,6 +41,9 @@ export function readSafetensorsHeader(path: string): Record<string, Tensor> {
     const buf = Buffer.alloc(n);
     if (readSync(fd, buf, 0, n, 8) !== n) throw new Error("too short");
     const header = JSON.parse(buf.toString("utf8"));
+    if (meta && header.__metadata__ && typeof header.__metadata__ === "object") {
+      for (const [k, v] of Object.entries(header.__metadata__)) if (typeof v === "string") meta[k] = v;
+    }
     delete header.__metadata__;
     return header;
   } finally {
@@ -64,8 +67,8 @@ function precisionOf(tensors: Tensor[]): string | null {
 type Kind = Pick<Part, "role" | "slot" | "arch">;
 const unknown: Kind = { role: "unknown", slot: null, arch: null };
 
-/** What a set of tensor names (and the file's name) is. */
-export function classify(names: string[], shapes: Record<string, number[]>, file: string): Kind {
+/** What a set of tensor names (and the file's name, and a safetensors file's metadata) is. */
+export function classify(names: string[], shapes: Record<string, number[]>, file: string, meta: Record<string, string> = {}): Kind {
   const has = (re: RegExp) => names.some((n) => re.test(n));
   const name = basename(file).toLowerCase();
 
@@ -83,8 +86,13 @@ export function classify(names: string[], shapes: Record<string, number[]>, file
 
   if (has(/lora_(up|down|A|B)\b|\.lora_(up|down|A|B)\.|^lora_(unet|te)/)) {
     const slot = expert ?? (/turbo|lightning|lightx2v|\d+[_-]?steps?/.test(name) ? "speed" : /(^|[^a-z])dpo([^a-z]|$)/.test(name) ? "dpo" : null);
+    // Wan 2.2 5B's blocks are 3072 wide, the 14B's (and Wan 2.1's) 5120: a LoRA's down matrix is its rank by that width.
+    const wanDown = Object.entries(shapes).find(([n]) => /blocks[._]\d+[._]self[._]attn[._]q[._.]lora_(down|A)\b/.test(n))?.[1];
+    // Qwen-Image 2.1's LoRAs have Qwen-Image's tensor names; the trainer's metadata, or the file name, says which.
+    const qwen21 = /qwen[_-]?image[_-]?2/.test(meta.ss_base_model_version ?? "") || /qwen[_-]?image[_-]?2[._-]?1/.test(name);
     const arch = /minimax[_-]?h3/.test(name) ? "minimax-h3"
-      : has(/blocks[._]\d+[._](self|cross)[._]attn[._][qkvo]\b/) ? "wan"
+      : has(/blocks[._]\d+[._](self|cross)[._]attn[._][qkvo]\b/) ? (wanDown?.[1] === 3072 ? "wan2.2-5b" : "wan")
+      : qwen21 ? "qwen-image-2.1"
       : has(/double_blocks|single_blocks/) ? "flux"
       : has(/img_mod|txt_mod/) ? "qwen-image"
       : has(/noise_refiner|context_refiner|cap_embedder|layers[._]\d+[._]attention/) ? "z-image"
@@ -202,10 +210,11 @@ function readPart(root: string, path: string): Part | null {
     const ft = meta["general.file_type"];
     return { file, size, format: "gguf", ...kind, precision: ft === undefined ? "gguf" : GGUF_TYPES[Number(ft)] ?? "gguf" };
   }
-  const header = readSafetensorsHeader(path);
+  const meta: Record<string, string> = {};
+  const header = readSafetensorsHeader(path, meta);
   const names = Object.keys(header);
   const shapes = Object.fromEntries(names.map((n) => [n, header[n]!.shape]));
-  return { file, size, format: "safetensors", ...classify(names, shapes, path), precision: precisionOf(Object.values(header)) };
+  return { file, size, format: "safetensors", ...classify(names, shapes, path, meta), precision: precisionOf(Object.values(header)) };
 }
 
 const cache = new Map<string, { key: string; part: Part | null }>();

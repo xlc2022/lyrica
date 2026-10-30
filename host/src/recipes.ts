@@ -57,6 +57,10 @@ const DEFAULT_RANGES: Record<string, [number, number, number?]> = {
   steps: [1, 150, 1], cfg: [0, 30], width: [256, 2048, 16], height: [256, 2048, 16],
   shift: [0, 20], guidance: [0, 30], scale: [1, 4], maxSize: [256, 8192, 1], duration: [1, 15],
 };
+/** Recipes a LoRA's architecture fits beside its own: Wan 2.1 and 2.2 14B LoRAs share one layout ("wan"). */
+const LORA_FITS: Record<string, string[]> = { wan: ["wan2.2-t2v-14b", "wan2.2-i2v-14b", "scail2"] };
+export const loraFits = (recipeArch: string, loraArch: string | null) => !!loraArch && (loraArch === recipeArch || !!LORA_FITS[loraArch]?.includes(recipeArch));
+
 export const COLOR_MATCH = ["lab", "wavelet", "wavelet_adaptive", "hsv", "adain", "none"];
 
 function checkDefault(k: string, v: unknown): void {
@@ -281,11 +285,11 @@ export class RecipeBook {
       }
       case "addLora":
       case "setLora": {
-        if (t.parts.some((s) => s.role === "diffusion" && s.slot)) throw invalid("This recipe's two models take only the LoRAs its template names.");
+        if (t.loaders === "template") throw invalid("This recipe takes no LoRAs.");
         const strength = body.strength;
         if (typeof strength !== "number" || strength < -4 || strength > 4) throw invalid("strength must be a number from -4 to 4.");
         const lora = part(body.file);
-        if (lora.role !== "lora" || lora.arch !== r.arch) throw invalid("That isn't a LoRA for this architecture.");
+        if (lora.role !== "lora" || !loraFits(r.arch, lora.arch)) throw invalid("That isn't a LoRA for this architecture.");
         const existing = r.loras.find((l) => l.file === lora.file);
         if (body.op === "setLora" && !existing) throw invalid("The recipe doesn't use that LoRA.");
         if (existing) existing.strength = strength;

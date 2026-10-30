@@ -1,7 +1,9 @@
 import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
 export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
 import { validateVideoRequest, videoAt, type GeneratedVideo, type VideoRequest } from "./videos.ts";
+import { loraFiles, loraName, type LoraAsk } from "./loras.ts";
 export { isMp4, LONGEST_VIDEO_SECONDS, type GeneratedVideo, type VideoRequest } from "./videos.ts";
+export { loraFiles, loraName, matchLora, MAX_LORAS, type LoraAsk } from "./loras.ts";
 export { type JobProgress, withProgress } from "./progress.ts";
 import type { JobProgress } from "./progress.ts";
 export { CODEX_DISABLED, codexImage, codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn } from "./codex.ts";
@@ -220,6 +222,8 @@ export interface Offering extends Capabilities {
   longestSeconds?: number;
   /** A host recipe says how many reference images it takes; fewer than a call sends skips it. */
   references?: number;
+  /** A host recipe's LoRA files it takes for one call; a call naming a LoRA it lacks skips it. */
+  loras?: string[];
   /** "Not this model": kept out of the entry its name would put it in. */
   separate?: boolean;
   /** A host's chat template writes `<think>` itself, so a reply can start mid-thought. */
@@ -361,7 +365,7 @@ export interface CleanupItem {
  * What a call needs from a model: tools, room for the conversation, or an image create tier.
  * `first`: models asked for by name, tried before the list for this one call (`namedImageModels`).
  */
-export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; imageReferences?: number; animate?: boolean; motion?: boolean; extend?: boolean; seconds?: number; first?: string[] }
+export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; imageReferences?: number; animate?: boolean; motion?: boolean; extend?: boolean; seconds?: number; first?: string[]; loras?: string[] }
 /** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
 export interface ResolveOptions { evenIfDown?: boolean; except?: ReadonlySet<string> }
 
@@ -526,7 +530,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; extend?: boolean; longestSeconds?: number; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; loras?: string[]; extend?: boolean; longestSeconds?: number; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -545,6 +549,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.extend ? { extend: true } : {}),
     ...(typeof caps.longestSeconds === "number" ? { longestSeconds: caps.longestSeconds } : {}),
     ...(typeof caps.references === "number" ? { references: caps.references } : {}),
+    ...(Array.isArray(caps.loras) && caps.loras.length ? { loras: caps.loras.filter((f): f is string => typeof f === "string") } : {}),
     ...(caps.separate ? { separate: true } : {}),
     ...(caps.opensThinking ? { opensThinking: true } : {}),
     ...(caps.alwaysThinks ? { alwaysThinks: true } : {}),
@@ -1717,13 +1722,14 @@ export class Models {
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
     // Image and video models are recipes: only confirmed ones become offerings, so a proposal never resolves.
     // A recipe that does nothing Lyrica can ask for isn't one, so it never shows as a chat model.
-    const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"]; mask?: boolean; references?: number; video?: { longestSeconds?: unknown } }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
+    const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"]; mask?: boolean; references?: number; takesLoras?: unknown; video?: { longestSeconds?: unknown } }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
       .filter((r) => r?.state === "confirmed" && r.does?.some((a) => RECIPE_ACTIONS.includes(a))).map((r) => ({
         modelId: `recipe/${r.id}`, recipe: r.name, useFor: r.useFor ?? "both", ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true, ...(typeof r.mask === "boolean" ? { mask: r.mask } : {}) } : {}), ...(r.does?.includes("upscale") ? { upscale: true } : {}),
         ...((r.does?.includes("create") || r.does?.includes("edit")) && typeof r.references === "number" ? { references: r.references } : {}),
         ...(r.does?.includes("video") ? { video: true } : {}), ...(r.does?.includes("animate") ? { animate: true } : {}),
         ...(r.does?.includes("motion") ? { motion: true } : {}), ...(r.does?.includes("extend") ? { extend: true } : {}),
         ...(typeof r.video?.longestSeconds === "number" && r.video.longestSeconds > 0 ? { longestSeconds: r.video.longestSeconds } : {}),
+        ...(Array.isArray(r.takesLoras) && r.takesLoras.length ? { loras: r.takesLoras.filter((f): f is string => typeof f === "string") } : {}),
       } as DiscoveredModel));
     return [...list.filter((m) => typeof m?.id === "string" && m.kind !== "image").map((m) => {
       const levels = (m.capabilities?.reasoning ?? []).filter((l) => l !== "off");
@@ -2550,7 +2556,8 @@ export class Models {
       const reason = why ?? this.away(ep, opts, o);
       if (reason) {
         skipped.push({ label, reason });
-        if (!unfit || named) passedOver.push({ label, reason });
+        // Passing over a model for the LoRAs a call names is a fallback she says, like one for its machine.
+        if (!unfit || named || unfit === this.loraUnfit(o, need)) passedOver.push({ label, reason });
         if (!why) away = true;
         if (!free && (ep.kind === "local" || o.price?.free)) free = { label, reason };
         continue;
@@ -2720,6 +2727,23 @@ export class Models {
     return { ids, names: [...new Set(able.map(modelName))] };
   }
 
+  /**
+   * The models that take every LoRA a call names (`loraFiles`), local only and able to do the task, in the
+   * task's list order and then the rest: tried first for that call, so a LoRA in the library finds a model
+   * that takes it even when the list's first doesn't. `names`: every LoRA a model there takes, for the error
+   * she reads when one isn't found, and for the tool's description.
+   */
+  loraModels(ctx: CallContext, task: "image.create" | "image.edit" | "video", asks: readonly LoraAsk[]): { ids: string[]; names: string[] } {
+    const c = this.catalog(ctx.userId);
+    const order = (this.listFor(task, ctx, c)?.list ?? []).flatMap((r) => "offeringId" in r ? [r.offeringId] : c.groups.get(r.groupId)?.members ?? []);
+    const able = [...c.offerings.values()].filter((o) => {
+      const ep = c.endpoints.get(o.endpointId);
+      return ep && ep.kind === "local" && o.loras?.length && !this.unfit(task, o, ep, {});
+    }).sort((a, b) => (order.indexOf(a.id) + 1 || Infinity) - (order.indexOf(b.id) + 1 || Infinity));
+    const ids = asks.length ? able.filter((o) => !loraFiles(asks, o.loras!).missing.length).map((o) => o.id) : [];
+    return { ids, names: [...new Set(able.flatMap((o) => o.loras!.map(loraName)))].sort() };
+  }
+
   /** Images stay in memory; the caller stores results and records the call. */
   /** `onProgress`: how far a model host's job has got (cloud models report none). */
   /** `first`: models asked for by name (`namedImageModels`), tried before the list. */
@@ -2727,8 +2751,9 @@ export class Models {
     validateImageRequest(request);
     await this.planImages(ctx.userId);
     const refs = request.action === "upscale" ? 0 : request.references?.length ?? 0;
+    const asks = request.action === "upscale" ? [] : request.loras ?? [];
     const need: Need = { ...request.action === "create" ? { imageTier: request.tier } : request.action === "edit" ? { imageMask: !!request.mask } : {},
-      ...(refs ? { imageReferences: refs } : {}) };
+      ...(refs ? { imageReferences: refs } : {}), ...(asks.length ? { loras: asks.map((a) => a.name) } : {}) };
     return this.callWithFallback(`image.${request.action}`, ctx, opts.first?.length ? { ...need, first: opts.first } : need, async (r) => {
       opts.signal?.throwIfAborted();
       await opts.beforeSend?.(r);
@@ -2737,7 +2762,8 @@ export class Models {
       // ChatGPT Images is made by the user's own Codex, not over the plan's sign-in, which OpenAI refuses for images.
       const codex = ep.api === "chatgpt" && this.codexImages ? this.codexImages.bind(this, ctx.userId) : undefined;
       const images = await imageAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: ep.api === "host" ? hostOrigin(ep.addresses![0]!) : ep.baseUrl,
-        host: ep.api === "host", api: ep.api, modelId: r.offering.modelId, apiKey: ep.api === "chatgpt" ? undefined : ep.apiKey, codex }, request, opts.signal, opts.onProgress);
+        host: ep.api === "host", api: ep.api, modelId: r.offering.modelId, apiKey: ep.api === "chatgpt" ? undefined : ep.apiKey, codex,
+        ...(asks.length ? { loras: loraFiles(asks, r.offering.loras ?? []).loras } : {}) }, request, opts.signal, opts.onProgress);
       return { images, resolution: r };
     });
   }
@@ -2762,9 +2788,12 @@ export class Models {
    * One clip from the context's Videos list, in memory; the caller stores it and records the call.
    * Local models only: a cloud video model is never resolved, whatever the list holds.
    */
-  async video(ctx: CallContext, request: VideoRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void } = {}): Promise<{ video: GeneratedVideo; resolution: Resolution }> {
+  /** `first`: models tried before the list (`loraModels`). */
+  async video(ctx: CallContext, request: VideoRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void; first?: string[] } = {}): Promise<{ video: GeneratedVideo; resolution: Resolution }> {
     validateVideoRequest(request);
-    const need: Need = request.extend ? { extend: true } : request.drive ? { motion: true } : { animate: !!request.image };
+    const asks = request.loras ?? [];
+    const need: Need = { ...request.extend ? { extend: true } : request.drive ? { motion: true } : { animate: !!request.image },
+      ...(asks.length ? { loras: asks.map((a) => a.name) } : {}), ...(opts.first?.length ? { first: opts.first } : {}) };
     // Extending, the duration is what's added, whatever the clip's length.
     if (request.duration !== undefined && !request.extend && !request.drive) need.seconds = request.duration;
     return this.callWithFallback("video", ctx, need, async (r) => {
@@ -2772,7 +2801,8 @@ export class Models {
       await opts.beforeSend?.(r);
       opts.signal?.throwIfAborted();
       const ep = r.endpoint;
-      const video = await videoAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: hostOrigin(ep.addresses![0]!), modelId: r.offering.modelId }, request, opts.signal, opts.onProgress);
+      const video = await videoAt({ fetch: this.fetchFor(ep) ?? fetch, baseUrl: hostOrigin(ep.addresses![0]!), modelId: r.offering.modelId,
+        ...(asks.length ? { loras: loraFiles(asks, r.offering.loras ?? []).loras } : {}) }, request, opts.signal, opts.onProgress);
       return { video, resolution: r };
     });
   }
@@ -3171,11 +3201,21 @@ export class Models {
     // A host recipe takes as many reference images as its template; one listed before hosts said so is tried.
     if (need.imageReferences && o.references !== undefined && o.references < need.imageReferences)
       return o.references ? `it takes at most ${o.references} reference images` : "it doesn't take reference images";
+    const lora = this.loraUnfit(o, need);
+    if (lora) return lora;
     if (task === "speech.transcribe" && !o.transcribe) return "it doesn't transcribe speech";
     if (task === "speech.speak" && !o.speak?.voices.length) return "it doesn't speak";
     if (need.tools && o.tools === false) return "it can't use tools";
     if (need.tokens && o.contextWindow && o.contextWindow < need.tokens) return `its context window (${o.contextWindow} tokens) is smaller than the conversation`;
     return undefined;
+  }
+
+  /** Why a model can't take the LoRAs a call names, if it can't: only a host recipe takes LoRAs, and only those on its host that fit it. */
+  private loraUnfit(o: Offering, need: Need): string | undefined {
+    if (!need.loras?.length) return undefined;
+    if (!o.loras?.length) return "it takes no LoRAs";
+    const { missing } = loraFiles(need.loras.map((name) => ({ name, strength: 1 })), o.loras);
+    return missing.length ? `it has no LoRA called ${missing.map((n) => `"${n}"`).join(" or ")}` : undefined;
   }
 
   /**

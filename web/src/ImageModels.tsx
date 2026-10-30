@@ -415,26 +415,36 @@ function ArchParts({ arch, libs }: { arch: string; libs: HostLibrary[] }) {
  * Use for and Delete model…; a proposal has Use this recipe or Download the missing parts, and Ignore, instead.
  * `details` leaves the actions out.
  */
-/** A recipe's default steps, typed and clamped to 1 to 150 when left; saved to the host when it changes. */
-function StepsField({ steps, disabled, onSave }: { steps: number; disabled: boolean; onSave: (n: number) => void }) {
-  const [text, setText] = useState(String(steps));
+/**
+ * A number saved to the host when it changes: typed, clamped to min to max when left (rounded with a whole `step`),
+ * the max shown. A recipe's default steps (1 to 150), or a LoRA's strength (-4 to 4).
+ */
+function NumberField({ label, value, min, max, step, disabled, onSave, name }: {
+  label: string; value: number; min: number; max: number; step: number; disabled: boolean; onSave: (n: number) => void;
+  /** The input's own name, where several fields share a label (each LoRA's Strength). */
+  name?: string;
+}) {
+  const [text, setText] = useState(String(value));
   const leave = () => {
     const n = Number(text);
-    if (!text.trim() || !Number.isFinite(n)) { setText(String(steps)); return; }
-    const v = Math.min(150, Math.max(1, Math.round(n)));
+    if (!text.trim() || !Number.isFinite(n)) { setText(String(value)); return; }
+    const v = Math.min(max, Math.max(min, Number.isInteger(step) ? Math.round(n) : Math.round(n * 100) / 100));
     setText(String(v));
-    if (v !== steps) onSave(v);
+    if (v !== value) onSave(v);
   };
   return (
-    <label className="field steps"><span>Steps</span>
+    <label className="field steps"><span>{label}</span>
       <span className="steps-in">
-        <input type="number" min={1} max={150} step={1} value={text} disabled={disabled} onChange={(e) => setText(e.target.value)} onBlur={leave}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); leave(); } }} />
-        <span className="muted">of <span className="num">150</span></span>
+        <input type="number" min={min} max={max} step={step} value={text} disabled={disabled} aria-label={name}
+          onChange={(e) => setText(e.target.value)} onBlur={leave} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); leave(); } }} />
+        <span className="muted">of <span className="num">{max}</span></span>
       </span>
     </label>
   );
 }
+
+/** A LoRA's strength runs from -4 to this, as the host takes (host/API.md, "Recipes"). */
+const LORA_MAX = 4;
 
 function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean }) {
   const r = c.recipe;
@@ -473,7 +483,7 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
     </div>
   );
   const steps = !details && !proposed && typeof r.defaults.steps === "number" && (
-    <StepsField key={`${r.id}:${r.defaults.steps}`} steps={r.defaults.steps} disabled={!editable || L.busy} onSave={(n) => change({ op: "defaults", defaults: { steps: n } })} />
+    <NumberField key={`${r.id}:${r.defaults.steps}`} label="Steps" value={r.defaults.steps} min={1} max={150} step={1} disabled={!editable || L.busy} onSave={(n) => change({ op: "defaults", defaults: { steps: n } })} />
   );
   const where = mainPart?.downloaded ? `${her()}'s downloads` : "the shared folder";
   return (
@@ -516,7 +526,9 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
           <PartRow key={i} missing role={x.role} small={x.slot ? slotWord(x.slot) : undefined} file={x.missing?.path} cap="Missing on this host" bytes={x.missing?.size} />
         ))}
         {r.loras.map((l) => (
-          <PartRow key={l.file} role="lora" small={`strength ${l.strength}`} file={l.file} cap={facts(l.file)} bytes={partOf(l.file)?.size}>
+          <PartRow key={l.file} role="lora" field={editable} small={editable ? undefined : `strength ${l.strength}`} file={l.file} cap={facts(l.file)} bytes={partOf(l.file)?.size}>
+            {editable && <NumberField key={`${l.file}:${l.strength}`} label="Strength" name={`Strength of ${fileName(l.file)}`} value={l.strength} min={-LORA_MAX} max={LORA_MAX} step={0.05}
+              disabled={L.busy} onSave={(n) => change({ op: "setLora", file: l.file, strength: n })} />}
             {editable && <button type="button" className="link" aria-label={`Remove the LoRA ${fileName(l.file)}`} disabled={L.busy} onClick={() => change({ op: "removeLora", file: l.file })}>Remove</button>}
           </PartRow>
         ))}
@@ -533,11 +545,12 @@ function CopyBlock({ L, c, details }: { L: Lib; c: RecipeCopy; details?: boolean
   );
 }
 
-function PartRow({ role, small, file, cap, bytes, missing, children }: {
-  role: Role; small?: string; file?: string; cap: string; bytes?: number; missing?: boolean; children?: React.ReactNode;
+/** `field`: its actions hold a field (a LoRA's Strength), which on a phone takes a line of its own. */
+function PartRow({ role, small, file, cap, bytes, missing, field, children }: {
+  role: Role; small?: string; file?: string; cap: string; bytes?: number; missing?: boolean; field?: boolean; children?: React.ReactNode;
 }) {
   return (
-    <li className={`partrow${missing ? " missing" : ""}`}>
+    <li className={`partrow${missing ? " missing" : ""}${field ? " with-field" : ""}`}>
       <span className="role">{ROLE_WORD[role]}{small && <small>{small}</small>}</span>
       <span className="pfile">{file && <code className="raw">{file}</code>}{cap && <span className={missing ? "cap warn-text" : "cap"}>{cap}</span>}</span>
       <span className="size">{bytes ? <Size text={size(bytes)} /> : null}</span>
@@ -601,11 +614,13 @@ function AddPart({ L, c, onAdd, onCancel }: {
     return () => removeEventListener("keydown", key);
   }, []);
   const used = new Set([...r.parts.map((x) => x.file), ...r.loras.map((l) => l.file)]);
-  const files = (L.libOf(c.hostId)?.parts ?? []).filter((x) => x.role === role && x.arch === r.arch && !used.has(x.file));
+  // A LoRA the host says this recipe takes (Wan 2.1 LoRAs fit Wan 2.2 14B); else a file of its architecture.
+  const takes = role === "lora" && r.takesLoras ? new Set(r.takesLoras) : null;
+  const files = (L.libOf(c.hostId)?.parts ?? []).filter((x) => x.role === role && (takes ? takes.has(x.file) : x.arch === r.arch) && !used.has(x.file));
   const chosen = files.find((x) => x.file === file) ?? files[0];
   const lora = role === "lora";
-  // The field clamps to 0 to 1.5 when it is left.
-  const clamp = (t: string) => { const n = Number(t); return Number.isFinite(n) && t.trim() ? Math.min(1.5, Math.max(0, n)) : 1; };
+  // The field clamps to -4 to 4 when it is left, as the host takes.
+  const clamp = (t: string) => { const n = Number(t); return Number.isFinite(n) && t.trim() ? Math.min(LORA_MAX, Math.max(-LORA_MAX, n)) : 1; };
   const usedBy = (x: HostPart) => {
     const names = x.usedBy.map((id) => nameOf(L, c.hostId, id)).filter(Boolean);
     return names.length ? `Used by ${names.join(", ")}` : "Not used by any model";
@@ -634,8 +649,8 @@ function AddPart({ L, c, onAdd, onCancel }: {
         <p><a className="link" href={href({ page: "models", userId: L.ctx.user.id, tab: "images", add: "image" })}>Download another…</a></p>
         {lora ? files.length > 0 && <>
           <label className="field strength"><span>Strength</span>
-            <input type="number" min={0} max={1.5} step={0.05} value={strength} onChange={(e) => setStrength(e.target.value)} onBlur={() => setStrength(String(clamp(strength)))} />
-            <span className="muted">of <span className="num">1.5</span></span>
+            <input type="number" min={-LORA_MAX} max={LORA_MAX} step={0.05} value={strength} onChange={(e) => setStrength(e.target.value)} onBlur={() => setStrength(String(clamp(strength)))} />
+            <span className="muted">of <span className="num">{LORA_MAX}</span></span>
           </label>
           <label className="check"><input type="checkbox" checked={asNew} onChange={(e) => setAsNew(e.target.checked)} /> Save as a new model, keeping {r.name} as it is</label>
         </> : <p className="meta">Replaces the {roleWord(role)} this model uses now.</p>}

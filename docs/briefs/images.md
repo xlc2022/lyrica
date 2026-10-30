@@ -51,8 +51,9 @@ of how she works with the user, from storyboards to edits of the user's own phot
 3. **Providers.**
    - **Model host:** its image API, which takes a confirmed recipe and
      parameters. The recipe's defaults (steps, CFG, sampler, size) apply
-     unless the tool asks for a size or count. The tool never names parts or
-     LoRAs: those live in the recipe.
+     unless the tool asks for a size or count. The tool never names parts;
+     LoRAs live in the recipe, or are asked for by name for one call
+     (`lora-controls.md`).
    - **Cloud:** OpenAI's image API first (generate and edit), declared as a
      cloud endpoint with a key.
    - Further providers (Black Forest Labs, Krea, Google, fal, Replicate) come
