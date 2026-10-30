@@ -731,6 +731,18 @@ test("New project in the sidebar creates a pinned project and opens it", async (
   await expect(choice).toHaveCount(0);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   await expect(side.getByRole("button", { name: "New project" })).toHaveAttribute("aria-expanded", "false");
+  // Search's field and a New choice close each other.
+  await side.getByRole("button", { name: "New thread" }).click();
+  await side.getByText("Search", { exact: true }).click();
+  const field = side.getByRole("searchbox", { name: "Search titles and messages" });
+  await expect(field).toBeVisible();
+  await expect(side.getByRole("group", { name: "New thread in" })).toHaveCount(0);
+  await field.fill("zz");
+  await side.getByRole("button", { name: "New project" }).click();
+  await expect(field).toBeHidden();
+  await side.getByText("Search", { exact: true }).click();
+  await expect(field).toHaveValue("");
+  await expect(choice).toHaveCount(0);
   await side.getByRole("button", { name: "New project" }).click();
   await choice.getByRole("button", { name: "General" }).click();
   // A new project is created pinned and opened at once, same as the list menu's item does.
