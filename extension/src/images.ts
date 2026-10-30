@@ -68,13 +68,16 @@ const NEEDS = { create: ["prompt"], edit: ["image", "instruction"], upscale: ["i
 
 /** The files each action reads; any other file it is given is refused, not ignored, so a model doesn't take one clip for another. */
 const FILES = { create: ["references"], edit: ["image", "mask", "references"], upscale: ["image"], reject: ["images"], pick: ["image"], clear_rejected: [], video: [], animate: ["image"], motion: ["image", "video"], extend: ["video"] } as const;
-const FILE_USE = { image: "animate starts a clip from an image", video: "extend makes a clip longer and motion copies a clip's moves", mask: "edit takes a mask", images: "reject takes images", references: "create and edit take references" } as const;
+const FILE_USE = { image: "edit, upscale and pick take an image, and animate starts a clip from one", video: "extend makes a clip longer and motion copies a clip's moves", mask: "edit takes a mask", images: "reject takes images", references: "create and edit take references" } as const;
+
+/** Whether a field was given: an empty string or list, which smaller models send for fields they don't use, wasn't. */
+const given = (v: unknown) => v !== undefined && v !== "" && !(Array.isArray(v) && !v.length);
 
 /** The fields an action needs, named in the error a model reads. */
 function needs(p: ImageArgs): void {
-  const missing = NEEDS[p.action].filter(k => p[k] === undefined || p[k] === "" || (Array.isArray(p[k]) && !p[k].length));
+  const missing = NEEDS[p.action].filter(k => !given(p[k]));
   if (missing.length) throw new Error(`${p.action} needs ${missing.join(" and ")}: ${NEEDS[p.action].join(", ")} ${NEEDS[p.action].length === 1 ? "is" : "are"} required, the rest optional.`);
-  const extra = (Object.keys(FILE_USE) as (keyof typeof FILE_USE)[]).filter(k => p[k] !== undefined && !(FILES[p.action] as readonly string[]).includes(k));
+  const extra = (Object.keys(FILE_USE) as (keyof typeof FILE_USE)[]).filter(k => given(p[k]) && !(FILES[p.action] as readonly string[]).includes(k));
   if (extra.length) throw new Error(`${p.action} doesn't take ${extra.join(" or ")}: ${extra.map(k => FILE_USE[k]).join("; ")}.`);
 }
 

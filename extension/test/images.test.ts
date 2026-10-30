@@ -243,6 +243,9 @@ describe("image tool results (principles 1 and 4)", () => {
     // A clip given to video is refused, not ignored: a new clip isn't the one they meant to go on.
     await expect(s.run({ action: "video", prompt: "x", video: "/workspace/uploads/walk.mp4" })).rejects.toThrow("video doesn't take video: extend makes a clip longer");
     expect(s.workstation.server.videos).toHaveLength(1);
+    // An empty field, as smaller models send for ones they don't use, isn't a file given.
+    await s.run({ action: "extend", prompt: "She turns", video: "/workspace/uploads/walk.mp4", references: [], image: "" });
+    expect(s.workstation.server.videos).toHaveLength(2);
     expect(s.heard).toEqual([]);
   });
   it("hands a clip to the background when lyricad runs clips, so her turn ends, and the clip comes back when it's made", async () => {
