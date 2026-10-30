@@ -35,7 +35,10 @@ the end is for that.
 
 A host that is off, paused or busy is skipped for the next model in the
 list, so several hosts (or a host and a cloud model, in a general preset)
-back each other up.
+back each other up. Busy takes a while: Lyrica's text requests (chat,
+sleep, subagents) wait for the GPU up to 15 minutes first, since a very
+large model can take minutes to load, and a chat thread says what it waits
+for.
 
 ## The machine
 
@@ -307,7 +310,11 @@ Three ways a model gets into the library:
   **Vision** and **MTP**. A link to one `.gguf` or `.safetensors` file,
   with an optional SHA-256, works too.
   Models, **Downloads** shows every host's queue, with Cancel, Clear
-  finished and Add to the group. Cancelling or clearing a failed download
+  finished and Add to the group. A download that loses its connection,
+  stalls or meets a busy server retries by itself from where it stopped,
+  for about four minutes of waits, and fails only when five tries in a
+  row get nowhere. Downloading the same file again while the failed one is
+  still listed resumes it; cancelling or clearing a failed download
   deletes its partial file. Its **Accounts** section holds hub
   tokens: a user's own, or a shared one an administrator adds, sent to the
   host per request. A token typed for a gated repository is saved for next

@@ -474,7 +474,7 @@ class Models {                                              // new Models(keyrin
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Videos (memory only; caller stores and records results)
   video(ctx, request: VideoRequest, { signal?, beforeSend?, onProgress? }?): Promise<{ video: GeneratedVideo; resolution }>
-  // onProgress (image() takes it too): JobProgress { queued; progress?: 0-1 } as a model host's job goes (models/progress.ts withProgress):
+  // onProgress (image() takes it too): JobProgress { queued; progress?: 0-1; busyWith?; loading? } as a model host's job goes (models/progress.ts withProgress, exported):
   // the call carries X-Lyrica-Job: <random token> and GET /host/v1/jobs/<token> is read every 2 s until it ends; a host that
   // hasn't known the job after 5 reads isn't asked again. Cloud models report none.
   // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1-15 }
@@ -617,6 +617,10 @@ class Models {                                              // new Models(keyrin
   addresses tried in order. A changed key ends the call with
   `HostIdentityChanged`'s message and marks the host down; `paused`, `busy`,
   `restarting`, `unavailable` and `unpaired` answers mark it down too. A
+  `/v1` POST is tagged with `X-Lyrica-Job` (a random token unless the
+  caller set one), so the host keeps it queued up to 15 minutes before
+  `busy`; it and an image or video job have no limit on waiting
+  for the answer's headers. A
   host's refusal is a `HostRefused` carrying the host's own `code`. Lyrica's
   key and certificate live in `self.db` (`host_identity`). `undici` 8.12.3
   is a direct dependency of core for this.
@@ -1167,10 +1171,13 @@ The extension is created with a `ThreadContext`:
 
 ```ts
 // extension/, because core has no Pi dependency:
-modelRuntimeFor(models, ctx): Promise<ModelRuntime>       // Pi runtime holding only models.allowed(ctx), sealed
+modelRuntimeFor(models, ctx, { onGpuWait? }?): Promise<ModelRuntime>   // Pi runtime holding only models.allowed(ctx), sealed
+// onGpuWait(GpuWait { busyWith?; loading? } | null), passed for a thread's own turns (HostedThread; not sleep, subagents or watching): a host's chat requests go through waitingFetch(fetch, origin, onWait), tagged with
+// X-Lyrica-Job, and their job is read every 2 s while queued; onWait hears the latest one waiting and null once none does.
+// Every /v1 request to a host (sleep, subagents and watching too) waits for the GPU up to 15 minutes: hostFetch tags it.
 piModelFor(runtime, models, task, ctx, resolution?): { ref; model; resolution }
 prepareTurn({ session, runtime, models, call, pool, threadId, task?, thinking?, retry? }): Promise<Resolution>
-openThreadSession({ thread, models, cwd, extensions, settings?, task?: () => Task }): Promise<ThreadSession>
+openThreadSession({ thread, models, cwd, extensions, settings?, task?: () => Task, onGpuWait? }): Promise<ThreadSession>
 interface ThreadSession { session; runtime; chat: { offeringId }; prepare(opts?: { thinking?; retry? }): Promise<Resolution>; dispose() }
 interface ContextMeter { report(): ContextInfo | undefined; contextLines(): string; pending?: { summary }; onProgress?(): void }   // LyricaOptions.meter; onProgress runs after each request that goes on with tools
 ```
@@ -1815,6 +1822,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     free, measured at, `compactions`: how many times it was compacted, with
     used being what is left after them), `CallInfo.pace`, the `context` and `compacted`
     thread events, and a `compacted` message part (the stored notice);
+  - a `gpu_wait` thread event (`wait: GpuWait | null`, and `gpuWait` on
+    `hello`) while a reply waits for a model host's GPU: `busyWith` (plain
+    words, "a chat model") or `loading`; null once it no longer waits, and
+    cleared at `turn_end`. A reply's stored `error` that is a server's JSON
+    error ("503: {…}") keeps only its message (`plainError`);
   - offline: an `offline` thread event (`task`, `tried`) when no model for a
     turn can be reached; a turn that hadn't started keeps its message in
     `queue` and sends it when a model answers. Any call that throws `Offline`
@@ -2603,7 +2615,8 @@ split `tokens`, except that totals folded before user step 17 count in
 `tokens` alone. `cacheHit` (0 to 1) is the share of input the server said it
 read from its cache (`read_tokens - processed` over `read_tokens`), over the
 kept call records that measured it, a subagent's under its parent's thread;
-absent where none did. Requires the addressed user's session and thread;
+absent where none did. A subagent's tokens, stored as it works, and a local
+one's GPU time count under its parent's thread too. Requires the addressed user's session and thread;
 missing thread is 404. Models sort by tokens descending. `threads` appears
 only for a project chat: the chat first, then descending tokens. The total
 is also `ProjectOverview.tokens`. User step 10 adds nullable

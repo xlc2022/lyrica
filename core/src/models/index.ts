@@ -2,7 +2,7 @@ import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateI
 export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
 import { validateVideoRequest, videoAt, type GeneratedVideo, type VideoRequest } from "./videos.ts";
 export { isMp4, type GeneratedVideo, type VideoRequest } from "./videos.ts";
-export { type JobProgress } from "./progress.ts";
+export { type JobProgress, withProgress } from "./progress.ts";
 import type { JobProgress } from "./progress.ts";
 export { CODEX_DISABLED, codexImage, codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn } from "./codex.ts";
 import { randomUUID } from "node:crypto";
@@ -2922,8 +2922,9 @@ export class Models {
   }
 
   /**
-   * Turns and recursively nested subagents, filtered by both pool and thread. A subagent's own turns count through its run, never its call records,
+   * Turns and recursively nested subagents, filtered by both pool and thread. A subagent's own tokens count through its run, never its call records,
    * so a project tree that lists it isn't counted twice; Claude Code run from a subagent's thread, which its run doesn't count, still counts there.
+   * A local subagent's GPU time, which its run doesn't keep, comes from its call records, under its parent.
    * `input` and `output` split `tokens` where it is known: totals folded before user step 17 count in `tokens` alone.
    */
   usage(userId: string, pool: Pool, threadIds: string[]): UsageRow[] {
@@ -2947,6 +2948,8 @@ export class Models {
       FROM descendants d JOIN subagent_runs r ON r.thread = d.thread AND r.pool = @pool
       WHERE d.thread != d.root`).all({ pool, threads: JSON.stringify(threadIds) })) as { threadId: string; label: string; offering: string | null; input: number; output: number }[];
     for (const r of runs) {
+      // A subagent that used nothing yet, or failed before its first answer, has no row.
+      if (!r.input && !r.output) continue;
       const kind = r.offering ? this.offering(userId, r.offering)?.endpoint.kind : undefined;
       const existing = result.find(x => x.threadId === r.threadId && x.label === r.label && x.kind === kind);
       if (existing) { existing.tokens += r.input + r.output; existing.input += r.input; existing.output += r.output; }
@@ -2964,6 +2967,20 @@ export class Models {
     for (const c of cache) {
       const row = result.find(x => x.threadId === c.threadId && x.label === c.label && (x.kind === undefined || x.kind === c.kind));
       if (row) { row.cached = (row.cached ?? 0) + c.cached; row.measured = (row.measured ?? 0) + c.measured; }
+    }
+    // A local subagent's GPU time, from its measured call records and their folded totals, counted under its parent as its tokens are.
+    const gpu = this.withUser(userId, db => db.prepare(`WITH RECURSIVE descendants(root, thread) AS (
+      SELECT value, value FROM json_each(@threads)
+      UNION SELECT d.root, r.thread FROM descendants d JOIN subagent_runs r ON r.parent = d.thread AND r.pool = @pool
+    ) SELECT d.root AS threadId, c.label, sum(c.gpu_ms) AS gpuMs FROM descendants d JOIN (
+        SELECT thread, label, coalesce(ttft_ms, 0) + coalesce(gen_ms, 0) AS gpu_ms FROM model_calls
+          WHERE pool = @pool AND task IN ('chat', 'code') AND kind = 'local' AND (ttft_ms IS NOT NULL OR gen_ms IS NOT NULL)
+        UNION ALL SELECT thread, label, gpu_ms FROM call_totals WHERE pool = @pool AND kind = 'local' AND gpu_ms > 0
+      ) c ON c.thread = d.thread
+      WHERE d.thread != d.root GROUP BY d.root, c.label`).all({ pool, threads: JSON.stringify(threadIds) })) as { threadId: string; label: string; gpuMs: number }[];
+    for (const g of gpu) {
+      const row = result.find(x => x.threadId === g.threadId && x.label === g.label && x.kind !== "cloud");
+      if (row) row.gpuMs = (row.gpuMs ?? 0) + g.gpuMs;
     }
     return result;
   }

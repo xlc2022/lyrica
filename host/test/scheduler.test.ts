@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Logger } from "../src/log.ts";
 import { HostError } from "../src/http.ts";
-import { Scheduler, type Priority } from "../src/scheduler.ts";
+import { Scheduler, type Priority, type QueuePhase } from "../src/scheduler.ts";
 import { StateFile } from "../src/state.ts";
 import { FakeBackend, FakeGpus, GIB, textModel } from "./fakes.ts";
 
@@ -191,6 +191,37 @@ describe("the GPU queue", () => {
     expect(err.code).toBe("busy");
     expect(err.message).toBe("The GPU is busy with a chat model.");
     holder.release();
+  });
+
+  it("keeps a request with its own wait limit past its priority's, saying what it waits for", async () => {
+    const { scheduler } = setup([24], { waitLimits: { chat: 50, image: 50, background: 50 } });
+    await scheduler.start([]);
+    const holder = hold(scheduler, textModel("chatting", 15));
+    await holder.started;
+    const phases: QueuePhase[] = [];
+    const abort = new AbortController();
+    let ran = false;
+    const waiting = scheduler.run(textModel("other", 10), "chat", async () => { ran = true; }, undefined, abort.signal, { waitLimit: 60_000, phase: (p) => phases.push(p) });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(phases[0]).toEqual({ state: "waiting", busyWith: "a chat model" });
+    holder.release();
+    await waiting;
+    expect(ran).toBe(true);
+    expect(phases.at(-1)).toEqual({ state: "loading" });
+  });
+
+  it("takes a request with a long wait limit out of the queue when its client goes", async () => {
+    const { scheduler, llamacpp } = setup([24]);
+    await scheduler.start([]);
+    const holder = hold(scheduler, textModel("chatting", 15));
+    await holder.started;
+    const abort = new AbortController();
+    const waiting = scheduler.run(textModel("other", 10), "chat", async () => {}, undefined, abort.signal, { waitLimit: 60_000 }).catch((e) => e);
+    abort.abort();
+    expect((await waiting).code).toBe("cancelled");
+    holder.release();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(llamacpp.calls).not.toContain("load other@0");
   });
 
   it("measures a model's VRAM on its first load", async () => {

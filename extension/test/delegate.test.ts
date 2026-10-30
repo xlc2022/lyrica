@@ -646,20 +646,27 @@ describe("delegate", () => {
     expect(deeper.cloud.requests[0]!.tools!.map((t) => t.function.name)).toContain("delegate");
   });
 
-  it("reports a run interrupted by a restart", async () => {
+  it("reports a run interrupted by a restart, with the tokens it used before", async () => {
     const s = await setup();
     const g = gate();
-    s.cloud.respond(async () => { await g.opened; return { text: "never seen" }; });
+    // Its first answer calls a tool; the second never comes.
+    s.cloud.respond(async () => {
+      if (s.cloud.requests.length === 1) return { tools: [{ name: "no_such_tool", args: {} }] };
+      await g.opened;
+      return { text: "never seen" };
+    });
     const parent = s.thread();
     const run = s.delegation.start(parent, { task: "long job" }, { background: true, budget: s.delegation.newBudget() });
-    await until(() => s.cloud.requests.length === 1);
+    await until(() => s.cloud.requests.length === 2);
+    // Counted while it works, not only when it ends.
+    expect(s.delegation.status(parent)[0]!.outputTokens).toBe(5);
 
     // A new lyricad over the same data: the run it finds live in the records is gone.
     const after = new Delegation(s.options);
     const events: DelegationEvent[] = [];
     after.events.on("interrupted", (e) => events.push(e));
     after.recover(s.ada.id);
-    expect(after.status(parent)[0]).toMatchObject({ run: run.id, status: "interrupted" });
+    expect(after.status(parent)[0]).toMatchObject({ run: run.id, status: "interrupted", outputTokens: 5 });
     expect(events).toEqual([expect.objectContaining({ type: "interrupted", runId: run.id, parentThreadId: parent.threadId })]);
     expect(JSON.stringify(parent.view.own.loadEntries(parent.threadId))).toContain(`Subagent run ${run.id} was interrupted`);
     run.stop();

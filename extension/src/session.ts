@@ -5,7 +5,7 @@ import {
 import type { Models, Resolution, Task } from "@lyrica/core";
 import { keepRecentFor, reserveFor } from "./context.ts";
 import type { ThreadContext } from "./index.ts";
-import { modelRuntimeFor, piModelFor, prepareTurn } from "./models.ts";
+import { modelRuntimeFor, piModelFor, prepareTurn, type GpuWait } from "./models.ts";
 import { createTurnToolsExtension } from "./turn-tools.ts";
 import { recordEntries } from "./record.ts";
 
@@ -20,6 +20,8 @@ export interface ThreadSessionOptions {
   extensions: ExtensionFactory[];
   settings?: Settings;
   task?: () => Task;
+  /** A chat request waiting for a model host's GPU (up to 15 minutes), and null once none waits. */
+  onGpuWait?: (w: GpuWait | null) => void;
 }
 
 /**
@@ -40,7 +42,7 @@ export interface ThreadSession {
 
 export async function openThreadSession(o: ThreadSessionOptions): Promise<ThreadSession> {
   const { thread } = o;
-  const runtime = await modelRuntimeFor(o.models, thread.call);
+  const runtime = await modelRuntimeFor(o.models, thread.call, o.onGpuWait ? { onGpuWait: o.onGpuWait } : {});
   // Any model will do to open with, even one whose machine is down: each turn picks again (prepare).
   const task = o.task?.() ?? "chat";
   const { ref: chat, model } = piModelFor(runtime, o.models, task, thread.call, o.models.resolve(task, thread.call, {}, { evenIfDown: true }));

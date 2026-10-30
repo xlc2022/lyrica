@@ -220,8 +220,14 @@ subfolder, under `lyrica/<source>/<repository>/`.
   written down. A gated download interrupted by a restart must be started
   again; it resumes from its partial file.
 - Free space is checked first, counting downloads already queued, and no
-  file grows past its size. Downloads resume after a restart (a busy server
-  or a broken connection keeps the partial file) and can be cancelled,
+  file grows past its size. A broken connection, a stalled transfer or a
+  busy server is tried again from where it stopped, after 5 s, 15 s, 30 s,
+  1 and 2 minutes; the count starts over whenever a try got further, and
+  the download fails only after five tries in a row get nowhere. While it
+  waits it still shows as downloading. Downloads resume after a restart (a
+  busy server or a broken connection keeps the partial file), and a failed
+  one resumes when the same file is downloaded again while the failed one
+  is still listed. They can be cancelled,
   which deletes the partial file. Clearing a failed download deletes its
   partial file too, and on start fetch deletes any partial file no listed
   download can resume. A sharded model appears once all its
@@ -447,7 +453,8 @@ revoked. A revoked server must pair again.
   A model that can never fit fails at once, saying why.
 - **Queues.** Requests wait in a queue per GPU: chat first, then images,
   then background work. A request that waits too long fails with "The GPU
-  is busy with …".
+  is busy with …", except a `/v1` request tagged with `X-Lyrica-Job`,
+  which waits up to 15 minutes (API.md, "Job progress").
 - **VRAM** use is measured per GPU at load and after the first attributable
   completed request (an image recipe's on its first job). The host keeps the
   larger measurement, including buffers grown on first use, until settings

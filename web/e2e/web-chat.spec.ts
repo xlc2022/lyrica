@@ -710,6 +710,35 @@ test("her waiting (sleeps that only echo, reads of a thread, a refused read) fol
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/waiting-open-${page.viewportSize()!.width}.png` });
 });
 
+test("a run with failed calls counts them after its own count", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "Build it");
+  await expect(page.getByText("You said: Build it")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  let n = 0;
+  const at = () => `2026-10-30T04:00:${String(n).padStart(2, "0")}Z`;
+  const bash = (id: string, command: string, result: string, isError = false) => ({ type: "tool", toolCallId: id, name: "bash", args: { command }, result, isError });
+  const hers = (...parts: unknown[]) => ({ id: `e:${threadId}#${++n}`, n, role: "assistant", model: "fake", createdAt: at(), parts });
+  const messages = [
+    { id: `e:${threadId}#${++n}`, n, role: "user", createdAt: at(), parts: [{ type: "text", text: "Build it" }] },
+    hers(bash("b1", "npm install", "added 12 packages")),
+    hers(bash("b2", "npm run build", "error TS2304", true)),
+    hers(bash("b3", "npm test", "1 failed", true)),
+    hers(bash("b4", "git status", "clean")),
+    hers({ type: "text", text: "Two steps failed." }),
+  ];
+  await page.route(`**${base}/messages`, (route) => route.fulfill({ json: { hasMore: false, messages } }));
+  await page.reload();
+  await expect(page.getByText("Two steps failed.")).toBeVisible();
+  const run = page.locator(".marker.tool-run");
+  // The count of failed calls, not the word alone, which read as if every call failed.
+  await expect(run.getByRole("button")).toHaveText("4 tool calls · 2 failed");
+  await expect(run.locator(".state[data-state='failed']")).toHaveText("2 failed");
+  if (process.env.SCREENSHOTS) await run.screenshot({ path: `${process.env.SCREENSHOTS}/tool-run-failed-${page.viewportSize()!.width}.png` });
+});
+
 test("an open run of tool calls follows her newest call only while its box is at the bottom", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");
@@ -1914,7 +1943,7 @@ test("a thread's branch shows as a badge that opens the changes view: files, com
   await expect(side.getByRole("button")).toHaveCount(5 + 2 + commits.length);
   await expect(side.getByRole("button", { name: /^All changes/ })).toHaveAttribute("aria-pressed", "true");
   // The changed words are marked inside the changed lines, and a renamed file says where it was.
-  await expect(dialog.locator(".dl.ins mark.ins").first()).toContainText("as input");
+  await expect(dialog.locator(".cline.ins mark.ins").first()).toContainText("as input");
   await expect(dialog.getByText("docs/model.md → docs/models.md")).toBeVisible();
   await expect(dialog.getByText("No differences in the text.")).toBeVisible();
   // A long unchanged stretch folds, and a press shows twenty more lines of it.
@@ -1930,7 +1959,7 @@ test("a thread's branch shows as a badge that opens the changes view: files, com
   } else {
     await view.getByRole("button", { name: "Side by side" }).click();
     await expect(dialog.locator(".dr").first()).toBeVisible();
-    await expect(dialog.locator(".dr .dl.del mark.del").first()).toContainText("outputs");
+    await expect(dialog.locator(".dr .cline.del mark.del").first()).toContainText("outputs");
     if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/split-${page.viewportSize()!.width}.png` });
     await view.getByRole("button", { name: "Unified" }).click();
   }

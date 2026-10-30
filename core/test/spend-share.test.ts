@@ -31,14 +31,18 @@ describe("spend share", () => {
     run.run("general", "sub", "work", "Local", localRef.offeringId, 40, 8);
     run.run("general", "deep", "sub", "Removed", "gone", 50, 9);
     run.run("private", "other", "work", "Local", localRef.offeringId, 900, 90);
-    // A subagent's own measured call record never contributes: its run counts it, so a tree listing both counts it once.
+    // A subagent that failed before its first answer has no row.
+    run.run("general", "failed", "work", "Never", "gone", 0, 0);
+    // A subagent's own measured call record never contributes tokens: its run counts them, so a tree listing both counts them once.
+    // Its GPU time, which the run doesn't keep, counts under its parent.
     db.prepare(`INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind, prompt_tokens, output_tokens, ttft_ms, gen_ms)
-      VALUES ('2026-01-01', 'general', 'sub', 'chat', 'gone', 'Removed', 'test', 'local', 40, 8, 100, 200)`).run();
+      VALUES ('2026-01-01', 'general', 'sub', 'chat', ?, 'Local', 'test', 'local', 40, 8, 100, 200)`).run(localRef.offeringId);
     db.prepare("INSERT INTO call_totals (pool, thread, label, kind, tokens, gpu_ms, calls) VALUES ('general', 'chat', 'Local', 'local', 11, 30, 1)").run();
     const own = models.usage(ada.id, "general", ["work"]);
     expect(own.reduce((n, r) => n + r.tokens, 0)).toBe(27 + 48 + 59);
+    expect(own.some(r => r.label === "Never")).toBe(false);
     expect(own.find(r => r.label === "Removed")).toEqual({ threadId: "work", label: "Removed", tokens: 59, input: 50, output: 9 });
-    expect(own.find(r => r.label === "Local")?.gpuMs).toBeUndefined();
+    expect(own.find(r => r.label === "Local")).toMatchObject({ tokens: 48, gpuMs: 300 });
     // Input and output split the total: the work thread's own cloud turn read 20 and wrote 7.
     expect(own.find(r => r.label === "Cloud")).toMatchObject({ tokens: 27, input: 20, output: 7 });
     expect(models.usage(ada.id, "general", ["sub"]).reduce((n, r) => n + r.tokens, 0)).toBe(59);
@@ -51,7 +55,7 @@ describe("spend share", () => {
     db.prepare("DELETE FROM call_totals WHERE thread = 'sub'").run();
     const project = models.usage(ada.id, "general", ["chat", "work"]);
     expect(project.reduce((n, r) => n + r.tokens, 0)).toBe(180);
-    expect(project.reduce((n, r) => n + (r.gpuMs ?? 0), 0)).toBe(330);
+    expect(project.reduce((n, r) => n + (r.gpuMs ?? 0), 0)).toBe(630);
     for (let i = 0; i < 501; i++) db.prepare(`INSERT INTO model_calls (at, pool, thread, task, offering, label, endpoint, kind) VALUES ('2026-01-01', 'general', 'unrelated', 'title', 'gone', 'Title', 'test', 'local')`).run();
     models.prune();
     expect(models.usage(ada.id, "general", ["chat", "work"])).toEqual(project);
