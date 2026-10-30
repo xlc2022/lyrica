@@ -90,7 +90,8 @@ The owner chose, in order:
   hands the job to lyricad's `ClipJobs` and returns, so her turn ends. The
   clip comes into the thread as her message and wakes an idle thread to
   say it's ready; a failure is a notice that wakes it too; Lock and a
-  shutdown stop it. Her marker reads started.
+  shutdown stop it. Her marker reads started, and the clip's message
+  carries the marker again, done, so its prompt stays with the clip.
 - **Detailed clip prompts** (built, a guideline): she writes the prompt as
   a detailed shot (subject and action, motion, camera move and lens, light
   and mood, about 80 to 120 words) even from a few words.

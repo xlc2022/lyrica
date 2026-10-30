@@ -12,7 +12,7 @@ import {
 import type * as Api from "./api.ts";
 import type { PermissionRequest, ThreadEvent } from "./api.ts";
 import type { SameFile } from "./same-file.ts";
-import { delegateThreads, delegationPart, imagePart, imageRefusal, rootPart, videoPart, markersFor, plainError, shortResult, toReactions, turnRecall, type Started } from "./messages.ts";
+import { delegateThreads, delegationPart, clipCall, imagePart, imageRefusal, rootPart, videoPart, markersFor, plainError, shortResult, toReactions, turnRecall, type Started } from "./messages.ts";
 
 export interface HostOptions {
   users: Users;
@@ -1360,7 +1360,8 @@ export class HostedThread {
     if (this.noticed.size > 100) this.noticed.delete(this.noticed.values().next().value!);
     const threads = delegateThreads("delegate", details, this.pool, this.started());
     const video = notice.status === "clip" ? videoPart("image", details) : undefined;
-    this.emit({ type: "notice", ...notice, ...(threads ? { threads } : {}), ...(video ? { video } : {}) });
+    const call = video ? clipCall(details, content) : undefined;
+    this.emit({ type: "notice", ...notice, ...(threads ? { threads } : {}), ...(video ? { video } : {}), ...(call ? { call } : {}) });
   }
 
   /** The subagents this thread started, for their cards' roles and models; none while the user is locked. */

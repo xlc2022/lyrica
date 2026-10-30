@@ -26,8 +26,8 @@ export interface ImageTools {
   background?(make: (signal: AbortSignal, onProgress: (p: JobProgress) => void) => Promise<ClipMade>, toolCallId: string): void;
 }
 
-/** A clip made in the background: what she is told, and the part the chat shows. */
-export interface ClipMade { text: string; video: VideoPart }
+/** A clip made in the background: what she is told, the part the chat shows, and the call's arguments, shown with it. */
+export interface ClipMade { text: string; video: VideoPart; args?: unknown }
 
 const path = (description: string) => Type.Optional(Type.String({ description }));
 /**
@@ -294,7 +294,7 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   };
   // A clip holds the host's GPU for minutes: in the background her turn ends, and the chat goes on.
   if (o.background) {
-    o.background(async (signal, progress) => { const { text, video } = await make(signal, progress); return { text: `The clip is ready. ${text}`, video }; }, id);
+    o.background(async (signal, progress) => { const { text, video } = await make(signal, progress); return { text: `The clip is ready. ${text}`, video, args: p }; }, id);
     return { content: [{ type: "text" as const, text: "Making the clip in the background; it takes minutes. You'll be told here when it is ready, and the chat shows it then. Don't wait for it: finish this reply." }],
       details: { clip: "started" } };
   }

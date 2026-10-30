@@ -1058,7 +1058,7 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   A clip's markers read Making a clip, Animating an image and Copying a
   clip's moves; a clip made in the background marks its call **started**, and the clip
   shows as her own message when a `notice` event brings its `video` (or the
-  thread reloads); a failed one is a notice headed Clip with a down dot and
+  thread reloads), under the call's marker again, done, from the event's `call`; a failed one is a notice headed Clip with a down dot and
   "failed", then the reason.
   The shared Lightbox has a filename header, Download and Copy path behind
   ⋯, and Close. Image tool markers read Making an image with its tier,

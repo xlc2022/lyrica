@@ -491,7 +491,8 @@ export class Lyricad implements Drainable {
     };
     // Clips she makes in the background: the thread gets the clip, or why there is none, and wakes to say so.
     const clips = new ClipJobs({
-      done: (t, made) => { notify(t, made.text, { status: "clip", video: made.video }); wakeSoon(t, "clip", CLIP_WAKE); },
+      // The call goes with it, so the clip keeps its prompt's marker (docs/ux.md, "A clip the agent made").
+      done: (t, made, toolCallId) => { notify(t, made.text, { status: "clip", video: made.video, call: { toolCallId, args: made.args } }); wakeSoon(t, "clip", CLIP_WAKE); },
       failed: (t, message, stopped) => {
         notify(t, stopped ? `The clip was stopped: ${message}.` : `The clip failed: ${message.replace(/[.\s]*$/, "")}.`, { status: "clip-failed" });
         if (!stopped) wakeSoon(t, "clip", CLIP_WAKE);
