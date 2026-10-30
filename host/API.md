@@ -624,7 +624,8 @@ A **download**:
 - `GET /host/v1/downloads`: all downloads, newest first, until cleared.
 - `GET /host/v1/downloads/<id>`
 - `DELETE /host/v1/downloads/<id>`: cancels an unfinished download and
-  deletes its partial file, or clears a finished one from the list.
+  deletes its partial file, or clears a finished one from the list (a
+  failed one's partial file is deleted then too).
 
 ### The download record and deleting
 

@@ -87,6 +87,9 @@ describe("ChatGPT Images through the user's own Codex (principles 1 and 2)", () 
 
   it("makes and edits an image, sending the prompt on stdin and leaving no files behind", async () => {
     writeFileSync(join(home, "auth.json"), "{}");
+    // A call a restart cut short left its input behind; the next call takes it away.
+    mkdirSync(join(home, "calls", "cut-short"), { recursive: true });
+    writeFileSync(join(home, "calls", "cut-short", "input-0.png"), png);
     const [made] = await codexImage(box, { action: "create", prompt: "A garden", tier: "quality", size: { width: 1024, height: 1536 } });
     expect(made).toMatchObject({ type: "image/png", width: 1, height: 1 });
     const args = readFileSync(join(bin, "args"), "utf8").split("\n");

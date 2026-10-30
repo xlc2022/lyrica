@@ -606,7 +606,8 @@ declares create, edit, mask, references, sizes, count and tier mappings.
   (`Workspace.codexDir`), so its sign-in and every file it writes stay
   encrypted; each call's inputs, saved images and the databases Codex opens
   (`*.sqlite`, which can hold a prompt; only `auth.json` is kept) are
-  removed after it, and a
+  removed after it (and a call a restart cut short leaves its inputs only
+  until the next call starts), and a
   user's calls run one at a time, since they share one sign-in. Codex
   picks the image model. Size becomes square, portrait or landscape and the
   tier a quality word in the instructions. A failed run is a fixed line:

@@ -172,6 +172,25 @@ describe("downloads", () => {
     expect(d.get(x!.id)!.state).toBe("cancelled");
     expect(readdirSync(join(models, "lyrica/huggingface/org/repo"))).toEqual([]);
   });
+
+  it("deletes a failed download's partial file once it is cleared, and partial files no download owns on start", async () => {
+    const hub = await fakeHub();
+    const { d, models, data, make } = setup(hub);
+    const [x] = await d.request({ source: "huggingface", repo: "org/repo", files: ["model-Q4_K_M.gguf"] });
+    await settle(d);
+    // Pretend it failed on a dropped connection at 100 kB, which keeps the partial file to resume.
+    const dir = join(models, "lyrica/huggingface/org/repo");
+    unlinkSync(join(dir, "model-Q4_K_M.gguf"));
+    writeFileSync(join(dir, ".model-Q4_K_M.gguf.lyrica-part"), "x");
+    writeFileSync(join(dir, ".stray.gguf.lyrica-part"), "x");
+    writeFileSync(join(data, "downloads.json"), JSON.stringify([{ ...d.get(x!.id), state: "failed", received: 1, error: "The connection dropped." }]));
+    const again = make();
+    // The stray one goes at start; the failed download's stays while it is listed.
+    expect(readdirSync(dir)).toEqual([".model-Q4_K_M.gguf.lyrica-part"]);
+    again.cancel(x!.id);
+    expect(readdirSync(dir)).toEqual([]);
+    expect(again.list()).toEqual([]);
+  });
 });
 
 describe("tokens and sizes", () => {
