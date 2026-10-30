@@ -328,21 +328,21 @@ describe("long videos", () => {
   const h3 = TEMPLATES.get("minimax-h3")!;
   const frames = (plan: number[]) => plan.map((s) => Number(videoValues(h3.video!, s, 1344, 768, 8).frames));
 
-  it("chains H3 clips of at most 8 seconds, each next one starting from the last 22 frames", () => {
-    expect(h3.continuation).toMatchObject({ overlap: 22, clipSeconds: 8 });
+  it("chains H3 clips of at most 15 seconds, each next one starting from the last 22 frames", () => {
+    expect(h3.continuation).toMatchObject({ overlap: 22, clipSeconds: 15 });
     expect(TEMPLATES.has("minimax-h3-continue")).toBe(false);
-    // Up to 8 seconds is one clip; past it near-equal clips, whose new frames cover what was asked.
-    expect(clipPlan(h3.video!, h3.continuation, 8)).toEqual([8]);
-    for (const seconds of [9, 16, 30, 60]) {
+    // Up to H3's longest clip is one clip, with no join to cut at; past it near-equal clips, whose new frames cover what was asked.
+    expect(clipPlan(h3.video!, h3.continuation, 15)).toEqual([15]);
+    for (const seconds of [16, 30, 60]) {
       const made = frames(clipPlan(h3.video!, h3.continuation, seconds));
-      expect(Math.max(...made), `${seconds} s`).toBeLessThanOrEqual(192);
+      expect(Math.max(...made), `${seconds} s`).toBeLessThanOrEqual(362);
       const added = made[0]! + made.slice(1).reduce((n, f) => n + f - 22, 0);
       // At most one frame step (17) over what was asked, as one clip rounds: 16 s was 413 frames (17.2 s) before.
       expect(added, `${seconds} s`).toBeGreaterThanOrEqual(seconds * 24);
       expect(added, `${seconds} s`).toBeLessThan(seconds * 24 + 17);
     }
-    expect(clipPlan(h3.video!, h3.continuation, 16)).toHaveLength(3);
-    expect(clipPlan(h3.video!, h3.continuation, 60)).toHaveLength(9);
+    expect(clipPlan(h3.video!, h3.continuation, 16)).toHaveLength(2);
+    expect(clipPlan(h3.video!, h3.continuation, 60)).toHaveLength(5);
     // Extending, every clip is a continuation; without one, a template makes one clip.
     const added = frames(clipPlan(h3.video!, h3.continuation, 4, true));
     expect(added).toHaveLength(1);
@@ -1009,22 +1009,22 @@ describe("the image API", () => {
     expect(wan).toMatchObject({ does: ["video", "animate"], video: { maxSeconds: 8, longestSeconds: 8 } });
     await s.api("/host/v1/recipes/confirm", { body: { ids: [h3r.id, wan.id] } });
 
-    // 16 seconds: a first clip, then two continuations, each from the clip so far, with the next seed.
-    const made = await s.api("/host/v1/videos/create", { body: { recipe: h3r.id, prompt: MARKER, duration: 16, seed: 5 } });
+    // 32 seconds: a first clip, then two continuations, each from the clip so far, with the next seed.
+    const made = await s.api("/host/v1/videos/create", { body: { recipe: h3r.id, prompt: MARKER, duration: 32, seed: 5 } });
     expect(made.status).toBe(200);
     const [first, second, third] = s.comfyFake.seen.prompts;
     expect(s.comfyFake.seen.prompts).toHaveLength(3);
-    expect(first.cond.inputs.length).toBe(141);
+    expect(first.cond.inputs.length).toBe(260);
     // Each later clip's prompt says it goes on from the clip so far: the prompt alone would play the video again from its start.
     expect(first.cond.inputs.prompt).toBe(MARKER);
     expect(second.cond.inputs.prompt).toBe(`${TEMPLATES.get("minimax-h3")!.continuation!.promptPrefix}${MARKER}`);
     expect(TEMPLATES.get("minimax-h3")!.continuation!.promptPrefix).toMatch(/no cut/);
     expect(first).not.toHaveProperty("anchor");
     expect(second.previous.inputs.file).toBe("lyrica-previous.mp4");
-    expect([second.cond.inputs.length, third.cond.inputs.length]).toEqual([141, 158]);
+    expect([second.cond.inputs.length, third.cond.inputs.length]).toEqual([277, 277]);
     expect([first.noise.inputs.noise_seed, second.noise.inputs.noise_seed, third.noise.inputs.noise_seed]).toEqual([5, 6, 7]);
     // The fake's clip has no video track, so the length is counted: each continuation adds its frames past the overlap.
-    expect(made.body.video).toMatchObject({ frames: 141 + (141 - 22) + (158 - 22), fps: 24, audio: true, seed: 5 });
+    expect(made.body.video).toMatchObject({ frames: 260 + 2 * (277 - 22), fps: 24, audio: true, seed: 5 });
     expect(s.comfyFake.seen.uploads.filter((u: string) => u === "lyrica-previous.mp4").length).toBe(4);
 
     // Extending adds continuations only, at the clip's own size, and reads the result's length from the clip.
@@ -1042,7 +1042,7 @@ describe("the image API", () => {
     expect(animated.status).toBe(200);
     const [still, ...later] = s.comfyFake.seen.prompts.slice(animStart);
     expect(still.cond.class_type).toBe("MiniMaxH3ImageToVideo");
-    expect(later).toHaveLength(2);
+    expect(later).toHaveLength(1);
     for (const p of later) {
       expect(p.cond.class_type).toBe("MiniMaxH3ReferenceToVideo");
       expect(p.cond.inputs["ref_images.ref_image_0"]).toEqual(["reference", 0]);

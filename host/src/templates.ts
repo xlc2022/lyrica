@@ -57,7 +57,7 @@ export interface Template {
   /**
    * The workflow that makes the next clip of a longer video from the clip so far
    * (`host/workflows/<name>-continue.json`): the clip's last `overlap` frames anchor the new clip's start.
-   * A chained video's clips are at most `clipSeconds` long: H3 may cut to a new shot within one long clip.
+   * A chained video's clips are at most `clipSeconds` long; a video that fits one clip is one, with no join to cut at.
    * `promptPrefix` goes before the prompt of each clip after the first: the same prompt alone describes the whole
    * video from its start, so a later clip would play it again from there.
    */

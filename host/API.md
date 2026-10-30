@@ -999,8 +999,8 @@ newer host made, read after a rollback).
   recipe's `longestSeconds` (default 5), made into the model's nearest frame
   count at or above it. Past the recipe's longest clip, a template with a
   continuation chains clips: near-equal clips of at most its
-  continuation's `clipSeconds` (8 for H3, which may cut to a new shot
-  inside a longer clip), the first made as usual and each next one from
+  continuation's `clipSeconds` (15 for H3, its longest clip: a request
+  that fits one clip is never split, since a join is where a cut shows), the first made as usual and each next one from
   the clip so far, whose last `overlap` frames (22 for H3) and their sound
   anchor the new clip's frame 0, and its first is the image the prompt is
   read with (so an animated still's prompt reads against the clip so far,

@@ -1,7 +1,7 @@
 {
   "continues": "minimax-h3",
   "overlap": 22,
-  "clipSeconds": 8,
+  "clipSeconds": 15,
   "promptPrefix": "The same continuous shot goes on from the given frames, with no cut and no jump back to an earlier moment; the action carries on from where it is now. ",
   "reference": {
     "promptPrefix": "Everyone looks exactly as in <Picture 1>: the same face, hair and clothes. ",
