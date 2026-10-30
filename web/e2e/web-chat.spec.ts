@@ -123,6 +123,10 @@ test("her saved skill waits on a card until Approve, then shows in Settings → 
   const userId = await enter(page, baseURL!);
   // Private, so its words stay out of later General threads' automatic recall on this server.
   await newThread(page, "Private");
+  // The turn's stored copy replaces the live one, remounting the card, while Approve's answer is still on its way (seen in CI):
+  // both are held back here so that order always happens, and the card must still end up approved.
+  await page.route(/\/messages(\?|$)/, async (route) => { await new Promise((r) => setTimeout(r, 1500)); await route.continue().catch(() => {}); });
+  await page.route("**/approve", async (route) => { await new Promise((r) => setTimeout(r, 3000)); await route.continue().catch(() => {}); });
   await send(page, "skill: render-check | Before saying a scene renders. | 1. Take a screenshot.");
   await expect(page.getByText("Saved it.")).toBeVisible();
   const card = page.getByRole("group", { name: "Skill render-check" });
@@ -134,6 +138,7 @@ test("her saved skill waits on a card until Approve, then shows in Settings → 
   await card.getByRole("button", { name: "Approve" }).click();
   await expect(card.getByText(/In .*'s skills/)).toBeVisible();
   await expect(card.getByRole("button", { name: "Approve" })).toHaveCount(0);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 
   await page.goto(`/#/u/${userId}/settings/skills`);
   const section = page.getByRole("region", { name: "Skills" });
