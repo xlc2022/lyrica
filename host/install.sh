@@ -380,6 +380,12 @@ else
 fi
 
 mkdir -p "$MODELS/lyrica"
+# The images this stack's containers run now. Once the new ones answer, those
+# no container runs any more are removed (below): an update would otherwise
+# leave every image it replaced on disk. Only this stack's own images, never a
+# prune, which would take other programs' images too.
+stack_images() { docker ps -aq --filter label=com.docker.compose.project=lyrica-host | { xargs -r docker inspect -f '{{.Image}}' 2>/dev/null || true; } | sort -u; }
+BEFORE_IMAGES=$(stack_images)
 "${COMPOSE[@]}" build
 # fetch writes downloads as its own user (10001), into lyrica/ only.
 "${COMPOSE[@]}" run --rm --no-deps -T --user 0 --cap-add CHOWN --entrypoint chown fetch 10001:10001 /models/lyrica
@@ -415,6 +421,11 @@ for _ in $(seq 30); do
   sleep 1
 done
 [[ -n ${ME:-} ]] || fail "host-api didn't start. See: ${COMPOSE[*]} logs host-api"
+
+# One still tagged elsewhere, or used by another container, stays: rm without --force refuses it.
+for image in $(comm -23 <(printf '%s\n' "$BEFORE_IMAGES") <(stack_images)); do
+  docker image rm "$image" >/dev/null 2>&1 || true
+done
 
 if [[ $ME == *'"passwordSet":false'* && $YES == 0 ]]; then
   say "Set a dashboard password, for opening it from another machine (Enter to skip)."

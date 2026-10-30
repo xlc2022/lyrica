@@ -100,6 +100,35 @@ export class Downloader {
     // Interrupted downloads resume.
     for (const d of this.downloads) if (d.state === "downloading" || d.state === "verifying") d.state = "queued";
     this.save();
+    this.removeStrayParts();
+  }
+
+  /** A partial file is kept while a download may still resume it: one queued, under way, or failed and still listed. */
+  private ownsPart(path: string, except?: Download): boolean {
+    return this.downloads.some((d) => d !== except && d.path === path && d.state !== "done" && d.state !== "cancelled");
+  }
+
+  /** Deletes partial files under lyrica/ that no listed download can resume, such as one whose failed download was cleared. */
+  private removeStrayParts(): void {
+    const kept = new Set(this.downloads.filter((d) => this.ownsPart(d.path)).map((d) => partName(join(this.o.models, d.path))));
+    const walk = (dir: string) => {
+      let entries;
+      try {
+        entries = readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const e of entries) {
+        const full = join(dir, e.name);
+        if (e.isDirectory()) walk(full);
+        else if (e.isFile() && e.name.startsWith(".") && e.name.endsWith(".lyrica-part") && !kept.has(full)) {
+          try {
+            unlinkSync(full);
+          } catch {}
+        }
+      }
+    };
+    walk(this.root);
   }
 
   private readJson<T>(name: string, fallback: T): T {
@@ -295,7 +324,7 @@ export class Downloader {
       .reduce((n, d) => n + Math.max(d.size - d.received, 0), 0);
   }
 
-  /** Cancels an unfinished download (deleting its partial file) or clears a finished one. */
+  /** Cancels an unfinished download (deleting its partial file) or clears a finished one (deleting a failed one's). */
   cancel(id: string): void {
     const d = this.get(id);
     if (!d) throw new DownloadError("No such download.", 404);
@@ -307,6 +336,8 @@ export class Downloader {
       this.removePart(d);
     } else {
       this.downloads = this.downloads.filter((x) => x !== d);
+      // A failed download kept its partial file to resume; once cleared, nothing will.
+      if (d.state === "failed" && !this.ownsPart(d.path)) this.removePart(d);
     }
     this.save();
   }

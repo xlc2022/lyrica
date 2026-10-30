@@ -26,7 +26,9 @@ host/install.sh
 - checks the GPU, the driver and the container runtime's GPU support;
 - asks for the host's name, the LAN address and the models folder;
 - writes `host/.env`;
-- builds and starts the stack;
+- builds and starts the stack, then removes the images its containers ran
+  before and no longer run (only this stack's, so an update leaves no old
+  images behind; a rollback builds or pulls its own again);
 - offers to set a dashboard password.
 
 To change a setting, run it again. To upgrade, press **Update** in Lyrica's
@@ -217,7 +219,9 @@ subfolder, under `lyrica/<source>/<repository>/`.
 - Free space is checked first, counting downloads already queued, and no
   file grows past its size. Downloads resume after a restart (a busy server
   or a broken connection keeps the partial file) and can be cancelled,
-  which deletes the partial file. A sharded model appears once all its
+  which deletes the partial file. Clearing a failed download deletes its
+  partial file too, and on start fetch deletes any partial file no listed
+  download can resume. A sharded model appears once all its
   shards are here.
 - The **download record** (`GET /host/v1/files`) lists each file downloaded,
   with its size and checksum. `DELETE /host/v1/files` removes only a file in
@@ -283,6 +287,9 @@ per host, and Lyrica's router filters create tiers by it.
   (`comfyui/lock.sh` remakes it); torch is the base image's. It has no
   route out, logs nothing, keeps its input, output and temp folders in
   memory, saves no metadata, and its history is cleared after every job.
+  A job's uploads are overwritten with a blank image after it, and
+  `gate.py` empties those folders whenever it starts or stops ComfyUI, so a
+  crash mid-job leaves no photo behind either.
   It uses one GPU, `COMFY_GPU` in `.env`. It runs only while a recipe is
   loaded: freeing its models leaves its CUDA context (a few hundred MiB)
   until the process exits. `comfyui/gate.py`, its container's entry point,

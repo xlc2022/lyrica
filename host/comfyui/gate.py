@@ -13,11 +13,16 @@ At start it checks that this PyTorch has kernels for the GPU. If it has
 none, ComfyUI is never started and the status says why, so host-api fails
 image jobs and shows the problem rather than a card that looks healthy.
 
+Each start and stop empties ComfyUI's input, output and temp folders (a
+tmpfs). host-api blanks a job's uploads after it, but that needs ComfyUI: a
+ComfyUI that crashed mid-job would leave the photo it was given there.
+
 `gate.py --health` is the container's health check: healthy while ComfyUI is
 off as asked, or on and answering; unhealthy on a GPU it can't run.
 """
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -27,6 +32,7 @@ import urllib.request
 STATE = os.environ.get("COMFY_STATE", "/serving/comfyui.json")
 STATUS = os.environ.get("COMFY_STATUS", "/status/comfyui.json")
 PORT = 8188
+FOLDERS = os.environ.get("COMFY_FOLDERS", "/tmp/comfy/input:/tmp/comfy/output:/tmp/comfy/temp").split(":")
 
 
 def wanted():
@@ -70,6 +76,24 @@ def report(attempt, problem=None):
         pass
 
 
+def empty():
+    """Deletes what is in ComfyUI's input, output and temp folders, keeping the folders."""
+    for folder in FOLDERS:
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            continue
+        for name in names:
+            path = os.path.join(folder, name)
+            try:
+                if os.path.isdir(path) and not os.path.islink(path):
+                    shutil.rmtree(path)
+                else:
+                    os.unlink(path)
+            except OSError:
+                pass
+
+
 def stop(child):
     if child.poll() is not None:
         return
@@ -97,6 +121,7 @@ def main(command):
         if attempt is not None:
             # One that exited is started again, at most every five seconds.
             if (child is None or child.poll() is not None) and time.monotonic() - started > 5:
+                empty()
                 child = subprocess.Popen(command)
                 started = time.monotonic()
             if child is not None and child.poll() is None and reported != attempt:
@@ -105,6 +130,7 @@ def main(command):
         elif child is not None or reported is not None:
             if child is not None:
                 stop(child)
+                empty()
             child = None
             report(None)
             reported = None
