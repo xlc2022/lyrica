@@ -464,7 +464,8 @@ revoked. A revoked server must pair again.
 - **Pinned** models are loaded at start and never unloaded to make room.
 - **Making room.** When a model needs room, idle models are unloaded, least
   recently used first. A pinned model or one in use is never unloaded.
-  A model that can never fit fails at once, saying why.
+  A model that can never fit fails at once, saying why for the way that
+  uses the most GPUs.
 - **Queues.** Requests wait in a queue per GPU: chat first, then images,
   then background work. A request that waits too long fails with "The GPU
   is busy with …", except a `/v1` request tagged with `X-Lyrica-Job`,
@@ -473,7 +474,10 @@ revoked. A revoked server must pair again.
   completed request (an image recipe's on its first job). The host keeps the
   larger measurement, including buffers grown on first use, until settings
   change. If another model serves or memory changes during the request, the
-  host retries measurement on a later request.
+  host retries measurement on a later request. A measurement larger than a
+  GPU's room (its memory less what it keeps free) is set aside for the
+  estimate, since the model loaded within that room: it took the whole
+  card or caught another program's memory.
 - **At start** host-api unloads every model llama.cpp still holds that it
   didn't load itself, such as those loaded before host-api alone restarted
   (a re-run of `install.sh` that doesn't restart llama.cpp), so their memory
