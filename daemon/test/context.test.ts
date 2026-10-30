@@ -46,14 +46,16 @@ const TIGHT = 1406 + guidanceTokens;
  */
 const ROOMY = 5600 + guidanceTokens;
 /**
- * The window over her first, medium turn's context where seven more medium turns and a short one fit. Pi keeps the
- * window's newest quarter when it compacts, and this window is her whole prompt plus headroom: with three long
- * turns a slightly longer prompt (CI's, or a tool's new text) kept them all ("Nothing to compact"). Shorter turns
- * leave older ones to cut, with room to spare under Pi's edge.
+ * The window over her first, medium turn's context where ten more medium turns and a short one fit. It stays above
+ * 20,480, where Pi's reserve is a flat 5,120: just under it the reserve is 8%, and a slightly longer prompt (CI's,
+ * or a tool's new text) crossed the line, so Pi compacted on its own and hers had "Nothing to compact". Above it the
+ * room for turns is this headroom less 5,120, whatever her prompt, while the newest quarter Pi keeps grows by only
+ * a quarter of any growth in her prompt: the turns overrun it by about 2,000 tokens, which holds to roughly 8,000
+ * more prompt tokens.
  */
-const MANY = 7200 + guidanceTokens;
+const MANY = 13500 + guidanceTokens;
 /** The medium turns after the first. */
-const MORE = ["SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH", "SEVENTH", "EIGHTH"];
+const MORE = ["SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH", "SEVENTH", "EIGHTH", "NINTH", "TENTH", "ELEVENTH"];
 
 /** A long message with a word to find it by. */
 const long = (mark: string) => `${mark} ${"the quick brown fox jumps over the lazy dog ".repeat(200)}`;
