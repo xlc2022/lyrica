@@ -553,6 +553,8 @@ the person put it there. With no list set, only local models are tried.
 
 The task `video` (Videos) has its own ordered list in each column and
 preset, of host recipes that do `video`, `animate` or `motion`; nothing follows it.
+It is a thread task, so a thread can pick its own. Resolved with no `animate`
+or `motion` in the need (the thread drawer naming it), any of the three fits.
 `video(ctx, request, { signal?, beforeSend?, onProgress? })` makes one clip from a prompt,
 or from `image` as its first frame, or with `drive` (an MP4 of at most
 64 MB) `image`'s subject moved as the person in that clip moves, with

@@ -348,6 +348,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   nested groups **Helpers** (subagents, Titles, and **Watching threads** only in
   a project chat) and **Images and speech** (**Images**, **Image edits** and
   **Image upscaling**, offering the models that do each, recipes by name;
+  **Videos**, offering host recipes that make any kind of clip;
   Dictation, Read aloud). Each option says cloud or local first, and each
   model select's label shows `TaskModel.fallbacks` as "+N fallbacks" or "no
   fallback" (its description, not its name);

@@ -1254,6 +1254,8 @@ test("image providers run 2: cloud switches and refusal links", async ({ page, b
   const imagesSelect = settings.getByRole("combobox", { name: /^Images( |$)/ });
   await expect(imagesSelect.locator("option", { hasText: "cloud · art-model · image-switches" })).toHaveCount(1);
   await expect(settings.getByRole("combobox", { name: /^Image upscaling/ }).locator("option", { hasText: "art-model" })).toHaveCount(0);
+  // Videos sits beside them, listing only host recipes that make clips: a cloud image model isn't one.
+  await expect(settings.getByRole("combobox", { name: /^Videos/ }).locator("option", { hasText: "art-model" })).toHaveCount(0);
   await imagesSelect.selectOption({ label: "cloud · art-model · image-switches" });
   await expect(imagesSelect).toHaveValue(model.id);
   await api("DELETE", `/endpoints/${ep.id}`);
