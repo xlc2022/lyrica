@@ -901,7 +901,8 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - Each model's VRAM use is measured per GPU at load with each
       placement, keeping the larger saved value. After its first attributable completed request,
       the host keeps the larger measurement, including buffers grown on first
-      use, so eviction counts the memory they free. The
+      use, so eviction counts the memory they free. A measurement larger
+      than a GPU's room is set aside for the estimate. The
       control panel shows each GPU's use, what is loaded, and the queue.
 
 ## Images

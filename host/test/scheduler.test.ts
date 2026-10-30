@@ -265,6 +265,27 @@ describe("the GPU queue", () => {
     await scheduler.run(m, "chat", async () => {});
   });
 
+  it("sets aside a measurement over a GPU's room, so a load that took a whole card still fits", async () => {
+    const { scheduler, state } = setup([24, 24]);
+    await scheduler.start([]);
+    const m = textModel("split", 30);
+    await scheduler.loadNow(m);
+    await scheduler.unloadNow("split");
+    const key = Object.keys(state.get().vram).find((k) => k.startsWith("split@"))!;
+    state.update((s) => {
+      s.vram[key] = { 0: 26 * GIB, 1: 26 * GIB };
+    });
+    expect(scheduler.neverFits({ model: m })).toBeNull();
+    await scheduler.run(m, "chat", async () => {});
+  });
+
+  it("explains a model too big for every way with the way that uses the most GPUs", async () => {
+    const { scheduler } = setup([24, 24]);
+    await scheduler.start([]);
+    // About 63 GB alone on one GPU, about 32 GB each split over both: the split is the one worth explaining.
+    expect(scheduler.neverFits({ model: textModel("huge", 60) })).toMatch(/needs about 3\d\.\d GB on GPU \d/);
+  });
+
   it("keeps the larger first-use measurement across reloads without counting growth twice", async () => {
     const { scheduler, state, gpus } = setup();
     await scheduler.start([]);

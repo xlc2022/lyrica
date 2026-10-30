@@ -32,7 +32,7 @@ import { DeleteUserButton } from "./DeleteUser.tsx";
 import { browserZone, clock, Confirm, ErrorText, hidden, Prose, shortTime, Switch, useAction, useLoad } from "./ui.tsx";
 import { Icon } from "./icons.tsx";
 import { duration } from "./Machines.tsx";
-import { GpuBlock, RamBlock, StateWord } from "./Models.tsx";
+import { CpuBlock, GpuBlock, RamBlock, StateWord } from "./Models.tsx";
 import { hostOf } from "./ModelsFrame.tsx";
 
 export const PRESETS: Record<string, Pronouns> = {
@@ -375,6 +375,7 @@ function StatusSection({ ctx }: { ctx: ShellContext }) {
           return <div key={ep.id} className="status-host" data-endpoint={ep.id}>
             <div className="row"><span className="name">{ep.name}</span><StateWord ep={ep} host={host} /></div>
             {host && "status" in host && host.status.gpus.map((g) => <GpuBlock key={g.index} g={g} />)}
+            {host && "status" in host && <CpuBlock status={host.status} />}
             {host && "status" in host && <RamBlock status={host.status} />}
           </div>;
         })}

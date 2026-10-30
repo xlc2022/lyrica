@@ -131,7 +131,10 @@ function openDrawer({ title, sub, fields, save, saveLabel = "Save", saveTitle })
       error.hidden = false;
     });
   };
-  form.onkeydown = (e) => e.key === "Escape" && closeDrawer();
+  // A block body: a handler property that returns false cancels the key, so no field could be typed in.
+  form.onkeydown = (e) => {
+    if (e.key === "Escape") closeDrawer();
+  };
   drawer = [h("div", { class: "scrim", onclick: closeDrawer }), form];
   document.body.append(...drawer);
   form.querySelector("input, select, textarea")?.focus();
@@ -241,7 +244,7 @@ function gpus() {
   const head = h("div", { class: "section-head" }, h("h2", {}, "GPUs"),
     h("div", { class: "legend" }, h("span", {}, h("i", { class: "seg-pinned" }), "Pinned"), h("span", {}, h("i", { class: "seg-loaded" }), "Loaded on demand"),
       S.status.systemRam?.allowance ? h("span", {}, h("i", { class: "seg-ram" }), "In system RAM") : null));
-  if (!list.length) return [head, h("p", { class: "empty" }, "No GPUs found.")];
+  if (!list.length) return [head, h("p", { class: "empty" }, "No GPUs found."), ...cpu(), ...systemRam()];
   return [head, ...list.map((g) => {
     const allowed = SERVERS.filter(([s]) => servers.includes(s) && g.settings.servers.includes(s)).map(([, l]) => l);
     const waiting = [["chat", g.queue.chat], ["image", g.queue.image], ["background", g.queue.background]].filter(([, n]) => n).map(([k, n]) => `${n} ${k}`);
@@ -262,7 +265,18 @@ function gpus() {
           h("span", { class: "num muted" }, size(m.vram)),
           m.pinned ? null : button("Unload", () => post("/host/v1/models/unload", { model: m.id }))))) : null,
       waiting.length ? h("p", { class: "facts" }, `Waiting: ${waiting.join(", ")}`) : null);
-  }), ...systemRam()];
+  }), ...cpu(), ...systemRam()];
+}
+
+/** The CPU, as a card after the GPUs: its cores and threads, the machine's memory, and the servers that run on it. */
+function cpu() {
+  const m = S.status.machine;
+  if (!m) return [];
+  const on = SERVERS.filter(([s]) => (S.status.cpuServers ?? []).includes(s)).map(([, l]) => l);
+  return [h("section", { class: "card" },
+    h("div", { class: "gpu-line" }, h("h3", {}, "CPU", ...(m.cpu ? [` · ${m.cpu}`] : []))),
+    facts(h("span", {}, num(m.cores), " cores"), h("span", {}, num(m.threads), " threads"), h("span", {}, num(size(m.memory)), " RAM"),
+      on.length ? h("span", {}, on.join(", ")) : null))];
 }
 
 const RAM_TIP = "Memory a llama.cpp model may keep in system RAM when it doesn't fit the GPUs. It runs slower. Empty is off. vLLM and image models don't use it.";
@@ -275,7 +289,7 @@ function systemRam() {
     h("div", { class: "gpu-line" }, h("h3", { title: RAM_TIP }, "System RAM"),
       r.allowance ? null : h("span", { class: "pill" }, "off"),
       h("button", { type: "button", class: "sm", onclick: () => editRam(r) }, "Edit")),
-    facts(r.allowance ? h("span", {}, num(size(r.used)), " of ", num(size(r.allowance)), " used") : null, h("span", {}, num(size(r.total)), " in this machine"), h("span", {}, "llama.cpp")),
+    facts(r.allowance ? h("span", {}, num(size(r.used)), " of ", num(size(r.allowance)), " used") : null, h("span", {}, "llama.cpp")),
     r.allowance ? h("div", { class: "bar", role: "img", "aria-label": `${size(r.used)} of ${size(r.allowance)} used` },
       r.models.map((m) => h("span", { class: "seg-ram", style: `width:${Math.min(100, (100 * m.ram) / r.allowance)}%`, title: `${m.id}: ${size(m.ram)}` }))) : null,
     r.models.length ? h("ul", { class: "model-list" }, r.models.map((m) => h("li", {}, h("code", {}, m.id), h("span", { class: "num muted" }, size(m.ram))))) : null)];

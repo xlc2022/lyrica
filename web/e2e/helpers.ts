@@ -80,6 +80,13 @@ export async function openSettings(page: Page) {
   return drawer;
 }
 
+/** Opens the open thread's Delete… dialog from the header's Thread actions menu. */
+export async function deleteThread(page: Page) {
+  await page.getByRole("button", { name: "Thread actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: /^Delete…/ }).click();
+  return page.getByRole("dialog", { name: "Delete this thread?" });
+}
+
 /** From a project chat, opens its settings page: Project in the header shows the overview (the Threads page on a phone,
  *  the panel from 1180 px) with the Project settings link inside; from the panel, Open as a page (docs/ux.md §6). */
 export async function openProjectSettings(page: Page) {

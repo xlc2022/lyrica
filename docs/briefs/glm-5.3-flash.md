@@ -1,6 +1,6 @@
 # Brief: GLM 5.3 Flash as a starter
 
-**Status:** Starter merged as #656 (d020902); download retries in review.
+**Status:** Starter merged as #656 (d020902); download retries as #661 (9c7752e).
 
 Owner: the "Add GLM 5.3 Flash" thread. Tests: on the development
 deployment's host with two RTX PRO 6000 Blackwell cards (102 GB each).
@@ -57,13 +57,19 @@ SHA-256 against the hub's as it downloads.
 
 ## Open
 
-- Whether llama.cpp b11960 (the host's pinned build) loads Unsloth's
-  GGUFs of this architecture, and whether the host's KV estimate is right
-  for its hybrid attention. Checked on the host once the download ends.
+- Whether Unsloth's GGUFs load on the host's llama.cpp (b11960 knows
+  `glm5-next`), and whether the host's KV estimate fits the hybrid
+  attention: its header gives `head_count_kv` per layer (12 attention
+  layers, 34 linear), which the library doesn't read, so the host falls
+  back to its 2 GiB per 32k tokens guess. Checked once the download ends.
+- Some third-party GGUFs name the architecture `glm5next`, which no
+  llama.cpp build knows ("unknown model architecture"). Such a file needs
+  a re-made GGUF, or the architecture and every `glm5next.` key renamed in
+  its header; a newer engine doesn't help.
 
 ## Handoff
 
-Done: starter, fit check, docs (#656). Download started on the
-development host through its paired Lyrica; shard 2 failed on a dropped
-connection and was restarted to resume. Download retries in a second PR. Next: load it there, check the load
-log and the context the host picks, and record the result here.
+Done: starter, fit check, docs (#656); download retries (#661). The
+starter's download on the development host was restarted after drops.
+Next: load the starter there, check the context the host picks, and
+record the result here.

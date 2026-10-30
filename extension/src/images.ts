@@ -39,6 +39,7 @@ export const imageParameters = Type.Object({
   action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected", "video", "animate", "motion"] as const),
   prompt: Type.Optional(Type.String({ description: "For create: what to draw, as one detailed paragraph. For video and animate: what happens in the clip. For motion: the scene, light and look; the clip gives the moves." })),
   tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality (the default)." })),
+  model: Type.Optional(Type.String({ description: "For create, edit and upscale: an image model they asked for by name; it is tried first, then the usual models." })),
   image: path("For edit, upscale, pick, animate and motion: the image's path (animate's first frame; motion's subject, who moves)."),
   video: path("For motion: the driving clip's path, an MP4 whose person makes the moves."),
   images: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For reject: the attempts to set aside." })),
@@ -132,6 +133,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "For create, describe the subject and what it does, then setting, light, framing and medium (photo, painting, sketch); keep to what they asked, and ask for text in the image only when they want it, quoted.",
         "For an edit, look at the image first; name the one change plainly, say what goes, and say what stays (faces, body, pose, framing, light).",
         "Make one big change per edit: for a new setting and a new outfit, edit twice, each from the last result. With a mask, say what replaces what is under it.",
+        "When they name an image model, set model to that name. When the result says a model was passed over or isn't found, tell them which model made it and why.",
         "With a mask, set replace when the masked thing becomes something else (a painting into a mirror), and then write the instruction as the finished scene (a round mirror on a warm beige wall); leave it off to recolour or reshape what's there, which keeps the rest of it.",
         "Don't pass the image being edited as a reference too.",
         "For a person from reference photos, say \"the person from the reference images\", not an image number; ask for one new angle per edit, or several views as one wide create. For an exact garment, pass its photo as a reference. Word a change of build strongly. For a relative, pass no photo: describe the traits they share and how they differ.",
@@ -207,9 +209,13 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
     } else request = { action: p.action, prompt: p.instruction!, image: await read(p.image!), ...(p.mask ? { mask: await read(p.mask), ...(p.replace ? { replace: true } : {}) } : {}), ...common };
   }
   const call = o.call();
+  // A model they named goes first for this call only; the usual list still follows it.
+  const named = p.model?.trim() ? o.models.namedImageModels(call, p.action, p.model) : undefined;
+  const unnamed = named && !named.ids.length
+    ? ` No image model here is called "${p.model}"${named.names.length ? `; the ones that can: ${named.names.join(", ")}` : ""}.` : "";
   let attempted: Resolution | undefined;
   let out;
-  try { out = await o.models.image(call, request, { signal, onProgress, beforeSend: async r => {
+  try { out = await o.models.image(call, request, { signal, onProgress, ...(named?.ids.length ? { first: named.ids } : {}), beforeSend: async r => {
     attempted = r;
     if (!o.enabled()) throw new Error("Images are off in this thread.");
     if (r.endpoint.kind === "cloud") {
@@ -227,7 +233,10 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   const paths = o.files.save(out.images, portrait);
   const part: ImagePart = { type: "image", paths, model: out.resolution.label, ...(p.action === "create" ? { tier: p.tier ?? "quality" } : {}) };
   o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: `image.${p.action}`, resolution: out.resolution });
-  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}. Saved ${paths.join(", ")}.` },
+  // Any fallback is said, so she can tell them the model they got isn't the first choice.
+  const passed = out.resolution.passedOver ?? [];
+  const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
+  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}.${unnamed}${fellBack} Saved ${paths.join(", ")}.` },
     ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };
 }
 

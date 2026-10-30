@@ -132,6 +132,20 @@ proprietary modules, and runs the script with the kernel reading firmware
 from a copy in `/run` for the run, since the store is read-only. Both pin
 the same upstream commit (`nix/cmp-unlock.nix`); change them together.
 
+### Uninstall
+
+`host/install.sh --uninstall` removes the host: the stack's containers,
+volumes (the host's key with them, so every pairing ends), network and
+images, the egress rules, and on Debian or Ubuntu the units, the updater,
+its deploy key and the release trees under `/opt/lyrica-host`. Images go
+by ID without `--force`, so one another container uses stays, and nothing
+is pruned: Docker's build cache and other programs' images are left alone.
+It asks before starting and before deleting the models folder's `lyrica/`
+downloads (`--delete-downloads` deletes them, `--yes` keeps them unless
+given it); the operator's own model files stay. On NixOS the module owns
+the units: remove `services.lyrica-host` and rebuild. gpu-unlock and the
+CMP unlock have their own `--remove`.
+
 ### AMD GPUs
 
 ROCm runs llama.cpp, vLLM and images, but only on the GPUs its images are
@@ -477,7 +491,8 @@ revoked. A revoked server must pair again.
 - **Pinned** models are loaded at start and never unloaded to make room.
 - **Making room.** When a model needs room, idle models are unloaded, least
   recently used first. A pinned model or one in use is never unloaded.
-  A model that can never fit fails at once, saying why.
+  A model that can never fit fails at once, saying why for the way that
+  uses the most GPUs.
 - **Queues.** Requests wait in a queue per GPU: chat first, then images,
   then background work. A request that waits too long fails with "The GPU
   is busy with …", except a `/v1` request tagged with `X-Lyrica-Job`,
@@ -486,7 +501,10 @@ revoked. A revoked server must pair again.
   completed request (an image recipe's on its first job). The host keeps the
   larger measurement, including buffers grown on first use, until settings
   change. If another model serves or memory changes during the request, the
-  host retries measurement on a later request.
+  host retries measurement on a later request. A measurement larger than a
+  GPU's room (its memory less what it keeps free) is set aside for the
+  estimate, since the model loaded within that room: it took the whole
+  card or caught another program's memory.
 - **At start** host-api unloads every model llama.cpp still holds that it
   didn't load itself, such as those loaded before host-api alone restarted
   (a re-run of `install.sh` that doesn't restart llama.cpp), so their memory
@@ -543,7 +561,9 @@ revoked. A revoked server must pair again.
     its API. Each loaded model keeps prompts in host memory (`cache-ram`),
     an eighth of the machine's memory up to 64 GiB, where that is more than
     llama.cpp's own 8 GiB, so threads taking turns on a model don't each
-    re-read their whole conversation.
+    re-read their whole conversation. It leaves llama.cpp's CPU threads to
+    llama.cpp, which uses one per physical core (the status's `machine`
+    names the CPU and counts them).
   - vLLM runs under `vllm/supervisor.py`, which starts one server per vLLM
     model on its GPUs, as host-api asks in a file, each in its own process
     group. A server that crashes is restarted after a growing wait (10

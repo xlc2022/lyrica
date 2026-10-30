@@ -113,7 +113,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "turn_start":
       return { ...s, busy: true, errors: [], offline: undefined };
     case "message_start":
-      return { ...s, items: [...s.items, { role: "assistant", model: e.model, parts: [] }] };
+      // A model answering (a retry that got through, say) means one can be reached.
+      return { ...s, offline: undefined, items: [...s.items, { role: "assistant", model: e.model, parts: [] }] };
     case "text":
     case "thinking":
       return withParts(s, (parts) => {
@@ -242,4 +243,18 @@ export function storedUserItems(items: LiveItem[], messages: Message[]): Set<num
 export function storedLiveCopies(items: LiveItem[], messages: Message[]): Set<number> {
   const calls = new Set(items.flatMap((i) => i.role === "assistant" ? i.parts.flatMap((p) => p.type === "tool" ? [p.toolCallId] : []) : []));
   return new Set(calls.size ? messages.filter((m) => m.role === "assistant" && m.parts.some((p) => p.type === "tool" && calls.has(p.toolCallId))).map((m) => m.n) : []);
+}
+
+/**
+ * Replies that failed with nothing in them, each followed by another empty reply that failed the same way: Pi's
+ * retries of one turn, shown as the last one's error alone rather than one red line per attempt.
+ */
+export function repeatedFailures(replies: ({ role: string; parts?: unknown[]; error?: string } | undefined)[]): Set<number> {
+  const failed = (r: (typeof replies)[number]) => r?.role === "assistant" && !!r.error && !r.parts?.length ? r.error : undefined;
+  const out = new Set<number>();
+  for (let i = 0; i + 1 < replies.length; i++) {
+    const e = failed(replies[i]);
+    if (e && failed(replies[i + 1]) === e) out.add(i);
+  }
+  return out;
 }

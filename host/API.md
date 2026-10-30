@@ -104,6 +104,7 @@ seconds of audio.
   "fingerprint": "<host key fingerprint>",
   "state": "running",
   "backend": "cuda",
+  "machine": { "cpu": "AMD Ryzen 7 7800X3D", "cores": 8, "threads": 16, "memory": 103079215104 },
   "servers": ["llamacpp", "vllm", "images", "speech"],
   "cpuServers": [],
   "dictation": "vllm",
@@ -138,7 +139,11 @@ seconds of audio.
 - `commit`: the commit `install.sh` installed (absent on a host installed
   before updates). `update`: its updater, as `POST /host/v1/update` says.
 - `backend`: how the model servers reach the GPUs: `cuda`, `rocm`, `vulkan`,
-  or `null` with no GPU. `servers`: what this host runs. A Vulkan host (AMD
+  or `null` with no GPU. `machine`: the CPU's model name (without
+  trademarks, core count or clock; `null` when the kernel doesn't say),
+  its physical cores (from `/proc/cpuinfo`; the threads where it lists no
+  cores), its threads (logical CPUs) and the machine's memory in bytes,
+  read once at start. `servers`: what this host runs. A Vulkan host (AMD
   GPUs that ROCm doesn't support) runs `llamacpp` only, so vLLM models and
   image recipes can't be placed there. `cpuServers`: servers that run on
   the CPU here instead. The speech server runs voices on the CPU on a host

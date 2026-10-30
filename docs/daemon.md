@@ -733,7 +733,9 @@ user through the end of that server-local day, without Allow in this thread.
 Content refusals carry fixed `imageRefusal` metadata on stored tool markers
 and live `tool_end`. `GET …/image-calls/:toolCallId` returns current retry
 choices and the source user message; `POST { next?: boolean }` retries the
-stored image call, on its original model or the next eligible endpoint.
+stored image call, on its original model or the next eligible endpoint
+(a model the call named counts as first in that list, and a retry runs on
+the chosen model alone).
 Both require the thread's user session. The shared image executor rechecks
 privacy, tools and portrait consent, and saves a `lyrica-image-retry` custom
 entry in the encrypted thread. Busy threads refuse retries; Stop cancels

@@ -27,6 +27,9 @@ Usage: host/install.sh [options]
                        without asking
   --yes                Don't ask questions; use defaults and flags
   --no-start           Write .env only
+  --uninstall          Remove the host from this machine (asks first)
+  --delete-downloads   With --uninstall: also delete the models folder's
+                       lyrica/ downloads (asked otherwise; kept with --yes)
 EOF
 }
 
@@ -57,7 +60,7 @@ TS_HOSTNAME=$(env_value TS_HOSTNAME)
 TS_AUTHKEY=$(env_value TS_AUTHKEY)
 WANT_LAN=1
 [[ -f .env && -z $LAN ]] && WANT_LAN=0
-YES=0 START=1 CHECK_GPU=1 CMP=0 CMP_UNLOCK=0
+YES=0 START=1 CHECK_GPU=1 CMP=0 CMP_UNLOCK=0 UNINSTALL=0 DELETE_DOWNLOADS=0
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -74,6 +77,8 @@ while [[ $# -gt 0 ]]; do
     --cmp-unlock) CMP_UNLOCK=1 ;;
     --yes) YES=1 ;;
     --no-start) START=0 ;;
+    --uninstall) UNINSTALL=1 ;;
+    --delete-downloads) DELETE_DOWNLOADS=1 ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 2 ;;
   esac
@@ -88,6 +93,86 @@ elif podman compose version >/dev/null 2>&1; then
   fail "Podman isn't supported yet: host-api's egress rules need Docker's DOCKER-USER chain. Install Docker with the compose plugin."
 else fail "install Docker (with the compose plugin) first."
 fi
+
+# Removes what this script and the updater installed: the stack's containers,
+# volumes (with the host's key, so every pairing ends), network and images, the
+# egress rules, the units and the updater's files. Images go by ID without
+# --force, so one another container uses stays; nothing is pruned, since the
+# machine's Docker may hold other programs' images and build cache. The
+# models folder's own files stay; its lyrica/ downloads go only when asked.
+uninstall() {
+  local SUDO=() project=lyrica-host dir=$PWD images ids answer
+  [[ $(id -u) == 0 ]] || SUDO=(sudo)
+  # The folder the host runs from: an update's tree once updates have run.
+  if [[ -f /var/lib/lyrica-host-update/current ]]; then
+    dir=$(sudo_cat /var/lib/lyrica-host-update/current)
+    [[ -f $dir/.env ]] || dir=$PWD
+  fi
+  local models
+  models=$(sed -n 's/^MODELS_DIR=//p' "$dir/.env" 2>/dev/null | tail -n 1)
+  say "This removes the Lyrica model host from this machine: its containers, its"
+  say "data (the host's key, so every paired Lyrica loses it), its images, its"
+  say "firewall rules, units and updater. Docker's build cache and other programs'"
+  say "images stay.${models:+ The models in $models stay unless you choose to delete its lyrica/ downloads.}"
+  if [[ $YES == 0 ]]; then
+    read -r -p "Remove the model host? [y/N]: " answer
+    [[ $answer == [yY]* ]] || { say "Nothing removed."; exit 0; }
+  fi
+
+  # Images: every image the stack's containers use, and every one its
+  # configuration names (a service that hasn't run yet has no container).
+  ids=$(docker ps -aq --filter "label=com.docker.compose.project=$project")
+  images=$( { [[ -n $ids ]] && docker inspect -f '{{.Image}}' $ids 2>/dev/null
+    [[ -f $dir/.env ]] && (cd "$dir" && "${COMPOSE[@]}" config --images 2>/dev/null); } | sort -u)
+  [[ -n $ids ]] && docker rm -f $ids >/dev/null
+  ids=$(docker volume ls -q --filter "label=com.docker.compose.project=$project")
+  [[ -n $ids ]] && docker volume rm $ids >/dev/null
+  ids=$(docker network ls -q --filter "label=com.docker.compose.project=$project")
+  [[ -n $ids ]] && docker network rm $ids >/dev/null
+  local kept=0 image
+  for image in $images; do docker image rm "$image" >/dev/null 2>&1 || kept=$((kept + 1)); done
+  say "Removed the containers, volumes, network and images."
+  [[ $kept == 0 ]] || say "  $kept image(s) stayed: another container uses them, or they were already gone."
+
+  # remove needs no address, but egress.sh wants one when .env has none.
+  "${SUDO[@]}" ./egress.sh remove none
+  if [[ -e /etc/NIXOS ]]; then
+    say "On NixOS, remove services.lyrica-host (and its gpuUnlock) from this machine's configuration and rebuild: the module owns the units."
+  elif [[ -d /run/systemd/system ]]; then
+    local unit
+    for unit in lyrica-host-update.path lyrica-host-update.service lyrica-host-egress.service; do
+      "${SUDO[@]}" systemctl disable --now "$unit" >/dev/null 2>&1 || true
+      "${SUDO[@]}" rm -f "/etc/systemd/system/$unit"
+    done
+    "${SUDO[@]}" systemctl daemon-reload
+  fi
+  "${SUDO[@]}" rm -rf /usr/local/sbin/lyrica-host-update /etc/lyrica-host /var/lib/lyrica-host-update /opt/lyrica-host
+  rm -f .env
+  say "Removed the egress rules, units, updater, deploy key and release trees."
+
+  if [[ -n $models && -d $models/lyrica ]]; then
+    if [[ $DELETE_DOWNLOADS == 0 && $YES == 0 ]]; then
+      read -r -p "Delete the downloads in $models/lyrica ($(du -sh "$models/lyrica" 2>/dev/null | cut -f1))? [y/N]: " answer
+      [[ $answer == [yY]* ]] && DELETE_DOWNLOADS=1
+    fi
+    if [[ $DELETE_DOWNLOADS == 1 ]]; then
+      "${SUDO[@]}" rm -rf "${models:?}/lyrica"
+      say "Deleted $models/lyrica."
+    else
+      say "Kept $models/lyrica."
+    fi
+  fi
+  if [[ -f /etc/default/grub.d/lyrica-gpu-unlock.cfg ]]; then
+    say "gpu-unlock is still installed: host/gpu-unlock.sh --remove, then reboot."
+  fi
+  if [[ -e /etc/systemd/system/cmp100-unlock.service.d/lyrica.conf ]]; then
+    say "cmp100-unlock is still installed: host/cmp-unlock.sh --remove, then reboot."
+  fi
+  say "In Lyrica, remove the host under Models, Hosts and endpoints. This checkout stays; delete it if you like."
+  exit 0
+}
+sudo_cat() { if [[ -r $1 ]]; then cat "$1"; else sudo cat "$1"; fi; }
+[[ $UNINSTALL == 1 ]] && uninstall
 
 # The gfx targets the llama.cpp ROCm image is built for (its
 # .devops/rocm.Dockerfile at the pinned build). vLLM's and ComfyUI's ROCm

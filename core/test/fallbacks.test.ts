@@ -120,6 +120,45 @@ describe("ordered fallbacks", () => {
   });
 });
 
+describe("an image model asked for by name", () => {
+  it("goes before the list for one call, whatever its tier, and every model passed over is said", async () => {
+    const s = await setup();
+    const krea = s.models.addModel(s.ada, s.spare.ep.id, { modelId: "Krea 2 Turbo", image: true, useFor: "fast" });
+    const zimage = s.models.addModel(s.ada, s.blackwell.ep.id, { modelId: "z-image", image: true });
+    const cloud = s.models.addModel(s.ada, s.router2.ep.id, { modelId: "krea-2-cloud", image: true });
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [{ offeringId: zimage.id }]);
+    const priv = s.ctx({ pool: "private", localOnly: true });
+    // Loose matching; a local-only context matches local models only.
+    const named = s.models.namedImageModels(priv, "create", "krea2");
+    expect(named.ids).toEqual([krea.id]);
+    expect(s.models.namedImageModels(s.ctx(), "create", "KREA-2").ids.sort()).toEqual([krea.id, cloud.id].sort());
+    expect(s.models.namedImageModels(priv, "create", "flux")).toEqual({ ids: [], names: ["z-image", "Krea 2 Turbo"] });
+    const need = { imageTier: "quality" as const, first: named.ids };
+    expect(s.models.resolve("image.create", priv, need).ref).toEqual({ offeringId: krea.id });
+    // The list itself is untouched: without the name, its default answers.
+    expect(s.models.resolve("image.create", priv, { imageTier: "quality" }).ref).toEqual({ offeringId: zimage.id });
+    // The named model fails: the default answers, and the result says why.
+    const refused = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:1"), { name: "TypeError" });
+    const r = await s.models.callWithFallback("image.create", priv, need, async (r) => {
+      if (r.offering.id === krea.id) throw new TypeError("fetch failed", { cause: refused });
+      return r;
+    });
+    expect(r.ref).toEqual({ offeringId: zimage.id });
+    expect(r.passedOver).toEqual([{ label: "spare/Krea 2 Turbo", reason: "it couldn't be reached" }]);
+    // With Fallback off, only the named model is tried.
+    expect(() => s.models.resolve("image.create", { ...priv, fallback: false }, need)).toThrow(Offline);
+  });
+
+  it("does not report a model that doesn't do this kind of call as passed over", async () => {
+    const s = await setup();
+    const fast = s.models.addModel(s.ada, s.spare.ep.id, { modelId: "fast-image", image: true, useFor: "fast" });
+    const slow = s.models.addModel(s.ada, s.blackwell.ep.id, { modelId: "slow-image", image: true, useFor: "quality" });
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [{ offeringId: fast.id }, { offeringId: slow.id }]);
+    const r = s.models.resolve("image.create", s.ctx({ pool: "private", localOnly: true }), { imageTier: "quality" });
+    expect([r.ref, r.skipped.length, r.passedOver]).toEqual([{ offeringId: slow.id }, 1, []]);
+  });
+});
+
 describe("a general column's table", () => {
   it("is never used by a private or local-only thread, even once the column is Custom", async () => {
     const s = await setup();

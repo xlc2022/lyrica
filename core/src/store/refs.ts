@@ -100,12 +100,17 @@ export function queryTerms(query: string, profiles: Map<UserId, Profile>): strin
 /**
  * Whether `text` holds at least `min` of the terms, as a word or the start
  * of one ("drink" counts in "drinks"). A query of `min` terms or fewer needs
- * only one, as the index already found.
+ * only one. With `common` (terms found in much of the index), it must also
+ * hold `min` of the other terms, or all of them when there are fewer, or one
+ * for a short query; a query of only common terms finds nothing.
  */
-export function holdsEnough(text: string, terms: string[][], min = 1): boolean {
-  if (terms.length <= min) return true;
+export function holdsEnough(text: string, terms: string[][], min = 1, common?: boolean[]): boolean {
+  const rare = common ? terms.filter((_, i) => !common[i]) : terms;
+  if (!rare.length) return !terms.length;
   const has = [...new Set(fold(indexText(text)).match(WORD) ?? [])];
-  return terms.filter((t) => t.some((w) => has.some((h) => h.startsWith(w)))).length >= min;
+  const holds = (t: string[]) => t.some((w) => has.some((h) => h.startsWith(w)));
+  if (terms.length <= min) return rare.some(holds);
+  return terms.filter(holds).length >= min && rare.filter(holds).length >= Math.min(min, rare.length);
 }
 
 /** Lower case without diacritics, as the index's tokenizer folds words. */

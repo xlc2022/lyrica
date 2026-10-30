@@ -464,6 +464,14 @@ test("a project: New project, suggested threads start into cards, the Threads po
       w.taps.push(`${type} ${t.tagName}.${t.className} "${(t.textContent ?? "").trim().slice(0, 24)}" at ${Math.round((e as PointerEvent).clientX)},${Math.round((e as PointerEvent).clientY)}; Start all ${all ? `${all.isConnected ? "" : "detached "}${JSON.stringify(all.getBoundingClientRect().toJSON())}` : "gone"}`);
     }, true);
   });
+  // The new card fills in after it appears and the chat keeps to its bottom, so Start all slides up about 22 px a
+  // moment later; a tap aimed before that lands on the card's prose (seen in CI). Wait until it holds still.
+  await expect.poll(() => page.evaluate(async () => {
+    const top = () => document.querySelector(".suggested .primary")?.getBoundingClientRect().top;
+    const before = top();
+    await new Promise((r) => setTimeout(r, 300));
+    return before !== undefined && top() === before;
+  })).toBe(true);
   await card.getByRole("button", { name: "Start all" }).click();
   await expect(page.locator(".tcard")).toHaveCount(2).catch(async (err: Error) => {
     const taps = await page.evaluate(() => (window as unknown as { taps: string[] }).taps);
@@ -731,6 +739,18 @@ test("New project in the sidebar creates a pinned project and opens it", async (
   await expect(choice).toHaveCount(0);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   await expect(side.getByRole("button", { name: "New project" })).toHaveAttribute("aria-expanded", "false");
+  // Search's field and a New choice close each other.
+  await side.getByRole("button", { name: "New thread" }).click();
+  await side.getByText("Search", { exact: true }).click();
+  const field = side.getByRole("searchbox", { name: "Search titles and messages" });
+  await expect(field).toBeVisible();
+  await expect(side.getByRole("group", { name: "New thread in" })).toHaveCount(0);
+  await field.fill("zz");
+  await side.getByRole("button", { name: "New project" }).click();
+  await expect(field).toBeHidden();
+  await side.getByText("Search", { exact: true }).click();
+  await expect(field).toHaveValue("");
+  await expect(choice).toHaveCount(0);
   await side.getByRole("button", { name: "New project" }).click();
   await choice.getByRole("button", { name: "General" }).click();
   // A new project is created pinned and opened at once, same as the list menu's item does.

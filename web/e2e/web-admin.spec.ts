@@ -233,7 +233,8 @@ test("the sidebar's status panel shows the endpoints on any page, and a very lon
   await expect(fast).toHaveAttribute("title", "gpu · 42 tok/s · 812 prompt tok/s · last 9 turns");
   await noHorizontalScroll(page);
   if (page.viewportSize()?.width === 390) await page.screenshot({ path: "shots/status-speed-390.png" });
-  await page.unroute("**/models/page");
+  // No unroute here: it doesn't wait for a status refresh still in route.fetch, which then failed the next test with
+  // "route.fetch: Test ended". The afterEach unrouteAll ignores that in-flight request.
 });
 
 test("Tasks: the table shows each column's models; a cell's drawer adds, reorders and removes, and Same as points a task at another; the Preset menu switches, saves and edits a preset; Settings → Model profiles lands here", async ({ page, baseURL }) => {
@@ -734,7 +735,10 @@ test("a host card has one facts line and Pause, Edit and ⋯; Edit opens a drawe
   await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
     const real = await (await fetchReal(route)).json() as { endpoints: Record<string, unknown>[]; hosts: unknown[] };
     const local = real.endpoints.find((e) => e.kind === "local")!;
-    real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", addresses: ["box.lan:7236"], fingerprint: "SHA256:aaaa", state: "up", shared: false, models: [] });
+    real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", addresses: ["box.lan:7236"], fingerprint: "SHA256:aaaa", state: "up", shared: false, models: [
+      { id: "off-q", modelId: "qwen.gguf", label: "box/qwen.gguf", manual: false, status: "listed" },
+      { id: "off-r", modelId: "recipe/28b4fe9a", label: "box/recipe/28b4fe9a", manual: false, status: "listed", recipe: "Z-Image Turbo", image: true },
+    ] });
     real.hosts.push({ endpointId: "ep-box", status: status() });
     await route.fulfill(json(real));
   });
@@ -750,6 +754,12 @@ test("a host card has one facts line and Pause, Edit and ⋯; Edit opens a drawe
   await expect(card.locator(".host-top").getByRole("button")).toHaveText(["Pause", "Edit", ""]);
   await expect(card.locator(".host-facts").getByRole("button", { name: "Dashboard" })).toBeVisible();
   await shot("card");
+  // Its model list names a recipe by its name, its ID in the tooltip.
+  await card.getByRole("button", { name: "2 models" }).click();
+  const models = card.getByRole("list", { name: "box models" }).locator(".model-name");
+  await expect(models).toHaveText(["qwen.gguf", "Z-Image Turbo"]);
+  await expect(models.nth(1)).toHaveAttribute("title", "recipe/28b4fe9a");
+  await card.getByRole("button", { name: "2 models" }).click();
   await card.getByRole("button", { name: "Edit" }).click();
   const drawer = page.getByRole("complementary", { name: "Edit box" });
   await drawer.getByLabel("Models folder").fill("/mnt/big/models");
@@ -807,6 +817,7 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   let systemRam = { total: 96 * GB, most: 76 * GB, allowance: 0, used: 0, models: [] as { id: string; ram: number }[] };
   const status = () => ({
     name: "box", version: "0.9.0", fingerprint: "SHA256:aaaa", state: "running", downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: 2 ** 40 }, systemRam,
+    machine: { cpu: "AMD Ryzen 7 7800X3D", cores: 8, threads: 16, memory: 96 * GB },
     gpus: [{ index: 0, name: "RTX 6000 Pro", vendor: "nvidia", role: "shared", vram: { total: 96 * GB, used: 93 * GB }, queue: { chat: 0, image: 0, background: 0 },
       models: systemRam.models.length ? [{ id: big, kind: "chat", state: "loaded", pinned: false, busy: false, vram: 93 * GB, ram: systemRam.used, lastUsed: null }] : [] }],
   });
@@ -830,6 +841,8 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   await page.goto(`/#/u/${userId}/models/hosts`);
   const card = page.locator("article.host[data-endpoint=ep-box]");
   await expect(card.locator("[data-ram]")).toHaveCount(0);
+  // The CPU, under the GPUs whatever the allowance.
+  await expect(card.locator("[data-cpu]")).toHaveText("CPU · AMD Ryzen 7 7800X3D8 cores · 16 threads · 96 GB RAM");
   await card.getByRole("button", { name: "Edit" }).click();
   const drawer = page.getByRole("complementary", { name: "Edit box" });
   const field = drawer.getByLabel("System RAM");
@@ -848,7 +861,7 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   const ram = card.locator("[data-ram]");
   await expect(ram.locator(".gpu-line")).toHaveText("System RAM18.0 / 48 GB");
   await expect(ram).toContainText("Big-MoE-Q6_K (18.0 GB)");
-  await expect(ram).toContainText("llama.cpp · 96 GB in this machine · Edit");
+  await expect(ram).toContainText("llama.cpp · Edit");
   await expect(page.locator(".legend")).toContainText("In system RAM");
   await shot("card");
   await noHorizontalScroll(page);

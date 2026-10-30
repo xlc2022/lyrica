@@ -232,7 +232,7 @@ nothing else. No code path gives a general view a private handle.
 | Writing memories | `addNotes(notes, { author, thread? })`, `supersede(old, by, author)` (marks existing notes replaced by a current note and flags pages citing them; deletes nothing, so no tombstone; never a user's note unless a user does it), `pruneSuperseded(before)` → count (sleep removes superseded notes, not a user's, edited by one or archived, that nothing but their replacement cites, whose replacement was written before `before`; no tombstone), `putPage` (sleep and user pages), `putWake`, `addJournal`. Every write (notes, pages and edits, WAKE, journal, sleep items, project instructions) passes text, title, summary and tags through `removeSecrets` (core/src/secrets.ts) first; matches become `[secret removed]` |
 | Any memory, by ID | `get`, `edit`, `restore`, `archive`, `delete`, `deleteMany` |
 | Reading for the prompt | `getWake`, `pageIndex`, `forFolders(paths)`, `listJournal`, `journalHistory({ limit, offset, q })` → `{ entries, total }`, `userIntroduced` |
-| Search | `search(query, { kinds, limit, current, excludeThread, fromThread, only, skip, minWords })`, returning `{ id, kind, snippet, score, at, origin }` (`origin`: who wrote a memory, or `user` or `lyrica` for a user or assistant entry, unset for a tool result; a user-role entry lyricad wrote, such as a message from another of her threads, a watch, a wake-up or a routine, is `lyrica`; `at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, as a word or a word's start, a user's name counting once); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
+| Search | `search(query, { kinds, limit, current, excludeThread, fromThread, only, skip, minWords, said })`, returning `{ id, kind, snippet, score, at, origin }` (`origin`: who wrote a memory, or `user` or `lyrica` for a user or assistant entry, unset for a tool result; a user-role entry lyricad wrote, such as a message from another of her threads, a watch, a wake-up or a routine, is `lyrica`; `at`: when an entry was said or a memory last changed; `skip`: words left out of the query; `minWords`: when the query has more words than that, a hit holds at least that many of them, as a word or a word's start, a user's name counting once, and enough of its words that aren't common in the index, a word in more than 2% of it and 20 items being common; `said`: leave out tool results and match a message on its text, not its tool calls); `searchMessages(query, { limit, before?, threads? })` → `MessageHit[]` (`thread`, `n`, `role`, `text`, `createdAt`): the user's messages and her replies from the same index, every word of `query` as a word or a word's start (`searchWords`), newest first, before `before`, in `threads`; an entry a rewind removed while a branch keeps its copy is found at the copy |
 | Lineage | `cameFrom`, `usedIn`, `revisions`, `revisionHistory(id, { limit, offset, q })` → `{ entries, total }` (newest first), `isTombstoned(entryId)`, `editedSince(since)` |
 | Sleep runs | `startSleepRun`, `updateSleepRun`, `recordSleepRun` (a skip), `listSleepRuns`, `sleepRunHistory({ limit, offset, q })` → `{ entries, total }`, `getSleepRun`, `watermark`, `sleepMaterial(since, until)`, `sleepChanges(from, to)` |
 | Sleep items | `addItem`, `listItems`, `getItem`, `startItem(id, threadId)`, `dismissItem`, `itemForThread`. Items, like the journal and WAKE, store `{user}` as a mention token, and the readers give it back as the name |
@@ -1209,8 +1209,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     takes the name, then `repoSkills(target, checkouts, cache?)`, cached per thread by checkout and HEAD.
     `read(name)` falls back to a built-in skill's body;
   - `name()`: her name for this deployment, read every turn. Automatic
-    recall leaves it out of the query (`skip`) and asks for two shared
-    words (`minWords: 2`); `lyricad` passes `selfName`.
+    recall leaves it out of the query (`skip`), asks for two shared
+    words (`minWords: 2`) and finds only what was said (`said`); `lyricad` passes `selfName`.
 - Every thread's and subagent's session registers `registerVisionGuard`:
   when its model has no vision, a tool result holding an image (or a `read`
   of an image carrying Pi's "does not support images" note) gets `NO_VISION` appended, telling her she
@@ -1389,6 +1389,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `size: { width, height }` or `aspectRatio` (`width:height`), `count` and
     `references`; edit takes `image`, `instruction`, optional `mask`, `count`
     and `references`; upscale takes `image`, optional `scale` and `maxSize`.
+    Create, edit and upscale take an optional `model`, a name she was asked
+    for: `Models.namedImageModels` turns it into offerings tried before the
+    list for that call (docs/models.md, "A model asked for by name").
     The parameters are one object (`action` plus every field, optional, each
     described with the actions it is for), not a union: LM Studio refuses
     tool parameters that aren't `"type": "object"`, and small models' chat
@@ -1415,7 +1418,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Always and local models allow. Ask's approval is per user through the end
     of that server-local day; a policy change clears it. No viewer means denial.
     Outputs save in the encrypted thread folder and return Pi image content
-    (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>”.
+    (`{ type: "image", data: base64, mimeType: "image/png" }`) plus path text and “Made with <model> on <host or endpoint name>”,
+    with a note when a named model matched none and `Passed over first: …` when it fell back.
     A content refusal returns `isError: true` with the refusal's message
     (fixed, or Codex's quoted reply) and details
     `{ imageRefusal: { code: "image_refusal", offeringId, endpointId } }`;

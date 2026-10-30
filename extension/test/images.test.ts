@@ -157,6 +157,15 @@ describe("image tool: portrait photos (principle 2)", () => {
 });
 
 describe("image tool results (principles 1 and 4)", () => {
+  it("tries a model asked for by name first, and says when the name matches none", async () => {
+    const s = await setup();
+    const named = await s.run({ action: "create", prompt: "A garden", model: "GPT Image" });
+    const text = (named.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text!;
+    expect(text).toMatch(/^Made with gpt-image-1 on openai\. Saved /);
+    const unknown = await s.run({ action: "create", prompt: "A garden", model: "Flux" });
+    expect(unknown.content).toContainEqual({ type: "text", text: expect.stringMatching(/No image model here is called "Flux"; the ones that can: .*gpt-image-1/) });
+  });
+
   it("stores PNGs under the thread's images/ and returns image content and path/model/tier details", async () => {
     const s = await setup(); s.settings.setPhotoCloudPolicy("always");
     const out = await s.run({ action: "create", prompt: "A garden", tier: "fast", aspectRatio: "16:9", count: 2 });

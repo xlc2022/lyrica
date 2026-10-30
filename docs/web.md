@@ -369,7 +369,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   general MCP server yet" when there's none, with an **MCP servers** link at
   its foot; a change applies at once), the mode, the
   **Code mode** (Behaviour, saved at once), Web search and Images switches, the Claude Code switch (only where
-  `claudeCodeOffered`, or while on), "Do not log", rename, hide, and forget. `lyricad` validates every
+  `claudeCodeOffered`, or while on), "Do not log", rename and hide (deleting is the thread menu's Delete…). `lyricad` validates every
   change and its reason is shown. Code mode selects the Coding model in the
   header and its picker; turning it off restores Chat. Its tooltip says
   "Focus on the code: a coding model, a short persona, and only this
@@ -503,10 +503,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   through …/manage), one Save. The state Updating while
   it updates, with Pause disabled, a warn line after a failed update, per GPU its card and PCI ID (`10de:1df4`), used/total in mono,
   a bar of pinned, loaded-on-demand and vLLM-share segments, the loaded
-  models and the queue when nonzero; then, while the host has an
+  models and the queue when nonzero; `CpuBlock`, on a host that reports
+  `machine`: "CPU · <name>" and "<c> cores · <t> threads · <n> GB RAM",
+  no bar; then, while the host has an
   allowance, `RamBlock`: System RAM, used/allowance in mono, a bar of
   in-system-RAM segments, each spilled model with its GB, and a foot
-  "llama.cpp · N GB in this machine · Edit" (the legend gains In system
+  "llama.cpp · Edit" (the legend gains In system
   RAM). A plain endpoint row: name, kind,
   ChatGPT plan or Grok plan versus API key, and cloud Text, Vision and Image
   pills (only when a marked image model has a callable provider and the
@@ -874,7 +876,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   action to run `install.sh`, the server's network self-test, sleep time,
   last sleep per shown pool from `GET …/sleep`, memory pages and notes from
   `GET …/memory`, start unlocked; **Model hosts** from the shell's Models page,
-  each host's state word and Models' `GpuBlock`s and `RamBlock`; then **Model calls · last 24
+  each host's state word and Models' `GpuBlock`s, `CpuBlock` and `RamBlock`; then **Model calls · last 24
   hours**: `ModelCallFacts.tsx` draws from GET Status's `modelFacts` a facts
   line, one legend, four Vega-Lite charts (calls and output tokens per hour,
   speed per call, calls by task; drawn live by `charts.ts`'s `drawChart` with
@@ -1166,7 +1168,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   as sent, in plain words. When no model can be reached, one line says so
   ("No model can be reached. Your message goes when one is back."), with
   the models tried in its tooltip; the message shows as waiting, not as
-  sent, until a turn starts.
+  sent, until a turn starts. The line goes once a model starts answering,
+  as a retry that got through does.
 - A stored compaction shows as a one-line marker, **Compacted · 41k → 6k**,
   that opens to the summary stored with it. Her own `threads` compact call
   is a **Compaction** card whose head opens to the summary in its arguments.
@@ -1332,8 +1335,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   tapped (the text is shown once, not repeated in the chat); open,
   it is a tinted block headed "Lyrica · from <title>" with the message menu
   (Branch, Delete; not Edit), and one taller than twelve lines shows
-  **Show more**. Forgetting a thread with child threads asks
-  whether to forget them too, ticked, in the shared `Confirm` with one option.
+  **Show more**. Deleting a thread with child threads asks
+  whether to delete them too, ticked, in the thread menu's `ConfirmDialog`.
 - When a wake-up fires (her `threads later`), her note arrives as a message
   with `from.kind === "wakeup"` (live, text starting `[Wake-up, set …]`). It
   is one line, **Woke up · set <time>**, with "· due <time>" when it fired
