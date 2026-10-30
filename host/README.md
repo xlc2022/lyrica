@@ -427,7 +427,9 @@ revoked. A revoked server must pair again.
     tensor or pipeline parallel (vLLM).
   - Its context length (32k by default, or more with a YaRN stretch),
     KV-cache type, flash attention, GPU layers, System RAM (Auto or Off:
-    whether it may use the host's allowance), parallel requests, batch
+    whether it may use the host's allowance), Embedding table (Disk or
+    RAM: where llama.cpp reads a per-layer embedding table over 4 GiB
+    from; RAM takes it from the allowance), parallel requests, batch
     size, a chat template, and for vLLM a memory share, so several vLLM
     models can share one GPU (each is its own server).
   - A chat model serves 1 request at a time below a 200k context, 2 from

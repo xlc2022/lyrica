@@ -606,7 +606,10 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   and "<n> GB stays in system RAM, so it runs slower." from `ramBytes`),
   Memory (Context length "of <max>", Stretch, Original context, KV cache,
   **System RAM** (Auto or Off, the setting `systemRam`, shown while the
-  host has an allowance), Flash attention, **Projector** (the setting `mmproj`, picked
+  host has an allowance), **Embedding table** (Disk or RAM, the setting
+  `layerTable`, shown when the host reports `layerTableBytes` and has an
+  allowance; the system RAM estimate leaves a table kept there out),
+  Flash attention, **Projector** (the setting `mmproj`, picked
   from the host's `projectors`), Vision, MTP; **Look up**, `POST …/lookup`,
   with a **Repository** popover on `need_repo`), **Missing files**
   (`MissingCompanions`: for a model with an `origin` that lacks a projector

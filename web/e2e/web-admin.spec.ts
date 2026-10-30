@@ -851,7 +851,7 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   await page.route(/\/api\/u\/[^/]+\/offerings\/off-big\/settings$/, (route) => route.continue({ url: route.request().url().replace("off-big", encodeURIComponent(localOffering)) }));
   await page.route(/\/api\/u\/[^/]+\/offerings\/off-big\/serving$/, (route) => route.fulfill(json({
     model: big, settings: {}, contextLength: 32768, maxContextLength: 131072, trainedContextLength: 131072, kvBytes: 3 * GB, ramBytes: 18 * GB,
-    recommended: null, stretchUntested: false,
+    layerTableBytes: 23 * GB, recommended: null, stretchUntested: false,
   })));
   await page.route(/\/api\/u\/[^/]+\/library\/text(\?.*)?$/, async (route) => {
     const real = await (await fetchReal(route)).json() as { total: number; entries: { copies: Record<string, unknown>[] }[] };
@@ -871,6 +871,12 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   await expect(select).toHaveValue("auto");
   await expect(settings.locator(".srow").filter({ has: page.getByLabel("System RAM") }).locator("[title]").first()).toHaveAttribute("title", /The host's allowance is 48 GB\.$/);
   await expect(settings.getByRole("status").filter({ hasText: "system RAM" })).toHaveText("18.0 GB stays in system RAM, so it runs slower.");
+  // A per-layer embedding table over 4 GiB: read from Disk unless RAM is chosen.
+  const table = settings.getByLabel("Embedding table");
+  await expect(table).toHaveValue("disk");
+  await expect(settings.locator(".srow").filter({ has: page.getByLabel("Embedding table") }).locator("[title]").first()).toHaveAttribute("title", /^Disk reads this model's 23\.0 GB per-layer embedding table/);
+  await table.selectOption("ram");
+  await expect(table).toHaveValue("ram");
   await select.scrollIntoViewIfNeeded();
   await shot("serving");
   await noHorizontalScroll(page);

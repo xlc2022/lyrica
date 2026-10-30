@@ -305,6 +305,8 @@ export interface ServingEntry {
   kvBytes: number | null;
   /** What it would keep in the host's system RAM, not fitting the GPUs; absent from a host from before the allowance. */
   ramBytes?: number;
+  /** A per-layer embedding table over 4 GiB that llama.cpp reads from the file as needed, unless its settings keep it in RAM. */
+  layerTableBytes?: number;
   recommended: Recommended | null;
   /** vLLM's stretch is untested (vllm#58870). */
   stretchUntested: boolean;

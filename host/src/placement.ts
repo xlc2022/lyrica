@@ -24,6 +24,8 @@ export interface ModelSettings {
   gpuLayers?: number;
   /** llama.cpp: false keeps the model on the GPUs only, never in the host's system RAM allowance. */
   systemRam?: false;
+  /** llama.cpp: "ram" loads a per-layer embedding table over 4 GiB into system RAM, instead of reading its rows from the file as needed. */
+  layerTable?: "ram";
   parallel?: number;
   /** llama.cpp's batch size, or vLLM's batched tokens. */
   batchSize?: number;
@@ -72,6 +74,11 @@ export const ramMost = (total: number) => Math.max(0, total - Math.min(64 * 1024
 
 export const DEFAULT_CONTEXT = 32768;
 const GIB = 1024 ** 3;
+/** llama.cpp reads a per-layer embedding table larger than this from the file as needed, unless it is kept in RAM. */
+export const LAZY_TABLE = 4 * GIB;
+
+/** The per-layer embedding table a model keeps in system RAM under its settings, in bytes; 0 when it doesn't. */
+export const tableInRam = (model: TextModel, s: ModelSettings) => (s.layerTable === "ram" && model.server === "llamacpp" ? model.layerTable ?? 0 : 0);
 /** Each GPU a model uses needs room for the server's own buffers. */
 const OVERHEAD = GIB / 2;
 const KV_BYTES = { f16: 2, q8_0: 1.0625, q4_0: 0.5625 };
@@ -141,7 +148,9 @@ export function sizes(model: TextModel, s: ModelSettings): { weights: number; kv
   const context = model.kind === "embedding" ? Math.min(contextOf(model, s), 8192) : contextOf(model, s);
   const perToken = model.kvPerToken !== null ? model.kvPerToken * KV_BYTES[s.kvCacheType ?? "f16"] : (2 * GIB) / DEFAULT_CONTEXT;
   const extras = (usesVision(model, s) ? model.mmprojSize ?? 0 : 0) + (usesMtp(model, s) ? model.mtpSize ?? 0 : 0);
-  return { weights: Math.round((model.size + extras) * 1.05), kv: Math.round(perToken * context) };
+  // llama.cpp never puts a per-layer embedding table on the GPUs.
+  const table = model.server === "llamacpp" ? model.layerTable ?? 0 : 0;
+  return { weights: Math.round((model.size - table + extras) * 1.05), kv: Math.round(perToken * context) };
 }
 
 /** One way to run a model: its GPUs, and what it takes on each. */
@@ -181,13 +190,16 @@ function option(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: n
   const sum = ratios.reduce((a, b) => a + b, 0);
   // Layers left off the GPUs by hand take their share of the weights and cache to system RAM.
   const off = s.gpuLayers !== undefined && model.layers && s.gpuLayers < model.layers ? Math.round((total * (model.layers - s.gpuLayers)) / model.layers) : 0;
+  // A per-layer embedding table kept in RAM takes from the allowance, though it was never on the GPUs.
+  const ram = off + tableInRam(model, s);
   return {
     gpus: ids,
     split: gpus.length > 1 ? ratios : null,
     parallel: null,
     share: null,
     need: Object.fromEntries(gpus.map((g, i) => [g.index, Math.round(((total - off) * ratios[i]!) / sum + OVERHEAD)])),
-    ...(off ? { ram: off, gpuLayers: s.gpuLayers } : {}),
+    ...(ram ? { ram } : {}),
+    ...(off ? { gpuLayers: s.gpuLayers } : {}),
   };
 }
 
@@ -222,7 +234,7 @@ export function spill(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[]
       if (!counts) continue;
       const held = heldBy(b, counts).map((x, k) => x + (k === outOn ? out : 0));
       if (held.some((x, k) => x > avail[k]!)) continue;
-      const ram = Math.round(experts.slice(0, n).reduce((a, x) => a + x, 0));
+      const ram = Math.round(experts.slice(0, n).reduce((a, x) => a + x, 0)) + (o.ram ?? 0);
       return {
         ...o,
         need: Object.fromEntries(o.gpus.map((i, k) => [i, Math.round(held[k]! + OVERHEAD)])),
@@ -239,7 +251,7 @@ export function spill(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[]
   const perLayer = (weights + kv) / layers;
   const n = Math.ceil(lack / perLayer);
   if (n >= layers) return null;
-  return { ...o, need: Object.fromEntries(o.gpus.map((i) => [i, Math.round(o.need[i]! - (n * perLayer * o.need[i]!) / sum)])), ram: Math.round(n * perLayer), gpuLayers: layers - n };
+  return { ...o, need: Object.fromEntries(o.gpus.map((i) => [i, Math.round(o.need[i]! - (n * perLayer * o.need[i]!) / sum)])), ram: Math.round(n * perLayer) + (o.ram ?? 0), gpuLayers: layers - n };
 }
 
 /**
@@ -346,7 +358,7 @@ const oneOf = (v: unknown, values: readonly string[], what: string) => {
   if (v !== undefined && !values.includes(v as string)) throw invalid(`${what} must be one of ${values.join(", ")}.`);
 };
 
-const LLAMA_ONLY = ["kvCacheType", "flashAttention", "gpuLayers", "systemRam", "parallel", "vision", "mmproj", "mtp", "draftMax"] as const;
+const LLAMA_ONLY = ["kvCacheType", "flashAttention", "gpuLayers", "systemRam", "layerTable", "parallel", "vision", "mmproj", "mtp", "draftMax"] as const;
 const VLLM_ONLY = ["memoryShare", "maxSeqs", "dtype"] as const;
 const KEYS = ["placement", "contextLength", "batchSize", "chatTemplate", "stretch", ...LLAMA_ONLY, ...VLLM_ONLY];
 
@@ -412,6 +424,11 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
   }
   int(body.gpuLayers, 0, 999, "gpuLayers");
   if (body.systemRam !== undefined && body.systemRam !== false) throw invalid("systemRam is false, or left out for Auto.");
+  if (body.layerTable !== undefined) {
+    if (body.layerTable !== "ram") throw invalid("layerTable is \"ram\", or left out to read it from the file.");
+    if ((model.layerTable ?? 0) <= LAZY_TABLE) throw invalid("This model has no per-layer embedding table over 4 GiB.");
+    if (!allowance) throw invalid("Keeping the embedding table in RAM takes from the host's system RAM allowance, which is off.");
+  }
   for (const k of ["vision", "mtp"] as const) if (body[k] !== undefined && typeof body[k] !== "boolean") throw invalid(`${k} is true or false.`);
   if (body.mmproj !== undefined && (typeof body.mmproj !== "string" || model.kind !== "chat")) throw invalid("mmproj is a projector's path, for a chat model.");
   if (body.vision !== undefined && !model.mmproj) throw invalid("This model has no vision projector.");

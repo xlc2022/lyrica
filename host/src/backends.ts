@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { totalmem } from "node:os";
 import { HostError } from "./http.ts";
 import type { TextModel } from "./library.ts";
-import { concurrentOf, contextOf, usesMtp, usesVision, type ModelSettings, type Option } from "./placement.ts";
+import { concurrentOf, contextOf, tableInRam, usesMtp, usesVision, type ModelSettings, type Option } from "./placement.ts";
 
 export interface Backend {
   /** Loads the model on the placement's GPUs with its settings, and resolves when it answers. */
@@ -123,6 +123,8 @@ export class LlamaCpp implements Backend {
       lines.push(`n-gpu-layers = ${at.gpuLayers ?? s.gpuLayers ?? 999}`, `flash-attn = ${s.flashAttention ?? "auto"}`);
       // Experts of the first layers kept in system RAM, when the model doesn't fit its GPUs.
       if (at.cpuMoe) lines.push(`n-cpu-moe = ${at.cpuMoe}`);
+      // A per-layer embedding table loaded whole into RAM, not mapped from the file, so the page cache can't drop it.
+      if (tableInRam(model, s)) lines.push("lazy-mode = off", "load-mode = none");
       if (s.kvCacheType) lines.push(`cache-type-k = ${s.kvCacheType}`, `cache-type-v = ${s.kvCacheType}`);
       // One cache of the whole context, shared by the requests it serves at once, as the daemon plans.
       const parallel = concurrentOf(model, s);

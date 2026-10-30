@@ -62,6 +62,12 @@ export interface TextModel {
   layers?: number;
   expertLayers?: number[];
   outputBytes?: number;
+  /**
+   * A GGUF model's per-layer embedding table (`per_layer_token_embd.weight`),
+   * in bytes. llama.cpp never puts it on the GPUs, and reads one over 4 GiB
+   * from the file as it needs rows unless told to keep it in RAM.
+   */
+  layerTable?: number;
   /** The sizes of the projector and the MTP file, counted when they're used. */
   mmprojSize?: number;
   mtpSize?: number;
@@ -256,10 +262,13 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
   };
 }
 
-/** The bytes of a mixture of experts' expert weights in each layer, over all its shards: what llama.cpp's n-cpu-moe keeps in system RAM. */
-function expertsOf(shards: string[], layers: number): { expertLayers?: number[]; outputBytes?: number } {
+/**
+ * The bytes of a mixture of experts' expert weights in each layer, over all its shards: what llama.cpp's n-cpu-moe keeps in system RAM.
+ * Also the per-layer embedding table's, which llama.cpp keeps off the GPUs whatever the model.
+ */
+function expertsOf(shards: string[], layers: number): { expertLayers?: number[]; outputBytes?: number; layerTable?: number } {
   const per = Array.from({ length: layers }, () => 0);
-  let output = 0, embed = 0;
+  let output = 0, embed = 0, table = 0;
   for (const path of shards) {
     try {
       for (const [name, bytes] of Object.entries(readGgufTensorBytes(path))) {
@@ -267,12 +276,16 @@ function expertsOf(shards: string[], layers: number): { expertLayers?: number[];
         if (m && Number(m[1]) < layers) per[Number(m[1])]! += bytes;
         else if (name === "output.weight") output = bytes;
         else if (name === "token_embd.weight") embed = bytes;
+        else if (name === "per_layer_token_embd.weight") table = bytes;
       }
     } catch {
       return {};
     }
   }
-  return per.some((n) => n > 0) ? { expertLayers: per, ...(output || embed ? { outputBytes: output || embed } : {}) } : {};
+  return {
+    ...(per.some((n) => n > 0) ? { expertLayers: per, ...(output || embed ? { outputBytes: output || embed } : {}) } : {}),
+    ...(table ? { layerTable: table } : {}),
+  };
 }
 
 /**

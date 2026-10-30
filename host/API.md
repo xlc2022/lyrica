@@ -322,13 +322,16 @@ embeddings and dictation receive neither parser.
 - `GET /host/v1/models/settings?model=<id>` answers
   `{ "model": "<id>", "settings": { ... }, "contextLength": 32768,
   "maxContextLength": 262144, "trainedContextLength": 262144,
-  "kvBytes": 4294967296, "ramBytes": 0, "recommended": { ... } | null,
+  "kvBytes": 4294967296, "ramBytes": 0, "layerTableBytes": 24696061952,
+  "recommended": { ... } | null,
   "stretchUntested": false, "extras": { "vision": true, "mtp": "file" } }`:
   the context served, its maximum (the trained
   length times the stretch), the trained length (null when the host couldn't
   read it), the KV cache at the served context by the host's estimate, what
   it would keep in system RAM where it loads first (0 when it fits its
-  GPUs; see "System RAM"), what
+  GPUs, plus an embedding table kept there; see "System RAM"), the
+  per-layer embedding table llama.cpp would read from the file as needed
+  (`layerTableBytes`, only for a llama.cpp model with one over 4 GiB), what
   the model's card recommends, and whether a stretch on this server is
   untested: true for any vLLM model until the pinned image carries the fix
   for vllm#58870 (vLLM 0.30 misreads the original context on Qwen3.5-style
@@ -394,7 +397,11 @@ embeddings and dictation receive neither parser.
   (`auto`, `on`, `off`), `gpuLayers` (0 to 999: layers on the GPUs, the
   rest with their cache in system RAM, counted by the fit check against
   the System RAM allowance), `systemRam` (`false` keeps the model on its
-  GPUs only; left out, it may use the allowance), `parallel` (requests
+  GPUs only; left out, it may use the allowance), `layerTable` (`"ram"`
+  loads a per-layer embedding table over 4 GiB whole into system RAM, from
+  the allowance, instead of llama.cpp reading its rows from the model file
+  as it needs them; refused for a model without one, or while the host has
+  no allowance), `parallel` (requests
   served at once, 1 to 64; see below). A `q8_0` or `q4_0` KV cache needs
   `flashAttention` set to `on`. `vision: false` loads it without its
   projector (less memory, no images). `mmproj` is a projector picked by
@@ -494,6 +501,13 @@ Only the repository's name and revision leave the host.
   else is there, a load is `too_big`, naming both numbers.
 - vLLM, image recipes and voices never use it. A model whose settings
   have `systemRam: false`, or `gpuLayers` set by hand, doesn't either.
+- A per-layer embedding table (`per_layer_token_embd.weight`, as in
+  Gemma 4 or Qwen3.8-Flash-Next) never goes on the GPUs, so the fit check
+  leaves it out. llama.cpp reads one over 4 GiB from the model file as it
+  needs rows; when other files crowd it out of the page cache, long
+  prompts wait on the disk with the GPUs idle. `layerTable: "ram"` loads
+  it whole instead (llama.cpp's `lazy-mode = off` and `load-mode = none`)
+  and counts it against the allowance, whether or not the rest spills.
 
 ### Pause, resume, restart
 
