@@ -650,9 +650,12 @@ class Models {                                              // new Models(keyrin
   itself follows another task). It is a thread task (`THREAD_TASKS` in
   daemon/src/api.ts) for project chats only: the project chat can choose
   its own, and `PATCH …/settings` choosing it for any other thread is 400.
-- **Images in a thread.** `image.create`, `image.edit` and `image.upscale`
-  are thread tasks too: a thread can choose its own model for each, as for
-  the text tasks, and a private or local-only thread only local ones.
+- **Images in a thread.** `image.create`, `image.edit`, `image.upscale`
+  and `video` are thread tasks too: a thread can choose its own model for
+  each, as for the text tasks, and a private or local-only thread only
+  local ones. The drawer's `video` row shows the first recipe that makes
+  any kind of clip; each call still passes over one that can't make its
+  kind.
   `TaskModel.name` is what to call the model (a recipe's name, else its
   model ID). `TaskModel.fallbacks` counts the models after the shown one
   in its list that could still answer (0 while Fallback is off); a thread's

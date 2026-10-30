@@ -3122,8 +3122,10 @@ export class Models {
     if (task === "image.create" && !o.image) return "it doesn't make images";
     // Only a model host makes clips, and only one whose recipe does what the call needs.
     if (task === "video" && ep.api !== "host") return "only a model host makes videos";
+    if (task === "video" && !o.video && !o.animate && !o.motion) return "it doesn't make videos";
+    // A call says what kind of clip it makes; a need without one (the thread drawer's Videos row) takes any video recipe.
     if (task === "video" && need.motion && !o.motion) return "it doesn't move an image as a clip does";
-    if (task === "video" && !need.motion && (need.animate ? !o.animate : !o.video)) return need.animate ? "it doesn't animate images" : "it doesn't make videos from a prompt";
+    if (task === "video" && !need.motion && need.animate !== undefined && (need.animate ? !o.animate : !o.video)) return need.animate ? "it doesn't animate images" : "it doesn't make videos from a prompt";
     if (task === "vision" && !o.vision) return "it can't see images";
     // Cloud adapters constrain their tasks; local endpoints keep capability-based routing.
     if (task.startsWith("image.") && ep.kind === "cloud") {
