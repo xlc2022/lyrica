@@ -810,7 +810,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
           </SRow>
         )}
         {!!sv.layerTableBytes && (!!allowance || draft.layerTable === "ram") && (
-          <SRow label="Embedding table" title={`Disk reads this model's ${gb(sv.layerTableBytes)} GB per-layer embedding table from its file as needed, which is slow when other files crowd it out of memory. RAM loads it whole, from the host's allowance.`}>
+          <SRow label="Embedding table" title={`Disk reads this model's per-layer embedding table from its file as needed, which is slow when other files crowd it out of memory. RAM loads it whole, ${gb(sv.layerTableBytes)} GB of the host's allowance.`}>
             <select aria-label="Embedding table" value={draft.layerTable === "ram" ? "ram" : "disk"} onChange={(e) => set("layerTable", e.target.value === "ram" ? "ram" : undefined)}>
               <option value="disk">Disk</option><option value="ram">RAM</option>
             </select>

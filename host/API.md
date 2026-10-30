@@ -332,8 +332,9 @@ embeddings and dictation receive neither parser.
   read it), the KV cache at the served context by the host's estimate, what
   it would keep in system RAM where it loads first (0 when it fits its
   GPUs, plus an embedding table kept there; see "System RAM"), the
-  per-layer embedding table llama.cpp would read from the file as needed
-  (`layerTableBytes`, only for a llama.cpp model with one over 4 GiB), what
+  bytes `layerTable: "ram"` would keep in RAM (`layerTableBytes`: a
+  per-layer embedding table over 4 GiB and the input embeddings, only for
+  a llama.cpp model with such a table), what
   the model's card recommends, and whether a stretch on this server is
   untested: true for any vLLM model until the pinned image carries the fix
   for vllm#58870 (vLLM 0.30 misreads the original context on Qwen3.5-style

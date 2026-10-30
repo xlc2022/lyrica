@@ -81,8 +81,11 @@ export const LAZY_TABLE = 4 * GIB;
  * What a model keeps in system RAM under its settings for its per-layer embedding table, in bytes; 0 when it doesn't.
  * Loaded without mmap, the input embeddings llama.cpp keeps on the CPU become resident with it.
  */
-export const tableInRam = (model: TextModel, s: ModelSettings) =>
-  (s.layerTable === "ram" && model.server === "llamacpp" && model.layerTable ? model.layerTable + (model.inputBytes ?? 0) : 0);
+export const tableInRam = (model: TextModel, s: ModelSettings) => (s.layerTable === "ram" ? tableBytes(model) : 0);
+
+/** What `layerTable: "ram"` would keep in system RAM: a per-layer embedding table over 4 GiB and the input embeddings; 0 for a model without one. */
+export const tableBytes = (model: TextModel) =>
+  model.server === "llamacpp" && (model.layerTable ?? 0) > LAZY_TABLE ? model.layerTable! + (model.inputBytes ?? 0) : 0;
 /** Each GPU a model uses needs room for the server's own buffers. */
 const OVERHEAD = GIB / 2;
 const KV_BYTES = { f16: 2, q8_0: 1.0625, q4_0: 0.5625 };
@@ -430,7 +433,7 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
   if (body.systemRam !== undefined && body.systemRam !== false) throw invalid("systemRam is false, or left out for Auto.");
   if (body.layerTable !== undefined) {
     if (body.layerTable !== "ram") throw invalid("layerTable is \"ram\", or left out to read it from the file.");
-    if ((model.layerTable ?? 0) <= LAZY_TABLE) throw invalid("This model has no per-layer embedding table over 4 GiB.");
+    if (!tableBytes(model)) throw invalid("This model has no per-layer embedding table over 4 GiB.");
     if (!allowance) throw invalid("Keeping the embedding table in RAM takes from the host's system RAM allowance, which is off.");
   }
   for (const k of ["vision", "mtp"] as const) if (body[k] !== undefined && typeof body[k] !== "boolean") throw invalid(`${k} is true or false.`);

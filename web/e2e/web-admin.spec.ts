@@ -880,7 +880,7 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   // A per-layer embedding table over 4 GiB: read from Disk unless RAM is chosen.
   const table = settings.getByLabel("Embedding table");
   await expect(table).toHaveValue("disk");
-  await expect(settings.locator(".srow").filter({ has: page.getByLabel("Embedding table") }).locator("[title]").first()).toHaveAttribute("title", /^Disk reads this model's 23\.0 GB per-layer embedding table/);
+  await expect(settings.locator(".srow").filter({ has: page.getByLabel("Embedding table") }).locator("[title]").first()).toHaveAttribute("title", /RAM loads it whole, 23\.0 GB of the host's allowance\.$/);
   await table.selectOption("ram");
   await expect(table).toHaveValue("ram");
   await select.scrollIntoViewIfNeeded();

@@ -6,7 +6,7 @@ import { LlamaCpp } from "../src/backends.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import type { Gpu } from "../src/gpus.ts";
 import { scanTextModels } from "../src/library.ts";
-import { defaultGpu, options, validate, type GpuSettings } from "../src/placement.ts";
+import { defaultGpu, options, tableBytes, validate, type GpuSettings } from "../src/placement.ts";
 import { fakeLlamaRouter, GIB, textModel } from "./fakes.ts";
 
 const gpu = (index: number, gb: number): Gpu => ({ index, name: "RTX PRO 6000", vendor: "nvidia", total: gb * GIB, used: 0 });
@@ -28,6 +28,8 @@ describe("a per-layer embedding table", () => {
     // Loaded without mmap, the input embeddings llama.cpp keeps on the CPU come with it; Off for spilling doesn't stop it.
     const withInput = textModel("flash", 134, { layers: 48, layerTable: 23 * GIB, inputBytes: 2 * GIB });
     expect(options(withInput, { ...s, layerTable: "ram", systemRam: false }, [gpu(0, 128)], all, 32 * GIB)[0]!.ram).toBe(25 * GIB);
+    // What the settings answer reports is all a fitting model keeps there, so the drawer shows nothing spilled.
+    expect(tableBytes(withInput)).toBe(25 * GIB);
     expect(() => validate(flash(), { ...s, layerTable: "ram" }, [gpu(0, 128)], all, false, 0)).toThrow(/allowance, which is off/);
     expect(() => validate(flash(), { ...s, layerTable: "ram" }, [gpu(0, 128)], all, false, 16 * GIB)).toThrow(/23\.0 GB of system RAM/);
     expect(validate(flash(), { ...s, layerTable: "ram" }, [gpu(0, 128)], all, false, 32 * GIB)).toMatchObject({ layerTable: "ram" });
