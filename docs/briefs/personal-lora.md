@@ -1,6 +1,7 @@
 # Brief: Personal LoRA from portrait photos
 
-**Status:** Proposed (the owner's ask, 2026-10-29). Not started.
+**Status:** Shelved by the owner (2026-10-30) after step 1's trial; see
+Trial results. Nothing built.
 
 **Read first:** AGENTS.md, PRINCIPLES.md, DESIGN.md (Images: Portrait
 photos and the personal LoRA; the model host), `image-edit-quality.md`
@@ -60,6 +61,32 @@ in Settings → Portrait photos).
 2. The host trainer and API (PR review; CODEOWNERS `/host/`).
 3. lyricad storage, captions, the Settings screen and the tool choice (PR
    review and UI review, with a docs/ux.md home for each new control).
+
+## Trial results (2026-10-29)
+
+On the dev deployment's 3090, with 18 images of a made-up woman generated
+on 2.1 Turbo from two references, captioned `ohwx woman, …`:
+
+- ai-toolkit b69b9831 (arch `qwen_image_2`) trains a 2.1 LoRA: rank 16,
+  1024 px, 1500 steps, qfloat8, low VRAM; 92 minutes, 12.4 GB VRAM peak,
+  80 MB out. It runs offline only after a one-time fetch of the diffusers
+  layout of Qwen/Qwen-Image-2.1 (configs, processor, the 17 GB text
+  encoder and the VAE); it can't use our int8 encoder. It fails on the
+  diffusers base ("meta tensor") but trains on the Comfy single-file base.
+- No official Turbo training adapter exists. Trained on Turbo directly
+  (A) and on the base applied to Turbo (C); neither harmed scenes without
+  people.
+- Identity out of 5 over five prompts: reference photos about 4, A about
+  2, C about 2.5, a LoRA plus references about the same as references. At
+  strength 0.7 both went generic.
+- ComfyUI loads the LoRA, but the host's scan has no LoRA rule for
+  qwen-image-2.1 (keys `diffusion_model.transformer_blocks.N.attn.to_*`,
+  metadata `ss_base_model_version` `qwen_image_2`), so `addLora` refuses it.
+- The made-up dataset is the likely weak point. The next trial, when the
+  owner picks this up again, uses her own photos with rank 32 and 2500
+  steps, kept in memory on the host, never seen by a cloud model, scored
+  by her. ai-toolkit and the base stay in /srv/lora-trial on the dev
+  deployment for it.
 
 ## Out of scope
 
