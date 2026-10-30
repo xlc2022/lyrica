@@ -558,7 +558,8 @@ or `motion` in the need (the thread drawer naming it), any of the three fits.
 `video(ctx, request, { signal?, beforeSend?, onProgress? })` makes one clip from a prompt,
 or from `image` as its first frame, or with `drive` (an MP4 of at most
 64 MB) `image`'s subject moved as the person in that clip moves, with
-optional `size` and `duration` (1 to 15 seconds). Only a model host's recipe answers: a cloud model or
+optional `size`, `duration` (1 to 15 seconds) and `steps` (a whole number
+from 1 to 150, in place of the recipe's). Only a model host's recipe answers: a cloud model or
 plain endpoint in the list is passed over ("only a model host makes
 videos"), and with an image a recipe that doesn't `animate` is too, and
 with a driving clip one that doesn't do `motion`. It

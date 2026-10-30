@@ -5,9 +5,9 @@ import { withProgress, type JobProgress } from "./progress.ts";
 
 /**
  * One clip: from a prompt, from `image` as its first frame, or with `drive` (an MP4) too, `image`'s subject moved as the
- * person in that clip moves. `duration` is seconds; `aspectRatio` (width:height) keeps the recipe's area.
+ * person in that clip moves. `duration` is seconds; `aspectRatio` (width:height) keeps the recipe's area; `steps` replaces the recipe's.
  */
-export interface VideoRequest { prompt: string; image?: ImageInput; drive?: Uint8Array; size?: { width: number; height: number }; aspectRatio?: string; duration?: number }
+export interface VideoRequest { prompt: string; image?: ImageInput; drive?: Uint8Array; size?: { width: number; height: number }; aspectRatio?: string; duration?: number; steps?: number }
 /** A driving clip's largest size (host/API.md, "Making videos"). */
 export const MAX_DRIVE_BYTES = 64 * 1024 * 1024;
 export interface GeneratedVideo {
@@ -23,6 +23,7 @@ export function validateVideoRequest(r: VideoRequest): void {
   if (r.size && ![r.size.width, r.size.height].every(n => Number.isInteger(n) && n >= 256 && n <= 2048 && n % 16 === 0)) throw new HostRefused("invalid", "video size is multiples of 16 from 256 to 2048");
   if (r.aspectRatio !== undefined && (r.size || !/^\d+(\.\d+)?:\d+(\.\d+)?$/.test(r.aspectRatio))) throw new HostRefused("invalid", "a video takes a size or a width:height aspect ratio");
   if (r.duration !== undefined && !(r.duration >= 1 && r.duration <= 15)) throw new HostRefused("invalid", "a video is 1 to 15 seconds");
+  if (r.steps !== undefined && !(Number.isInteger(r.steps) && r.steps >= 1 && r.steps <= 150)) throw new HostRefused("invalid", "a video takes 1 to 150 steps");
   if (r.drive && !r.image) throw new HostRefused("invalid", "a driving clip needs the image whose subject moves");
   if (r.drive && (!isMp4(r.drive) || r.drive.length > MAX_DRIVE_BYTES)) throw new HostRefused("invalid", "a driving clip is an MP4 of at most 64 MB");
 }
@@ -36,7 +37,8 @@ export async function videoAt(t: { fetch: typeof fetch; baseUrl: string; modelId
   // Explicit fields only: the recipe's defaults apply, and callers cannot name parts or LoRAs.
   const body = JSON.stringify({ recipe: t.modelId.slice(7), prompt: r.prompt, ...(r.image ? { image: Buffer.from(r.image.bytes).toString("base64") } : {}),
     ...(r.drive ? { drive: Buffer.from(r.drive).toString("base64") } : {}),
-    ...(r.size ?? {}), ...(r.aspectRatio ? { aspectRatio: r.aspectRatio } : {}), ...(r.duration === undefined ? {} : { duration: r.duration }) });
+    ...(r.size ?? {}), ...(r.aspectRatio ? { aspectRatio: r.aspectRatio } : {}), ...(r.duration === undefined ? {} : { duration: r.duration }),
+    ...(r.steps === undefined ? {} : { steps: r.steps }) });
   const timeout = AbortSignal.timeout(VIDEO_TIMEOUT_MS);
   let res: Response;
   try { res = await withProgress(t, onProgress, (tag) => t.fetch(`${t.baseUrl}/host/v1/videos/create`, { method: "POST", body, headers: { "content-type": "application/json", ...tag }, redirect: "error", signal: signal ? AbortSignal.any([signal, timeout]) : timeout })); }

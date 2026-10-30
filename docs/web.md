@@ -649,13 +649,17 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   block per host (template and defaults, a row per part with precision, "downloaded by Lyrica" or "shared folder",
   the other recipes using it, its size and an underlined **Change** or
   **Remove** at the right, then **Add part**, a segmented **Use for**
-  (**Fast** | **Quality** | **Both**, default Both) and **Delete model…**).
+  (**Fast** | **Quality** | **Both**, default Both), **Steps** for a
+  confirmed recipe whose defaults have steps, and **Delete model…**).
   A ChatGPT plan's one row is ChatGPT Images, its kind's tooltip saying it
   runs on the plan's image tool. Part filenames and facts wrap
   within their column on a phone. Every change is a recipe action
   (`POST …/hosts/:id/recipes/:recipeId`, models.md "Image models"):
   **Use for** saves at once (`change { op: "useFor", useFor }`), disabled
-  while saving or when the user cannot manage the host. The row's facts say
+  while saving or when the user cannot manage the host. **Steps** is a
+  number "of 150", clamped to a whole number from 1 to 150 when left or on
+  Enter, and saves `change { op: "defaults", defaults: { steps } }` when it
+  changed; disabled likewise. The row's facts say
   "fast", "quality" or "fast and quality", combining the copies' tiers. This follows principles 1 and 8 and ux §3's segmented
   control, §4's names and §6's recipe block; no caption or new widget.
   **Change** for a text encoder or VAE (`swap`, or Download another… to the
