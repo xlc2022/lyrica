@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { assemble, DEFAULT_BUDGETS, memorySections, pinnedBlock, type PinnedText } from "../src/index.ts";
+import { formatHit, search } from "../src/memory.ts";
 import { withMemory } from "./helpers.ts";
 
 const say = (own: Parameters<typeof memorySections>[0]["own"], thread: string, role: string, text: string) =>
-  own.appendEntry(thread, { piId: `${role}-${text.slice(0, 8)}-${Math.random()}`, role, data: {}, text });
+  own.appendEntry(thread, { piId: `${role}-${text.slice(0, 8)}-${Math.random()}`, role, data: { type: "message", message: { role, content: [{ type: "text", text }] } }, text });
 const n = (id: string) => Number(id.split("#")[1]);
 
 describe("pinned messages", () => {
@@ -92,13 +93,15 @@ describe("automatic recall", () => {
     expect((await memorySections(view, "which branch should the test use for the body?", ctx)).recall).toMatch(/\(entry by you, [^)]*\) The default branch/);
   });
 
-  it("marks a tool result as neither hers nor the person's", async () => {
+  it("leaves out tool results, which the recall tool marks as neither hers nor the person's", async () => {
     const m = await withMemory();
     const old = m.thread();
     say(old.view.own, old.threadId, "toolResult", "The lighthouse keeper's cottage is open to visitors on weekends.");
     const { view, threadId } = m.thread();
     const ctx = { threadId, user: { id: m.user.id, profile: m.user.profile }, folders: [] };
-    expect((await memorySections(view, "lighthouse keeper cottage", ctx)).recall).toMatch(/\(tool result, \d{4}-\d{2}-\d{2}\) The lighthouse keeper/);
+    expect((await memorySections(view, "lighthouse keeper cottage", ctx)).recall).toBeUndefined();
+    const [hit] = search(view, "lighthouse keeper cottage", {});
+    expect(formatHit(hit!, ctx.user)).toMatch(/\(tool result, \d{4}-\d{2}-\d{2}\) The lighthouse keeper/);
   });
 
   it("marks a journal hit as her own", async () => {
