@@ -59,11 +59,14 @@ const comfy = new ComfyGpus(new Map((comfyGpus.length ? comfyGpus : [0]).map((gp
   const base = url.toString().replace(/\/$/, "");
   return [gpu, new Comfy(base, undefined, undefined, { state: join(serving, `comfyui-${gpu}.json`), status: join(comfyStatus, `comfyui-${gpu}.json`) })];
 })));
+const nvidiaGpus = vendor === "nvidia" ? await nvidiaMonitor.read().catch(() => []) : [];
 // On a CMP 100-210, install.sh adds stable-diffusion.cpp, which makes the images in ComfyUI's place.
-const sdcpp = env.SDCPP_URL ? new SdCpp(env.SDCPP_URL, { serving, status: env.SDCPP_STATUS || "/sdcpp-status/sdcpp.json" }) : null;
+const sdcpp = env.SDCPP_URL
+  ? new SdCpp(env.SDCPP_URL, { serving, status: env.SDCPP_STATUS || "/sdcpp-status/sdcpp.json" }, nvidiaGpus.find((g) => g.index === (comfyGpus[0] ?? 0))?.total ?? 0)
+  : null;
 // Beside a CMP 100-210, install.sh adds whisper.cpp for dictation, which vLLM can't do there.
 const whispercpp = env.WHISPER_URL ? new WhisperCpp(env.WHISPER_URL, { serving, status: env.WHISPER_STATUS || "/whisper-status/whisper.json", models: modelsDir }) : null;
-const cmpGpus = new Set(vendor === "nvidia" ? (await nvidiaMonitor.read().catch(() => [])).filter((g) => isCmp(g.pciId)).map((g) => g.index) : []);
+const cmpGpus = new Set(nvidiaGpus.filter((g) => isCmp(g.pciId)).map((g) => g.index));
 const scheduler = new Scheduler({
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,
   gpuBackend: backend,
