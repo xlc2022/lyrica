@@ -1943,7 +1943,7 @@ test("a thread's branch shows as a badge that opens the changes view: files, com
   await expect(side.getByRole("button")).toHaveCount(5 + 2 + commits.length);
   await expect(side.getByRole("button", { name: /^All changes/ })).toHaveAttribute("aria-pressed", "true");
   // The changed words are marked inside the changed lines, and a renamed file says where it was.
-  await expect(dialog.locator(".dl.ins mark.ins").first()).toContainText("as input");
+  await expect(dialog.locator(".cline.ins mark.ins").first()).toContainText("as input");
   await expect(dialog.getByText("docs/model.md → docs/models.md")).toBeVisible();
   await expect(dialog.getByText("No differences in the text.")).toBeVisible();
   // A long unchanged stretch folds, and a press shows twenty more lines of it.
@@ -1959,7 +1959,7 @@ test("a thread's branch shows as a badge that opens the changes view: files, com
   } else {
     await view.getByRole("button", { name: "Side by side" }).click();
     await expect(dialog.locator(".dr").first()).toBeVisible();
-    await expect(dialog.locator(".dr .dl.del mark.del").first()).toContainText("outputs");
+    await expect(dialog.locator(".dr .cline.del mark.del").first()).toContainText("outputs");
     if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/split-${page.viewportSize()!.width}.png` });
     await view.getByRole("button", { name: "Unified" }).click();
   }

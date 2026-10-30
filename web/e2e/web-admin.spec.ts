@@ -586,6 +586,12 @@ test("Downloads History: the queue shows progress with Cancel and how each ended
   await expect(done.locator(".dl-end")).toHaveText("Unverified no checksum given · 0.3 GB · Ready");
   await expect(page.locator("[aria-live=polite]").first()).toBeAttached();
   await noHorizontalScroll(page);
+  // The row stacks full width: the file name stays on one line and the bar isn't squeezed into a narrow column.
+  const row = (await running.boundingBox())!, name = (await running.locator(".dl-top b").boundingBox())!;
+  expect((await running.locator(".dl-top").boundingBox())!.width).toBeGreaterThan(row.width - 40);
+  expect(name.height).toBeLessThan(30);
+  expect((await bar.boundingBox())!.width).toBeGreaterThan(Math.min(300, row.width - 40));
+  expect((await done.locator(".dl-end").boundingBox())!.width).toBeGreaterThan(row.width - 40);
   if (phone(page)) for (const b of [running.getByRole("button", { name: "Cancel m-Q4_K_M.gguf" }), page.getByRole("button", { name: "Add a Hugging Face token" })]) {
     expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   }
