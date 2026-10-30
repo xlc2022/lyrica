@@ -915,8 +915,15 @@ test("removing turns that did things asks first, with what goes", async ({ page,
 test("a child thread nests under its parent, opens from its card, and goes with its parent when asked", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");
+  // A slow thread list: Delete…, opened before the list counts the new child, counts it once it does,
+  // rather than keep the thread as it was listed when the menu opened.
+  await page.route(/\/threads$/, async (r) => { if (r.request().method() === "GET") await new Promise((d) => setTimeout(d, 3000)); await r.continue(); });
   await send(page, "start: Seed list");
   await expect(page.getByText("Started it.")).toBeVisible();
+  const early = await deleteThread(page);
+  await expect(early.getByLabel("Also delete its child thread")).toBeChecked();
+  await early.getByRole("button", { name: "Cancel" }).click();
+  await page.unrouteAll();
   const card = page.locator(".threads-card");
   await expect(card).toContainText("Child thread: Seed list");
   await card.getByRole("link", { name: "Open" }).click();

@@ -289,6 +289,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
   const moreBtn = useRef<HTMLButtonElement>(null);
   const closeMenu = useCallback(() => { setMenuAt(undefined); moreBtn.current?.focus(); }, []);
   const listed = findThread(threads, pool, threadId) ?? s;
+  // The thread as listed now, not when the menu opened: a child started just before still counts in Delete….
+  const menuNow = useMemo(() => menuAt && { ...menuAt, thread: listed ?? menuAt.thread }, [menuAt, listed]);
   if (!s && summary.error && gone.data) return <Tombstone userId={userId} pool={pool} data={gone.data} />;
 
   return (
@@ -403,8 +405,8 @@ export function Thread({ ctx, pool, threadId, threads, drawerAtStart, dropDrawer
         <SubagentsDrawer id={agentsId} userId={userId} pool={pool} data={agents.data} error={agents.error} tasks={agentTasks} onClose={() => setAgentsOpen(false)} />
       )}
       {(drawer || agentsOpen) && <div className="scrim drawer-scrim" aria-hidden="true" onClick={() => { setDrawer(false); setAgentsOpen(false); }} />}
-      {menuAt && (
-        <ThreadMenu at={menuAt} userId={userId} groups={ctx.groups} onGroups={ctx.refreshGroups} onToast={ctx.toast}
+      {menuNow && (
+        <ThreadMenu at={menuNow} userId={userId} groups={ctx.groups} onGroups={ctx.refreshGroups} onToast={ctx.toast}
           onChange={() => { summary.reload(); refreshThreads(); }} onClose={closeMenu}
           onGone={panel?.close ?? (() => go({ page: "home", userId }))} />
       )}
