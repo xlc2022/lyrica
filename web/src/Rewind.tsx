@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import type { ModelRef, Pins, Pool, RemovalPlan, RewindRequest, ThreadSettings } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
-import { isChatModel } from "./ModelLabel.tsx";
+import { isChatModel, matchesModel } from "./ModelLabel.tsx";
 import { useMentionText } from "./mentions.ts";
 import { useDismiss, useInView } from "./ui.tsx";
 import { modelName } from "./ModelLabel.tsx";
@@ -33,9 +33,9 @@ export interface Rewinder {
  * rare actions stay behind ⋯ (`MessageMenu`). `text` is what Copy puts on the clipboard; `readAloud` and `react` are
  * the buttons the conversation supplies, since it holds their state.
  */
-export function MessageActions({ n, role, rewinder, text, onEdit, onRemember, readAloud, react }: {
-  n: number; role: "user" | "assistant"; rewinder: Rewinder; text: string; onEdit?: () => void; onRemember?: () => void;
-  readAloud?: ReactNode; react?: ReactNode;
+export function MessageActions({ n, role, rewinder, text, model, onEdit, onRemember, readAloud, react }: {
+  n: number; role: "user" | "assistant"; rewinder: Rewinder; text: string; /** The model that wrote her reply. */ model?: string;
+  onEdit?: () => void; onRemember?: () => void; readAloud?: ReactNode; react?: ReactNode;
 }) {
   const { busy } = rewinder;
   return (
@@ -49,7 +49,7 @@ export function MessageActions({ n, role, rewinder, text, onEdit, onRemember, re
       <button type="button" className="icon-btn quiet" aria-label="Branch" title="Branch" onClick={() => rewinder.branch(n)}><Icon name="branch" /></button>
       {readAloud}
       {react}
-      <MessageMenu n={n} role={role} rewinder={rewinder} onRemember={onRemember} />
+      <MessageMenu n={n} role={role} rewinder={rewinder} model={model} onRemember={onRemember} />
     </div>
   );
 }
@@ -76,20 +76,35 @@ function CopyIconButton({ text }: { text: string }) {
 
 /**
  * The rare actions behind a message's ⋯ (More actions): Pin or Unpin, Remember this, Regenerate with… (the chat models
- * the thread may use), Start a thread in a project chat, and Delete. Branch, Regenerate and Edit are buttons in the row;
- * a marker that opens to a message written elsewhere (`FromThread`, the look and scheduled markers) uses this menu alone,
- * with Branch in it, since it has no row. `onRemember`: Remember this, a note from the message's first line (docs/ux.md §6).
+ * the thread may use under a search, the model that wrote the reply, `model`, first), Start a thread in a project chat,
+ * and Delete. Branch, Regenerate and Edit are buttons in the row; a marker that opens to a message written elsewhere
+ * (`FromThread`, the look and scheduled markers) uses this menu alone, with Branch in it, since it has no row. `onRemember`: Remember this, a note from the message's first line (docs/ux.md §6).
  */
-export function MessageMenu({ n, role, rewinder, onRemember, branch }: { n: number; role: "user" | "assistant"; rewinder: Rewinder; onRemember?: () => void; /** Branch as a menu item, for a marker without the row. */ branch?: boolean }) {
+export function MessageMenu({ n, role, rewinder, model, onRemember, branch }: {
+  n: number; role: "user" | "assistant"; rewinder: Rewinder; model?: string; onRemember?: () => void;
+  /** Branch as a menu item, for a marker without the row. */ branch?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [models, setModels] = useState(false);
+  const [q, setQ] = useState("");
   const ref = useRef<HTMLSpanElement>(null);
-  const close = useCallback(() => { setOpen(false); setModels(false); }, []);
+  const close = useCallback(() => { setOpen(false); setModels(false); setQ(""); }, []);
   useDismiss(ref, open, close);
   const { busy, lastTurn } = rewinder;
   const act = (fn: () => void) => () => { close(); fn(); };
   const regenerate = (model: ModelRef) => rewinder.rewind(n, { action: "regenerate", model }, n);
   const inLastTurn = lastTurn !== undefined && n >= lastTurn;
+  // Regenerate with…: the chat models, the reply's own model first, then the rest in the thread's order; the search narrows both.
+  const chat = (rewinder.settings?.allowed ?? []).flatMap((ep) => ep.models.filter(isChatModel).map((m) => ({ m, ep })));
+  const shown = chat.filter(({ m, ep }) => !q.trim() || matchesModel(q, m, ep));
+  const own = shown.filter(({ m }) => m.modelId === model);
+  const rest = shown.filter(({ m }) => m.modelId !== model);
+  const item = ({ m, ep }: (typeof chat)[number]) => (
+    <button key={m.id} type="button" role="menuitem" className="sub-item" disabled={busy}
+      onClick={act(() => regenerate({ offeringId: m.id }))}>
+      {modelName(m)} <span className="muted">· {ep.name}</span>
+    </button>
+  );
   return (
     <span className="msg-menu" ref={ref}>
       <button type="button" className="icon-btn quiet" aria-label="More actions" title="More actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -106,12 +121,17 @@ export function MessageMenu({ n, role, rewinder, onRemember, branch }: { n: numb
           {role === "assistant" && (
             <button type="button" role="menuitem" disabled={busy} aria-expanded={models} onClick={() => setModels(!models)}>Regenerate with…</button>
           )}
-          {models && rewinder.settings?.allowed.flatMap((ep) => ep.models.filter(isChatModel).map((m) => (
-            <button key={m.id} type="button" role="menuitem" className="sub-item" disabled={busy}
-              onClick={act(() => regenerate({ offeringId: m.id }))}>
-              {modelName(m)} <span className="muted">· {ep.name}</span>
-            </button>
-          )))}
+          {models && chat.length > 0 && (
+            <input type="search" aria-label="Search models" placeholder={`Search ${chat.length} models`} value={q}
+              // Focused at once where there is a keyboard; on touch it would raise one over the list.
+              autoFocus={!matchMedia("(pointer: coarse)").matches}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const first = shown[0]; if (first && !busy) act(() => regenerate({ offeringId: first.m.id }))(); } }} />
+          )}
+          {models && own.map(item)}
+          {models && own.length > 0 && rest.length > 0 && <div className="sep sub-sep" role="separator" />}
+          {models && rest.map(item)}
+          {models && q.trim() && !shown.length && <p className="cap muted small">No models match.</p>}
           {/* The last turn has Delete; earlier messages, Delete from here. */}
           {inLastTurn
             ? <button type="button" role="menuitem" className="danger" disabled={busy} onClick={act(() => rewinder.rewind(lastTurn, { action: "delete" }, lastTurn))}>Delete</button>

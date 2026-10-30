@@ -1635,6 +1635,13 @@ test("Sleep History and Came from: the sidebar link opens it empty, the mode is 
   await page.goto(`/#/u/${userId}/memory/general/p:lineage-use-1`);
   await expect(cameFrom.locator(".lk")).toHaveCount(1);
   await expect(cameFrom.getByRole("link", { name: "Show all", exact: true })).toHaveCount(0);
+  // A cited page's title reads with the user's name, in the text's link and on its card, never as a mention token.
+  await expect(memoryText.locator("a.wl")).toHaveCount(1);
+  await expect(memoryText.locator("a.wl")).toContainText("Fixture lineage for ");
+  await expect(cameFrom.locator(".lk")).toContainText("Fixture lineage for ");
+  await expect(page.locator(".mem-item")).not.toContainText("[u:");
+  await expect(memoryText.locator("pre, code")).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("cited-title.png") });
   // A memory written once has no earlier version, so it shows no History section at all.
   await expect(page.locator(".history")).toHaveCount(0);
 

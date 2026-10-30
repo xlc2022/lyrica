@@ -1,20 +1,20 @@
 // The image routes in API.md ("Image models"): parts, recipes, starters, and
 // create, edit and upscale through ComfyUI, and videos from video recipes.
 import { createHash, randomInt } from "node:crypto";
-import { mkdirSync, readdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
+import { mkdirSync, readdirSync, readlinkSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
-import { imageSize, mp4Seconds, mp4Video, type Comfy } from "./comfy.ts";
+import { imageSize, mp4Seconds, mp4Video, type ComfyGpus } from "./comfy.ts";
 import type { Downloads } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import type { JobProgress } from "./jobs.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import { scanParts, type Part, type Role } from "./parts.ts";
-import { clipSpec, COLOR_MATCH, present, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
+import { clipSpec, COLOR_MATCH, loraFits, present, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
 import type { Runtime } from "./runtime.ts";
 import { sdcppArgs, type SdCpp } from "./sdcpp.ts";
-import { fill, LONGEST_SECONDS, longestSeconds, type Action, type Continuation, type Values, type VideoSpec } from "./templates.ts";
+import { fill, LONGEST_SECONDS, longestSeconds, type Action, type Continuation, type Lora, type Values, type VideoSpec } from "./templates.ts";
 
 const IMAGE_LIMIT = 20 * 1024 * 1024;
 const MAX_SIDE = 8192;
@@ -24,13 +24,15 @@ const BASE_DEFAULTS: Values = { negativePrompt: "", steps: 20, cfg: 1, sampler: 
 const IDLE_FREE_MS = 10 * 60_000;
 /** How long one clip may take: a 14B model on a 24 GB card can take most of an hour. */
 const VIDEO_TIMEOUT_MS = 2 * 60 * 60_000;
-const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "extend", "width", "height", "duration", "steps", "cfg", "seed", "aspectRatio"];
+const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "extend", "width", "height", "duration", "steps", "cfg", "seed", "aspectRatio", "loras"];
+/** A request names at most this many LoRA files of the host's for one job (API.md, "LoRAs for one job"): four LoRAs, each maybe a high and low noise pair. */
+const MAX_REQUEST_LORAS = 8;
 /** A driving clip (`motion`): only its first seconds are used. */
 const DRIVE_LIMIT = 64 * 1024 * 1024;
 
 const FIELDS: Record<"create" | "edit" | "upscale", string[]> = {
-  create: ["recipe", "prompt", "negativePrompt", "width", "height", "count", "steps", "cfg", "seed", "references"],
-  edit: ["recipe", "prompt", "negativePrompt", "count", "steps", "cfg", "seed", "references", "image", "mask", "replace"],
+  create: ["recipe", "prompt", "negativePrompt", "width", "height", "count", "steps", "cfg", "seed", "references", "loras"],
+  edit: ["recipe", "prompt", "negativePrompt", "count", "steps", "cfg", "seed", "references", "image", "mask", "replace", "loras"],
   upscale: ["recipe", "image", "scale", "maxSize", "colorMatch", "seed"],
 };
 
@@ -77,19 +79,23 @@ export class Images {
   readonly book: RecipeBook;
   parts: Part[] = [];
   private readonly runtime: Runtime;
-  private readonly comfy: Comfy;
+  /** A ComfyUI per image GPU. */
+  private readonly comfy: ComfyGpus;
   /** stable-diffusion.cpp, which makes the images in ComfyUI's place when it is set. */
   private readonly sdcpp: SdCpp | null;
   private readonly downloads: Downloads | null;
   private readonly modelsDir: string;
   private readonly seedvr2Dir: string;
-  private readonly comfyGpu: number;
+  /** The GPUs images and videos run on: each ComfyUI's, or stable-diffusion.cpp's one. */
+  private readonly gpus: number[];
+  /** Jobs given to each GPU and not yet done. */
+  private readonly jobsOn = new Map<number, number>();
   private readonly log: Logger;
   private readonly idleTimer: NodeJS.Timeout;
   /** Each SeedVR2 part's link name in its folder. */
   private seedvr2Names = new Map<string, string>();
 
-  constructor(o: { book: RecipeBook; runtime: Runtime; comfy: Comfy; sdcpp?: SdCpp | null; downloads: Downloads | null; modelsDir: string; serving: string; comfyGpu: number; log: Logger }) {
+  constructor(o: { book: RecipeBook; runtime: Runtime; comfy: ComfyGpus; sdcpp?: SdCpp | null; downloads: Downloads | null; modelsDir: string; serving: string; log: Logger }) {
     this.book = o.book;
     this.runtime = o.runtime;
     this.comfy = o.comfy;
@@ -97,7 +103,7 @@ export class Images {
     this.downloads = o.downloads;
     this.modelsDir = o.modelsDir;
     this.seedvr2Dir = join(o.serving, "seedvr2");
-    this.comfyGpu = o.comfyGpu;
+    this.gpus = this.sdcpp ? this.comfy.gpus.slice(0, 1) : this.comfy.gpus;
     this.log = o.log;
     mkdirSync(this.seedvr2Dir, { recursive: true });
     // ComfyUI keeps parts in memory after a job; free them once it has been idle a while.
@@ -148,13 +154,15 @@ export class Images {
 
   /**
    * A recipe as the API lists it. With stable-diffusion.cpp, it does only
-   * what sd.cpp can run here. One too big for the image GPU does nothing.
+   * what sd.cpp can run here. One too big for every image GPU does nothing.
    * Either way it says why when that's nothing.
    */
   private describe(r: Recipe, files: Set<string>) {
-    const d = this.book.describe(r, files);
-    if ("unsupported" in d) return d;
-    const tooBig = r.parts.every((p) => p.file) ? this.runtime.scheduler.neverFits({ model: this.asModel(r), gpu: this.comfyGpu }) : null;
+    const book = this.book.describe(r, files);
+    if ("unsupported" in book) return book;
+    const d = { ...book, takesLoras: this.sdcpp ? [] : this.takesLoras(r).map((p) => p.file) };
+    const reasons = r.parts.every((p) => p.file) ? this.gpus.map((gpu) => this.runtime.scheduler.neverFits({ model: this.asModel(r, gpu), gpu })) : [];
+    const tooBig = reasons.length && reasons.every((x) => x) ? reasons[0]! : null;
     if (tooBig) return { ...d, does: [], unsupported: tooBig };
     if (!this.sdcpp) return d;
     try {
@@ -163,6 +171,42 @@ export class Images {
       return { ...d, does: [], unsupported: (e as Error).message };
     }
     return { ...d, does: r.does.filter((a) => a === "create") };
+  }
+
+  /**
+   * The LoRAs on this host a request may add to a recipe for one job: those whose architecture fits it,
+   * other than the ones its template loads itself. A template that loads its own parts takes none.
+   */
+  private takesLoras(r: Recipe): Part[] {
+    const t = this.book.templates.get(r.template);
+    if (!t || t.loaders === "template") return [];
+    const own = new Set(r.parts.map((p) => p.file));
+    return this.parts.filter((p) => p.role === "lora" && loraFits(r.arch, p.arch) && !own.has(p.file));
+  }
+
+  /**
+   * The LoRAs one job applies: the recipe's own, then `asked` (a request's `loras`), whose strength
+   * replaces the recipe's for a LoRA it already has. Each with its part's slot, so an expert's LoRA goes onto that expert.
+   */
+  private jobLoras(r: Recipe, asked: unknown): Lora[] {
+    const slotOf = (file: string) => this.parts.find((p) => p.file === file)?.slot ?? null;
+    const out: Lora[] = r.loras.map((l) => ({ ...l, slot: slotOf(l.file) }));
+    if (asked === undefined) return out;
+    if (!Array.isArray(asked) || asked.length > MAX_REQUEST_LORAS) throw invalid(`loras must be a list of at most ${MAX_REQUEST_LORAS}.`);
+    if (asked.length && this.sdcpp) throw invalid("This host makes images with stable-diffusion.cpp, which takes no LoRAs here.");
+    const takes = new Set(this.takesLoras(r).map((p) => p.file));
+    const seen = new Set<string>();
+    for (const l of asked as { file?: unknown; strength?: unknown }[]) {
+      if (!l || typeof l !== "object" || typeof l.file !== "string") throw invalid("Each of loras needs a file.");
+      if (typeof l.strength !== "number" || !Number.isFinite(l.strength) || l.strength < -4 || l.strength > 4) throw invalid("A LoRA's strength must be a number from -4 to 4.");
+      if (seen.has(l.file)) throw invalid("loras names a LoRA twice.");
+      seen.add(l.file);
+      const built = out.find((o) => o.file === l.file);
+      if (built) built.strength = l.strength;
+      else if (takes.has(l.file)) out.push({ file: l.file, strength: l.strength, slot: slotOf(l.file) });
+      else throw invalid(`${basename(l.file)} isn't a LoRA on this host that this recipe takes.`);
+    }
+    return out;
   }
 
   private usedBy(file: string): string[] {
@@ -335,8 +379,9 @@ export class Images {
     if (!recipe || !this.book.ready(recipe, this.files())) throw notFound("No confirmed, ready recipe with that ID.");
     if (!recipe.does.includes(action)) throw invalid(`That recipe doesn't ${action} images.`);
     if (this.sdcpp && action !== "create") throw invalid(`This host makes images with stable-diffusion.cpp, which can't ${action} images here.`);
-    const sdArgs = this.sdcpp ? sdcppArgs(recipe, this.modelsDir, this.sdcpp.fullRate()) : null;
+    const sdArgs = this.sdcpp ? sdcppArgs(recipe, this.modelsDir, this.sdcpp.card(), (file) => statSync(join(this.modelsDir, file)).size) : null;
     const template = this.book.templates.get(recipe.template)!;
+    const loras = this.jobLoras(recipe, body.loras);
 
     const values: Values = { ...BASE_DEFAULTS, ...recipe.defaults };
     const uploads: Record<string, Buffer> = {};
@@ -383,7 +428,9 @@ export class Images {
     values.seed = int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);
 
     const started = Date.now();
-    const model = this.asModel(recipe);
+    const gpu = this.pick(recipe);
+    const model = this.asModel(recipe, gpu);
+    const comfy = this.comfy.byGpu.get(gpu)!;
     // A client that goes away cancels its job, queued or running.
     const abort = new AbortController();
     res.on("close", () => {
@@ -393,14 +440,14 @@ export class Images {
     const sdcpp = this.sdcpp;
     if (sdcpp && sdArgs) sdcpp.prepare(model.id, sdArgs);
     // stable-diffusion.cpp reports no steps: its job only says it runs.
-    const pngs = await scheduler.run(model, "image", () => {
+    const pngs = await this.on(gpu, () => scheduler.run(model, "image", () => {
       job.running();
       return scheduler.measuring(model, () =>
-        sdcpp ? sdcpp.create(model.id, recipe.template, values, abort.signal) : this.comfy.run(uploads, (names) => {
+        sdcpp ? sdcpp.create(model.id, recipe.template, values, abort.signal) : comfy.run(uploads, (names) => {
           const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
-          return fill(template, parts, recipe.loras, { ...values, ...names });
+          return fill(template, parts, loras, { ...values, ...names });
         }, abort.signal, job.progress));
-    }, this.comfyGpu, abort.signal);
+    }, gpu, abort.signal));
     if (!pngs.length) throw new HostError(503, "model_unavailable", `${sdcpp ? "stable-diffusion.cpp" : "ComfyUI"} returned no image.`);
     const seconds = (Date.now() - started) / 1000;
     this.runtime.count(recipe.id, { requests: 1, images: pngs.length, seconds });
@@ -444,6 +491,7 @@ export class Images {
     const spec = template.video;
     if (!spec) throw new HostError(500, "internal", `Template ${template.name} has no video settings.`);
     const chain = template.continuation;
+    const loras = this.jobLoras(recipe, body.loras);
     if (extending && !(chain && recipe.does.some((a) => a === "video" || a === "animate"))) throw invalid("That recipe can't extend a clip.");
 
     const values: Values = { ...BASE_DEFAULTS, duration: 5, ...recipe.defaults };
@@ -504,7 +552,10 @@ export class Images {
     values.seed = int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);
 
     const started = Date.now();
-    const model = this.asModel(recipe);
+    // Every clip of a chain runs on one GPU.
+    const gpu = this.pick(recipe);
+    const model = this.asModel(recipe, gpu);
+    const comfy = this.comfy.byGpu.get(gpu)!;
     const abort = new AbortController();
     res.on("close", () => {
       if (!res.writableFinished) abort.abort();
@@ -512,7 +563,7 @@ export class Images {
     const scheduler = this.runtime.scheduler;
     // One hold on the GPU for every clip, and one progress, each clip weighted by its frames.
     const total = clips.reduce((n, c) => n + Number(c.frames), 0);
-    const { video, poster } = await scheduler.run(model, "image", () => {
+    const { video, poster } = await this.on(gpu, () => scheduler.run(model, "image", () => {
       job.running();
       return scheduler.measuring(model, async () => {
         let video = previous;
@@ -524,7 +575,7 @@ export class Images {
           const ref = first ? undefined : uploads.image && chain!.reference;
           const t = first ? template : { ...template, workflow: { ...chain!.workflow, ...ref?.workflow } };
           const step = { ...values, ...clip, seed: Number(values.seed) + i, ...(first ? {} : { overlap: chain!.overlap, prompt: `${ref?.promptPrefix ?? ""}${chain!.promptPrefix ?? ""}${values.prompt}` }) };
-          const made = await this.comfy.runVideo(first ? uploads : { previous: video!, ...(ref ? { reference: uploads.image! } : {}) }, (names) => fill(t, parts, recipe.loras, { ...step, ...names }),
+          const made = await comfy.runVideo(first ? uploads : { previous: video!, ...(ref ? { reference: uploads.image! } : {}) }, (names) => fill(t, parts, loras, { ...step, ...names }),
             VIDEO_TIMEOUT_MS, abort.signal, (f) => job.progress((done + f * Number(clip.frames)) / total));
           video = made.video;
           poster = made.poster ?? poster;
@@ -532,7 +583,7 @@ export class Images {
         }
         return { video: video!, poster };
       });
-    }, this.comfyGpu, abort.signal);
+    }, gpu, abort.signal));
     const seconds = (Date.now() - started) / 1000;
     this.runtime.count(recipe.id, { requests: 1, seconds });
     this.log("video", { recipe: recipe.id, action: extending ? "extend" : action, clips: clips.length, frames: total });
@@ -552,15 +603,41 @@ export class Images {
 
   /** What stops images being made on this host, for the status. */
   get problems(): string[] {
-    const p = (this.sdcpp ?? this.comfy).problem;
-    return p ? [`Images: ${p}`] : [];
+    if (this.sdcpp) return this.sdcpp.problem ? [`Images: ${this.sdcpp.problem}`] : [];
+    const several = this.gpus.length > 1;
+    return this.comfy.problems.map(({ gpu, problem }) => `Images${several ? ` on GPU ${gpu}` : ""}: ${problem}`);
   }
 
-  /** A recipe as the scheduler sees it. */
-  private asModel(r: Recipe): TextModel {
+  /**
+   * The GPU for a job of this recipe: the one with the fewest jobs; on a tie,
+   * one that has the recipe loaded, then the first listed. Only GPUs whose
+   * ComfyUI can run and that it fits, while there are any.
+   */
+  private pick(r: Recipe): number {
+    const runs = this.sdcpp ? this.gpus : this.gpus.filter((gpu) => !this.comfy.byGpu.get(gpu)!.problem);
+    const fits = (runs.length ? runs : this.gpus).filter((gpu) => !this.runtime.scheduler.neverFits({ model: this.asModel(r, gpu), gpu }));
+    const ranked = (fits.length ? fits : runs.length ? runs : this.gpus).map((gpu, i) => ({
+      gpu, i, jobs: this.jobsOn.get(gpu) ?? 0, loaded: this.runtime.scheduler.placement(this.asModel(r, gpu).id) ? 0 : 1,
+    }));
+    ranked.sort((a, b) => a.jobs - b.jobs || a.loaded - b.loaded || a.i - b.i);
+    return ranked[0]!.gpu;
+  }
+
+  /** Runs a job counted against its GPU. */
+  private async on<T>(gpu: number, fn: () => Promise<T>): Promise<T> {
+    this.jobsOn.set(gpu, (this.jobsOn.get(gpu) ?? 0) + 1);
+    try {
+      return await fn();
+    } finally {
+      this.jobsOn.set(gpu, this.jobsOn.get(gpu)! - 1);
+    }
+  }
+
+  /** A recipe as the scheduler sees it, on one GPU: with several image GPUs, each GPU's copy is its own model. */
+  private asModel(r: Recipe, gpu: number): TextModel {
     const size = recipeSize(r, this.parts);
     return {
-      id: `recipe:${r.id}`, kind: "image", server: "comfyui", format: "safetensors", size,
+      id: this.gpus.length > 1 ? `recipe:${r.id}@gpu${gpu}` : `recipe:${r.id}`, kind: "image", server: "comfyui", format: "safetensors", size,
       identity: { basename: r.name, sizeLabel: null, finetune: null, baseModels: [] },
       capabilities: { tools: false, vision: false, embedding: false, reasoning: null },
       contextLength: null, kvPerToken: null, mmproj: null, remoteCode: false,
@@ -573,7 +650,7 @@ export class Images {
  * the diffusion model with its LoRAs, then an upscaler, freeing one stage's
  * models when the next needs the room, so the peak is the largest stage plus
  * the VAEs, not every part at once. A video model's two experts run one after
- * the other, each with its own LoRA. A CLIP vision model and a segmenter count with the VAEs.
+ * the other, each with its own LoRAs. A CLIP vision model and a segmenter count with the VAEs.
  */
 export function recipeSize(r: Pick<Recipe, "parts" | "loras">, parts: Pick<Part, "file" | "size">[]): number {
   const sizeOf = (f: string | null) => parts.find((p) => p.file === f)?.size ?? 0;
@@ -586,7 +663,8 @@ export function recipeSize(r: Pick<Recipe, "parts" | "loras">, parts: Pick<Part,
     const group = p.slot && experts.has(p.slot) ? p.slot : "";
     groups.set(group, (groups.get(group) ?? 0) + sizeOf(p.file));
   }
-  const model = Math.max(0, ...[...groups].map(([g, n]) => n + (g === "" ? loras : 0)), loras);
+  // A LoRA not made for one expert goes onto both.
+  const model = Math.max(0, ...[...groups].map(([, n]) => n + loras), loras);
   return Math.max(stage(["text_encoder"]), model, stage(["upscaler"])) + stage(["vae", "latent_upscaler", "interpolator", "clip_vision", "segmenter"]);
 }
 

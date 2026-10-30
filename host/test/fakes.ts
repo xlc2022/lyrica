@@ -215,8 +215,8 @@ export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?
 
 
 /** A safetensors file with just a header: tensor names, types and shapes. */
-export function safetensors(tensors: Record<string, { dtype?: string; shape?: number[] }>): Buffer {
-  const header: Record<string, unknown> = {};
+export function safetensors(tensors: Record<string, { dtype?: string; shape?: number[] }>, metadata?: Record<string, string>): Buffer {
+  const header: Record<string, unknown> = metadata ? { __metadata__: metadata } : {};
   for (const [name, t] of Object.entries(tensors)) header[name] = { dtype: t.dtype ?? "BF16", shape: t.shape ?? [1], data_offsets: [0, 0] };
   const json = Buffer.from(JSON.stringify(header));
   const len = Buffer.alloc(8);

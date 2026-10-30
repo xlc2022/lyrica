@@ -11,7 +11,9 @@ export async function fakeImages() {
   const models = new Models(keyring, users);
   const hostFetches = new Map<string, typeof fetch>();
   vi.spyOn(models, "fetchFor").mockImplementation(ep => hostFetches.get(ep.id));
-  const host = async (name: string, useFor?: "fast" | "quality" | "both", mask?: boolean, references?: number) => {
+  /** `loras`: the LoRA files its Art and Clip recipes take for one call. */
+  const host = async (name: string, useFor?: "fast" | "quality" | "both", mask?: boolean, references?: number, loras?: string[]) => {
+    const takes = loras ? { takesLoras: loras } : {};
     const images: { action: string; body: Record<string, unknown> }[] = [];
     const videos: Record<string, unknown>[] = [];
     let down: string | false = false;
@@ -25,9 +27,9 @@ export async function fakeImages() {
       if (path === "/host/v1/status") return Response.json({ state: "running" });
       if (path === "/host/v1/models") return Response.json({ models: [] });
       if (path === "/host/v1/recipes") return Response.json({ recipes: [
-        { id: "art", name: "Art", state: "confirmed", ready: true, useFor: server.useFor, does: ["create", "edit", "upscale"], ...(mask === undefined ? {} : { mask }), ...(references === undefined ? {} : { references }) },
+        { id: "art", name: "Art", state: "confirmed", ready: true, useFor: server.useFor, does: ["create", "edit", "upscale"], ...(mask === undefined ? {} : { mask }), ...(references === undefined ? {} : { references }), ...takes },
         { id: "proposal", name: "Proposal", state: "proposed", ready: true, does: ["create"] },
-        { id: "clip", name: "Clip", state: "confirmed", ready: true, does: ["video", "animate"], video: { fps: 24, audio: false, maxSeconds: 8, longestSeconds: 8 } },
+        { id: "clip", name: "Clip", state: "confirmed", ready: true, does: ["video", "animate"], video: { fps: 24, audio: false, maxSeconds: 8, longestSeconds: 8 }, ...takes },
         { id: "moves", name: "Moves", state: "confirmed", ready: true, does: ["motion"], video: { fps: 16, audio: false } },
         { id: "long", name: "Long", state: "confirmed", ready: true, does: ["video", "animate", "extend"], video: { fps: 24, audio: true, maxSeconds: 15, longestSeconds: 60 } },
       ] });
@@ -36,12 +38,12 @@ export async function fakeImages() {
       const body = JSON.parse(String(opts.body));
       if (path === "/host/v1/videos/create") {
         if (!["clip", "moves", "long"].includes(body.recipe)) return Response.json({ error: { code: "invalid", message: "That recipe doesn't make videos." } }, { status: 400 });
-        expect(Object.keys(body).every(k => ["recipe", "prompt", "image", "drive", "extend", "width", "height", "aspectRatio", "duration", "steps"].includes(k))).toBe(true);
+        expect(Object.keys(body).every(k => ["recipe", "prompt", "image", "drive", "extend", "width", "height", "aspectRatio", "duration", "steps", "loras"].includes(k))).toBe(true);
         videos.push(body);
         return Response.json({ video: { mp4: mp4.toString("base64"), width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7 }, poster: png.toString("base64"), seconds: 300 });
       }
       if (body.recipe !== "art") return Response.json({ error: { code: "not_found" } }, { status: 404 });
-      const allowed = ["recipe", "prompt", "count", "references", ...(action === "create" ? ["width", "height"] : action === "edit" ? ["image", "mask", "replace"] : ["image", "scale", "maxSize"])];
+      const allowed = ["recipe", "prompt", "count", "references", "loras", ...(action === "create" ? ["width", "height"] : action === "edit" ? ["image", "mask", "replace"] : ["image", "scale", "maxSize"])];
       expect(Object.keys(body).every(k => allowed.includes(k))).toBe(true);
       images.push({ action, body });
       return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: output.toString("base64"), width: 1, height: 1, seed: 42 })), seconds: 0.1 });

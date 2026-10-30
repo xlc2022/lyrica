@@ -1,6 +1,7 @@
 // Principle 2: video calls share the router's cloud boundary, and only model hosts make clips. No disk or logging.
 import { hostError, HostIdentityChanged, HostRefused } from "./host.ts";
 import { cleanPng, type GeneratedImage, type ImageInput } from "./images.ts";
+import { validateLoras, type LoraAsk } from "./loras.ts";
 import { withProgress, type JobProgress } from "./progress.ts";
 
 /**
@@ -8,7 +9,7 @@ import { withProgress, type JobProgress } from "./progress.ts";
  * person in that clip moves. Or `extend` (an MP4) continued for `duration` more seconds, as one clip. `duration` is
  * seconds, past a model's longest clip only on a recipe that chains clips; `aspectRatio` (width:height) keeps the recipe's area; `steps` replaces the recipe's.
  */
-export interface VideoRequest { prompt: string; image?: ImageInput; drive?: Uint8Array; extend?: Uint8Array; size?: { width: number; height: number }; aspectRatio?: string; duration?: number; steps?: number }
+export interface VideoRequest { prompt: string; image?: ImageInput; drive?: Uint8Array; extend?: Uint8Array; size?: { width: number; height: number }; aspectRatio?: string; duration?: number; steps?: number; loras?: LoraAsk[] }
 /** A host makes videos of at most this many seconds, chained clips included (host/API.md, "Making videos"). */
 export const LONGEST_VIDEO_SECONDS = 60;
 /** A driving clip's, or a clip to extend's, largest size (host/API.md, "Making videos"). */
@@ -34,6 +35,8 @@ export function validateVideoRequest(r: VideoRequest): void {
   if (r.extend && (r.image || r.drive || r.size || r.aspectRatio)) throw new HostRefused("invalid", "an extended clip takes no image, driving clip or size: it keeps its own");
   if (r.extend && (!isMp4(r.extend) || r.extend.length > MAX_DRIVE_BYTES)) throw new HostRefused("invalid", "a clip to extend is an MP4 of at most 64 MB");
   if (r.steps !== undefined && !(Number.isInteger(r.steps) && r.steps >= 1 && r.steps <= 150)) throw new HostRefused("invalid", "a video takes 1 to 150 steps");
+  const loras = validateLoras(r.loras);
+  if (loras) throw new HostRefused("invalid", loras);
   if (r.drive && !r.image) throw new HostRefused("invalid", "a driving clip needs the image whose subject moves");
   if (r.drive && (!isMp4(r.drive) || r.drive.length > MAX_DRIVE_BYTES)) throw new HostRefused("invalid", "a driving clip is an MP4 of at most 64 MB");
 }
@@ -42,10 +45,10 @@ export function validateVideoRequest(r: VideoRequest): void {
 export const isMp4 = (b: Uint8Array) => b.length > 12 && Buffer.from(b.subarray(4, 8)).toString("latin1") === "ftyp";
 
 /** A confirmed host recipe that makes videos: `POST /host/v1/videos/create`, in memory only. */
-export async function videoAt(t: { fetch: typeof fetch; baseUrl: string; modelId: string }, r: VideoRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<GeneratedVideo> {
+export async function videoAt(t: { fetch: typeof fetch; baseUrl: string; modelId: string; loras?: { file: string; strength: number }[] }, r: VideoRequest, signal?: AbortSignal, onProgress?: (p: JobProgress) => void): Promise<GeneratedVideo> {
   if (!t.modelId.startsWith("recipe/")) throw new HostRefused("invalid", "a host video model must be a confirmed recipe");
-  // Explicit fields only: the recipe's defaults apply, and callers cannot name parts or LoRAs.
-  const body = JSON.stringify({ recipe: t.modelId.slice(7), prompt: r.prompt, ...(r.image ? { image: Buffer.from(r.image.bytes).toString("base64") } : {}),
+  // Explicit fields only: the recipe's defaults apply, and callers cannot name parts. LoRAs are only those the recipe takes.
+  const body = JSON.stringify({ recipe: t.modelId.slice(7), prompt: r.prompt, ...(t.loras?.length ? { loras: t.loras } : {}), ...(r.image ? { image: Buffer.from(r.image.bytes).toString("base64") } : {}),
     ...(r.drive ? { drive: Buffer.from(r.drive).toString("base64") } : {}), ...(r.extend ? { extend: Buffer.from(r.extend).toString("base64") } : {}),
     ...(r.size ?? {}), ...(r.aspectRatio ? { aspectRatio: r.aspectRatio } : {}), ...(r.duration === undefined ? {} : { duration: r.duration }),
     ...(r.steps === undefined ? {} : { steps: r.steps }) });

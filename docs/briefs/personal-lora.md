@@ -42,9 +42,8 @@ in Settings → Portrait photos).
    that job and removes it after, as it does with uploaded images.
 4. **Choosing it.** Settings → Portrait photos shows **Train likeness**, its
    progress and the result (a name, trigger word, date, the photos it used,
-   Delete). The `image` tool offers the user's enabled LoRAs with their
-   trigger words, for recipes that declare a LoRA slot; the first version
-   covers Qwen-Image 2.1 only.
+   Delete). The `image` tool's `loras` field (`lora-controls.md`) would
+   offer it with its trigger word; the first version covers Qwen-Image 2.1 only.
 5. **Deleting.** A LoRA is derived from the photos, so deleting a photo it
    was trained on deletes the LoRA too (the owner's rule for derived
    images), after the delete dialog says so. Images made with it follow the

@@ -340,8 +340,8 @@ private or local-only context matches local models only, and Free models
 only still applies. A named model answers whatever the create tier. With
 Fallback off only the named model is tried. `Resolution.passedOver` lists
 the skipped models that could have answered (their machine was away, a call
-to them failed, Free models only ruled them out, or they were named), not
-those that don't do the call; `callWithFallback` adds the models its calls
+to them failed, Free models only ruled them out, they were named, or they
+lack a LoRA the call names), not those that don't do the call; `callWithFallback` adds the models its calls
 failed on to it and to `skipped`.
 
 `resolveLive` first probes the chosen endpoint (2 seconds) when its health
@@ -555,11 +555,11 @@ The task `video` (Videos) has its own ordered list in each column and
 preset, of host recipes that do `video`, `animate` or `motion`; nothing follows it.
 It is a thread task, so a thread can pick its own. Resolved with no `animate`
 or `motion` in the need (the thread drawer naming it), any of the three fits.
-`video(ctx, request, { signal?, beforeSend?, onProgress? })` makes one clip from a prompt,
+`video(ctx, request, { signal?, beforeSend?, onProgress?, first? })` makes one clip from a prompt,
 or from `image` as its first frame, or with `drive` (an MP4 of at most
 64 MB) `image`'s subject moved as the person in that clip moves, with
 optional `size`, `duration` (1 to 15 seconds) and `steps` (a whole number
-from 1 to 150, in place of the recipe's). Only a model host's recipe answers: a cloud model or
+from 1 to 150, in place of the recipe's) and `loras` (as for images). Only a model host's recipe answers: a cloud model or
 plain endpoint in the list is passed over ("only a model host makes
 videos"), and with an image a recipe that doesn't `animate` is too, and
 with a driving clip one that doesn't do `motion`. It
@@ -598,8 +598,25 @@ optional `scale` and `maxSize`. Inputs are `{ bytes, type }` (PNG, JPEG or WebP)
 Hosts are called through their paired fetch at `/host/v1/images/<action>`
 with the confirmed recipe's ID. Size and count are sent only when supplied;
 all other recipe defaults remain the host's, including for both create tiers.
-Calls never name parts, LoRAs or workflows. Discovery includes recipes'
+Calls never name parts or workflows. Discovery includes recipes'
 upscale capability. A recipe that isn't confirmed and ready cannot run.
+
+**LoRAs for one call.** A create or edit request, and a video request, may
+carry `loras: [{ name, strength }]` (at most 4, strength -4 to 4, 1 is
+full). Discovery keeps each host recipe's `takesLoras` as the offering's
+`loras` (files, in its `found` JSON). A name matches a file as
+`matchLora` does (loras.ts): ignoring case, spaces and punctuation, the
+file whose name is the name, else the shortest whose name contains it,
+and both files of a Wan high and low noise pair. `need.loras` holds the
+names: a model that lacks one is unfit ("it takes no LoRAs", "it has no
+LoRA called …"), and passed over, so the result says it; a cloud model
+takes none. The call sends the host the matched files, each at its name's
+strength (host/API.md, "LoRAs for one job"). `loraModels(ctx, task, asks)`
+gives the local models that take every LoRA asked for, in the task's list
+order and then the rest, as `first` for that call (after any named model),
+so a LoRA in the library finds a model that takes it even when the list's
+first doesn't; and `names`, every LoRA such a model takes, by `loraName`
+(the file name without its extension, separators as spaces).
 
 `CLOUD_IMAGE_PROVIDERS` selects an adapter by endpoint API. Each entry
 declares create, edit, mask, references, sizes, count and tier mappings.
@@ -686,8 +703,13 @@ the user's portrait policy before each resolved attempt, and stores results in
 the encrypted thread folder. Its text result says “Made with <model> on
 <host or endpoint name>” for every provider, alongside the saved paths, then
 `No image model here is called "<name>"; the ones that can: …` when a named
-model matched none, and `Passed over first: <label> (<reason>); …` whenever
-`passedOver` isn't empty, so she can say she fell back.
+model matched none, `With <LoRA> at <strength>, …` for the LoRAs it sent,
+and `Passed over first: <label> (<reason>); …` whenever
+`passedOver` isn't empty, so she can say she fell back. A clip's result says
+the same. Its `loras` field (create, edit, video and animate) lists the
+LoRAs her models take in its description; a call naming one that no model
+takes fails before any model is called, saying `No image model here takes
+"<name>". The LoRAs here: …`.
 After a refusal, the tool runs no more image calls for the rest of her turn
 (it resets on Pi's `agent_start`), answering each with
 `REFUSED_THIS_TURN`, so a model can't reword the prompt and spend more of

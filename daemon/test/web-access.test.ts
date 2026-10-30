@@ -58,13 +58,16 @@ function testCa() {
   return { ca: readFileSync(join(dir, "ca.pem"), "utf8"), issue };
 }
 
-/** "Caddy" serving HTTPS for the names it has certificates for, on 127.0.0.1:port. */
-async function caddyServing(port: number, ca: ReturnType<typeof testCa>, names: string[]) {
-  const contexts = new Map<string, SecureContext>(names.map((n) => [n, ca.issue(n)]));
+/**
+ * "Caddy" serving HTTPS on 127.0.0.1, at a port it holds from the start, so
+ * another test file can't take it first; it answers for the names given to `add`.
+ */
+async function caddyServing(ca: ReturnType<typeof testCa>) {
+  const contexts = new Map<string, SecureContext>();
   const srv = createTlsServer({ SNICallback: (n, cb) => cb(contexts.has(n) ? null : new Error("no certificate"), contexts.get(n)) }, (s) => s.end());
   track(srv);
-  await new Promise<void>((r) => srv.listen(port, "127.0.0.1", r));
-  return { add: (n: string) => contexts.set(n, ca.issue(n)) };
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+  return { port: (srv.address() as AddressInfo).port, add: (...names: string[]) => names.forEach((n) => contexts.set(n, ca.issue(n))) };
 }
 
 const freePort = async () => {
@@ -79,7 +82,8 @@ async function setup(addresses: HostAddress[] = [{ address: "127.0.0.1", kind: "
   const rt = rtIn ?? await runtime();
   const caddy = await fakeCaddy(rt.home);
   const ca = testCa();
-  const httpsPort = await freePort();
+  const tls = await caddyServing(ca);
+  const httpsPort = tls.port;
   const dm = await daemon(rt, {
     web: { caddySocket: caddy.socket, tlsLog: join(rt.home, "tls.log"), httpsPort, addresses: () => addresses, certWaitMs: 1500, trustCa: ca.ca },
     rateLimit: { free: 1, baseMs: 60_000, maxMs: 600_000 },
@@ -87,7 +91,7 @@ async function setup(addresses: HostAddress[] = [{ address: "127.0.0.1", kind: "
   await browser(dm.base).post("/api/unlock", { passphrase: "passphrase" });
   const ada = await login(dm.base, "ada", "pw");
   const url = `/api/u/${rt.ada.id}/admin/web-access`;
-  return { rt, ...dm, caddy, ca, httpsPort, ada, url };
+  return { rt, ...dm, caddy, tls, httpsPort, ada, url };
 }
 
 const builtin = (name = "lyrica.example.net") => ({
@@ -139,8 +143,8 @@ describe("web access, Direct", () => {
 
 describe("web access, built-in Caddy", () => {
   it("writes Caddy's config for the site, DNS provider and upstream, and never gives the token back", async () => {
-    const { rt, d, caddy, ca, httpsPort, ada, url, logs } = await setup();
-    await caddyServing(httpsPort, ca, ["lyrica.example.net"]);
+    const { rt, d, caddy, tls, httpsPort, ada, url, logs } = await setup();
+    tls.add("lyrica.example.net");
     const put = await ada.put<WebAccess>(url, builtin());
     expect(put.status).toBe(200);
     const cfg = caddy.state.config as any;
@@ -174,8 +178,8 @@ describe("web access, built-in Caddy", () => {
   });
 
   it("keeps the old name served until the new one's certificate verifies, and goes back if none comes", async () => {
-    const { caddy, ca, httpsPort, ada, url } = await setup();
-    const tls = await caddyServing(httpsPort, ca, ["old.example.net"]);
+    const { caddy, tls, ada, url } = await setup();
+    tls.add("old.example.net");
     expect((await ada.put(url, builtin("old.example.net"))).status).toBe(200);
     const settled = caddy.state.config;
 
@@ -209,8 +213,8 @@ describe("web access, built-in Caddy", () => {
   });
 
   it("says when Caddy runs with no site", async () => {
-    const { ca, httpsPort, caddy, ada, url } = await setup();
-    await caddyServing(httpsPort, ca, ["lyrica.example.net"]);
+    const { tls, caddy, ada, url } = await setup();
+    tls.add("lyrica.example.net");
     await ada.put(url, builtin());
     caddy.state.config = { admin: { listen: `unix/${caddy.socket}|0660` } }; // its saved config was set aside at start
     expect((await ada.get<WebAccessStatus>(`${url}/status`)).body.caddy).toEqual({ answers: true, configured: false, applied: false });

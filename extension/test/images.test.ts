@@ -166,6 +166,22 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(unknown.content).toContainEqual({ type: "text", text: expect.stringMatching(/No image model here is called "Flux"; the ones that can: .*gpt-image-1/) });
   });
 
+  it("sends LoRAs asked for by name to a model that takes them, says which, and lists the library when one isn't found", async () => {
+    const s = await setup();
+    const styles = await s.host("styles", undefined, undefined, undefined, ["l/pixel_art_v2.safetensors", "w/detail_high_noise.safetensors", "w/detail_low_noise.safetensors"]);
+    const tool = (o: ImageTools) => { let t!: ToolDefinition; createImageExtension(o)({ on: () => {}, registerTool: (d: ToolDefinition) => { t = d; } } as unknown as ExtensionAPI); return t; };
+    const loras = (tool(s.options as ImageTools).parameters as { properties: { loras: { description: string } } }).properties.loras;
+    expect(loras.description).toContain("The LoRAs here: detail high noise, detail low noise, pixel art v2.");
+    // The thread's list is a cloud model, which takes none: the model that takes it goes first.
+    const made = await s.run({ action: "create", prompt: "A garden", loras: [{ name: "Pixel Art", strength: 0.7 }] });
+    expect((made.content as { type: string; text?: string }[]).find(c => c.type === "text")!.text).toMatch(/^Made with Art on styles\. With pixel art v2 at 0\.7\. Saved /);
+    expect(styles.server.images.map(i => i.body)).toEqual([{ recipe: "art", prompt: "A garden", loras: [{ file: "l/pixel_art_v2.safetensors", strength: 0.7 }] }]);
+    await expect(s.run({ action: "create", prompt: "A garden", loras: [{ name: "ink", strength: 1 }] }))
+      .rejects.toThrow('No image model here takes "ink". The LoRAs here: detail high noise, detail low noise, pixel art v2.');
+    await expect(s.run({ action: "upscale", image: "/workspace/uploads/landscape.png", loras: [{ name: "pixel art", strength: 1 }] })).rejects.toThrow(/upscale takes no LoRAs/);
+    expect(s.heard).toEqual([]);
+  });
+
   it("stores PNGs under the thread's images/ and returns image content and path/model/tier details", async () => {
     const s = await setup(); s.settings.setPhotoCloudPolicy("always");
     const out = await s.run({ action: "create", prompt: "A garden", tier: "fast", aspectRatio: "16:9", count: 2 });
@@ -266,8 +282,10 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(s.workstation.server.videos).toEqual([]);
     const made = await started[0]!(new AbortController().signal, () => {});
     expect(made.video).toMatchObject({ type: "video", model: "shared.workstation/Clip", width: 1280, height: 704 });
-    expect(made.text).toMatch(/^The clip is ready\. Made with Clip on workstation: 5\.0 s at 1280×704\. Saved \/workspace\/videos\/.+\.mp4\.$/);
+    expect(made.text).toMatch(/^The clip for "A fox in the snow" is ready\. Made with Clip on workstation: 5\.0 s at 1280×704\. Saved \/workspace\/videos\/.+\.mp4\.$/);
     expect(readFileSync(join(s.folder, "videos", made.video.path.split("/").at(-1)!))).toEqual(mp4);
+    // The call's arguments come back with it, for the clip's marker.
+    expect(made.args).toMatchObject({ action: "video", prompt: "A fox in the snow" });
     expect(s.models.recentCalls(s.ada.id).map(c => c.task)).toEqual(["video"]);
     // Images turned off while it waited: nothing is sent.
     await s.run({ action: "video", prompt: "A cat" });

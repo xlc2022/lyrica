@@ -80,6 +80,9 @@ export interface Continuation {
 
 export type Values = Record<string, string | number>;
 
+/** A LoRA applied to the model, with its part's slot (`high`, `low`) when it was made for one expert. */
+export interface Lora { file: string; strength: number; slot?: string | null }
+
 /** A video made of chained clips is at most this long (API.md, "Making videos"). */
 export const LONGEST_SECONDS = 60;
 
@@ -109,11 +112,12 @@ type Link = [string, number];
  * Loader nodes for the recipe's parts: model, clip and VAE outputs, with LoRAs applied to the model.
  * A part with a slot gets its own link: `$model_high` and `$model_low` for a video model's two
  * experts, `$vae_audio` for an audio VAE. A LoRA the template names (with a slot) goes onto the
- * expert of that slot, or onto the model, in the template's order; the recipe's own LoRAs go onto the model.
+ * expert of that slot, or onto the model, in the template's order. Then `loras`, the recipe's own and a request's,
+ * go onto the model, or for two experts onto the one a LoRA's slot names, else onto both.
  * A CLIP vision model is `$clipVision`; a segmenter (SAM 3.1, a checkpoint to ComfyUI) `$segmenter`
  * and its text encoder `$segmenterClip`.
  */
-function loaders(t: Template, parts: FilledPart[], loras: { file: string; strength: number }[]) {
+function loaders(t: Template, parts: FilledPart[], loras: Lora[]) {
   const nodes: Record<string, Node> = {};
   const links: Record<string, Link | null> = { $model: null, $clip: null, $vae: null };
   const gguf = (f: string) => f.endsWith(".gguf");
@@ -173,15 +177,21 @@ function loaders(t: Template, parts: FilledPart[], loras: { file: string; streng
     nodes[id] = { class_type: "LoraLoaderModelOnly", inputs: { model: links[target], lora_name: lora.file, strength_model: strength } };
     links[target] = [id, 0];
   }
+  // A model with two experts takes a LoRA made for one (`high`, `low`) on that expert, and any other on both.
+  const experts = parts.filter((p) => p.role === "diffusion" && p.slot).map((p) => p.slot!);
   loras.forEach((l, i) => {
-    nodes[`lora_${i}`] = { class_type: "LoraLoaderModelOnly", inputs: { model: links.$model, lora_name: l.file, strength_model: l.strength } };
-    links.$model = [`lora_${i}`, 0];
+    const targets = !experts.length ? [null] : l.slot && experts.includes(l.slot) ? [l.slot] : experts;
+    for (const slot of targets) {
+      const id = `lora_${i}${suffix(slot)}`;
+      nodes[id] = { class_type: "LoraLoaderModelOnly", inputs: { model: links[`$model${suffix(slot)}`], lora_name: l.file, strength_model: l.strength } };
+      links[`$model${suffix(slot)}`] = [id, 0];
+    }
   });
   return { nodes, links };
 }
 
 /** The ComfyUI prompt for one request. Throws if a value the template needs is missing. */
-export function fill(t: Template, parts: FilledPart[], loras: { file: string; strength: number }[], values: Values): Record<string, Node> {
+export function fill(t: Template, parts: FilledPart[], loras: Lora[], values: Values): Record<string, Node> {
   const { nodes, links } = t.loaders === "template" ? { nodes: {}, links: {} as Record<string, Link | null> } : loaders(t, parts, loras);
   // A loader link a template asks for but no part gives (`$vae_audio` with no audio VAE) is an error below.
   const linkName = (v: string) => /^\$(model|clip|vae|latentUpscaler|interpolator|clipVision|segmenter|segmenterClip)(_\w+)?$/.test(v);

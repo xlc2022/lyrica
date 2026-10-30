@@ -55,6 +55,8 @@ export interface DiscoveredModel {
   references?: number;
   /** A host recipe's create tiers; absent means both. */
   useFor?: "fast" | "quality" | "both";
+  /** For a host recipe: the LoRA files on its host it takes for one call (`takesLoras`). */
+  loras?: string[];
   /** The context window a host serves the model with, which wins over one set by hand. */
   servedContext?: number;
   /** LM Studio listed it on its own API, so its context can be changed by loading it again. */

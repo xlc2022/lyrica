@@ -974,7 +974,8 @@ it's off.
   slot, such as T5 or CLIP-L), any LoRAs built in with their strength, the
   workflow template for its architecture (one per architecture, not per
   model), and default settings (steps, CFG, sampler, size). Lyrica calls
-  recipes, never files, so she never picks parts herself.
+  recipes, never files, so she never picks parts herself; the one
+  exception is a LoRA the user asks for by name (below).
   - **Parts are shared.** One T5 encoder or VAE serves several recipes. Each
     part shows its raw file name, size, precision and which recipes use it.
     The host measures VRAM per recipe after its first job.
@@ -999,7 +1000,16 @@ it's off.
       file with no template for its architecture is kept as a file.
     - Hugging Face, ModelScope and links, as for text models.
     - Unlike Invoke, parts are fixed in the recipe rather than chosen for
-      each image, because Lyrica, not a person, makes the call.
+      each image, because Lyrica, not a person, makes the call. LoRAs are
+      the exception, and only when the user asks for one.
+  - **LoRAs for one call** (2026-10-30): when the user asks for a LoRA by
+    name, at a strength or at 1, the `image` tool (create, edit and
+    clips) adds it for that one call. The library is every LoRA file on
+    the user's model hosts; each recipe lists those whose architecture
+    fits it, and the host refuses any other. A name matches loosely, and
+    a model that takes every LoRA asked for goes first; any model passed
+    over for lacking one is said, and a name no model takes fails with
+    the list of LoRAs there are. The recipe itself doesn't change.
   - **Editing a recipe.**
     - **Change** on a text encoder or VAE lists every file on that host with
       the same role, slot and architecture, from Lyrica's downloads or the
@@ -1033,7 +1043,8 @@ it's off.
   (`video`) or from a first frame (`animate`); its template sets the frame
   rate, frame grid, size step and longest clip, and the host answers with
   an MP4 and a poster, sent back over ComfyUI's websocket so nothing
-  reaches disk. One clip runs on one GPU. The task **Videos** (`video`)
+  reaches disk. One clip runs on one GPU; a host with several image GPUs
+  runs a ComfyUI on each, so clips and images run side by side. The task **Videos** (`video`)
   lists those recipes in each preset; the `image` tool's `video` and
   `animate` actions make a clip (no new tool, principle 8) in the
   background: the call returns at once, so her turn ends and the chat goes
@@ -1101,11 +1112,9 @@ it's off.
   a pinned trainer on their model host with no route out and its photos in
   memory only; captioned by a local model only; stored encrypted in their
   home, and loaded into the GPU machine's memory only for a job. Deleting a
-  photo it was trained on deletes it. Choosing a LoRA for one image
-  (a style, a person) comes with it: the `image` tool would offer a short list
-  of LoRAs the user enabled, with their trigger words, and each recipe would
-  say which LoRA slots it takes. Until then, LoRAs exist only inside
-  recipes.
+  photo it was trained on deletes it. It would need a rule of its own
+  before it joins the library of LoRAs for one call, which any of the
+  user's threads can name today.
 - **Wireframes and diagrams** are drawn as code (HTML, SVG or Mermaid) and
   rendered to an image by a headless browser in her sandbox. Image models are
   poor at exact layouts and text. Storyboards suit the image models, with

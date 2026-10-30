@@ -1,10 +1,12 @@
 // Principle 2: image calls share the router's cloud boundary. No disk or logging.
 import { hostError, HostIdentityChanged, HostRefused } from "./host.ts";
+import { validateLoras, type LoraAsk } from "./loras.ts";
 import { withProgress, type JobProgress } from "./progress.ts";
 
 export interface ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
 const QUALITY = { fast: "low", quality: "high" } as const;
-type Common = { count?: number; references?: ImageInput[] };
+/** `loras`: LoRAs asked for by name, which only a host recipe that takes each one serves (loras.ts). */
+type Common = { count?: number; references?: ImageInput[]; loras?: LoraAsk[] };
 export type ImageRequest =
   | (Common & { action: "create"; prompt: string; tier: "fast" | "quality"; size?: { width: number; height: number } })
   | (Common & { action: "edit"; prompt: string; image: ImageInput; mask?: ImageInput; replace?: boolean })
@@ -12,6 +14,8 @@ export type ImageRequest =
 export interface GeneratedImage { bytes: Uint8Array; type: "image/png"; width: number; height: number; seed?: number }
 export interface Target {
   fetch: typeof fetch; baseUrl: string; host: boolean; modelId: string; apiKey?: string; api?: string;
+  /** For a host recipe: the files of the LoRAs the request names, from those it takes. */
+  loras?: { file: string; strength: number }[];
   /** For a ChatGPT plan: the user's Codex, which makes its images (codex.ts). */
   codex?: (r: ImageRequest, signal?: AbortSignal) => Promise<GeneratedImage[]>;
 }
@@ -20,6 +24,8 @@ export function validateImageRequest(r: ImageRequest): void {
   if (r.action !== "upscale") {
     if (!r.prompt.trim()) throw new HostRefused("invalid", "an image needs a prompt");
     if (r.count !== undefined && (!Number.isInteger(r.count) || r.count < 1 || r.count > 4)) throw new HostRefused("invalid", "image count is 1 to 4");
+    const loras = validateLoras(r.loras);
+    if (loras) throw new HostRefused("invalid", loras);
   }
   if (r.action === "create") {
     if (!["fast", "quality"].includes(r.tier)) throw new HostRefused("invalid", "image tier is fast or quality");
@@ -152,8 +158,8 @@ export async function imageAt(t: Target, r: ImageRequest, signal?: AbortSignal, 
     }
   }
   if (!t.modelId.startsWith("recipe/")) throw new HostRefused("invalid", "a host image model must be a confirmed recipe");
-  // Explicit fields only: recipe defaults apply, and callers cannot name parts or LoRAs.
-  const fields = { recipe: t.modelId.slice(7),
+  // Explicit fields only: recipe defaults apply, and callers cannot name parts. LoRAs are only those the recipe takes.
+  const fields = { recipe: t.modelId.slice(7), ...(t.loras?.length ? { loras: t.loras } : {}),
     ...(r.action === "upscale" ? { image: base64(r.image), ...(r.scale === undefined ? {} : { scale: r.scale }), ...(r.maxSize === undefined ? {} : { maxSize: r.maxSize }) } : {
       prompt: r.prompt, ...(r.count === undefined ? {} : { count: r.count }), ...(r.references ? { references: r.references.map(base64) } : {}),
       ...(r.action === "create" ? r.size ?? {} : { image: base64(r.image), ...(r.mask ? { mask: base64(r.mask), ...(r.replace ? { replace: true } : {}) } : {}) }),

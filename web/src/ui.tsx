@@ -411,9 +411,12 @@ export function useLongPress() {
 /** The current minute, for clocks in headers. */
 export function useNow(): Date {
   const [now, setNow] = useState(() => new Date());
+  // Every 15 s, and as each minute turns, so a clock never shows the minute before.
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 15_000);
-    return () => clearInterval(t);
+    let t: ReturnType<typeof setTimeout>;
+    const next = () => { t = setTimeout(() => { setNow(new Date()); next(); }, Math.min(15_000, 60_000 - (Date.now() % 60_000) + 20)); };
+    next();
+    return () => clearTimeout(t);
   }, []);
   return now;
 }

@@ -1,6 +1,6 @@
 // Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, HostRefused, isRestricted, modelName, type CallContext, type ImageRequest, type JobProgress, type Models, type Resolution,
+import { CloudModelForbidden, HostRefused, isRestricted, loraFiles, loraName, MAX_LORAS, modelName, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
   type ThreadImages, type VideoRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -26,8 +26,8 @@ export interface ImageTools {
   background?(make: (signal: AbortSignal, onProgress: (p: JobProgress) => void) => Promise<ClipMade>, toolCallId: string): void;
 }
 
-/** A clip made in the background: what she is told, and the part the chat shows. */
-export interface ClipMade { text: string; video: VideoPart }
+/** A clip made in the background: what she is told, the part the chat shows, and the call's arguments, shown with it. */
+export interface ClipMade { text: string; video: VideoPart; args?: unknown }
 
 const path = (description: string) => Type.Optional(Type.String({ description }));
 /**
@@ -40,6 +40,7 @@ export const imageParameters = Type.Object({
   prompt: videoPrompt(),
   tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality (the default)." })),
   model: Type.Optional(Type.String({ description: "For create, edit and upscale: an image model they asked for by name; it is tried first, then the usual models." })),
+  loras: loraParameter(),
   image: path("For edit, upscale, pick, animate and motion: the image's path (animate's first frame; motion's subject, who moves)."),
   video: path("For motion: the driving clip's path, an MP4 whose person makes the moves. For extend: the clip to make longer."),
   images: Type.Optional(Type.Array(Type.String(), { maxItems: 16, description: "For reject: the attempts to set aside." })),
@@ -66,6 +67,15 @@ export function videoPrompt(model?: { name: string; sound: boolean }) {
     : model.sound ? ` ${model.name} renders sound with the picture: describe the sounds, and quote any speech word for word in its language (She says in Mandarin: "…"), or the talking comes out as made-up sounds.`
     : ` ${model.name} makes no sound.`;
   return Type.Optional(Type.String({ description: `For create: what to draw, as one detailed paragraph. For video and animate: what happens in the clip. For motion: the scene, light and look; the clip gives the moves. For extend: what happens next.${sound}` }));
+}
+
+/** `loras`, naming the LoRAs her models take when they are known. */
+export function loraParameter(names: readonly string[] = []) {
+  const known = names.length ? ` The LoRAs here: ${names.slice(0, 40).join(", ")}${names.length > 40 ? ", …" : ""}.` : "";
+  return Type.Optional(Type.Array(Type.Object({
+    name: Type.String({ description: "The LoRA's name, as they said it." }),
+    strength: Type.Number({ minimum: -4, maximum: 4, description: "1 is full strength; the number they gave, else 1." }),
+  }), { maxItems: MAX_LORAS, description: `For create, edit, video and animate: LoRAs they asked for by name, each at a strength; only a model that takes them all makes it.${known}` }));
 }
 
 /** `duration`, saying the thread's first Videos model's longest when it is known. */
@@ -162,6 +172,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "For an edit, look at the image first; name the one change plainly, say what goes, and say what stays (faces, body, pose, framing, light).",
         "Make one big change per edit: for a new setting and a new outfit, edit twice, each from the last result. With a mask, say what replaces what is under it.",
         "When they name an image model, set model to that name. When the result says a model was passed over or isn't found, tell them which model made it and why.",
+        "When they ask for a LoRA, set loras with its name and the strength they said (1 if they gave none); say which model it went with. If it isn't found, tell them, with the LoRAs there are.",
         "With a mask, set replace when the masked thing becomes something else (a painting into a mirror), and then write the instruction as the finished scene (a round mirror on a warm beige wall); leave it off to recolour or reshape what's there, which keeps the rest of it.",
         "Don't pass the image being edited as a reference too.",
         "For a person from reference photos, say \"the person from the reference images\", not an image number; ask for one new angle per edit, or several views as one wide create. For an exact garment, pass its photo as a reference. Word a change of build strongly. For a relative, pass no photo: describe the traits they share and how they differ.",
@@ -188,11 +199,39 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
 
 const isVideo = (a: string): a is "video" | "animate" | "motion" | "extend" => ["video", "animate", "motion", "extend"].includes(a);
 
-/** The tool's fields, its duration saying the thread's Videos model's longest; the static schema if that can't be read. */
+/**
+ * The tool's fields, its duration saying the thread's Videos model's longest and its loras the LoRAs her models take;
+ * the static schema if those can't be read.
+ */
 function videoModelParameters(o: ImageTools) {
-  let model;
-  try { model = o.models.firstVideoModel(o.call()); } catch { return imageParameters; }
-  return model ? Type.Object({ ...imageParameters.properties, prompt: videoPrompt(model), duration: videoDuration(model) }) : imageParameters;
+  let model, names: string[];
+  try {
+    const call = o.call();
+    model = o.models.firstVideoModel(call);
+    names = [...new Set((["image.create", "image.edit", "video"] as const).flatMap(t => o.models.loraModels(call, t, []).names))].sort();
+  } catch { return imageParameters; }
+  return model || names.length ? Type.Object({ ...imageParameters.properties, ...(model ? { prompt: videoPrompt(model), duration: videoDuration(model) } : {}), ...(names.length ? { loras: loraParameter(names) } : {}) }) : imageParameters;
+}
+
+/**
+ * The models that take every LoRA a call names, tried first; an error she reads, with the LoRAs there are,
+ * when none does. Nothing when the call names none.
+ */
+function loraModels(o: ImageTools, call: CallContext, action: string, asks: LoraAsk[] | undefined): string[] {
+  if (!asks?.length) return [];
+  if (action === "upscale" || action === "motion" || action === "extend") throw new Error(`${action} takes no LoRAs: create, edit, video and animate do.`);
+  const task = action === "create" || action === "edit" ? `image.${action}` as const : "video" as const;
+  const found = o.models.loraModels(call, task, asks);
+  if (found.ids.length) return found.ids;
+  const known = found.names.length ? `The LoRAs here: ${found.names.join(", ")}.` : "No model here takes LoRAs.";
+  throw new Error(`No ${task === "video" ? "video" : "image"} model here takes ${asks.map(a => `"${a.name}"`).join(" and ")}${asks.length > 1 ? " together" : ""}. ${known}`);
+}
+
+/** The LoRAs a result was made with, by name and strength, for her to say. */
+function lorasUsed(asks: LoraAsk[] | undefined, r: Resolution): string {
+  if (!asks?.length) return "";
+  const { loras } = loraFiles(asks, r.offering.loras ?? []);
+  return ` With ${loras.map(l => `${loraName(l.file)} at ${l.strength}`).join(", ")}.`;
 }
 
 /**
@@ -247,13 +286,17 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
     } else request = { action: p.action, prompt: p.instruction!, image: await read(p.image!), ...(p.mask ? { mask: await read(p.mask), ...(p.replace ? { replace: true } : {}) } : {}), ...common };
   }
   const call = o.call();
-  // A model they named goes first for this call only; the usual list still follows it.
+  const asks = p.loras?.length ? p.loras : undefined;
+  const lora = loraModels(o, call, p.action, asks);
+  if (asks && request.action !== "upscale") request = { ...request, loras: asks };
+  // A model they named goes first for this call only; the usual list still follows it. Then the ones that take the LoRAs they named.
   const named = p.model?.trim() ? o.models.namedImageModels(call, p.action, p.model) : undefined;
+  const first = [...named?.ids ?? [], ...lora];
   const unnamed = named && !named.ids.length
     ? ` No image model here is called "${p.model}"${named.names.length ? `; the ones that can: ${named.names.join(", ")}` : ""}.` : "";
   let attempted: Resolution | undefined;
   let out;
-  try { out = await o.models.image(call, request, { signal, onProgress, ...(named?.ids.length ? { first: named.ids } : {}), beforeSend: async r => {
+  try { out = await o.models.image(call, request, { signal, onProgress, ...(first.length ? { first } : {}), beforeSend: async r => {
     attempted = r;
     if (!o.enabled()) throw new Error("Images are off in this thread.");
     if (r.endpoint.kind === "cloud") {
@@ -274,7 +317,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   // Any fallback is said, so she can tell them the model they got isn't the first choice.
   const passed = out.resolution.passedOver ?? [];
   const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
-  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}.${unnamed}${fellBack} Saved ${paths.join(", ")}.` },
+  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}.${lorasUsed(asks, out.resolution)}${unnamed}${fellBack} Saved ${paths.join(", ")}.` },
     ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };
 }
 
@@ -288,24 +331,30 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   const request: VideoRequest = { prompt: p.prompt!, ...(p.action === "animate" || p.action === "motion" ? { image: (await o.files.read(p.image!)).input } : {}),
     ...(p.action === "motion" ? { drive: await o.files.readClip(p.video!) } : {}), ...(p.action === "extend" ? { extend: await o.files.readClip(p.video!) } : {}),
     ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }),
-    ...(p.steps === undefined ? {} : { steps: p.steps }) };
+    ...(p.steps === undefined ? {} : { steps: p.steps }), ...(p.loras?.length ? { loras: p.loras } : {}) };
   const call = o.call();
+  const first = loraModels(o, call, p.action, p.loras?.length ? p.loras : undefined);
   const make = async (signal?: AbortSignal, onProgress?: (p: JobProgress) => void) => {
     let attempted: Resolution | undefined;
     let out;
-    try { out = await o.models.video(call, request, { signal, onProgress, beforeSend: async r => { attempted = r; if (!o.enabled()) throw new Error("Images are off in this thread."); } }); }
+    try { out = await o.models.video(call, request, { signal, onProgress, ...(first.length ? { first } : {}), beforeSend: async r => { attempted = r; if (!o.enabled()) throw new Error("Images are off in this thread."); } }); }
     catch (err) { throw withModel(err, p.action, attempted, signal); }
     signal?.throwIfAborted();
     const path = o.files.saveVideo(out.video);
     const v = out.video;
     const video: VideoPart = { type: "video", path, model: out.resolution.label, width: v.width, height: v.height, duration: v.duration, audio: v.audio };
     o.models.recordCall(call.userId, { pool: call.pool, threadId: o.threadId, task: "video", resolution: out.resolution });
-    const text = `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}: ${v.duration.toFixed(1)} s at ${v.width}×${v.height}${v.audio ? ", with sound" : ""}. Saved ${path}.`;
+    const passed = out.resolution.passedOver ?? [];
+    const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
+    const text = `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}: ${v.duration.toFixed(1)} s at ${v.width}×${v.height}${v.audio ? ", with sound" : ""}.${lorasUsed(request.loras, out.resolution)}${fellBack} Saved ${path}.`;
     return { text, video, poster: v.poster };
   };
   // A clip holds the host's GPU for minutes: in the background her turn ends, and the chat goes on.
   if (o.background) {
-    o.background(async (signal, progress) => { const { text, video } = await make(signal, progress); return { text: `The clip is ready. ${text}`, video }; }, id);
+    // Its prompt names it, so she can tell clips that were made side by side apart.
+    const prompt = p.prompt ?? "";
+    const named = prompt.length > 60 ? `${prompt.slice(0, 59).trimEnd()}…` : prompt;
+    o.background(async (signal, progress) => { const { text, video } = await make(signal, progress); return { text: `The clip for "${named}" is ready. ${text}`, video, args: p }; }, id);
     return { content: [{ type: "text" as const, text: "Making the clip in the background; it takes minutes. You'll be told here when it is ready, and the chat shows it then. Don't wait for it: finish this reply." }],
       details: { clip: "started" } };
   }

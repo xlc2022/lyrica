@@ -705,10 +705,14 @@ async function fakeImages(page: Page) {
   });
   await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/(recipes\/[^/]+|manage)$/, (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^.*\/ep-box\//, "");
-    const body = route.request().postDataJSON() as { do?: string; name?: string; change?: { op?: string; useFor?: string; defaults?: { steps?: number } } };
+    const body = route.request().postDataJSON() as { do?: string; name?: string; change?: { op?: string; useFor?: string; defaults?: { steps?: number }; file?: string; strength?: number } };
     asked.push({ path, body });
     if (body.do === "change" && body.change?.op === "useFor") recipes.find((r) => path === `recipes/${r.id}`)!.useFor = body.change.useFor;
     if (body.do === "change" && body.change?.op === "defaults") Object.assign(recipes.find((r) => path === `recipes/${r.id}`)!.defaults, body.change.defaults);
+    const own = recipes.find((r) => path === `recipes/${r.id}`) as { loras: { file: string; strength: number }[] } | undefined;
+    if (own && body.do === "change" && (body.change?.op === "addLora" || body.change?.op === "setLora")) {
+      own.loras = [...own.loras.filter((l) => l.file !== body.change!.file), { file: body.change.file!, strength: body.change.strength! }];
+    }
     return route.fulfill(json(body.do === "copy" ? { ...recipes[0], id: "00000000-0000-4000-8000-000000000003", name: body.name } : body.do === "delete" ? { deleted: [], kept: [] } : { models: 0, parts: 6, proposals: 1 }));
   });
   await page.route(/\/api\/u\/[^/]+\/offerings\/off-z\/delete-copy$/, (route) => route.fulfill(json({ usedIn: [] })));
@@ -990,10 +994,11 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await expect(drawer.getByRole("radio", { name: /pixel-art\.safetensors/ })).toBeChecked();
   await expect(drawer.getByRole("radio", { name: /pixel-art\.safetensors/ })).toHaveAccessibleName(/Not used by any model/);
   await expect(drawer.getByLabel("Save as a new model, keeping Z-Image Turbo as it is")).toBeChecked();
-  // Strength clamps to 1.5 when the field is left.
-  await drawer.getByLabel("Strength").fill("3");
+  // Strength clamps to -4 to 4 when the field is left, as the host takes.
+  await drawer.getByLabel("Strength").fill("9");
   await drawer.getByLabel("Strength").blur();
-  await expect(drawer.getByLabel("Strength")).toHaveValue("1.5");
+  await expect(drawer.getByLabel("Strength")).toHaveValue("4");
+  await expect(drawer.locator(".field.strength")).toContainText("of 4");
   await drawer.getByLabel("Strength").fill("1");
   await noHorizontalScroll(page);
   await drawer.getByRole("button", { name: "Add" }).click();
@@ -1001,6 +1006,27 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   expect(post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "copy", name: "Z-Image Turbo + pixel art" });
   // The page opens the new model's row; this made-up host never makes it, so open Z-Image Turbo again.
   await list.getByRole("button", { name: /^Z-Image Turbo/ }).click();
+
+  // Into the model itself, with the box unticked; then its strength is typed in its row, clamped and saved.
+  await block.getByRole("button", { name: "Add part" }).click();
+  await drawer.getByLabel("Save as a new model, keeping Z-Image Turbo as it is").uncheck();
+  await drawer.getByLabel("Strength").fill("0.6");
+  await drawer.getByRole("button", { name: "Add" }).click();
+  await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "addLora", file: "comfy/loras/pixel-art.safetensors", strength: 0.6 } });
+  const strength = block.getByRole("spinbutton", { name: "Strength of pixel-art.safetensors" });
+  await expect(strength).toHaveValue("0.6");
+  await expect(block.locator(".partrow").filter({ has: page.getByRole("spinbutton", { name: "Strength of pixel-art.safetensors" }) })).toContainText("of 4");
+  await strength.fill("9");
+  await strength.press("Enter");
+  await expect(strength).toHaveValue("4");
+  await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "setLora", file: "comfy/loras/pixel-art.safetensors", strength: 4 } });
+  await strength.fill("0.75");
+  await strength.blur();
+  await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "setLora", file: "comfy/loras/pixel-art.safetensors", strength: 0.75 } });
+  if (process.env.SCREENSHOTS) await block.screenshot({ path: `${process.env.SCREENSHOTS}/image-models-lora-strength-${page.viewportSize()!.width}.png` });
+  // The saved recipe comes back and the row is drawn again, so measure once it is there.
+  if (phone(page)) await expect(async () => expect((await strength.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44)).toPass();
+  await noHorizontalScroll(page);
 
   // Delete model…: what goes and what it frees, and that no list uses it.
   await block.getByRole("button", { name: "Delete model…" }).click();
@@ -1218,9 +1244,14 @@ test("Time zone: the browser's is given at first, an unknown name is refused, an
   await section.getByRole("button", { name: "Save" }).click();
   await expect.poll(async () => (await me()).timeZone).toBe(zone);
   const there = () => page.evaluate((z) => new Intl.DateTimeFormat("en-GB", { timeZone: z, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date()), zone);
+  // A second before a minute turns: the clock moves on with it, not up to 15 s later at its next tick (seen in CI).
+  await page.clock.install({ time: Math.ceil(Date.now() / 60_000) * 60_000 + 60_000 - 1000 });
   await page.goto(`/#/u/${userId}`);
+  await page.reload();
   const shown = page.locator(".head .cap .num").first();
   await expect.poll(async () => (await shown.textContent()) === (await there())).toBe(true);
+  await page.clock.runFor(1500);
+  await expect.poll(async () => (await shown.textContent()) === (await there()), { timeout: 3000 }).toBe(true);
   await page.evaluate(async ([id, z]) => { await fetch(`/api/u/${id}/me/profile`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ timeZone: z }) }); }, [userId, browserZone] as const);
 });
 

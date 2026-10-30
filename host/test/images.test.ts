@@ -4,7 +4,7 @@ import net, { type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { Comfy, mp4Seconds, mp4Video, samplingProgress } from "../src/comfy.ts";
+import { Comfy, ComfyGpus, mp4Seconds, mp4Video, samplingProgress } from "../src/comfy.ts";
 import { clipPlan, Images, inputImage, recipeSize, videoValues } from "../src/images.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import { scanParts } from "../src/parts.ts";
@@ -241,8 +241,41 @@ describe("video parts", () => {
     expect(file("lora", "high")).toMatch(/t2v_lightx2v_4steps_lora_v1.1_high/);
     expect(file("lora", "low")).toMatch(/t2v_lightx2v_4steps_lora_v1.1_low/);
     expect(b.ready(r, new Set(parts.map((p) => p.file)))).toBe(true);
-    // Its two models take only the LoRAs the template names.
-    expect(() => b.patch(r.id, { op: "addLora", file: parts.find((p) => p.role === "lora")!.file, strength: 1 }, parts)).toThrow(/only the LoRAs/);
+    // A Wan 2.1 or 2.2 14B LoRA fits it; one made for an expert goes onto that expert when the template is filled.
+    const high = parts.find((p) => p.role === "lora" && /i2v.*high/.test(p.file))!.file;
+    expect(b.patch(r.id, { op: "addLora", file: high, strength: 0.5 }, parts).loras).toEqual([{ file: high, strength: 0.5 }]);
+  });
+
+  it("puts a request's LoRA onto both experts, or onto the one it was made for", () => {
+    const p = (role: Recipe["parts"][number]["role"], file: string, slot: string | null = null) => ({ role, slot, file, added: false });
+    const wan14 = STARTERS.find((s) => s.id === "wan2.2-t2v-14b")!;
+    const values = { negativePrompt: "", ...wan14.defaults, prompt: "x", seed: 3, width: 832, height: 480, ...videoValues(TEMPLATES.get("wan22-t2v-14b")!.video!, 5, 832, 480, 4) };
+    const wf = fill(TEMPLATES.get("wan22-t2v-14b")!, [
+      p("diffusion", "high.safetensors", "high"), p("diffusion", "low.safetensors", "low"), p("lora", "lh.safetensors", "high"), p("lora", "ll.safetensors", "low"),
+      p("text_encoder", "umt5.safetensors", "umt5"), p("vae", "vae.safetensors"),
+    ], [{ file: "style.safetensors", strength: 0.7 }, { file: "detail_high_noise.safetensors", strength: 0.4, slot: "high" }], values);
+    // After each expert's speed LoRA: the style on both, the high-noise one on the high expert only.
+    expect(wf.lora_0_high!.inputs).toEqual({ model: ["lora_high", 0], lora_name: "style.safetensors", strength_model: 0.7 });
+    expect(wf.lora_0_low!.inputs).toEqual({ model: ["lora_low", 0], lora_name: "style.safetensors", strength_model: 0.7 });
+    expect(wf.lora_1_high!.inputs).toEqual({ model: ["lora_0_high", 0], lora_name: "detail_high_noise.safetensors", strength_model: 0.4 });
+    expect(wf.lora_1_low).toBeUndefined();
+    expect(wf.shift_high!.inputs.model).toEqual(["lora_1_high", 0]);
+    expect(wf.shift_low!.inputs.model).toEqual(["lora_0_low", 0]);
+  });
+
+  it("tells a Wan 2.2 5B LoRA from a 14B one by its width, and a Qwen-Image 2.1 LoRA by its metadata or name", () => {
+    const wan = (width: number) => safetensors({ "diffusion_model.blocks.0.self_attn.q.lora_down.weight": { shape: [16, width] }, "diffusion_model.blocks.0.self_attn.q.lora_up.weight": { shape: [width, 16] } });
+    const qwen = { "transformer_blocks.0.attn.to_q.lora_A.weight": {}, "transformer_blocks.0.img_mod.1.lora_A.weight": {} };
+    const dir = folder({
+      "w5.safetensors": wan(3072), "w14.safetensors": wan(5120),
+      "q21.safetensors": safetensors(qwen, { ss_base_model_version: "qwen_image_2" }), "q1.safetensors": safetensors(qwen, { ss_base_model_version: "qwen_image" }),
+      "my_qwen-image-2.1_style.safetensors": safetensors(qwen),
+    });
+    const arch = Object.fromEntries(scanParts(dir).map((p) => [p.file, [p.role, p.arch]]));
+    expect(arch).toEqual({
+      "w5.safetensors": ["lora", "wan2.2-5b"], "w14.safetensors": ["lora", "wan"],
+      "q21.safetensors": ["lora", "qwen-image-2.1"], "q1.safetensors": ["lora", "qwen-image"], "my_qwen-image-2.1_style.safetensors": ["lora", "qwen-image-2.1"],
+    });
   });
 
   it("fills the video templates: two experts with their LoRAs, audio VAEs, and a first frame only when given", () => {
@@ -646,8 +679,8 @@ describe("ComfyUI jobs", () => {
     open.push(fake);
     const dir = mkdtempSync(join(tmpdir(), "comfy-gate-"));
     const status = join(dir, "status.json");
-    const asked = () => JSON.parse(readFileSync(join(dir, "comfyui.json"), "utf8")) as { run: boolean; attempt?: string };
-    const comfy = new Comfy(fake.url, undefined, undefined, { serving: dir, status });
+    const asked = () => JSON.parse(readFileSync(join(dir, "comfyui-0.json"), "utf8")) as { run: boolean; attempt?: string };
+    const comfy = new Comfy(fake.url, undefined, undefined, { state: join(dir, "comfyui-0.json"), status });
     expect(asked().run).toBe(false);
     const recipe = (id: string) => ({ id }) as never;
     // A load waits until gate.py says a ComfyUI for this attempt runs, not one still stopping.
@@ -682,10 +715,10 @@ describe("ComfyUI jobs", () => {
     const status = join(dir, "status.json");
     const why = "Tesla V100 is sm_70, and this ComfyUI's PyTorch has kernels only for sm_75, so it can't make images on it.";
     writeFileSync(status, JSON.stringify({ attempt: null, unsupported: why }));
-    const comfy = new Comfy(fake.url, undefined, undefined, { serving: dir, status });
+    const comfy = new Comfy(fake.url, undefined, undefined, { state: join(dir, "comfyui-0.json"), status });
     expect(comfy.problem).toBe(why);
     await expect(comfy.load({ id: "a" } as never)).rejects.toMatchObject({ status: 503, message: why });
-    expect(JSON.parse(readFileSync(join(dir, "comfyui.json"), "utf8")).run).toBe(false);
+    expect(JSON.parse(readFileSync(join(dir, "comfyui-0.json"), "utf8")).run).toBe(false);
   });
 
   it("queues nothing when the client goes away before the prompt is sent", async () => {
@@ -769,9 +802,17 @@ describe("stable-diffusion.cpp", () => {
       .toEqual(["--flash-attn", "off", "--diffusion-model", "/models/k/d.gguf", "--llm", "/models/k/te.gguf", "--vae", "/models/k/v.safetensors"]);
     expect(sdcppArgs({ template: "krea2", parts: [part("diffusion", "k/d.safetensors"), part("text_encoder", "k/te.safetensors", "qwen3vl"), part("vae", "k/v.safetensors")], loras: [] }, "/models"))
       .toEqual(["--flash-attn", "off", "--type", "q8_0", "--diffusion-model", "/models/k/d.safetensors", "--llm", "/models/k/te.safetensors", "--vae", "/models/k/v.safetensors"]);
-    // Unlocked tensor cores: F16 weights, flash attention on; a GGUF keeps its quantisation.
-    expect(sdcppArgs({ template: "flux", parts: [part("checkpoint", "f/flux.safetensors")], loras: [] }, "/models", true)).toEqual(["--flash-attn", "on", "--type", "f16", "-m", "/models/f/flux.safetensors"]);
-    expect(sdcppArgs({ template: "krea2", parts: [part("diffusion", "k/d.gguf")], loras: [] }, "/models", true)).toEqual(["--flash-attn", "on", "--diffusion-model", "/models/k/d.gguf"]);
+    // Unlocked tensor cores: flash attention on, and F16 weights when all the parts fit with room to work.
+    const GB = 1024 ** 3;
+    const card = { fullRate: true, vram: 16 * GB };
+    const sizes: Record<string, number> = { "f/flux.safetensors": 12 * GB, "z/d.safetensors": 12 * GB, "z/te.safetensors": 8 * GB, "z/v.safetensors": GB / 3 };
+    const z = { template: "z-image", parts: [part("diffusion", "z/d.safetensors"), part("text_encoder", "z/te.safetensors", "qwen3"), part("vae", "z/v.safetensors")], loras: [] };
+    expect(sdcppArgs({ template: "flux", parts: [part("checkpoint", "f/flux.safetensors")], loras: [] }, "/models", card, (f) => sizes[f]!)).toEqual(["--flash-attn", "on", "--type", "f16", "-m", "/models/f/flux.safetensors"]);
+    // Z-Image's 20 GB at F16 would push its text encoder and VAE into system memory on a 16 GB card: Q8_0 keeps them on it.
+    expect(sdcppArgs(z, "/models", card, (f) => sizes[f]!).slice(0, 4)).toEqual(["--flash-attn", "on", "--type", "q8_0"]);
+    expect(sdcppArgs(z, "/models", { fullRate: true, vram: 32 * GB }, (f) => sizes[f]!).slice(0, 4)).toEqual(["--flash-attn", "on", "--type", "f16"]);
+    expect(sdcppArgs(z, "/models", { fullRate: false, vram: 32 * GB }, (f) => sizes[f]!).slice(0, 4)).toEqual(["--flash-attn", "off", "--type", "q8_0"]);
+    expect(sdcppArgs({ template: "krea2", parts: [part("diffusion", "k/d.gguf")], loras: [] }, "/models", card, () => GB)).toEqual(["--flash-attn", "on", "--diffusion-model", "/models/k/d.gguf"]);
     expect(() => sdcppArgs({ template: "seedvr2", parts: [], loras: [] }, "/models")).toThrow(/no seedvr2 support/);
     expect(() => sdcppArgs({ template: "z-image", parts: [], loras: [{ file: "l.safetensors", strength: 1 }] }, "/models")).toThrow(/LoRAs/);
   });
@@ -829,29 +870,38 @@ describe("stable-diffusion.cpp", () => {
 });
 
 describe("the image API", () => {
-  async function stack(o: { sdcpp?: boolean; files?: Record<string, Buffer>; gpuGb?: number; hold?: () => Promise<void> } = {}) {
+  async function stack(o: { sdcpp?: boolean; files?: Record<string, Buffer>; gpuGb?: number; gpus?: number; broken?: number; hold?: () => Promise<void> } = {}) {
     const models = folder({
       [`${Z}/diffusion_models/z.safetensors`]: Z_DIFFUSION, [`${Z}/text_encoders/qwen_3_4b.safetensors`]: QWEN3, [`${Z}/vae/ae.safetensors`]: FLUX_VAE,
       "shared/flux1-schnell-fp8.safetensors": FLUX_CKPT, "shared/style.safetensors": Z_LORA, ...o.files,
     });
-    const comfyFake = await fakeComfy({ hold: o.hold });
-    open.push(comfyFake);
+    // A ComfyUI per GPU, as gate.py runs them.
+    const comfyFakes = await Promise.all(Array.from({ length: o.gpus ?? 1 }, () => fakeComfy({ hold: o.hold })));
+    open.push(...comfyFakes);
+    const comfyFake = comfyFakes[0]!;
     const lines: string[] = [];
     const log = (event: string, fields?: object) => void lines.push(JSON.stringify({ event, ...fields }));
     const h = await startHost({ log, modelsDir: models });
     open.push(h.host);
-    const gpus = new FakeGpus([o.gpuGb ?? 24]);
+    const gpus = new FakeGpus(comfyFakes.map(() => o.gpuGb ?? 24));
     const backend = new FakeBackend(gpus);
-    const comfy = new Comfy(comfyFake.url);
     const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+    // `broken`: a GPU whose ComfyUI's PyTorch has no kernels for it, as gate.py reports.
+    const gate = (gpu: number) => {
+      if (gpu !== o.broken) return undefined;
+      const status = join(serving, `comfyui-status-${gpu}.json`);
+      writeFileSync(status, JSON.stringify({ attempt: null, unsupported: "No kernels for this GPU." }));
+      return { state: join(serving, `comfyui-${gpu}.json`), status };
+    };
+    const comfy = new ComfyGpus(new Map(comfyFakes.map((f, gpu) => [gpu, new Comfy(f.url, undefined, undefined, gate(gpu))])));
     const sdStatus = join(serving, "sdcpp-status.json");
     const sdFake = o.sdcpp ? await fakeSdServer(serving, sdStatus) : null;
     if (sdFake) open.push(sdFake);
-    const sdcpp = sdFake ? new SdCpp(sdFake.url, { serving, status: sdStatus }) : null;
+    const sdcpp = sdFake ? new SdCpp(sdFake.url, { serving, status: sdStatus }, 16 * 1024 ** 3) : null;
     const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp: backend, vllm: backend, comfyui: sdcpp ?? comfy }, state: h.host.state, log });
     h.host.runtime = new Runtime({ scheduler, modelsDir: models, state: h.host.state, log });
     const book = new RecipeBook(h.dataDir, TEMPLATES, STARTERS);
-    h.host.images = new Images({ book, runtime: h.host.runtime, comfy, sdcpp, downloads: null, modelsDir: models, serving, comfyGpu: 0, log });
+    h.host.images = new Images({ book, runtime: h.host.runtime, comfy, sdcpp, downloads: null, modelsDir: models, serving, log });
     h.host.runtime.afterScan = () => h.host.images!.scan();
     await h.host.runtime.start();
     const code: string = await new Promise((resolve) => {
@@ -865,7 +915,7 @@ describe("the image API", () => {
     const me = lyrica();
     const pinned = await pair(h.tls, me, code);
     const api = (path: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) => call({ port: h.tls, path, identity: me, pinned, ...init });
-    return { ...h, api, lines, comfyFake, sdFake, book, models };
+    return { ...h, api, lines, comfyFake, comfyFakes, sdFake, book, models, scheduler };
   }
 
   it("makes images with stable-diffusion.cpp in ComfyUI's place", async () => {
@@ -894,7 +944,8 @@ describe("the image API", () => {
     await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "again" } });
     expect(s.sdFake!.seen.started).toHaveLength(1);
     expect(s.comfyFake.seen.prompts).toHaveLength(0);
-    // Once the card's tensor cores run at full rate, the next job starts it again with F16 and flash attention.
+    // Once the card's tensor cores run at full rate, the next job starts it again with flash attention,
+    // and with F16, as these parts fit in its memory.
     s.sdFake!.seen.tensor = "full";
     await new Promise((r) => setTimeout(r, 100));
     await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "unlocked" } });
@@ -906,6 +957,9 @@ describe("the image API", () => {
     const listed = (await s.api("/host/v1/recipes")).body.recipes;
     expect(listed.find((r: Recipe) => r.id === z.id)).toMatchObject({ does: ["create"] });
     expect(listed.find((r: Recipe) => r.id === z.id)).not.toHaveProperty("unsupported");
+    // sd.cpp takes no LoRAs, for one job either.
+    expect(listed.find((r: Recipe) => r.id === z.id)).toMatchObject({ takesLoras: [] });
+    expect((await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", loras: [{ file: "shared/style.safetensors", strength: 1 }] } })).body.error.message).toMatch(/takes no LoRAs/);
     expect(listed.find((r: Recipe) => r.id === copy.id)).toMatchObject({ does: [], unsupported: expect.stringContaining("LoRAs aren't supported") });
 
     expect(s.lines.join("\n")).not.toContain(MARKER);
@@ -933,6 +987,36 @@ describe("the image API", () => {
     expect((await made).status).toBe(200);
     expect((await s.api(`/host/v1/jobs/${token}`)).body.error.code).toBe("not_found");
     expect((await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" }, headers: { "x-lyrica-job": "short" } })).body.error.code).toBe("invalid");
+  });
+
+  it("runs a job on each image GPU at once, each GPU's copy of the recipe its own model", async () => {
+    let finish!: () => void;
+    const held = new Promise<void>((r) => (finish = r));
+    const s = await stack({ gpus: 2, hold: () => held });
+    const z: Recipe = (await s.api("/host/v1/recipes?state=proposed")).body.recipes.find((r: Recipe) => r.arch === "z-image");
+    await s.api(`/host/v1/recipes/${z.id}/confirm`, { body: {} });
+    const first = s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "one" } });
+    const second = s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "two" } });
+    // Both are sampling, one on each GPU's ComfyUI, while neither is done.
+    for (let i = 0; i < 200 && s.comfyFakes.some((f) => !f.seen.prompts.length); i++) await new Promise((r) => setTimeout(r, 10));
+    expect(s.comfyFakes.map((f) => f.seen.prompts.length)).toEqual([1, 1]);
+    const status = (await s.scheduler.status()) as { index: number; models: { id: string; busy: boolean }[] }[];
+    expect(status.map((g) => g.models.map((m) => [m.id, m.busy]))).toEqual([[[`recipe:${z.id}@gpu0`, true]], [[`recipe:${z.id}@gpu1`, true]]]);
+    finish();
+    expect([(await first).status, (await second).status]).toEqual([200, 200]);
+    // With both idle and both holding the recipe, the next goes to the first listed.
+    await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "three" } });
+    expect(s.comfyFakes.map((f) => f.seen.prompts.length)).toEqual([2, 1]);
+  });
+
+  it("sends no job to an image GPU its ComfyUI can't run on", async () => {
+    const s = await stack({ gpus: 2, broken: 0 });
+    const z: Recipe = (await s.api("/host/v1/recipes?state=proposed")).body.recipes.find((r: Recipe) => r.arch === "z-image");
+    await s.api(`/host/v1/recipes/${z.id}/confirm`, { body: {} });
+    const made = await Promise.all([1, 2].map((n) => s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: `p${n}` } })));
+    expect(made.map((m) => m.status)).toEqual([200, 200]);
+    expect(s.comfyFakes.map((f) => f.seen.prompts.length)).toEqual([0, 2]);
+    expect((await s.api("/host/v1/status")).body.problems).toContain("Images on GPU 0: No kernels for this GPU.");
   });
 
   it("makes images only from a confirmed recipe and its parameters", async () => {
@@ -972,6 +1056,38 @@ describe("the image API", () => {
     expect(usage.body.models).toContainEqual(expect.objectContaining({ id: z.id, images: 2 }));
     expect(s.lines.join("\n")).not.toContain(MARKER);
     for (const f of readdirSync(s.dataDir)) expect(readFileSync(join(s.dataDir, f), "utf8")).not.toContain(MARKER);
+  });
+
+  it("adds a LoRA of the host's that fits a recipe to one job, at the strength asked for", async () => {
+    const s = await stack({ files: { "shared/krea-style.safetensors": KREA2_LORA } });
+    const { body } = await s.api("/host/v1/recipes?state=proposed");
+    const z: Recipe & { takesLoras: string[] } = body.recipes.find((r: Recipe) => r.arch === "z-image");
+    // Only the LoRAs of its architecture.
+    expect(z.takesLoras).toEqual(["shared/style.safetensors"]);
+    await s.api(`/host/v1/recipes/${z.id}/confirm`, { body: {} });
+
+    const made = await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", loras: [{ file: "shared/style.safetensors", strength: 0.6 }] } });
+    expect(made.status).toBe(200);
+    const sent = s.comfyFake.seen.prompts[0];
+    expect(sent.lora_0.inputs).toEqual({ model: ["load_model", 0], lora_name: "shared/style.safetensors", strength_model: 0.6 });
+    // The recipe itself is unchanged: the next job has no LoRA.
+    expect((await s.api(`/host/v1/recipes/${z.id}`)).body.loras).toEqual([]);
+    await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" } });
+    expect(Object.keys(s.comfyFake.seen.prompts[1])).not.toContain("lora_0");
+
+    // A built-in LoRA asked for again takes the request's strength instead of adding a second loader.
+    await s.api(`/host/v1/recipes/${z.id}`, { method: "PATCH", body: { op: "addLora", file: "shared/style.safetensors", strength: 1 } });
+    await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", loras: [{ file: "shared/style.safetensors", strength: 0.3 }] } });
+    expect(s.comfyFake.seen.prompts[2].lora_0.inputs.strength_model).toBe(0.3);
+    expect(Object.keys(s.comfyFake.seen.prompts[2])).not.toContain("lora_1");
+
+    const refused = async (loras: unknown) => (await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", loras } })).body.error.message;
+    expect(await refused([{ file: "shared/krea-style.safetensors", strength: 1 }])).toBe("krea-style.safetensors isn't a LoRA on this host that this recipe takes.");
+    expect(await refused([{ file: "a/z.safetensors", strength: 1 }])).toMatch(/isn't a LoRA/);
+    expect(await refused([{ file: "shared/style.safetensors", strength: 5 }])).toMatch(/from -4 to 4/);
+    expect(await refused([{ file: "shared/style.safetensors", strength: 1 }, { file: "shared/style.safetensors", strength: 1 }])).toMatch(/twice/);
+    expect(await refused(Array.from({ length: 9 }, () => ({ file: "shared/style.safetensors", strength: 1 })))).toMatch(/at most 8/);
+    expect((await s.api("/host/v1/images/upscale", { body: { recipe: z.id, image: PNG.toString("base64"), loras: [] } })).body.error.code).toBe("invalid");
   });
 
   it("lists a recipe too big for the image GPU as doing nothing, and says why", async () => {

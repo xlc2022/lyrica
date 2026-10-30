@@ -109,29 +109,32 @@ The CMP 100-210 (PCI ID `10de:1df4` or `10de:1d84`) is a mining card with
 throttled FP16 tensor cores. The script detects it and uses a llama.cpp
 that checks the tensor cores at each start: throttled, quantized models
 use its int8 units and flash attention avoids the tensor cores, which
-reads prompts about three times as fast as the stock image. It downloads the image CI built (a few GB) when the host's GPUs
-are among those it covers, and otherwise builds it here, which took 25
-minutes on a 4-core machine; it says which. `LYRICA_HOST_REGISTRY`
-points it at another registry, such as a Forgejo instance's. When the
-image GPU (`COMFY_GPU`) is one, ComfyUI isn't started and
+reads prompts about three times as fast as the stock image. It downloads
+the image CI built (a few GB) when the host's GPUs are among those it
+covers, and otherwise builds it here, which took 25 minutes on a 4-core
+machine; it says which. `LYRICA_HOST_REGISTRY` points it at another
+registry, such as a Forgejo instance's. When the image GPU (`COMFY_GPU`,
+the first one listed) is one, ComfyUI isn't started and
 stable-diffusion.cpp, downloaded the same way (or built, 18 minutes),
 makes the images instead: create only, for Z-Image, Qwen-Image, Krea 2,
-FLUX and SDXL recipes without LoRAs. The first image after a
-load takes about 2.5 minutes while it converts the weights to Q8_0; a
-GGUF keeps its own quantisation. Krea 2 has its own starter there, Krea 2
-Turbo Q5 (GGUFs, about 13.4 GB), which fits the card's 16 GB: about 70
-seconds an image once loaded, 2.5 minutes cold.
-vLLM models can't run on the card, so dictation runs on whisper.cpp
-instead, with its own starter (large-v3-turbo q8_0). Voices run on it
-with an older cuDNN, so on such a host a Blackwell card can't run voices.
-Details are in [host/README.md](../../host/README.md#image-models).
+FLUX and SDXL recipes without LoRAs. The first image after a load takes
+about 2.5 minutes while it converts the weights to Q8_0; a GGUF keeps its
+own quantisation. Krea 2 has its own starter there, Krea 2 Turbo Q5
+(GGUFs, about 13.4 GB), which fits the card's 16 GB: about 70 seconds an
+image once loaded, 2.5 minutes cold. vLLM models can't run on the card, so
+dictation runs on whisper.cpp instead, with its own starter
+(large-v3-turbo q8_0). Voices run on it with an older cuDNN, so on such a
+host a Blackwell card can't run voices. Details are in
+[host/README.md](../../host/README.md#image-models).
 
 The card can be unlocked at every boot
 ([cmp100-unlock](https://github.com/mintoriakamoto/CMP100-210xFULLTENSORSxGEN3x1)):
 full-rate tensor cores and PCIe Gen3, lost at power-off. Unlocked, prompts
-read about twice as fast again, images take 1.2 seconds a step instead of
-3.0 (F16 with flash attention), and a model already in memory loads about
-3 times as fast. The images notice it by themselves at each start.
+read about twice as fast again, images take about 20 seconds instead of
+27 (Z-Image Turbo, 1024×1024, 8 steps), and a model already in memory loads
+about 3 times as fast. A recipe whose parts fit in the card's memory at
+F16 runs at F16; Z-Image's don't on a 16 GB card, so it stays at Q8_0 with
+flash attention on. The images notice it by themselves at each start.
 
 - **Debian or Ubuntu:** `install.sh` offers it, or run `host/cmp-unlock.sh`.
   It needs NVIDIA's proprietary driver (not `-open`), Secure Boot off and
@@ -532,7 +535,7 @@ guide](getting-started.md#image-models). Qwen-Image 2.1 edits (masked
 too) and Z-Image and Krea 2 Q5 on stable-diffusion.cpp have made real
 images; other starters haven't yet: item 9 of the checklist below.
 ComfyUI runs only while an image recipe is loaded, and stops once none
-is. A recipe too big for the image GPU even with nothing else loaded,
+is. A recipe too big for every image GPU even with nothing else loaded,
 or whose template the host lacks (one a newer release made, after a
 rollback), is unsupported: `GET
 /host/v1/recipes` lists it with no actions and the reason, Lyrica never
@@ -542,31 +545,36 @@ this with its next Update or `host/install.sh`.
 ### Video recipes
 
 ComfyUI hosts list seven video starters: Wan 2.2 TI2V 5B (about 18 GB of
-files, fits a 24 GB card), Wan 2.2 T2V 14B and I2V 14B (about 38 GB
-each), the same two as Q5 GGUF quants, **Wan 2.2 T2V 14B Q5** and
-**I2V 14B Q5** (about 31 GB each, for a 24 GB card and less system
-memory; all four 14B starters also fetch a small RIFE model that turns
-their 16 fps into 32 fps, and installing one again adds it to a recipe
-made before it), LTX-2.5 Distilled (about 40 GB) and MiniMax H3 Turbo (about
-42 GB); H3 and LTX-2.5 fit a 96 GB card. A host on stable-diffusion.cpp
-doesn't list them. Once one is confirmed, put it in the **Videos** row
-of Models, Tasks (the last row under Images, whose picker lists only
-model hosts' video recipes), or `lyrica admin models preset set private
-video '<host>/<recipe>' --user ada`. Until a column has one, her `image`
-tool can't make clips. A clip is 1 second up to its model's longest
-(8 for Wan 2.2, 10 for LTX-2.5, 15 for H3; up to 60 for H3, which joins
-clips of up to 15 s into one, and can make an existing clip longer), from
-a prompt or, with a recipe that animates (Wan 2.2 I2V, for one), from an
-image as its first frame; it is saved encrypted in the thread's folder under `videos/`, and
-Files shows its poster. Cloud models and plain endpoints in the list are
-passed over. A clip takes from a few minutes to most of an hour and holds
-ComfyUI's GPU until it is done; with two GPUs, `COMFY_GPU` picks the one
-for images and videos. When she asks for a shape (16:9, say), the host
-keeps the recipe's area and fits the size to its template's step. Ask for a
-number of steps and she passes it on for that clip; a recipe's own steps
-are **Steps** in its block under Models, Image models. A host
-from before that refuses such a clip as invalid, so update the host
-whenever you update `lyricad`.
+files, fits a 24 GB card), Wan 2.2 T2V 14B and I2V 14B (about 38 GB each),
+the same two as Q5 GGUF quants, **Wan 2.2 T2V 14B Q5** and **I2V 14B Q5**
+(about 31 GB each, for a 24 GB card and less system memory; all four 14B
+starters also fetch a small RIFE model that turns their 16 fps into 32
+fps, and installing one again adds it to a recipe made before it), LTX-2.5
+Distilled (about 40 GB) and MiniMax H3 Turbo (about 42 GB); H3 and LTX-2.5
+fit a 96 GB card. A host on stable-diffusion.cpp doesn't list them. Once
+one is confirmed, put it in the **Videos** row of Models, Tasks (the last
+row under Images, whose picker lists only model hosts' video recipes), or
+`lyrica admin models preset set private video '<host>/<recipe>' --user
+ada`. Until a column has one, her `image` tool can't make clips. A clip is
+1 second up to its model's longest (8 for Wan 2.2, 10 for LTX-2.5, 15 for
+H3; up to 60 for H3, which joins clips of up to 15 s into one, and can make
+an existing clip longer), from a prompt or, with a recipe that animates
+(Wan 2.2 I2V, for one), from an image as its first frame; it is saved
+encrypted in the thread's folder under `videos/`, and Files shows its
+poster. Cloud models and plain endpoints in the list are passed over. A
+clip takes from a few minutes to most of an hour and holds its ComfyUI's
+GPU until it is done; with two GPUs, `COMFY_GPU` picks the one for images
+and videos, or `COMFY_GPU=0,1` in `host/.env` (then `host/install.sh`)
+runs a ComfyUI on each, so two clips or images run at once, one per GPU.
+Each GPU then loads its own copy of a recipe, so leave room in system RAM
+for each running clip's frames (about 5 GB for 16 s, 18 GB for 60 s at
+H3's size). A recipe is then measured afresh on each GPU, since each GPU's
+copy is its own model. When she asks for a shape (16:9, say), the host
+keeps the recipe's area and fits the size to its template's step. Ask for
+a number of steps and she passes it on for that clip; a recipe's own steps
+are **Steps** in its block under Models, Image models. A host from before
+that refuses such a clip as invalid, so update the host whenever you
+update `lyricad`.
 
 Wan 2.2 is Apache 2.0. LTX-2.5's repository is gated: installing it
 needs a Hugging Face token whose account accepted the LTX-2.x Community

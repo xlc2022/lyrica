@@ -1668,7 +1668,8 @@ export type ThreadEvent =
    */
   | { type: "delegation"; event: DelegationEvent }
   /** A background run's result or question, just delivered into this thread (also stored, as a `notice` message). */
-  | { type: "notice"; text: string; runId?: string; status?: string; threads?: ThreadRef[]; told?: Told[]; /** A clip made in the background: shown as hers, not as a notice. */ video?: VideoPart }
+  | { type: "notice"; text: string; runId?: string; status?: string; threads?: ThreadRef[]; told?: Told[]; /** A clip made in the background: shown as hers, not as a notice. */ video?: VideoPart;
+    /** The image call that started that clip, shown above it as its marker. */ call?: Extract<MessagePart, { type: "tool" }> }
   /** Messages from entry `from` on were removed (a rewind): drop them, and reload. `resend`: a message is being sent in their place. */
   | { type: "rewound"; from: number; resend?: true };
 
@@ -1837,6 +1838,7 @@ export interface MemoryRevision { id: number; body: Pick<MemoryItem, "text" | "t
 export interface MemoryLink {
   kind: MemoryKind;
   pool: Pool;
+  /** A memory's title in stored form (render with `users`); a thread's title as it is. */
   title?: string;
   /** The first line, in stored form (render with `users`), without its citations; a message's first words for an entry. */
   snippet: string;

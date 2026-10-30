@@ -50,10 +50,10 @@ ENV HOME=/tmp HF_HUB_OFFLINE=1 DO_NOT_TRACK=1
 
 # Folders in /tmp are tmpfs (see the compose files): prompts and images live in memory only.
 # Only these custom nodes load; metadata saving and previews are off;
-# API nodes (paid cloud services) are disabled. gate.py runs it only while
-# host-api asks, so a paused or idle host holds no GPU memory here.
-ENTRYPOINT ["sh", "-c", "mkdir -p /tmp/comfy/input /tmp/comfy/output /tmp/comfy/temp /tmp/comfy/user && exec python3 /opt/gate.py /opt/venv/bin/python main.py \
-  --listen 0.0.0.0 --port 8188 --disable-auto-launch --disable-metadata --disable-api-nodes --preview-method none \
-  --disable-all-custom-nodes --whitelist-custom-nodes websocket_image_save.py websocket_video_save.py video_frames.py clip_chain.py ComfyUI-GGUF ComfyUI-SeedVR2_VideoUpscaler LanPaint \
-  --input-directory /tmp/comfy/input --output-directory /tmp/comfy/output --temp-directory /tmp/comfy/temp \
-  --user-directory /tmp/comfy/user --extra-model-paths-config /opt/comfyui/extra_model_paths.yaml"]
+# API nodes (paid cloud services) are disabled. gate.py runs one ComfyUI per
+# image GPU, each only while host-api asks, with its own port and folders
+# under /tmp/comfy, so a paused or idle host holds no GPU memory here.
+ENTRYPOINT ["python3", "/opt/gate.py", "/opt/venv/bin/python", "main.py", \
+  "--listen", "0.0.0.0", "--disable-auto-launch", "--disable-metadata", "--disable-api-nodes", "--preview-method", "none", \
+  "--disable-all-custom-nodes", "--whitelist-custom-nodes", "websocket_image_save.py", "websocket_video_save.py", "video_frames.py", "clip_chain.py", "ComfyUI-GGUF", "ComfyUI-SeedVR2_VideoUpscaler", "LanPaint", \
+  "--extra-model-paths-config", "/opt/comfyui/extra_model_paths.yaml"]

@@ -403,8 +403,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   named by its first words (`firstWords`), with citations and Markdown's
   marks taken off. The memory at the right shows
   its citations as titles with a hover preview (`linkCitations` turns each
-  citation into a link whose word comes from `MemoryDetail.links`; the raw ID
-  is never shown), Came from and Used in with the citing sentence. Each
+  citation into a link whose word comes from `MemoryDetail.links`, its title's
+  mention tokens rendered first by `readableLinks`; the raw ID is never shown), Came from and Used in with the citing sentence. Each
   previews four cards; a right-aligned Show all link expands longer lists
   in place with their own scroll (maximum height 320 px), becoming Show less.
   Either expansion hides History; Came from expansion also hides Used in.
@@ -414,7 +414,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `…/history/memory/<pool>/<id>` lists versions newest first, with
   word differences (`wordDiff`, computed in the browser) and Restore, and
   Edit in place with a `[[` popover of pages and people (a page shows as
-  `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Export and Forget… on a
+  `[[Title]]` and saves as `[p:<slug>]`; the title, summary and text show
+  users as `[[Name]]` and save them as tokens). Archive, Delete, Export and Forget… on a
   selection, and Add a memory with a Write | Import segment (export and
   import in [memory.md](memory.md#export-and-import); the downloaded file
   is made from the response in the browser and kept nowhere else). The **Recent** layer (`kinds=entry`) lists
@@ -667,12 +668,15 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   **Change** for a text encoder or VAE (`swap`, or Download another… to the
   download page), **Remove** for an added part or LoRA, **Use this recipe**
   (`confirm`), **Download the missing parts** (`download-parts`),
-  **Ignore**, the **Add part** side drawer and the delete dialog. **Add part**
-  lists the host's files of the part's kind and architecture, with what
+  **Ignore**, the **Add part** side drawer and the delete dialog. A LoRA's
+  row has **Strength** (-4 to 4, "of 4", clamped when left), saved with
+  `setLora` when it changed. **Add part**
+  lists the host's files of the part's kind and architecture (for a LoRA,
+  the recipe's `takesLoras` when the host lists it), with what
   uses each, and adds a VAE or text encoder to a checkpoint
   (`addPart`) or a LoRA with its strength (`addLora`), by default into a
   copy named "<name> + <LoRA>" (`copy` first) so the recipe stays as it is.
-  Its Strength is a number from 0 to 1.5, clamped when the field is left.
+  Its Strength is a number from -4 to 4, clamped when the field is left.
   **Delete model…** (shown when Lyrica downloaded the recipe's main file) works
   out from the parts' `downloaded` and `usedBy` what goes and what stays
   (an ignored recipe keeps nothing, as on the host), names the lists that skip it from a first `delete-copy` without confirm on
@@ -1058,7 +1062,7 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   A clip's markers read Making a clip, Animating an image and Copying a
   clip's moves; a clip made in the background marks its call **started**, and the clip
   shows as her own message when a `notice` event brings its `video` (or the
-  thread reloads); a failed one is a notice headed Clip with a down dot and
+  thread reloads), under the call's marker again, done, from the event's `call`; a failed one is a notice headed Clip with a down dot and
   "failed", then the reason.
   The shared Lightbox has a filename header, Download and Copy path behind
   ⋯, and Close. Image tool markers read Making an image with its tier,
@@ -1232,7 +1236,10 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   thread's pool citing the message; `RememberBox` in `src/Messages.tsx`);
   Start a thread in a project chat; on her replies Regenerate with… (the
   thread's chat models, `isChatModel` in `ModelLabel.tsx`, the same filter
-  lyricad uses, so image, speech and embedding offerings stay out); Delete
+  lyricad uses, so image, speech and embedding offerings stay out; the
+  model that wrote the reply first, matched by its model ID, then the rest
+  in the thread's order, under a search field, `matchesModel`, whose Enter
+  picks the first match); Delete
   on the messages of the last turn, and Delete from here on earlier ones,
   both in danger text. A marker's ⋯ (a look, a received message, a routine)
   has Branch from here instead of a row. The row is right-aligned under the
