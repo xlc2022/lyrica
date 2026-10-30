@@ -113,7 +113,8 @@ export function liveReducer(s: Live, e: LiveAction): Live {
     case "turn_start":
       return { ...s, busy: true, errors: [], offline: undefined };
     case "message_start":
-      return { ...s, items: [...s.items, { role: "assistant", model: e.model, parts: [] }] };
+      // A model answering (a retry that got through, say) means one can be reached.
+      return { ...s, offline: undefined, items: [...s.items, { role: "assistant", model: e.model, parts: [] }] };
     case "text":
     case "thinking":
       return withParts(s, (parts) => {

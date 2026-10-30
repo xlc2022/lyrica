@@ -186,6 +186,17 @@ describe("the live view of a thread's stream", () => {
     expect([back.items, back.offline]).toEqual([[{ role: "user", text: "hi" }], undefined]);
   });
 
+  it("drops the offline notice once a model answers, as a retry that got through does", () => {
+    const tried = [{ label: "gpu/qwen", reason: "gpu is down" }];
+    const s = run([
+      { type: "hello", busy: true, queued: [], permissions: [], making: [] },
+      { type: "message_start" },
+      { type: "offline", task: "chat", tried },
+    ]);
+    expect(s.offline).toEqual({ task: "chat", tried });
+    expect(run([{ type: "message_start" }], s).offline).toBeUndefined();
+  });
+
   it("tracks permission prompts until they are answered", () => {
     const req = { requestId: "r1", toolCallId: "c1", tool: "bash", args: {}, expiresAt: "2026-10-09T00:00:00Z" };
     const asked = run([{ type: "permission", ...req }]);
