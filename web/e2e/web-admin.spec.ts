@@ -1245,9 +1245,13 @@ test("Time zone: the browser's is given at first, an unknown name is refused, an
   await expect.poll(async () => (await me()).timeZone).toBe(zone);
   const there = () => page.evaluate((z) => new Intl.DateTimeFormat("en-GB", { timeZone: z, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date()), zone);
   // A second before a minute turns: the clock moves on with it, not up to 15 s later at its next tick (seen in CI).
-  await page.clock.install({ time: Math.ceil(Date.now() / 60_000) * 60_000 + 60_000 - 1000 });
+  // The page's clock is paused there, so only runFor moves it: left running, a loaded runner once let a minute turn
+  // with no timer firing for the whole poll.
+  const turn = Math.ceil(Date.now() / 60_000) * 60_000 + 60_000;
+  await page.clock.install({ time: turn - 30_000 });
   await page.goto(`/#/u/${userId}`);
   await page.reload();
+  await page.clock.pauseAt(turn - 1000);
   const shown = page.locator(".head .cap .num").first();
   await expect.poll(async () => (await shown.textContent()) === (await there())).toBe(true);
   await page.clock.runFor(1500);
