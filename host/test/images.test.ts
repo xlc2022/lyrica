@@ -1036,6 +1036,24 @@ describe("the image API", () => {
     expect(added[0].cond.inputs).toMatchObject({ width: 1024, height: 576, length: 124 });
     expect(extended.body.video.frames).toBe(120 + 124 - 22);
 
+    // An animated still is every later clip's reference picture, and the prompt names it: the clip so far can lose her face.
+    const animStart = s.comfyFake.seen.prompts.length;
+    const animated = await s.api("/host/v1/videos/create", { body: { recipe: h3r.id, prompt: MARKER, image: PNG.toString("base64"), duration: 16 } });
+    expect(animated.status).toBe(200);
+    const [still, ...later] = s.comfyFake.seen.prompts.slice(animStart);
+    expect(still.cond.class_type).toBe("MiniMaxH3ImageToVideo");
+    expect(later).toHaveLength(2);
+    for (const p of later) {
+      expect(p.cond.class_type).toBe("MiniMaxH3ReferenceToVideo");
+      expect(p.cond.inputs["ref_images.ref_image_0"]).toEqual(["reference", 0]);
+      expect(p.reference.inputs.image).toMatch(/^lyrica-reference/);
+      expect(p.anchor.inputs.image).toEqual(["tail", 0]);
+      expect(p.cond.inputs.prompt).toMatch(new RegExp(`^Everyone looks exactly as in <Picture 1>.*${MARKER}$`));
+    }
+    // Without a still (a prompt-only video, or extend) there is no reference.
+    expect(added[0].cond.class_type).toBe("MiniMaxH3ImageToVideo");
+    expect(added[0]).not.toHaveProperty("reference");
+
     const refused = async (extra: object, recipe = h3r.id) => (await s.api("/host/v1/videos/create", { body: { recipe, prompt: "x", ...extra } })).body.error.message;
     expect(await refused({ duration: 61 })).toMatch(/from 1 to 60/);
     expect(await refused({ duration: 9 }, wan.id)).toMatch(/from 1 to 8/);

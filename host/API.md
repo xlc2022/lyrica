@@ -1006,7 +1006,11 @@ newer host made, read after a rollback).
   read with (so an animated still's prompt reads against the clip so far,
   not the still), and its prompt starts with the continuation's
   `promptPrefix` (that the shot goes on with no cut), since the prompt alone
-  describes the video from its start; the new clip's first `overlap` frames are
+  describes the video from its start. Animating an image, each later clip
+  also takes the image as a reference picture (the continuation's
+  `reference`, H3's `MiniMaxH3ReferenceToVideo` in place of its
+  conditioning), named first in its prompt, so a face the clip so far lost
+  comes back as the image shows it. The new clip's first `overlap` frames are
   dropped and the rest appended. The chain comes out at most one frame
   step longer than asked, as one clip does. Each clip takes the next seed, they hold
   the GPU as one job with one progress, weighted by frames, and one MP4

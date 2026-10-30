@@ -685,7 +685,10 @@ GPU for minutes, and to write the prompt as a detailed shot (subject and
 action, motion, the camera's move and lens, light and mood, about 80 to 120
 words) even from a few words; and to use motion when they want someone to
 move as a given clip shows, or when a person's moves from a prompt alone
-would come out badly (a plain `video` of the moves first, then `motion`). A clip is made in the background (lyricad's
+would come out badly (a plain `video` of the moves first, then `motion`);
+and, for a video longer than one clip with a person in it, to make a still
+of them first and animate it, since the host gives each later clip the
+still as a reference and a prompt alone doesn't keep a face. A clip is made in the background (lyricad's
 clip jobs): the call reads the first frame and returns, she says it's on its
 way and ends her reply, and when it is made the thread gets it as her
 message and an idle thread wakes to say it's ready; a failure comes as a

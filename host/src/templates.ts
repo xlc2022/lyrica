@@ -72,7 +72,11 @@ export interface FilledPart {
   added: boolean;
 }
 
-export interface Continuation { overlap: number; clipSeconds: number; promptPrefix?: string; workflow: Record<string, Node> }
+export interface Continuation {
+  overlap: number; clipSeconds: number; promptPrefix?: string; workflow: Record<string, Node>;
+  /** With a still to animate: nodes replacing the workflow's, so every later clip keeps the still's people as a reference, and the prompt's prefix naming it. */
+  reference?: { promptPrefix: string; workflow: Record<string, Node> };
+}
 
 export type Values = Record<string, string | number>;
 
@@ -94,7 +98,7 @@ export function loadTemplates(dir: string): Map<string, Template> {
   for (const c of continuations) {
     const t = out.get(c.continues);
     if (!t?.video) throw new Error(`${c.continues}-continue continues no video template`);
-    t.continuation = { overlap: c.overlap, clipSeconds: c.clipSeconds, ...(c.promptPrefix ? { promptPrefix: c.promptPrefix } : {}), workflow: c.workflow };
+    t.continuation = { overlap: c.overlap, clipSeconds: c.clipSeconds, ...(c.promptPrefix ? { promptPrefix: c.promptPrefix } : {}), ...(c.reference ? { reference: c.reference } : {}), workflow: c.workflow };
   }
   return out;
 }

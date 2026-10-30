@@ -520,9 +520,11 @@ export class Images {
         let done = 0;
         for (const [i, clip] of clips.entries()) {
           const first = i === 0 && !extending;
-          const t = first ? template : { ...template, workflow: chain!.workflow };
-          const step = { ...values, ...clip, seed: Number(values.seed) + i, ...(first ? {} : { overlap: chain!.overlap, prompt: `${chain!.promptPrefix ?? ""}${values.prompt}` }) };
-          const made = await this.comfy.runVideo(first ? uploads : { previous: video! }, (names) => fill(t, parts, recipe.loras, { ...step, ...names }),
+          // An animated still stays every later clip's reference: the clip so far may have lost a face the still shows.
+          const ref = first ? undefined : uploads.image && chain!.reference;
+          const t = first ? template : { ...template, workflow: { ...chain!.workflow, ...ref?.workflow } };
+          const step = { ...values, ...clip, seed: Number(values.seed) + i, ...(first ? {} : { overlap: chain!.overlap, prompt: `${ref?.promptPrefix ?? ""}${chain!.promptPrefix ?? ""}${values.prompt}` }) };
+          const made = await this.comfy.runVideo(first ? uploads : { previous: video!, ...(ref ? { reference: uploads.image! } : {}) }, (names) => fill(t, parts, recipe.loras, { ...step, ...names }),
             VIDEO_TIMEOUT_MS, abort.signal, (f) => job.progress((done + f * Number(clip.frames)) / total));
           video = made.video;
           poster = made.poster ?? poster;
