@@ -815,6 +815,12 @@ function ListMenu({ at, ctx, onClose }: { at: { x: number; y: number }; ctx: She
 /** New thread and New project at the top of the sidebar: one row style each, and only one General / Private choice open at a time (docs/ux.md §3). */
 function NewButtons({ onCreate, onCreateProject }: { onCreate: (pool: Pool) => void; onCreateProject: (pool: Pool) => void }) {
   const [open, setOpen] = useState<"" | "thread" | "project">("");
+  // Going to any page folds the choice back under its row; it was asked for on the page being left.
+  useEffect(() => {
+    const leave = () => setOpen("");
+    addEventListener("hashchange", leave);
+    return () => removeEventListener("hashchange", leave);
+  }, []);
   return (
     <>
       <NewRow shown={open === "thread"} onShow={(on) => setOpen(on ? "thread" : "")} icon="plus" label="New thread" onCreate={onCreate} />
