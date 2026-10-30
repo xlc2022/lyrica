@@ -160,6 +160,13 @@ describe("the live view of a thread's stream", () => {
     expect(s.items[1]).toEqual({ role: "user", text: "[From t:web/p1]\n\nAdd tulips." });
   });
 
+  it("counts a child thread's update or wait as a change to its threads, so a project chat's cards reload", () => {
+    const threads = [{ id: "child", pool: "general" as const }];
+    expect(run([{ type: "notice", text: "Child thread [t:child] is waiting on the person:\nWhich scope?", status: "waiting", threads }]).children).toBe(1);
+    expect(run([{ type: "notice", text: "Update from child thread [t:child]:\nDone.", status: "update", threads }]).children).toBe(1);
+    expect(run([{ type: "notice", text: "Subagent run r1 finished" }]).children).toBe(0);
+  });
+
   it("keeps who a look told on its notice, for the marker", () => {
     const told = [{ threadId: "b", text: "Go." }];
     const text = "[Watching threads]\n\nIn [t:a]: it posted.\n\nTold [t:b]: \"Go.\"";
