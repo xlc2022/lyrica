@@ -1015,6 +1015,10 @@ describe("the image API", () => {
     const [first, second, third] = s.comfyFake.seen.prompts;
     expect(s.comfyFake.seen.prompts).toHaveLength(3);
     expect(first.cond.inputs.length).toBe(141);
+    // Each later clip's prompt says it goes on from the clip so far: the prompt alone would play the video again from its start.
+    expect(first.cond.inputs.prompt).toBe(MARKER);
+    expect(second.cond.inputs.prompt).toBe(`${TEMPLATES.get("minimax-h3")!.continuation!.promptPrefix}${MARKER}`);
+    expect(TEMPLATES.get("minimax-h3")!.continuation!.promptPrefix).toMatch(/no cut/);
     expect(first).not.toHaveProperty("anchor");
     expect(second.previous.inputs.file).toBe("lyrica-previous.mp4");
     expect([second.cond.inputs.length, third.cond.inputs.length]).toEqual([141, 158]);
