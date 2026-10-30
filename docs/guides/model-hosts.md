@@ -707,13 +707,14 @@ It says what it will remove and asks first. It removes:
 
 - the stack's containers, volumes and network, with the host's key, so
   every paired Lyrica loses it;
-- its images, by ID: one another container uses stays, and nothing is
-  pruned, so other programs' images and Docker's build cache are left
-  alone (on a shared machine, leave the build cache too);
-- the egress rules and, on Debian or Ubuntu, the egress and updater
-  units, `/usr/local/sbin/lyrica-host-update`, `/etc/lyrica-host` (the
-  deploy key), `/var/lib/lyrica-host-update` and the release trees in
-  `/opt/lyrica-host`.
+- its images, by ID or name, without `--force`: one another container
+  uses stays, and nothing is pruned, so other programs' images and
+  Docker's build cache are left alone (on a shared machine, leave the
+  build cache too);
+- the egress rules, `/usr/local/sbin/lyrica-host-update`,
+  `/etc/lyrica-host` (the deploy key), `/var/lib/lyrica-host-update` and
+  the release trees in `/opt/lyrica-host`, and on Debian or Ubuntu the
+  egress and updater units.
 
 It asks before deleting the models folder's `lyrica/` downloads; your own
 model files beside them stay. `--delete-downloads` deletes them without
