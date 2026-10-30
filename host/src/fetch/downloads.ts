@@ -427,10 +427,10 @@ export class Downloader {
       // O_NOFOLLOW: a symlink planted at the partial file's name isn't followed.
       const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_NOFOLLOW | (have ? fsConstants.O_APPEND : fsConstants.O_TRUNC);
       await pipeline(res, count, createWriteStream(part, { fd: openSync(part, flags, 0o644) }), { signal: abort.signal });
+      if (d.size && d.received !== d.size) throw new DownloadError("The download ended early.", 503);
       d.state = "verifying";
       this.save();
       const got = sha256.digest("hex");
-      if (d.size && d.received !== d.size) throw new DownloadError("The download ended early.", 503);
       let verified: boolean;
       if (d.sha256) verified = got === d.sha256.toLowerCase() || fail();
       else if (d.gitSha1 && !have) verified = sha1.digest("hex") === d.gitSha1 || fail();
