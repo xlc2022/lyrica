@@ -209,6 +209,8 @@ export async function codexImage(box: CodexBox, r: ImageRequest, signal?: AbortS
       signal?.throwIfAborted();
       const id = randomUUID();
       const call = join(box.home, "calls", id), inner = posix.join(box.inner, "calls", id);
+      // Calls here run one at a time, so any other call's folder is one a restart cut short, with its inputs: it goes.
+      rmSync(join(box.home, "calls"), { recursive: true, force: true });
       mkdirSync(call, { recursive: true, mode: 0o700 });
       // Codex saves under generated_images/<session>/, by a name that varies between
       // versions. Calls here run one at a time, so everything there is this call's:
