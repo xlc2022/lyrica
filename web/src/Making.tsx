@@ -34,7 +34,7 @@ const spoken = (ms: number) => {
  */
 export function MakingCards({ args, making, label, url }: { args: unknown; making: Making; label: string; url: (path: string) => string }) {
   const a = (args ?? {}) as Args;
-  const clip = a.action === "video" || a.action === "animate" || a.action === "motion";
+  const clip = a.action === "video" || a.action === "animate" || a.action === "motion" || a.action === "extend";
   const source = ["edit", "upscale", "animate", "motion"].includes(a.action ?? "") && typeof a.image === "string" ? a.image : undefined;
   const [sourceRatio, setSourceRatio] = useState<number>();
   const [sourceGone, setSourceGone] = useState(false);

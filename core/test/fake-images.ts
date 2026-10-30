@@ -27,15 +27,16 @@ export async function fakeImages() {
       if (path === "/host/v1/recipes") return Response.json({ recipes: [
         { id: "art", name: "Art", state: "confirmed", ready: true, useFor: server.useFor, does: ["create", "edit", "upscale"], ...(mask === undefined ? {} : { mask }) },
         { id: "proposal", name: "Proposal", state: "proposed", ready: true, does: ["create"] },
-        { id: "clip", name: "Clip", state: "confirmed", ready: true, does: ["video", "animate"], video: { fps: 24, audio: false } },
+        { id: "clip", name: "Clip", state: "confirmed", ready: true, does: ["video", "animate"], video: { fps: 24, audio: false, maxSeconds: 8, longestSeconds: 8 } },
         { id: "moves", name: "Moves", state: "confirmed", ready: true, does: ["motion"], video: { fps: 16, audio: false } },
+        { id: "long", name: "Long", state: "confirmed", ready: true, does: ["video", "animate", "extend"], video: { fps: 24, audio: true, maxSeconds: 15, longestSeconds: 60 } },
       ] });
       if (down) return Response.json({ error: { code: down, message: "Images unavailable." } }, { status: 503 });
       const action = path.split("/").at(-1)!;
       const body = JSON.parse(String(opts.body));
       if (path === "/host/v1/videos/create") {
-        if (body.recipe !== "clip" && body.recipe !== "moves") return Response.json({ error: { code: "invalid", message: "That recipe doesn't make videos." } }, { status: 400 });
-        expect(Object.keys(body).every(k => ["recipe", "prompt", "image", "drive", "width", "height", "aspectRatio", "duration"].includes(k))).toBe(true);
+        if (!["clip", "moves", "long"].includes(body.recipe)) return Response.json({ error: { code: "invalid", message: "That recipe doesn't make videos." } }, { status: 400 });
+        expect(Object.keys(body).every(k => ["recipe", "prompt", "image", "drive", "extend", "width", "height", "aspectRatio", "duration"].includes(k))).toBe(true);
         videos.push(body);
         return Response.json({ video: { mp4: mp4.toString("base64"), width: 1280, height: 704, frames: 121, fps: 24, duration: 5.04, audio: false, seed: 7 }, poster: png.toString("base64"), seconds: 300 });
       }
@@ -46,14 +47,16 @@ export async function fakeImages() {
       return Response.json({ images: Array.from({ length: body.count ?? 1 }, () => ({ png: output.toString("base64"), width: 1, height: 1, seed: 42 })), seconds: 0.1 });
     }) as typeof fetch);
     const offerings = await models.discover(ada, ep.id);
-    // Art, Clip and Moves: a proposal never resolves.
-    expect(offerings.map(o => o.recipe)).toEqual(["Art", "Clip", "Moves"]);
-    expect(offerings[1]).toMatchObject({ video: true, animate: true });
-    expect(offerings[2]).toMatchObject({ motion: true });
-    expect(offerings[2]).not.toHaveProperty("video");
-    const ref = { offeringId: offerings[0]!.id }, clip = { offeringId: offerings[1]!.id }, moves = { offeringId: offerings[2]!.id };
+    // Art, Clip, Moves and Long: a proposal never resolves.
+    expect(offerings.map(o => o.recipe)).toEqual(["Art", "Clip", "Long", "Moves"]);
+    expect(offerings[1]).toMatchObject({ video: true, animate: true, longestSeconds: 8 });
+    expect(offerings[1]).not.toHaveProperty("extend");
+    expect(offerings[2]).toMatchObject({ video: true, extend: true, longestSeconds: 60 });
+    expect(offerings[3]).toMatchObject({ motion: true });
+    expect(offerings[3]).not.toHaveProperty("video");
+    const ref = { offeringId: offerings[0]!.id }, clip = { offeringId: offerings[1]!.id }, long = { offeringId: offerings[2]!.id }, moves = { offeringId: offerings[3]!.id };
     models.reportUp(ada.id, ep.id);
-    return { server, ep, ref, clip, moves };
+    return { server, ep, ref, clip, moves, long };
   };
   const workstation = await host("workstation"), spare = await host("3090");
   const cloud = models.addEndpoint(ada, { name: "openai", kind: "cloud", baseUrl: "https://images.example/v1", apiKey: "fake-key" });

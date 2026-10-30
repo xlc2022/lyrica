@@ -1037,7 +1037,13 @@ it's off.
   does `motion`: an image's subject moves as the person in a driving clip
   moves, frame for frame, with SAM 3.1 finding the person in both, and
   the `image` tool's `motion` action uses it (an image and a workspace
-  clip), through the same Videos list.
+  clip), through the same Videos list. A recipe whose template has a
+  continuation (MiniMax H3, 2026-10-30) makes videos past its longest
+  clip, up to 60 s, as near-equal clips of at most 8 s chained on the
+  host, each starting from the last 22 frames and sound of the clip so
+  far, joined into one MP4; the `image` tool's `extend` action makes an
+  existing clip longer the same way. Each recipe's longest video is
+  listed, and a longer request skips models that can't make it.
 - **Looking at images** (2026-10-25): the task `vision`, **Look at
   images**, has its own list of models with vision in each preset, chosen
   by the person (a plan's model, a local one, or a paid one they add).

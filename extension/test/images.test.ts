@@ -227,6 +227,21 @@ describe("image tool results (principles 1 and 4)", () => {
     await expect(s.run({ action: "motion", prompt: "x", image: "/photos-of-me/portrait.png", video: "/workspace/uploads/landscape.png" })).rejects.toThrow(/isn't an MP4/);
     expect(s.heard).toEqual([]);
   });
+  it("makes a workspace clip longer on a recipe that extends, and says the Videos model's longest in duration", async () => {
+    const s = await setup();
+    const tool = (o: ImageTools) => { let t!: ToolDefinition; createImageExtension(o)({ on: () => {}, registerTool: (d: ToolDefinition) => { t = d; } } as unknown as ExtensionAPI); return t; };
+    const duration = (t: ToolDefinition) => (t.parameters as { properties: { duration: { maximum: number; description: string } } }).properties.duration;
+    s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.long]);
+    expect(duration(tool(s.options as ImageTools))).toMatchObject({ maximum: 60, description: expect.stringContaining("Long makes up to 60 s, joining clips into one") });
+    s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.clip, s.workstation.long]);
+    expect(duration(tool(s.options as ImageTools))).toMatchObject({ maximum: 8, description: expect.stringContaining("Clip makes up to 8 s.") });
+    writeFileSync(join(s.folder, "uploads", "walk.mp4"), mp4);
+    const out = await s.run({ action: "extend", prompt: "She keeps walking", video: "/workspace/uploads/walk.mp4", duration: 6 });
+    expect((out.details as { video: { model: string; path: string } }).video).toMatchObject({ model: "shared.workstation/Long", path: expect.stringMatching(/^\/workspace\/videos\//) });
+    expect(s.workstation.server.videos).toEqual([{ recipe: "long", prompt: "She keeps walking", extend: mp4.toString("base64"), duration: 6 }]);
+    await expect(s.run({ action: "extend", prompt: "x" })).rejects.toThrow("extend needs video");
+    expect(s.heard).toEqual([]);
+  });
   it("hands a clip to the background when lyricad runs clips, so her turn ends, and the clip comes back when it's made", async () => {
     const s = await setup();
     s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.clip]);

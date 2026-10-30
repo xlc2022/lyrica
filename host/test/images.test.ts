@@ -4,8 +4,8 @@ import net, { type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { Comfy, mp4Seconds, samplingProgress } from "../src/comfy.ts";
-import { Images, inputImage, recipeSize, videoValues } from "../src/images.ts";
+import { Comfy, mp4Seconds, mp4Video, samplingProgress } from "../src/comfy.ts";
+import { clipPlan, Images, inputImage, recipeSize, videoValues } from "../src/images.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import { scanParts } from "../src/parts.ts";
 import { present, RecipeBook, loadStarters, type Recipe } from "../src/recipes.ts";
@@ -76,6 +76,32 @@ function mp4(seconds: number, version: 0 | 1 = 0): Buffer {
     mvhd.writeUInt32BE(seconds * 600, 16);
   }
   return Buffer.concat([box("ftyp", Buffer.from("isom\0\0\x02\0", "latin1")), box("mdat", Buffer.alloc(64)), box("moov", box("mvhd", mvhd))]);
+}
+/** A clip with a video track: its size, frame count and frame rate in tkhd, mdhd and stts, as an encoder writes them. */
+function clip(width: number, height: number, frames: number, fps: number): Buffer {
+  const box = (type: string, ...body: Buffer[]) => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(8 + body.reduce((n, b) => n + b.length, 0), 0);
+    head.write(type, 4, "latin1");
+    return Buffer.concat([head, ...body]);
+  };
+  const tkhd = Buffer.alloc(84);
+  tkhd.writeUInt32BE(width << 16, 76);
+  tkhd.writeUInt32BE(height << 16, 80);
+  const mdhd = Buffer.alloc(24);
+  mdhd.writeUInt32BE(fps * 512, 12);
+  mdhd.writeUInt32BE(frames * 512, 16);
+  const hdlr = (kind: string) => { const b = Buffer.alloc(24); b.write(kind, 8, "latin1"); return b; };
+  const stts = Buffer.alloc(16);
+  stts.writeUInt32BE(1, 4);
+  stts.writeUInt32BE(frames, 8);
+  stts.writeUInt32BE(512, 12);
+  const sound = box("trak", box("tkhd", Buffer.alloc(84)), box("mdia", box("mdhd", Buffer.alloc(24)), box("hdlr", hdlr("soun"))));
+  const video = box("trak", box("tkhd", tkhd), box("mdia", box("mdhd", mdhd), box("hdlr", hdlr("vide")), box("minf", box("stbl", box("stts", stts)))));
+  const mvhd = Buffer.alloc(100);
+  mvhd.writeUInt32BE(600, 12);
+  mvhd.writeUInt32BE(Math.round(frames / fps * 600), 16);
+  return Buffer.concat([box("ftyp", Buffer.from("isom\0\0\x02\0", "latin1")), box("moov", box("mvhd", mvhd), sound, video)]);
 }
 // Comfy-Org's RIFE 4.26 for ComfyUI's own frame interpolation nodes.
 const RIFE = safetensors({ "blocks.0.conv0.0.0.weight": {}, "blocks.0.lastconv.0.weight": {}, "encode.cnn0.weight": {}, "encode.cnn3.weight": { shape: [16, 4, 4, 4] } });
@@ -294,6 +320,53 @@ describe("video parts", () => {
       expect(t.video, t.name).toBeDefined();
       expect(t.workflow.save!.class_type, t.name).toBe("SaveVideoWebsocket");
     }
+  });
+});
+
+describe("long videos", () => {
+  const h3 = TEMPLATES.get("minimax-h3")!;
+  const frames = (plan: number[]) => plan.map((s) => Number(videoValues(h3.video!, s, 1344, 768, 8).frames));
+
+  it("chains H3 clips of at most 8 seconds, each next one starting from the last 22 frames", () => {
+    expect(h3.continuation).toMatchObject({ overlap: 22, clipSeconds: 8 });
+    expect(TEMPLATES.has("minimax-h3-continue")).toBe(false);
+    // Up to 8 seconds is one clip; past it near-equal clips, whose new frames cover what was asked.
+    expect(clipPlan(h3.video!, h3.continuation, 8)).toEqual([8]);
+    for (const seconds of [9, 16, 30, 60]) {
+      const made = frames(clipPlan(h3.video!, h3.continuation, seconds));
+      expect(Math.max(...made), `${seconds} s`).toBeLessThanOrEqual(192);
+      expect(made[0]! + made.slice(1).reduce((n, f) => n + f - 22, 0), `${seconds} s`).toBeGreaterThanOrEqual(seconds * 24);
+    }
+    expect(clipPlan(h3.video!, h3.continuation, 16)).toHaveLength(3);
+    expect(clipPlan(h3.video!, h3.continuation, 60)).toHaveLength(9);
+    // Extending, every clip is a continuation; without one, a template makes one clip.
+    const added = frames(clipPlan(h3.video!, h3.continuation, 4, true));
+    expect(added).toHaveLength(1);
+    expect(added[0]! - 22).toBeGreaterThanOrEqual(96);
+    expect(clipPlan(TEMPLATES.get("wan22-5b")!.video!, undefined, 8)).toEqual([8]);
+  });
+
+  it("fills the continuation: the clip so far's tail anchors frame 0, and the new clip joins on after its overlap", () => {
+    const p = (role: Recipe["parts"][number]["role"], file: string, slot: string | null = null) => ({ role, slot, file, added: false });
+    const starter = STARTERS.find((s) => s.id === "minimax-h3-turbo")!;
+    const next = fill({ ...h3, workflow: h3.continuation!.workflow }, [
+      p("diffusion", "h3.safetensors"), p("lora", "turbo.safetensors", "speed"), p("text_encoder", "vl.safetensors", "qwen3vl_32b"),
+      p("vae", "v.safetensors"), p("vae", "a.safetensors", "audio"),
+    ], [], { negativePrompt: "", ...starter.defaults, prompt: "x", seed: 2, width: 1344, height: 768, overlap: 22, previous: "lyrica-previous.mp4", ...videoValues(h3.video!, 6, 1344, 768, 8) });
+    expect(next.previous!.inputs).toEqual({ file: "lyrica-previous.mp4" });
+    expect(next.tail!.inputs).toEqual({ video: ["previous", 0], frames: 22 });
+    expect(next.cond!.inputs).not.toHaveProperty("first_frame");
+    expect(next.anchor!.inputs).toEqual({ positive: ["cond", 0], vae: ["load_vae", 0], audio_vae: ["load_vae_audio", 0], latent: ["cond", 1], image: ["tail", 0], audio: ["tail", 1], frame_idx: 0 });
+    expect(next.guide!.inputs.conditioning).toEqual(["anchor", 0]);
+    expect(next.join!.inputs).toEqual({ previous: ["previous", 0], images: ["decode", 0], audio: ["sound", 0], fps: 24, overlap: 22 });
+    expect(next.save!.inputs.video).toEqual(["join", 0]);
+    expect(JSON.stringify(next)).not.toContain("$");
+  });
+
+  it("reads a clip's size, frame count and frame rate from its video track", () => {
+    expect(mp4Video(clip(1344, 768, 192, 24))).toEqual({ width: 1344, height: 768, frames: 192, fps: 24 });
+    expect(mp4Video(mp4(3))).toBeNull();
+    expect(mp4Video(PNG)).toBeNull();
   });
 });
 
@@ -876,6 +949,55 @@ describe("the image API", () => {
     const listed = (await s.api("/host/v1/recipes")).body.recipes;
     expect(listed.find((r: Recipe) => r.id === z.id)).not.toHaveProperty("unsupported");
     expect(listed.find((r: Recipe) => r.name === "From a newer host")).toMatchObject({ does: [], ready: false, unsupported: expect.stringContaining("no template future-model") });
+  });
+
+  it("makes a long video and extends a clip as chained clips in one GPU hold, and refuses what it can't chain", async () => {
+    const s = await stack({ files: {
+      "v/minimax_h3_fl2va_pruned_int8_convrot.safetensors": H3, "v/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors": H3_LORA,
+      "v/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": QWEN3VL_32B, "v/minimax_h3_video_vae_int8_convrot.safetensors": H3_VAE,
+      "v/minimax_h3_audio_vae_fp32.safetensors": H3_AUDIO_VAE,
+      "w/wan2.2_ti2v_5B_fp16.safetensors": WAN_5B, "w/wan2.2_vae.safetensors": WAN22_VAE, "w/umt5.safetensors": UMT5,
+    } });
+    const { body } = await s.api("/host/v1/recipes?state=proposed");
+    const h3r: Recipe = body.recipes.find((r: Recipe) => r.arch === "minimax-h3");
+    const wan: Recipe = body.recipes.find((r: Recipe) => r.arch === "wan2.2-5b");
+    expect(h3r).toMatchObject({ does: ["video", "animate", "extend"], video: { maxSeconds: 15, longestSeconds: 60 } });
+    expect(wan).toMatchObject({ does: ["video", "animate"], video: { maxSeconds: 8, longestSeconds: 8 } });
+    await s.api("/host/v1/recipes/confirm", { body: { ids: [h3r.id, wan.id] } });
+
+    // 16 seconds: a first clip, then two continuations, each from the clip so far, with the next seed.
+    const made = await s.api("/host/v1/videos/create", { body: { recipe: h3r.id, prompt: MARKER, duration: 16, seed: 5 } });
+    expect(made.status).toBe(200);
+    const [first, second, third] = s.comfyFake.seen.prompts;
+    expect(s.comfyFake.seen.prompts).toHaveLength(3);
+    expect(first.cond.inputs.length).toBe(141);
+    expect(first).not.toHaveProperty("anchor");
+    expect(second.previous.inputs.file).toBe("lyrica-previous.mp4");
+    expect([second.cond.inputs.length, third.cond.inputs.length]).toEqual([158, 158]);
+    expect([first.noise.inputs.noise_seed, second.noise.inputs.noise_seed, third.noise.inputs.noise_seed]).toEqual([5, 6, 7]);
+    // The fake's clip has no video track, so the length is counted: each continuation adds its frames past the overlap.
+    expect(made.body.video).toMatchObject({ frames: 141 + 2 * (158 - 22), fps: 24, audio: true, seed: 5 });
+    expect(s.comfyFake.seen.uploads.filter((u: string) => u === "lyrica-previous.mp4").length).toBe(4);
+
+    // Extending adds continuations only, at the clip's own size, and reads the result's length from the clip.
+    const before = s.comfyFake.seen.prompts.length;
+    const extended = await s.api("/host/v1/videos/create", { body: { recipe: h3r.id, prompt: "x", extend: clip(1024, 576, 120, 24).toString("base64"), duration: 4 } });
+    expect(extended.status).toBe(200);
+    const added = s.comfyFake.seen.prompts.slice(before);
+    expect(added).toHaveLength(1);
+    expect(added[0].cond.inputs).toMatchObject({ width: 1024, height: 576, length: 124 });
+    expect(extended.body.video.frames).toBe(120 + 124 - 22);
+
+    const refused = async (extra: object, recipe = h3r.id) => (await s.api("/host/v1/videos/create", { body: { recipe, prompt: "x", ...extra } })).body.error.message;
+    expect(await refused({ duration: 61 })).toMatch(/from 1 to 60/);
+    expect(await refused({ duration: 9 }, wan.id)).toMatch(/from 1 to 8/);
+    expect(await refused({ extend: clip(1024, 576, 120, 24).toString("base64") }, wan.id)).toBe("That recipe can't extend a clip.");
+    expect(await refused({ extend: clip(1024, 576, 80, 16).toString("base64") })).toMatch(/16 fps; this recipe continues 24 fps/);
+    expect(await refused({ extend: clip(1000, 576, 120, 24).toString("base64") })).toMatch(/steps of 32/);
+    expect(await refused({ extend: clip(1024, 576, 120, 24).toString("base64"), width: 1024 })).toMatch(/keeps its own size/);
+    expect(await refused({ extend: clip(1024, 576, 120, 24).toString("base64"), image: PNG.toString("base64") })).toMatch(/no image/);
+    expect(await refused({ extend: PNG.toString("base64") })).toMatch(/video track/);
+    expect(s.lines.join("\n")).not.toContain(MARKER);
   });
 
   it("makes a clip and its poster from a video recipe, timed and sized by its template", async () => {

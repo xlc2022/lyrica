@@ -773,7 +773,10 @@ as `{ "parts": [...] }`, each entry like this:
   (upscale), and the video ones: `wan2.2-5b`, `ltx2` and `minimax-h3`
   (video and animate), `wan2.2-t2v-14b` (video), `wan2.2-i2v-14b`
   (animate) and `scail2` (motion). A model with two experts takes both in
-  one recipe, and only the LoRAs its template names.
+  one recipe, and only the LoRAs its template names. A file that names a
+  template under `continues` (`minimax-h3-continue.json`) is that
+  template's continuation, the workflow that makes the next clip of a
+  longer video, not a template of its own.
 
 ### Recipes
 
@@ -810,9 +813,13 @@ as `{ "parts": [...] }`, each entry like this:
 - `does`: what it can be used for: `create`, `edit`, `upscale`, or for a
   video recipe `video` (from a prompt), `animate` (from a first frame) and
   `motion` (an image's subject moved as a driving clip's person moves).
+  A video recipe whose template has a continuation (MiniMax H3) also
+  lists `extend`: it adds to a clip, and chains clips past `maxSeconds`.
 - `video`: a video recipe's timing, from its template: `{ "fps": 24,
   "frameStep": 4, "frameOffset": 1, "sizeStep": 32, "maxSeconds": 8,
-  "audio": false }`. Clips have `frameStep × k + frameOffset` frames, and
+  "audio": false, "longestSeconds": 8 }`. `maxSeconds` is its longest
+  clip, `longestSeconds` its longest video: 60 with a continuation, else
+  `maxSeconds`. Clips have `frameStep × k + frameOffset` frames, and
   width and height are multiples of `sizeStep`. A template may take an
   optional `interpolator` part (Wan 2.2 14B's do, with `"interpolate": 2`):
   a recipe is ready without one, or while it downloads, and once its file
@@ -968,7 +975,7 @@ newer host made, read after a rollback).
 
   ```json
   { "recipe": "<id>", "prompt": "...", "negativePrompt": "...",
-    "image": "<base64>", "drive": "<base64 MP4>", "width": 1280, "height": 704,
+    "image": "<base64>", "drive": "<base64 MP4>", "extend": "<base64 MP4>", "width": 1280, "height": 704,
     "aspectRatio": "16:9", "duration": 5,
     "steps": 20, "cfg": 5.0, "seed": 1234 }
   ```
@@ -986,8 +993,21 @@ newer host made, read after a rollback).
   `sizeStep`; left out, they are the recipe's area in the shape of
   `aspectRatio` (`width:height`, 1:4 to 4:1, never with a size), or when
   animating the image's, or else the recipe's own size. `duration` is seconds, 1 to the
-  recipe's `maxSeconds` (default 5), made into the model's nearest frame
-  count at or above it. `steps`, `cfg` and `seed` as for images; a
+  recipe's `longestSeconds` (default 5), made into the model's nearest frame
+  count at or above it. Past the recipe's longest clip, a template with a
+  continuation chains clips: near-equal clips of at most its
+  continuation's `clipSeconds` (8 for H3, which may cut to a new shot
+  inside a longer clip), the first made as usual and each next one from
+  the clip so far, whose last `overlap` frames (22 for H3) and their sound
+  anchor the new clip's frame 0; the new clip's first `overlap` frames are
+  dropped and the rest appended. Each clip takes the next seed, they hold
+  the GPU as one job with one progress, weighted by frames, and one MP4
+  comes back. With `extend`, an MP4 of at most 64 MB at the recipe's frame
+  rate and a size it makes (and no `image`, `drive` or size), the recipe
+  must list `extend`: `duration` (1 to 60) is the seconds to add, made by
+  continuations only, and the answer is the whole clip. ComfyUI joins the
+  clips (our `clip_chain.py`), re-encoding one segment at a time.
+  `steps`, `cfg` and `seed` as for images; a
   template whose model takes no CFG (MiniMax H3, LTX-2.5 distilled)
   ignores `cfg`. Answers:
 
@@ -1000,8 +1020,8 @@ newer host made, read after a rollback).
   The clip is H.264 MP4, with AAC sound when `audio` is true (LTX-2.5,
   MiniMax H3). ComfyUI encodes it in memory (our `SaveVideoWebsocket`
   node) and sends it, and the poster, over its websocket, so nothing is
-  written to disk. A first frame and a driving clip go to ComfyUI's input
-  folder, which is in memory, and are written over once the job is done. A video job may run for two hours before it times out;
+  written to disk. A first frame, a driving clip and the clip so far go to ComfyUI's input
+  folder, which is in memory, and are written over once each clip is done. Each clip of a video may run for two hours before it times out;
   it holds ComfyUI's GPU while it runs, like an image job. Errors are as
   for images; on a stable-diffusion.cpp host every video job is
   `invalid`.

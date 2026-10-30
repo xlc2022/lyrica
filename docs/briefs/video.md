@@ -152,5 +152,7 @@ The owner chose, in order:
 - 2026-10-30, first real run of the H3 Turbo starter, on the Blackwell
   workstation (RTX PRO 6000, 102 GB): a default clip (1344×768, 5 s,
   8 steps) in about 2 minutes. Quality not yet judged.
+- 2026-10-30, videos past one clip and extending a clip:
+  [long-videos.md](long-videos.md).
 - Next: the 14B (fp8 and Q5) and LTX-2.5 starters on a real GPU; H3's
   quality against more steps.

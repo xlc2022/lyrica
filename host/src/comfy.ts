@@ -232,38 +232,69 @@ export class Comfy implements Backend {
   }
 }
 
-/** An upload's fixed name: a driving clip keeps its kind, so ComfyUI's LoadVideo lists it. */
-const uploadName = (key: string, data: Buffer) => `lyrica-${key}.${mp4Seconds(data) === null ? "png" : "mp4"}`;
+/** An upload's fixed name: a clip (its `ftyp` box first) keeps its kind, so ComfyUI's LoadVideo lists it. */
+const uploadName = (key: string, data: Buffer) => `lyrica-${key}.${data.length > 12 && data.toString("latin1", 4, 8) === "ftyp" ? "mp4" : "png"}`;
 
 /**
  * How long an MP4 or QuickTime clip runs, from its movie header (`moov` › `mvhd`), or null when
  * `b` isn't one. Only the top-level boxes and the movie header are read.
  */
 export function mp4Seconds(b: Buffer): number | null {
-  if (b.length < 16 || b.toString("latin1", 4, 8) !== "ftyp") return null;
-  const box = (from: number, to: number, type: string): [number, number] | null => {
-    for (let i = from; i + 8 <= to;) {
-      let size = b.readUInt32BE(i);
-      let head = 8;
-      if (size === 1) {
-        if (i + 16 > to) return null;
-        size = Number(b.readBigUInt64BE(i + 8));
-        head = 16;
-      } else if (size === 0) size = to - i;
-      if (size < head || i + size > to) return null;
-      if (b.toString("latin1", i + 4, i + 8) === type) return [i + head, i + size];
-      i += size;
-    }
-    return null;
-  };
-  const moov = box(0, b.length, "moov");
-  const mvhd = moov && box(moov[0], moov[1], "mvhd");
+  const moov = mp4Moov(b);
+  const mvhd = moov && mp4Box(b, moov[0], moov[1], "mvhd");
   if (!mvhd || mvhd[1] - mvhd[0] < 32) return null;
   const v1 = b[mvhd[0]] === 1;
   const scale = b.readUInt32BE(mvhd[0] + (v1 ? 20 : 12));
   const length = v1 ? Number(b.readBigUInt64BE(mvhd[0] + 24)) : b.readUInt32BE(mvhd[0] + 16);
   return scale > 0 && length > 0 ? length / scale : null;
 }
+
+/** An MP4's video track: its size, frame count and frame rate, from its headers. */
+export function mp4Video(b: Buffer): { width: number; height: number; frames: number; fps: number } | null {
+  const moov = mp4Moov(b);
+  for (let at = moov?.[0] ?? 0; moov;) {
+    const trak = mp4Box(b, at, moov[1], "trak");
+    if (!trak) return null;
+    at = trak[1];
+    const inside = (from: [number, number] | null, ...path: string[]) => path.reduce<[number, number] | null>((r, type) => r && mp4Box(b, r[0], r[1], type), from);
+    const mdia = inside(trak, "mdia");
+    const hdlr = inside(mdia, "hdlr");
+    if (!hdlr || hdlr[1] - hdlr[0] < 12 || b.toString("latin1", hdlr[0] + 8, hdlr[0] + 12) !== "vide") continue;
+    const tkhd = inside(trak, "tkhd");
+    const mdhd = inside(mdia, "mdhd");
+    const stts = inside(mdia, "minf", "stbl", "stts");
+    if (!tkhd || tkhd[1] - tkhd[0] < 84 || !mdhd || mdhd[1] - mdhd[0] < 24 || !stts || stts[1] - stts[0] < 8) return null;
+    const v1 = b[mdhd[0]] === 1;
+    const scale = b.readUInt32BE(mdhd[0] + (v1 ? 20 : 12));
+    const length = v1 ? Number(b.readBigUInt64BE(mdhd[0] + 24)) : b.readUInt32BE(mdhd[0] + 16);
+    let frames = 0;
+    const entries = b.readUInt32BE(stts[0] + 4);
+    for (let i = 0; i < entries && stts[0] + 16 + i * 8 <= stts[1]; i++) frames += b.readUInt32BE(stts[0] + 8 + i * 8);
+    if (!scale || !length || !frames) return null;
+    // Width and height are 16.16 fixed point, the header's last eight bytes.
+    return { width: b.readUInt32BE(tkhd[1] - 8) >>> 16, height: b.readUInt32BE(tkhd[1] - 4) >>> 16, frames, fps: frames * scale / length };
+  }
+  return null;
+}
+
+/** The payload of the first `type` box between `from` and `to`, or null. */
+function mp4Box(b: Buffer, from: number, to: number, type: string): [number, number] | null {
+  for (let i = from; i + 8 <= to;) {
+    let size = b.readUInt32BE(i);
+    let head = 8;
+    if (size === 1) {
+      if (i + 16 > to) return null;
+      size = Number(b.readBigUInt64BE(i + 8));
+      head = 16;
+    } else if (size === 0) size = to - i;
+    if (size < head || i + size > to) return null;
+    if (b.toString("latin1", i + 4, i + 8) === type) return [i + head, i + size];
+    i += size;
+  }
+  return null;
+}
+
+const mp4Moov = (b: Buffer) => b.length < 16 || b.toString("latin1", 4, 8) !== "ftyp" ? null : mp4Box(b, 0, b.length, "moov");
 
 /** Width and height of a PNG, JPEG or WebP, from its header. */
 export function imageSize(b: Buffer): { width: number; height: number; type: "png" | "jpeg" | "webp" } | null {

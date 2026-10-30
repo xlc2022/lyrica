@@ -1,7 +1,7 @@
 import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateImageRequest, type ImageRequest, type GeneratedImage } from "./images.ts";
 export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
 import { validateVideoRequest, videoAt, type GeneratedVideo, type VideoRequest } from "./videos.ts";
-export { isMp4, type GeneratedVideo, type VideoRequest } from "./videos.ts";
+export { isMp4, LONGEST_VIDEO_SECONDS, type GeneratedVideo, type VideoRequest } from "./videos.ts";
 export { type JobProgress, withProgress } from "./progress.ts";
 import type { JobProgress } from "./progress.ts";
 export { CODEX_DISABLED, codexImage, codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn } from "./codex.ts";
@@ -214,6 +214,10 @@ export interface Offering extends Capabilities {
   recipe?: string;
   /** A host recipe that edits says whether its edits take a mask; false skips it for a masked edit. */
   mask?: boolean;
+  /** A host video recipe that adds to a clip, and chains clips into a video past its longest clip. */
+  extend?: boolean;
+  /** A host video recipe's longest video in seconds (host/API.md, "Recipes"); a longer request is skipped. */
+  longestSeconds?: number;
   /** "Not this model": kept out of the entry its name would put it in. */
   separate?: boolean;
   /** A host's chat template writes `<think>` itself, so a reply can start mid-thought. */
@@ -355,7 +359,7 @@ export interface CleanupItem {
  * What a call needs from a model: tools, room for the conversation, or an image create tier.
  * `first`: models asked for by name, tried before the list for this one call (`namedImageModels`).
  */
-export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; animate?: boolean; motion?: boolean; first?: string[] }
+export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; animate?: boolean; motion?: boolean; extend?: boolean; seconds?: number; first?: string[] }
 /** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
 export interface ResolveOptions { evenIfDown?: boolean; except?: ReadonlySet<string> }
 
@@ -520,7 +524,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; extend?: boolean; longestSeconds?: number; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -536,6 +540,8 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.size ? { size: caps.size } : {}),
     ...(caps.recipe ? { recipe: caps.recipe, useFor: caps.useFor ?? "both" } : {}),
     ...(caps.mask !== undefined ? { mask: caps.mask } : {}),
+    ...(caps.extend ? { extend: true } : {}),
+    ...(typeof caps.longestSeconds === "number" ? { longestSeconds: caps.longestSeconds } : {}),
     ...(caps.separate ? { separate: true } : {}),
     ...(caps.opensThinking ? { opensThinking: true } : {}),
     ...(caps.alwaysThinks ? { alwaysThinks: true } : {}),
@@ -1708,11 +1714,12 @@ export class Models {
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
     // Image and video models are recipes: only confirmed ones become offerings, so a proposal never resolves.
     // A recipe that does nothing Lyrica can ask for isn't one, so it never shows as a chat model.
-    const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"]; mask?: boolean }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
+    const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"]; mask?: boolean; video?: { longestSeconds?: unknown } }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
       .filter((r) => r?.state === "confirmed" && r.does?.some((a) => RECIPE_ACTIONS.includes(a))).map((r) => ({
         modelId: `recipe/${r.id}`, recipe: r.name, useFor: r.useFor ?? "both", ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true, ...(typeof r.mask === "boolean" ? { mask: r.mask } : {}) } : {}), ...(r.does?.includes("upscale") ? { upscale: true } : {}),
         ...(r.does?.includes("video") ? { video: true } : {}), ...(r.does?.includes("animate") ? { animate: true } : {}),
-        ...(r.does?.includes("motion") ? { motion: true } : {}),
+        ...(r.does?.includes("motion") ? { motion: true } : {}), ...(r.does?.includes("extend") ? { extend: true } : {}),
+        ...(typeof r.video?.longestSeconds === "number" && r.video.longestSeconds > 0 ? { longestSeconds: r.video.longestSeconds } : {}),
       } as DiscoveredModel));
     return [...list.filter((m) => typeof m?.id === "string" && m.kind !== "image").map((m) => {
       const levels = (m.capabilities?.reasoning ?? []).filter((l) => l !== "off");
@@ -2730,12 +2737,31 @@ export class Models {
   }
 
   /**
+   * The first model on the context's Videos list that could make a clip now, for the image tool's description:
+   * its name, its longest video and whether it extends clips. No model is called.
+   */
+  firstVideoModel(ctx: CallContext): { name: string; longestSeconds?: number; extend: boolean } | undefined {
+    const c = this.catalog(ctx.userId);
+    for (const ref of this.listFor("video", ctx, c)?.list ?? []) {
+      for (const raw of "offeringId" in ref ? [ref.offeringId] : c.groups.get(ref.groupId)?.members ?? []) {
+        const id = this.follow(raw), o = id ? c.offerings.get(id) : undefined, ep = o && c.endpoints.get(o.endpointId);
+        if (!o || !ep || this.unfit("video", o, ep, {}) || this.away(ep, {}, o)) continue;
+        return { name: modelName(o), ...(o.longestSeconds ? { longestSeconds: o.longestSeconds } : {}), extend: !!o.extend };
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * One clip from the context's Videos list, in memory; the caller stores it and records the call.
    * Local models only: a cloud video model is never resolved, whatever the list holds.
    */
   async video(ctx: CallContext, request: VideoRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void } = {}): Promise<{ video: GeneratedVideo; resolution: Resolution }> {
     validateVideoRequest(request);
-    return this.callWithFallback("video", ctx, request.drive ? { motion: true } : { animate: !!request.image }, async (r) => {
+    const need: Need = request.extend ? { extend: true } : request.drive ? { motion: true } : { animate: !!request.image };
+    // Extending, the duration is what's added, whatever the clip's length.
+    if (request.duration !== undefined && !request.extend && !request.drive) need.seconds = request.duration;
+    return this.callWithFallback("video", ctx, need, async (r) => {
       opts.signal?.throwIfAborted();
       await opts.beforeSend?.(r);
       opts.signal?.throwIfAborted();
@@ -3116,8 +3142,10 @@ export class Models {
     if (task === "image.create" && !o.image) return "it doesn't make images";
     // Only a model host makes clips, and only one whose recipe does what the call needs.
     if (task === "video" && ep.api !== "host") return "only a model host makes videos";
-    if (task === "video" && need.motion && !o.motion) return "it doesn't move an image as a clip does";
-    if (task === "video" && !need.motion && (need.animate ? !o.animate : !o.video)) return need.animate ? "it doesn't animate images" : "it doesn't make videos from a prompt";
+    if (task === "video" && need.extend) { if (!o.extend) return "it doesn't extend clips"; }
+    else if (task === "video" && need.motion && !o.motion) return "it doesn't move an image as a clip does";
+    else if (task === "video" && !need.motion && (need.animate ? !o.animate : !o.video)) return need.animate ? "it doesn't animate images" : "it doesn't make videos from a prompt";
+    if (task === "video" && need.seconds !== undefined && o.longestSeconds && need.seconds > o.longestSeconds) return `it makes videos of at most ${o.longestSeconds} s`;
     if (task === "vision" && !o.vision) return "it can't see images";
     // Cloud adapters constrain their tasks; local endpoints keep capability-based routing.
     if (task.startsWith("image.") && ep.kind === "cloud") {
