@@ -200,14 +200,20 @@ The cheapest mechanism comes first:
    threads in the pool using the user's message, and inject up to five hits as
    short snippets with their IDs and dates (at most 4,000 characters). A
    message hit says who said it (`entry by Ada` or `entry by you`) and a
-   journal hit says `your journal` (a tool result says `tool result`), so the model doesn't blend what the user
+   journal hit says `your journal` (in the `recall` tool, a tool result says `tool result`), so the model doesn't blend what the user
    asked with her own replies and dreams. (A thread shared from another user
    is the recipient's from then on, so its messages read as theirs.) The
    search leaves out her own name, which nearly everything mentions, and when
    the message has three words or more (after stopwords), a hit must hold at
    least two of them (each as a word or a word's start; a user's name counts
-   once, written or as a mention). One shared word in a longer message
-   doesn't bring up an unrelated conversation. Her instructions say that recall and WAKE are background:
+   once, written or as a mention). A word in more than 2% of the index (and
+   more than 20 items) is common: it still finds and ranks hits but doesn't
+   count, so a hit must hold two of the message's other words (or all of
+   them, or one for a short message), and a message of only common words
+   ("create another one") recalls nothing. Automatic recall finds only what
+   was said: it leaves out tool results and matches a message on its text,
+   never its tool calls (the `recall` tool still finds both). One shared word
+   in a longer message doesn't bring up an unrelated conversation. Her instructions say that recall and WAKE are background:
    what the person asks outranks what memory brings up, she raises other work
    only when the message is about it, and a topic the person asked to drop is
    left without naming it and stays dropped (and unread) until they bring it back.
@@ -237,7 +243,8 @@ project items or notes tagged with the whole `working` word. It reuses
 project membership and the memory browser's whole-tag matching. Filtering
 happens before the candidate cut, so unrelated high-ranked hits cannot
 crowd out project memory. It scans candidates in doubling batches, at
-most 2,000 per search. Without project membership, including in the
+most 2,000 per search. Every search filters this way, so hits automatic
+recall drops (tool calls, common words) don't crowd out the ones it keeps. Without project membership, including in the
 general pool read by a private view, only tagged notes pass. Omitting
 `only` leaves ordinary search unchanged.
 

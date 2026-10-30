@@ -40,7 +40,7 @@ export const UNLOGGED_NOTICE =
   "You can still read what you already remember. Don't promise to remember anything from it.";
 
 const RECALL_HITS = 5;
-/** In a message of three words or more, an automatic recall hit holds two of them, so one shared word doesn't bring up an unrelated conversation. */
+/** In a message of three words or more, an automatic recall hit holds two of them, and words common in her memory don't count, so filler doesn't bring up an unrelated conversation. */
 const RECALL_WORDS = 2;
 
 const words = (t: string) => new Set(t.toLowerCase().replace(/\[[^\]]*\]/g, " ").replace(/\{user[^}]*\}/g, " user ").match(/[\p{L}\p{N}]+/gu) ?? []);
@@ -69,7 +69,7 @@ export async function memorySections(view: PoolView, prompt: string, ctx: Memory
   const index = own.pageIndex().map((p) => `- [${p.id}] ${p.title}: ${p.summary}`).join("\n");
   const stores = [{ prefix: "", store: own }, ...view.reads.map((store) => ({ prefix: `${store.pool}/`, store }))];
   const folderPages = stores.flatMap(({ prefix, store }) => store.forFolders(ctx.folders).map((p) => ({ ...p, id: prefix + p.id })));
-  const hits = prompt.trim() ? search(view, prompt, { current: true, limit: RECALL_HITS, minWords: RECALL_WORDS, skip: ctx.name ? [ctx.name] : undefined, excludeThread: ctx.threadId, fromThread: ctx.code ? codeMemoryThread(view, ctx.threadId) : ctx.threadId, ...(ctx.code ? { only: { project: true, about: "working" } } : {}) }, ctx.hide) : [];
+  const hits = prompt.trim() ? search(view, prompt, { current: true, said: true, limit: RECALL_HITS, minWords: RECALL_WORDS, skip: ctx.name ? [ctx.name] : undefined, excludeThread: ctx.threadId, fromThread: ctx.code ? codeMemoryThread(view, ctx.threadId) : ctx.threadId, ...(ctx.code ? { only: { project: true, about: "working" } } : {}) }, ctx.hide) : [];
   const item = own.itemForThread(ctx.threadId);
   return {
     notice: own.getThread(ctx.threadId)?.unlogged ? UNLOGGED_NOTICE : undefined,

@@ -156,6 +156,40 @@ describe("notes", () => {
     expect(own.search("tea", auto)[0]!.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
+  it("automatic recall finds what was said, not tool calls or their results", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const thread = own.createThread({ interface: "cli" }).id;
+    const add = (role: string, content: unknown, text: string) =>
+      own.appendEntry(thread, { piId: `p${text.length}`, role, data: { type: "message", message: { role, content } }, text });
+    const call = add("assistant", [{ type: "toolCall", name: "threads", arguments: { task: "paint the garden fence green" } }], 'threads({"task":"paint the garden fence green"})');
+    const result = add("toolResult", [{ type: "text", text: "garden fence painted green" }], "threads: garden fence painted green");
+    const spoken = add("assistant", [{ type: "text", text: "The garden fence is green now." }, { type: "toolCall", name: "bash", arguments: { command: "paint" } }], "The garden fence is green now.\nbash({\"command\":\"paint\"})");
+    const auto = { minWords: 2, said: true };
+    expect(own.search("garden fence green").map((h) => h.id).sort()).toEqual([call, result, spoken].sort());
+    expect(own.search("garden fence green", auto).map((h) => h.id)).toEqual([spoken]);
+    expect(own.search("garden fence green", auto)[0]!.snippet).toBe("The garden fence is green now.");
+    // A message that matches only through its tool call isn't recalled.
+    expect(own.search("paint command").map((h) => h.id)).toContain(spoken);
+    expect(own.search("paint command", auto)).toEqual([]);
+  });
+
+  it("automatic recall doesn't count words common in her memory", async () => {
+    const { memory, ada } = await setup();
+    const { own } = memory.openThreadView(ada.id, "general");
+    const s = said(own, "plans");
+    for (let i = 0; i < 30; i++) said(own, `create one more thing, number ${i}`);
+    const [brief, fox] = own.addNotes([
+      { text: "Create another one: a brief for the sidebar fix", source: s.entry },
+      { text: "{user} wants another picture of the red fox", source: s.entry },
+    ], { author: "lyrica", thread: s.thread });
+    const auto = { minWords: 2 };
+    // "create" and "one" are in most of her memory: they can't carry a match on their own.
+    expect(own.search("Create another one of a fox").map((h) => h.id)).toContain(brief);
+    expect(own.search("Create another one of a fox", auto).map((h) => h.id)).toEqual([fox]);
+    expect(own.search("Create one", auto)).toEqual([]);
+  });
+
   it("counts a message from another of her threads as hers, not the person's", async () => {
     const { memory, ada } = await setup();
     const { own } = memory.openThreadView(ada.id, "general");
