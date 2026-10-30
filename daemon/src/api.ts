@@ -1548,7 +1548,10 @@ export interface FileRoot { path: string; writable: boolean; kind: "thread" | "s
 export interface FileListing { roots: FileRoot[]; dir: string; entries: FileEntry[]; more: boolean }
 /** GET …/files/search?root=<path>&q=<text> → FileSearch: names containing the text under that root, at most 200. */
 export interface FileSearch { entries: FileEntry[]; more: boolean }
-/** GET …/files/images → ImageEntry[]: every image in the thread's folder; `uploaded` when it is in uploads/, else `made` by her. */
+/**
+ * GET …/files/images → ImageEntry[]: every image in the thread's folder; `uploaded` when it is in uploads/, else `made` by her.
+ * GET …/files/videos → ImageEntry[]: every clip (.mp4, .webm) there, told apart the same way.
+ */
 export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
 /**
  * GET …/files/content?path=<path>[&download=1] → the file's bytes, with its type

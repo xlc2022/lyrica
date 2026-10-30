@@ -192,7 +192,7 @@ describe("image tool results (principles 1 and 4)", () => {
   it("makes a clip from a prompt or a portrait's first frame on the host, keeps it in videos/ with its poster, and shows her the poster", async () => {
     const s = await setup(); s.settings.setPhotoCloudPolicy("never");
     s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.clip]);
-    const out = await s.run({ action: "video", prompt: "A fox in the snow", aspectRatio: "16:9", duration: 5 });
+    const out = await s.run({ action: "video", prompt: "A fox in the snow", aspectRatio: "16:9", duration: 5, steps: 20 });
     const part = (out.details as { video: { path: string } }).video;
     expect(part).toMatchObject({ type: "video", model: "shared.workstation/Clip", width: 1280, height: 704, duration: 5.04, audio: false });
     expect(part.path).toMatch(/^\/workspace\/videos\/[a-f\d-]+\.mp4$/);
@@ -205,7 +205,7 @@ describe("image tool results (principles 1 and 4)", () => {
     await s.run({ action: "animate", prompt: "She waves", image: "/photos-of-me/portrait.png" });
     expect(s.asked).toEqual([]);
     expect(s.workstation.server.videos).toEqual([
-      { recipe: "clip", prompt: "A fox in the snow", aspectRatio: "16:9", duration: 5 },
+      { recipe: "clip", prompt: "A fox in the snow", aspectRatio: "16:9", duration: 5, steps: 20 },
       { recipe: "clip", prompt: "She waves", image: png.toString("base64") },
     ]);
     expect(s.models.recentCalls(s.ada.id).map(c => c.task)).toEqual(["video", "video"]);

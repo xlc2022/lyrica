@@ -755,7 +755,8 @@ documented in `daemon/src/api.ts`, "The Files panel".
   `.lyrica` folder is hidden.
 - `GET …/files/search?root=<path>&q=<text>` finds names containing the text
   under a root (at most 200). `GET …/files/images` lists every image in the
-  thread's folder, `uploaded` when it is in `uploads/`, otherwise `made` by her.
+  thread's folder, `uploaded` when it is in `uploads/`, otherwise `made` by her;
+  `GET …/files/videos` lists every clip (`.mp4`, `.webm`) the same way.
 - `GET …/files/content?path=<path>[&download=1]` streams the file with its
   type: images by their bytes, text by extension, and HTML, SVG and scripts
   as `text/plain`. Every answer carries `Content-Security-Policy: default-src
