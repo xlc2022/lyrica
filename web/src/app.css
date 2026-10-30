@@ -1171,6 +1171,11 @@ dialog.viewer > .error { position: absolute; bottom: 8px; left: 16px; }
 .igrid > button:hover { border: 0; }
 .igrid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: var(--tool); display: block; }
 .igrid > button.sel img { outline: 3px solid var(--accent); outline-offset: 1px; }
+.igrid video, .pfiles-thumb video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: var(--tool); display: block; }
+.igrid > button.sel video { outline: 3px solid var(--accent); outline-offset: 1px; }
+.vthumb { position: relative; display: block; }
+.vplay { position: absolute; left: 8px; bottom: 8px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: rgb(0 0 0 / 0.55); color: #fff; pointer-events: none; }
+.vplay svg { width: 12px; height: 12px; fill: currentColor; }
 .igrid .meta { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; display: block; }
 .igrid .empty { grid-column: 1 / -1; }
 .selbar { display: flex; align-items: center; gap: 6px; padding: 6px var(--gutter); border-top: 1px solid var(--line); font-size: 13px; background: var(--panel); }

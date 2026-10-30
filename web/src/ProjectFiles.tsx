@@ -7,12 +7,13 @@ import { kb } from "./Files.tsx";
 import { Icon } from "./icons.tsx";
 import { RowMenu } from "./Machines.tsx";
 import { her } from "./name.ts";
-import { Thumb, useFileLinks, WORKDIR } from "./paths.tsx";
+import { Thumb, useFileLinks, VideoThumb, WORKDIR } from "./paths.tsx";
 import { Viewer } from "./Viewer.tsx";
 import type { ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, InlineRename, shortTime, useAction } from "./ui.tsx";
 
-type Tab = "files" | "images";
+type Tab = "files" | "images" | "videos";
+const TAB_LABEL: Record<Tab, string> = { files: "Files", images: "Images", videos: "Videos" };
 type Filter = "all" | "uploaded" | "made";
 
 /** How many folders Move to… lists at most. */
@@ -43,7 +44,8 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
   const [tab, setTab] = useState<Tab>("files");
   const [dir, setDir] = useState(WORKDIR);
   const [listing, setListing] = useState<FileListing>();
-  const [images, setImages] = useState<ImageEntry[]>();
+  /** The Images or Videos grid's entries, for the tab shown. */
+  const [media, setMedia] = useState<{ tab: Tab; entries: ImageEntry[] }>();
   const [filter, setFilter] = useState<Filter>("all");
   const [renaming, setRenaming] = useState<string>();
   const [adding, setAdding] = useState(false);
@@ -51,7 +53,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
   const [deleting, setDeleting] = useState<FileEntry>();
   /** The file open in the viewer, with the project chat beside it. */
   const [viewing, setViewing] = useState<FileEntry>();
-  /** The files the open one was opened among (the folder shown or the Images grid), for the viewer's steps. */
+  /** The files the open one was opened among (the folder shown or the Images or Videos grid), for the viewer's steps. */
   const [among, setAmong] = useState<FileEntry[]>();
   const view = (f: FileEntry, list?: FileEntry[]) => { setViewing(f); setAmong(list); };
   const closeViewer = useCallback(() => setViewing(undefined), []);
@@ -62,7 +64,7 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
 
   const load = useCallback(() => (tab === "files"
     ? get<FileListing>(`${base}?dir=${encodeURIComponent(dir)}`).then((l) => { setListing(l); setLoadError(""); })
-    : get<ImageEntry[]>(`${base}/images`).then((i) => { setImages(i); setLoadError(""); })
+    : get<ImageEntry[]>(`${base}/${tab}`).then((entries) => { setMedia({ tab, entries }); setLoadError(""); })
   ).catch((e: Error) => setLoadError(e.message)), [base, dir, tab]);
   useEffect(() => { void load(); }, [load]);
   // The folder is shared by every thread of the project: any thread finishing a tool call or a turn reloads it, and so does coming back to the window.
@@ -105,7 +107,8 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
     { label: "Delete…", danger: true, onPick: () => setDeleting(e) },
   ];
   const facts = (e: FileEntry) => e.kind === "folder" ? "Folder" : `${shortTime(e.modified)} · ${kb(e.size)}`;
-  const shownImages = images?.filter((i) => filter === "all" || i.source === filter);
+  const entries = media?.tab === tab ? media.entries : undefined;
+  const shownMedia = entries?.filter((i) => filter === "all" || i.source === filter);
 
   return (
     <section className={`card project-form pfiles${dropping ? " drop" : ""}`} aria-labelledby="h-files"
@@ -115,10 +118,10 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
       <h2 id="h-files">Files and images</h2>
       <div className="row pfiles-bar">
         <div className="seg" role="group" aria-label="Kind">
-          {(["files", "images"] as const).map((k) => <button key={k} type="button" aria-pressed={tab === k} onClick={() => setTab(k)}>{k === "files" ? "Files" : "Images"}</button>)}
+          {(["files", "images", "videos"] as const).map((k) => <button key={k} type="button" aria-pressed={tab === k} onClick={() => setTab(k)}>{TAB_LABEL[k]}</button>)}
         </div>
         <span className="spacer" />
-        <button type="button" className="sm" disabled={busy} onClick={() => picker.current?.click()} title={tab === "images" ? `To ${relative(dir)}` : undefined}>Upload…</button>
+        <button type="button" className="sm" disabled={busy} onClick={() => picker.current?.click()} title={tab !== "files" ? `To ${relative(dir)}` : undefined}>Upload…</button>
         {tab === "files" && <button type="button" className="sm" disabled={busy || adding} onClick={() => setAdding(true)}>New folder</button>}
       </div>
       <ErrorText error={loadError || error} />
@@ -163,11 +166,13 @@ export function FilesSection({ ctx, pool, threadId }: { ctx: ShellContext; pool:
           <div className="seg" role="group" aria-label="Show">
             {([["all", "All"], ["uploaded", "Uploaded"], ["made", `Made by ${her()}`]] as const).map(([k, l]) => <button key={k} type="button" aria-pressed={filter === k} onClick={() => setFilter(k)}>{l}</button>)}
           </div>
-          {!images ? <p className="muted">Loading…</p> : !shownImages?.length ? <p className="muted">No images yet.</p> : (
-            <ul className="pfiles-grid" aria-label="Images">
-              {shownImages.map((i) => (
+          {!entries ? <p className="muted">Loading…</p> : !shownMedia?.length ? <p className="muted">No {tab} yet.</p> : (
+            <ul className="pfiles-grid" aria-label={TAB_LABEL[tab]}>
+              {shownMedia.map((i) => (
                 <li key={i.path}>
-                  <button type="button" className="pfiles-thumb" aria-label={`Open ${i.name}`} onClick={() => view(i, shownImages)}><Thumb path={i.path} alt="" files={links} /></button>
+                  <button type="button" className="pfiles-thumb" aria-label={`Open ${i.name}`} onClick={() => view(i, shownMedia)}>
+                    {tab === "videos" ? <VideoThumb path={i.path} files={links} /> : <Thumb path={i.path} alt="" files={links} />}
+                  </button>
                   <span className="pfiles-tile">
                     {renaming === i.path
                       ? <InlineRename className="mono" value={i.name} label="New name" onSave={(n) => rename(i, n)} onDone={() => setRenaming(undefined)} />
