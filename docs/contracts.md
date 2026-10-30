@@ -371,6 +371,7 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
   id; endpointId; modelId; manual: boolean;
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
   digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host; useFor inherited from Capabilities
+  extend?; longestSeconds?;                                  // a host video recipe that adds to clips (and chains them), and its longest video
   opensThinking?;                                            // a host's chat template writes <think> itself
   alwaysThinks?;                                             // LM Studio or OpenRouter says it can't turn thinking off
   price?: { input; output; reasoning?; cacheRead?; cacheWrite?; free };   // OpenRouter's pricing, US dollars per million tokens
@@ -478,10 +479,13 @@ class Models {                                              // new Models(keyrin
   // onProgress (image() takes it too): JobProgress { queued; progress?: 0-1; busyWith?; loading? } as a model host's job goes (models/progress.ts withProgress, exported):
   // the call carries X-Lyrica-Job: <random token> and GET /host/v1/jobs/<token> is read every 2 s until it ends; a host that
   // hasn't known the job after 5 reads isn't asked again. Cloud models report none.
-  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1-15; steps?: 1-150, in place of the recipe's }
+  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); extend?: Uint8Array (a clip to add `duration` seconds to, an MP4 of at most 64 MB, with no image, drive or size); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1 to LONGEST_VIDEO_SECONDS (60); steps?: 1-150, in place of the recipe's }
   // GeneratedVideo { bytes (H.264 MP4); type: "video/mp4"; width; height; frames; fps; duration; audio; seed?; poster: GeneratedImage }
-  // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image; or `motion`, with drive) answers, so no clip
-  // or first frame reaches a cloud model. POST /host/v1/videos/create with explicit fields only; two hours at most.
+  // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image; or `motion`, with drive; or `extend`,
+  // with extend) answers, so no clip or first frame reaches a cloud model. A recipe whose `longestSeconds` is under `duration` is skipped
+  // ("it makes videos of at most N s"); a host recipe that chains clips (MiniMax H3) answers up to 60 s as one clip.
+  // POST /host/v1/videos/create with explicit fields only; two hours at most, per 5 s asked (videoTimeout), since a chain gives each clip two hours.
+  firstVideoModel(ctx): { name; longestSeconds?; extend } | undefined   // the Videos list's first usable model, for the image tool's duration; no call
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked, unset?): { level; note? }   // asked defaults to DEFAULT_THINKING ("medium"), also the per-user default; unset (CallContext.thinkingUnset) drops the can't-think note
@@ -1442,8 +1446,9 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     PNG bytes. Saved task lists are unchanged.
     `video` (`prompt`, optional `size` or `aspectRatio`, which goes to the host
     as it is, `duration`, and `steps`, only when the user asks for a number) and
-    `animate` (also `image`, the first frame) and `motion` (also `image`, the subject, and
-    `video`, a workspace MP4 read with `ThreadImages.readClip`) make one clip through
+    `animate` (also `image`, the first frame), `motion` (also `image`, the subject, and
+    `video`, a workspace MP4 read with `ThreadImages.readClip`) and `extend` (`video`, the clip to
+    make longer, and `prompt`; `duration` is the seconds to add) make one clip through
     `Models.video` and save it with `ThreadImages.saveVideo`. With
     `ImageTools.background(make, toolCallId)` (lyricad's `ClipJobs`, daemon/src/clips.ts)
     the call reads the first frame, hands `make(signal, onProgress) → ClipMade { text,

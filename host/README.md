@@ -329,7 +329,9 @@ per host, and Lyrica's router filters create tiers by it.
   (masked edits on Qwen-Image 2.1), with no plugin manager, plus our own
   `comfyui/websocket_video_save.py`, which sends a clip and its poster
   back over the websocket, and `comfyui/video_frames.py`, which picks a
-  driving clip's frames at the model's frame rate. Only those nodes load. Their Python packages go into a
+  driving clip's frames at the model's frame rate, and `comfyui/clip_chain.py`,
+  which takes a clip's last frames and joins the next clip onto it for
+  longer videos. Only those nodes load. Their Python packages go into a
   venv, each pinned with its hash in `comfyui/requirements.txt`
   (`comfyui/lock.sh` remakes it); torch is the base image's. It has no
   route out, logs nothing, keeps its input, output and temp folders in

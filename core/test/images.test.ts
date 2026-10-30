@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CloudModelForbidden, HostRefused, PLAN_IMAGE_MODEL, type ImageRequest } from "../src/index.ts";
 import { cleanPng, imageAt } from "../src/models/images.ts";
+import { VIDEO_TIMEOUT_MS, videoTimeout } from "../src/models/videos.ts";
 
 import { fakeImages as setup, mp4 } from "./fake-images.ts";
 
@@ -330,6 +331,26 @@ describe("video calls through the router (principles 1 and 2)", () => {
     const ids = s.models.offerings(s.ada.id, s.workstation.ep.id).map((o) => o.modelId);
     expect(ids).toContain("recipe/moves");
   });
+  it("sends a video past a model's longest, and a clip to extend, only to a recipe that chains clips, and names the longest", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
+    s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.clip, s.workstation.long]);
+    expect(s.models.firstVideoModel(ctx)).toEqual({ name: "Clip", longestSeconds: 8, extend: false });
+    // Up to its longest the first model makes it; past it, or to extend, the next one that can.
+    expect((await s.models.video(ctx, { prompt: "A fox", duration: 8 })).resolution.ref).toEqual(s.workstation.clip);
+    const long = await s.models.video(ctx, { prompt: "A fox", duration: 16 });
+    expect(long.resolution.ref).toEqual(s.workstation.long);
+    expect(long.resolution.skipped).toEqual([expect.objectContaining({ reason: "it makes videos of at most 8 s" })]);
+    expect((await s.models.video(ctx, { prompt: "It goes on", extend: mp4, duration: 4 })).resolution.ref).toEqual(s.workstation.long);
+    expect(s.workstation.server.videos.slice(-1)).toEqual([{ recipe: "long", prompt: "It goes on", extend: mp4.toString("base64"), duration: 4 }]);
+    s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.clip]);
+    await expect(s.models.video(ctx, { prompt: "A fox", duration: 16 })).rejects.toThrow(/at most 8 s/);
+    await expect(s.models.video(ctx, { prompt: "It goes on", extend: mp4 })).rejects.toThrow(/doesn't extend clips/);
+  });
+  it("gives a chained video a timeout per clip it may take", () => {
+    expect(videoTimeout({})).toBe(VIDEO_TIMEOUT_MS);
+    expect(videoTimeout({ duration: 8 })).toBe(2 * VIDEO_TIMEOUT_MS);
+    expect(videoTimeout({ duration: 60 })).toBe(12 * VIDEO_TIMEOUT_MS);
+  });
   it("takes a thread's own Videos pick over the column, and names any video recipe for its drawer", async () => {
     const s = await setup();
     s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.clip]);
@@ -345,7 +366,9 @@ describe("video calls through the router (principles 1 and 2)", () => {
     const s = await setup();
     s.models.setColumnTask(s.ada.id, "general", "video", [s.spare.clip]);
     await expect(s.models.video(s.ctx(), { prompt: " " })).rejects.toThrow(/needs a prompt/);
-    await expect(s.models.video(s.ctx(), { prompt: "A fox", duration: 30 })).rejects.toThrow(/1 to 15 seconds/);
+    await expect(s.models.video(s.ctx(), { prompt: "A fox", duration: 61 })).rejects.toThrow(/1 to 60 seconds/);
+    await expect(s.models.video(s.ctx(), { prompt: "A fox", extend: mp4, image: input })).rejects.toThrow(/keeps its own/);
+    await expect(s.models.video(s.ctx(), { prompt: "A fox", extend: png })).rejects.toThrow(/MP4/);
     expect(s.spare.server.videos).toEqual([]);
   });
 });

@@ -1,0 +1,162 @@
+{
+  "continues": "minimax-h3",
+  "overlap": 22,
+  "clipSeconds": 8,
+  "workflow": {
+    "previous": {
+      "class_type": "LoadVideo",
+      "inputs": {
+        "file": "$previous"
+      }
+    },
+    "tail": {
+      "class_type": "LyricaClipTail",
+      "inputs": {
+        "video": [
+          "previous",
+          0
+        ],
+        "frames": "$overlap"
+      }
+    },
+    "cond": {
+      "class_type": "MiniMaxH3ImageToVideo",
+      "inputs": {
+        "clip": "$clip",
+        "vae": "$vae",
+        "prompt": "$prompt",
+        "width": "$width",
+        "height": "$height",
+        "length": "$frames"
+      }
+    },
+    "anchor": {
+      "class_type": "MiniMaxH3AddGuide",
+      "inputs": {
+        "positive": [
+          "cond",
+          0
+        ],
+        "vae": "$vae",
+        "audio_vae": "$vae_audio",
+        "latent": [
+          "cond",
+          1
+        ],
+        "image": [
+          "tail",
+          0
+        ],
+        "audio": [
+          "tail",
+          1
+        ],
+        "frame_idx": 0
+      }
+    },
+    "guide": {
+      "class_type": "BasicGuider",
+      "inputs": {
+        "model": "$model",
+        "conditioning": [
+          "anchor",
+          0
+        ]
+      }
+    },
+    "noise": {
+      "class_type": "RandomNoise",
+      "inputs": {
+        "noise_seed": "$seed"
+      }
+    },
+    "sampler": {
+      "class_type": "KSamplerSelect",
+      "inputs": {
+        "sampler_name": "$sampler"
+      }
+    },
+    "schedule": {
+      "class_type": "BasicScheduler",
+      "inputs": {
+        "model": "$model",
+        "scheduler": "$scheduler",
+        "steps": "$steps",
+        "denoise": 1
+      }
+    },
+    "sample": {
+      "class_type": "SamplerCustomAdvanced",
+      "inputs": {
+        "noise": [
+          "noise",
+          0
+        ],
+        "guider": [
+          "guide",
+          0
+        ],
+        "sampler": [
+          "sampler",
+          0
+        ],
+        "sigmas": [
+          "schedule",
+          0
+        ],
+        "latent_image": [
+          "cond",
+          1
+        ]
+      }
+    },
+    "decode": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae"
+      }
+    },
+    "sound": {
+      "class_type": "VAEDecodeAudio",
+      "inputs": {
+        "samples": [
+          "sample",
+          0
+        ],
+        "vae": "$vae_audio"
+      }
+    },
+    "join": {
+      "class_type": "LyricaJoinClips",
+      "inputs": {
+        "previous": [
+          "previous",
+          0
+        ],
+        "images": [
+          "decode",
+          0
+        ],
+        "audio": [
+          "sound",
+          0
+        ],
+        "fps": "$fps",
+        "overlap": "$overlap"
+      }
+    },
+    "save": {
+      "class_type": "SaveVideoWebsocket",
+      "inputs": {
+        "video": [
+          "join",
+          0
+        ]
+      }
+    }
+  }
+}

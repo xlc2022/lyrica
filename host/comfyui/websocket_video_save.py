@@ -12,7 +12,7 @@ from io import BytesIO
 
 import numpy as np
 from PIL import Image
-from comfy_api.latest import Types
+from comfy_api.latest import InputImpl, Types
 from server import PromptServer
 
 PREVIEW_IMAGE = 1
@@ -32,7 +32,9 @@ class SaveVideoWebsocket:
 
     def save_video(self, video):
         server = PromptServer.instance
-        first = video.get_components().images[0]
+        # A joined clip (clip_chain.py) is decoded only for its first frame.
+        start = video if isinstance(video, InputImpl.VideoFromComponents) else video.as_trimmed(0, 0.5, strict_duration=False) or video
+        first = start.get_components().images[0]
         poster = BytesIO()
         poster.write(struct.pack(">I", PNG))
         Image.fromarray(np.clip(255.0 * first.cpu().numpy(), 0, 255).astype(np.uint8)).save(poster, format="PNG", compress_level=1)

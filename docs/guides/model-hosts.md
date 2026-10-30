@@ -553,7 +553,9 @@ doesn't list them. Once one is confirmed, put it in the **Videos** row
 of Models, Tasks (the last row under Images, whose picker lists only
 model hosts' video recipes), or `lyrica admin models preset set private
 video '<host>/<recipe>' --user ada`. Until a column has one, her `image`
-tool can't make clips. A clip is 1 to 15 seconds, from a prompt or, with
+tool can't make clips. A clip is 1 second up to its model's longest
+(8 for Wan 2.2, 10 for LTX-2.5, 15 for H3; up to 60 for H3, which joins
+clips of up to 8 s into one, and can make an existing clip longer), from a prompt or, with
 a recipe that animates (Wan 2.2 I2V, for one), from an image as its first
 frame; it is saved encrypted in the thread's folder under `videos/`, and
 Files shows its poster. Cloud models and plain endpoints in the list are

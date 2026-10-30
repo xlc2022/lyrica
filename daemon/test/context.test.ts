@@ -57,8 +57,18 @@ const MANY = 13500 + guidanceTokens;
 /** The medium turns after the first. */
 const MORE = ["SECOND", "THIRD", "FOURTH", "FIFTH", "SIXTH", "SEVENTH", "EIGHTH", "NINTH", "TENTH", "ELEVENTH"];
 
+/**
+ * Like ROOMY, for turns twice as long (13,400 was the edge; this leaves room). Compacting before a turn needs the newest
+ * turns Pi keeps (a quarter of the window, keepRecentFor) to leave an older turn to summarise. Two turns must outweigh a
+ * quarter of her prompt and three turns: with long turns that held only while her prompt stayed under about 11,000
+ * tokens, which the image tool's video fields crossed; with these it holds to about 22,000.
+ */
+const ROOMY_LONGER = 15_000 + guidanceTokens;
+
 /** A long message with a word to find it by. */
 const long = (mark: string) => `${mark} ${"the quick brown fox jumps over the lazy dog ".repeat(200)}`;
+/** Twice a long one. */
+const longer = (mark: string) => `${mark} ${"the quick brown fox jumps over the lazy dog ".repeat(400)}`;
 /** A third of a long one. */
 const medium = (mark: string) => `${mark} ${"the quick brown fox jumps over the lazy dog ".repeat(66)}`;
 const SUMMARY = (`SUMMARY-MARK. We are writing the migration guide for the offering IDs. Decided: one transaction per database, redirects one hop long. ` +
@@ -131,10 +141,10 @@ describe("her context", () => {
 
   it("compacts before a turn the conversation no longer fits, after the window shrank, instead of sending it whole", async () => {
     const { rt, ada, model, ref, stream, turn, fitAfterFirst } = await setup("general", 16_384 + guidanceTokens);
-    await turn(long("FIRST-MARK"));
-    await fitAfterFirst(ROOMY);
-    await turn(long("SECOND-MARK"));
-    await turn(long("THIRD-MARK"));
+    await turn(longer("FIRST-MARK"));
+    await fitAfterFirst(ROOMY_LONGER);
+    await turn(longer("SECOND-MARK"));
+    await turn(longer("THIRD-MARK"));
     expect(stream.events.some((e) => e.event.type === "compacted")).toBe(false);
     // The copy now runs at a window the conversation fills (a switch to a smaller model, or a load at a smaller context).
     const last = stream.events.filter((e) => e.event.type === "context").at(-1)!.event as Extract<ThreadEvent, { type: "context" }>;

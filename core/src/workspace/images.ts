@@ -299,9 +299,9 @@ export class ThreadImages {
     return { input: imageInput(bytes), portrait: this.portraits.isPortraitImage(createHash("sha256").update(bytes).digest("hex")) };
   }
 
-  /** A driving clip from the workspace (`motion`): an MP4 of at most 64 MB, read in memory only. */
+  /** A clip from the workspace (`motion`'s driving clip, or one to `extend`): an MP4 of at most 64 MB, read in memory only. */
   async readClip(path: string): Promise<Uint8Array> {
-    const bytes = await this.readCapped(path, MAX_DRIVE_BYTES, "a driving clip is at most 64 MB");
+    const bytes = await this.readCapped(path, MAX_DRIVE_BYTES, "a clip is at most 64 MB");
     if (!isMp4(bytes)) throw new Error(`${path} isn't an MP4 clip`);
     return bytes;
   }
