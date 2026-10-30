@@ -2,12 +2,17 @@
 // (core's render); editing shows `[[Name]]` and `[[Name:obj]]`, which go back
 // to `[[u:ID]]` tokens on save, so a later rename still applies.
 import { useEffect, useState } from "react";
-import { get, HttpError, threadPath, type Pool, type ThreadSummary, type UserMap } from "./api.ts";
+import { get, HttpError, threadPath, type MemoryLink, type Pool, type ThreadSummary, type UserMap } from "./api.ts";
 import { render, THREAD_MENTION } from "../../core/src/mentions.ts";
 import { href } from "./route.ts";
 
 export function readable(text: string, users: UserMap): string {
   return render(text, (id) => (users[id] ? { ...users[id], previousNames: [] } : undefined));
+}
+
+/** Memory links with their titles as they read: a title is stored with mention tokens, like the text. */
+export function readableLinks(links: Record<string, MemoryLink>, users: UserMap): Record<string, MemoryLink> {
+  return Object.fromEntries(Object.entries(links).map(([ref, l]) => [ref, l.title ? { ...l, title: readable(l.title, users) } : l]));
 }
 
 const STORED = /\[\[u:([A-Za-z0-9-]+)(:[a-z-]+)?\]\]/g;

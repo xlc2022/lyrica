@@ -14,7 +14,7 @@ import { HistoryHead, HistoryList } from "./History.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
 import { CITATION_GROUP, dateWord, firstWords, KIND_WORD, linkCitations, longDate, parseRef, plainCitations, plainWords, poolWord, wordDiff, wordFor, type Word } from "./memory.ts";
-import { fromEditable, readable, toEditable } from "./mentions.ts";
+import { fromEditable, readable, readableLinks, toEditable } from "./mentions.ts";
 import { go, href, idHref, parse, type Route } from "./route.ts";
 import { Main, PageHead, usePanel, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, dateText, ErrorText, hidden, Prose, shortTime, useAction, useDismiss, useLoad } from "./ui.tsx";
@@ -249,7 +249,7 @@ function Detail({ ctx, pool, id, onTitle, onTag }: { ctx: ShellContext; pool: Po
   const { users } = d.data;
   // The memory being read is its own citer's target: the lineage names it rather than calling it gone.
   const self: MemoryLink = { kind: item.kind, pool: item.pool, ...(item.title ? { title: item.title } : {}), snippet: firstWords(plainCitations(item.text)), updatedAt: item.updatedAt, ...(item.origin ? { origin: item.origin } : {}) };
-  const links: Record<string, MemoryLink> = { ...d.data.links, [item.id]: self, [`${item.pool}/${item.id}`]: self };
+  const links = readableLinks({ ...d.data.links, [item.id]: self, [`${item.pool}/${item.id}`]: self }, users);
   const path = u(userId, "memory", item.pool, item.id);
   const act = (fn: () => Promise<MemoryDetail>) => run(async () => d.set(await fn()));
   const canDelete = item.kind === "note" || item.kind === "page";
@@ -435,7 +435,8 @@ export function MemoryHistoryPage({ ctx, pool, id, route }: { ctx: ShellContext;
 
 /** The newest earlier version in the preview (the current text is already shown above); paged versions keep their differences and Restore. */
 function History({ detail, entries, offset = 1, total, userId, display, busy, onRestore }: { detail: MemoryDetail; entries?: MemoryRevision[]; offset?: number; total?: number; userId: string; display: Display; busy: boolean; onRestore: (revision: number) => void }) {
-  const { item, revisions, users, links } = detail;
+  const { item, revisions, users } = detail;
+  const links = readableLinks(detail.links, users);
   // With no earlier version there is nothing to show here at all.
   const shown = entries ?? revisions.slice(1, 2);
   if (!shown.length) return null;
@@ -473,14 +474,15 @@ function Editor({ detail, display, userId, busy, onSave, onCancel }: {
   detail: MemoryDetail; display: Display; userId: string; busy: boolean; onSave: (e: { text: string; title?: string; summary?: string }) => void; onCancel: () => void;
 }) {
   const { item, users } = detail;
+  const links = useMemo(() => readableLinks(detail.links, users), [detail.links, users]);
   // A page citation reads as [[its title]] while editing and is saved as its ID; notes stay cited by ID, since they have no title.
-  const [pageTitles, setPageTitles] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(detail.links).filter(([, l]) => l.kind === "page" && l.title).map(([ref, l]) => [ref, l.title!])));
+  const [pageTitles, setPageTitles] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(links).filter(([, l]) => l.kind === "page" && l.title).map(([ref, l]) => [ref, l.title!])));
   const editable = (stored: string) => toEditable(stored, users).replace(CITATION_GROUP, (whole, inside: string) => {
     const refs = inside.split(/[,;]\s*/).map((x) => x.trim());
     return refs.every((r) => pageTitles[r]) ? refs.map((r) => `[[${pageTitles[r]}]]`).join(", ") : whole;
   });
   const [text, setText] = useState(() => editable(item.text));
-  const [title, setTitle] = useState(item.title ?? "");
+  const [title, setTitle] = useState(() => toEditable(item.title ?? "", users));
   const [summary, setSummary] = useState(() => toEditable(item.summary ?? "", users));
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [picked, setPicked] = useState<Record<string, MemoryLink>>({});
@@ -488,7 +490,7 @@ function Editor({ detail, display, userId, busy, onSave, onCancel }: {
   const area = useRef<HTMLTextAreaElement>(null);
   const [caret, setCaret] = useState(0);
   const page = item.kind === "page";
-  const dirty = text !== editable(item.text) || title !== (item.title ?? "") || summary !== toEditable(item.summary ?? "", users);
+  const dirty = text !== editable(item.text) || title !== toEditable(item.title ?? "", users) || summary !== toEditable(item.summary ?? "", users);
   // Leaving the page with an unsaved edit asks first, with the browser's own prompt; nothing is kept.
   useEffect(() => {
     if (!dirty) return;
@@ -528,7 +530,7 @@ function Editor({ detail, display, userId, busy, onSave, onCancel }: {
   const byTitle = new Map(Object.entries(pageTitles).map(([ref, t]) => [t, ref]));
   const stored = () => fromEditable(text, users).replace(/\[\[([^[\]:]+)\]\]/g, (whole, t: string) => (byTitle.has(t.trim()) ? `[${byTitle.get(t.trim())}]` : whole));
   return (
-    <form className="mem-edit stack" onSubmit={(e) => { e.preventDefault(); onSave({ text: stored(), ...(page && { title, summary: fromEditable(summary, users) }) }); }}>
+    <form className="mem-edit stack" onSubmit={(e) => { e.preventDefault(); onSave({ text: stored(), ...(page && { title: fromEditable(title, users), summary: fromEditable(summary, users) }) }); }}>
       <div className="seg" role="group" aria-label="Edit or preview">
         <button type="button" aria-pressed={mode === "edit"} onClick={() => setMode("edit")}>Edit</button>
         <button type="button" aria-pressed={mode === "preview"} onClick={() => setMode("preview")}>Preview</button>
@@ -553,7 +555,7 @@ function Editor({ detail, display, userId, busy, onSave, onCancel }: {
           )}
         </div>
       ) : (
-        <div className="prose preview-pane"><MemoryProse text={stored()} pool={item.pool} userId={userId} links={{ ...detail.links, ...picked }} users={users} display={display} /></div>
+        <div className="prose preview-pane"><MemoryProse text={stored()} pool={item.pool} userId={userId} links={{ ...links, ...picked }} users={users} display={display} /></div>
       )}
       <div className="row">
         <button type="submit" className="primary sm" disabled={busy || !text.trim()}>Save</button>
