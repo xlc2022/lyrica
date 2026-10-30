@@ -149,4 +149,8 @@ The owner chose, in order:
   default 16:9 clip refused (core's 1360×768 isn't a multiple of Wan
   5B's 32); an aspect ratio now goes to the host, which keeps the
   recipe's area in that shape and snaps sizes to its step.
-- Next: the 14B (fp8 and Q5), LTX-2.5 and H3 starters on a real GPU.
+- 2026-10-30, first real run of the H3 Turbo starter, on the Blackwell
+  workstation (RTX PRO 6000, 102 GB): a default clip (1344×768, 5 s,
+  8 steps) in about 2 minutes. Quality not yet judged.
+- Next: the 14B (fp8 and Q5) and LTX-2.5 starters on a real GPU; H3's
+  quality against more steps.
