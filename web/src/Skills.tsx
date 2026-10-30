@@ -1,5 +1,5 @@
 // Principles 3 and 6: her skills wait for the person unless they chose otherwise (docs/briefs/skills.md).
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { del, get, post, put, u, type Pool, type SkillInfo, type Skills, type SkillsExport, type SkillsImportResult } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { RowMenu } from "./Machines.tsx";
@@ -178,10 +178,21 @@ function AddSkill({ userId, onDone }: { userId: string; onDone: (saved: boolean)
 }
 
 /** Her save_skill call in the conversation: the draft, and Approve or Decline while it waits. */
+/** Sent once an Approve or Decline on a card is answered. */
+const SKILLS_CHANGED = "lyrica:skills-changed";
+
 export function SkillCard({ args, call, userId }: { args: unknown; call: string; userId: string }) {
   const a = (args ?? {}) as { name?: string; description?: string; body?: string };
   const page = useLoad(() => get<Skills>(u(userId, "skills")), [userId, call]);
   const [run, busy, error] = useAction();
+  // The stored copy of her turn replaces the live one, remounting this card, and the new one's first load can land
+  // before an Approve pressed on the old one is answered: every card reloads once the answer comes.
+  const { reload } = page;
+  useEffect(() => { addEventListener(SKILLS_CHANGED, reload); return () => removeEventListener(SKILLS_CHANGED, reload); }, [reload]);
+  const answer = (verb: "approve" | "decline") => run(async () => {
+    page.set(await post<Skills>(`${skillPath(userId, skill!)}/${verb}`));
+    dispatchEvent(new Event(SKILLS_CHANGED));
+  });
   const skill = page.data?.skills.find((s) => s.call === call);
   if (!a.name) return null;
   const waiting = skill?.state === "waiting";
@@ -195,8 +206,8 @@ export function SkillCard({ args, call, userId }: { args: unknown; call: string;
       {a.description && <p>{a.description}</p>}
       <Steps id={`call:${call}`} body={a.body ?? ""} />
       {waiting && <div className="row">
-        <button type="button" className="primary" disabled={busy} onClick={() => run(async () => page.set(await post<Skills>(`${skillPath(userId, skill)}/approve`)))}>Approve</button>
-        <button type="button" disabled={busy} onClick={() => run(async () => page.set(await post<Skills>(`${skillPath(userId, skill)}/decline`)))}>Decline</button>
+        <button type="button" className="primary" disabled={busy} onClick={() => answer("approve")}>Approve</button>
+        <button type="button" disabled={busy} onClick={() => answer("decline")}>Decline</button>
       </div>}
       <ErrorText error={page.error || error} />
     </div>
