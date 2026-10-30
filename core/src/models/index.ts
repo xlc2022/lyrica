@@ -351,8 +351,11 @@ export interface CleanupItem {
   suggestion?: { offeringId: string; label: string };
 }
 
-/** What a call needs from a model: tools, room for the conversation, or an image create tier. */
-export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; animate?: boolean; motion?: boolean }
+/**
+ * What a call needs from a model: tools, room for the conversation, or an image create tier.
+ * `first`: models asked for by name, tried before the list for this one call (`namedImageModels`).
+ */
+export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; animate?: boolean; motion?: boolean; first?: string[] }
 /** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
 export interface ResolveOptions { evenIfDown?: boolean; except?: ReadonlySet<string> }
 
@@ -367,6 +370,12 @@ export interface Resolution {
   source: "thread" | "preset" | "column";
   /** Earlier models in the list that were skipped, with the reason. */
   skipped: { label: string; reason: string }[];
+  /**
+   * The skipped ones that could have answered: their machine was away, a call to
+   * them failed, Free models only ruled them out, or they were asked for by name.
+   * Not those that don't do this kind of call. Optional for hand-made resolutions.
+   */
+  passedOver?: { label: string; reason: string }[];
   /** Models after this one in the list that could still be tried. */
   remaining: number;
   /** A free model earlier in the list (local, or priced free) that was skipped, when this one costs money. */
@@ -2496,8 +2505,9 @@ export class Models {
   resolve(task: Task, ctx: CallContext, need: Need = {}, opts: ResolveOptions = {}): Resolution {
     const c = this.catalog(ctx.userId);
     const restricted = isRestricted(ctx);
-    const found = this.listFor(task, ctx, c);
-    if (!found) throw new NoModel(`no model is set for ${TASK_NAMES[task]} in ${this.columnName(ctx)}`);
+    const listed = this.listFor(task, ctx, c);
+    if (!listed && !need.first?.length) throw new NoModel(`no model is set for ${TASK_NAMES[task]} in ${this.columnName(ctx)}`);
+    const found = { source: "column" as const, profile: "Custom", ...listed, list: [...(need.first ?? []).map((offeringId) => ({ offeringId })), ...listed?.list ?? []] };
     const candidates: { id: string; grouped: boolean }[] = [];
     const cut = ctx.fallback === false && found.list.length > 1;
     for (const ref of cut ? found.list.slice(0, 1) : found.list) {
@@ -2507,13 +2517,15 @@ export class Models {
     const seen = new Set<string>();
     const unique = candidates.filter((x) => !seen.has(x.id) && !!seen.add(x.id));
     const skipped: { label: string; reason: string }[] = [];
+    const passedOver: { label: string; reason: string }[] = [];
     const freeOnly = this.freeOnly(ctx.userId);
     let away = false;
     let free: { label: string; reason: string } | undefined;
     for (let i = 0; i < unique.length; i++) {
       const { id, grouped } = unique[i]!;
       const o = c.offerings.get(id);
-      if (!o) { skipped.push({ label: id, reason: "it no longer exists" }); continue; }
+      const named = !!need.first?.includes(id);
+      if (!o) { skipped.push({ label: id, reason: "it no longer exists" }); if (named) passedOver.push(skipped.at(-1)!); continue; }
       const ep = c.endpoints.get(o.endpointId)!;
       const label = labelOf(ep, o);
       if (restricted && ep.kind !== "local") {
@@ -2521,16 +2533,19 @@ export class Models {
         continue;
       }
       // Unfit first: a model that couldn't take the call even with its machine up doesn't make the task offline.
-      const why = this.unfit(task, o, ep, need) ?? (freeOnly && o.price && !o.price.free ? "it costs money, and Free models only is on" : undefined);
+      // A model asked for by name answers whatever the tier.
+      const unfit = this.unfit(task, o, ep, named ? { ...need, imageTier: undefined } : need);
+      const why = unfit ?? (freeOnly && o.price && !o.price.free ? "it costs money, and Free models only is on" : undefined);
       const reason = why ?? this.away(ep, opts, o);
       if (reason) {
         skipped.push({ label, reason });
+        if (!unfit || named) passedOver.push({ label, reason });
         if (!why) away = true;
         if (!free && (ep.kind === "local" || o.price?.free)) free = { label, reason };
         continue;
       }
       const paidAfter = free && o.price && !o.price.free ? { paidAfter: free } : {};
-      return { ref: { offeringId: o.id }, endpoint: ep, offering: o, label, profile: found.profile, source: found.source, skipped, remaining: unique.length - i - 1, ...paidAfter };
+      return { ref: { offeringId: o.id }, endpoint: ep, offering: o, label, profile: found.profile, source: found.source, skipped, passedOver, remaining: unique.length - i - 1, ...paidAfter };
     }
     // Something would answer once its machine is back: offline, not unset.
     if (away) throw new Offline(task, skipped);
@@ -2615,6 +2630,9 @@ export class Models {
       // A machine that answers its probe but fails every call: don't go round again.
       if (used.has(r.offering.id)) throw new Offline(task, tried);
       used.add(r.offering.id);
+      // What a call failed on is said once, with why it failed, ahead of what this resolve skipped.
+      const fresh = (l: { label: string }[]) => l.filter((x) => !tried.some((t) => t.label === x.label));
+      if (tried.length) r = { ...r, skipped: [...tried, ...fresh(r.skipped)], passedOver: [...tried, ...fresh(r.passedOver ?? [])] };
       try {
         const out = await call(r);
         this.reportUp(ctx.userId, r.endpoint.id);
@@ -2638,8 +2656,9 @@ export class Models {
   /** The next eligible image model on a different endpoint, without probing or sending. */
   nextImageModel(ctx: CallContext, action: "create" | "edit" | "upscale", need: Need, afterEndpoint: string, noCloud = false): Resolution | undefined {
     const task = `image.${action}` as Task;
-    const catalog = this.catalog(ctx.userId), found = this.listFor(task, ctx, catalog);
-    if (!found) return undefined;
+    const catalog = this.catalog(ctx.userId), listed = this.listFor(task, ctx, catalog);
+    if (!listed && !need.first?.length) return undefined;
+    const found = { source: "column" as const, profile: "Custom", ...listed, list: [...(need.first ?? []).map((offeringId) => ({ offeringId })), ...listed?.list ?? []] };
     const list = ctx.fallback === false ? found.list.slice(0, 1) : found.list;
     const ids = list.flatMap(ref => "offeringId" in ref ? [ref.offeringId] : catalog.groups.get(ref.groupId)?.members ?? []);
     let passed = false;
@@ -2670,12 +2689,34 @@ export class Models {
     }
   }
 
+  /**
+   * The image models a name asks for, for one call: those whose name contains it,
+   * ignoring case, spaces and punctuation ("Krea2" finds "Krea 2 Turbo"), that can do
+   * the action, in the list's order and then the rest. A local-only or private
+   * context matches local models only. `names`: every model the name could have
+   * matched, for the error she reads when it matches none.
+   */
+  namedImageModels(ctx: CallContext, action: "create" | "edit" | "upscale", name: string): { ids: string[]; names: string[] } {
+    const task = `image.${action}` as Task, c = this.catalog(ctx.userId);
+    const flat = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    const order = (this.listFor(task, ctx, c)?.list ?? []).flatMap((r) => "offeringId" in r ? [r.offeringId] : c.groups.get(r.groupId)?.members ?? []);
+    const able = [...c.offerings.values()].filter((o) => {
+      const ep = c.endpoints.get(o.endpointId);
+      return ep && !(isRestricted(ctx) && ep.kind !== "local") && !this.unfit(task, o, ep, {});
+    }).sort((a, b) => (order.indexOf(a.id) + 1 || Infinity) - (order.indexOf(b.id) + 1 || Infinity));
+    const want = flat(name);
+    const ids = want ? able.filter((o) => flat(modelName(o)).includes(want)).map((o) => o.id) : [];
+    return { ids, names: [...new Set(able.map(modelName))] };
+  }
+
   /** Images stay in memory; the caller stores results and records the call. */
   /** `onProgress`: how far a model host's job has got (cloud models report none). */
-  async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution }> {
+  /** `first`: models asked for by name (`namedImageModels`), tried before the list. */
+  async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void; first?: string[] } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution }> {
     validateImageRequest(request);
     await this.planImages(ctx.userId);
-    return this.callWithFallback(`image.${request.action}`, ctx, request.action === "create" ? { imageTier: request.tier } : request.action === "edit" ? { imageMask: !!request.mask } : {}, async (r) => {
+    const need: Need = request.action === "create" ? { imageTier: request.tier } : request.action === "edit" ? { imageMask: !!request.mask } : {};
+    return this.callWithFallback(`image.${request.action}`, ctx, opts.first?.length ? { ...need, first: opts.first } : need, async (r) => {
       opts.signal?.throwIfAborted();
       await opts.beforeSend?.(r);
       opts.signal?.throwIfAborted();
