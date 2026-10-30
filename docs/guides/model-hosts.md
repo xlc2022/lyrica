@@ -670,6 +670,36 @@ second pairing. Then:
   `sudo systemctl disable --now lyrica-host-egress` with `sudo
   host/egress.sh remove` takes the rules out. The models folder stays.
 
+## Uninstall
+
+In Lyrica, remove the host under Models, Hosts and endpoints. Then, on the
+host machine, from its checkout:
+
+```sh
+host/install.sh --uninstall
+```
+
+It says what it will remove and asks first. It removes:
+
+- the stack's containers, volumes and network, with the host's key, so
+  every paired Lyrica loses it;
+- its images, by ID: one another container uses stays, and nothing is
+  pruned, so other programs' images and Docker's build cache are left
+  alone (on a shared machine, leave the build cache too);
+- the egress rules and, on Debian or Ubuntu, the egress and updater
+  units, `/usr/local/sbin/lyrica-host-update`, `/etc/lyrica-host` (the
+  deploy key), `/var/lib/lyrica-host-update` and the release trees in
+  `/opt/lyrica-host`.
+
+It asks before deleting the models folder's `lyrica/` downloads; your own
+model files beside them stay. `--delete-downloads` deletes them without
+asking, and `--yes` skips the questions and keeps them. On NixOS, also
+remove `services.lyrica-host` (with `gpuUnlock`) from the configuration
+and rebuild. On Debian or Ubuntu, gpu-unlock stays until
+`host/gpu-unlock.sh --remove` and a reboot. The checkout itself stays;
+delete it when you're done. Remove the deploy key from the repository
+on GitHub too, if you added one.
+
 ## Checklist for the first host on your GPU machine
 
 The model host brief lists the same steps in more detail ("Try it on the

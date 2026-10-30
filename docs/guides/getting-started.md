@@ -1097,6 +1097,46 @@ refused. To replace the destination, enter the full URL and token again;
   The home page header (the greeting, then the date, the time and
   "0.1.0 · <build>") shows the git commit that is running.
 
+## Uninstall
+
+There is no uninstall script for Lyrica herself, since what matters is
+her data: deleting `/var/lib/lyrica` deletes every user's memories and
+threads for good. Copy it first (with the service stopped) if anyone may
+want them back; the copy opens only with the passphrase. Remove her model
+hosts first ("Uninstall" in [model-hosts.md](model-hosts.md)).
+
+On NixOS, remove `services.lyrica` from the configuration and rebuild,
+then delete the state folders below if you want the data gone. On Debian
+or Ubuntu, as root:
+
+```sh
+systemctl disable --now lyricad lyrica-caddy lyrica-tailscaled \
+  lyrica-searxng lyrica-update.path lyrica-update lyrica-probation \
+  lyrica-rollback 2>/dev/null
+cd /etc/systemd/system && rm -f lyricad.service lyrica-caddy.service \
+  lyrica-tailscaled.service lyrica-searxng.service lyrica-update.path \
+  lyrica-update.service lyrica-probation.service lyrica-rollback.service
+rm -f /etc/sysctl.d/60-lyrica.conf
+systemctl daemon-reload
+docker rm -f lyrica-searxng 2>/dev/null   # if you said yes to SearXNG
+rm -rf /opt/lyrica /etc/lyrica /usr/local/lib/lyrica-update \
+  /usr/local/lib/lyrica-chromium /usr/local/lib/lyrica-caddy.stamp \
+  /usr/local/bin/lyrica /usr/local/bin/lyrica-caddy \
+  /usr/local/bin/chromium-headless-shell
+# Her data, the update snapshots, Caddy's certificates and her Tailscale
+# node: only once you're sure.
+rm -rf /var/lib/lyrica /var/lib/lyrica-snapshots /var/lib/lyrica-update \
+  /var/lib/lyrica-caddy /var/lib/lyrica-tailscale
+userdel lyrica; userdel lyrica-build; userdel lyrica-caddy
+```
+
+`install.sh` also installed packages (bubblewrap, gocryptfs, Node and the
+rest in "On Debian or Ubuntu") and, when they were missing, Claude Code,
+Codex and headless Chromium in `/usr/local/bin`; remove those with `apt`
+or by hand only if nothing else uses them. Remove her node from your
+tailnet's admin console, and the deploy key from the repository on
+GitHub.
+
 ## Checklist for the first install on your machine
 
 Run these in order the first time and note where each stops. Each one is
