@@ -293,6 +293,14 @@ export class Subagent {
     else this.emit({ type: "finished", status: this.status as "finished" | "failed" });
   }
 
+  /** Adds one answer's tokens, stored at once so the thread's count includes a subagent still working, or one cut off by a restart. */
+  count(input: number, output: number): void {
+    this.usage.inputTokens += input;
+    this.usage.outputTokens += output;
+    try { this.d.store.update(this.ctx.user.id, this.ctx.pool, this.ctx.threadId, { usage: this.usage }); } catch { /* closed meanwhile */ }
+    this.emit({ type: "usage", ...this.usage });
+  }
+
   private set(status: SubagentStatus): void {
     this.status = status;
     this.d.store.update(this.ctx.user.id, this.ctx.pool, this.ctx.threadId, { status, usage: this.usage });
@@ -327,9 +335,7 @@ function piBody(d: Delegation, sub: Subagent, session: AgentSession, dispose: ()
     else if (e.type === "tool_execution_start") sub.emit({ type: "tool_call", toolName: e.toolName, args: e.args });
     else if (e.type === "message_end" && e.message.role === "assistant") {
       const u = e.message.usage;
-      sub.usage.inputTokens += u.input + u.cacheRead + u.cacheWrite;
-      sub.usage.outputTokens += u.output;
-      sub.emit({ type: "usage", ...sub.usage });
+      sub.count(u.input + u.cacheRead + u.cacheWrite, u.output);
     }
   });
   return {

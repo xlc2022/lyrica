@@ -341,14 +341,16 @@ the thread's scratch folder (`/workspace`).
 The journal gets one line when a subagent starts (run, thread, role and
 model), finishes or is stopped (with the reason), never its text.
 
-Each subagent's tokens are recorded as it works. `usage(thread)` sums a parent
-thread's direct runs. `Models.usage` follows their descendants at every depth
-for thread and project token shares, within the requested pool. These shares
-use `subagent_runs` input plus output tokens once, with no GPU time. A
+Each subagent's tokens are stored after every answer of its model
+(`Subagent.count`), so a working subagent, or one a restart interrupted,
+counts what it used so far. `usage(thread)` sums a parent thread's direct
+runs. `Models.usage` follows their descendants at every depth for thread and
+project token shares, within the requested pool. These shares use
+`subagent_runs` input plus output tokens once; a run with none has no row. A
 subagent's turns are also measured on its own call record (`recordPace`, as
-hers are), so its endpoint's speed counts them, but `Models.usage` leaves
-subagent threads' call records out, so a project tree that lists one counts
-it once. Claude Code run from a subagent's thread still counts there, since
+hers are), so its endpoint's speed counts them, but `Models.usage` takes only
+a local subagent's GPU time from those records and leaves their tokens out,
+so a project tree that lists one counts it once. Claude Code run from a subagent's thread still counts there, since
 its run doesn't count it. Cost is not tracked: every model is declared free to Pi.
 
 ## Records and restarts
