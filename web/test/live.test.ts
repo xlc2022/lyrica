@@ -174,6 +174,13 @@ describe("the live view of a thread's stream", () => {
     expect(s.items).toEqual([{ role: "notice", text, status: "watching", told }]);
   });
 
+  it("shows a clip made in the background as hers, under its call's marker", () => {
+    const video = { type: "video" as const, path: "/workspace/videos/a.mp4", model: "box/Clip", width: 704, height: 704, duration: 5, audio: false };
+    const call = { type: "tool" as const, name: "image", toolCallId: "c1:made", args: { action: "animate", prompt: "She waves" }, result: "The clip is ready.", isError: false };
+    expect(run([{ type: "notice", text: "The clip is ready.", status: "clip", video, call }]).items).toEqual([{ role: "assistant", parts: [call, video] }]);
+    expect(run([{ type: "notice", text: "The clip is ready.", status: "clip", video }]).items).toEqual([{ role: "assistant", parts: [video] }]);
+  });
+
   it("shows a message no model took as waiting, once, until a turn starts", () => {
     const tried = [{ label: "gpu/qwen", reason: "gpu is down" }];
     const s = run([

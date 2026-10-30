@@ -1452,12 +1452,13 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `Models.video` and save it with `ThreadImages.saveVideo`. With
     `ImageTools.background(make, toolCallId)` (lyricad's `ClipJobs`, daemon/src/clips.ts)
     the call reads the first frame, hands `make(signal, onProgress) → ClipMade { text,
-    video: VideoPart }` over and answers at once ("Making the clip in the
+    video: VideoPart, args }` over (`args`: the call's arguments) and answers at once ("Making the clip in the
     background…", details `{ clip: "started" }`); lyricad delivers the result
-    as a delegate notice with details `{ status: "clip", video }` (or
+    as a delegate notice with details `{ status: "clip", video, call: { toolCallId, args } }` (or
     `"clip-failed"`, its reason in the text), which messages show as an
-    assistant message with the video part and the `notice` event carries as
-    `video`, and wakes an idle thread. Without it (an explicit retry) the call
+    assistant message with the call's image tool part (ID `<toolCallId>:made`,
+    the call's args, the notice's text as its result) and then the video part, and the `notice` event carries as
+    `video` and `call`, and wakes an idle thread. A clip delivered before `call` existed shows alone. Without it (an explicit retry) the call
     answers with its facts and its poster as image content, so she sees the first frame;
     a host's progress (create, edit, upscale, video, animate, motion) goes to Pi as the call's update, details `{ progress: JobProgress }`;
     details `{ video: VideoPart }`, `VideoPart` being `{ type: "video", path,

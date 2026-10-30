@@ -43,21 +43,26 @@ describe("image message metadata (principle 1)", () => {
     expect(videoPart("image", { video: { ...video, path: 17 } })).toBeUndefined();
     expect(videoPart("read", { video })).toBeUndefined();
   });
-  it("shows a clip made in the background as hers, stored and live, and a failed one as a notice", () => {
+  it("shows a clip made in the background as hers under its call's marker, stored and live, and a failed one as a notice", () => {
     const video = { type: "video" as const, path: "/workspace/videos/clip.mp4", model: "workstation/Clip", width: 1280, height: 704, duration: 5.04, audio: false };
+    const args = { action: "animate", image: "/workspace/uploads/a.png", prompt: "She waves" };
+    const call = { type: "tool", name: "image", toolCallId: "c1:made", args, result: "The clip is ready.", isError: false };
     const messages = toMessages("web/a", "general", [
-      { n: 1, createdAt: "2026-10-28", data: { type: "custom_message", customType: DELEGATE_MESSAGE, content: "The clip is ready.", display: true, details: { status: "clip", video, id: "a" } } },
+      { n: 1, createdAt: "2026-10-28", data: { type: "custom_message", customType: DELEGATE_MESSAGE, content: "The clip is ready.", display: true, details: { status: "clip", video, call: { toolCallId: "c1", args }, id: "a" } } },
       { n: 2, createdAt: "2026-10-28", data: { type: "custom_message", customType: DELEGATE_MESSAGE, content: "The clip failed: out of memory", display: true, details: { status: "clip-failed", id: "b" } } },
+      // One delivered before clips carried their call: the clip alone.
+      { n: 3, createdAt: "2026-10-28", data: { type: "custom_message", customType: DELEGATE_MESSAGE, content: "The clip is ready.", display: true, details: { status: "clip", video, id: "d" } } },
     ]);
     expect(messages.map((m) => [m.role, m.parts])).toEqual([
-      ["assistant", [video]],
+      ["assistant", [call, video]],
       ["notice", [{ type: "delegation", text: "The clip failed: out of memory", status: "clip-failed" }]],
+      ["assistant", [video]],
     ]);
     const events: ThreadEvent[] = [];
     const hosted = Object.create(HostedThread.prototype) as { delivered(c: unknown, d: unknown): void; emit(e: ThreadEvent): void; pool: string; noticed: Set<string>; started(): undefined };
     hosted.pool = "general"; hosted.emit = e => { events.push(e); }; hosted.noticed = new Set(); hosted.started = () => undefined;
-    hosted.delivered("The clip is ready.", { status: "clip", video, id: "c" });
-    expect(events[0]).toMatchObject({ type: "notice", status: "clip", video });
+    hosted.delivered("The clip is ready.", { status: "clip", video, call: { toolCallId: "c1", args }, id: "c" });
+    expect(events[0]).toMatchObject({ type: "notice", status: "clip", video, call });
   });
   it("ignores malformed metadata and another tool's metadata", () => {
     expect(imagePart("read", details)).toBeUndefined();

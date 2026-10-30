@@ -189,7 +189,7 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return { ...s, queued: [], offline: undefined };
     case "notice":
       // A clip made in the background shows as hers, as it does once the thread reloads.
-      if (e.video) return { ...s, items: [...s.items, { role: "assistant", parts: [e.video] }] };
+      if (e.video) return { ...s, items: [...s.items, { role: "assistant", parts: e.call ? [e.call, e.video] : [e.video] }] };
       // A child thread's update or wait is sent after its state is stored, so it counts as a change too: a project
       // chat's cards reload even if the change's own event came while the stream was away.
       return { ...s, items: [...s.items, { role: "notice", text: e.text, status: e.status, threads: e.threads, told: e.told }],

@@ -69,14 +69,16 @@ describe("a clip made in the background, through lyricad", () => {
     await stream.ready;
     const from = stream.events.length;
     dm.d.services!.clips.start({ userId: rt.ada.id, pool: "general", threadId: thread.id },
-      async () => ({ text: "The clip is ready. Made with Clip on workstation: 5.0 s at 1280×704. Saved /workspace/videos/a.mp4.", video }), "c1");
+      async () => ({ text: "The clip is ready. Made with Clip on workstation: 5.0 s at 1280×704. Saved /workspace/videos/a.mp4.", video, args: { action: "video", prompt: "A fox" } }), "c1");
     await stream.until((e) => e.type === "turn_end", from);
     // Its placeholder showed while it was made, and went when it arrived.
     expect(stream.events.slice(from).map((e) => e.event.type).filter((x) => x === "making" || x === "made")).toEqual(["making", "made"]);
     expect(stream.events.slice(from)).toContainEqual(expect.objectContaining({ event: expect.objectContaining({ type: "notice", status: "clip", video }) }));
     expect(asked.at(-1)).toContain("Saved /workspace/videos/a.mp4.");
     const page = (await ada.get<MessagePage>(`${path}/messages`)).body;
-    expect(page.messages.map((m) => [m.role, m.parts[0]?.type])).toEqual([["assistant", "video"], ["assistant", "text"]]);
+    // The clip keeps its call's marker, with the prompt it was made from.
+    expect(page.messages.map((m) => [m.role, m.parts.map((p) => p.type)])).toEqual([["assistant", ["tool", "video"]], ["assistant", ["text"]]]);
+    expect(page.messages[0]!.parts[0]).toMatchObject({ name: "image", toolCallId: "c1:made", args: { action: "video", prompt: "A fox" } });
   });
 });
 

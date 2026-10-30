@@ -384,6 +384,9 @@ test("a clip she made shows its poster and facts, and plays in the browser's pla
       { type: "text", text: "It's on its way." },
     ] }, { id: `e:${threadId}#3`, n: 3, role: "notice", createdAt: "2026-10-28T04:20:00Z", parts: [
       { type: "delegation", text: "The clip failed: the host ran out of memory.", status: "clip-failed" },
+    ] }, { id: `e:${threadId}#4`, n: 4, role: "assistant", createdAt: "2026-10-28T04:30:00Z", parts: [
+      { type: "tool", toolCallId: "owl:made", name: "image", args: { action: "animate", image: "/workspace/uploads/owl.png", prompt: "The owl turns its head" }, result: "The clip is ready. Made with Clip on box.", isError: false },
+      { type: "video", path: "/workspace/videos/owl.mp4", model: "shared.box/Wan 2.2 TI2V 5B", width: 704, height: 704, duration: 5.04, audio: false },
     ] }], hasMore: false,
   } }));
   await page.route(`**${base}/files/thumb?*`, (route) => route.fulfill({ contentType: "image/png", body: png }));
@@ -396,6 +399,15 @@ test("a clip she made shows its poster and facts, and plays in the browser's pla
   await expect(failed.locator("b")).toHaveText("Clip");
   await expect(failed).toContainText("failed");
   await expect(failed).toContainText("The clip failed: the host ran out of memory.");
+  // One made in the background keeps its call's marker above it, which opens to the prompt it was made from.
+  const owl = page.getByRole("button", { name: "Animating an image done" });
+  await owl.click();
+  await expect(owl).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator(".marker-body pre").first()).toContainText("The owl turns its head");
+  await expect(page.getByRole("button", { name: "Play owl.mp4" })).toBeVisible();
+  await noHorizontalScroll(page);
+  if (process.env.SCREENSHOTS) { await owl.scrollIntoViewIfNeeded(); await page.screenshot({ path: `${process.env.SCREENSHOTS}/clip-call-${page.viewportSize()!.width}.png` }); }
+  await owl.click();
   const play = page.getByRole("button", { name: "Play fox.mp4" });
   await expect(play).toBeVisible();
   await expect(page.getByText("Made with box/Wan 2.2 TI2V 5B · 5.0 s · sound", { exact: true })).toBeVisible();

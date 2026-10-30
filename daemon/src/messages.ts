@@ -33,6 +33,16 @@ export function videoPart(tool: string, details: unknown): Extract<MessagePart, 
   return { type: "video", path: v.path, model: v.model, width: num(v.width), height: num(v.height), duration: num(v.duration), audio: v.audio === true };
 }
 
+/**
+ * The image call that started a clip made in the background, as its delivered clip carries it: a marker done, with the
+ * call's arguments and what she was told. Its own ID, so it opens apart from the call's started marker.
+ */
+export function clipCall(details: unknown, content: unknown): Extract<MessagePart, { type: "tool" }> | undefined {
+  const c = (details as { call?: { toolCallId?: unknown; args?: unknown } } | undefined)?.call;
+  if (!c || typeof c.toolCallId !== "string") return undefined;
+  return { type: "tool", name: "image", toolCallId: `${c.toolCallId}:made`, args: c.args ?? {}, result: shortResult(content), isError: false };
+}
+
 /** A root step's card (docs/workspace.md, "Root steps"): what run_as_root read on the machine, as it stored it. */
 export function rootPart(tool: string, details: unknown): RootStep | undefined {
   const r = (details as { root?: Partial<RootStep> } | undefined)?.root;
@@ -210,7 +220,8 @@ export function toMessages(threadId: string, pool: Pool, entries: { n: number; d
       // A clip made in the background shows as hers, like one made within a turn.
       const clip = (details as { status?: unknown } | undefined)?.status === "clip" ? videoPart("image", details) : undefined;
       if (clip) {
-        out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "assistant", parts: [clip] });
+        const call = clipCall(details, e.content);
+        out.push({ id: `e:${threadId}#${n}`, n, createdAt, role: "assistant", parts: call ? [call, clip] : [clip] });
         continue;
       }
       const part = delegationPart(e.content, details);
