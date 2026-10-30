@@ -23,6 +23,8 @@ Usage: host/install.sh [options]
   --tailscale NAME     Also join the tailnet as device NAME (asks for an auth key)
   --no-tailscale       Leave the tailnet
   --no-gpu             No GPU and no model servers: host-api alone (for testing)
+  --cmp-unlock         CMP 100-210 only: install its unlock (cmp-unlock.sh)
+                       without asking
   --yes                Don't ask questions; use defaults and flags
   --no-start           Write .env only
   --uninstall          Remove the host from this machine (asks first)
@@ -58,7 +60,7 @@ TS_HOSTNAME=$(env_value TS_HOSTNAME)
 TS_AUTHKEY=$(env_value TS_AUTHKEY)
 WANT_LAN=1
 [[ -f .env && -z $LAN ]] && WANT_LAN=0
-YES=0 START=1 CHECK_GPU=1 UNINSTALL=0 DELETE_DOWNLOADS=0
+YES=0 START=1 CHECK_GPU=1 CMP=0 CMP_UNLOCK=0 UNINSTALL=0 DELETE_DOWNLOADS=0
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -72,6 +74,7 @@ while [[ $# -gt 0 ]]; do
     --tailscale) TS_HOSTNAME=$2; shift ;;
     --no-tailscale) TS_HOSTNAME= TS_AUTHKEY= ;;
     --no-gpu) CHECK_GPU=0; VENDOR=none ;;
+    --cmp-unlock) CMP_UNLOCK=1 ;;
     --yes) YES=1 ;;
     --no-start) START=0 ;;
     --uninstall) UNINSTALL=1 ;;
@@ -161,6 +164,9 @@ uninstall() {
   fi
   if [[ -f /etc/default/grub.d/lyrica-gpu-unlock.cfg ]]; then
     say "gpu-unlock is still installed: host/gpu-unlock.sh --remove, then reboot."
+  fi
+  if [[ -e /etc/systemd/system/cmp100-unlock.service.d/lyrica.conf ]]; then
+    say "cmp100-unlock is still installed: host/cmp-unlock.sh --remove, then reboot."
   fi
   say "In Lyrica, remove the host under Models, Hosts and endpoints. This checkout stays; delete it if you like."
   exit 0
@@ -301,14 +307,15 @@ UNIFIED=
 [[ $VENDOR == amd && $AMD_BACKEND != vulkan ]] && FILES+=:compose.amd.yaml
 [[ -n $HSA_OVERRIDE ]] && FILES+=:compose.hsa.yaml
 [[ -n $UNIFIED ]] && FILES+=:compose.apu.yaml
-# A CMP 100-210 (PCI ID 10de:1df4): llama.cpp built to use int8
+# A CMP 100-210 (PCI ID 10de:1df4 or 10de:1d84): llama.cpp built to use int8
 # (compose.cmp.yaml). Its image, and sd-server's, are pulled when this host's
 # GPUs are among those CI built them for (prebuilt.sh); otherwise they're
 # built here for this host's GPUs, which takes a while the first time.
 CUDA_ARCHS= LLAMACPP_CMP_IMAGE= SDCPP_IMAGE= WHISPER_IMAGE=
-if [[ $VENDOR == nvidia ]] && nvidia-smi --query-gpu=pci.device_id --format=csv,noheader 2>/dev/null | grep -qix 0x1df410de; then
+if [[ $VENDOR == nvidia ]] && nvidia-smi --query-gpu=pci.device_id --format=csv,noheader 2>/dev/null | grep -qiE '^0x(1df4|1d84)10de$'; then
   # shellcheck source=prebuilt.sh
   . ./prebuilt.sh
+  CMP=1
   CUDA_ARCHS=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | tr -d '. ' | sort -u | sed 's/$/-real/' | paste -sd';' -)
   # The speech server with a cuDNN that still has Volta kernels.
   FILES+=:compose.cmp.yaml:compose.cmp.speech.yaml
@@ -322,7 +329,7 @@ if [[ $VENDOR == nvidia ]] && nvidia-smi --query-gpu=pci.device_id --format=csv,
   WHISPER_IMAGE=${PREBUILT:-lyrica-host-whispercpp:cmp}
   [[ -n $PREBUILT ]] || FILES+=:compose.whisper.build.yaml
   # The image GPU is one: stable-diffusion.cpp makes images in ComfyUI's place (compose.sdcpp.yaml).
-  if nvidia-smi -i "${COMFY_GPU:-0}" --query-gpu=pci.device_id --format=csv,noheader 2>/dev/null | grep -qix 0x1df410de; then
+  if nvidia-smi -i "${COMFY_GPU:-0}" --query-gpu=pci.device_id --format=csv,noheader 2>/dev/null | grep -qiE '^0x(1df4|1d84)10de$'; then
     FILES+=:compose.sdcpp.yaml
     [[ $NVIDIA_CDI == 1 ]] && FILES+=:compose.sdcpp.cdi.yaml
     say "CMP 100-210 for images: stable-diffusion.cpp makes them in ComfyUI's place."
@@ -406,6 +413,19 @@ elif [[ -d /run/systemd/system ]]; then
   "${SUDO[@]}" systemctl enable --now lyrica-host-egress.service >/dev/null
 else
   say "No systemd here: run host/egress.sh apply after every reboot or Docker restart."
+fi
+
+# The CMP's unlock (cmp-unlock.sh), offered until it is installed: it keeps
+# nouveau and nvidia_drm off this machine. The images notice it at every start.
+if [[ $CMP == 1 ]] && ! systemctl cat cmp100-unlock.service >/dev/null 2>&1; then
+  if [[ -e /etc/NIXOS ]]; then
+    say "For full-rate tensor cores on the CMP, set services.lyrica-host.cmpUnlock.enable and rebuild."
+  elif [[ $CMP_UNLOCK == 1 || $YES == 0 ]]; then
+    [[ $CMP_UNLOCK == 1 ]] || say "This CMP 100-210's tensor cores run at a fraction of their speed until it is" \
+      "unlocked at boot, which makes models and images about twice as fast."
+    ./cmp-unlock.sh $([[ $CMP_UNLOCK == 1 ]] && echo --yes) ||
+      say "The unlock wasn't installed; the host runs without it. host/cmp-unlock.sh tries again."
+  fi
 fi
 
 # Updates from Lyrica (README.md, "Updates"): host-api may write a request into

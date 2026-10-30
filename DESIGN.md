@@ -724,6 +724,14 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     loads. It is off unless the operator turns it on (`host/gpu-unlock.sh`,
     or `services.lyrica-host.gpuUnlock` on NixOS); install and updates never
     touch the kernel (host/README.md, "gpu-unlock").
+  - **Optional CMP unlock.** A CMP 100-210's throttled tensor cores and
+    PCIe link can be unlocked at each boot, before Docker, by an upstream
+    unit (`host/cmp-unlock.sh`, or `services.lyrica-host.cmpUnlock` on
+    NixOS), which install.sh offers on such a host and updates never run.
+    The unlock doesn't survive a reboot, so the CMP's images measure the
+    tensor cores at each start and pick their kernels to suit; every CMP
+    behaviour is keyed on the card's PCI IDs, never its name
+    (host/README.md, "CMP 100-210 unlock").
   - **Our images, pinned by digest.** The host API and ComfyUI images are ours,
     built in CI from pinned versions. vLLM and llama.cpp use their official
     images, also pinned by digest. Nothing is pulled as `latest`.

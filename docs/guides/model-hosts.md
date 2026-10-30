@@ -105,11 +105,11 @@ paths has been tried on hardware.
 
 ### A CMP 100-210
 
-The CMP 100-210 (PCI ID `10de:1df4`) is a mining card with throttled FP16
-tensor cores. The script detects it and uses a llama.cpp built so
-quantized models use its int8 units and flash attention avoids the
-tensor cores, which reads prompts about three times as fast as the stock
-image. It downloads the image CI built (a few GB) when the host's GPUs
+The CMP 100-210 (PCI ID `10de:1df4` or `10de:1d84`) is a mining card with
+throttled FP16 tensor cores. The script detects it and uses a llama.cpp
+that checks the tensor cores at each start: throttled, quantized models
+use its int8 units and flash attention avoids the tensor cores, which
+reads prompts about three times as fast as the stock image. It downloads the image CI built (a few GB) when the host's GPUs
 are among those it covers, and otherwise builds it here, which took 25
 minutes on a 4-core machine; it says which. `LYRICA_HOST_REGISTRY`
 points it at another registry, such as a Forgejo instance's. When the
@@ -126,6 +126,27 @@ instead, with its own starter (large-v3-turbo q8_0). Voices run on it
 with an older cuDNN, so on such a host a Blackwell card can't run voices.
 Details are in [host/README.md](../../host/README.md#image-models).
 
+The card can be unlocked at every boot
+([cmp100-unlock](https://github.com/mintoriakamoto/CMP100-210xFULLTENSORSxGEN3x1)):
+full-rate tensor cores and PCIe Gen3, lost at power-off. Unlocked, prompts
+read about twice as fast again, images take 1.2 seconds a step instead of
+3.0 (F16 with flash attention), and a model already in memory loads about
+3 times as fast. The images notice it by themselves at each start.
+
+- **Debian or Ubuntu:** `install.sh` offers it, or run `host/cmp-unlock.sh`.
+  It needs NVIDIA's proprietary driver (not `-open`), Secure Boot off and
+  the kernel's headers, builds a kernel module, and blacklists `nouveau`
+  and `nvidia_drm`, so a desktop drawn by an NVIDIA card would lose its
+  display. Then reboot.
+- **NixOS:** `services.lyrica-host.cmpUnlock.enable = true;`, then
+  `nixos-rebuild boot` and reboot. It uses the 580 driver with the
+  proprietary modules.
+- **Check:** `journalctl -u cmp100-unlock -b` ends with `PASS`, and
+  `cmp100-bench` reports about 37 cycles per instruction (512 when locked).
+- **Skip or undo:** add `cmp100.skip` to the kernel command line for one
+  boot; `host/cmp-unlock.sh --remove`, or set the option false, to undo.
+  A run started by hand refuses while the host's containers hold the GPU.
+
 ### Full-rate tensor math
 
 GeForce cards run FP16, BF16 and TF32 tensor math at half the rate of the
@@ -139,8 +160,9 @@ to 9.4 seconds, a Qwen-Image edit from 11.1 to 7.0, and a 5-second Wan
 14B clip from 427 to 283. It's optional and off by default.
 
 - **Cards:** GeForce RTX 30 (stable upstream); RTX 20 and 40 are
-  experimental. Not RTX 50, workstation cards or the CMP 100-210. Tried
-  here on one RTX 3090 with NixOS; the Debian script hasn't run yet.
+  experimental. Not RTX 50, workstation cards or the CMP 100-210 (its own
+  unlock is above). Tried here on one RTX 3090 with NixOS; the Debian
+  script hasn't run yet.
 - **Debian or Ubuntu:** `host/gpu-unlock.sh`. It lists the cards it would
   unlock and asks first, then fetches the pinned upstream commit and two
   files from NVIDIA's driver (checked against pinned checksums), builds
@@ -696,9 +718,10 @@ It says what it will remove and asks first. It removes:
 It asks before deleting the models folder's `lyrica/` downloads; your own
 model files beside them stay. `--delete-downloads` deletes them without
 asking, and `--yes` skips the questions and keeps them. On NixOS, also
-remove `services.lyrica-host` (with `gpuUnlock`) from the configuration
-and rebuild. On Debian or Ubuntu, gpu-unlock stays until
-`host/gpu-unlock.sh --remove` and a reboot. The checkout itself stays;
+remove `services.lyrica-host` (with `gpuUnlock` or `cmpUnlock`) from the
+configuration and rebuild. On Debian or Ubuntu, gpu-unlock stays until
+`host/gpu-unlock.sh --remove` and a reboot, and the CMP unlock until
+`host/cmp-unlock.sh --remove` and a reboot. The checkout itself stays;
 delete it when you're done. Remove the deploy key from the repository
 on GitHub too, if you added one.
 

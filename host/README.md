@@ -88,7 +88,7 @@ Then `nixos-rebuild switch`, clone the repo to `checkout` (never
 Debian, giving it the same models folder as `modelsDir` (the module creates
 it and its `lyrica/` subfolder). With `gpu = "nvidia"`, the driver
 uses NVIDIA's open kernel modules (Turing or newer; set
-`hardware.nvidia.open = false` for older cards) and Docker reaches the GPUs
+`hardware.nvidia.open = false` for older cards; `cmpUnlock` does) and Docker reaches the GPUs
 through the container toolkit's CDI devices: `install.sh` sees the CDI spec
 and adds `compose.cdi.yaml`. With `gpu = "amd"`, `amdgpu` loads at boot;
 ROCm and Vulkan come inside the images. In a VM, pass the whole GPU through
@@ -109,6 +109,29 @@ builds upstream's DKMS packages and adds the parameter to GRUB;
 the same upstream commit and NVIDIA inputs (`nix/gpu-unlock.nix`); change
 them together. See docs/guides/model-hosts.md, "Full-rate tensor math".
 
+### CMP 100-210 unlock
+
+Optional, for a CMP 100-210 (`10de:1df4` or `10de:1d84`): full-rate tensor
+cores and PCIe Gen3, applied at every boot by
+[cmp100-unlock](https://github.com/mintoriakamoto/CMP100-210xFULLTENSORSxGEN3x1)
+and lost at power-off. Its unit runs before Docker, hands the card to
+nouveau with signed firmware payloads derived from the stock ones, and
+hands it back to `nvidia`. It needs NVIDIA's proprietary kernel modules,
+Secure Boot off, and keeps `nouveau` and `nvidia_drm` from loading on their
+own, so the CMP can't drive a display. The images check the rate at each
+start (above), so nothing else changes. On Debian or Ubuntu,
+`host/cmp-unlock.sh` fetches the pinned commit and runs upstream's
+`install.sh`, adding a drop-in that starts `nvidia-persistenced` again
+after a run it refuses (upstream leaves it stopped); `--remove` undoes it.
+`install.sh` offers it on such a host until it is installed (with `--yes`,
+only given `--cmp-unlock`); updates never run it. On NixOS,
+`services.lyrica-host.cmpUnlock.enable = true` builds the hook for the
+configured kernel and the payloads from nixpkgs' firmware (checked against
+upstream's hashes), picks the 580 driver (the last for Volta) with the
+proprietary modules, and runs the script with the kernel reading firmware
+from a copy in `/run` for the run, since the store is read-only. Both pin
+the same upstream commit (`nix/cmp-unlock.nix`); change them together.
+
 ### Uninstall
 
 `host/install.sh --uninstall` removes the host: the stack's containers,
@@ -120,8 +143,8 @@ is pruned: Docker's build cache and other programs' images are left alone.
 It asks before starting and before deleting the models folder's `lyrica/`
 downloads (`--delete-downloads` deletes them, `--yes` keeps them unless
 given it); the operator's own model files stay. On NixOS the module owns
-the units: remove `services.lyrica-host` and rebuild. gpu-unlock has its
-own `--remove`.
+the units: remove `services.lyrica-host` and rebuild. gpu-unlock and the
+CMP unlock have their own `--remove`.
 
 ### AMD GPUs
 
@@ -339,15 +362,19 @@ per host, and Lyrica's router filters create tiers by it.
   video model's two experts at a time), or an upscaler. ComfyUI runs them in turn and frees one stage's models when the
   next needs the room, so a recipe whose parts add up to more than the GPU
   can still run.
-- When `COMFY_GPU` is a CMP 100-210 (PCI ID `10de:1df4`), whose FP16 tensor
-  cores are throttled, `install.sh` adds `compose.sdcpp.yaml` and ComfyUI
+- When `COMFY_GPU` is a CMP 100-210 (PCI ID `10de:1df4` or `10de:1d84`),
+  `install.sh` adds `compose.sdcpp.yaml` and ComfyUI
   isn't started. stable-diffusion.cpp's `sd-server` (`sdcpp/Dockerfile`, a
   pinned commit built with `GGML_CUDA_FORCE_MMQ`, pulled or built like the
-  CMP's llama.cpp below) makes the images instead:
-  it converts the recipe's parts to Q8_0 as it loads them (unless the
-  diffusion model is a GGUF, whose own quantisation is kept, since a Q8_0
-  copy may not fit) and runs with flash attention off, so the work goes to
-  the card's int8 units. It
+  CMP's llama.cpp below) makes the images instead. While the card's FP16
+  tensor cores are throttled, it converts the recipe's parts to Q8_0 as it
+  loads them and runs with flash attention off, so the work goes to the
+  card's int8 units; once the card is unlocked (see "CMP 100-210 unlock"),
+  it converts them to F16 and turns flash attention on, about 2.5 times as
+  fast. A GGUF diffusion model keeps its own quantisation either way, since
+  a larger copy may not fit. `gate.sh` runs `tensor-probe` when the
+  container starts and reports the rate with each run; host-api picks the
+  arguments from it. It
   creates only, for Z-Image, Qwen-Image, Krea 2, FLUX and SDXL recipes without
   LoRAs; the recipe list shows edit, upscale and other recipes as unsupported, saying why. It takes its model
   as start-up arguments, so `sdcpp/gate.sh` starts it for the recipe
@@ -507,15 +534,20 @@ revoked. A revoked server must pair again.
   Docker's nvidia runtime (NixOS), `compose.cdi.yaml` swaps the GPU
   reservations for CDI devices. They log nothing
   (Docker's `none` log driver).
-  - On a host with a CMP 100-210 (PCI ID `10de:1df4`), whose FP16 tensor
-    cores are throttled, `install.sh` adds `compose.cmp.yaml`. Its
-    llama.cpp (`llamacpp/Dockerfile`) is built at the stock image's tag with
-    `GGML_CUDA_FORCE_MMQ`, so quantized models use int8; that changes
-    nothing on Turing and newer cards. A patch (`volta-fa-tile.patch`) lets
-    the overlay's `GGML_CUDA_VOLTA_FA_TILE` keep flash attention on sm_70
-    off the tensor cores, and host-api reads prompts on the CMP in steps of
-    2048 tokens (`ubatch-size`); together they read prompts about three
-    times as fast as the stock image. CI publishes it and sd-server's image
+  - On a host with a CMP 100-210 (PCI ID `10de:1df4` or `10de:1d84`),
+    `install.sh` adds `compose.cmp.yaml`. Its llama.cpp
+    (`llamacpp/Dockerfile`) is built at the stock image's tag, and
+    host-api reads prompts on the CMP in steps of 2048 tokens
+    (`ubatch-size`). The card's FP16 tensor cores are throttled until it is
+    unlocked (see "CMP 100-210 unlock"), so at each start `entrypoint.sh`
+    runs `tensor-probe`, which times the tensor cores on each sm_70 GPU
+    (about 512 cycles an instruction throttled, 37 unlocked). Throttled, or
+    when it can't tell, it sets the two switches `throttled-tensor.patch`
+    adds: quantized models use int8, as `GGML_CUDA_FORCE_MMQ` would, and
+    flash attention on sm_70 uses the tile kernel; that reads prompts about
+    three times as fast as the stock image, and changes nothing on Turing
+    and newer cards. Unlocked, llama.cpp makes its own choices, which read
+    prompts about twice as fast again. CI publishes it and sd-server's image
     (`.github/workflows/cmp-images.yml`) under a tag that hashes their build
     folder and CUDA capabilities, in the registry `prebuilt.sh` names (one
     line, or `LYRICA_HOST_REGISTRY`). `install.sh` pulls the tag that matches

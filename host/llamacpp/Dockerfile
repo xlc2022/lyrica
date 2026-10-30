@@ -1,10 +1,11 @@
 # llama.cpp for a host with a CMP 100-210 (compose.cmp.yaml): the stock
-# server image's tag, built with GGML_CUDA_FORCE_MMQ so quantized matrix
-# multiplies use int8 (dp4a) instead of the card's throttled FP16 tensor
-# cores. On Turing and newer cards ggml uses those kernels anyway. Built like
-# the official .devops/cuda.Dockerfile, without the web UI. volta-fa-tile.patch
-# lets GGML_CUDA_VOLTA_FA_TILE (set in compose.cmp.yaml) keep flash attention
-# on sm_70 off the tensor cores too: prompts read about 15% faster on a CMP.
+# server image's tag, built like the official .devops/cuda.Dockerfile without
+# the web UI. The card's FP16 tensor cores are throttled until it is unlocked
+# (cmp-unlock.sh), and the unlock lasts until power-off, so entrypoint.sh asks
+# tensor-probe at each start. Throttled, it turns on throttled-tensor.patch's
+# two switches: quantized matrix multiplies use int8 (dp4a), as
+# GGML_CUDA_FORCE_MMQ would, and flash attention on sm_70 the tile kernel.
+# On Turing and newer cards ggml uses those kernels anyway.
 ARG DEVEL=nvidia/cuda:12.8.1-devel-ubuntu24.04@sha256:520292dbb4f755fd360766059e62956e9379485d9e073bbd2f6e3c20c270ed66
 ARG RUNTIME=nvidia/cuda:12.8.1-runtime-ubuntu24.04@sha256:ebef3c171eeef0298e4eb2e4be843105edf3b8b0ac45e0b43acee358e8046867
 
@@ -18,17 +19,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc-14 g++-14 c
 ENV CC=gcc-14 CXX=g++-14 CUDAHOSTCXX=g++-14
 WORKDIR /src
 RUN git clone --depth 1 --branch "$TAG" https://github.com/ggml-org/llama.cpp . && test "$(git rev-parse HEAD)" = "$COMMIT"
-COPY volta-fa-tile.patch /tmp/
-RUN git apply /tmp/volta-fa-tile.patch
+COPY throttled-tensor.patch tensor-probe.c /tmp/
+RUN git apply /tmp/throttled-tensor.patch
 RUN test -n "$CUDA_ARCHS" && \
-    cmake -B build -DGGML_NATIVE=OFF -DGGML_CUDA=ON -DGGML_CUDA_FORCE_MMQ=ON -DCMAKE_CUDA_ARCHITECTURES="$CUDA_ARCHS" \
+    cmake -B build -DGGML_NATIVE=OFF -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="$CUDA_ARCHS" \
       -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_USE_PREBUILT_UI=OFF \
       -DCMAKE_EXE_LINKER_FLAGS=-Wl,--allow-shlib-undefined && \
     cmake --build build --config Release --target llama-server -j"$(nproc)"
-RUN mkdir -p /app && find build -name "*.so*" -exec cp -P {} /app \; && cp build/bin/llama-server /app
+RUN mkdir -p /app && find build -name "*.so*" -exec cp -P {} /app \; && cp build/bin/llama-server /app && \
+    "$CC" -O2 -Wall -o /app/tensor-probe /tmp/tensor-probe.c -ldl
 
 FROM ${RUNTIME}
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app /app
+COPY entrypoint.sh /app/entrypoint.sh
 WORKDIR /app
-ENTRYPOINT ["/app/llama-server"]
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -1,4 +1,4 @@
-# Dictation on a CMP 100-210 (PCI ID 10de:1df4): install.sh adds this when it
+# Dictation on a CMP 100-210 (10de:1df4 or 10de:1d84): install.sh adds this when it
 # finds one, since vLLM, which runs Whisper elsewhere, has no kernels for it.
 # whisper.cpp's whisper-server (whispercpp/Dockerfile), built to use int8 by
 # CI or here, runs the whisper.cpp model host-api names in

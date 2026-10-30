@@ -13,3 +13,18 @@ index bb34e01..3d1be9c 100644
              return BEST_FATTN_KERNEL_TILE; // On Volta tensor cores are only faster for sufficiently large matrices.
          }
          return BEST_FATTN_KERNEL_MMA_F16;
+diff --git a/ggml/src/ggml-cuda/mmq.cu b/ggml/src/ggml-cuda/mmq.cu
+--- a/ggml/src/ggml-cuda/mmq.cu
++++ b/ggml/src/ggml-cuda/mmq.cu
+@@ -449,6 +449,11 @@
+ #ifdef GGML_CUDA_FORCE_MMQ
+     return true;
+ #endif //GGML_CUDA_FORCE_MMQ
++    // Lyrica: GGML_CUDA_FORCE_MMQ at run time, for a CMP 100-210 whose FP16 tensor cores are throttled.
++    static const bool force_mmq = getenv("GGML_CUDA_VOLTA_MMQ") != nullptr;
++    if (force_mmq) {
++        return true;
++    }
+ 
+     if (GGML_CUDA_CC_IS_NVIDIA(cc)) {
+         return !fp16_mma_hardware_available(cc) || ne11 < MMQ_DP4A_MAX_BATCH_SIZE;

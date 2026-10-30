@@ -16,6 +16,7 @@ import { SdCpp, sdcppArgs, sdcppJob } from "../src/sdcpp.ts";
 import { FakeBackend, FakeGpus, MP4, PNG, fakeComfy, fakeSdServer, safetensors } from "./fakes.ts";
 import { call, lyrica, pair, startHost } from "./helpers.ts";
 
+const host = new URL("..", import.meta.url).pathname;
 const TEMPLATES = loadTemplates(new URL("../workflows/", import.meta.url).pathname);
 const STARTERS = loadStarters(new URL("../recipes/", import.meta.url).pathname);
 const MARKER = "violet-anchovy-5531";
@@ -677,16 +678,41 @@ describe("stable-diffusion.cpp", () => {
   const part = (role: string, file: string, slot: string | null = null) => ({ role, slot, file, added: false }) as Recipe["parts"][number];
 
   it("gives sd-server each part under its own flag, and refuses what it can't run", () => {
-    expect(sdcppArgs({ template: "flux", parts: [part("checkpoint", "f/flux.safetensors")], loras: [] }, "/models")).toEqual(["--type", "q8_0", "-m", "/models/f/flux.safetensors"]);
+    expect(sdcppArgs({ template: "flux", parts: [part("checkpoint", "f/flux.safetensors")], loras: [] }, "/models")).toEqual(["--flash-attn", "off", "--type", "q8_0", "-m", "/models/f/flux.safetensors"]);
     expect(sdcppArgs({ template: "qwen-image", parts: [part("diffusion", "q/d.safetensors"), part("text_encoder", "q/te.safetensors", "qwen2.5vl"), part("vae", "q/v.safetensors")], loras: [] }, "/models"))
-      .toEqual(["--type", "q8_0", "--diffusion-model", "/models/q/d.safetensors", "--llm", "/models/q/te.safetensors", "--vae", "/models/q/v.safetensors"]);
+      .toEqual(["--flash-attn", "off", "--type", "q8_0", "--diffusion-model", "/models/q/d.safetensors", "--llm", "/models/q/te.safetensors", "--vae", "/models/q/v.safetensors"]);
     // A GGUF main model keeps its own quantisation.
     expect(sdcppArgs({ template: "krea2", parts: [part("diffusion", "k/d.gguf"), part("text_encoder", "k/te.gguf", "qwen3vl"), part("vae", "k/v.safetensors")], loras: [] }, "/models"))
-      .toEqual(["--diffusion-model", "/models/k/d.gguf", "--llm", "/models/k/te.gguf", "--vae", "/models/k/v.safetensors"]);
+      .toEqual(["--flash-attn", "off", "--diffusion-model", "/models/k/d.gguf", "--llm", "/models/k/te.gguf", "--vae", "/models/k/v.safetensors"]);
     expect(sdcppArgs({ template: "krea2", parts: [part("diffusion", "k/d.safetensors"), part("text_encoder", "k/te.safetensors", "qwen3vl"), part("vae", "k/v.safetensors")], loras: [] }, "/models"))
-      .toEqual(["--type", "q8_0", "--diffusion-model", "/models/k/d.safetensors", "--llm", "/models/k/te.safetensors", "--vae", "/models/k/v.safetensors"]);
+      .toEqual(["--flash-attn", "off", "--type", "q8_0", "--diffusion-model", "/models/k/d.safetensors", "--llm", "/models/k/te.safetensors", "--vae", "/models/k/v.safetensors"]);
+    // Unlocked tensor cores: F16 weights, flash attention on; a GGUF keeps its quantisation.
+    expect(sdcppArgs({ template: "flux", parts: [part("checkpoint", "f/flux.safetensors")], loras: [] }, "/models", true)).toEqual(["--flash-attn", "on", "--type", "f16", "-m", "/models/f/flux.safetensors"]);
+    expect(sdcppArgs({ template: "krea2", parts: [part("diffusion", "k/d.gguf")], loras: [] }, "/models", true)).toEqual(["--flash-attn", "on", "--diffusion-model", "/models/k/d.gguf"]);
     expect(() => sdcppArgs({ template: "seedvr2", parts: [], loras: [] }, "/models")).toThrow(/no seedvr2 support/);
     expect(() => sdcppArgs({ template: "z-image", parts: [], loras: [{ file: "l.safetensors", strength: 1 }] }, "/models")).toThrow(/LoRAs/);
+  });
+
+  it("has gate.sh report the tensor cores' rate and start sd-server with host-api's arguments alone", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lyrica-gate-"));
+    const script = (name: string, body: string) => {
+      writeFileSync(join(dir, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+      return join(dir, name);
+    };
+    const env = {
+      ...process.env, SDCPP_STATE: join(dir, "state.json"), SDCPP_STATUS: join(dir, "status.json"),
+      SDCPP_PROBE: script("probe", "echo full"), SDCPP_SERVER: script("server", `printf '%s\\n' "$@" > ${join(dir, "args")}; exec sleep 30`),
+    };
+    writeFileSync(env.SDCPP_STATE, JSON.stringify({ run: true, attempt: "a1", args: ["--flash-attn", "on", "-m", "/models/x"] }));
+    const gate = (await import("node:child_process")).spawn(join(host, "sdcpp/gate.sh"), { env, stdio: "ignore" });
+    try {
+      const status = () => { try { return JSON.parse(readFileSync(env.SDCPP_STATUS, "utf8")); } catch { return {}; } };
+      for (let i = 0; i < 100 && !(status().attempt && readdirSync(dir).includes("args")); i++) await new Promise((r) => setTimeout(r, 50));
+      expect(status()).toEqual({ attempt: "a1", tensor: "full" });
+      expect(readFileSync(join(dir, "args"), "utf8").trim().split("\n")).toEqual(["--listen-ip", "0.0.0.0", "--listen-port", "8188", "--flash-attn", "on", "-m", "/models/x"]);
+    } finally {
+      gate.kill("SIGTERM");
+    }
   });
 
   it("names samplers and schedulers as sd.cpp does, and leaves out the ones it doesn't have", () => {
@@ -773,7 +799,7 @@ describe("the image API", () => {
     expect(made.body.images.map((i: { seed: number }) => i.seed)).toEqual([11, 12]);
     // sd-server started with the recipe's parts, and got the recipe's defaults in its own names.
     expect(s.sdFake!.seen.started).toEqual([[
-      "--type", "q8_0", "--diffusion-model", join(s.models, `${Z}/diffusion_models/z.safetensors`),
+      "--flash-attn", "off", "--type", "q8_0", "--diffusion-model", join(s.models, `${Z}/diffusion_models/z.safetensors`),
       "--llm", join(s.models, `${Z}/text_encoders/qwen_3_4b.safetensors`),
       "--vae", join(s.models, `${Z}/vae/ae.safetensors`),
     ]]);
@@ -785,6 +811,11 @@ describe("the image API", () => {
     await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "again" } });
     expect(s.sdFake!.seen.started).toHaveLength(1);
     expect(s.comfyFake.seen.prompts).toHaveLength(0);
+    // Once the card's tensor cores run at full rate, the next job starts it again with F16 and flash attention.
+    s.sdFake!.seen.tensor = "full";
+    await new Promise((r) => setTimeout(r, 100));
+    await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "unlocked" } });
+    expect(s.sdFake!.seen.started[1]!.slice(0, 4)).toEqual(["--flash-attn", "on", "--type", "f16"]);
 
     // The list offers only what sd.cpp can run, so Lyrica's router never picks this host for the rest.
     const copy = (await s.api(`/host/v1/recipes/${z.id}/copy`, { body: { name: "Styled" } })).body;

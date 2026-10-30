@@ -9,7 +9,7 @@
 import { totalmem } from "node:os";
 import { HostError, invalid } from "./http.ts";
 import type { Backend } from "./backends.ts";
-import { CMP_100_210, type Gpu, type GpuMonitor } from "./gpus.ts";
+import { isCmp, type Gpu, type GpuMonitor } from "./gpus.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import {
@@ -196,7 +196,7 @@ export class Scheduler {
     const beside = gpu?.integrated === true && this.gpus.some((g) => !g.integrated);
     const servers = gpu?.integrated && this.gpuBackend === "rocm" ? (["llamacpp"] as Server[]) : defaultGpu().servers;
     const saved = this.o.state.get().gpuSettings[index] ?? { ...defaultGpu(), servers, excluded: beside };
-    const cmp = gpu?.pciId === CMP_100_210;
+    const cmp = isCmp(gpu?.pciId);
     return { ...saved, servers: saved.servers.filter((s) => this.servers.includes(s) && !(cmp && NOT_ON_CMP.includes(s))) };
   }
 
@@ -287,7 +287,7 @@ export class Scheduler {
     if (!opts.length) {
       const server = serverOf(model);
       if (job.gpu !== undefined) return `GPU ${job.gpu} doesn't allow images.`;
-      const cmpOnly = NOT_ON_CMP.includes(server) && this.gpus.some((g) => g.pciId === CMP_100_210);
+      const cmpOnly = NOT_ON_CMP.includes(server) && this.gpus.some((g) => isCmp(g.pciId));
       return cmpOnly ? `${SERVER_NAMES[server]} can't run on a CMP 100-210, and no other GPU here allows it.` : `No GPU allows ${SERVER_NAMES[server]} for this model.`;
     }
     const s = this.served(model);

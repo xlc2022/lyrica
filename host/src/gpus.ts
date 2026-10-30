@@ -26,8 +26,12 @@ export interface GpuMonitor {
 
 const MIB = 1024 * 1024;
 
-/** The CMP 100-210, a mining card whose FP16 tensor cores are throttled (docs/briefs/cmp-100-210.md). */
-export const CMP_100_210 = "10de:1df4";
+/**
+ * The CMP 100-210, a mining card whose FP16 tensor cores are throttled
+ * (docs/briefs/cmp-100-210.md), under both PCI IDs it ships with.
+ */
+export const CMP_100_210 = ["10de:1df4", "10de:1d84"];
+export const isCmp = (pciId: string | undefined): boolean => CMP_100_210.includes(pciId ?? "");
 
 /** nvidia-smi's pci.device_id (0x1DF410DE: device, then vendor) as `10de:1df4`. */
 export function pciIdOf(id: string | undefined): { pciId?: string } {
