@@ -1026,14 +1026,18 @@ newer host made, read after a rollback).
   recipe's `longestSeconds` (default 5), made into the model's nearest frame
   count at or above it. Past the recipe's longest clip, a template with a
   continuation chains clips: near-equal clips of at most its
-  continuation's `clipSeconds` (8 for H3, which may cut to a new shot
-  inside a longer clip), the first made as usual and each next one from
+  continuation's `clipSeconds` (15 for H3, its longest clip: a request
+  that fits one clip is never split, since a join is where a cut shows), the first made as usual and each next one from
   the clip so far, whose last `overlap` frames (22 for H3) and their sound
   anchor the new clip's frame 0, and its first is the image the prompt is
   read with (so an animated still's prompt reads against the clip so far,
   not the still), and its prompt starts with the continuation's
   `promptPrefix` (that the shot goes on with no cut), since the prompt alone
-  describes the video from its start; the new clip's first `overlap` frames are
+  describes the video from its start. Animating an image, each later clip
+  also takes the image as a reference picture (the continuation's
+  `reference`, H3's `MiniMaxH3ReferenceToVideo` in place of its
+  conditioning), named first in its prompt, so a face the clip so far lost
+  comes back as the image shows it. The new clip's first `overlap` frames are
   dropped and the rest appended. The chain comes out at most one frame
   step longer than asked, as one clip does. Each clip takes the next seed, they hold
   the GPU as one job with one progress, weighted by frames, and one MP4

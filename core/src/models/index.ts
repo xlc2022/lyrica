@@ -220,6 +220,8 @@ export interface Offering extends Capabilities {
   extend?: boolean;
   /** A host video recipe's longest video in seconds (host/API.md, "Recipes"); a longer request is skipped. */
   longestSeconds?: number;
+  /** A host video recipe renders sound with the picture (its listing's `video.audio`). */
+  sound?: boolean;
   /** A host recipe says how many reference images it takes; fewer than a call sends skips it. */
   references?: number;
   /** A host recipe's LoRA files it takes for one call; a call naming a LoRA it lacks skips it. */
@@ -530,7 +532,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; loras?: string[]; extend?: boolean; longestSeconds?: number; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; loras?: string[]; extend?: boolean; longestSeconds?: number; sound?: boolean; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -548,6 +550,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.mask !== undefined ? { mask: caps.mask } : {}),
     ...(caps.extend ? { extend: true } : {}),
     ...(typeof caps.longestSeconds === "number" ? { longestSeconds: caps.longestSeconds } : {}),
+    ...(caps.sound ? { sound: true } : {}),
     ...(typeof caps.references === "number" ? { references: caps.references } : {}),
     ...(Array.isArray(caps.loras) && caps.loras.length ? { loras: caps.loras.filter((f): f is string => typeof f === "string") } : {}),
     ...(caps.separate ? { separate: true } : {}),
@@ -1722,13 +1725,14 @@ export class Models {
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
     // Image and video models are recipes: only confirmed ones become offerings, so a proposal never resolves.
     // A recipe that does nothing Lyrica can ask for isn't one, so it never shows as a chat model.
-    const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"]; mask?: boolean; references?: number; takesLoras?: unknown; video?: { longestSeconds?: unknown } }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
+    const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"]; mask?: boolean; references?: number; takesLoras?: unknown; video?: { longestSeconds?: unknown; audio?: unknown } }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
       .filter((r) => r?.state === "confirmed" && r.does?.some((a) => RECIPE_ACTIONS.includes(a))).map((r) => ({
         modelId: `recipe/${r.id}`, recipe: r.name, useFor: r.useFor ?? "both", ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true, ...(typeof r.mask === "boolean" ? { mask: r.mask } : {}) } : {}), ...(r.does?.includes("upscale") ? { upscale: true } : {}),
         ...((r.does?.includes("create") || r.does?.includes("edit")) && typeof r.references === "number" ? { references: r.references } : {}),
         ...(r.does?.includes("video") ? { video: true } : {}), ...(r.does?.includes("animate") ? { animate: true } : {}),
         ...(r.does?.includes("motion") ? { motion: true } : {}), ...(r.does?.includes("extend") ? { extend: true } : {}),
         ...(typeof r.video?.longestSeconds === "number" && r.video.longestSeconds > 0 ? { longestSeconds: r.video.longestSeconds } : {}),
+        ...(r.video?.audio === true ? { sound: true } : {}),
         ...(Array.isArray(r.takesLoras) && r.takesLoras.length ? { loras: r.takesLoras.filter((f): f is string => typeof f === "string") } : {}),
       } as DiscoveredModel));
     return [...list.filter((m) => typeof m?.id === "string" && m.kind !== "image").map((m) => {
@@ -2770,15 +2774,15 @@ export class Models {
 
   /**
    * The first model on the context's Videos list that could make a clip now, for the image tool's description:
-   * its name, its longest video and whether it extends clips. No model is called.
+   * its name, its longest video, whether it extends clips and whether it renders sound. No model is called.
    */
-  firstVideoModel(ctx: CallContext): { name: string; longestSeconds?: number; extend: boolean } | undefined {
+  firstVideoModel(ctx: CallContext): { name: string; longestSeconds?: number; extend: boolean; sound: boolean } | undefined {
     const c = this.catalog(ctx.userId);
     for (const ref of this.listFor("video", ctx, c)?.list ?? []) {
       for (const raw of "offeringId" in ref ? [ref.offeringId] : c.groups.get(ref.groupId)?.members ?? []) {
         const id = this.follow(raw), o = id ? c.offerings.get(id) : undefined, ep = o && c.endpoints.get(o.endpointId);
         if (!o || !ep || this.unfit("video", o, ep, { animate: false }) || this.away(ep, {}, o)) continue;
-        return { name: modelName(o), ...(o.longestSeconds ? { longestSeconds: o.longestSeconds } : {}), extend: !!o.extend };
+        return { name: modelName(o), ...(o.longestSeconds ? { longestSeconds: o.longestSeconds } : {}), extend: !!o.extend, sound: !!o.sound };
       }
     }
     return undefined;

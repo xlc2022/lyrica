@@ -52,8 +52,9 @@ export async function fakeImages() {
     // Art, Clip, Moves and Long: a proposal never resolves.
     expect(offerings.map(o => o.recipe)).toEqual(["Art", "Clip", "Long", "Moves"]);
     expect(offerings[1]).toMatchObject({ video: true, animate: true, longestSeconds: 8 });
+    expect(offerings[1]).not.toHaveProperty("sound");
     expect(offerings[1]).not.toHaveProperty("extend");
-    expect(offerings[2]).toMatchObject({ video: true, extend: true, longestSeconds: 60 });
+    expect(offerings[2]).toMatchObject({ video: true, extend: true, longestSeconds: 60, sound: true });
     expect(offerings[3]).toMatchObject({ motion: true });
     expect(offerings[3]).not.toHaveProperty("video");
     const ref = { offeringId: offerings[0]!.id }, clip = { offeringId: offerings[1]!.id }, long = { offeringId: offerings[2]!.id }, moves = { offeringId: offerings[3]!.id };

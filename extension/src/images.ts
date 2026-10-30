@@ -37,7 +37,7 @@ const path = (description: string) => Type.Optional(Type.String({ description })
  */
 export const imageParameters = Type.Object({
   action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected", "video", "animate", "motion", "extend"] as const),
-  prompt: Type.Optional(Type.String({ description: "For create: what to draw, as one detailed paragraph. For video and animate: what happens in the clip. For motion: the scene, light and look; the clip gives the moves. For extend: what happens next." })),
+  prompt: videoPrompt(),
   tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality (the default)." })),
   model: Type.Optional(Type.String({ description: "For create, edit and upscale: an image model they asked for by name; it is tried first, then the usual models." })),
   loras: loraParameter(),
@@ -57,6 +57,17 @@ export const imageParameters = Type.Object({
   maxSize: Type.Optional(Type.Integer({ minimum: 256, maximum: 8192, description: "For upscale: the longest side's limit." })),
 });
 export type ImageArgs = Static<typeof imageParameters>;
+
+/**
+ * `prompt`, saying whether the thread's first Videos model renders sound: one that does voices what the prompt
+ * quotes, and makes up speech-like sounds for talking it isn't given words for.
+ */
+export function videoPrompt(model?: { name: string; sound: boolean }) {
+  const sound = !model ? " A video model may render sound with the picture; if it does, quote any speech word for word in its language (She says in Mandarin: \"…\"), or the talking comes out as made-up sounds."
+    : model.sound ? ` ${model.name} renders sound with the picture: describe the sounds, and quote any speech word for word in its language (She says in Mandarin: "…"), or the talking comes out as made-up sounds.`
+    : ` ${model.name} makes no sound.`;
+  return Type.Optional(Type.String({ description: `For create: what to draw, as one detailed paragraph. For video and animate: what happens in the clip. For motion: the scene, light and look; the clip gives the moves. For extend: what happens next.${sound}` }));
+}
 
 /** `loras`, naming the LoRAs her models take when they are known. */
 export function loraParameter(names: readonly string[] = []) {
@@ -166,7 +177,7 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "Don't pass the image being edited as a reference too.",
         "For a person from reference photos, say \"the person from the reference images\", not an image number; ask for one new angle per edit, or several views as one wide create. For an exact garment, pass its photo as a reference. Word a change of build strongly. For a relative, pass no photo: describe the traits they share and how they differ.",
         "Check faces, hands and limbs in a result against the source; reject one that gets them wrong.",
-        "Make a clip only when they ask for one: it holds the model host's GPU for minutes. It is made in the background: say it's on its way and end your reply; you'll be told when it's ready. For video and animate, write the prompt as a detailed shot even when they gave a few words: the subject and what it does, how things move, the camera's move and lens, the light and the mood, in one paragraph of about 80 to 120 words; for animate, say what moves and what stays.",
+        "Make a clip only when they ask for one: it holds the model host's GPU for minutes. It is made in the background: say it's on its way and end your reply; you'll be told when it's ready. For video and animate, write the prompt as a detailed shot even when they gave a few words: the subject and what it does, how things move, the camera's move and lens, the light and the mood, in one paragraph of about 80 to 120 words; for animate, say what moves and what stays. For a video longer than one clip with a person in it, first make a still of them with create, then animate it: the still keeps their face across the clips, which a prompt alone doesn't.",
         "For a long video, give the whole length as duration: the host joins clips into one. To make an existing clip longer, use extend with its path, the seconds to add and a prompt for what happens next.",
         "Use motion when they want someone to move as a given clip shows (a dance, a gesture), or when a clip of a person from a prompt alone would move badly: make a plain clip of someone doing the moves first (video), then motion with it. For motion, the prompt says the scene, light and look; the moves come from the clip. Don't measure the clip first: leave duration out and the host takes its length."],
       parameters: videoModelParameters(o),
@@ -199,7 +210,7 @@ function videoModelParameters(o: ImageTools) {
     model = o.models.firstVideoModel(call);
     names = [...new Set((["image.create", "image.edit", "video"] as const).flatMap(t => o.models.loraModels(call, t, []).names))].sort();
   } catch { return imageParameters; }
-  return model || names.length ? Type.Object({ ...imageParameters.properties, ...(model ? { duration: videoDuration(model) } : {}), ...(names.length ? { loras: loraParameter(names) } : {}) }) : imageParameters;
+  return model || names.length ? Type.Object({ ...imageParameters.properties, ...(model ? { prompt: videoPrompt(model), duration: videoDuration(model) } : {}), ...(names.length ? { loras: loraParameter(names) } : {}) }) : imageParameters;
 }
 
 /**

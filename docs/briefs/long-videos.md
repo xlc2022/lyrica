@@ -16,13 +16,15 @@ for, on the operator's own hardware. It builds on [video.md](video.md).
    takes a `duration` past the recipe's `maxSeconds`, up to its
    `longestSeconds`, when its template has a **continuation** workflow.
    The host splits the length into near-equal clips no longer than the
-   continuation's `clipSeconds` (8 for H3: lunasa found a hard scene cut
-   at 6.6 s inside a 15 s H3 clip, so shorter clips hold one shot better),
+   continuation's `clipSeconds` (15 for H3, its longest clip; it was 8 after
+   one 15 s clip cut by itself at 6.6 s, but every chained animate then
+   cut at or after a join, so a video that fits one clip stays one),
    makes the first as now, then each next one with the
    continuation workflow: the clip so far goes in, its last `overlap`
    frames and their sound anchor frame 0 of the new clip (the first of them
    is also the image H3's text encoder reads the prompt with, and the prompt
-   is prefixed to say the shot goes on with no cut), the new clip's
+   is prefixed to say the shot goes on with no cut; animating an image, the
+   image is also each later clip's reference picture), the new clip's
    first `overlap` frames are dropped, and the rest is appended. One MP4
    comes back. The clips share one GPU hold and one progress, weighted by
    frames; each clip's seed is the next. Joining happens in ComfyUI (our

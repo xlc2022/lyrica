@@ -251,6 +251,11 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(duration(tool(s.options as ImageTools))).toMatchObject({ maximum: 60, description: expect.stringContaining("Long makes up to 60 s, joining clips into one") });
     s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.clip, s.workstation.long]);
     expect(duration(tool(s.options as ImageTools))).toMatchObject({ maximum: 8, description: expect.stringContaining("Clip makes up to 8 s.") });
+    // The prompt says whether that model renders sound, so she neither denies it nor leaves speech without words.
+    const prompt = (t: ToolDefinition) => (t.parameters as { properties: { prompt: { description: string } } }).properties.prompt.description;
+    expect(prompt(tool(s.options as ImageTools))).toContain("Clip makes no sound.");
+    s.models.setColumnTask(s.ada.id, "general", "video", [s.workstation.long]);
+    expect(prompt(tool(s.options as ImageTools))).toContain('Long renders sound with the picture: describe the sounds, and quote any speech word for word in its language (She says in Mandarin: "…")');
     writeFileSync(join(s.folder, "uploads", "walk.mp4"), mp4);
     const out = await s.run({ action: "extend", prompt: "She keeps walking", video: "/workspace/uploads/walk.mp4", duration: 6 });
     expect((out.details as { video: { model: string; path: string } }).video).toMatchObject({ model: "shared.workstation/Long", path: expect.stringMatching(/^\/workspace\/videos\//) });

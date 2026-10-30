@@ -57,7 +57,7 @@ export interface Template {
   /**
    * The workflow that makes the next clip of a longer video from the clip so far
    * (`host/workflows/<name>-continue.json`): the clip's last `overlap` frames anchor the new clip's start.
-   * A chained video's clips are at most `clipSeconds` long: H3 may cut to a new shot within one long clip.
+   * A chained video's clips are at most `clipSeconds` long; a video that fits one clip is one, with no join to cut at.
    * `promptPrefix` goes before the prompt of each clip after the first: the same prompt alone describes the whole
    * video from its start, so a later clip would play it again from there.
    */
@@ -72,7 +72,11 @@ export interface FilledPart {
   added: boolean;
 }
 
-export interface Continuation { overlap: number; clipSeconds: number; promptPrefix?: string; workflow: Record<string, Node> }
+export interface Continuation {
+  overlap: number; clipSeconds: number; promptPrefix?: string; workflow: Record<string, Node>;
+  /** With a still to animate: nodes replacing the workflow's, so every later clip keeps the still's people as a reference, and the prompt's prefix naming it. */
+  reference?: { promptPrefix: string; workflow: Record<string, Node> };
+}
 
 export type Values = Record<string, string | number>;
 
@@ -97,7 +101,7 @@ export function loadTemplates(dir: string): Map<string, Template> {
   for (const c of continuations) {
     const t = out.get(c.continues);
     if (!t?.video) throw new Error(`${c.continues}-continue continues no video template`);
-    t.continuation = { overlap: c.overlap, clipSeconds: c.clipSeconds, ...(c.promptPrefix ? { promptPrefix: c.promptPrefix } : {}), workflow: c.workflow };
+    t.continuation = { overlap: c.overlap, clipSeconds: c.clipSeconds, ...(c.promptPrefix ? { promptPrefix: c.promptPrefix } : {}), ...(c.reference ? { reference: c.reference } : {}), workflow: c.workflow };
   }
   return out;
 }
