@@ -1837,6 +1837,7 @@ export interface MemoryRevision { id: number; body: Pick<MemoryItem, "text" | "t
 export interface MemoryLink {
   kind: MemoryKind;
   pool: Pool;
+  /** A memory's title in stored form (render with `users`); a thread's title as it is. */
   title?: string;
   /** The first line, in stored form (render with `users`), without its citations; a message's first words for an entry. */
   snippet: string;

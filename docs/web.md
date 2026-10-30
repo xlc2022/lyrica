@@ -403,8 +403,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   named by its first words (`firstWords`), with citations and Markdown's
   marks taken off. The memory at the right shows
   its citations as titles with a hover preview (`linkCitations` turns each
-  citation into a link whose word comes from `MemoryDetail.links`; the raw ID
-  is never shown), Came from and Used in with the citing sentence. Each
+  citation into a link whose word comes from `MemoryDetail.links`, its title's
+  mention tokens rendered first by `readableLinks`; the raw ID is never shown), Came from and Used in with the citing sentence. Each
   previews four cards; a right-aligned Show all link expands longer lists
   in place with their own scroll (maximum height 320 px), becoming Show less.
   Either expansion hides History; Came from expansion also hides Used in.
@@ -414,7 +414,8 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `…/history/memory/<pool>/<id>` lists versions newest first, with
   word differences (`wordDiff`, computed in the browser) and Restore, and
   Edit in place with a `[[` popover of pages and people (a page shows as
-  `[[Title]]` and saves as `[p:<slug>]`). Archive, Delete, Export and Forget… on a
+  `[[Title]]` and saves as `[p:<slug>]`; the title, summary and text show
+  users as `[[Name]]` and save them as tokens). Archive, Delete, Export and Forget… on a
   selection, and Add a memory with a Write | Import segment (export and
   import in [memory.md](memory.md#export-and-import); the downloaded file
   is made from the response in the browser and kept nowhere else). The **Recent** layer (`kinds=entry`) lists
