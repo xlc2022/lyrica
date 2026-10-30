@@ -310,7 +310,11 @@ Three ways a model gets into the library:
   **Vision** and **MTP**. A link to one `.gguf` or `.safetensors` file,
   with an optional SHA-256, works too.
   Models, **Downloads** shows every host's queue, with Cancel, Clear
-  finished and Add to the group. Cancelling or clearing a failed download
+  finished and Add to the group. A download that loses its connection,
+  stalls or meets a busy server retries by itself from where it stopped,
+  for about four minutes of waits, and fails only when five tries in a
+  row get nowhere. Downloading the same file again while the failed one is
+  still listed resumes it; cancelling or clearing a failed download
   deletes its partial file. Its **Accounts** section holds hub
   tokens: a user's own, or a shared one an administrator adds, sent to the
   host per request. A token typed for a gated repository is saved for next
