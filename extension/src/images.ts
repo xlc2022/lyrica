@@ -294,7 +294,10 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   };
   // A clip holds the host's GPU for minutes: in the background her turn ends, and the chat goes on.
   if (o.background) {
-    o.background(async (signal, progress) => { const { text, video } = await make(signal, progress); return { text: `The clip is ready. ${text}`, video, args: p }; }, id);
+    // Its prompt names it, so she can tell clips that were made side by side apart.
+    const prompt = p.prompt ?? "";
+    const named = prompt.length > 60 ? `${prompt.slice(0, 59).trimEnd()}…` : prompt;
+    o.background(async (signal, progress) => { const { text, video } = await make(signal, progress); return { text: `The clip for "${named}" is ready. ${text}`, video, args: p }; }, id);
     return { content: [{ type: "text" as const, text: "Making the clip in the background; it takes minutes. You'll be told here when it is ready, and the chat shows it then. Don't wait for it: finish this reply." }],
       details: { clip: "started" } };
   }
