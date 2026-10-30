@@ -460,8 +460,10 @@ class Models {                                              // new Models(keyrin
   // Images (memory only; caller stores and records results)
   image(ctx, request: ImageRequest, { signal?, beforeSend?: (resolution) => Promise<void> }?): Promise<{ images: GeneratedImage[]; resolution }>
   // ImageInput { bytes: Uint8Array; type: "image/png" | "image/jpeg" | "image/webp" }
-  // ImageRequest: create { prompt, tier: "fast" | "quality", size?: { width, height }, count?, references?: ImageInput[] }
-  //   | edit { prompt, image: ImageInput, mask?: ImageInput, replace?: boolean, count?, references?: ImageInput[] }
+  // ImageRequest: create { prompt, tier: "fast" | "quality", size?: { width, height }, count?, references?: ImageInput[], loras?: LoraAsk[] }
+  //   | edit { prompt, image: ImageInput, mask?: ImageInput, replace?: boolean, count?, references?: ImageInput[], loras?: LoraAsk[] }
+  //     LoraAsk { name; strength: -4 to 4 } (at most MAX_LORAS, 4): need.loras skips a model that lacks one ("it takes no LoRAs",
+  //     "it has no LoRA called …", and passedOver says so); the host gets the files matchLora finds in the offering's loras (its takesLoras)
   //     replace (with a mask): what's under it becomes something new; host recipes get it, cloud providers ignore it
   //   | upscale { image: ImageInput, scale?, maxSize? }; each has action: "create" | "edit" | "upscale"
   // GeneratedImage { bytes: Uint8Array; type: "image/png"; width; height; seed? }; no prompt metadata
@@ -475,17 +477,18 @@ class Models {                                              // new Models(keyrin
   // Cloud useFor/image/edit are offerings.hand JSON in self.db (shared) or user.db (personal); no schema step.
   // beforeSend runs on every resolved attempt, including fallbacks, before any image or prompt is sent; a refusal stops the call.
   // Videos (memory only; caller stores and records results)
-  video(ctx, request: VideoRequest, { signal?, beforeSend?, onProgress? }?): Promise<{ video: GeneratedVideo; resolution }>
+  video(ctx, request: VideoRequest, { signal?, beforeSend?, onProgress?, first? }?): Promise<{ video: GeneratedVideo; resolution }>
   // onProgress (image() takes it too): JobProgress { queued; progress?: 0-1; busyWith?; loading? } as a model host's job goes (models/progress.ts withProgress, exported):
   // the call carries X-Lyrica-Job: <random token> and GET /host/v1/jobs/<token> is read every 2 s until it ends; a host that
   // hasn't known the job after 5 reads isn't asked again. Cloud models report none.
-  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); extend?: Uint8Array (a clip to add `duration` seconds to, an MP4 of at most 64 MB, with no image, drive or size); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1 to LONGEST_VIDEO_SECONDS (60); steps?: 1-150, in place of the recipe's }
+  // VideoRequest { prompt; image?: ImageInput (its first frame, or with drive the subject who moves); drive?: Uint8Array (an MP4 of at most 64 MB, MAX_DRIVE_BYTES); extend?: Uint8Array (a clip to add `duration` seconds to, an MP4 of at most 64 MB, with no image, drive or size); size?: { width, height } (multiples of 16, 256-2048) or aspectRatio?: "width:height" (the recipe's area in that shape); duration?: seconds, 1 to LONGEST_VIDEO_SECONDS (60); steps?: 1-150, in place of the recipe's; loras?: LoraAsk[], as for images }
   // GeneratedVideo { bytes (H.264 MP4); type: "video/mp4"; width; height; frames; fps; duration; audio; seed?; poster: GeneratedImage }
   // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image; or `motion`, with drive; or `extend`,
   // with extend) answers, so no clip or first frame reaches a cloud model. A recipe whose `longestSeconds` is under `duration` is skipped
   // ("it makes videos of at most N s"); a host recipe that chains clips (MiniMax H3) answers up to 60 s as one clip.
   // POST /host/v1/videos/create with explicit fields only; two hours at most, per 5 s asked (videoTimeout), since a chain gives each clip two hours.
   firstVideoModel(ctx): { name; longestSeconds?; extend } | undefined   // the Videos list's first usable model, for the image tool's duration; no call
+  loraModels(ctx, "image.create" | "image.edit" | "video", asks: LoraAsk[]): { ids; names }   // local models taking every LoRA asked, list order first, for `first`; names: every LoRA they take (loraName); no call
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked, unset?): { level; note? }   // asked defaults to DEFAULT_THINKING ("medium"), also the per-user default; unset (CallContext.thinkingUnset) drops the can't-think note
@@ -1400,6 +1403,11 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     Create, edit and upscale take an optional `model`, a name she was asked
     for: `Models.namedImageModels` turns it into offerings tried before the
     list for that call (docs/models.md, "A model asked for by name").
+    Create, edit, video and animate take an optional `loras: [{ name, strength }]`:
+    `Models.loraModels` puts the models that take them all after any named one,
+    a name none takes fails before any call with the LoRAs there are, and the result
+    says `With <LoRA> at <strength>`; the field's description lists the LoRAs
+    (docs/models.md, "LoRAs for one call").
     The parameters are one object (`action` plus every field, optional, each
     described with the actions it is for), not a union: LM Studio refuses
     tool parameters that aren't `"type": "object"`, and small models' chat

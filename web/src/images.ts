@@ -21,6 +21,8 @@ export interface HostRecipe {
   useFor?: "fast" | "quality" | "both";
   parts: { role: Role; slot: string | null; file: string | null; added: boolean; missing?: { source: string; repo: string; path: string; sha256?: string; size?: number } }[];
   loras: { file: string; strength: number }[];
+  /** The LoRA files on its host it takes (host/API.md, "Recipes"); a host before them leaves it out. */
+  takesLoras?: string[];
   defaults: Record<string, unknown>;
   /** The recipe this one was copied from. */
   base: string | null;

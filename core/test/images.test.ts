@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CloudModelForbidden, HostRefused, PLAN_IMAGE_MODEL, type ImageRequest } from "../src/index.ts";
 import { cleanPng, imageAt } from "../src/models/images.ts";
 import { VIDEO_TIMEOUT_MS, videoTimeout } from "../src/models/videos.ts";
+import { loraFiles, matchLora } from "../src/models/loras.ts";
 
 import { fakeImages as setup, mp4 } from "./fake-images.ts";
 
@@ -274,6 +275,51 @@ describe("image calls through the router (principles 1 and 2)", () => {
     const chunk = (tag: string) => { const b = Buffer.alloc(18); b.writeUInt32BE(6); b.write(tag, 4); b.write("secret", 8); return b; };
     const dirty = Buffer.concat([png.subarray(0, 33), chunk("tEXt"), chunk("iTXt"), chunk("zTXt"), chunk("eXIf"), png.subarray(33)]);
     expect(cleanPng(dirty).bytes).toEqual(png);
+  });
+});
+
+describe("LoRAs asked for by name (docs/models.md, \"LoRAs for one call\")", () => {
+  const FILES = ["l/pixel_art_v2.safetensors", "l/pixel_art_v2_extra_strong.safetensors", "w/detail_high_noise.safetensors", "w/detail_low_noise.safetensors"];
+  it("matches a name loosely: the file it names, else the shortest that contains it, and both of a high and low noise pair", () => {
+    expect(matchLora("Pixel-Art", FILES)).toEqual(["l/pixel_art_v2.safetensors"]);
+    expect(matchLora("pixel art v2 extra strong", FILES)).toEqual(["l/pixel_art_v2_extra_strong.safetensors"]);
+    expect(matchLora("detail", FILES)).toEqual(["w/detail_high_noise.safetensors", "w/detail_low_noise.safetensors"]);
+    expect(matchLora("watercolour", FILES)).toEqual([]);
+    expect(loraFiles([{ name: "pixel art", strength: 0.7 }, { name: "ink", strength: 1 }], FILES))
+      .toEqual({ loras: [{ file: "l/pixel_art_v2.safetensors", strength: 0.7 }], missing: ["ink"] });
+  });
+  it("goes to a host recipe that takes every LoRA named, sends their files, and says which model it passed over", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
+    const styles = await s.host("styles", undefined, undefined, undefined, FILES);
+    // The workstation takes none and is first on the list: it is passed over, and that is said.
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [s.workstation.ref, styles.ref]);
+    const asked = [{ name: "pixel art", strength: 0.7 }];
+    const made = await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", loras: asked });
+    expect(made.resolution.ref).toEqual(styles.ref);
+    expect(made.resolution.passedOver).toEqual([{ label: "shared.workstation/Art", reason: "it takes no LoRAs" }]);
+    expect(styles.server.images.map(i => i.body)).toEqual([{ recipe: "art", prompt: "A garden", loras: [{ file: "l/pixel_art_v2.safetensors", strength: 0.7 }] }]);
+    // Off the list, it is still found and tried first; the names are what her tool lists.
+    s.models.setColumnTask(s.ada.id, "private", "image.create", [s.workstation.ref]);
+    const found = s.models.loraModels(ctx, "image.create", asked);
+    expect(found.ids).toEqual([styles.ref.offeringId]);
+    expect(found.names).toEqual(["detail high noise", "detail low noise", "pixel art v2", "pixel art v2 extra strong"]);
+    expect((await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", loras: asked }, { first: found.ids })).resolution.ref).toEqual(styles.ref);
+    // One that no model takes finds none; a call without LoRAs sends none.
+    expect(s.models.loraModels(ctx, "image.create", [{ name: "ink", strength: 1 }]).ids).toEqual([]);
+    await expect(s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", loras: [{ name: "ink", strength: 1 }] })).rejects.toThrow(/takes no LoRAs/);
+    await s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality" });
+    expect(s.workstation.server.images.at(-1)!.body).not.toHaveProperty("loras");
+    // A cloud model takes none.
+    s.models.setColumnTask(s.ada.id, "general", "image.create", [s.ref, styles.ref]);
+    expect((await s.models.image(s.ctx(), { action: "create", prompt: "A garden", tier: "quality", loras: asked })).resolution.passedOver).toEqual([{ label: "openai/gpt-image-1", reason: "it takes no LoRAs" }]);
+    await expect(s.models.image(ctx, { action: "create", prompt: "A garden", tier: "quality", loras: [{ name: "pixel art", strength: 9 }] })).rejects.toThrow(/-4 to 4/);
+  });
+  it("sends a clip's LoRA, both files of a high and low noise pair", async () => {
+    const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
+    const styles = await s.host("styles", undefined, undefined, undefined, FILES);
+    s.models.setColumnTask(s.ada.id, "private", "video", [styles.clip]);
+    await s.models.video(ctx, { prompt: "A fox", loras: [{ name: "detail", strength: 0.5 }] });
+    expect(styles.server.videos).toEqual([{ recipe: "clip", prompt: "A fox", loras: [{ file: "w/detail_high_noise.safetensors", strength: 0.5 }, { file: "w/detail_low_noise.safetensors", strength: 0.5 }] }]);
   });
 });
 

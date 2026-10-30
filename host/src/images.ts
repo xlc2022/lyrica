@@ -11,10 +11,10 @@ import type { JobProgress } from "./jobs.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import { scanParts, type Part, type Role } from "./parts.ts";
-import { clipSpec, COLOR_MATCH, present, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
+import { clipSpec, COLOR_MATCH, loraFits, present, RecipeBook, starterPath, type Recipe, type Starter } from "./recipes.ts";
 import type { Runtime } from "./runtime.ts";
 import { sdcppArgs, type SdCpp } from "./sdcpp.ts";
-import { fill, LONGEST_SECONDS, longestSeconds, type Action, type Continuation, type Values, type VideoSpec } from "./templates.ts";
+import { fill, LONGEST_SECONDS, longestSeconds, type Action, type Continuation, type Lora, type Values, type VideoSpec } from "./templates.ts";
 
 const IMAGE_LIMIT = 20 * 1024 * 1024;
 const MAX_SIDE = 8192;
@@ -24,13 +24,15 @@ const BASE_DEFAULTS: Values = { negativePrompt: "", steps: 20, cfg: 1, sampler: 
 const IDLE_FREE_MS = 10 * 60_000;
 /** How long one clip may take: a 14B model on a 24 GB card can take most of an hour. */
 const VIDEO_TIMEOUT_MS = 2 * 60 * 60_000;
-const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "extend", "width", "height", "duration", "steps", "cfg", "seed", "aspectRatio"];
+const VIDEO_FIELDS = ["recipe", "prompt", "negativePrompt", "image", "drive", "extend", "width", "height", "duration", "steps", "cfg", "seed", "aspectRatio", "loras"];
+/** A request names at most this many LoRA files of the host's for one job (API.md, "LoRAs for one job"): four LoRAs, each maybe a high and low noise pair. */
+const MAX_REQUEST_LORAS = 8;
 /** A driving clip (`motion`): only its first seconds are used. */
 const DRIVE_LIMIT = 64 * 1024 * 1024;
 
 const FIELDS: Record<"create" | "edit" | "upscale", string[]> = {
-  create: ["recipe", "prompt", "negativePrompt", "width", "height", "count", "steps", "cfg", "seed", "references"],
-  edit: ["recipe", "prompt", "negativePrompt", "count", "steps", "cfg", "seed", "references", "image", "mask", "replace"],
+  create: ["recipe", "prompt", "negativePrompt", "width", "height", "count", "steps", "cfg", "seed", "references", "loras"],
+  edit: ["recipe", "prompt", "negativePrompt", "count", "steps", "cfg", "seed", "references", "image", "mask", "replace", "loras"],
   upscale: ["recipe", "image", "scale", "maxSize", "colorMatch", "seed"],
 };
 
@@ -156,8 +158,9 @@ export class Images {
    * Either way it says why when that's nothing.
    */
   private describe(r: Recipe, files: Set<string>) {
-    const d = this.book.describe(r, files);
-    if ("unsupported" in d) return d;
+    const book = this.book.describe(r, files);
+    if ("unsupported" in book) return book;
+    const d = { ...book, takesLoras: this.sdcpp ? [] : this.takesLoras(r).map((p) => p.file) };
     const reasons = r.parts.every((p) => p.file) ? this.gpus.map((gpu) => this.runtime.scheduler.neverFits({ model: this.asModel(r, gpu), gpu })) : [];
     const tooBig = reasons.length && reasons.every((x) => x) ? reasons[0]! : null;
     if (tooBig) return { ...d, does: [], unsupported: tooBig };
@@ -168,6 +171,42 @@ export class Images {
       return { ...d, does: [], unsupported: (e as Error).message };
     }
     return { ...d, does: r.does.filter((a) => a === "create") };
+  }
+
+  /**
+   * The LoRAs on this host a request may add to a recipe for one job: those whose architecture fits it,
+   * other than the ones its template loads itself. A template that loads its own parts takes none.
+   */
+  private takesLoras(r: Recipe): Part[] {
+    const t = this.book.templates.get(r.template);
+    if (!t || t.loaders === "template") return [];
+    const own = new Set(r.parts.map((p) => p.file));
+    return this.parts.filter((p) => p.role === "lora" && loraFits(r.arch, p.arch) && !own.has(p.file));
+  }
+
+  /**
+   * The LoRAs one job applies: the recipe's own, then `asked` (a request's `loras`), whose strength
+   * replaces the recipe's for a LoRA it already has. Each with its part's slot, so an expert's LoRA goes onto that expert.
+   */
+  private jobLoras(r: Recipe, asked: unknown): Lora[] {
+    const slotOf = (file: string) => this.parts.find((p) => p.file === file)?.slot ?? null;
+    const out: Lora[] = r.loras.map((l) => ({ ...l, slot: slotOf(l.file) }));
+    if (asked === undefined) return out;
+    if (!Array.isArray(asked) || asked.length > MAX_REQUEST_LORAS) throw invalid(`loras must be a list of at most ${MAX_REQUEST_LORAS}.`);
+    if (asked.length && this.sdcpp) throw invalid("This host makes images with stable-diffusion.cpp, which takes no LoRAs here.");
+    const takes = new Set(this.takesLoras(r).map((p) => p.file));
+    const seen = new Set<string>();
+    for (const l of asked as { file?: unknown; strength?: unknown }[]) {
+      if (!l || typeof l !== "object" || typeof l.file !== "string") throw invalid("Each of loras needs a file.");
+      if (typeof l.strength !== "number" || !Number.isFinite(l.strength) || l.strength < -4 || l.strength > 4) throw invalid("A LoRA's strength must be a number from -4 to 4.");
+      if (seen.has(l.file)) throw invalid("loras names a LoRA twice.");
+      seen.add(l.file);
+      const built = out.find((o) => o.file === l.file);
+      if (built) built.strength = l.strength;
+      else if (takes.has(l.file)) out.push({ file: l.file, strength: l.strength, slot: slotOf(l.file) });
+      else throw invalid(`${basename(l.file)} isn't a LoRA on this host that this recipe takes.`);
+    }
+    return out;
   }
 
   private usedBy(file: string): string[] {
@@ -342,6 +381,7 @@ export class Images {
     if (this.sdcpp && action !== "create") throw invalid(`This host makes images with stable-diffusion.cpp, which can't ${action} images here.`);
     const sdArgs = this.sdcpp ? sdcppArgs(recipe, this.modelsDir, this.sdcpp.fullRate()) : null;
     const template = this.book.templates.get(recipe.template)!;
+    const loras = this.jobLoras(recipe, body.loras);
 
     const values: Values = { ...BASE_DEFAULTS, ...recipe.defaults };
     const uploads: Record<string, Buffer> = {};
@@ -405,7 +445,7 @@ export class Images {
       return scheduler.measuring(model, () =>
         sdcpp ? sdcpp.create(model.id, recipe.template, values, abort.signal) : comfy.run(uploads, (names) => {
           const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
-          return fill(template, parts, recipe.loras, { ...values, ...names });
+          return fill(template, parts, loras, { ...values, ...names });
         }, abort.signal, job.progress));
     }, gpu, abort.signal));
     if (!pngs.length) throw new HostError(503, "model_unavailable", `${sdcpp ? "stable-diffusion.cpp" : "ComfyUI"} returned no image.`);
@@ -451,6 +491,7 @@ export class Images {
     const spec = template.video;
     if (!spec) throw new HostError(500, "internal", `Template ${template.name} has no video settings.`);
     const chain = template.continuation;
+    const loras = this.jobLoras(recipe, body.loras);
     if (extending && !(chain && recipe.does.some((a) => a === "video" || a === "animate"))) throw invalid("That recipe can't extend a clip.");
 
     const values: Values = { ...BASE_DEFAULTS, duration: 5, ...recipe.defaults };
@@ -532,7 +573,7 @@ export class Images {
           const first = i === 0 && !extending;
           const t = first ? template : { ...template, workflow: chain!.workflow };
           const step = { ...values, ...clip, seed: Number(values.seed) + i, ...(first ? {} : { overlap: chain!.overlap, prompt: `${chain!.promptPrefix ?? ""}${values.prompt}` }) };
-          const made = await comfy.runVideo(first ? uploads : { previous: video! }, (names) => fill(t, parts, recipe.loras, { ...step, ...names }),
+          const made = await comfy.runVideo(first ? uploads : { previous: video! }, (names) => fill(t, parts, loras, { ...step, ...names }),
             VIDEO_TIMEOUT_MS, abort.signal, (f) => job.progress((done + f * Number(clip.frames)) / total));
           video = made.video;
           poster = made.poster ?? poster;
@@ -607,7 +648,7 @@ export class Images {
  * the diffusion model with its LoRAs, then an upscaler, freeing one stage's
  * models when the next needs the room, so the peak is the largest stage plus
  * the VAEs, not every part at once. A video model's two experts run one after
- * the other, each with its own LoRA. A CLIP vision model and a segmenter count with the VAEs.
+ * the other, each with its own LoRAs. A CLIP vision model and a segmenter count with the VAEs.
  */
 export function recipeSize(r: Pick<Recipe, "parts" | "loras">, parts: Pick<Part, "file" | "size">[]): number {
   const sizeOf = (f: string | null) => parts.find((p) => p.file === f)?.size ?? 0;
@@ -620,7 +661,8 @@ export function recipeSize(r: Pick<Recipe, "parts" | "loras">, parts: Pick<Part,
     const group = p.slot && experts.has(p.slot) ? p.slot : "";
     groups.set(group, (groups.get(group) ?? 0) + sizeOf(p.file));
   }
-  const model = Math.max(0, ...[...groups].map(([g, n]) => n + (g === "" ? loras : 0)), loras);
+  // A LoRA not made for one expert goes onto both.
+  const model = Math.max(0, ...[...groups].map(([, n]) => n + loras), loras);
   return Math.max(stage(["text_encoder"]), model, stage(["upscaler"])) + stage(["vae", "latent_upscaler", "interpolator", "clip_vision", "segmenter"]);
 }
 
