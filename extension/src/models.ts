@@ -105,7 +105,7 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: { 
   internals.rebuildProviders();
 
   // Each request carries the offering's saved settings (only those set), and a model host's requests its pinned fetch.
-  // With `onGpuWait` (a thread someone is watching), a host's chat requests wait for its GPU and say what they wait for.
+  // With `onGpuWait` (a thread's own turns, not sleep, subagents or watching), a host's chat requests say what they wait for.
   const fetches = new Map(allowed.flatMap(({ endpoint }) => {
     const f = models.fetchFor(endpoint);
     if (!f) return [];

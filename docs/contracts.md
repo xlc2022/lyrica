@@ -1172,7 +1172,7 @@ The extension is created with a `ThreadContext`:
 ```ts
 // extension/, because core has no Pi dependency:
 modelRuntimeFor(models, ctx, { onGpuWait? }?): Promise<ModelRuntime>   // Pi runtime holding only models.allowed(ctx), sealed
-// onGpuWait(GpuWait { busyWith?; loading? } | null): a host's chat requests go through waitingFetch(fetch, origin, onWait), tagged with
+// onGpuWait(GpuWait { busyWith?; loading? } | null), passed for a thread's own turns (HostedThread; not sleep, subagents or watching): a host's chat requests go through waitingFetch(fetch, origin, onWait), tagged with
 // X-Lyrica-Job, and their job is read every 2 s while queued; onWait hears the latest one waiting and null once none does.
 // Every /v1 request to a host (sleep, subagents and watching too) waits for the GPU as long as it stays: hostFetch tags it.
 piModelFor(runtime, models, task, ctx, resolution?): { ref; model; resolution }
