@@ -123,6 +123,8 @@ describe("calling a host", () => {
     const res = await s.models.fetchFor(ep)!(`https://${s.host.address}/v1/chat/completions`, { method: "POST", body: JSON.stringify({ model: o!.modelId, messages: [] }) });
     expect(res.status).toBe(503);
     expect(s.models.resolve("chat", priv).ref).toEqual(s.localRef);
+    // Every /v1 request is tagged, so the host keeps it queued as long as it stays.
+    expect(s.host.jobTags.at(-1)).toMatch(/^[A-Za-z0-9_-]{16,64}$/);
   });
 });
 

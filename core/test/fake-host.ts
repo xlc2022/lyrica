@@ -48,6 +48,8 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   const busy = new Set<string>();
   const models: HostModel[] = opts.models ?? [{ id: "lyrica/huggingface/Qwen/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf", kind: "chat", contextLength: 32768, tools: true, reasoning: ["off", "on"], opensThinking: true, sha256: "ab".repeat(32), sampling: { temperature: 0.7, topP: 0.8, topK: 20 } }];
   let requests = 0;
+  /** Each /v1 request's X-Lyrica-Job, in order. */
+  const jobTags: (string | undefined)[] = [];
   /** Speech requests, by path; while `speechDown`, the speech server is off and they answer with that code. */
   const speech: string[] = [];
   let speechDown: string | false = false;
@@ -58,6 +60,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
   };
   const handler = (req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) => {
     requests++;
+    if (req.method === "POST" && req.url?.startsWith("/v1/")) jobTags.push(req.headers["x-lyrica-job"] as string | undefined);
     let raw = "";
     req.on("data", (c) => (raw += c));
     req.on("end", () => {
@@ -223,6 +226,7 @@ export async function fakeHost(opts: { name?: string; models?: HostModel[]; port
     /** Names another key in its pairing answer: Lyrica pins the key it saw, not the one it is told. */
     lieAboutKey() { lieAboutKey = true; },
     get requests() { return requests; },
+    jobTags,
     chats,
     pinned,
     models,

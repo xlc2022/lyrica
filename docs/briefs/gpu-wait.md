@@ -13,11 +13,12 @@ failed with "503: {"code":"busy",…}" in red, though nothing was wrong.
   (`GET /host/v1/jobs/<token>`) says what it waits for: `busyWith` (the
   `busy` error's words) or `loading`. Untagged requests keep the limits.
   Text and image jobs share one `Jobs` (Runtime's).
-- **Lyrica.** A thread's runtime (`openThreadSession` with `onGpuWait`)
-  tags a host's chat requests (`waitingFetch`), reads the job while it waits
-  and sends a `gpu_wait` thread event; the request has no first-byte limit.
-  Sleep, subagents and watching stay untagged, so they keep falling back on
-  `busy`.
+- **Lyrica.** `hostFetch` tags every `/v1` request, so none has a wait
+  limit or a first-byte limit: chat, sleep, subagents and watching all wait
+  (the user asked to remove the limits from sleep and subagents too). A
+  thread's runtime (`openThreadSession` with `onGpuWait`) tags its chat
+  requests itself (`waitingFetch`), reads the job while it waits and sends
+  a `gpu_wait` thread event.
 - **Web.** The status line says "Waiting for the GPU, busy with a chat
   model…" or "Loading the model…" in place of "<name> is thinking…" (and
   even after a reply has started). A server's JSON error shows as its
