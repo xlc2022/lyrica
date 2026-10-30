@@ -203,8 +203,13 @@ export interface SearchOptions {
   includeArchived?: boolean;
   /** Words left out of the query: automatic recall leaves out her name, which nearly everything mentions. */
   skip?: string[];
-  /** A hit holds at least this many of the query's words, when the query has more than this many. */
+  /**
+   * A hit holds at least this many of the query's words, when the query has more than this many,
+   * and enough of its uncommon ones (`COMMON_SHARE`): a query of only common words finds nothing.
+   */
   minWords?: number;
+  /** Only what was said: no tool results, and a message matches on its text, not its tool calls (automatic recall). */
+  said?: boolean;
 }
 
 export interface MemoryRevision {
@@ -288,8 +293,14 @@ const GOAL_LIMIT = 2000;
 const INSTRUCTIONS_LIMIT = 2000;
 /** How much more a project's own memories weigh in recall from inside that project. A boost, never a filter. */
 export const PROJECT_BOOST = 1.5;
-/** The most candidates a filtered (`only`) search scans per query. */
+/** The most candidates a filtered search scans per query. */
 const ONLY_SCAN = 2000;
+/**
+ * A word in more than this share of the index (and in more than COMMON_MIN items) is common:
+ * it still finds and ranks hits, but doesn't count toward `minWords` ("create", "one", "another").
+ */
+const COMMON_SHARE = 0.02;
+const COMMON_MIN = 20;
 
 /** The slug of a project's page: thread IDs hold '/', which slugs don't. */
 export const projectSlug = (projectId: string) => `project-${projectId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
@@ -538,6 +549,16 @@ export class PoolReader {
     // what the branch wrote unlogged (it may have been made unlogged after the copy).
     const copy = this.db.prepare("SELECT thread, n FROM entries WHERE orig = ? AND unlogged = 0 ORDER BY rowid LIMIT 1").get(id) as { thread: string; n: number } | undefined;
     return copy ? this.entryWindow(entryId(copy.thread, copy.n), radius) : rows.map(toEntry);
+  }
+
+  /** An entry's own words: the text parts of its message, without the tool calls its stored text also holds. */
+  private saidText(id: string): string {
+    const [, thread, n] = /^e:(.+)#(\d+)$/.exec(id) as unknown as [string, string, string];
+    const row = (this.db.prepare("SELECT data FROM entries WHERE thread = ? AND n = ?").get(thread, Number(n))
+      ?? this.db.prepare("SELECT data FROM entries WHERE orig = ? AND unlogged = 0 ORDER BY rowid LIMIT 1").get(id)) as { data: string } | undefined;
+    const content = (json<{ message?: { content?: unknown } }>(row?.data ?? "{}")).message?.content;
+    if (typeof content === "string") return content;
+    return Array.isArray(content) ? content.filter((p) => p?.type === "text" && typeof p.text === "string").map((p) => p.text as string).join("\n") : "";
   }
 
   // Memories
@@ -801,30 +822,39 @@ export class PoolReader {
       WHERE (', ' || about || ', ') LIKE ('%, ' || ? || ', %') ESCAPE '\\'`);
     const about = opts.only?.about?.replace(/[\\%_]/g, "\\$&");
     const working = new Set(tagged?.all(about).map(r => (r as { id: string }).id));
-    const rows: Row[] = [];
-    // Filter before the candidate cut: unrelated high-ranked hits cannot crowd out eligible ones.
-    // Batches double, so a deep hit costs about log n queries, and the scan stops at ONLY_SCAN candidates.
-    const batch = limit * 4;
-    for (let offset = 0, size = batch; ; ) {
-      const candidates = queryRows.all(fts, size, offset) as Row[];
-      const project = opts.only?.project && threads.length ? this.inProject(candidates.map(r => r.id), threads) : undefined;
-      rows.push(...candidates.filter(r => !opts.only || project?.has(r.id) || (r.kind === "note" && working.has(r.id))));
-      offset += candidates.length;
-      if (rows.length >= batch || candidates.length < size || !opts.only || offset >= ONLY_SCAN) break;
-      size = Math.min(size * 2, ONLY_SCAN - offset);
-    }
-    rows.length = Math.min(rows.length, batch);
     const words = queryWords(query);
     const terms = opts.minWords ? queryTerms(query, this.c.profiles()) : [];
-    const ours = threads.length ? this.inProject(rows.map((r) => r.id), threads) : undefined;
+    const common = opts.minWords ? this.commonTerms(terms) : undefined;
+    // Inside a project its own hits are boosted, so a whole batch is ranked before the cut.
+    const want = threads.length ? limit * 4 : limit;
     const hits: Hit[] = [];
-    for (const row of rows) {
-      if (opts.kinds && !opts.kinds.includes(row.kind)) continue;
-      const hit = this.hit(row.id, row.kind, words, terms, -row.rank * (ours?.has(row.id) ? PROJECT_BOOST : 1), opts);
-      if (hit) hits.push(hit);
-      if (!ours && hits.length >= limit) break;
+    // Filter before the cut: unrelated high-ranked candidates cannot crowd out eligible ones.
+    // Batches double, so a deep hit costs about log n queries, and the scan stops at ONLY_SCAN candidates.
+    for (let offset = 0, size = limit * 4; ; ) {
+      const candidates = queryRows.all(fts, size, offset) as Row[];
+      const ours = threads.length ? this.inProject(candidates.map((r) => r.id), threads) : undefined;
+      for (const r of candidates) {
+        if (opts.only && !((opts.only.project && ours?.has(r.id)) || (r.kind === "note" && working.has(r.id)))) continue;
+        if (opts.kinds && !opts.kinds.includes(r.kind)) continue;
+        const hit = this.hit(r.id, r.kind, words, terms, -r.rank * (ours?.has(r.id) ? PROJECT_BOOST : 1), opts, common);
+        if (hit) hits.push(hit);
+        if (hits.length >= want) break;
+      }
+      offset += candidates.length;
+      if (hits.length >= want || candidates.length < size || offset >= ONLY_SCAN) break;
+      size = Math.min(size * 2, ONLY_SCAN - offset);
     }
-    return ours ? hits.sort((a, b) => b.score - a.score).slice(0, limit) : hits;
+    return threads.length ? hits.sort((a, b) => b.score - a.score).slice(0, limit) : hits;
+  }
+
+  /** Which of the query's terms are common in this pool's index (COMMON_SHARE); a user's name never is. */
+  private commonTerms(terms: string[][]): boolean[] {
+    if (!terms.length) return [];
+    this.db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS temp.search_vocab USING fts5vocab(main, search, row)");
+    const total = (this.db.prepare("SELECT count(*) AS c FROM search").get() as { c: number }).c;
+    const cut = Math.max(COMMON_MIN, total * COMMON_SHARE);
+    const doc = this.db.prepare("SELECT doc FROM temp.search_vocab WHERE term = ?");
+    return terms.map((t) => t.length === 1 && ((doc.get(t[0]!) as { doc: number } | undefined)?.doc ?? 0) > cut);
   }
 
   /**
@@ -875,19 +905,21 @@ export class PoolReader {
     return ours;
   }
 
-  private hit(id: string, kind: Kind, words: string[], terms: string[][], score: number, opts: SearchOptions): Hit | undefined {
+  private hit(id: string, kind: Kind, words: string[], terms: string[][], score: number, opts: SearchOptions, common?: boolean[]): Hit | undefined {
     if (kind === "entry") {
       if (opts.excludeThread && id.startsWith(`e:${opts.excludeThread}#`) && !(Number(id.slice(opts.excludeThread.length + 3)) < (opts.keepBefore ?? 0))) return undefined;
       // Indexed before sleep's threads weren't.
       if (id.startsWith("e:sleep/")) return undefined;
       const [entry] = this.entryWindow(id, 0);
-      if (!entry || !holdsEnough(entry.text, terms, opts.minWords)) return undefined;
-      return { id, kind, score, snippet: snippet(entry.text, words), origin: entry.role === "user" && isMarked(entry.text) ? "lyrica" : ENTRY_ORIGIN[entry.role], at: entry.createdAt };
+      if (!entry || (opts.said && !ENTRY_ORIGIN[entry.role])) return undefined;
+      const text = opts.said ? this.saidText(id) : entry.text;
+      if (!text.trim() || !holdsEnough(text, terms, opts.minWords, common)) return undefined;
+      return { id, kind, score, snippet: snippet(text, words), origin: entry.role === "user" && isMarked(entry.text) ? "lyrica" : ENTRY_ORIGIN[entry.role], at: entry.createdAt };
     }
     const item = this.get(id);
     if (!item || (item.archived && !opts.includeArchived) || (item.supersededBy && opts.current)) return undefined;
     const text = item.kind === "page" ? `${item.title}: ${item.summary}\n${item.text}` : item.text;
-    if (!holdsEnough(text, terms, opts.minWords)) return undefined;
+    if (!holdsEnough(text, terms, opts.minWords, common)) return undefined;
     return { id, kind, score, snippet: snippet(text, words), origin: item.origin, author: item.author, supersededBy: item.supersededBy, at: item.updatedAt };
   }
 

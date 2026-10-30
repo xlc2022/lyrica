@@ -293,7 +293,10 @@ export class Scheduler {
     const s = this.served(model);
     const empty = this.gpusFor(serverOf(model)).map((g) => ({ ...g, used: 0 }));
     const reasons = opts.map((o) => neverFits(model, s, { ...o, need: this.needOf(model, o, s) }, empty, (i) => this.gpuSettings(i), this.ramAllowance));
-    return reasons.every((r) => r !== null) ? reasons[0]! : null;
+    if (reasons.some((r) => r === null)) return null;
+    // Why the way with the most GPUs can't: the one with the best chance, so its reason says the most.
+    const widest = opts.reduce((best, o, i) => (o.gpus.length > opts[best]!.gpus.length ? i : best), 0);
+    return reasons[widest]!;
   }
 
   /** The ways this job's model may run. */
@@ -310,9 +313,20 @@ export class Scheduler {
     return [{ gpus: [g.index], split: null, parallel: null, share: null, need: { [g.index]: sizes(job.model, s).weights + GIB / 2 } }];
   }
 
-  /** What a model takes on each GPU of an option: measured with that placement (and automatic context), else expected. */
+  /**
+   * What a model takes on each GPU of an option: measured with that placement
+   * (and automatic context), else expected. A measurement over a GPU's room
+   * is set aside for the estimate: the model loaded within that room, so the
+   * load took the whole card or caught another program's memory, and it
+   * mustn't make the model "never fit" there afterwards.
+   */
   private needOf(model: TextModel, o: Option, s = this.served(model)): Record<number, number> {
-    return this.o.state.get().vram[this.vramKey(model, o, s)] ?? o.need;
+    const measured = this.o.state.get().vram[this.vramKey(model, o, s)];
+    const room = (g: number) => {
+      const gpu = this.gpus.find((x) => x.index === g);
+      return gpu ? gpu.total - this.gpuSettings(g).keepFree : Infinity;
+    };
+    return measured && Object.entries(measured).every(([g, n]) => n <= room(Number(g))) ? measured : o.need;
   }
 
   /**
@@ -534,8 +548,8 @@ export class Scheduler {
     if (waitFor) return { wait: waitFor };
     // Every way is on GPUs held for others: wait for those, so it's counted in their queues.
     if (!usable.length) return { wait: [...new Set(possible.flatMap((o) => o.gpus))] };
-    // It can never fit: say why, for the first way it could have run.
-    const o = opts[0]!;
+    // It can never fit: say why, for the way with the most GPUs, the one with the best chance.
+    const o = opts.reduce((best, x) => (x.gpus.length > best.gpus.length ? x : best), opts[0]!);
     const reason = neverFits(model, s, measured(o), empty, (i) => this.gpuSettings(i), this.ramAllowance);
     if (reason) return new HostError(413, "too_big", reason);
     if (o.ram && o.ram > this.ramAllowance - this.ramUsed(new Set([...this.loaded.values()].filter((l) => !this.pinned(l.model.id))))) {
