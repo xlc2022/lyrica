@@ -109,6 +109,20 @@ builds upstream's DKMS packages and adds the parameter to GRUB;
 the same upstream commit and NVIDIA inputs (`nix/gpu-unlock.nix`); change
 them together. See docs/guides/model-hosts.md, "Full-rate tensor math".
 
+### Uninstall
+
+`host/install.sh --uninstall` removes the host: the stack's containers,
+volumes (the host's key with them, so every pairing ends), network and
+images, the egress rules, and on Debian or Ubuntu the units, the updater,
+its deploy key and the release trees under `/opt/lyrica-host`. Images go
+by ID without `--force`, so one another container uses stays, and nothing
+is pruned: Docker's build cache and other programs' images are left alone.
+It asks before starting and before deleting the models folder's `lyrica/`
+downloads (`--delete-downloads` deletes them, `--yes` keeps them unless
+given it); the operator's own model files stay. On NixOS the module owns
+the units: remove `services.lyrica-host` and rebuild. gpu-unlock has its
+own `--remove`.
+
 ### AMD GPUs
 
 ROCm runs llama.cpp, vLLM and images, but only on the GPUs its images are
