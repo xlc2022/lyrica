@@ -307,7 +307,8 @@ Three ways a model gets into the library:
   **Vision** and **MTP**. A link to one `.gguf` or `.safetensors` file,
   with an optional SHA-256, works too.
   Models, **Downloads** shows every host's queue, with Cancel, Clear
-  finished and Add to the group. Its **Accounts** section holds hub
+  finished and Add to the group. Cancelling or clearing a failed download
+  deletes its partial file. Its **Accounts** section holds hub
   tokens: a user's own, or a shared one an administrator adds, sent to the
   host per request. A token typed for a gated repository is saved for next
   time unless you untick **Save it for next time**. The page takes a
@@ -591,6 +592,11 @@ second pairing. Then:
   checkout: it installs from the checkout again, and the next Update
   carries its `.env` along.
   Either way the `data` volume keeps the host's key, so pairing survives.
+  Each install or Update then removes the Docker images this stack ran
+  before and no longer runs: only its own, never a prune, and a rollback
+  builds or pulls its own again. Docker's build cache stays; free it
+  yourself, and on a machine others use Docker on, never with a global
+  prune.
   Details are in [host/README.md](../../host/README.md#updates).
 - **Move to another models folder:** **Edit** on the host's card under
   Models → Hosts and endpoints, then **Models folder** and Save, or `sudo
