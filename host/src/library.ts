@@ -54,9 +54,14 @@ export interface TextModel {
   mtp?: string | null;
   /** The GGUF carries its own MTP layers, so llama.cpp can draft with no second file. */
   builtInMtp?: boolean;
-  /** A GGUF model's layers, and the bytes of each layer's experts (a mixture of experts; 0 for a dense layer), for keeping part of it in system RAM. */
+  /**
+   * A GGUF model's layers, the bytes of each layer's experts (a mixture of
+   * experts; 0 for a dense layer) and of its output layer (`output.weight`,
+   * else the tied `token_embd.weight`), for keeping part of it in system RAM.
+   */
   layers?: number;
   expertLayers?: number[];
+  outputBytes?: number;
   /** The sizes of the projector and the MTP file, counted when they're used. */
   mmprojSize?: number;
   mtpSize?: number;
@@ -252,19 +257,22 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
 }
 
 /** The bytes of a mixture of experts' expert weights in each layer, over all its shards: what llama.cpp's n-cpu-moe keeps in system RAM. */
-function expertsOf(shards: string[], layers: number): { expertLayers?: number[] } {
+function expertsOf(shards: string[], layers: number): { expertLayers?: number[]; outputBytes?: number } {
   const per = Array.from({ length: layers }, () => 0);
+  let output = 0, embed = 0;
   for (const path of shards) {
     try {
       for (const [name, bytes] of Object.entries(readGgufTensorBytes(path))) {
         const m = /^blk\.(\d+)\.ffn_(up|down|gate|gate_up)_exps\./.exec(name);
         if (m && Number(m[1]) < layers) per[Number(m[1])]! += bytes;
+        else if (name === "output.weight") output = bytes;
+        else if (name === "token_embd.weight") embed = bytes;
       }
     } catch {
       return {};
     }
   }
-  return per.some((n) => n > 0) ? { expertLayers: per } : {};
+  return per.some((n) => n > 0) ? { expertLayers: per, ...(output || embed ? { outputBytes: output || embed } : {}) } : {};
 }
 
 /**

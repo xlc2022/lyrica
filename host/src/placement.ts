@@ -207,22 +207,27 @@ export function spill(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[]
   const experts = model.expertLayers ?? [];
   const expertSum = experts.reduce((a, b) => a + b, 0);
   if (expertSum > 0) {
-    // Each layer's bytes on a GPU: its share of everything but the experts, plus its own experts unless kept in RAM.
-    const base = (weights + kv - expertSum) / layers;
+    // With every layer offloaded, llama.cpp splits layers + 1 slots: the last is the output layer, on the last GPU.
+    const out = Math.min(model.outputBytes ?? 0, weights);
+    // Each layer's bytes on a GPU: its share of everything but the experts and the output layer, plus its own experts unless kept in RAM.
+    const base = (weights + kv - expertSum - out) / layers;
     const bytes = (n: number) => Array.from({ length: layers }, (_, l) => base + (l < n ? 0 : experts[l] ?? 0));
     // A split set by hand keeps its layers on each GPU; else the layers left are shared out to fit.
     const fixed = s.placement.mode === "gpus" && !!s.placement.split;
+    const slots = layersBySplit(layers + 1, fixed ? o.split ?? [1] : [1]);
+    const outOn = fixed ? slots.findLastIndex((c) => c > 0) : o.gpus.length - 1;
     for (let n = 1; n <= layers; n++) {
       const b = bytes(n);
-      const counts = fixed || o.gpus.length === 1 ? layersBySplit(layers, o.split ?? [1]) : layersToFit(b, avail);
+      const counts = fixed || o.gpus.length === 1 ? slots.map((c, k) => c - (k === outOn ? 1 : 0)) : layersToFit(b, avail.map((a, k) => a - (k === outOn ? out : 0)));
       if (!counts) continue;
-      const held = heldBy(b, counts);
+      const held = heldBy(b, counts).map((x, k) => x + (k === outOn ? out : 0));
       if (held.some((x, k) => x > avail[k]!)) continue;
       const ram = Math.round(experts.slice(0, n).reduce((a, x) => a + x, 0));
       return {
         ...o,
         need: Object.fromEntries(o.gpus.map((i, k) => [i, Math.round(held[k]! + OVERHEAD)])),
-        ...(o.gpus.length > 1 ? { split: counts } : {}),
+        // In slots, the output layer's on the last GPU, so llama.cpp gives each GPU the layers planned for it.
+        ...(o.gpus.length > 1 && !fixed ? { split: counts.map((c, k) => c + (k === outOn ? 1 : 0)) } : {}),
         ram, cpuMoe: n,
       };
     }
@@ -237,7 +242,12 @@ export function spill(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[]
   return { ...o, need: Object.fromEntries(o.gpus.map((i) => [i, Math.round(o.need[i]! - (n * perLayer * o.need[i]!) / sum)])), ram: Math.round(n * perLayer), gpuLayers: layers - n };
 }
 
-/** How many layers llama.cpp gives each GPU under a split: layer l goes to the first GPU whose share of the ratios reaches past it. */
+/**
+ * How many of `layers` slots llama.cpp gives each GPU under a split: slot l
+ * goes to the first GPU whose share of the ratios reaches past l / layers.
+ * With every layer offloaded it splits a model's layers + 1, the output layer
+ * being the last.
+ */
 export function layersBySplit(layers: number, split: number[]): number[] {
   const total = split.reduce((a, b) => a + b, 0);
   const counts = split.map(() => 0);

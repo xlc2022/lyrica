@@ -482,9 +482,10 @@ Only the repository's name and revision leave the host.
   a mixture of experts, the experts of its first N layers (llama.cpp's
   `n-cpu-moe`), which costs the least speed: N is the fewest that lets
   each GPU hold the layers it is given, counting each layer's own experts
-  (a dense layer frees nothing). On Auto the split is then set in layers
-  to fit each GPU; a split set by hand keeps its layers, so N may reach
-  into the last GPU's. Else whole layers with their cache (`n-gpu-layers`
+  (a dense layer frees nothing) and the output layer on the last GPU. On
+  Auto the split is then set in layers to fit each GPU (layers + 1 slots,
+  as llama.cpp splits them with the output layer last); a split set by
+  hand keeps its layers, so N may reach into the last GPU's. Else whole layers with their cache (`n-gpu-layers`
   below its layer count), which llama.cpp takes from every GPU by the
   split. A model that fits after unloading idle ones never spills.
 - Models in system RAM share the allowance as models on a GPU share its

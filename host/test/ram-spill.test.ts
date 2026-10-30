@@ -6,13 +6,25 @@ import { LlamaCpp } from "../src/backends.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import type { Gpu } from "../src/gpus.ts";
 import { scanTextModels } from "../src/library.ts";
-import { defaultGpu, layersBySplit, options, ramMost, sizes, validate, type GpuSettings } from "../src/placement.ts";
+import { defaultGpu, options, ramMost, sizes, validate, type GpuSettings } from "../src/placement.ts";
 import { Scheduler } from "../src/scheduler.ts";
 import { StateFile } from "../src/state.ts";
 import { FakeBackend, FakeGpus, fakeLlamaRouter, GIB, textModel } from "./fakes.ts";
 
 const gpu = (index: number, gb: number): Gpu => ({ index, name: "RTX 3090", vendor: "nvidia", total: gb * GIB, used: 0 });
 const all = (i: number): GpuSettings => (void i, defaultGpu());
+/**
+ * llama.cpp's own rule with every layer offloaded (llama-model.cpp): layers + 1 slots, the last the output layer,
+ * slot l on upper_bound(cumulative split, l / (layers + 1)). Returns each GPU's layers, and the output layer's GPU.
+ */
+function llamaLayers(layers: number, split: number[]) {
+  const total = split.reduce((a, b) => a + b, 0);
+  const cum = split.map((_, k) => split.slice(0, k + 1).reduce((a, b) => a + b, 0) / total);
+  const gpuOf = (l: number) => Math.min(split.length - 1, cum.findIndex((c) => c > l / (layers + 1)));
+  const counts = split.map(() => 0);
+  for (let l = 0; l < layers; l++) counts[gpuOf(l)]!++;
+  return { counts, output: gpuOf(layers) };
+}
 /** `gb` of experts over a model's layers, none in its first `dense` ones. */
 const experts = (layers: number, gb: number, dense = 0) => Array.from({ length: layers }, (_, l) => (l < dense ? 0 : (gb * GIB) / (layers - dense)));
 
@@ -47,20 +59,22 @@ describe("keeping part of a model in system RAM", () => {
 
   it("on two GPUs that both lack room, keeps each GPU's layers within it", () => {
     // 100 GB over two 48 GB GPUs: both lack room, and only the layers each holds can relieve it.
-    const m = textModel("big", 100, { layers: 80, expertLayers: experts(80, 85) });
+    const m = textModel("big", 100, { layers: 80, expertLayers: experts(80, 85), outputBytes: 2 * GIB });
     const s = { placement: { mode: "auto" as const }, contextLength: 8192 };
     const both = options(m, s, [gpu(0, 48), gpu(1, 48)], all, 64 * GIB).find((o) => o.gpus.length === 2)!;
     expect(both.cpuMoe).toBeGreaterThan(0);
-    // Check against the layers each GPU holds under the split llama.cpp is given.
-    const counts = layersBySplit(80, both.split!);
-    const base = (sizes(m, s).weights + sizes(m, s).kv - 85 * GIB) / 80;
+    // Check against the layers llama.cpp itself gives each GPU under the split it's given, the output layer on the last.
+    const { counts, output } = llamaLayers(80, both.split!);
+    expect(output).toBe(1);
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(80);
+    const base = (sizes(m, s).weights + sizes(m, s).kv - 85 * GIB - 2 * GIB) / 80;
     const layerBytes = (l: number) => base + (l < both.cpuMoe! ? 0 : (85 * GIB) / 80);
     let l = 0;
     for (const [k, c] of counts.entries()) {
-      let held = 0;
+      let held = k === output ? 2 * GIB : 0;
       for (let i = 0; i < c; i++) held += layerBytes(l++);
       expect(held + GIB / 2).toBeLessThanOrEqual(47.5 * GIB);
-      expect(both.need[k]!).toBeLessThanOrEqual(47.5 * GIB);
+      expect(Math.abs(both.need[k]! - (held + GIB / 2))).toBeLessThan(1024);
     }
   });
 
@@ -68,9 +82,10 @@ describe("keeping part of a model in system RAM", () => {
     const m = textModel("big", 100, { layers: 80, expertLayers: experts(80, 85) });
     const s = { placement: { mode: "gpus" as const, gpus: [0, 1], split: [1, 1] }, contextLength: 8192 };
     const [o] = options(m, s, [gpu(0, 48), gpu(1, 48)], all, 64 * GIB);
-    expect(o!.split).toEqual([40, 40]);
-    // GPU 1 holds layers 40 to 79: they only lose weight once n-cpu-moe reaches past 40.
-    expect(o!.cpuMoe).toBeGreaterThan(40);
+    // llama.cpp gives GPU 0 layers 0 to 40 and GPU 1 layers 41 to 79 and the output layer.
+    expect(llamaLayers(80, o!.split!).counts).toEqual([41, 39]);
+    // GPU 1's layers only lose weight once n-cpu-moe reaches past 41.
+    expect(o!.cpuMoe).toBeGreaterThan(41);
     for (const i of [0, 1]) expect(o!.need[i]!).toBeLessThanOrEqual(47.5 * GIB);
   });
 
@@ -196,13 +211,13 @@ describe("reading a GGUF's experts", () => {
     const dir = mkdtempSync(join(tmpdir(), "lyrica-ram-gguf-"));
     const header = ggufBytes(
       { "general.architecture": "qwen3moe", "tokenizer.ggml.model": "gpt2", "qwen3moe.block_count": 3 },
-      { "blk.0.attn_q.weight": [4, 4], "blk.0.ffn_up_exps.weight": [8, 4, 4], "blk.1.ffn_down_exps.weight": [8, 4, 4] },
-      { "blk.0.attn_q.weight": 0, "blk.0.ffn_up_exps.weight": 1024, "blk.1.ffn_down_exps.weight": 5120 },
+      { "blk.0.attn_q.weight": [4, 4], "blk.0.ffn_up_exps.weight": [8, 4, 4], "blk.1.ffn_down_exps.weight": [8, 4, 4], "output.weight": [4, 4] },
+      { "blk.0.attn_q.weight": 0, "blk.0.ffn_up_exps.weight": 1024, "blk.1.ffn_down_exps.weight": 5120, "output.weight": 9216 },
     );
     const start = Math.ceil(header.length / 32) * 32;
-    writeFileSync(join(dir, "moe.gguf"), Buffer.concat([header, Buffer.alloc(start - header.length + 9216)]));
+    writeFileSync(join(dir, "moe.gguf"), Buffer.concat([header, Buffer.alloc(start - header.length + 9728)]));
     const [m] = scanTextModels(dir);
-    // Layer 0's expert runs to layer 1's; layer 2 is dense.
-    expect(m).toMatchObject({ layers: 3, expertLayers: [4096, 4096, 0] });
+    // Layer 0's expert runs to layer 1's, and layer 1's to the output layer, the last; layer 2 is dense.
+    expect(m).toMatchObject({ layers: 3, expertLayers: [4096, 4096, 0], outputBytes: 512 });
   });
 });
