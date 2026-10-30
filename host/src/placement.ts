@@ -77,8 +77,12 @@ const GIB = 1024 ** 3;
 /** llama.cpp reads a per-layer embedding table larger than this from the file as needed, unless it is kept in RAM. */
 export const LAZY_TABLE = 4 * GIB;
 
-/** The per-layer embedding table a model keeps in system RAM under its settings, in bytes; 0 when it doesn't. */
-export const tableInRam = (model: TextModel, s: ModelSettings) => (s.layerTable === "ram" && model.server === "llamacpp" ? model.layerTable ?? 0 : 0);
+/**
+ * What a model keeps in system RAM under its settings for its per-layer embedding table, in bytes; 0 when it doesn't.
+ * Loaded without mmap, the input embeddings llama.cpp keeps on the CPU become resident with it.
+ */
+export const tableInRam = (model: TextModel, s: ModelSettings) =>
+  (s.layerTable === "ram" && model.server === "llamacpp" && model.layerTable ? model.layerTable + (model.inputBytes ?? 0) : 0);
 /** Each GPU a model uses needs room for the server's own buffers. */
 const OVERHEAD = GIB / 2;
 const KV_BYTES = { f16: 2, q8_0: 1.0625, q4_0: 0.5625 };

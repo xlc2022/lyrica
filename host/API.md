@@ -397,10 +397,10 @@ embeddings and dictation receive neither parser.
   (`auto`, `on`, `off`), `gpuLayers` (0 to 999: layers on the GPUs, the
   rest with their cache in system RAM, counted by the fit check against
   the System RAM allowance), `systemRam` (`false` keeps the model on its
-  GPUs only; left out, it may use the allowance), `layerTable` (`"ram"`
+  GPUs only, never spilling; left out, it may use the allowance), `layerTable` (`"ram"`
   loads a per-layer embedding table over 4 GiB whole into system RAM, from
-  the allowance, instead of llama.cpp reading its rows from the model file
-  as it needs them; refused for a model without one, or while the host has
+  the allowance whatever `systemRam` says, instead of llama.cpp reading its
+  rows from the model file as it needs them; refused for a model without one, or while the host has
   no allowance), `parallel` (requests
   served at once, 1 to 64; see below). A `q8_0` or `q4_0` KV cache needs
   `flashAttention` set to `on`. `vision: false` loads it without its
@@ -500,7 +500,8 @@ Only the repository's name and revision leave the host.
   never a pinned one or one in use. Past the allowance even when nothing
   else is there, a load is `too_big`, naming both numbers.
 - vLLM, image recipes and voices never use it. A model whose settings
-  have `systemRam: false`, or `gpuLayers` set by hand, doesn't either.
+  have `systemRam: false`, or `gpuLayers` set by hand, never spills into
+  it; an embedding table it keeps in RAM (below) still counts.
 - A per-layer embedding table (`per_layer_token_embd.weight`, as in
   Gemma 4 or Qwen3.8-Flash-Next) never goes on the GPUs, so the fit check
   leaves it out. llama.cpp reads one over 4 GiB from the model file as it
@@ -508,6 +509,9 @@ Only the repository's name and revision leave the host.
   prompts wait on the disk with the GPUs idle. `layerTable: "ram"` loads
   it whole instead (llama.cpp's `lazy-mode = off` and `load-mode = none`)
   and counts it against the allowance, whether or not the rest spills.
+  Without mmap the input embeddings (`token_embd.weight`), which llama.cpp
+  also keeps on the CPU, load whole too, so the allowance counts them with
+  the table.
 
 ### Pause, resume, restart
 

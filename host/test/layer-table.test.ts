@@ -25,6 +25,9 @@ describe("a per-layer embedding table", () => {
   it("kept in RAM takes from the allowance, and is refused without one", () => {
     const [o] = options(flash(), { ...s, layerTable: "ram" }, [gpu(0, 128)], all, 32 * GIB);
     expect(o!.ram).toBe(23 * GIB);
+    // Loaded without mmap, the input embeddings llama.cpp keeps on the CPU come with it; Off for spilling doesn't stop it.
+    const withInput = textModel("flash", 134, { layers: 48, layerTable: 23 * GIB, inputBytes: 2 * GIB });
+    expect(options(withInput, { ...s, layerTable: "ram", systemRam: false }, [gpu(0, 128)], all, 32 * GIB)[0]!.ram).toBe(25 * GIB);
     expect(() => validate(flash(), { ...s, layerTable: "ram" }, [gpu(0, 128)], all, false, 0)).toThrow(/allowance, which is off/);
     expect(() => validate(flash(), { ...s, layerTable: "ram" }, [gpu(0, 128)], all, false, 16 * GIB)).toThrow(/23\.0 GB of system RAM/);
     expect(validate(flash(), { ...s, layerTable: "ram" }, [gpu(0, 128)], all, false, 32 * GIB)).toMatchObject({ layerTable: "ram" });
@@ -67,7 +70,7 @@ describe("a per-layer embedding table", () => {
     const start = Math.ceil(header.length / 32) * 32;
     writeFileSync(join(dir, "ple.gguf"), Buffer.concat([header, Buffer.alloc(start - header.length + 5120)]));
     const [m] = scanTextModels(dir);
-    expect(m).toMatchObject({ layers: 2, layerTable: 4096 });
+    expect(m).toMatchObject({ layers: 2, layerTable: 4096, inputBytes: 512 });
     expect(m!.expertLayers).toBeUndefined();
   });
 });

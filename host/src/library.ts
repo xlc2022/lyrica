@@ -66,8 +66,11 @@ export interface TextModel {
    * A GGUF model's per-layer embedding table (`per_layer_token_embd.weight`),
    * in bytes. llama.cpp never puts it on the GPUs, and reads one over 4 GiB
    * from the file as it needs rows unless told to keep it in RAM.
+   * `inputBytes`: its input embeddings (`token_embd.weight`), which llama.cpp
+   * also keeps on the CPU and which load whole with the table.
    */
   layerTable?: number;
+  inputBytes?: number;
   /** The sizes of the projector and the MTP file, counted when they're used. */
   mmprojSize?: number;
   mtpSize?: number;
@@ -266,7 +269,7 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
  * The bytes of a mixture of experts' expert weights in each layer, over all its shards: what llama.cpp's n-cpu-moe keeps in system RAM.
  * Also the per-layer embedding table's, which llama.cpp keeps off the GPUs whatever the model.
  */
-function expertsOf(shards: string[], layers: number): { expertLayers?: number[]; outputBytes?: number; layerTable?: number } {
+function expertsOf(shards: string[], layers: number): { expertLayers?: number[]; outputBytes?: number; layerTable?: number; inputBytes?: number } {
   const per = Array.from({ length: layers }, () => 0);
   let output = 0, embed = 0, table = 0;
   for (const path of shards) {
@@ -284,7 +287,7 @@ function expertsOf(shards: string[], layers: number): { expertLayers?: number[];
   }
   return {
     ...(per.some((n) => n > 0) ? { expertLayers: per, ...(output || embed ? { outputBytes: output || embed } : {}) } : {}),
-    ...(table ? { layerTable: table } : {}),
+    ...(table ? { layerTable: table, ...(embed ? { inputBytes: embed } : {}) } : {}),
   };
 }
 
