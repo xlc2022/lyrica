@@ -161,12 +161,14 @@ Each user has two pools of memory.
   - **Welcome:** a greeting, the message box with General or Private, her
     items from last night, Notifications, and Backend (what answers now).
   - **Files and images, in every thread.** **Files** in the thread header
-    opens a side panel (full screen on a phone) with two tabs:
+    opens a side panel (full screen on a phone) with three tabs:
     - **Files:** a searchable tree of the thread's folder (uploads, images
       she made, her notes and scratch files) and each granted folder.
       Clicking a file opens it in the file viewer.
     - **Images:** thumbnails of the images in the thread's folder, with All,
       Uploaded and Made by Lyrica. Clicking one opens it in the file viewer.
+    - **Videos:** the same for clips, each shown by its poster; one opens
+      in the file viewer to play.
     - **The file viewer** (decided 2026-10-20, as in Claude's own app): the
       file large, with the thread that wrote it beside it (recorded for her
       writes, commands, uploads and images, and dropped with the file;
@@ -1368,7 +1370,7 @@ project page and the web part are built. Recent calls can be filtered by project
     **Thread settings** link to the coordinator's own models, network and
     local-only in its drawer; Commands; Checks), Memory (Instructions, and
     a link to the project page in the memory browser), and **Files and
-    images** (Files | Images), where the project folder is managed. Files
+    images** (Files | Images | Videos), where the project folder is managed. Files
     in the chat's header stays the quick view.
   - **Paused** stops the project's working threads and starts nothing new.
     **Hide** stops it too. **Delete** forgets the project chat, its threads,

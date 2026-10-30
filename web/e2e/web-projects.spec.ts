@@ -761,7 +761,7 @@ test("New project in the sidebar creates a pinned project and opens it", async (
   await expect(side.locator(".eyebrow").first()).toContainText("Pinned");
 });
 
-test("Project settings → Files and images: the project folder one folder at a time, with Upload, New folder, Open, Rename, Move to, Delete and the Images tab", async ({ page, baseURL }) => {
+test("Project settings → Files and images: the project folder one folder at a time, with Upload, New folder, Open, Rename, Move to, Delete and the Images and Videos tabs", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   if (phone(page)) await page.getByRole("button", { name: "Show threads" }).click();
   const side = page.locator(".side");
@@ -841,6 +841,8 @@ test("Project settings → Files and images: the project folder one folder at a 
   await expect(page.locator("dialog.viewer .viewer-media img")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator("dialog.viewer")).toHaveCount(0);
+  await section.getByRole("button", { name: "Videos", exact: true }).click();
+  await expect(section.getByText("No videos yet.")).toBeVisible();
   await noHorizontalScroll(page);
 });
 
@@ -1155,7 +1157,7 @@ test("a project's thread cards: the checklist's count after the state word opens
   await noHorizontalScroll(page);
 });
 
-test("the Files panel: a tree one folder at a time, a file shown, search, the Images tab, and the menu's attach, new folder, rename and delete", async ({ page, baseURL }) => {
+test("the Files panel: a tree one folder at a time, a file shown, search, the Images and Videos tabs, and the menu's attach, new folder, rename and delete", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   await newThread(page, "General");
   await send(page, "hello files");
@@ -1296,6 +1298,23 @@ test("the Files panel: a tree one folder at a time, a file shown, search, the Im
   await expect(panel.locator(".igrid").getByRole("button", { name: tray, exact: true })).toBeVisible();
   await panel.getByRole("group", { name: "Show" }).getByRole("button", { name: "Made by Lyrica" }).click();
   await expect(panel.getByText("No images yet")).toBeVisible();
+  // Videos: the thread's clips, an uploaded one with no poster showing its own first frame, opening in the viewer to play.
+  await page.evaluate(async (path) => {
+    const ftyp = Uint8Array.from([0, 0, 0, 24, ...[..."ftypisom"].map((c) => c.charCodeAt(0)), 0, 0, 2, 0, ...[..."isomiso2"].map((c) => c.charCodeAt(0))]);
+    const r = await fetch(path, { method: "POST", headers: { "content-type": "application/octet-stream" }, body: ftyp });
+    if (!r.ok) throw new Error(`${path}: ${r.status}`);
+  }, `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}/files/upload?dir=${encodeURIComponent("/workspace/uploads")}&name=clip.mp4`);
+  await panel.getByRole("tab", { name: "Videos" }).click();
+  await expect(panel.getByRole("heading", { level: 1, name: "Videos" })).toBeVisible();
+  await expect(panel.getByText("No videos yet")).toBeVisible();
+  await panel.getByRole("group", { name: "Show" }).getByRole("button", { name: "All" }).click();
+  const clip = panel.locator(".igrid").getByRole("button", { name: "clip.mp4", exact: true });
+  await expect(clip.locator(".vplay")).toBeVisible();
+  await expect(clip.locator("video")).toHaveCount(1);
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/files-videos-${page.viewportSize()!.width}.png` });
+  await clip.click();
+  await expect(page.getByRole("dialog", { name: "clip.mp4" }).locator(".viewer-media video")).toBeVisible();
+  await page.keyboard.press("Escape");
   await noHorizontalScroll(page);
 });
 

@@ -245,7 +245,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   under each grant, first. Files lists one folder at a time from
   `GET …/files?dir=` (docs/daemon.md "Files"), the thread folder open at the
   start, then `/shared` for a thread with a folder of its own, such as a code thread (shown as Shared folder), then each grant; a search runs under every root; a file,
-  or an image from Images (`…/files/images`, filtered by source), opens in
+  an image from Images (`…/files/images`, filtered by source), or a clip from
+  Videos (`…/files/videos`, the same filter, each tile its poster thumbnail or,
+  for a clip without one, its own first frame), opens in
   the **file viewer** (below). The right-click menu (a long press, or the
   viewer's ⋯, which renders the same menu inside the viewer's dialog) attaches
   (the path goes into this thread's message box through a window event, or
@@ -335,12 +337,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the box), and a link to that page in the memory browser. **Files and images**
   (`ProjectFiles.tsx`): the project folder (the project chat's `/workspace`)
   through the Files panel's routes on the project chat, one folder at a time
-  with crumbs, Files | Images, Upload… (to the folder shown, or by dropping
+  with crumbs, Files | Images | Videos, Upload… (to the folder shown, or by dropping
   files on the section), New folder, and per row Open (a folder in the list,
   a file in the file viewer with the project chat beside it) and a ⋯: Download, Rename… in place, Move
   to… (a drawer listing up to 500 folders, found folder by folder; `rename`
   moves) and Delete… with its dialog. Images is the panel's grid with its
-  filter, a tile opening the image in the file viewer. It reloads when any thread finishes a tool call or a turn, and on
+  filter, a tile opening the image in the file viewer; Videos is the same for clips. It reloads when any thread finishes a tool call or a turn, and on
   focus.
 - **Thread settings drawer:** Models has the preset, **Conversation** (the
   `code` task in Code mode, else `chat`, as `ModelBadge`), **Thinking**
