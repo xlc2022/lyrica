@@ -618,8 +618,8 @@ class Models {                                              // new Models(keyrin
   `HostIdentityChanged`'s message and marks the host down; `paused`, `busy`,
   `restarting`, `unavailable` and `unpaired` answers mark it down too. A
   `/v1` POST is tagged with `X-Lyrica-Job` (a random token unless the
-  caller set one), so the host keeps it queued as long as it stays and never
-  answers it `busy`; it and an image or video job have no limit on waiting
+  caller set one), so the host keeps it queued up to 15 minutes before
+  `busy`; it and an image or video job have no limit on waiting
   for the answer's headers. A
   host's refusal is a `HostRefused` carrying the host's own `code`. Lyrica's
   key and certificate live in `self.db` (`host_identity`). `undici` 8.12.3
@@ -1174,7 +1174,7 @@ The extension is created with a `ThreadContext`:
 modelRuntimeFor(models, ctx, { onGpuWait? }?): Promise<ModelRuntime>   // Pi runtime holding only models.allowed(ctx), sealed
 // onGpuWait(GpuWait { busyWith?; loading? } | null), passed for a thread's own turns (HostedThread; not sleep, subagents or watching): a host's chat requests go through waitingFetch(fetch, origin, onWait), tagged with
 // X-Lyrica-Job, and their job is read every 2 s while queued; onWait hears the latest one waiting and null once none does.
-// Every /v1 request to a host (sleep, subagents and watching too) waits for the GPU as long as it stays: hostFetch tags it.
+// Every /v1 request to a host (sleep, subagents and watching too) waits for the GPU up to 15 minutes: hostFetch tags it.
 piModelFor(runtime, models, task, ctx, resolution?): { ref; model; resolution }
 prepareTurn({ session, runtime, models, call, pool, threadId, task?, thinking?, retry? }): Promise<Resolution>
 openThreadSession({ thread, models, cwd, extensions, settings?, task?: () => Task, onGpuWait? }): Promise<ThreadSession>

@@ -59,7 +59,7 @@ export function startsMidThought(o: Offering | undefined, level: string | undefi
 export interface GpuWait { busyWith?: string; loading?: true }
 
 /**
- * A host's fetch whose chat requests are tagged with X-Lyrica-Job, so each waits for the GPU as long as it stays
+ * A host's fetch whose chat requests are tagged with X-Lyrica-Job, so each waits for the GPU up to 15 minutes
  * (rather than the host's two minutes) and says while it waits what holds it. `onWait` hears the latest waiting
  * request, and null once none waits.
  */

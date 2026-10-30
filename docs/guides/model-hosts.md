@@ -35,9 +35,10 @@ the end is for that.
 
 A host that is off, paused or busy is skipped for the next model in the
 list, so several hosts (or a host and a cloud model, in a general preset)
-back each other up. Busy is the exception: Lyrica's text requests (chat,
-sleep, subagents) wait for the GPU as long as they run, since a very large
-model can take minutes to load, and a chat thread says what it waits for.
+back each other up. Busy takes a while: Lyrica's text requests (chat,
+sleep, subagents) wait for the GPU up to 15 minutes first, since a very
+large model can take minutes to load, and a chat thread says what it waits
+for.
 
 ## The machine
 

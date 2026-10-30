@@ -193,7 +193,7 @@ describe("the GPU queue", () => {
     holder.release();
   });
 
-  it("keeps a request that waits until cancelled past the wait limit, saying what it waits for", async () => {
+  it("keeps a request with its own wait limit past its priority's, saying what it waits for", async () => {
     const { scheduler } = setup([24], { waitLimits: { chat: 50, image: 50, background: 50 } });
     await scheduler.start([]);
     const holder = hold(scheduler, textModel("chatting", 15));
@@ -201,7 +201,7 @@ describe("the GPU queue", () => {
     const phases: QueuePhase[] = [];
     const abort = new AbortController();
     let ran = false;
-    const waiting = scheduler.run(textModel("other", 10), "chat", async () => { ran = true; }, undefined, abort.signal, { untilCancelled: true, phase: (p) => phases.push(p) });
+    const waiting = scheduler.run(textModel("other", 10), "chat", async () => { ran = true; }, undefined, abort.signal, { waitLimit: 60_000, phase: (p) => phases.push(p) });
     await new Promise((r) => setTimeout(r, 150));
     expect(phases[0]).toEqual({ state: "waiting", busyWith: "a chat model" });
     holder.release();
@@ -210,13 +210,13 @@ describe("the GPU queue", () => {
     expect(phases.at(-1)).toEqual({ state: "loading" });
   });
 
-  it("takes a request that waits until cancelled out of the queue when its client goes", async () => {
+  it("takes a request with a long wait limit out of the queue when its client goes", async () => {
     const { scheduler, llamacpp } = setup([24]);
     await scheduler.start([]);
     const holder = hold(scheduler, textModel("chatting", 15));
     await holder.started;
     const abort = new AbortController();
-    const waiting = scheduler.run(textModel("other", 10), "chat", async () => {}, undefined, abort.signal, { untilCancelled: true }).catch((e) => e);
+    const waiting = scheduler.run(textModel("other", 10), "chat", async () => {}, undefined, abort.signal, { waitLimit: 60_000 }).catch((e) => e);
     abort.abort();
     expect((await waiting).code).toBe("cancelled");
     holder.release();

@@ -52,8 +52,8 @@ is ignored there. Lyrica sends `background` for sleep and cheap subagents.
 
 A queued request waits at most 120 seconds (`chat`), 300 (`image`) or 900
 (`background`) for room, then fails with `busy`. A `/v1` request tagged with
-`X-Lyrica-Job` (see Job progress) has no limit: it waits as long as its
-client stays connected, and leaves the queue when the client goes.
+`X-Lyrica-Job` (see Job progress) waits up to 15 minutes, long enough to
+load a very large model, and leaves the queue when its client goes.
 
 ## OpenAI-compatible: `/v1`
 

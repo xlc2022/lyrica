@@ -50,8 +50,8 @@ interface Loaded {
 /** Where a queued request is: waiting for work on its GPUs (and what that is), or for its model to load. */
 export type QueuePhase = { state: "waiting"; busyWith: string } | { state: "loading" };
 
-/** `untilCancelled`: no wait limit, only `signal` takes the request out of the queue. `phase`: told as the request waits. */
-export interface RunOptions { untilCancelled?: boolean; phase?: (p: QueuePhase) => void }
+/** `waitLimit`: the longest wait in the queue, in ms, in place of its priority's. `phase`: told as the request waits. */
+export interface RunOptions { waitLimit?: number; phase?: (p: QueuePhase) => void }
 
 interface Job {
   model: TextModel;
@@ -61,8 +61,7 @@ interface Job {
   gpu?: number;
   resolve: (l: Loaded) => void;
   reject: (e: Error) => void;
-  /** None for a request that waits as long as its client stays. */
-  timer?: NodeJS.Timeout;
+  timer: NodeJS.Timeout;
   /** Told when it starts waiting for other work, or for its model to load. */
   phase?: (p: QueuePhase) => void;
   last?: string;
@@ -307,11 +306,11 @@ export class Scheduler {
       if (signal?.aborted) return reject(cancelled());
       const job: Job = {
         model, priority, gpu, seq: this.seq++, resolve, reject, waitingOn: [], ...(opts.phase ? { phase: opts.phase } : {}),
-        timer: opts.untilCancelled && signal ? undefined : setTimeout(() => {
+        timer: setTimeout(() => {
           this.queue = this.queue.filter((j) => j !== job);
           reject(new HostError(503, "busy", `The GPU is busy with ${this.busyWith(job.waitingOn)}.`));
           this.kick();
-        }, this.limits[priority]),
+        }, opts.waitLimit ?? this.limits[priority]),
       };
       // A request whose client has gone leaves the queue and loads nothing.
       signal?.addEventListener("abort", () => {

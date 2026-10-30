@@ -190,7 +190,7 @@ const AWAY = new Set(["paused", "busy", "restarting", "unavailable", "unpaired"]
 export function hostFetch(id: Identity, host: { addresses: string[]; pin: string }, away: (reason: string, code: string) => void, reached?: (origin: string) => void): typeof fetch {
   const dispatcher = pinnedAgent(id, host.pin);
   // An image or video job answers only when it is done, which can be past undici's 5 minutes for the first byte (a clip
-  // takes minutes), and a /v1 request waits for the GPU as long as it stays: those wait as long as their caller's own
+  // takes minutes), and a /v1 request waits for the GPU up to 15 minutes: those wait as long as their caller's own
   // signal allows.
   const jobs = pinnedAgent(id, host.pin, { headersTimeout: 0 });
   const origins = host.addresses.map(hostOrigin);
@@ -198,7 +198,7 @@ export function hostFetch(id: Identity, host: { addresses: string[]; pin: string
     const url = new URL(input instanceof Request ? input.url : String(input));
     let last: unknown;
     const method = (init?.method ?? "GET").toUpperCase();
-    // Every /v1 request is tagged, so the host keeps it queued for as long as it stays, never answering `busy`;
+    // Every /v1 request is tagged, so the host keeps it queued up to 15 minutes (a very large model's load) before `busy`;
     // a caller that reads the job's progress (waitingFetch) tags it itself.
     const v1 = method === "POST" && url.pathname.startsWith("/v1/");
     if (v1 && !tagged(init?.headers)) {

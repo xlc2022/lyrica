@@ -8,13 +8,14 @@ failed with "503: {"code":"busy",…}" in red, though nothing was wrong.
 
 ## What changes
 
-- **Host.** A `/v1` request tagged with `X-Lyrica-Job` waits for the GPU as
-  long as its client stays connected (no `busy`), and its job
+- **Host.** A `/v1` request tagged with `X-Lyrica-Job` waits for the GPU up
+  to 15 minutes before `busy` (the user's choice: a busy host is still
+  skipped for the next model, just later), and its job
   (`GET /host/v1/jobs/<token>`) says what it waits for: `busyWith` (the
   `busy` error's words) or `loading`. Untagged requests keep the limits.
   Text and image jobs share one `Jobs` (Runtime's).
-- **Lyrica.** `hostFetch` tags every `/v1` request, so none has a wait
-  limit or a first-byte limit: chat, sleep, subagents and watching all wait
+- **Lyrica.** `hostFetch` tags every `/v1` request, so each waits up to 15
+  minutes, with no first-byte limit: chat, sleep, subagents and watching all wait
   (the user asked to remove the limits from sleep and subagents too). A
   thread's runtime (`openThreadSession` with `onGpuWait`) tags its chat
   requests itself (`waitingFetch`), reads the job while it waits and sends

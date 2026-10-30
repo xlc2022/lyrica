@@ -20,7 +20,7 @@ export interface ThreadSessionOptions {
   extensions: ExtensionFactory[];
   settings?: Settings;
   task?: () => Task;
-  /** A chat request waiting for a model host's GPU, and null once none waits: it then waits as long as the turn runs. */
+  /** A chat request waiting for a model host's GPU (up to 15 minutes), and null once none waits. */
   onGpuWait?: (w: GpuWait | null) => void;
 }
 

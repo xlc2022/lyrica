@@ -8,6 +8,9 @@ import type { Logger } from "./log.ts";
 import { SERVER_NAMES, SERVERS, concurrentOf, contextOf, maxContextOf, serverOf, sizes, usesVision, validate, type Server } from "./placement.ts";
 import { PRIORITIES, type Priority, type Scheduler } from "./scheduler.ts";
 import { Jobs } from "./jobs.ts";
+
+/** How long a /v1 request tagged with X-Lyrica-Job may wait for the GPU: long enough to load a very large model. */
+export const TAGGED_WAIT_MS = 15 * 60_000;
 import { NO_USAGE, type StateFile, type Usage } from "./state.ts";
 
 const BODY_LIMIT = 64 * 1024 * 1024;
@@ -435,7 +438,7 @@ export class Runtime {
    * and its answer back as it arrives. A client that goes away cancels the
    * request, queued or running; an answer the server cuts short is cut short
    * too. A server that doesn't answer is `unavailable`. A request tagged with
-   * X-Lyrica-Job waits for the GPU as long as its client stays, and its job
+   * X-Lyrica-Job waits for the GPU up to 15 minutes, and its job
    * says what it waits for.
    */
   private async pass(req: IncomingMessage, res: ServerResponse, model: TextModel, path: string, raw: Buffer, type: string, onChunk?: (chunk: Buffer) => void): Promise<void> {
@@ -481,6 +484,6 @@ export class Runtime {
           resolve();
         });
       });
-    }, undefined, abort.signal, token ? { untilCancelled: true, phase: (p) => job.waiting(p) } : {}));
+    }, undefined, abort.signal, token ? { waitLimit: TAGGED_WAIT_MS, phase: (p) => job.waiting(p) } : {}));
   }
 }

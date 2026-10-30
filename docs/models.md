@@ -143,8 +143,8 @@ administrator pairs or manages them; a personal host lives in its user's
   `/host/v1/status` and counts only `running` as up.
 - **Waiting for the GPU.** Every `/v1` request to a host is tagged with
   `X-Lyrica-Job` (`hostFetch` adds a random one), so the host keeps it
-  queued as long as the request stays (no `busy` after 120 s; Stop ends a
-  turn's), with no limit on waiting for its first byte. That holds for
+  queued up to 15 minutes rather than 120 s before `busy` (Stop ends a
+  turn's sooner), with no limit on waiting for its first byte. That holds for
   sleep, subagents and watching too. A thread's chat requests go through
   the extension's `waitingFetch`, which reads the job every 2 s while it is
   queued; the thread's `gpu_wait` event says what it waits for: other work

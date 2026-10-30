@@ -1073,7 +1073,7 @@ export class HostedThread {
       const repoSkillsSeen = new Map<string, ListedSkill[]>();
       const { session, runtime, prepare, dispose } = await openThreadSession({
         thread: ctx, models, cwd: this.o.cwd, task: () => tools.settings().code ? "code" : "chat",
-        // A reply waiting for a host's GPU waits as long as the turn runs, and the views say what it waits for.
+        // A reply waiting for a host's GPU (up to 15 minutes, then the next model) has the views say what it waits for.
         onGpuWait: (wait) => { this.gpuWait = wait; this.emit({ type: "gpu_wait", wait }); },
         extensions: [
           createLyricaExtension(ctx, {
