@@ -233,7 +233,8 @@ test("the sidebar's status panel shows the endpoints on any page, and a very lon
   await expect(fast).toHaveAttribute("title", "gpu · 42 tok/s · 812 prompt tok/s · last 9 turns");
   await noHorizontalScroll(page);
   if (page.viewportSize()?.width === 390) await page.screenshot({ path: "shots/status-speed-390.png" });
-  await page.unroute("**/models/page");
+  // No unroute here: it doesn't wait for a status refresh still in route.fetch, which then failed the next test with
+  // "route.fetch: Test ended". The afterEach unrouteAll ignores that in-flight request.
 });
 
 test("Tasks: the table shows each column's models; a cell's drawer adds, reorders and removes, and Same as points a task at another; the Preset menu switches, saves and edits a preset; Settings → Model profiles lands here", async ({ page, baseURL }) => {
