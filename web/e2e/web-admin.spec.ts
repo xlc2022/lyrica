@@ -797,6 +797,7 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/system-ram-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
   const big = "lyrica/huggingface/ada/Big-MoE-GGUF/Big-MoE-Q6_K.gguf";
+  let localOffering = "";
   let systemRam = { total: 96 * GB, most: 76 * GB, allowance: 0, used: 0, models: [] as { id: string; ram: number }[] };
   const status = () => ({
     name: "box", version: "0.9.0", fingerprint: "SHA256:aaaa", state: "running", downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: 2 ** 40 }, systemRam,
@@ -806,8 +807,11 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
     const real = await (await fetchReal(route)).json() as { endpoints: Record<string, unknown>[]; hosts: unknown[] };
     const local = real.endpoints.find((e) => e.kind === "local")!;
-    real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", addresses: ["box.lan:7236"], fingerprint: "SHA256:aaaa", state: "up", shared: false, models: [] });
+    const model = (local.models as Record<string, unknown>[])[0]!;
+    real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", addresses: ["box.lan:7236"], fingerprint: "SHA256:aaaa", state: "up", shared: false,
+      models: [{ ...model, id: "off-big", endpointId: "ep-box", rawName: big, name: "Big-MoE-Q6_K" }] });
     real.hosts.push({ endpointId: "ep-box", status: status() });
+    localOffering = String(model.id);
     await route.fulfill(json(real));
   });
   const asked: unknown[] = [];
@@ -841,6 +845,34 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   await expect(ram).toContainText("llama.cpp · 96 GB in this machine · Edit");
   await expect(page.locator(".legend")).toContainText("In system RAM");
   await shot("card");
+  await noHorizontalScroll(page);
+
+  // A model's Serving: System RAM is Auto or Off while the host has an allowance, and the estimate says what stays there.
+  await page.route(/\/api\/u\/[^/]+\/offerings\/off-big\/settings$/, (route) => route.continue({ url: route.request().url().replace("off-big", encodeURIComponent(localOffering)) }));
+  await page.route(/\/api\/u\/[^/]+\/offerings\/off-big\/serving$/, (route) => route.fulfill(json({
+    model: big, settings: {}, contextLength: 32768, maxContextLength: 131072, trainedContextLength: 131072, kvBytes: 3 * GB, ramBytes: 18 * GB,
+    recommended: null, stretchUntested: false,
+  })));
+  await page.route(/\/api\/u\/[^/]+\/library\/text(\?.*)?$/, async (route) => {
+    const real = await (await fetchReal(route)).json() as { total: number; entries: { copies: Record<string, unknown>[] }[] };
+    const copy = real.entries.flatMap((e) => e.copies).find((c) => c.offeringId === localOffering)!;
+    real.entries.unshift({ key: "big-moe", name: "Big-MoE-Q6_K", starred: false, groups: [],
+      copies: [{ ...copy, offeringId: "off-big", label: "box", rawName: big, endpointId: "ep-box", endpointName: "box" }] } as never);
+    real.total += 1;
+    await route.fulfill(json(real));
+  });
+  await page.goto(`/#/u/${userId}/models/text`);
+  const row = page.locator("li.lrow").filter({ hasText: "Big-MoE-Q6_K" });
+  await row.locator(".lrow-main").click();
+  await row.locator(".ldetail").getByRole("button", { name: /^Settings for .*Big-MoE-Q6_K/ }).click();
+  const settings = page.getByRole("complementary", { name: /^Settings for Big-MoE-Q6_K/ });
+  await settings.getByRole("button", { name: "Serving" }).click();
+  const select = settings.getByLabel("System RAM");
+  await expect(select).toHaveValue("auto");
+  await expect(settings.locator(".srow").filter({ has: page.getByLabel("System RAM") }).locator("[title]").first()).toHaveAttribute("title", /The host's allowance is 48 GB\.$/);
+  await expect(settings.getByRole("status").filter({ hasText: "system RAM" })).toHaveText("18.0 GB stays in system RAM, so it runs slower.");
+  await select.scrollIntoViewIfNeeded();
+  await shot("serving");
   await noHorizontalScroll(page);
 });
 

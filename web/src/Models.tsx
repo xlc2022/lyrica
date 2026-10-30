@@ -1247,7 +1247,7 @@ function HostDrawer({ ctx, ep, host, onClose }: { ctx: MCtx; ep: Endpoint; host?
               <span className="with-unit">
                 <input type="number" min={0} max={most} step={1} placeholder="Off" value={allowance} onChange={(e) => setAllowance(e.target.value)}
                   onBlur={() => allowance.trim() && setAllowance(String(Math.min(most, Math.max(0, Math.round(Number(allowance) || 0)))))} />
-                <span className="unit">of {most} GB</span>
+                <span className="unit">of <span className="num">{most}</span> GB</span>
               </span>
               <span className="sr-only">{RAM_TIP}</span>
             </label>

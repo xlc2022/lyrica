@@ -801,7 +801,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
           </select>
         </SRow>
         {(!!allowance || draft.systemRam === false) && (
-          <SRow label="System RAM" title={`Auto keeps what doesn't fit the GPUs in system RAM, slower; Off refuses a model too big for them.${allowance ? ` The host's allowance is ${Math.round(allowance / GB)} GB.` : ""}`}>
+          <SRow label="System RAM" title={`Auto keeps what doesn't fit the GPUs in system RAM, which is slower. Off refuses a model too big for them.${allowance ? ` The host's allowance is ${Math.round(allowance / GB)} GB.` : ""}`}>
             <select aria-label="System RAM" value={draft.systemRam === false ? "off" : "auto"} onChange={(e) => set("systemRam", e.target.value === "off" ? false : undefined)}>
               <option value="auto">Auto</option><option value="off">Off</option>
             </select>

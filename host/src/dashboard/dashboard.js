@@ -287,7 +287,7 @@ function editRam(r) {
   openDrawer({
     title: "System RAM",
     sub: [h("span", {}, num(size(r.total)), " in this machine")],
-    fields: [field(`System RAM (GB, of ${most})`, input, RAM_TIP)],
+    fields: [field("System RAM (GB)", h("span", { class: "with-unit" }, input, h("span", { class: "muted" }, "of ", num(most))), RAM_TIP)],
     save: () => {
       const gb = input.value.trim() ? Math.min(most, Math.max(0, Math.round(Number(input.value) || 0))) : 0;
       return api("/host/v1/memory", { method: "PUT", body: JSON.stringify({ systemRam: gb * 2 ** 30 }) });

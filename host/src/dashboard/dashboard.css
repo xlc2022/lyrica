@@ -58,6 +58,8 @@ input, select, textarea { min-height: var(--tap); background: var(--bg); border:
 textarea { font: 13px/1.5 var(--mono); resize: vertical; width: 100%; }
 .field { display: grid; gap: 4px; min-width: 0; }
 .field > span:first-child { color: var(--muted); font-size: 13px; }
+.with-unit { display: flex; gap: 8px; align-items: center; }
+.with-unit input { flex: 1 1 auto; min-width: 0; }
 .check { display: inline-flex; gap: 8px; align-items: center; min-height: 30px; cursor: pointer; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 .row > .field { flex: 1 1 180px; }
