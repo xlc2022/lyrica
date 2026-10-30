@@ -31,15 +31,20 @@ const SCHEDULERS: Record<string, string> = {
 /**
  * sd-server's arguments for a recipe's parts, under /models. Throws when sd.cpp
  * can't make it here: another template, LoRAs, or a part it has no flag for.
+ * `fullRate`: the card's FP16 tensor cores run at full rate (a CMP unlocked
+ * since boot), as gate.sh reports.
  */
-export function sdcppArgs(r: Pick<Recipe, "template" | "parts" | "loras">, models: string): string[] {
+export function sdcppArgs(r: Pick<Recipe, "template" | "parts" | "loras">, models: string, fullRate = false): string[] {
   const cant = (why: string) => invalid(`This host makes images with stable-diffusion.cpp, which can't run this recipe: ${why}.`);
   if (!TEMPLATES.has(r.template)) throw cant(`it has no ${r.template} support here`);
   if (r.loras.length) throw cant("LoRAs aren't supported");
-  // Weights become Q8_0 as they load, for the card's int8 units, unless the
-  // main model is a GGUF: its quantisation is kept, as a larger one may not fit.
+  // Throttled tensor cores: weights become Q8_0 as they load, for the card's
+  // int8 units, and flash attention, which would use the tensor cores, is off.
+  // At full rate they become F16, with flash attention on: 2.5 times as fast.
+  // A GGUF main model keeps its quantisation either way, as a larger one may not fit.
   const main = r.parts.find((p) => p.role === "checkpoint" || p.role === "diffusion");
-  const args: string[] = main?.file?.endsWith(".gguf") ? [] : ["--type", "q8_0"];
+  const args = ["--flash-attn", fullRate ? "on" : "off"];
+  if (!main?.file?.endsWith(".gguf")) args.push("--type", fullRate ? "f16" : "q8_0");
   for (const p of r.parts) {
     if (!p.file) continue;
     const flag = p.role === "checkpoint" ? "-m" : p.role === "diffusion" ? "--diffusion-model" : p.role === "vae" ? "--vae" : p.role === "text_encoder" ? ENCODERS[p.slot ?? ""] : undefined;
@@ -89,13 +94,18 @@ export class SdCpp implements Backend {
     writeAtomic(this.state, JSON.stringify(run ? { run: true, ...run } : { run: false }));
   }
 
-  /** What gate.sh says: the attempt it started, and its exit code once it has exited. */
-  private gate(): { attempt?: string; exited?: number } {
+  /** What gate.sh says: the attempt it started, its exit code once it has exited, and the tensor cores' rate. */
+  private gate(): { attempt?: string; exited?: number; tensor?: "full" | "throttled" } {
     try {
       return JSON.parse(readFileSync(this.status, "utf8"));
     } catch {
       return {};
     }
+  }
+
+  /** Whether the card's FP16 tensor cores run at full rate, for sdcppArgs. */
+  fullRate(): boolean {
+    return this.gate().tensor === "full";
   }
 
   /** Sets a recipe's arguments, before its job. */

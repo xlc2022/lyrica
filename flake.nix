@@ -28,6 +28,10 @@
         # kernel: CI builds it. Its firmware needs NVIDIA's driver, so only a
         # host that turns the option on builds that.
         gpu-unlock-module = (pkgs.linuxPackages.callPackage ./nix/gpu-unlock.nix { }).module;
+        # services.lyrica-host.cmpUnlock's hook and payloads, for the default
+        # kernel: CI builds it, which checks nixpkgs' firmware is the one
+        # upstream tested.
+        cmp-unlock = pkgs.linuxPackages.callPackage ./nix/cmp-unlock.nix { };
       };
 
       nixosModules.default = { pkgs, lib, ... }: {
@@ -41,6 +45,7 @@
       checks.${system} = {
         package = self.packages.${system}.lyrica;
         gpu-unlock-module = self.packages.${system}.gpu-unlock-module;
+        cmp-unlock = self.packages.${system}.cmp-unlock;
         # A whole NixOS system with the module on: it evaluates and builds.
         system = (nixpkgs.lib.nixosSystem {
           inherit system;
@@ -54,7 +59,8 @@
             }
           ];
         }).config.system.build.toplevel;
-        # A machine with both modules, the NVIDIA driver and gpu-unlock: it evaluates.
+        # A machine with both modules, the NVIDIA driver, gpu-unlock and
+        # cmp100-unlock: it evaluates.
         # Only evaluated, so CI never builds the unfree driver.
         model-host = pkgs.writeText "lyrica-model-host-system" (builtins.unsafeDiscardStringContext
           (nixpkgs.lib.nixosSystem {
@@ -66,6 +72,7 @@
                 services.lyrica.enable = true;
                 services.lyrica-host.enable = true;
                 services.lyrica-host.gpuUnlock.enable = true;
+                services.lyrica-host.cmpUnlock.enable = true;
                 nixpkgs.config.allowUnfree = true;
                 boot.loader.grub.enable = false;
                 fileSystems."/" = { device = "/dev/null"; fsType = "ext4"; };
@@ -76,7 +83,7 @@
         # Everything a CI run builds and fetches, in one path: the nix job keeps
         # the last 10 of these on each runner and collects the rest.
         roots = pkgs.linkFarm "lyrica-ci-roots" {
-          inherit (self.packages.${system}) lyrica sandbox-tools sandbox-closure gpu-unlock-module;
+          inherit (self.packages.${system}) lyrica sandbox-tools sandbox-closure gpu-unlock-module cmp-unlock;
           nixos = self.checks.${system}.system;
           nixpkgs = nixpkgs.outPath;
         };

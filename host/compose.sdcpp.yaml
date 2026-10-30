@@ -1,4 +1,4 @@
-# Images on a CMP 100-210 (PCI ID 10de:1df4): install.sh adds this when
+# Images on a CMP 100-210 (10de:1df4 or 10de:1d84): install.sh adds this when
 # COMFY_GPU is one. stable-diffusion.cpp's sd-server (sdcpp/Dockerfile),
 # built to use int8 by CI or here, makes the images in ComfyUI's place,
 # which isn't started. It uses one GPU, COMFY_GPU, and runs only while a

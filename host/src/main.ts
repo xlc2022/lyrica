@@ -7,7 +7,7 @@ import { Downloads } from "./downloads.ts";
 import { Images } from "./images.ts";
 import { RecipeBook, loadStarters } from "./recipes.ts";
 import { loadTemplates } from "./templates.ts";
-import { amdMonitor, CMP_100_210, noGpus, nvidiaMonitor } from "./gpus.ts";
+import { amdMonitor, isCmp, noGpus, nvidiaMonitor } from "./gpus.ts";
 import { stdoutLog } from "./log.ts";
 import { Runtime } from "./runtime.ts";
 import { Scheduler } from "./scheduler.ts";
@@ -53,7 +53,7 @@ const comfy = new Comfy(env.COMFYUI_URL || "http://comfyui:8188", undefined, und
 const sdcpp = env.SDCPP_URL ? new SdCpp(env.SDCPP_URL, { serving, status: env.SDCPP_STATUS || "/sdcpp-status/sdcpp.json" }) : null;
 // Beside a CMP 100-210, install.sh adds whisper.cpp for dictation, which vLLM can't do there.
 const whispercpp = env.WHISPER_URL ? new WhisperCpp(env.WHISPER_URL, { serving, status: env.WHISPER_STATUS || "/whisper-status/whisper.json", models: modelsDir }) : null;
-const cmpGpus = new Set(vendor === "nvidia" ? (await nvidiaMonitor.read().catch(() => [])).filter((g) => g.pciId === CMP_100_210).map((g) => g.index) : []);
+const cmpGpus = new Set(vendor === "nvidia" ? (await nvidiaMonitor.read().catch(() => [])).filter((g) => isCmp(g.pciId)).map((g) => g.index) : []);
 const scheduler = new Scheduler({
   monitor: vendor === "nvidia" ? nvidiaMonitor : vendor === "amd" ? amdMonitor("/sys", { order: backend === "vulkan" ? "pci" : "kfd" }) : noGpus,
   gpuBackend: backend,

@@ -317,12 +317,13 @@ export async function fakeComfy(o: { hang?: boolean; hold?: () => Promise<void> 
 /**
  * stable-diffusion.cpp's sd-server, as host/src/sdcpp.ts uses it, with the
  * part gate.sh plays: it reports whatever attempt host-api asks for in
- * serving/sdcpp.json as started. `hang` keeps jobs generating.
+ * serving/sdcpp.json as started, and `seen.tensor` as the tensor cores' rate.
+ * `hang` keeps jobs generating.
  */
 export async function fakeSdServer(serving: string, status: string, o: { hang?: boolean } = {}) {
   const { readFileSync, writeFileSync } = await import("node:fs");
   const { join } = await import("node:path");
-  const seen = { jobs: [] as any[], cancelled: [] as string[], started: [] as string[][] };
+  const seen = { jobs: [] as any[], cancelled: [] as string[], started: [] as string[][], tensor: "throttled" };
   let last = "";
   const gate = setInterval(() => {
     let state: { run?: boolean; attempt?: string; args?: string[] } = {};
@@ -330,10 +331,9 @@ export async function fakeSdServer(serving: string, status: string, o: { hang?: 
       state = JSON.parse(readFileSync(join(serving, "sdcpp.json"), "utf8"));
     } catch {}
     const key = state.run ? String(state.attempt) : "";
-    if (key === last) return;
+    if (key !== last && state.run) seen.started.push(state.args ?? []);
     last = key;
-    if (state.run) seen.started.push(state.args ?? []);
-    writeFileSync(status, JSON.stringify(state.run ? { attempt: state.attempt } : {}));
+    writeFileSync(status, JSON.stringify({ ...(state.run ? { attempt: state.attempt } : {}), tensor: seen.tensor }));
   }, 20);
   const server = http.createServer(async (req, res) => {
     const chunks: Buffer[] = [];

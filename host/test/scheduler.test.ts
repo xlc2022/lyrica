@@ -553,6 +553,11 @@ describe("requests", () => {
     await scheduler.setGpu(0, { servers: ["llamacpp", "vllm", "images", "speech"], keepFree: GIB / 2, excluded: false });
     expect(scheduler.gpuSettings(0).servers).toEqual(["llamacpp", "images", "speech"]);
     expect(scheduler.gpuSettings(1).servers).toContain("vllm");
+    // Its other PCI ID too.
+    const other = setup([16]);
+    other.gpus.gpus[0]!.pciId = "10de:1d84";
+    await other.scheduler.start([]);
+    expect(other.scheduler.gpuSettings(0).servers).not.toContain("vllm");
     const v = textModel("v", 4, { server: "vllm", format: "safetensors" });
     await scheduler.loadNow(v);
     expect(gpus.on("v")).toEqual([1]);

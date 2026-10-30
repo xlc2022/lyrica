@@ -21,6 +21,10 @@ describe("the CMP's prebuilt images", () => {
     expect(sh(copy, "prebuilt_tag llamacpp")).not.toBe(tag);
   });
 
+  it("share one tensor-probe, which tells llama.cpp and sd-server whether the CMP is unlocked", () => {
+    expect(readFileSync(join(host, "sdcpp/tensor-probe.c"), "utf8")).toBe(readFileSync(join(host, "llamacpp/tensor-probe.c"), "utf8"));
+  });
+
   it("live in one registry setting", () => {
     expect(sh(host, "prebuilt_image sdcpp")).toMatch(/^ghcr\.io\/xlc2022\/lyrica-host-sdcpp:[0-9a-f]{16}$/);
     expect(sh(host, "prebuilt_image sdcpp", { LYRICA_HOST_REGISTRY: "forge.example/lyrica" })).toMatch(/^forge\.example\/lyrica\/lyrica-host-sdcpp:/);
