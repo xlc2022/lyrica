@@ -969,6 +969,11 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "defaults", defaults: { steps: 20 } } });
   await expect(block.locator(".copyhead")).toContainText("20 steps");
   if (process.env.SCREENSHOTS) await block.screenshot({ path: `${process.env.SCREENSHOTS}/image-models-steps-${page.viewportSize()!.width}.png` });
+  // Its label stays on its input, as Use for's does on its segments.
+  const label = (await block.locator(".field.steps > span").first().boundingBox())!;
+  const input = (await steps.boundingBox())!;
+  expect(input.y - (label.y + label.height)).toBeLessThanOrEqual(8);
+  if (phone(page)) expect(input.height).toBeGreaterThanOrEqual(44);
   await noHorizontalScroll(page);
 
   // Change: the host's other VAEs for the architecture, or Download another….
