@@ -1,6 +1,6 @@
 # Brief: Host CPU
 
-**Status:** In review.
+**Status:** Built (#672, merged 2026-10-30).
 
 **Thread:** Show host CPU and core count. **Branch:**
 `claude/project-thread-2r1st9`. **Model:** Opus.
@@ -42,5 +42,5 @@ Lyrica nor the host dashboard named them; the host read only total memory.
 ## Handoff
 
 Done: status field, Lyrica's CPU line, dashboard card, tests, docs
-(host/API.md, host/README.md, docs/ux.md, docs/web.md). Next: reviews.
+(host/API.md, host/README.md, docs/ux.md, docs/web.md), merged in #672. Next: none.
 Open: none.
