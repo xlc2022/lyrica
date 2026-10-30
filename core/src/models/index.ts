@@ -2631,7 +2631,7 @@ export class Models {
       if (used.has(r.offering.id)) throw new Offline(task, tried);
       used.add(r.offering.id);
       // What a call failed on is said once, with why it failed, ahead of what this resolve skipped.
-      const fresh = (l: { label: string }[]) => l.filter((x) => !tried.some((t) => t.label === x.label));
+      const fresh = <T extends { label: string }>(l: T[]) => l.filter((x) => !tried.some((t) => t.label === x.label));
       if (tried.length) r = { ...r, skipped: [...tried, ...fresh(r.skipped)], passedOver: [...tried, ...fresh(r.passedOver ?? [])] };
       try {
         const out = await call(r);
