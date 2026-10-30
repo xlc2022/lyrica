@@ -58,6 +58,8 @@ input, select, textarea { min-height: var(--tap); background: var(--bg); border:
 textarea { font: 13px/1.5 var(--mono); resize: vertical; width: 100%; }
 .field { display: grid; gap: 4px; min-width: 0; }
 .field > span:first-child { color: var(--muted); font-size: 13px; }
+.with-unit { display: flex; gap: 8px; align-items: center; }
+.with-unit input { flex: 1 1 auto; min-width: 0; }
 .check { display: inline-flex; gap: 8px; align-items: center; min-height: 30px; cursor: pointer; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
 .row > .field { flex: 1 1 180px; }
@@ -113,7 +115,7 @@ textarea { font: 13px/1.5 var(--mono); resize: vertical; width: 100%; }
 .gpu-line button { margin-left: auto; }
 .bar { height: 8px; border-radius: 999px; background: var(--tool); display: flex; overflow: hidden; }
 .bar span { height: 100%; }
-.seg-pinned { background: var(--pinned); } .seg-loaded { background: var(--loaded); }
+.seg-pinned { background: var(--pinned); } .seg-loaded { background: var(--loaded); } .seg-ram { background: color-mix(in oklab, var(--warn) 45%, var(--panel)); }
 .model-list { list-style: none; margin: 0; padding: 8px 0 0; border-top: 1px solid var(--line); display: grid; gap: 2px; font-size: 13px; }
 .model-list li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; min-height: 30px; }
 .progress { height: 4px; border-radius: 999px; background: var(--tool); overflow: hidden; }

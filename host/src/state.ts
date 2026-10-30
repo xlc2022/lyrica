@@ -37,6 +37,8 @@ export interface HostState {
   recommended: Record<string, Recommended>;
   /** Model IDs kept loaded. */
   pins: string[];
+  /** Bytes of system RAM llama.cpp models may keep there when they don't fit the GPUs; 0 is off. */
+  systemRam: number;
   /** "<model ID>@<placement>" → bytes measured on each GPU on its first load there. */
   vram: Record<string, Record<number, number>>;
   usageSince: string;
@@ -45,7 +47,7 @@ export interface HostState {
   migrations: string[];
 }
 
-const EMPTY: HostState = { clients: [], password: null, paused: false, gpuSettings: {}, models: {}, recommended: {}, pins: [], vram: {}, usageSince: "", usage: {}, migrations: [] };
+const EMPTY: HostState = { clients: [], password: null, paused: false, gpuSettings: {}, models: {}, recommended: {}, pins: [], systemRam: 0, vram: {}, usageSince: "", usage: {}, migrations: [] };
 
 export class StateFile {
   readonly path: string;

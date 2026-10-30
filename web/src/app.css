@@ -1361,6 +1361,7 @@ summary.sleep-sum:hover { background: color-mix(in oklab, var(--tool) 50%, trans
   --pinned: color-mix(in oklab, var(--accent) 70%, var(--panel));
   --loaded: color-mix(in oklab, var(--accent) 35%, var(--panel));
   --vllm: color-mix(in oklab, var(--local) 45%, var(--panel));
+  --ram: color-mix(in oklab, var(--warn) 45%, var(--panel));
 }
 .kind.local { color: var(--local); } .kind.cloud { color: var(--cloud); }
 .models .section { display: grid; gap: 10px; min-width: 0; }
@@ -1395,7 +1396,7 @@ a.tile:hover { text-decoration: none; border-color: var(--accent); }
 @media (pointer: coarse) { .list > li.ep-row button.sm:not(.link) { min-height: var(--tap); } }
 .bar { height: 8px; border-radius: 999px; background: var(--tool); display: flex; overflow: hidden; width: 100%; }
 .bar span { height: 100%; }
-.seg-pinned { background: var(--pinned); } .seg-loaded { background: var(--loaded); } .seg-vllm { background: var(--vllm); }
+.seg-pinned { background: var(--pinned); } .seg-loaded { background: var(--loaded); } .seg-vllm { background: var(--vllm); } .seg-ram { background: var(--ram); }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
 .card.host { max-width: none; gap: 10px; }

@@ -525,7 +525,7 @@ class Models {                                              // new Models(keyrin
   // recipe action { do: "change", change: { op: "useFor", useFor } } forwards to the host's PATCH and refreshes offerings.
   // Discovery caches useFor in offerings' existing found JSON; no database schema change.
   // Host management and serving
-  manageHost(actor, hostId, method, path, body?)            // only models/load|unload|pin|reload, gpus/<n>, scan, usage
+  manageHost(actor, hostId, method, path, body?)            // only models/load|unload|pin|reload, gpus/<n>, memory, scan, usage
   servingSettings(userId, offeringId) / setServingSettings(actor, offeringId, settings) / reloadModel(actor, offeringId)
   // settings may carry stretch: { type: "yarn"; factor; originalContext } (host models only); servingSettings returns
   // recommended: { native, stretched?, factor?, originalContext?, source: { hub, repo, revision, at } } | null

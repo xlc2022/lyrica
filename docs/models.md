@@ -791,15 +791,16 @@ needs an administrator.
 
 `manageHost` passes on the host's own management calls (loading,
 unloading, pinning and reloading models, GPU settings and placements,
-scanning, usage) as the host defines them; other paths are refused, and a
+the System RAM allowance, scanning, usage) as the host defines them; other paths are refused, and a
 shared host needs an administrator. Serving settings go only through
 `setServingSettings`, which reads the model again after saving.
 
 **Serving** (the Serving tab): `servingSettings`, `setServingSettings` and
 `reloadModel` read and save one host model's placement and serving settings
 and apply them now. The host
-refuses a placement that can't work after accounting for other programs
-and kept-free VRAM, with its reason. A refused reload keeps the serving
+refuses a placement that can't work after accounting for other programs,
+kept-free VRAM and its System RAM allowance, with its reason; `ramBytes`
+says what a model too big for its GPUs would keep in system RAM. A refused reload keeps the serving
 instance; a failed replacement load reverts the saved settings and attempts
 to restore the previous instance, reporting the original load error even
 if restoration fails. The context a host

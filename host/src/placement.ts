@@ -20,7 +20,10 @@ export interface ModelSettings {
   /** llama.cpp */
   kvCacheType?: "f16" | "q8_0" | "q4_0";
   flashAttention?: "auto" | "on" | "off";
+  /** Layers on the GPUs, set by hand; the rest, with their cache, stay in system RAM. All unless set. */
   gpuLayers?: number;
+  /** llama.cpp: false keeps the model on the GPUs only, never in the host's system RAM allowance. */
+  systemRam?: false;
   parallel?: number;
   /** llama.cpp's batch size, or vLLM's batched tokens. */
   batchSize?: number;
@@ -59,6 +62,13 @@ export interface GpuSettings {
   keepFree: number;
   excluded: boolean;
 }
+
+/**
+ * The most of the machine's memory the system RAM allowance may give models:
+ * all of it less llama.cpp's prompt cache (an eighth, from 8 to 64 GiB) and
+ * 8 GiB for the system.
+ */
+export const ramMost = (total: number) => Math.max(0, total - Math.min(64 * 1024 ** 3, Math.max(8 * 1024 ** 3, total / 8)) - 8 * 1024 ** 3);
 
 export const DEFAULT_CONTEXT = 32768;
 const GIB = 1024 ** 3;
@@ -143,6 +153,12 @@ export interface Option {
   /** vLLM's memory share on each of its GPUs. */
   share: number | null;
   need: Record<number, number>;
+  /** Bytes kept in system RAM instead of on the GPUs (llama.cpp). */
+  ram?: number;
+  /** llama.cpp: the first N layers keep their experts in system RAM. */
+  cpuMoe?: number;
+  /** llama.cpp: layers on the GPUs, the rest in system RAM. */
+  gpuLayers?: number;
 }
 
 const room = (g: Gpu, gs: GpuSettings) => g.total - gs.keepFree;
@@ -163,21 +179,119 @@ function option(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: n
   // llama.cpp splits by ratio: the one set, or by each GPU's room.
   const ratios = split ?? gpus.map((g) => room(g, settings(g.index)));
   const sum = ratios.reduce((a, b) => a + b, 0);
+  // Layers left off the GPUs by hand take their share of the weights and cache to system RAM.
+  const off = s.gpuLayers !== undefined && model.layers && s.gpuLayers < model.layers ? Math.round((total * (model.layers - s.gpuLayers)) / model.layers) : 0;
   return {
     gpus: ids,
     split: gpus.length > 1 ? ratios : null,
     parallel: null,
     share: null,
-    need: Object.fromEntries(gpus.map((g, i) => [g.index, Math.round((total * ratios[i]!) / sum + OVERHEAD)])),
+    need: Object.fromEntries(gpus.map((g, i) => [g.index, Math.round(((total - off) * ratios[i]!) / sum + OVERHEAD)])),
+    ...(off ? { ram: off, gpuLayers: s.gpuLayers } : {}),
   };
+}
+
+/** Whether a model may keep part of itself in the host's system RAM allowance. */
+const spills = (model: TextModel, s: ModelSettings) => model.server === "llamacpp" && !!model.layers && s.systemRam !== false && s.gpuLayers === undefined;
+
+/**
+ * An option that doesn't fit its GPUs (`used`: what other programs hold), with
+ * what they lack moved to system RAM: the experts of its first layers, the
+ * cheapest to run from RAM, else whole layers with their cache. Null when it
+ * would leave no layer on the GPUs.
+ */
+export function spill(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[], settings: (i: number) => GpuSettings): Option | null {
+  const layers = model.layers!;
+  const avail = o.gpus.map((i) => { const g = gpus.find((x) => x.index === i)!; return room(g, settings(i)) - Math.max(0, g.used) - OVERHEAD; });
+  const { weights, kv } = sizes(model, s);
+  const experts = model.expertLayers ?? [];
+  const expertSum = experts.reduce((a, b) => a + b, 0);
+  if (expertSum > 0) {
+    // With every layer offloaded, llama.cpp splits layers + 1 slots: the last is the output layer, on the last GPU.
+    const out = Math.min(model.outputBytes ?? 0, weights);
+    // Each layer's bytes on a GPU: its share of everything but the experts and the output layer, plus its own experts unless kept in RAM.
+    const base = (weights + kv - expertSum - out) / layers;
+    const bytes = (n: number) => Array.from({ length: layers }, (_, l) => base + (l < n ? 0 : experts[l] ?? 0));
+    // A split set by hand keeps its layers on each GPU; else the layers left are shared out to fit.
+    const fixed = s.placement.mode === "gpus" && !!s.placement.split;
+    const slots = layersBySplit(layers + 1, fixed ? o.split ?? [1] : [1]);
+    const outOn = fixed ? slots.findLastIndex((c) => c > 0) : o.gpus.length - 1;
+    for (let n = 1; n <= layers; n++) {
+      const b = bytes(n);
+      const counts = fixed || o.gpus.length === 1 ? slots.map((c, k) => c - (k === outOn ? 1 : 0)) : layersToFit(b, avail.map((a, k) => a - (k === outOn ? out : 0)));
+      if (!counts) continue;
+      const held = heldBy(b, counts).map((x, k) => x + (k === outOn ? out : 0));
+      if (held.some((x, k) => x > avail[k]!)) continue;
+      const ram = Math.round(experts.slice(0, n).reduce((a, x) => a + x, 0));
+      return {
+        ...o,
+        need: Object.fromEntries(o.gpus.map((i, k) => [i, Math.round(held[k]! + OVERHEAD)])),
+        // In slots, the output layer's on the last GPU, so llama.cpp gives each GPU the layers planned for it.
+        ...(o.gpus.length > 1 && !fixed ? { split: counts.map((c, k) => c + (k === outOn ? 1 : 0)) } : {}),
+        ram, cpuMoe: n,
+      };
+    }
+  }
+  // Whole layers: llama.cpp spreads the layers left on the GPUs by the split, so each GPU sheds its share.
+  const sum = Object.values(o.need).reduce((a, b) => a + b, 0);
+  const lack = Math.max(0, ...o.gpus.map((i, k) => ((o.need[i]! - OVERHEAD - avail[k]!) * sum) / o.need[i]!));
+  if (lack <= 0) return null;
+  const perLayer = (weights + kv) / layers;
+  const n = Math.ceil(lack / perLayer);
+  if (n >= layers) return null;
+  return { ...o, need: Object.fromEntries(o.gpus.map((i) => [i, Math.round(o.need[i]! - (n * perLayer * o.need[i]!) / sum)])), ram: Math.round(n * perLayer), gpuLayers: layers - n };
+}
+
+/**
+ * How many of `layers` slots llama.cpp gives each GPU under a split: slot l
+ * goes to the first GPU whose share of the ratios reaches past l / layers.
+ * With every layer offloaded it splits a model's layers + 1, the output layer
+ * being the last.
+ */
+export function layersBySplit(layers: number, split: number[]): number[] {
+  const total = split.reduce((a, b) => a + b, 0);
+  const counts = split.map(() => 0);
+  for (let l = 0; l < layers; l++) {
+    let acc = 0, k = 0;
+    for (; k < split.length - 1; k++) { acc += split[k]! / total; if (l / layers < acc) break; }
+    counts[k]!++;
+  }
+  return counts;
+}
+
+/** Layers in order, as many to each GPU as fit it; null when they don't all fit. */
+function layersToFit(bytes: number[], avail: number[]): number[] | null {
+  const counts = avail.map(() => 0);
+  let k = 0, used = 0;
+  for (const b of bytes) {
+    while (k < avail.length && used + b > avail[k]!) { k++; used = 0; }
+    if (k === avail.length) return null;
+    counts[k]!++;
+    used += b;
+  }
+  return counts;
+}
+
+/** The bytes of the layers each GPU holds, given how many it has, in order. */
+function heldBy(bytes: number[], counts: number[]): number[] {
+  let l = 0;
+  return counts.map((c) => { let n = 0; for (let i = 0; i < c; i++) n += bytes[l++] ?? 0; return n; });
 }
 
 /**
  * The ways a model may run, in order of preference. A chosen placement has
  * one; Auto tries each GPU that allows its server, largest first, then all
- * of them together.
+ * of them together. With an allowance, a way that can't fit `gpus` (their
+ * `used` being what other programs hold) keeps what doesn't in system RAM.
  */
-export function options(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings): Option[] {
+export function options(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings, allowance = 0): Option[] {
+  const found = gpuOptions(model, s, gpus, settings);
+  if (!allowance || !spills(model, s)) return found;
+  // Only a way that can't fit even once the host's other models are unloaded keeps part of the model in system RAM.
+  return found.map((o) => (neverFits(model, s, o, gpus, settings) ? spill(model, s, o, gpus, settings) ?? o : o));
+}
+
+function gpuOptions(model: TextModel, s: ModelSettings, gpus: Gpu[], settings: (i: number) => GpuSettings): Option[] {
   const server = serverOf(model);
   const allowed = gpus.filter((g) => !settings(g.index).excluded && settings(g.index).servers.includes(server));
   const p = s.placement;
@@ -190,9 +304,12 @@ export function options(model: TextModel, s: ModelSettings, gpus: Gpu[], setting
   return allowed.length > 1 && server !== "speech" ? [...singles, option(model, s, allowed, settings)] : singles;
 }
 
-/** Why an option can never fit, even with its GPUs empty; null if it can. */
-export function neverFits(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[], settings: (i: number) => GpuSettings): string | null {
+/** Why an option can never fit, even with its GPUs empty and the system RAM allowance unused; null if it can. */
+export function neverFits(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[], settings: (i: number) => GpuSettings, allowance = Infinity): string | null {
   const gb = (n: number) => (n / GIB).toFixed(1);
+  if (o.ram && o.ram > allowance) {
+    return `This model needs about ${gb(o.ram)} GB of system RAM besides its GPUs, more than the host's allowance of ${gb(allowance)} GB.`;
+  }
   if (serverOf(model) === "vllm") {
     // vLLM must fit the weights and the KV cache for its context inside its share of each GPU.
     const { weights, kv } = sizes(model, s);
@@ -229,7 +346,7 @@ const oneOf = (v: unknown, values: readonly string[], what: string) => {
   if (v !== undefined && !values.includes(v as string)) throw invalid(`${what} must be one of ${values.join(", ")}.`);
 };
 
-const LLAMA_ONLY = ["kvCacheType", "flashAttention", "gpuLayers", "parallel", "vision", "mmproj", "mtp", "draftMax"] as const;
+const LLAMA_ONLY = ["kvCacheType", "flashAttention", "gpuLayers", "systemRam", "parallel", "vision", "mmproj", "mtp", "draftMax"] as const;
 const VLLM_ONLY = ["memoryShare", "maxSeqs", "dtype"] as const;
 const KEYS = ["placement", "contextLength", "batchSize", "chatTemplate", "stretch", ...LLAMA_ONLY, ...VLLM_ONLY];
 
@@ -263,7 +380,7 @@ export const CPU_OPTION: Option = { gpus: [], split: null, parallel: null, share
  * work on these GPUs. `onCpu`: the server runs on the CPU here (speech on a
  * host without CUDA), so only Auto is taken.
  */
-export function validate(model: TextModel, body: Record<string, unknown>, gpus: Gpu[], settings: (i: number) => GpuSettings, onCpu = false): ModelSettings {
+export function validate(model: TextModel, body: Record<string, unknown>, gpus: Gpu[], settings: (i: number) => GpuSettings, onCpu = false, allowance = 0): ModelSettings {
   for (const k of Object.keys(body)) if (!KEYS.includes(k)) throw invalid(`Unknown setting: ${k}.`);
   const server = serverOf(model);
   if (server === "images") throw invalid("Image recipes run on ComfyUI's GPU and have no settings here.");
@@ -294,6 +411,7 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
     throw invalid("A q8_0 or q4_0 KV cache needs flashAttention set to on.");
   }
   int(body.gpuLayers, 0, 999, "gpuLayers");
+  if (body.systemRam !== undefined && body.systemRam !== false) throw invalid("systemRam is false, or left out for Auto.");
   for (const k of ["vision", "mtp"] as const) if (body[k] !== undefined && typeof body[k] !== "boolean") throw invalid(`${k} is true or false.`);
   if (body.mmproj !== undefined && (typeof body.mmproj !== "string" || model.kind !== "chat")) throw invalid("mmproj is a projector's path, for a chat model.");
   if (body.vision !== undefined && !model.mmproj) throw invalid("This model has no vision projector.");
@@ -347,13 +465,14 @@ export function validate(model: TextModel, body: Record<string, unknown>, gpus: 
   const s = body as unknown as ModelSettings;
   // With no context saved, it is checked at the one it would be served with.
   const at = s.contextLength === undefined && model.kind === "chat" ? { ...s, contextLength: autoContext(model, s, gpus, settings) } : s;
-  const opts = options(model, at, gpus, settings);
+  const opts = options(model, at, gpus, settings, allowance);
   if (!opts.length) throw invalid(`No GPU allows ${SERVER_NAMES[server]}.`);
   // Auto needs one way that can work; a chosen placement must work as chosen.
-  const reasons = opts.map((o) => neverFits(model, at, o, gpus, settings));
+  const reasons = opts.map((o) => neverFits(model, at, o, gpus, settings, allowance));
   if (reasons.every((r) => r !== null)) throw new HostError(400, "too_big", reasons.at(-1)!);
   return s;
 }
 
 /** A key for remembering measured VRAM per placement. */
-export const placementKey = (o: Option) => `${o.gpus.join("+")}${o.split ? `:${o.split.join(",")}` : ""}${o.share ? `@${o.share}` : ""}`;
+export const placementKey = (o: Option) =>
+  `${o.gpus.join("+")}${o.split ? `:${o.split.join(",")}` : ""}${o.share ? `@${o.share}` : ""}${o.cpuMoe ? `/moe${o.cpuMoe}` : ""}${o.gpuLayers !== undefined ? `/ngl${o.gpuLayers}` : ""}`;

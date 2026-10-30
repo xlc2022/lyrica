@@ -183,6 +183,11 @@ seconds of audio.
   model waits for all of its GPUs.
 - `modelsFolder.path` is the folder on the host machine. `POST
   /host/v1/models-folder` changes it.
+- `systemRam`: `{ total, most, allowance, used, models: [{ id, ram }] }`,
+  the system RAM allowance (see "System RAM" below) in bytes: the
+  machine's memory, the most the allowance may be, the allowance (0 is
+  off), what models keep in it, and each such model. A model under a GPU
+  that keeps part of itself there also has `ram`.
 
 ### Models
 
@@ -272,7 +277,8 @@ seconds of audio.
   - `state`: `unloaded`, `loading` or `loaded`; `gpus` lists where it is
     loaded.
   - `vram`: bytes measured on each GPU, per placement it has been loaded
-    with (keyed like `0`, `0+1:1,1` or `2@0.4`). Saving its settings
+    with (keyed like `0`, `0+1:1,1` or `2@0.4`, with `/moe12` or `/ngl40`
+    when part of it is in system RAM). Saving its settings
     forgets these, and it is measured again at its next load.
 - `POST /host/v1/scan`: reads the models folder again (text models and image
   parts). Returns `{ "models": 12, "parts": 30, "proposals": 2 }`. The host
@@ -318,11 +324,13 @@ embeddings and dictation receive neither parser.
 - `GET /host/v1/models/settings?model=<id>` answers
   `{ "model": "<id>", "settings": { ... }, "contextLength": 32768,
   "maxContextLength": 262144, "trainedContextLength": 262144,
-  "kvBytes": 4294967296, "recommended": { ... } | null,
+  "kvBytes": 4294967296, "ramBytes": 0, "recommended": { ... } | null,
   "stretchUntested": false, "extras": { "vision": true, "mtp": "file" } }`:
   the context served, its maximum (the trained
   length times the stretch), the trained length (null when the host couldn't
   read it), the KV cache at the served context by the host's estimate, what
+  it would keep in system RAM where it loads first (0 when it fits its
+  GPUs; see "System RAM"), what
   the model's card recommends, and whether a stretch on this server is
   untested: true for any vLLM model until the pinned image carries the fix
   for vllm#58870 (vLLM 0.30 misreads the original context on Qwen3.5-style
@@ -385,7 +393,10 @@ embeddings and dictation receive neither parser.
   `full_attention_interval`, else every layer; a GGUF's
   `full_attention_interval` the same way.
 - llama.cpp only: `kvCacheType` (`f16`, `q8_0`, `q4_0`), `flashAttention`
-  (`auto`, `on`, `off`), `gpuLayers` (0 to 999), `parallel` (requests
+  (`auto`, `on`, `off`), `gpuLayers` (0 to 999: layers on the GPUs, the
+  rest with their cache in system RAM, counted by the fit check against
+  the System RAM allowance), `systemRam` (`false` keeps the model on its
+  GPUs only; left out, it may use the allowance), `parallel` (requests
   served at once, 1 to 64; see below). A `q8_0` or `q4_0` KV cache needs
   `flashAttention` set to `on`. `vision: false` loads it without its
   projector (less memory, no images). `mmproj` is a projector picked by
@@ -457,6 +468,34 @@ Only the repository's name and revision leave the host.
 - A GPU can hold several models of any mix. A model split over several GPUs
   loads only when each has room, counts against each, and unloads from all
   at once.
+
+### System RAM
+
+- `PUT /host/v1/memory` `{ "systemRam": 34359738368 }`: the bytes of system
+  RAM llama.cpp models may keep there when they don't fit their GPUs, 0
+  (the default) for none. At most the machine's memory less llama.cpp's
+  prompt cache (an eighth of it, from 8 to 64 GiB) and 8 GiB for the
+  system (`most` in the status); more is `invalid`. Lowered below what
+  models keep there, those models are unloaded first (`in_use` while a
+  request runs on one). Answers the status's `systemRam`.
+- Only a way of running that can't fit its GPUs even once the host's other
+  models that can be unloaded are (other programs and pinned models stay)
+  keeps part of the model in system RAM, and only what the GPUs lack. For
+  a mixture of experts, the experts of its first N layers (llama.cpp's
+  `n-cpu-moe`), which costs the least speed: N is the fewest that lets
+  each GPU hold the layers it is given, counting each layer's own experts
+  (a dense layer frees nothing) and the output layer on the last GPU. On
+  Auto the split is then set in layers to fit each GPU (layers + 1 slots,
+  as llama.cpp splits them with the output layer last); a split set by
+  hand keeps its layers, so N may reach into the last GPU's. Else whole layers with their cache (`n-gpu-layers`
+  below its layer count), which llama.cpp takes from every GPU by the
+  split. A model that fits after unloading idle ones never spills.
+- Models in system RAM share the allowance as models on a GPU share its
+  memory: idle ones are unloaded to make room, least recently used first,
+  never a pinned one or one in use. Past the allowance even when nothing
+  else is there, a load is `too_big`, naming both numbers.
+- vLLM, image recipes and voices never use it. A model whose settings
+  have `systemRam: false`, or `gpuLayers` set by hand, doesn't either.
 
 ### Pause, resume, restart
 

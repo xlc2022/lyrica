@@ -303,6 +303,8 @@ export interface ServingEntry {
   trainedContextLength: number | null;
   /** The KV cache at the served context, by the host's estimate. */
   kvBytes: number | null;
+  /** What it would keep in the host's system RAM, not fitting the GPUs; absent from a host from before the allowance. */
+  ramBytes?: number;
   recommended: Recommended | null;
   /** vLLM's stretch is untested (vllm#58870). */
   stretchUntested: boolean;
@@ -330,7 +332,7 @@ export interface Recommended {
   source: { hub: "huggingface" | "modelscope"; repo: string; revision: string; at: string };
 }
 
-const MANAGE = [/^\/host\/v1\/models\/(load|unload|pin|reload)$/, /^\/host\/v1\/gpus\/\d+$/, /^\/host\/v1\/scan$/, /^\/host\/v1\/usage$/];
+const MANAGE = [/^\/host\/v1\/models\/(load|unload|pin|reload)$/, /^\/host\/v1\/gpus\/\d+$/, /^\/host\/v1\/memory$/, /^\/host\/v1\/scan$/, /^\/host\/v1\/usage$/];
 
 export interface CleanupItem {
   /** For a stale endpoint, its uses are those of all its models. */

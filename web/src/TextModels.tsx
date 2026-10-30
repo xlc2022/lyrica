@@ -12,7 +12,7 @@ import {
 import { Icon } from "./icons.tsx";
 import { canon, groupWarnings, reseedDraft, type LibraryCopy as Copy } from "./library.ts";
 import { RowMenu } from "./Machines.tsx";
-import { canEdit, Frame, gb, hostOf, Kind, plural, Price, Retires, UsedIn, VoiceDrawer, type MCtx } from "./ModelsFrame.tsx";
+import { canEdit, Frame, GB, gb, hostOf, Kind, plural, Price, Retires, UsedIn, VoiceDrawer, type MCtx } from "./ModelsFrame.tsx";
 import { replyCap } from "../../core/src/models/settings.ts";
 import { go } from "./route.ts";
 import { ConfirmDialog, Dialog, ErrorText, useAction, useDismiss, useLoad } from "./ui.tsx";
@@ -507,7 +507,7 @@ const MTP_TIPS = {
   file: "Multi-token prediction with the model's MTP file: faster answers for a little more memory.",
   "built-in": "Multi-token prediction with the model's own MTP layers: faster answers.",
 } as const;
-const MEMORY_KEYS = ["contextLength", "stretch", "kvCacheType", "gpuLayers", "flashAttention", "vision", "mmproj", "mtp", "draftMax"];
+const MEMORY_KEYS = ["contextLength", "stretch", "kvCacheType", "gpuLayers", "systemRam", "flashAttention", "vision", "mmproj", "mtp", "draftMax"];
 const MAX_STRETCH = 8;
 
 /** A label, a control and its unit; `word` is the value's source after the label. */
@@ -530,6 +530,8 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   const id = copy.offeringId;
   const ep = ctx.models.page?.endpoints.find((x) => x.id === copy.endpointId);
   const onHost = ep?.api === "host";
+  const hostNow = ctx.models.page ? hostOf(ctx.models.page, copy.endpointId) : undefined;
+  const allowance = hostNow && "status" in hostNow ? hostNow.status.systemRam?.allowance ?? 0 : 0;
   const own = canEdit(ctx, copy);
   const settings = useLoad(() => get<OfferingSettings>(u(userId, "offerings", id, "settings")), [userId, id, ctx.changed]);
   const serving = useLoad(() => (onHost ? get<ServingSettings>(u(userId, "offerings", id, "serving")) : Promise.resolve(undefined)), [userId, id, onHost, ctx.changed]);
@@ -759,6 +761,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
       <label className="check"><input type="checkbox" checked={pin ?? pinned} onChange={(e) => setPin(e.target.checked)} /> Pinned</label>
       {invalid ? <p className="estimate bad" role="status">{invalid}</p>
         : sv.kvBytes !== null && <p className="estimate" role="status">KV cache <span className="num">{gb(sv.kvBytes)}</span> GB at <span className="num">{tokensK(sv.contextLength)}</span> tokens</p>}
+      {!invalid && !!sv.ramBytes && <p className="estimate" role="status"><span className="num">{gb(sv.ramBytes)}</span> GB stays in system RAM, so it runs slower.</p>}
     </fieldset>
     <fieldset className="sgroup" disabled={busy || !serveOwn}>
       <legend className="sr-only">Memory</legend>
@@ -797,9 +800,13 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
             <option value="f16">F16</option><option value="q8_0">Q8_0</option><option value="q4_0">Q4_0</option>
           </select>
         </SRow>
-        <SRow label="GPU layers">
-          <input type="number" min={0} max={999} step={1} aria-label="GPU layers" placeholder="999" value={num("gpuLayers")} onChange={(e) => setNum("gpuLayers", e.target.value)} onBlur={() => clamp("gpuLayers", 0, 999)} />
-        </SRow>
+        {(!!allowance || draft.systemRam === false) && (
+          <SRow label="System RAM" title={`Auto keeps what doesn't fit the GPUs in system RAM, which is slower. Off refuses a model too big for them.${allowance ? ` The host's allowance is ${Math.round(allowance / GB)} GB.` : ""}`}>
+            <select aria-label="System RAM" value={draft.systemRam === false ? "off" : "auto"} onChange={(e) => set("systemRam", e.target.value === "off" ? false : undefined)}>
+              <option value="auto">Auto</option><option value="off">Off</option>
+            </select>
+          </SRow>
+        )}
         <label className="check"><input type="checkbox" checked={draft.flashAttention === "on"} onChange={(e) => set("flashAttention", e.target.checked ? "on" : undefined)} /> Flash attention</label>
         {!!sv.projectors?.length && (
           <SRow label="Projector" title={PROJECTOR_TIP} word={typeof draft.mmproj === "string" ? "yours" : undefined}>

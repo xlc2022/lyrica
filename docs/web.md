@@ -498,10 +498,16 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   …/dashboard`, a new tab). **Edit** opens the host's drawer: Name (`PATCH
   …/endpoints/:id`), Addresses (`PUT …/addresses`) and Models folder (`POST
   …/models-folder` after a confirm dialog, enabled only when the host's
-  updater can move it), one Save. The state Updating while
+  updater can move it) and, on a host that reports `systemRam`, **System
+  RAM** (GB "of <most>", empty is off, clamped; `PUT /host/v1/memory`
+  through …/manage), one Save. The state Updating while
   it updates, with Pause disabled, a warn line after a failed update, per GPU its card and PCI ID (`10de:1df4`), used/total in mono,
   a bar of pinned, loaded-on-demand and vLLM-share segments, the loaded
-  models and the queue when nonzero. A plain endpoint row: name, kind,
+  models and the queue when nonzero; then, while the host has an
+  allowance, `RamBlock`: System RAM, used/allowance in mono, a bar of
+  in-system-RAM segments, each spilled model with its GB, and a foot
+  "llama.cpp · N GB in this machine · Edit" (the legend gains In system
+  RAM). A plain endpoint row: name, kind,
   ChatGPT plan or Grok plan versus API key, and cloud Text, Vision and Image
   pills (only when a marked image model has a callable provider and the
   required key). Capability pills wrap under the name on a phone. Facts:
@@ -596,9 +602,11 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   `PATCH …/offerings/:id`) and, on a model host, **Serving** (`GET|PUT
   …/serving`, the server read from the raw name: a `.gguf` is llama.cpp,
   else vLLM): Placement (Auto or Choose GPUs, Split ratio or Parallelism,
-  Memory share, Pinned through the host's pin route, the KV cache estimate),
+  Memory share, Pinned through the host's pin route, the KV cache estimate,
+  and "<n> GB stays in system RAM, so it runs slower." from `ramBytes`),
   Memory (Context length "of <max>", Stretch, Original context, KV cache,
-  GPU layers, Flash attention, **Projector** (the setting `mmproj`, picked
+  **System RAM** (Auto or Off, the setting `systemRam`, shown while the
+  host has an allowance), Flash attention, **Projector** (the setting `mmproj`, picked
   from the host's `projectors`), Vision, MTP; **Look up**, `POST …/lookup`,
   with a **Repository** popover on `need_repo`), **Missing files**
   (`MissingCompanions`: for a model with an `origin` that lacks a projector
@@ -863,7 +871,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   action to run `install.sh`, the server's network self-test, sleep time,
   last sleep per shown pool from `GET …/sleep`, memory pages and notes from
   `GET …/memory`, start unlocked; **Model hosts** from the shell's Models page,
-  each host's state word and Models' `GpuBlock`s; then **Model calls · last 24
+  each host's state word and Models' `GpuBlock`s and `RamBlock`; then **Model calls · last 24
   hours**: `ModelCallFacts.tsx` draws from GET Status's `modelFacts` a facts
   line, one legend, four Vega-Lite charts (calls and output tokens per hour,
   speed per call, calls by task; drawn live by `charts.ts`'s `drawChart` with

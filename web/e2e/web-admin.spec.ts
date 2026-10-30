@@ -797,6 +797,91 @@ test("a host card has one facts line and Pause, Edit and ⋯; Edit opens a drawe
 
 
 
+test("a host's System RAM: off until set in its drawer, then a block on its card with what spilled models keep there", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  const GB = 2 ** 30;
+  const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  const shot = async (name: string) => { if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/system-ram-${name}-${page.viewportSize()!.width}.png`, fullPage: true }); };
+  const big = "lyrica/huggingface/ada/Big-MoE-GGUF/Big-MoE-Q6_K.gguf";
+  let localOffering = "";
+  let systemRam = { total: 96 * GB, most: 76 * GB, allowance: 0, used: 0, models: [] as { id: string; ram: number }[] };
+  const status = () => ({
+    name: "box", version: "0.9.0", fingerprint: "SHA256:aaaa", state: "running", downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: 2 ** 40 }, systemRam,
+    gpus: [{ index: 0, name: "RTX 6000 Pro", vendor: "nvidia", role: "shared", vram: { total: 96 * GB, used: 93 * GB }, queue: { chat: 0, image: 0, background: 0 },
+      models: systemRam.models.length ? [{ id: big, kind: "chat", state: "loaded", pinned: false, busy: false, vram: 93 * GB, ram: systemRam.used, lastUsed: null }] : [] }],
+  });
+  await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
+    const real = await (await fetchReal(route)).json() as { endpoints: Record<string, unknown>[]; hosts: unknown[] };
+    const local = real.endpoints.find((e) => e.kind === "local")!;
+    const model = (local.models as Record<string, unknown>[])[0]!;
+    real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", addresses: ["box.lan:7236"], fingerprint: "SHA256:aaaa", state: "up", shared: false,
+      models: [{ ...model, id: "off-big", endpointId: "ep-box", rawName: big, name: "Big-MoE-Q6_K" }] });
+    real.hosts.push({ endpointId: "ep-box", status: status() });
+    localOffering = String(model.id);
+    await route.fulfill(json(real));
+  });
+  const asked: unknown[] = [];
+  await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/manage$/, async (route) => {
+    const body = route.request().postDataJSON() as { method: string; path: string; body: { systemRam: number } };
+    asked.push(body);
+    systemRam = { ...systemRam, allowance: body.body.systemRam, used: 18 * GB, models: [{ id: big, ram: 18 * GB }] };
+    await route.fulfill(json(systemRam));
+  });
+  await page.goto(`/#/u/${userId}/models/hosts`);
+  const card = page.locator("article.host[data-endpoint=ep-box]");
+  await expect(card.locator("[data-ram]")).toHaveCount(0);
+  await card.getByRole("button", { name: "Edit" }).click();
+  const drawer = page.getByRole("complementary", { name: "Edit box" });
+  const field = drawer.getByLabel("System RAM");
+  await expect(field).toHaveValue("");
+  await expect(field).toHaveAttribute("placeholder", "Off");
+  await expect(drawer).toContainText("of 76 GB");
+  // Typed past the most, it clamps.
+  await field.fill("200");
+  await field.blur();
+  await expect(field).toHaveValue("76");
+  await field.fill("48");
+  await shot("drawer");
+  await drawer.getByRole("button", { name: "Save" }).click();
+  await expect(drawer).toHaveCount(0);
+  expect(asked).toEqual([{ method: "PUT", path: "/host/v1/memory", body: { systemRam: 48 * GB } }]);
+  const ram = card.locator("[data-ram]");
+  await expect(ram.locator(".gpu-line")).toHaveText("System RAM18.0 / 48 GB");
+  await expect(ram).toContainText("Big-MoE-Q6_K (18.0 GB)");
+  await expect(ram).toContainText("llama.cpp · 96 GB in this machine · Edit");
+  await expect(page.locator(".legend")).toContainText("In system RAM");
+  await shot("card");
+  await noHorizontalScroll(page);
+
+  // A model's Serving: System RAM is Auto or Off while the host has an allowance, and the estimate says what stays there.
+  await page.route(/\/api\/u\/[^/]+\/offerings\/off-big\/settings$/, (route) => route.continue({ url: route.request().url().replace("off-big", encodeURIComponent(localOffering)) }));
+  await page.route(/\/api\/u\/[^/]+\/offerings\/off-big\/serving$/, (route) => route.fulfill(json({
+    model: big, settings: {}, contextLength: 32768, maxContextLength: 131072, trainedContextLength: 131072, kvBytes: 3 * GB, ramBytes: 18 * GB,
+    recommended: null, stretchUntested: false,
+  })));
+  await page.route(/\/api\/u\/[^/]+\/library\/text(\?.*)?$/, async (route) => {
+    const real = await (await fetchReal(route)).json() as { total: number; entries: { copies: Record<string, unknown>[] }[] };
+    const copy = real.entries.flatMap((e) => e.copies).find((c) => c.offeringId === localOffering)!;
+    real.entries.unshift({ key: "big-moe", name: "Big-MoE-Q6_K", starred: false, groups: [],
+      copies: [{ ...copy, offeringId: "off-big", label: "box", rawName: big, endpointId: "ep-box", endpointName: "box" }] } as never);
+    real.total += 1;
+    await route.fulfill(json(real));
+  });
+  await page.goto(`/#/u/${userId}/models/text`);
+  const row = page.locator("li.lrow").filter({ hasText: "Big-MoE-Q6_K" });
+  await row.locator(".lrow-main").click();
+  await row.locator(".ldetail").getByRole("button", { name: /^Settings for .*Big-MoE-Q6_K/ }).click();
+  const settings = page.getByRole("complementary", { name: /^Settings for Big-MoE-Q6_K/ });
+  await settings.getByRole("button", { name: "Serving" }).click();
+  const select = settings.getByLabel("System RAM");
+  await expect(select).toHaveValue("auto");
+  await expect(settings.locator(".srow").filter({ has: page.getByLabel("System RAM") }).locator("[title]").first()).toHaveAttribute("title", /The host's allowance is 48 GB\.$/);
+  await expect(settings.getByRole("status").filter({ hasText: "system RAM" })).toHaveText("18.0 GB stays in system RAM, so it runs slower.");
+  await select.scrollIntoViewIfNeeded();
+  await shot("serving");
+  await noHorizontalScroll(page);
+});
+
 test("Image models: groups by architecture with Role and Where; a recipe opens to its parts with Change, Add part and Delete model…; Parts lists the files; To review selects and ignores; Download image model makes a starter after asking, scans and downloads", async ({ page, baseURL }) => {
   const userId = await enter(page, baseURL!);
   const images = await fakeImages(page);

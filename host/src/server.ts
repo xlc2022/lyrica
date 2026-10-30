@@ -245,6 +245,7 @@ export class Host {
       cpuServers: this.runtime?.scheduler.cpuServers ?? [],
       dictation: this.runtime?.scheduler.dictation ?? "vllm",
       gpus: (await this.runtime?.scheduler.status()) ?? [],
+      ...(this.runtime ? { systemRam: this.runtime.scheduler.ramStatus() } : {}),
       problems: [...(this.runtime?.scheduler.problems ?? []), ...(this.images?.problems ?? [])],
       downloads: { active: this.downloads?.active ?? 0 },
       modelsFolder: { path: this.opts.modelsHostPath, free },

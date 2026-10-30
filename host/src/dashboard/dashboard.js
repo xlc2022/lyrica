@@ -239,7 +239,8 @@ const SERVERS = [["llamacpp", "llama.cpp"], ["vllm", "vLLM"], ["images", "Images
 function gpus() {
   const { gpus: list, servers } = S.status;
   const head = h("div", { class: "section-head" }, h("h2", {}, "GPUs"),
-    h("div", { class: "legend" }, h("span", {}, h("i", { class: "seg-pinned" }), "Pinned"), h("span", {}, h("i", { class: "seg-loaded" }), "Loaded on demand")));
+    h("div", { class: "legend" }, h("span", {}, h("i", { class: "seg-pinned" }), "Pinned"), h("span", {}, h("i", { class: "seg-loaded" }), "Loaded on demand"),
+      S.status.systemRam?.allowance ? h("span", {}, h("i", { class: "seg-ram" }), "In system RAM") : null));
   if (!list.length) return [head, h("p", { class: "empty" }, "No GPUs found.")];
   return [head, ...list.map((g) => {
     const allowed = SERVERS.filter(([s]) => servers.includes(s) && g.settings.servers.includes(s)).map(([, l]) => l);
@@ -261,7 +262,37 @@ function gpus() {
           h("span", { class: "num muted" }, size(m.vram)),
           m.pinned ? null : button("Unload", () => post("/host/v1/models/unload", { model: m.id }))))) : null,
       waiting.length ? h("p", { class: "facts" }, `Waiting: ${waiting.join(", ")}`) : null);
-  })];
+  }), ...systemRam()];
+}
+
+const RAM_TIP = "Memory a llama.cpp model may keep in system RAM when it doesn't fit the GPUs. It runs slower. Empty is off. vLLM and image models don't use it.";
+
+/** The system RAM allowance, as a card after the GPUs: what spilled models keep there, and Edit. */
+function systemRam() {
+  const r = S.status.systemRam;
+  if (!r || !S.status.servers.includes("llamacpp")) return [];
+  return [h("section", { class: "card" },
+    h("div", { class: "gpu-line" }, h("h3", { title: RAM_TIP }, "System RAM"),
+      r.allowance ? null : h("span", { class: "pill" }, "off"),
+      h("button", { type: "button", class: "sm", onclick: () => editRam(r) }, "Edit")),
+    facts(r.allowance ? h("span", {}, num(size(r.used)), " of ", num(size(r.allowance)), " used") : null, h("span", {}, num(size(r.total)), " in this machine"), h("span", {}, "llama.cpp")),
+    r.allowance ? h("div", { class: "bar", role: "img", "aria-label": `${size(r.used)} of ${size(r.allowance)} used` },
+      r.models.map((m) => h("span", { class: "seg-ram", style: `width:${Math.min(100, (100 * m.ram) / r.allowance)}%`, title: `${m.id}: ${size(m.ram)}` }))) : null,
+    r.models.length ? h("ul", { class: "model-list" }, r.models.map((m) => h("li", {}, h("code", {}, m.id), h("span", { class: "num muted" }, size(m.ram))))) : null)];
+}
+
+function editRam(r) {
+  const most = Math.floor(r.most / 2 ** 30);
+  const input = h("input", { type: "number", min: "0", max: String(most), step: "1", placeholder: "Off", value: r.allowance ? String(Math.round(r.allowance / 2 ** 30)) : "", class: "num" });
+  openDrawer({
+    title: "System RAM",
+    sub: [h("span", {}, num(size(r.total)), " in this machine")],
+    fields: [field("System RAM (GB)", h("span", { class: "with-unit" }, input, h("span", { class: "muted" }, "of ", num(most))), RAM_TIP)],
+    save: () => {
+      const gb = input.value.trim() ? Math.min(most, Math.max(0, Math.round(Number(input.value) || 0))) : 0;
+      return api("/host/v1/memory", { method: "PUT", body: JSON.stringify({ systemRam: gb * 2 ** 30 }) });
+    },
+  });
 }
 
 function editGpu(g) {
@@ -355,20 +386,23 @@ function starters() {
   // What GPUs that allow a starter's server can give it: llama.cpp splits a model over all of them, the others use one.
   const rooms = (server) => gpus.filter((g) => !g.settings.excluded && g.settings.servers.includes(server === "whispercpp" ? "speech" : server)).map((g) => g.vram.total - g.settings.keepFree);
   const room = (server) => server === "llamacpp" ? rooms(server).reduce((a, b) => a + b, 0) : Math.max(0, ...rooms(server));
+  // llama.cpp can keep what its GPUs lack in the system RAM allowance.
+  const ram = S.status.systemRam?.allowance ?? 0;
   // Dictation runs on one server here: whisper.cpp beside a CMP 100-210, else vLLM.
   const serves = (s) => (s.kind !== "transcribe" || s.server === dictation) && (s.server === "whispercpp" || servers.includes(s.server) || cpuServers.includes(s.server));
   const rows = STARTERS.filter(serves).map((s) => {
     const here = S.models.some((m) => m.id === s.id);
     const coming = S.downloads.some((d) => ["queued", "downloading", "verifying"].includes(d.state) && d.path.startsWith(`lyrica/huggingface/${s.repo}/`));
     const fits = cpuServers.includes(s.server) || s.needs <= room(s.server);
+    const spills = !fits && s.server === "llamacpp" && s.needs <= room(s.server) + ram;
     return h("li", {},
       h("div", { class: "main" }, h("div", { class: "name" }, s.name),
         facts(h("span", {}, KINDS[s.kind]), h("span", {}, SERVER_NAMES[s.server]), h("span", {}, "about ", num(size(s.size))),
           cpuServers.includes(s.server) ? h("span", {}, "CPU") : h("span", {}, "needs ", num(size(s.needs)), " of GPU memory"))),
       h("div", { class: "actions" },
         here ? state("Here", "up") : coming ? state("Downloading", "info")
-          : !fits ? h("span", { class: "pill warn", title: "More than any GPU here can give it." }, "too big for these GPUs")
-          : button("Download", () => getStarter(s))));
+          : !fits && !spills ? h("span", { class: "pill warn", title: "More than any GPU here can give it." }, "too big for these GPUs")
+          : h("span", { class: "row" }, spills ? h("span", { class: "pill warn", title: "Runs slower: part of it stays in system RAM." }, "uses system RAM") : null, button("Download", () => getStarter(s)))));
   });
   return rows.length ? [h("h3", {}, "Starters"), h("ul", { class: "list" }, rows)] : [];
 }
