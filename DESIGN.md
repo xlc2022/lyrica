@@ -875,7 +875,10 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       lets a llama.cpp model too big for its GPUs keep the part they lack
       in system RAM, slower but working: a mixture of experts' expert
       weights first, else whole layers. Spilled models share the
-      allowance as models share a GPU; a model can opt out.
+      allowance as models share a GPU; a model can opt out. A model's
+      per-layer embedding table, which llama.cpp never puts on the GPUs,
+      can be kept in RAM from the same allowance instead of being read
+      from the file as needed.
     - When a model needs room, the host unloads idle models, least recently
       used first. It never unloads a pinned model or one in use, and stops
       ComfyUI after it has been idle a while.

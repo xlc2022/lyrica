@@ -507,7 +507,7 @@ const MTP_TIPS = {
   file: "Multi-token prediction with the model's MTP file: faster answers for a little more memory.",
   "built-in": "Multi-token prediction with the model's own MTP layers: faster answers.",
 } as const;
-const MEMORY_KEYS = ["contextLength", "stretch", "kvCacheType", "gpuLayers", "systemRam", "flashAttention", "vision", "mmproj", "mtp", "draftMax"];
+const MEMORY_KEYS = ["contextLength", "stretch", "kvCacheType", "gpuLayers", "systemRam", "layerTable", "flashAttention", "vision", "mmproj", "mtp", "draftMax"];
 const MAX_STRETCH = 8;
 
 /** A label, a control and its unit; `word` is the value's source after the label. */
@@ -654,6 +654,8 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
   const memorySet = MEMORY_KEYS.some((k) => draft?.[k] !== undefined);
   const resetMemory = () => { setAbove(false); setDraft((d) => Object.fromEntries(Object.entries(d ?? {}).filter(([k]) => !MEMORY_KEYS.includes(k)))); };
   const servingChanged = !!draft && !!sv && canon(draft) !== canon(sv.settings);
+  // What a model too big for its GPUs keeps in system RAM, less an embedding table kept there by choice.
+  const spilled = (sv?.ramBytes ?? 0) - (sv?.settings.layerTable === "ram" ? sv.layerTableBytes ?? 0 : 0);
   const pinChanged = pin !== undefined && pin !== pinned;
   const invalid = placement.mode === "gpus" && !chosen.length ? "Choose at least one GPU."
     : splitBad ? "Split ratio needs one number per chosen GPU, each from 0.01 to 1000." : "";
@@ -761,7 +763,7 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
       <label className="check"><input type="checkbox" checked={pin ?? pinned} onChange={(e) => setPin(e.target.checked)} /> Pinned</label>
       {invalid ? <p className="estimate bad" role="status">{invalid}</p>
         : sv.kvBytes !== null && <p className="estimate" role="status">KV cache <span className="num">{gb(sv.kvBytes)}</span> GB at <span className="num">{tokensK(sv.contextLength)}</span> tokens</p>}
-      {!invalid && !!sv.ramBytes && <p className="estimate" role="status"><span className="num">{gb(sv.ramBytes)}</span> GB stays in system RAM, so it runs slower.</p>}
+      {!invalid && spilled > 0 && <p className="estimate" role="status"><span className="num">{gb(spilled)}</span> GB stays in system RAM, so it runs slower.</p>}
     </fieldset>
     <fieldset className="sgroup" disabled={busy || !serveOwn}>
       <legend className="sr-only">Memory</legend>
@@ -804,6 +806,13 @@ function CopyDrawer({ ctx, entry, copy, onClose, onSaved }: { ctx: MCtx; entry: 
           <SRow label="System RAM" title={`Auto keeps what doesn't fit the GPUs in system RAM, which is slower. Off refuses a model too big for them.${allowance ? ` The host's allowance is ${Math.round(allowance / GB)} GB.` : ""}`}>
             <select aria-label="System RAM" value={draft.systemRam === false ? "off" : "auto"} onChange={(e) => set("systemRam", e.target.value === "off" ? false : undefined)}>
               <option value="auto">Auto</option><option value="off">Off</option>
+            </select>
+          </SRow>
+        )}
+        {!!sv.layerTableBytes && (!!allowance || draft.layerTable === "ram") && (
+          <SRow label="Embedding table" title={`Disk reads this model's per-layer embedding table from its file as needed, which is slow when other files crowd it out of memory. RAM loads it whole, ${gb(sv.layerTableBytes)} GB of the host's allowance.`}>
+            <select aria-label="Embedding table" value={draft.layerTable === "ram" ? "ram" : "disk"} onChange={(e) => set("layerTable", e.target.value === "ram" ? "ram" : undefined)}>
+              <option value="disk">Disk</option><option value="ram">RAM</option>
             </select>
           </SRow>
         )}

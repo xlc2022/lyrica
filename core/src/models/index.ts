@@ -305,6 +305,8 @@ export interface ServingEntry {
   kvBytes: number | null;
   /** What it would keep in the host's system RAM, not fitting the GPUs; absent from a host from before the allowance. */
   ramBytes?: number;
+  /** What keeping a per-layer embedding table over 4 GiB in RAM takes (the table and the input embeddings); absent for a model without one. */
+  layerTableBytes?: number;
   recommended: Recommended | null;
   /** vLLM's stretch is untested (vllm#58870). */
   stretchUntested: boolean;

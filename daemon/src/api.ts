@@ -489,6 +489,8 @@ export interface ServingSettings {
   kvBytes: number | null;
   /** What it would keep in the host's system RAM, not fitting the GPUs; absent from a host from before the allowance. */
   ramBytes?: number;
+  /** What `layerTable: "ram"` keeps in RAM from the allowance (a per-layer embedding table over 4 GiB and the input embeddings); absent for a model without one. */
+  layerTableBytes?: number;
   recommended: { native: number | null; stretched?: number; factor?: number; originalContext?: number; source: { hub: Hub; repo: string; revision: string; at: string } } | null;
   stretchUntested: boolean;
   /** What the drawer's Vision and MTP switches can turn off: a vision projector, and an MTP file or the model's own MTP layers. */

@@ -800,7 +800,9 @@ shared host needs an administrator. Serving settings go only through
 and apply them now. The host
 refuses a placement that can't work after accounting for other programs,
 kept-free VRAM and its System RAM allowance, with its reason; `ramBytes`
-says what a model too big for its GPUs would keep in system RAM. A refused reload keeps the serving
+says what a model too big for its GPUs would keep in system RAM, and
+`layerTableBytes` what its `layerTable` setting keeps there (a per-layer
+embedding table and the input embeddings). A refused reload keeps the serving
 instance; a failed replacement load reverts the saved settings and attempts
 to restore the previous instance, reporting the original load error even
 if restoration fails. The context a host

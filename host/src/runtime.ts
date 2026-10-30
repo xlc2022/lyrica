@@ -5,7 +5,7 @@ import type { RecordEntry } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import { projectorFiles, scanTextModels, type TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
-import { SERVER_NAMES, SERVERS, concurrentOf, contextOf, maxContextOf, serverOf, sizes, usesVision, validate, type Server } from "./placement.ts";
+import { SERVER_NAMES, SERVERS, concurrentOf, contextOf, maxContextOf, serverOf, sizes, tableBytes, usesVision, validate, type Server } from "./placement.ts";
 import { PRIORITIES, type Priority, type Scheduler } from "./scheduler.ts";
 import { Jobs } from "./jobs.ts";
 
@@ -308,6 +308,8 @@ export class Runtime {
       kvBytes: sized && m.kvPerToken !== null ? sized.kv : null,
       // What it would keep in the host's system RAM, not fitting the GPUs.
       ramBytes: this.scheduler.expectedRam(m),
+      // A per-layer embedding table llama.cpp would read from the file as needed, with the input embeddings: what layerTable "ram" keeps in RAM.
+      ...(tableBytes(m) ? { layerTableBytes: tableBytes(m) } : {}),
       recommended: this.state.get().recommended[m.id] ?? null,
       // vLLM 0.30 misreads the original context on Qwen3.5-style M-RoPE (vllm#58870).
       stretchUntested: m.server === "vllm",

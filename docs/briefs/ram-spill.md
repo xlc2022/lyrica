@@ -104,3 +104,10 @@ refused whatever it says.
 Done: design chosen, this brief, the Models mockup (v43 marks it built),
 and items 1 to 7, merged in #663. Next: vLLM and ComfyUI offload, and
 measuring RAM per model, each from its own brief. Open: none.
+
+Follow-up (#665): a model's per-layer embedding table (llama.cpp keeps it
+off the GPUs and reads one over 4 GiB from the file as needed) is left out
+of the fit check, and the setting `layerTable: "ram"` (Serving, **Embedding
+table**) loads it into system RAM from the same allowance. Found when
+Qwen3.8-Flash-Next's 23 GiB table, crowded out of the page cache by
+downloads, made prompts read at about 3 tokens a second with the GPUs idle.
