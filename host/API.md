@@ -957,7 +957,11 @@ blank one and its history is cleared after each job. ComfyUI itself has no
 authentication: anything on the `models` network could call it, which is
 why only the model servers are there and none of them has a route out.
 
-On a host whose image GPU is a CMP 100-210, stable-diffusion.cpp makes the
+A host may have several image GPUs, each with its own ComfyUI running one
+job at a time (README.md, "Image models"): a job goes to the one with the
+fewest jobs, and each clip of a chained video runs on the same one.
+
+On a host whose (first) image GPU is a CMP 100-210, stable-diffusion.cpp makes the
 images instead (README.md, "Image models"): create only, for Z-Image,
 Qwen-Image, FLUX and SDXL recipes without LoRAs. The recipe list says so:
 `does` holds only `create`, or is empty with an `unsupported` reason for a
@@ -966,7 +970,7 @@ defaults. Each image of a batch is made from the next seed, and says so. A
 cancelled job is cancelled in sd-server.
 
 A recipe's memory is measured after its first job, as for text models.
-A recipe too big for the image GPU even with it empty (by that measure,
+A recipe too big for every image GPU even with it empty (by that measure,
 or before it by its parts) is listed with `does` empty and an
 `unsupported` reason, so Lyrica never offers it, and a job for it is
 `too_big`. So is a recipe whose template this host doesn't have (one a
@@ -1030,7 +1034,7 @@ newer host made, read after a rollback).
   node) and sends it, and the poster, over its websocket, so nothing is
   written to disk. A first frame, a driving clip and the clip so far go to ComfyUI's input
   folder, which is in memory, and are written over once each clip is done. Each clip of a video may run for two hours before it times out;
-  it holds ComfyUI's GPU while it runs, like an image job. Errors are as
+  it holds its ComfyUI's GPU while it runs, like an image job. Errors are as
   for images; on a stable-diffusion.cpp host every video job is
   `invalid`.
 

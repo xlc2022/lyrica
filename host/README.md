@@ -320,7 +320,7 @@ per host, and Lyrica's router filters create tiers by it.
   proposal does nothing until it is confirmed. A file whose architecture
   has no template stays a file. Installing a starter whose main file a
   scan already proposed makes that proposal the starter's recipe.
-- A recipe too big for the image GPU, even empty, or whose template this
+- A recipe too big for every image GPU, even empty, or whose template this
   host doesn't have, does nothing and says why, so Lyrica never offers it.
 - Deleting a recipe deletes only parts the host downloaded, unchanged, that
   no other recipe uses and that aren't also a chat model.
@@ -339,33 +339,41 @@ per host, and Lyrica's router filters create tiers by it.
   A job's uploads are overwritten with a blank image after it, and
   `gate.py` empties those folders whenever it starts or stops ComfyUI, so a
   crash mid-job leaves no photo behind either.
-  It uses one GPU, `COMFY_GPU` in `.env`. It runs only while a recipe is
-  loaded: freeing its models leaves its CUDA context (a few hundred MiB)
-  until the process exits. `comfyui/gate.py`, its container's entry point,
-  starts and stops it as host-api asks in `serving/comfyui.json`, and names
-  the run it started in the `comfyui-status` volume, so host-api waits for
-  that one. It stops two seconds after its last recipe unloads (ten idle
-  minutes after a job), at once on Pause, and starts for the next image
-  job, which then waits while it starts.
+  It runs one ComfyUI per image GPU: `COMFY_GPU` in `.env`, one GPU or a
+  list such as `0,1`, each ComfyUI seeing only its own GPU, on port 8188
+  plus its place in the list, with its own folders. Each runs only while
+  a recipe is loaded on it: freeing its models leaves its CUDA context (a
+  few hundred MiB) until the process exits. `comfyui/gate.py`, its
+  container's entry point, starts and stops each as host-api asks in
+  `serving/comfyui-<gpu>.json`, and names the run it started in the
+  `comfyui-status` volume, so host-api waits for that one. Each stops two
+  seconds after its last recipe unloads (ten idle minutes after a job), at
+  once on Pause, and starts for the next job on its GPU, which then waits
+  while it starts. Each ComfyUI runs one job at a time; a job goes to the
+  image GPU with the fewest jobs, on a tie one that has its recipe loaded,
+  then the first listed. With several image GPUs each GPU's copy of a
+  recipe is its own model to the scheduler (`recipe:<id>@gpu<g>`), so two
+  jobs of one recipe can run at once, each with its own memory.
   A ComfyUI that is off, or doesn't answer a request within 30 seconds,
   fails that job as `unavailable`, and the next job still runs.
 - **Videos** come from video recipes, through the same ComfyUI, one clip
   per job (API.md, "Making videos"). A clip can take from a few minutes
-  to most of an hour, and holds ComfyUI's GPU until it is done; on a host
-  with two GPUs, `COMFY_GPU` names the one for images and videos and the
-  other serves chat. One clip isn't split over two GPUs.
-- At start the gate checks that the image's PyTorch has kernels for the
-  GPU (its compute capability against `torch.cuda.get_arch_list()`), in a
-  process that holds the GPU only for those few seconds. If it
-  has none, ComfyUI never starts, the container reports unhealthy, image
-  jobs fail at once saying why, and the dashboard and status list it under
-  problems.
+  to most of an hour, and holds its ComfyUI's GPU until it is done; on a
+  host with two GPUs, `COMFY_GPU` names one for images and videos (the
+  other serves chat) or both, for two clips at once. One clip isn't split
+  over two GPUs, and a chained clip stays on one.
+- At start the gate checks that the image's PyTorch has kernels for each
+  image GPU (its compute capability against `torch.cuda.get_arch_list()`),
+  in a process that holds the GPU only for those few seconds. On one it
+  has none for, that ComfyUI never starts, the container reports
+  unhealthy, image jobs fail there at once saying why, and the dashboard
+  and status list it under problems.
 - A recipe takes the memory of its largest stage plus its VAEs: the text
   encoders, or the diffusion model or checkpoint with its LoRAs (one of a
   video model's two experts at a time), or an upscaler. ComfyUI runs them in turn and frees one stage's models when the
   next needs the room, so a recipe whose parts add up to more than the GPU
   can still run.
-- When `COMFY_GPU` is a CMP 100-210 (PCI ID `10de:1df4` or `10de:1d84`),
+- When `COMFY_GPU` (the first listed) is a CMP 100-210 (PCI ID `10de:1df4` or `10de:1d84`),
   `install.sh` adds `compose.sdcpp.yaml` and ComfyUI
   isn't started. stable-diffusion.cpp's `sd-server` (`sdcpp/Dockerfile`, a
   pinned commit built with `GGML_CUDA_FORCE_MMQ`, pulled or built like the

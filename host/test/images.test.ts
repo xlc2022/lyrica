@@ -4,7 +4,7 @@ import net, { type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { Comfy, mp4Seconds, mp4Video, samplingProgress } from "../src/comfy.ts";
+import { Comfy, ComfyGpus, mp4Seconds, mp4Video, samplingProgress } from "../src/comfy.ts";
 import { clipPlan, Images, inputImage, recipeSize, videoValues } from "../src/images.ts";
 import { ggufBytes } from "../src/gguf.ts";
 import { scanParts } from "../src/parts.ts";
@@ -646,8 +646,8 @@ describe("ComfyUI jobs", () => {
     open.push(fake);
     const dir = mkdtempSync(join(tmpdir(), "comfy-gate-"));
     const status = join(dir, "status.json");
-    const asked = () => JSON.parse(readFileSync(join(dir, "comfyui.json"), "utf8")) as { run: boolean; attempt?: string };
-    const comfy = new Comfy(fake.url, undefined, undefined, { serving: dir, status });
+    const asked = () => JSON.parse(readFileSync(join(dir, "comfyui-0.json"), "utf8")) as { run: boolean; attempt?: string };
+    const comfy = new Comfy(fake.url, undefined, undefined, { state: join(dir, "comfyui-0.json"), status });
     expect(asked().run).toBe(false);
     const recipe = (id: string) => ({ id }) as never;
     // A load waits until gate.py says a ComfyUI for this attempt runs, not one still stopping.
@@ -682,10 +682,10 @@ describe("ComfyUI jobs", () => {
     const status = join(dir, "status.json");
     const why = "Tesla V100 is sm_70, and this ComfyUI's PyTorch has kernels only for sm_75, so it can't make images on it.";
     writeFileSync(status, JSON.stringify({ attempt: null, unsupported: why }));
-    const comfy = new Comfy(fake.url, undefined, undefined, { serving: dir, status });
+    const comfy = new Comfy(fake.url, undefined, undefined, { state: join(dir, "comfyui-0.json"), status });
     expect(comfy.problem).toBe(why);
     await expect(comfy.load({ id: "a" } as never)).rejects.toMatchObject({ status: 503, message: why });
-    expect(JSON.parse(readFileSync(join(dir, "comfyui.json"), "utf8")).run).toBe(false);
+    expect(JSON.parse(readFileSync(join(dir, "comfyui-0.json"), "utf8")).run).toBe(false);
   });
 
   it("queues nothing when the client goes away before the prompt is sent", async () => {
@@ -829,20 +829,22 @@ describe("stable-diffusion.cpp", () => {
 });
 
 describe("the image API", () => {
-  async function stack(o: { sdcpp?: boolean; files?: Record<string, Buffer>; gpuGb?: number; hold?: () => Promise<void> } = {}) {
+  async function stack(o: { sdcpp?: boolean; files?: Record<string, Buffer>; gpuGb?: number; gpus?: number; hold?: () => Promise<void> } = {}) {
     const models = folder({
       [`${Z}/diffusion_models/z.safetensors`]: Z_DIFFUSION, [`${Z}/text_encoders/qwen_3_4b.safetensors`]: QWEN3, [`${Z}/vae/ae.safetensors`]: FLUX_VAE,
       "shared/flux1-schnell-fp8.safetensors": FLUX_CKPT, "shared/style.safetensors": Z_LORA, ...o.files,
     });
-    const comfyFake = await fakeComfy({ hold: o.hold });
-    open.push(comfyFake);
+    // A ComfyUI per GPU, as gate.py runs them.
+    const comfyFakes = await Promise.all(Array.from({ length: o.gpus ?? 1 }, () => fakeComfy({ hold: o.hold })));
+    open.push(...comfyFakes);
+    const comfyFake = comfyFakes[0]!;
     const lines: string[] = [];
     const log = (event: string, fields?: object) => void lines.push(JSON.stringify({ event, ...fields }));
     const h = await startHost({ log, modelsDir: models });
     open.push(h.host);
-    const gpus = new FakeGpus([o.gpuGb ?? 24]);
+    const gpus = new FakeGpus(comfyFakes.map(() => o.gpuGb ?? 24));
     const backend = new FakeBackend(gpus);
-    const comfy = new Comfy(comfyFake.url);
+    const comfy = new ComfyGpus(new Map(comfyFakes.map((f, gpu) => [gpu, new Comfy(f.url)])));
     const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
     const sdStatus = join(serving, "sdcpp-status.json");
     const sdFake = o.sdcpp ? await fakeSdServer(serving, sdStatus) : null;
@@ -851,7 +853,7 @@ describe("the image API", () => {
     const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp: backend, vllm: backend, comfyui: sdcpp ?? comfy }, state: h.host.state, log });
     h.host.runtime = new Runtime({ scheduler, modelsDir: models, state: h.host.state, log });
     const book = new RecipeBook(h.dataDir, TEMPLATES, STARTERS);
-    h.host.images = new Images({ book, runtime: h.host.runtime, comfy, sdcpp, downloads: null, modelsDir: models, serving, comfyGpu: 0, log });
+    h.host.images = new Images({ book, runtime: h.host.runtime, comfy, sdcpp, downloads: null, modelsDir: models, serving, log });
     h.host.runtime.afterScan = () => h.host.images!.scan();
     await h.host.runtime.start();
     const code: string = await new Promise((resolve) => {
@@ -865,7 +867,7 @@ describe("the image API", () => {
     const me = lyrica();
     const pinned = await pair(h.tls, me, code);
     const api = (path: string, init: { method?: string; body?: unknown; headers?: Record<string, string> } = {}) => call({ port: h.tls, path, identity: me, pinned, ...init });
-    return { ...h, api, lines, comfyFake, sdFake, book, models };
+    return { ...h, api, lines, comfyFake, comfyFakes, sdFake, book, models, scheduler };
   }
 
   it("makes images with stable-diffusion.cpp in ComfyUI's place", async () => {
@@ -933,6 +935,26 @@ describe("the image API", () => {
     expect((await made).status).toBe(200);
     expect((await s.api(`/host/v1/jobs/${token}`)).body.error.code).toBe("not_found");
     expect((await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" }, headers: { "x-lyrica-job": "short" } })).body.error.code).toBe("invalid");
+  });
+
+  it("runs a job on each image GPU at once, each GPU's copy of the recipe its own model", async () => {
+    let finish!: () => void;
+    const held = new Promise<void>((r) => (finish = r));
+    const s = await stack({ gpus: 2, hold: () => held });
+    const z: Recipe = (await s.api("/host/v1/recipes?state=proposed")).body.recipes.find((r: Recipe) => r.arch === "z-image");
+    await s.api(`/host/v1/recipes/${z.id}/confirm`, { body: {} });
+    const first = s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "one" } });
+    const second = s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "two" } });
+    // Both are sampling, one on each GPU's ComfyUI, while neither is done.
+    for (let i = 0; i < 200 && s.comfyFakes.some((f) => !f.seen.prompts.length); i++) await new Promise((r) => setTimeout(r, 10));
+    expect(s.comfyFakes.map((f) => f.seen.prompts.length)).toEqual([1, 1]);
+    const status = (await s.scheduler.status()) as { index: number; models: { id: string; busy: boolean }[] }[];
+    expect(status.map((g) => g.models.map((m) => [m.id, m.busy]))).toEqual([[[`recipe:${z.id}@gpu0`, true]], [[`recipe:${z.id}@gpu1`, true]]]);
+    finish();
+    expect([(await first).status, (await second).status]).toEqual([200, 200]);
+    // With both idle and both holding the recipe, the next goes to the first listed.
+    await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "three" } });
+    expect(s.comfyFakes.map((f) => f.seen.prompts.length)).toEqual([2, 1]);
   });
 
   it("makes images only from a confirmed recipe and its parameters", async () => {

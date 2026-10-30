@@ -1,8 +1,9 @@
 // host-api's entry point, run in its container.
 import { lookup } from "node:dns/promises";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { LlamaCpp, Vllm } from "./backends.ts";
-import { Comfy } from "./comfy.ts";
+import { Comfy, ComfyGpus } from "./comfy.ts";
 import { Downloads } from "./downloads.ts";
 import { Images } from "./images.ts";
 import { RecipeBook, loadStarters } from "./recipes.ts";
@@ -48,7 +49,16 @@ const host = new Host({
   log: stdoutLog,
 });
 
-const comfy = new Comfy(env.COMFYUI_URL || "http://comfyui:8188", undefined, undefined, { serving, status: env.COMFYUI_STATUS || "/comfyui-status/comfyui.json" });
+// A ComfyUI per image GPU (COMFY_GPU, one or a list such as 0,1), each on the next port up (host/comfyui/gate.py).
+const comfyGpus = [...new Set((env.COMFY_GPU || "0").split(",").map((g) => Number(g.trim())).filter((g) => Number.isInteger(g) && g >= 0))];
+const comfyUrl = new URL(env.COMFYUI_URL || "http://comfyui:8188");
+const comfyStatus = env.COMFYUI_STATUS || "/comfyui-status";
+const comfy = new ComfyGpus(new Map((comfyGpus.length ? comfyGpus : [0]).map((gpu, place) => {
+  const url = new URL(comfyUrl);
+  url.port = String(Number(comfyUrl.port || 80) + place);
+  const base = url.toString().replace(/\/$/, "");
+  return [gpu, new Comfy(base, undefined, undefined, { state: join(serving, `comfyui-${gpu}.json`), status: join(comfyStatus, `comfyui-${gpu}.json`) })];
+})));
 // On a CMP 100-210, install.sh adds stable-diffusion.cpp, which makes the images in ComfyUI's place.
 const sdcpp = env.SDCPP_URL ? new SdCpp(env.SDCPP_URL, { serving, status: env.SDCPP_STATUS || "/sdcpp-status/sdcpp.json" }) : null;
 // Beside a CMP 100-210, install.sh adds whisper.cpp for dictation, which vLLM can't do there.
@@ -81,7 +91,7 @@ host.downloads = new Downloads({ url: env.FETCH_URL || "http://fetch:7300", runt
 await host.downloads.start();
 const dataDir = env.DATA_DIR || "/data";
 const book = new RecipeBook(dataDir, loadTemplates(new URL("../workflows/", import.meta.url).pathname), loadStarters(new URL("../recipes/", import.meta.url).pathname));
-host.images = new Images({ book, runtime: host.runtime, comfy, sdcpp, downloads: host.downloads, modelsDir, serving, comfyGpu: Number(env.COMFY_GPU || 0), log: stdoutLog });
+host.images = new Images({ book, runtime: host.runtime, comfy, sdcpp, downloads: host.downloads, modelsDir, serving, log: stdoutLog });
 host.runtime.afterScan = () => host.images!.scan();
 await host.runtime.start();
 // fetch shares a network with host-api (for host-api's calls to it) and may not

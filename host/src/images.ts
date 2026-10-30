@@ -4,7 +4,7 @@ import { createHash, randomInt } from "node:crypto";
 import { mkdirSync, readdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
-import { imageSize, mp4Seconds, mp4Video, type Comfy } from "./comfy.ts";
+import { imageSize, mp4Seconds, mp4Video, type ComfyGpus } from "./comfy.ts";
 import type { Downloads } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
 import type { JobProgress } from "./jobs.ts";
@@ -77,19 +77,23 @@ export class Images {
   readonly book: RecipeBook;
   parts: Part[] = [];
   private readonly runtime: Runtime;
-  private readonly comfy: Comfy;
+  /** A ComfyUI per image GPU. */
+  private readonly comfy: ComfyGpus;
   /** stable-diffusion.cpp, which makes the images in ComfyUI's place when it is set. */
   private readonly sdcpp: SdCpp | null;
   private readonly downloads: Downloads | null;
   private readonly modelsDir: string;
   private readonly seedvr2Dir: string;
-  private readonly comfyGpu: number;
+  /** The GPUs images and videos run on: each ComfyUI's, or stable-diffusion.cpp's one. */
+  private readonly gpus: number[];
+  /** Jobs given to each GPU and not yet done. */
+  private readonly jobsOn = new Map<number, number>();
   private readonly log: Logger;
   private readonly idleTimer: NodeJS.Timeout;
   /** Each SeedVR2 part's link name in its folder. */
   private seedvr2Names = new Map<string, string>();
 
-  constructor(o: { book: RecipeBook; runtime: Runtime; comfy: Comfy; sdcpp?: SdCpp | null; downloads: Downloads | null; modelsDir: string; serving: string; comfyGpu: number; log: Logger }) {
+  constructor(o: { book: RecipeBook; runtime: Runtime; comfy: ComfyGpus; sdcpp?: SdCpp | null; downloads: Downloads | null; modelsDir: string; serving: string; log: Logger }) {
     this.book = o.book;
     this.runtime = o.runtime;
     this.comfy = o.comfy;
@@ -97,7 +101,7 @@ export class Images {
     this.downloads = o.downloads;
     this.modelsDir = o.modelsDir;
     this.seedvr2Dir = join(o.serving, "seedvr2");
-    this.comfyGpu = o.comfyGpu;
+    this.gpus = this.sdcpp ? this.comfy.gpus.slice(0, 1) : this.comfy.gpus;
     this.log = o.log;
     mkdirSync(this.seedvr2Dir, { recursive: true });
     // ComfyUI keeps parts in memory after a job; free them once it has been idle a while.
@@ -148,13 +152,14 @@ export class Images {
 
   /**
    * A recipe as the API lists it. With stable-diffusion.cpp, it does only
-   * what sd.cpp can run here. One too big for the image GPU does nothing.
+   * what sd.cpp can run here. One too big for every image GPU does nothing.
    * Either way it says why when that's nothing.
    */
   private describe(r: Recipe, files: Set<string>) {
     const d = this.book.describe(r, files);
     if ("unsupported" in d) return d;
-    const tooBig = r.parts.every((p) => p.file) ? this.runtime.scheduler.neverFits({ model: this.asModel(r), gpu: this.comfyGpu }) : null;
+    const reasons = r.parts.every((p) => p.file) ? this.gpus.map((gpu) => this.runtime.scheduler.neverFits({ model: this.asModel(r, gpu), gpu })) : [];
+    const tooBig = reasons.length && reasons.every((x) => x) ? reasons[0]! : null;
     if (tooBig) return { ...d, does: [], unsupported: tooBig };
     if (!this.sdcpp) return d;
     try {
@@ -383,7 +388,9 @@ export class Images {
     values.seed = int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);
 
     const started = Date.now();
-    const model = this.asModel(recipe);
+    const gpu = this.pick(recipe);
+    const model = this.asModel(recipe, gpu);
+    const comfy = this.comfy.byGpu.get(gpu)!;
     // A client that goes away cancels its job, queued or running.
     const abort = new AbortController();
     res.on("close", () => {
@@ -393,14 +400,14 @@ export class Images {
     const sdcpp = this.sdcpp;
     if (sdcpp && sdArgs) sdcpp.prepare(model.id, sdArgs);
     // stable-diffusion.cpp reports no steps: its job only says it runs.
-    const pngs = await scheduler.run(model, "image", () => {
+    const pngs = await this.on(gpu, () => scheduler.run(model, "image", () => {
       job.running();
       return scheduler.measuring(model, () =>
-        sdcpp ? sdcpp.create(model.id, recipe.template, values, abort.signal) : this.comfy.run(uploads, (names) => {
+        sdcpp ? sdcpp.create(model.id, recipe.template, values, abort.signal) : comfy.run(uploads, (names) => {
           const parts = recipe.parts.filter((p): p is typeof p & { file: string } => !!p.file);
           return fill(template, parts, recipe.loras, { ...values, ...names });
         }, abort.signal, job.progress));
-    }, this.comfyGpu, abort.signal);
+    }, gpu, abort.signal));
     if (!pngs.length) throw new HostError(503, "model_unavailable", `${sdcpp ? "stable-diffusion.cpp" : "ComfyUI"} returned no image.`);
     const seconds = (Date.now() - started) / 1000;
     this.runtime.count(recipe.id, { requests: 1, images: pngs.length, seconds });
@@ -504,7 +511,10 @@ export class Images {
     values.seed = int(body, "seed", 0, 2 ** 48) ?? randomInt(2 ** 47);
 
     const started = Date.now();
-    const model = this.asModel(recipe);
+    // Every clip of a chain runs on one GPU.
+    const gpu = this.pick(recipe);
+    const model = this.asModel(recipe, gpu);
+    const comfy = this.comfy.byGpu.get(gpu)!;
     const abort = new AbortController();
     res.on("close", () => {
       if (!res.writableFinished) abort.abort();
@@ -512,7 +522,7 @@ export class Images {
     const scheduler = this.runtime.scheduler;
     // One hold on the GPU for every clip, and one progress, each clip weighted by its frames.
     const total = clips.reduce((n, c) => n + Number(c.frames), 0);
-    const { video, poster } = await scheduler.run(model, "image", () => {
+    const { video, poster } = await this.on(gpu, () => scheduler.run(model, "image", () => {
       job.running();
       return scheduler.measuring(model, async () => {
         let video = previous;
@@ -522,7 +532,7 @@ export class Images {
           const first = i === 0 && !extending;
           const t = first ? template : { ...template, workflow: chain!.workflow };
           const step = { ...values, ...clip, seed: Number(values.seed) + i, ...(first ? {} : { overlap: chain!.overlap, prompt: `${chain!.promptPrefix ?? ""}${values.prompt}` }) };
-          const made = await this.comfy.runVideo(first ? uploads : { previous: video! }, (names) => fill(t, parts, recipe.loras, { ...step, ...names }),
+          const made = await comfy.runVideo(first ? uploads : { previous: video! }, (names) => fill(t, parts, recipe.loras, { ...step, ...names }),
             VIDEO_TIMEOUT_MS, abort.signal, (f) => job.progress((done + f * Number(clip.frames)) / total));
           video = made.video;
           poster = made.poster ?? poster;
@@ -530,7 +540,7 @@ export class Images {
         }
         return { video: video!, poster };
       });
-    }, this.comfyGpu, abort.signal);
+    }, gpu, abort.signal));
     const seconds = (Date.now() - started) / 1000;
     this.runtime.count(recipe.id, { requests: 1, seconds });
     this.log("video", { recipe: recipe.id, action: extending ? "extend" : action, clips: clips.length, frames: total });
@@ -550,15 +560,39 @@ export class Images {
 
   /** What stops images being made on this host, for the status. */
   get problems(): string[] {
-    const p = (this.sdcpp ?? this.comfy).problem;
-    return p ? [`Images: ${p}`] : [];
+    if (this.sdcpp) return this.sdcpp.problem ? [`Images: ${this.sdcpp.problem}`] : [];
+    const several = this.gpus.length > 1;
+    return this.comfy.problems.map(({ gpu, problem }) => `Images${several ? ` on GPU ${gpu}` : ""}: ${problem}`);
   }
 
-  /** A recipe as the scheduler sees it. */
-  private asModel(r: Recipe): TextModel {
+  /**
+   * The GPU for a job of this recipe: the one with the fewest jobs; on a tie,
+   * one that has the recipe loaded, then the first listed. Only GPUs it fits.
+   */
+  private pick(r: Recipe): number {
+    const fits = this.gpus.filter((gpu) => !this.runtime.scheduler.neverFits({ model: this.asModel(r, gpu), gpu }));
+    const ranked = (fits.length ? fits : this.gpus).map((gpu, i) => ({
+      gpu, i, jobs: this.jobsOn.get(gpu) ?? 0, loaded: this.runtime.scheduler.placement(this.asModel(r, gpu).id) ? 0 : 1,
+    }));
+    ranked.sort((a, b) => a.jobs - b.jobs || a.loaded - b.loaded || a.i - b.i);
+    return ranked[0]!.gpu;
+  }
+
+  /** Runs a job counted against its GPU. */
+  private async on<T>(gpu: number, fn: () => Promise<T>): Promise<T> {
+    this.jobsOn.set(gpu, (this.jobsOn.get(gpu) ?? 0) + 1);
+    try {
+      return await fn();
+    } finally {
+      this.jobsOn.set(gpu, this.jobsOn.get(gpu)! - 1);
+    }
+  }
+
+  /** A recipe as the scheduler sees it, on one GPU: with several image GPUs, each GPU's copy is its own model. */
+  private asModel(r: Recipe, gpu: number): TextModel {
     const size = recipeSize(r, this.parts);
     return {
-      id: `recipe:${r.id}`, kind: "image", server: "comfyui", format: "safetensors", size,
+      id: this.gpus.length > 1 ? `recipe:${r.id}@gpu${gpu}` : `recipe:${r.id}`, kind: "image", server: "comfyui", format: "safetensors", size,
       identity: { basename: r.name, sizeLabel: null, finetune: null, baseModels: [] },
       capabilities: { tools: false, vision: false, embedding: false, reasoning: null },
       contextLength: null, kvPerToken: null, mmproj: null, remoteCode: false,

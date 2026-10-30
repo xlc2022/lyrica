@@ -328,8 +328,8 @@ if [[ $VENDOR == nvidia ]] && nvidia-smi --query-gpu=pci.device_id --format=csv,
   prebuilt_pick whispercpp "$CUDA_ARCHS" "$START"
   WHISPER_IMAGE=${PREBUILT:-lyrica-host-whispercpp:cmp}
   [[ -n $PREBUILT ]] || FILES+=:compose.whisper.build.yaml
-  # The image GPU is one: stable-diffusion.cpp makes images in ComfyUI's place (compose.sdcpp.yaml).
-  if nvidia-smi -i "${COMFY_GPU:-0}" --query-gpu=pci.device_id --format=csv,noheader 2>/dev/null | grep -qiE '^0x(1df4|1d84)10de$'; then
+  # The (first) image GPU is one: stable-diffusion.cpp makes images in ComfyUI's place (compose.sdcpp.yaml).
+  if nvidia-smi -i "$(echo "${COMFY_GPU:-0}" | cut -d, -f1)" --query-gpu=pci.device_id --format=csv,noheader 2>/dev/null | grep -qiE '^0x(1df4|1d84)10de$'; then
     FILES+=:compose.sdcpp.yaml
     [[ $NVIDIA_CDI == 1 ]] && FILES+=:compose.sdcpp.cdi.yaml
     say "CMP 100-210 for images: stable-diffusion.cpp makes them in ComfyUI's place."

@@ -113,7 +113,7 @@ reads prompts about three times as fast as the stock image. It downloads the ima
 are among those it covers, and otherwise builds it here, which took 25
 minutes on a 4-core machine; it says which. `LYRICA_HOST_REGISTRY`
 points it at another registry, such as a Forgejo instance's. When the
-image GPU (`COMFY_GPU`) is one, ComfyUI isn't started and
+image GPU (`COMFY_GPU`, the first one listed) is one, ComfyUI isn't started and
 stable-diffusion.cpp, downloaded the same way (or built, 18 minutes),
 makes the images instead: create only, for Z-Image, Qwen-Image, Krea 2,
 FLUX and SDXL recipes without LoRAs. The first image after a
@@ -532,7 +532,7 @@ guide](getting-started.md#image-models). Qwen-Image 2.1 edits (masked
 too) and Z-Image and Krea 2 Q5 on stable-diffusion.cpp have made real
 images; other starters haven't yet: item 9 of the checklist below.
 ComfyUI runs only while an image recipe is loaded, and stops once none
-is. A recipe too big for the image GPU even with nothing else loaded,
+is. A recipe too big for every image GPU even with nothing else loaded,
 or whose template the host lacks (one a newer release made, after a
 rollback), is unsupported: `GET
 /host/v1/recipes` lists it with no actions and the reason, Lyrica never
@@ -560,8 +560,12 @@ a prompt or, with a recipe that animates (Wan 2.2 I2V, for one), from an
 image as its first frame; it is saved encrypted in the thread's folder under `videos/`, and
 Files shows its poster. Cloud models and plain endpoints in the list are
 passed over. A clip takes from a few minutes to most of an hour and holds
-ComfyUI's GPU until it is done; with two GPUs, `COMFY_GPU` picks the one
-for images and videos. When she asks for a shape (16:9, say), the host
+its ComfyUI's GPU until it is done; with two GPUs, `COMFY_GPU` picks the
+one for images and videos, or `COMFY_GPU=0,1` in `host/.env` (then
+`host/install.sh`) runs a ComfyUI on each, so two clips or images run at
+once, one per GPU. Each GPU then loads its own copy of a recipe, so leave
+room in system RAM for each running clip's frames (about 5 GB for 16 s,
+18 GB for 60 s at H3's size). When she asks for a shape (16:9, say), the host
 keeps the recipe's area and fits the size to its template's step. Ask for a
 number of steps and she passes it on for that clip; a recipe's own steps
 are **Steps** in its block under Models, Image models. A host
