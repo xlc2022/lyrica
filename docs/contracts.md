@@ -466,6 +466,7 @@ class Models {                                              // new Models(keyrin
   // GeneratedImage { bytes: Uint8Array; type: "image/png"; width; height; seed? }; no prompt metadata
   // Create passes imageTier to resolution: recipes and cloud offerings skip a useFor tag of only the other tier.
   // Edit passes imageMask: the ChatGPT plan, and a host recipe whose listing says mask: false, are skipped for masks before any input is sent.
+  // Create and edit pass imageReferences (how many): a host recipe whose listing takes fewer, or a cloud adapter without references, is skipped before any input is sent.
   // CLOUD_IMAGE_PROVIDERS selects by endpoint.api: openai-compatible (key, any marked model) or chatgpt (the user's own Codex, setCodexImages).
   // A chatgpt plan's only image offering is PLAN_IMAGE_MODEL ("chatgpt-images", recipe "ChatGPT Images"), made by codexImage.
   // Each adapter declares create/edit/mask/references/sizes/count and low/high tier mappings; upscale is host-only.
@@ -649,9 +650,12 @@ class Models {                                              // new Models(keyrin
   itself follows another task). It is a thread task (`THREAD_TASKS` in
   daemon/src/api.ts) for project chats only: the project chat can choose
   its own, and `PATCH …/settings` choosing it for any other thread is 400.
-- **Images in a thread.** `image.create`, `image.edit` and `image.upscale`
-  are thread tasks too: a thread can choose its own model for each, as for
-  the text tasks, and a private or local-only thread only local ones.
+- **Images in a thread.** `image.create`, `image.edit`, `image.upscale`
+  and `video` are thread tasks too: a thread can choose its own model for
+  each, as for the text tasks, and a private or local-only thread only
+  local ones. The drawer's `video` row shows the first recipe that makes
+  any kind of clip; each call still passes over one that can't make its
+  kind.
   `TaskModel.name` is what to call the model (a recipe's name, else its
   model ID). `TaskModel.fallbacks` counts the models after the shown one
   in its list that could still answer (0 while Fallback is off); a thread's

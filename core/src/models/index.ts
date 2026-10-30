@@ -214,6 +214,8 @@ export interface Offering extends Capabilities {
   recipe?: string;
   /** A host recipe that edits says whether its edits take a mask; false skips it for a masked edit. */
   mask?: boolean;
+  /** A host recipe says how many reference images it takes; fewer than a call sends skips it. */
+  references?: number;
   /** "Not this model": kept out of the entry its name would put it in. */
   separate?: boolean;
   /** A host's chat template writes `<think>` itself, so a reply can start mid-thought. */
@@ -355,7 +357,7 @@ export interface CleanupItem {
  * What a call needs from a model: tools, room for the conversation, or an image create tier.
  * `first`: models asked for by name, tried before the list for this one call (`namedImageModels`).
  */
-export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; animate?: boolean; motion?: boolean; first?: string[] }
+export interface Need { tools?: boolean; tokens?: number; imageTier?: "fast" | "quality"; imageMask?: boolean; imageReferences?: number; animate?: boolean; motion?: boolean; first?: string[] }
 /** `evenIfDown`: ignore the health cache (stale still counts). `except`: endpoints to treat as down. */
 export interface ResolveOptions { evenIfDown?: boolean; except?: ReadonlySet<string> }
 
@@ -520,7 +522,7 @@ const toEndpoint = (r: EndpointRow, shared: boolean, now = Date.now()): Endpoint
   };
 };
 const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
-  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
+  const caps: Capabilities & { digest?: string; identity?: ModelIdentity; downloaded?: boolean; size?: number; recipe?: string; mask?: boolean; references?: number; useFor?: Offering["useFor"]; separate?: boolean; servedContext?: number; servedParallel?: number; opensThinking?: boolean; alwaysThinks?: boolean; lmStudio?: boolean; llamaServer?: boolean; price?: ModelPrice; retiresAt?: string; maxOutput?: number } = { ...JSON.parse(r.found), ...JSON.parse(r.hand) };
   // A host's serving settings decide its context window, over one set by hand and one discovered.
   const served = (JSON.parse(r.found) as { servedContext?: number }).servedContext;
   if (served) caps.contextWindow = served;
@@ -536,6 +538,7 @@ const toOffering = (r: OfferingRow, now = Date.now()): Offering => {
     ...(caps.size ? { size: caps.size } : {}),
     ...(caps.recipe ? { recipe: caps.recipe, useFor: caps.useFor ?? "both" } : {}),
     ...(caps.mask !== undefined ? { mask: caps.mask } : {}),
+    ...(typeof caps.references === "number" ? { references: caps.references } : {}),
     ...(caps.separate ? { separate: true } : {}),
     ...(caps.opensThinking ? { opensThinking: true } : {}),
     ...(caps.alwaysThinks ? { alwaysThinks: true } : {}),
@@ -1708,9 +1711,10 @@ export class Models {
     if (!list) throw new Error(`${ep.name} didn't return a model list`);
     // Image and video models are recipes: only confirmed ones become offerings, so a proposal never resolves.
     // A recipe that does nothing Lyrica can ask for isn't one, so it never shows as a chat model.
-    const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"]; mask?: boolean }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
+    const recipes = (listIn<{ id: string; name: string; state: string; does?: string[]; useFor?: Offering["useFor"]; mask?: boolean; references?: number }>(await this.hostCall(ep, "GET", "/host/v1/recipes?state=confirmed").catch(() => []), "recipes") ?? [])
       .filter((r) => r?.state === "confirmed" && r.does?.some((a) => RECIPE_ACTIONS.includes(a))).map((r) => ({
         modelId: `recipe/${r.id}`, recipe: r.name, useFor: r.useFor ?? "both", ...(r.does?.includes("create") ? { image: true } : {}), ...(r.does?.includes("edit") ? { edit: true, ...(typeof r.mask === "boolean" ? { mask: r.mask } : {}) } : {}), ...(r.does?.includes("upscale") ? { upscale: true } : {}),
+        ...((r.does?.includes("create") || r.does?.includes("edit")) && typeof r.references === "number" ? { references: r.references } : {}),
         ...(r.does?.includes("video") ? { video: true } : {}), ...(r.does?.includes("animate") ? { animate: true } : {}),
         ...(r.does?.includes("motion") ? { motion: true } : {}),
       } as DiscoveredModel));
@@ -2715,7 +2719,9 @@ export class Models {
   async image(ctx: CallContext, request: ImageRequest, opts: { signal?: AbortSignal; beforeSend?: (resolution: Resolution) => Promise<void>; onProgress?: (p: JobProgress) => void; first?: string[] } = {}): Promise<{ images: GeneratedImage[]; resolution: Resolution }> {
     validateImageRequest(request);
     await this.planImages(ctx.userId);
-    const need: Need = request.action === "create" ? { imageTier: request.tier } : request.action === "edit" ? { imageMask: !!request.mask } : {};
+    const refs = request.action === "upscale" ? 0 : request.references?.length ?? 0;
+    const need: Need = { ...request.action === "create" ? { imageTier: request.tier } : request.action === "edit" ? { imageMask: !!request.mask } : {},
+      ...(refs ? { imageReferences: refs } : {}) };
     return this.callWithFallback(`image.${request.action}`, ctx, opts.first?.length ? { ...need, first: opts.first } : need, async (r) => {
       opts.signal?.throwIfAborted();
       await opts.beforeSend?.(r);
@@ -3116,14 +3122,17 @@ export class Models {
     if (task === "image.create" && !o.image) return "it doesn't make images";
     // Only a model host makes clips, and only one whose recipe does what the call needs.
     if (task === "video" && ep.api !== "host") return "only a model host makes videos";
+    if (task === "video" && !o.video && !o.animate && !o.motion) return "it doesn't make videos";
+    // A call says what kind of clip it makes; a need without one (the thread drawer's Videos row) takes any video recipe.
     if (task === "video" && need.motion && !o.motion) return "it doesn't move an image as a clip does";
-    if (task === "video" && !need.motion && (need.animate ? !o.animate : !o.video)) return need.animate ? "it doesn't animate images" : "it doesn't make videos from a prompt";
+    if (task === "video" && !need.motion && need.animate !== undefined && (need.animate ? !o.animate : !o.video)) return need.animate ? "it doesn't animate images" : "it doesn't make videos from a prompt";
     if (task === "vision" && !o.vision) return "it can't see images";
     // Cloud adapters constrain their tasks; local endpoints keep capability-based routing.
     if (task.startsWith("image.") && ep.kind === "cloud") {
       const provider = CLOUD_IMAGE_PROVIDERS[ep.api];
       if (!provider || task === "image.upscale" || (task === "image.create" && !provider.create) || (task === "image.edit" && !provider.edit)) return "this endpoint has no image provider for the task";
       if (task === "image.edit" && need.imageMask && !provider.mask) return "this image provider does not accept masks";
+      if (need.imageReferences && !provider.references) return "this image provider does not take reference images";
     }
     if (task === "image.create" && need.imageTier
       && o.useFor && o.useFor !== "both" && o.useFor !== need.imageTier) return `it is for ${o.useFor} images`;
@@ -3131,6 +3140,9 @@ export class Models {
     if (task === "image.edit" && !o.edit) return "it doesn't edit images";
     // A host recipe whose template takes no mask; one listed before hosts said so is tried.
     if (task === "image.edit" && need.imageMask && o.mask === false) return "it doesn't take a mask";
+    // A host recipe takes as many reference images as its template; one listed before hosts said so is tried.
+    if (need.imageReferences && o.references !== undefined && o.references < need.imageReferences)
+      return o.references ? `it takes at most ${o.references} reference images` : "it doesn't take reference images";
     if (task === "speech.transcribe" && !o.transcribe) return "it doesn't transcribe speech";
     if (task === "speech.speak" && !o.speak?.voices.length) return "it doesn't speak";
     if (need.tools && o.tools === false) return "it can't use tools";

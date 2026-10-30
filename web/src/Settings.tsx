@@ -27,18 +27,19 @@ export const TASK_LABELS: Record<ThreadTask, string> = {
   "image.create": "Images",
   "image.edit": "Image edits",
   "image.upscale": "Image upscaling",
+  video: "Videos",
   "speech.transcribe": "Dictation",
   "speech.speak": "Read aloud",
 };
 /** The drawer's Models section after Conversation, Thinking and Fallback: its two quiet groups. */
 const HELPER_TASKS: readonly ThreadTask[] = ["subagent.cheap", "subagent.strong", "title", "watching"];
-const MEDIA_TASKS: readonly ThreadTask[] = ["image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak"];
+const MEDIA_TASKS: readonly ThreadTask[] = ["image.create", "image.edit", "image.upscale", "video", "speech.transcribe", "speech.speak"];
 const levelName = (l: ThinkingLevel) => l[0]!.toUpperCase() + l.slice(1);
 /** What answers after the shown model: a thread's pick is a list of one, so it replaces the preset's whole list. */
 const fallbackCount = (n: number) => (n ? <><span className="num">+{n}</span> fallback{n === 1 ? "" : "s"}</> : "no fallback");
-/** Whether a model can do a thread task: the image and speech tasks need their capability; every other one is text. */
+/** Whether a model can do a thread task: the image, video and speech tasks need their capability; every other one is text. */
 const fits = (task: ThreadTask, m: EndpointInfo["models"][number]) => (task === "image.create" ? !!m.image : task === "image.edit" ? !!m.edit : task === "image.upscale" ? !!m.upscale
-  : task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : isChatModel(m));
+  : task === "video" ? !!(m.video || m.animate || m.motion) : task === "speech.transcribe" ? !!m.transcribe : task === "speech.speak" ? !!m.speak?.voices.length : isChatModel(m));
 
 
 const refKey = (m?: { offeringId: string }) => m?.offeringId ?? "";
