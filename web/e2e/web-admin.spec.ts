@@ -1218,9 +1218,14 @@ test("Time zone: the browser's is given at first, an unknown name is refused, an
   await section.getByRole("button", { name: "Save" }).click();
   await expect.poll(async () => (await me()).timeZone).toBe(zone);
   const there = () => page.evaluate((z) => new Intl.DateTimeFormat("en-GB", { timeZone: z, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date()), zone);
+  // A second before a minute turns: the clock moves on with it, not up to 15 s later at its next tick (seen in CI).
+  await page.clock.install({ time: Math.ceil(Date.now() / 60_000) * 60_000 + 60_000 - 1000 });
   await page.goto(`/#/u/${userId}`);
+  await page.reload();
   const shown = page.locator(".head .cap .num").first();
   await expect.poll(async () => (await shown.textContent()) === (await there())).toBe(true);
+  await page.clock.runFor(1500);
+  await expect.poll(async () => (await shown.textContent()) === (await there()), { timeout: 3000 }).toBe(true);
   await page.evaluate(async ([id, z]) => { await fetch(`/api/u/${id}/me/profile`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ timeZone: z }) }); }, [userId, browserZone] as const);
 });
 
