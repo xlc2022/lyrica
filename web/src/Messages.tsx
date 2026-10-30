@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { get, post, threadPath, u, type GoAhead, type ImagePart, type Making, type VideoPart, type ImageRetryOptions, type MemoryDetail, type Message, type MessagePage, type MessagePart, type PermissionRequest, type Pool, type QuestionState, type Reaction, type SendResponse, type Speech, type ThreadRef, type ThreadSummary } from "./api.ts";
 import { SkillCard } from "./Skills.tsx";
 import { isQuestionPart, QuestionCard, ROOT_TOOL } from "./Question.tsx";
-import { storedLiveCopies, storedUserItems, type LiveItem } from "./live.ts";
+import { repeatedFailures, storedLiveCopies, storedUserItems, type LiveItem } from "./live.ts";
 import { useMentionText, useMentionTitles, useThreadMentions } from "./mentions.ts";
 import { GoAheadMenu } from "./Modes.tsx";
 import { ScheduleText } from "./Routines.tsx";
@@ -220,10 +220,13 @@ function conversationNodes(stored: Message[], liveItems: LiveItem[], busy: boole
     quiet = [];
   };
   type E = { key: string; stored?: Message; live?: LiveItem; streaming: boolean };
-  const entries: E[] = [
+  const all: E[] = [
     ...stored.map((m): E => ({ key: m.id, stored: m, streaming: false })),
     ...liveItems.map((item, i): E => ({ key: `live-${i}`, live: item, streaming: busy && i === liveItems.length - 1 })),
   ];
+  // A retry that failed the same way as the attempt before it: one error line, not one per attempt.
+  const repeats = repeatedFailures(all.map((e) => e.stored ?? e.live));
+  const entries = all.filter((_, i) => !repeats.has(i));
   // Her rejected attempts fold into one group per turn, and her pick shows last (rejects.ts).
   const images = sortImages(entries.map((e) => e.stored
     ? { key: e.key, user: e.stored.role === "user", parts: e.stored.role === "assistant" ? e.stored.parts : undefined }

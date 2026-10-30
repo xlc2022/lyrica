@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { initialLive, liveReducer, storedLiveCopies, storedUserItems, tailKey, type Live, type LiveAction, type LiveItem } from "../src/live.ts";
+import { initialLive, liveReducer, repeatedFailures, storedLiveCopies, storedUserItems, tailKey, type Live, type LiveAction, type LiveItem } from "../src/live.ts";
 
 import type { Message } from "../src/api.ts";
 
@@ -319,5 +319,12 @@ describe("the conversation's tail key", () => {
     const bare = liveWith([{ role: "assistant", parts: [{ type: "text", text: "Hello." }] }]);
     expect(tailKey([], withNotice)).not.toBe(tailKey([], bare));
     expect(tailKey([assistant(4, "old"), assistant(3, "hi")], initialLive)).toBe(tailKey([assistant(3, "hi")], initialLive));
+  });
+
+  it("shows retries that failed the same way as one error", () => {
+    const failed = { role: "assistant", parts: [], error: "llama.cpp couldn't load this model." };
+    expect(repeatedFailures([{ role: "user", parts: [] }, failed, failed, failed])).toEqual(new Set([1, 2]));
+    expect(repeatedFailures([failed, { ...failed, error: "Another reason." }])).toEqual(new Set());
+    expect(repeatedFailures([{ ...failed, parts: [{ type: "text", text: "Hi" }] }, failed])).toEqual(new Set());
   });
 });
