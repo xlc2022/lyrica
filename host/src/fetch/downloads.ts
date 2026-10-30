@@ -78,7 +78,12 @@ export interface DownloaderOptions {
   hubs: { huggingface: Hub; modelscope: Hub };
   log: (event: string, fields?: Record<string, string | number | boolean | null>) => void;
   free?: () => number;
+  /** The waits before each automatic retry after a temporary failure; tests shorten them. */
+  retryDelays?: number[];
 }
+
+/** A dropped connection or a busy server is retried from where it stopped, 5 times in a row without progress at most. */
+const RETRY_DELAYS = [5_000, 15_000, 30_000, 60_000, 120_000];
 
 export class Downloader {
   private readonly o: DownloaderOptions;
@@ -88,6 +93,8 @@ export class Downloader {
   /** Full links with their query strings, in memory only. */
   private readonly links = new Map<string, string>();
   private current: { id: string; abort: AbortController } | null = null;
+  /** Retries in a row without progress, and the bytes the last try had, per download; in memory only. */
+  private readonly retries = new Map<string, { count: number; received: number }>();
   private running = false;
   private lastSave = 0;
 
@@ -420,10 +427,10 @@ export class Downloader {
       // O_NOFOLLOW: a symlink planted at the partial file's name isn't followed.
       const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_NOFOLLOW | (have ? fsConstants.O_APPEND : fsConstants.O_TRUNC);
       await pipeline(res, count, createWriteStream(part, { fd: openSync(part, flags, 0o644) }), { signal: abort.signal });
+      if (d.size && d.received !== d.size) throw new DownloadError("The download ended early.", 503);
       d.state = "verifying";
       this.save();
       const got = sha256.digest("hex");
-      if (d.size && d.received !== d.size) throw new DownloadError("The download ended early.");
       let verified: boolean;
       if (d.sha256) verified = got === d.sha256.toLowerCase() || fail();
       else if (d.gitSha1 && !have) verified = sha1.digest("hex") === d.gitSha1 || fail();
@@ -437,17 +444,22 @@ export class Downloader {
       this.writeJson("record.json", [...this.record().filter((r) => r.path !== d.path), entry]);
       d.state = "done";
       d.verified = verified;
+      this.retries.delete(d.id);
       this.o.log("downloaded", { id: d.id, verified });
     } catch (e) {
-      if (d.state === "cancelled") {
+      // A wrong or broken file leaves nothing behind; a broken connection, a
+      // busy server or a timeout keeps the partial file to resume.
+      const temporary = !(e instanceof ChecksumMismatch) && (!(e instanceof DownloadError) || e.status === 0 || e.status === 408 || e.status === 429 || e.status >= 500);
+      // Only the network or the server is tried again, not a refusal such as a missing token.
+      const network = temporary && (!(e instanceof DownloadError) || e.status !== 0);
+      if (d.state !== "cancelled" && network && (await this.retryLater(d, abort.signal))) {
+        d.state = "queued";
+      } else if (d.state === "cancelled") {
         this.removePart(d);
       } else {
         d.state = "failed";
         d.error = plainError(e).message;
-        // A wrong or broken file leaves nothing behind; a broken connection, a
-        // busy server or a timeout keeps the partial file to resume.
-        const temporary = !(e instanceof DownloadError) || e.status === 0 || e.status === 408 || e.status === 429 || e.status >= 500;
-        if (e instanceof ChecksumMismatch || !temporary) this.removePart(d);
+        if (!temporary) this.removePart(d);
         this.o.log("download failed", { id: d.id });
       }
     } finally {
@@ -473,6 +485,30 @@ export class Downloader {
         mkdirSync(at);
       }
     }
+  }
+
+  /**
+   * Waits before trying a temporary failure again, unless it has failed this
+   * many times in a row without receiving anything more. False when it
+   * shouldn't be retried, or was cancelled while waiting.
+   */
+  private async retryLater(d: Download, signal: AbortSignal): Promise<boolean> {
+    const delays = this.o.retryDelays ?? RETRY_DELAYS;
+    const last = this.retries.get(d.id);
+    const count = last && d.received <= last.received ? last.count : 0;
+    if (count >= delays.length) {
+      this.retries.delete(d.id);
+      return false;
+    }
+    this.retries.set(d.id, { count: count + 1, received: d.received });
+    this.o.log("download retrying", { id: d.id, attempt: count + 1 });
+    this.save();
+    await new Promise<void>((resolve) => {
+      if (signal.aborted) return resolve();
+      const timer = setTimeout(resolve, delays[count]);
+      signal.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
+    });
+    return d.state !== "cancelled";
   }
 
   private restartFresh(d: Download): void {

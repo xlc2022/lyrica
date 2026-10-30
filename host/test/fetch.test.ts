@@ -20,14 +20,14 @@ async function fakeHub(opts?: Parameters<typeof makeHub>[0]) {
 }
 
 
-function setup(hub: { base: string; ca: string }, free = 100 * 1024 ** 3) {
+function setup(hub: { base: string; ca: string }, free = 100 * 1024 ** 3, retryDelays = [10, 10, 10]) {
   const models = mkdtempSync(join(tmpdir(), "lyrica-fetch-models-"));
   const data = mkdtempSync(join(tmpdir(), "lyrica-fetch-data-"));
   const lines: string[] = [];
   // The fake hub is on loopback; everything else follows the real rule.
   const net = new Net({ allowed: (a) => a === "127.0.0.1" || a === "::1" || isPublic(a), ca: hub.ca });
   const make = () =>
-    new Downloader({ models, data, net, hubs: { huggingface: huggingFace(net, hub.base), modelscope: modelScope(net, hub.base) }, log: (e, f) => void lines.push(JSON.stringify({ e, ...f })), free: () => free });
+    new Downloader({ models, data, net, hubs: { huggingface: huggingFace(net, hub.base), modelscope: modelScope(net, hub.base) }, log: (e, f) => void lines.push(JSON.stringify({ e, ...f })), free: () => free, retryDelays });
   return { models, data, lines, make, d: make() };
 }
 
@@ -155,6 +155,25 @@ describe("downloads", () => {
     await settle(again);
     expect(again.get(x!.id)).toMatchObject({ state: "done", verified: true, received: 300_000 });
     expect(readFileSync(join(dir, "model-Q4_K_M.gguf"))).toEqual(hub.files["model-Q4_K_M.gguf"]);
+  });
+
+  it("tries a dropped connection again from where it stopped", async () => {
+    const hub = await fakeHub({ drops: 2 });
+    const { d, models, lines } = setup(hub);
+    const [x] = await d.request({ source: "huggingface", repo: "org/repo", files: ["model-Q4_K_M.gguf"] });
+    await settle(d);
+    expect(d.get(x!.id)).toMatchObject({ state: "done", verified: true, received: 300_000, error: null });
+    expect(readFileSync(join(models, "lyrica/huggingface/org/repo/model-Q4_K_M.gguf"))).toEqual(hub.files["model-Q4_K_M.gguf"]);
+    expect(lines.filter((l) => l.includes("download retrying"))).toHaveLength(2);
+  });
+
+  it("gives up on a server that keeps failing, after the retries", async () => {
+    const hub = await fakeHub({ down: true });
+    const { d, lines } = setup(hub);
+    const [x] = await d.request({ source: "huggingface", repo: "org/repo", files: ["model-Q4_K_M.gguf"] });
+    await settle(d);
+    expect(d.get(x!.id)).toMatchObject({ state: "failed", error: "The server answered 503." });
+    expect(lines.filter((l) => l.includes("download retrying"))).toHaveLength(3);
   });
 
   it("checks free space first", async () => {
