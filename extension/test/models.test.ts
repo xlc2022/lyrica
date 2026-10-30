@@ -8,7 +8,7 @@ import { deadUrl, fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { fakeHost } from "../../core/test/fake-host.ts";
 import { withModels } from "../../core/test/helpers.ts";
 import { createLyricaExtension, modelRuntimeFor, openThreadSession, piModelFor, toStoredEntry, type ThreadContext } from "../src/index.ts";
-import { markUnservable, waitingFetch, type GpuWait } from "../src/models.ts";
+import { HOST_ANSWER_MS, markUnservable, waitingFetch, type GpuWait } from "../src/models.ts";
 import { keepRecentFor, reserveFor } from "../src/context.ts";
 
 const persona: Persona = { core: [{ path: "SOUL.md", text: "She is Lyrica." }], topics: [] };
@@ -363,6 +363,20 @@ describe("a model host", () => {
     expect(host.chats).toEqual([expect.objectContaining({ model: o!.modelId, chat_template_kwargs: { enable_thinking: true, preserve_thinking: true }, client: [...host.pinned.keys()][0] })]);
     expect(host.chats[0]!.reasoning_effort).toBeUndefined();
     expect(s.models.recentCalls(s.ada.id)[0]!.note).toBeUndefined();
+  });
+
+  it("is given longer than Pi's 5 minutes to start its answer, and another server isn't", async () => {
+    const s = await setup();
+    const host = await fakeHost({ name: "lyrica-blackwell" });
+    const ep = await s.models.pairHost(s.ada, { name: "blackwell", addresses: [host.address], code: host.newCode() });
+    const [o] = await s.models.discover(s.ada, ep.id);
+    const lan = s.models.addEndpoint(s.ada, { name: "lan", kind: "local", baseUrl: s.local.baseUrl });
+    const [qwen] = await s.models.discover(s.ada, lan.id);
+    const runtime = await modelRuntimeFor(s.models, s.models.callContext(s.ada.id, "private", "test"));
+    const r = runtime as unknown as { prepareRequest(m: unknown, o: object): Promise<{ options: { timeoutMs?: number } }> };
+    const pi = 5 * 60_000;
+    expect((await r.prepareRequest(runtime.getModel(ep.id, o!.modelId)!, { timeoutMs: pi })).options.timeoutMs).toBe(HOST_ANSWER_MS);
+    expect((await r.prepareRequest(runtime.getModel(lan.id, qwen!.modelId)!, { timeoutMs: pi })).options.timeoutMs).toBe(pi);
   });
 });
 

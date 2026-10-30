@@ -55,6 +55,9 @@ export function startsMidThought(o: Offering | undefined, level: string | undefi
  * model at all, so Pi's compaction and retries have nothing cloud-based to reach.
  * The runtime is sealed: nothing can register another provider into it.
  */
+/** How long a model host's request may take to start its answer: its 15 minutes for the GPU, then the prompt's read. */
+export const HOST_ANSWER_MS = 30 * 60_000;
+
 /** A chat request waiting for a model host's GPU: what holds it (`busyWith`, in plain words), or its model loading. */
 export interface GpuWait { busyWith?: string; loading?: true }
 
@@ -112,13 +115,15 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: { 
     return [[endpoint.id, opts.onGpuWait ? waitingFetch(f, new URL(endpoint.baseUrl).origin, opts.onGpuWait) : f] as const];
   }));
   const offerings = new Map(allowed.flatMap(({ endpoint, offerings: list }) => list.map((o) => [`${endpoint.id}\u0000${o.modelId}`, { endpoint, offering: o }] as const)));
-  type Prepared = { options: { fetch?: typeof fetch; onPayload?: (payload: unknown, model: Model<Api>) => unknown } };
+  type Prepared = { options: { fetch?: typeof fetch; timeoutMs?: number; onPayload?: (payload: unknown, model: Model<Api>) => unknown } };
   const r = runtime as unknown as { prepareRequest(model: Model<Api>, options?: object): Promise<Prepared> };
   const prepare = r.prepareRequest.bind(runtime);
   r.prepareRequest = async (model, options) => {
     const prepared = await prepare(model, options);
     const f = fetches.get(model.provider);
-    if (f) prepared.options.fetch = f;
+    // Pi gives up when no answer has started in 5 minutes. A host's request may wait 15 for the GPU (loading a very
+    // large model) and then read a long prompt before it answers, so it waits longer.
+    if (f) Object.assign(prepared.options, { fetch: f, timeoutMs: HOST_ANSWER_MS });
     const found = offerings.get(`${model.provider}\u0000${model.id}`);
     // The window follows the copy as it is now (a context set by hand, or a load at another one), even mid-turn:
     // the session plans by this same model object, so compaction, the meter and the reply cap follow it.

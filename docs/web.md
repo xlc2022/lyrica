@@ -1168,7 +1168,8 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   as sent, in plain words. When no model can be reached, one line says so
   ("No model can be reached. Your message goes when one is back."), with
   the models tried in its tooltip; the message shows as waiting, not as
-  sent, until a turn starts.
+  sent, until a turn starts. The line goes once a model starts answering,
+  as a retry that got through does.
 - A stored compaction shows as a one-line marker, **Compacted · 41k → 6k**,
   that opens to the summary stored with it. Her own `threads` compact call
   is a **Compaction** card whose head opens to the summary in its arguments.

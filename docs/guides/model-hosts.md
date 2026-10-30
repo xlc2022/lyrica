@@ -38,7 +38,8 @@ list, so several hosts (or a host and a cloud model, in a general preset)
 back each other up. Busy takes a while: Lyrica's text requests (chat,
 sleep, subagents) wait for the GPU up to 15 minutes first, since a very
 large model can take minutes to load, and a chat thread says what it waits
-for.
+for. Lyrica waits up to 30 minutes in all, the GPU wait included, for an
+answer to start, so a long prompt on a slow model can still be read.
 
 ## The machine
 
