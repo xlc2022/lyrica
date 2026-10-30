@@ -130,9 +130,11 @@ host a Blackwell card can't run voices. Details are in
 The card can be unlocked at every boot
 ([cmp100-unlock](https://github.com/mintoriakamoto/CMP100-210xFULLTENSORSxGEN3x1)):
 full-rate tensor cores and PCIe Gen3, lost at power-off. Unlocked, prompts
-read about twice as fast again, images take 1.2 seconds a step instead of
-3.0 (F16 with flash attention), and a model already in memory loads about
-3 times as fast. The images notice it by themselves at each start.
+read about twice as fast again, images take about 20 seconds instead of
+27 (Z-Image Turbo, 1024×1024, 8 steps), and a model already in memory loads
+about 3 times as fast. A recipe whose parts fit in the card's memory at
+F16 runs at F16; Z-Image's don't on a 16 GB card, so it stays at Q8_0 with
+flash attention on. The images notice it by themselves at each start.
 
 - **Debian or Ubuntu:** `install.sh` offers it, or run `host/cmp-unlock.sh`.
   It needs NVIDIA's proprietary driver (not `-open`), Secure Boot off and

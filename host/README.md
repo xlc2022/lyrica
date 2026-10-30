@@ -380,9 +380,12 @@ per host, and Lyrica's router filters create tiers by it.
   CMP's llama.cpp below) makes the images instead. While the card's FP16
   tensor cores are throttled, it converts the recipe's parts to Q8_0 as it
   loads them and runs with flash attention off, so the work goes to the
-  card's int8 units; once the card is unlocked (see "CMP 100-210 unlock"),
-  it converts them to F16 and turns flash attention on, about 2.5 times as
-  fast. A GGUF diffusion model keeps its own quantisation either way, since
+  card's int8 units. Once the card is unlocked (see "CMP 100-210 unlock"),
+  it turns flash attention on, and converts the parts to F16, about 2.5
+  times as fast, when all of them fit in the card's memory with 2 GB to
+  spare (their files' sizes against the card's total); otherwise they stay
+  Q8_0, since sd.cpp would move the text encoder and VAE to system memory
+  and copy them over the x1 link for every image. A GGUF diffusion model keeps its own quantisation either way, since
   a larger copy may not fit. `gate.sh` runs `tensor-probe` when the
   container starts and reports the rate with each run; host-api picks the
   arguments from it. It

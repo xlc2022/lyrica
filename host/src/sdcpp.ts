@@ -13,6 +13,15 @@ import type { TextModel } from "./library.ts";
 import type { Recipe } from "./recipes.ts";
 import type { Values } from "./templates.ts";
 
+/** Memory sd.cpp needs beside its weights to make a 1024×1024 image. */
+const WORK_ROOM = 2 * 1024 ** 3;
+
+/** The image card, for sdcppArgs. */
+export interface Card {
+  fullRate: boolean;
+  vram: number;
+}
+
 const unavailable = () => new HostError(503, "model_unavailable", "stable-diffusion.cpp didn't answer.");
 const CALL_MS = 30_000;
 
@@ -31,20 +40,26 @@ const SCHEDULERS: Record<string, string> = {
 /**
  * sd-server's arguments for a recipe's parts, under /models. Throws when sd.cpp
  * can't make it here: another template, LoRAs, or a part it has no flag for.
- * `fullRate`: the card's FP16 tensor cores run at full rate (a CMP unlocked
- * since boot), as gate.sh reports.
+ * `card`: whether its FP16 tensor cores run at full rate (a CMP unlocked since
+ * boot), as gate.sh reports, and its memory in bytes; `size` gives a part
+ * file's size in bytes.
  */
-export function sdcppArgs(r: Pick<Recipe, "template" | "parts" | "loras">, models: string, fullRate = false): string[] {
+export function sdcppArgs(r: Pick<Recipe, "template" | "parts" | "loras">, models: string, card: Card = { fullRate: false, vram: 0 }, size: (file: string) => number = () => Infinity): string[] {
   const cant = (why: string) => invalid(`This host makes images with stable-diffusion.cpp, which can't run this recipe: ${why}.`);
   if (!TEMPLATES.has(r.template)) throw cant(`it has no ${r.template} support here`);
   if (r.loras.length) throw cant("LoRAs aren't supported");
   // Throttled tensor cores: weights become Q8_0 as they load, for the card's
   // int8 units, and flash attention, which would use the tensor cores, is off.
-  // At full rate they become F16, with flash attention on: 2.5 times as fast.
+  // At full rate flash attention is on, and weights become F16 if all of them
+  // fit in the card's memory with room to work: 2.5 times as fast. Otherwise
+  // they stay Q8_0, as sd.cpp would move the text encoder and VAE to system
+  // memory, and copying them over a narrow PCIe link costs more than F16 saves.
+  // A part's size at F16 is about its file's: most ship in BF16 or F16.
   // A GGUF main model keeps its quantisation either way, as a larger one may not fit.
   const main = r.parts.find((p) => p.role === "checkpoint" || p.role === "diffusion");
-  const args = ["--flash-attn", fullRate ? "on" : "off"];
-  if (!main?.file?.endsWith(".gguf")) args.push("--type", fullRate ? "f16" : "q8_0");
+  const args = ["--flash-attn", card.fullRate ? "on" : "off"];
+  const f16 = r.parts.reduce((sum, p) => sum + (p.file ? size(p.file) : 0), 0);
+  if (!main?.file?.endsWith(".gguf")) args.push("--type", card.fullRate && f16 + WORK_ROOM <= card.vram ? "f16" : "q8_0");
   for (const p of r.parts) {
     if (!p.file) continue;
     const flag = p.role === "checkpoint" ? "-m" : p.role === "diffusion" ? "--diffusion-model" : p.role === "vae" ? "--vae" : p.role === "text_encoder" ? ENCODERS[p.slot ?? ""] : undefined;
@@ -76,17 +91,20 @@ export class SdCpp implements Backend {
   private readonly status: string;
   private readonly timeoutMs: number;
   private readonly startMs: number;
+  private readonly vram: number;
   private queue: Promise<unknown> = Promise.resolve();
   /** Each recipe's arguments, set before its job; and the recipe sd-server runs, with the arguments it started with. */
   private readonly args = new Map<string, string[]>();
   private running: { id: string; args: string[] } | null = null;
 
-  constructor(base: string, gate: { serving: string; status: string }, timeoutMs = 30 * 60_000, startMs = 10 * 60_000) {
+  /** `vram`: the image card's memory in bytes, or 0 if unknown. */
+  constructor(base: string, gate: { serving: string; status: string }, vram = 0, timeoutMs = 30 * 60_000, startMs = 10 * 60_000) {
     this.base = base;
     this.state = join(gate.serving, "sdcpp.json");
     this.status = gate.status;
     this.timeoutMs = timeoutMs;
     this.startMs = startMs;
+    this.vram = vram;
     this.ask(null);
   }
 
@@ -103,9 +121,9 @@ export class SdCpp implements Backend {
     }
   }
 
-  /** Whether the card's FP16 tensor cores run at full rate, for sdcppArgs. */
-  fullRate(): boolean {
-    return this.gate().tensor === "full";
+  /** The card, for sdcppArgs. */
+  card(): Card {
+    return { fullRate: this.gate().tensor === "full", vram: this.vram };
   }
 
   /** Sets a recipe's arguments, before its job. */

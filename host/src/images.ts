@@ -1,7 +1,7 @@
 // The image routes in API.md ("Image models"): parts, recipes, starters, and
 // create, edit and upscale through ComfyUI, and videos from video recipes.
 import { createHash, randomInt } from "node:crypto";
-import { mkdirSync, readdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
+import { mkdirSync, readdirSync, readlinkSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, join } from "node:path";
 import { imageSize, mp4Seconds, mp4Video, type ComfyGpus } from "./comfy.ts";
@@ -340,7 +340,7 @@ export class Images {
     if (!recipe || !this.book.ready(recipe, this.files())) throw notFound("No confirmed, ready recipe with that ID.");
     if (!recipe.does.includes(action)) throw invalid(`That recipe doesn't ${action} images.`);
     if (this.sdcpp && action !== "create") throw invalid(`This host makes images with stable-diffusion.cpp, which can't ${action} images here.`);
-    const sdArgs = this.sdcpp ? sdcppArgs(recipe, this.modelsDir, this.sdcpp.fullRate()) : null;
+    const sdArgs = this.sdcpp ? sdcppArgs(recipe, this.modelsDir, this.sdcpp.card(), (file) => statSync(join(this.modelsDir, file)).size) : null;
     const template = this.book.templates.get(recipe.template)!;
 
     const values: Values = { ...BASE_DEFAULTS, ...recipe.defaults };

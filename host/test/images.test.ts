@@ -769,9 +769,17 @@ describe("stable-diffusion.cpp", () => {
       .toEqual(["--flash-attn", "off", "--diffusion-model", "/models/k/d.gguf", "--llm", "/models/k/te.gguf", "--vae", "/models/k/v.safetensors"]);
     expect(sdcppArgs({ template: "krea2", parts: [part("diffusion", "k/d.safetensors"), part("text_encoder", "k/te.safetensors", "qwen3vl"), part("vae", "k/v.safetensors")], loras: [] }, "/models"))
       .toEqual(["--flash-attn", "off", "--type", "q8_0", "--diffusion-model", "/models/k/d.safetensors", "--llm", "/models/k/te.safetensors", "--vae", "/models/k/v.safetensors"]);
-    // Unlocked tensor cores: F16 weights, flash attention on; a GGUF keeps its quantisation.
-    expect(sdcppArgs({ template: "flux", parts: [part("checkpoint", "f/flux.safetensors")], loras: [] }, "/models", true)).toEqual(["--flash-attn", "on", "--type", "f16", "-m", "/models/f/flux.safetensors"]);
-    expect(sdcppArgs({ template: "krea2", parts: [part("diffusion", "k/d.gguf")], loras: [] }, "/models", true)).toEqual(["--flash-attn", "on", "--diffusion-model", "/models/k/d.gguf"]);
+    // Unlocked tensor cores: flash attention on, and F16 weights when all the parts fit with room to work.
+    const GB = 1024 ** 3;
+    const card = { fullRate: true, vram: 16 * GB };
+    const sizes: Record<string, number> = { "f/flux.safetensors": 12 * GB, "z/d.safetensors": 12 * GB, "z/te.safetensors": 8 * GB, "z/v.safetensors": GB / 3 };
+    const z = { template: "z-image", parts: [part("diffusion", "z/d.safetensors"), part("text_encoder", "z/te.safetensors", "qwen3"), part("vae", "z/v.safetensors")], loras: [] };
+    expect(sdcppArgs({ template: "flux", parts: [part("checkpoint", "f/flux.safetensors")], loras: [] }, "/models", card, (f) => sizes[f]!)).toEqual(["--flash-attn", "on", "--type", "f16", "-m", "/models/f/flux.safetensors"]);
+    // Z-Image's 20 GB at F16 would push its text encoder and VAE into system memory on a 16 GB card: Q8_0 keeps them on it.
+    expect(sdcppArgs(z, "/models", card, (f) => sizes[f]!).slice(0, 4)).toEqual(["--flash-attn", "on", "--type", "q8_0"]);
+    expect(sdcppArgs(z, "/models", { fullRate: true, vram: 32 * GB }, (f) => sizes[f]!).slice(0, 4)).toEqual(["--flash-attn", "on", "--type", "f16"]);
+    expect(sdcppArgs(z, "/models", { fullRate: false, vram: 32 * GB }, (f) => sizes[f]!).slice(0, 4)).toEqual(["--flash-attn", "off", "--type", "q8_0"]);
+    expect(sdcppArgs({ template: "krea2", parts: [part("diffusion", "k/d.gguf")], loras: [] }, "/models", card, () => GB)).toEqual(["--flash-attn", "on", "--diffusion-model", "/models/k/d.gguf"]);
     expect(() => sdcppArgs({ template: "seedvr2", parts: [], loras: [] }, "/models")).toThrow(/no seedvr2 support/);
     expect(() => sdcppArgs({ template: "z-image", parts: [], loras: [{ file: "l.safetensors", strength: 1 }] }, "/models")).toThrow(/LoRAs/);
   });
@@ -856,7 +864,7 @@ describe("the image API", () => {
     const sdStatus = join(serving, "sdcpp-status.json");
     const sdFake = o.sdcpp ? await fakeSdServer(serving, sdStatus) : null;
     if (sdFake) open.push(sdFake);
-    const sdcpp = sdFake ? new SdCpp(sdFake.url, { serving, status: sdStatus }) : null;
+    const sdcpp = sdFake ? new SdCpp(sdFake.url, { serving, status: sdStatus }, 16 * 1024 ** 3) : null;
     const scheduler = new Scheduler({ monitor: gpus, backends: { llamacpp: backend, vllm: backend, comfyui: sdcpp ?? comfy }, state: h.host.state, log });
     h.host.runtime = new Runtime({ scheduler, modelsDir: models, state: h.host.state, log });
     const book = new RecipeBook(h.dataDir, TEMPLATES, STARTERS);
@@ -903,7 +911,8 @@ describe("the image API", () => {
     await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "again" } });
     expect(s.sdFake!.seen.started).toHaveLength(1);
     expect(s.comfyFake.seen.prompts).toHaveLength(0);
-    // Once the card's tensor cores run at full rate, the next job starts it again with F16 and flash attention.
+    // Once the card's tensor cores run at full rate, the next job starts it again with flash attention,
+    // and with F16, as these parts fit in its memory.
     s.sdFake!.seen.tensor = "full";
     await new Promise((r) => setTimeout(r, 100));
     await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "unlocked" } });
