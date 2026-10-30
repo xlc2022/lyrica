@@ -143,10 +143,10 @@ export class RecipeBook {
   describe(r: Recipe, files: Set<string>) {
     const t = this.templates.get(r.template);
     // A recipe made by a newer host (read after a rollback, say) does nothing here.
-    if (!t) return { ...r, useFor: r.useFor ?? "both", ready: false, mask: false, does: [], unsupported: `This host has no template ${r.template}; update it to use this recipe.` };
+    if (!t) return { ...r, useFor: r.useFor ?? "both", ready: false, mask: false, references: 0, does: [], unsupported: `This host has no template ${r.template}; update it to use this recipe.` };
     // A template with a continuation also extends clips, and chains them into a longer video.
     const extend = t.continuation && r.does.some((a) => a === "video" || a === "animate") ? ["extend" as const] : [];
-    return { ...r, does: [...r.does, ...extend], useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask,
+    return { ...r, does: [...r.does, ...extend], useFor: r.useFor ?? "both", ready: this.ready(r, files), mask: t.mask, references: t.references,
       ...(t.video ? { video: { ...clipSpec(t.video, present(r, files)), longestSeconds: longestSeconds(t) } } : {}) };
   }
 

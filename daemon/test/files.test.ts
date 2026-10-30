@@ -28,6 +28,7 @@ function fakeFiles() {
     },
     search: async (root: string, q: string) => ({ entries: q ? [entry(`${root}/${q}.txt`)] : [], more: false }),
     images: async () => [{ ...entry("/workspace/uploads/cat.png"), source: "uploaded" as const }],
+    videos: async () => [{ ...entry("/workspace/videos/fox.mp4"), source: "made" as const }],
     read: async (path: string, range?: { start: number; end?: number }) => {
       if (path === "/workspace/missing") throw new Error("/workspace/missing is not a file");
       if (range && range.start >= 5) throw new RangeError("the range is outside the file");
@@ -63,7 +64,7 @@ async function setup() {
 }
 
 describe("the Files panel's routes", () => {
-  it("lists a folder with the roots, searches, and lists images", async () => {
+  it("lists a folder with the roots, searches, and lists images and videos", async () => {
     const { ada, path } = await setup();
     const { calls } = fakeFiles();
     const list = await ada.get<FileListing>(path);
@@ -75,6 +76,7 @@ describe("the Files panel's routes", () => {
     expect(calls).toEqual([["list", "/workspace"], ["list", "/srv/docs"]]);
     expect((await ada.get<{ entries: { path: string }[] }>(`${path}/search?root=${enc("/workspace")}&q=plan`)).body.entries[0]!.path).toBe("/workspace/plan.txt");
     expect((await ada.get<{ source: string }[]>(`${path}/images`)).body[0]!.source).toBe("uploaded");
+    expect((await ada.get<{ path: string; source: string }[]>(`${path}/videos`)).body[0]).toMatchObject({ path: "/workspace/videos/fox.mp4", source: "made" });
   });
 
   it("refuses a path outside the thread's folders and a change in a read-only grant with 403, and a failed change with 400", async () => {

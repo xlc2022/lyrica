@@ -28,7 +28,7 @@ export type Task =
   | "title" | "watching" | "embedding" | "sleep.consolidate" | "sleep.dream" | "sleep.wake"
   | "vision" | "image.create" | "image.edit" | "image.upscale" | "video" | "speech.transcribe" | "speech.speak";
 /** The tasks a thread can choose models for. Compaction isn't one: Pi compacts with the thread's chat model. */
-export const THREAD_TASKS = ["chat", "code", "subagent.cheap", "subagent.strong", "title", "watching", "image.create", "image.edit", "image.upscale", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
+export const THREAD_TASKS = ["chat", "code", "subagent.cheap", "subagent.strong", "title", "watching", "image.create", "image.edit", "image.upscale", "video", "speech.transcribe", "speech.speak"] as const satisfies readonly Task[];
 export type ThreadTask = (typeof THREAD_TASKS)[number];
 
 /** One model on one endpoint, by its permanent offering ID, or a model group, which expands into its members in order. */
@@ -1548,7 +1548,10 @@ export interface FileRoot { path: string; writable: boolean; kind: "thread" | "s
 export interface FileListing { roots: FileRoot[]; dir: string; entries: FileEntry[]; more: boolean }
 /** GET …/files/search?root=<path>&q=<text> → FileSearch: names containing the text under that root, at most 200. */
 export interface FileSearch { entries: FileEntry[]; more: boolean }
-/** GET …/files/images → ImageEntry[]: every image in the thread's folder; `uploaded` when it is in uploads/, else `made` by her. */
+/**
+ * GET …/files/images → ImageEntry[]: every image in the thread's folder; `uploaded` when it is in uploads/, else `made` by her.
+ * GET …/files/videos → ImageEntry[]: every clip (.mp4, .webm) there, told apart the same way.
+ */
 export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
 /**
  * GET …/files/content?path=<path>[&download=1] → the file's bytes, with its type

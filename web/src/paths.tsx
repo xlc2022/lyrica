@@ -130,6 +130,21 @@ export function Thumb({ path, alt, files, onGone, onBroken }: { path: string; al
   return <img src={full ? files.url(path) : files.thumb(path)} alt={alt} loading="lazy" onError={() => (full ? gone() : setFull(true))} />;
 }
 
+/**
+ * A clip's tile: the poster kept as its thumbnail, or, where it has none (an uploaded clip), the clip's own first
+ * frame, read from its metadata and never saved. A play mark sits over either.
+ */
+export function VideoThumb({ path, files }: { path: string; files: FileLinks }) {
+  const [poster, setPoster] = useState(true);
+  return (
+    <span className="vthumb">
+      {poster ? <img src={files.thumb(path)} alt="" loading="lazy" onError={() => setPoster(false)} />
+        : <video src={`${files.url(path)}#t=0.1`} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1} />}
+      <span className="vplay" aria-hidden="true"><Icon name="play" /></span>
+    </span>
+  );
+}
+
 export const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 
 /** An image shown large over the page; the Files panel's Images tab and a message's inline images share it. */

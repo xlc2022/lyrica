@@ -51,6 +51,7 @@ export const imageParameters = Type.Object({
   size: Type.Optional(Type.Object({ width: Type.Integer(), height: Type.Integer() }, { description: "For create and video: exact pixels." })),
   aspectRatio: Type.Optional(Type.String({ description: "For create and video: width:height (16:9); omit for recipe defaults." })),
   duration: videoDuration(),
+  steps: Type.Optional(Type.Integer({ minimum: 1, maximum: 150, description: "For video, animate and motion: sampling steps, only when they ask for a number; omit for the model's own." })),
   scale: Type.Optional(Type.Number({ minimum: 1, maximum: 4, description: "For upscale: the factor." })),
   maxSize: Type.Optional(Type.Integer({ minimum: 256, maximum: 8192, description: "For upscale: the longest side's limit." })),
 });
@@ -266,7 +267,8 @@ async function executeVideo(o: ImageTools, id: string, p: ImageArgs, signal?: Ab
   // An aspect ratio goes to the host as it is, which keeps the recipe's area and snaps to its size step.
   const request: VideoRequest = { prompt: p.prompt!, ...(p.action === "animate" || p.action === "motion" ? { image: (await o.files.read(p.image!)).input } : {}),
     ...(p.action === "motion" ? { drive: await o.files.readClip(p.video!) } : {}), ...(p.action === "extend" ? { extend: await o.files.readClip(p.video!) } : {}),
-    ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }) };
+    ...(p.size ? { size: p.size } : {}), ...(p.aspectRatio ? { aspectRatio: p.aspectRatio } : {}), ...(p.duration === undefined ? {} : { duration: p.duration }),
+    ...(p.steps === undefined ? {} : { steps: p.steps }) };
   const call = o.call();
   const make = async (signal?: AbortSignal, onProgress?: (p: JobProgress) => void) => {
     let attempted: Resolution | undefined;

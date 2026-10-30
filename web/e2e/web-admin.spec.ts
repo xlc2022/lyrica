@@ -705,9 +705,10 @@ async function fakeImages(page: Page) {
   });
   await page.route(/\/api\/u\/[^/]+\/hosts\/ep-box\/(recipes\/[^/]+|manage)$/, (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^.*\/ep-box\//, "");
-    const body = route.request().postDataJSON() as { do?: string; name?: string; change?: { op?: string; useFor?: string } };
+    const body = route.request().postDataJSON() as { do?: string; name?: string; change?: { op?: string; useFor?: string; defaults?: { steps?: number } } };
     asked.push({ path, body });
     if (body.do === "change" && body.change?.op === "useFor") recipes.find((r) => path === `recipes/${r.id}`)!.useFor = body.change.useFor;
+    if (body.do === "change" && body.change?.op === "defaults") Object.assign(recipes.find((r) => path === `recipes/${r.id}`)!.defaults, body.change.defaults);
     return route.fulfill(json(body.do === "copy" ? { ...recipes[0], id: "00000000-0000-4000-8000-000000000003", name: body.name } : body.do === "delete" ? { deleted: [], kept: [] } : { models: 0, parts: 6, proposals: 1 }));
   });
   await page.route(/\/api\/u\/[^/]+\/offerings\/off-z\/delete-copy$/, (route) => route.fulfill(json({ usedIn: [] })));
@@ -954,6 +955,26 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await expect(useFor.getByRole("button", { name: "Both", exact: true })).toHaveAttribute("aria-pressed", "true");
   await noHorizontalScroll(page);
   if (phone(page)) expect((await useFor.getByRole("button", { name: "Fast", exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
+  // Steps is typed, clamped to 1 to 150 when left, and saved to the host's recipe when it changed.
+  const steps = block.getByRole("spinbutton", { name: "Steps" });
+  await expect(steps).toHaveValue("8");
+  await expect(block.locator(".field.steps")).toContainText("of 150");
+  await steps.fill("400");
+  await steps.press("Enter");
+  await expect(steps).toHaveValue("150");
+  await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "defaults", defaults: { steps: 150 } } });
+  await steps.fill("20");
+  await steps.blur();
+  await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "defaults", defaults: { steps: 20 } } });
+  await expect(block.locator(".copyhead")).toContainText("20 steps");
+  if (process.env.SCREENSHOTS) await block.screenshot({ path: `${process.env.SCREENSHOTS}/image-models-steps-${page.viewportSize()!.width}.png` });
+  // Its label stays on its input, as Use for's does on its segments.
+  const label = (await block.locator(".field.steps > span").first().boundingBox())!;
+  const input = (await steps.boundingBox())!;
+  expect(input.y - (label.y + label.height)).toBeLessThanOrEqual(8);
+  if (phone(page)) expect(input.height).toBeGreaterThanOrEqual(44);
+  await noHorizontalScroll(page);
 
   // Change: the host's other VAEs for the architecture, or Download another….
   await block.getByRole("button", { name: "Change the VAE" }).click();
@@ -1254,6 +1275,8 @@ test("image providers run 2: cloud switches and refusal links", async ({ page, b
   const imagesSelect = settings.getByRole("combobox", { name: /^Images( |$)/ });
   await expect(imagesSelect.locator("option", { hasText: "cloud · art-model · image-switches" })).toHaveCount(1);
   await expect(settings.getByRole("combobox", { name: /^Image upscaling/ }).locator("option", { hasText: "art-model" })).toHaveCount(0);
+  // Videos sits beside them, listing only host recipes that make clips: a cloud image model isn't one.
+  await expect(settings.getByRole("combobox", { name: /^Videos/ }).locator("option", { hasText: "art-model" })).toHaveCount(0);
   await imagesSelect.selectOption({ label: "cloud · art-model · image-switches" });
   await expect(imagesSelect).toHaveValue(model.id);
   await api("DELETE", `/endpoints/${ep.id}`);

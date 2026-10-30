@@ -1570,6 +1570,7 @@ export function apiRoutes(d: Lyricad): Route[] {
       return { ...found, entries: withOrigins(r, found.entries) };
     }),
     route("GET", `${t}/files/images`, async (r): Promise<Api.ImageEntry[]> => withOrigins(r, await refused(() => files(r).images()))),
+    route("GET", `${t}/files/videos`, async (r): Promise<Api.ImageEntry[]> => withOrigins(r, await refused(() => files(r).videos()))),
     route("GET", `${t}/files/thumb`, async (r) => {
       const thumb = await refused(() => files(r).thumb(r.query.get("path") ?? ""));
       if (!thumb) throw new HttpError(404, "no thumbnail; show the image itself");

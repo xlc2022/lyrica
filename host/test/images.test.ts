@@ -904,6 +904,8 @@ describe("the image API", () => {
     const { body } = await s.api("/host/v1/recipes?state=proposed");
     const z: Recipe & { ready: boolean } = body.recipes.find((r: Recipe) => r.arch === "z-image");
     expect(z.ready).toBe(true);
+    // Lyrica's router reads how many references a recipe takes, so a call with them skips one that takes none.
+    expect((z as { references?: number }).references).toBe(0);
 
     // A proposal does nothing until it is confirmed.
     expect((await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x" } })).body.error.code).toBe("not_found");
@@ -916,6 +918,7 @@ describe("the image API", () => {
     }
     expect((await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", width: 1000 } })).body.error.message).toMatch(/multiple of 16/);
     expect((await s.api("/host/v1/images/edit", { body: { recipe: z.id, prompt: "x", image: PNG.toString("base64") } })).body.error.message).toBe("That recipe doesn't edit images.");
+    expect((await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "x", references: [PNG.toString("base64")] } })).body.error.message).toBe("This recipe doesn't take reference images.");
 
     const made = await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: MARKER, count: 2, seed: 11 } });
     expect(made.status).toBe(200);

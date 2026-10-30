@@ -245,7 +245,9 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   under each grant, first. Files lists one folder at a time from
   `GET …/files?dir=` (docs/daemon.md "Files"), the thread folder open at the
   start, then `/shared` for a thread with a folder of its own, such as a code thread (shown as Shared folder), then each grant; a search runs under every root; a file,
-  or an image from Images (`…/files/images`, filtered by source), opens in
+  an image from Images (`…/files/images`, filtered by source), or a clip from
+  Videos (`…/files/videos`, the same filter, each tile its poster thumbnail or,
+  for a clip without one, its own first frame), opens in
   the **file viewer** (below). The right-click menu (a long press, or the
   viewer's ⋯, which renders the same menu inside the viewer's dialog) attaches
   (the path goes into this thread's message box through a window event, or
@@ -335,12 +337,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   the box), and a link to that page in the memory browser. **Files and images**
   (`ProjectFiles.tsx`): the project folder (the project chat's `/workspace`)
   through the Files panel's routes on the project chat, one folder at a time
-  with crumbs, Files | Images, Upload… (to the folder shown, or by dropping
+  with crumbs, Files | Images | Videos, Upload… (to the folder shown, or by dropping
   files on the section), New folder, and per row Open (a folder in the list,
   a file in the file viewer with the project chat beside it) and a ⋯: Download, Rename… in place, Move
   to… (a drawer listing up to 500 folders, found folder by folder; `rename`
   moves) and Delete… with its dialog. Images is the panel's grid with its
-  filter, a tile opening the image in the file viewer. It reloads when any thread finishes a tool call or a turn, and on
+  filter, a tile opening the image in the file viewer; Videos is the same for clips. It reloads when any thread finishes a tool call or a turn, and on
   focus.
 - **Thread settings drawer:** Models has the preset, **Conversation** (the
   `code` task in Code mode, else `chat`, as `ModelBadge`), **Thinking**
@@ -348,6 +350,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   nested groups **Helpers** (subagents, Titles, and **Watching threads** only in
   a project chat) and **Images and speech** (**Images**, **Image edits** and
   **Image upscaling**, offering the models that do each, recipes by name;
+  **Videos**, offering host recipes that make any kind of clip;
   Dictation, Read aloud). Each option says cloud or local first, and each
   model select's label shows `TaskModel.fallbacks` as "+N fallbacks" or "no
   fallback" (its description, not its name);
@@ -648,13 +651,17 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   block per host (template and defaults, a row per part with precision, "downloaded by Lyrica" or "shared folder",
   the other recipes using it, its size and an underlined **Change** or
   **Remove** at the right, then **Add part**, a segmented **Use for**
-  (**Fast** | **Quality** | **Both**, default Both) and **Delete model…**).
+  (**Fast** | **Quality** | **Both**, default Both), **Steps** for a
+  confirmed recipe whose defaults have steps, and **Delete model…**).
   A ChatGPT plan's one row is ChatGPT Images, its kind's tooltip saying it
   runs on the plan's image tool. Part filenames and facts wrap
   within their column on a phone. Every change is a recipe action
   (`POST …/hosts/:id/recipes/:recipeId`, models.md "Image models"):
   **Use for** saves at once (`change { op: "useFor", useFor }`), disabled
-  while saving or when the user cannot manage the host. The row's facts say
+  while saving or when the user cannot manage the host. **Steps** is a
+  number "of 150", clamped to a whole number from 1 to 150 when left or on
+  Enter, and saves `change { op: "defaults", defaults: { steps } }` when it
+  changed; disabled likewise. The row's facts say
   "fast", "quality" or "fast and quality", combining the copies' tiers. This follows principles 1 and 8 and ux §3's segmented
   control, §4's names and §6's recipe block; no caption or new widget.
   **Change** for a text encoder or VAE (`swap`, or Download another… to the

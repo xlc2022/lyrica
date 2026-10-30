@@ -26,7 +26,7 @@ export interface FileRoot { path: string; writable: boolean; kind: "thread" | "s
 
 export interface FileListing { entries: FileEntry[]; /** The listing stopped at the cap. */ more: boolean }
 
-/** An image in the thread's folder: uploaded by the person, or made by her. */
+/** An image or a clip in the thread's folder: uploaded by the person, or made by her. */
 export interface ImageEntry extends FileEntry { source: "uploaded" | "made" }
 
 /** The panel's own folder in the thread's: its thumbnails live under `.lyrica/thumbs`; never listed or searched. */
@@ -37,6 +37,8 @@ export const LIST_LIMIT = 2000;
 export const SEARCH_LIMIT = 200;
 export const ZIP_FILES_LIMIT = 10_000;
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp"];
+/** The clips the web's viewer plays. */
+const VIDEO_EXTENSIONS = ["mp4", "webm"];
 // Entries end in NUL, not newline: a name may hold a newline or a tab, so the
 // path is everything after the fixed fields.
 const PRINTF = String.raw`%y\t%s\t%T@\t%p\0`;
@@ -98,8 +100,13 @@ export class ThreadFiles {
   }
 
   /** Every image in the thread's folder, uploaded ones told from hers. */
-  async images(): Promise<ImageEntry[]> {
-    const names = IMAGE_EXTENSIONS.flatMap((e, i) => [...(i ? ["-o"] : []), "-iname", `*.${e}`]);
+  images(): Promise<ImageEntry[]> { return this.media(IMAGE_EXTENSIONS); }
+
+  /** Every clip in the thread's folder, uploaded ones told from hers. */
+  videos(): Promise<ImageEntry[]> { return this.media(VIDEO_EXTENSIONS); }
+
+  private async media(extensions: string[]): Promise<ImageEntry[]> {
+    const names = extensions.flatMap((e, i) => [...(i ? ["-o"] : []), "-iname", `*.${e}`]);
     void this.pruneThumbs().catch(() => {});
     const { entries } = await this.find(["find", WORKDIR, "-name", PANEL_DIR, "-prune", "-o", "-type", "f", "(", ...names, ")", "-printf", PRINTF], LIST_LIMIT);
     return entries.map((e) => ({ ...e, source: e.path.startsWith(`${WORKDIR}/uploads/`) ? "uploaded" : "made" }));

@@ -1,12 +1,12 @@
 // The Files panel (DESIGN "Files and images", docs/ux.md §6): a thread's
 // folder and its granted folders, one folder at a time, with a search, a
-// file opened in the viewer (Viewer.tsx), an Images tab, and every action in a
+// file opened in the viewer (Viewer.tsx), Images and Videos tabs, and every action in a
 // right-click menu (a long press on a phone, or the ⋯ beside a file).
 // Beside the conversation from the split width; the page on its own below it.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { get, post, threadPath, upload, type FileEntry, type FileListing, type FileRoot, type FileSearch, type ImageEntry, type Pool, type ThreadSummary } from "./api.ts";
 import { ask, ATTACH_EVENT, ATTACH_KEY, keep, SHOW_EVENT, SHOW_KEY, type AttachRequest, type ShowRequest } from "./links.ts";
-import { isUnderWorkdir, SHARED, shown, Thumb, useFileLinks, WORKDIR, type FileLinks } from "./paths.tsx";
+import { isUnderWorkdir, SHARED, shown, Thumb, useFileLinks, VideoThumb, WORKDIR, type FileLinks } from "./paths.tsx";
 import { Viewer } from "./Viewer.tsx";
 import { Icon } from "./icons.tsx";
 import { her } from "./name.ts";
@@ -14,7 +14,10 @@ import { go } from "./route.ts";
 import { Crumbs, Main, PanelButtons, type ShellContext } from "./Shell.tsx";
 import { ConfirmDialog, ErrorText, InlineRename, menuArrows, useLongPress, useSelection } from "./ui.tsx";
 
-type Tab = "files" | "images";
+type Tab = "files" | MediaTab;
+/** The tabs that are a grid of one kind of file, each the route that lists them. */
+type MediaTab = "images" | "videos";
+const TAB_LABEL: Record<Tab, string> = { files: "Files", images: "Images", videos: "Videos" };
 type Filter = "all" | "uploaded" | "made";
 
 /** What a menu is about: a file, a folder (a root has no parent to rename it in), the selection, or the space under a folder's entries. */
@@ -46,7 +49,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const [listings, setListings] = useState<Record<string, FileListing>>({});
   const [open, setOpen] = useState<Set<string>>(() => new Set([WORKDIR]));
   const [current, setCurrent] = useState<FileEntry>();
-  /** The files the open one was opened among (its folder, the search hits or the Images grid), for the viewer's steps. */
+  /** The files the open one was opened among (its folder, the search hits or the Images or Videos grid), for the viewer's steps. */
   const [among, setAmong] = useState<FileEntry[]>();
   const [menu, setMenu] = useState<MenuAt>();
   /** The row renamed in place from its Rename button. */
@@ -54,7 +57,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<{ q: string; entries: FileEntry[]; more: boolean }>();
   const [filter, setFilter] = useState<Filter>("all");
-  const [images, setImages] = useState<ImageEntry[]>();
+  const [media, setMedia] = useState<Partial<Record<MediaTab, ImageEntry[]>>>({});
   /** Where an upload or a new folder goes when nothing more specific was picked: the last folder opened. */
   const [cwd, setCwd] = useState(WORKDIR);
   const [dropping, setDropping] = useState(false);
@@ -75,8 +78,8 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const shownDirs = useRef<string[]>([]);
   shownDirs.current = Object.keys(listings);
   const activity = ctx.activity[`${pool}/${threadId}`] ?? 0;
-  const reloadShown = useCallback(() => { Promise.all(shownDirs.current.map(load)).catch(fail); if (tab === "images") void loadImagesRef.current(); }, [load, tab]);
-  const loadImagesRef = useRef<() => Promise<unknown>>(() => Promise.resolve());
+  const reloadShown = useCallback(() => { Promise.all(shownDirs.current.map(load)).catch(fail); if (tab !== "files") void loadMediaRef.current(tab); }, [load, tab]);
+  const loadMediaRef = useRef<(k: MediaTab) => Promise<unknown>>(() => Promise.resolve());
   useEffect(() => { if (activity) reloadShown(); }, [activity, reloadShown]);
   useEffect(() => {
     const on = () => { if (document.visibilityState === "visible") reloadShown(); };
@@ -111,9 +114,9 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
     })().catch(fail);
     return () => { live = false; };
   }, [path, load]); // eslint-disable-line react-hooks/exhaustive-deps
-  const loadImages = useCallback(() => get<ImageEntry[]>(`${base}/images`).then(setImages, fail), [base]);
-  loadImagesRef.current = loadImages;
-  useEffect(() => { if (tab === "images") void loadImages(); }, [tab, loadImages]);
+  const loadMedia = useCallback((k: MediaTab) => get<ImageEntry[]>(`${base}/${k}`).then((l) => setMedia((m) => ({ ...m, [k]: l })), fail), [base]);
+  loadMediaRef.current = loadMedia;
+  useEffect(() => { if (tab !== "files") void loadMedia(tab); }, [tab, loadMedia]);
 
   // A search runs under every root; the thread's folder first.
   useEffect(() => {
@@ -131,9 +134,9 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   const refresh = useCallback(async (paths: string[]) => {
     const dirs = new Set(paths.map(parent));
     await Promise.all([...dirs].map((d) => load(d)));
-    if (tab === "images") await loadImages();
+    if (tab !== "files") await loadMedia(tab);
     if (hits) setQ((x) => `${x} `.trimEnd() === x ? `${x} ` : x.trimEnd()); // nudges the search to run again
-  }, [load, tab, loadImages, hits]);
+  }, [load, tab, loadMedia, hits]);
 
   const toggle = (dir: string) => {
     setCwd(dir);
@@ -290,7 +293,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
 
   const act = (fn: () => Promise<unknown>) => fn().then(() => setMenu(undefined), (e: Error) => { setError(e.message); setMenu(undefined); });
   const dropDir = current ? parent(current.path) : cwd;
-  const panelTitle = tab === "files" ? "Files" : "Images";
+  const panelTitle = TAB_LABEL[tab];
   const closeViewer = useCallback(() => setCurrent(undefined), []);
   // Inside the viewer while it shows, since the page under a modal dialog can't be reached.
   const fileMenu = menu && (
@@ -314,9 +317,9 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
           <span className="cap">{title}</span>
         </div>
         <div className="head-actions">
-          <div className="seg" role="tablist" aria-label="Files or images">
-            {(["files", "images"] as const).map((k) => (
-              <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{k === "files" ? "Files" : "Images"}</button>
+          <div className="seg" role="tablist" aria-label="Files, images or videos">
+            {(["files", "images", "videos"] as const).map((k) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{TAB_LABEL[k]}</button>
             ))}
           </div>
         </div>
@@ -331,7 +334,7 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
           </div>
         </>
       ) : (
-        <ImagesTab images={images} filter={filter} onFilter={setFilter} links={links} sel={sel} onPick={pick} press={(e) => press({ kind: "file", entry: e })} onOpen={(i) => view(i, shownImages(images, filter))} />
+        <MediaGrid kind={tab} entries={media[tab]} filter={filter} onFilter={setFilter} links={links} sel={sel} onPick={pick} press={(e) => press({ kind: "file", entry: e })} onOpen={(i) => view(i, filtered(media[tab], filter))} />
       )}
       {sel.size > 0 && (
         <div className="selbar" role="toolbar" aria-label="Selection">
@@ -354,14 +357,14 @@ export function FilesPage({ ctx, pool, threadId, threads, path }: { ctx: ShellCo
   );
 }
 
-const shownImages = (images: ImageEntry[] | undefined, filter: Filter) => images?.filter((i) => filter === "all" || i.source === filter);
+const filtered = (entries: ImageEntry[] | undefined, filter: Filter) => entries?.filter((i) => filter === "all" || i.source === filter);
 
-/** The thread's images, filtered, each opening in the viewer. */
-function ImagesTab({ images, filter, onFilter, links, sel, onPick, press, onOpen }: {
-  images?: ImageEntry[]; filter: Filter; onFilter: (f: Filter) => void; links: FileLinks; sel: Set<string>;
+/** The thread's images or clips, filtered, each opening in the viewer; a clip shows its poster. */
+function MediaGrid({ kind, entries, filter, onFilter, links, sel, onPick, press, onOpen }: {
+  kind: MediaTab; entries?: ImageEntry[]; filter: Filter; onFilter: (f: Filter) => void; links: FileLinks; sel: Set<string>;
   onPick: (e: React.MouseEvent, entry: FileEntry) => boolean; press: (entry: FileEntry) => Record<string, unknown>; onOpen: (entry: FileEntry) => void;
 }) {
-  const listed = shownImages(images, filter);
+  const listed = filtered(entries, filter);
   return (
     <>
       <div className="ifilter">
@@ -371,11 +374,11 @@ function ImagesTab({ images, filter, onFilter, links, sel, onPick, press, onOpen
           ))}
         </div>
       </div>
-      <div className="igrid" aria-label="Images">
-        {!images ? <p className="empty">Loading…</p> : !listed?.length ? <p className="empty">No images yet</p> : listed.map((i) => (
+      <div className="igrid" aria-label={TAB_LABEL[kind]}>
+        {!entries ? <p className="empty">Loading…</p> : !listed?.length ? <p className="empty">No {kind} yet</p> : listed.map((i) => (
           <button key={i.path} type="button" aria-label={i.name} className={sel.has(i.path) ? "sel" : undefined} aria-pressed={sel.has(i.path) || undefined}
             onClick={(e) => { if (!onPick(e, i)) onOpen(i); }} {...press(i)}>
-            <Thumb path={i.path} alt="" files={links} /><span className="meta mono">{i.name}</span>
+            {kind === "videos" ? <VideoThumb path={i.path} files={links} /> : <Thumb path={i.path} alt="" files={links} />}<span className="meta mono">{i.name}</span>
           </button>
         ))}
       </div>
