@@ -336,7 +336,10 @@ describe("long videos", () => {
     for (const seconds of [9, 16, 30, 60]) {
       const made = frames(clipPlan(h3.video!, h3.continuation, seconds));
       expect(Math.max(...made), `${seconds} s`).toBeLessThanOrEqual(192);
-      expect(made[0]! + made.slice(1).reduce((n, f) => n + f - 22, 0), `${seconds} s`).toBeGreaterThanOrEqual(seconds * 24);
+      const added = made[0]! + made.slice(1).reduce((n, f) => n + f - 22, 0);
+      // At most one frame step (17) over what was asked, as one clip rounds: 16 s was 413 frames (17.2 s) before.
+      expect(added, `${seconds} s`).toBeGreaterThanOrEqual(seconds * 24);
+      expect(added, `${seconds} s`).toBeLessThan(seconds * 24 + 17);
     }
     expect(clipPlan(h3.video!, h3.continuation, 16)).toHaveLength(3);
     expect(clipPlan(h3.video!, h3.continuation, 60)).toHaveLength(9);
@@ -1012,10 +1015,10 @@ describe("the image API", () => {
     expect(first.cond.inputs.length).toBe(141);
     expect(first).not.toHaveProperty("anchor");
     expect(second.previous.inputs.file).toBe("lyrica-previous.mp4");
-    expect([second.cond.inputs.length, third.cond.inputs.length]).toEqual([158, 158]);
+    expect([second.cond.inputs.length, third.cond.inputs.length]).toEqual([141, 158]);
     expect([first.noise.inputs.noise_seed, second.noise.inputs.noise_seed, third.noise.inputs.noise_seed]).toEqual([5, 6, 7]);
     // The fake's clip has no video track, so the length is counted: each continuation adds its frames past the overlap.
-    expect(made.body.video).toMatchObject({ frames: 141 + 2 * (158 - 22), fps: 24, audio: true, seed: 5 });
+    expect(made.body.video).toMatchObject({ frames: 141 + (141 - 22) + (158 - 22), fps: 24, audio: true, seed: 5 });
     expect(s.comfyFake.seen.uploads.filter((u: string) => u === "lyrica-previous.mp4").length).toBe(4);
 
     // Extending adds continuations only, at the clip's own size, and reads the result's length from the clip.

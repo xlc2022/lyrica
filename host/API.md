@@ -1003,7 +1003,8 @@ newer host made, read after a rollback).
   inside a longer clip), the first made as usual and each next one from
   the clip so far, whose last `overlap` frames (22 for H3) and their sound
   anchor the new clip's frame 0; the new clip's first `overlap` frames are
-  dropped and the rest appended. Each clip takes the next seed, they hold
+  dropped and the rest appended. The chain comes out at most one frame
+  step longer than asked, as one clip does. Each clip takes the next seed, they hold
   the GPU as one job with one progress, weighted by frames, and one MP4
   comes back. With `extend`, an MP4 of at most 64 MB at the recipe's frame
   rate and a size it makes (and no `image`, `drive` or size), the recipe

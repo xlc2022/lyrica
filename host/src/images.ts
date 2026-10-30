@@ -615,5 +615,16 @@ export function clipPlan(spec: VideoSpec, chain: Continuation | undefined, secon
   // Each clip adds at most `most - overlap` new frames; the first adds all of its own, which leaves slack.
   const n = Math.ceil(want / (most - chain.overlap));
   const share = want / n;
-  return Array.from({ length: n }, (_, i) => Math.min(most, i === 0 && !extending ? share : share + chain.overlap) / spec.fps);
+  const frames = (f: number) => Number(videoValues(spec, f / spec.fps, 0, 0, 1).frames);
+  const made = Array.from({ length: n }, (_, i) => Math.min(most, frames(i === 0 && !extending ? share : share + chain.overlap)));
+  // Each clip rounds up to the model's frame step, so together they can overshoot by a step per clip: take whole
+  // steps back off the longest clips while the new frames still cover what was asked.
+  const added = () => made.reduce((sum, f, i) => sum + f - (i === 0 && !extending ? 0 : chain.overlap), 0);
+  for (;;) {
+    const i = made.indexOf(Math.max(...made));
+    if (added() - spec.frameStep < want || made[i]! - spec.frameStep <= chain.overlap) break;
+    made[i]! -= spec.frameStep;
+  }
+  // Just under each count, so videoValues rounds back to it whatever the float error.
+  return made.map((f) => (f - 0.5) / spec.fps);
 }
