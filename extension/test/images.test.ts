@@ -261,7 +261,7 @@ describe("image tool results (principles 1 and 4)", () => {
     expect(s.workstation.server.videos).toEqual([]);
     const made = await started[0]!(new AbortController().signal, () => {});
     expect(made.video).toMatchObject({ type: "video", model: "shared.workstation/Clip", width: 1280, height: 704 });
-    expect(made.text).toMatch(/^The clip is ready\. Made with Clip on workstation: 5\.0 s at 1280×704\. Saved \/workspace\/videos\/.+\.mp4\.$/);
+    expect(made.text).toMatch(/^The clip for "A fox in the snow" is ready\. Made with Clip on workstation: 5\.0 s at 1280×704\. Saved \/workspace\/videos\/.+\.mp4\.$/);
     expect(readFileSync(join(s.folder, "videos", made.video.path.split("/").at(-1)!))).toEqual(mp4);
     // The call's arguments come back with it, for the clip's marker.
     expect(made.args).toMatchObject({ action: "video", prompt: "A fox in the snow" });
