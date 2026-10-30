@@ -536,6 +536,15 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
   const [run, , actionError] = useAction();
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  // New thread's or New project's General / Private choice, if one is open. It and Search's field close each
+  // other, as only one of the two New choices shows at a time (docs/ux.md §3).
+  const [newOpen, setNewOpen] = useState<NewChoice>("");
+  const showNew = (which: NewChoice) => {
+    setNewOpen(which);
+    if (!which) return;
+    setSearchOpen(false);
+    setQuery("");
+  };
   // Search's field belongs to this list, so going anywhere that isn't a conversation closes it and clears
   // its query, as navigating already closes the phone drawer: a closed field that still filtered the list
   // would be state nobody can see. It watches the address, not the route — Shell's `shown` is a fresh object
@@ -544,6 +553,8 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
   // keeps them. Typing changes no address, so nothing moves while you search (docs/ux.md §6).
   useEffect(() => {
     const leave = () => {
+      // A New choice folds on any page change, a thread's included: it was asked for on the page being left.
+      setNewOpen("");
       if (parse(location.hash).page === "thread") return;
       setSearchOpen(false);
       setQuery("");
@@ -624,8 +635,8 @@ function Sidebar({ ctx, users, route, trail, threads, error, checkedAt, onAuthCh
         <button type="button" className="icon sm side-close" aria-label="Hide threads" onClick={onClose}><Icon name="close" /></button>
       </div>
       <nav className="side-nav" aria-label="Pages">
-        <NewButtons onCreate={create} onCreateProject={createProject} />
-        <details open={searchOpen} onToggle={(e) => setSearchOpen(e.currentTarget.open)}>
+        <NewButtons open={newOpen} onOpen={showNew} onCreate={create} onCreateProject={createProject} />
+        <details open={searchOpen} onToggle={(e) => { const on = e.currentTarget.open; setSearchOpen(on); if (on) setNewOpen(""); }}>
           <summary><Icon name="search" />Search</summary>
           <div>
             <input type="search" aria-label="Search titles and messages" placeholder="Search titles and messages" value={query} onChange={(e) => setQuery(e.target.value)}
@@ -812,15 +823,12 @@ function ListMenu({ at, ctx, onClose }: { at: { x: number; y: number }; ctx: She
   );
 }
 
+type NewChoice = "" | "thread" | "project";
+
 /** New thread and New project at the top of the sidebar: one row style each, and only one General / Private choice open at a time (docs/ux.md §3). */
-function NewButtons({ onCreate, onCreateProject }: { onCreate: (pool: Pool) => void; onCreateProject: (pool: Pool) => void }) {
-  const [open, setOpen] = useState<"" | "thread" | "project">("");
-  // Going to any page folds the choice back under its row; it was asked for on the page being left.
-  useEffect(() => {
-    const leave = () => setOpen("");
-    addEventListener("hashchange", leave);
-    return () => removeEventListener("hashchange", leave);
-  }, []);
+function NewButtons({ open, onOpen: setOpen, onCreate, onCreateProject }: {
+  open: NewChoice; onOpen: (which: NewChoice) => void; onCreate: (pool: Pool) => void; onCreateProject: (pool: Pool) => void;
+}) {
   return (
     <>
       <NewRow shown={open === "thread"} onShow={(on) => setOpen(on ? "thread" : "")} icon="plus" label="New thread" onCreate={onCreate} />
