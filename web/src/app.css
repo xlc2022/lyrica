@@ -1004,8 +1004,9 @@ form.drawer-body { flex: 1; }
 .crumbs { display: flex; gap: 4px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; min-width: 0; }
 .crumbs a { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .crumbs a::after { content: "›"; margin-left: 4px; }
-.panel-actions a.icon.sm { width: 30px; min-height: 30px; border: 1px solid var(--edge); border-radius: 7px; background: var(--panel); display: inline-grid; place-items: center; color: var(--fg); }
+.panel-actions a.icon.sm { width: 30px; min-height: 30px; padding: 0; border: 1px solid var(--edge); border-radius: 7px; background: var(--panel); display: inline-grid; place-items: center; color: var(--fg); }
 .panel-actions a.icon.sm:hover { border-color: color-mix(in oklab, var(--fg) 25%, var(--line)); text-decoration: none; }
+@media (pointer: coarse) { .panel-actions a.icon.sm { width: 44px; min-height: 44px; } }
 /* The pages lay out as on a phone when the column is narrow. */
 @container panel (max-width: 600px) {
   .head { --head-gap: 8px; }
