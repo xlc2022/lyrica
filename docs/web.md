@@ -1233,7 +1233,10 @@ local/cloud chip and preset, then each model host's state as a dot and word.
   thread's pool citing the message; `RememberBox` in `src/Messages.tsx`);
   Start a thread in a project chat; on her replies Regenerate with… (the
   thread's chat models, `isChatModel` in `ModelLabel.tsx`, the same filter
-  lyricad uses, so image, speech and embedding offerings stay out); Delete
+  lyricad uses, so image, speech and embedding offerings stay out; the
+  model that wrote the reply first, matched by its model ID, then the rest
+  in the thread's order, under a search field, `matchesModel`, whose Enter
+  picks the first match); Delete
   on the messages of the last turn, and Delete from here on earlier ones,
   both in danger text. A marker's ⋯ (a look, a received message, a routine)
   has Branch from here instead of a row. The row is right-aligned under the

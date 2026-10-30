@@ -566,7 +566,7 @@ function Parts({ parts, env, model, streaming, n, at, folded, reactions, bare, s
       {sources.length > 0 && <Sources sources={sources} />}
       {n !== undefined && <ReactionChips n={n} reactions={reactions} reactor={env.rewinder} her={who} />}
       {env.rewinder && n !== undefined && (
-        <MessageActions n={n} role="assistant" rewinder={env.rewinder} text={parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} onRemember={() => setRemembering(true)}
+        <MessageActions n={n} role="assistant" rewinder={env.rewinder} model={model} text={parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} onRemember={() => setRemembering(true)}
           readAloud={worded && <ReadAloudButton url={`${env.base}/messages/${n}/speech`} also={n === env.lastHers ? `${env.base}/messages/live/speech` : undefined} speech={env.speech} onError={env.onError} />}
           react={<ReactButton n={n} reactions={reactions} reactor={env.rewinder} />} />
       )}

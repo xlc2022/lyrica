@@ -618,6 +618,10 @@ test("a message's menu regenerates, edits, deletes with Undo, and branches", asy
   await page.getByRole("menuitem", { name: "Regenerate with…" }).click();
   await noHorizontalScroll(page);
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/message-menu-${page.viewportSize()!.width}.png` });
+  // The model that wrote the reply comes first; the search narrows the list.
+  await expect(page.locator(".msg-menu .sub-item").first()).toContainText("cloud-model");
+  await page.getByRole("searchbox", { name: "Search models" }).fill("local");
+  await expect(page.getByRole("menuitem", { name: /cloud-model/ })).toHaveCount(0);
   await page.getByRole("menuitem", { name: /local-model/ }).click();
   await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
   await expect(page.getByText("from the fake local-model")).toBeVisible();
