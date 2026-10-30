@@ -734,7 +734,10 @@ test("a host card has one facts line and Pause, Edit and ⋯; Edit opens a drawe
   await page.route(/\/api\/u\/[^/]+\/models\/page$/, async (route) => {
     const real = await (await fetchReal(route)).json() as { endpoints: Record<string, unknown>[]; hosts: unknown[] };
     const local = real.endpoints.find((e) => e.kind === "local")!;
-    real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", addresses: ["box.lan:7236"], fingerprint: "SHA256:aaaa", state: "up", shared: false, models: [] });
+    real.endpoints.push({ ...local, id: "ep-box", name: "box", api: "host", addresses: ["box.lan:7236"], fingerprint: "SHA256:aaaa", state: "up", shared: false, models: [
+      { id: "off-q", modelId: "qwen.gguf", label: "box/qwen.gguf", manual: false, status: "listed" },
+      { id: "off-r", modelId: "recipe/28b4fe9a", label: "box/recipe/28b4fe9a", manual: false, status: "listed", recipe: "Z-Image Turbo", image: true },
+    ] });
     real.hosts.push({ endpointId: "ep-box", status: status() });
     await route.fulfill(json(real));
   });
@@ -750,6 +753,12 @@ test("a host card has one facts line and Pause, Edit and ⋯; Edit opens a drawe
   await expect(card.locator(".host-top").getByRole("button")).toHaveText(["Pause", "Edit", ""]);
   await expect(card.locator(".host-facts").getByRole("button", { name: "Dashboard" })).toBeVisible();
   await shot("card");
+  // Its model list names a recipe by its name, its ID in the tooltip.
+  await card.getByRole("button", { name: "2 models" }).click();
+  const models = card.getByRole("list", { name: "box models" }).locator(".model-name");
+  await expect(models).toHaveText(["qwen.gguf", "Z-Image Turbo"]);
+  await expect(models.nth(1)).toHaveAttribute("title", "recipe/28b4fe9a");
+  await card.getByRole("button", { name: "2 models" }).click();
   await card.getByRole("button", { name: "Edit" }).click();
   const drawer = page.getByRole("complementary", { name: "Edit box" });
   await drawer.getByLabel("Models folder").fill("/mnt/big/models");

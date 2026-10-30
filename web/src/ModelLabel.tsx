@@ -19,8 +19,9 @@ export const matchesModel = (q: string, m: { modelId: string; recipe?: string },
   return q.trim().toLowerCase().split(/\s+/).every((w) => hay.includes(w));
 };
 
-export function ModelLabel({ model, endpoint, raw = false }: { model: string; endpoint: string; raw?: boolean }) {
-  const short = shortModel(model);
-  const title = short === model ? undefined : model;
+/** `id` is the tooltip for a model shown by a name other than its ID (a recipe). */
+export function ModelLabel({ model, endpoint, raw = false, id }: { model: string; endpoint: string; raw?: boolean; id?: string }) {
+  const short = id ? model : shortModel(model);
+  const title = id ?? (short === model ? undefined : model);
   return <span className="model-label">{raw ? <code className="model-name">{model}</code> : <span className="model-name" title={title}>{short}</span>}<span className="model-endpoint muted" title={endpoint}> · {endpoint}</span></span>;
 }
