@@ -1,6 +1,6 @@
 # Brief: System RAM spill
 
-**Status:** Built on the branch; in review.
+**Status:** Built (#663, merged 2026-10-30).
 
 **Thread:** Let models spill into system RAM. **Branch:**
 `claude/project-thread-m3z2aj`. **Model:** Opus.
@@ -91,7 +91,7 @@ refused whatever it says.
    with its reason; the preset lines.
 7. Docs: host/API.md, docs/models.md, docs/contracts.md, docs/ux.md (the
    three rows), DESIGN.md's VRAM section, the operator guide for hosts, and
-   the Models mockup (`notbuilt` until merged).
+   the Models mockup.
 
 ## Out of scope
 
@@ -101,13 +101,13 @@ refused whatever it says.
 
 ## Handoff
 
-Done: design chosen, this brief, the Models mockup v42, and items 1 to 7
-on the branch. Next: review, then merge. Open: none.
+Done: design chosen, this brief, the Models mockup (v43 marks it built),
+and items 1 to 7, merged in #663. Next: vLLM and ComfyUI offload, and
+measuring RAM per model, each from its own brief. Open: none.
 
-Follow-up, stacked on this branch: a model's per-layer embedding table
-(llama.cpp keeps it off the GPUs and reads one over 4 GiB from the file as
-needed) is left out of the fit check, and the setting `layerTable: "ram"`
-(Serving, **Embedding table**) loads it into system RAM from the same
-allowance. Found when Qwen3.8-Flash-Next's 23 GiB table, crowded out of
-the page cache by downloads, made prompts read at about 3 tokens a second
-with the GPUs idle.
+Follow-up (#665): a model's per-layer embedding table (llama.cpp keeps it
+off the GPUs and reads one over 4 GiB from the file as needed) is left out
+of the fit check, and the setting `layerTable: "ram"` (Serving, **Embedding
+table**) loads it into system RAM from the same allowance. Found when
+Qwen3.8-Flash-Next's 23 GiB table, crowded out of the page cache by
+downloads, made prompts read at about 3 tokens a second with the GPUs idle.

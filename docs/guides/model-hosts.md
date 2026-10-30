@@ -388,7 +388,8 @@ quant bigger than its GPUs still runs, slower. It is off until you set
 endpoints, or on its dashboard's GPUs page. A 96 GB machine allows up to
 76 GB, leaving room for llama.cpp's prompt cache and the system. Only a
 model that can't fit its GPUs uses it, and only for what they lack; a
-model's **System RAM** setting, Off, keeps it on the GPUs.
+model's **System RAM** setting, Off, keeps it on the GPUs. A host gets
+the allowance with its next Update.
 
 Some models, such as Qwen3.8-Flash-Next and Gemma 4, have a per-layer
 embedding table that llama.cpp keeps off the GPUs and reads from the model
