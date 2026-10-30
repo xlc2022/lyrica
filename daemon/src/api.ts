@@ -348,9 +348,17 @@ export interface HostStatus {
     /** PCI vendor:device, as `10de:1df4`; absent from a host from before it reported one. */
     pciId?: string;
     vram: { total: number; used: number };
-    models: { id: string; kind: string; state: string; pinned: boolean; busy: boolean; vram: number | null; lastUsed: string | null }[];
+    /** `ram`: bytes it keeps in the host's system RAM, when it didn't fit its GPUs. */
+    models: { id: string; kind: string; state: string; pinned: boolean; busy: boolean; vram: number | null; ram?: number; lastUsed: string | null }[];
     queue: { chat: number; image: number; background: number };
   }[];
+  /**
+   * The system RAM allowance llama.cpp models may keep part of themselves in
+   * when they don't fit the GPUs (0 is off), at most `most` of the machine's
+   * `total`; absent from a host from before it. Set with PUT /host/v1/memory
+   * through …/manage.
+   */
+  systemRam?: { total: number; most: number; allowance: number; used: number; models: { id: string; ram: number }[] };
   downloads: { active: number };
   modelsFolder: { path: string; free: number };
 }
@@ -462,7 +470,7 @@ export interface HostStarter {
   defaults: Record<string, string | number>;
 }
 // POST /api/u/:userId/hosts/:endpointId/starters/:starterId/install → { recipe, downloads }: downloads what is missing, with the user's hub token, and confirms the recipe.
-/** POST /api/u/:userId/hosts/:endpointId/manage → the host's answer. Loading, pinning, GPU settings, placements, scan, usage only. */
+/** POST /api/u/:userId/hosts/:endpointId/manage → the host's answer. Loading, pinning, GPU settings, the system RAM allowance, placements, scan, usage only. */
 export interface HostManage { method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"; path: string; body?: unknown }
 /** GET /api/u/:userId/hosts/:endpointId/dashboard → { url } */
 /**
@@ -479,6 +487,8 @@ export interface ServingSettings {
   /** Original context's placeholder; null when the host couldn't read it, and then nothing can be stretched. */
   trainedContextLength: number | null;
   kvBytes: number | null;
+  /** What it would keep in the host's system RAM, not fitting the GPUs; absent from a host from before the allowance. */
+  ramBytes?: number;
   recommended: { native: number | null; stretched?: number; factor?: number; originalContext?: number; source: { hub: Hub; repo: string; revision: string; at: string } } | null;
   stretchUntested: boolean;
   /** What the drawer's Vision and MTP switches can turn off: a vision projector, and an MTP file or the model's own MTP layers. */

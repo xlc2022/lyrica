@@ -373,7 +373,15 @@ such as its context length, KV-cache type and, for vLLM, its share of the
 GPU's memory. Set them in the model's **Settings** on the dashboard, or
 from Lyrica with `PUT /api/u/<user id>/offerings/<offering id>/serving`.
 A placement that can't work is refused when saved, with the reason. Each
-GPU says which servers it may run and how much memory to keep free. What
+GPU says which servers it may run and how much memory to keep free.
+
+A host can also give llama.cpp models part of its system RAM, so a model or
+quant bigger than its GPUs still runs, slower. It is off until you set
+**System RAM** in GB: in the host's **Edit** drawer under Models, Hosts and
+endpoints, or on its dashboard's GPUs page. A 96 GB machine allows up to
+76 GB, leaving room for llama.cpp's prompt cache and the system. Only a
+model that can't fit its GPUs uses it, and only for what they lack; a
+model's **System RAM** setting, Off, keeps it on the GPUs. What
 each setting means, and how models are placed and unloaded, is in
 [host/README.md](../../host/README.md#models-and-gpus) and
 [host/API.md](../../host/API.md#placement-and-serving-settings).

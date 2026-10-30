@@ -871,6 +871,11 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
     - A placement that can't work is refused when it's saved, with the
       reason: GPUs that don't allow that server, too little memory even
       when empty, or vLLM tensor parallel over GPUs that don't match.
+    - **System RAM**, off until the operator gives the host an allowance,
+      lets a llama.cpp model too big for its GPUs keep the part they lack
+      in system RAM, slower but working: a mixture of experts' expert
+      weights first, else whole layers. Spilled models share the
+      allowance as models share a GPU; a model can opt out.
     - When a model needs room, the host unloads idle models, least recently
       used first. It never unloads a pinned model or one in use, and stops
       ComfyUI after it has been idle a while.

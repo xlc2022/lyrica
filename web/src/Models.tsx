@@ -990,7 +990,7 @@ function Hosts({ ctx }: { ctx: MCtx }) {
         <section className="section" aria-labelledby="h-model-hosts">
           <div className="section-head">
             <h2 id="h-model-hosts">Model hosts</h2>
-            <span className="cap legend"><span><i className="seg-pinned" />Pinned</span><span><i className="seg-loaded" />Loaded on demand</span><span><i className="seg-vllm" />vLLM share</span></span>
+            <span className="cap legend"><span><i className="seg-pinned" />Pinned</span><span><i className="seg-loaded" />Loaded on demand</span><span><i className="seg-vllm" />vLLM share</span>{hosts.some((ep) => ramOf(hostOf(p, ep.id))) && <span><i className="seg-ram" />In system RAM</span>}</span>
           </div>
           {hosts.map((ep) => <HostCard key={ep.id} ctx={ctx} ep={ep} host={hostOf(p, ep.id)} others={eps} onVoice={setVoice} onEdit={() => setEditingHost(ep)} />)}
         </section>
@@ -1172,18 +1172,23 @@ function HostCard({ ctx, ep, host, others, onVoice, onEdit }: { ctx: MCtx; ep: E
         : <p className="warn-text" role="note">The update to <code>{failed.tag}</code> failed: {updateFailure(failed.error)}.</p>)}
       {actions.forms}
       {status?.gpus.map((g) => <GpuBlock key={g.index} g={g} />)}
+      {status && <RamBlock status={status} onEdit={editable ? onEdit : undefined} />}
       {open && <ModelList ctx={ctx} ep={ep} onVoice={onVoice} />}
     </article>
   );
 }
 
-/** Edit on a host card: its name, addresses and models folder, with one Save. A new folder is asked about first, since the host restarts on it. */
+const RAM_TIP = "Memory a llama.cpp model may keep in system RAM when it doesn't fit the GPUs. It runs slower. Empty is off. vLLM and image models don't use it.";
+
+/** Edit on a host card: its name, addresses, models folder and system RAM allowance, with one Save. A new folder is asked about first, since the host restarts on it. */
 function HostDrawer({ ctx, ep, host, onClose }: { ctx: MCtx; ep: Endpoint; host?: Host; onClose: () => void }) {
   const userId = ctx.user.id;
   const status = host && "status" in host ? host.status : undefined;
   const [name, setName] = useState(ep.name);
   const [addresses, setAddresses] = useState((ep.addresses ?? []).join("\n"));
   const [folder, setFolder] = useState(status?.modelsFolder.path ?? "");
+  const ram = status?.systemRam;
+  const [allowance, setAllowance] = useState(ram?.allowance ? String(Math.round(ram.allowance / GB)) : "");
   const [asking, setAsking] = useState(false);
   const [run, busy, error] = useAction();
   const ref = useRef<HTMLElement>(null);
@@ -1198,10 +1203,18 @@ function HostDrawer({ ctx, ep, host, onClose }: { ctx: MCtx; ep: Endpoint; host?
   const readdressed = list.join(" ") !== (ep.addresses ?? []).join(" ");
   const changesFolder = !!status?.update?.changesFolder && !hostUpdating(status);
   const moved = !!status && changesFolder && folder.trim() !== status.modelsFolder.path;
-  const ready = !!name.trim() && list.length > 0 && (!moved || folder.trim().startsWith("/")) && (renamed || readdressed || moved);
+  const most = ram ? Math.floor(ram.most / GB) : 0;
+  const wanted = allowance.trim() ? Math.min(most, Math.max(0, Math.round(Number(allowance)))) * GB : 0;
+  const reallowed = !!ram && Number.isFinite(wanted) && wanted !== ram.allowance;
+  const ready = !!name.trim() && list.length > 0 && (!moved || folder.trim().startsWith("/")) && (renamed || readdressed || moved || reallowed);
   const save = () => run(async () => {
     if (renamed) await patch(u(userId, "endpoints", ep.id), { name: name.trim() } satisfies EndpointChange);
     if (readdressed) await put(u(userId, "hosts", ep.id, "addresses"), { addresses: list });
+    if (reallowed) {
+      const systemRam = await post<NonNullable<HostStatus["systemRam"]>>(u(userId, "hosts", ep.id, "manage"), { method: "PUT", path: "/host/v1/memory", body: { systemRam: wanted } });
+      const p = ctx.models.page;
+      if (p) ctx.models.set({ ...p, hosts: p.hosts.map((h) => (h.endpointId === ep.id && "status" in h ? { endpointId: ep.id, status: { ...h.status, systemRam } } : h)) });
+    }
     if (moved) {
       const next = await post<HostStatus>(u(userId, "hosts", ep.id, "models-folder"), { path: folder.trim() });
       const p = ctx.models.page;
@@ -1228,6 +1241,17 @@ function HostDrawer({ ctx, ep, host, onClose }: { ctx: MCtx; ep: Endpoint; host?
               <input className="mono" autoCapitalize="none" spellCheck={false} disabled={!changesFolder} value={folder} onChange={(e) => setFolder(e.target.value)} />
             </label>
           )}
+          {ram && (
+            <label className="field">
+              <span title={RAM_TIP}>System RAM</span>
+              <span className="with-unit">
+                <input type="number" min={0} max={most} step={1} placeholder="Off" value={allowance} onChange={(e) => setAllowance(e.target.value)}
+                  onBlur={() => allowance.trim() && setAllowance(String(Math.min(most, Math.max(0, Math.round(Number(allowance) || 0)))))} />
+                <span className="unit">of {most} GB</span>
+              </span>
+              <span className="sr-only">{RAM_TIP}</span>
+            </label>
+          )}
         </fieldset>
         <ErrorText error={error} />
         <div className="row drawer-foot">
@@ -1240,6 +1264,26 @@ function HostDrawer({ ctx, ep, host, onClose }: { ctx: MCtx; ep: Endpoint; host?
           confirm="Move" onCancel={() => setAsking(false)} onConfirm={() => { setAsking(false); void save(); }} />
       )}
     </aside>
+  );
+}
+
+const ramOf = (host?: Host) => (host && "status" in host && host.status.systemRam?.allowance ? host.status.systemRam : undefined);
+
+/** The host's system RAM allowance, while it has one: what spilled models keep there, built as a GPU block. */
+export function RamBlock({ status, onEdit }: { status: HostStatus; onEdit?: () => void }) {
+  const r = status.systemRam;
+  if (!r?.allowance) return null;
+  return (
+    <div className="gpu" data-ram>
+      <div className="gpu-line"><span>System RAM</span><span className="num muted">{gb(r.used)} / {gbTotal(r.allowance)} GB</span></div>
+      <div className="bar" role="img" aria-label={`${gb(r.used)} of ${gbTotal(r.allowance)} GB of system RAM in use`}>
+        {r.models.map((m) => <span key={m.id} className="seg-ram" style={{ width: `${Math.min(100, (m.ram / r.allowance) * 100)}%` }} />)}
+      </div>
+      <span className="meta">
+        {r.models.length ? r.models.map((m, i) => <Fragment key={m.id}>{i > 0 && " · "}{shortId(m.id)} <span className="cap">(<span className="num">{gb(m.ram)}</span> GB)</span></Fragment>) : "nothing spilled"}
+      </span>
+      <span className="gpu-foot cap">llama.cpp · <span className="num">{gbTotal(r.total)}</span> GB in this machine{onEdit && <> · <button type="button" className="link sm" onClick={onEdit}>Edit</button></>}</span>
+    </div>
   );
 }
 

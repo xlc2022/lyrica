@@ -1,7 +1,6 @@
 # Brief: System RAM spill
 
-**Status:** Designed; the owner chose the shape (a host allowance, models on
-Auto). Not built.
+**Status:** Built on the branch; in review.
 
 **Thread:** Let models spill into system RAM. **Branch:**
 `claude/project-thread-m3z2aj`. **Model:** Opus.
@@ -26,15 +25,17 @@ refused whatever it says.
   in GB, "of <max> GB", empty meaning off. The max is the machine's memory
   less llama.cpp's prompt cache (an eighth of memory, at least 8 GiB) and
   8 GiB left for the system; out-of-range values clamp. It lives in Lyrica's
-  host drawer (after Models folder) and in the host dashboard (a **Memory**
-  section's one field), and saves through `PUT /host/v1/memory`.
+  host drawer (after Models folder) and in the host dashboard (a **System
+  RAM** card after the GPUs, its Edit drawer holding the one field), and
+  saves through `PUT /host/v1/memory`.
 - **Models on Auto.** Each model's Serving settings gain **System RAM**,
   Auto or Off, shown while the host has an allowance. Off keeps a model on
   the GPUs only, so a chat model stays fast or is refused as today.
 - **Only what doesn't fit spills.** A way of running that fits the GPUs,
-  unloading idle models if needed, always wins. Only when no way fits even
-  on empty GPUs does the host plan a spilled one: it moves the bytes the
-  GPUs lack (plus their buffers) to RAM, never more.
+  unloading idle models if needed, always wins. Only when a way can't fit
+  even once the host's other unpinned models are unloaded does the host
+  plan a spilled one: it moves the bytes the GPUs lack (other programs and
+  pinned models staying) to RAM, never more.
 - **Experts first.** For a mixture-of-experts GGUF, llama.cpp keeps the
   expert weights of the first N layers in RAM (`n-cpu-moe = N`), which
   costs least: attention and the shared weights stay on the GPU. A dense
@@ -55,14 +56,15 @@ refused whatever it says.
 
 ## What the user sees
 
-- **Serving → Placement's estimate**: "Needs about 59 GB: 41 GB on the GPUs
-  and 18 GB in system RAM, so it runs slower." A spill past the allowance is
-  the bad estimate, naming both numbers, and blocks Save as today.
+- **Serving → Placement's estimate**: "18.0 GB stays in system RAM, so it
+  runs slower." under the KV cache line, from the host's `ramBytes`. A
+  spill past the allowance is refused at Save with the host's reason,
+  naming both numbers.
 - **Host card** (Hosts and endpoints) and **Administration → Status**:
   while the allowance is set, a **System RAM** block under the GPUs, built
   as a GPU block: "System RAM", "18.4 / 32 GB" in mono, the bar (the legend
   gains **In system RAM**), and what is spilled ("GLM 5.3 Flash (18 GB)").
-- **Host dashboard Starters**: a starter too big for the GPUs but within
+- **Host dashboard**: a System RAM card after the GPUs. **Starters**: a starter too big for the GPUs but within
   GPUs plus allowance gets **uses system RAM** (amber pill, tooltip "Runs
   slower: part of it stays in system RAM.") and can download; past both it
   stays **too big for these GPUs**.
@@ -83,7 +85,7 @@ refused whatever it says.
 4. Lyrica: the daemon's host calls and contract for the allowance; the
    host drawer field; Serving's System RAM select and estimate; the RAM
    block on host cards and Status; GPU layers removed from the drawer.
-5. Host dashboard: the Memory section and the Starters pill.
+5. Host dashboard: the System RAM card and the Starters pill.
 6. Tests: the fit check picks GPU-only first and spills only what's
    missing, experts before layers; the allowance is shared and refused
    with its reason; the preset lines.
@@ -99,5 +101,5 @@ refused whatever it says.
 
 ## Handoff
 
-Done: design chosen, this brief, the mockup. Next: build in the order of
-In scope. Open: none.
+Done: design chosen, this brief, the Models mockup v42, and items 1 to 7
+on the branch. Next: review, then merge. Open: none.
