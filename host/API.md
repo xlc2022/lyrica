@@ -1004,7 +1004,9 @@ newer host made, read after a rollback).
   the clip so far, whose last `overlap` frames (22 for H3) and their sound
   anchor the new clip's frame 0, and its first is the image the prompt is
   read with (so an animated still's prompt reads against the clip so far,
-  not the still); the new clip's first `overlap` frames are
+  not the still), and its prompt starts with the continuation's
+  `promptPrefix` (that the shot goes on with no cut), since the prompt alone
+  describes the video from its start; the new clip's first `overlap` frames are
   dropped and the rest appended. The chain comes out at most one frame
   step longer than asked, as one clip does. Each clip takes the next seed, they hold
   the GPU as one job with one progress, weighted by frames, and one MP4

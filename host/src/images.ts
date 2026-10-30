@@ -521,7 +521,7 @@ export class Images {
         for (const [i, clip] of clips.entries()) {
           const first = i === 0 && !extending;
           const t = first ? template : { ...template, workflow: chain!.workflow };
-          const step = { ...values, ...clip, seed: Number(values.seed) + i, ...(first ? {} : { overlap: chain!.overlap }) };
+          const step = { ...values, ...clip, seed: Number(values.seed) + i, ...(first ? {} : { overlap: chain!.overlap, prompt: `${chain!.promptPrefix ?? ""}${values.prompt}` }) };
           const made = await this.comfy.runVideo(first ? uploads : { previous: video! }, (names) => fill(t, parts, recipe.loras, { ...step, ...names }),
             VIDEO_TIMEOUT_MS, abort.signal, (f) => job.progress((done + f * Number(clip.frames)) / total));
           video = made.video;
