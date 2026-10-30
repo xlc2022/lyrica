@@ -668,10 +668,15 @@ The same tool makes short clips: `video` from a prompt, `animate` from an
 image as the first frame, and `motion` from an image and a driving clip (a
 workspace MP4 of at most 64 MB, read with `ThreadImages.readClip`): the
 image's subject moves as the person in the clip moves, and the prompt says
-the scene. Each takes an optional size or ratio and
-`duration` in seconds (1 to 15, the recipe's default when left out; for
-`motion`, no longer than the clip, so she leaves it out rather than
-measuring the clip). Her
+the scene; and `extend` from a workspace clip and a prompt, which adds
+`duration` seconds to it and saves the whole clip as a new one. Each takes
+an optional size or ratio (not `extend`) and `duration` in seconds (up to
+the Videos model's longest, which the tool's description names: 60 for a
+model that joins clips, else its longest clip; the recipe's default when
+left out; for `motion`, no longer than the clip, so she leaves it out
+rather than measuring the clip). A file the action doesn't read (a clip
+given to `video`, say) is refused with the action that takes it, not
+ignored. Her
 guidelines say to make one only when asked, since it holds the model host's
 GPU for minutes, and to write the prompt as a detailed shot (subject and
 action, motion, the camera's move and lens, light and mood, about 80 to 120
