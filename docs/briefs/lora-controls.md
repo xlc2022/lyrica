@@ -54,6 +54,8 @@ own LoRAs work the way they ask for them.
 - Done: both steps (tests in host/test/images.test.ts, core/test/images.test.ts,
   extension/test/images.test.ts, and the Image models e2e in web/e2e/web-admin.spec.ts).
 - Next: try a real LoRA on the GPU host once merged.
+- Open: a LoRA for one job isn't in the recipe's scheduler size (its first
+  measured job sets it); watch VRAM on the first real Wan 14B LoRA run.
 - Open: a LoRA's tensor names alone can't tell Qwen-Image 2.1 from
   Qwen-Image; one trained without metadata and named otherwise reads as
   `qwen-image`.

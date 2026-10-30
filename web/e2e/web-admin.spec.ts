@@ -1024,7 +1024,8 @@ test("Image models: groups by architecture with Role and Where; a recipe opens t
   await strength.blur();
   await expect.poll(() => post(`recipes/${images.zi}`).at(-1)).toEqual({ do: "change", change: { op: "setLora", file: "comfy/loras/pixel-art.safetensors", strength: 0.75 } });
   if (process.env.SCREENSHOTS) await block.screenshot({ path: `${process.env.SCREENSHOTS}/image-models-lora-strength-${page.viewportSize()!.width}.png` });
-  if (phone(page)) expect((await strength.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  // The saved recipe comes back and the row is drawn again, so measure once it is there.
+  if (phone(page)) await expect(async () => expect((await strength.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44)).toPass();
   await noHorizontalScroll(page);
 
   // Delete model…: what goes and what it frees, and that no list uses it.
