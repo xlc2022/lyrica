@@ -555,9 +555,9 @@ model hosts' video recipes), or `lyrica admin models preset set private
 video '<host>/<recipe>' --user ada`. Until a column has one, her `image`
 tool can't make clips. A clip is 1 second up to its model's longest
 (8 for Wan 2.2, 10 for LTX-2.5, 15 for H3; up to 60 for H3, which joins
-clips of up to 8 s into one, and can make an existing clip longer), from a prompt or, with
-a recipe that animates (Wan 2.2 I2V, for one), from an image as its first
-frame; it is saved encrypted in the thread's folder under `videos/`, and
+clips of up to 8 s into one, and can make an existing clip longer), from
+a prompt or, with a recipe that animates (Wan 2.2 I2V, for one), from an
+image as its first frame; it is saved encrypted in the thread's folder under `videos/`, and
 Files shows its poster. Cloud models and plain endpoints in the list are
 passed over. A clip takes from a few minutes to most of an hour and holds
 ComfyUI's GPU until it is done; with two GPUs, `COMFY_GPU` picks the one
@@ -709,13 +709,14 @@ It says what it will remove and asks first. It removes:
 
 - the stack's containers, volumes and network, with the host's key, so
   every paired Lyrica loses it;
-- its images, by ID: one another container uses stays, and nothing is
-  pruned, so other programs' images and Docker's build cache are left
-  alone (on a shared machine, leave the build cache too);
-- the egress rules and, on Debian or Ubuntu, the egress and updater
-  units, `/usr/local/sbin/lyrica-host-update`, `/etc/lyrica-host` (the
-  deploy key), `/var/lib/lyrica-host-update` and the release trees in
-  `/opt/lyrica-host`.
+- its images, by ID or name, without `--force`: one another container
+  uses stays, and nothing is pruned, so other programs' images and
+  Docker's build cache are left alone (on a shared machine, leave the
+  build cache too);
+- the egress rules, `/usr/local/sbin/lyrica-host-update`,
+  `/etc/lyrica-host` (the deploy key), `/var/lib/lyrica-host-update` and
+  the release trees in `/opt/lyrica-host`, and on Debian or Ubuntu the
+  egress and updater units.
 
 It asks before deleting the models folder's `lyrica/` downloads; your own
 model files beside them stay. `--delete-downloads` deletes them without

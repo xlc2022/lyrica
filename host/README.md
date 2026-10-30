@@ -136,10 +136,11 @@ the same upstream commit (`nix/cmp-unlock.nix`); change them together.
 
 `host/install.sh --uninstall` removes the host: the stack's containers,
 volumes (the host's key with them, so every pairing ends), network and
-images, the egress rules, and on Debian or Ubuntu the units, the updater,
-its deploy key and the release trees under `/opt/lyrica-host`. Images go
-by ID without `--force`, so one another container uses stays, and nothing
-is pruned: Docker's build cache and other programs' images are left alone.
+images, the egress rules, the updater, its deploy key and the release
+trees under `/opt/lyrica-host`, and on Debian or Ubuntu the units. Images
+go by ID or name without `--force`, so one another container uses stays,
+and nothing is pruned: Docker's build cache and other programs' images are
+left alone.
 It asks before starting and before deleting the models folder's `lyrica/`
 downloads (`--delete-downloads` deletes them, `--yes` keeps them unless
 given it); the operator's own model files stay. On NixOS the module owns
