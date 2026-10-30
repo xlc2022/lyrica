@@ -37,7 +37,7 @@ const path = (description: string) => Type.Optional(Type.String({ description })
  */
 export const imageParameters = Type.Object({
   action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected", "video", "animate", "motion", "extend"] as const),
-  prompt: Type.Optional(Type.String({ description: "For create: what to draw, as one detailed paragraph. For video and animate: what happens in the clip. For motion: the scene, light and look; the clip gives the moves. For extend: what happens next." })),
+  prompt: videoPrompt(),
   tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality (the default)." })),
   model: Type.Optional(Type.String({ description: "For create, edit and upscale: an image model they asked for by name; it is tried first, then the usual models." })),
   image: path("For edit, upscale, pick, animate and motion: the image's path (animate's first frame; motion's subject, who moves)."),
@@ -56,6 +56,17 @@ export const imageParameters = Type.Object({
   maxSize: Type.Optional(Type.Integer({ minimum: 256, maximum: 8192, description: "For upscale: the longest side's limit." })),
 });
 export type ImageArgs = Static<typeof imageParameters>;
+
+/**
+ * `prompt`, saying whether the thread's first Videos model renders sound: one that does voices what the prompt
+ * quotes, and makes up speech-like sounds for talking it isn't given words for.
+ */
+export function videoPrompt(model?: { name: string; sound: boolean }) {
+  const sound = !model ? " A video model may render sound with the picture; if it does, quote any speech word for word in its language (She says in Mandarin: \"…\"), or the talking comes out as made-up sounds."
+    : model.sound ? ` ${model.name} renders sound with the picture: describe the sounds, and quote any speech word for word in its language (She says in Mandarin: "…"), or the talking comes out as made-up sounds.`
+    : ` ${model.name} makes no sound.`;
+  return Type.Optional(Type.String({ description: `For create: what to draw, as one detailed paragraph. For video and animate: what happens in the clip. For motion: the scene, light and look; the clip gives the moves. For extend: what happens next.${sound}` }));
+}
 
 /** `duration`, saying the thread's first Videos model's longest when it is known. */
 export function videoDuration(model?: { name: string; longestSeconds?: number; extend: boolean }) {
@@ -181,7 +192,7 @@ const isVideo = (a: string): a is "video" | "animate" | "motion" | "extend" => [
 function videoModelParameters(o: ImageTools) {
   let model;
   try { model = o.models.firstVideoModel(o.call()); } catch { return imageParameters; }
-  return model ? Type.Object({ ...imageParameters.properties, duration: videoDuration(model) }) : imageParameters;
+  return model ? Type.Object({ ...imageParameters.properties, prompt: videoPrompt(model), duration: videoDuration(model) }) : imageParameters;
 }
 
 /**

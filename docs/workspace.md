@@ -676,7 +676,10 @@ model that joins clips, else its longest clip; the recipe's default when
 left out; for `motion`, no longer than the clip, so she leaves it out
 rather than measuring the clip). A file the action doesn't read (a clip
 given to `video`, say) is refused with the action that takes it, not
-ignored. Her
+ignored. The prompt's description says whether the Videos model renders
+sound (the host listing's `video.audio`); one that does is told to quote
+any speech word for word in its language, since talking it isn't given
+words for comes out as made-up sounds. Her
 guidelines say to make one only when asked, since it holds the model host's
 GPU for minutes, and to write the prompt as a detailed shot (subject and
 action, motion, the camera's move and lens, light and mood, about 80 to 120

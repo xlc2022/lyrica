@@ -334,7 +334,7 @@ describe("video calls through the router (principles 1 and 2)", () => {
   it("sends a video past a model's longest, and a clip to extend, only to a recipe that chains clips, and names the longest", async () => {
     const s = await setup(), ctx = s.ctx({ pool: "private", localOnly: true });
     s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.clip, s.workstation.long]);
-    expect(s.models.firstVideoModel(ctx)).toEqual({ name: "Clip", longestSeconds: 8, extend: false });
+    expect(s.models.firstVideoModel(ctx)).toEqual({ name: "Clip", longestSeconds: 8, extend: false, sound: false });
     // Up to its longest the first model makes it; past it, or to extend, the next one that can.
     expect((await s.models.video(ctx, { prompt: "A fox", duration: 8 })).resolution.ref).toEqual(s.workstation.clip);
     const long = await s.models.video(ctx, { prompt: "A fox", duration: 16 });

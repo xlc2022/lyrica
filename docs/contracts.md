@@ -371,7 +371,7 @@ interface Offering extends Capabilities {   // one model on one endpoint, with a
   id; endpointId; modelId; manual: boolean;
   status: "listed" | "missing" | "gone"; missingSince?;      // gone: missing for GONE_DAYS (30)
   digest?; identity?: ModelIdentity; downloaded?; size?; recipe?; separate?;   // reported by a host; useFor inherited from Capabilities
-  extend?; longestSeconds?;                                  // a host video recipe that adds to clips (and chains them), and its longest video
+  extend?; longestSeconds?; sound?;                          // a host video recipe that adds to clips (and chains them), its longest video, and whether it renders sound
   opensThinking?;                                            // a host's chat template writes <think> itself
   alwaysThinks?;                                             // LM Studio or OpenRouter says it can't turn thinking off
   price?: { input; output; reasoning?; cacheRead?; cacheWrite?; free };   // OpenRouter's pricing, US dollars per million tokens
@@ -485,7 +485,7 @@ class Models {                                              // new Models(keyrin
   // with extend) answers, so no clip or first frame reaches a cloud model. A recipe whose `longestSeconds` is under `duration` is skipped
   // ("it makes videos of at most N s"); a host recipe that chains clips (MiniMax H3) answers up to 60 s as one clip.
   // POST /host/v1/videos/create with explicit fields only; two hours at most, per 5 s asked (videoTimeout), since a chain gives each clip two hours.
-  firstVideoModel(ctx): { name; longestSeconds?; extend } | undefined   // the Videos list's first usable model, for the image tool's duration; no call
+  firstVideoModel(ctx): { name; longestSeconds?; extend; sound } | undefined   // the Videos list's first usable model, for the image tool's duration and prompt; no call
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)
   thinkingFor(resolution, asked, unset?): { level; note? }   // asked defaults to DEFAULT_THINKING ("medium"), also the per-user default; unset (CallContext.thinkingUnset) drops the can't-think note
