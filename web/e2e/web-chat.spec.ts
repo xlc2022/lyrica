@@ -710,6 +710,35 @@ test("her waiting (sleeps that only echo, reads of a thread, a refused read) fol
   if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/waiting-open-${page.viewportSize()!.width}.png` });
 });
 
+test("a run with failed calls counts them after its own count", async ({ page, baseURL }) => {
+  const userId = await enter(page, baseURL!);
+  await newThread(page, "General");
+  await send(page, "Build it");
+  await expect(page.getByText("You said: Build it")).toBeVisible();
+  const threadId = threadIdOf(page.url());
+  const base = `/api/u/${userId}/threads/general/${encodeURIComponent(threadId)}`;
+  let n = 0;
+  const at = () => `2026-10-30T04:00:${String(n).padStart(2, "0")}Z`;
+  const bash = (id: string, command: string, result: string, isError = false) => ({ type: "tool", toolCallId: id, name: "bash", args: { command }, result, isError });
+  const hers = (...parts: unknown[]) => ({ id: `e:${threadId}#${++n}`, n, role: "assistant", model: "fake", createdAt: at(), parts });
+  const messages = [
+    { id: `e:${threadId}#${++n}`, n, role: "user", createdAt: at(), parts: [{ type: "text", text: "Build it" }] },
+    hers(bash("b1", "npm install", "added 12 packages")),
+    hers(bash("b2", "npm run build", "error TS2304", true)),
+    hers(bash("b3", "npm test", "1 failed", true)),
+    hers(bash("b4", "git status", "clean")),
+    hers({ type: "text", text: "Two steps failed." }),
+  ];
+  await page.route(`**${base}/messages`, (route) => route.fulfill({ json: { hasMore: false, messages } }));
+  await page.reload();
+  await expect(page.getByText("Two steps failed.")).toBeVisible();
+  const run = page.locator(".marker.tool-run");
+  // The count of failed calls, not the word alone, which read as if every call failed.
+  await expect(run.getByRole("button")).toHaveText("4 tool calls · 2 failed");
+  await expect(run.locator(".state[data-state='failed']")).toHaveText("2 failed");
+  if (process.env.SCREENSHOTS) await run.screenshot({ path: `${process.env.SCREENSHOTS}/tool-run-failed-${page.viewportSize()!.width}.png` });
+});
+
 test("an open run of tool calls follows her newest call only while its box is at the bottom", async ({ page, baseURL }) => {
   await enter(page, baseURL!);
   await newThread(page, "General");

@@ -1787,6 +1787,7 @@ code.raw { font-size: 12px; overflow-wrap: anywhere; }
 /* A run of tool calls (docs/ux.md §6, Lyrica's inner workings): one marker that opens to a box which scrolls. */
 .turn.quiet { gap: 6px; }
 .marker.tool-run > button .num { color: var(--fg); font-size: 12px; }
+.marker.tool-run > button .state .num { color: inherit; }
 .marker.tool-run > button .ic { width: 14px; height: 14px; flex: none; transition: transform 0.15s; }
 .marker.tool-run > button[aria-expanded="true"] .ic { transform: rotate(180deg); }
 .marker.tool-run .run-body { max-height: 320px; overflow-y: auto; gap: 6px; }
