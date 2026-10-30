@@ -350,7 +350,7 @@ describe("long videos", () => {
     expect(clipPlan(TEMPLATES.get("wan22-5b")!.video!, undefined, 8)).toEqual([8]);
   });
 
-  it("fills the continuation: the clip so far's tail anchors frame 0, and the new clip joins on after its overlap", () => {
+  it("fills the continuation: the clip so far's tail anchors frame 0 and is the prompt's first frame, and the new clip joins on after its overlap", () => {
     const p = (role: Recipe["parts"][number]["role"], file: string, slot: string | null = null) => ({ role, slot, file, added: false });
     const starter = STARTERS.find((s) => s.id === "minimax-h3-turbo")!;
     const next = fill({ ...h3, workflow: h3.continuation!.workflow }, [
@@ -359,7 +359,9 @@ describe("long videos", () => {
     ], [], { negativePrompt: "", ...starter.defaults, prompt: "x", seed: 2, width: 1344, height: 768, overlap: 22, previous: "lyrica-previous.mp4", ...videoValues(h3.video!, 6, 1344, 768, 8) });
     expect(next.previous!.inputs).toEqual({ file: "lyrica-previous.mp4" });
     expect(next.tail!.inputs).toEqual({ video: ["previous", 0], frames: 22 });
-    expect(next.cond!.inputs).not.toHaveProperty("first_frame");
+    // The text encoder sees the frame the clip starts from, so the prompt reads against the clip so far, not the
+    // still an animate began with: without it, the second clip of an animated still drifted back to the still's shot.
+    expect(next.cond!.inputs.first_frame).toEqual(["tail", 0]);
     expect(next.anchor!.inputs).toEqual({ positive: ["cond", 0], vae: ["load_vae", 0], audio_vae: ["load_vae_audio", 0], latent: ["cond", 1], image: ["tail", 0], audio: ["tail", 1], frame_idx: 0 });
     expect(next.guide!.inputs.conditioning).toEqual(["anchor", 0]);
     expect(next.join!.inputs).toEqual({ previous: ["previous", 0], images: ["decode", 0], audio: ["sound", 0], fps: 24, overlap: 22 });

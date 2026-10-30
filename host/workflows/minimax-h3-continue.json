@@ -27,7 +27,11 @@
         "prompt": "$prompt",
         "width": "$width",
         "height": "$height",
-        "length": "$frames"
+        "length": "$frames",
+        "first_frame": [
+          "tail",
+          0
+        ]
       }
     },
     "anchor": {
