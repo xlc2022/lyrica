@@ -580,7 +580,12 @@ through `addModel` or `setCapabilities`; shared offerings live in self.db,
 personal ones in user.db. No schema step. Edit and upscale keep their lists.
 A host recipe that edits keeps its listing's `mask` in the offering's
 discovered facts; a masked edit skips one whose `mask` is false (one
-discovered before hosts said so is tried).
+discovered before hosts said so is tried). A host recipe that creates or
+edits likewise keeps its listing's `references`, how many reference images
+its template takes; a create or edit with more references than that skips
+it (Krea 2, Z-Image and FLUX take none, so a call with a reference photo
+goes on to a recipe that takes one, such as Qwen-Image 2.1). A cloud
+provider whose adapter declares no references is skipped the same way.
 
 A create request has `prompt`, `tier` (`fast` or `quality`), optional
 `size: { width, height }`, `count` and `references`. Edit takes `prompt`,

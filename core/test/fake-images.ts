@@ -11,7 +11,7 @@ export async function fakeImages() {
   const models = new Models(keyring, users);
   const hostFetches = new Map<string, typeof fetch>();
   vi.spyOn(models, "fetchFor").mockImplementation(ep => hostFetches.get(ep.id));
-  const host = async (name: string, useFor?: "fast" | "quality" | "both", mask?: boolean) => {
+  const host = async (name: string, useFor?: "fast" | "quality" | "both", mask?: boolean, references?: number) => {
     const images: { action: string; body: Record<string, unknown> }[] = [];
     const videos: Record<string, unknown>[] = [];
     let down: string | false = false;
@@ -25,7 +25,7 @@ export async function fakeImages() {
       if (path === "/host/v1/status") return Response.json({ state: "running" });
       if (path === "/host/v1/models") return Response.json({ models: [] });
       if (path === "/host/v1/recipes") return Response.json({ recipes: [
-        { id: "art", name: "Art", state: "confirmed", ready: true, useFor: server.useFor, does: ["create", "edit", "upscale"], ...(mask === undefined ? {} : { mask }) },
+        { id: "art", name: "Art", state: "confirmed", ready: true, useFor: server.useFor, does: ["create", "edit", "upscale"], ...(mask === undefined ? {} : { mask }), ...(references === undefined ? {} : { references }) },
         { id: "proposal", name: "Proposal", state: "proposed", ready: true, does: ["create"] },
         { id: "clip", name: "Clip", state: "confirmed", ready: true, does: ["video", "animate"], video: { fps: 24, audio: false } },
         { id: "moves", name: "Moves", state: "confirmed", ready: true, does: ["motion"], video: { fps: 16, audio: false } },
