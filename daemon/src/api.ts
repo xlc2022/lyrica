@@ -343,6 +343,8 @@ export interface HostStatus {
   /** Its updater: absent on a host from before updates. */
   update?: HostUpdate;
   state: "running" | "pausing" | "paused" | "restarting";
+  /** The machine: its CPU's name (null when the kernel doesn't say), physical cores, threads, and memory in bytes; absent from a host from before it. */
+  machine?: { cpu: string | null; cores: number; threads: number; memory: number };
   gpus: {
     index: number; name: string; vendor: string; role: "vllm" | "shared";
     /** PCI vendor:device, as `10de:1df4`; absent from a host from before it reported one. */

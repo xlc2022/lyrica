@@ -816,6 +816,7 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   let systemRam = { total: 96 * GB, most: 76 * GB, allowance: 0, used: 0, models: [] as { id: string; ram: number }[] };
   const status = () => ({
     name: "box", version: "0.9.0", fingerprint: "SHA256:aaaa", state: "running", downloads: { active: 0 }, modelsFolder: { path: "/srv/models", free: 2 ** 40 }, systemRam,
+    machine: { cpu: "AMD Ryzen 7 7800X3D", cores: 8, threads: 16, memory: 96 * GB },
     gpus: [{ index: 0, name: "RTX 6000 Pro", vendor: "nvidia", role: "shared", vram: { total: 96 * GB, used: 93 * GB }, queue: { chat: 0, image: 0, background: 0 },
       models: systemRam.models.length ? [{ id: big, kind: "chat", state: "loaded", pinned: false, busy: false, vram: 93 * GB, ram: systemRam.used, lastUsed: null }] : [] }],
   });
@@ -839,6 +840,8 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   await page.goto(`/#/u/${userId}/models/hosts`);
   const card = page.locator("article.host[data-endpoint=ep-box]");
   await expect(card.locator("[data-ram]")).toHaveCount(0);
+  // The CPU, under the GPUs whatever the allowance.
+  await expect(card.locator("[data-cpu]")).toHaveText("CPU · AMD Ryzen 7 7800X3D8 cores · 16 threads · 96 GB RAM");
   await card.getByRole("button", { name: "Edit" }).click();
   const drawer = page.getByRole("complementary", { name: "Edit box" });
   const field = drawer.getByLabel("System RAM");
@@ -857,7 +860,7 @@ test("a host's System RAM: off until set in its drawer, then a block on its card
   const ram = card.locator("[data-ram]");
   await expect(ram.locator(".gpu-line")).toHaveText("System RAM18.0 / 48 GB");
   await expect(ram).toContainText("Big-MoE-Q6_K (18.0 GB)");
-  await expect(ram).toContainText("llama.cpp · 96 GB in this machine · Edit");
+  await expect(ram).toContainText("llama.cpp · Edit");
   await expect(page.locator(".legend")).toContainText("In system RAM");
   await shot("card");
   await noHorizontalScroll(page);

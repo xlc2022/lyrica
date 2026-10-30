@@ -1172,6 +1172,7 @@ function HostCard({ ctx, ep, host, others, onVoice, onEdit }: { ctx: MCtx; ep: E
         : <p className="warn-text" role="note">The update to <code>{failed.tag}</code> failed: {updateFailure(failed.error)}.</p>)}
       {actions.forms}
       {status?.gpus.map((g) => <GpuBlock key={g.index} g={g} />)}
+      {status && <CpuBlock status={status} />}
       {status && <RamBlock status={status} onEdit={editable ? onEdit : undefined} />}
       {open && <ModelList ctx={ctx} ep={ep} onVoice={onVoice} />}
     </article>
@@ -1269,6 +1270,20 @@ function HostDrawer({ ctx, ep, host, onClose }: { ctx: MCtx; ep: Endpoint; host?
 
 const ramOf = (host?: Host) => (host && "status" in host && host.status.systemRam?.allowance ? host.status.systemRam : undefined);
 
+/** The host's CPU, its physical cores and threads, and the machine's memory, in one line under the GPUs. */
+export function CpuBlock({ status }: { status: HostStatus }) {
+  const m = status.machine;
+  if (!m) return null;
+  return (
+    <div className="gpu" data-cpu>
+      <div className="gpu-line">
+        <span>CPU{m.cpu && <> · {m.cpu}</>}</span>
+        <span className="muted"><span className="num">{m.cores}</span> cores · <span className="num">{m.threads}</span> threads · <span className="num">{gbTotal(m.memory)}</span> GB RAM</span>
+      </div>
+    </div>
+  );
+}
+
 /** The host's system RAM allowance, while it has one: what spilled models keep there, built as a GPU block. */
 export function RamBlock({ status, onEdit }: { status: HostStatus; onEdit?: () => void }) {
   const r = status.systemRam;
@@ -1282,7 +1297,7 @@ export function RamBlock({ status, onEdit }: { status: HostStatus; onEdit?: () =
       <span className="meta">
         {r.models.length ? r.models.map((m, i) => <Fragment key={m.id}>{i > 0 && " · "}{shortId(m.id)} <span className="cap">(<span className="num">{gb(m.ram)}</span> GB)</span></Fragment>) : "nothing spilled"}
       </span>
-      <span className="gpu-foot cap">llama.cpp · <span className="num">{gbTotal(r.total)}</span> GB in this machine{onEdit && <> · <button type="button" className="link sm" onClick={onEdit}>Edit</button></>}</span>
+      <span className="gpu-foot cap">llama.cpp{onEdit && <> · <button type="button" className="link sm" onClick={onEdit}>Edit</button></>}</span>
     </div>
   );
 }

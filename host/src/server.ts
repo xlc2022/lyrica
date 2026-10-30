@@ -12,6 +12,7 @@ import { LoginLimit, Sessions, browserCheck, checkPassword, cookie, hashPassword
 import { HostError, invalid, notFound, onlyFields, readJson, refused, sendError, sendJson } from "./http.ts";
 import { loadIdentity, type Identity } from "./identity.ts";
 import type { Logger } from "./log.ts";
+import { readMachine } from "./machine.ts";
 import { PairingCodes, fingerprint } from "./pairing.ts";
 import type { Downloads } from "./downloads.ts";
 import type { Images } from "./images.ts";
@@ -81,6 +82,7 @@ export class Host {
   private readonly isOurs: (name: string) => boolean;
 
   readonly opts: HostOptions;
+  private readonly machine = readMachine();
 
   constructor(opts: HostOptions) {
     this.opts = opts;
@@ -241,6 +243,7 @@ export class Host {
       fingerprint: this.identity.fingerprint,
       state: this.runtime?.scheduler.runState ?? (this.state.get().paused ? "paused" : "running"),
       backend: this.runtime?.scheduler.gpuBackend ?? null,
+      machine: this.machine,
       servers: this.runtime?.scheduler.servers ?? [],
       cpuServers: this.runtime?.scheduler.cpuServers ?? [],
       dictation: this.runtime?.scheduler.dictation ?? "vllm",
