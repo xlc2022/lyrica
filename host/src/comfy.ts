@@ -263,8 +263,9 @@ export function mp4Video(b: Buffer): { width: number; height: number; frames: nu
     const tkhd = inside(trak, "tkhd");
     const mdhd = inside(mdia, "mdhd");
     const stts = inside(mdia, "minf", "stbl", "stts");
-    if (!tkhd || tkhd[1] - tkhd[0] < 84 || !mdhd || mdhd[1] - mdhd[0] < 24 || !stts || stts[1] - stts[0] < 8) return null;
-    const v1 = b[mdhd[0]] === 1;
+    // Version 1 headers carry 64-bit times, so they are longer.
+    const v1 = !!mdhd && b[mdhd[0]] === 1;
+    if (!tkhd || tkhd[1] - tkhd[0] < (b[tkhd[0]] === 1 ? 96 : 84) || !mdhd || mdhd[1] - mdhd[0] < (v1 ? 32 : 24) || !stts || stts[1] - stts[0] < 8) return null;
     const scale = b.readUInt32BE(mdhd[0] + (v1 ? 20 : 12));
     const length = v1 ? Number(b.readBigUInt64BE(mdhd[0] + 24)) : b.readUInt32BE(mdhd[0] + 16);
     let frames = 0;

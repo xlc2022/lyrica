@@ -483,7 +483,7 @@ class Models {                                              // new Models(keyrin
   // The `video` task's list; only a model host's recipe that does `video` (or `animate`, with an image; or `motion`, with drive; or `extend`,
   // with extend) answers, so no clip or first frame reaches a cloud model. A recipe whose `longestSeconds` is under `duration` is skipped
   // ("it makes videos of at most N s"); a host recipe that chains clips (MiniMax H3) answers up to 60 s as one clip.
-  // POST /host/v1/videos/create with explicit fields only; two hours at most.
+  // POST /host/v1/videos/create with explicit fields only; two hours at most, per 5 s asked (videoTimeout), since a chain gives each clip two hours.
   firstVideoModel(ctx): { name; longestSeconds?; extend } | undefined   // the Videos list's first usable model, for the image tool's duration; no call
   // Thinking and call records
   defaultThinking(userId) / setDefaultThinking(userId, level) / setThinking(userId, threadId, level | null)

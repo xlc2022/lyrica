@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CloudModelForbidden, HostRefused, PLAN_IMAGE_MODEL, type ImageRequest } from "../src/index.ts";
 import { cleanPng, imageAt } from "../src/models/images.ts";
+import { VIDEO_TIMEOUT_MS, videoTimeout } from "../src/models/videos.ts";
 
 import { fakeImages as setup, mp4 } from "./fake-images.ts";
 
@@ -333,6 +334,11 @@ describe("video calls through the router (principles 1 and 2)", () => {
     s.models.setColumnTask(s.ada.id, "private", "video", [s.workstation.clip]);
     await expect(s.models.video(ctx, { prompt: "A fox", duration: 16 })).rejects.toThrow(/at most 8 s/);
     await expect(s.models.video(ctx, { prompt: "It goes on", extend: mp4 })).rejects.toThrow(/doesn't extend clips/);
+  });
+  it("gives a chained video a timeout per clip it may take", () => {
+    expect(videoTimeout({})).toBe(VIDEO_TIMEOUT_MS);
+    expect(videoTimeout({ duration: 8 })).toBe(2 * VIDEO_TIMEOUT_MS);
+    expect(videoTimeout({ duration: 60 })).toBe(12 * VIDEO_TIMEOUT_MS);
   });
   it("refuses a bad request before any call", async () => {
     const s = await setup();

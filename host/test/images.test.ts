@@ -366,6 +366,11 @@ describe("long videos", () => {
   it("reads a clip's size, frame count and frame rate from its video track", () => {
     expect(mp4Video(clip(1344, 768, 192, 24))).toEqual({ width: 1344, height: 768, frames: 192, fps: 24 });
     expect(mp4Video(mp4(3))).toBeNull();
+    // A version 1 media header too short for its 64-bit duration is no clip, not an error.
+    const v1 = clip(1344, 768, 192, 24);
+    const at = v1.lastIndexOf("mdhd");
+    v1[at + 4] = 1;
+    expect(mp4Video(v1)).toBeNull();
     expect(mp4Video(PNG)).toBeNull();
   });
 });

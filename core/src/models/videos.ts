@@ -20,6 +20,11 @@ export interface GeneratedVideo {
 }
 /** A host may take two hours over one clip (host/API.md, "Making videos"). */
 export const VIDEO_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+/**
+ * How long a request may take: a long video, or an extended clip, is chained clips on the host, each with its own
+ * two hours. A chain adds at most 7 s a clip (host/API.md), so one allowance per 5 s never cuts it short.
+ */
+export const videoTimeout = (r: Pick<VideoRequest, "duration">) => VIDEO_TIMEOUT_MS * Math.max(1, Math.ceil((r.duration ?? 5) / 5));
 
 export function validateVideoRequest(r: VideoRequest): void {
   if (!r.prompt.trim()) throw new HostRefused("invalid", "a video needs a prompt");
@@ -42,7 +47,7 @@ export async function videoAt(t: { fetch: typeof fetch; baseUrl: string; modelId
   const body = JSON.stringify({ recipe: t.modelId.slice(7), prompt: r.prompt, ...(r.image ? { image: Buffer.from(r.image.bytes).toString("base64") } : {}),
     ...(r.drive ? { drive: Buffer.from(r.drive).toString("base64") } : {}), ...(r.extend ? { extend: Buffer.from(r.extend).toString("base64") } : {}),
     ...(r.size ?? {}), ...(r.aspectRatio ? { aspectRatio: r.aspectRatio } : {}), ...(r.duration === undefined ? {} : { duration: r.duration }) });
-  const timeout = AbortSignal.timeout(VIDEO_TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(videoTimeout(r));
   let res: Response;
   try { res = await withProgress(t, onProgress, (tag) => t.fetch(`${t.baseUrl}/host/v1/videos/create`, { method: "POST", body, headers: { "content-type": "application/json", ...tag }, redirect: "error", signal: signal ? AbortSignal.any([signal, timeout]) : timeout })); }
   catch (e) {
