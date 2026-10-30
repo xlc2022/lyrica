@@ -2,8 +2,11 @@
 // call runs so the chat can show it. Only the job's state and fraction come back; nothing is logged.
 import { randomBytes } from "node:crypto";
 
-/** Where a job is: waiting for the host's GPU, or running, with its fraction when the host knows it. */
-export interface JobProgress { queued: boolean; progress?: number }
+/**
+ * Where a job is: waiting for the host's GPU, or running, with its fraction when the host knows it. A queued text
+ * job also says what it waits for: other work on its GPUs (`busyWith`, in plain words), or its model loading.
+ */
+export interface JobProgress { queued: boolean; progress?: number; busyWith?: string; loading?: true }
 
 /** How often a running job is read. */
 export const PROGRESS_EVERY_MS = 2_000;
@@ -24,9 +27,11 @@ export async function withProgress<T>(t: { fetch: typeof fetch; baseUrl: string 
     const res = await t.fetch(`${t.baseUrl}/host/v1/jobs/${token}`, { redirect: "error", signal: AbortSignal.any([stop.signal, AbortSignal.timeout(10_000)]) });
     if (res.status === 404 && !known) { await res.body?.cancel(); return ++misses < UNKNOWN_TRIES; }
     if (!res.ok) { await res.body?.cancel(); return true; }
-    const body = await res.json() as { state?: unknown; progress?: unknown };
+    const body = await res.json() as { state?: unknown; progress?: unknown; busyWith?: unknown; loading?: unknown };
     known = true;
-    const p: JobProgress = { queued: body.state === "queued", ...(typeof body.progress === "number" && body.progress >= 0 && body.progress <= 1 ? { progress: body.progress } : {}) };
+    const queued = body.state === "queued";
+    const p: JobProgress = { queued, ...(typeof body.progress === "number" && body.progress >= 0 && body.progress <= 1 ? { progress: body.progress } : {}),
+      ...(queued && body.loading === true ? { loading: true as const } : queued && typeof body.busyWith === "string" ? { busyWith: body.busyWith.slice(0, 80) } : {}) };
     const key = JSON.stringify(p);
     if (key !== last) { last = key; onProgress(p); }
     return true;

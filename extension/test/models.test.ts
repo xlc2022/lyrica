@@ -8,7 +8,7 @@ import { deadUrl, fakeOpenAI } from "../../core/test/fake-openai.ts";
 import { fakeHost } from "../../core/test/fake-host.ts";
 import { withModels } from "../../core/test/helpers.ts";
 import { createLyricaExtension, modelRuntimeFor, openThreadSession, piModelFor, toStoredEntry, type ThreadContext } from "../src/index.ts";
-import { markUnservable } from "../src/models.ts";
+import { markUnservable, waitingFetch, type GpuWait } from "../src/models.ts";
 import { keepRecentFor, reserveFor } from "../src/context.ts";
 
 const persona: Persona = { core: [{ path: "SOUL.md", text: "She is Lyrica." }], topics: [] };
@@ -469,4 +469,35 @@ it("says plainly when OpenRouter's provider can't serve a model, in words Pi won
   const shown = out[0]!.type === "error" ? out[0]!.error : error;
   expect(shown.errorMessage).toBe("Nvidia can't serve vendor/big:free right now (OpenRouter answered 404). Pick another model, or try again later.");
   expect(isRetryableAssistantError(shown)).toBe(false);
+});
+
+describe("a host's chat request waiting for its GPU", () => {
+  it("is tagged, says what it waits for, and stops once the answer starts", async () => {
+    let tag: string | null = null;
+    let reads = 0;
+    let answer!: (r: Response) => void;
+    const fake = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname.startsWith("/host/v1/jobs/")) {
+        expect(url.pathname).toBe(`/host/v1/jobs/${tag}`);
+        reads++;
+        return Response.json(reads < 3 ? { state: "queued", progress: null, busyWith: "a chat model" } : { state: "queued", progress: null, loading: true });
+      }
+      tag = new Headers(init?.headers).get("x-lyrica-job");
+      if (init?.method !== "POST") return new Response("[]");
+      return new Promise<Response>((r) => (answer = r));
+    }) as typeof fetch;
+    const heard: (GpuWait | null)[] = [];
+    const f = waitingFetch(fake, "https://box:7236", (w) => heard.push(w), 10);
+    const reply = f("https://box:7236/v1/chat/completions", { method: "POST", body: "{}" });
+    await new Promise((r) => setTimeout(r, 80));
+    expect(tag).toMatch(/^[A-Za-z0-9_-]{16,64}$/);
+    answer(new Response("ok"));
+    expect(await (await reply).text()).toBe("ok");
+    expect(heard).toEqual([{ busyWith: "a chat model" }, { loading: true }, null]);
+    // Anything else goes through untagged.
+    tag = "unset";
+    await f("https://box:7236/v1/models");
+    expect(tag).toBe(null);
+  });
 });

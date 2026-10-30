@@ -2,7 +2,7 @@ import { CLOUD_IMAGE_PROVIDERS, imageAt, PLAN_IMAGE, PLAN_IMAGE_MODEL, validateI
 export { CLOUD_IMAGE_PROVIDERS, PLAN_IMAGE_MODEL, type ImageRequest, type GeneratedImage, type ImageInput } from "./images.ts";
 import { validateVideoRequest, videoAt, type GeneratedVideo, type VideoRequest } from "./videos.ts";
 export { isMp4, type GeneratedVideo, type VideoRequest } from "./videos.ts";
-export { type JobProgress } from "./progress.ts";
+export { type JobProgress, withProgress } from "./progress.ts";
 import type { JobProgress } from "./progress.ts";
 export { CODEX_DISABLED, codexImage, codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn } from "./codex.ts";
 import { randomUUID } from "node:crypto";

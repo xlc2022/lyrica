@@ -18,6 +18,16 @@ describe("the live view of a thread's stream", () => {
     expect(run([{ type: "reset" }], s).making).toEqual({});
   });
 
+  it("says what a reply waits for on the GPU until it no longer waits or the turn ends", () => {
+    const s = run([
+      { type: "hello", busy: true, queued: [], permissions: [], making: [], gpuWait: { busyWith: "a chat model" } },
+      { type: "gpu_wait", wait: { loading: true } },
+    ]);
+    expect(s.gpuWait).toEqual({ loading: true });
+    expect(run([{ type: "gpu_wait", wait: null }], s).gpuWait).toBeUndefined();
+    expect(run([{ type: "turn_end", aborted: false }], s).gpuWait).toBeUndefined();
+  });
+
   it("builds her reply from deltas, markers and tool results, and drops it once the stored copy is loaded", () => {
     const s = run([
       { type: "hello", busy: false, queued: [], permissions: [], making: [] },

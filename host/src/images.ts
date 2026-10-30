@@ -7,7 +7,7 @@ import { basename, join } from "node:path";
 import { imageSize, mp4Seconds, type Comfy } from "./comfy.ts";
 import type { Downloads } from "./downloads.ts";
 import { HostError, invalid, notFound, onlyFields, readJson, sendJson } from "./http.ts";
-import { Jobs, type JobProgress } from "./jobs.ts";
+import type { JobProgress } from "./jobs.ts";
 import type { TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import { scanParts, type Part, type Role } from "./parts.ts";
@@ -81,8 +81,6 @@ export class Images {
   /** stable-diffusion.cpp, which makes the images in ComfyUI's place when it is set. */
   private readonly sdcpp: SdCpp | null;
   private readonly downloads: Downloads | null;
-  /** Image and video jobs a client tagged, for their progress. */
-  private readonly jobs = new Jobs();
   private readonly modelsDir: string;
   private readonly seedvr2Dir: string;
   private readonly comfyGpu: number;
@@ -246,16 +244,16 @@ export class Images {
     const make = path.match(/^\/host\/v1\/images\/(create|edit|upscale)$/);
     if (make && method === "POST") {
       // A tagged job is readable from the start, so its client sees it queued while the request is read.
-      await this.jobs.track(this.jobs.token(req), (job) => this.make(make[1] as "create" | "edit" | "upscale", req, res, job));
+      await this.runtime.jobs.track(this.runtime.jobs.token(req), (job) => this.make(make[1] as "create" | "edit" | "upscale", req, res, job));
       return true;
     }
     if (path === "/host/v1/videos/create" && method === "POST") {
-      await this.jobs.track(this.jobs.token(req), (job) => this.video(req, res, job));
+      await this.runtime.jobs.track(this.runtime.jobs.token(req), (job) => this.video(req, res, job));
       return true;
     }
     const job = path.match(/^\/host\/v1\/jobs\/([A-Za-z0-9_-]{16,64})$/);
     if (job && method === "GET") {
-      const state = this.jobs.get(job[1]!);
+      const state = this.runtime.jobs.get(job[1]!);
       if (!state) throw notFound("No such job running.");
       return sendJson(res, 200, state), true;
     }

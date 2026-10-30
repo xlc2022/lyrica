@@ -47,6 +47,12 @@ interface Loaded {
   loadVram?: Record<number, number>;
 }
 
+/** Where a queued request is: waiting for work on its GPUs (and what that is), or for its model to load. */
+export type QueuePhase = { state: "waiting"; busyWith: string } | { state: "loading" };
+
+/** `waitLimit`: the longest wait in the queue, in ms, in place of its priority's. `phase`: told as the request waits. */
+export interface RunOptions { waitLimit?: number; phase?: (p: QueuePhase) => void }
+
 interface Job {
   model: TextModel;
   priority: Priority;
@@ -56,6 +62,9 @@ interface Job {
   resolve: (l: Loaded) => void;
   reject: (e: Error) => void;
   timer: NodeJS.Timeout;
+  /** Told when it starts waiting for other work, or for its model to load. */
+  phase?: (p: QueuePhase) => void;
+  last?: string;
   /** The GPUs it is waiting for, once known: for the queue counts and the busy message. */
   waitingOn: number[];
 }
@@ -285,23 +294,23 @@ export class Scheduler {
    * Runs `fn` with the model loaded and counted as in use, after waiting its
    * turn in the queue.
    */
-  async run<T>(model: TextModel, priority: Priority, fn: (url: string) => Promise<T>, gpu?: number, signal?: AbortSignal): Promise<T> {
-    return this.runRequest(model, priority, fn, gpu, signal);
+  async run<T>(model: TextModel, priority: Priority, fn: (url: string) => Promise<T>, gpu?: number, signal?: AbortSignal, opts: RunOptions = {}): Promise<T> {
+    return this.runRequest(model, priority, fn, gpu, signal, true, opts);
   }
 
-  private async runRequest<T>(model: TextModel, priority: Priority, fn: (url: string) => Promise<T>, gpu?: number, signal?: AbortSignal, measure = true): Promise<T> {
+  private async runRequest<T>(model: TextModel, priority: Priority, fn: (url: string) => Promise<T>, gpu?: number, signal?: AbortSignal, measure = true, opts: RunOptions = {}): Promise<T> {
     if (this.runState === "paused" || this.runState === "pausing") throw paused();
     if (this.runState === "restarting") throw restarting();
     if (model.remoteCode) throw new HostError(403, "refused", "This model needs trust_remote_code, which the host never allows.");
     const loaded = await new Promise<Loaded>((resolve, reject) => {
       if (signal?.aborted) return reject(cancelled());
       const job: Job = {
-        model, priority, gpu, seq: this.seq++, resolve, reject, waitingOn: [],
+        model, priority, gpu, seq: this.seq++, resolve, reject, waitingOn: [], ...(opts.phase ? { phase: opts.phase } : {}),
         timer: setTimeout(() => {
           this.queue = this.queue.filter((j) => j !== job);
           reject(new HostError(503, "busy", `The GPU is busy with ${this.busyWith(job.waitingOn)}.`));
           this.kick();
-        }, this.limits[priority]),
+        }, opts.waitLimit ?? this.limits[priority]),
       };
       // A request whose client has gone leaves the queue and loads nothing.
       signal?.addEventListener("abort", () => {
@@ -387,6 +396,7 @@ export class Scheduler {
           if (l) {
             job.waitingOn = l.option.gpus;
             l.option.gpus.forEach((g) => held.add(g));
+            this.tell(job, { state: "loading" });
             continue;
           }
           // Nothing loads unless the host is running.
@@ -400,6 +410,7 @@ export class Scheduler {
             const releasing = plan.code === "too_big" ? this.stillReleasing() : [];
             if (releasing.length) {
               job.waitingOn = releasing;
+              this.tell(job, { state: "loading" });
               this.pumpSoon();
               continue;
             }
@@ -409,8 +420,10 @@ export class Scheduler {
           if ("wait" in plan) {
             job.waitingOn = plan.wait;
             plan.wait.forEach((g) => held.add(g));
+            this.tell(job, { state: "waiting", busyWith: this.busyWith(plan.wait) });
             continue;
           }
+          this.tell(job, { state: "loading" });
           try {
             for (const e of plan.evict) await this.unload(e);
             if (plan.evict.length) {
@@ -495,6 +508,14 @@ export class Scheduler {
     const pinned = loadedOn(g).filter((l) => this.pinned(l.model.id)).reduce((n, l) => n + (l.vram[g] ?? 0), 0);
     const others = gpu.used - loadedOn(g).reduce((n, l) => n + (l.vram[g] ?? 0), 0);
     return new HostError(413, "too_big", `This model needs about ${gb(need[g]!)} GB on GPU ${g}; it has ${gb(gpu.total)} GB, of which ${gb(pinned)} GB is pinned and ${gb(Math.max(others, 0))} GB is used by other programs and ${gb(this.gpuSettings(g).keepFree)} GB is kept free.`);
+  }
+
+  /** Tells a queued request where it is, once per change. */
+  private tell(job: Job, p: QueuePhase): void {
+    const key = JSON.stringify(p);
+    if (!job.phase || job.last === key) return;
+    job.last = key;
+    try { job.phase(p); } catch { /* the listener's own problem */ }
   }
 
   private begin(job: Job, l: Loaded): void {

@@ -336,6 +336,15 @@ export function toldLines(text: string): Told[] {
 
 /** A model or endpoint failure, in plain words. */
 export function plainError(message: string): string {
+  // A server's own JSON error, as Pi passes it on ("503: {...}"): its message alone.
+  const json = /^\d{3}:?\s*(\{[\s\S]*\})\s*$/.exec(message.trim());
+  if (json) {
+    try {
+      const body = JSON.parse(json[1]!) as { message?: unknown; error?: { message?: unknown } | string };
+      const said = typeof body.error === "object" ? body.error?.message : typeof body.error === "string" ? body.error : body.message;
+      if (typeof said === "string" && said.trim()) return said.trim();
+    } catch { /* not JSON after all */ }
+  }
   if (/ECONNREFUSED|fetch failed|Connection error|ENOTFOUND|ETIMEDOUT|socket hang up/i.test(message)) {
     return `The model's endpoint didn't answer (${message}).`;
   }
