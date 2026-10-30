@@ -131,7 +131,10 @@ function openDrawer({ title, sub, fields, save, saveLabel = "Save", saveTitle })
       error.hidden = false;
     });
   };
-  form.onkeydown = (e) => e.key === "Escape" && closeDrawer();
+  // A block body: a handler property that returns false cancels the key, so no field could be typed in.
+  form.onkeydown = (e) => {
+    if (e.key === "Escape") closeDrawer();
+  };
   drawer = [h("div", { class: "scrim", onclick: closeDrawer }), form];
   document.body.append(...drawer);
   form.querySelector("input, select, textarea")?.focus();
