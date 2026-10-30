@@ -135,7 +135,8 @@ class Instance:
 
 
 def instances():
-    gpus = [g.strip() for g in os.environ.get(DEVICES, "").split(",") if g.strip()] if DEVICES else []
+    # Each GPU once, in the order given, as host-api reads the list.
+    gpus = list(dict.fromkeys(g.strip() for g in os.environ.get(DEVICES, "").split(",") if g.strip())) if DEVICES else []
     return [Instance(g, place) for place, g in enumerate(gpus or ["0"])]
 
 

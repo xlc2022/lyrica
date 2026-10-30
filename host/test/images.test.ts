@@ -829,7 +829,7 @@ describe("stable-diffusion.cpp", () => {
 });
 
 describe("the image API", () => {
-  async function stack(o: { sdcpp?: boolean; files?: Record<string, Buffer>; gpuGb?: number; gpus?: number; hold?: () => Promise<void> } = {}) {
+  async function stack(o: { sdcpp?: boolean; files?: Record<string, Buffer>; gpuGb?: number; gpus?: number; broken?: number; hold?: () => Promise<void> } = {}) {
     const models = folder({
       [`${Z}/diffusion_models/z.safetensors`]: Z_DIFFUSION, [`${Z}/text_encoders/qwen_3_4b.safetensors`]: QWEN3, [`${Z}/vae/ae.safetensors`]: FLUX_VAE,
       "shared/flux1-schnell-fp8.safetensors": FLUX_CKPT, "shared/style.safetensors": Z_LORA, ...o.files,
@@ -844,8 +844,15 @@ describe("the image API", () => {
     open.push(h.host);
     const gpus = new FakeGpus(comfyFakes.map(() => o.gpuGb ?? 24));
     const backend = new FakeBackend(gpus);
-    const comfy = new ComfyGpus(new Map(comfyFakes.map((f, gpu) => [gpu, new Comfy(f.url)])));
     const serving = mkdtempSync(join(tmpdir(), "lyrica-serving-"));
+    // `broken`: a GPU whose ComfyUI's PyTorch has no kernels for it, as gate.py reports.
+    const gate = (gpu: number) => {
+      if (gpu !== o.broken) return undefined;
+      const status = join(serving, `comfyui-status-${gpu}.json`);
+      writeFileSync(status, JSON.stringify({ attempt: null, unsupported: "No kernels for this GPU." }));
+      return { state: join(serving, `comfyui-${gpu}.json`), status };
+    };
+    const comfy = new ComfyGpus(new Map(comfyFakes.map((f, gpu) => [gpu, new Comfy(f.url, undefined, undefined, gate(gpu))])));
     const sdStatus = join(serving, "sdcpp-status.json");
     const sdFake = o.sdcpp ? await fakeSdServer(serving, sdStatus) : null;
     if (sdFake) open.push(sdFake);
@@ -955,6 +962,16 @@ describe("the image API", () => {
     // With both idle and both holding the recipe, the next goes to the first listed.
     await s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: "three" } });
     expect(s.comfyFakes.map((f) => f.seen.prompts.length)).toEqual([2, 1]);
+  });
+
+  it("sends no job to an image GPU its ComfyUI can't run on", async () => {
+    const s = await stack({ gpus: 2, broken: 0 });
+    const z: Recipe = (await s.api("/host/v1/recipes?state=proposed")).body.recipes.find((r: Recipe) => r.arch === "z-image");
+    await s.api(`/host/v1/recipes/${z.id}/confirm`, { body: {} });
+    const made = await Promise.all([1, 2].map((n) => s.api("/host/v1/images/create", { body: { recipe: z.id, prompt: `p${n}` } })));
+    expect(made.map((m) => m.status)).toEqual([200, 200]);
+    expect(s.comfyFakes.map((f) => f.seen.prompts.length)).toEqual([0, 2]);
+    expect((await s.api("/host/v1/status")).body.problems).toContain("Images on GPU 0: No kernels for this GPU.");
   });
 
   it("makes images only from a confirmed recipe and its parameters", async () => {

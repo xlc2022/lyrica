@@ -567,11 +567,13 @@ export class Images {
 
   /**
    * The GPU for a job of this recipe: the one with the fewest jobs; on a tie,
-   * one that has the recipe loaded, then the first listed. Only GPUs it fits.
+   * one that has the recipe loaded, then the first listed. Only GPUs whose
+   * ComfyUI can run and that it fits, while there are any.
    */
   private pick(r: Recipe): number {
-    const fits = this.gpus.filter((gpu) => !this.runtime.scheduler.neverFits({ model: this.asModel(r, gpu), gpu }));
-    const ranked = (fits.length ? fits : this.gpus).map((gpu, i) => ({
+    const runs = this.sdcpp ? this.gpus : this.gpus.filter((gpu) => !this.comfy.byGpu.get(gpu)!.problem);
+    const fits = (runs.length ? runs : this.gpus).filter((gpu) => !this.runtime.scheduler.neverFits({ model: this.asModel(r, gpu), gpu }));
+    const ranked = (fits.length ? fits : runs.length ? runs : this.gpus).map((gpu, i) => ({
       gpu, i, jobs: this.jobsOn.get(gpu) ?? 0, loaded: this.runtime.scheduler.placement(this.asModel(r, gpu).id) ? 0 : 1,
     }));
     ranked.sort((a, b) => a.jobs - b.jobs || a.loaded - b.loaded || a.i - b.i);

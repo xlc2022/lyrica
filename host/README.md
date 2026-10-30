@@ -366,8 +366,8 @@ per host, and Lyrica's router filters create tiers by it.
   image GPU (its compute capability against `torch.cuda.get_arch_list()`),
   in a process that holds the GPU only for those few seconds. On one it
   has none for, that ComfyUI never starts, the container reports
-  unhealthy, image jobs fail there at once saying why, and the dashboard
-  and status list it under problems.
+  unhealthy, jobs go to the other image GPUs (with none left, they fail at
+  once saying why), and the dashboard and status list it under problems.
 - A recipe takes the memory of its largest stage plus its VAEs: the text
   encoders, or the diffusion model or checkpoint with its LoRAs (one of a
   video model's two experts at a time), or an upscaler. ComfyUI runs them in turn and frees one stage's models when the
