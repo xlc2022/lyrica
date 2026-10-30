@@ -478,11 +478,15 @@ Only the repository's name and revision leave the host.
   request runs on one). Answers the status's `systemRam`.
 - Only a way of running that can't fit its GPUs even once the host's other
   models that can be unloaded are (other programs and pinned models stay)
-  keeps part of the model in system RAM, and only what the GPUs lack, by
-  each GPU's share of the split: the experts of its first layers for a
-  mixture of experts (llama.cpp's `n-cpu-moe`), which costs the least
-  speed, else whole layers with their cache (`n-gpu-layers` below its
-  layer count). A model that fits after unloading idle ones never spills.
+  keeps part of the model in system RAM, and only what the GPUs lack. For
+  a mixture of experts, the experts of its first N layers (llama.cpp's
+  `n-cpu-moe`), which costs the least speed: N is the fewest that lets
+  each GPU hold the layers it is given, counting each layer's own experts
+  (a dense layer frees nothing). On Auto the split is then set in layers
+  to fit each GPU; a split set by hand keeps its layers, so N may reach
+  into the last GPU's. Else whole layers with their cache (`n-gpu-layers`
+  below its layer count), which llama.cpp takes from every GPU by the
+  split. A model that fits after unloading idle ones never spills.
 - Models in system RAM share the allowance as models on a GPU share its
   memory: idle ones are unloaded to make room, least recently used first,
   never a pinned one or one in use. Past the allowance even when nothing

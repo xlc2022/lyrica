@@ -54,9 +54,9 @@ export interface TextModel {
   mtp?: string | null;
   /** The GGUF carries its own MTP layers, so llama.cpp can draft with no second file. */
   builtInMtp?: boolean;
-  /** A GGUF model's layers, and the bytes of its experts' weights (a mixture of experts), for keeping part of it in system RAM. */
+  /** A GGUF model's layers, and the bytes of each layer's experts (a mixture of experts; 0 for a dense layer), for keeping part of it in system RAM. */
   layers?: number;
-  expertBytes?: number;
+  expertLayers?: number[];
   /** The sizes of the projector and the MTP file, counted when they're used. */
   mmprojSize?: number;
   mtpSize?: number;
@@ -246,22 +246,25 @@ function ggufModel(root: string, path: string, siblings: string[]): TextModel | 
     ...(mmproj ? { mmprojSize: statSync(join(root, mmproj)).size } : {}),
     ...(mtp ? { mtpSize: statSync(join(root, mtp)).size } : {}),
     ...(recommended ? { sampling: recommended } : {}),
-    ...(Number.isInteger(layers) && layers > 0 ? { layers, ...expertsOf(shards) } : {}),
+    ...(Number.isInteger(layers) && layers > 0 ? { layers, ...expertsOf(shards, layers) } : {}),
     remoteCode: false,
   };
 }
 
-/** The bytes of a mixture of experts' expert weights, over all its shards: what llama.cpp's n-cpu-moe keeps in system RAM. */
-function expertsOf(shards: string[]): { expertBytes?: number } {
-  let n = 0;
+/** The bytes of a mixture of experts' expert weights in each layer, over all its shards: what llama.cpp's n-cpu-moe keeps in system RAM. */
+function expertsOf(shards: string[], layers: number): { expertLayers?: number[] } {
+  const per = Array.from({ length: layers }, () => 0);
   for (const path of shards) {
     try {
-      for (const [name, bytes] of Object.entries(readGgufTensorBytes(path))) if (/\.ffn_(up|down|gate|gate_up)_exps\./.test(name)) n += bytes;
+      for (const [name, bytes] of Object.entries(readGgufTensorBytes(path))) {
+        const m = /^blk\.(\d+)\.ffn_(up|down|gate|gate_up)_exps\./.exec(name);
+        if (m && Number(m[1]) < layers) per[Number(m[1])]! += bytes;
+      }
     } catch {
       return {};
     }
   }
-  return n ? { expertBytes: n } : {};
+  return per.some((n) => n > 0) ? { expertLayers: per } : {};
 }
 
 /**

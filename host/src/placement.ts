@@ -196,31 +196,76 @@ const spills = (model: TextModel, s: ModelSettings) => model.server === "llamacp
 
 /**
  * An option that doesn't fit its GPUs (`used`: what other programs hold), with
- * what they lack (on each GPU, by its share of the split) moved to system RAM: whole layers' experts first,
- * the cheapest to run from RAM, else whole layers with their cache. Null
- * when it would leave no layer on the GPUs.
+ * what they lack moved to system RAM: the experts of its first layers, the
+ * cheapest to run from RAM, else whole layers with their cache. Null when it
+ * would leave no layer on the GPUs.
  */
 export function spill(model: TextModel, s: ModelSettings, o: Option, gpus: Gpu[], settings: (i: number) => GpuSettings): Option | null {
   const layers = model.layers!;
-  const sum = Object.values(o.need).reduce((a, b) => a + b, 0);
-  // Bytes to move so that every GPU's part fits its room.
-  const lack = Math.max(0, ...o.gpus.map((i) => {
-    const g = gpus.find((x) => x.index === i)!;
-    return ((o.need[i]! - room(g, settings(i)) + Math.max(0, g.used)) * sum) / o.need[i]!;
-  }));
-  if (lack <= 0) return null;
-  const moved = (bytes: number) => Object.fromEntries(o.gpus.map((i) => [i, Math.round(o.need[i]! - (bytes * o.need[i]!) / sum)]));
-  const experts = model.expertBytes ?? 0;
-  if (experts > lack) {
-    const perLayer = experts / layers;
-    const n = Math.min(layers, Math.ceil(lack / perLayer));
-    return { ...o, need: moved(n * perLayer), ram: Math.round(n * perLayer), cpuMoe: n };
-  }
+  const avail = o.gpus.map((i) => { const g = gpus.find((x) => x.index === i)!; return room(g, settings(i)) - Math.max(0, g.used) - OVERHEAD; });
   const { weights, kv } = sizes(model, s);
+  const experts = model.expertLayers ?? [];
+  const expertSum = experts.reduce((a, b) => a + b, 0);
+  if (expertSum > 0) {
+    // Each layer's bytes on a GPU: its share of everything but the experts, plus its own experts unless kept in RAM.
+    const base = (weights + kv - expertSum) / layers;
+    const bytes = (n: number) => Array.from({ length: layers }, (_, l) => base + (l < n ? 0 : experts[l] ?? 0));
+    // A split set by hand keeps its layers on each GPU; else the layers left are shared out to fit.
+    const fixed = s.placement.mode === "gpus" && !!s.placement.split;
+    for (let n = 1; n <= layers; n++) {
+      const b = bytes(n);
+      const counts = fixed || o.gpus.length === 1 ? layersBySplit(layers, o.split ?? [1]) : layersToFit(b, avail);
+      if (!counts) continue;
+      const held = heldBy(b, counts);
+      if (held.some((x, k) => x > avail[k]!)) continue;
+      const ram = Math.round(experts.slice(0, n).reduce((a, x) => a + x, 0));
+      return {
+        ...o,
+        need: Object.fromEntries(o.gpus.map((i, k) => [i, Math.round(held[k]! + OVERHEAD)])),
+        ...(o.gpus.length > 1 ? { split: counts } : {}),
+        ram, cpuMoe: n,
+      };
+    }
+  }
+  // Whole layers: llama.cpp spreads the layers left on the GPUs by the split, so each GPU sheds its share.
+  const sum = Object.values(o.need).reduce((a, b) => a + b, 0);
+  const lack = Math.max(0, ...o.gpus.map((i, k) => ((o.need[i]! - OVERHEAD - avail[k]!) * sum) / o.need[i]!));
+  if (lack <= 0) return null;
   const perLayer = (weights + kv) / layers;
   const n = Math.ceil(lack / perLayer);
   if (n >= layers) return null;
-  return { ...o, need: moved(n * perLayer), ram: Math.round(n * perLayer), gpuLayers: layers - n };
+  return { ...o, need: Object.fromEntries(o.gpus.map((i) => [i, Math.round(o.need[i]! - (n * perLayer * o.need[i]!) / sum)])), ram: Math.round(n * perLayer), gpuLayers: layers - n };
+}
+
+/** How many layers llama.cpp gives each GPU under a split: layer l goes to the first GPU whose share of the ratios reaches past it. */
+export function layersBySplit(layers: number, split: number[]): number[] {
+  const total = split.reduce((a, b) => a + b, 0);
+  const counts = split.map(() => 0);
+  for (let l = 0; l < layers; l++) {
+    let acc = 0, k = 0;
+    for (; k < split.length - 1; k++) { acc += split[k]! / total; if (l / layers < acc) break; }
+    counts[k]!++;
+  }
+  return counts;
+}
+
+/** Layers in order, as many to each GPU as fit it; null when they don't all fit. */
+function layersToFit(bytes: number[], avail: number[]): number[] | null {
+  const counts = avail.map(() => 0);
+  let k = 0, used = 0;
+  for (const b of bytes) {
+    while (k < avail.length && used + b > avail[k]!) { k++; used = 0; }
+    if (k === avail.length) return null;
+    counts[k]!++;
+    used += b;
+  }
+  return counts;
+}
+
+/** The bytes of the layers each GPU holds, given how many it has, in order. */
+function heldBy(bytes: number[], counts: number[]): number[] {
+  let l = 0;
+  return counts.map((c) => { let n = 0; for (let i = 0; i < c; i++) n += bytes[l++] ?? 0; return n; });
 }
 
 /**
