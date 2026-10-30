@@ -54,7 +54,7 @@ async function setup() {
   dirs.push(cwd);
   const view = memory.openThreadView(m.ada.id, "general");
   const past = view.own.createThread({ interface: "web" }).id;
-  for (const [role, text] of PAST) view.own.appendEntry(past, { piId: `${role}-${Math.random()}`, role, data: {}, text });
+  for (const [role, text] of PAST) view.own.appendEntry(past, { piId: `${role}-${Math.random()}`, role, data: { type: "message", message: { role, content: [{ type: "text", text }] } }, text });
   view.own.addJournal(JOURNAL, "sleep");
   const { id } = view.own.createThread({ interface: "web" });
   const thread: ThreadContext = { user: m.ada, pool: "general", interface: "web", threadId: id, view, call: m.models.callContext(m.ada.id, "general", id) };
