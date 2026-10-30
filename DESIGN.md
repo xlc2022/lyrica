@@ -1033,7 +1033,8 @@ it's off.
   (`video`) or from a first frame (`animate`); its template sets the frame
   rate, frame grid, size step and longest clip, and the host answers with
   an MP4 and a poster, sent back over ComfyUI's websocket so nothing
-  reaches disk. One clip runs on one GPU. The task **Videos** (`video`)
+  reaches disk. One clip runs on one GPU; a host with several image GPUs
+  runs a ComfyUI on each, so clips and images run side by side. The task **Videos** (`video`)
   lists those recipes in each preset; the `image` tool's `video` and
   `animate` actions make a clip (no new tool, principle 8) in the
   background: the call returns at once, so her turn ends and the chat goes

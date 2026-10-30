@@ -1,14 +1,15 @@
 // ComfyUI, reached only from host-api. Results come back over its websocket
 // (SaveImageWebsocket, and our SaveVideoWebsocket for clips), nothing is saved, and its history is cleared after
-// every job. One job at a time, so uploads can't mix. It runs only while a
-// recipe is loaded (host/comfyui/gate.py reads serving/comfyui.json), since
-// its process holds GPU memory for as long as it lives.
+// every job. One job at a time, so uploads can't mix. There is one per image
+// GPU (ComfyGpus). Each runs only while a recipe is loaded on it
+// (host/comfyui/gate.py reads serving/comfyui-<gpu>.json), since its
+// process holds GPU memory for as long as it lives.
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { HostError } from "./http.ts";
 import { poll, writeAtomic, type Backend } from "./backends.ts";
 import type { TextModel } from "./library.ts";
+import type { Option } from "./placement.ts";
 
 /** A 1×1 PNG, written over each upload after its job. */
 const BLANK = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
@@ -35,12 +36,12 @@ export class Comfy implements Backend {
   private stopping: NodeJS.Timeout | null = null;
   private readonly startMs: number;
 
-  constructor(base: string, timeoutMs = 30 * 60_000, callMs = CALL_MS, gate?: { serving: string; status: string }, startMs = 5 * 60_000) {
+  constructor(base: string, timeoutMs = 30 * 60_000, callMs = CALL_MS, gate?: { state: string; status: string }, startMs = 5 * 60_000) {
     this.base = base;
     this.timeoutMs = timeoutMs;
     this.callMs = callMs;
     this.startMs = startMs;
-    if (gate) this.gate = { state: join(gate.serving, "comfyui.json"), status: gate.status };
+    if (gate) this.gate = gate;
     this.ask(null);
   }
 
@@ -229,6 +230,53 @@ export class Comfy implements Backend {
   async reset(): Promise<void> {
     this.loaded.clear();
     this.ask(null);
+  }
+}
+
+/**
+ * The ComfyUIs of a host with several image GPUs, as one scheduler backend:
+ * a recipe loads on the GPU its placement names (Images gives each GPU's
+ * copy of a recipe its own ID), and unloads from where it loaded.
+ */
+export class ComfyGpus implements Backend {
+  readonly byGpu: Map<number, Comfy>;
+  private readonly where = new Map<string, number>();
+
+  constructor(byGpu: Map<number, Comfy>) {
+    this.byGpu = byGpu;
+  }
+
+  /** The image GPUs, in the order given. */
+  get gpus(): number[] {
+    return [...this.byGpu.keys()];
+  }
+
+  private on(gpu: number | undefined): Comfy {
+    const comfy = gpu === undefined ? undefined : this.byGpu.get(gpu);
+    if (!comfy) throw new HostError(503, "model_unavailable", `GPU ${gpu} has no ComfyUI.`);
+    return comfy;
+  }
+
+  async load(model: TextModel, placement: Option): Promise<void> {
+    const gpu = placement.gpus[0];
+    await this.on(gpu).load(model);
+    this.where.set(model.id, gpu!);
+  }
+  async unload(model: TextModel): Promise<void> {
+    const gpu = this.where.get(model.id);
+    this.where.delete(model.id);
+    if (gpu !== undefined) await this.on(gpu).unload(model);
+  }
+  url(model: TextModel): string {
+    return this.on(this.where.get(model.id)).url();
+  }
+  async reset(): Promise<void> {
+    this.where.clear();
+    for (const comfy of this.byGpu.values()) await comfy.reset();
+  }
+  /** Why ComfyUI can't run on each GPU where it can't. */
+  get problems(): { gpu: number; problem: string }[] {
+    return [...this.byGpu].flatMap(([gpu, c]) => (c.problem ? [{ gpu, problem: c.problem }] : []));
   }
 }
 

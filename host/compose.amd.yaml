@@ -37,7 +37,8 @@ services:
       - ./vllm:/lyrica:ro
     tmpfs: [/tmp, /root/.cache]
 
-  # Ours, built from host/comfyui/Dockerfile. It uses one GPU: COMFY_GPU.
+  # Ours, built from host/comfyui/Dockerfile: a ComfyUI per GPU in COMFY_GPU
+  # (one, or a list such as 0,1), on ports 8188 up.
   comfyui:
     <<: *server
     build:
