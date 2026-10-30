@@ -503,10 +503,12 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   through …/manage), one Save. The state Updating while
   it updates, with Pause disabled, a warn line after a failed update, per GPU its card and PCI ID (`10de:1df4`), used/total in mono,
   a bar of pinned, loaded-on-demand and vLLM-share segments, the loaded
-  models and the queue when nonzero; then, while the host has an
+  models and the queue when nonzero; `CpuBlock`, on a host that reports
+  `machine`: "CPU · <name>" and "<c> cores · <t> threads · <n> GB RAM",
+  no bar; then, while the host has an
   allowance, `RamBlock`: System RAM, used/allowance in mono, a bar of
   in-system-RAM segments, each spilled model with its GB, and a foot
-  "llama.cpp · N GB in this machine · Edit" (the legend gains In system
+  "llama.cpp · Edit" (the legend gains In system
   RAM). A plain endpoint row: name, kind,
   ChatGPT plan or Grok plan versus API key, and cloud Text, Vision and Image
   pills (only when a marked image model has a callable provider and the
@@ -874,7 +876,7 @@ or `…/panel/t/<pool>/<project-thread>/threads`. A project's threads list is
   action to run `install.sh`, the server's network self-test, sleep time,
   last sleep per shown pool from `GET …/sleep`, memory pages and notes from
   `GET …/memory`, start unlocked; **Model hosts** from the shell's Models page,
-  each host's state word and Models' `GpuBlock`s and `RamBlock`; then **Model calls · last 24
+  each host's state word and Models' `GpuBlock`s, `CpuBlock` and `RamBlock`; then **Model calls · last 24
   hours**: `ModelCallFacts.tsx` draws from GET Status's `modelFacts` a facts
   line, one legend, four Vega-Lite charts (calls and output tokens per hour,
   speed per call, calls by task; drawn live by `charts.ts`'s `drawChart` with

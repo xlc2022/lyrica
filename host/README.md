@@ -511,7 +511,9 @@ revoked. A revoked server must pair again.
     its API. Each loaded model keeps prompts in host memory (`cache-ram`),
     an eighth of the machine's memory up to 64 GiB, where that is more than
     llama.cpp's own 8 GiB, so threads taking turns on a model don't each
-    re-read their whole conversation.
+    re-read their whole conversation. It leaves llama.cpp's CPU threads to
+    llama.cpp, which uses one per physical core (the status's `machine`
+    names the CPU and counts them).
   - vLLM runs under `vllm/supervisor.py`, which starts one server per vLLM
     model on its GPUs, as host-api asks in a file, each in its own process
     group. A server that crashes is restarted after a growing wait (10

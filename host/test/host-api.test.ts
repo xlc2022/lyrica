@@ -66,6 +66,7 @@ describe("pairing", () => {
     const status = await call({ port: tls, path: "/host/v1/status", identity: me, pinned: hostFp });
     expect(status.status).toBe(200);
     expect(status.body.fingerprint).toBe(hostFp);
+    expect(status.body.machine).toMatchObject({ cores: expect.any(Number), threads: expect.any(Number), memory: expect.any(Number) });
   });
 
   it("refuses a wrong code, and voids the code after five wrong tries", async () => {
