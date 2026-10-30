@@ -88,9 +88,7 @@ export function claudeBody(sub: Subagent, o: ClaudeRun): SubagentBody {
       if (stream.session) writeFileSync(sessionFile, stream.session, { mode: 0o600 });
       if (out?.usage) {
         const u = out.usage;
-        sub.usage.inputTokens += (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
-        sub.usage.outputTokens += u.output_tokens ?? 0;
-        sub.emit({ type: "usage", ...sub.usage });
+        sub.count((u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0), u.output_tokens ?? 0);
       }
       const report = existsSync(join(host, "REPORT.md")) ? readFileSync(join(host, "REPORT.md"), "utf8").trim() : "";
       const reply = report || out?.result?.trim() || "";

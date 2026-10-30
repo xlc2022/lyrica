@@ -2615,7 +2615,8 @@ split `tokens`, except that totals folded before user step 17 count in
 `tokens` alone. `cacheHit` (0 to 1) is the share of input the server said it
 read from its cache (`read_tokens - processed` over `read_tokens`), over the
 kept call records that measured it, a subagent's under its parent's thread;
-absent where none did. Requires the addressed user's session and thread;
+absent where none did. A subagent's tokens, stored as it works, and a local
+one's GPU time count under its parent's thread too. Requires the addressed user's session and thread;
 missing thread is 404. Models sort by tokens descending. `threads` appears
 only for a project chat: the chat first, then descending tokens. The total
 is also `ProjectOverview.tokens`. User step 10 adds nullable
