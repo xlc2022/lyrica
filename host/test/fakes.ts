@@ -142,7 +142,9 @@ const gitSha1 = (b: Buffer) => createHash("sha1").update(`blob ${b.length}\0`).u
  * repository (revision def456) with its own config.json and README.md, for
  * a card that names its base model.
  */
-export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?: boolean; oversend?: boolean; readme?: string; base?: { config: string; readme: string } } = {}) {
+export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?: boolean; oversend?: boolean; readme?: string; base?: { config: string; readme: string }; drops?: number; down?: boolean } = {}) {
+  // drops: that many file transfers are cut off after 100 kB; down: every file answers 503.
+  let drops = opts.drops ?? 0;
   const id = makeIdentity("hub", ["localhost"]);
   const files: Record<string, Buffer> = {
     "model-Q4_K_M.gguf": Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(299_996, 7)]),
@@ -190,9 +192,16 @@ export async function fakeHub(opts: { lie?: boolean; redirectTo?: string; gated?
       res.writeHead(200);
       return void res.end(Buffer.concat([body, Buffer.alloc(5000, 1)]));
     }
+    if (opts.down) return void res.writeHead(503).end();
     const range = req.headers.range?.match(/^bytes=(\d+)-$/);
+    const from = range ? Number(range[1]) : 0;
+    if (drops > 0 && body.length - from > 100_000) {
+      drops--;
+      res.writeHead(range ? 206 : 200, { "content-length": body.length - from });
+      res.write(body.subarray(from, from + 100_000));
+      return void setTimeout(() => res.socket?.destroy(), 20);
+    }
     if (range) {
-      const from = Number(range[1]);
       res.writeHead(206, { "content-length": body.length - from });
       return void res.end(body.subarray(from));
     }

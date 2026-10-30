@@ -61,7 +61,7 @@ export class Net {
       if (g.token && g.tokenHost && url.hostname === g.tokenHost) headers.authorization = `Bearer ${g.token}`;
       const res = await new Promise<IncomingMessage>((resolve, reject) => {
         const req = https.get(url, { headers, lookup: this.lookup as never, ca: this.ca, signal: g.signal, timeout: 60_000 }, resolve);
-        req.on("timeout", () => req.destroy(new DownloadError("The server stopped answering.")));
+        req.on("timeout", () => req.destroy(new DownloadError("The server stopped answering.", 503)));
         req.on("error", (e) => reject(e instanceof AddressRefused ? new DownloadError(e.message) : e));
       });
       const status = res.statusCode ?? 0;

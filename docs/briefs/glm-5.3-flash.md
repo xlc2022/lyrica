@@ -1,6 +1,6 @@
 # Brief: GLM 5.3 Flash as a starter
 
-**Status:** In review.
+**Status:** Starter merged as #656 (d020902); download retries in review.
 
 Owner: the "Add GLM 5.3 Flash" thread. Tests: on the development
 deployment's host with two RTX PRO 6000 Blackwell cards (102 GB each).
@@ -41,6 +41,14 @@ SHA-256 against the hub's as it downloads.
    that allows it (placement.ts), so for llama.cpp starters it now counts
    those GPUs together; other servers still use one GPU.
 
+3. **Download retries.** The first download on the development host lost
+   shard 2 to one dropped connection, 49 GB in: fetch failed a download on
+   any network error, leaving the operator to start it again by hand. Now
+   a dropped connection, a stalled transfer or a busy server is tried again
+   from the partial file after 5 s, 15 s, 30 s, 1 and 2 minutes, and fails
+   only after five tries in a row get no further. A refusal (a missing
+   token, a bad link) still fails at once.
+
 ## Out of scope
 
 - Spilling into system RAM, for this model's Q4 or any other: its own
@@ -55,6 +63,7 @@ SHA-256 against the hub's as it downloads.
 
 ## Handoff
 
-Done: starter, fit check, docs. Download started on the development
-host through its paired Lyrica. Next: load it there, check the load
+Done: starter, fit check, docs (#656). Download started on the
+development host through its paired Lyrica; shard 2 failed on a dropped
+connection and was restarted to resume. Download retries in a second PR. Next: load it there, check the load
 log and the context the host picks, and record the result here.

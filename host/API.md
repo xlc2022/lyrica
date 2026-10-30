@@ -612,7 +612,9 @@ A **download**:
 ```
 
 - `state`: `queued`, `downloading`, `verifying`, `done`, `failed` or
-  `cancelled`.
+  `cancelled`. A download that lost its connection or met a busy server
+  stays `downloading` while it waits to try again (host/README.md,
+  Downloads); it is `failed` only after five tries in a row get no further.
 - `verified`: `true` (checksum matched), `false` (no checksum was given; the
   file is unverified), or `null` until done.
 - Unfinished downloads resume after a restart. The token isn't kept, so
