@@ -878,7 +878,9 @@ Lyrica runs on a mix of models: DeepSeek 4.1 Flash, GLM 5.3 Flash, Qwen 3.8
       GPUs). Interactive chat comes first, then
       images, then background work (sleep, cheap subagents). If a request
       can't fit, it fails with a plain reason, such as "the GPU is busy with a
-      chat model", rather than running out of memory.
+      chat model", rather than running out of memory. A chat reply someone
+      is watching has no wait limit: it waits while the turn runs, and the
+      thread says what it waits for.
     - Each model's VRAM use is measured per GPU at load with each
       placement, keeping the larger saved value. After its first attributable completed request,
       the host keeps the larger measurement, including buffers grown on first

@@ -1,12 +1,15 @@
-// How far an image or video job has got (API.md, "Job progress"), for the chat's placeholder. A client tags its
-// job with X-Lyrica-Job; only the job's state and fraction are kept, and only while it runs.
+// How far an image, video or text job has got (API.md, "Job progress"), for the chat's placeholder or status line.
+// A client tags its job with X-Lyrica-Job; only the job's state, fraction and what it waits for are kept, and only while it runs.
 import type { IncomingMessage } from "node:http";
 import { invalid } from "./http.ts";
 
-export interface JobState { state: "queued" | "running"; progress: number | null }
+import type { QueuePhase } from "./scheduler.ts";
+
+/** While queued, a text job also says what it waits for: other work on its GPUs (`busyWith`), or its model loading. */
+export interface JobState { state: "queued" | "running"; progress: number | null; busyWith?: string; loading?: true }
 
 /** What a running job reports through. */
-export interface JobProgress { running(): void; progress(fraction: number): void }
+export interface JobProgress { running(): void; progress(fraction: number): void; waiting(p: QueuePhase): void }
 
 const TOKEN = /^[A-Za-z0-9_-]{16,64}$/;
 
@@ -28,7 +31,17 @@ export class Jobs {
     if (token) this.jobs.set(token, job);
     try {
       return await fn({
-        running: () => { job.state = "running"; },
+        running: () => {
+          job.state = "running";
+          delete job.busyWith;
+          delete job.loading;
+        },
+        waiting: (p) => {
+          delete job.busyWith;
+          delete job.loading;
+          if (p.state === "loading") job.loading = true;
+          else job.busyWith = p.busyWith;
+        },
         // Never backwards: a sampler that starts over doesn't undo the bar.
         progress: (f) => { job.progress = Math.max(job.progress ?? 0, Math.min(1, Math.max(0, f))); },
       });

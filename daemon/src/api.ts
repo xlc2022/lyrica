@@ -1576,9 +1576,12 @@ export interface FilePathsInput { paths: string[] }
  */
 export interface Making { toolCallId: string; startedAt: string; queued?: true; progress?: number }
 
+/** What a reply waiting for a model host's GPU waits for: other work on it (`busyWith`, in plain words, "a chat model"), or its model loading. */
+export interface GpuWait { busyWith?: string; loading?: true }
+
 export type ThreadEvent =
   /** First event on every connection: the thread's state now, with what is being made. */
-  | { type: "hello"; busy: boolean; queued: string[]; permissions: PermissionRequest[]; making: Making[] }
+  | { type: "hello"; busy: boolean; queued: string[]; permissions: PermissionRequest[]; making: Making[]; gpuWait?: GpuWait }
   /** Missed events can't be replayed: reload messages. */
   | { type: "reset" }
   | { type: "turn_start" }
@@ -1638,6 +1641,8 @@ export type ThreadEvent =
   | { type: "turn_end"; aborted: boolean }
   /** After each turn: the context as it now stands. */
   | { type: "context"; context: ContextInfo }
+  /** A reply waiting for a model host's GPU: what holds it, or its model loading; null once it no longer waits (and at `turn_end`). */
+  | { type: "gpu_wait"; wait: GpuWait | null }
   /** The thread was compacted, by her or by Pi at the window's edge (also stored, as a `notice` message). */
   | { type: "compacted"; before: number; after?: number; summary: string }
   /**

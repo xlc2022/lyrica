@@ -7,6 +7,7 @@ import { projectorFiles, scanTextModels, type TextModel } from "./library.ts";
 import type { Logger } from "./log.ts";
 import { SERVER_NAMES, SERVERS, concurrentOf, contextOf, maxContextOf, serverOf, sizes, usesVision, validate, type Server } from "./placement.ts";
 import { PRIORITIES, type Priority, type Scheduler } from "./scheduler.ts";
+import { Jobs } from "./jobs.ts";
 import { NO_USAGE, type StateFile, type Usage } from "./state.ts";
 
 const BODY_LIMIT = 64 * 1024 * 1024;
@@ -91,6 +92,8 @@ export class Runtime {
   /** Scans image parts too (set when the host has ComfyUI). */
   afterScan: (() => { parts: number; proposals: number }) | null = null;
   readonly scheduler: Scheduler;
+  /** Jobs a client tagged with X-Lyrica-Job, text and image alike, for their progress. */
+  readonly jobs = new Jobs();
   private readonly modelsDir: string;
   readonly state: StateFile;
   private readonly log: Logger;
@@ -431,14 +434,18 @@ export class Runtime {
    * Passes one request to the server holding the model, loading it first,
    * and its answer back as it arrives. A client that goes away cancels the
    * request, queued or running; an answer the server cuts short is cut short
-   * too. A server that doesn't answer is `unavailable`.
+   * too. A server that doesn't answer is `unavailable`. A request tagged with
+   * X-Lyrica-Job waits for the GPU as long as its client stays, and its job
+   * says what it waits for.
    */
   private async pass(req: IncomingMessage, res: ServerResponse, model: TextModel, path: string, raw: Buffer, type: string, onChunk?: (chunk: Buffer) => void): Promise<void> {
+    const token = this.jobs.token(req);
     const abort = new AbortController();
     res.on("close", () => {
       if (!res.writableFinished) abort.abort();
     });
-    await this.scheduler.run(model, this.priority(req), async (base) => {
+    await this.jobs.track(token, (job) => this.scheduler.run(model, this.priority(req), async (base) => {
+      job.running();
       // http.request, not fetch: fetch gives up on headers after 300 seconds,
       // which a long answer that isn't streamed can take.
       const url = new URL(base + path);
@@ -474,6 +481,6 @@ export class Runtime {
           resolve();
         });
       });
-    }, undefined, abort.signal);
+    }, undefined, abort.signal, token ? { untilCancelled: true, phase: (p) => job.waiting(p) } : {}));
   }
 }

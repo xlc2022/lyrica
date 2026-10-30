@@ -141,6 +141,13 @@ administrator pairs or manages them; a personal host lives in its user's
   and its connections have an `error` listener, so a reply cut off mid-stream
   fails its call rather than the process. `probe` reads
   `/host/v1/status` and counts only `running` as up.
+- **Waiting for the GPU.** A thread's chat requests to a host go through
+  the extension's `waitingFetch`: each is tagged with `X-Lyrica-Job`, so
+  the host keeps it queued as long as the request stays (no `busy` after
+  120 s; Stop ends it), with no limit on waiting for its first byte. While
+  it is queued its job is read every 2 s, and the thread's `gpu_wait` event
+  says what it waits for: other work (`busyWith`) or its model loading.
+  Sleep, subagents and watching send untagged requests and keep the limit.
 - **Discovery** reads `/host/v1/models`: context length, tools, vision,
   embeddings, the file's checksum (`digest`, for strong group suggestions)
   and thinking. A chat template with an `enable_thinking` switch has one level, sent as

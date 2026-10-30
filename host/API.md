@@ -51,7 +51,9 @@ defaults to `chat`. `/host/v1/images/*` always runs at `image`; the header
 is ignored there. Lyrica sends `background` for sleep and cheap subagents.
 
 A queued request waits at most 120 seconds (`chat`), 300 (`image`) or 900
-(`background`) for room, then fails with `busy`.
+(`background`) for room, then fails with `busy`. A `/v1` request tagged with
+`X-Lyrica-Job` (see Job progress) has no limit: it waits as long as its
+client stays connected, and leaves the queue when the client goes.
 
 ## OpenAI-compatible: `/v1`
 
@@ -940,9 +942,10 @@ newer host made, read after a rollback).
 
 ### Job progress
 
-A client may tag an image or video job with `X-Lyrica-Job: <token>` (16 to
-64 letters, digits, `-` or `_`, random and unused; anything else is
-`invalid`). While the job runs, `GET /host/v1/jobs/<token>` answers
+A client may tag an image or video job, or a `/v1` request, with
+`X-Lyrica-Job: <token>` (16 to 64 letters, digits, `-` or `_`, random and
+unused; anything else is `invalid`). While the job runs, `GET
+/host/v1/jobs/<token>` answers
 
 ```json
 { "state": "running", "progress": 0.42 }
@@ -955,3 +958,8 @@ as 95% of the job (decoding and encoding follow); it is `null` before the
 first step and for stable-diffusion.cpp, which reports none. Once the job
 ends, or for a token never seen, the answer is `not_found`. Only the state
 and fraction are kept, in memory, while the job runs.
+
+A queued `/v1` request also says what it waits for: `"busyWith": "a chat
+model"` (other work on its GPUs, in the words of the `busy` error) or
+`"loading": true` (its model is loading). It is `running` once its model
+server has the request; `progress` stays `null`.

@@ -174,6 +174,9 @@ export async function hostError(res: Response): Promise<{ code: string; message:
 /** A socket closed under a request: a kept-alive connection the other side had already closed. */
 const reset = (e: unknown) => /ECONNRESET|UND_ERR_SOCKET|other side closed|socket hang up/i.test(`${(e as Error)?.message} ${((e as Error)?.cause as { code?: string; message?: string } | undefined)?.code ?? ""} ${((e as Error)?.cause as Error | undefined)?.message ?? ""}`);
 
+/** Whether a request carries X-Lyrica-Job. */
+const tagged = (headers: RequestInit["headers"]) => !!headers && new Headers(headers).has("x-lyrica-job");
+
 /** Codes after which another model should answer for a while. */
 const AWAY = new Set(["paused", "busy", "restarting", "unavailable", "unpaired"]);
 
@@ -187,7 +190,8 @@ const AWAY = new Set(["paused", "busy", "restarting", "unavailable", "unpaired"]
 export function hostFetch(id: Identity, host: { addresses: string[]; pin: string }, away: (reason: string, code: string) => void, reached?: (origin: string) => void): typeof fetch {
   const dispatcher = pinnedAgent(id, host.pin);
   // An image or video job answers only when it is done, which can be past undici's 5 minutes for the first byte (a clip
-  // takes minutes): those wait as long as their caller's own signal allows.
+  // takes minutes), and a tagged text request waits for the GPU as long as it stays: those wait as long as their
+  // caller's own signal allows.
   const jobs = pinnedAgent(id, host.pin, { headersTimeout: 0 });
   const origins = host.addresses.map(hostOrigin);
   return (async (input: string | URL | Request, init?: RequestInit) => {
@@ -200,7 +204,7 @@ export function hostFetch(id: Identity, host: { addresses: string[]; pin: string
       for (let attempt = 0; attempt < attempts; attempt++) {
         try {
           // undici's own fetch, so the dispatcher and the fetch are the same version.
-          const job = /^\/host\/v1\/(images|videos)\//.test(url.pathname) && method === "POST";
+          const job = method === "POST" && (/^\/host\/v1\/(images|videos)\//.test(url.pathname) || tagged(init?.headers));
           const res = (await undiciFetch(new URL(url.pathname + url.search, origin), { ...(init as object), dispatcher: job ? jobs : dispatcher })) as unknown as Response;
           reached?.(origin);
           const err = await hostError(res);

@@ -2,7 +2,7 @@ import { createAssistantMessageEventStream, type Api, type AssistantMessageEvent
 import { estimateTokens, ModelRuntime, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { PlanCredentials, planProvider } from "./plans.ts";
-import { acceptedSettings, DEFAULT_CONTEXT, replyCap, isPlan, planLimitReset, CloudModelForbidden, isRestricted, NoModel, PlanWaiting, payloadFields, type CallContext, type Endpoint, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
+import { acceptedSettings, DEFAULT_CONTEXT, replyCap, isPlan, planLimitReset, CloudModelForbidden, isRestricted, NoModel, PlanWaiting, payloadFields, withProgress, type CallContext, type Endpoint, type JobProgress, type Models, type Offering, type Pool, type Resolution, type Task } from "@lyrica/core";
 import { streamWithInlineThinking } from "./inline-thinking.ts";
 import { capToolCalls, objectTools } from "./tool-stream.ts";
 import { markOverflow, sharedStream, shareModel } from "./model-share.ts";
@@ -55,7 +55,45 @@ export function startsMidThought(o: Offering | undefined, level: string | undefi
  * model at all, so Pi's compaction and retries have nothing cloud-based to reach.
  * The runtime is sealed: nothing can register another provider into it.
  */
-export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise<ModelRuntime> {
+/** A chat request waiting for a model host's GPU: what holds it (`busyWith`, in plain words), or its model loading. */
+export interface GpuWait { busyWith?: string; loading?: true }
+
+/**
+ * A host's fetch whose chat requests are tagged with X-Lyrica-Job, so each waits for the GPU as long as it stays
+ * (rather than the host's two minutes) and says while it waits what holds it. `onWait` hears the latest waiting
+ * request, and null once none waits.
+ */
+export function waitingFetch(f: typeof fetch, origin: string, onWait: (w: GpuWait | null) => void, every?: number): typeof fetch {
+  const waits = new Map<symbol, GpuWait>();
+  let last = "null";
+  const report = () => {
+    const w = [...waits.values()].at(-1) ?? null;
+    const key = JSON.stringify(w);
+    if (key !== last) { last = key; onWait(w); }
+  };
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if ((init?.method ?? "GET").toUpperCase() !== "POST" || !/\/v1\/chat\/completions$/.test(new URL(url).pathname)) return f(input, init);
+    const key = Symbol("wait");
+    const heard = (p: JobProgress) => {
+      if (p.queued) waits.set(key, { ...(p.busyWith ? { busyWith: p.busyWith } : {}), ...(p.loading ? { loading: true as const } : {}) });
+      else waits.delete(key);
+      report();
+    };
+    try {
+      return await withProgress({ fetch: f, baseUrl: origin }, heard, (tag) => {
+        const headers = new Headers(init?.headers);
+        for (const [k, v] of Object.entries(tag)) headers.set(k, v);
+        return f(input, { ...init, headers });
+      }, every);
+    } finally {
+      // The answer has started (or the request ended): it no longer waits.
+      if (waits.delete(key)) report();
+    }
+  }) as typeof fetch;
+}
+
+export async function modelRuntimeFor(models: Models, ctx: CallContext, opts: { onGpuWait?: (w: GpuWait | null) => void } = {}): Promise<ModelRuntime> {
   const allowed = models.allowed(ctx);
   // A plan's sign-in lives in the user's user.db, where Pi's refresh writes it back.
   const plans = new Set(allowed.filter(({ endpoint }) => isPlan(endpoint.api)).map(({ endpoint }) => endpoint.id));
@@ -67,7 +105,12 @@ export async function modelRuntimeFor(models: Models, ctx: CallContext): Promise
   internals.rebuildProviders();
 
   // Each request carries the offering's saved settings (only those set), and a model host's requests its pinned fetch.
-  const fetches = new Map(allowed.flatMap(({ endpoint }) => { const f = models.fetchFor(endpoint); return f ? [[endpoint.id, f] as const] : []; }));
+  // With `onGpuWait` (a thread someone is watching), a host's chat requests wait for its GPU and say what they wait for.
+  const fetches = new Map(allowed.flatMap(({ endpoint }) => {
+    const f = models.fetchFor(endpoint);
+    if (!f) return [];
+    return [[endpoint.id, opts.onGpuWait ? waitingFetch(f, new URL(endpoint.baseUrl).origin, opts.onGpuWait) : f] as const];
+  }));
   const offerings = new Map(allowed.flatMap(({ endpoint, offerings: list }) => list.map((o) => [`${endpoint.id}\u0000${o.modelId}`, { endpoint, offering: o }] as const)));
   type Prepared = { options: { fetch?: typeof fetch; onPayload?: (payload: unknown, model: Model<Api>) => unknown } };
   const r = runtime as unknown as { prepareRequest(model: Model<Api>, options?: object): Promise<Prepared> };

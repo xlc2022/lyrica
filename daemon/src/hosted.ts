@@ -270,6 +270,8 @@ export class HostedThread {
   childWakeTurn = false;
   /** This turn was stopped by the turn tool limits (or two cut-off replies), so its work may be unfinished. */
   toolLimited = false;
+  /** The chat request waiting for a model host's GPU now, if one is. */
+  private gpuWait: Api.GpuWait | null = null;
 
   constructor(private readonly o: HostOptions, readonly userId: string, readonly pool: Pool, readonly threadId: string,
     private readonly release: () => void) {
@@ -299,7 +301,7 @@ export class HostedThread {
   /** Subscribes a stream. Replays what came after `lastEventId`, or starts with `reset` if that's gone. */
   subscribe(client: Client, lastEventId?: string): () => void {
     const hello: ThreadEvent = { type: "hello", busy: this.busy, queued: [...this.queued], permissions: [...this.pending.values()].map((p) => p.request),
-      making: [...this.making.values(), ...this.o.clipsMaking?.(this.userId, this.pool, this.threadId) ?? []] };
+      making: [...this.making.values(), ...this.o.clipsMaking?.(this.userId, this.pool, this.threadId) ?? []], ...(this.gpuWait ? { gpuWait: this.gpuWait } : {}) };
     if (lastEventId) {
       const [epoch, num] = lastEventId.split("-");
       const after = Number(num);
@@ -321,6 +323,7 @@ export class HostedThread {
   private emit(event: ThreadEvent): void {
     // A turn that ended without ending a call (stopped mid-call, say) leaves no placeholder behind.
     if (event.type === "turn_end") for (const id of [...this.making.keys()]) { this.making.delete(id); this.emit({ type: "made", toolCallId: id }); }
+    if (event.type === "turn_end" && this.gpuWait) { this.gpuWait = null; this.emit({ type: "gpu_wait", wait: null }); }
     this.track(event);
     this.o.onEvent?.(this.userId, this.pool, this.threadId, event);
     const n = ++this.n;
@@ -1070,6 +1073,8 @@ export class HostedThread {
       const repoSkillsSeen = new Map<string, ListedSkill[]>();
       const { session, runtime, prepare, dispose } = await openThreadSession({
         thread: ctx, models, cwd: this.o.cwd, task: () => tools.settings().code ? "code" : "chat",
+        // A reply waiting for a host's GPU waits as long as the turn runs, and the views say what it waits for.
+        onGpuWait: (wait) => { this.gpuWait = wait; this.emit({ type: "gpu_wait", wait }); },
         extensions: [
           createLyricaExtension(ctx, {
             code: () => tools.settings().code,

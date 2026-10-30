@@ -8,7 +8,7 @@ const LISTENED: Record<ThreadEvent["type"], true> = {
   hello: true, reset: true, turn_start: true, message_start: true, text: true, thinking: true, tool_call: true, tool_start: true, tool_end: true, making: true, made: true,
   recall: true, remember: true, permission: true, permission_end: true, usage: true, queue: true, received: true, error: true,
   offline: true, title: true, settings: true, turn_end: true, delegation: true, notice: true, rewound: true, child: true,
-  reactions: true, steps: true, wakeups: true, context: true, compacted: true,
+  reactions: true, steps: true, wakeups: true, context: true, compacted: true, gpu_wait: true,
 };
 const EVENT_TYPES = Object.keys(LISTENED) as ThreadEvent["type"][];
 
