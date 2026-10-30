@@ -843,6 +843,7 @@ test("Project settings → Files and images: the project folder one folder at a 
   await expect(page.locator("dialog.viewer")).toHaveCount(0);
   await section.getByRole("button", { name: "Videos", exact: true }).click();
   await expect(section.getByText("No videos yet.")).toBeVisible();
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: `${process.env.SCREENSHOTS}/project-videos-${page.viewportSize()!.width}.png` });
   await noHorizontalScroll(page);
 });
 
