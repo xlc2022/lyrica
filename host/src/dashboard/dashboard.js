@@ -320,6 +320,10 @@ const STARTERS = [
   { id: "lyrica/huggingface/unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q4_K_M.gguf", name: "Qwen3.8 27B", kind: "chat", server: "llamacpp",
     repo: "unsloth/Qwen3.8-27B-GGUF", revision: "4ca720788d1e01f1bff70c033e0d0028fd02e502", files: ["Qwen3.8-27B-UD-Q4_K_M.gguf", "mmproj-F16.gguf"],
     size: 16_464_440_224 + 927_607_488, needs: 22 * 2 ** 30 },
+  { id: "lyrica/huggingface/unsloth/GLM-5.3-Flash-GGUF/UD-Q3_K_XL/GLM-5.3-Flash-UD-Q3_K_XL-00001-of-00004.gguf", name: "GLM 5.3 Flash", kind: "chat", server: "llamacpp",
+    repo: "unsloth/GLM-5.3-Flash-GGUF", revision: "a38483c8cd5df544f53d70fb281afe97369d5ab6",
+    files: [1, 2, 3, 4].map((n) => `UD-Q3_K_XL/GLM-5.3-Flash-UD-Q3_K_XL-0000${n}-of-00004.gguf`).concat("mmproj-F16.gguf"),
+    size: 147_535_922_080 + 1_128_047_296, needs: 160 * 2 ** 30 },
   { id: "lyrica/huggingface/unsloth/Qwen3.5-9B-GGUF/Qwen3.5-9B-Q4_K_M.gguf", name: "Qwen3.5 9B", kind: "chat", server: "llamacpp",
     repo: "unsloth/Qwen3.5-9B-GGUF", revision: "3885219b6810b007914f3a7950a8d1b469d598a5", files: ["Qwen3.5-9B-Q4_K_M.gguf", "mmproj-F16.gguf"],
     size: 5_680_522_464 + 918_166_080, needs: 8 * 2 ** 30 },
@@ -348,13 +352,15 @@ async function getStarter(s) {
 /** The starters this host can serve: its servers run them, on a GPU or the CPU, with each one's state here. */
 function starters() {
   const { servers, cpuServers = [], gpus, dictation = "vllm" } = S.status;
-  const room = Math.max(0, ...gpus.filter((g) => !g.settings.excluded).map((g) => g.vram.total - g.settings.keepFree));
+  // What GPUs that allow a starter's server can give it: llama.cpp splits a model over all of them, the others use one.
+  const rooms = (server) => gpus.filter((g) => !g.settings.excluded && g.settings.servers.includes(server === "whispercpp" ? "speech" : server)).map((g) => g.vram.total - g.settings.keepFree);
+  const room = (server) => server === "llamacpp" ? rooms(server).reduce((a, b) => a + b, 0) : Math.max(0, ...rooms(server));
   // Dictation runs on one server here: whisper.cpp beside a CMP 100-210, else vLLM.
   const serves = (s) => (s.kind !== "transcribe" || s.server === dictation) && (s.server === "whispercpp" || servers.includes(s.server) || cpuServers.includes(s.server));
   const rows = STARTERS.filter(serves).map((s) => {
     const here = S.models.some((m) => m.id === s.id);
     const coming = S.downloads.some((d) => ["queued", "downloading", "verifying"].includes(d.state) && d.path.startsWith(`lyrica/huggingface/${s.repo}/`));
-    const fits = cpuServers.includes(s.server) || s.needs <= room;
+    const fits = cpuServers.includes(s.server) || s.needs <= room(s.server);
     return h("li", {},
       h("div", { class: "main" }, h("div", { class: "name" }, s.name),
         facts(h("span", {}, KINDS[s.kind]), h("span", {}, SERVER_NAMES[s.server]), h("span", {}, "about ", num(size(s.size))),
