@@ -1135,36 +1135,36 @@ test("Web search: the administrator sets the SearXNG and Kiwix addresses and see
   const section = page.getByRole("region", { name: "Web search" });
   const address = section.getByLabel("SearXNG address");
   const state = section.locator(".state-word[data-for=searxng]");
-  const save = (form: ReturnType<typeof section.locator>) => form.getByRole("button", { name: "Save" }).click();
-  const searxngForm = section.locator("form", { has: address });
+  const save = section.getByRole("button", { name: "Save" });
+  await expect(save).toBeDisabled();
   await address.fill(`${fake}/searxng`);
-  await save(searxngForm);
+  await save.click();
   await expect(state).toHaveText("Reachable");
   await noHorizontalScroll(page);
   await shot("web-search-reachable");
   await address.fill(`${fake}/nothing-here`);
-  await save(searxngForm);
+  await save.click();
   await expect(state).toHaveText("Unreachable");
   await expect(state).toHaveAttribute("title", /answered 404/);
   await shot("web-search-unreachable");
   await address.fill("");
-  await save(searxngForm);
+  await save.click();
   await expect(state).toHaveCount(0);
 
-  // The offline copy of Wikipedia: its state names the books kiwix-serve has.
+  // The offline copy of Wikipedia, saved by the same Save: its state names the books kiwix-serve has.
   const kiwix = section.getByLabel("Kiwix address");
-  const kiwixForm = section.locator("form", { has: kiwix });
   const kiwixState = section.locator(".state-word[data-for=kiwix]");
   await kiwix.fill(`${fake}/kiwix`);
-  await save(kiwixForm);
+  await save.click();
   await expect(kiwixState).toHaveText("Reachable");
   await expect(kiwixState).toHaveAttribute("title", "Wikipedia 2026-06 (eng)");
+  await expect(state).toHaveCount(0);
   await shot("web-search-kiwix");
   await kiwix.fill(`${fake}/nothing-here`);
-  await save(kiwixForm);
+  await save.click();
   await expect(kiwixState).toHaveText("Unreachable");
   await kiwix.fill("");
-  await save(kiwixForm);
+  await save.click();
   await expect(kiwixState).toHaveCount(0);
 
   await newThread(page, "General");
