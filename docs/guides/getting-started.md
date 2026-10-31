@@ -574,7 +574,14 @@ A fresh install starts in **Direct**: `lyricad` serves HTTPS itself on port
 machine's addresses change, the next start makes a new certificate and logs
 its fingerprint. Direct stays on until an administrator picks another mode
 under Administration, **Web access**: Only this machine, Direct, Tailnet,
-Built-in Caddy or A proxy elsewhere.
+Built-in Caddy or A proxy elsewhere. The Tailscale addresses are the
+machine's own, not hers: her own `tailscaled` has no interface, and a
+connection to her tailnet address on port 7340 or 7342 lands on
+`lyricad`'s plain HTTP listeners, so `https://` there never connects. Over
+her tailnet, reach her through the **Tailnet** mode at
+`https://<her MagicDNS name>/`, with no port; a plain `http://` request on
+those ports is sent there once that mode is on, and otherwise answered
+with one sentence saying to turn on Tailnet or Direct.
 
 For a name of your own with a certificate browsers trust, use the built-in
 Caddy:
