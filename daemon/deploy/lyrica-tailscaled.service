@@ -15,8 +15,9 @@ Group=lyrica
 # --port=0 picks a free UDP port, so it never fights the host's tailscaled over 41641.
 # Userspace networking gives this machine no route to the tailnet, so lyricad
 # reaches tailnet hosts through its proxy on loopback (core/src/models/tailnet.ts).
-ExecStart=/usr/sbin/tailscaled --tun=userspace-networking --state=/var/lib/lyrica-tailscale/tailscaled.state --socket=/run/lyrica-tailscale/tailscaled.sock --port=0 --outbound-http-proxy-listen=127.0.0.1:1056
-# Its node key lives here; lyricad never keeps a copy.
+ExecStart=/usr/sbin/tailscaled --tun=userspace-networking --state=/var/lib/lyrica-tailscale/tailscaled.state --statedir=/var/lib/lyrica-tailscale --socket=/run/lyrica-tailscale/tailscaled.sock --port=0 --outbound-http-proxy-listen=127.0.0.1:1056
+# Its node key lives here, and so does the serve certificate: --statedir names it, since
+# tailscaled derives one from --state only when that folder is called "tailscale".
 StateDirectory=lyrica-tailscale
 StateDirectoryMode=0700
 # The socket, for lyricad (the same user).

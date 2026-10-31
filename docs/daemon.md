@@ -1132,7 +1132,9 @@ rewritten.
 
 She is a device of her own on the tailnet: `lyrica-tailscaled.service` runs
 `tailscaled` in userspace networking as the `lyrica` user, with its state in
-`/var/lib/lyrica-tailscale` and its socket at
+`/var/lib/lyrica-tailscale` (`--state` and `--statedir`: the serve
+certificate lives there too, and tailscaled derives that directory from
+`--state` only when its folder is called `tailscale`) and its socket at
 `/run/lyrica-tailscale/tailscaled.sock`. `daemon/src/tailnet.ts` drives it
 with the `tailscale` CLI (`--socket` hers on every call), run by `lyricad`
 directly, never in a sandbox and never as a model tool. Every command comes
