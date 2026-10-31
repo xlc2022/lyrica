@@ -272,6 +272,8 @@ describe("Direct web access", () => {
     const li2 = await login(again.base, "ada", "pw");
     expect((await li2.put(`/api/u/${id}/admin/web-access`, { mode: "off" })).status).toBe(200);
     expect(existsSync(file)).toBe(false);
+    // Off has no front door beyond 443 on this machine: no name to resolve, so sandboxes keep their network.
+    expect(again.d.services!.web.frontDoor()).toEqual({ ports: [443], hosts: [], exclude: [] });
     expect(typeof await getTls(f.directPort, "/api/state", saved.tls.cert)).toBe("string");
   });
 
@@ -384,6 +386,8 @@ describe("the tailnet", () => {
 
     expect((await ada.del<Tailnet>(url)).body.state).toBe("notJoined");
     expect((await ada.get<WebAccess>(web)).body.mode).toBe("direct");
+    // Out of Tailnet mode, her address is no longer a front door: sandboxes see only Direct's port on this machine.
+    expect(d.services!.web.frontDoor()).toEqual({ ports: [443, on.body.direct!.port], hosts: [], exclude: [] });
     const tail = ts.calls().map((c) => c.args.slice(2).join(" "));
     expect(tail.indexOf("serve reset")).toBeGreaterThan(-1);
     expect(tail.indexOf("serve reset")).toBeLessThan(tail.lastIndexOf("logout"));
