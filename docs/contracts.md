@@ -1502,7 +1502,8 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     their role and may not be read-only. It adds one tool within the budget;
   - `web_search({ query, count?, time?, category?, page? })` and
     `web_fetch({ url, maxChars?, offset? })`
-    (`createWebExtension({ searxng(), target(), canRender?() })`, `core/src/web.ts`), in
+    (`createWebExtension({ searxng(), kiwix?(), target(), canRender?() })`,
+    `core/src/web.ts`, `core/src/kiwix.ts`), in
     every hosted thread and in a subagent whose role lists them (the
     researcher's), behind the Web search switch. `web_search` asks the
     server's SearXNG (`GET <address>/search?q=…&format=json`, plus
@@ -1520,9 +1521,40 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     failed engines, why, and for how long each refusing one has been
     seen refusing (an engine seen in a result's `engines` is forgotten),
     says a rested engine gives the same answer when every failed engine
-    refused, then SearXNG's corrections and suggestions. It is offered only
-    while an address is set, read on every turn and call. A
-    `user:password@` in the address goes as basic auth. `web_fetch` runs
+    refused, then SearXNG's corrections and suggestions. With a Kiwix
+    address (the offline copy of Wikipedia, kiwix-serve), a plain search
+    (page 1, no time, general or no category) also asks it
+    (`kiwixSearch`: `GET <kiwix>/search?pattern=…&books.name=<book>&format=xml&pageLength=n`,
+    one request per book since kiwix-serve refuses a search over books
+    in different languages, 15 s, hits merged in turn, the same URL once,
+    at most 5) and
+    appends "Offline copy of <title> <YYYY-MM>:" with each hit as title,
+    URL and snippet, after the web results. A hit of a book named
+    `wikipedia_<lang>_…` is the page `https://<lang>.wikipedia.org/wiki/<path>`
+    (the ZIM path without its `A/` and `.html`); any other book's hit is
+    its `<kiwix>/content/<book>/<path>`. Either side failing is said after
+    the other's results; both failing is the error. The books come from
+    `GET <kiwix>/catalog/v2/entries` (`kiwixBooks`: id from the
+    `text/html` link, name, title, language, date), read once and kept
+    five minutes (`forgetKiwixBooks` drops them). `web_search` is offered
+    only while a SearXNG or Kiwix address is set, read on every turn and
+    call. A `user:password@` in the SearXNG address goes as basic auth.
+    `web_fetch` reads from the offline copy first (`kiwixPage`): a
+    `https://<lang>(.m).wikipedia.org/wiki/<title>` page when a book
+    copies that language (`GET <kiwix>/raw/<book>/content/<path>` with
+    the path `A/<title>`, `<title>`, with `.html`, then the path
+    `GET <kiwix>/suggest?content=<book>&term=<title>&count=10` gives for
+    that title), and any `<kiwix>/content/<book>/<path>` of its own. A
+    page becomes Markdown as below, links absolute on wikipedia.org (so
+    they are read offline too), then "Pictures, each readable with
+    web_fetch:" listing up to 12 of its images by their `<kiwix>/content/…`
+    addresses (a maxi copy has them, a nopic one none), and the result's
+    "from" names the copy and its month. A listed picture (png, jpeg, gif
+    or webp, 5 MB at most) comes back as an image part, WebP as PNG
+    through ImageMagick on lyricad's PATH (`pictureForModel`; as WebP
+    without it), so a model with vision sees it and the vision guard
+    switches a subagent without. A page no book has, or any other URL,
+    goes online: `web_fetch` runs
     curl (`fetchArgv`, the URL one argument, a browser's user agent, 10 MB
     at most) through the thread's sandbox
     target's `run`, so its internet switch and allowed hosts apply.
@@ -1826,22 +1858,30 @@ interface ContextMeter { report(): ContextInfo | undefined; contextLines(): stri
     `WebAccessStatus.tailnet`), and `frontDoor` includes the Direct port on
     this machine's addresses and, in Tailnet, 443 on her Tailscale address and
     DNS name. All additive.
-- **Web search** (`core/src/web.ts`): the server's SearXNG address is
-  `self.db` `settings` `web.searxng` (`searxngAddress`,
-  `setSearxngAddress`); `GET`/`PUT /api/u/:userId/admin/web-search` →
+- **Web search** (`core/src/web.ts`, `core/src/kiwix.ts`): the server's
+  SearXNG address is `self.db` `settings` `web.searxng` (`searxngAddress`,
+  `setSearxngAddress`) and its kiwix-serve address, the offline copy of
+  Wikipedia, `web.kiwix` (`kiwixAddress`, `setKiwixAddress`);
+  `GET`/`PUT /api/u/:userId/admin/web-search` →
   `WebSearch { searxng: string | null, auth, state: "reachable" |
-  "unreachable" | "unset", reason? }`, administrators only, the state from
-  a test search on each call; `PUT { searxng }` with null or "" clears it.
-  A password in the address (basic auth) is never sent back: `searxng`
+  "unreachable" | "unset", reason?, kiwix: string | null, kiwixState:
+  the same three, kiwixReason?, books: { name, title, language, date }[] }`,
+  administrators only, `state` from a test search and `kiwixState` and
+  `books` from the catalog on each call; `PUT { searxng?, kiwix? }`: a
+  field with null or "" clears that address, one left out keeps it.
+  A password in the SearXNG address (basic auth) is never sent back: `searxng`
   comes without it and `auth` says one is stored; a `PUT` with the same
   user@host and no password keeps it, one with a password replaces it.
-  `ThreadSettings.searchProvider` says whether one is set.
-  `adoptLocalSearxng(self, address)` stores the address install.sh (or the
-  NixOS module's `searxng` option) leaves
-  in `<LYRICA_HOME>/searxng-address` while none is set, called by lyricad
-  on each unlock; `web.searxng.offered` records it, so each address is
-  offered once and a cleared or changed one stays.
-  `HostOptions.searxng` and `DelegationOptions.searxng` give it to sessions.
+  `ThreadSettings.searchProvider` says whether either is set.
+  `adoptLocalSearxng(self, address)` and `adoptLocalKiwix(self, address)`
+  (`adoptLocalAddress`) store the address install.sh (or the
+  NixOS module's `searxng` and `zimDir` options) leaves
+  in `<LYRICA_HOME>/searxng-address` and `kiwix-address` while none is
+  set, called by lyricad on each unlock; `web.searxng.offered` and
+  `web.kiwix.offered` record it, so each address is offered once and a
+  cleared or changed one stays.
+  `HostOptions.searxng`/`kiwix` and `DelegationOptions.searxng`/`kiwix`
+  give them to sessions.
 - **HTTP/SSE API**, defined in `daemon/src/api.ts` and described in
   [daemon.md](daemon.md). The web UI imports its types from there:
   - auth;

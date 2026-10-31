@@ -194,7 +194,9 @@ read it for anything not covered here.
    port 7340 for Direct, whatever `port` is, so the machine can be set up
    from another one), `searxng` (on: a SearXNG for her web search on
    127.0.0.1:8888, whose address fills in under Administration, Web
-   search; [searxng.md](searxng.md)), `caddyPackage`, and
+   search; [searxng.md](searxng.md)), `zimDir` (null: a folder of ZIM
+   files for her offline Wikipedia, served on 127.0.0.1:8889;
+   [wikipedia.md](wikipedia.md)), `caddyPackage`, and
    `sandboxPackages`, the tools her commands see (NixOS has no `/usr` to
    share, so the module builds one directory from that list, which
    includes git, gh, tea, Node 24, Claude Code and Codex by default; add
@@ -234,7 +236,7 @@ read it for anything not covered here.
    and Caddy, that her `tailscaled` answers on its socket, `NoNewPrivs`,
    the setuid `fusermount3`, Caddy's socket, `lyrica-update.path`, a
    sandbox and `pasta` as the `lyrica` user, the network self-test, the
-   port and, when the module runs it, SearXNG, one line each, and ends
+   port and, when the module runs them, SearXNG and kiwix-serve, one line each, and ends
    with "All checks passed." or stops at the first failure.
 10. The self-test runs at unlock, so `check-host.sh` misses it when she
     hasn't been unlocked yet (after `lyrica admin init` she starts
@@ -378,7 +380,9 @@ answers ahead; without a terminal the answer is no), then:
    starts `lyrica-update.path`, and enables `lyrica-probation.service`,
    which resumes an update's probation after a reboot. With a yes to
    SearXNG it also starts `lyrica-searxng.service` on `127.0.0.1:8888`
-   ([searxng.md](searxng.md#set-up-by-installsh)). On an upgrade it
+   ([searxng.md](searxng.md#set-up-by-installsh)), and with ZIM files in
+   `LYRICA_ZIM_DIR` (`/var/lib/lyrica-kiwix`) `lyrica-kiwix.service` on
+   `127.0.0.1:8889` ([wikipedia.md](wikipedia.md)). On an upgrade it
    restarts `lyricad`. On a fresh install `lyricad` starts setting up,
    and the script prints a one-time setup code, the addresses to open
    and the certificate's fingerprint (see "First run"), then the deploy
@@ -743,6 +747,11 @@ works: [searxng.md](searxng.md). Every thread with the Web search switch
 on can then search, private ones included (the engines see the query,
 never who asked). `web_fetch` reads a page with `curl` inside the thread's
 sandbox, so its network switches decide what it reaches.
+
+An offline copy of Wikipedia makes both work without the internet:
+download a ZIM file into a folder, point `services.lyrica.zimDir` or
+`LYRICA_ZIM_DIR` at it, and its address fills in as the **Kiwix address**
+of the same section: [wikipedia.md](wikipedia.md).
 
 ## Give her repositories
 

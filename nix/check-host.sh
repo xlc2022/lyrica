@@ -37,4 +37,7 @@ ok "the self-test hasn't refused network (it runs at unlock)"
 if [ -f /var/lib/lyrica/searxng-address ]; then
   "$tools/bin/curl" -fsS -o /dev/null "$(cat /var/lib/lyrica/searxng-address)/healthz" && ok "SearXNG answers for her web search" || bad "SearXNG doesn't answer: journalctl -u uwsgi -u searx-init"
 fi
+if [ -f /var/lib/lyrica/kiwix-address ]; then
+  "$tools/bin/curl" -fsS -o /dev/null "$(cat /var/lib/lyrica/kiwix-address)/catalog/v2/entries" && ok "kiwix-serve answers for her offline Wikipedia" || bad "kiwix-serve doesn't answer: journalctl -u lyrica-kiwix"
+fi
 echo "All checks passed."

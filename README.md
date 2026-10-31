@@ -22,6 +22,9 @@ cloud model is outside our control.
 - [docs/guides/searxng.md](docs/guides/searxng.md) sets up the SearXNG her
   web search uses, or has `install.sh` run it in Docker (the NixOS module
   runs one by default).
+- [docs/guides/wikipedia.md](docs/guides/wikipedia.md) gives her an offline
+  copy of Wikipedia (a Kiwix ZIM file) that searches and reads work from
+  without the internet.
 
 She isn't deployed yet. The first run is the web setup page, with
 `lyrica admin init` on the server as the other way.
@@ -48,8 +51,8 @@ The repository was rebuilt from scratch starting 2026-10-09.
 - Sleep, which writes notes, pages, WAKE and the journal.
 - Delegation and child threads, modes, remote machines over SSH or
   Proxmox, and Git accounts with project repositories.
-- Web search through a SearXNG of your own, and reading pages from the
-  thread's sandbox.
+- Web search through a SearXNG of your own, an offline copy of Wikipedia
+  beside it, and reading pages from the thread's sandbox.
 - MCP servers (remote, per thread).
 - Model and speech hosts on GPU machines, and the web's Models area for
   text and image models, their downloads and hub tokens.

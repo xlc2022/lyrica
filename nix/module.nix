@@ -1,7 +1,7 @@
 # services.lyrica: lyricad, her own tailscaled and the built-in Caddy on NixOS,
 # declaring what daemon/deploy/install.sh does on Debian. The units mirror
 # daemon/deploy/lyricad.service, lyrica-tailscaled.service,
-# lyrica-caddy.service and lyrica-searxng.service; keep them in step.
+# lyrica-caddy.service, lyrica-searxng.service and lyrica-kiwix.service; keep them in step.
 # See docs/daemon.md, "On NixOS".
 { config, lib, pkgs, ... }:
 
@@ -12,6 +12,8 @@ let
   directPort = 7340;
   # SearXNG's port on 127.0.0.1, as SEARXNG_PORT in daemon/deploy/install.sh.
   searxngPort = 8888;
+  # kiwix-serve's port on 127.0.0.1, as KIWIX_PORT in daemon/deploy/install.sh.
+  kiwixPort = 8889;
 
   # The DNS plugins, read from the same table install.sh builds from.
   providers = builtins.readFile ../daemon/src/web/providers.ts;
@@ -113,6 +115,20 @@ in {
       '';
     };
 
+    zimDir = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      example = "/srv/lyrica/zim";
+      description = ''
+        A folder of ZIM files (an offline copy of Wikipedia from
+        download.kiwix.org), served by kiwix-serve from kiwix-tools as
+        lyrica-kiwix.service on 127.0.0.1:8889, no search bar, every .zim
+        in the folder at start. lyricad stores http://127.0.0.1:8889 as
+        Administration → Web search's Kiwix address while none is set, as
+        on Debian with install.sh. Null runs nothing.
+      '';
+    };
+
     sandboxPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
       default = import ./sandbox-tools.nix pkgs;
@@ -162,6 +178,8 @@ in {
       # The address lyricad offers Administration → Web search (core/src/web.ts, adoptLocalSearxng).
       (if cfg.searxng then "f+ ${state}/searxng-address 0600 lyrica lyrica - http://127.0.0.1:${toString searxngPort}"
        else "r ${state}/searxng-address")
+      (if cfg.zimDir != null then "f+ ${state}/kiwix-address 0600 lyrica lyrica - http://127.0.0.1:${toString kiwixPort}"
+       else "r ${state}/kiwix-address")
     ];
 
     networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ directPort ];
@@ -199,6 +217,25 @@ in {
         f=/var/lib/lyrica-searxng/env
         [ -s "$f" ] || echo "SEARX_SECRET_KEY=$(${pkgs.openssl}/bin/openssl rand -hex 32)" >"$f"
       '';
+    };
+
+    # As daemon/deploy/lyrica-kiwix.service on Debian.
+    systemd.services.lyrica-kiwix = lib.mkIf (cfg.zimDir != null) {
+      description = "kiwix-serve for Lyrica's offline Wikipedia";
+      after = [ "network.target" ];
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        DynamicUser = true;
+        ExecStart = "${pkgs.writeShellScript "lyrica-kiwix" ''
+          exec ${pkgs.kiwix-tools}/bin/kiwix-serve --address 127.0.0.1 --port ${toString kiwixPort} --nodatealiases --nosearchbar ${lib.escapeShellArg (toString cfg.zimDir)}/*.zim
+        ''}";
+        Restart = "on-failure";
+        RestartSec = 10;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        NoNewPrivileges = true;
+      };
     };
 
     systemd.services.lyrica-tailscaled = lib.mkIf cfg.tailscale {

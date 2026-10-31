@@ -1,0 +1,22 @@
+# The kiwix-serve with her offline copy of Wikipedia, on 127.0.0.1 only.
+# daemon/deploy/install.sh installs it as /etc/systemd/system/lyrica-kiwix.service
+# when ZIM files are in the ZIM folder; /etc/lyrica/kiwix.env holds that
+# folder and the port. See docs/guides/wikipedia.md.
+[Unit]
+Description=kiwix-serve for Lyrica's offline Wikipedia
+After=network.target
+
+[Service]
+EnvironmentFile=/etc/lyrica/kiwix.env
+DynamicUser=yes
+# The ZIM files are named by a glob, so a new dump in the folder is served after a restart.
+ExecStart=/bin/sh -c 'exec /usr/bin/kiwix-serve --address 127.0.0.1 --port "$KIWIX_PORT" --nodatealiases --nosearchbar "$ZIM_DIR"/*.zim'
+Restart=on-failure
+RestartSec=10
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

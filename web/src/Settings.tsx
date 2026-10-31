@@ -264,7 +264,7 @@ export function SettingsDrawer({ ctx, base, summary, settings, machines, onSetti
             </select>
           </label>
           <Switch label="Code mode" hint={CODE_MODE_HINT} checked={settings.code} onChange={(v) => change({ code: v })} />
-          <Switch label="Web search" hint={settings.searchProvider ? undefined : "Search needs a SearXNG address in Administration"} checked={settings.webSearch} onChange={(v) => change({ webSearch: v })} />
+          <Switch label="Web search" hint={settings.searchProvider ? undefined : "Search needs a SearXNG or Kiwix address in Administration"} checked={settings.webSearch} onChange={(v) => change({ webSearch: v })} />
           <Switch label="Images" checked={settings.images} onChange={(v) => change({ images: v })} />
           {(settings.claudeCodeOffered || settings.claudeCode) && (
             <Switch label="Claude Code" hint="Coding jobs on your Claude plan. What it reads goes to Anthropic." checked={settings.claudeCode} onChange={(v) => change({ claudeCode: v })} />

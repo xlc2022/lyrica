@@ -6,7 +6,7 @@ import {
   ANSWER, CLOUD_IMAGE_PROVIDERS, recentWorkAllowed, WELCOME_LIMITS, describe, AuthError, isPlan, type PlanKind, NoRecoveryCopy, WrongPassword, isEmoji, WORKDIR, CAPABILITIES, FilesRefused, checkTask, isRestricted, voiceContext, refId, THINKING_LEVELS, publicKeyOf, authorizedKeysLine, proxmoxAddress, CloudModelForbidden, FROM_PARENT, NoModel, WAKEUP, ROUTINE, WATCHING, PRONOUN_PRESETS, projectSlug,
   citationsIn, exportMemories, importMemories, exportSkills, importSkills, firstLine, GIT_KINDS, kindOf, mcpHost, sentenceCiting, splitId, HomeFileMissing, MAX_IMAGE_BYTES,
   type Author, type Column, type Endpoint, type ModelRef, type Offering, type Hit, type Item, type GitAccountConfig, type MachineConfig, type McpServerConfig, type OwnerView, type Pool, type PoolStore, type SleepItem, type SleepRunRecord, type Thread, type ThreadPref, type User,
-  searxngAddress, searxngStatus, searxngView, setSearxngAddress, claudeCodeInstalled, modelName,
+  searxngAddress, searxngStatus, searxngView, setSearxngAddress, kiwixAddress, kiwixStatus, setKiwixAddress, forgetKiwixBooks, claudeCodeInstalled, modelName,
   codexSignedIn, codexSignIn, codexSignOut, type CodexBox, type CodexSignIn, serverZone, zoneOf,
   ChangesUnavailable, type ByteRange, commitFiles, fileSides, repositoryChanges, type ExecutionTarget,
 } from "@lyrica/core";
@@ -2197,14 +2197,14 @@ export function apiRoutes(d: Lyricad): Route[] {
     }),
     route("GET", `${u}/admin/web-search`, async (r): Promise<Api.WebSearch> => {
       d.adminFor(r);
-      const searxng = searxngAddress(d.keyring.self());
-      return { ...searxngView(searxng), ...await searxngStatus(searxng) };
+      return webSearchView(d);
     }),
     route("PUT", `${u}/admin/web-search`, async (r): Promise<Api.WebSearch> => {
       d.adminFor(r);
-      const { searxng } = await r.json<Pick<Api.WebSearch, "searxng">>();
-      const saved = setSearxngAddress(d.keyring.self(), typeof searxng === "string" ? searxng : null);
-      return { ...searxngView(saved), ...await searxngStatus(saved) };
+      const { searxng, kiwix } = await r.json<Partial<Pick<Api.WebSearch, "searxng" | "kiwix">>>();
+      if (searxng !== undefined) setSearxngAddress(d.keyring.self(), typeof searxng === "string" ? searxng : null);
+      if (kiwix !== undefined) { setKiwixAddress(d.keyring.self(), typeof kiwix === "string" ? kiwix : null); forgetKiwixBooks(); }
+      return webSearchView(d);
     }),
     route("GET", `${u}/admin/proposals`, (r): Api.PersonaProposal[] => {
       d.adminFor(r);
@@ -2221,6 +2221,14 @@ export function apiRoutes(d: Lyricad): Route[] {
 }
 
 // --- Helpers ---
+
+/** Administration → Web search: both addresses, each tried as it is read. */
+async function webSearchView(d: Lyricad): Promise<Api.WebSearch> {
+  const searxng = searxngAddress(d.keyring.self());
+  const kiwix = kiwixAddress(d.keyring.self());
+  const [s, k] = await Promise.all([searxngStatus(searxng), kiwixStatus(kiwix)]);
+  return { ...searxngView(searxng), ...s, kiwix, ...k };
+}
 
 /** What a wipe waits for, as an administrator may see it: the user's display name, never a thread's title. */
 function wipeBusy(d: Lyricad, busy: Api.BusyItem[]): Api.WipeBusy[] {
@@ -2856,7 +2864,7 @@ function threadSettings(d: Lyricad, user: User, pool: Pool, threadId: string): A
     internet: tw.internet, services: tw.services, hosts: tw.hosts,
     network: workspace.network({ userId: user.id, pool, threadId }),
     grants: applies.grants, machines: applies.machines, repositories: applies.repositories, mcpServers: applies.mcpServers, mode: applies.mode, webSearch: applies.webSearch,
-    searchProvider: !!searxngAddress(d.keyring.self()), images: applies.images, unlogged: isUnlogged, parent: tw.parent,
+    searchProvider: !!(searxngAddress(d.keyring.self()) || kiwixAddress(d.keyring.self())), images: applies.images, unlogged: isUnlogged, parent: tw.parent,
     claudeCode: applies.claudeCode,
     claudeCodeOffered: pool === "general" && !ctx.localOnly && !!workspace.settings(user.id).claudeCodeToken() && claudeCodeInstalled(),
     speech: speechState(models, ctx),

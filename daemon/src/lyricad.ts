@@ -8,7 +8,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  adoptLocalSearxng, bootstrap, isMounted, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
+  adoptLocalKiwix, adoptLocalSearxng, bootstrap, kiwixAddress, isMounted, codexImage, DEFAULT_NAME, HostRefused, isRestricted, Keyring, Memory, Models, Offline, PersonaProposals, PersonaStore, PRONOUN_PRESETS, searxngAddress, selfName, setSelfName,
   SystemdCredentials, ThreadPrefs, ThreadShares, Users, WrongPassword, Workspace, finishWipe, jobNotice, homeWiped, homeWipePending, useTailnetProxy, wipePending, wipePools,
   localDate, localTime, serverZone, zoneOf,
   type Argon2Params, type CredentialStore, type Pool, type ThreadsLimits, type User,
@@ -391,18 +391,23 @@ export class Lyricad implements Drainable {
   }
 
   /**
-   * install.sh leaves `searxng-address` beside self.db when it runs SearXNG
-   * here (docs/guides/searxng.md): it becomes Administration's address while
-   * none is set.
+   * install.sh and the NixOS module leave `searxng-address` and
+   * `kiwix-address` beside self.db when they run SearXNG or kiwix-serve
+   * here (docs/guides/searxng.md, docs/guides/wikipedia.md): each becomes
+   * Administration's address while none is set.
    */
   private adoptSearxng(): void {
-    let address: string;
-    try { address = readFileSync(join(this.opts.home, "searxng-address"), "utf8").trim(); } catch { return; }
-    try {
-      if (adoptLocalSearxng(this.keyring.self(), address)) this.log("web search uses the SearXNG install.sh runs here");
-    } catch (err) {
-      this.log(`searxng-address isn't a SearXNG address: ${firstLine(err as Error)}`);
-    }
+    const adopt = (file: string, what: string, take: (address: string) => boolean) => {
+      let address: string;
+      try { address = readFileSync(join(this.opts.home, file), "utf8").trim(); } catch { return; }
+      try {
+        if (take(address)) this.log(`web search uses the ${what} the install runs here`);
+      } catch (err) {
+        this.log(`${file} isn't a ${what} address: ${firstLine(err as Error)}`);
+      }
+    };
+    adopt("searxng-address", "SearXNG", (a) => adoptLocalSearxng(this.keyring.self(), a));
+    adopt("kiwix-address", "kiwix-serve", (a) => adoptLocalKiwix(this.keyring.self(), a));
   }
 
   /** Her name: from self.db once unlocked, else the copy beside it. */
@@ -557,7 +562,7 @@ export class Lyricad implements Drainable {
     // A subagent's approvals are asked in its thread and its parent's, through the host built next.
     let host!: ThreadHost;
     let forge!: ForgeWatcher;
-    const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal), name: () => selfName(keyring.self()), searxng: () => searxngAddress(keyring.self()),
+    const delegation = new Delegation({ users, memory, models, workspace, cwd, limits: this.opts.delegation, approve: (r, signal) => host.approveSubagent(r, signal), name: () => selfName(keyring.self()), searxng: () => searxngAddress(keyring.self()), kiwix: () => kiwixAddress(keyring.self()),
       // The Claude plan's usage limit stopped a claude run: its parent carries on a minute after the reset, as a cut-off turn does for its plan.
       onClaudeLimit: (parent, until) => {
         const id = claudePlanId(parent.user.id);
@@ -624,7 +629,7 @@ export class Lyricad implements Drainable {
       },
     });
     host = new ThreadHost({
-      users, memory, models, workspace, persona, delegation, cwd, log: this.log, sameFile, searxng: () => searxngAddress(keyring.self()), name: () => selfName(keyring.self()),
+      users, memory, models, workspace, persona, delegation, cwd, log: this.log, sameFile, searxng: () => searxngAddress(keyring.self()), kiwix: () => kiwixAddress(keyring.self()), name: () => selfName(keyring.self()),
       idleMs: this.opts.idleMs ?? 15 * 60_000, permissionMs: this.opts.permissionMs ?? 5 * 60_000, offlineRetryMs: this.opts.offlineRetryMs,
       codePulls: (u, p, t) => forge.codePulls(u, p, t),
       // The thread list hears when a clip starts and ends, so its row pulses meanwhile (docs/ux.md §6).

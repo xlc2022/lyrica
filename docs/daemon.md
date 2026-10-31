@@ -1330,6 +1330,15 @@ same ("On NixOS" below).
   once per address (`adoptLocalSearxng`). The updater's stale-units check
   leaves this unit out, since not every install has it
   ([guides/searxng.md](guides/searxng.md)).
+- When ZIM files are in `LYRICA_ZIM_DIR` (`/var/lib/lyrica-kiwix` unless
+  set), it installs Debian's `kiwix-tools` and `lyrica-kiwix.service`
+  (kiwix-serve on `127.0.0.1:8889`, no search bar, every `.zim` in the
+  folder; `/etc/lyrica/kiwix.env` holds the folder and port), writes
+  `http://127.0.0.1:8889` to `kiwix-address` in her state folder, which
+  lyricad adopts as the Kiwix address the same way (`adoptLocalKiwix`), and
+  waits for its catalog. When the files are gone on a later run it removes
+  the unit and the address file. The stale-units check leaves this unit
+  out too ([guides/wikipedia.md](guides/wikipedia.md)).
 - It installs `lyricad.service`, `lyrica-tailscaled.service` and
   `lyrica-caddy.service` and starts them. Without `self.db` it ends by
   printing the setup page's addresses, the certificate's fingerprint and the
@@ -1460,7 +1469,10 @@ system with the module on. Only x86_64-linux.
   `127.0.0.1:8888` with install.sh's settings, a
   `lyrica-searxng-secret` oneshot that makes its secret once, and
   `searxng-address` in her state folder (a tmpfiles rule, removed when off; an address lyricad already stored
-  stays until an administrator clears it).
+  stays until an administrator clears it). With `zimDir` set it declares
+  `lyrica-kiwix.service` (kiwix-serve from `pkgs.kiwix-tools` on
+  `127.0.0.1:8889`, a dynamic user, every `.zim` in the folder, mirroring
+  install.sh's unit) and `kiwix-address` the same way.
   `lyrica` on the system path is the same wrapper as
   install.sh's, so the first-run step is `lyrica admin setup-code` as root:
   nothing prints the code or the fingerprint at `nixos-rebuild`. The wrapper
@@ -1493,8 +1505,8 @@ system with the module on. Only x86_64-linux.
   `LYRICA_SANDBOX_CLOSURE` to the store paths of their closure, Node's and
   the CA bundle's (`closureInfo`). See docs/workspace.md.
 - **Options:** `enable`, `package`, `port` (7340), `tailscale` (on),
-  `tailscalePackage`, `openFirewall` (on), `searxng` (on), `caddyPackage`,
-  `sandboxPackages`.
+  `tailscalePackage`, `openFirewall` (on), `searxng` (on), `zimDir` (null),
+  `caddyPackage`, `sandboxPackages`.
 - **Releases** are generations of the profile `/nix/var/nix/profiles/lyrica`,
   which lyricad runs. An Update builds `git+file:///opt/lyrica/repo.git?rev=<commit>#lyrica`
   as root (Nix's own sandboxed builders do the building, not `lyrica-build`),
@@ -1518,5 +1530,6 @@ system with the module on. Only x86_64-linux.
   lyricad and Caddy run, the `lyrica` profile exists, `lyrica-update.path`
   is active, her tailscaled answers `lyrica` on its socket, `NoNewPrivs` is `0`, `fusermount3` is setuid, Caddy's
   admin socket exists, a sandbox and `pasta` start as `lyrica`, the
-  self-test hasn't refused network, lyricad answers on port 7340, and with
-  `searxng` on, SearXNG answers `/healthz`.
+  self-test hasn't refused network, lyricad answers on port 7340, with
+  `searxng` on, SearXNG answers `/healthz`, and with `zimDir` set,
+  kiwix-serve answers its catalog.
