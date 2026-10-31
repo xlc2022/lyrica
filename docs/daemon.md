@@ -1231,7 +1231,9 @@ Plain-HTTP listeners stay HTTP/1.1.
   previous listener closes; if this machine can't check it (it need not be on
   her tailnet), the mode is saved anyway and Direct, if on, stays on beside
   it, so nobody is locked out; turning Tailnet on again once it answers closes
-  Direct. The status fetches the name again. Off, or any other mode, runs
+  Direct. The status fetches the name again, and once it answers records
+  `certificates` as issued, so the panel stops saying the certificate isn't
+  there yet. Off, or any other mode, runs
   `serve reset`. tailscaled keeps the serve configuration, so the unlock page
   is there after a restart. The origin check on the serve port accepts the
   browser's host from `X-Forwarded-Host` and the mode's own name and address,

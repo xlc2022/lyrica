@@ -486,6 +486,8 @@ export class WebAccess {
     if (s.mode === "tailnet" && s.tailnet) {
       const why = await answers(s.tailnet.dnsName, 5000);
       out.tailnet = { dnsName: s.tailnet.dnsName, answers: !why, ...(why ? { error: why } : {}) };
+      // The certificate often issues after the switch (the first one takes a while): once the name answers, the panel says so.
+      if (!why && !s.tailnet.certificates) this.save({ ...s, tailnet: { ...s.tailnet, certificates: true } });
     }
     return out;
   }
