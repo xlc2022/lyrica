@@ -240,6 +240,13 @@ Built on `feature/bootstrap-ri74ui` (2026-10-12).
   conditions, the fetch decides `certificates`, and Direct stays on beside
   Tailnet until a later switch confirms the name answers. `controlServer`
   isn't read back: `status --json` doesn't carry it.
+- **Found at first tailnet use (2026-10-31).** Her userspace tailscaled
+  forwards every inbound port on her tailnet address to the same loopback
+  port, so `<her name>:7340` and `:7342` answered plain HTTP from the tailnet,
+  where the login silently failed on the Secure cookie, and `https://` on them
+  couldn't connect. lyricad now treats such a request as a wrong door
+  (docs/daemon.md, Starting and unlocking) and the origin check accepts
+  `X-Forwarded-Host`. The intended path stays the Tailnet web mode.
 - **Verify at first deployment:** her tailscaled starts as `lyrica` under
   the unit's hardening (`Type=notify`, `ProtectSystem=strict`, its own
   state, cache and runtime directories); `serve` on 443 works without a

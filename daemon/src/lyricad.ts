@@ -37,7 +37,7 @@ const JOB_WAKE = "A background command ended: its notice is above (and any other
 /** What an idle thread is woken with when a clip she started is made, or fails. */
 const CLIP_WAKE = "A clip you started in the background is done: its notice is above, and the chat shows the clip. Tell them it's ready, or why it failed.";
 import {
-  checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, readBody, secureServer, sendJson, serveStatic, statusOf, Updating,
+  checkOrigin, fromLoopback, HttpError, makeRequest, match, plainAddress, readBody, secureServer, SECURITY_HEADERS, sendJson, serveStatic, statusOf, Updating, wrongDoor,
   type Listener, type Request, type Route, type TrustForwarded,
 } from "./http.ts";
 import { TailnetControl } from "./tailnet.ts";
@@ -200,6 +200,8 @@ export class Lyricad implements Drainable {
   servePort = 0;
   /** While setting up: the one-time code the setup page asks for. */
   private setupCode: string | undefined;
+  /** Names plain-HTTP requests were addressed to, each logged once. */
+  private readonly wrongDoors = new Set<string>();
   /** Her name, as last read or set: answered while locked, from a copy beside self.db. */
   private nameSeen: string | undefined;
   private readonly nightly: NodeJS.Timeout;
@@ -265,7 +267,7 @@ export class Lyricad implements Drainable {
 
   /** Listens, then unseals a saved passphrase and unlocks if it is available. */
   async start(): Promise<void> {
-    const tcp = createServer((req, res) => void this.handle(req, res));
+    const tcp = createServer((req, res) => void this.handle(req, res, fromLoopback, undefined, true));
     await new Promise<void>((resolve, reject) => { tcp.once("error", reject); tcp.listen(this.opts.port, "127.0.0.1", resolve); });
     this.port = (tcp.address() as AddressInfo).port;
     this.servers.push(tcp);
@@ -286,7 +288,7 @@ export class Lyricad implements Drainable {
     const updateSocket = this.opts.update?.socket === false ? undefined : this.opts.update?.socket ?? join(this.opts.home, "update.sock");
     if (updateSocket) this.servers.push(await listenUpdateSocket(updateSocket, this, this.log));
     // Only her tailscaled's `serve` targets this one, so a request on it came through her tailnet address.
-    const serve = createServer((req, res) => void this.handle(req, res, fromLoopback, "tailnet"));
+    const serve = createServer((req, res) => void this.handle(req, res, fromLoopback, "tailnet", true));
     await new Promise<void>((resolve, reject) => { serve.once("error", reject); serve.listen(this.opts.web?.servePort ?? (this.opts.port === 0 ? 0 : SERVE_PORT), "127.0.0.1", resolve); });
     this.servePort = (serve.address() as AddressInfo).port;
     this.servers.push(serve);
@@ -1110,7 +1112,14 @@ export class Lyricad implements Drainable {
     });
   }
 
-  private async handle(req: IncomingMessage, res: ServerResponse, trust: TrustForwarded = fromLoopback, via?: "tailnet"): Promise<void> {
+  /**
+   * `plain`: one of the two plain-HTTP loopback listeners. A request there
+   * addressed to a name that isn't this machine came through a forwarder to
+   * loopback (her userspace tailscaled hands every port on her tailnet
+   * address to the same port here), where the Secure login cookie can never
+   * be set: it is sent to the HTTPS front door, or told why it can't log in.
+   */
+  private async handle(req: IncomingMessage, res: ServerResponse, trust: TrustForwarded = fromLoopback, via?: "tailnet", plain = false): Promise<void> {
     const started = performance.now();
     const method = req.method ?? "GET";
     let routeName = "(static)";
@@ -1118,6 +1127,13 @@ export class Lyricad implements Drainable {
     try {
       const url = new URL(req.url ?? "/", "http://lyricad");
       const path = url.pathname;
+      const trusted = trust(req.socket.remoteAddress ?? "");
+      const name = plain ? wrongDoor(req, trusted) : undefined;
+      if (name !== undefined) {
+        routeName = "(wrong door)";
+        this.wrongDoor(name, path, url.search, method, res);
+        return;
+      }
       // The Forgejo/Gitea webhook answers only on her tailnet listener: a signed nudge to poll at once.
       if (method === "POST" && path.startsWith("/hooks/forge/")) {
         routeName = "/hooks/forge/:account";
@@ -1137,7 +1153,7 @@ export class Lyricad implements Drainable {
       if (this.settingUp && routeName !== "/api/state" && routeName !== "/api/setup") throw new HttpError(503, "Lyrica isn't set up yet");
       const open = routeName === "/api/state" || routeName === "/api/unlock" || routeName === "/api/setup";
       if (!open && !this.services) throw new HttpError(503, "lyricad is locked");
-      if (method !== "GET" && method !== "HEAD") checkOrigin(req);
+      if (method !== "GET" && method !== "HEAD") checkOrigin(req, trusted, via === "tailnet" ? this.tailnetNames() : []);
       const r: Request = makeRequest(req, res, routeName, found.params, url, trust, via);
       const body = await found.route.handler(r);
       if (method !== "GET" && method !== "HEAD" && found.params.userId && res.statusCode >= 200 && res.statusCode < 300 && !UNLISTED.has(routeName)) this.userEvents.changed(found.params.userId);
@@ -1155,6 +1171,48 @@ export class Lyricad implements Drainable {
       if (!res.headersSent) sendJson(res, status, { error: message, ...refused, ...offline, ...updating }, err instanceof HttpError ? err.headers : {});
       else res.end();
     }
+  }
+
+  /** The Tailnet mode's DNS name and address, which a page served through `tailscale serve` may name as its origin. */
+  private tailnetNames(): string[] {
+    const t = this.services?.web.tailnetHosts();
+    return t ? [t.dnsName, ...(t.address ? [t.address] : [])] : [];
+  }
+
+  /**
+   * A plain-HTTP request addressed to `name`: a page load is redirected to
+   * the HTTPS front door when one is known (Direct at that very address, or
+   * the Tailnet mode's name), else answered with one sentence; an API call
+   * gets the sentence as its error, so an open login page shows it.
+   */
+  private wrongDoor(name: string, path: string, search: string, method: string, res: ServerResponse): void {
+    const dir = this.external.direct();
+    const t = this.services?.web.tailnetHosts();
+    const to = dir?.addresses.includes(name) ? `https://${name}:${dir.port}` : t ? `https://${t.dnsName}` : undefined;
+    const sentence = to
+      ? `This address is plain HTTP, so you can't log in here. Use ${to}/ instead.`
+      : "This address is plain HTTP, so you can't log in here. Turn on Tailnet or Direct in Administration › Web access, then use its https address.";
+    if (!this.wrongDoors.has(name)) {
+      this.wrongDoors.add(name);
+      this.log(`a plain-HTTP request addressed to ${name}: ${to ? `sent to ${to}` : "no HTTPS front door to send it to"}`);
+    }
+    if (path.startsWith("/api/") || path.startsWith("/hooks/")) {
+      sendJson(res, 403, { error: sentence });
+      return;
+    }
+    if (to && (method === "GET" || method === "HEAD")) {
+      res.writeHead(302, { ...SECURITY_HEADERS, location: `${to}${path}${search}`, "cache-control": "no-store" });
+      res.end();
+      return;
+    }
+    const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" })[c]!);
+    const title = esc(this.nameSeen ?? DEFAULT_NAME);
+    res.writeHead(403, { ...SECURITY_HEADERS, "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>`
+      // The app's --bg and --fg in both schemes (web/src/app.css), so a dark phone doesn't flash white.
+      + "<style>:root{color-scheme:light dark}body{margin:0;min-height:100vh;display:grid;place-items:center;font:15px/1.5 system-ui,sans-serif;color:#1d2626;background:#f7f8f8}"
+      + "@media (prefers-color-scheme: dark){body{color:#e3eaea;background:#141818}}main{max-width:28rem;padding:1.5rem}h1{font-size:1.25rem;margin:0 0 .75rem}p{margin:0}</style></head>"
+      + `<body><main><h1>${title}</h1><p>${esc(sentence)}</p></main></body></html>`);
   }
 
   /**
