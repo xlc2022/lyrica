@@ -187,13 +187,17 @@ export function liveReducer(s: Live, e: LiveAction): Live {
       return { ...s, items: s.items.slice(s.ended), ended: 0 };
     case "stopping":
       return { ...s, queued: [], offline: undefined };
-    case "notice":
+    case "notice": {
       // A clip made in the background shows as hers, as it does once the thread reloads.
-      if (e.video) return { ...s, items: [...s.items, { role: "assistant", parts: e.call ? [e.call, e.video] : [e.video] }] };
+      const items: LiveItem[] = [...s.items, e.video ? { role: "assistant", parts: e.call ? [e.call, e.video] : [e.video] }
+        : { role: "notice", text: e.text, status: e.status, threads: e.threads, told: e.told }];
+      // Between turns a delivery is stored before its event, so it reloads, and its live copy goes with that reload:
+      // a reload already on its way (the stream's hello, say) may hold it too, and would otherwise show it twice.
+      const stored = s.busy ? {} : { reload: s.reload + 1, ended: items.length };
       // A child thread's update or wait is sent after its state is stored, so it counts as a change too: a project
       // chat's cards reload even if the change's own event came while the stream was away.
-      return { ...s, items: [...s.items, { role: "notice", text: e.text, status: e.status, threads: e.threads, told: e.told }],
-        ...(e.threads?.length && (e.status === "update" || e.status === "waiting") ? { children: s.children + 1 } : {}) };
+      return { ...s, items, ...stored, ...(!e.video && e.threads?.length && (e.status === "update" || e.status === "waiting") ? { children: s.children + 1 } : {}) };
+    }
     case "refresh":
       return { ...s, reload: s.reload + 1, ended: s.items.length };
     case "delegation": {
