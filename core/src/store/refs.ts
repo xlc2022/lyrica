@@ -82,11 +82,13 @@ const STOP = new Set(("a an and are as at be but by can do did does for from had
  * is "drink". The index has no stemmer, so the query carries the stem as a prefix.
  */
 export function stem(word: string): string | undefined {
-  for (const end of ["ing", "ies", "ed", "es", "s"]) {
-    if (word.length - end.length >= 4 && word.endsWith(end)) {
-      const base = word.slice(0, -end.length);
-      return end === "ies" ? `${base}i` : end === "s" && base.endsWith("s") ? undefined : base;
-    }
+  for (const end of ["ing", "ies", "es", "ed", "s"]) {
+    if (word.length - end.length < 4 || !word.endsWith(end)) continue;
+    const base = word.slice(0, -end.length);
+    // "es" only after a hissing sound ("dishes", "boxes", "classes"); "recipes" and "shapes" drop their "s".
+    if (end === "es" && !/(?:s|x|z|ch|sh)$/.test(base)) continue;
+    if (end === "s" && base.endsWith("s")) return undefined;
+    return end === "ies" ? `${base}i` : base;
   }
   return undefined;
 }

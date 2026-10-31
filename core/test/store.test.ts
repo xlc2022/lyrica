@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { isThreadView, Memory, projectSlug, readView, searchView, Users, type PoolStore } from "../src/index.ts";
+import { stem } from "../src/store/refs.ts";
 import { freshKeyring, profile } from "./helpers.ts";
 
 async function setup() {
@@ -196,6 +197,8 @@ describe("notes", () => {
     expect(own.search("mushroom recipes", auto).map((h) => h.id)).toEqual([recipe]);
     expect(own.search("fiction books", auto).map((h) => h.id)).toEqual([trying]);
     expect(own.search("dentist appointments", auto).map((h) => h.id)).toEqual([dentist]);
+    expect(["recipes", "dishes", "shapes", "classes", "interesting", "roasted", "batteries", "try", "some", "glass"].map(stem))
+      .toEqual(["recipe", "dish", "shape", "class", "interest", "roast", "batteri", undefined, undefined, undefined]);
   });
 
   it("automatic recall doesn't count words common in her memory", async () => {
