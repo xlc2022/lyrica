@@ -338,9 +338,10 @@ answers ahead; without a terminal the answer is no), then:
    releases and fetching updates, python3-venv for her clones' Python
    dependencies, python3-bs4, python3-lxml, python3-requests,
    python3-html5lib and python3-yaml as her sandbox's Python baseline for
-   scraping and data work (her prompt names the ones present), and `gh` and `tea` for threads with
-   repositories (`tea` only where it is packaged; without it, Gitea and
-   Forgejo accounts work through git alone). It installs IBM Plex and
+   scraping and data work (her prompt names the ones present), and `gh`
+   and `tea` for threads with repositories (`tea` only where it is
+   packaged; without it, Gitea and Forgejo accounts work through git
+   alone). It installs IBM Plex and
    Playwright's headless Chromium with the libraries it needs, in
    `/usr/local/lib/lyrica-chromium`, so her sandboxes can take
    screenshots. It installs Anthropic's Claude Code
@@ -1102,8 +1103,9 @@ refused. To replace the destination, enter the full URL and token again;
   baseline (python3-bs4, python3-lxml, python3-requests, python3-html5lib,
   python3-yaml) on its next `install.sh` run (or `apt-get install` of
   them), and NixOS on the next rebuild; until then `import bs4` fails in
-  her sandbox and her prompt doesn't name the libraries. On NixOS that rebuild also starts
-  SearXNG for her web search unless `services.lyrica.searxng = false`.
+  her sandbox and her prompt doesn't name the libraries. On NixOS that
+  rebuild also starts SearXNG for her web search unless
+  `services.lyrica.searxng = false`.
   The home page header (the greeting, then the date, the time and
   "0.1.0 · <build>") shows the git commit that is running.
 
