@@ -1,6 +1,6 @@
 // Principles 1, 2 and 8: one image tool, which also makes clips, with portrait consent checked at each resolved provider.
 import type { ExtensionContext, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { CloudModelForbidden, HostRefused, isRestricted, loraFiles, loraName, MAX_LORAS, modelName, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
+import { CloudModelForbidden, HostRefused, isRestricted, NoModel, loraFiles, loraName, MAX_LORAS, modelName, type CallContext, type LoraAsk, type ImageRequest, type JobProgress, type Models, type Resolution,
   type ThreadImages, type VideoRequest, type WorkspaceSettings, LONGEST_VIDEO_SECONDS } from "@lyrica/core";
 import { Type, type Static } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -39,7 +39,7 @@ export const imageParameters = Type.Object({
   action: StringEnum(["create", "edit", "upscale", "reject", "pick", "clear_rejected", "video", "animate", "motion", "extend"] as const),
   prompt: videoPrompt(),
   tier: Type.Optional(StringEnum(["fast", "quality"] as const, { description: "For create: fast or quality (the default)." })),
-  model: Type.Optional(Type.String({ description: "For create, edit and upscale: an image model they asked for by name; it is tried first, then the usual models." })),
+  model: modelParameter(),
   loras: loraParameter(),
   image: path("For edit, upscale, pick, animate and motion: the image's path (animate's first frame; motion's subject, who moves)."),
   video: path("For motion: the driving clip's path, an MP4 whose person makes the moves. For extend: the clip to make longer."),
@@ -67,6 +67,21 @@ export function videoPrompt(model?: { name: string; sound: boolean }) {
     : model.sound ? ` ${model.name} renders sound with the picture: describe the sounds, and quote any speech word for word in its language (She says in Mandarin: "…"), or the talking comes out as made-up sounds.`
     : ` ${model.name} makes no sound.`;
   return Type.Optional(Type.String({ description: `For create: what to draw, as one detailed paragraph. For video and animate: what happens in the clip. For motion: the scene, light and look; the clip gives the moves. For extend: what happens next.${sound}` }));
+}
+
+type ImageModel = ReturnType<Models["imageModels"]>[number];
+
+/** A model's line in the tool's description: what it does here, and how many references it takes. */
+const modelLine = (m: ImageModel) => `${m.name} (${m.actions.join(", ")}${m.actions.includes("upscale") && m.actions.length === 1 ? ""
+  : m.references === undefined ? "" : m.references ? `; up to ${m.references} references` : "; no references"})`;
+
+/**
+ * `model`, naming the models on her Images lists when they are known, so she never guesses a name.
+ * Only those are listed: a model off the lists answers only when they ask for it by name.
+ */
+export function modelParameter(models: readonly ImageModel[] = []) {
+  const known = models.length ? ` The image models here: ${models.slice(0, 20).map(modelLine).join(", ")}${models.length > 20 ? ", …" : ""}.` : "";
+  return Type.Optional(Type.String({ description: `For create, edit and upscale: an image model they asked for by name; it is tried first, then the usual models. Omit it otherwise: the usual models pick one that can take the call.${known}` }));
 }
 
 /** `loras`, naming the LoRAs her models take when they are known. */
@@ -171,7 +186,8 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
         "For create, describe the subject and what it does, then setting, light, framing and medium (photo, painting, sketch); keep to what they asked, and ask for text in the image only when they want it, quoted.",
         "For an edit, look at the image first; name the one change plainly, say what goes, and say what stays (faces, body, pose, framing, light).",
         "Make one big change per edit: for a new setting and a new outfit, edit twice, each from the last result. With a mask, say what replaces what is under it.",
-        "When they name an image model, set model to that name. When the result says a model was passed over or isn't found, tell them which model made it and why.",
+        "To change an image (theirs or one you made), use edit with it as image, even when you also pass references; create makes a new picture from a prompt.",
+        "Set model only when they name an image model, to that name; never guess one. When the result says a model was passed over, tell them which model made it and why.",
         "When they ask for a LoRA, set loras with its name and the strength they said (1 if they gave none); say which model it went with. If it isn't found, tell them, with the LoRAs there are.",
         "With a mask, set replace when the masked thing becomes something else (a painting into a mirror), and then write the instruction as the finished scene (a round mirror on a warm beige wall); leave it off to recolour or reshape what's there, which keeps the rest of it.",
         "Don't pass the image being edited as a reference too.",
@@ -200,17 +216,19 @@ export function createImageExtension(o: ImageTools): ExtensionFactory {
 const isVideo = (a: string): a is "video" | "animate" | "motion" | "extend" => ["video", "animate", "motion", "extend"].includes(a);
 
 /**
- * The tool's fields, its duration saying the thread's Videos model's longest and its loras the LoRAs her models take;
- * the static schema if those can't be read.
+ * The tool's fields, its duration saying the thread's Videos model's longest, its model the image models on her
+ * lists and its loras the LoRAs her models take; the static schema if those can't be read.
  */
 function videoModelParameters(o: ImageTools) {
-  let model, names: string[];
+  let model, names: string[], images: ImageModel[];
   try {
     const call = o.call();
     model = o.models.firstVideoModel(call);
     names = [...new Set((["image.create", "image.edit", "video"] as const).flatMap(t => o.models.loraModels(call, t, []).names))].sort();
+    images = o.models.imageModels(call);
   } catch { return imageParameters; }
-  return model || names.length ? Type.Object({ ...imageParameters.properties, ...(model ? { prompt: videoPrompt(model), duration: videoDuration(model) } : {}), ...(names.length ? { loras: loraParameter(names) } : {}) }) : imageParameters;
+  return model || names.length || images.length ? Type.Object({ ...imageParameters.properties, ...(model ? { prompt: videoPrompt(model), duration: videoDuration(model) } : {}),
+    ...(images.length ? { model: modelParameter(images) } : {}), ...(names.length ? { loras: loraParameter(names) } : {}) }) : imageParameters;
 }
 
 /**
@@ -291,9 +309,11 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   if (asks && request.action !== "upscale") request = { ...request, loras: asks };
   // A model they named goes first for this call only; the usual list still follows it. Then the ones that take the LoRAs they named.
   const named = p.model?.trim() ? o.models.namedImageModels(call, p.action, p.model) : undefined;
+  // A name that matches nothing is a guess or a slip: the call stops, so she asks rather than reports another model's image.
+  if (named && !named.ids.length) {
+    throw new Error(`No image model here is called "${p.model}"${named.names.length ? `; the ones that can ${p.action}: ${named.names.join(", ")}` : ""}. Leave model out unless they name one.`);
+  }
   const first = [...named?.ids ?? [], ...lora];
-  const unnamed = named && !named.ids.length
-    ? ` No image model here is called "${p.model}"${named.names.length ? `; the ones that can: ${named.names.join(", ")}` : ""}.` : "";
   let attempted: Resolution | undefined;
   let out;
   try { out = await o.models.image(call, request, { signal, onProgress, ...(first.length ? { first } : {}), beforeSend: async r => {
@@ -306,6 +326,10 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
     if (!o.enabled()) throw new Error("Images are off in this thread.");
     if (r.endpoint.kind === "cloud" && isRestricted(o.call())) throw new CloudModelForbidden("This thread uses local models only.");
   } }); } catch (err) {
+    // No create model takes references: changing an image is an edit, which she may have meant.
+    if (err instanceof NoModel && err.name !== "Offline" && !attempted && request.action === "create" && request.references?.length) {
+      throw new Error(`${err.message}. To change an image, use edit with it as image.`, { cause: err });
+    }
     if (!(err instanceof HostRefused) || err.code !== "image_refusal" || !attempted) throw withModel(err, p.action, attempted, signal);
     return { content: [{ type: "text" as const, text: err.message }], isError: true,
       details: { imageRefusal: { code: "image_refusal" as const, offeringId: attempted.offering.id, endpointId: attempted.endpoint.id } } };
@@ -317,7 +341,7 @@ export async function executeImage(o: ImageTools, id: string, p: ImageArgs, sign
   // Any fallback is said, so she can tell them the model they got isn't the first choice.
   const passed = out.resolution.passedOver ?? [];
   const fellBack = passed.length ? ` Passed over first: ${passed.map(s => `${s.label} (${s.reason.replace(/^it /, "")})`).join("; ")}.` : "";
-  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}.${lorasUsed(asks, out.resolution)}${unnamed}${fellBack} Saved ${paths.join(", ")}.` },
+  return { content: [{ type: "text" as const, text: `Made with ${modelName(out.resolution.offering)} on ${out.resolution.endpoint.name}.${lorasUsed(asks, out.resolution)}${fellBack} Saved ${paths.join(", ")}.` },
     ...out.images.map(i => ({ type: "image" as const, data: Buffer.from(i.bytes).toString("base64"), mimeType: i.type }))], details: { image: part } };
 }
 
